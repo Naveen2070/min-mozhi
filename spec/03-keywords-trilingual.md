@@ -25,10 +25,10 @@ of all three columns at all times:
   - type names: `bit`, `bits`, `signed`, `int`, `bool`
   - built-ins: `extend`, `trunc`, `signed()`, `unsigned()`
   - numbers and literals (ASCII digits only)
-  - **exception (G1-x):** the logical keyword aliases `and/or/not` *are*
+  - **exception (G1-x):** the logical keyword aliases `and/or/not` _are_
     translated — they alias the universal symbols `&&`/`||`/`!`
-  This keeps the translation surface to ~25 words and means any Min-Mozhi
-  programmer can read any flavor's _structure_ at a glance.
+    This keeps the translation surface to ~25 words and means any Min-Mozhi
+    programmer can read any flavor's _structure_ at a glance.
 
 ### Romanization policy (Tanglish column)
 
@@ -37,7 +37,7 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
 - **Simple phonetic, no diacritics** — spell as a TN student would type in a
   chat message.
 - **Exactly one canonical spelling per keyword.** No variant aliases —
-  aliases breed dialects. Near-miss spellings get a *did-you-mean* compiler
+  aliases breed dialects. Near-miss spellings get a _did-you-mean_ compiler
   suggestion instead (`etram` → "did you mean `yetram`?").
 
 ### Word-selection criteria (in order)
@@ -78,34 +78,34 @@ is valid even in an otherwise-English file.
 > friends). English column is frozen for Phase 1. Weakest picks flagged in
 > notes; check against TN SCERT vocabulary before freezing.
 
-| Token         | English  | Tanglish    | Tamil       | Notes / alternatives                                          |
-| ------------- | -------- | ----------- | ----------- | ------------------------------------------------------------- |
-| KW_MODULE     | `module` | `thoguthi`  | `தொகுதி`    | standard CS-textbook word for "module"                        |
-| KW_IN         | `in`     | `ulle`      | `உள்`       | or `ulleedu` (உள்ளீடு, "input") — longer but more precise     |
-| KW_OUT        | `out`    | `veli`      | `வெளி`      | or `veliyeedu` (வெளியீடு, "output")                           |
-| KW_WIRE       | `wire`   | `kambi`     | `கம்பி`     | literal "wire" — strong pick                                  |
-| KW_REG        | `reg`    | `nilai`     | `நிலை`      | "state" — strong pick                                         |
-| KW_CLOCK      | `clock`  | `kadigaram` | `கடிகாரம்`  | literal "clock"; long — `gadi` is a casual option             |
-| KW_RESET      | `reset`  | `meetamai`  | `மீட்டமை`   | "restore/reset"                                               |
-| KW_ON         | `on`     | `pothu`     | `போது`      | "when/at the time of"                                         |
+| Token         | English  | Tanglish    | Tamil       | Notes / alternatives                                                         |
+| ------------- | -------- | ----------- | ----------- | ---------------------------------------------------------------------------- |
+| KW_MODULE     | `module` | `thoguthi`  | `தொகுதி`    | standard CS-textbook word for "module"                                       |
+| KW_IN         | `in`     | `ulle`      | `உள்`       | or `ulleedu` (உள்ளீடு, "input") — longer but more precise                    |
+| KW_OUT        | `out`    | `veli`      | `வெளி`      | or `veliyeedu` (வெளியீடு, "output")                                          |
+| KW_WIRE       | `wire`   | `kambi`     | `கம்பி`     | literal "wire" — strong pick                                                 |
+| KW_REG        | `reg`    | `nilai`     | `நிலை`      | "state" — strong pick                                                        |
+| KW_CLOCK      | `clock`  | `kadigaram` | `கடிகாரம்`  | literal "clock"; long — `gadi` is a casual option                            |
+| KW_RESET      | `reset`  | `meetamai`  | `மீட்டமை`   | "restore/reset"                                                              |
+| KW_ON         | `on`     | `pothu`     | `போது`      | "when/at the time of"                                                        |
 | KW_RISE       | `rise`   | `yetram`    | `ஏற்றம்`    | "ascent/rise" (`fall` removed in v0.2 — reserved, untranslated until needed) |
-| KW_IF         | `if`     | `endral`    | `என்றால்`   | classic conditional suffix                                    |
-| KW_ELSE       | `else`   | `illaiyel`  | `இல்லையேல்` | "otherwise"                                                   |
-| KW_MATCH      | `match`  | `poruthu`   | `பொருத்து`  | "fit/match"                                                   |
-| KW_ENUM       | `enum`   | `vagai`     | `வகை`       | "kind/category"                                               |
-| KW_LET        | `let`    | `vai`       | `வை`        | "place/put" — weakest pick, review                            |
-| KW_CONST      | `const`  | `maara`     | `மாறா`      | "unchanging"                                                  |
-| KW_REPEAT     | `repeat` | `meendum`   | `மீண்டும்`  | "again" — new in v0.2 (compile-time generation)               |
-| KW_IMPORT     | `import` | `serkka`    | `சேர்க்க`   | "to add/include"; `irakkumathi` is literal but trade-flavored |
-| KW_TRUE       | `true`   | `unmai`     | `உண்மை`     |                                                               |
-| KW_FALSE      | `false`  | `poi`       | `பொய்`      |                                                               |
-| KW_TEST       | `test`   | `sodhanai`  | `சோதனை`     | "test/experiment"                                             |
-| KW_FOR (test) | `for`    | `kaaga`     | `க்காக`     | "for the sake of"                                             |
-| KW_TICK       | `tick`   | `thattu`    | `தட்டு`     | "tap/knock" — new in v0.2 (test blocks only), review          |
-| KW_EXPECT     | `expect` | `ethirpaar` | `எதிர்பார்` | "expect" — new in v0.2 (test blocks only)                     |
-| KW_AND        | `and`    | `mattrum`   | `மற்றும்`   | alias of universal `&&` (G1-x)                                |
-| KW_OR         | `or`     | `alladhu`   | `அல்லது`    | alias of universal `\|\|`                                     |
-| KW_NOT        | `not`    | `illa`      | `இல்லா`     | alias of universal `!`; review vs KW_ELSE family for confusion |
+| KW_IF         | `if`     | `endral`    | `என்றால்`   | classic conditional suffix                                                   |
+| KW_ELSE       | `else`   | `illaiyel`  | `இல்லையேல்` | "otherwise"                                                                  |
+| KW_MATCH      | `match`  | `poruthu`   | `பொருத்து`  | "fit/match"                                                                  |
+| KW_ENUM       | `enum`   | `vagai`     | `வகை`       | "kind/category"                                                              |
+| KW_LET        | `let`    | `vai`       | `வை`        | "place/put" — weakest pick, review                                           |
+| KW_CONST      | `const`  | `maara`     | `மாறா`      | "unchanging"                                                                 |
+| KW_REPEAT     | `repeat` | `meendum`   | `மீண்டும்`  | "again" — new in v0.2 (compile-time generation)                              |
+| KW_IMPORT     | `import` | `serkka`    | `சேர்க்க`   | "to add/include"; `irakkumathi` is literal but trade-flavored                |
+| KW_TRUE       | `true`   | `unmai`     | `உண்மை`     |                                                                              |
+| KW_FALSE      | `false`  | `poi`       | `பொய்`      |                                                                              |
+| KW_TEST       | `test`   | `sodhanai`  | `சோதனை`     | "test/experiment"                                                            |
+| KW_FOR (test) | `for`    | `kaaga`     | `க்காக`     | "for the sake of"                                                            |
+| KW_TICK       | `tick`   | `thattu`    | `தட்டு`     | "tap/knock" — new in v0.2 (test blocks only), review                         |
+| KW_EXPECT     | `expect` | `ethirpaar` | `எதிர்பார்` | "expect" — new in v0.2 (test blocks only)                                    |
+| KW_AND        | `and`    | `mattrum`   | `மற்றும்`   | alias of universal `&&` (G1-x)                                               |
+| KW_OR         | `or`     | `alladhu`   | `அல்லது`    | alias of universal `\|\|`                                                    |
+| KW_NOT        | `not`    | `illa`      | `இல்லா`     | alias of universal `!`; review vs KW_ELSE family for confusion               |
 
 **Word-order caveat:** this layer keeps one fixed (English-derived) order, so
 `on rise(clk)` becomes `pothu yetram(clk)` — understandable, but not idiomatic
@@ -121,7 +121,7 @@ once the Phase 1 parser exists.
 
 **English:**
 
-```minmo
+```mimz
 module Counter(WIDTH: int = 8) {
   clock clk
   reset rst
@@ -139,7 +139,7 @@ module Counter(WIDTH: int = 8) {
 
 **Tanglish:**
 
-```minmo
+```mimz
 thoguthi Counter(WIDTH: int = 8) {
   kadigaram clk
   meetamai rst
@@ -157,7 +157,7 @@ thoguthi Counter(WIDTH: int = 8) {
 
 **Tamil:**
 
-```minmo
+```mimz
 தொகுதி Counter(WIDTH: int = 8) {
   கடிகாரம் clk
   மீட்டமை rst
@@ -175,7 +175,7 @@ thoguthi Counter(WIDTH: int = 8) {
 
 **Mixed (legal — the migration path in action):**
 
-```minmo
+```mimz
 module Counter(WIDTH: int = 8) {
   clock clk
   reset rst
@@ -201,7 +201,7 @@ module Counter(WIDTH: int = 8) {
 - Tokenizer normalizes nothing — exact-match on the spelling, after standard
   Unicode NFC normalization of the source.
 - Near-miss detection (edit distance ≤ 2 against the Tanglish column) powers
-  *did-you-mean* suggestions per the romanization policy.
+  _did-you-mean_ suggestions per the romanization policy.
 - `mimz translate` = lex → re-emit tokens, swapping keyword spellings,
   preserving all trivia (comments, whitespace).
 - Lexer records which flavor each keyword used → drives default error-message

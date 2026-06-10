@@ -1,0 +1,29 @@
+{
+  // Markdown lint config (markdownlint-cli2 + the VS Code markdownlint
+  // extension both read this file).
+  "globs": ["**/*.md"],
+  "ignores": [
+    "docs/archive/**", // append-only history (RULES R4) — never edited to satisfy a linter
+    "target/**",
+    ".remember/**",
+    "node_modules/**"
+  ],
+  "config": {
+    "default": true,
+    // Long lines are fine: our docs use wide tables and ASCII diagrams.
+    "MD013": false,
+    // Bare ``` fences are used for ASCII pipeline diagrams and trees.
+    "MD040": false,
+    // Bold lines used as labels inside tables/quotes, not as headings.
+    "MD036": false,
+    // Inline HTML is occasionally useful in tables.
+    "MD033": false,
+    // Duplicate headings allowed across sections (e.g. repeated
+    // "Milestone" in plan files), just not within the same section.
+    "MD024": { "siblings_only": true },
+    // Table pipe alignment: Tamil combining marks make visual width differ
+    // from character count, so Prettier's alignment and this rule can never
+    // both be satisfied in tables containing Tamil. Prettier owns formatting.
+    "MD060": false
+  }
+}

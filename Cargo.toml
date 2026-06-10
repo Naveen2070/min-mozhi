@@ -10,10 +10,12 @@ categories = ["compilers", "hardware-support"]
 rust-version = "1.85"
 
 [dependencies]
-# Planned (added as each Phase 1 work item starts — see docs/plan/phase-1):
-# clap    — CLI            (skeleton, work item 1)
-# miette  — diagnostics    (checker, work item 4)
-# toml/serde — keywords.toml loader (lexer, work item 2)
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+unicode-ident = "1"
+unicode-normalization = "0.1"
+# Planned: miette — rich diagnostics (checker, Phase 1 work item 4)
 
 [profile.release]
 lto = true

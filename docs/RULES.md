@@ -69,6 +69,10 @@ architecture.
 ## R6 — Repo conventions
 
 - File names: `kebab-case.md`; logs: `YYYY-MM-DD.md`.
+- Markdown is formatted by **Prettier** (`npx prettier --write "**/*.md"`)
+  and linted by **markdownlint** (`npx markdownlint-cli2`, config in
+  `.markdownlint-cli2.jsonc`). Both run in CI. `docs/archive/` is exempt —
+  history is never edited to satisfy a tool.
 - Examples in `examples/` must always match the current spec — a spec change
   that breaks an example fixes the example in the same session.
 - Once the compiler exists: every example must compile in CI; the keyword

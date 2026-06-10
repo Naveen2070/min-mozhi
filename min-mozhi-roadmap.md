@@ -1,7 +1,7 @@
 # Min-Mozhi (மின்மொழி) — Roadmap & Phases
 
 > **"Language of Electricity"** — The first Tamil-rooted Hardware Description Language
-
+>
 > ℹ️ This file is the **summary**. Detailed, task-level plans live in
 > [`docs/plan/`](docs/plan/) (source of truth — see [`docs/RULES.md`](docs/RULES.md) R1/R2).
 > Progress and decisions are logged in [`docs/log/`](docs/log/).
@@ -43,12 +43,13 @@ matching, which compilers lean on heavily.)
 
 > Get something working end-to-end
 
-- Build **Lexer** — tokenize Min-Mozhi source
-- Build **Parser** — produce AST from tokens
-- Build **AST** — represent modules, signals, logic
-- Build **Verilog Emitter** — walk AST, output `.v` files
+- Build **Lexer** — tokenize Min-Mozhi source ✅ (trilingual, Unicode idents)
+- Build **Parser** — produce AST from tokens ✅ (full v0.2 grammar)
+- Build **AST** — represent modules, signals, logic ✅
+- Build **Verilog Emitter** — walk AST, output `.v` files ✅ v1 (repeat/checker pending)
+- Build **Checker** — the safety rules + const-eval (next up)
 - Test with **Icarus Verilog** (free simulator)
-- Support: wires, registers, modules, basic logic, clocks
+- Support: wires, registers, modules, basic logic, clocks ✅
 
 **Milestone:** `mimz compile adder.mimz → adder.v → simulates correctly`
 

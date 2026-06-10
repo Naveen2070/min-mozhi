@@ -11,20 +11,24 @@ and the Tamil Nadu VLSI ecosystem.
 ## Work items
 
 ### Standard library
+
 - [ ] Core modules in Min-Mozhi itself: UART, SPI, PWM, debouncer, FIFO, ALU, 7-segment driver
 - [ ] Each stdlib module: trilingual doc page + testbench + waveform screenshot
 
 ### Tooling
+
 - [ ] VS Code extension: syntax highlighting (all flavors + thamizh-order), inline diagnostics via LSP
-- [ ] `minmo fmt` stabilized; `minmo translate` promoted in docs as the learning tool
-- [ ] Package manager (`minmo add <pkg>`) — design doc first, Decision-logged
+- [ ] `mimz fmt` stabilized; `mimz translate` promoted in docs as the learning tool
+- [ ] Package manager (`mimz add <pkg>`) — design doc first, Decision-logged
 
 ### Documentation & learning
+
 - [ ] Documentation site — English first; Tamil translation of docs begins **after Phase 1** (decision D9)
 - [ ] "Day one" tutorial: counter on a real board in under an hour — in Tamil, Tanglish, and English
 - [ ] Example gallery grown from community submissions
 
 ### Community
+
 - [ ] Tamil Nadu outreach: engineering colleges, polytechnics, VLSI meetups
 - [ ] Contribution guide + code of conduct; keyword-table change process opened to community (per `docs/RULES.md` R6)
 - [ ] Talks/posts timed with India Semiconductor Mission news cycle

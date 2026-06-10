@@ -6,22 +6,25 @@
 ## Goal
 
 A Min-Mozhi intermediate representation (netlist-level) and a path to real
-FPGA hardware via the open toolchain: `.minmo → IR → Yosys/nextpnr → bitstream`.
+FPGA hardware via the open toolchain: `.mimz → IR → Yosys/nextpnr → bitstream`.
 
 ## Work items
 
 ### IR
+
 - [ ] Design Min-Mozhi IR: typed netlist (cells, nets, widths, clock domains preserved)
 - [ ] AST → IR lowering (enums encoded, match → mux trees, regs → FF cells)
 - [ ] IR text format (dumpable, diffable, hand-writable for tests)
 - [ ] IR validation pass (re-checks single-driver, widths — defense in depth)
 
 ### Optimizer (first passes)
+
 - [ ] Constant folding / propagation
 - [ ] Dead signal & dead cell elimination
 - [ ] Mux-tree simplification
 
 ### Synthesis path (pragmatic first)
+
 - [ ] IR → structural Verilog emitter (Yosys-friendly subset) **or** direct Yosys JSON netlist
 - [ ] Yosys + nextpnr flow scripted: `mimz build blink.mimz --target ice40`
 - [ ] Bitstream produced and verified **in CI/emulation** (no board owned yet — decision D8)
@@ -29,10 +32,12 @@ FPGA hardware via the open toolchain: `.minmo → IR → Yosys/nextpnr → bitst
 - [ ] Design the **external Verilog wrapping** construct (Constitution: emit + wrap Verilog) — spec bump + Decision log
 
 ### Study track (feeds Phase 3)
+
 - [ ] Study Yosys internals: techmapping, ABC interaction
 - [ ] Document findings in `docs/log/` as study notes
 
 ### Clock-domain crossing (deferred from spec v0.1)
+
 - [ ] Design explicit CDC construct (`sync`) — spec update + Decision log entry
 
 ## Milestone

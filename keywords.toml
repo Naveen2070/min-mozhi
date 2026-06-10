@@ -1,0 +1,141 @@
+# Min-Mozhi trilingual keyword table — THE source of truth for keyword words.
+# spec/03-keywords-trilingual.md. One canonical spelling per column (no aliases).
+#
+# Status: Tanglish/Tamil columns are DRAFT pending native-speaker review.
+# Changing a word here is a data change — no compiler code is touched.
+#
+# Columns: en = English (frozen) · tanglish = romanized Tamil · tamil = Tamil script
+
+# Reserved for the future — using these is a compile error suggesting why.
+# (Must stay above the first [keywords.*] table: top-level TOML keys.)
+reserved = ["fall", "syntax", "ilakkanam", "இலக்கணம்", "mem", "sync", "inout", "struct"]
+
+[keywords.module]
+en = "module"
+tanglish = "thoguthi"
+tamil = "தொகுதி"
+
+[keywords.in]
+en = "in"
+tanglish = "ulle"
+tamil = "உள்"
+
+[keywords.out]
+en = "out"
+tanglish = "veli"
+tamil = "வெளி"
+
+[keywords.wire]
+en = "wire"
+tanglish = "kambi"
+tamil = "கம்பி"
+
+[keywords.reg]
+en = "reg"
+tanglish = "nilai"
+tamil = "நிலை"
+
+[keywords.clock]
+en = "clock"
+tanglish = "kadigaram"
+tamil = "கடிகாரம்"
+
+[keywords.reset]
+en = "reset"
+tanglish = "meetamai"
+tamil = "மீட்டமை"
+
+[keywords.on]
+en = "on"
+tanglish = "pothu"
+tamil = "போது"
+
+[keywords.rise]
+en = "rise"
+tanglish = "yetram"
+tamil = "ஏற்றம்"
+
+[keywords.if]
+en = "if"
+tanglish = "endral"
+tamil = "என்றால்"
+
+[keywords.else]
+en = "else"
+tanglish = "illaiyel"
+tamil = "இல்லையேல்"
+
+[keywords.match]
+en = "match"
+tanglish = "poruthu"
+tamil = "பொருத்து"
+
+[keywords.enum]
+en = "enum"
+tanglish = "vagai"
+tamil = "வகை"
+
+[keywords.let]
+en = "let"
+tanglish = "vai"
+tamil = "வை"
+
+[keywords.const]
+en = "const"
+tanglish = "maara"
+tamil = "மாறா"
+
+[keywords.repeat]
+en = "repeat"
+tanglish = "meendum"
+tamil = "மீண்டும்"
+
+[keywords.import]
+en = "import"
+tanglish = "serkka"
+tamil = "சேர்க்க"
+
+[keywords.true]
+en = "true"
+tanglish = "unmai"
+tamil = "உண்மை"
+
+[keywords.false]
+en = "false"
+tanglish = "poi"
+tamil = "பொய்"
+
+[keywords.test]
+en = "test"
+tanglish = "sodhanai"
+tamil = "சோதனை"
+
+[keywords.for]
+en = "for"
+tanglish = "kaaga"
+tamil = "க்காக"
+
+[keywords.tick]
+en = "tick"
+tanglish = "thattu"
+tamil = "தட்டு"
+
+[keywords.expect]
+en = "expect"
+tanglish = "ethirpaar"
+tamil = "எதிர்பார்"
+
+[keywords.and]
+en = "and"
+tanglish = "mattrum"
+tamil = "மற்றும்"
+
+[keywords.or]
+en = "or"
+tanglish = "alladhu"
+tamil = "அல்லது"
+
+[keywords.not]
+en = "not"
+tanglish = "illa"
+tamil = "இல்லா"

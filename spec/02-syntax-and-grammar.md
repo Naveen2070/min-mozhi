@@ -10,7 +10,7 @@
 
 ### 1.1 Hello, hardware — a combinational adder
 
-```minmo
+```mimz
 // adder.mimz
 module Adder(WIDTH: int = 8) {
   in  a: bits[WIDTH]
@@ -33,7 +33,7 @@ Rules on display:
 
 ### 1.2 Sequential logic — a counter
 
-```minmo
+```mimz
 // counter.mimz
 module Counter(WIDTH: int = 8) {
   clock clk
@@ -76,7 +76,7 @@ Rules on display:
 
 ### 1.3 Choosing — `if` and `match` are expressions
 
-```minmo
+```mimz
 module Alu(WIDTH: int = 8) {
   in  a:  bits[WIDTH]
   in  b:  bits[WIDTH]
@@ -101,7 +101,7 @@ module Alu(WIDTH: int = 8) {
 
 ### 1.4 State machines — `enum` + `match`
 
-```minmo
+```mimz
 module TrafficLight {
   clock clk
   reset rst
@@ -144,7 +144,7 @@ module TrafficLight {
 
 ### 1.5 Composition — `import` and instantiation
 
-```minmo
+```mimz
 // top.mimz
 import adder            // brings modules from adder.mimz into scope
 
@@ -180,7 +180,7 @@ module Top {
 
 ### 1.6 Repeated hardware — `repeat`
 
-```minmo
+```mimz
 module Chaser(N: int = 8) {
   clock clk
   reset rst
@@ -205,7 +205,7 @@ module Chaser(N: int = 8) {
 
 ### 1.7 Signed numbers
 
-```minmo
+```mimz
 wire t:  signed[8]  = -25                  // negative literals: signed only
 wire u:  bits[8]    = 0xF0
 wire s:  signed[8]  = signed(u)            // explicit reinterpret cast
@@ -228,7 +228,7 @@ wire eq: bit        = t < s                // signed comparison
 
 ### 1.8 Slicing, concatenation, literals
 
-```minmo
+```mimz
 wire lo:   bits[4] = data[3:0]        // slice (inclusive, msb:lsb)
 wire hi:   bits[4] = data[7:4]
 wire both: bits[8] = { hi, lo }       // concatenation, msb-first
@@ -248,7 +248,7 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
 
 ### 1.9 Constants
 
-```minmo
+```mimz
 const BAUD: int = 9600                // file or module scope
 const FAST: bool = true
 
@@ -263,7 +263,7 @@ module scope — the SystemVerilog `parameter/localparam` role, one keyword.
 
 ### 1.10 Tests
 
-```minmo
+```mimz
 test "counter counts" for Counter(WIDTH: 4) {
   a = 3                  // drive module inputs by assignment
   tick(clk)              // advance one rising edge
@@ -326,13 +326,13 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 
 ## 4. Types
 
-| Type             | Meaning                                                     |
-| ---------------- | ----------------------------------------------------------- |
-| `bit`            | single wire, values `0`/`1` (also `true`/`false`)           |
-| `bits[N]`        | N-bit unsigned vector                                       |
-| `signed[N]`      | N-bit two's-complement vector (§1.7 — never mixes with `bits`) |
-| `clock`, `reset` | dedicated domain types — never mix with data                |
-| `enum` types     | user-defined, compiler-encoded                              |
+| Type             | Meaning                                                                    |
+| ---------------- | -------------------------------------------------------------------------- |
+| `bit`            | single wire, values `0`/`1` (also `true`/`false`)                          |
+| `bits[N]`        | N-bit unsigned vector                                                      |
+| `signed[N]`      | N-bit two's-complement vector (§1.7 — never mixes with `bits`)             |
+| `clock`, `reset` | dedicated domain types — never mix with data                               |
+| `enum` types     | user-defined, compiler-encoded                                             |
 | `int`, `bool`    | **compile-time only** (params, widths, `const`, `repeat`) — never hardware |
 
 ## 5. Formal Grammar (EBNF, v0.2)
@@ -434,16 +434,16 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## 7. Deferred Features (explicitly out of v0.2)
 
-| Feature | Target |
-|---|---|
-| `on fall(...)` falling-edge blocks | reserved keyword, post-v1 |
-| `inout`/tristate ports | Phase 2 |
-| Memories/arrays (`mem`) | Phase 2 spec bump |
-| Clock-domain crossing (`sync`) | Phase 2 |
-| Structs/bundles/buses | post-Phase 2 (stdlib time) |
-| `match` ranges and don't-care bit patterns (`0b1??`) | v0.3+ |
-| Division/modulo | never as operators; stdlib divider module (Phase 4) |
-| Wrapping/instantiating external Verilog modules | per Constitution — design in Phase 2+ |
+| Feature                                              | Target                                              |
+| ---------------------------------------------------- | --------------------------------------------------- |
+| `on fall(...)` falling-edge blocks                   | reserved keyword, post-v1                           |
+| `inout`/tristate ports                               | Phase 2                                             |
+| Memories/arrays (`mem`)                              | Phase 2 spec bump                                   |
+| Clock-domain crossing (`sync`)                       | Phase 2                                             |
+| Structs/bundles/buses                                | post-Phase 2 (stdlib time)                          |
+| `match` ranges and don't-care bit patterns (`0b1??`) | v0.3+                                               |
+| Division/modulo                                      | never as operators; stdlib divider module (Phase 4) |
+| Wrapping/instantiating external Verilog modules      | per Constitution — design in Phase 2+               |
 
 ---
 
@@ -451,11 +451,11 @@ all punctuation, operators, and built-in type/function names are universal.
 
 - **v0.2 (2026-06-10):** `.mimz`/`mimz` naming. Rust-style precedence
   (bitwise > comparison; comparisons non-associative). Logical ops: `&&`/`||`/`!`
-  + translated keyword aliases (G1-x). Added `const` declarations, `repeat`
-  compile-time generation, `import` semantics, full `test` grammar
-  (`tick`/`expect`/drives), signed-number semantics (`signed()`/`unsigned()`
-  casts replace `signedval`; negative literals; type-directed `extend`; unary
-  minus). Cut `on fall` (reserved). Division/modulo declared deliberately
-  absent. Multi-clock ownership rule, reg-requires-reset rule, no-mixing rule
-  added to §6. Deferred-features table added.
+  - translated keyword aliases (G1-x). Added `const` declarations, `repeat`
+    compile-time generation, `import` semantics, full `test` grammar
+    (`tick`/`expect`/drives), signed-number semantics (`signed()`/`unsigned()`
+    casts replace `signedval`; negative literals; type-directed `extend`; unary
+    minus). Cut `on fall` (reserved). Division/modulo declared deliberately
+    absent. Multi-clock ownership rule, reg-requires-reset rule, no-mixing rule
+    added to §6. Deferred-features table added.
 - **v0.1 (2026-06-10):** Initial draft.

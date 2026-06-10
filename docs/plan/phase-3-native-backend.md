@@ -5,7 +5,7 @@
 
 ## Goal
 
-`minmo build blink.minmo --target ice40` programs an FPGA **with no foreign
+`mimz build blink.mimz --target ice40` programs an FPGA **with no foreign
 tool in the loop** — our own techmapping, place-and-route, and bitstream
 generation for the iCE40 family (fully documented by Project IceStorm).
 
@@ -22,7 +22,7 @@ generation for the iCE40 family (fully documented by Project IceStorm).
 
 ## Milestone
 
-LED blinker + UART echo built and flashed end-to-end with only `minmo`.
+LED blinker + UART echo built and flashed end-to-end with only `mimz`.
 
 ## Exit criteria
 

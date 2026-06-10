@@ -1,7 +1,9 @@
 # Min-Mozhi — Architecture
 
 > Living document (RULES.md R3: update whenever components or data flow change).
-> Status: **planned** — describes the Phase 1–2 design; nothing is built yet.
+> Status: **front end built** (2026-06-10) — lexer, parser, first Verilog
+> emitter, and CLI exist and are tested; checker, simulator, and IR are
+> still design. Component status is per the table in §2.
 > Last updated: 2026-06-10
 
 ---
@@ -47,6 +49,9 @@
 
 ## 2. Components
 
+Built ✅ as of 2026-06-10: keyword table, lexer, parser (code-order), AST,
+Verilog emitter v1, CLI (`check`, `compile`). Everything else: planned.
+
 | Component           | Phase   | Key design points                                                                                                                                                  |
 | ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **CLI** (`mimz`)    | 1       | `clap`; subcommands: `compile`, `check`, `sim`, `test`, `translate`, `fmt`, `build`                                                                                |
@@ -72,23 +77,67 @@ mimz/
   Cargo.toml
   keywords.toml          # trilingual table — data, not code
   src/
-    main.rs              # CLI
-    lexer/               # tokens, keyword table loader, scanner
-    parser/              # profiles: code_order.rs, thamizh_order.rs (P1.8)
-    ast/                 # node types, spans, pretty-printer
-    elaborate/           # import resolution, const folding, repeat unrolling
-    check/               # one module per safety rule
-    diag/                # message catalogs, morphology (P1.8)
-    emit_verilog/
+    main.rs              # CLI only (clap commands)            ✅
+    project.rs           # source loading, import resolution   ✅
+    span.rs              # byte-offset spans                   ✅
+    diag.rs              # teaching diagnostics + renderer     ✅
+    ast/                 # the ONE shared AST                  ✅
+      mod.rs             #   files, modules, decls, statements
+      expr.rs            #   expressions, patterns, operators
+    lexer/               #                                     ✅
+      mod.rs             #   scanner + newline policy
+      token.rs           #   token kinds, keyword enum, flavors
+      keywords.rs        #   keywords.toml loader
+      tests.rs           #   unit tests
+    parser/              #                                     ✅
+      mod.rs             #   entry, Parser state, plumbing
+      items.rs           #   file/module/seq/test items
+      expr.rs            #   precedence climbing, patterns
+      tests.rs           #   unit tests
+      thamizh_order.rs   #   (P1.8) flipped clause heads
+    emit_verilog/        #                                     ✅
+      mod.rs             #   Project symtab, entry, helpers
+      module.rs          #   shells, instances, always-blocks
+      expr.rs            #   expression rendering
+    check/               # (next) one module per safety rule
     sim/                 # (P1.5) elaborate, kernel, vcd
     ir/                  # (P2)
   tests/
-    golden/              # source → expected tokens/AST/Verilog
-    examples/            # compile + Icarus differential suite
+    examples.rs          # integration: all examples compile   ✅
 ```
 
 Planned crate split (when needed): `mimz-syntax` (lexer/parser/AST/printer) ·
 `mimz-check` · `mimz-backends` · `mimz` (CLI).
+
+### Repository layout
+
+```
+min-mozhi/
+  README.md, LICENSE-*, Cargo.toml
+  keywords.toml        # language data (embedded at build time)
+  min-mozhi-roadmap.md # roadmap summary
+  spec/                # the LANGUAGE — normative, versioned (v0.2)
+  docs/                # the PROJECT — plan/, log/, archive/, RULES, this file
+  examples/            # .mimz example programs (no .rs files, so cargo's
+                       #   examples/ auto-discovery is unaffected)
+  src/                 # the compiler (tree above)
+  tests/               # integration tests
+  .github/workflows/   # CI
+```
+
+Separation rule: `spec/` defines the language and outlives any
+implementation; `docs/` tracks this implementation and process. Never mix.
+
+Future directories (created when their trigger fires, not before):
+
+| Directory       | Arrives with                                   |
+| --------------- | ---------------------------------------------- |
+| `tools/vscode/` | TextMate grammar (Phase 1 work item 6)         |
+| `tests/golden/` | golden `.v` files when the emitter hardens     |
+| `stdlib/`       | `.mimz` standard library modules (Phase 4)     |
+| `crates/`       | the workspace split (see Evolution Triggers)   |
+| `targets/`      | board/constraint files (Phase 2 hardware flow) |
+| `site/`         | docs website (Phase 4)                         |
 
 ## 4. Cross-Cutting Invariants
 
@@ -105,7 +154,23 @@ Planned crate split (when needed): `mimz-syntax` (lexer/parser/AST/printer) ·
 6. **Dumb first, fast later.** Emitters/backends start naive and readable;
    optimization lives in dedicated IR passes, never hidden in emitters.
 
-## 5. Open Questions (log a Decision when resolved)
+## 5. Evolution Triggers (planned inflection points — not emergencies)
+
+The architecture is staged on purpose; each piece below is _correct now_ and
+has a known moment when it must change. When a trigger fires, do the listed
+move and log it (R3). Letting a trigger pass is how architectures rot.
+
+| Current shape                                        | Trigger                                                                                       | Required move                                                                                                             |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| String-based Verilog emitter reading the AST         | Checker lands (work item 4)                                                                   | Move all semantic errors (unknown module, port connectivity) out of the emitter into checker passes; emitter only renders |
+| Emitter has no width knowledge (`extend` is a no-op) | IR exists (Phase 2)                                                                           | Emit from typed IR, demote AST→Verilog path to a debug backend                                                            |
+| Diagnostics are free-text, no IDs                    | Error count ≈ 30, **before** any message translation (P1.8)                                   | Stable error codes (`E0001`…) + message catalog keyed by code; morphology helper interpolates into the catalog            |
+| Single binary crate (`mod` tree under main.rs)       | A second consumer of the front end appears (LSP, `translate` as a library, simulator tooling) | Add `lib.rs`, thin `main.rs`; split workspace (`mimz-syntax`/`mimz-check`/`mimz-backends`) only then                      |
+| Lexer discards comments/whitespace                   | `mimz fmt` work starts                                                                        | Add a trivia-preserving lexing mode; `translate` stays token-level and is unaffected                                      |
+| Tokens own `String`s, cloned freely                  | Compile time on real projects becomes noticeable (not before)                                 | String interning + token indices — contained inside `lexer/`                                                              |
+| Emitter semantic checks duplicated per backend       | Simulator (P1.5) starts                                                                       | Elaboration (`project.rs` + checker output) becomes the single pre-backend stage both consume                             |
+
+## 6. Open Questions (log a Decision when resolved)
 
 - Reset style v2: async-reset option? active-low? (v1: sync, active-high)
 - Memories/arrays (`mem[depth] of bits[w]`) — Phase 2 spec bump (confirmed)

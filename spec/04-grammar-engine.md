@@ -11,7 +11,7 @@
 Layer 1 (the keyword skins in `03-keywords-trilingual.md`) translates _words_
 but keeps English-derived _word order_:
 
-```minmo
+```mimz
 pothu yetram(clk) { ... }      // "when rise(clk)" — words Tamil, order English
 endral timer == 0 { ... }      // "if timer == 0" — same issue
 ```
@@ -54,7 +54,7 @@ ever. Two profiles:
 
 The word-order profile is declared **explicitly at the top of the file**:
 
-```minmo
+```mimz
 syntax thamizh
 ```
 
@@ -87,7 +87,7 @@ Unchanged in both profiles: `module/thoguthi`, port/wire/reg declarations,
 
 ### The counter, thamizh-order Tanglish
 
-```minmo
+```mimz
 syntax thamizh
 
 thoguthi Counter(WIDTH: int = 8) {
@@ -107,7 +107,7 @@ thoguthi Counter(WIDTH: int = 8) {
 
 ### The traffic light, thamizh-order Tamil script
 
-```minmo
+```mimz
 syntax thamizh
 
 தொகுதி TrafficLight {

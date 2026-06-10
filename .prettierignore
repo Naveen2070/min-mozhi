@@ -1,0 +1,12 @@
+# Append-only history — never reformatted (RULES R4)
+docs/archive/
+
+# Build output & tool scratch
+target/
+.remember/
+.claude/
+
+# Not Prettier's formats
+*.mimz
+*.v
+LICENSE-*

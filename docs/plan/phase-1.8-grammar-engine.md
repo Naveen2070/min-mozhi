@@ -14,22 +14,26 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
 ## Work items
 
 ### Parser profile
+
 - [ ] `syntax thamizh` file directive (no auto-detection)
 - [ ] Flipped productions per `spec/04` §3: `<cond> endral { }`, `yetram(clk) pothu { }`, `<expr> poruthu { }`, test form
 - [ ] Expression-first parsing with one-token lookahead after expression (no backtracking)
 - [ ] Same-AST guarantee tests: thamizh-order file and its code-order twin produce byte-identical AST dumps
 
 ### Translate / format
+
 - [ ] Pretty-printer with per-profile output templates
 - [ ] `mimz translate --to <flavor> --order code|thamizh` — lossless, trivia-preserving
 - [ ] Round-trip tests: translate A→B→A is identity
 
 ### Morphology helper (error messages)
+
 - [ ] Tamil case-suffix table (-ஐ, -க்கு, -இல், -ஆல்) + sandhi-joining rules for interpolated identifiers
 - [ ] Error catalog authored in Tamil + Tanglish by humans (not machine-translated); helper only inflects names
 - [ ] Error-language selection: file flavor majority, `--lang` override
 
 ### Validation
+
 - [ ] Native-speaker panel (tech/coder friends, decision C3) reviews the §3 word-order table and 10 rendered error messages
 - [ ] Rewrite `examples/traffic_light` in pure Tamil script, thamizh-order, added to test suite
 

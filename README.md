@@ -7,7 +7,7 @@
 Min-Mozhi ("language of electricity") is a modern HDL for designing digital
 circuits. It compiles to Verilog today, with a native FPGA path on the roadmap.
 
-```minmo
+```mimz
 module Counter(WIDTH: int = 8) {
   clock clk
   reset rst
@@ -26,7 +26,7 @@ module Counter(WIDTH: int = 8) {
 The same module in **Tanglish** — same grammar, only keywords change, and
 flavors can be mixed freely in one file:
 
-```minmo
+```mimz
 thoguthi Counter(WIDTH: int = 8) {
   kadigaram clk
   meetamai rst
@@ -63,8 +63,42 @@ Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
 ## Project Status
 
-**Phase 0 — language design (spec v0.2).** Nothing compiles yet. The repo
-stays private until the Phase 1 compiler works.
+**Phase 1 — compiler under construction (spec v0.2).** The front end works:
+`mimz compile` turns `.mimz` files into synthesizable Verilog today — lexer
+(all three keyword flavors), full parser, and a first Verilog emitter, with
+25 passing tests. English and Tanglish sources compile to **byte-identical**
+Verilog (CI-asserted). Still to come in Phase 1: the safety-checker passes,
+`repeat` unrolling, and Icarus Verilog differential tests. The repo stays
+private until Phase 1 is done.
+
+## Build, Test, Run
+
+Prerequisite: [Rust](https://rustup.rs) stable ≥ 1.85.
+
+```text
+cargo build                # build the compiler  (binary: target/debug/mimz)
+cargo test                 # run all unit + integration tests
+cargo run -- --help        # CLI help
+
+# check a file (lex + parse, teaching diagnostics):
+cargo run -- check examples/counter.mimz
+
+# compile to Verilog (resolves imports, writes counter.v):
+cargo run -- compile examples/counter.mimz -o counter.v
+
+# see the token stream (debugging):
+cargo run -- check examples/counter.mimz --tokens
+```
+
+Before committing: `cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test`
+(this is exactly what CI runs).
+
+Docs are checked too (needs Node.js):
+
+```text
+npx prettier --write "**/*.md"   # format markdown
+npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jsonc)
+```
 
 | Document                                                             | Contents                                                     |
 | -------------------------------------------------------------------- | ------------------------------------------------------------ |
