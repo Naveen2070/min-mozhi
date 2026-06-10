@@ -4,11 +4,23 @@
 
 use crate::span::Span;
 
+/// One compiler error. Diagnostics are plain values — passes collect
+/// `Vec<Diag>` and keep going (multi-error reporting), they never panic
+/// or print directly. Rendering happens once, in [`render`].
 #[derive(Clone, Debug)]
 pub struct Diag {
+    /// Where in the source the problem is (drives the caret underline).
     pub span: Span,
+    /// WHAT is wrong — one sentence, names the construct.
     pub msg: String,
+    /// HOW to fix it — the teaching line, ideally with a spec reference.
     pub help: Option<String>,
+    /// Which project file the span points into (index into the loaded
+    /// file list). `None` in single-file passes (lexer, parser), where
+    /// the caller already knows the file. Project-wide passes
+    /// (`Project::from_files`, the emitter) MUST set this — see
+    /// `project::render_diags`.
+    pub file: Option<usize>,
 }
 
 impl Diag {
@@ -17,16 +29,34 @@ impl Diag {
             span,
             msg: msg.into(),
             help: None,
+            file: None,
         }
     }
 
+    /// Builder-style: attach the `= help:` line.
     pub fn with_help(mut self, help: impl Into<String>) -> Self {
         self.help = Some(help.into());
+        self
+    }
+
+    /// Builder-style: record which project file the span points into.
+    pub fn with_file(mut self, file: usize) -> Self {
+        self.file = Some(file);
         self
     }
 }
 
 /// Render diagnostics against the (NFC-normalized) source they refer to.
+/// rustc-style shape:
+///
+/// ```text
+/// error: register `value` has no reset value
+///   --> examples/counter.mimz:7:3
+///    |
+///   7|   reg value: bits[WIDTH]
+///    |   ^^^
+///    = help: every reg declares its reset value ...
+/// ```
 pub fn render(diags: &[Diag], src: &str, path: &str) -> String {
     let mut out = String::new();
     for d in diags {

@@ -1,9 +1,14 @@
 //! Byte-offset source spans. Every token and AST node carries one —
 //! error quality is a core goal (spec/01 G1), not a feature.
 
+/// A half-open byte range `start..end` into the NFC-normalized source text.
+/// Byte offsets (not char offsets) — the diagnostic renderer converts to
+/// line/column for display.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Span {
+    /// Byte offset of the first byte (inclusive).
     pub start: usize,
+    /// Byte offset one past the last byte (exclusive).
     pub end: usize,
 }
 
