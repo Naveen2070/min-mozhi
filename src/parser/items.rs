@@ -1,11 +1,18 @@
 //! File-level items, module bodies, sequential (`on`) blocks, and `test`
 //! blocks. Expressions live in `expr.rs`.
+//!
+//! Each routine carries its production from the EBNF grammar
+//! (spec/02 section 5) as a doc comment — keep them in sync with the spec.
 
 use super::*;
 
 impl Parser {
     // ---------- file level ----------
 
+    /// `file = { importDecl } { constDecl | module | enumDecl | testDecl }`
+    ///
+    /// The whole-file entry point. Never fails — a bad item records its
+    /// error and recovery skips to the next line.
     pub(super) fn file(&mut self) -> File {
         let mut imports = Vec::new();
         let mut items = Vec::new();
@@ -52,6 +59,7 @@ impl Parser {
         File { imports, items }
     }
 
+    /// `importDecl = "import" ident { "." ident }`
     fn import_decl(&mut self) -> Option<Import> {
         let start = self.bump().span; // import
         let mut path = vec![self.ident("a file name to import")?];
@@ -63,6 +71,7 @@ impl Parser {
         Some(Import { path, span })
     }
 
+    /// `constDecl = "const" ident ":" paramTy "=" expr`
     fn const_decl(&mut self) -> Option<ConstDecl> {
         self.bump(); // const
         let name = self.ident("a constant name")?;
@@ -74,6 +83,8 @@ impl Parser {
         Some(ConstDecl { name, ty, value })
     }
 
+    /// `paramTy = "int" | "bool"` — these are contextual names, not
+    /// keywords, so they arrive as identifiers.
     fn param_ty(&mut self) -> Option<ParamTy> {
         let id = self.ident("`int` or `bool`")?;
         match id.name.as_str() {
@@ -91,6 +102,7 @@ impl Parser {
         }
     }
 
+    /// `enumDecl = "enum" ident "{" ident { "," ident } [","] "}"`
     fn enum_decl(&mut self) -> Option<EnumDecl> {
         self.bump(); // enum
         let name = self.ident("an enum name")?;
@@ -118,6 +130,7 @@ impl Parser {
 
     // ---------- modules ----------
 
+    /// `module = "module" ident [ "(" paramList ")" ] "{" { moduleItem } "}"`
     fn module(&mut self) -> Option<Module> {
         let start = self.bump().span; // module
         let name = self.ident("a module name")?;
@@ -176,6 +189,10 @@ impl Parser {
         })
     }
 
+    /// One item in a module body, dispatched on the leading keyword.
+    /// A leading identifier means a combinational drive (`lhs = rhs`) —
+    /// `lhs <- rhs` outside an `on` block is caught here with a teaching
+    /// error rather than a generic parse failure.
     fn module_item(&mut self) -> Option<ModuleItem> {
         match self.peek_kind().clone() {
             TokKind::Kw(Kw::In) | TokKind::Kw(Kw::Out) => self.port(),
@@ -213,7 +230,7 @@ impl Parser {
                     let span = self.peek().span;
                     self.error(span, format!("register `{}` has no reset value", name.name));
                     self.help(
-                        "every reg declares its reset value: `reg name: type = 0` — no uninitialized state (spec/02 §1.2)",
+                        "every reg declares its reset value: `reg name: type = 0` — no uninitialized state (spec/02 section 1.2)",
                     );
                     return None;
                 }
@@ -233,7 +250,7 @@ impl Parser {
                     let span = self.peek().span;
                     self.error(span, "`<-` is only for registers inside an `on` block");
                     self.help(
-                        "combinational drives use `=`; sequential updates use `<-` inside `on rise(clk) { ... }` (spec/02 §1.2)",
+                        "combinational drives use `=`; sequential updates use `<-` inside `on rise(clk) { ... }` (spec/02 section 1.2)",
                     );
                     return None;
                 }
@@ -256,6 +273,7 @@ impl Parser {
         }
     }
 
+    /// `port = ("in" | "out") ident ":" type`
     fn port(&mut self) -> Option<ModuleItem> {
         let dir = if self.bump().is_kw(Kw::In) {
             Dir::In
@@ -269,6 +287,8 @@ impl Parser {
         Some(ModuleItem::Port { dir, name, ty })
     }
 
+    /// `inst = "let" ident [ "[" expr "]" ] "=" ident "(" [argList] ")"
+    ///         [ "{" connList "}" ]`
     fn inst(&mut self) -> Option<ModuleItem> {
         let start = self.bump().span; // let
         let name = self.ident("an instance name")?;
@@ -334,6 +354,7 @@ impl Parser {
         }))
     }
 
+    /// `onBlock = "on" "rise" "(" ident ")" seqBlock`
     fn on_block(&mut self) -> Option<ModuleItem> {
         let start = self.bump().span; // on
         self.expect_kw(Kw::Rise, "`rise` — Min-Mozhi v0.2 is rising-edge only")?;
@@ -348,6 +369,8 @@ impl Parser {
         }))
     }
 
+    /// `seqBlock = "{" { seqStmt } "}"` — returns the statements plus the
+    /// closing brace's span (for the parent's span join).
     fn seq_block(&mut self) -> Option<(Vec<SeqStmt>, Span)> {
         self.expect(TokKind::LBrace, "`{` to start the block")?;
         let mut stmts = Vec::new();
@@ -369,6 +392,8 @@ impl Parser {
         Some((stmts, end))
     }
 
+    /// `seqStmt = seqIf | lvalue "<-" expr` — using `=` on a register is
+    /// caught here with a teaching error (the `=`/`<-` safety rule).
     fn seq_stmt(&mut self) -> Option<SeqStmt> {
         if self.at_kw(Kw::If) {
             return self.seq_if();
@@ -379,7 +404,7 @@ impl Parser {
                 let span = self.peek().span;
                 self.error(span, "`=` is only for wires, outside `on` blocks");
                 self.help(
-                    "registers update with `<-` inside `on` blocks: `value <- value +% 1` (spec/02 §1.2)",
+                    "registers update with `<-` inside `on` blocks: `value <- value +% 1` (spec/02 section 1.2)",
                 );
                 return None;
             }
@@ -397,6 +422,9 @@ impl Parser {
         None
     }
 
+    /// `seqIf = "if" expr seqBlock [ "else" (seqIf | seqBlock) ]` —
+    /// statement-level `if`: `else` is OPTIONAL here (an unassigned
+    /// register holds its value; no latch risk, unlike wires).
     fn seq_if(&mut self) -> Option<SeqStmt> {
         self.bump(); // if
         let cond = self.expr()?;
@@ -419,6 +447,7 @@ impl Parser {
         Some(SeqStmt::If { cond, then, els })
     }
 
+    /// `lvalue = ident [ "[" expr [ ":" expr ] "]" ]`
     pub(super) fn lvalue(&mut self) -> Option<LValue> {
         let base = self.ident("a signal name")?;
         let mut span = base.span;
@@ -438,6 +467,9 @@ impl Parser {
         Some(LValue { base, index, span })
     }
 
+    /// `type = "bit" | "bits" "[" expr "]" | "signed" "[" expr "]" | ident`
+    /// — type names are contextual (identifiers), not keywords; anything
+    /// unrecognized is assumed to be an enum name and resolved later.
     fn ty(&mut self) -> Option<Type> {
         let id = self.ident("a type — `bit`, `bits[N]`, `signed[N]`, or an enum name")?;
         match id.name.as_str() {
@@ -461,6 +493,7 @@ impl Parser {
         }
     }
 
+    /// `repeatBlock = "repeat" ident ":" expr ".." expr "{" { moduleItem } "}"`
     fn repeat_block(&mut self) -> Option<ModuleItem> {
         let start = self.bump().span; // repeat
         let var = self.ident("a loop variable name")?;
@@ -496,6 +529,7 @@ impl Parser {
 
     // ---------- tests ----------
 
+    /// `testDecl = "test" string "for" ident [ "(" argList ")" ] testBlock`
     fn test_decl(&mut self) -> Option<TestDecl> {
         let start = self.bump().span; // test
         let name = if let TokKind::Str(s) = self.peek_kind().clone() {
@@ -539,6 +573,7 @@ impl Parser {
         })
     }
 
+    /// `testBlock = "{" { tick | expect | drive | testIf } "}"`
     fn test_block(&mut self) -> Option<(Vec<TestStmt>, Span)> {
         self.expect(TokKind::LBrace, "`{` to start the test body")?;
         let mut stmts = Vec::new();
@@ -595,6 +630,7 @@ impl Parser {
         Some((stmts, end))
     }
 
+    /// `testIf = "if" expr testBlock [ "else" (testIf | testBlock) ]`
     fn test_if(&mut self) -> Option<TestStmt> {
         self.bump(); // if
         let cond = self.expr()?;

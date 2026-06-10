@@ -1,4 +1,4 @@
-//! Recursive-descent parser for the `code-order` profile (spec/02 §5).
+//! Recursive-descent parser for the `code-order` profile (spec/02 section 5).
 //! The `thamizh-order` profile (spec/04) arrives in Phase 1.8 — it will
 //! share every expression/declaration routine here and flip only the
 //! clause heads.
@@ -18,6 +18,9 @@ use crate::diag::Diag;
 use crate::lexer::token::{Kw, TokKind, Token, kind_name};
 use crate::span::Span;
 
+/// Parse a token stream into a [`File`]. Like the lexer, this collects ALL
+/// errors it can (statement-level recovery via `sync_to_newline`) instead
+/// of stopping at the first one.
 pub fn parse(toks: Vec<Token>) -> Result<File, Vec<Diag>> {
     let mut p = Parser {
         toks,
@@ -32,6 +35,9 @@ pub fn parse(toks: Vec<Token>) -> Result<File, Vec<Diag>> {
     }
 }
 
+/// Parser state: a cursor over the token stream plus collected errors.
+/// Parse routines return `Option<T>` — `None` means "errored, diagnostics
+/// already recorded; caller decides where to recover".
 pub(crate) struct Parser {
     toks: Vec<Token>,
     pos: usize,
@@ -39,6 +45,11 @@ pub(crate) struct Parser {
 }
 
 /// Token plumbing and error recovery, shared by `items.rs` and `expr.rs`.
+///
+/// Conventions: `at*` = look without consuming; `eat*` = consume if it
+/// matches (returns whether it did); `expect*` = consume or record an
+/// error (`None` on failure). `bump` never advances past Eof, so `peek`
+/// is always safe.
 impl Parser {
     fn peek(&self) -> &Token {
         &self.toks[self.pos.min(self.toks.len() - 1)]
@@ -115,6 +126,9 @@ impl Parser {
         }
     }
 
+    /// Expect an identifier; `what` describes it in the error message
+    /// ("a module name", "a clock name", …) — context beats "expected
+    /// identifier" for a learner.
     fn ident(&mut self, what: &str) -> Option<Ident> {
         if let TokKind::Ident(name) = self.peek_kind().clone() {
             let t = self.bump();

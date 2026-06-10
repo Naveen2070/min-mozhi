@@ -1,5 +1,5 @@
 //! Expression parsing: Rust-style precedence climbing (bitwise binds
-//! tighter than comparison; comparisons are non-associative — spec/02 §3),
+//! tighter than comparison; comparisons are non-associative — spec/02 section 3),
 //! `if`/`match` expressions, patterns, and builtin calls.
 
 use super::*;
@@ -36,6 +36,8 @@ fn bin_op(kind: &TokKind) -> Option<(BinOp, u8)> {
 }
 
 impl Parser {
+    /// `expr = ifExpr | matchExpr | binExpr` — the expression entry point
+    /// used by everything in `items.rs`.
     pub(super) fn expr(&mut self) -> Option<Expr> {
         if self.at_kw(Kw::If) {
             return self.if_expr();
@@ -46,6 +48,9 @@ impl Parser {
         self.binary(0)
     }
 
+    /// `ifExpr = "if" expr "{" expr "}" "else" ("{" expr "}" | ifExpr)` —
+    /// `else` is MANDATORY: an if-expression drives a value, and a missing
+    /// branch is how latches are born (safety rule, spec/02 section 1.3).
     fn if_expr(&mut self) -> Option<Expr> {
         let start = self.bump().span; // if
         let cond = self.expr()?;
@@ -58,7 +63,7 @@ impl Parser {
             let span = self.peek().span;
             self.error(span, "this `if` drives a value, so `else` is mandatory");
             self.help(
-                "without `else` the wire would be undriven in some cycles — that is how latches are born (spec/02 §1.3)",
+                "without `else` the wire would be undriven in some cycles — that is how latches are born (spec/02 section 1.3)",
             );
             return None;
         }
@@ -87,6 +92,9 @@ impl Parser {
         })
     }
 
+    /// `matchExpr = "match" binExpr "{" { arm } "}"` — the scrutinee is
+    /// `binary(0)`, not `expr()`, so a nested `if`/`match` head needs
+    /// parentheses (avoids `match if ...` ambiguity).
     fn match_expr(&mut self) -> Option<Expr> {
         let start = self.bump().span; // match
         let scrutinee = self.binary(0)?;
@@ -116,6 +124,7 @@ impl Parser {
         })
     }
 
+    /// `arm = pattern { "," pattern } "=>" expr`
     fn arm(&mut self) -> Option<Arm> {
         let mut patterns = vec![self.pattern()?];
         while self.eat(&TokKind::Comma) {
@@ -127,6 +136,7 @@ impl Parser {
         Some(Arm { patterns, value })
     }
 
+    /// `pattern = int | "true" | "false" | "_" | ident "." ident`
     fn pattern(&mut self) -> Option<Pattern> {
         match self.peek_kind().clone() {
             TokKind::Int { value, raw } => {
@@ -163,6 +173,10 @@ impl Parser {
         }
     }
 
+    /// Precedence climbing: parse a unary operand, then greedily fold
+    /// operators of precedence ≥ `min_prec`. Recursing with `prec + 1`
+    /// makes every level left-associative; comparison chaining (`a < b < c`)
+    /// is rejected outright.
     fn binary(&mut self, min_prec: u8) -> Option<Expr> {
         let mut lhs = self.unary()?;
         let mut comparison_seen = false;
@@ -170,7 +184,7 @@ impl Parser {
             if prec < min_prec {
                 break;
             }
-            // Comparisons are non-associative (spec/02 §3).
+            // Comparisons are non-associative (spec/02 section 3).
             if prec == 2 {
                 if comparison_seen {
                     let span = self.peek().span;
@@ -198,6 +212,9 @@ impl Parser {
         Some(lhs)
     }
 
+    /// `unary = [ "-" | "~" | "!" | "not" | "&" | "|" | "^" ] unary | postfix`
+    /// — prefix `&`/`|`/`^` are the reduction operators (fold a vector to
+    /// one bit), same symbols as the binary bitwise ops.
     fn unary(&mut self) -> Option<Expr> {
         let op = match self.peek_kind() {
             TokKind::Minus => Some(UnOp::Neg),
@@ -223,6 +240,8 @@ impl Parser {
         self.postfix()
     }
 
+    /// `postfix = primary { "[" expr [":" expr] "]" | "." ident }` —
+    /// indexing, slicing, and field access chain left-to-right.
     fn postfix(&mut self) -> Option<Expr> {
         let mut e = self.primary()?;
         loop {
@@ -268,6 +287,9 @@ impl Parser {
         Some(e)
     }
 
+    /// `primary = int | "true" | "false" | "(" expr ")" | "{" exprList "}"
+    ///          | ifExpr | matchExpr | ident | builtinCall` —
+    /// `{a, b}` is bit concatenation, not a block.
     fn primary(&mut self) -> Option<Expr> {
         match self.peek_kind().clone() {
             TokKind::Int { value, raw } => {
@@ -337,6 +359,9 @@ impl Parser {
         }
     }
 
+    /// `builtinCall = ("extend" | "trunc" | "signed" | "unsigned") "(" args ")"`
+    /// — arity-checked here; any other `name(...)` gets the "no user
+    /// functions, only modules" teaching error.
     fn builtin_call(&mut self, id: Ident, name: &str) -> Option<Expr> {
         let (func, arity) = match name {
             "extend" => (Builtin::Extend, 2),
@@ -351,7 +376,7 @@ impl Parser {
                     ),
                 );
                 self.help(
-                    "built-ins are `extend(x, N)`, `trunc(x, N)`, `signed(x)`, `unsigned(x)`; modules are instantiated with `let` (spec/02 §1.5)",
+                    "built-ins are `extend(x, N)`, `trunc(x, N)`, `signed(x)`, `unsigned(x)`; modules are instantiated with `let` (spec/02 section 1.5)",
                 );
                 return None;
             }
