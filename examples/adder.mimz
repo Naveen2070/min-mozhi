@@ -1,0 +1,10 @@
+// Min-Mozhi example: combinational adder
+// `+` is lossless: bits[W] + bits[W] -> bits[W+1], so the carry is kept.
+
+module Adder(WIDTH: int = 8) {
+  in  a: bits[WIDTH]
+  in  b: bits[WIDTH]
+  out sum: bits[WIDTH + 1]
+
+  sum = a + b
+}

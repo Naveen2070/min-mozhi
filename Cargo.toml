@@ -1,0 +1,19 @@
+[package]
+name = "mimz"
+version = "0.1.0-dev"
+edition = "2024"
+description = "Min-Mozhi (மின்மொழி) — the first Tamil-rooted Hardware Description Language. Reads like Go/TypeScript, safe like Rust, speaks English, Tanglish, and Tamil."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Naveen2070/min-mozhi"
+keywords = ["hdl", "hardware", "verilog", "fpga", "tamil"]
+categories = ["compilers", "hardware-support"]
+rust-version = "1.85"
+
+[dependencies]
+# Planned (added as each Phase 1 work item starts — see docs/plan/phase-1):
+# clap    — CLI            (skeleton, work item 1)
+# miette  — diagnostics    (checker, work item 4)
+# toml/serde — keywords.toml loader (lexer, work item 2)
+
+[profile.release]
+lto = true

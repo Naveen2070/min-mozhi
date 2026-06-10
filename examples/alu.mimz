@@ -1,0 +1,30 @@
+// Min-Mozhi example: ALU showing match-as-expression and module composition
+// across files — `import adder` brings Adder from adder.mimz into scope.
+
+import adder
+
+module Alu(WIDTH: int = 8) {
+  in  a:  bits[WIDTH]
+  in  b:  bits[WIDTH]
+  in  op: bits[2]
+  out y:  bits[WIDTH]
+
+  y = match op {
+    0b00 => a +% b
+    0b01 => a -% b
+    0b10 => a & b
+    0b11 => a | b
+  }
+}
+
+module Top {
+  clock clk
+  reset rst
+
+  in  x:     bits[8]
+  in  y:     bits[8]
+  out total: bits[9]
+
+  let add = Adder(WIDTH: 8) { a: x, b: y }
+  total = add.sum
+}

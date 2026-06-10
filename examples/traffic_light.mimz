@@ -1,0 +1,38 @@
+// Min-Mozhi example: finite state machine with enum + match.
+// `match` over an enum must cover every variant — no accidental latches,
+// no forgotten states.
+
+module TrafficLight {
+  clock clk
+  reset rst
+
+  out red:    bit
+  out yellow: bit
+  out green:  bit
+
+  enum State { Red, Green, Yellow }
+
+  reg state: State   = State.Red
+  reg timer: bits[8] = 0
+
+  on rise(clk) {
+    if timer == 0 {
+      state <- match state {
+        State.Red    => State.Green
+        State.Green  => State.Yellow
+        State.Yellow => State.Red
+      }
+      timer <- match state {
+        State.Red    => 50
+        State.Green  => 40
+        State.Yellow => 10
+      }
+    } else {
+      timer <- timer -% 1
+    }
+  }
+
+  red    = state == State.Red
+  yellow = state == State.Yellow
+  green  = state == State.Green
+}

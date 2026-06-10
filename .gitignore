@@ -1,0 +1,28 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Generated outputs (compiler artifacts during development)
+/build/
+*.v.out
+*.vcd
+
+# IDE / editor
+/.vscode/
+/.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Session/agent scratch (not project history)
+/.remember/
+/.claude/
+
+
+# Added by cargo
+
+/target

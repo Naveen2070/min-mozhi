@@ -1,0 +1,18 @@
+// Min-Mozhi example: free-running counter
+// `reg ... = 0` declares the reset value (mandatory — no uninitialized state).
+// `+%` is wrapping add: same width, wraps on overflow — on purpose, visibly.
+
+module Counter(WIDTH: int = 8) {
+  clock clk
+  reset rst
+
+  out count: bits[WIDTH]
+
+  reg value: bits[WIDTH] = 0
+
+  on rise(clk) {
+    value <- value +% 1
+  }
+
+  count = value
+}
