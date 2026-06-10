@@ -68,7 +68,7 @@ The targets are numbers, not vibes:
 
 These become CI'd tutorial benchmarks once the compiler exists. Supporting
 rules: small keyword set, one obvious way to do each thing (one documented
-exception: logical operators, §G1-x below), modern brace/`: type` syntax, and
+exception: logical operators, section G1-x below), modern brace/`: type` syntax, and
 error messages that teach — _what_ is wrong, _why_ it is unsafe in hardware
 terms, _how_ to fix it, in the user's language.
 
@@ -109,7 +109,7 @@ word order coming as a parser profile (Layer 2 Grammar Engine, `spec/04`).
 ### G4 — Full-stack ownership over time
 
 Phase 1 emits Verilog (pragmatic). The long-term goal is a fully native path
-to an iCE40 bitstream — while Constitution §4.2 guarantees the Verilog exit
+to an iCE40 bitstream — while Constitution section 4.2 guarantees the Verilog exit
 ramp never closes.
 
 ## 6. Non-Goals (v0.2)
@@ -133,7 +133,7 @@ When two designs conflict, decide in this order:
 4. **Speed** — of compilation and simulation.
 5. **Brevity** — never save keystrokes at the cost of 1–4.
 6. **Tamil idiom** — last as a _tie-breaker only_; Tamil's **presence** is
-   constitutional (§4.3) and never in question — this rank only means a design
+   constitutional (section 4.3) and never in question — this rank only means a design
    detail is never made dishonest, unsafe, or unreadable to be more idiomatic.
 
 ## 8. Success, Concretely

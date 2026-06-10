@@ -1,0 +1,103 @@
+# 03 — The Parser (`src/parser/`)
+
+`Vec<Token>` → `ast::File`. Plain recursive descent — no parser
+generator, no combinators. Boring on purpose: a contributor should be
+able to map "the spec says X" to "the function that parses X" in seconds.
+
+## File layout
+
+| File       | Owns                                                               |
+| ---------- | ------------------------------------------------------------------ |
+| `mod.rs`   | `parse()` entry, `Parser` state, token plumbing, error recovery    |
+| `items.rs` | File level, modules, `on`-blocks, `repeat`, `test` blocks          |
+| `expr.rs`  | Expressions: precedence climbing, `if`/`match`, patterns, builtins |
+| `tests.rs` | Unit tests (see [`10-test-map.md`](10-test-map.md))                |
+
+`mod.rs` owns the struct and all private plumbing; `items.rs` and
+`expr.rs` are `impl Parser` blocks reached through `pub(super)` entry
+points (`file()`, `expr()`, `lvalue()`). Rust privacy makes this work:
+items in `mod.rs` are visible to descendant modules without being public
+anywhere else.
+
+**Every parse routine carries its EBNF production as a doc comment**
+(e.g. `/// inst = "let" ident [ "[" expr "]" ] "=" ident ...`), mirroring
+spec/02 section 5. Change the grammar → change the spec, the doc comment,
+and the code together.
+
+## The `Option` contract
+
+Parse routines return `Option<T>`:
+
+- `Some(node)` — parsed.
+- `None` — failed, **and the error is already recorded** in `self.diags`.
+  `None` never means "not present"; presence checks are done by peeking
+  (`at`, `at_kw`) before committing.
+
+So `?` propagates failure upward without losing the message, and the
+caller decides where to resynchronize.
+
+## Plumbing conventions (`mod.rs`)
+
+| Family    | Behavior                                                                |
+| --------- | ----------------------------------------------------------------------- |
+| `at*`     | look, don't consume                                                     |
+| `eat*`    | consume **if** it matches; returns whether it did                       |
+| `expect*` | consume or record an error; the `what` argument is human text           |
+| `bump`    | consume one token — never advances past `Eof`, so `peek` is always safe |
+
+`expect`'s `what` strings are part of the error UX: they describe the
+expectation in learner terms ("a module name", "`:` then the wire's
+type"), not grammar terms.
+
+## Error recovery — multi-error by design
+
+When a statement fails, `sync_to_newline()` skips to the next newline or
+`}` and parsing continues. One typo therefore reports one error, and the
+rest of the file still gets checked (spec/01 G1: a learner shouldn't fix
+errors one compile at a time). Recovery points are statement boundaries —
+fine-grained enough in practice, simple enough to reason about.
+
+`terminator()` enforces the statement-ends-at-newline rule, accepting an
+implicit terminator before `}` or `Eof`.
+
+## Expression parsing (`expr.rs`)
+
+Precedence climbing in `binary(min_prec)`, with the table in `bin_op`:
+
+```text
+unary(9) → * (8) → + - (7) → << >> (6) → & (5) → ^ (4) → | (3)
+        → comparisons (2, NON-associative) → && (1) → || (0)
+```
+
+Two deliberate deviations from C, both Rust-inspired (decision in the
+2026-06-10 log):
+
+- **Bitwise binds tighter than comparison** — `x & 1 == 0` means
+  `(x & 1) == 0`, killing C's classic footgun.
+- **Comparisons don't chain** — `a < b < c` is a hard error with a help
+  message, not a silently-boolean comparison.
+
+Other notable spots:
+
+- `if` **expressions** require `else` (latches!) — enforced here in the
+  parser, with the teaching help text.
+- `match` parses its scrutinee with `binary(0)`, not `expr()`, to avoid
+  ambiguity with a `{`-starting `if`/`match` head; parenthesize if needed.
+- Word operators `and`/`or`/`not` are handled in the same precedence
+  table / unary dispatch as `&&`/`||`/`!` — they are aliases (G1-x), not
+  separate features.
+- `else` may follow a newline: `seq_if`/`test_if` save the cursor, skip
+  newlines, and **backtrack** if no `else` is found — the parser's only
+  backtracking.
+- One-token lookahead everywhere. This matters for Phase 1.8: the
+  `thamizh-order` profile was explicitly designed (spec/04) to also need
+  only one token of lookahead, so it can reuse this machinery with
+  flipped clause heads.
+
+## What the parser deliberately does NOT do
+
+No name resolution, no width checking, no const evaluation — those are
+checker passes (Phase 1 work item 4). The parser only enforces what is
+syntactically decidable, which includes several safety rules: `=` vs
+`<-` placement, mandatory reg reset values, mandatory `else` on
+if-expressions, no user-defined function calls.

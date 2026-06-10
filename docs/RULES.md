@@ -8,13 +8,14 @@
 
 ## R1 — Sources of truth
 
-| Topic               | Source of truth                                                         | Everything else                            |
-| ------------------- | ----------------------------------------------------------------------- | ------------------------------------------ |
-| Language design     | `spec/*.md`                                                             | examples follow spec                       |
-| Execution plan      | `docs/plan/phase-*.md`                                                  | root `min-mozhi-roadmap.md` is the summary |
-| History & decisions | `docs/log/`                                                             | never reconstructed from memory            |
-| Architecture        | `docs/architecture.md`                                                  | code follows it (or it gets updated)       |
-| Keyword words       | the keyword table in `spec/03` (later: `keywords.toml` in the compiler) |                                            |
+| Topic               | Source of truth                                                         | Everything else                                                                          |
+| ------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Language design     | `spec/*.md`                                                             | examples follow spec                                                                     |
+| Execution plan      | `docs/plan/phase-*.md`                                                  | root `min-mozhi-roadmap.md` is the summary                                               |
+| History & decisions | `docs/log/`                                                             | never reconstructed from memory                                                          |
+| Architecture        | `docs/architecture.md`                                                  | code follows it (or it gets updated)                                                     |
+| How the code works  | the code itself (`src/` + rustdoc)                                      | `docs/code/` explains it — update the matching page in the same session behavior changes |
+| Keyword words       | the keyword table in `spec/03` (later: `keywords.toml` in the compiler) |                                                                                          |
 
 If two documents disagree, fix the non-source one **the same day**.
 
@@ -73,6 +74,10 @@ architecture.
   and linted by **markdownlint** (`npx markdownlint-cli2`, config in
   `.markdownlint-cli2.jsonc`). Both run in CI. `docs/archive/` is exempt —
   history is never edited to satisfy a tool.
+- Rust code carries rustdoc: every type and non-trivial function has a
+  `///` comment, every module a `//!` header, and parser routines state
+  their EBNF production (kept in sync with `spec/02` section 5). Browse with
+  `cargo doc --document-private-items --open`.
 - Examples in `examples/` must always match the current spec — a spec change
   that breaks an example fixes the example in the same session.
 - Once the compiler exists: every example must compile in CI; the keyword

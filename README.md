@@ -66,7 +66,7 @@ Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 **Phase 1 — compiler under construction (spec v0.2).** The front end works:
 `mimz compile` turns `.mimz` files into synthesizable Verilog today — lexer
 (all three keyword flavors), full parser, and a first Verilog emitter, with
-25 passing tests. English and Tanglish sources compile to **byte-identical**
+30 passing tests. English and Tanglish sources compile to **byte-identical**
 Verilog (CI-asserted). Still to come in Phase 1: the safety-checker passes,
 `repeat` unrolling, and Icarus Verilog differential tests. The repo stays
 private until Phase 1 is done.
@@ -79,6 +79,7 @@ Prerequisite: [Rust](https://rustup.rs) stable ≥ 1.85.
 cargo build                # build the compiler  (binary: target/debug/mimz)
 cargo test                 # run all unit + integration tests
 cargo run -- --help        # CLI help
+cargo doc --document-private-items --open   # browsable API reference
 
 # check a file (lex + parse, teaching diagnostics):
 cargo run -- check examples/counter.mimz
@@ -110,6 +111,8 @@ npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jso
 | [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture |
 | [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)     |
 | [`docs/architecture.md`](docs/architecture.md)                       | Compiler architecture — pipeline, components, layout         |
+| [`docs/code/`](docs/code/)                                           | How the code works — maintainer & contributor docs           |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                 | How to contribute — quick start (details in `docs/code/`)    |
 | [`docs/RULES.md`](docs/RULES.md)                                     | Repo working rules (plans, logs, spec versioning)            |
 | [`min-mozhi-roadmap.md`](min-mozhi-roadmap.md)                       | Roadmap summary (details live in `docs/plan/`)               |
 
@@ -125,7 +128,7 @@ npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jso
 ## License
 
 MIT + Apache-2.0 dual-licensed (the Rust ecosystem norm). Free and open
-source forever — that's constitutional (`spec/01` §4).
+source forever — that's constitutional (`spec/01` section 4).
 
 ---
 

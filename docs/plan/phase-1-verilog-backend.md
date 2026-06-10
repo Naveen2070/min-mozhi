@@ -31,19 +31,19 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 ### 3. Parser → AST ✅ (2026-06-10)
 
-- [x] Recursive-descent parser for the `code-order` profile (EBNF in `spec/02` §5)
+- [x] Recursive-descent parser for the `code-order` profile (EBNF in `spec/02` section 5)
 - [x] AST types: module, ports, clock/reset, wire/reg, const, enum, instance, on-block, repeat, tests, expressions
-- [x] `import` resolution: file-relative, project-unique module names, cycle-safe visited set (spec/02 §1.5)
+- [x] `import` resolution: file-relative, project-unique module names, cycle-safe visited set (spec/02 section 1.5)
 - [ ] `repeat` compile-time unrolling (parses; unrolling needs const-eval — work item 4)
 - [x] Error recovery good enough to report >1 error per run (verified: 3 errors in one `check`)
 - [x] Rust precedence incl. non-associative comparisons (`x & 1 == 0` test locked in)
 
-### 4. Semantic checks (the safety rules, `spec/02` §6)
+### 4. Semantic checks (the safety rules, `spec/02` section 6)
 
 - [ ] Name resolution + duplicate detection (project-wide, post-import)
 - [ ] Const-folding for widths/params/`const`/`repeat` bounds
 - [ ] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match
-- [ ] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals (spec/02 §1.7)
+- [ ] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals (spec/02 section 1.7)
 - [ ] Single-driver check; combinational cycle (DAG) check
 - [ ] Exhaustiveness: `match` total, wire-`if` has `else`
 - [ ] `=` vs `<-` placement enforcement; clock/reset domain typing incl. per-reg clock ownership
@@ -77,5 +77,5 @@ All `examples/*.mimz` compile and simulate correctly under Icarus.
 ## Risks / notes
 
 - Keep the emitter dumb and readable — optimization belongs to Phase 2 IR.
-- Resist scope creep: the deferred-features table in spec/02 §7 is the fence
+- Resist scope creep: the deferred-features table in spec/02 section 7 is the fence
   (no memories, no inout, no structs, no CDC in this phase).

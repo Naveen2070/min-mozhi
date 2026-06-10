@@ -3,7 +3,7 @@
 > Living document (RULES.md R3: update whenever components or data flow change).
 > Status: **front end built** (2026-06-10) — lexer, parser, first Verilog
 > emitter, and CLI exist and are tested; checker, simulator, and IR are
-> still design. Component status is per the table in §2.
+> still design. Component status is per the table in section 2.
 > Last updated: 2026-06-10
 
 ---
@@ -28,7 +28,7 @@
         ▼
  ┌──────────────┐   name resolution · const folding · width rules
  │   CHECKER    │   single-driver · DAG · exhaustiveness · =/<- ·
- └──────┬───────┘   clock-domain typing   (spec/02 §6)
+ └──────┬───────┘   clock-domain typing   (spec/02 section 6)
         ▼
  ┌─────────────────────────────────────────────────┐
  │                  BACKENDS                       │
@@ -59,7 +59,7 @@ Verilog emitter v1, CLI (`check`, `compile`). Everything else: planned.
 | **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                  |
 | **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile |
 | **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                   |
-| **Checker**         | 1       | The seven safety rules (spec/02 §6); each rule = its own pass with its own tests; errors via `miette`/`ariadne`                                                    |
+| **Checker**         | 1       | The seven safety rules (spec/02 section 6); each rule = its own pass with its own tests; errors via `miette`/`ariadne`                                             |
 | **Diagnostics**     | 1 / 1.8 | Human-authored message catalogs per language; Phase 1.8 adds the morphology helper (Tamil case suffixes on interpolated names)                                     |
 | **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                    |
 | **Simulator**       | 1.5     | Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; VCD out                                          |
@@ -147,7 +147,7 @@ Future directories (created when their trigger fires, not before):
    error quality is a core goal, not a feature.
 3. **Data over code for language identity.** Keywords (and later error
    catalogs) are data files, so community review never touches Rust.
-4. **Safety rules are passes with tests.** Each spec/02 §6 rule maps to one
+4. **Safety rules are passes with tests.** Each spec/02 section 6 rule maps to one
    checker module and at least one rejection test.
 5. **Differential validation at every new layer.** Simulator vs Icarus (1.5),
    IR vs AST simulation (2), native flow vs Yosys/nextpnr (3).

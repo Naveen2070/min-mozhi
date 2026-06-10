@@ -330,7 +330,7 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 | ---------------- | -------------------------------------------------------------------------- |
 | `bit`            | single wire, values `0`/`1` (also `true`/`false`)                          |
 | `bits[N]`        | N-bit unsigned vector                                                      |
-| `signed[N]`      | N-bit two's-complement vector (§1.7 — never mixes with `bits`)             |
+| `signed[N]`      | N-bit two's-complement vector (section 1.7 — never mixes with `bits`)      |
 | `clock`, `reset` | dedicated domain types — never mix with data                               |
 | `enum` types     | user-defined, compiler-encoded                                             |
 | `int`, `bool`    | **compile-time only** (params, widths, `const`, `repeat`) — never hardware |
@@ -389,7 +389,7 @@ matchExpr   = "match" expr "{" { matchArm } "}" ;
 matchArm    = ( pattern { "," pattern } | "_" ) "=>" expr NEWLINE ;
 pattern     = literal | IDENT "." IDENT ;       (* value or Enum.Variant *)
 
-binExpr     = unary { binOp unary } ;           (* precedence table, §3 *)
+binExpr     = unary { binOp unary } ;           (* precedence table, section 3 *)
 binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&" | "^" | "|" | "==" | "!=" | "<" | "<=" | ">" | ">="
             | "&&" | "||" | "and" | "or" ;
@@ -457,5 +457,5 @@ all punctuation, operators, and built-in type/function names are universal.
     casts replace `signedval`; negative literals; type-directed `extend`; unary
     minus). Cut `on fall` (reserved). Division/modulo declared deliberately
     absent. Multi-clock ownership rule, reg-requires-reset rule, no-mixing rule
-    added to §6. Deferred-features table added.
+    added to section 6. Deferred-features table added.
 - **v0.1 (2026-06-10):** Initial draft.

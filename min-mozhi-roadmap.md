@@ -14,7 +14,7 @@
 
 - Define language goals and philosophy ✅ (`spec/01`)
 - Design the syntax and grammar (on paper first) ✅ (`spec/02`)
-- Write BNF/EBNF grammar spec ✅ (`spec/02` §5)
+- Write BNF/EBNF grammar spec ✅ (`spec/02` section 5)
 - Design the trilingual keyword system (English/Tanglish/Tamil skins) ✅ (`spec/03`)
 - Sketch the Grammar Engine for natural Tamil word order ✅ (`spec/04`)
 - Study Verilog internals deeply — plus modern HDLs: **Veryl, Spade, Amaranth, Chisel**

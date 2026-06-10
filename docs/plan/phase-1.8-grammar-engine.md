@@ -16,7 +16,7 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
 ### Parser profile
 
 - [ ] `syntax thamizh` file directive (no auto-detection)
-- [ ] Flipped productions per `spec/04` §3: `<cond> endral { }`, `yetram(clk) pothu { }`, `<expr> poruthu { }`, test form
+- [ ] Flipped productions per `spec/04` section 3: `<cond> endral { }`, `yetram(clk) pothu { }`, `<expr> poruthu { }`, test form
 - [ ] Expression-first parsing with one-token lookahead after expression (no backtracking)
 - [ ] Same-AST guarantee tests: thamizh-order file and its code-order twin produce byte-identical AST dumps
 
@@ -34,7 +34,7 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
 
 ### Validation
 
-- [ ] Native-speaker panel (tech/coder friends, decision C3) reviews the §3 word-order table and 10 rendered error messages
+- [ ] Native-speaker panel (tech/coder friends, decision C3) reviews the section 3 word-order table and 10 rendered error messages
 - [ ] Rewrite `examples/traffic_light` in pure Tamil script, thamizh-order, added to test suite
 
 ## Milestone
@@ -51,5 +51,5 @@ Verilog as its English twin; its error messages read as correct Tamil.
 ## Risks / notes
 
 - Requires the Phase 1 parser to exist — do not start earlier.
-- Scope fence is strict (`spec/04` §6): no free word order, no flipped
+- Scope fence is strict (`spec/04` section 6): no free word order, no flipped
   declarations, no inflected keywords. Any expansion is a logged Decision.

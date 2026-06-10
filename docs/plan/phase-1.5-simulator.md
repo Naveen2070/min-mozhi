@@ -16,7 +16,7 @@ Icarus or any external tool involved.
 - [ ] Combinational propagation in topological order (DAG already guaranteed by Phase 1 checks)
 - [ ] Clock/reset stimulus generation
 - [ ] VCD writer (viewable in GTKWave)
-- [ ] `test` blocks from `spec/02` §1.10: input drives, `tick(clk)`, `expect`, run via `mimz test`
+- [ ] `test` blocks from `spec/02` section 1.10: input drives, `tick(clk)`, `expect`, run via `mimz test`
 - [ ] Differential testing: same example, same stimulus → compare against Icarus results
 - [ ] Performance baseline: ≥1M cycle-events/sec on the counter (Rust pays off here)
 

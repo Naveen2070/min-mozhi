@@ -172,7 +172,7 @@ interpolated identifiers correctly.
 
 ## 6. Scope Fence (v1 of the engine)
 
-- ✅ Clause-level word order (table in §3)
+- ✅ Clause-level word order (table in section 3)
 - ✅ Lossless `translate --order` both directions
 - ✅ Morphology-correct error interpolation
 - ❌ Free word order / full Tamil grammar parsing — Min-Mozhi stays a formal
@@ -184,5 +184,5 @@ interpolated identifiers correctly.
 
 ---
 
-_Status: design draft. Build after Phase 1 parser exists; validate the §3
+_Status: design draft. Build after Phase 1 parser exists; validate the section 3
 table with the same native-speaker review panel as the keyword table._
