@@ -6,10 +6,15 @@
 use super::*;
 
 impl Emitter<'_> {
+    /// Render an expression with no substitutions (the common case).
     pub(super) fn expr(&mut self, e: &Expr) -> String {
         self.expr_subst(e, &HashMap::new())
     }
 
+    /// Render an expression to Verilog text. Compound results are wrapped
+    /// in parentheses unconditionally — correctness over prettiness; a
+    /// future emitter can use real precedence (architecture invariant #6).
+    /// `subst` maps child-module parameter names to instance arguments.
     pub(super) fn expr_subst(&mut self, e: &Expr, subst: &HashMap<&str, &Expr>) -> String {
         match &e.kind {
             ExprKind::Int { value, raw } => verilog_literal(*value, raw),

@@ -5,6 +5,10 @@
 use super::*;
 
 impl Emitter<'_> {
+    /// Emit one complete Verilog module. Source order inside the module
+    /// body is free; output is regrouped into the conventional Verilog
+    /// order: header/params/ports → enum localparams → wire/reg
+    /// declarations → instances → assigns → always-blocks.
     pub(super) fn module(&mut self, m: &Module) {
         self.check_ascii(&m.name);
 
@@ -155,12 +159,17 @@ impl Emitter<'_> {
         self.out.push_str("endmodule\n");
     }
 
+    /// Emit one child-module instantiation. Walks the CHILD's interface
+    /// (not the connection list): inputs must be connected explicitly,
+    /// clock/reset fall back to same-name signals, and each output gets an
+    /// auto-declared wire named `{instance}_{port}` — which is exactly what
+    /// `inst.port` field-accesses render to in `expr.rs`.
     fn instance(&mut self, inst: &Inst) {
         let Some(child) = self.project.modules.get(&inst.module.name).copied() else {
             self.err(
                 inst.module.span,
                 format!("unknown module `{}`", inst.module.name),
-                "is the file that defines it imported? (`import filename` at the top — spec/02 §1.5)",
+                "is the file that defines it imported? (`import filename` at the top — spec/02 section 1.5)",
             );
             return;
         };
@@ -178,7 +187,7 @@ impl Emitter<'_> {
         for item in &child.items {
             match item {
                 ModuleItem::Clock(c) => {
-                    // Implicit same-name connection (spec/02 §1.5).
+                    // Implicit same-name connection (spec/02 section 1.5).
                     let sig = inst
                         .conns
                         .iter()
@@ -206,7 +215,7 @@ impl Emitter<'_> {
                                     "instance `{}` does not connect input `{}` of module `{}`",
                                     inst.name.name, name.name, child.name.name
                                 ),
-                                "every input must be connected: `let u = Mod() { port: signal }` (spec/02 §1.5)",
+                                "every input must be connected: `let u = Mod() { port: signal }` (spec/02 section 1.5)",
                             );
                             continue;
                         };
@@ -259,6 +268,9 @@ impl Emitter<'_> {
         ));
     }
 
+    /// Emit the body of an always-block. `depth` is the nesting level
+    /// inside the block (0 = directly under `always`), used for
+    /// indentation only.
     fn seq_stmts(&mut self, stmts: &[SeqStmt], depth: usize) {
         let pad = "    ".repeat(depth + 1);
         for s in stmts {
@@ -282,6 +294,7 @@ impl Emitter<'_> {
         }
     }
 
+    /// Render an assignment target: `name`, `name[i]`, or `name[hi:lo]`.
     fn lvalue(&mut self, lv: &LValue) -> String {
         let mut s = lv.base.name.clone();
         if let Some((first, second)) = &lv.index {
@@ -298,6 +311,9 @@ impl Emitter<'_> {
         self.width_subst(ty, &HashMap::new())
     }
 
+    /// Like [`Self::width`], but with child-module parameter names replaced
+    /// by the instantiating module's argument expressions — used when
+    /// declaring auto-wires for a child instance's outputs.
     fn width_subst(&mut self, ty: &Type, subst: &HashMap<&str, &Expr>) -> String {
         match ty {
             Type::Bit => String::new(),
@@ -325,6 +341,10 @@ impl Emitter<'_> {
     }
 }
 
+/// Every register name assigned anywhere in this statement tree (both `if`
+/// branches included), deduplicated in first-seen order. Drives the
+/// generated reset branch: only the regs an `on` block writes are reset
+/// in its always-block.
 fn collect_assigned<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a str>) {
     for s in stmts {
         match s {
