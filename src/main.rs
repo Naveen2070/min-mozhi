@@ -3,6 +3,25 @@
 //! Phase 1 pipeline (docs/architecture.md):
 //! lexer → parser → AST → checker (WIP) → Verilog emitter.
 //! Source loading + import resolution live in `project.rs`.
+//!
+//! Crate map (one module per pipeline stage):
+//!
+//! | Module          | Role                                                       |
+//! | --------------- | ---------------------------------------------------------- |
+//! | [`span`]        | Byte-offset source spans carried by every token/AST node   |
+//! | [`diag`]        | Teaching diagnostics + caret renderer                      |
+//! | [`lexer`]       | Source text → tokens (trilingual keyword table)            |
+//! | [`parser`]      | Tokens → AST (recursive descent, multi-error recovery)     |
+//! | [`ast`]         | The one shared AST — flavor- and word-order-blind          |
+//! | [`emit_verilog`]| AST → Verilog-2005 text                                    |
+//! | [`project`]     | File loading, NFC normalization, `import` resolution       |
+//!
+//! This table is mechanically checked against the `mod` list by
+//! `tests/docs_sync.rs` — add a module, add a row (and a docs/code/ page).
+//!
+//! Generate the API reference with
+//! `cargo doc --document-private-items --open` (binary crate, so private
+//! items ARE the API).
 
 mod ast;
 mod diag;
@@ -17,6 +36,8 @@ use std::process::ExitCode;
 
 use clap::{Parser as ClapParser, Subcommand};
 
+/// Top-level CLI definition. The `///` docs on [`Cmd`] variants and fields
+/// double as the `--help` text (clap derive).
 #[derive(ClapParser)]
 #[command(
     name = "mimz",
@@ -28,6 +49,8 @@ struct Cli {
     command: Cmd,
 }
 
+/// The `mimz` subcommands. Planned but not yet implemented: `translate`,
+/// `fmt`, `test`, `sim` (docs/plan/).
 #[derive(Subcommand)]
 enum Cmd {
     /// Lex + parse a file and report errors (no output written)
@@ -55,6 +78,9 @@ fn main() -> ExitCode {
     }
 }
 
+/// `mimz check` — lex + parse one file and report diagnostics. With
+/// `--tokens` it stops after the lexer and dumps the token stream instead
+/// (the standard way to debug lexer issues).
 fn check(path: &Path, tokens: bool) -> ExitCode {
     if tokens {
         let src = match project::read_source(path) {
@@ -105,6 +131,9 @@ fn check(path: &Path, tokens: bool) -> ExitCode {
     }
 }
 
+/// `mimz compile` — load the entry file and all transitive imports, build
+/// the project symbol table, and emit one Verilog file (default: entry
+/// path with `.v` extension).
 fn compile(path: &Path, output: Option<PathBuf>) -> ExitCode {
     let files = match project::load_project(path) {
         Ok(f) => f,
@@ -115,20 +144,14 @@ fn compile(path: &Path, output: Option<PathBuf>) -> ExitCode {
     let project = match emit_verilog::Project::from_files(&asts) {
         Ok(p) => p,
         Err(diags) => {
-            eprint!(
-                "{}",
-                diag::render(&diags, &files[0].src, &files[0].path.display().to_string())
-            );
+            eprint!("{}", project::render_diags(&diags, &files));
             return ExitCode::FAILURE;
         }
     };
     let verilog = match emit_verilog::emit(&project, &asts) {
         Ok(v) => v,
         Err(diags) => {
-            eprint!(
-                "{}",
-                diag::render(&diags, &files[0].src, &files[0].path.display().to_string())
-            );
+            eprint!("{}", project::render_diags(&diags, &files));
             return ExitCode::FAILURE;
         }
     };
