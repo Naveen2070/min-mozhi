@@ -1,6 +1,6 @@
 //! Loads the trilingual keyword table from `keywords.toml` (embedded at
 //! build time, parsed once at startup). The table is DATA, not code —
-//! native-speaker review changes the TOML, never this file (spec/03 §4).
+//! native-speaker review changes the TOML, never this file (spec/03 section 4).
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -11,6 +11,9 @@ use super::token::{Flavor, Kw};
 
 const KEYWORDS_TOML: &str = include_str!("../../keywords.toml");
 
+/// Shape of `keywords.toml`: one `[keywords.<key>]` table per keyword plus
+/// a root-level `reserved` list (which must sit ABOVE the first table —
+/// TOML root keys cannot follow a table header).
 #[derive(Deserialize)]
 struct TableFile {
     keywords: HashMap<String, Spellings>,
@@ -18,6 +21,8 @@ struct TableFile {
     reserved: Vec<String>,
 }
 
+/// The three spellings of one keyword. Spellings must be disjoint across
+/// the whole table — enforced at startup.
 #[derive(Deserialize)]
 struct Spellings {
     en: String,
@@ -25,6 +30,8 @@ struct Spellings {
     tamil: String,
 }
 
+/// The loaded trilingual keyword table. The lexer queries this for every
+/// identifier-shaped lexeme.
 pub struct KeywordTable {
     /// spelling -> (token, which column it came from)
     map: HashMap<String, (Kw, Flavor)>,
@@ -32,15 +39,23 @@ pub struct KeywordTable {
 }
 
 impl KeywordTable {
+    /// Is this spelling a keyword? Returns the token and the flavor of the
+    /// column it came from (drives error language + `mimz fmt`, P1.8).
     pub fn lookup(&self, ident: &str) -> Option<(Kw, Flavor)> {
         self.map.get(ident).copied()
     }
 
+    /// Reserved for a future feature (e.g. `fall`, `struct`, `mem`) —
+    /// not a keyword yet, but not usable as an identifier either.
     pub fn is_reserved(&self, ident: &str) -> bool {
         self.reserved.iter().any(|r| r == ident)
     }
 }
 
+/// The one global table, parsed from the embedded TOML on first use.
+/// Panics at startup (not at some later lookup) if the TOML is malformed,
+/// names an unknown key, or has a spelling in two columns — table bugs
+/// must be impossible to ship.
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
     let file: TableFile =
         toml::from_str(KEYWORDS_TOML).expect("keywords.toml is malformed — fix the table");
@@ -66,6 +81,8 @@ pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
     }
 });
 
+/// `keywords.toml` key → token. The single point that ties the data file
+/// to the [`Kw`] enum; a new keyword is added here and in the TOML.
 fn kw_for_key(key: &str) -> Option<Kw> {
     Some(match key {
         "module" => Kw::Module,

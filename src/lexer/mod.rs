@@ -1,10 +1,10 @@
 //! Lexer: UTF-8 source (NFC-normalized by the caller) → token stream.
 //!
 //! - Recognizes the UNION of English/Tanglish/Tamil keyword spellings at all
-//!   times — flavors mix freely in one file (spec/03 §1).
+//!   times — flavors mix freely in one file (spec/03 section 1).
 //! - Unicode identifiers (XID rules, so Tamil script works everywhere).
 //! - Newlines are statement terminators, Go-style: a line ending in an
-//!   operator or open bracket continues onto the next line (spec/02 §2).
+//!   operator or open bracket continues onto the next line (spec/02 section 2).
 
 pub mod keywords;
 pub mod token;
@@ -14,6 +14,9 @@ use crate::span::Span;
 use keywords::TABLE;
 use token::{TokKind, Token};
 
+/// Tokenize a whole file. On success the stream is newline-normalized
+/// (see [`postprocess_newlines`]) and always ends with [`TokKind::Eof`].
+/// On failure ALL lex errors are returned, not just the first.
 pub fn lex(src: &str) -> Result<Vec<Token>, Vec<Diag>> {
     let mut lx = Lexer {
         src,
@@ -30,6 +33,9 @@ pub fn lex(src: &str) -> Result<Vec<Token>, Vec<Diag>> {
     }
 }
 
+/// Lexer state: a cursor over the pre-collected `(byte offset, char)`
+/// pairs. Collecting up front trades memory for O(1) two-char lookahead,
+/// which is all this grammar ever needs.
 struct Lexer<'a> {
     src: &'a str,
     chars: Vec<(usize, char)>,
@@ -47,6 +53,7 @@ impl Lexer<'_> {
         self.chars.get(self.pos + 1).map(|&(_, c)| c)
     }
 
+    /// Byte offset of the current position (= `src.len()` at end of input).
     fn offset(&self) -> usize {
         self.chars
             .get(self.pos)
@@ -71,6 +78,9 @@ impl Lexer<'_> {
         });
     }
 
+    /// Main loop: dispatch on the first char of each token. Whitespace and
+    /// `//` comments vanish here; newlines become tokens (they terminate
+    /// statements) and are filtered later by [`postprocess_newlines`].
     fn run(&mut self) {
         while let Some(c) = self.peek() {
             let start = self.offset();
@@ -154,6 +164,9 @@ impl Lexer<'_> {
         self.push(TokKind::Str(s), start);
     }
 
+    /// Integer literal: decimal, `0b` binary, or `0x` hex, with `_`
+    /// separators. The raw spelling is kept on the token so the Verilog
+    /// emitter can preserve the writer's base.
     fn number(&mut self, start: usize) {
         let first = self.bump().unwrap();
         let (radix, mut raw) = if first == '0' && matches!(self.peek(), Some('b' | 'x')) {
@@ -216,6 +229,9 @@ impl Lexer<'_> {
         }
     }
 
+    /// Identifier or keyword. Unicode XID rules (so Tamil-script names
+    /// work), then one lookup in the trilingual table decides: keyword
+    /// (with its flavor recorded), reserved word (error), or identifier.
     fn ident(&mut self, start: usize) {
         let mut s = String::new();
         s.push(self.bump().unwrap());
@@ -249,6 +265,9 @@ impl Lexer<'_> {
         }
     }
 
+    /// Operators and punctuation, longest-match-first (`+%` before `+`,
+    /// `<-` before `<`). `/` and `%` are caught here with teaching errors —
+    /// they do not exist in the language.
     fn punct(&mut self, start: usize) {
         use TokKind::*;
         let c = self.bump().unwrap();
@@ -294,7 +313,7 @@ impl Lexer<'_> {
             '/' => {
                 self.diags.push(
                     Diag::new(Span::new(start, self.offset()), "division `/` does not exist in Min-Mozhi")
-                        .with_help("division synthesizes to large slow hardware — use shifts, or a stdlib divider module later (spec/02 §3)"),
+                        .with_help("division synthesizes to large slow hardware — use shifts, or a stdlib divider module later (spec/02 section 3)"),
                 );
                 return;
             }
@@ -317,7 +336,7 @@ impl Lexer<'_> {
     }
 }
 
-/// Newline policy (spec/02 §2): collapse runs, drop leading newlines, and
+/// Newline policy (spec/02 section 2): collapse runs, drop leading newlines, and
 /// drop a newline when the previous token can't end a statement (operator,
 /// comma, open bracket, `=`, `<-`, `=>`, `:`).
 fn postprocess_newlines(toks: Vec<Token>) -> Vec<Token> {

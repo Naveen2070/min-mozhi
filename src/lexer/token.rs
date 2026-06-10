@@ -3,6 +3,10 @@
 
 use crate::span::Span;
 
+/// The keyword tokens — spelling-independent. `thoguthi` and `தொகுதி`
+/// both lex to `Kw::Module`. The list mirrors `keywords.toml`; adding a
+/// keyword means adding it in BOTH places (`keywords::kw_for_key` panics
+/// at startup on a mismatch, so drift cannot ship).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kw {
     Module,
@@ -41,10 +45,17 @@ pub enum Flavor {
     Tamil,
 }
 
+/// Every kind of token the lexer can produce. Punctuation variants carry
+/// no payload; their spelling lives in [`punct_text`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokKind {
     Ident(String),
-    Int { value: u128, raw: String },
+    /// Integer literal; `raw` preserves the written form (`0b1010`, `0xFF`).
+    Int {
+        value: u128,
+        raw: String,
+    },
+    /// String literal — currently only used for test names.
     Str(String),
     Kw(Kw),
 
@@ -89,10 +100,15 @@ pub enum TokKind {
     LBrace,
     RBrace,
 
+    /// Statement terminator (Go-style; see `lexer::postprocess_newlines`).
     Newline,
+    /// Always the last token — the parser relies on it to never run off
+    /// the end of the stream.
     Eof,
 }
 
+/// One token: what it is, where it is, and (for keywords) which language
+/// flavor spelled it.
 #[derive(Clone, Debug)]
 pub struct Token {
     pub kind: TokKind,
@@ -105,12 +121,14 @@ pub struct Token {
 }
 
 impl Token {
+    /// Is this token the given keyword (any spelling)?
     pub fn is_kw(&self, kw: Kw) -> bool {
         matches!(self.kind, TokKind::Kw(k) if k == kw)
     }
 }
 
-/// Human name for error messages.
+/// Human name for error messages: "identifier \`foo\`", "keyword
+/// \`module\`", "\`+%\`", "end of line", …
 pub fn kind_name(kind: &TokKind) -> String {
     match kind {
         TokKind::Ident(s) => format!("identifier `{s}`"),
@@ -123,6 +141,7 @@ pub fn kind_name(kind: &TokKind) -> String {
     }
 }
 
+/// Source spelling of a punctuation token (for error messages).
 fn punct_text(kind: &TokKind) -> &'static str {
     use TokKind::*;
     match kind {
