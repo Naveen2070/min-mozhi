@@ -27,13 +27,42 @@ status-bar language indicator (bottom right). If it still says Plain
 Text, click the indicator → "Configure File Association for '.mimz'" →
 Min-Mozhi.
 
-Or package it properly with [`vsce`](https://code.visualstudio.com/api/working-with-extensions/publishing-extension):
+Or — **recommended** — package it properly with
+[`vsce`](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
+and install via the CLI (it prints an explicit success/failure, unlike
+the GUI's "Install from VSIX"):
 
 ```text
 cd editors/vscode
 npx @vscode/vsce package   # produces mimz-0.1.0.vsix
 code --install-extension mimz-0.1.0.vsix
 ```
+
+**Troubleshooting — VSIX installs but the extension is invisible** (not
+in the Extensions tab, not in the language list): if the extension was
+ever folder-installed and that folder was later deleted, VS Code's
+`~/.vscode/extensions/extensions.json` keeps a dangling entry. VS Code
+then thinks the version is already installed and silently discards the
+VSIX, while having nothing to load. Fix (with all VS Code windows
+closed):
+
+```text
+code --uninstall-extension min-mozhi.mimz   # cleans the dangling entry
+code --install-extension mimz-0.1.0.vsix --force
+code --list-extensions                      # must list min-mozhi.mimz
+```
+
+**Troubleshooting — `code --list-extensions` shows it but the GUI
+doesn't**: extensions are **per-profile**. If you use a custom VS Code
+profile (check the gear icon → Profiles), the plain CLI installs into
+the _Default_ profile only. Install into the profile you actually use:
+
+```text
+code --profile "YourProfileName" --install-extension mimz-0.1.0.vsix --force
+```
+
+Then exit VS Code completely (File → Exit, not just closing the window)
+and reopen.
 
 ## What gets highlighted
 
