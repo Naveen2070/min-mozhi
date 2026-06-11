@@ -18,9 +18,13 @@ pub struct Diag {
     /// Which project file the span points into (index into the loaded
     /// file list). `None` in single-file passes (lexer, parser), where
     /// the caller already knows the file. Project-wide passes
-    /// (`Project::from_files`, the emitter) MUST set this — see
-    /// `project::render_diags`.
+    /// (`Project::from_files`, the checker, the emitter) MUST set this —
+    /// see `project::render_diags`.
     pub file: Option<usize>,
+    /// Stable error code (`E0101`), rendered as `error[E0101]: ...`.
+    /// Catalog lives in docs/code/11-checker.md. Checker errors always
+    /// carry one; lexer/parser errors will be retrofitted (Phase 1).
+    pub code: Option<&'static str>,
 }
 
 impl Diag {
@@ -30,6 +34,7 @@ impl Diag {
             msg: msg.into(),
             help: None,
             file: None,
+            code: None,
         }
     }
 
@@ -42,6 +47,12 @@ impl Diag {
     /// Builder-style: record which project file the span points into.
     pub fn with_file(mut self, file: usize) -> Self {
         self.file = Some(file);
+        self
+    }
+
+    /// Builder-style: attach the stable error code.
+    pub fn with_code(mut self, code: &'static str) -> Self {
+        self.code = Some(code);
         self
     }
 }
@@ -61,7 +72,10 @@ pub fn render(diags: &[Diag], src: &str, path: &str) -> String {
     let mut out = String::new();
     for d in diags {
         let (line_no, col, line_text, line_start) = locate(src, d.span.start);
-        out.push_str(&format!("error: {}\n", d.msg));
+        match d.code {
+            Some(c) => out.push_str(&format!("error[{c}]: {}\n", d.msg)),
+            None => out.push_str(&format!("error: {}\n", d.msg)),
+        }
         out.push_str(&format!("  --> {path}:{line_no}:{col}\n"));
         out.push_str("   |\n");
         out.push_str(&format!("{line_no:>3}| {line_text}\n"));

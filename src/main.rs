@@ -1,7 +1,7 @@
 //! mimz — the Min-Mozhi (மின்மொழி) compiler CLI.
 //!
 //! Phase 1 pipeline (docs/architecture.md):
-//! lexer → parser → AST → checker (WIP) → Verilog emitter.
+//! lexer → parser → AST → checker (first slice) → Verilog emitter.
 //! Source loading + import resolution live in `project.rs`.
 //!
 //! Crate map (one module per pipeline stage):
@@ -9,10 +9,11 @@
 //! | Module          | Role                                                       |
 //! | --------------- | ---------------------------------------------------------- |
 //! | [`span`]        | Byte-offset source spans carried by every token/AST node   |
-//! | [`diag`]        | Teaching diagnostics + caret renderer                      |
+//! | [`diag`]        | Teaching diagnostics (stable E-codes) + caret renderer     |
 //! | [`lexer`]       | Source text → tokens (trilingual keyword table)            |
 //! | [`parser`]      | Tokens → AST (recursive descent, multi-error recovery)     |
 //! | [`ast`]         | The one shared AST — flavor- and word-order-blind          |
+//! | [`checker`]     | Names, consts, safety rules (first slice; more landing)    |
 //! | [`emit_verilog`]| AST → Verilog-2005 text                                    |
 //! | [`project`]     | File loading, NFC normalization, `import` resolution       |
 //!
@@ -24,6 +25,7 @@
 //! items ARE the API).
 
 mod ast;
+mod checker;
 mod diag;
 mod emit_verilog;
 mod lexer;
@@ -78,9 +80,10 @@ fn main() -> ExitCode {
     }
 }
 
-/// `mimz check` — lex + parse one file and report diagnostics. With
-/// `--tokens` it stops after the lexer and dumps the token stream instead
-/// (the standard way to debug lexer issues).
+/// `mimz check` — lex + parse + checker passes over the file AND its
+/// imports (cross-file names must resolve), reporting all diagnostics.
+/// With `--tokens` it stops after the lexer and dumps the token stream
+/// instead (the standard way to debug lexer issues).
 fn check(path: &Path, tokens: bool) -> ExitCode {
     if tokens {
         let src = match project::read_source(path) {
@@ -107,28 +110,31 @@ fn check(path: &Path, tokens: bool) -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match project::parse_file(path) {
-        Ok(loaded) => {
-            let modules = loaded
-                .ast
-                .items
-                .iter()
-                .filter(|i| matches!(i, ast::TopItem::Module(_)))
-                .count();
-            let tests = loaded
-                .ast
-                .items
-                .iter()
-                .filter(|i| matches!(i, ast::TopItem::Test(_)))
-                .count();
-            println!(
-                "OK: {} — {modules} module(s), {tests} test(s)",
-                loaded.path.display()
-            );
-            ExitCode::SUCCESS
-        }
-        Err(code) => code,
+    let files = match project::load_project(path) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+    if let Err(diags) = checker::check(&asts) {
+        eprint!("{}", project::render_diags(&diags, &files));
+        return ExitCode::FAILURE;
     }
+    let modules = asts
+        .iter()
+        .flat_map(|f| &f.items)
+        .filter(|i| matches!(i, ast::TopItem::Module(_)))
+        .count();
+    let tests = asts
+        .iter()
+        .flat_map(|f| &f.items)
+        .filter(|i| matches!(i, ast::TopItem::Test(_)))
+        .count();
+    println!(
+        "OK: {} — {modules} module(s), {tests} test(s), {} file(s)",
+        path.display(),
+        files.len()
+    );
+    ExitCode::SUCCESS
 }
 
 /// `mimz compile` — load the entry file and all transitive imports, build
@@ -140,6 +146,11 @@ fn compile(path: &Path, output: Option<PathBuf>) -> ExitCode {
         Err(code) => return code,
     };
     let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+
+    if let Err(diags) = checker::check(&asts) {
+        eprint!("{}", project::render_diags(&diags, &files));
+        return ExitCode::FAILURE;
+    }
 
     let project = match emit_verilog::Project::from_files(&asts) {
         Ok(p) => p,
