@@ -1,0 +1,19 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): 4-way multiplexer.
+// `match` on the select must cover every case — a missing arm is a
+// compile error, so no inferred latches.
+
+thoguthi Mux4(WIDTH: int = 8) {
+  ulle  sel: bits[2]
+  ulle  a: bits[WIDTH]
+  ulle  b: bits[WIDTH]
+  ulle  c: bits[WIDTH]
+  ulle  d: bits[WIDTH]
+  veli y: bits[WIDTH]
+
+  y = poruthu sel {
+    0b00 => a
+    0b01 => b
+    0b10 => c
+    0b11 => d
+  }
+}

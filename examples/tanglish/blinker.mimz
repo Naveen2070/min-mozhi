@@ -1,0 +1,23 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): LED blinker — divide the clock down with a counter
+// and toggle the output with `^` each time it wraps.
+
+thoguthi Blinker(LIMIT: int = 50000000) {
+  kadigaram clk
+  meetamai rst
+
+  veli led: bit
+
+  nilai cnt:   bits[26] = 0
+  nilai state: bit      = 0
+
+  pothu yetram(clk) {
+    endral cnt == LIMIT {
+      cnt   <- 0
+      state <- state ^ 1
+    } illaiyel {
+      cnt <- cnt +% 1
+    }
+  }
+
+  led = state
+}

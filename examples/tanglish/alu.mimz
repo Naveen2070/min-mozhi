@@ -1,0 +1,30 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): ALU showing match-as-expression and module composition
+// across files — `import adder` brings Adder from adder.mimz into scope.
+
+serkka adder
+
+thoguthi Alu(WIDTH: int = 8) {
+  ulle  a:  bits[WIDTH]
+  ulle  b:  bits[WIDTH]
+  ulle  op: bits[2]
+  veli y:  bits[WIDTH]
+
+  y = poruthu op {
+    0b00 => a +% b
+    0b01 => a -% b
+    0b10 => a & b
+    0b11 => a | b
+  }
+}
+
+thoguthi Top {
+  kadigaram clk
+  meetamai rst
+
+  ulle  x:     bits[8]
+  ulle  y:     bits[8]
+  veli total: bits[9]
+
+  vai add = Adder(WIDTH: 8) { a: x, b: y }
+  total = add.sum
+}

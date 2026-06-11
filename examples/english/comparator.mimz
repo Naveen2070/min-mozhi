@@ -1,0 +1,16 @@
+// Min-Mozhi example: comparator with an if-expression.
+// A wire-driving `if` must have an `else` — both branches always exist,
+// so the output is always driven.
+
+module Comparator(WIDTH: int = 8) {
+  in  a: bits[WIDTH]
+  in  b: bits[WIDTH]
+
+  out eq:  bit
+  out gt:  bit
+  out max: bits[WIDTH]
+
+  eq  = a == b
+  gt  = a > b
+  max = if a > b { a } else { b }
+}

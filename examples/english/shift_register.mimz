@@ -1,0 +1,19 @@
+// Min-Mozhi example: parameterized shift register.
+// `<<` shifts in zeros from the right; `|` merges in the new low bit
+// every clock edge.
+
+module ShiftRegister(WIDTH: int = 8) {
+  clock clk
+  reset rst
+
+  in  din:  bit
+  out dout: bits[WIDTH]
+
+  reg sr: bits[WIDTH] = 0
+
+  on rise(clk) {
+    sr <- (sr << 1) | din
+  }
+
+  dout = sr
+}

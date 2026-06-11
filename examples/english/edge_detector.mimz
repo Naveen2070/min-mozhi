@@ -1,0 +1,19 @@
+// Min-Mozhi example: rising-edge detector — a one-cycle pulse when
+// `din` goes 0 -> 1. A reg remembers last cycle's value; logical ops
+// compare it with the current one.
+
+module EdgeDetector {
+  clock clk
+  reset rst
+
+  in  din:   bit
+  out pulse: bit
+
+  reg prev: bit = 0
+
+  on rise(clk) {
+    prev <- din
+  }
+
+  pulse = din && !prev
+}

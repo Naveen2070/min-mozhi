@@ -51,7 +51,7 @@ impl Diag {
 ///
 /// ```text
 /// error: register `value` has no reset value
-///   --> examples/counter.mimz:7:3
+///   --> examples/english/counter.mimz:7:3
 ///    |
 ///   7|   reg value: bits[WIDTH]
 ///    |   ^^^

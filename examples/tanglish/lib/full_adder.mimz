@@ -1,0 +1,14 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change) library: one-bit full adder. Imported by
+// chained.mimz via the dotted path `lib.full_adder`.
+
+thoguthi FullAdder {
+  ulle  a:    bit
+  ulle  b:    bit
+  ulle  cin:  bit
+
+  veli sum:  bit
+  veli cout: bit
+
+  sum  = a ^ b ^ cin
+  cout = (a & b) | (cin & (a ^ b))
+}

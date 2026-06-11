@@ -1,0 +1,16 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): comparator with an if-expression.
+// A wire-driving `if` must have an `else` — both branches always exist,
+// so the output is always driven.
+
+thoguthi Comparator(WIDTH: int = 8) {
+  ulle  a: bits[WIDTH]
+  ulle  b: bits[WIDTH]
+
+  veli eq:  bit
+  veli gt:  bit
+  veli max: bits[WIDTH]
+
+  eq  = a == b
+  gt  = a > b
+  max = endral a > b { a } illaiyel { b }
+}

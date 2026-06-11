@@ -1,0 +1,24 @@
+// Min-Mozhi example: two-bit ripple-carry adder from chained one-bit
+// full adders. `include` is an alias of `import`, and the dotted path
+// `lib.full_adder` resolves to `lib/full_adder.mimz` next to this file.
+
+include lib.full_adder
+
+module Chained {
+  in  a0:  bit
+  in  a1:  bit
+  in  b0:  bit
+  in  b1:  bit
+  in  cin: bit
+
+  out sum0: bit
+  out sum1: bit
+  out cout: bit
+
+  let fa0 = FullAdder() { a: a0, b: b0, cin: cin }
+  let fa1 = FullAdder() { a: a1, b: b1, cin: fa0.cout }
+
+  sum0 = fa0.sum
+  sum1 = fa1.sum
+  cout = fa1.cout
+}
