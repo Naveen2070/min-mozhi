@@ -14,9 +14,13 @@ Source text (NFC-normalized by the caller) → `Vec<Token>`.
 ## The trilingual keyword table — the heart of the language
 
 `keywords.toml` (repo root) holds one row per keyword with three
-spellings: `en`, `tanglish`, `tamil`. At build time the file is embedded
-with `include_str!`; at first use a `LazyLock` parses it into one
-`HashMap<spelling → (Kw, Flavor)>`.
+canonical spellings — `en`, `tanglish`, `tamil` — plus optional
+per-column **alias lists** (`en_aliases` etc.) for deliberate synonyms,
+e.g. `include` as an English alias of `import`. At build time the file is
+embedded with `include_str!`; at first use a `LazyLock` parses it into
+one `HashMap<spelling → (Kw, Flavor)>` — aliases land in the same map, so
+an alias is indistinguishable from its canonical word from the parser
+onward.
 
 Consequences, all deliberate:
 
@@ -26,8 +30,9 @@ Consequences, all deliberate:
 - Changing a word (native-speaker review!) is a **data change** — edit
   the TOML, touch no Rust.
 - The table **panics at startup** if the TOML is malformed, names an
-  unknown key, or a spelling appears in two columns. Table bugs must be
-  impossible to ship, and a startup panic in CI is how that's enforced.
+  unknown key, or any spelling (canonical or alias) appears twice. Table
+  bugs must be impossible to ship, and a startup panic in CI is how
+  that's enforced.
 - The token records **which flavor** spelled the keyword. Nothing uses it
   yet — it is recorded from day one so `mimz translate`/`fmt` and
   error-language detection (Phase 1.8) won't need a token-shape change.

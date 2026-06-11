@@ -3,7 +3,7 @@
 What actually happens when you run:
 
 ```text
-mimz compile examples/alu.mimz -o alu.v
+mimz compile examples/english/alu.mimz -o alu.v
 ```
 
 ## Step 0 — CLI dispatch (`src/main.rs`)
@@ -29,6 +29,8 @@ without untangling it from the terminal.
 2. `parse_file` runs lexer + parser (steps 2–3) on that one file.
 3. Each `import a.b` becomes a path **relative to the importing file**:
    `a/b.mimz`. A missing file is an error pointing at the `import` line.
+   (`include` is an English alias of `import` — identical token by the
+   time it reaches the parser, so this step never sees the difference.)
 4. A `visited` set of canonicalized paths makes duplicate imports and
    cycles harmless — each file is parsed exactly once.
 

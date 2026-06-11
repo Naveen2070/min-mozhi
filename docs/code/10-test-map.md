@@ -4,14 +4,15 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**30 tests** as of 2026-06-10: 21 unit + 5 integration + 4 docs-sync.
+**33 tests** as of 2026-06-11: 22 unit + 7 integration + 4 docs-sync.
 
-## Unit: keyword table (`src/lexer/keywords.rs`, 3 tests)
+## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
 | Test                                        | Locks in                                              | If it fails…                                  |
 | ------------------------------------------- | ----------------------------------------------------- | --------------------------------------------- |
 | `all_three_flavors_resolve_to_same_keyword` | EN/Tanglish/Tamil spellings → one `Kw` token          | `keywords.toml` edit broke a mapping          |
 | `flavors_are_recorded`                      | the lexer remembers which column a spelling came from | flavor tracking broke (P1.8 depends on it)    |
+| `include_is_an_alias_for_import`            | `include` lexes to the exact same token as `import`   | the alias mechanism or table entry broke      |
 | `fall_is_reserved`                          | `fall` errors as reserved, is not a keyword           | someone un-reserved `fall` without a decision |
 
 Note: the table's structural rules (disjoint columns, known keys, valid
@@ -55,15 +56,22 @@ tight enough that the teaching content can't silently vanish.
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `diags_carry_the_file_index` | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt |
 
-## Integration (`tests/examples.rs`, 5 tests — run the real binary)
+## Integration (`tests/examples.rs`, 7 tests — run the real binary)
 
-| Test                                             | Locks in                                                                                                                                                  |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_example_checks_clean`                     | every `examples/*.mimz` passes `mimz check` — RULES R6 ("examples always match the spec") made executable. Add an example file → automatically under test |
-| `counter_compiles_to_verilog`                    | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                          |
-| `tanglish_counter_compiles_to_identical_verilog` | EN and Tanglish → **byte-identical** Verilog. The project's thesis. Never break it                                                                        |
-| `alu_with_import_compiles`                       | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                               |
-| `traffic_light_fsm_compiles`                     | enums → localparams (`STATE_RED` …)                                                                                                                       |
+`examples/` holds four flavor folders — `english/`, `tanglish/`, `tamil/`,
+`mixed/` — each with the SAME 11 base examples (identical identifiers,
+only keywords differ; `lib/` subfolders hold dotted-import targets). The
+base-example list lives in the `BASE_EXAMPLES` const in the test file.
+
+| Test                                            | Locks in                                                                                                                                  |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_example_checks_clean`                    | every `.mimz` under `examples/` (recursive) passes `mimz check`, and there are at least 4 × 11 of them — RULES R6 made executable         |
+| `every_example_compiles`                        | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                  |
+| `all_four_flavors_compile_to_identical_verilog` | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                |
+| `counter_compiles_to_verilog`                   | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                          |
+| `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                               |
+| `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`) |
+| `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                       |
 
 ## Docs-sync (`tests/docs_sync.rs`, 4 tests)
 
@@ -97,8 +105,11 @@ structural facts the docs state, so doc drift fails CI. When one fails,
 - Prefer the existing layers: table-driven facts → keyword tests; token
   shapes → lexer tests; tree shapes & teaching errors → parser tests;
   output text → integration tests on a real example.
-- A new example in `examples/` must compile — `every_example_checks_clean`
-  enforces it automatically.
+- A new example goes into ALL FOUR flavor folders with identical
+  identifiers (only keywords change — take spellings from
+  `keywords.toml`, never invent), plus a row in `BASE_EXAMPLES` in
+  `tests/examples.rs`. `every_example_compiles` and the
+  flavor-identity test then enforce it automatically.
 - Update THIS page in the same session (it is the "what does a failing
   test mean" ledger — see also `tests/docs_sync.rs`, which mechanically
   guards the structural facts in these docs).

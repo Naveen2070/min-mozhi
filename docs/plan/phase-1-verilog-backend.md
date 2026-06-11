@@ -33,7 +33,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 - [x] Recursive-descent parser for the `code-order` profile (EBNF in `spec/02` section 5)
 - [x] AST types: module, ports, clock/reset, wire/reg, const, enum, instance, on-block, repeat, tests, expressions
-- [x] `import` resolution: file-relative, project-unique module names, cycle-safe visited set (spec/02 section 1.5)
+- [x] `import` resolution: file-relative, project-unique module names, cycle-safe visited set (spec/02 section 1.5); `include` accepted as en alias (v0.2.1, 2026-06-11)
 - [ ] `repeat` compile-time unrolling (parses; unrolling needs const-eval — work item 4)
 - [x] Error recovery good enough to report >1 error per run (verified: 3 errors in one `check`)
 - [x] Rust precedence incl. non-associative comparisons (`x & 1 == 0` test locked in)
@@ -54,7 +54,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 - [x] AST → synthesizable Verilog-2005: modules, assigns, always-blocks, FSM enums as localparams, match→ternary chains, instances with auto-wired outputs, implicit clk/rst connection
 - [x] Reset generation from reg reset values (sync reset, active-high, v1)
-- [x] Integration tests: all 5 examples compile; EN and Tanglish counters emit **identical** Verilog; FSM localparams verified
+- [x] Integration tests: all 44 examples compile (11 base examples × 4 flavor folders: english/tanglish/tamil/mixed); each base example emits **byte-identical** Verilog from all four flavors; FSM localparams verified (2026-06-11)
 - [ ] `repeat` emission (blocked on const-eval); non-ASCII identifier transliteration; width-aware `extend`
 - [ ] Golden-file tests: each example → expected `.v` (string-contains asserts exist; full goldens pending)
 - [ ] Icarus Verilog smoke tests in CI: compile + run a self-checking TB per example (Icarus not installed locally yet)
@@ -70,7 +70,7 @@ All `examples/*.mimz` compile and simulate correctly under Icarus.
 
 ## Exit criteria
 
-1. `mimz compile` works on every example, English and Tanglish flavors.
+1. `mimz compile` works on every example, in all four flavor folders (english/tanglish/tamil/mixed) — ✅ 2026-06-11, CI-asserted.
 2. Each safety rule has at least one test proving it rejects bad input with a helpful message.
 3. CI runs lexer/parser/check/emit tests + Icarus simulation green.
 

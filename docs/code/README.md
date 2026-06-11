@@ -66,4 +66,4 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-10 (Phase 1 — checker not yet built)._
+_Last synced with the code: 2026-06-11 (Phase 1 — checker not yet built)._

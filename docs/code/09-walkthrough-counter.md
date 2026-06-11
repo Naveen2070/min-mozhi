@@ -4,8 +4,8 @@ One real example through the whole pipeline, with the **actual artifacts**
 at every stage. Reproduce everything here yourself:
 
 ```text
-cargo run -- check examples/counter.mimz --tokens   # stage 2 output
-cargo run -- compile examples/counter.mimz -o counter.v   # stage 5 output
+cargo run -- check examples/english/counter.mimz --tokens   # stage 2 output
+cargo run -- compile examples/english/counter.mimz -o counter.v   # stage 5 output
 ```
 
 (Token offsets and the Verilog below were captured from the real
@@ -14,7 +14,7 @@ the page is stale — fix it, per RULES R1.)
 
 ## Stage 0 — the source
 
-`examples/counter.mimz`:
+`examples/english/counter.mimz`:
 
 ```mimz
 module Counter(WIDTH: int = 8) {
@@ -84,7 +84,7 @@ Things to notice:
   runs collapse (`postprocess_newlines`).
 - After `{` there is no Newline token either: `{` is a continuation
   token, so the newline following it is dropped.
-- In the Tanglish version (`counter.tanglish.mimz`), the ONLY difference
+- In the Tanglish version (`tanglish/counter.mimz`), the ONLY difference
   in this stream is the `flavor` field on the keyword tokens — same
   `Kw(...)` kinds, same everything else. That is the whole trilingual
   mechanism, visible in one place.

@@ -63,13 +63,14 @@ Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
 ## Project Status
 
-**Phase 1 — compiler under construction (spec v0.2).** The front end works:
+**Phase 1 — compiler under construction (spec v0.2.1).** The front end works:
 `mimz compile` turns `.mimz` files into synthesizable Verilog today — lexer
 (all three keyword flavors), full parser, and a first Verilog emitter, with
-30 passing tests. English and Tanglish sources compile to **byte-identical**
-Verilog (CI-asserted). Still to come in Phase 1: the safety-checker passes,
-`repeat` unrolling, and Icarus Verilog differential tests. The repo stays
-private until Phase 1 is done.
+33 passing tests. Every example exists in all four flavor folders
+(`english/`, `tanglish/`, `tamil/`, `mixed/`) and compiles to
+**byte-identical** Verilog from each (CI-asserted). Still to come in
+Phase 1: the safety-checker passes, `repeat` unrolling, and Icarus Verilog
+differential tests. The repo stays private until Phase 1 is done.
 
 ## Build, Test, Run
 
@@ -82,13 +83,13 @@ cargo run -- --help        # CLI help
 cargo doc --document-private-items --open   # browsable API reference
 
 # check a file (lex + parse, teaching diagnostics):
-cargo run -- check examples/counter.mimz
+cargo run -- check examples/english/counter.mimz
 
 # compile to Verilog (resolves imports, writes counter.v):
-cargo run -- compile examples/counter.mimz -o counter.v
+cargo run -- compile examples/english/counter.mimz -o counter.v
 
 # see the token stream (debugging):
-cargo run -- check examples/counter.mimz --tokens
+cargo run -- check examples/english/counter.mimz --tokens
 ```
 
 Before committing: `cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test`
@@ -101,20 +102,20 @@ npx prettier --write "**/*.md"   # format markdown
 npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jsonc)
 ```
 
-| Document                                                             | Contents                                                     |
-| -------------------------------------------------------------------- | ------------------------------------------------------------ |
-| [`spec/01-goals-and-philosophy.md`](spec/01-goals-and-philosophy.md) | Goals, safety guarantees, non-goals, design principles       |
-| [`spec/02-syntax-and-grammar.md`](spec/02-syntax-and-grammar.md)     | Syntax tour, operators, types, formal EBNF grammar           |
-| [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables         |
-| [`spec/04-grammar-engine.md`](spec/04-grammar-engine.md)             | Grammar Engine — natural Tamil word order (Phase 1.8)        |
-| [`examples/`](examples/)                                             | Adder, counter (EN + Tanglish), ALU, traffic-light FSM       |
-| [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture |
-| [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)     |
-| [`docs/architecture.md`](docs/architecture.md)                       | Compiler architecture — pipeline, components, layout         |
-| [`docs/code/`](docs/code/)                                           | How the code works — maintainer & contributor docs           |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                 | How to contribute — quick start (details in `docs/code/`)    |
-| [`docs/RULES.md`](docs/RULES.md)                                     | Repo working rules (plans, logs, spec versioning)            |
-| [`min-mozhi-roadmap.md`](min-mozhi-roadmap.md)                       | Roadmap summary (details live in `docs/plan/`)               |
+| Document                                                             | Contents                                                        |
+| -------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`spec/01-goals-and-philosophy.md`](spec/01-goals-and-philosophy.md) | Goals, safety guarantees, non-goals, design principles          |
+| [`spec/02-syntax-and-grammar.md`](spec/02-syntax-and-grammar.md)     | Syntax tour, operators, types, formal EBNF grammar              |
+| [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables            |
+| [`spec/04-grammar-engine.md`](spec/04-grammar-engine.md)             | Grammar Engine — natural Tamil word order (Phase 1.8)           |
+| [`examples/`](examples/)                                             | 11 examples × 4 flavor folders: english, tanglish, tamil, mixed |
+| [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture    |
+| [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)        |
+| [`docs/architecture.md`](docs/architecture.md)                       | Compiler architecture — pipeline, components, layout            |
+| [`docs/code/`](docs/code/)                                           | How the code works — maintainer & contributor docs              |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                 | How to contribute — quick start (details in `docs/code/`)       |
+| [`docs/RULES.md`](docs/RULES.md)                                     | Repo working rules (plans, logs, spec versioning)               |
+| [`min-mozhi-roadmap.md`](min-mozhi-roadmap.md)                       | Roadmap summary (details live in `docs/plan/`)                  |
 
 ## Roadmap (short version, solo-dev order)
 
