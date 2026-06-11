@@ -128,6 +128,9 @@ order, compiles to the same Verilog as its English twin
 - Package manager for Min-Mozhi modules
 - VS Code extension (syntax highlighting, errors)
 - Documentation site
+- Ecosystem drivers: WASM browser playground first, then npm/PyPI
+  wrappers around the one Rust core (thin wrappers, never
+  reimplementations — Decision 2026-06-11)
 - Community + Tamil Nadu semiconductor outreach
 
 **Deliverable:** Community language with real users

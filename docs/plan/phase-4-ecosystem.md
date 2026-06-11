@@ -21,6 +21,24 @@ and the Tamil Nadu VLSI ecosystem.
 - [ ] `mimz fmt` stabilized; `mimz translate` promoted in docs as the learning tool
 - [ ] Package manager (`mimz add <pkg>`) — design doc first, Decision-logged
 
+### Ecosystem drivers (one core, thin wrappers — Decision 2026-06-11)
+
+- [ ] **WASM build + browser playground** — FIRST bridge to other
+      ecosystems: no toolchain, no install rights needed in a college
+      lab, just a URL. Highest education-per-hour; serves the spec/01
+      persona directly. Needs the simulator (Phase 1.5) to be a real
+      playground, not just a Verilog printer.
+- [ ] **npm wrapper package** (esbuild model: tiny package that fetches
+      the platform binary / loads the WASM and shells out) — TS/JS devs
+      run `mimz` in their build like any other tool
+- [ ] **PyPI wrapper package** (same model)
+- [ ] Go / Java / Kotlin / etc. wrappers — only on demonstrated demand;
+      each is ~100 lines around the same binary, never a reimplementation
+- [ ] Prerequisite carried by Phase 1 work: keep the compiler core
+      embeddable (lib/bin split so `project.rs` printing stays in the
+      CLI shell) + a `--json` diagnostics flag for tool consumers —
+      fold into the lexer/parser E-code retrofit
+
 ### Documentation & learning
 
 - [ ] Documentation site — English first; Tamil translation of docs begins **after Phase 1** (decision D9)
