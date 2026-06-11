@@ -21,9 +21,10 @@ use super::Checker;
 use super::consteval::{self, Env};
 
 /// What a name in module scope is bound to. Carries the node where it
-/// helps produce a better error (enums, instances).
+/// helps produce a better error (enums, instances). Shared with the
+/// width pass (`widths.rs`), which reuses the scopes this pass builds.
 #[derive(Clone, Copy)]
-enum Bind<'a> {
+pub(super) enum Bind<'a> {
     In,
     Out,
     Wire,
@@ -38,7 +39,7 @@ enum Bind<'a> {
 
 impl Bind<'_> {
     /// Human word for error messages ("`clk` is a clock — ...").
-    fn what(&self) -> &'static str {
+    pub(super) fn what(&self) -> &'static str {
         match self {
             Bind::In => "an input port",
             Bind::Out => "an output port",
@@ -54,8 +55,11 @@ impl Bind<'_> {
     }
 }
 
-struct Scope<'a> {
-    names: HashMap<String, Bind<'a>>,
+/// One module's name table. Built here (pass 3), then stored on the
+/// `Checker` so the width pass (pass 4) resolves against the same table
+/// instead of rebuilding it.
+pub(super) struct Scope<'a> {
+    pub(super) names: HashMap<String, Bind<'a>>,
 }
 
 impl<'a> Checker<'a> {
@@ -110,6 +114,18 @@ impl<'a> Checker<'a> {
         }
 
         self.walk_items(file, &sc, &mut env, &m.items);
+
+        // Hand the scope to the width pass — but only for the module that
+        // OWNS this name project-wide (an E0001 duplicate's scope would
+        // shadow the canonical one).
+        if self
+            .modules
+            .get(&m.name.name)
+            .is_some_and(|&(_, canon)| std::ptr::eq(canon, m))
+        {
+            self.scopes
+                .insert(m.name.name.clone(), std::rc::Rc::new(sc));
+        }
     }
 
     /// Declarations, recursively through `repeat` bodies (declaration
@@ -269,7 +285,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Enum lookup: module scope first, then file-level enums project-wide.
-    fn lookup_enum(&self, sc: &Scope<'a>, name: &str) -> Option<&'a EnumDecl> {
+    pub(super) fn lookup_enum(&self, sc: &Scope<'a>, name: &str) -> Option<&'a EnumDecl> {
         if let Some(Bind::Enum(e)) = sc.names.get(name).copied() {
             return Some(e);
         }

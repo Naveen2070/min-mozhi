@@ -177,12 +177,14 @@ Things to notice:
 - Everything stayed symbolic: change the instantiation's `WIDTH` and the
   same Verilog works; no const-eval happened anywhere.
 
-## Stage 3.5 — check (`checker::check`, first slice)
+## Stage 3.5 — check (`checker::check`)
 
 For this file the checker today: resolves `WIDTH`/`value`/`count`/`clk`/
 `rst` to their declarations, confirms `rise(clk)` names a real clock,
-and confirms the module's reg has a `reset` line. All clean — no
-diagnostics. Still future (later slices): verify `value +% 1` keeps
-width `WIDTH`, `count = value` widths match, `value` has a single
-driver, `clk` owns the `on` block. Same AST in, same AST out — the
-emitter doesn't change as the checker grows.
+confirms the module's reg has a `reset` line, and — width pass, under
+the default binding `WIDTH = 8` — verifies `value +% 1` keeps width 8
+(the literal `1` adapts and fits), `count = value` matches `bits[8]` to
+`bits[8]`, and the reset value `0` fits. All clean — no diagnostics.
+Still future (later slices): `value` has a single driver, `clk` owns
+the `on` block. Same AST in, same AST out — the emitter doesn't change
+as the checker grows.

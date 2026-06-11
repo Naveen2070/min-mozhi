@@ -63,15 +63,16 @@ Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
 ## Project Status
 
-**Phase 1 — compiler under construction (spec v0.2.1).** The front end works:
+**Phase 1 — compiler under construction (spec v0.2.2).** The front end works:
 `mimz compile` turns `.mimz` files into synthesizable Verilog today — lexer
-(all three keyword flavors), full parser, the first checker slice (name
-resolution, const evaluation, stable `E0101`-style error codes), and a
-Verilog emitter, with 54 passing tests. Every example exists in all four
-flavor folders (`english/`, `tanglish/`, `tamil/`, `mixed/`) and compiles
-to **byte-identical** Verilog from each (CI-asserted). Still to come in
-Phase 1: the width/driver checker passes, `repeat` unrolling, and Icarus
-Verilog differential tests. The repo stays private until Phase 1 is done.
+(all three keyword flavors), full parser, a real checker (name resolution,
+const evaluation, **width and type rules**, stable `E0101`-style error
+codes), and a Verilog emitter, with 80 passing tests. Every example exists
+in all four flavor folders (`english/`, `tanglish/`, `tamil/`, `mixed/`)
+and compiles to **byte-identical** Verilog from each (CI-asserted). Still
+to come in Phase 1: the single-driver/exhaustiveness checker passes,
+`repeat` unrolling, and Icarus Verilog differential tests. The repo stays
+private until Phase 1 is done.
 
 ## Build, Test, Run
 

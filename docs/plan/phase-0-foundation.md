@@ -22,8 +22,8 @@ coding starts with zero open design questions.
 - [x] License decided: **MIT + Apache-2.0 dual**
 - [x] Naming decided: extension **`.mimz`**, CLI **`mimz`**, project name Min-Mozhi
 - [ ] Native-speaker review of Tanglish/Tamil keyword table (panel: tech/coder friends)
-- [ ] Study list: Verilog internals + **Veryl, Spade, Amaranth, Chisel** (notes into `docs/log/`)
-- [ ] `git init` + first commit + LICENSE files (repo stays **private until Phase 1 works** — decision D7)
+- [x] Study list: Verilog internals + **Veryl, Spade, Amaranth, Chisel** → `docs/prior-art.md` (2026-06-11)
+- [x] `git init` + first commit + LICENSE files (done 2026-06-10; repo stays **private until after Phase 1.8** — decision D7)
 
 ## Milestone
 
@@ -34,7 +34,7 @@ write valid Min-Mozhi on paper.
 
 1. All four spec docs exist and agree with each other and the examples. ✅
 2. Keyword table reviewed by native speakers (DRAFT marks removed). ⬜
-3. Repo under git with LICENSE files (private; public comes after Phase 1). ⬜
+3. Repo under git with LICENSE files (private; public comes after Phase 1.8). ✅
 
 ## Risks / notes
 

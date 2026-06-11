@@ -42,8 +42,8 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 - [x] Name resolution + duplicate detection (project-wide, post-import) — ✅ 2026-06-11, `src/checker/` first slice, stable E-codes E0001–E0109 (catalog: docs/code/11-checker.md)
 - [x] Const-evaluation engine: `const` decls, `repeat` bounds (✅ 2026-06-11, E02xx); width-position folding lands with width checking
-- [ ] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match (E04xx reserved)
-- [ ] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals (spec/02 section 1.7)
+- [x] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match — ✅ 2026-06-11, `src/checker/widths.rs` (E0401–E0410); concrete-binding strategy (defaults + per-instantiation), literal fitting, connection checking
+- [x] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals — ✅ 2026-06-11 (same pass: E0403/E0405/E0407)
 - [ ] Single-driver check; combinational cycle (DAG) check (E05xx reserved)
 - [ ] Exhaustiveness: `match` total, wire-`if` has `else`
 - [ ] `=` vs `<-` placement enforcement; clock/reset domain typing incl. per-reg clock ownership

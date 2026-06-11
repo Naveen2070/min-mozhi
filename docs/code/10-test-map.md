@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**54 tests** as of 2026-06-11: 40 unit + 7 integration + 4 docs-sync + 3 grammar-sync.
+**80 tests** as of 2026-06-11 (EOD): 66 unit + 7 integration + 4 docs-sync + 3 grammar-sync.
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -50,19 +50,25 @@ The four error-path tests assert on message/help **substrings** —
 deliberately loose so wording can be polished without breaking tests,
 tight enough that the teaching content can't silently vanish.
 
-## Unit: checker (`src/checker/tests.rs`, 18 tests)
+## Unit: checker (`src/checker/tests.rs`, 44 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
 (loose on wording). The full catalog with meanings lives in
 [`11-checker.md`](11-checker.md); the test names map one-to-one
-(`unknown_name_is_e0101_with_teaching_help`, `reg_without_reset_declaration_is_e0301`, …).
-Two deserve a note:
+(`unknown_name_is_e0101_with_teaching_help`, `assignment_width_mismatch_is_e0401`, …).
+The width slice (E0401–E0410) added 26: error paths for every code
+(several codes get two angles, e.g. `extend`-narrowing AND
+`trunc`-widening for E0407) plus six clean passes. A few deserve a note:
 
-| Test                                                                  | Locks in                                                                 |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `clean_module_passes` / `const_arithmetic_and_repeat_bounds_evaluate` | clean code produces ZERO diagnostics — the checker must never cry wolf   |
-| `duplicate_module_across_files_is_e0001_in_the_right_file`            | checker diagnostics carry the file index (multi-file rendering contract) |
+| Test                                                                  | Locks in                                                                               |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `clean_module_passes` / `const_arithmetic_and_repeat_bounds_evaluate` | clean code produces ZERO diagnostics — the checker must never cry wolf                 |
+| `duplicate_module_across_files_is_e0001_in_the_right_file`            | checker diagnostics carry the file index (multi-file rendering contract)               |
+| `plus_into_same_width_target_teaches_wrap_in_e0401`                   | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable    |
+| `defaultless_param_module_is_checked_per_instantiation`               | a module with no param defaults is checked under each instantiation's concrete binding |
+| `repeat_index_out_of_range_at_the_last_iteration_is_e0406`            | `repeat` bodies are width-checked per iteration value, not just once                   |
+| `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape — explicit `extend` where widths differ                 |
 
 ## Unit: emitter (`src/emit_verilog/mod.rs`, 1 test)
 
@@ -112,15 +118,15 @@ plain `contains` would pass vacuously), and that the manifest registers
 
 ## Deliberately NOT covered (and what would close each gap)
 
-| Gap                                                                                      | Why it's open                                                  | Closes when                                                            |
-| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Is the emitted Verilog VALID Verilog?**                                                | substring asserts check OUR expectations, not a tool's         | Icarus Verilog differential tests in CI (planned, Phase 1 plan item 5) |
-| Semantic safety rules (widths, single-driver, exhaustiveness, comb-DAG, clock ownership) | the checker doesn't exist yet                                  | each checker pass lands WITH its own test file                         |
-| `repeat` emission                                                                        | unsupported (clean error, tested implicitly by none)           | checker const-eval; add an unrolling golden test then                  |
-| Diagnostic rendering format (`render`'s caret layout)                                    | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes            |
-| CLI surface (`--tokens`, exit codes, `-o` default path)                                  | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows                        |
-| Golden-file (full output) comparison                                                     | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)               |
-| `mimz translate`, `fmt`, simulator, grammar engine                                       | not built yet                                                  | with their phases                                                      |
+| Gap                                                                               | Why it's open                                                  | Closes when                                                            |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Is the emitted Verilog VALID Verilog?**                                         | substring asserts check OUR expectations, not a tool's         | Icarus Verilog differential tests in CI (planned, Phase 1 plan item 5) |
+| Remaining safety rules (single-driver, exhaustiveness, comb-DAG, clock ownership) | later checker slices (names, consts, WIDTHS are covered today) | each checker pass lands WITH its own tests                             |
+| `repeat` emission                                                                 | unsupported (clean error, tested implicitly by none)           | checker const-eval; add an unrolling golden test then                  |
+| Diagnostic rendering format (`render`'s caret layout)                             | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes            |
+| CLI surface (`--tokens`, exit codes, `-o` default path)                           | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows                        |
+| Golden-file (full output) comparison                                              | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)               |
+| `mimz translate`, `fmt`, simulator, grammar engine                                | not built yet                                                  | with their phases                                                      |
 
 ## House rules for new tests
 

@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.1.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.2.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -233,6 +233,9 @@ wire eq: bit        = t < s                // signed comparison
 - Unary `-` works only on `signed` and grows one bit (lossless — negating the
   most-negative value is otherwise a classic bug). Wrapping negate: `0 -% x`.
 - Comparisons between `signed` operands compare as signed.
+- `match` does not accept a `signed` scrutinee (patterns cannot express
+  negative numbers yet) — match on `unsigned(x)` and handle the sign
+  separately. Slicing a `signed` value yields raw `bits`.
 
 ### 1.8 Slicing, concatenation, literals
 
@@ -249,6 +252,10 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
 
 - There is **no implicit** widening or truncation anywhere. `extend(x, N)`
   widens; slicing narrows. Both are visible at the call site.
+- `extend(x, N)` requires `N >=` the current width; `trunc(x, N)` requires
+  `N <=` it and keeps the **low** N bits. The same-width call is a no-op and
+  legal — parameterized code like `extend(din, WIDTH)` must survive the
+  `WIDTH = 1` instantiation.
 - An unsized literal adapts to the context width if it fits; otherwise it is a
   compile error (never a silent wrap).
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
@@ -261,8 +268,8 @@ const BAUD: int = 9600                // file or module scope
 const FAST: bool = true
 
 module Uart {
-  const DIVISOR: int = 50_000_000 / BAUD   // compile-time arithmetic only
-  ...
+  const DIVISOR: int = 5208           // = 50 MHz / 9600, precomputed —
+  ...                                 //   there is no `/`, even at compile time
 }
 ```
 
@@ -302,16 +309,16 @@ hardware. `tick` and `expect` are keywords valid only inside `test`.
 
 ## 3. Operators (universal across flavors)
 
-| Category               | Operators                   | Width rule                                                           |
-| ---------------------- | --------------------------- | -------------------------------------------------------------------- |
-| Lossless arithmetic    | `+` `-` `*`                 | result grows (`+`/`-`: max+1, `*`: sum of widths)                    |
-| Wrapping arithmetic    | `+%` `-%` `*%`              | result = width of operands (must match)                              |
-| Bitwise                | `&` `\|` `^` `~`            | operand widths must match                                            |
-| Shifts                 | `<<` `>>`                   | width preserved; shifted-out bits dropped _explicitly by definition_ |
-| Comparison             | `==` `!=` `<` `<=` `>` `>=` | result is `bit`; non-associative (`a < b < c` is an error)           |
-| Logical (on `bit`)     | `&&` `\|\|` `!`             | `bit` only — see keyword aliases below                               |
-| Reduction              | `&x` `\|x` `^x` (prefix)    | any `bits[N]` → `bit`                                                |
-| Concat / slice / index | `{a, b}` `x[hi:lo]` `x[i]`  | as written                                                           |
+| Category               | Operators                   | Width rule                                                                                                                     |
+| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Lossless arithmetic    | `+` `-` `*`                 | result grows (`+`/`-`: max+1, `*`: sum of widths)                                                                              |
+| Wrapping arithmetic    | `+%` `-%` `*%`              | result = width of operands (must match)                                                                                        |
+| Bitwise                | `&` `\|` `^` `~`            | operand widths must match                                                                                                      |
+| Shifts                 | `<<` `>>`                   | width preserved; amount is a constant or unsigned signal (never `signed`); shifted-out bits dropped _explicitly by definition_ |
+| Comparison             | `==` `!=` `<` `<=` `>` `>=` | result is `bit`; non-associative (`a < b < c` is an error)                                                                     |
+| Logical (on `bit`)     | `&&` `\|\|` `!`             | `bit` only — see keyword aliases below                                                                                         |
+| Reduction              | `&x` `\|x` `^x` (prefix)    | any `bits[N]` → `bit`                                                                                                          |
+| Concat / slice / index | `{a, b}` `x[hi:lo]` `x[i]`  | as written                                                                                                                     |
 
 **Logical-operator aliases (the one G1 exception):** the keyword forms
 `and` / `or` / `not` are exact aliases of `&&` / `||` / `!` and, unlike the
@@ -336,7 +343,7 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 
 | Type             | Meaning                                                                    |
 | ---------------- | -------------------------------------------------------------------------- |
-| `bit`            | single wire, values `0`/`1` (also `true`/`false`)                          |
+| `bit`            | single wire, values `0`/`1` (also `true`/`false`) — identical to `bits[1]` |
 | `bits[N]`        | N-bit unsigned vector                                                      |
 | `signed[N]`      | N-bit two's-complement vector (section 1.7 — never mixes with `bits`)      |
 | `clock`, `reset` | dedicated domain types — never mix with data                               |
@@ -457,6 +464,14 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.2 (2026-06-11):** width-rule clarifications, settled while
+  implementing the checker's width pass: `bit` is identical to `bits[1]`;
+  lossless `+`/`-` accept unequal operand widths (result `max + 1`);
+  `extend`/`trunc` allow the same-width no-op (`extend` never narrows,
+  `trunc` never widens and keeps the LOW bits); shift amounts are
+  constants or unsigned signals; `match` rejects `signed` scrutinees;
+  slicing `signed` yields `bits`. Section 1.9 example corrected (`/` does
+  not exist, even in `const` expressions).
 - **v0.2.1 (2026-06-11):** `include` accepted as an English alias of
   `import` (same token, same semantics; normalized to `import` by tooling).
   `include` is therefore now a keyword, no longer a legal identifier.

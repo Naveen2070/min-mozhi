@@ -1,8 +1,9 @@
 //! The checker — semantic safety passes between parse and emit (Phase 1
-//! work item 4). First slice: project symbol tables + duplicate detection
-//! (`symbols.rs`), const evaluation (`consteval.rs`), name resolution +
-//! module-structure rules (`names.rs`). Width rules, single-driver,
-//! exhaustiveness, and clock ownership land as later slices.
+//! work item 4). Current slices: project symbol tables + duplicate
+//! detection (`symbols.rs`), const evaluation (`consteval.rs`), name
+//! resolution + module-structure rules (`names.rs`), width and type rules
+//! (`widths.rs`). Single-driver, exhaustiveness, and clock ownership land
+//! as later slices.
 //!
 //! Every checker diagnostic carries a stable error code (`E0101`) and the
 //! index of the file it points into, so multi-file errors render against
@@ -14,8 +15,10 @@ mod names;
 mod symbols;
 #[cfg(test)]
 mod tests;
+mod widths;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::ast;
 use crate::diag::Diag;
@@ -29,6 +32,7 @@ pub fn check(files: &[ast::File]) -> Result<(), Vec<Diag>> {
     ck.build_symbols(); // project tables + project-wide duplicates
     ck.eval_consts(); // file-level consts, top to bottom
     ck.resolve_names(); // every name points at a declaration
+    ck.check_widths(); // every expression has the width its context needs
     if ck.diags.is_empty() {
         Ok(())
     } else {
@@ -50,6 +54,10 @@ pub(super) struct Checker<'a> {
     /// Per file: const name -> evaluated value (consts are file-local;
     /// imports do NOT bring consts into scope).
     file_consts: Vec<HashMap<String, i128>>,
+    /// module name -> its name table, built by pass 3 (`names.rs`) and
+    /// reused by pass 4 (`widths.rs`). `Rc` so a pass can hold the scope
+    /// while still reporting through `&mut self`.
+    scopes: HashMap<String, Rc<names::Scope<'a>>>,
     diags: Vec<Diag>,
 }
 
@@ -60,6 +68,7 @@ impl<'a> Checker<'a> {
             modules: HashMap::new(),
             enums: HashMap::new(),
             file_consts: vec![HashMap::new(); files.len()],
+            scopes: HashMap::new(),
             diags: Vec::new(),
         }
     }

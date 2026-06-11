@@ -68,5 +68,6 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-11 (Phase 1 — checker first slice
-landed: names/consts/E-codes; width & driver rules still open)._
+_Last synced with the code: 2026-06-11 (Phase 1 — checker width/type
+slice landed: E0401–E0410 under concrete parameter bindings; driver and
+exhaustiveness rules still open)._

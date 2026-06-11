@@ -66,19 +66,21 @@ are rejected here (module names are project-unique, spec/02 section 1.5).
 ASTs + symbol table → one Verilog-2005 source string, written to the
 output path. Details in [`05-emit-verilog.md`](05-emit-verilog.md).
 
-## Step 4 — Check (`src/checker/`, first slice)
+## Step 4 — Check (`src/checker/`)
 
 Between parse and emit, `checker::check` runs over all loaded files (in
 BOTH `mimz check` and `mimz compile`): project-wide duplicates, name
 resolution (every name points at a declaration — signals, modules,
-enums/variants, instance ports, parameters), const evaluation, and the
-reg-requires-reset rule. Every checker error carries a stable code
-(`E0101`) — catalog and details in [`11-checker.md`](11-checker.md).
+enums/variants, instance ports, parameters), const evaluation, the
+reg-requires-reset rule, and the **width/type pass** (exact widths,
+lossless growth, signed/bits separation, literal fitting — checked
+under concrete parameter bindings). Every checker error carries a
+stable code (`E0101`) — catalog and details in
+[`11-checker.md`](11-checker.md).
 
-Still open (later slices): width rules, single-driver, exhaustiveness,
-clock ownership, `repeat` unrolling. Until those land, **`mimz` can
-still emit Verilog that Verilog tools reject** (e.g. width mismatches) —
-known and tracked in `docs/plan/phase-1-verilog-backend.md`.
+Still open (later slices): single-driver, exhaustiveness, clock
+ownership, `repeat` unrolling — tracked in
+`docs/plan/phase-1-verilog-backend.md`.
 
 ## Error flow
 
