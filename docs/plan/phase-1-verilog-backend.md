@@ -40,15 +40,15 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 ### 4. Semantic checks (the safety rules, `spec/02` section 6)
 
-- [ ] Name resolution + duplicate detection (project-wide, post-import)
-- [ ] Const-folding for widths/params/`const`/`repeat` bounds
-- [ ] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match
+- [x] Name resolution + duplicate detection (project-wide, post-import) — ✅ 2026-06-11, `src/checker/` first slice, stable E-codes E0001–E0109 (catalog: docs/code/11-checker.md)
+- [x] Const-evaluation engine: `const` decls, `repeat` bounds (✅ 2026-06-11, E02xx); width-position folding lands with width checking
+- [ ] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match (E04xx reserved)
 - [ ] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals (spec/02 section 1.7)
-- [ ] Single-driver check; combinational cycle (DAG) check
+- [ ] Single-driver check; combinational cycle (DAG) check (E05xx reserved)
 - [ ] Exhaustiveness: `match` total, wire-`if` has `else`
 - [ ] `=` vs `<-` placement enforcement; clock/reset domain typing incl. per-reg clock ownership
-- [ ] Reg-requires-reset rule (module with regs must declare `reset`)
-- [ ] Teaching error messages via `miette`/`ariadne` (English first)
+- [x] Reg-requires-reset rule (module with regs must declare `reset`) — ✅ 2026-06-11 (E0301)
+- [ ] Teaching error messages: own caret renderer + stable E-codes ✅ (checker); retrofit codes onto lexer/parser errors before the Phase 1.8 catalogs (`miette`/`ariadne` not adopted — custom renderer kept)
 
 ### 5. Verilog emitter (first working version ✅ 2026-06-10; hardening open)
 
@@ -61,7 +61,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 ### 6. Visibility (decision D4)
 
-- [ ] Minimal VS Code syntax highlighting: TextMate grammar for `.mimz` (all keyword flavors)
+- [x] Minimal VS Code syntax highlighting: TextMate grammar for `.mimz` (all keyword flavors) — ✅ 2026-06-11, `editors/vscode/`, kept in lockstep with keywords.toml by `tests/grammar_sync.rs`
 
 ## Milestone
 

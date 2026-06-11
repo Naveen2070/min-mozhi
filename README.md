@@ -65,12 +65,13 @@ Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
 **Phase 1 — compiler under construction (spec v0.2.1).** The front end works:
 `mimz compile` turns `.mimz` files into synthesizable Verilog today — lexer
-(all three keyword flavors), full parser, and a first Verilog emitter, with
-33 passing tests. Every example exists in all four flavor folders
-(`english/`, `tanglish/`, `tamil/`, `mixed/`) and compiles to
-**byte-identical** Verilog from each (CI-asserted). Still to come in
-Phase 1: the safety-checker passes, `repeat` unrolling, and Icarus Verilog
-differential tests. The repo stays private until Phase 1 is done.
+(all three keyword flavors), full parser, the first checker slice (name
+resolution, const evaluation, stable `E0101`-style error codes), and a
+Verilog emitter, with 54 passing tests. Every example exists in all four
+flavor folders (`english/`, `tanglish/`, `tamil/`, `mixed/`) and compiles
+to **byte-identical** Verilog from each (CI-asserted). Still to come in
+Phase 1: the width/driver checker passes, `repeat` unrolling, and Icarus
+Verilog differential tests. The repo stays private until Phase 1 is done.
 
 ## Build, Test, Run
 
@@ -109,6 +110,7 @@ npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jso
 | [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables            |
 | [`spec/04-grammar-engine.md`](spec/04-grammar-engine.md)             | Grammar Engine — natural Tamil word order (Phase 1.8)           |
 | [`examples/`](examples/)                                             | 11 examples × 4 flavor folders: english, tanglish, tamil, mixed |
+| [`editors/vscode/`](editors/vscode/)                                 | VS Code syntax highlighting for `.mimz` (all three flavors)     |
 | [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture    |
 | [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)        |
 | [`docs/architecture.md`](docs/architecture.md)                       | Compiler architecture — pipeline, components, layout            |

@@ -66,16 +66,19 @@ are rejected here (module names are project-unique, spec/02 section 1.5).
 ASTs + symbol table → one Verilog-2005 source string, written to the
 output path. Details in [`05-emit-verilog.md`](05-emit-verilog.md).
 
-## The missing step — the checker (Phase 1 work item 4)
+## Step 4 — Check (`src/checker/`, first slice)
 
-Between parse and emit there will be a **checker**: name resolution,
-const evaluation (which unblocks `repeat` unrolling), width rules,
-single-driver, exhaustiveness, reg-reset, clock ownership. Today those
-guarantees are either enforced syntactically (the parser refuses `=` on
-regs, `reg` without reset, `if`-expressions without `else`) or not yet
-enforced. Until the checker exists, **`mimz` can emit Verilog that
-Verilog tools will still reject** — that is known and tracked in
-`docs/plan/phase-1-verilog-backend.md`.
+Between parse and emit, `checker::check` runs over all loaded files (in
+BOTH `mimz check` and `mimz compile`): project-wide duplicates, name
+resolution (every name points at a declaration — signals, modules,
+enums/variants, instance ports, parameters), const evaluation, and the
+reg-requires-reset rule. Every checker error carries a stable code
+(`E0101`) — catalog and details in [`11-checker.md`](11-checker.md).
+
+Still open (later slices): width rules, single-driver, exhaustiveness,
+clock ownership, `repeat` unrolling. Until those land, **`mimz` can
+still emit Verilog that Verilog tools reject** (e.g. width mismatches) —
+known and tracked in `docs/plan/phase-1-verilog-backend.md`.
 
 ## Error flow
 
@@ -84,6 +87,7 @@ Every stage returns `Result<T, Vec<Diag>>`:
 ```text
 lex      → Err(all lex errors)        — keeps scanning after an error
 parse    → Err(all parse errors)      — recovers at statement boundaries
+check    → Err(all checker errors)    — all passes run, E-coded
 from_files → Err(duplicate modules)
 emit     → Err(all emit errors)       — keeps emitting other modules
 ```

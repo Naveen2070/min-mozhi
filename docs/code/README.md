@@ -33,6 +33,7 @@ is a bug — fix it the same day (RULES R1).
 | [`02-lexer.md`](02-lexer.md)                                     | Tokens, the trilingual keyword table, the newline policy                  |
 | [`03-parser.md`](03-parser.md)                                   | Recursive descent, error recovery, operator precedence                    |
 | [`04-ast.md`](04-ast.md)                                         | The one shared AST and its design rules                                   |
+| [`11-checker.md`](11-checker.md)                                 | The checker passes + the stable error-code catalog                        |
 | [`05-emit-verilog.md`](05-emit-verilog.md)                       | How `.mimz` becomes Verilog text                                          |
 | [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                   |
 | [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow           |
@@ -45,6 +46,7 @@ is a bug — fix it the same day (RULES R1).
  .mimz file ──read_source (NFC)──▶ source text
  source text ──lexer::lex──▶ Vec<Token>          (all 3 keyword flavors)
  Vec<Token> ──parser::parse──▶ ast::File         (one shared AST)
+ [ast::File] ──checker::check──▶ names/consts/rules verified (E-codes)
  [ast::File] ──Project::from_files──▶ symbol table (modules + enums by name)
  symbol table + ASTs ──emit_verilog::emit──▶ Verilog-2005 text
 ```
@@ -66,4 +68,5 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-11 (Phase 1 — checker not yet built)._
+_Last synced with the code: 2026-06-11 (Phase 1 — checker first slice
+landed: names/consts/E-codes; width & driver rules still open)._

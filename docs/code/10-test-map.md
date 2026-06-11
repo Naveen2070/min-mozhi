@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**33 tests** as of 2026-06-11: 22 unit + 7 integration + 4 docs-sync.
+**54 tests** as of 2026-06-11: 40 unit + 7 integration + 4 docs-sync + 3 grammar-sync.
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -50,6 +50,20 @@ The four error-path tests assert on message/help **substrings** —
 deliberately loose so wording can be polished without breaking tests,
 tight enough that the teaching content can't silently vanish.
 
+## Unit: checker (`src/checker/tests.rs`, 18 tests)
+
+One test per error code plus clean-pass cases — the codes are the
+stable contract, so each test asserts the CODE and a message substring
+(loose on wording). The full catalog with meanings lives in
+[`11-checker.md`](11-checker.md); the test names map one-to-one
+(`unknown_name_is_e0101_with_teaching_help`, `reg_without_reset_declaration_is_e0301`, …).
+Two deserve a note:
+
+| Test                                                                  | Locks in                                                                 |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `clean_module_passes` / `const_arithmetic_and_repeat_bounds_evaluate` | clean code produces ZERO diagnostics — the checker must never cry wolf   |
+| `duplicate_module_across_files_is_e0001_in_the_right_file`            | checker diagnostics carry the file index (multi-file rendering contract) |
+
 ## Unit: emitter (`src/emit_verilog/mod.rs`, 1 test)
 
 | Test                         | Locks in                                                                                                                                   |
@@ -63,15 +77,15 @@ tight enough that the teaching content can't silently vanish.
 only keywords differ; `lib/` subfolders hold dotted-import targets). The
 base-example list lives in the `BASE_EXAMPLES` const in the test file.
 
-| Test                                            | Locks in                                                                                                                                  |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_example_checks_clean`                    | every `.mimz` under `examples/` (recursive) passes `mimz check`, and there are at least 4 × 11 of them — RULES R6 made executable         |
-| `every_example_compiles`                        | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                  |
-| `all_four_flavors_compile_to_identical_verilog` | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                |
-| `counter_compiles_to_verilog`                   | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                          |
-| `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                               |
-| `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`) |
-| `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                       |
+| Test                                            | Locks in                                                                                                                                                                                                                                         |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `every_example_checks_clean`                    | every `.mimz` under `examples/` (recursive) passes `mimz check` — which now runs the CHECKER over the file and its imports, so this is also a zero-false-positives test for every checker rule. At least 4 × 11 files — RULES R6 made executable |
+| `every_example_compiles`                        | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                                                                                                                         |
+| `all_four_flavors_compile_to_identical_verilog` | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                                                                                                                       |
+| `counter_compiles_to_verilog`                   | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                 |
+| `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                      |
+| `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                        |
+| `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                              |
 
 ## Docs-sync (`tests/docs_sync.rs`, 4 tests)
 
@@ -85,6 +99,16 @@ structural facts the docs state, so doc drift fails CI. When one fails,
 | `module_pages_list_every_source_file`               | each module page's file-layout table lists every `.rs` file actually in that `src/` directory        |
 | `every_module_is_documented_somewhere_in_docs_code` | a new pipeline stage (e.g. `src/checker/`) cannot land without a docs mention                        |
 | `code_docs_have_a_sync_stamp`                       | the "Last synced" tripwire line survives                                                             |
+
+## Grammar-sync (`tests/grammar_sync.rs`, 3 tests)
+
+Same philosophy as docs-sync, for the VS Code extension: the keyword
+table is data, so the TextMate grammar can silently drift. These verify
+every spelling (canonical + aliases) and every reserved word appears as
+a whole alternation member in `editors/vscode/syntaxes/mimz.tmLanguage.json`
+(whole-member matching, because `in` is a substring of `include` — a
+plain `contains` would pass vacuously), and that the manifest registers
+`.mimz` with the matching scope name. When one fails: fix the grammar.
 
 ## Deliberately NOT covered (and what would close each gap)
 

@@ -49,23 +49,24 @@
 
 ## 2. Components
 
-Built ✅ as of 2026-06-10: keyword table, lexer, parser (code-order), AST,
-Verilog emitter v1, CLI (`check`, `compile`). Everything else: planned.
+Built ✅ as of 2026-06-11: keyword table, lexer, parser (code-order), AST,
+checker (first slice: names/consts/E-codes), Verilog emitter v1, CLI
+(`check`, `compile`). Everything else: planned.
 
-| Component           | Phase   | Key design points                                                                                                                                                  |
-| ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **CLI** (`mimz`)    | 1       | `clap`; subcommands: `compile`, `check`, `sim`, `test`, `translate`, `fmt`, `build`                                                                                |
-| **Keyword table**   | 1       | `keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                    |
-| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                  |
-| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile |
-| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                   |
-| **Checker**         | 1       | The seven safety rules (spec/02 section 6); each rule = its own pass with its own tests; errors via `miette`/`ariadne`                                             |
-| **Diagnostics**     | 1 / 1.8 | Human-authored message catalogs per language; Phase 1.8 adds the morphology helper (Tamil case suffixes on interpolated names)                                     |
-| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                    |
-| **Simulator**       | 1.5     | Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; VCD out                                          |
-| **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                      |
-| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                            |
-| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                      |
+| Component           | Phase   | Key design points                                                                                                                                                       |
+| ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CLI** (`mimz`)    | 1       | `clap`; subcommands: `compile`, `check`, `sim`, `test`, `translate`, `fmt`, `build`                                                                                     |
+| **Keyword table**   | 1       | `keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                         |
+| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                       |
+| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile      |
+| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                        |
+| **Checker**         | 1       | The seven safety rules (spec/02 section 6); each rule = its own pass with its own tests; stable E-codes. First slice ✅ (names, consts, reg-reset); widths/drivers open |
+| **Diagnostics**     | 1 / 1.8 | Human-authored message catalogs per language; Phase 1.8 adds the morphology helper (Tamil case suffixes on interpolated names)                                          |
+| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                         |
+| **Simulator**       | 1.5     | Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; VCD out                                               |
+| **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                           |
+| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                                 |
+| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                           |
 
 ## 3. Code Layout (Rust)
 
@@ -99,7 +100,12 @@ mimz/
       mod.rs             #   Project symtab, entry, helpers
       module.rs          #   shells, instances, always-blocks
       expr.rs            #   expression rendering
-    check/               # (next) one module per safety rule
+    checker/             # safety passes, stable E-codes        ✅ first slice
+      mod.rs             #   entry, Checker state, err plumbing
+      symbols.rs         #   project tables + duplicates
+      consteval.rs       #   compile-time evaluation
+      names.rs           #   name resolution + structure rules
+      tests.rs           #   unit tests (one per E-code)
     sim/                 # (P1.5) elaborate, kernel, vcd
     ir/                  # (P2)
   tests/

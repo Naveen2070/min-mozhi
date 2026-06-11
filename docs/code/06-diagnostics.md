@@ -56,10 +56,11 @@ Patterns in code:
 ## Known limitations / planned evolution
 
 - **English only** today. Tanglish/Tamil error catalogs land with Phase
-  1.8. The flagged prerequisite (architecture section 5, do it EARLY):
-  give every error a **stable code** (`E0001`, …) _before_ the catalog
-  grows past ~30 messages, so translations key off codes, not English
-  strings. When the checker adds its errors, start this.
+  1.8. Stable codes EXIST now (2026-06-11): `Diag.code` renders as
+  `error[E0101]: ...`; every CHECKER error carries one (catalog in
+  [`11-checker.md`](11-checker.md)). Lexer/parser errors still need the
+  retrofit — do it before the Phase 1.8 catalogs, so translations key
+  off codes, not English strings.
 - Caret rendering clamps to a single line; multi-line spans underline
   only the first line. Fine for current errors.
 - One span per diagnostic — no secondary labels ("first driver was
@@ -74,13 +75,15 @@ A span is a byte range with no file identity, so `Diag` carries
 - **Single-file passes** (lexer, parser) leave it `None`; the caller
   already knows which file it is processing and renders with
   `diag::render` directly.
-- **Project-wide passes** (`Project::from_files`, the emitter) MUST set
-  it — `from_files` stamps the file it is iterating, and the `Emitter`
-  stamps `cur_file` automatically inside `err()`. The CLI renders these
-  via `project::render_diags`, which picks each diagnostic's own source
-  file (entry file as the fallback).
+- **Project-wide passes** (the checker, `Project::from_files`, the
+  emitter) MUST set it — `Checker::err()` takes the file index as a
+  required argument, `from_files` stamps the file it is iterating, and
+  the `Emitter` stamps `cur_file` automatically inside `err()`. The CLI
+  renders these via `project::render_diags`, which picks each
+  diagnostic's own source file (entry file as the fallback).
 
 Regression-guarded by `diags_carry_the_file_index`
-(`src/emit_verilog/mod.rs`). If you write a new project-wide pass (the
-checker will be one): stamp the file index on every diagnostic, and
-render through `render_diags`.
+(`src/emit_verilog/mod.rs`) and
+`duplicate_module_across_files_is_e0001_in_the_right_file`
+(`src/checker/tests.rs`). If you write a new project-wide pass: stamp
+the file index on every diagnostic, and render through `render_diags`.
