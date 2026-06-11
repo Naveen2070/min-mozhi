@@ -1,0 +1,126 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Min-Mozhi",
+  "scopeName": "source.mimz",
+  "comment": "All three keyword flavors (English, Tanglish, Tamil) highlight identically — spellings must stay in sync with keywords.toml; tests/grammar_sync.rs enforces it. Custom (?<![\\p{L}\\p{N}_]) boundaries are used instead of \\b so Tamil-script keywords match correctly.",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#module-declaration" },
+    { "include": "#enum-declaration" },
+    { "include": "#keywords-declaration" },
+    { "include": "#keywords-control" },
+    { "include": "#keywords-constant" },
+    { "include": "#keywords-logical-words" },
+    { "include": "#reserved-words" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#numbers" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.mimz", "match": "//.*$" },
+        { "name": "comment.block.mimz", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.mimz",
+      "begin": "\"",
+      "end": "\""
+    },
+    "module-declaration": {
+      "comment": "module / thoguthi / தொகுதி followed by the module name",
+      "match": "(?<![\\p{L}\\p{N}_])(module|thoguthi|தொகுதி)(?![\\p{L}\\p{N}_])\\s+([\\p{L}_][\\p{L}\\p{N}_]*)",
+      "captures": {
+        "1": { "name": "storage.type.module.mimz" },
+        "2": { "name": "entity.name.type.module.mimz" }
+      }
+    },
+    "enum-declaration": {
+      "comment": "enum / vagai / வகை followed by the enum name",
+      "match": "(?<![\\p{L}\\p{N}_])(enum|vagai|வகை)(?![\\p{L}\\p{N}_])\\s+([\\p{L}_][\\p{L}\\p{N}_]*)",
+      "captures": {
+        "1": { "name": "storage.type.enum.mimz" },
+        "2": { "name": "entity.name.type.enum.mimz" }
+      }
+    },
+    "keywords-declaration": {
+      "comment": "declaration keywords, all flavors (incl. the `include` alias of import)",
+      "name": "storage.type.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(module|thoguthi|தொகுதி|in|ulle|உள்|out|veli|வெளி|wire|kambi|கம்பி|reg|nilai|நிலை|clock|kadigaram|கடிகாரம்|reset|meetamai|மீட்டமை|enum|vagai|வகை|let|vai|வை|const|maara|மாறா|import|include|serkka|சேர்க்க|test|sodhanai|சோதனை|for|kaaga|க்காக|tick|thattu|தட்டு|expect|ethirpaar|எதிர்பார்)(?![\\p{L}\\p{N}_])"
+    },
+    "keywords-control": {
+      "comment": "control-flow keywords, all flavors",
+      "name": "keyword.control.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(if|endral|என்றால்|else|illaiyel|இல்லையேல்|match|poruthu|பொருத்து|on|pothu|போது|rise|yetram|ஏற்றம்|repeat|meendum|மீண்டும்)(?![\\p{L}\\p{N}_])"
+    },
+    "keywords-constant": {
+      "name": "constant.language.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(true|unmai|உண்மை|false|poi|பொய்)(?![\\p{L}\\p{N}_])"
+    },
+    "keywords-logical-words": {
+      "comment": "word aliases of && || ! (G1-x)",
+      "name": "keyword.operator.logical.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(and|mattrum|மற்றும்|or|alladhu|அல்லது|not|illa|இல்லா)(?![\\p{L}\\p{N}_])"
+    },
+    "reserved-words": {
+      "comment": "reserved for future features — using them is a compile error",
+      "name": "invalid.illegal.reserved.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(fall|syntax|ilakkanam|இலக்கணம்|mem|sync|inout|struct)(?![\\p{L}\\p{N}_])"
+    },
+    "types": {
+      "comment": "universal vocabulary — never translated",
+      "name": "support.type.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(bit|bits|signed|int|bool)(?![\\p{L}\\p{N}_])"
+    },
+    "builtins": {
+      "comment": "the complete builtin list; only callables in the language",
+      "name": "support.function.builtin.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(extend|trunc|signed|unsigned)(?=\\()"
+    },
+    "numbers": {
+      "name": "constant.numeric.mimz",
+      "match": "(?<![\\p{L}\\p{N}_])(0[bB][01_]+|0[xX][0-9a-fA-F_]+|[0-9][0-9_]*)(?![\\p{L}\\p{N}_])"
+    },
+    "operators": {
+      "patterns": [
+        {
+          "comment": "wrapping arithmetic — the visible-overflow operators",
+          "name": "keyword.operator.arithmetic.wrapping.mimz",
+          "match": "\\+%|-%|\\*%"
+        },
+        {
+          "comment": "register assignment",
+          "name": "keyword.operator.assignment.reg.mimz",
+          "match": "<-"
+        },
+        {
+          "name": "keyword.operator.arrow.mimz",
+          "match": "=>"
+        },
+        {
+          "name": "keyword.operator.comparison.mimz",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.mimz",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.bitwise.mimz",
+          "match": "<<|>>|&|\\||\\^|~"
+        },
+        {
+          "name": "keyword.operator.arithmetic.mimz",
+          "match": "\\+|-|\\*"
+        },
+        {
+          "name": "keyword.operator.assignment.mimz",
+          "match": "="
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "mimz",
+  "displayName": "Min-Mozhi (மின்மொழி)",
+  "description": "Syntax highlighting for Min-Mozhi .mimz files — English, Tanglish, and Tamil keyword flavors over one grammar.",
+  "version": "0.1.0",
+  "publisher": "min-mozhi",
+  "license": "MIT OR Apache-2.0",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "mimz",
+        "aliases": ["Min-Mozhi", "mimz"],
+        "extensions": [".mimz"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mimz",
+        "scopeName": "source.mimz",
+        "path": "./syntaxes/mimz.tmLanguage.json"
+      }
+    ]
+  }
+}

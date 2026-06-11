@@ -60,6 +60,7 @@ fn module_pages_list_every_source_file() {
         ("lexer", "02-lexer.md"),
         ("parser", "03-parser.md"),
         ("ast", "04-ast.md"),
+        ("checker", "11-checker.md"),
         ("emit_verilog", "05-emit-verilog.md"),
     ];
     for (dir, page) in pages {
