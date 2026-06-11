@@ -1,0 +1,30 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): ALU showing match-as-expression and module composition
+// across files — `import adder` brings Adder from adder.mimz into scope.
+
+include adder
+
+thoguthi Alu(WIDTH: int = 8) {
+  உள்  a:  bits[WIDTH]
+  in  b:  bits[WIDTH]
+  ulle  op: bits[2]
+  வெளி y:  bits[WIDTH]
+
+  y = match op {
+    0b00 => a +% b
+    0b01 => a -% b
+    0b10 => a & b
+    0b11 => a | b
+  }
+}
+
+thoguthi Top {
+  கடிகாரம் clk
+  reset rst
+
+  ulle  x:     bits[8]
+  உள்  y:     bits[8]
+  out total: bits[9]
+
+  vai add = Adder(WIDTH: 8) { a: x, b: y }
+  total = add.sum
+}

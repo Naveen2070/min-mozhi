@@ -1,0 +1,10 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): combinational adder
+// `+` is lossless: bits[W] + bits[W] -> bits[W+1], so the carry is kept.
+
+தொகுதி Adder(WIDTH: int = 8) {
+  உள்  a: bits[WIDTH]
+  உள்  b: bits[WIDTH]
+  வெளி sum: bits[WIDTH + 1]
+
+  sum = a + b
+}

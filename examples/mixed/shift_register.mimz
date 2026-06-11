@@ -1,0 +1,19 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): parameterized shift register.
+// `<<` shifts in zeros from the right; `|` merges in the new low bit
+// every clock edge.
+
+module ShiftRegister(WIDTH: int = 8) {
+  kadigaram clk
+  மீட்டமை rst
+
+  in  din:  bit
+  veli dout: bits[WIDTH]
+
+  நிலை sr: bits[WIDTH] = 0
+
+  on yetram(clk) {
+    sr <- (sr << 1) | din
+  }
+
+  dout = sr
+}

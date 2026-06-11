@@ -1,0 +1,18 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): free-running counter
+// `reg ... = 0` declares the reset value (mandatory — no uninitialized state).
+// `+%` is wrapping add: same width, wraps on overflow — on purpose, visibly.
+
+module Counter(WIDTH: int = 8) {
+  kadigaram clk
+  மீட்டமை rst
+
+  out count: bits[WIDTH]
+
+  nilai value: bits[WIDTH] = 0
+
+  போது rise(clk) {
+    value <- value +% 1
+  }
+
+  count = value
+}

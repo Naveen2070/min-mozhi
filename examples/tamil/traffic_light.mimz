@@ -1,0 +1,38 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): finite state machine with enum + match.
+// `match` over an enum must cover every variant — no accidental latches,
+// no forgotten states.
+
+தொகுதி TrafficLight {
+  கடிகாரம் clk
+  மீட்டமை rst
+
+  வெளி red:    bit
+  வெளி yellow: bit
+  வெளி green:  bit
+
+  வகை State { Red, Green, Yellow }
+
+  நிலை state: State   = State.Red
+  நிலை timer: bits[8] = 0
+
+  போது ஏற்றம்(clk) {
+    என்றால் timer == 0 {
+      state <- பொருத்து state {
+        State.Red    => State.Green
+        State.Green  => State.Yellow
+        State.Yellow => State.Red
+      }
+      timer <- பொருத்து state {
+        State.Red    => 50
+        State.Green  => 40
+        State.Yellow => 10
+      }
+    } இல்லையேல் {
+      timer <- timer -% 1
+    }
+  }
+
+  red    = state == State.Red
+  yellow = state == State.Yellow
+  green  = state == State.Green
+}

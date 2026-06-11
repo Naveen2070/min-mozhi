@@ -1,0 +1,14 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path) library: one-bit full adder. Imported by
+// chained.mimz via the dotted path `lib.full_adder`.
+
+module FullAdder {
+  ulle  a:    bit
+  உள்  b:    bit
+  in  cin:  bit
+
+  veli sum:  bit
+  வெளி cout: bit
+
+  sum  = a ^ b ^ cin
+  cout = (a & b) | (cin & (a ^ b))
+}

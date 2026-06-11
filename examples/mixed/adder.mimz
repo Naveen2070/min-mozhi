@@ -1,0 +1,10 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): combinational adder
+// `+` is lossless: bits[W] + bits[W] -> bits[W+1], so the carry is kept.
+
+module Adder(WIDTH: int = 8) {
+  ulle  a: bits[WIDTH]
+  உள்  b: bits[WIDTH]
+  out sum: bits[WIDTH + 1]
+
+  sum = a + b
+}

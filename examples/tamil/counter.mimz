@@ -1,0 +1,18 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): free-running counter
+// `reg ... = 0` declares the reset value (mandatory — no uninitialized state).
+// `+%` is wrapping add: same width, wraps on overflow — on purpose, visibly.
+
+தொகுதி Counter(WIDTH: int = 8) {
+  கடிகாரம் clk
+  மீட்டமை rst
+
+  வெளி count: bits[WIDTH]
+
+  நிலை value: bits[WIDTH] = 0
+
+  போது ஏற்றம்(clk) {
+    value <- value +% 1
+  }
+
+  count = value
+}

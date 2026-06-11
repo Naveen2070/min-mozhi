@@ -1,0 +1,19 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): parameterized shift register.
+// `<<` shifts in zeros from the right; `|` merges in the new low bit
+// every clock edge.
+
+தொகுதி ShiftRegister(WIDTH: int = 8) {
+  கடிகாரம் clk
+  மீட்டமை rst
+
+  உள்  din:  bit
+  வெளி dout: bits[WIDTH]
+
+  நிலை sr: bits[WIDTH] = 0
+
+  போது ஏற்றம்(clk) {
+    sr <- (sr << 1) | din
+  }
+
+  dout = sr
+}

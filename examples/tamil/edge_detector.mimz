@@ -1,0 +1,19 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): rising-edge detector — a one-cycle pulse when
+// `din` goes 0 -> 1. A reg remembers last cycle's value; logical ops
+// compare it with the current one.
+
+தொகுதி EdgeDetector {
+  கடிகாரம் clk
+  மீட்டமை rst
+
+  உள்  din:   bit
+  வெளி pulse: bit
+
+  நிலை prev: bit = 0
+
+  போது ஏற்றம்(clk) {
+    prev <- din
+  }
+
+  pulse = din && !prev
+}

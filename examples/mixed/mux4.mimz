@@ -1,0 +1,19 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): 4-way multiplexer.
+// `match` on the select must cover every case — a missing arm is a
+// compile error, so no inferred latches.
+
+module Mux4(WIDTH: int = 8) {
+  ulle  sel: bits[2]
+  உள்  a: bits[WIDTH]
+  in  b: bits[WIDTH]
+  ulle  c: bits[WIDTH]
+  உள்  d: bits[WIDTH]
+  out y: bits[WIDTH]
+
+  y = poruthu sel {
+    0b00 => a
+    0b01 => b
+    0b10 => c
+    0b11 => d
+  }
+}
