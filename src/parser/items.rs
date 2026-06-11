@@ -59,9 +59,13 @@ impl Parser {
         File { imports, items }
     }
 
-    /// `importDecl = "import" ident { "." ident }`
+    /// `importDecl = ( "import" | "include" ) ident { "." ident }`
+    ///
+    /// `include` is an English alias of `import` (keywords.toml) — both lex
+    /// to the same `Kw::Import` token, so this routine never sees the
+    /// difference.
     fn import_decl(&mut self) -> Option<Import> {
-        let start = self.bump().span; // import
+        let start = self.bump().span; // import / include
         let mut path = vec![self.ident("a file name to import")?];
         while self.eat(&TokKind::Dot) {
             path.push(self.ident("a path segment after `.`")?);

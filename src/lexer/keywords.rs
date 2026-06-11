@@ -21,13 +21,24 @@ struct TableFile {
     reserved: Vec<String>,
 }
 
-/// The three spellings of one keyword. Spellings must be disjoint across
-/// the whole table — enforced at startup.
+/// The three canonical spellings of one keyword, plus optional per-column
+/// alias lists (e.g. `include` as an English alias of `import`). All
+/// spellings — canonical and alias — must be disjoint across the whole
+/// table; enforced at startup. Aliases lex to the same token as their
+/// column's canonical spelling, so nothing after the lexer can tell them
+/// apart; future tooling (`mimz translate`, `mimz fmt`) normalizes aliases
+/// to the canonical spelling.
 #[derive(Deserialize)]
 struct Spellings {
     en: String,
     tanglish: String,
     tamil: String,
+    #[serde(default)]
+    en_aliases: Vec<String>,
+    #[serde(default)]
+    tanglish_aliases: Vec<String>,
+    #[serde(default)]
+    tamil_aliases: Vec<String>,
 }
 
 /// The loaded trilingual keyword table. The lexer queries this for every
@@ -63,17 +74,29 @@ pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
     for (key, s) in &file.keywords {
         let kw = kw_for_key(key)
             .unwrap_or_else(|| panic!("keywords.toml has unknown keyword key `{key}`"));
-        for (spelling, flavor) in [
-            (&s.en, Flavor::English),
-            (&s.tanglish, Flavor::Tanglish),
-            (&s.tamil, Flavor::Tamil),
-        ] {
-            let prev = map.insert(spelling.clone(), (kw, flavor));
-            assert!(
-                prev.is_none(),
-                "keywords.toml: spelling `{spelling}` appears in two columns — columns must be disjoint"
-            );
-        }
+        let mut column = |spellings: Vec<&String>, flavor: Flavor| {
+            for spelling in spellings {
+                let prev = map.insert(spelling.clone(), (kw, flavor));
+                assert!(
+                    prev.is_none(),
+                    "keywords.toml: spelling `{spelling}` appears twice — all spellings (canonical + aliases) must be disjoint"
+                );
+            }
+        };
+        column(
+            std::iter::once(&s.en).chain(&s.en_aliases).collect(),
+            Flavor::English,
+        );
+        column(
+            std::iter::once(&s.tanglish)
+                .chain(&s.tanglish_aliases)
+                .collect(),
+            Flavor::Tanglish,
+        );
+        column(
+            std::iter::once(&s.tamil).chain(&s.tamil_aliases).collect(),
+            Flavor::Tamil,
+        );
     }
     KeywordTable {
         map,
@@ -131,6 +154,16 @@ mod tests {
         assert_eq!(TABLE.lookup("reg").unwrap().1, Flavor::English);
         assert_eq!(TABLE.lookup("nilai").unwrap().1, Flavor::Tanglish);
         assert_eq!(TABLE.lookup("நிலை").unwrap().1, Flavor::Tamil);
+    }
+
+    #[test]
+    fn include_is_an_alias_for_import() {
+        assert_eq!(
+            TABLE.lookup("include"),
+            Some((Kw::Import, Flavor::English)),
+            "`include` must lex to the exact same token as `import`"
+        );
+        assert_eq!(TABLE.lookup("import"), Some((Kw::Import, Flavor::English)));
     }
 
     #[test]

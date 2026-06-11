@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.1.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -165,6 +165,9 @@ module Top {
 
 - `import name` loads `name.mimz`, resolved **relative to the importing
   file's directory** (sub-paths via `import lib.adder` → `lib/adder.mimz`).
+- `include` is an accepted English alias of `import` — both lex to the same
+  token, identical semantics. Tooling (`mimz translate`, `mimz fmt`)
+  normalizes it to the canonical `import`.
 - All modules and enums of the imported file come into scope. Module names
   must be **unique across the whole project** — a duplicate is a compile
   error (no shadowing, no aliasing in v0.2).
@@ -341,7 +344,7 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 file        = { topItem } ;
 topItem     = importDecl | constDecl | moduleDecl | enumDecl | testDecl ;
 
-importDecl  = "import" IDENT { "." IDENT } NEWLINE ;
+importDecl  = ( "import" | "include" ) IDENT { "." IDENT } NEWLINE ;
 constDecl   = "const" IDENT ":" ( "int" | "bool" ) "=" constExpr NEWLINE ;
 
 moduleDecl  = "module" IDENT [ "(" [ paramList ] ")" ] "{" { moduleItem } "}" ;
@@ -449,6 +452,9 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.1 (2026-06-11):** `include` accepted as an English alias of
+  `import` (same token, same semantics; normalized to `import` by tooling).
+  `include` is therefore now a keyword, no longer a legal identifier.
 - **v0.2 (2026-06-10):** `.mimz`/`mimz` naming. Rust-style precedence
   (bitwise > comparison; comparisons non-associative). Logical ops: `&&`/`||`/`!`
   - translated keyword aliases (G1-x). Added `const` declarations, `repeat`

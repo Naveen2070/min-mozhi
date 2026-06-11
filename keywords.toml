@@ -1,5 +1,8 @@
 # Min-Mozhi trilingual keyword table — THE source of truth for keyword words.
-# spec/03-keywords-trilingual.md. One canonical spelling per column (no aliases).
+# spec/03-keywords-trilingual.md. One CANONICAL spelling per column; a column
+# may also carry extra accepted spellings in an optional `<column>_aliases`
+# list (e.g. `en_aliases`). Aliases lex to the same token; future tooling
+# (`mimz translate`, `mimz fmt`) normalizes them to the canonical spelling.
 #
 # Status: Tanglish/Tamil columns are DRAFT pending native-speaker review.
 # Changing a word here is a data change — no compiler code is touched.
@@ -92,6 +95,7 @@ tamil = "மீண்டும்"
 
 [keywords.import]
 en = "import"
+en_aliases = ["include"]
 tanglish = "serkka"
 tamil = "சேர்க்க"
 
