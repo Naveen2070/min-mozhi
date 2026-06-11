@@ -24,6 +24,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+
       - name: Format check
         run: cargo fmt --all --check
 
@@ -31,7 +34,11 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Tests
+        # REQUIRE_IVERILOG turns a missing Icarus install into a hard
+        # failure — CI must never silently skip the differential tests.
         run: cargo test --all-targets
+        env:
+          REQUIRE_IVERILOG: "1"
 
       - name: Build
         run: cargo build

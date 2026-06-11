@@ -72,15 +72,16 @@ Between parse and emit, `checker::check` runs over all loaded files (in
 BOTH `mimz check` and `mimz compile`): project-wide duplicates, name
 resolution (every name points at a declaration — signals, modules,
 enums/variants, instance ports, parameters), const evaluation, the
-reg-requires-reset rule, and the **width/type pass** (exact widths,
+reg-requires-reset rule, the **width/type pass** (exact widths,
 lossless growth, signed/bits separation, literal fitting — checked
-under concrete parameter bindings). Every checker error carries a
-stable code (`E0101`) — catalog and details in
-[`11-checker.md`](11-checker.md).
+under concrete parameter bindings), and the **driver pass**
+(single-driver per signal/bit, output coverage, reg-per-`on`-block,
+combinational-cycle DAG incl. through-instance paths, `=` vs `<-`).
+Every checker error carries a stable code (`E0101`) — catalog and
+details in [`11-checker.md`](11-checker.md).
 
-Still open (later slices): single-driver, exhaustiveness, clock
-ownership, `repeat` unrolling — tracked in
-`docs/plan/phase-1-verilog-backend.md`.
+Still open (later slices): exhaustiveness, clock ownership, `repeat`
+unrolling — tracked in `docs/plan/phase-1-verilog-backend.md`.
 
 ## Error flow
 

@@ -1,28 +1,30 @@
 # 11 — The Checker (`src/checker/`)
 
-The semantic safety stage, between parse and emit. **First slice landed
-2026-06-11** (symbol tables + duplicates, name resolution, const
-evaluation, reg-requires-reset); the **width/type slice landed the same
-day** (E04xx — the exact-widths promise, signed/bits separation,
-literal fitting). Single-driver, exhaustiveness, and clock ownership
-are later slices; the "deferred" table below is the honest status.
+The semantic safety stage, between parse and emit. **Landed 2026-06-11
+in three slices**: symbols/names/consts/reg-reset (E00xx–E03xx), the
+width/type pass (E04xx — the exact-widths promise, signed/bits
+separation, literal fitting), and the driver pass (E05xx —
+single-driver, output coverage, combinational-cycle DAG, `=` vs `<-`).
+Exhaustiveness and clock ownership are later slices; the "deferred"
+table below is the honest status.
 
 ## File layout
 
-| File           | Owns                                                           |
-| -------------- | -------------------------------------------------------------- |
-| `mod.rs`       | `check()` entry, the `Checker` state, the `err()` plumbing     |
-| `symbols.rs`   | Pass 1 — project-wide tables (modules, enums) + E0001/E0002    |
-| `consteval.rs` | Pass 2 — file consts + the `eval()` engine for const positions |
-| `names.rs`     | Pass 3 — module scopes, name resolution, structure rules       |
-| `widths.rs`    | Pass 4 — width/type rules under concrete parameter bindings    |
-| `tests.rs`     | Unit tests — one per error code, plus clean-pass cases         |
+| File           | Owns                                                            |
+| -------------- | --------------------------------------------------------------- |
+| `mod.rs`       | `check()` entry, the `Checker` state, the `err()` plumbing      |
+| `symbols.rs`   | Pass 1 — project-wide tables (modules, enums) + E0001/E0002     |
+| `consteval.rs` | Pass 2 — file consts + the `eval()` engine for const positions  |
+| `names.rs`     | Pass 3 — module scopes, name resolution, structure rules        |
+| `widths.rs`    | Pass 4 — width/type rules under concrete parameter bindings     |
+| `drivers.rs`   | Pass 5 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-` |
+| `tests.rs`     | Unit tests — one per error code, plus clean-pass cases          |
 
 Same module pattern as the parser (03): `mod.rs` owns the struct and the
 diagnostic plumbing; each pass is an `impl` block in its own file behind
 `pub(super)`. Pass 3 stores each module's scope on the `Checker`
-(`scopes`), and pass 4 resolves against those same tables instead of
-rebuilding them.
+(`scopes`), and passes 4 and 5 resolve against those same tables instead
+of rebuilding them.
 
 ## The contract
 
@@ -72,39 +74,64 @@ Codes are a **stable contract**: tests assert on them, and future docs/
 translations key off them. Never renumber; retire codes by leaving a
 tombstone row here.
 
-| Code  | Meaning                                                         | Typical fix the help teaches                             |
-| ----- | --------------------------------------------------------------- | -------------------------------------------------------- |
-| E0001 | duplicate module name (project-wide)                            | rename — module names are project-unique                 |
-| E0002 | duplicate file-level enum name (project-wide)                   | rename — enums travel with `import`                      |
-| E0003 | name declared twice inside one module                           | rename; the message says what holds the name             |
-| E0004 | duplicate file-level `const`                                    | rename within the file                                   |
-| E0101 | unknown name in an expression                                   | check spelling / declare it                              |
-| E0102 | unknown module (instantiation or test header)                   | check spelling / add the missing `import`                |
-| E0103 | unknown enum, variant, or named type                            | lists the enum's real variants                           |
-| E0104 | reading a non-output of an instance (`inst.x`)                  | lists the module's outputs; inputs connect at `let`      |
-| E0105 | `.field` on something that has no fields                        | `.` is for `Enum.Variant` / `inst.output` only           |
-| E0106 | unknown parameter in instantiation or test header               | lists the module's parameters                            |
-| E0107 | bad connection port (unknown, or an output)                     | outputs are read with `.`, not connected                 |
-| E0108 | assigning to a non-signal (input, const, clock, …)              | only out ports, wires, regs are assignable               |
-| E0109 | `on rise(x)` where `x` is not a clock                           | declare `clock clk`                                      |
-| E0201 | expression is not a compile-time constant                       | what IS allowed in const positions                       |
-| E0202 | constant evaluation overflow (i128 range)                       | —                                                        |
-| E0301 | module has regs but no `reset` declaration                      | add `reset rst`                                          |
-| E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)   | `extend`/`trunc`/slice; `+` into same width teaches `+%` |
-| E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)     | `extend` the narrow side                                 |
-| E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data | the visible casts `signed()`/`unsigned()`                |
-| E0404 | logical op / condition on a non-`bit`                           | compare (`x != 0`) or reduce (`\|x`)                     |
-| E0405 | compile-time value does not fit, or has no width to adopt       | the value, the width, and the max that fits              |
-| E0406 | index/slice out of range, reversed bounds, base not indexable   | indices `0..=N-1`; slices `[hi:lo]` msb first            |
-| E0407 | builtin/unary misuse (`extend` narrowing, `-` on bits, …)       | what the builtin is FOR; `0 -% x` for wrap-negate        |
-| E0408 | `if`/`match` arms disagree on type/width                        | every arm becomes the same wire                          |
-| E0409 | pattern errors (match on signed, wrong enum, too-wide value)    | what the scrutinee's type admits                         |
-| E0410 | width expression invalid (zero, negative, absurd)               | hardware needs at least one bit                          |
+| Code  | Meaning                                                                 | Typical fix the help teaches                                    |
+| ----- | ----------------------------------------------------------------------- | --------------------------------------------------------------- |
+| E0001 | duplicate module name (project-wide)                                    | rename — module names are project-unique                        |
+| E0002 | duplicate file-level enum name (project-wide)                           | rename — enums travel with `import`                             |
+| E0003 | name declared twice inside one module                                   | rename; the message says what holds the name                    |
+| E0004 | duplicate file-level `const`                                            | rename within the file                                          |
+| E0101 | unknown name in an expression                                           | check spelling / declare it                                     |
+| E0102 | unknown module (instantiation or test header)                           | check spelling / add the missing `import`                       |
+| E0103 | unknown enum, variant, or named type                                    | lists the enum's real variants                                  |
+| E0104 | reading a non-output of an instance (`inst.x`)                          | lists the module's outputs; inputs connect at `let`             |
+| E0105 | `.field` on something that has no fields                                | `.` is for `Enum.Variant` / `inst.output` only                  |
+| E0106 | unknown parameter in instantiation or test header                       | lists the module's parameters                                   |
+| E0107 | bad connection port (unknown, or an output)                             | outputs are read with `.`, not connected                        |
+| E0108 | assigning to a non-signal (input, const, clock, …)                      | only out ports, wires, regs are assignable                      |
+| E0109 | `on rise(x)` where `x` is not a clock                                   | declare `clock clk`                                             |
+| E0201 | expression is not a compile-time constant                               | what IS allowed in const positions                              |
+| E0202 | constant evaluation overflow (i128 range)                               | —                                                               |
+| E0301 | module has regs but no `reset` declaration                              | add `reset rst`                                                 |
+| E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)           | `extend`/`trunc`/slice; `+` into same width teaches `+%`        |
+| E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)             | `extend` the narrow side                                        |
+| E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data         | the visible casts `signed()`/`unsigned()`                       |
+| E0404 | logical op / condition on a non-`bit`                                   | compare (`x != 0`) or reduce (`\|x`)                            |
+| E0405 | compile-time value does not fit, or has no width to adopt               | the value, the width, and the max that fits                     |
+| E0406 | index/slice out of range, reversed bounds, base not indexable           | indices `0..=N-1`; slices `[hi:lo]` msb first                   |
+| E0407 | builtin/unary misuse (`extend` narrowing, `-` on bits, …)               | what the builtin is FOR; `0 -% x` for wrap-negate               |
+| E0408 | `if`/`match` arms disagree on type/width                                | every arm becomes the same wire                                 |
+| E0409 | pattern errors (match on signed, wrong enum, too-wide value)            | what the scrutinee's type admits                                |
+| E0410 | width expression invalid (zero, negative, absurd)                       | hardware needs at least one bit                                 |
+| E0501 | more than one driver (2nd drive, drive-to-wire, overlapping bit ranges) | one `=` per signal; `if`/`match` exprs choose; disjoint bits OK |
+| E0502 | output never driven, or driven on only some bits                        | drive it; names the first undriven bit                          |
+| E0503 | reg assigned from zero or several `on` blocks                           | exactly one `on` block owns each reg                            |
+| E0504 | combinational cycle (path shown, incl. through instances)               | every feedback loop passes through a `reg`                      |
+| E0505 | wrong assignment kind: `<-` to wire/out, `=` to reg                     | `<-` = registers in `on`; `=` = combinational                   |
 
 Numbering scheme: E00xx structure/duplicates, E01xx name resolution,
 E02xx const evaluation, E03xx module structure rules, E04xx width/type
-rules. Drivers take E05xx — claim a block when a new pass lands, and add
-the rows in the same commit.
+rules, E05xx drivers/cycles. Claim a block when a new pass lands, and
+add the rows in the same commit.
+
+## How the driver pass works (pass 5)
+
+One analysis per module (driver structure is parameter-independent; the
+default binding supplies constant index values). Each drive records an
+**extent** — the whole signal, a constant bit range, `Dynamic` (runtime
+index — conflicts with everything), or `Unknown` (unevaluable with no
+binding — never conflicts, so no false positives). Disjoint constant
+ranges are legal: `repeat i: 0..8 { led[i] = ... }` is eight drivers for
+eight different bits, and full coverage.
+
+The cycle check builds one combinational graph per module: wires, outs,
+ins, and **per-index instance-output pseudo-nodes** (`fa[0].cout` and
+`fa[1].cout` are different nodes — merging them would call the legal
+ripple-carry chain a loop). `inst.out` depends on whatever the
+connection expressions of the child's relevant inputs read, where
+"relevant" comes from the child's **combinational summary** (out → ins
+reachability over the child's own graph, memoized). Registers break
+paths — sequential assignment creates no edges, which is exactly why a
+reg is the fix the E0504 help teaches.
 
 ## What const-eval accepts (and why the rest errors)
 
@@ -118,18 +145,20 @@ itself to the language's own honesty rule.
 
 ## Deferred to later slices (the honest list)
 
-| Rule                                              | Blocked on / planned with                             |
-| ------------------------------------------------- | ----------------------------------------------------- |
-| Single-driver + combinational-cycle (DAG) check   | next slice — takes E05xx                              |
-| `match` exhaustiveness / wire-`if` analysis       | widths exist now; needs value-set analysis            |
-| Clock ownership (one clock per reg)               | with the multi-clock design (Phase 2 `sync`)          |
-| `repeat` unrolling (elaboration)                  | widths check per-iteration; unrolling is emitter work |
-| Instantiation completeness (all inputs connected) | next slice (names + widths are checked today)         |
-| Instance-array output widths via the `repeat` var | read outside the loop falls back to param defaults    |
-| Defaultless-param module never instantiated       | internals skipped silently (passes 1–3 still ran)     |
-| Test BODY checking (drives/`tick`/`expect`)       | simulator, Phase 1.5                                  |
-| E-codes on lexer/parser errors                    | retrofit pass, Phase 1                                |
-| Did-you-mean suggestions on E0101                 | nice-to-have; needs edit distance                     |
+| Rule                                              | Blocked on / planned with                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------ |
+| `match` exhaustiveness / wire-`if` analysis       | widths exist now; needs value-set analysis                               |
+| Clock ownership (one clock per reg)               | with the multi-clock design (Phase 2 `sync`)                             |
+| `repeat` unrolling (elaboration)                  | widths/drivers check per-iteration; unrolling is emitter work            |
+| Instantiation completeness (all inputs connected) | next slice (names + widths are checked today)                            |
+| Instance-array output widths via the `repeat` var | read outside the loop falls back to param defaults                       |
+| Defaultless-param module never instantiated       | internals skipped silently (passes 1–3 still ran)                        |
+| Driver COVERAGE under non-default bindings        | upgrade path: reuse widths' per-instantiation config set                 |
+| Recursive instantiation                           | comb summary comes back empty (no through-paths seen); no cycle invented |
+| Unevaluable instance-array index in a read        | the comb edge is skipped (under-approximation; elaboration closes it)    |
+| Test BODY checking (drives/`tick`/`expect`)       | simulator, Phase 1.5                                                     |
+| E-codes on lexer/parser errors                    | retrofit pass, Phase 1                                                   |
+| Did-you-mean suggestions on E0101                 | nice-to-have; needs edit distance                                        |
 
 ## How to add a checker rule
 

@@ -50,8 +50,9 @@
 ## 2. Components
 
 Built ✅ as of 2026-06-11: keyword table, lexer, parser (code-order), AST,
-checker (names/consts/E-codes + width/type rules E04xx), Verilog emitter
-v1, CLI (`check`, `compile`). Everything else: planned.
+checker (names/consts/E-codes + width/type rules E04xx + driver/cycle
+rules E05xx), Verilog emitter v1 (validated by Icarus Verilog
+differential tests), CLI (`check`, `compile`). Everything else: planned.
 
 | Component           | Phase   | Key design points                                                                                                                                                       |
 | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -100,12 +101,13 @@ mimz/
       mod.rs             #   Project symtab, entry, helpers
       module.rs          #   shells, instances, always-blocks
       expr.rs            #   expression rendering
-    checker/             # safety passes, stable E-codes        ✅ names+widths
+    checker/             # safety passes, stable E-codes        ✅
       mod.rs             #   entry, Checker state, err plumbing
       symbols.rs         #   project tables + duplicates
       consteval.rs       #   compile-time evaluation
       names.rs           #   name resolution + structure rules
       widths.rs          #   width/type rules (E04xx)
+      drivers.rs         #   single-driver + comb-DAG (E05xx)
       tests.rs           #   unit tests (one per E-code)
     sim/                 # (P1.5) elaborate, kernel, vcd
     ir/                  # (P2)

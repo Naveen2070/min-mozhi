@@ -44,9 +44,9 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 - [x] Const-evaluation engine: `const` decls, `repeat` bounds (✅ 2026-06-11, E02xx); width-position folding lands with width checking
 - [x] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match — ✅ 2026-06-11, `src/checker/widths.rs` (E0401–E0410); concrete-binding strategy (defaults + per-instantiation), literal fitting, connection checking
 - [x] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals — ✅ 2026-06-11 (same pass: E0403/E0405/E0407)
-- [ ] Single-driver check; combinational cycle (DAG) check (E05xx reserved)
+- [x] Single-driver check; combinational cycle (DAG) check — ✅ 2026-06-11, `src/checker/drivers.rs` (E0501–E0505): per-bit drive extents, output coverage, reg-per-on-block, through-instance cycles via comb summaries
 - [ ] Exhaustiveness: `match` total, wire-`if` has `else`
-- [ ] `=` vs `<-` placement enforcement; clock/reset domain typing incl. per-reg clock ownership
+- [ ] `=` vs `<-` placement enforcement (✅ 2026-06-11, E0505) — clock/reset domain typing incl. per-reg clock ownership still open
 - [x] Reg-requires-reset rule (module with regs must declare `reset`) — ✅ 2026-06-11 (E0301)
 - [ ] Teaching error messages: own caret renderer + stable E-codes ✅ (checker); retrofit codes onto lexer/parser errors before the Phase 1.8 catalogs (`miette`/`ariadne` not adopted — custom renderer kept)
 
@@ -57,7 +57,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 - [x] Integration tests: all 44 examples compile (11 base examples × 4 flavor folders: english/tanglish/tamil/mixed); each base example emits **byte-identical** Verilog from all four flavors; FSM localparams verified (2026-06-11)
 - [ ] `repeat` emission (blocked on const-eval); non-ASCII identifier transliteration; width-aware `extend`
 - [ ] Golden-file tests: each example → expected `.v` (string-contains asserts exist; full goldens pending)
-- [ ] Icarus Verilog smoke tests in CI: compile + run a self-checking TB per example (Icarus not installed locally yet)
+- [x] Icarus Verilog differential tests, local + CI — ✅ 2026-06-11, `tests/icarus.rs`: all 44 emitted `.v` pass `iverilog -t null`; one self-checking TB per base example (`tests/icarus/*_tb.v`, 11 files) simulates to PASS under `vvp`. Skips with a note when Icarus is absent; CI installs it and sets `REQUIRE_IVERILOG=1` so it can never silently skip
 
 ### 6. Visibility (decision D4)
 

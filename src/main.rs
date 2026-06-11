@@ -13,7 +13,7 @@
 //! | [`lexer`]       | Source text → tokens (trilingual keyword table)            |
 //! | [`parser`]      | Tokens → AST (recursive descent, multi-error recovery)     |
 //! | [`ast`]         | The one shared AST — flavor- and word-order-blind          |
-//! | [`checker`]     | Names, consts, widths/types; driver rules still landing    |
+//! | [`checker`]     | Names, consts, widths/types, drivers/cycles (E-codes)      |
 //! | [`emit_verilog`]| AST → Verilog-2005 text                                    |
 //! | [`project`]     | File loading, NFC normalization, `import` resolution       |
 //!

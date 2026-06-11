@@ -185,7 +185,7 @@ impl<'a> Checker<'a> {
     /// default or its default does not evaluate; `report` controls
     /// whether that eval failure becomes a diagnostic (true at the seed,
     /// false when re-derived at use sites).
-    fn default_binding(
+    pub(super) fn default_binding(
         &mut self,
         file: usize,
         m: &'a Module,

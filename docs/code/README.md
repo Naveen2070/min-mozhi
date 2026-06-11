@@ -69,5 +69,6 @@ the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
 _Last synced with the code: 2026-06-11 (Phase 1 — checker width/type
-slice landed: E0401–E0410 under concrete parameter bindings; driver and
-exhaustiveness rules still open)._
+slice E0401–E0410 + driver/cycle slice E0501–E0505 landed; Icarus
+differential tests live; exhaustiveness and clock ownership still
+open)._

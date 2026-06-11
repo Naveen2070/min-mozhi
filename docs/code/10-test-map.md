@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**80 tests** as of 2026-06-11 (EOD): 66 unit + 7 integration + 4 docs-sync + 3 grammar-sync.
+**98 tests** as of 2026-06-11 (EOD): 82 unit + 7 integration + 2 Icarus differential + 4 docs-sync + 3 grammar-sync.
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -50,7 +50,7 @@ The four error-path tests assert on message/help **substrings** —
 deliberately loose so wording can be polished without breaking tests,
 tight enough that the teaching content can't silently vanish.
 
-## Unit: checker (`src/checker/tests.rs`, 44 tests)
+## Unit: checker (`src/checker/tests.rs`, 60 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -59,7 +59,11 @@ stable contract, so each test asserts the CODE and a message substring
 (`unknown_name_is_e0101_with_teaching_help`, `assignment_width_mismatch_is_e0401`, …).
 The width slice (E0401–E0410) added 26: error paths for every code
 (several codes get two angles, e.g. `extend`-narrowing AND
-`trunc`-widening for E0407) plus six clean passes. A few deserve a note:
+`trunc`-widening for E0407) plus six clean passes. The driver slice
+(E0501–E0505) added 16: every code's error paths (both halves where a
+code covers two mistakes, e.g. zero AND multiple `on` blocks for E0503)
+plus four clean passes guarding against false positives. A few deserve
+a note:
 
 | Test                                                                  | Locks in                                                                               |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -69,6 +73,10 @@ The width slice (E0401–E0410) added 26: error paths for every code
 | `defaultless_param_module_is_checked_per_instantiation`               | a module with no param defaults is checked under each instantiation's concrete binding |
 | `repeat_index_out_of_range_at_the_last_iteration_is_e0406`            | `repeat` bodies are width-checked per iteration value, not just once                   |
 | `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape — explicit `extend` where widths differ                 |
+| `disjoint_per_bit_drives_via_repeat_pass`                             | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal |
+| `repeat_instance_array_ripple_carry_is_not_a_cycle`                   | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop               |
+| `a_cycle_through_instances_is_e0504`                                  | combinational loops THROUGH child modules are caught via the comb summaries            |
+| `feedback_through_a_register_is_not_a_cycle`                          | a reg breaks the loop — the normal shape of hardware never false-positives             |
 
 ## Unit: emitter (`src/emit_verilog/mod.rs`, 1 test)
 
@@ -92,6 +100,26 @@ base-example list lives in the `BASE_EXAMPLES` const in the test file.
 | `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                      |
 | `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                        |
 | `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                              |
+
+## Icarus differential (`tests/icarus.rs`, 2 tests — run a REAL Verilog tool)
+
+The independent judge: our substring asserts check OUR expectations of
+the output; these check a real tool's. **Skips with a printed note when
+`iverilog` is not installed** (probe order: `MIMZ_IVERILOG` env →
+PATH → the Windows installer default `C:\iverilog\bin`); in CI
+`REQUIRE_IVERILOG=1` makes a missing install a hard failure, so CI can
+never skip silently. Local install: the Windows installer
+(bleyer.org/icarus) or `apt-get install iverilog`.
+
+| Test                                    | Locks in                                                                                                                                                                                                         |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_emitted_verilog_passes_iverilog` | all 44 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment                                                                                                             |
+| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing) and must print PASS under `vvp` — the differential |
+
+House rule for the testbenches: each prints `PASS` exactly once or
+`FAIL: reason` and stops — the Rust side asserts on those markers, so a
+broken TB fails loudly, never silently. The Blinker TB overrides the
+`LIMIT` parameter (`#(.LIMIT(3))`) instead of simulating 50M cycles.
 
 ## Docs-sync (`tests/docs_sync.rs`, 4 tests)
 
@@ -118,15 +146,14 @@ plain `contains` would pass vacuously), and that the manifest registers
 
 ## Deliberately NOT covered (and what would close each gap)
 
-| Gap                                                                               | Why it's open                                                  | Closes when                                                            |
-| --------------------------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Is the emitted Verilog VALID Verilog?**                                         | substring asserts check OUR expectations, not a tool's         | Icarus Verilog differential tests in CI (planned, Phase 1 plan item 5) |
-| Remaining safety rules (single-driver, exhaustiveness, comb-DAG, clock ownership) | later checker slices (names, consts, WIDTHS are covered today) | each checker pass lands WITH its own tests                             |
-| `repeat` emission                                                                 | unsupported (clean error, tested implicitly by none)           | checker const-eval; add an unrolling golden test then                  |
-| Diagnostic rendering format (`render`'s caret layout)                             | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes            |
-| CLI surface (`--tokens`, exit codes, `-o` default path)                           | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows                        |
-| Golden-file (full output) comparison                                              | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)               |
-| `mimz translate`, `fmt`, simulator, grammar engine                                | not built yet                                                  | with their phases                                                      |
+| Gap                                                      | Why it's open                                                  | Closes when                                                 |
+| -------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
+| Remaining safety rules (exhaustiveness, clock ownership) | later checker slices (names/consts/widths/drivers covered)     | each checker pass lands WITH its own tests                  |
+| `repeat` emission                                        | unsupported (clean error, tested implicitly by none)           | checker const-eval; add an unrolling golden test then       |
+| Diagnostic rendering format (`render`'s caret layout)    | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes |
+| CLI surface (`--tokens`, exit codes, `-o` default path)  | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows             |
+| Golden-file (full output) comparison                     | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)    |
+| `mimz translate`, `fmt`, simulator, grammar engine       | not built yet                                                  | with their phases                                           |
 
 ## House rules for new tests
 

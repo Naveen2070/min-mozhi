@@ -2,8 +2,9 @@
 //! work item 4). Current slices: project symbol tables + duplicate
 //! detection (`symbols.rs`), const evaluation (`consteval.rs`), name
 //! resolution + module-structure rules (`names.rs`), width and type rules
-//! (`widths.rs`). Single-driver, exhaustiveness, and clock ownership land
-//! as later slices.
+//! (`widths.rs`), single-driver + combinational-cycle rules
+//! (`drivers.rs`). Exhaustiveness and clock ownership land as later
+//! slices.
 //!
 //! Every checker diagnostic carries a stable error code (`E0101`) and the
 //! index of the file it points into, so multi-file errors render against
@@ -11,6 +12,7 @@
 //! docs/code/11-checker.md — new codes are added there in the same commit.
 
 mod consteval;
+mod drivers;
 mod names;
 mod symbols;
 #[cfg(test)]
@@ -33,6 +35,7 @@ pub fn check(files: &[ast::File]) -> Result<(), Vec<Diag>> {
     ck.eval_consts(); // file-level consts, top to bottom
     ck.resolve_names(); // every name points at a declaration
     ck.check_widths(); // every expression has the width its context needs
+    ck.check_drivers(); // one driver per signal; combinational graph is a DAG
     if ck.diags.is_empty() {
         Ok(())
     } else {
