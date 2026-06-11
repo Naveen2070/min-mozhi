@@ -4,11 +4,12 @@
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [`RULES.md`](RULES.md)                               | **Repo working rules** — how plans, specs, and logs are kept in sync                                     |
 | [`architecture.md`](architecture.md)                 | Compiler architecture — pipeline, components, crate layout                                               |
+| [`prior-art.md`](prior-art.md)                       | Prior art — Veryl/Spade/Amaranth/Chisel design choices mapped to our open decisions                      |
 | [`code/`](code/)                                     | **How the code works** — maintainer docs: pipeline, per-module internals, decisions, contributor recipes |
 | [`plan/`](plan/)                                     | **Detailed per-phase plans** (source of truth for execution)                                             |
 | [`log/`](log/)                                       | **Dev log** — dated, append-only record of decisions and progress                                        |
 | [`archive/`](archive/)                               | Closed working documents (e.g. the answered 2026-06-10 design-review register)                           |
-| [`../spec/`](../spec/)                               | Language specification — **v0.2** (philosophy, grammar, keywords, grammar engine)                        |
+| [`../spec/`](../spec/)                               | Language specification — **v0.2.1** (philosophy, grammar, keywords, grammar engine)                      |
 | [`../examples/`](../examples/)                       | Example `.mimz` programs                                                                                 |
 | [`../min-mozhi-roadmap.md`](../min-mozhi-roadmap.md) | High-level roadmap summary (kept in sync with `plan/`)                                                   |
 

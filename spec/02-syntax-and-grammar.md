@@ -178,6 +178,11 @@ module Top {
 - `let name = Module(params) { port: signal, ... }` connects **inputs** by
   name; outputs are read by dot access (`add.sum`). All inputs must be
   connected; missing or extra connections are compile errors.
+- **`let` binds a hardware instance, not a variable.** Despite the
+  JS-flavored keyword, there is no mutation and no re-binding: each `let`
+  places one physical copy of the module, permanently. (Named
+  combinational values use `wire name: type = expr`; registers use
+  `reg`.) Known JS-instinct hazard — flagged for beginner testing.
 - A child's `clock`/`reset` with the same name as the parent's is connected
   implicitly; different clocks must be wired explicitly.
 

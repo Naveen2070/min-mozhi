@@ -80,34 +80,34 @@ is valid even in an otherwise-English file.
 > friends). English column is frozen for Phase 1. Weakest picks flagged in
 > notes; check against TN SCERT vocabulary before freezing.
 
-| Token         | English  | Tanglish    | Tamil       | Notes / alternatives                                                               |
-| ------------- | -------- | ----------- | ----------- | ---------------------------------------------------------------------------------- |
-| KW_MODULE     | `module` | `thoguthi`  | `தொகுதி`    | standard CS-textbook word for "module"                                             |
-| KW_IN         | `in`     | `ulle`      | `உள்`       | or `ulleedu` (உள்ளீடு, "input") — longer but more precise                          |
-| KW_OUT        | `out`    | `veli`      | `வெளி`      | or `veliyeedu` (வெளியீடு, "output")                                                |
-| KW_WIRE       | `wire`   | `kambi`     | `கம்பி`     | literal "wire" — strong pick                                                       |
-| KW_REG        | `reg`    | `nilai`     | `நிலை`      | "state" — strong pick                                                              |
-| KW_CLOCK      | `clock`  | `kadigaram` | `கடிகாரம்`  | literal "clock"; long — `gadi` is a casual option                                  |
-| KW_RESET      | `reset`  | `meetamai`  | `மீட்டமை`   | "restore/reset"                                                                    |
-| KW_ON         | `on`     | `pothu`     | `போது`      | "when/at the time of"                                                              |
-| KW_RISE       | `rise`   | `yetram`    | `ஏற்றம்`    | "ascent/rise" (`fall` removed in v0.2 — reserved, untranslated until needed)       |
-| KW_IF         | `if`     | `endral`    | `என்றால்`   | classic conditional suffix                                                         |
-| KW_ELSE       | `else`   | `illaiyel`  | `இல்லையேல்` | "otherwise"                                                                        |
-| KW_MATCH      | `match`  | `poruthu`   | `பொருத்து`  | "fit/match"                                                                        |
-| KW_ENUM       | `enum`   | `vagai`     | `வகை`       | "kind/category"                                                                    |
-| KW_LET        | `let`    | `vai`       | `வை`        | "place/put" — weakest pick, review                                                 |
-| KW_CONST      | `const`  | `maara`     | `மாறா`      | "unchanging"                                                                       |
-| KW_REPEAT     | `repeat` | `meendum`   | `மீண்டும்`  | "again" — new in v0.2 (compile-time generation)                                    |
-| KW_IMPORT     | `import` | `serkka`    | `சேர்க்க`   | en alias: `include`; "to add/include"; `irakkumathi` is literal but trade-flavored |
-| KW_TRUE       | `true`   | `unmai`     | `உண்மை`     |                                                                                    |
-| KW_FALSE      | `false`  | `poi`       | `பொய்`      |                                                                                    |
-| KW_TEST       | `test`   | `sodhanai`  | `சோதனை`     | "test/experiment"                                                                  |
-| KW_FOR (test) | `for`    | `kaaga`     | `க்காக`     | "for the sake of"                                                                  |
-| KW_TICK       | `tick`   | `thattu`    | `தட்டு`     | "tap/knock" — new in v0.2 (test blocks only), review                               |
-| KW_EXPECT     | `expect` | `ethirpaar` | `எதிர்பார்` | "expect" — new in v0.2 (test blocks only)                                          |
-| KW_AND        | `and`    | `mattrum`   | `மற்றும்`   | alias of universal `&&` (G1-x)                                                     |
-| KW_OR         | `or`     | `alladhu`   | `அல்லது`    | alias of universal `\|\|`                                                          |
-| KW_NOT        | `not`    | `illa`      | `இல்லா`     | alias of universal `!`; review vs KW_ELSE family for confusion                     |
+| Token         | English  | Tanglish    | Tamil       | Notes / alternatives                                                                                                                  |
+| ------------- | -------- | ----------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| KW_MODULE     | `module` | `thoguthi`  | `தொகுதி`    | standard CS-textbook word for "module"                                                                                                |
+| KW_IN         | `in`     | `ulle`      | `உள்`       | or `ulleedu` (உள்ளீடு, "input") — longer but more precise                                                                             |
+| KW_OUT        | `out`    | `veli`      | `வெளி`      | or `veliyeedu` (வெளியீடு, "output")                                                                                                   |
+| KW_WIRE       | `wire`   | `kambi`     | `கம்பி`     | literal "wire" — strong pick                                                                                                          |
+| KW_REG        | `reg`    | `nilai`     | `நிலை`      | "state" — strong pick                                                                                                                 |
+| KW_CLOCK      | `clock`  | `kadigaram` | `கடிகாரம்`  | literal "clock"; long — `gadi` is a casual option                                                                                     |
+| KW_RESET      | `reset`  | `meetamai`  | `மீட்டமை`   | "restore/reset"                                                                                                                       |
+| KW_ON         | `on`     | `pothu`     | `போது`      | "when/at the time of"                                                                                                                 |
+| KW_RISE       | `rise`   | `yetram`    | `ஏற்றம்`    | "ascent/rise" (`fall` removed in v0.2 — reserved, untranslated until needed)                                                          |
+| KW_IF         | `if`     | `endral`    | `என்றால்`   | classic conditional suffix                                                                                                            |
+| KW_ELSE       | `else`   | `illaiyel`  | `இல்லையேல்` | "otherwise"                                                                                                                           |
+| KW_MATCH      | `match`  | `poruthu`   | `பொருத்து`  | "fit/match"                                                                                                                           |
+| KW_ENUM       | `enum`   | `vagai`     | `வகை`       | "kind/category"                                                                                                                       |
+| KW_LET        | `let`    | `vai`       | `வை`        | "place/put" — weakest pick, review. EN `let` also flagged: binds an instance, not a variable — JS-instinct risk (spec/02 section 1.5) |
+| KW_CONST      | `const`  | `maara`     | `மாறா`      | "unchanging"                                                                                                                          |
+| KW_REPEAT     | `repeat` | `meendum`   | `மீண்டும்`  | "again" — new in v0.2 (compile-time generation)                                                                                       |
+| KW_IMPORT     | `import` | `serkka`    | `சேர்க்க`   | en alias: `include`; "to add/include"; `irakkumathi` is literal but trade-flavored                                                    |
+| KW_TRUE       | `true`   | `unmai`     | `உண்மை`     |                                                                                                                                       |
+| KW_FALSE      | `false`  | `poi`       | `பொய்`      |                                                                                                                                       |
+| KW_TEST       | `test`   | `sodhanai`  | `சோதனை`     | "test/experiment"                                                                                                                     |
+| KW_FOR (test) | `for`    | `kaaga`     | `க்காக`     | "for the sake of"                                                                                                                     |
+| KW_TICK       | `tick`   | `thattu`    | `தட்டு`     | "tap/knock" — new in v0.2 (test blocks only), review                                                                                  |
+| KW_EXPECT     | `expect` | `ethirpaar` | `எதிர்பார்` | "expect" — new in v0.2 (test blocks only)                                                                                             |
+| KW_AND        | `and`    | `mattrum`   | `மற்றும்`   | alias of universal `&&` (G1-x)                                                                                                        |
+| KW_OR         | `or`     | `alladhu`   | `அல்லது`    | alias of universal `\|\|`                                                                                                             |
+| KW_NOT        | `not`    | `illa`      | `இல்லா`     | alias of universal `!`; review vs KW_ELSE family for confusion                                                                        |
 
 ### Aliases
 
