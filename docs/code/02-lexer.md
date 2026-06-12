@@ -98,4 +98,6 @@ the operator does not continue the line — by design, one canonical style.
 The lexer never stops at the first problem: it records a `Diag` and keeps
 scanning, so a file with three bad characters reports all three. `lex`
 returns `Err(diags)` if anything was recorded — the token stream is not
-used in that case.
+used in that case. Every lexer error carries a stable code
+(**E1001–E1008**, one per error site — catalog in
+[`06-diagnostics.md`](06-diagnostics.md)).

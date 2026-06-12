@@ -84,8 +84,11 @@ cross-domain reads rejected until Phase 2's `sync`).
 Every checker error carries a stable code (`E0101`) — catalog and
 details in [`11-checker.md`](11-checker.md).
 
-Still open: `repeat` unrolling in the emitter — tracked in
-`docs/plan/phase-1-verilog-backend.md`.
+After the checker, `emit_verilog::transliterate` rewrites Tamil
+identifiers to readable ASCII (விளக்கு → `villakku`), and the emitter
+unrolls `repeat` at compile time. **Phase 1 is complete** — every plan
+item in `docs/plan/phase-1-verilog-backend.md` is ticked; the next
+pipeline work is the Phase 1.8 grammar engine.
 
 ## Error flow
 

@@ -129,9 +129,9 @@ tombstone row here. Each code is exercised two ways: in-process by
 Numbering scheme: E00xx structure/duplicates, E01xx name resolution,
 E02xx const evaluation, E03xx module structure rules, E04xx width/type
 rules, E05xx drivers/cycles, E06xx exhaustiveness, E07xx clock domains.
-(Lexer/parser codes get E10xx/E11xx in the retrofit — catalog in
-docs/code/06.) Claim a block when a new pass lands, and add the rows in
-the same commit.
+(Lexer E10xx, parser E11xx, and loader E12xx codes live in
+docs/code/06 — retrofit completed 2026-06-12.) Claim a block when a new
+pass lands, and add the rows in the same commit.
 
 ## How exhaustiveness works (in pass 4)
 

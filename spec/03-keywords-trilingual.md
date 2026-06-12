@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.1.**
+> **Spec v0.2.2.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -108,6 +108,25 @@ is valid even in an otherwise-English file.
 | KW_AND        | `and`    | `mattrum`   | `மற்றும்`   | alias of universal `&&` (G1-x)                                                                                                        |
 | KW_OR         | `or`     | `alladhu`   | `அல்லது`    | alias of universal `\|\|`                                                                                                             |
 | KW_NOT        | `not`    | `illa`      | `இல்லா`     | alias of universal `!`; review vs KW_ELSE family for confusion                                                                        |
+
+### Reserved words
+
+Set aside for future features — using one as an identifier is a compile
+error (E1005) explaining why. They live in the `reserved` list in
+`keywords.toml`, above the keyword tables:
+
+| Reserved                 | Held for                                   |
+| ------------------------ | ------------------------------------------ |
+| `fall`                   | falling-edge `on` blocks (post-v1)         |
+| `syntax`                 | the `syntax thamizh` directive (Phase 1.8) |
+| `ilakkanam` / `இலக்கணம்` | the Tanglish/Tamil spellings of `syntax`   |
+| `mem`                    | memories/arrays (Phase 2)                  |
+| `sync`                   | clock-domain crossing (Phase 2)            |
+| `inout`                  | top-level bidirectional pads (Phase 2)     |
+| `struct`                 | bundles/interfaces (post-Phase 2)          |
+
+Reserved words are untranslated until their feature lands (no Tamil
+words before the native-speaker review — same rule as aliases).
 
 ### Aliases
 
@@ -231,6 +250,11 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.2 (2026-06-12):** Reserved-words table added (the eight words
+  the `reserved` list in `keywords.toml` holds, each with the feature it
+  waits for) — completeness audit; no word changes. The loader now also
+  panics at startup if a required `[keywords.*]` entry is MISSING (the
+  unknown-key panic only guarded the other direction).
 - **v0.2.1 (2026-06-11):** Synonym-alias mechanism (per-column
   `*_aliases` lists in `keywords.toml`); first alias: en `include` for
   KW_IMPORT. Clarified that the one-canonical-spelling rule bans spelling

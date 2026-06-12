@@ -71,25 +71,29 @@ mimz compile examples/english/counter.mimz
 
 Now let's walk through what actually happens, station by station.
 
-## Where it all starts: `src/main.rs`
+## Where it all starts: `src/main.rs` (and `src/lib.rs`)
 
-`main.rs` is the front door. It only does two things:
-
-1. Reads the command line (`check` or `compile`, which file, options) —
-   this is the `Cli` / `Cmd` structs at the top.
-2. Calls the stations in order. The `compile()` function in `main.rs`
-   is literally the pipeline written out:
+The compiler itself is a **library** — `src/lib.rs` lists its eight
+modules, one per station or shared tool. `main.rs` is the thin front
+door over it: it reads the command line (`check`, `compile`, or `lsp` —
+the `Cli` / `Cmd` structs at the top), calls the stations in order, and
+renders whatever comes back (human carets, or one JSON array with
+`--json`). The `compile()` function is literally the pipeline written
+out:
 
 ```text
 load_project(path)            // station 0
 checker::check(&asts)         // stations 1+2 ran inside load; this is 3
+transliterate(&mut asts)      // Tamil names -> ASCII (விளக்கு -> villakku)
 emit_verilog::emit(...)       // station 4
 std::fs::write(out_path, ...) // save the .v file
 ```
 
 `main.rs` contains NO language logic. If you ever wonder "what is the
 true order of the stages?", read `compile()` in `main.rs` — it cannot
-lie, it IS the order.
+lie, it IS the order. (The same library also powers `mimz lsp`, the
+language server behind the VS Code squiggles — same stations, errors
+delivered to your editor instead of the terminal.)
 
 ## Station 0 — Load (`src/project.rs`)
 
@@ -230,7 +234,7 @@ every mistake, explain each one, never stop at the first.**
 
 The parser would happily accept `count = valu` — it is a perfectly
 shaped assignment. Only the checker knows there is nothing named
-`valu`. It runs three passes, in order, each in its own file:
+`valu`. It runs six passes, in order, each in its own file (or folder):
 
 1. **`symbols.rs`** — walk every file, collect all module names and
    enum names into project-wide tables. Two modules with one name?
@@ -239,13 +243,21 @@ shaped assignment. Only the checker knows there is nothing named
    to bottom, so later passes can use the values (for example as
    `repeat` bounds). Overflow is an error, never a silent wrap — the
    checker obeys the language's own honesty rule.
-3. **`names.rs`** — the big one. For every module: build a scope (every
-   declared name and what it is — port, wire, reg, clock, const,
-   instance…), then walk every expression and assignment and ask "does
-   this name exist, and is this use legal?" Assigning to an input,
-   clocking on a non-clock, reading an instance's input from outside —
-   all caught here. It also enforces structure rules like "a module
-   with regs must declare a `reset`" (E0301).
+3. **`names.rs`** — for every module: build a scope (every declared
+   name and what it is — port, wire, reg, clock, const, instance…),
+   then walk every expression and assignment and ask "does this name
+   exist, and is this use legal?" Assigning to an input, clocking on a
+   non-clock, leaving an instance input unconnected — all caught here.
+   It also enforces structure rules like "a module with regs must
+   declare a `reset`" (E0301).
+4. **`widths/`** — the exact-widths promise: every assignment,
+   operand, and connection has the width its context needs; `signed`
+   and `bits` never mix silently; a `match` must cover every value.
+5. **`drivers.rs`** — every wire and output driven exactly once, every
+   reg owned by exactly one `on` block, and no combinational loops
+   (the wire graph must be a DAG).
+6. **`clocks.rs`** — every reg belongs to one clock, and nothing reads
+   across clock domains (that needs the explicit `sync` of Phase 2).
 
 When something is wrong, the checker never panics and never stops
 early — it collects diagnostics and keeps checking, so you see ALL your
@@ -317,11 +329,18 @@ line of input. Keeping the Verilog readable like this is a project
 rule (the prior-art doc explains why, using Chisel as the cautionary
 tale).
 
-| File                     | Does what                                              |
-| ------------------------ | ------------------------------------------------------ |
-| `emit_verilog/mod.rs`    | `emit()` entry, the project table, output assembly     |
-| `emit_verilog/module.rs` | one module → one Verilog module (ports, always blocks) |
-| `emit_verilog/expr.rs`   | one expression tree → one Verilog expression string    |
+| File                       | Does what                                                 |
+| -------------------------- | --------------------------------------------------------- |
+| `emit_verilog/mod.rs`      | `emit()` entry, the project table, output assembly        |
+| `emit_verilog/module.rs`   | one module → one Verilog module (ports, always blocks)    |
+| `emit_verilog/expr.rs`     | one expression tree → one Verilog expression string       |
+| `emit_verilog/translit.rs` | Tamil identifiers → readable ASCII (விளக்கு → `villakku`) |
+
+Two emitter tricks worth knowing even on day one: `repeat i: 0..4` is
+**unrolled** at compile time (four copies of the hardware, the loop
+variable folded into every index — there is no loop in the Verilog),
+and `signed[N]` signals are declared `wire signed`, so two's-complement
+math behaves exactly as the spec promises.
 
 The same source in `examples/tanglish/counter.mimz` or
 `examples/tamil/counter.mimz` produces **byte-identical** output —
@@ -370,6 +389,7 @@ whatever comes back and sets the exit code.
 | change how errors are printed               | `src/diag.rs` (`render`)                             |
 | change import resolution / file loading     | `src/project.rs`                                     |
 | add a CLI flag or subcommand                | `src/main.rs`                                        |
+| see errors as squiggles in VS Code          | `editors/vscode` (the extension runs `mimz lsp`)     |
 | debug "what tokens does this file produce?" | `mimz check file.mimz --tokens`                      |
 
 ## Going deeper

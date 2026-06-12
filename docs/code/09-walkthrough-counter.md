@@ -184,7 +184,8 @@ For this file the checker today: resolves `WIDTH`/`value`/`count`/`clk`/
 confirms the module's reg has a `reset` line, and — width pass, under
 the default binding `WIDTH = 8` — verifies `value +% 1` keeps width 8
 (the literal `1` adapts and fits), `count = value` matches `bits[8]` to
-`bits[8]`, and the reset value `0` fits. All clean — no diagnostics.
-Still future (later slices): `value` has a single driver, `clk` owns
-the `on` block. Same AST in, same AST out — the emitter doesn't change
-as the checker grows.
+`bits[8]`, and the reset value `0` fits. The driver pass then confirms
+`count` is driven exactly once and `value` is owned by exactly one `on`
+block; the clock pass sees a single clock and passes trivially. All
+clean — no diagnostics. Same AST in, same AST out — the emitter doesn't
+change as the checker grows.

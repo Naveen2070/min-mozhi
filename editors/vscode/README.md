@@ -1,9 +1,26 @@
 # Min-Mozhi for VS Code
 
-Syntax highlighting for `.mimz` files — all three keyword flavors
-(English, Tanglish, Tamil script) highlight identically, including mixed
-files, because the grammar lists every spelling from `keywords.toml`
-(the repo's `tests/grammar_sync.rs` keeps them in lockstep).
+Language support for `.mimz` files:
+
+- **Syntax highlighting** — all three keyword flavors (English,
+  Tanglish, Tamil script) highlight identically, including mixed files,
+  because the grammar lists every spelling from `keywords.toml`
+  (the repo's `tests/grammar_sync.rs` keeps them in lockstep).
+- **Live compiler diagnostics** (v0.2.0) — squiggles as you type, with
+  the stable `E`-code and the teaching help line, straight from the real
+  compiler via `mimz lsp`.
+
+## Diagnostics need the compiler
+
+The extension launches `mimz lsp` (diagnostics-only language server,
+Phase 1 v0). It looks for `mimz` on PATH; point the **`mimz.serverPath`**
+setting at the binary otherwise (e.g. `target/debug/mimz.exe` during
+development). Without the binary, syntax highlighting still works — the
+extension shows one warning and carries on.
+
+Known v0 limitation: `import`ed files are read from disk, so an edited
+but UNSAVED import is seen as last saved. Hover, go-to-definition, and
+completion land in Phase 4.
 
 ## Install (from this folder, no marketplace yet)
 
@@ -34,8 +51,9 @@ the GUI's "Install from VSIX"):
 
 ```text
 cd editors/vscode
-npx @vscode/vsce package   # produces mimz-0.1.0.vsix
-code --install-extension mimz-0.1.0.vsix
+npm install                # the LSP client library (vscode-languageclient)
+npx @vscode/vsce package   # produces mimz-0.2.0.vsix
+code --install-extension mimz-0.2.0.vsix
 ```
 
 **Troubleshooting — VSIX installs but the extension is invisible** (not

@@ -98,6 +98,72 @@ fn every_error_fixture_reports_its_code() {
     }
 }
 
+/// The `--json` wire contract (docs/code/06): stdout is ALWAYS one JSON
+/// array — diagnostics with code/path/line/col on failure, empty on
+/// success — so editors and the future npm/PyPI wrappers never parse
+/// human text. Exercises a checker error, a LEXER error (the E10xx
+/// retrofit through the real CLI), and a clean run.
+#[test]
+fn json_flag_emits_machine_readable_diagnostics() {
+    // Checker error: E0101 fixture.
+    let fixture = fixtures_dir().join("e0101_unknown_name.mimz");
+    let out = mimz()
+        .arg("check")
+        .arg(&fixture)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout must be valid JSON");
+    let arr = v.as_array().expect("a JSON array");
+    assert_eq!(arr[0]["code"], "E0101");
+    assert!(
+        arr[0]["path"]
+            .as_str()
+            .unwrap()
+            .contains("e0101_unknown_name"),
+        "path field resolves the file"
+    );
+    assert!(arr[0]["line"].as_u64().unwrap() >= 1);
+    assert!(
+        arr[0]["help"].as_str().is_some(),
+        "the teaching line rides along"
+    );
+
+    // Lexer error: division, straight through load_project's error path.
+    let div = std::env::temp_dir().join("mimz_json_div.mimz");
+    std::fs::write(
+        &div,
+        "module M {\n  in a: bit\n  out y: bit\n  y = a / a\n}\n",
+    )
+    .unwrap();
+    let out = mimz()
+        .arg("check")
+        .arg(&div)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v[0]["code"], "E1006");
+
+    // Clean run: an empty array and success.
+    let ok = mimz()
+        .arg("check")
+        .arg(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("examples")
+                .join("english")
+                .join("counter.mimz"),
+        )
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(ok.status.success());
+    assert_eq!(String::from_utf8_lossy(&ok.stdout).trim(), "[]");
+}
+
 /// `ALL_CHECKER_CODES` must mirror the human catalog in
 /// docs/code/11-checker.md — same docs-sync idea as `tests/docs_sync.rs`:
 /// a code added to the catalog without a fixture (or vice versa) fails by

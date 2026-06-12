@@ -79,9 +79,12 @@ Every example exists in all four flavor folders (`english/`, `tanglish/`,
 (CI-asserted), and the emitted Verilog is **validated by Icarus Verilog**:
 every file passes `iverilog`, and a self-checking testbench per example
 simulates Min-Mozhi's documented semantics to PASS — including exhaustive
-signed-arithmetic verification. Still to come in Phase 1: lexer/parser
-error codes (+ lib/bin split + `--json`) and a diagnostics-only LSP. The
-repo stays private until Phase 1 is done.
+signed-arithmetic verification. Every diagnostic at every stage carries a
+stable `E`-code, `mimz check --json` emits machine-readable diagnostics,
+and **`mimz lsp` brings live squiggles to VS Code** (diagnostics-only v0,
+`editors/vscode`). **Every Phase 1 work item is complete** — what remains
+before going public is the Grammar Engine (Phase 1.8, decision D7). With
+150 passing tests.
 
 ## Build, Test, Run
 

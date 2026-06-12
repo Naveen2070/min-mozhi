@@ -12,15 +12,23 @@ before "improving" something that is the way it is on purpose.
 Rust for the compiler (memory-safe systems language, great error-message
 ecosystem, single static binary — full rationale in the roadmap's Why-Rust
 decision record). MSRV 1.85 (edition 2024). Dependencies are deliberately
-few: `clap`, `serde`+`toml`, `unicode-ident`, `unicode-normalization` —
-each one earns its place; resist adding more.
+few — each one earns its place; resist adding more: `clap`,
+`serde`+`serde_json`+`toml` (the keyword table and the `--json` wire
+format), `unicode-ident`, `unicode-normalization`, and — for the LSP
+only, used by the bin-only `lsp.rs` module so the lib stays async-free —
+`tower-lsp`+`tokio`.
 
-### One binary crate, modules per stage — no workspace yet
+### Lib + thin binary, modules per stage — no workspace yet
 
-`main.rs` + seven modules. A `lib.rs`/workspace split is **trigger-based**
-(architecture section 5): it happens when a second consumer (LSP, web
-playground) exists, not before. Same for an IR, a query system, and
-incremental compilation — named triggers, not speculative scaffolding.
+The trigger named in architecture section 5 FIRED on 2026-06-12: the LSP
+(plus `--json` consumers) is the second consumer, so the module tree now
+lives in `src/lib.rs` (`pub mod` × 8) with `main.rs` as a thin CLI shell
+(arg parsing + human/JSON rendering only). `project.rs` returns
+`LoadError` values instead of printing and exiting — the lib never
+touches stdout/stderr. A WORKSPACE split (`mimz-syntax`/`mimz-check`/…)
+remains trigger-based and has not fired. Same for an IR, a query system,
+and incremental compilation — named triggers, not speculative
+scaffolding.
 
 ### The module-scoping pattern (refactor of 2026-06-10)
 
@@ -88,8 +96,9 @@ message. Push enforcement as early as it can correctly live.
 1. ~~**Checker**~~ — ✅ landed 2026-06-11/12, six passes in
    `src/checker/` (symbols, consteval, names, widths, drivers, clocks);
    every spec/02 section 6 rule is now compiler-enforced.
-2. ~~**Stable error codes**~~ — ✅ checker errors carry E-codes from day
-   one; the lexer/parser retrofit (E10xx/E11xx) is the remaining half.
+2. ~~**Stable error codes**~~ — ✅ complete 2026-06-12: every diagnostic
+   in the compiler carries one (checker E0xxx, lexer E10xx, parser
+   E11xx, loader E12xx — full map in docs/code/06).
 3. ~~**Icarus Verilog differential tests**~~ — ✅ landed 2026-06-11
    (`tests/icarus.rs`, self-checking TBs per example).
 4. **`repeat` emission + emitter hardening** — unrolling via const-eval,

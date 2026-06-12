@@ -1,14 +1,15 @@
 {
   "name": "mimz",
   "displayName": "Min-Mozhi (மின்மொழி)",
-  "description": "Syntax highlighting for Min-Mozhi .mimz files — English, Tanglish, and Tamil keyword flavors over one grammar.",
-  "version": "0.1.0",
+  "description": "Min-Mozhi .mimz language support — trilingual syntax highlighting plus live compiler diagnostics via `mimz lsp`.",
+  "version": "0.2.0",
   "publisher": "min-mozhi",
   "license": "MIT OR Apache-2.0",
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": ["Programming Languages"],
+  "main": "./extension.js",
   "contributes": {
     "languages": [
       {
@@ -24,6 +25,22 @@
         "scopeName": "source.mimz",
         "path": "./syntaxes/mimz.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Min-Mozhi",
+      "properties": {
+        "mimz.serverPath": {
+          "type": "string",
+          "default": "mimz",
+          "description": "Path to the mimz compiler binary (the language server is `mimz lsp`). Default assumes mimz is on PATH."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "scripts": {
+    "package": "vsce package"
   }
 }

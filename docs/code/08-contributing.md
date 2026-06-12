@@ -71,14 +71,22 @@ help)` and emit nothing. Errors, never guesses.
   `{instance}_{port}`, created in `module.rs::instance` AND assumed in
   `expr.rs` field rendering. Change both or neither.
 - Add an integration test in `tests/examples.rs` asserting on the output
-  text, and eyeball the generated `.v` with a real tool when you can.
+  text — the Icarus suite (`tests/icarus.rs`) then judges it with a real
+  tool.
+- Emission changed on purpose? Regenerate the pinned outputs with
+  `MIMZ_UPDATE_GOLDENS=1 cargo test --test examples`, then review the
+  `tests/golden/` diff like any other code change.
 
-## Recipe: add a checker pass (once `src/checker/` exists)
+## Recipe: add a checker pass
 
 One safety rule = one pass = one file with its own tests (architecture
-principle 4). Passes take the AST + symbol table, return `Vec<Diag>`.
-Every new error: teaching help text, spec reference, and (once codes
-exist) a stable `E####` code.
+principle 4; six passes exist — the full how-to lives in
+[`11-checker.md`](11-checker.md)). Passes take the AST + symbol table,
+return diagnostics through `Checker::err`, which makes the stable
+`E####` code, the file index, and the teaching help text structurally
+mandatory. Claim the next code block and add the catalog row in the
+same commit; the error corpus (`tests/errors.rs`) will refuse a new
+code without an end-to-end fixture.
 
 ## Testing conventions
 

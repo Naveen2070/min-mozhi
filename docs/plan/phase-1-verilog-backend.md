@@ -2,7 +2,9 @@
 
 > **Get something working end-to-end.**
 > Window: months 3–7 · Target: **31 Dec 2026** (solo, ~8–10 h/wk) ·
-> Status: 🟡 **in progress** — skeleton/lexer/parser ✅, emitter v1 ✅ (2026-06-10); checker (item 4) is next
+> Status: 🟢 **COMPLETE 2026-06-12** — every work item ticked, gating and
+> non-gating (150 tests; the 31 Dec 2026 target beaten by six months).
+> v0.1.0 tag is the founder's call.
 
 ## Goal
 
@@ -59,7 +61,14 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
       ✅ 2026-06-12 (E0302, missing inputs listed; clock/reset stay
       implicit-by-name)
 - [x] Reg-requires-reset rule (module with regs must declare `reset`) — ✅ 2026-06-11 (E0301)
-- [ ] Teaching error messages: own caret renderer + stable E-codes ✅ (checker); retrofit codes onto lexer/parser errors before the Phase 1.8 catalogs (`miette`/`ariadne` not adopted — custom renderer kept)
+- [x] Teaching error messages: own caret renderer + stable E-codes —
+      ✅ complete 2026-06-12: lexer E1001–E1008, parser E1101–E1111,
+      loader E1201 (catalog in docs/code/06); `Parser::error` now makes
+      the code mandatory, same as `Checker::err`. Also landed here, as
+      the Phase-4/LSP prerequisites: **lib/bin split** (`src/lib.rs`,
+      thin CLI; `project.rs` returns `LoadError` values, never exits)
+      and **`--json` diagnostics** on `check`/`compile` (stable wire
+      format, locked by an end-to-end test)
 
 ### 5. Verilog emitter (first working version ✅ 2026-06-10; hardening open)
 
@@ -76,13 +85,16 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 ### 6. Visibility (decision D4)
 
 - [x] Minimal VS Code syntax highlighting: TextMate grammar for `.mimz` (all keyword flavors) — ✅ 2026-06-11, `editors/vscode/`, kept in lockstep with keywords.toml by `tests/grammar_sync.rs`
-- [ ] **LSP v0 — diagnostics only** (pulled forward from Phase 4, Decision
-      2026-06-12): `mimz lsp` via `tower-lsp` — parse + check on open/save,
-      publish the checker's diagnostics (E-codes + help lines) in-editor.
-      Rides the lib/bin split + `--json` work (item 4's E-code retrofit) and
-      IS the "second consumer" that architecture section 5 names as the
-      split trigger. **Non-gating**: v0.1.0 and the safety slices outrank
-      it; hover/go-to-def/completion stay in Phase 4.
+- [x] **LSP v0 — diagnostics only** — ✅ 2026-06-12: `mimz lsp` via
+      `tower-lsp` (bin-only module `src/lsp.rs`; the lib stays async-free
+      for the Phase 4 WASM build). Full pipeline on
+      didOpen/didChange/didSave over the in-memory text (imports from
+      disk — documented v0 limitation); per-file publishes with stale
+      clearing; positions in UTF-16 (Tamil-safe); E-code + help on every
+      squiggle. VS Code client added to `editors/vscode` (plain JS,
+      `mimz.serverPath` setting, packaged as `mimz-0.2.0.vsix`).
+      Smoke-tested over the real wire protocol (`tests/lsp.rs`).
+      Hover/go-to-def/completion stay in Phase 4.
 
 ## Milestone
 

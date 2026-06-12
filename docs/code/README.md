@@ -68,7 +68,8 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-12 (Phase 1 — checker completion
-slice landed: E0302 instantiation completeness, E0601/E0602 match
-exhaustiveness, E0701 clock domains; all spec/02 section 6 safety rules
-now compiler-enforced; `repeat` emission is the remaining gap)._
+_Last synced with the code: 2026-06-12 EOD (Phase 1 gating work
+COMPLETE — checker all six passes, `repeat` emission, transliteration,
+signed emission, golden files, full E-code coverage incl. lexer
+E10xx/parser E11xx/loader E1201, lib/bin split (`src/lib.rs`), and
+`--json` diagnostics; only the non-gating LSP v0 remains)._

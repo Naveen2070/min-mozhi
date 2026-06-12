@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**144 tests** as of 2026-06-12 (EOD): 123 unit + 9 integration + 2 Icarus differential + 3 error-fixture + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one of them locks `ALL_CHECKER_CODES` to the 11-checker.md catalog.)
+**150 tests** as of 2026-06-12 (EOD): 124 lib unit + 3 LSP unit (bin) + 9 integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` to the 11-checker.md catalog, one locks the `--json` wire format.)
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -32,7 +32,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 9 tests)
+## Unit: parser (`src/parser/tests.rs`, 10 tests)
 
 | Test                                         | Locks in                                                             |
 | -------------------------------------------- | -------------------------------------------------------------------- |
@@ -45,10 +45,11 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `assign_arrow_confusion_teaches`             | `=` inside `on` → help text pointing to `<-`                         |
 | `parses_repeat_and_const`                    | `repeat i: 0..8` and file-level `const` parse                        |
 | `parses_test_block`                          | `test "..." for M(...) { tick/expect }` parses                       |
+| `every_parse_error_carries_a_code`           | the E11xx retrofit, locked from outside: no parse error is codeless  |
 
-The four error-path tests assert on message/help **substrings** —
-deliberately loose so wording can be polished without breaking tests,
-tight enough that the teaching content can't silently vanish.
+The error-path tests assert on message/help **substrings** (loose, so
+wording can be polished) AND on the stable E-code (tight — the
+contract). Lexer error tests do the same with E10xx.
 
 ## Unit: checker (`src/checker/tests.rs`, 85 tests)
 
@@ -153,7 +154,7 @@ House rule for the testbenches: each prints `PASS` exactly once or
 broken TB fails loudly, never silently. The Blinker TB overrides the
 `LIMIT` parameter (`#(.LIMIT(3))`) instead of simulating 50M cycles.
 
-## Error fixtures (`tests/errors.rs`, 3 tests — run the real binary on broken code)
+## Error fixtures (`tests/errors.rs`, 4 tests — run the real binary on broken code)
 
 End-to-end **failure** validation, the mirror of the checker unit tests: those
 prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it.
@@ -161,11 +162,12 @@ prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it
 `examples/`, which is asserted valid), each declaring its expected code in a
 `// expect: Exxxx` header. Source bodies are lifted from `src/checker/tests.rs`.
 
-| Test                                     | Locks in                                                                                                                                                             |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_error_fixture_reports_its_code`   | each fixture, run through `mimz check`, exits non-zero AND prints `error[<code>]` to stderr — the rendered code is the stable user-facing contract, checked for real |
-| `error_corpus_covers_every_checker_code` | completeness guard: every code in `ALL_CHECKER_CODES` (the 36 stable checker codes) has at least one fixture — a new E-code can't ship without an end-to-end fixture |
-| `checker_code_list_matches_the_catalog`  | `ALL_CHECKER_CODES` must equal the 11-checker.md catalog table (reserved rows exempt) — the corpus, the docs, and the code can't drift apart                         |
+| Test                                           | Locks in                                                                                                                                                             |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_error_fixture_reports_its_code`         | each fixture, run through `mimz check`, exits non-zero AND prints `error[<code>]` to stderr — the rendered code is the stable user-facing contract, checked for real |
+| `error_corpus_covers_every_checker_code`       | completeness guard: every code in `ALL_CHECKER_CODES` (the 36 stable checker codes) has at least one fixture — a new E-code can't ship without an end-to-end fixture |
+| `checker_code_list_matches_the_catalog`        | `ALL_CHECKER_CODES` must equal the 11-checker.md catalog table (reserved rows exempt) — the corpus, the docs, and the code can't drift apart                         |
+| `json_flag_emits_machine_readable_diagnostics` | the `--json` wire format (docs/code/06): one JSON array on stdout with code/path/line/help; lexer errors included; `[]` + exit 0 on success                          |
 
 `every_error_fixture_reports_its_code` also asserts a `help:` line per
 fixture — the teaching contract, proven at the CLI surface.
@@ -198,6 +200,15 @@ a whole alternation member in `editors/vscode/syntaxes/mimz.tmLanguage.json`
 (whole-member matching, because `in` is a substring of `include` — a
 plain `contains` would pass vacuously), and that the manifest registers
 `.mimz` with the matching scope name. When one fails: fix the grammar.
+
+## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 4 tests)
+
+| Test                                                        | Locks in                                                                                                                                     |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `positions_are_utf16_lines_and_columns`                     | byte span → LSP Position math (0-based lines)                                                                                                |
+| `tamil_text_counts_utf16_units_not_bytes`                   | LSP columns are UTF-16 code units — a Tamil identifier before the error must not skew the squiggle                                           |
+| `analyze_reports_checker_errors_with_codes`                 | the in-memory pipeline (didOpen text, never on disk) produces coded checker diagnostics                                                      |
+| `opening_a_broken_file_publishes_coded_diagnostics` (smoke) | the REAL binary over the real wire protocol: framed JSON-RPC initialize → didOpen → publishDiagnostics with code, source, help, and position |
 
 ## Deliberately NOT covered (and what would close each gap)
 

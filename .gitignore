@@ -29,3 +29,10 @@ desktop.ini
 # Added by cargo
 
 /target
+
+# VS Code extension build artifacts (the .vsix IS committed; deps are not)
+editors/vscode/node_modules/
+editors/vscode/package-lock.json
+
+# Packaged extension binaries (rebuild with `npx @vscode/vsce package`)
+editors/vscode/*.vsix

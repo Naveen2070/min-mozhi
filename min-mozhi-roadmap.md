@@ -39,23 +39,26 @@ matching, which compilers lean on heavily.)
 
 ---
 
-## Phase 1 — Verilog Backend _(3–5 months)_
+## Phase 1 — Verilog Backend — ✅ COMPLETE 2026-06-12
 
-> Get something working end-to-end
+> Get something working end-to-end — done, six months ahead of target
 
-- Build **Lexer** — tokenize Min-Mozhi source ✅ (trilingual, Unicode idents)
-- Build **Parser** — produce AST from tokens ✅ (full v0.2 grammar)
+- Build **Lexer** — tokenize Min-Mozhi source ✅ (trilingual, Unicode idents, E10xx)
+- Build **Parser** — produce AST from tokens ✅ (full grammar, E11xx)
 - Build **AST** — represent modules, signals, logic ✅
-- Build **Verilog Emitter** — walk AST, output `.v` files ✅ v1 (repeat/checker pending)
-- Build **Checker** — the safety rules + const-eval (next up)
-- Test with **Icarus Verilog** (free simulator)
+- Build **Verilog Emitter** ✅ — incl. `repeat` unrolling, Tamil→ASCII
+  transliteration, `wire signed`, golden-file output pinning
+- Build **Checker** ✅ — ALL spec safety rules, six passes, E0001–E0701
+- Test with **Icarus Verilog** ✅ — every example linted + 13
+  self-checking testbenches simulate to PASS
 - Support: wires, registers, modules, basic logic, clocks ✅
-- **LSP v0** — diagnostics-only language server, non-gating (pulled
-  forward from Phase 4, Decision 2026-06-12)
+- **LSP v0** ✅ — diagnostics-only language server + VS Code client
+  (`--json` diagnostics + lib/bin split landed with it)
 
-**Milestone:** `mimz compile adder.mimz → adder.v → simulates correctly`
+**Milestone:** `mimz compile adder.mimz → adder.v → simulates correctly` ✅
+(150 tests; v0.1.0 tag pending)
 
-**Deliverable:** Working compiler — Min-Mozhi → Verilog
+**Deliverable:** Working compiler — Min-Mozhi → Verilog ✅
 
 ---
 

@@ -279,11 +279,18 @@ fn compile_file(path: &Path) -> String {
     compile_file_tagged(path, "")
 }
 
-/// Like [`compile_file`], with a tag in the temp filename — tests that
-/// compile the same examples in parallel must not share output paths.
+/// Like [`compile_file`], with a tag in the temp filename. A process-wide
+/// counter makes every output path UNIQUE — tests run in parallel and
+/// often compile the same example; a shared path is a torn-read race
+/// (it bit the golden test on 2026-06-12, then the flavor-identity test).
 fn compile_file_tagged(path: &Path, tag: &str) -> String {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static N: AtomicUsize = AtomicUsize::new(0);
     let name = path.display().to_string().replace(['\\', '/', ':'], "_");
-    let out_v = std::env::temp_dir().join(format!("mimz_test_{tag}{name}.v"));
+    let out_v = std::env::temp_dir().join(format!(
+        "mimz_test_{tag}{}_{name}.v",
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
     let out = mimz()
         .arg("compile")
         .arg(path)

@@ -48,19 +48,81 @@ uninitialized state (spec/02 section 1.2)`.
 
 Patterns in code:
 
-- `Diag::new(span, msg).with_help(help)` — anywhere.
-- Parser: `self.error(span, msg)` then optionally `self.help(text)`
-  (attaches to the most recent error).
+- `Diag::new(span, msg).with_code(code).with_help(help)` — anywhere.
+- Parser: `self.error(span, code, msg)` then optionally `self.help(text)`
+  (attaches to the most recent error). The code argument is mandatory —
+  same discipline as `Checker::err`.
 - Emitter: `self.err(span, msg, help)` (empty `help` = no help line).
+
+## Stable error codes — the full map
+
+Every diagnostic in the compiler carries a code (retrofit completed
+2026-06-12). They are a stable contract: tests assert on them, the
+`--json` output exposes them, and the Phase 1.8 Tanglish/Tamil catalogs
+will key off them — never renumber.
+
+| Block       | Stage   | Catalog                          |
+| ----------- | ------- | -------------------------------- |
+| E0001–E0701 | checker | [`11-checker.md`](11-checker.md) |
+| E10xx       | lexer   | below                            |
+| E11xx       | parser  | below                            |
+| E12xx       | loader  | below                            |
+
+| Code  | Meaning                                                    |
+| ----- | ---------------------------------------------------------- |
+| E1001 | unterminated block comment                                 |
+| E1002 | unterminated string                                        |
+| E1003 | Tamil digits in a literal (ASCII digits are universal)     |
+| E1004 | malformed number                                           |
+| E1005 | reserved word used as a name                               |
+| E1006 | division `/` does not exist (teaches the hardware cost)    |
+| E1007 | modulo `%` does not exist (teaches `+%`/slicing)           |
+| E1008 | unexpected character                                       |
+| E1101 | expected-X-found-Y family (incl. terminators, missing `}`) |
+| E1102 | bad top-level item                                         |
+| E1103 | enum needs at least one variant                            |
+| E1104 | register has no reset value                                |
+| E1105 | `<-` outside an `on` block                                 |
+| E1106 | `=` inside an `on` block                                   |
+| E1107 | `test` block syntax (name, body statements)                |
+| E1108 | value-driving `if` without `else` (the latch lesson)       |
+| E1109 | chained comparison                                         |
+| E1110 | call errors (not a builtin, wrong arity)                   |
+| E1111 | parameter/const type is not `int`/`bool`                   |
+| E1201 | imported file does not exist                               |
+
+Grouping rule: E1101 deliberately covers the whole expected/found
+family — those messages share one translation shape; the codes that
+stand alone are the TEACHING errors whose catalogs differ.
+
+## The `--json` wire format
+
+`mimz check --json` / `mimz compile --json` print **one JSON array on
+stdout** — always, even on success (`[]`) — so editors and the
+npm/PyPI wrappers never parse human text. The exit code still signals
+pass/fail. Each entry is a `diag::JsonDiag`:
+
+```json
+{
+  "code": "E0601",
+  "message": "`match` on enum `S` is missing `C`",
+  "help": "every variant needs an arm, or end with `_ =>` ...",
+  "path": "examples/english/traffic_light.mimz",
+  "line": 14,
+  "col": 13,
+  "span": [195, 196]
+}
+```
+
+`line`/`col` are 1-based (columns count chars, matching the caret
+renderer); `span` is the byte range into the NFC-normalized source.
+Locked end-to-end by `json_flag_emits_machine_readable_diagnostics`
+(`tests/errors.rs`).
 
 ## Known limitations / planned evolution
 
 - **English only** today. Tanglish/Tamil error catalogs land with Phase
-  1.8. Stable codes EXIST now (2026-06-11): `Diag.code` renders as
-  `error[E0101]: ...`; every CHECKER error carries one (catalog in
-  [`11-checker.md`](11-checker.md)). Lexer/parser errors still need the
-  retrofit — do it before the Phase 1.8 catalogs, so translations key
-  off codes, not English strings.
+  1.8, keyed off the codes above.
 - Caret rendering clamps to a single line; multi-line spans underline
   only the first line. Fine for current errors.
 - One span per diagnostic — no secondary labels ("first driver was
