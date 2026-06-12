@@ -65,11 +65,27 @@ impl KeywordTable {
 
 /// The one global table, parsed from the embedded TOML on first use.
 /// Panics at startup (not at some later lookup) if the TOML is malformed,
-/// names an unknown key, or has a spelling in two columns — table bugs
-/// must be impossible to ship.
+/// names an unknown key, is MISSING a required key, or has a spelling in
+/// two columns — table bugs must be impossible to ship.
+/// Every key the table must define — `kw_for_key` accepts exactly these.
+/// Without this list, DELETING a `[keywords.*]` entry would silently
+/// demote that keyword to a plain identifier (the unknown-key panic only
+/// guards the other direction). Update together with [`Kw`] and the TOML.
+const REQUIRED_KEYS: [&str; 26] = [
+    "module", "in", "out", "wire", "reg", "clock", "reset", "on", "rise", "if", "else", "match",
+    "enum", "let", "const", "repeat", "import", "true", "false", "test", "for", "tick", "expect",
+    "and", "or", "not",
+];
+
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
     let file: TableFile =
         toml::from_str(KEYWORDS_TOML).expect("keywords.toml is malformed — fix the table");
+    for key in REQUIRED_KEYS {
+        assert!(
+            file.keywords.contains_key(key),
+            "keywords.toml is missing `[keywords.{key}]` — every keyword needs its three spellings"
+        );
+    }
     let mut map = HashMap::new();
     for (key, s) in &file.keywords {
         let kw = kw_for_key(key)

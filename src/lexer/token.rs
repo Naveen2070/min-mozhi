@@ -46,7 +46,7 @@ pub enum Flavor {
 }
 
 /// Every kind of token the lexer can produce. Punctuation variants carry
-/// no payload; their spelling lives in [`punct_text`].
+/// no payload; their spelling lives in `punct_text`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokKind {
     Ident(String),

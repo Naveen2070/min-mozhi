@@ -60,6 +60,7 @@ fn newline_continuation_after_operator() {
 #[test]
 fn division_is_rejected_with_teaching_error() {
     let errs = lex("a / b").unwrap_err();
+    assert_eq!(errs[0].code, Some("E1006"));
     assert!(errs[0].msg.contains("division"));
     assert!(errs[0].help.as_ref().unwrap().contains("shifts"));
 }
@@ -67,5 +68,6 @@ fn division_is_rejected_with_teaching_error() {
 #[test]
 fn fall_is_reserved_error() {
     let errs = lex("on fall(clk)").unwrap_err();
+    assert_eq!(errs[0].code, Some("E1005"));
     assert!(errs[0].msg.contains("reserved"));
 }

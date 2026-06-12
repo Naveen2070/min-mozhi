@@ -15,7 +15,7 @@ use keywords::TABLE;
 use token::{TokKind, Token};
 
 /// Tokenize a whole file. On success the stream is newline-normalized
-/// (see [`postprocess_newlines`]) and always ends with [`TokKind::Eof`].
+/// (see `postprocess_newlines`) and always ends with [`TokKind::Eof`].
 /// On failure ALL lex errors are returned, not just the first.
 pub fn lex(src: &str) -> Result<Vec<Token>, Vec<Diag>> {
     let mut lx = Lexer {
@@ -133,6 +133,7 @@ impl Lexer<'_> {
                             Span::new(start, self.offset()),
                             "unterminated block comment",
                         )
+                        .with_code("E1001")
                         .with_help("close it with `*/`"),
                     );
                     return;
@@ -154,6 +155,7 @@ impl Lexer<'_> {
                 Some('\n') | None => {
                     self.diags.push(
                         Diag::new(Span::new(start, self.offset()), "unterminated string")
+                            .with_code("E1002")
                             .with_help("close it with `\"` before the end of the line"),
                     );
                     return;
@@ -202,6 +204,7 @@ impl Lexer<'_> {
                     Span::new(start, self.offset() + c.len_utf8()),
                     "Tamil digits are not used in literals",
                 )
+                .with_code("E1003")
                 .with_help(
                     "write numbers with ASCII digits 0-9 — they are universal across all flavors",
                 ),
@@ -223,6 +226,7 @@ impl Lexer<'_> {
                         Span::new(start, self.offset()),
                         format!("`{raw}` is not a valid number"),
                     )
+                    .with_code("E1004")
                     .with_help(format!("expected {what}; `_` separators are allowed")),
                 );
             }
@@ -252,9 +256,11 @@ impl Lexer<'_> {
             });
         } else if TABLE.is_reserved(&s) {
             self.diags.push(
-                Diag::new(span, format!("`{s}` is a reserved word")).with_help(
-                    "it is set aside for a future Min-Mozhi feature — pick another name",
-                ),
+                Diag::new(span, format!("`{s}` is a reserved word"))
+                    .with_code("E1005")
+                    .with_help(
+                        "it is set aside for a future Min-Mozhi feature — pick another name",
+                    ),
             );
         } else {
             self.toks.push(Token {
@@ -313,6 +319,7 @@ impl Lexer<'_> {
             '/' => {
                 self.diags.push(
                     Diag::new(Span::new(start, self.offset()), "division `/` does not exist in Min-Mozhi")
+                        .with_code("E1006")
                         .with_help("division synthesizes to large slow hardware — use shifts, or a stdlib divider module later (spec/02 section 3)"),
                 );
                 return;
@@ -320,15 +327,20 @@ impl Lexer<'_> {
             '%' => {
                 self.diags.push(
                     Diag::new(Span::new(start, self.offset()), "modulo `%` does not exist in Min-Mozhi")
+                        .with_code("E1007")
                         .with_help("for wrapping arithmetic use `+%`, `-%`, `*%`; for low bits use slicing `x[k-1:0]`"),
                 );
                 return;
             }
             other => {
-                self.diags.push(Diag::new(
-                    Span::new(start, self.offset()),
-                    format!("unexpected character `{other}`"),
-                ));
+                self.diags.push(
+                    Diag::new(
+                        Span::new(start, self.offset()),
+                        format!("unexpected character `{other}`"),
+                    )
+                    .with_code("E1008")
+                    .with_help("Min-Mozhi has no token starting with this character"),
+                );
                 return;
             }
         };
