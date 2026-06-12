@@ -479,6 +479,16 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.5 (2026-06-12):** emission rulings, settled while finishing the
+  Phase 1 emitter. (1) **Transliteration**: Tamil-script identifiers emit
+  as readable ASCII Verilog names via a pragmatic ISO-15919-flavored
+  table (விளக்கு → `villakku`); other scripts fall back to `_uXXXX` hex;
+  collisions take deterministic `_2`, `_3`, … suffixes. Source-level
+  names are untouched — this is an emission detail, errors still show
+  the Tamil spelling. (2) **Signed emission**: `signed[N]` signals are
+  declared `signed` in Verilog, so `extend` sign-extends and comparisons
+  are signed exactly as section 1.7 promises — now verified exhaustively
+  under Icarus (`signed_math` example). No grammar changes.
 - **v0.2.4 (2026-06-12):** `repeat` semantics nailed down while implementing
   emitter unrolling (section 1.6): a `repeat` body generates hardware only —
   declarations inside it are **E0303**; bounds, indices, and conditions over

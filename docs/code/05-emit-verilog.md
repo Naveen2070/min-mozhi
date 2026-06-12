@@ -4,15 +4,40 @@ ASTs + project symbol table → one Verilog-2005 source string.
 
 ## File layout
 
-| File        | Owns                                                                                                        |
-| ----------- | ----------------------------------------------------------------------------------------------------------- |
-| `mod.rs`    | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`) |
-| `module.rs` | Module shells, ports, declarations, instances, always-blocks                                                |
-| `expr.rs`   | Expression rendering (incl. `match` → ternary chains)                                                       |
+| File          | Owns                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mod.rs`      | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`) |
+| `module.rs`   | Module shells, ports, declarations, instances, always-blocks                                                |
+| `expr.rs`     | Expression rendering (incl. `match` → ternary chains)                                                       |
+| `translit.rs` | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)          |
 
 Same module-scoping pattern as the parser: state and shared helpers in
 `mod.rs`, the other files are `impl Emitter` blocks entered via
-`pub(super) fn module()` / `expr()` / `expr_subst()`.
+`pub(super) fn module()` / `expr()` / `expr_subst()`. The exception is
+`translit.rs`: free functions over the AST, exposed as
+`emit_verilog::transliterate` — the CLI calls it between the checker and
+the emitter.
+
+## Transliteration (`translit.rs`)
+
+Tamil-script identifiers (legal Min-Mozhi) become READABLE ASCII Verilog
+names — விளக்கு → `villakku`, சுடர் → `sutar` — via an AST rewrite, so the
+emitter itself never sees a non-ASCII name (`check_ascii` stays as the
+backstop for direct API users who skip the pre-pass). The scheme
+(decision 2026-06-12):
+
+- ASCII names pass through untouched.
+- The Tamil block romanizes with a pragmatic ISO-15919-flavored ASCII
+  table: consonants carry the inherent `a` unless a vowel sign (matra)
+  or virama follows.
+- Any other non-ASCII character becomes `_uXXXX` (uppercase hex).
+- Deterministic, one shared map per compile: collisions (ந/ன both → `n`;
+  a romanization landing on an existing ASCII name or a Verilog keyword)
+  take `_2`, `_3`, … in first-seen source order — so the four flavor
+  folders still emit byte-identical Verilog.
+
+`vilakku` (4 flavors) is the worked example: every identifier in it is
+Tamil; the emitted Verilog is pure ASCII outside the banner comment.
 
 ## Architecture invariant #6: deliberately dumb and readable
 
@@ -104,14 +129,17 @@ Mostly 1:1 symbol mapping. The interesting cases:
   will make wrong widths impossible.)
 - **`match` → nested ternaries**: each arm becomes
   `(scrutinee == pat) ? value : (...)`; multi-pattern arms OR their
-  comparisons; the final (or wildcard) arm is the default. Exhaustiveness
-  is not checked yet — checker work.
+  comparisons; the final (or wildcard) arm is the default — which is also
+  the bit-flip recovery path (the checker guarantees exhaustiveness,
+  E0601, before anything reaches the emitter).
 - **`Enum.Variant`** → the localparam name (`STATE_RED`);
   **`instance.port`** → the auto-wire (`add_sum`). Disambiguated by
   looking the base name up in `project.enums`.
-- **`extend(x, N)`** emits just `(x)` — Verilog zero/sign-extends in
-  assignment context automatically; the call exists for the checker to
-  verify widths. **`trunc(x, N)`** emits `x[(N)-1:0]`.
+- **`extend(x, N)`** emits just `(x)` — extension is context-automatic
+  in Verilog assignments: unsigned operands zero-extend, and
+  `signed`-declared ones SIGN-extend (see "Signed emission" below). The
+  call exists for the checker to verify widths.
+  **`trunc(x, N)`** emits `x[(N)-1:0]`.
 - **Literals** preserve the writer's base via the token's `raw` spelling:
   `0xFF` → `'hFF`, `0b1010` → `'b1010`, decimal stays decimal.
 
@@ -146,19 +174,40 @@ reusing the checker's `consteval::eval` rather than reimplementing it:
 ripple-carry adder built by unrolling one `FullAdder` per bit, verified
 exhaustively under Icarus.
 
+## Signed emission
+
+`signed[N]` signals are declared `wire signed`/`reg signed`/
+`input wire signed …` (`width_subst` adds the modifier), so Verilog's
+native two's-complement semantics apply: assignments SIGN-extend
+(`extend` on signed is correct for free) and comparisons are signed.
+Sound because the checker forbids signed/unsigned mixing inside one
+expression (E0403) — a Verilog expression here is either all-signed or
+all-unsigned, never the silent-fallback mix. Verified exhaustively by
+`signed_math` (4 flavors) + its 256-pair Icarus TB; the deliberate
+breakage check (drop the `signed` modifier) makes that TB fail with
+"sign lost". Residual edge, documented honestly: `trunc` emits a
+part-select, which Verilog treats as unsigned MID-expression — at
+declared-signal boundaries (the normal case) signedness is restored by
+the declaration; spec/02 already rules "slicing signed yields bits".
+
 ## Known gaps (clean errors, not wrong output)
 
 The emitter's rule for unimplemented features: **error, never guess.**
 
-| Gap                           | Error points at | Lands with                                     |
-| ----------------------------- | --------------- | ---------------------------------------------- |
-| Non-ASCII identifiers         | the identifier  | a transliteration pass (Verilog is ASCII-only) |
-| Field access on complex exprs | the expression  | checker/IR                                     |
+| Gap                            | Error points at | Lands with                                                         |
+| ------------------------------ | --------------- | ------------------------------------------------------------------ |
+| Non-ASCII reaching the emitter | the identifier  | never, normally — `transliterate` runs first; this is the backstop |
+| Field access on complex exprs  | the expression  | checker/IR                                                         |
 
 ## Testing
 
 `tests/examples.rs` compiles every example and asserts on the output —
-including `tanglish_counter_compiles_to_identical_verilog`, which proves
-the trilingual thesis at the byte level. When you change emission, run a
-generated `.v` through a real tool (Icarus Verilog planned for CI) — the
-integration tests check our expectations, not Verilog's.
+including the four-flavor byte-identity test, which proves the
+trilingual thesis at the byte level — and pins every base example's
+FULL output to `tests/golden/<base>.v` (banner line excluded, so
+version bumps don't churn goldens). After an INTENDED emitter change:
+`MIMZ_UPDATE_GOLDENS=1 cargo test --test examples` regenerates them —
+then review the golden diff like any other code change. The Icarus
+suite (`tests/icarus.rs`) remains the independent judge: our asserts
+check OUR expectations; iverilog + the self-checking TBs check
+Verilog's.

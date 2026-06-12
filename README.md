@@ -63,22 +63,25 @@ Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
 ## Project Status
 
-**Phase 1 — compiler under construction (spec v0.2.4).** The front end works:
+**Phase 1 — compiler under construction (spec v0.2.5).** The front end works:
 `mimz compile` turns `.mimz` files into synthesizable Verilog today — lexer
 (all three keyword flavors), full parser, a real checker enforcing **every
 safety rule in the spec** (name resolution, const evaluation, width/type
 rules, single-driver + combinational-cycle rules, match exhaustiveness,
 instantiation completeness, clock-domain ownership — all with stable
 `E0101`-style error codes), and a Verilog emitter that unrolls `repeat`
-(compile-time hardware generation), with 131 passing tests.
+(compile-time hardware generation), **transliterates Tamil identifiers to
+readable ASCII** (விளக்கு → `villakku`), and emits real `wire signed`
+two's-complement semantics — with 144 passing tests, golden-file output
+pinning, and an end-to-end error corpus.
 Every example exists in all four flavor folders (`english/`, `tanglish/`,
 `tamil/`, `mixed/`), compiles to **byte-identical** Verilog from each
 (CI-asserted), and the emitted Verilog is **validated by Icarus Verilog**:
 every file passes `iverilog`, and a self-checking testbench per example
-simulates Min-Mozhi's documented semantics to PASS. Still to come in
-Phase 1: identifier transliteration, golden files, lexer/parser error
-codes, and a diagnostics-only LSP. The repo stays private until Phase 1
-is done.
+simulates Min-Mozhi's documented semantics to PASS — including exhaustive
+signed-arithmetic verification. Still to come in Phase 1: lexer/parser
+error codes (+ lib/bin split + `--json`) and a diagnostics-only LSP. The
+repo stays private until Phase 1 is done.
 
 ## Build, Test, Run
 

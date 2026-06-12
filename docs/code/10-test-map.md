@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**136 tests** as of 2026-06-12: 116 unit + 8 integration + 2 Icarus differential + 3 error-fixture + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one of them locks `ALL_CHECKER_CODES` to the 11-checker.md catalog.)
+**144 tests** as of 2026-06-12 (EOD): 123 unit + 9 integration + 2 Icarus differential + 3 error-fixture + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one of them locks `ALL_CHECKER_CODES` to the 11-checker.md catalog.)
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -87,38 +87,51 @@ deserve a note:
 | `clock_and_reset_ports_may_be_omitted`                                | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract              |
 | `same_domain_logic_under_two_declared_clocks_passes`                  | E0701 colors by USE, not by declaration count — an unused clock changes nothing        |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 10 tests)
+## Unit: transliteration (`src/emit_verilog/translit.rs`, 5 tests)
 
-| Test                                                 | Locks in                                                                                                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `diags_carry_the_file_index`                         | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt  |
-| `repeat_unrolls_drives_with_folded_indices`          | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3                                                        |
-| `repeat_var_folds_in_index_arithmetic`               | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal                                               |
-| `empty_and_reversed_ranges_emit_nothing`             | `0..0` and `4..0` generate no hardware (no crash, no partial output)                                                                        |
-| `repeat_over_budget_errors_cleanly`                  | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                                                                  |
-| `nested_repeat_folds_both_variables`                 | nested loops bind both `i` and `j` per iteration; `y[1] = 1` proves the inner+outer fold                                                    |
-| `repeat_instance_array_gets_flat_names`              | `let u[i] = …` → `u__<i>` with outputs `u__<i>_<port>`; `u[i].o` reads back the same flat wire                                              |
-| `module_const_folds_in_widths_and_emits_no_hardware` | a `const` folds to a literal in port widths and bounds, and declares no Verilog of its own                                                  |
-| `child_consts_fold_into_parent_auto_wires`           | instantiating a const-widthed module folds the CHILD's const into the auto-wire (regression: `wire [(W)-1:0]` leaked and iverilog rejected) |
-| `parent_const_never_substitutes_into_child_widths`   | same const NAME in parent and child: the child's value sizes the wire — never the parent's (silently wrong hardware otherwise)              |
+| Test                                      | Locks in                                                              |
+| ----------------------------------------- | --------------------------------------------------------------------- |
+| `pure_tamil_words_romanize_readably`      | விளக்கு → `villakku`, நிலை → `nilai` — the readable-output promise    |
+| `ascii_and_mixed_names_keep_their_ascii`  | ASCII passes through untouched, even mixed into a Tamil name          |
+| `non_tamil_unicode_falls_back_to_hex`     | other scripts → `_uXXXX`, never dropped                               |
+| `results_always_start_like_an_identifier` | output is always a valid Verilog identifier start                     |
+| `the_two_n_letters_romanize_identically`  | ந/ன → `n` is a DOCUMENTED collision; the suffix counter disambiguates |
 
-## Integration (`tests/examples.rs`, 8 tests — run the real binary)
+## Unit: emitter (`src/emit_verilog/mod.rs`, 12 tests)
+
+| Test                                                            | Locks in                                                                                                                                    |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `diags_carry_the_file_index`                                    | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt  |
+| `repeat_unrolls_drives_with_folded_indices`                     | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3                                                        |
+| `repeat_var_folds_in_index_arithmetic`                          | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal                                               |
+| `empty_and_reversed_ranges_emit_nothing`                        | `0..0` and `4..0` generate no hardware (no crash, no partial output)                                                                        |
+| `repeat_over_budget_errors_cleanly`                             | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                                                                  |
+| `nested_repeat_folds_both_variables`                            | nested loops bind both `i` and `j` per iteration; `y[1] = 1` proves the inner+outer fold                                                    |
+| `repeat_instance_array_gets_flat_names`                         | `let u[i] = …` → `u__<i>` with outputs `u__<i>_<port>`; `u[i].o` reads back the same flat wire                                              |
+| `module_const_folds_in_widths_and_emits_no_hardware`            | a `const` folds to a literal in port widths and bounds, and declares no Verilog of its own                                                  |
+| `child_consts_fold_into_parent_auto_wires`                      | instantiating a const-widthed module folds the CHILD's const into the auto-wire (regression: `wire [(W)-1:0]` leaked and iverilog rejected) |
+| `parent_const_never_substitutes_into_child_widths`              | same const NAME in parent and child: the child's value sizes the wire — never the parent's (silently wrong hardware otherwise)              |
+| `tamil_identifiers_emit_as_romanized_verilog`                   | the transliterated pipeline end to end: module/ports/regs/always all use the SAME romanization; no non-ASCII outside the banner comment     |
+| `colliding_romanizations_get_suffixes_and_ascii_names_are_safe` | ந/ன clash + an existing ASCII `nii`: user names are never stolen; clashes get `_2`, `_3` deterministically                                  |
+
+## Integration (`tests/examples.rs`, 9 tests — run the real binary)
 
 `examples/` holds four flavor folders — `english/`, `tanglish/`, `tamil/`,
-`mixed/` — each with the SAME 12 base examples (identical identifiers,
+`mixed/` — each with the SAME 14 base examples (identical identifiers,
 only keywords differ; `lib/` subfolders hold dotted-import targets). The
 base-example list lives in the `BASE_EXAMPLES` const in the test file.
 
-| Test                                            | Locks in                                                                                                                                                                                                                                         |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `every_example_checks_clean`                    | every `.mimz` under `examples/` (recursive) passes `mimz check` — which now runs the CHECKER over the file and its imports, so this is also a zero-false-positives test for every checker rule. At least 4 × 11 files — RULES R6 made executable |
-| `every_example_compiles`                        | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                                                                                                                         |
-| `all_four_flavors_compile_to_identical_verilog` | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                                                                                                                       |
-| `counter_compiles_to_verilog`                   | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                 |
-| `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                      |
-| `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                        |
-| `ripple_adder_unrolls_repeat`                   | `repeat` end-to-end: four `FullAdder fa__0..3` with the carry chained, folded indices, `const WIDTH` folded into widths — compile-time generation proven through the real binary                                                                 |
-| `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                              |
+| Test                                            | Locks in                                                                                                                                                                                                                                                          |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_example_checks_clean`                    | every `.mimz` under `examples/` (recursive) passes `mimz check` — which now runs the CHECKER over the file and its imports, so this is also a zero-false-positives test for every checker rule. At least 4 × 11 files — RULES R6 made executable                  |
+| `every_example_compiles`                        | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                                                                                                                                          |
+| `all_four_flavors_compile_to_identical_verilog` | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                                                                                                                                        |
+| `counter_compiles_to_verilog`                   | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                                  |
+| `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                                       |
+| `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                                         |
+| `ripple_adder_unrolls_repeat`                   | `repeat` end-to-end: four `FullAdder fa__0..3` with the carry chained, folded indices, `const WIDTH` folded into widths — compile-time generation proven through the real binary                                                                                  |
+| `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                                               |
+| `emitted_verilog_matches_the_goldens`           | every base example's FULL output equals `tests/golden/<base>.v` byte for byte (banner stripped). On an INTENDED emitter change: `MIMZ_UPDATE_GOLDENS=1 cargo test --test examples`, then review the golden diff like code. Failure names the first differing line |
 
 ## Icarus differential (`tests/icarus.rs`, 2 tests — run a REAL Verilog tool)
 
@@ -130,10 +143,10 @@ PATH → the Windows installer default `C:\iverilog\bin`); in CI
 never skip silently. Local install: the Windows installer
 (bleyer.org/icarus) or `apt-get install iverilog`.
 
-| Test                                    | Locks in                                                                                                                                                                                                         |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog` | all 48 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment                                                                                                             |
-| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing) and must print PASS under `vvp` — the differential |
+| Test                                    | Locks in                                                                                                                                                                                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_emitted_verilog_passes_iverilog` | all 56 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated `vilakku` and `wire signed` `signed_math`)                                                                         |
+| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`, 13) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison) and must print PASS under `vvp` — the differential |
 
 House rule for the testbenches: each prints `PASS` exactly once or
 `FAIL: reason` and stops — the Rust side asserts on those markers, so a
