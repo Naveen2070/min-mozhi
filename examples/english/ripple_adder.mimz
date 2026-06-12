@@ -1,0 +1,27 @@
+// Min-Mozhi example: parametric ripple-carry adder. `repeat` unrolls a
+// chain of one-bit FullAdder instances at compile time — `const WIDTH`
+// is the single knob: change it, recompile, and the hardware regenerates.
+// Reuses lib/full_adder through the dotted import. This is the example
+// that exercises `repeat` + an instance array + a dotted import together.
+
+include lib.full_adder
+
+module RippleAdder {
+  const WIDTH: int = 4
+
+  in  a:   bits[WIDTH]
+  in  b:   bits[WIDTH]
+  in  cin: bit
+
+  out sum:  bits[WIDTH]
+  out cout: bit
+
+  // One FullAdder per bit; the carry ripples from each stage to the next.
+  // Bit 0 takes the module's carry-in; bit i takes bit (i-1)'s carry-out.
+  repeat i: 0..WIDTH {
+    let fa[i] = FullAdder() { a: a[i], b: b[i], cin: if i == 0 { cin } else { fa[i - 1].cout } }
+    sum[i] = fa[i].sum
+  }
+
+  cout = fa[WIDTH - 1].cout
+}
