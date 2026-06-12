@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**133 tests** as of 2026-06-12: 114 unit + 8 integration + 2 Icarus differential + 2 error-fixture + 4 docs-sync + 3 grammar-sync. (The 2 error-fixture tests are data-driven over ~67 broken `.mimz` fixtures.)
+**136 tests** as of 2026-06-12: 116 unit + 8 integration + 2 Icarus differential + 3 error-fixture + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one of them locks `ALL_CHECKER_CODES` to the 11-checker.md catalog.)
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -87,18 +87,20 @@ deserve a note:
 | `clock_and_reset_ports_may_be_omitted`                                | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract              |
 | `same_domain_logic_under_two_declared_clocks_passes`                  | E0701 colors by USE, not by declaration count — an unused clock changes nothing        |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 8 tests)
+## Unit: emitter (`src/emit_verilog/mod.rs`, 10 tests)
 
-| Test                                                 | Locks in                                                                                                                                   |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `diags_carry_the_file_index`                         | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt |
-| `repeat_unrolls_drives_with_folded_indices`          | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3                                                       |
-| `repeat_var_folds_in_index_arithmetic`               | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal                                              |
-| `empty_and_reversed_ranges_emit_nothing`             | `0..0` and `4..0` generate no hardware (no crash, no partial output)                                                                       |
-| `repeat_over_budget_errors_cleanly`                  | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                                                                 |
-| `nested_repeat_folds_both_variables`                 | nested loops bind both `i` and `j` per iteration; `y[1] = 1` proves the inner+outer fold                                                   |
-| `repeat_instance_array_gets_flat_names`              | `let u[i] = …` → `u__<i>` with outputs `u__<i>_<port>`; `u[i].o` reads back the same flat wire                                             |
-| `module_const_folds_in_widths_and_emits_no_hardware` | a `const` folds to a literal in port widths and bounds, and declares no Verilog of its own                                                 |
+| Test                                                 | Locks in                                                                                                                                    |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `diags_carry_the_file_index`                         | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt  |
+| `repeat_unrolls_drives_with_folded_indices`          | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3                                                        |
+| `repeat_var_folds_in_index_arithmetic`               | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal                                               |
+| `empty_and_reversed_ranges_emit_nothing`             | `0..0` and `4..0` generate no hardware (no crash, no partial output)                                                                        |
+| `repeat_over_budget_errors_cleanly`                  | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                                                                  |
+| `nested_repeat_folds_both_variables`                 | nested loops bind both `i` and `j` per iteration; `y[1] = 1` proves the inner+outer fold                                                    |
+| `repeat_instance_array_gets_flat_names`              | `let u[i] = …` → `u__<i>` with outputs `u__<i>_<port>`; `u[i].o` reads back the same flat wire                                              |
+| `module_const_folds_in_widths_and_emits_no_hardware` | a `const` folds to a literal in port widths and bounds, and declares no Verilog of its own                                                  |
+| `child_consts_fold_into_parent_auto_wires`           | instantiating a const-widthed module folds the CHILD's const into the auto-wire (regression: `wire [(W)-1:0]` leaked and iverilog rejected) |
+| `parent_const_never_substitutes_into_child_widths`   | same const NAME in parent and child: the child's value sizes the wire — never the parent's (silently wrong hardware otherwise)              |
 
 ## Integration (`tests/examples.rs`, 8 tests — run the real binary)
 
@@ -138,7 +140,7 @@ House rule for the testbenches: each prints `PASS` exactly once or
 broken TB fails loudly, never silently. The Blinker TB overrides the
 `LIMIT` parameter (`#(.LIMIT(3))`) instead of simulating 50M cycles.
 
-## Error fixtures (`tests/errors.rs`, 2 tests — run the real binary on broken code)
+## Error fixtures (`tests/errors.rs`, 3 tests — run the real binary on broken code)
 
 End-to-end **failure** validation, the mirror of the checker unit tests: those
 prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it.
@@ -150,6 +152,10 @@ prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `every_error_fixture_reports_its_code`   | each fixture, run through `mimz check`, exits non-zero AND prints `error[<code>]` to stderr — the rendered code is the stable user-facing contract, checked for real |
 | `error_corpus_covers_every_checker_code` | completeness guard: every code in `ALL_CHECKER_CODES` (the 36 stable checker codes) has at least one fixture — a new E-code can't ship without an end-to-end fixture |
+| `checker_code_list_matches_the_catalog`  | `ALL_CHECKER_CODES` must equal the 11-checker.md catalog table (reserved rows exempt) — the corpus, the docs, and the code can't drift apart                         |
+
+`every_error_fixture_reports_its_code` also asserts a `help:` line per
+fixture — the teaching contract, proven at the CLI surface.
 
 Coverage is **every distinct edge case**, not one per code: E0302 missing-input
 AND duplicate-conn; E0407 extend-narrowing AND `-` on bits; E0303 all eight
