@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.2.**
+> **Spec v0.2.3.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -124,6 +124,14 @@ error (E1005) explaining why. They live in the `reserved` list in
 | `sync`                   | clock-domain crossing (Phase 2)            |
 | `inout`                  | top-level bidirectional pads (Phase 2)     |
 | `struct`                 | bundles/interfaces (post-Phase 2)          |
+| `secret`                 | explicit information-flow types (v0.3 G5)  |
+| `declassify`             | the only `secret`→public escape (v0.3 G5)  |
+| `default`                | sticky-fault / default values (v0.3)       |
+| `pipeline`               | pipeline-stage construct (v0.3 backlog)    |
+| `interface`              | named port bundles (v0.3 backlog)          |
+| `chan`                   | handshake channels (v0.3 backlog)          |
+| `prove`                  | formal/temporal assertions (v0.3 backlog)  |
+| `await`                  | handshake sequencing (v0.3 backlog)        |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).
@@ -250,6 +258,11 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.3 (2026-06-12):** Reserved the eight v0.3 backlog words
+  (`secret`, `declassify`, `default`, `pipeline`, `interface`, `chan`,
+  `prove`, `await`) so v0.1 programs cannot claim them as identifiers
+  (E1005). English-only — untranslated until each feature lands, per the
+  reserved-words rule above.
 - **v0.2.2 (2026-06-12):** Reserved-words table added (the eight words
   the `reserved` list in `keywords.toml` holds, each with the feature it
   waits for) — completeness audit; no word changes. The loader now also

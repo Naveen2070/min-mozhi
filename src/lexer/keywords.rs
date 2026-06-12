@@ -187,4 +187,27 @@ mod tests {
         assert!(TABLE.is_reserved("fall"));
         assert!(TABLE.lookup("fall").is_none());
     }
+
+    #[test]
+    fn the_v03_backlog_keywords_are_reserved() {
+        for word in [
+            "secret",
+            "declassify",
+            "default",
+            "pipeline",
+            "interface",
+            "chan",
+            "prove",
+            "await",
+        ] {
+            assert!(
+                TABLE.is_reserved(word),
+                "`{word}` is in the v0.3 backlog — it must be reserved before v0.1.0"
+            );
+            assert!(
+                TABLE.lookup(word).is_none(),
+                "`{word}` must not be a keyword yet"
+            );
+        }
+    }
 }
