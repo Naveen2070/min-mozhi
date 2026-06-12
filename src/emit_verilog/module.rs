@@ -385,9 +385,17 @@ impl Emitter<'_> {
     fn width_subst(&mut self, ty: &Type, subst: &HashMap<&str, &Expr>) -> String {
         match ty {
             Type::Bit => String::new(),
-            Type::Bits(e) | Type::Signed(e) => {
+            Type::Bits(e) => {
                 let we = self.expr_subst(e, subst);
                 format!("[({we})-1:0] ")
+            }
+            Type::Signed(e) => {
+                // Declared `signed` so Verilog's native two's-complement
+                // semantics apply: assignments SIGN-extend and comparisons
+                // are signed. Sound because the checker forbids
+                // signed/unsigned mixing inside one expression (E0403).
+                let we = self.expr_subst(e, subst);
+                format!("signed [({we})-1:0] ")
             }
             Type::Named(id) => {
                 if let Some(e) = self.project.enums.get(&id.name) {

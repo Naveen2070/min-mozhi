@@ -188,8 +188,10 @@ impl Emitter<'_> {
                 Builtin::UnsignedCast => {
                     format!("$unsigned({})", self.expr_subst(&args[0], subst))
                 }
-                // Zero/sign extension is context-automatic in Verilog
-                // assignments; the checker (work item 4) will verify widths.
+                // Extension is context-automatic in Verilog assignments:
+                // unsigned operands zero-extend; `signed`-declared ones
+                // SIGN-extend (declarations carry `signed`, see
+                // `width_subst`). The checker has already verified widths.
                 Builtin::Extend => format!("({})", self.expr_subst(&args[0], subst)),
                 Builtin::Trunc => {
                     let x = self.expr_subst(&args[0], subst);
