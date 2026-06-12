@@ -90,6 +90,8 @@ mimz/
     main.rs              # thin CLI (clap, human/JSON output)   ✅
     lsp.rs               # `mimz lsp` server (BIN-only module,  ✅
                          #   keeps tokio out of the lib)
+    bin/mimz-bench/      # benchmark harness (docs/code/12)     ✅
+                         #   main.rs / metrics.rs / html.rs
     project.rs           # loading, imports; LoadError values   ✅
     span.rs              # byte-offset spans                    ✅
     diag.rs              # teaching diagnostics + JSON format   ✅

@@ -4,6 +4,18 @@
 
 use crate::span::Span;
 
+/// Every stable checker error code (catalog: docs/code/11-checker.md).
+/// THE machine-readable list — `tests/errors.rs` guards it against the
+/// human catalog and demands an end-to-end fixture per code, and
+/// `mimz-bench` measures fixture coverage against it. Append-only by
+/// the E-code stability contract (codes are never renumbered).
+pub const ALL_CHECKER_CODES: [&str; 36] = [
+    "E0001", "E0002", "E0003", "E0004", "E0101", "E0102", "E0103", "E0104", "E0105", "E0106",
+    "E0107", "E0108", "E0109", "E0201", "E0202", "E0301", "E0302", "E0303", "E0401", "E0402",
+    "E0403", "E0404", "E0405", "E0406", "E0407", "E0408", "E0409", "E0410", "E0501", "E0502",
+    "E0503", "E0504", "E0505", "E0601", "E0602", "E0701",
+];
+
 /// One compiler error. Diagnostics are plain values — passes collect
 /// `Vec<Diag>` and keep going (multi-error reporting), they never panic
 /// or print directly. Rendering happens once, in [`render`].

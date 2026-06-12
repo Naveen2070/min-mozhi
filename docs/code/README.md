@@ -39,6 +39,7 @@ is a bug — fix it the same day (RULES R1).
 | [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow           |
 | [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test         |
 | [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning       |
+| [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report    |
 
 ## The 60-second version
 
@@ -68,8 +69,8 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-12 EOD (Phase 1 gating work
-COMPLETE — checker all six passes, `repeat` emission, transliteration,
-signed emission, golden files, full E-code coverage incl. lexer
-E10xx/parser E11xx/loader E1201, lib/bin split (`src/lib.rs`), and
-`--json` diagnostics; only the non-gating LSP v0 remains)._
+_Last synced with the code: 2026-06-12 EOD (Phase 1 COMPLETE — checker
+all six passes, `repeat` emission, transliteration, signed emission,
+golden files, full E-code coverage incl. lexer E10xx/parser
+E11xx/loader E1201, lib/bin split (`src/lib.rs`), `--json` diagnostics,
+LSP v0 — plus the `mimz-bench` benchmark harness, page 12)._

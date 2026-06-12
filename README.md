@@ -1,6 +1,8 @@
 # Min-Mozhi (மின்மொழி)
 
-> **The first Tamil-rooted Hardware Description Language.**
+> **A modern hardware description language — modern programming syntax, safe
+> by default — and the first Tamil-rooted HDL, built to help students learn
+> digital design.**
 > Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.
 > Built in Tamil Nadu, India. 🇮🇳
 
@@ -44,20 +46,26 @@ thoguthi Counter(WIDTH: int = 8) {
 
 ## Why
 
-- **Beginner-first, measurably** — understand the basics in 1–2 hours; compile
-  a counter within 5 minutes of installing.
-- **Safe by construction** — no inferred latches, no silent truncation, no
+- **Modern syntax** — Go/TypeScript-style braces and `: type` annotations,
+  expression-oriented `if`/`match`; no `begin/end`, no preprocessor.
+- **Safe by default** — no inferred latches, no silent truncation, no
   multiple drivers, no uninitialized registers, no blocking/non-blocking
-  confusion, no signed/unsigned mixing, no `x & 1 == 0` precedence traps.
+  confusion, no signed/unsigned mixing, no `x & 1 == 0` precedence traps —
+  every one rejected at compile time.
 - **Trilingual by design** — English, Tanglish, and Tamil are keyword skins
   over one grammar; `mimz translate` converts losslessly between them.
+- **Beginner-first, measurably** — understand the basics in 1–2 hours; compile
+  a counter within 5 minutes of installing.
 
 ## Who it's for (and not for)
 
-For students and the curious — an **educational project** first. If you are a
-professional Verilog/Chisel user who needs production completeness, keep using
-Verilog/Chisel: Min-Mozhi is new, experimental, and not a replacement. It will,
-however, always emit Verilog, so nothing you build here is a dead end.
+For students and the curious — Min-Mozhi is an **educational project, honestly
+framed** — and equally (`spec/01` v0.3) for modern developers who want a
+safe-by-default, ergonomic HDL, drawn by the compile-time checks rather than
+by Tamil. If you are a professional Verilog/Chisel user who needs production
+completeness, keep using Verilog/Chisel: Min-Mozhi is new, experimental, and
+not a replacement. It will, however, always emit Verilog, so nothing you build
+here is a dead end.
 
 Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
@@ -72,8 +80,8 @@ instantiation completeness, clock-domain ownership — all with stable
 `E0101`-style error codes), and a Verilog emitter that unrolls `repeat`
 (compile-time hardware generation), **transliterates Tamil identifiers to
 readable ASCII** (விளக்கு → `villakku`), and emits real `wire signed`
-two's-complement semantics — with 144 passing tests, golden-file output
-pinning, and an end-to-end error corpus.
+two's-complement semantics — with golden-file output pinning and an
+end-to-end error corpus.
 Every example exists in all four flavor folders (`english/`, `tanglish/`,
 `tamil/`, `mixed/`), compiles to **byte-identical** Verilog from each
 (CI-asserted), and the emitted Verilog is **validated by Icarus Verilog**:
@@ -84,7 +92,8 @@ stable `E`-code, `mimz check --json` emits machine-readable diagnostics,
 and **`mimz lsp` brings live squiggles to VS Code** (diagnostics-only v0,
 `editors/vscode`). **Every Phase 1 work item is complete** — what remains
 before going public is the Grammar Engine (Phase 1.8, decision D7). With
-150 passing tests.
+157 passing tests and a benchmark harness (`mimz-bench`) that renders
+speed, accuracy, safety, and coverage into an HTML graph report.
 
 ## Build, Test, Run
 
@@ -104,6 +113,10 @@ cargo run -- compile examples/english/counter.mimz -o counter.v
 
 # see the token stream (debugging):
 cargo run -- check examples/english/counter.mimz --tokens
+
+# benchmark: speed, accuracy, safety, coverage -> bench-report.html with graphs
+# (docs/code/12-benchmark.md; drop --no-cov if cargo-llvm-cov is installed):
+cargo run --release --bin mimz-bench -- --no-cov
 ```
 
 Before committing: `cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test`
@@ -122,7 +135,7 @@ npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jso
 | [`spec/02-syntax-and-grammar.md`](spec/02-syntax-and-grammar.md)     | Syntax tour, operators, types, formal EBNF grammar              |
 | [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables            |
 | [`spec/04-grammar-engine.md`](spec/04-grammar-engine.md)             | Grammar Engine — natural Tamil word order (Phase 1.8)           |
-| [`examples/`](examples/)                                             | 11 examples × 4 flavor folders: english, tanglish, tamil, mixed |
+| [`examples/`](examples/)                                             | 14 examples × 4 flavor folders: english, tanglish, tamil, mixed |
 | [`editors/vscode/`](editors/vscode/)                                 | VS Code syntax highlighting for `.mimz` (all three flavors)     |
 | [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture    |
 | [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)        |

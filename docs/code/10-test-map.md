@@ -4,9 +4,9 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**150 tests** as of 2026-06-12 (EOD): 124 lib unit + 3 LSP unit (bin) + 9 integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` to the 11-checker.md catalog, one locks the `--json` wire format.)
+**157 tests** as of 2026-06-12 (EOD): 125 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.)
 
-## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
+## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
 | Test                                        | Locks in                                              | If it fails…                                  |
 | ------------------------------------------- | ----------------------------------------------------- | --------------------------------------------- |
@@ -14,6 +14,7 @@ this page is the human ledger).
 | `flavors_are_recorded`                      | the lexer remembers which column a spelling came from | flavor tracking broke (P1.8 depends on it)    |
 | `include_is_an_alias_for_import`            | `include` lexes to the exact same token as `import`   | the alias mechanism or table entry broke      |
 | `fall_is_reserved`                          | `fall` errors as reserved, is not a keyword           | someone un-reserved `fall` without a decision |
+| `the_v03_backlog_keywords_are_reserved`     | all 8 v0.3 backlog words (`secret`…`await`) reserved  | a backlog word was claimed without a decision |
 
 Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
@@ -210,16 +211,30 @@ plain `contains` would pass vacuously), and that the manifest registers
 | `analyze_reports_checker_errors_with_codes`                 | the in-memory pipeline (didOpen text, never on disk) produces coded checker diagnostics                                                      |
 | `opening_a_broken_file_publishes_coded_diagnostics` (smoke) | the REAL binary over the real wire protocol: framed JSON-RPC initialize → didOpen → publishDiagnostics with code, source, help, and position |
 
+## Benchmark harness (`src/bin/mimz-bench/`, 6 unit tests)
+
+The harness itself (docs in [`12-benchmark.md`](12-benchmark.md))
+re-measures what this suite asserts — rates and timings instead of
+pass/fail — so its own logic is unit-tested here:
+
+| Test                                       | Locks in                                                       |
+| ------------------------------------------ | -------------------------------------------------------------- |
+| `rate_percent_handles_zero_and_partial`    | rate math (0/0 reads as 100%, never NaN)                       |
+| `expect_header_parses_only_the_convention` | the `// expect: Exxxx` fixture-header parse, same as errors.rs |
+| `banner_strip_matches_the_golden_rule`     | banner stripping byte-matches the golden test's rule           |
+| `median_is_the_middle_run`                 | timing aggregation (median, robust to one cold run)            |
+| `report_renders_a_complete_page` (html)    | the HTML report renders whole: charts, tables, embedded JSON   |
+| `failures_flip_the_verdict_and_are_listed` | a failing validation turns the verdict red and is named        |
+
 ## Deliberately NOT covered (and what would close each gap)
 
-| Gap                                                     | Why it's open                                                  | Closes when                                                 |
-| ------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
-| Cross-INSTANCE clock-domain tracking                    | pass 6 is module-local (instance outputs carry no domain)      | with the Phase 2 `sync`/multi-clock design                  |
-| `repeat` golden output (exact `.v`)                     | only substring + Icarus asserts today                          | the Phase C golden-file harness pins the unrolled text      |
-| Diagnostic rendering format (`render`'s caret layout)   | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes |
-| CLI surface (`--tokens`, exit codes, `-o` default path) | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows             |
-| Golden-file (full output) comparison                    | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)    |
-| `mimz translate`, `fmt`, simulator, grammar engine      | not built yet                                                  | with their phases                                           |
+| Gap                                                     | Why it's open                                                                                                            | Closes when                                                 |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| Cross-INSTANCE clock-domain tracking                    | pass 6 is module-local (instance outputs carry no domain)                                                                | with the Phase 2 `sync`/multi-clock design                  |
+| Diagnostic rendering format (`render`'s caret layout)   | low risk, changes are cosmetic                                                                                           | worth a snapshot test if/when output stabilizes for E-codes |
+| CLI surface (`--tokens`, exit codes, `-o` default path) | thin wrappers; breakage is loud in manual use                                                                            | cheap `assert_cmd`-style tests if the CLI grows             |
+| `mimz-bench` end-to-end (a full run as a test)          | it is a measuring tool over this very suite — running it under `cargo test` would re-run everything for no new assertion | if its orchestration grows logic worth locking              |
+| `mimz translate`, `fmt`, simulator, grammar engine      | not built yet                                                                                                            | with their phases                                           |
 
 ## House rules for new tests
 

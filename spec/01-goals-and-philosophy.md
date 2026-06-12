@@ -1,9 +1,12 @@
 # Min-Mozhi (மின்மொழி) — Goals & Philosophy
 
-> **Spec v0.3** — v0.2 rewritten from the founder's answers to the 2026-06-10
+> **Spec v0.3.1** — v0.2 rewritten from the founder's answers to the 2026-06-10
 > design review (`docs/archive/open-questions-2026-06-10.md`); v0.3 adds the
-> modern-secure-HDL co-goal (Decision 2026-06-12, `docs/log/2026-06-12.md`).
-> The first Tamil-rooted Hardware Description Language. Built in Tamil Nadu, India.
+> modern-secure-HDL co-goal (Decision 2026-06-12, `docs/log/2026-06-12.md`);
+> v0.3.1 rewords the pitch (same log, no goal change).
+> **A modern HDL — modern programming syntax, safe by default — and the first
+> Tamil-rooted Hardware Description Language, built to help students learn
+> digital design.** Built in Tamil Nadu, India.
 
 ---
 
@@ -18,6 +21,10 @@
 4. **To prove India can build its own silicon tooling.**
 5. **Personal mastery of compilers** — and a portfolio that shows it (the
    showcase is a side effect, never the driver).
+
+In one sentence: **Min-Mozhi is a modern HDL — modern programming syntax,
+safe by default — Tamil-rooted, with Tamil and Tanglish as first-class keyword
+flavors, built to help students learn digital design.**
 
 This is an **educational project, honestly framed**: if even one person learns
 from it or appreciates it, it has succeeded. The only true failure is if the
@@ -52,7 +59,8 @@ A hardware description language for digital circuits (FPGAs first). It is
 — wires, registers, modules — and what you write maps obviously to what gets
 built on silicon.
 
-> **Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.**
+> **Modern syntax, safe by default, Tamil at heart.**
+> Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.
 
 The pitch to a non-Tamil user: the **safety** and the **syntax** (and maybe
 speed, later). The trilingual system is the soul, not the sales pitch.
@@ -181,6 +189,11 @@ and DX merged into readability in v0.3, Decision 2026-06-12):
 
 ## Changelog
 
+- **v0.3.1 (2026-06-12):** Pitch reworded to lead with **modern HDL / modern
+  programming syntax / safe by default / Tamil-rooted (Tamil + Tanglish
+  first-class) / educational** — header, section 1 identity sentence, section 3
+  pitch line. Wording only: the v0.3 equal-goals decision, G1–G5, the
+  Constitution, and the tie-breakers are unchanged.
 - **v0.3 (2026-06-12):** Modern-secure-HDL becomes a co-primary goal, equal
   with education (Decision 2026-06-12, from the `docs/Ideas/language_plan.md`
   feasibility triage). Added: goal #3 in section 1, second audience in

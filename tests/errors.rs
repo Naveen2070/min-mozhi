@@ -12,15 +12,11 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Every stable checker error code (docs/code/11-checker.md). The corpus must
-/// exercise each one end-to-end; `error_corpus_covers_every_checker_code`
-/// fails if any is missing a fixture, so a new code cannot ship without one.
-const ALL_CHECKER_CODES: [&str; 36] = [
-    "E0001", "E0002", "E0003", "E0004", "E0101", "E0102", "E0103", "E0104", "E0105", "E0106",
-    "E0107", "E0108", "E0109", "E0201", "E0202", "E0301", "E0302", "E0303", "E0401", "E0402",
-    "E0403", "E0404", "E0405", "E0406", "E0407", "E0408", "E0409", "E0410", "E0501", "E0502",
-    "E0503", "E0504", "E0505", "E0601", "E0602", "E0701",
-];
+// THE list lives in the lib (single source — `mimz-bench` reads it too);
+// the corpus must exercise each code end-to-end, and
+// `error_corpus_covers_every_checker_code` fails if any is missing a
+// fixture, so a new code cannot ship without one.
+use mimz::diag::ALL_CHECKER_CODES;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
