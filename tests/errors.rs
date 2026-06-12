@@ -87,7 +87,54 @@ fn every_error_fixture_reports_its_code() {
             "{} should report {code}, but stderr was:\n{stderr}",
             path.display()
         );
+        // The teaching contract end-to-end: every checker error carries a
+        // help line (`Checker::err` makes it structurally mandatory; this
+        // proves the CLI actually PRINTS it).
+        assert!(
+            stderr.contains("help:"),
+            "{} reported {code} without a help line:\n{stderr}",
+            path.display()
+        );
     }
+}
+
+/// `ALL_CHECKER_CODES` must mirror the human catalog in
+/// docs/code/11-checker.md — same docs-sync idea as `tests/docs_sync.rs`:
+/// a code added to the catalog without a fixture (or vice versa) fails by
+/// name. Rows whose meaning says "reserved" are tombstones/placeholders
+/// and are exempt.
+#[test]
+fn checker_code_list_matches_the_catalog() {
+    let doc = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("docs")
+            .join("code")
+            .join("11-checker.md"),
+    )
+    .expect("docs/code/11-checker.md exists");
+    let mut catalog: Vec<&str> = Vec::new();
+    for line in doc.lines() {
+        // Catalog rows look like `| E0101 | meaning... | fix... |`.
+        let Some(rest) = line.strip_prefix("| E") else {
+            continue;
+        };
+        let Some((digits, meaning)) = rest.split_once(' ') else {
+            continue;
+        };
+        if digits.len() != 4 || !digits.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        if meaning.contains("reserved") {
+            continue;
+        }
+        catalog.push(&line[2..7]);
+    }
+    assert_eq!(
+        catalog,
+        ALL_CHECKER_CODES.to_vec(),
+        "ALL_CHECKER_CODES (tests/errors.rs) and the catalog table \
+         (docs/code/11-checker.md) disagree — update whichever is stale"
+    );
 }
 
 /// Completeness guard: every stable checker code has at least one end-to-end
