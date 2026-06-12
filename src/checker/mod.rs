@@ -1,16 +1,17 @@
 //! The checker — semantic safety passes between parse and emit (Phase 1
 //! work item 4). Current slices: project symbol tables + duplicate
 //! detection (`symbols.rs`), const evaluation (`consteval.rs`), name
-//! resolution + module-structure rules (`names.rs`), width/type rules +
-//! match exhaustiveness (`widths/` — split into a directory module
-//! 2026-06-12), single-driver + combinational-cycle rules (`drivers.rs`).
-//! Exhaustiveness and clock ownership land as later slices.
+//! resolution + module-structure rules incl. instantiation completeness
+//! (`names.rs`), width/type rules + match exhaustiveness (`widths/`),
+//! single-driver + combinational-cycle rules (`drivers.rs`), and
+//! clock-domain ownership (`clocks.rs`).
 //!
 //! Every checker diagnostic carries a stable error code (`E0101`) and the
 //! index of the file it points into, so multi-file errors render against
 //! the right source (`project::render_diags`). The code catalog lives in
 //! docs/code/11-checker.md — new codes are added there in the same commit.
 
+mod clocks;
 mod consteval;
 mod drivers;
 mod names;
@@ -36,6 +37,7 @@ pub fn check(files: &[ast::File]) -> Result<(), Vec<Diag>> {
     ck.resolve_names(); // every name points at a declaration
     ck.check_widths(); // every expression has the width its context needs
     ck.check_drivers(); // one driver per signal; combinational graph is a DAG
+    ck.check_clocks(); // every reg owned by one clock; no cross-domain reads
     if ck.diags.is_empty() {
         Ok(())
     } else {

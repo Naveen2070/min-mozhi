@@ -590,3 +590,43 @@ fn connecting_an_input_twice_is_e0302() {
     let d = first_err(&src, "E0302");
     assert!(d.msg.contains("twice"));
 }
+
+// ---- clock-domain ownership (E0701) ---------------------------------------
+
+#[test]
+fn two_clocks_with_separate_logic_pass() {
+    let src = "module M {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out ya: bit\n  out yb: bit\n  reg ra: bit = 0\n  reg rb: bit = 0\n  on rise(cka) {\n    ra <- a\n  }\n  on rise(ckb) {\n    rb <- a\n  }\n  ya = ra\n  yb = rb\n}\n";
+    check_one(src).expect("independent domains never touch — clean");
+}
+
+#[test]
+fn reading_another_domains_reg_is_e0701() {
+    let src = "module M {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out ya: bit\n  out yb: bit\n  reg ra: bit = 0\n  reg rb: bit = 0\n  on rise(cka) {\n    ra <- a\n  }\n  on rise(ckb) {\n    rb <- ra\n  }\n  ya = ra\n  yb = rb\n}\n";
+    let d = first_err(src, "E0701");
+    assert!(d.msg.contains("cka") && d.msg.contains("ckb"));
+    assert!(d.help.unwrap().contains("sync"));
+}
+
+#[test]
+fn cross_domain_through_a_wire_is_e0701() {
+    let src = "module M {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out ya: bit\n  out yb: bit\n  reg ra: bit = 0\n  reg rb: bit = 0\n  wire w: bit = !ra\n  on rise(cka) {\n    ra <- a\n  }\n  on rise(ckb) {\n    rb <- w\n  }\n  ya = ra\n  yb = rb\n}\n";
+    let d = first_err(src, "E0701");
+    assert!(
+        d.msg.contains("cka"),
+        "the wire carries cka's domain: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn a_wire_mixing_two_domains_is_e0701() {
+    let src = "module M {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out y: bit\n  reg ra: bit = 0\n  reg rb: bit = 0\n  wire w: bit = ra ^ rb\n  on rise(cka) {\n    ra <- a\n  }\n  on rise(ckb) {\n    rb <- a\n  }\n  y = w\n}\n";
+    let d = first_err(src, "E0701");
+    assert!(d.msg.contains("mixes"));
+}
+
+#[test]
+fn same_domain_logic_under_two_declared_clocks_passes() {
+    let src = "module M {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out y: bit\n  reg r1: bit = 0\n  reg r2: bit = 0\n  wire w: bit = r1 ^ r2\n  on rise(cka) {\n    r1 <- a\n    r2 <- w\n  }\n  y = w\n}\n";
+    check_one(src).expect("everything lives on cka — the unused ckb changes nothing");
+}
