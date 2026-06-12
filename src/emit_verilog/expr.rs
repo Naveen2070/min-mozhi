@@ -11,6 +11,20 @@ impl Emitter<'_> {
         self.expr_subst(e, &HashMap::new())
     }
 
+    /// Render an index or slice bound. A non-literal that folds at compile
+    /// time — a `repeat` variable or arithmetic over one, like `i + 1` —
+    /// collapses to its decimal value (`sum[i] → sum[2]`); plain literals
+    /// keep their written base, and anything symbolic (a parameter, a
+    /// dynamic signal index) renders unchanged.
+    pub(super) fn index_expr(&mut self, e: &Expr, subst: &HashMap<&str, &Expr>) -> String {
+        if !matches!(e.kind, ExprKind::Int { .. })
+            && let Ok(v) = consteval::eval(e, &self.env)
+        {
+            return v.to_string();
+        }
+        self.expr_subst(e, subst)
+    }
+
     /// Render an expression to Verilog text. Compound results are wrapped
     /// in parentheses unconditionally — correctness over prettiness; a
     /// future emitter can use real precedence (architecture invariant #6).
@@ -20,9 +34,14 @@ impl Emitter<'_> {
             ExprKind::Int { value, raw } => verilog_literal(*value, raw),
             ExprKind::Bool(b) => if *b { "1'b1" } else { "1'b0" }.to_string(),
             ExprKind::Ident(name) => {
+                // Child-param substitution wins (we're rendering a child's
+                // port width); then compile-time consts/`repeat` vars fold
+                // to literals; otherwise it's a symbolic signal or param.
                 if let Some(replacement) = subst.get(name.as_str()) {
                     let r = self.expr(replacement);
                     format!("({r})")
+                } else if let Some(v) = self.env.get(name.as_str()) {
+                    v.to_string()
                 } else {
                     name.clone()
                 }
@@ -34,6 +53,16 @@ impl Emitter<'_> {
                         return enum_const(base_name, &field.name);
                     }
                     return format!("{}_{}", base_name, field.name);
+                }
+                // Array instance output `fa[i].port` → wire `fa__<i>_port`
+                // (the index folds against the current `repeat` env).
+                if let ExprKind::Index { base: arr, index } = &base.kind
+                    && let ExprKind::Ident(arr_name) = &arr.kind
+                {
+                    return match self.eval_const(index) {
+                        Some(n) => format!("{arr_name}__{n}_{}", field.name),
+                        None => "0".into(), // eval_const already reported
+                    };
                 }
                 self.err(
                     e.span,
@@ -79,6 +108,17 @@ impl Emitter<'_> {
                 format!("({l} {sym} {r})")
             }
             ExprKind::IfExpr { cond, then, els } => {
+                // A condition that folds at compile time (typically on a
+                // `repeat` variable) collapses to the taken branch — this
+                // is what keeps `if i == 0 { cin } else { fa[i-1].cout }`
+                // from emitting the dead `fa[-1]` arm at i == 0.
+                if let Ok(c) = consteval::eval(cond, &self.env) {
+                    return if c != 0 {
+                        self.expr_subst(then, subst)
+                    } else {
+                        self.expr_subst(els, subst)
+                    };
+                }
                 let c = self.expr_subst(cond, subst);
                 let t = self.expr_subst(then, subst);
                 let f = self.expr_subst(els, subst);
@@ -125,13 +165,13 @@ impl Emitter<'_> {
             }
             ExprKind::Index { base, index } => {
                 let b = self.expr_subst(base, subst);
-                let i = self.expr_subst(index, subst);
+                let i = self.index_expr(index, subst);
                 format!("{b}[{i}]")
             }
             ExprKind::Slice { base, hi, lo } => {
                 let b = self.expr_subst(base, subst);
-                let h = self.expr_subst(hi, subst);
-                let l = self.expr_subst(lo, subst);
+                let h = self.index_expr(hi, subst);
+                let l = self.index_expr(lo, subst);
                 format!("{b}[{h}:{l}]")
             }
             ExprKind::Call { func, args } => match func {

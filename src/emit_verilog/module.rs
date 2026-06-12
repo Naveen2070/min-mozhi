@@ -12,6 +12,18 @@ impl Emitter<'_> {
     pub(super) fn module(&mut self, m: &Module) {
         self.check_ascii(&m.name);
 
+        // Module-level consts layer onto the file consts for the duration
+        // of this module; they fold to literals wherever used (widths,
+        // `repeat` bounds, indices) and emit no hardware of their own.
+        let file_env = self.env.clone();
+        self.env = self.eval_consts(
+            file_env.clone(),
+            m.items.iter().filter_map(|i| match i {
+                ModuleItem::Const(c) => Some(c),
+                _ => None,
+            }),
+        );
+
         // Parameters.
         let mut header = format!("module {}", m.name.name);
         if !m.params.is_empty() {
@@ -86,35 +98,14 @@ impl Emitter<'_> {
         }
 
         // Instances: auto-wire every child output as `{inst}_{port}`.
-        for item in &m.items {
-            if let ModuleItem::Inst(inst) = item {
-                self.instance(inst);
-            }
-        }
+        // `repeat` bodies are unrolled per iteration (instances first, to
+        // match Verilog's declare-before-use convention).
+        self.repeat_budget = REPEAT_BUDGET;
+        self.emit_instances(&m.items);
 
-        // Combinational drives.
-        for item in &m.items {
-            match item {
-                ModuleItem::Wire { name, init, .. } => {
-                    let rhs = self.expr(init);
-                    self.out
-                        .push_str(&format!("    assign {} = {};\n", name.name, rhs));
-                }
-                ModuleItem::Drive { lhs, rhs } => {
-                    let l = self.lvalue(lhs);
-                    let r = self.expr(rhs);
-                    self.out.push_str(&format!("    assign {l} = {r};\n"));
-                }
-                ModuleItem::Repeat(r) => {
-                    self.err(
-                        r.span,
-                        "`repeat` is not yet supported by the Verilog emitter",
-                        "compile-time unrolling lands with the const-eval pass (Phase 1 work item 4)",
-                    );
-                }
-                _ => {}
-            }
-        }
+        // Combinational drives (unrolling `repeat` the same way).
+        self.repeat_budget = REPEAT_BUDGET;
+        self.emit_drives(&m.items);
 
         // Sequential blocks: one always per `on`, reset generated from
         // the reset values of the regs each block assigns.
@@ -157,6 +148,45 @@ impl Emitter<'_> {
         }
 
         self.out.push_str("endmodule\n");
+
+        // Peel this module's consts back off; the next module in the file
+        // sees only the file-level env.
+        self.env = file_env;
+    }
+
+    /// Emit every instance in `items`, descending into `repeat` bodies and
+    /// unrolling them (the loop variable is bound per iteration). Declared
+    /// before drives so child-output wires exist when the drives use them.
+    fn emit_instances(&mut self, items: &[ModuleItem]) {
+        for item in items {
+            match item {
+                ModuleItem::Inst(inst) => self.instance(inst),
+                ModuleItem::Repeat(r) => self.unroll(r, Self::emit_instances),
+                _ => {}
+            }
+        }
+    }
+
+    /// Emit every combinational drive in `items` (`wire` inits and `=`
+    /// drives), unrolling `repeat` bodies. Indices and the loop variable
+    /// fold to literals, so `sum[i] = …` becomes `assign sum[2] = …`.
+    fn emit_drives(&mut self, items: &[ModuleItem]) {
+        for item in items {
+            match item {
+                ModuleItem::Wire { name, init, .. } => {
+                    let rhs = self.expr(init);
+                    self.out
+                        .push_str(&format!("    assign {} = {};\n", name.name, rhs));
+                }
+                ModuleItem::Drive { lhs, rhs } => {
+                    let l = self.lvalue(lhs);
+                    let r = self.expr(rhs);
+                    self.out.push_str(&format!("    assign {l} = {r};\n"));
+                }
+                ModuleItem::Repeat(r) => self.unroll(r, Self::emit_drives),
+                _ => {}
+            }
+        }
     }
 
     /// Emit one child-module instantiation. Walks the CHILD's interface
@@ -173,6 +203,10 @@ impl Emitter<'_> {
             );
             return;
         };
+
+        // Flat Verilog name for this instance (`fa__3` for an array element
+        // inside `repeat`, plain `fa` otherwise).
+        let iname = self.inst_name(inst);
 
         // Substitute child param names with this instance's args inside
         // child port-width expressions.
@@ -223,7 +257,7 @@ impl Emitter<'_> {
                         port_conns.push(format!(".{}({})", name.name, sig));
                     }
                     Dir::Out => {
-                        let wire_name = format!("{}_{}", inst.name.name, name.name);
+                        let wire_name = format!("{}_{}", iname, name.name);
                         let w = self.width_subst(ty, &args);
                         self.out.push_str(&format!("    wire {w}{wire_name};\n"));
                         port_conns.push(format!(".{}({})", name.name, wire_name));
@@ -263,7 +297,7 @@ impl Emitter<'_> {
             "    {}{} {} ({});\n",
             child.name.name,
             params,
-            inst.name.name,
+            iname,
             port_conns.join(", ")
         ));
     }
@@ -295,12 +329,19 @@ impl Emitter<'_> {
     }
 
     /// Render an assignment target: `name`, `name[i]`, or `name[hi:lo]`.
+    /// Indices fold at compile time, so a `repeat`-driven `sum[i]` lands as
+    /// `sum[2]`.
     fn lvalue(&mut self, lv: &LValue) -> String {
         let mut s = lv.base.name.clone();
         if let Some((first, second)) = &lv.index {
+            let empty = HashMap::new();
             match second {
-                Some(lo) => s.push_str(&format!("[{}:{}]", self.expr(first), self.expr(lo))),
-                None => s.push_str(&format!("[{}]", self.expr(first))),
+                Some(lo) => s.push_str(&format!(
+                    "[{}:{}]",
+                    self.index_expr(first, &empty),
+                    self.index_expr(lo, &empty)
+                )),
+                None => s.push_str(&format!("[{}]", self.index_expr(first, &empty))),
             }
         }
         s
