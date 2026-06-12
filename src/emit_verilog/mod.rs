@@ -5,16 +5,21 @@
 //! through to Verilog parameters with no const evaluation.
 //!
 //! Module layout:
-//! - `mod.rs`    — `Project` symbol table, `emit` entry, `Emitter` state, shared helpers
-//! - `module.rs` — module shells, ports, instances, always-blocks
-//! - `expr.rs`   — expression rendering (incl. match → ternary chains)
+//! - `mod.rs`      — `Project` symbol table, `emit` entry, `Emitter` state, shared helpers
+//! - `module.rs`   — module shells, ports, instances, always-blocks
+//! - `expr.rs`     — expression rendering (incl. match → ternary chains)
+//! - `translit.rs` — Tamil → ASCII identifier pre-pass ([`transliterate`])
 //!
-//! Not yet supported here (clean errors, not wrong output): `repeat`
-//! unrolling, non-ASCII identifiers (Verilog is ASCII-only), `trunc` on
+//! Callers run [`transliterate`] on the ASTs first (the CLI does); the
+//! emitter's own `check_ascii` is the backstop for anyone who skips it.
+//! Not yet supported here (clean errors, not wrong output): `trunc` on
 //! non-trivial expressions.
 
 mod expr;
 mod module;
+mod translit;
+
+pub use translit::transliterate;
 
 use std::collections::HashMap;
 
@@ -295,10 +300,11 @@ impl Emitter<'_> {
             self.err(
                 id.span,
                 format!(
-                    "`{}` — non-ASCII identifiers are not yet supported by the Verilog emitter",
+                    "`{}` — a non-ASCII identifier reached the Verilog emitter",
                     id.name
                 ),
-                "Verilog identifiers are ASCII-only; an automatic transliteration pass is planned. For now use an ASCII name",
+                "Verilog identifiers are ASCII-only — run `emit_verilog::transliterate` \
+                 on the ASTs before emitting (the `mimz` CLI does this automatically)",
             );
             false
         }
@@ -443,6 +449,52 @@ mod tests {
             !v.contains("[(N)"),
             "the symbolic const name must not survive into widths"
         );
+    }
+
+    /// Like [`emit_src`], but with the transliteration pre-pass — the
+    /// path the CLI takes.
+    fn emit_src_translit(src: &str) -> String {
+        let mut files = [parse(src)];
+        transliterate(&mut files);
+        let project = Project::from_files(&files).unwrap();
+        emit(&project, &files).expect("emit should succeed")
+    }
+
+    #[test]
+    fn tamil_identifiers_emit_as_romanized_verilog() {
+        // Identifiers only — நிலை etc. are KEYWORD spellings
+        // (keywords.toml) and can never be identifiers.
+        let v = emit_src_translit(
+            "module விளக்கு {\n  clock மணி\n  reset மீள்\n  out ஒளி: bit\n  reg சுடர்: bit = 0\n  on rise(மணி) {\n    சுடர் <- !சுடர்\n  }\n  ஒளி = சுடர்\n}\n",
+        );
+        assert!(
+            v.contains("module villakku ("),
+            "module name romanizes:\n{v}"
+        );
+        assert!(v.contains("input wire manni"), "clock romanizes");
+        assert!(v.contains("output wire olli"), "output romanizes");
+        assert!(v.contains("reg sutar;"), "reg romanizes:\n{v}");
+        assert!(
+            v.contains("always @(posedge manni)"),
+            "the on-block clock uses the SAME romanization"
+        );
+        // Only the generator banner COMMENT may carry Tamil; every line
+        // of actual Verilog must be pure ASCII.
+        for line in v.lines().filter(|l| !l.starts_with("//")) {
+            assert!(line.is_ascii(), "non-ASCII outside a comment: {line}");
+        }
+    }
+
+    #[test]
+    fn colliding_romanizations_get_suffixes_and_ascii_names_are_safe() {
+        // ந and ன both romanize to `n`; the user also owns plain ASCII
+        // `nii` — first-seen Tamil name takes `nii_2`, the second `nii_3`.
+        let v = emit_src_translit(
+            "module M {\n  in nii: bit\n  in நீ: bit\n  in னீ: bit\n  out y: bit\n  y = nii ^ நீ ^ னீ\n}\n",
+        );
+        assert!(v.contains("input wire nii,"), "the ASCII name is untouched");
+        assert!(v.contains("nii_2"), "first Tamil clash gets _2:\n{v}");
+        assert!(v.contains("nii_3"), "second Tamil clash gets _3:\n{v}");
     }
 
     #[test]

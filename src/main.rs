@@ -145,12 +145,17 @@ fn compile(path: &Path, output: Option<PathBuf>) -> ExitCode {
         Ok(f) => f,
         Err(code) => return code,
     };
-    let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+    let mut asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
 
     if let Err(diags) = checker::check(&asts) {
         eprint!("{}", project::render_diags(&diags, &files));
         return ExitCode::FAILURE;
     }
+
+    // Tamil identifiers become readable ASCII (விளக்கு → villakku) —
+    // checked against the original spelling above, emitted as Verilog
+    // names below.
+    emit_verilog::transliterate(&mut asts);
 
     let project = match emit_verilog::Project::from_files(&asts) {
         Ok(p) => p,
