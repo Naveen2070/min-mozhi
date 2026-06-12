@@ -1,0 +1,19 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): signed arithmetic — two's complement, honestly.
+// `signed[N]` never mixes with `bits[N]` implicitly (the explicit
+// `signed()`/`unsigned()` casts convert); `extend` on a signed value
+// SIGN-extends; comparisons are signed. The emitter declares these
+// signals `wire signed`, so Verilog's native semantics apply — verified
+// exhaustively by the Icarus testbench (all 256 input pairs).
+
+module SignedMath {
+  ulle a: signed[4]
+  உள் b: signed[4]
+
+  out ext: signed[8]
+  veli sum: signed[5]
+  வெளி lt:  bit
+
+  ext = extend(a, 8)
+  sum = a + b
+  lt  = a < b
+}

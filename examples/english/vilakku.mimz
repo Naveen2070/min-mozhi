@@ -1,0 +1,20 @@
+// Min-Mozhi example: Tamil IDENTIFIERS end to end — the names (not just
+// the keywords) are Tamil. The compiler transliterates them to readable
+// ASCII in the emitted Verilog (விளக்கு → villakku, சுடர் → sutar):
+// "see your language in silicon", literally. A minimal toggler:
+// the flame (சுடர்) flips every clock tick and drives the light (ஒளி).
+
+module விளக்கு {
+  clock மணி
+  reset மீள்
+
+  out ஒளி: bit
+
+  reg சுடர்: bit = 0
+
+  on rise(மணி) {
+    சுடர் <- !சுடர்
+  }
+
+  ஒளி = சுடர்
+}
