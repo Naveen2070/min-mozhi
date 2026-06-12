@@ -95,8 +95,46 @@ pub fn render(diags: &[Diag], src: &str, path: &str) -> String {
     out
 }
 
+/// One diagnostic in the `--json` wire format (docs/code/06): the stable
+/// machine-readable contract for editors and the npm/PyPI wrappers.
+/// Positions are 1-based line/column (columns count CHARS, matching the
+/// human renderer); the byte span is included for exact tooling.
+#[derive(serde::Serialize)]
+pub struct JsonDiag {
+    /// Stable error code (`"E0101"`), or `null` for pre-code diagnostics.
+    pub code: Option<&'static str>,
+    /// WHAT is wrong.
+    pub message: String,
+    /// HOW to fix it (the teaching line), when present.
+    pub help: Option<String>,
+    /// The file the span points into.
+    pub path: String,
+    /// 1-based line of the span start.
+    pub line: usize,
+    /// 1-based character column of the span start.
+    pub col: usize,
+    /// Byte offsets `[start, end)` into the NFC-normalized source.
+    pub span: (usize, usize),
+}
+
+impl JsonDiag {
+    /// Resolve a [`Diag`] against the source it points into.
+    pub fn new(d: &Diag, path: &str, src: &str) -> Self {
+        let (line, col, _, _) = locate(src, d.span.start);
+        JsonDiag {
+            code: d.code,
+            message: d.msg.clone(),
+            help: d.help.clone(),
+            path: path.to_string(),
+            line,
+            col,
+            span: (d.span.start, d.span.end),
+        }
+    }
+}
+
 /// (1-based line, 1-based column, line text, byte offset of line start)
-fn locate(src: &str, offset: usize) -> (usize, usize, String, usize) {
+pub(crate) fn locate(src: &str, offset: usize) -> (usize, usize, String, usize) {
     let offset = offset.min(src.len());
     let mut line_no = 1usize;
     let mut line_start = 0usize;

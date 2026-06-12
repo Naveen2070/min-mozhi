@@ -12,10 +12,14 @@ rust-version = "1.85"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 unicode-ident = "1"
 unicode-normalization = "0.1"
-# Planned: miette — rich diagnostics (checker, Phase 1 work item 4)
+# LSP server (`mimz lsp`, bin-only module — the lib itself stays
+# async-free so the Phase 4 WASM build never meets tokio).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+tower-lsp = "0.20"
 
 [profile.release]
 lto = true

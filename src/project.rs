@@ -4,11 +4,27 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 
 use unicode_normalization::UnicodeNormalization;
 
 use crate::{ast, diag, lexer, parser};
+
+/// Why loading failed. Carries everything a caller needs to REPORT the
+/// failure its own way (the CLI renders carets or JSON; the LSP publishes
+/// diagnostics) — this module never prints and never exits.
+pub enum LoadError {
+    /// Filesystem problem before any parsing (message is ready to show).
+    Io(String),
+    /// Lexer/parser/import diagnostics, with the source they point into.
+    Source {
+        /// The file the diagnostics belong to.
+        path: PathBuf,
+        /// Its NFC-normalized text (spans index into this).
+        src: String,
+        /// What went wrong (every entry carries an E-code).
+        diags: Vec<diag::Diag>,
+    },
+}
 
 /// One successfully lexed + parsed source file. The original source text is
 /// kept alongside the AST because diagnostics render spans against it.
@@ -30,28 +46,28 @@ pub fn read_source(path: &Path) -> Result<String, String> {
     }
 }
 
-/// Lex + parse one file, printing rendered diagnostics on failure.
-pub fn parse_file(path: &Path) -> Result<LoadedFile, ExitCode> {
-    let src = match read_source(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return Err(ExitCode::FAILURE);
-        }
-    };
-    let display = path.display().to_string();
+/// Lex + parse one file. Errors come back as values ([`LoadError`]) —
+/// rendering them is the caller's job.
+pub fn parse_file(path: &Path) -> Result<LoadedFile, LoadError> {
+    let src = read_source(path).map_err(LoadError::Io)?;
     let toks = match lexer::lex(&src) {
         Ok(t) => t,
         Err(diags) => {
-            eprint!("{}", diag::render(&diags, &src, &display));
-            return Err(ExitCode::FAILURE);
+            return Err(LoadError::Source {
+                path: path.to_path_buf(),
+                src,
+                diags,
+            });
         }
     };
     let ast = match parser::parse(toks) {
         Ok(f) => f,
         Err(diags) => {
-            eprint!("{}", diag::render(&diags, &src, &display));
-            return Err(ExitCode::FAILURE);
+            return Err(LoadError::Source {
+                path: path.to_path_buf(),
+                src,
+                diags,
+            });
         }
     };
     Ok(LoadedFile {
@@ -83,7 +99,7 @@ pub fn render_diags(diags: &[diag::Diag], files: &[LoadedFile]) -> String {
 /// Dots become path separators (`import lib.adder` → `lib/adder.mimz`,
 /// relative to the importing file); duplicates and cycles are handled by
 /// the canonicalized visited set. The entry file is always `files[0]`.
-pub fn load_project(entry: &Path) -> Result<Vec<LoadedFile>, ExitCode> {
+pub fn load_project(entry: &Path) -> Result<Vec<LoadedFile>, LoadError> {
     let mut files: Vec<LoadedFile> = Vec::new();
     let mut visited: HashSet<PathBuf> = HashSet::new();
     let mut queue: Vec<PathBuf> = vec![entry.to_path_buf()];
@@ -102,18 +118,21 @@ pub fn load_project(entry: &Path) -> Result<Vec<LoadedFile>, ExitCode> {
             }
             p.set_extension("mimz");
             if !p.exists() {
-                let diags = [diag::Diag::new(
-                    import.span,
-                    format!("imported file `{}` does not exist", p.display()),
-                )
-                .with_help(
-                    "`import name` loads `name.mimz` relative to the importing file (spec/02 section 1.5)",
-                )];
-                eprint!(
-                    "{}",
-                    diag::render(&diags, &loaded.src, &loaded.path.display().to_string())
-                );
-                return Err(ExitCode::FAILURE);
+                let diags = vec![
+                    diag::Diag::new(
+                        import.span,
+                        format!("imported file `{}` does not exist", p.display()),
+                    )
+                    .with_code("E1201")
+                    .with_help(
+                        "`import name` loads `name.mimz` relative to the importing file (spec/02 section 1.5)",
+                    ),
+                ];
+                return Err(LoadError::Source {
+                    path: loaded.path,
+                    src: loaded.src,
+                    diags,
+                });
             }
             queue.push(p);
         }

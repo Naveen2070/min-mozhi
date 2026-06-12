@@ -16,19 +16,20 @@ fn read(rel: &str) -> String {
     fs::read_to_string(root().join(rel)).unwrap_or_else(|e| panic!("cannot read {rel}: {e}"))
 }
 
-/// Top-level modules declared in src/main.rs (`mod name;` lines).
+/// Top-level modules declared in src/lib.rs (`pub mod name;` lines —
+/// the lib/bin split of 2026-06-12 moved the module tree there).
 fn crate_modules() -> Vec<String> {
-    read("src/main.rs")
+    read("src/lib.rs")
         .lines()
         .filter_map(|l| {
-            l.strip_prefix("mod ")
+            l.strip_prefix("pub mod ")
                 .and_then(|r| r.strip_suffix(';'))
                 .map(str::to_string)
         })
         .collect()
 }
 
-/// The crate map lives in TWO places — the `//!` table in src/main.rs and
+/// The crate map lives in TWO places — the `//!` table in src/lib.rs and
 /// docs/code/README.md. This keeps both honest: add a module and forget
 /// either copy, and this fails naming the place to fix.
 #[test]
@@ -38,12 +39,12 @@ fn crate_map_lists_every_module() {
         modules.len() >= 7,
         "expected the known modules, found {modules:?}"
     );
-    let main = read("src/main.rs");
+    let lib = read("src/lib.rs");
     let readme_lower = read("docs/code/README.md").to_lowercase();
     for m in &modules {
         assert!(
-            main.contains(&format!("[`{m}`]")),
-            "src/main.rs crate-map table has no row for module `{m}` — update the //! table"
+            lib.contains(&format!("[`{m}`]")),
+            "src/lib.rs crate-map table has no row for module `{m}` — update the //! table"
         );
         assert!(
             readme_lower.contains(&m.to_lowercase()),
