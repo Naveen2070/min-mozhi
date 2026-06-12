@@ -208,13 +208,40 @@ impl Emitter<'_> {
         // inside `repeat`, plain `fa` otherwise).
         let iname = self.inst_name(inst);
 
-        // Substitute child param names with this instance's args inside
-        // child port-width expressions.
-        let args: HashMap<&str, &Expr> = inst
-            .args
-            .iter()
-            .map(|a| (a.name.name.as_str(), &a.value))
-            .collect();
+        // Substitute, inside child port-width expressions: the child's own
+        // consts as folded literals (the parent's Verilog knows nothing
+        // about a child's `const WIDTH`, and must never fold the PARENT's
+        // same-named const instead), then child param names as this
+        // instance's argument expressions — params win on a name clash.
+        // Negative consts stay symbolic: they cannot be a `u128` literal,
+        // and a negative width is already checker-rejected (E0410).
+        let child_consts: Vec<(String, Expr)> = self
+            .module_envs
+            .get(&child.name.name)
+            .map(|env| {
+                env.iter()
+                    .filter(|&(_, &v)| v >= 0)
+                    .map(|(n, &v)| {
+                        let kind = ExprKind::Int {
+                            value: v as u128,
+                            raw: v.to_string(),
+                        };
+                        (
+                            n.clone(),
+                            Expr {
+                                kind,
+                                span: inst.span,
+                            },
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut args: HashMap<&str, &Expr> =
+            child_consts.iter().map(|(n, e)| (n.as_str(), e)).collect();
+        for a in &inst.args {
+            args.insert(a.name.name.as_str(), &a.value);
+        }
 
         // Declare wires for child outputs, connect everything by name.
         let mut port_conns: Vec<String> = Vec::new();

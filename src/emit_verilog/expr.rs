@@ -39,7 +39,16 @@ impl Emitter<'_> {
                 // to literals; otherwise it's a symbolic signal or param.
                 if let Some(replacement) = subst.get(name.as_str()) {
                     let r = self.expr(replacement);
-                    format!("({r})")
+                    // Parens protect compound argument expressions; an
+                    // atomic render (a literal or a bare name — e.g. a
+                    // child const folded by `instance()`) needs none.
+                    if r.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '\'')
+                    {
+                        r
+                    } else {
+                        format!("({r})")
+                    }
                 } else if let Some(v) = self.env.get(name.as_str()) {
                     v.to_string()
                 } else {
