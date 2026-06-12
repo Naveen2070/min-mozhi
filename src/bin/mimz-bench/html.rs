@@ -206,6 +206,7 @@ const TEMPLATE: &str = r##"<!doctype html>
   <div class="chart-box"><canvas id="rates"></canvas></div>
   <div class="chart-box"><canvas id="cov"></canvas></div>
   <div class="chart-box wide"><canvas id="trend"></canvas></div>
+  <div class="chart-box wide"><canvas id="speed"></canvas></div>
 </div>
 
 <h2>Per-example timing (median, ms)</h2>
@@ -319,6 +320,24 @@ new Chart(document.getElementById("trend"), {
       ms: { type: "linear", position: "left", title: { display: true, text: "ms" } },
       rate: { type: "linear", position: "right", min: 0, max: 100,
               grid: { drawOnChartArea: false }, title: { display: true, text: "%" } },
+    },
+  },
+});
+
+// Line: Speed/Throughput trend (LOC/s)
+new Chart(document.getElementById("speed"), {
+  type: "line",
+  data: {
+    labels: DATA.history.map(h =>
+      new Date(h.timestamp_ms).toLocaleDateString() + " " + h.git_rev),
+    datasets: [
+      { label: "Throughput (LOC/s)", data: DATA.history.map(h => h.loc_per_sec), borderColor: "#1a7f37", backgroundColor: "#1a7f37" },
+    ],
+  },
+  options: {
+    plugins: { title: { display: true, text: "Compilation Speed Trend (LOC/s)" } },
+    scales: {
+      y: { type: "linear", beginAtZero: true, title: { display: true, text: "Lines of Code per second" } },
     },
   },
 });

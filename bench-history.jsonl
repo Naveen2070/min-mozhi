@@ -1,0 +1,2 @@
+{"timestamp_ms":1781279903259,"git_rev":"d41e082","total_ms":4.751600000000001,"loc_per_sec":70502.56755619159,"golden_pct":100.0,"fixture_pct":100.0,"llvm_line_pct":71.66744803875605}
+{"timestamp_ms":1781281469427,"git_rev":"d41e082","total_ms":5.957,"loc_per_sec":56236.360584186674,"golden_pct":100.0,"fixture_pct":100.0,"llvm_line_pct":null}

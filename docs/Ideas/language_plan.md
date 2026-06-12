@@ -519,6 +519,135 @@ readability/DX > speed > brevity > Tamil idiom). The goal shift promoted
 `secret` taint, the `system_fault` fault network v1, and the `?` valid-bundle
 re-targeting out of Tier 4 — see the Decision in `docs/log/2026-06-12.md`.
 
+---
+
+## 8. Future Expansion & Cross-Language Inspirations (New Additions)(2026-06-12)
+
+To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are newly proposed, feasible ideas adopted from other modern languages. These focus heavily on our educational mission, developer experience (DX), and robustness for digital signal processing (DSP).
+
+### 8.1 Friendly, Didactic Compiler Errors (Inspired by Elm)
+
+- **Explanation:** Elm is famous for having the best compiler error messages in the world. Instead of just pointing out an error, it explains the context, _why_ it's mathematically wrong, and suggests the exact fix.
+- **Feasibility:** High (Tier 2/3). Since Min-Mozhi targets students, moving beyond standard Rust-style `ariadne`/`miette` spans to full "Teaching Errors" with hardware diagrams in ASCII.
+- **Example:**
+
+  ```text
+  E0108: Multiple Drivers Detected
+  You are trying to drive 'status_led' from two different places:
+
+  12 |   on rise(clk_a) { status_led = 1 }
+  24 |   on rise(clk_b) { status_led = 0 }
+
+  Hardware doesn't allow two separate logic blocks to control the same physical wire simultaneously (it causes a short circuit!).
+  Hint: Try creating a multiplexer (match/if) inside a single clock domain.
+  ```
+
+### 8.2 Contracts & Invariants at the Boundary (Inspired by Ada/SPARK & Kotlin)
+
+- **Explanation:** Moving `prove` assertions to the public interface. A module can declare preconditions (`requires`) that the _caller_ must statically satisfy, and postconditions (`ensures`) it promises.
+- **Feasibility:** Medium (Tier 3, relies on the `prove` / SymbiYosys integration).
+- **Example:**
+
+  ```mimz
+  module Divider {
+      in  numerator: bits[16]
+      in  denominator: bits[16]
+      out quotient: bits[16]
+
+      // The caller MUST prove 'denominator' is never 0 before compiling.
+      requires { denominator != 0 }
+  }
+  ```
+
+### 8.3 Native Fixed-Point Arithmetic (Inspired by Julia & MATLAB)
+
+- **Explanation:** Floating-point math is too expensive for most FPGAs, so hardware engineers use fixed-point arithmetic (e.g., 16 bits: 8 integer bits, 8 fractional bits). Doing this manually in Verilog requires error-prone bit-shifting.
+- **Feasibility:** High (Tier 3). It translates to standard integer adders/multipliers but the compiler automatically aligns the radix points.
+- **Example:**
+
+  ```mimz
+  // 16 total bits, 8 bits fractional
+  let sensor_val: fixed[16, 8] = 1.5
+  let gain: fixed[16, 8] = 2.0
+
+  // The compiler aligns the fractional bits and prevents truncation!
+  let output = sensor_val * gain
+  ```
+
+### 8.4 Compile-Time Logic execution / `$comptime` (Inspired by Zig & V)
+
+- **Explanation:** Replacing the macro-preprocessor with actual language execution. Instead of `generate for`, you run actual Min-Mozhi code at compile-time to stamp out hardware.
+- **Feasibility:** Medium. Extends the existing `repeat` functionality into a true compile-time interpreter.
+- **Example:**
+  ```mimz
+  $if (DEBUG_MODE) {
+      // This register physically exists ONLY if DEBUG_MODE is true.
+      reg debug_counter: bits[32] = 0
+  }
+  ```
+
+### 8.5 Interactive Hardware REPL (Inspired by Python & Swift Playgrounds)
+
+- **Explanation:** A read-eval-print loop (REPL) where a student can define an expression or logic gate, flip inputs interactively, and see the combinational logic evaluate instantly in the terminal.
+- **Feasibility:** Medium (Phase 4). Can be shipped as a web WASM app where users drag toggles and see wires light up.
+- **Example Use Case:** `mimz repl` lets a student type `let out = a & !b`, then dynamically type `a = 1`, `b = 0` to see the live evaluation.
+
+### 8.6 The Pipe Operator `|>` for Hardware Pipelines (Inspired by Elixir / F#)
+
+- **Explanation:** Hardware design is fundamentally about data flowing through logic blocks. The pipe operator allows engineers to visually write combinational logic exactly how it looks on a schematic diagram, reading left-to-right instead of inside-out.
+- **Example:**
+  ```mimz
+  // Instead of: truncate(apply_gain(filter_noise(raw_data), 2.0))
+  let out = raw_data
+      |> filter_noise()
+      |> apply_gain(2.0)
+      |> truncate()
+  ```
+
+### 8.7 The Spread Operator `..` for Wiring Modules (Inspired by JS / TypeScript)
+
+- **Explanation:** In hardware, you frequently instantiate a module and pass signals that have the exact same names as your local wires (like clocks, resets, and buses). Verilog requires typing them all out redundantly (`.clk(clk), .rst(rst)`). The spread operator automates this.
+- **Example:**
+  ```mimz
+  // Automatically wires up all matching names from 'standard_bus'
+  let my_alu = ALU(..standard_bus, custom_flag: 1)
+  ```
+
+### 8.8 Struct/Bundle Update Syntax (Inspired by Rust)
+
+- **Explanation:** When transitioning states in a Finite State Machine, you often want to keep 90% of a bundle/struct the same, but change one flag. The update syntax prevents massive boilerplate blocks.
+- **Example:**
+  ```mimz
+  // Creates a new state bundle with the exact same values as 'old_state',
+  // but overwrites the 'active' flag.
+  let next_state = State { active: 1, ..old_state }
+  ```
+
+### 8.9 Chained Comparisons (Inspired by Python)
+
+- **Explanation:** Checking if a hardware sensor value falls within a specific range requires verbose logical ANDs in C/Verilog (`if (val >= 0 && val <= 100)`). Python-style chained comparisons are much more mathematically readable.
+- **Example:**
+  ```mimz
+  if (0 <= sensor_val <= 100) {
+      // Safe operating range
+  }
+  ```
+
+### 8.10 Modern Bit-Slicing & Concatenation (Inspired by Rust & ES6)
+
+- **Explanation:** Verilog's syntax for grabbing bits `bus[7:0]` and concatenating them `{busA, busB}` is archaic, non-intuitive, and trips up beginners. Min-Mozhi can modernize this using standard range slicing and array spread syntax.
+- **Example:**
+
+  ```mimz
+  // Slicing uses Rust-style ranges
+  let upper_byte = data[8..16]
+
+  // Concatenation uses spread arrays
+  let combined_bus = [..upper_byte, ..lower_byte, padding_bit]
+  ```
+
+---
+
 ### Tier 1 — Already shipped (the idea renames an existing rule)
 
 | Idea                                     | Verdict                                                                                                                                                 |
