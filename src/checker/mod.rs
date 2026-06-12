@@ -1,10 +1,10 @@
 //! The checker — semantic safety passes between parse and emit (Phase 1
 //! work item 4). Current slices: project symbol tables + duplicate
 //! detection (`symbols.rs`), const evaluation (`consteval.rs`), name
-//! resolution + module-structure rules (`names.rs`), width and type rules
-//! (`widths.rs`), single-driver + combinational-cycle rules
-//! (`drivers.rs`). Exhaustiveness and clock ownership land as later
-//! slices.
+//! resolution + module-structure rules (`names.rs`), width/type rules +
+//! match exhaustiveness (`widths/` — split into a directory module
+//! 2026-06-12), single-driver + combinational-cycle rules (`drivers.rs`).
+//! Exhaustiveness and clock ownership land as later slices.
 //!
 //! Every checker diagnostic carries a stable error code (`E0101`) and the
 //! index of the file it points into, so multi-file errors render against
