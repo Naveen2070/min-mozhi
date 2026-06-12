@@ -22,6 +22,9 @@ desktop.ini
 /.remember/
 /.claude/
 
+# Generated knowledge graph (graphify tool output)
+/graphify-out/
+
 
 # Added by cargo
 

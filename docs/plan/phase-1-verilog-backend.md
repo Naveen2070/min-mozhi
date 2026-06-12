@@ -45,11 +45,19 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 - [x] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match — ✅ 2026-06-11, `src/checker/widths.rs` (E0401–E0410); concrete-binding strategy (defaults + per-instantiation), literal fitting, connection checking
 - [x] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals — ✅ 2026-06-11 (same pass: E0403/E0405/E0407)
 - [x] Single-driver check; combinational cycle (DAG) check — ✅ 2026-06-11, `src/checker/drivers.rs` (E0501–E0505): per-bit drive extents, output coverage, reg-per-on-block, through-instance cycles via comb summaries
-- [ ] Exhaustiveness: `match` total, wire-`if` has `else` — spec ruling
-      needed when this slice starts: require a fallback arm even on
-      fully-covered enum matches, because physical bit-flips can hit
-      non-enum encodings (`docs/Ideas/language_plan.md` 1.4, triage Tier 2)
-- [ ] `=` vs `<-` placement enforcement (✅ 2026-06-11, E0505) — clock/reset domain typing incl. per-reg clock ownership still open
+- [x] Exhaustiveness: `match` total, wire-`if` has `else` — ✅ 2026-06-12
+      (E0601 non-exhaustive naming the gap, E0602 unreachable/duplicate
+      arms; wire-`if` was already parser-enforced). Spec ruling v0.2.3:
+      full coverage needs no `_`; defensive `_` after full coverage is
+      legal (`docs/Ideas/language_plan.md` 1.4 resolved)
+- [x] `=` vs `<-` placement enforcement (✅ 2026-06-11, E0505) — clock/reset
+      domain typing incl. per-reg clock ownership ✅ 2026-06-12
+      (`src/checker/clocks.rs`, E0701: cross-domain reads and
+      domain-mixing wires rejected, module-local; `sync` relaxes it in
+      Phase 2)
+- [x] Instantiation completeness: every input connected exactly once —
+      ✅ 2026-06-12 (E0302, missing inputs listed; clock/reset stay
+      implicit-by-name)
 - [x] Reg-requires-reset rule (module with regs must declare `reset`) — ✅ 2026-06-11 (E0301)
 - [ ] Teaching error messages: own caret renderer + stable E-codes ✅ (checker); retrofit codes onto lexer/parser errors before the Phase 1.8 catalogs (`miette`/`ariadne` not adopted — custom renderer kept)
 

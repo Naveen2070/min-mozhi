@@ -6,7 +6,9 @@
     "docs/archive/**", // append-only history (RULES R4) — never edited to satisfy a linter
     "target/**",
     ".remember/**",
-    "node_modules/**"
+    "node_modules/**",
+    "CLAUDE.md", // tool-generated agent config (graphify), not project docs
+    "graphify-out/**"
   ],
   "config": {
     "default": true,

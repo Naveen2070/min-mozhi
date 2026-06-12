@@ -1,7 +1,7 @@
 //! mimz — the Min-Mozhi (மின்மொழி) compiler CLI.
 //!
 //! Phase 1 pipeline (docs/architecture.md):
-//! lexer → parser → AST → checker (names, consts, widths) → Verilog emitter.
+//! lexer → parser → AST → checker (six passes) → Verilog emitter.
 //! Source loading + import resolution live in `project.rs`.
 //!
 //! Crate map (one module per pipeline stage):
@@ -13,7 +13,7 @@
 //! | [`lexer`]       | Source text → tokens (trilingual keyword table)            |
 //! | [`parser`]      | Tokens → AST (recursive descent, multi-error recovery)     |
 //! | [`ast`]         | The one shared AST — flavor- and word-order-blind          |
-//! | [`checker`]     | Names, consts, widths/types, drivers/cycles (E-codes)      |
+//! | [`checker`]     | Names, consts, widths, drivers, exhaustiveness, clocks     |
 //! | [`emit_verilog`]| AST → Verilog-2005 text                                    |
 //! | [`project`]     | File loading, NFC normalization, `import` resolution       |
 //!

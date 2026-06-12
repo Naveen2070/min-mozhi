@@ -68,7 +68,7 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-11 (Phase 1 — checker width/type
-slice E0401–E0410 + driver/cycle slice E0501–E0505 landed; Icarus
-differential tests live; exhaustiveness and clock ownership still
-open)._
+_Last synced with the code: 2026-06-12 (Phase 1 — checker completion
+slice landed: E0302 instantiation completeness, E0601/E0602 match
+exhaustiveness, E0701 clock domains; all spec/02 section 6 safety rules
+now compiler-enforced; `repeat` emission is the remaining gap)._

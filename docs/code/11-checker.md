@@ -1,30 +1,40 @@
 # 11 — The Checker (`src/checker/`)
 
-The semantic safety stage, between parse and emit. **Landed 2026-06-11
-in three slices**: symbols/names/consts/reg-reset (E00xx–E03xx), the
-width/type pass (E04xx — the exact-widths promise, signed/bits
-separation, literal fitting), and the driver pass (E05xx —
-single-driver, output coverage, combinational-cycle DAG, `=` vs `<-`).
-Exhaustiveness and clock ownership are later slices; the "deferred"
-table below is the honest status.
+The semantic safety stage, between parse and emit. **Landed across
+2026-06-11/12 in four slices**: symbols/names/consts/reg-reset
+(E00xx–E03xx), the width/type pass (E04xx — the exact-widths promise,
+signed/bits separation, literal fitting), the driver pass (E05xx —
+single-driver, output coverage, combinational-cycle DAG, `=` vs `<-`),
+and the completion slice (E0302 instantiation completeness, E0601/E0602
+match exhaustiveness, E0701 clock-domain ownership). The "deferred"
+table below is the honest status of what remains.
 
 ## File layout
 
-| File           | Owns                                                            |
-| -------------- | --------------------------------------------------------------- |
-| `mod.rs`       | `check()` entry, the `Checker` state, the `err()` plumbing      |
-| `symbols.rs`   | Pass 1 — project-wide tables (modules, enums) + E0001/E0002     |
-| `consteval.rs` | Pass 2 — file consts + the `eval()` engine for const positions  |
-| `names.rs`     | Pass 3 — module scopes, name resolution, structure rules        |
-| `widths.rs`    | Pass 4 — width/type rules under concrete parameter bindings     |
-| `drivers.rs`   | Pass 5 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-` |
-| `tests.rs`     | Unit tests — one per error code, plus clean-pass cases          |
+| File                 | Owns                                                            |
+| -------------------- | --------------------------------------------------------------- |
+| `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing      |
+| `symbols.rs`         | Pass 1 — project-wide tables (modules, enums) + E0001/E0002     |
+| `consteval.rs`       | Pass 2 — file consts + the `eval()` engine for const positions  |
+| `names.rs`           | Pass 3 — module scopes, name resolution, structure rules, E0302 |
+| `widths/mod.rs`      | Pass 4 — the `Ty` model, `Wcx`, config worklist, module walk    |
+| `widths/expr.rs`     | Pass 4 — bidirectional typing engine (check/infer, lvalues)     |
+| `widths/ops.rs`      | Pass 4 — operators, shifts, concat, the four builtins           |
+| `widths/insts.rs`    | Pass 4 — instantiation bindings + connection widths             |
+| `widths/patterns.rs` | Pass 4 — `match` patterns + exhaustiveness (E0601/E0602)        |
+| `drivers.rs`         | Pass 5 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-` |
+| `clocks.rs`          | Pass 6 — clock-domain ownership, cross-domain reads (E0701)     |
+| `tests.rs`           | Unit tests — one per error code, plus clean-pass cases          |
 
 Same module pattern as the parser (03): `mod.rs` owns the struct and the
 diagnostic plumbing; each pass is an `impl` block in its own file behind
-`pub(super)`. Pass 3 stores each module's scope on the `Checker`
+`pub(super)`. Pass 4 outgrew the ~600-line rule (07-decisions) and split
+into its own directory module on 2026-06-12 — same pattern one level
+down: `widths/mod.rs` owns the shared `Ty`/`Wcx` state, siblings hold
+one concern each. Pass 3 stores each module's scope on the `Checker`
 (`scopes`), and passes 4 and 5 resolve against those same tables instead
-of rebuilding them.
+of rebuilding them (pass 6 works straight off the AST — domain coloring
+needs only reg/wire/drive structure).
 
 ## The contract
 
@@ -92,6 +102,8 @@ tombstone row here.
 | E0201 | expression is not a compile-time constant                               | what IS allowed in const positions                              |
 | E0202 | constant evaluation overflow (i128 range)                               | —                                                               |
 | E0301 | module has regs but no `reset` declaration                              | add `reset rst`                                                 |
+| E0302 | instance input unconnected, or connected twice                          | connect every input exactly once; clock/reset connect by name   |
+| E0303 | _reserved for the repeat slice_ (declaration inside `repeat`)           | —                                                               |
 | E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)           | `extend`/`trunc`/slice; `+` into same width teaches `+%`        |
 | E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)             | `extend` the narrow side                                        |
 | E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data         | the visible casts `signed()`/`unsigned()`                       |
@@ -107,11 +119,41 @@ tombstone row here.
 | E0503 | reg assigned from zero or several `on` blocks                           | exactly one `on` block owns each reg                            |
 | E0504 | combinational cycle (path shown, incl. through instances)               | every feedback loop passes through a `reg`                      |
 | E0505 | wrong assignment kind: `<-` to wire/out, `=` to reg                     | `<-` = registers in `on`; `=` = combinational                   |
+| E0601 | `match` not exhaustive (names a missing value/variant)                  | add the missing arms, or end with `_ =>`                        |
+| E0602 | unreachable `match` arm (after `_`, or a duplicate value)               | move `_` last / delete the duplicate                            |
+| E0701 | cross-clock-domain read, or a wire mixing two domains                   | one domain per signal; `sync` (Phase 2) will allow crossings    |
 
 Numbering scheme: E00xx structure/duplicates, E01xx name resolution,
 E02xx const evaluation, E03xx module structure rules, E04xx width/type
-rules, E05xx drivers/cycles. Claim a block when a new pass lands, and
-add the rows in the same commit.
+rules, E05xx drivers/cycles, E06xx exhaustiveness, E07xx clock domains.
+(Lexer/parser codes get E10xx/E11xx in the retrofit — catalog in
+docs/code/06.) Claim a block when a new pass lands, and add the rows in
+the same commit.
+
+## How exhaustiveness works (in pass 4)
+
+`check_patterns` already holds the scrutinee's type and every validated
+pattern, so coverage is counted in the same walk: enum matches must name
+every variant, `bit`/`bits[N]` matches must cover all `2^N` values —
+or end with `_`. Spec ruling (v0.2.3, 2026-06-12): **full enum coverage
+needs no `_`** (the Rust rule), and a `_` AFTER full coverage is legal,
+not unreachable — it is the documented defense against non-enum
+encodings after a bit flip (the emitter's ternary chain makes the last
+arm the Verilog default either way). E0602 fires only for arms after a
+`_` arm and for duplicate values. Exhaustiveness is skipped when a
+pattern already drew a type error (one mistake, one diagnostic), and
+`wire`-driving `if` needs no checker rule — the parser already refuses
+an expression `if` without `else`.
+
+## How the clock pass works (pass 6)
+
+Modules with fewer than two clocks skip instantly. Otherwise: each reg
+is colored with its `on` block's clock; each wire/out gets the UNION of
+domains its driving expressions reach (through wire chains, memoized;
+comb cycles already died as E0504). A read inside `on rise(clkB)` whose
+domain set contains any other clock is E0701, as is a wire whose own
+set holds two domains. Instance outputs contribute no domain —
+cross-instance tracking is a deferred row.
 
 ## How the driver pass works (pass 5)
 
@@ -147,17 +189,16 @@ itself to the language's own honesty rule.
 
 | Rule                                              | Blocked on / planned with                                                |
 | ------------------------------------------------- | ------------------------------------------------------------------------ |
-| `match` exhaustiveness / wire-`if` analysis       | widths exist now; needs value-set analysis                               |
-| Clock ownership (one clock per reg)               | with the multi-clock design (Phase 2 `sync`)                             |
 | `repeat` unrolling (elaboration)                  | widths/drivers check per-iteration; unrolling is emitter work            |
-| Instantiation completeness (all inputs connected) | next slice (names + widths are checked today)                            |
+| Cross-INSTANCE clock-domain tracking              | pass 6 is module-local; instance outputs carry no domain                 |
+| Cross-clock reads allowed via `sync`              | the Phase 2 multi-clock construct relaxes E0701 explicitly               |
 | Instance-array output widths via the `repeat` var | read outside the loop falls back to param defaults                       |
 | Defaultless-param module never instantiated       | internals skipped silently (passes 1–3 still ran)                        |
 | Driver COVERAGE under non-default bindings        | upgrade path: reuse widths' per-instantiation config set                 |
 | Recursive instantiation                           | comb summary comes back empty (no through-paths seen); no cycle invented |
 | Unevaluable instance-array index in a read        | the comb edge is skipped (under-approximation; elaboration closes it)    |
 | Test BODY checking (drives/`tick`/`expect`)       | simulator, Phase 1.5                                                     |
-| E-codes on lexer/parser errors                    | retrofit pass, Phase 1                                                   |
+| E-codes on lexer/parser errors                    | retrofit pass, Phase 1 (E10xx/E11xx reserved)                            |
 | Did-you-mean suggestions on E0101                 | nice-to-have; needs edit distance                                        |
 
 ## How to add a checker rule

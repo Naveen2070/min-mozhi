@@ -50,10 +50,12 @@
 
 ## 2. Components
 
-Built ✅ as of 2026-06-11: keyword table, lexer, parser (code-order), AST,
-checker (names/consts/E-codes + width/type rules E04xx + driver/cycle
-rules E05xx), Verilog emitter v1 (validated by Icarus Verilog
-differential tests), CLI (`check`, `compile`). Everything else: planned.
+Built ✅ as of 2026-06-12: keyword table, lexer, parser (code-order), AST,
+checker — ALL spec/02 section 6 safety rules (names/consts/E-codes,
+width/type E04xx, driver/cycle E05xx, instantiation completeness E0302,
+match exhaustiveness E06xx, clock domains E0701), Verilog emitter v1
+(validated by Icarus Verilog differential tests), CLI (`check`,
+`compile`). Everything else: planned.
 
 | Component           | Phase   | Key design points                                                                                                                                                       |
 | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

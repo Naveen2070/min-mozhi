@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**98 tests** as of 2026-06-11 (EOD): 82 unit + 7 integration + 2 Icarus differential + 4 docs-sync + 3 grammar-sync.
+**118 tests** as of 2026-06-12: 102 unit + 7 integration + 2 Icarus differential + 4 docs-sync + 3 grammar-sync.
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -50,7 +50,7 @@ The four error-path tests assert on message/help **substrings** —
 deliberately loose so wording can be polished without breaking tests,
 tight enough that the teaching content can't silently vanish.
 
-## Unit: checker (`src/checker/tests.rs`, 60 tests)
+## Unit: checker (`src/checker/tests.rs`, 80 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -62,8 +62,13 @@ The width slice (E0401–E0410) added 26: error paths for every code
 `trunc`-widening for E0407) plus six clean passes. The driver slice
 (E0501–E0505) added 16: every code's error paths (both halves where a
 code covers two mistakes, e.g. zero AND multiple `on` blocks for E0503)
-plus four clean passes guarding against false positives. A few deserve
-a note:
+plus four clean passes guarding against false positives. The completion
+slice (E0302/E0601/E0602/E0701, 2026-06-12) added 20: exhaustiveness
+over enums/`bit`/`bits[N]` incl. the v0.2.3 rulings as clean passes,
+instantiation completeness both ways (missing AND duplicate), and the
+clock-domain matrix (independent domains clean, direct read,
+through-a-wire, domain-mixing wire, unused-second-clock clean). A few
+deserve a note:
 
 | Test                                                                  | Locks in                                                                               |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
@@ -77,6 +82,10 @@ a note:
 | `repeat_instance_array_ripple_carry_is_not_a_cycle`                   | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop               |
 | `a_cycle_through_instances_is_e0504`                                  | combinational loops THROUGH child modules are caught via the comb summaries            |
 | `feedback_through_a_register_is_not_a_cycle`                          | a reg breaks the loop — the normal shape of hardware never false-positives             |
+| `enum_match_covering_every_variant_needs_no_wildcard`                 | the v0.2.3 ruling, executable: full coverage IS exhaustive, no `_` ceremony            |
+| `wildcard_after_full_enum_coverage_is_allowed`                        | the defensive `_` (bit-flip recovery) is never flagged unreachable                     |
+| `clock_and_reset_ports_may_be_omitted`                                | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract              |
+| `same_domain_logic_under_two_declared_clocks_passes`                  | E0701 colors by USE, not by declaration count — an unused clock changes nothing        |
 
 ## Unit: emitter (`src/emit_verilog/mod.rs`, 1 test)
 
@@ -146,14 +155,14 @@ plain `contains` would pass vacuously), and that the manifest registers
 
 ## Deliberately NOT covered (and what would close each gap)
 
-| Gap                                                      | Why it's open                                                  | Closes when                                                 |
-| -------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
-| Remaining safety rules (exhaustiveness, clock ownership) | later checker slices (names/consts/widths/drivers covered)     | each checker pass lands WITH its own tests                  |
-| `repeat` emission                                        | unsupported (clean error, tested implicitly by none)           | checker const-eval; add an unrolling golden test then       |
-| Diagnostic rendering format (`render`'s caret layout)    | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes |
-| CLI surface (`--tokens`, exit codes, `-o` default path)  | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows             |
-| Golden-file (full output) comparison                     | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)    |
-| `mimz translate`, `fmt`, simulator, grammar engine       | not built yet                                                  | with their phases                                           |
+| Gap                                                     | Why it's open                                                  | Closes when                                                 |
+| ------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
+| Cross-INSTANCE clock-domain tracking                    | pass 6 is module-local (instance outputs carry no domain)      | with the Phase 2 `sync`/multi-clock design                  |
+| `repeat` emission                                       | unsupported (clean error, tested implicitly by none)           | checker const-eval; add an unrolling golden test then       |
+| Diagnostic rendering format (`render`'s caret layout)   | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes |
+| CLI surface (`--tokens`, exit codes, `-o` default path) | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows             |
+| Golden-file (full output) comparison                    | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)    |
+| `mimz translate`, `fmt`, simulator, grammar engine      | not built yet                                                  | with their phases                                           |
 
 ## House rules for new tests
 

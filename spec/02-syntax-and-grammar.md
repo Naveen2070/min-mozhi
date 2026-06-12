@@ -97,6 +97,12 @@ module Alu(WIDTH: int = 8) {
 - `match` driving a wire must be **exhaustive** (cover every value or have a
   `_` arm). Arms may list several patterns: `0b00, 0b01 => a`. `if` driving a
   wire must have `else`. Latches are impossible to express by accident.
+- Exhaustiveness rulings (v0.2.3): a `match` that names **every enum
+  variant** (or every value of `bits[N]`) is exhaustive **without** `_`; a
+  `_` arm AFTER full coverage is also legal — it documents the recovery
+  path for invalid encodings (e.g. after a bit flip), and the emitted
+  Verilog makes the last arm the default either way. An arm placed after
+  `_`, or a pattern value already covered, is an error (unreachable).
 - `wire name: type = expr` introduces a named combinational signal.
 
 ### 1.4 State machines — `enum` + `match`
@@ -464,6 +470,13 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.3 (2026-06-12):** exhaustiveness rulings, settled while
+  implementing the checker's completion slice (E0302/E0601/E0602/E0701):
+  full enum/value coverage is exhaustive WITHOUT `_`; a defensive `_`
+  after full coverage is legal (bit-flip recovery), never unreachable;
+  arms after `_` and duplicate pattern values are errors. Section 1.3
+  updated. No grammar changes — rules 3 and 5 of section 6 and the
+  section 1.5 connection rule are now compiler-enforced as written.
 - **v0.2.2 (2026-06-11):** width-rule clarifications, settled while
   implementing the checker's width pass: `bit` is identical to `bits[1]`;
   lossless `+`/`-` accept unequal operand widths (result `max + 1`);

@@ -25,7 +25,8 @@ incremental compilation — named triggers, not speculative scaffolding.
 ### The module-scoping pattern (refactor of 2026-06-10)
 
 Big files were split with one repeating pattern, used by `lexer/`,
-`parser/`, `ast/`, `emit_verilog/`:
+`parser/`, `ast/`, `emit_verilog/`, and (since 2026-06-12, when the
+width pass hit 1859 lines) `checker/widths/`:
 
 - `mod.rs` owns the struct, its state, and private plumbing;
 - sibling files (`items.rs`, `expr.rs`, `module.rs`…) hold `impl` blocks
@@ -56,14 +57,14 @@ debugging backend; do not grow it into a compiler in the meantime.
 
 ### Safety rules enforced at the earliest possible stage
 
-| Rule                                                             | Enforced today by | Eventually by |
-| ---------------------------------------------------------------- | ----------------- | ------------- |
-| no `/` / `%` operators                                           | lexer             | lexer         |
-| `=` wires-only vs `<-` regs-only                                 | parser            | parser        |
-| reg requires reset value                                         | parser            | parser        |
-| if-expression requires `else`                                    | parser            | parser        |
-| no comparison chaining                                           | parser            | parser        |
-| widths, single-driver, exhaustiveness, comb-DAG, clock ownership | — (not yet)       | **checker**   |
+| Rule                                                             | Enforced today by                      | Eventually by |
+| ---------------------------------------------------------------- | -------------------------------------- | ------------- |
+| no `/` / `%` operators                                           | lexer                                  | lexer         |
+| `=` wires-only vs `<-` regs-only                                 | parser                                 | parser        |
+| reg requires reset value                                         | parser                                 | parser        |
+| if-expression requires `else`                                    | parser                                 | parser        |
+| no comparison chaining                                           | parser                                 | parser        |
+| widths, single-driver, exhaustiveness, comb-DAG, clock ownership | **checker** (all landed 2026-06-11/12) | checker       |
 
 The earlier a rule fires, the better the span and the simpler the
 message. Push enforcement as early as it can correctly live.
@@ -84,21 +85,19 @@ message. Push enforcement as early as it can correctly live.
 
 ## Where the code goes next (in order)
 
-1. **Checker** (Phase 1 work item 4) — the next big component. New
-   `src/checker/` with one pass per safety rule, each with its own tests.
-   Needs: name resolution, const-eval (this unblocks `repeat` unrolling
-   in the emitter), width rules, single-driver, exhaustiveness,
-   reg-reset, clock ownership. The `Project` symbol table likely moves
-   here from `emit_verilog`.
-2. **Stable error codes** (`E0001`…) — flagged as the one thing to do
-   EARLY (before the catalog grows past ~30), so Phase 1.8 message
-   translation keys off codes.
-3. **Icarus Verilog differential tests** — CI compiles every example and
-   runs the output through a real Verilog tool.
-4. **Phase 1.8 grammar engine** — second parser profile
+1. ~~**Checker**~~ — ✅ landed 2026-06-11/12, six passes in
+   `src/checker/` (symbols, consteval, names, widths, drivers, clocks);
+   every spec/02 section 6 rule is now compiler-enforced.
+2. ~~**Stable error codes**~~ — ✅ checker errors carry E-codes from day
+   one; the lexer/parser retrofit (E10xx/E11xx) is the remaining half.
+3. ~~**Icarus Verilog differential tests**~~ — ✅ landed 2026-06-11
+   (`tests/icarus.rs`, self-checking TBs per example).
+4. **`repeat` emission + emitter hardening** — unrolling via const-eval,
+   transliteration, golden files (Phase 1 remainder).
+5. **Phase 1.8 grammar engine** — second parser profile
    (`thamizh-order`), same productions with flipped clause heads, same
    AST. The parser was built one-token-lookahead to keep this cheap.
-5. **Phase 1.5 simulator** — first consumer of `TestDecl`/`TestStmt`
+6. **Phase 1.5 simulator** — first consumer of `TestDecl`/`TestStmt`
    (and the point where `ast`'s `#![allow(dead_code)]` gets deleted).
 
 Each of these has a full plan file in [`docs/plan/`](../plan/).

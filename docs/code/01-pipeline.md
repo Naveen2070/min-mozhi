@@ -74,14 +74,18 @@ resolution (every name points at a declaration — signals, modules,
 enums/variants, instance ports, parameters), const evaluation, the
 reg-requires-reset rule, the **width/type pass** (exact widths,
 lossless growth, signed/bits separation, literal fitting — checked
-under concrete parameter bindings), and the **driver pass**
+under concrete parameter bindings), the **driver pass**
 (single-driver per signal/bit, output coverage, reg-per-`on`-block,
-combinational-cycle DAG incl. through-instance paths, `=` vs `<-`).
+combinational-cycle DAG incl. through-instance paths, `=` vs `<-`),
+**match exhaustiveness** (every value/variant covered, unreachable arms
+rejected), **instantiation completeness** (every input connected exactly
+once), and the **clock-domain pass** (per-reg clock ownership,
+cross-domain reads rejected until Phase 2's `sync`).
 Every checker error carries a stable code (`E0101`) — catalog and
 details in [`11-checker.md`](11-checker.md).
 
-Still open (later slices): exhaustiveness, clock ownership, `repeat`
-unrolling — tracked in `docs/plan/phase-1-verilog-backend.md`.
+Still open: `repeat` unrolling in the emitter — tracked in
+`docs/plan/phase-1-verilog-backend.md`.
 
 ## Error flow
 
