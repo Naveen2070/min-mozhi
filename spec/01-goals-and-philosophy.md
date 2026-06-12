@@ -1,7 +1,8 @@
 # Min-Mozhi (மின்மொழி) — Goals & Philosophy
 
-> **Spec v0.2** — rewritten from the founder's answers to the 2026-06-10
-> design review (`docs/archive/open-questions-2026-06-10.md`).
+> **Spec v0.3** — v0.2 rewritten from the founder's answers to the 2026-06-10
+> design review (`docs/archive/open-questions-2026-06-10.md`); v0.3 adds the
+> modern-secure-HDL co-goal (Decision 2026-06-12, `docs/log/2026-06-12.md`).
 > The first Tamil-rooted Hardware Description Language. Built in Tamil Nadu, India.
 
 ---
@@ -11,13 +12,19 @@
 1. **To learn how compilers work** — by building a real one, end to end.
 2. **To help Tamil Nadu students learn HDL** — lowering the entry barrier into
    digital design.
-3. **To prove India can build its own silicon tooling.**
-4. **Personal mastery of compilers** — and a portfolio that shows it (the
+3. **To be a modern, secure HDL** — security and developer experience as
+   compile-time design goals, **co-primary with education** since v0.3
+   (Decision 2026-06-12).
+4. **To prove India can build its own silicon tooling.**
+5. **Personal mastery of compilers** — and a portfolio that shows it (the
    showcase is a side effect, never the driver).
 
 This is an **educational project, honestly framed**: if even one person learns
 from it or appreciates it, it has succeeded. The only true failure is if the
-builder learns nothing.
+builder learns nothing. Since v0.3 it carries a second, equal ambition: a
+modern HDL whose security and ergonomics are checked by the compiler, not
+promised by convention. When the two ambitions conflict, the tie-breakers
+(section 7) decide.
 
 ## 2. The One Person It Is For
 
@@ -30,7 +37,12 @@ builder learns nothing.
 completeness. Min-Mozhi is new and experimental — it is _not_ a replacement
 for Verilog or Chisel, and does not try to be.
 
-Student-first, but a working VLSI engineer should be able to read any
+**Second audience (equal rank since v0.3):** a modern developer who wants a
+secure, ergonomic HDL — drawn by the compile-time security checks (G5) and
+the Go/TypeScript-feel syntax, not by Tamil. Production completeness is still
+a non-goal; language quality is the draw, not feature parity.
+
+Student-first in tone, but a working VLSI engineer should be able to read any
 Min-Mozhi file and understand it immediately.
 
 ## 3. What Min-Mozhi Is
@@ -112,6 +124,23 @@ Phase 1 emits Verilog (pragmatic). The long-term goal is a fully native path
 to an iCE40 bitstream — while Constitution section 4.2 guarantees the Verilog exit
 ramp never closes.
 
+### G5 — Secure by construction (v0.3)
+
+Security promises are compile-time checks, exactly like the safety rules in
+G2 — and stated honestly, with what they do NOT cover written down:
+
+- **Information-flow tracking**: data labelled `secret` can never reach a
+  public output or unlabelled storage except through a `declassify`-marked
+  module (e.g. a cipher). Explicit flow only, the SecVerilog model — timing
+  side channels are out of scope and the docs say so.
+- **Fail-secure faults**: `system_fault(code)` synthesizes a sticky fault
+  network — a `FAULT_OUT` pin, every output forced to its declared safe
+  state, inputs ignored until cold reset. v1 is plain synthesizable logic
+  (no clock gating).
+
+Both land post-Phase-1 (feasibility triage, `docs/Ideas/language_plan.md`
+section 7); G5 fixes them as goals, not stretch ideas.
+
 ## 6. Non-Goals (v0.2)
 
 - **Not** a Verilog superset or preprocessor — clean-slate syntax (interop per
@@ -125,14 +154,18 @@ ramp never closes.
 
 ## 7. Design Principles (tie-breakers, in order)
 
-When two designs conflict, decide in this order:
+When two designs conflict, decide in this order (security inserted at rank 3
+and DX merged into readability in v0.3, Decision 2026-06-12):
 
 1. **Hardware honesty** — never hide what hardware gets generated.
 2. **Compile-time safety** — prefer a compile error over a simulation surprise.
-3. **Beginner readability** — prefer the form a first-year student can read aloud.
-4. **Speed** — of compilation and simulation.
-5. **Brevity** — never save keystrokes at the cost of 1–4.
-6. **Tamil idiom** — last as a _tie-breaker only_; Tamil's **presence** is
+3. **Security** — prefer the design that keeps the G5 guarantees provable;
+   never weaken a security check for convenience.
+4. **Readability & developer experience** — prefer the form a first-year
+   student can read aloud; modern ergonomics serve the same instinct.
+5. **Speed** — of compilation and simulation.
+6. **Brevity** — never save keystrokes at the cost of 1–5.
+7. **Tamil idiom** — last as a _tie-breaker only_; Tamil's **presence** is
    constitutional (section 4.3) and never in question — this rank only means a design
    detail is never made dishonest, unsafe, or unreadable to be more idiomatic.
 
@@ -148,6 +181,13 @@ When two designs conflict, decide in this order:
 
 ## Changelog
 
+- **v0.3 (2026-06-12):** Modern-secure-HDL becomes a co-primary goal, equal
+  with education (Decision 2026-06-12, from the `docs/Ideas/language_plan.md`
+  feasibility triage). Added: goal #3 in section 1, second audience in
+  section 2, **G5 Secure by construction** (explicit-flow `secret` taint per
+  the SecVerilog model; fail-secure `system_fault` sticky-fault network v1),
+  tie-breakers reordered to honesty > safety > **security** >
+  readability/DX > speed > brevity > Tamil idiom.
 - **v0.2 (2026-06-10):** Rewritten from founder's design-review answers.
   Added: ranked "why", persona, not-for statement, Constitution (license,
   Verilog interop incl. future wrapping, Tamil permanence), measurable G1

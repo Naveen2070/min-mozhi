@@ -44,7 +44,8 @@
  side tools (share lexer/parser/AST + pretty-printer):
    mimz translate  — flavor/order conversion (lossless, trivia-preserving)
    mimz fmt        — formatter
-   mimz lsp        — language server (Phase 4)
+   mimz lsp        — language server (v0 diagnostics-only in Phase 1,
+                     non-gating, Decision 2026-06-12; full features Phase 4)
 ```
 
 ## 2. Components

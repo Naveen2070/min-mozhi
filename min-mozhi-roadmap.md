@@ -50,6 +50,8 @@ matching, which compilers lean on heavily.)
 - Build **Checker** — the safety rules + const-eval (next up)
 - Test with **Icarus Verilog** (free simulator)
 - Support: wires, registers, modules, basic logic, clocks ✅
+- **LSP v0** — diagnostics-only language server, non-gating (pulled
+  forward from Phase 4, Decision 2026-06-12)
 
 **Milestone:** `mimz compile adder.mimz → adder.v → simulates correctly`
 
@@ -99,6 +101,10 @@ order, compiles to the same Verilog as its English twin
 - Build **Logic Synthesizer** — map IR to gates (AND/OR/NOT/FF)
 - Integrate or study **Yosys** internals for technology mapping
 - Target: FPGA primitive mapping (LUTs, flip-flops)
+- **Language features** from the ideas triage (`docs/Ideas/language_plan.md`
+  section 7; work items in the phase-2 plan): tagged unions, interfaces,
+  channels, `prove` via SymbiYosys, G5 security (`secret` taint +
+  `system_fault` network v1), DX sugar
 
 **Milestone:** `.mimz → IR → FPGA bitstream` via open source toolchain (hardware demo once a board is acquired; until then simulation/emulation only)
 
@@ -131,6 +137,15 @@ order, compiles to the same Verilog as its English twin
 - Ecosystem drivers: WASM browser playground first, then npm/PyPI
   wrappers around the one Rust core (thin wrappers, never
   reimplementations — Decision 2026-06-11)
+- Language-feature backlog triaged from `docs/Ideas/language_plan.md`
+  (Decision 2026-06-12): tagged unions, interfaces/bundles, and
+  clock-domain checking lead; `prove` rides SymbiYosys; rejected items
+  recorded with reasons in the ideas doc
+- Constitution v0.3 (Decision 2026-06-12): modern-secure-HDL is now a
+  co-primary goal with education — new spec/01 G5 (explicit-flow
+  `secret` taint, fail-secure `system_fault` network v1); tie-breakers
+  now honesty > safety > security > readability/DX > speed > brevity >
+  Tamil idiom
 - Community + Tamil Nadu semiconductor outreach
 
 **Deliverable:** Community language with real users

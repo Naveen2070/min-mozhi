@@ -45,7 +45,10 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 - [x] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match — ✅ 2026-06-11, `src/checker/widths.rs` (E0401–E0410); concrete-binding strategy (defaults + per-instantiation), literal fitting, connection checking
 - [x] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals — ✅ 2026-06-11 (same pass: E0403/E0405/E0407)
 - [x] Single-driver check; combinational cycle (DAG) check — ✅ 2026-06-11, `src/checker/drivers.rs` (E0501–E0505): per-bit drive extents, output coverage, reg-per-on-block, through-instance cycles via comb summaries
-- [ ] Exhaustiveness: `match` total, wire-`if` has `else`
+- [ ] Exhaustiveness: `match` total, wire-`if` has `else` — spec ruling
+      needed when this slice starts: require a fallback arm even on
+      fully-covered enum matches, because physical bit-flips can hit
+      non-enum encodings (`docs/Ideas/language_plan.md` 1.4, triage Tier 2)
 - [ ] `=` vs `<-` placement enforcement (✅ 2026-06-11, E0505) — clock/reset domain typing incl. per-reg clock ownership still open
 - [x] Reg-requires-reset rule (module with regs must declare `reset`) — ✅ 2026-06-11 (E0301)
 - [ ] Teaching error messages: own caret renderer + stable E-codes ✅ (checker); retrofit codes onto lexer/parser errors before the Phase 1.8 catalogs (`miette`/`ariadne` not adopted — custom renderer kept)
@@ -62,6 +65,13 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 ### 6. Visibility (decision D4)
 
 - [x] Minimal VS Code syntax highlighting: TextMate grammar for `.mimz` (all keyword flavors) — ✅ 2026-06-11, `editors/vscode/`, kept in lockstep with keywords.toml by `tests/grammar_sync.rs`
+- [ ] **LSP v0 — diagnostics only** (pulled forward from Phase 4, Decision
+      2026-06-12): `mimz lsp` via `tower-lsp` — parse + check on open/save,
+      publish the checker's diagnostics (E-codes + help lines) in-editor.
+      Rides the lib/bin split + `--json` work (item 4's E-code retrofit) and
+      IS the "second consumer" that architecture section 5 names as the
+      split trigger. **Non-gating**: v0.1.0 and the safety slices outrank
+      it; hover/go-to-def/completion stay in Phase 4.
 
 ## Milestone
 

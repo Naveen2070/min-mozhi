@@ -39,6 +39,51 @@ FPGA hardware via the open toolchain: `.mimz → IR → Yosys/nextpnr → bitstr
 ### Clock-domain crossing (deferred from spec v0.1)
 
 - [ ] Design explicit CDC construct (`sync`) — spec update + Decision log entry
+      (design inputs from `docs/Ideas/language_plan.md` section 1.2, triage
+      2026-06-12: per-reg `@ clk` domain tags + a `sync.double_flop` stdlib
+      synchronizer; cross-domain reads without one become a checker error)
+
+### Language features (window: alongside IR work — from `docs/Ideas/language_plan.md` section 7, Tier 3)
+
+This is the single source of truth for the triaged feature backlog; the
+phase-4 plan only points here. Every item needs a spec section + a Decision
+block BEFORE code, and every new keyword (`secret`, `declassify`, `default`,
+`pipeline`, `interface`, `chan`, `prove`, …) needs Tanglish + Tamil spellings
+through keywords.toml + native-speaker review. Order below is the build order
+from the triage; items late in the list may slip to the Phase 3 window.
+
+- [ ] **Tagged unions with payloads** (2.7) — FIRST: enums + match exist;
+      payload = tag bits + max-payload bits; gives `Result` (4.2) for free
+- [ ] **Interfaces/bundles + destructuring** (2.4) — flatten to nets in the
+      emitter; unlocks the next three items
+- [ ] Structural interface matching (2.9) — small checker rule once bundles exist
+- [ ] `?` valid-bundle sugar (2.1 re-targeted): `bits[N]?` =
+      `{valid, data}`, `??` = mux on valid — never tri-state
+- [ ] **Channels tier (a)** (3.1) — Decoupled-style valid/ready/data bundles,
+      explicit handshake + must-consume lint on unused channel reads
+      (the honest salvage of affine tokens, 1.3)
+- [ ] Wire type inference (2.3 other half) — `wire sum = a + b`; widths.rs
+      already computes the type, only the parser requires the annotation
+- [ ] `default` assignments (salvaged from 3.2) — value unless assigned this cycle
+- [ ] Item-level const-`if` (salvaged from 2.6) — conditional elaboration
+- [ ] `count_ones`-style builtins (cheap version of 2.2)
+- [ ] `pipeline(stages = N)` (salvaged from 6.1) — inserts N register stages +
+      vendor retiming attribute; never promises Fmax
+- [ ] **`prove` blocks** (6.3) — emit SystemVerilog assertions + drive
+      SymbiYosys (never in-house SMT; the Icarus lean-on-tools pattern)
+- [ ] Prove-backed shared-resource access (1.1 via 6.3) — checker accepts a
+      guarded double-drive once the user-stated exclusion property is proved
+
+### G5 security features (constitution goals since spec/01 v0.3)
+
+- [ ] **`secret`/`declassify` explicit-flow taint pass** — SecVerilog lattice
+      model in a checker pass; error when secret reaches a public out or
+      unlabelled storage; timing side channels explicitly out of scope
+      (`docs/Ideas/language_plan.md` 6.2, spec/01 G5)
+- [ ] **`system_fault` sticky-fault network v1** — sticky fault reg +
+      `FAULT_OUT` pin + safe-state mux on declared outputs + lockout until
+      cold reset; plain synthesizable logic, no clock gating (clock-stop
+      stays parked). Sim side lands earlier in Phase 1.5 (4.3, spec/01 G5)
 
 ## Milestone
 

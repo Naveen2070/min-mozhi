@@ -1,0 +1,577 @@
+# Min-Mozhi: Modernization & Advanced Language Plan
+
+This document outlines the conceptual roadmap for elevating Min-Mozhi into the "Ultimate Modern HDL". By combining the strict mathematical safety of **Rust**, the developer ergonomics of **TypeScript** and **Kotlin**, the concurrency paradigms of **Go**, and the testing architecture of **C#**, Min-Mozhi aims to bridge the gap between software engineering and physical silicon design.
+
+---
+
+## 1. Safety by Construction (Inspired by Rust)
+
+The core philosophy of Rust is catching bugs at compile time. In hardware, runtime bugs are fatal and cost millions of dollars in silicon respins.
+
+### 1.1 The Hardware Borrow Checker (Spatial & Temporal Borrowing)
+
+- **Explanation:** In Rust, you cannot have two mutable references to the same data at the same time. In hardware, you cannot have two concurrent state machines trying to drive the same physical resource (like a shared Arithmetic Logic Unit) at the exact same clock cycle.
+- **Mechanism:** The compiler builds an execution graph and statically analyzes resource usage.
+- **Example:**
+
+  ```mimz
+  // A shared hardware resource
+  let shared_alu = ALU()
+
+  on rise(clk) {
+      // FSM 1
+      match (fsm_1_state) {
+          CALC => { shared_alu.in <- data_A } // Borrowing ALU
+      }
+
+      // FSM 2
+      match (fsm_2_state) {
+          // ❌ COMPILE ERROR: Temporal Borrow Violation.
+          // fsm_1_state == CALC and fsm_2_state == CALC can happen simultaneously!
+          CALC => { shared_alu.in <- data_B }
+      }
+  }
+  ```
+
+### 1.2 Clock Domain Checker (Hardware Thread-Safety)
+
+- **Explanation:** Passing a signal from one clock domain to another without proper synchronization (CDC) causes metastability, where the chip enters an undefined electrical state. This is the hardware equivalent of a software data race.
+- **Example:**
+
+  ```mimz
+  clock clk_100mhz
+  clock clk_uart  // 115200 Hz
+
+  reg fast_data: bits[8] @ clk_100mhz
+  reg slow_data: bits[8] @ clk_uart
+
+  on rise(clk_uart) {
+      // ❌ COMPILE ERROR: Clock domain violation!
+      slow_data <- fast_data
+
+      // ✅ OK: Must use an explicit synchronizer from the standard library
+      slow_data <- sync.double_flop(fast_data, clk_100mhz, clk_uart)
+  }
+  ```
+
+### 1.3 Affine Types (Preventing Dropped Data)
+
+- **Explanation:** In an AXI-Stream or pipeline, dropping valid data causes deadlocks. If a stream returns `valid`, it is an "Affine Type" (it must be consumed or explicitly dropped).
+- **Example:**
+
+  ```mimz
+  // Function returns a pipeline token
+  let token = fetch_instruction()
+
+  // ❌ COMPILE ERROR: Token must be routed to a register or explicitly dumped!
+  // Ignoring the token causes a pipeline leak.
+  ```
+
+### 1.4 State Machine Exhaustiveness
+
+- **Explanation:** A common hardware vulnerability is an FSM entering a dead state due to a radiation-induced bit flip and getting stuck forever.
+- **Example:**
+
+  ```mimz
+  match (current_state) {
+      IDLE => ...,
+      RUNNING => ...,
+      // ❌ COMPILE ERROR: Missing fallback case!
+      // Must include `_ => system_fault()` or `_ => IDLE` to handle invalid states.
+  }
+  ```
+
+### 1.5 Hardware `unsafe {}` Blocks
+
+- **Explanation:** Sometimes hardware engineers need to intentionally break the rules (e.g., creating a combinational loop for a physical ring oscillator, or creating a custom latch). The compiler bans latches and combinational loops by default, but allows them inside explicit `unsafe` blocks so the risk is contained and documented.
+- **Example:**
+
+  ```mimz
+  unsafe {
+      // The compiler turns off the cycle-checker and latch-checker here.
+      // If the chip fails, the engineer knows exactly where to look.
+      ring_oscillator = !ring_oscillator
+  }
+  ```
+
+### 1.6 Explicit "Pulse" Lifetimes
+
+- **Explanation:** In software, variables live until they go out of scope. In hardware, a variable might only be valid for a single clock cycle (a pulse). The `pulse` modifier mathematically enforces a lifetime of exactly 1 cycle.
+- **Example:**
+
+  ```mimz
+  wire valid_flag: pulse
+
+  on rise(clk) {
+      if (condition) valid_flag = 1
+  }
+
+  on rise(clk) {
+      // ❌ COMPILE ERROR: 'valid_flag' expired on the previous cycle.
+      // Must store it in a register if you want to read it later.
+      if (valid_flag) do_something()
+  }
+  ```
+
+---
+
+## 2. Developer Ergonomics (Inspired by TypeScript & Kotlin)
+
+### 2.1 High-Z / Null Safety (Kotlin)
+
+- **Explanation:** A "floating" wire (High-Z) is the hardware equivalent of a Null Pointer Exception. It means the wire is not connected to any logic gate, which destroys signal integrity.
+- **Example:**
+
+  ```mimz
+  wire a: bits[8]     // Must ALWAYS be driven continuously.
+  wire b: bits[8]?    // Optional (?): Synthesizes to a Tri-State Buffer.
+
+  // ❌ COMPILE ERROR: Cannot read a floating wire directly.
+  let sum = a + b
+
+  // ✅ OK: Must safely unwrap the floating wire, providing a default value.
+  let safe_b = b ?? 0
+  let sum = a + safe_b
+  ```
+
+### 2.2 Extension Functions (Kotlin)
+
+- **Explanation:** Instead of writing messy wrapper modules for simple bitwise operations, allow users to attach functions to primitive types.
+- **Example:**
+
+  ```mimz
+  // Define an extension to count active bits
+  fn bits[N].count_ones() -> bits[log2(N)] {
+      // Internal recursive logic...
+  }
+
+  let sensor_bus: bits[32] = get_inputs()
+
+  // Synthesizes a parallel adder tree natively, but reads beautifully!
+  let active_count = sensor_bus.count_ones()
+  ```
+
+### 2.3 Local Scope & Type Inference (TypeScript)
+
+- **Explanation:** Prevent Verilog's catastrophic truncation bugs by inferring the required physical bit-width automatically.
+- **Example:**
+
+  ```mimz
+  let a: bits[8] = 255
+  let b: bits[8] = 2
+
+  // The compiler infers 'sum' MUST be 9 bits to prevent overflow.
+  let sum = a + b
+  ```
+
+### 2.4 Interface Destructuring (TypeScript)
+
+- **Explanation:** Cleanly unpack complex hardware buses.
+- **Example:**
+
+  ```mimz
+  interface MemoryBus(WIDTH) {
+      valid: bit,
+      data: bits[WIDTH]
+  }
+
+  let mem_response: MemoryBus(32) = memory.read()
+
+  // Physically unpack the 33-bit bus into two distinct local wires
+  let { valid, data } = mem_response
+  ```
+
+### 2.5 Array `.map()`, `.filter()`, `.reduce()` (JavaScript)
+
+- **Explanation:** Eliminates ugly, error-prone Verilog `generate for` loops by using functional array methods to stamp out parallel hardware gates at compile time.
+- **Example:**
+
+  ```mimz
+  let raw_signals = [sig1, sig2, sig3, sig4]
+
+  // Physically synthesizes 4 parallel NOT gates
+  let inverted_signals = raw_signals.map(not)
+
+  // Synthesizes a massive 4-input OR gate tree
+  let any_active = inverted_signals.reduce(or)
+  ```
+
+### 2.6 Hardware "Closures" / Parameterized Generators (JavaScript)
+
+- **Explanation:** In hardware, you can't capture runtime data, but you can capture compile-time parameters to generate custom logic blocks dynamically, acting like closures.
+- **Example:**
+
+  ```mimz
+  // A compile-time hardware generator
+  const make_delay_line = (cycles: int) => {
+      return module {
+          in data: bit
+          out delayed: bit
+          // Physically stamps out N flip-flops based on 'cycles'
+          delayed = shift_reg(data, depth=cycles)
+      }
+  }
+
+  // Instantiate physical modules using the closure
+  let delay_5 = make_delay_line(5)
+  let delay_10 = make_delay_line(10)
+  ```
+
+### 2.7 Smart Casts & Tagged Unions (Kotlin / C#)
+
+- **Explanation:** Verilog handles multiple packet types by manually packing/unpacking bits (`[63:0]`). Tagged Unions combined with exhaustive matching act as "Smart Casts", automatically extracting data payload.
+- **Example:**
+
+  ```mimz
+  enum Packet {
+      Read(addr: bits[32]),
+      Write(addr: bits[32], data: bits[32])
+  }
+
+  // The bus physically synthesizes to 65 bits (1 bit tag + 64 bits data)
+  let bus: Packet = receive()
+
+  match (bus) {
+      Read(addr) => read_memory(addr), // Smart cast extracts 'addr'
+      Write(addr, data) => write_memory(addr, data)
+  }
+  ```
+
+### 2.8 Properties (Getters / Setters from C#)
+
+- **Explanation:** In Verilog, managing who is allowed to drive a signal vs who is allowed to read it is messy. Min-Mozhi introduces strict `in/out` scoping using C#-style properties, eliminating accidental multi-driver errors.
+- **Example:**
+
+  ```mimz
+  module Counter {
+      // Any external module can READ this value,
+      // but only the internal Counter logic can SET it.
+      out count: bits[8] { get, private set }
+
+      on rise(clk) {
+          count <- count + 1 // Internal logic is allowed to drive it
+      }
+  }
+  ```
+
+### 2.9 Implicit Interfaces / Duck Typing (Go)
+
+- **Explanation:** If a module has the right input/output ports, it can be plugged into a bus interface without needing to explicitly declare `implements InterfaceName`. This structural subtyping makes hardware composition fluid and agile.
+- **Example:**
+
+  ```mimz
+  interface HasUART {
+      out tx: bit
+      in  rx: bit
+  }
+
+  module SensorData {
+      // Matches the shape of HasUART perfectly, but doesn't explicitly declare it
+      out tx: bit
+      in  rx: bit
+  }
+
+  // The compiler accepts this automatically!
+  let bus: HasUART = SensorData()
+  ```
+
+---
+
+## 3. Concurrency & Control Flow (Inspired by Go & C#)
+
+### 3.1 Hardware Channels (Go)
+
+- **Explanation:** Abstract away the nightmare of `valid/ready/stall` handshake signals.
+- **Example:**
+
+  ```mimz
+  // Automatically creates valid/ready/data wires
+  chan data_bus: bits[32]
+
+  // Module A (Sends data, stalls if receiver is busy)
+  data_bus <- 0xFF
+
+  // Module B (Waits until data is valid)
+  let payload = <-data_bus
+  ```
+
+### 3.2 The `defer` Keyword (Go)
+
+- **Explanation:** Guarantee that control signals are cleaned up when an FSM transitions.
+- **Example:**
+
+  ```mimz
+  match (state) {
+      WRITING => {
+          mem_write_enable = 1
+
+          // Guarantees this wire is pulled LOW when the state transitions!
+          defer mem_write_enable = 0
+
+          if (done) state <- IDLE
+      }
+  }
+  ```
+
+### 3.3 Async/Await for Testbenches (C#)
+
+- **Explanation:** Eliminate archaic `@(posedge clk)` timing loops in test simulations.
+- **Example:**
+
+  ```mimz
+  test "UART Boot Sequence" async {
+      reset <- 1
+      await clk.cycles(5) // Suspends execution for 5 cycles
+      reset <- 0
+
+      // Await a hardware response
+      let response = await uart.read_byte()
+  }
+  ```
+
+---
+
+## 4. The Two-Tiered Hardware Error System
+
+Because hardware has no Operating System, a `try/catch` block cannot "unwind a call stack" (there is no stack, only physical wires). Therefore, Min-Mozhi strictly rejects `try/catch` and Go-style `if err != nil` patterns. Instead, error handling is split into Simulation logic and Physical Silicon logic.
+
+### 4.1 Simulation-Only Errors (SystemVerilog Style)
+
+These tools are for the testbench and do **not** synthesize into physical gates.
+
+- **Mechanism:** Use the `sim::` namespace.
+- **Example:**
+
+  ```mimz
+  if (address >= MEM_DEPTH) {
+      sim::fatal("Address Out of Bounds!") // Halts simulation instantly
+  }
+  ```
+
+### 4.2 Tier 1: Recoverable Silicon Errors (Rust's `Result` & `match`)
+
+For hardware errors the chip must recover from, we use Rust's `Result` type rather than Go's tuple return `(data, err)`.
+
+- **Why not Go's `(data, err)`?** A developer can easily forget to check `if (err)`, inadvertently feeding corrupt `data` into downstream logic.
+- **Why Rust's `Result`?** The `match` statement mathematically forces the engineer to handle the error before extracting the `data`. It is **Safe by Construction**.
+- **Example:**
+
+  ```mimz
+  let status = decode_packet()
+
+  match (status) {
+      Ok(payload) => process(payload), // 'payload' only exists here!
+      Err(code) => send_nack(code)     // Forced to handle the error
+  }
+  ```
+
+### 4.3 Tier 2: Unrecoverable Silicon Errors (Hardware Panics)
+
+For catastrophic faults (e.g., impossible FSM states, division by zero).
+
+- **Mechanism:** The `system_fault(code)` keyword.
+- **Dual Compilation:**
+  - **In Simulation (`mimz sim`):** Translates to a SystemVerilog `$fatal` to instantly halt the testbench.
+  - **In Physical Synthesis (`mimz compile`):** Synthesizes the **Recovery Mode Network**:
+    1. Instantly halts the chip's internal logic clocks.
+    2. Forces all output pins to a predefined "Safe State" (e.g., disabling motors/lasers).
+    3. Asserts a physical `FAULT_OUT` pin to alert the host CPU.
+    4. The chip ignores all inputs until a physical cold reset.
+
+---
+
+## 5. The Ultimate Synthesis: Secure Router Example
+
+Here is what all these concepts look like when combined into a single, cohesive Min-Mozhi module:
+
+```mimz
+// 1. TypeScript Style: Interfaces
+interface Packet {
+    dest_ip: bits[32]
+    payload: bits[128]
+}
+
+// 2. Kotlin Style: Tagged Unions
+enum RouterStatus {
+    Active,
+    RecoverableError(code: bits[8]),
+    FatalCorruption
+}
+
+// 3. Rust Safety: Strict Clock Domains
+module SecureRouter(MAX_RETRIES: int = 3) {
+    clock clk_core
+
+    // 4. Go Style: Channels (Automatic valid/ready generation)
+    in  rx_stream: chan Packet @ clk_core
+    out tx_stream: chan Packet @ clk_core
+
+    // 5. Kotlin Style: Null-Safety / High-Z prevention
+    out status_led: bit? = null
+
+    reg retries: bits[4] = 0
+
+    on rise(clk_core) {
+        status_led = 1 // Turn on LED
+
+        // 6. Go Style: Blocking channel read
+        let incoming_data = <-rx_stream
+
+        // 7. Tier 1 Error: Recoverable Runtime Result
+        let validation_result: Result<Packet, RouterStatus> = validate(incoming_data)
+
+        // 8. Rust Style: Exhaustive Pattern Matching
+        match (validation_result) {
+            Ok(packet) => {
+                tx_stream <- packet  // Forward out
+                retries <- 0
+            },
+
+            Err(RouterStatus::RecoverableError(code)) => {
+                sim::warn("Packet corrupted, retrying...")
+                retries <- retries +% 1
+
+                // 9. Tier 2 Error: The System Fault / Panic
+                if (retries > MAX_RETRIES) {
+                    // Halts chip, stops clock, outputs go to Safe State
+                    system_fault(RouterStatus::FatalCorruption)
+                }
+            },
+
+            _ => { retries <- 0 } // Compiler enforces exhaustion
+        }
+    }
+}
+```
+
+---
+
+## 6. Advanced Performance & Verification
+
+Hardware engineering is ultimately constrained by clock speed (Fmax), security (silicon data leaks), and verification time. Min-Mozhi tackles these natively.
+
+### 6.1 Optimized for Speed: Automatic Retiming (The `pipeline` Block)
+
+- **Explanation:** To hit high clock frequencies, engineers must manually break math equations into chunks across multiple flip-flops. Min-Mozhi automates this. You write the logic, and the compiler inserts `N` registers to automatically balance the logic delay.
+- **Example:**
+
+  ```mimz
+  // The compiler automatically figures out where to place
+  // the 3 registers to achieve the highest possible clock speed!
+  let result = pipeline(stages = 3) {
+      (a * b) + (c * d) - (e / f)
+  }
+  ```
+
+### 6.2 Hardware Security: Information Flow Tracking (Taint Analysis)
+
+- **Explanation:** Hardware leaks can expose cryptographic keys. By marking a data type as `secret`, the compiler statically proves that the data can NEVER flow into a public output pin or non-secret register unless explicitly passed through a cryptography module.
+- **Example:**
+
+  ```mimz
+  let root_key: secret bits[256] = get_fuse_data()
+  out tx_pin: bit
+
+  // ❌ COMPILE ERROR: Data Leakage Detected!
+  // You cannot route a 'secret' wire to a public 'out' pin.
+  tx_pin <- root_key[0]
+
+  // ✅ OK: Data has been cryptographically transformed
+  let ciphertext = aes_encrypt(root_key, payload)
+  tx_pin <- ciphertext[0]
+  ```
+
+### 6.3 Next-Gen Verification: Built-in Formal Proofs
+
+- **Explanation:** Writing randomized testbenches takes up 70% of a hardware engineer's time. Instead, Min-Mozhi allows you to write mathematical `properties`. The compiler uses an SMT Solver (like Z3) during compilation to mathematically prove that the rule can _never_ be broken by any infinite combination of inputs.
+- **Example:**
+
+  ```mimz
+  module Arbiter {
+      out grant_a: bit
+      out grant_b: bit
+
+      // Proves this is true for ALL possible inputs.
+      // If there is a flaw, it generates the exact waveform to prove you wrong.
+      prove strictly_mutually_exclusive {
+          !(grant_a == 1 && grant_b == 1)
+      }
+  }
+  ```
+
+### 6.4 Time-Travel Debugging (Simulation Tooling)
+
+- **Explanation:** When a standard Verilog simulation fails, engineers must dig through massive, visually noisy waveform files (VCDs) to find the root cause. Min-Mozhi's `mimz sim` tool treats simulations like a modern software debugger.
+- **Mechanism:** If an `assert` or `prove` statement fails, the simulator pauses. In the terminal, the engineer can "step backwards" in time cycle-by-cycle (`step back`), instantly seeing the exact wire state that caused the cascading failure, drastically reducing debug time.
+
+---
+
+## 7. Feasibility triage (2026-06-12)
+
+Reviewed against the compiler as it exists today (98 tests, checker passes 1–5),
+what comparable HDLs (Chisel, Bluespec, SpinalHDL, Filament, SecVerilog) learned
+building the same features, and the project constitution. Phase 1 scope is
+unchanged by this document.
+
+**Re-triaged same day under the v0.3 constitution** (spec/01: modern-secure-HDL
+now co-primary with education; tie-breakers honesty > safety > **security** >
+readability/DX > speed > brevity > Tamil idiom). The goal shift promoted
+`secret` taint, the `system_fault` fault network v1, and the `?` valid-bundle
+re-targeting out of Tier 4 — see the Decision in `docs/log/2026-06-12.md`.
+
+### Tier 1 — Already shipped (the idea renames an existing rule)
+
+| Idea                                     | Verdict                                                                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.8 Properties `{ get, private set }`    | Already enforced — an `out` is only drivable by its own module (E0104/E0107/E0108). Redundant; skip.                                                    |
+| 2.1 Null safety (the goal)               | "A wire must always be driven" IS the single-driver + coverage pass (E0501/E0502). The `??` unwrap solves a problem the language already prevents.      |
+| 1.1 Borrow checker (sound approximation) | Double-drives are already rejected. The full version (proving two FSM states never co-occur) is reachability analysis — SMT-grade; parked.              |
+| 2.3 Width inference (half)               | `CtInt` + lossless `+` (max+1) is exactly the example. The other half — inferring a wire's declared type from its init — is a cheap, real win (Tier 3). |
+
+### Tier 2 — Already planned (good design inputs for those slices)
+
+| Idea                                                    | Lands with                                                                                                                                                             |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.4 Exhaustiveness                                      | Next checker slice. NEW spec question to rule on then: require a fallback arm even on fully-covered enums, because physical bit-flips can hit non-enum encodings.      |
+| 1.2 Clock domain checking                               | = the deferred clock-ownership slice + Phase 2 multi-clock design. `@ clk` syntax and `sync.double_flop` are concrete inputs. Best idea in the doc relative to effort. |
+| 3.3 await tests / 4.1 `sim::` / 6.4 step-back debugging | Phase 1.5 simulator API design. Step-back is feasible precisely because our own simulator records the full trace.                                                      |
+
+### Tier 3 — Good and feasible — spec for Phase 2/3
+
+| Idea                                                                    | Note                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.7 Tagged unions with payloads                                         | Strongest new feature; enums + match exist, payload = tag bits + max-payload bits, clean synthesis. Gives `Result` (4.2) for free. Build first after Phase 1.                                                                                                             |
+| 2.4 Interfaces/bundles + destructuring                                  | The #1 feature every Verilog successor adds; flatten to nets in the emitter. Then 2.9 structural matching is a small checker rule on top.                                                                                                                                 |
+| 3.1 Channels — tier (a) only                                            | Decoupled-style valid/ready/data bundles with explicit handshake: proven tech. Tier (b) — blocking `<-` reads that auto-synthesize an FSM — is behavioral synthesis (research); parked.                                                                                   |
+| 6.3 `prove` blocks                                                      | Do NOT embed Z3. Emit SystemVerilog assertions and drive SymbiYosys, the same way Icarus handles simulation. Weekend-sized backend, killer teaching feature.                                                                                                              |
+| 2.3 (other half)                                                        | `wire sum = a + b` without an annotation — widths.rs already computes the type; only the parser requires it.                                                                                                                                                              |
+| `count_ones`-style builtins                                             | The cheap version of 2.2 extension functions (which are blocked on having functions at all).                                                                                                                                                                              |
+| **6.2 `secret` taint — slice 1** (promoted from Tier 4, v0.3)           | Now a G5 constitution goal. Lattice labels in a checker pass (SecVerilog model), `secret`/`declassify` keywords, error when secret reaches a public out or unlabelled storage. Explicit flow only — timing side channels stay out of scope, stated honestly.              |
+| **4.3 `system_fault` silicon v1** (promoted from Tier 4, v0.3)          | Sticky fault reg + `FAULT_OUT` pin + safe-state mux on declared outputs + lockout until cold reset. Plain synthesizable logic, no clock gating (clock-stop stays parked). Sim side (`$fatal`) lands earlier, Phase 1.5.                                                   |
+| **2.1 `?` as valid-bundle** (re-targeted, v0.3)                         | `bits[8]?` = `{valid: bit, data: bits[8]}` (Chisel `Valid` style); `??` = mux on valid. Composes with channels tier-(a). Blocked on interfaces/bundles landing first. The tri-state meaning stays dead (Tier 4).                                                          |
+| `default` assignments (salvaged from 3.2 `defer`)                       | `default x = 0` = value unless assigned this cycle. Same forgot-to-deassert protection `defer` wanted, with honest hardware semantics. Small sugar.                                                                                                                       |
+| `pipeline(stages = N)` honest version (salvaged from 6.1)               | Inserts N register stages + emits the vendor retiming attribute; the synthesis tool balances. Never promises "highest Fmax". Pairs with channels for latency bookkeeping.                                                                                                 |
+| Const-`if` at item level (salvaged from 2.6)                            | Conditional elaboration (Verilog `generate if`) — the real 10% params don't cover. Small feature, big DX for parameterized IP.                                                                                                                                            |
+| **1.1 via `prove`** (promoted from Tier 4, second re-triage 2026-06-12) | Prove-backed shared-resource access: the user STATES the exclusion property (`prove !(fsm1 == CALC && fsm2 == CALC)`), SymbiYosys proves it, the checker then accepts the guarded double-drive. Full borrow-checker DX, sound, zero in-house SMT. Blocked on 6.3 landing. |
+
+### Tier 4 — Rejected (with reasons that survive the v0.3 goal shift)
+
+| Idea                                       | Reason                                                                                                                                                                                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1 `bits[8]?` → tri-state                 | Internal tri-states are not synthesizable on FPGAs (IO pads only) — physics, not priorities. The `?` syntax survives as a valid-bundle (Tier 3). Top-level `inout` pads (I2C SDA, shared external buses) are a separate legitimate future feature — pad-level only, never internal. |
+| 3.2 `defer` (the name and model)           | "Run on state transition" has no hardware meaning — detecting a transition is itself more hardware. The pain point survives as `default` assignments (Tier 3).                                                                                                                      |
+| 6.1 Automatic retiming (the claim)         | Register balancing needs timing models only the synthesis tool has. The honest stage-inserter survives as `pipeline(stages = N)` (Tier 3).                                                                                                                                          |
+| 2.6 Module-returning closures              | Parameterized modules already express the example (`DelayLine(CYCLES = 5)`); full metaprogramming is why Chisel embedded in Scala. The gap survives as const-`if` (Tier 3).                                                                                                         |
+| 1.6 `pulse` / 1.3 affine tokens            | Research-grade temporal typing (see Filament); the 1.6 example violates E0505. Cheap approximation when channels land: unused-channel-read lint (must-consume warning).                                                                                                             |
+| 2.5 `filter`                               | Hardware cannot have runtime-sized results — physics. `map`/`reduce` stay (sugar over `repeat`); `repeat` + const-`if` covers compile-time selection.                                                                                                                               |
+| 1.1 Full temporal borrow check (automatic) | The COMPILER proving two FSM states never co-occur is reachability analysis (SMT-grade) — stays rejected. The sound approximation is today's single-driver rules (Tier 1); the user-stated, tool-proved version moved to Tier 3 ("1.1 via `prove`", second re-triage).              |
+
+### Cross-cutting costs (price every Tier 3 item with these)
+
+- Every new keyword (`chan`, `prove`, `interface`, `await`, …) needs Tanglish +
+  Tamil spellings through keywords.toml and native-speaker review — the keyword
+  table is the bottleneck on every idea here.
+- Every feature ships ×4 example folders (byte-identical Verilog rule), roughly
+  doubling its apparent size.
+- Several samples above contradict the current spec (wires assigned inside `on`,
+  `=`/`<-` mixing) — each Tier 3 item needs a real spec section before code.

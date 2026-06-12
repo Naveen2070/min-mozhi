@@ -17,7 +17,7 @@ and the Tamil Nadu VLSI ecosystem.
 
 ### Tooling
 
-- [ ] VS Code extension: syntax highlighting (all flavors + thamizh-order), inline diagnostics via LSP
+- [ ] VS Code extension: syntax highlighting (all flavors + thamizh-order), inline diagnostics via LSP — **LSP v0 (diagnostics only) pulled into Phase 1** (Decision 2026-06-12); this phase adds hover, go-to-definition, completion, and `translate` integration on top
 - [ ] `mimz fmt` stabilized; `mimz translate` promoted in docs as the learning tool
 - [ ] Package manager (`mimz add <pkg>`) — design doc first, Decision-logged
 
@@ -38,6 +38,15 @@ and the Tamil Nadu VLSI ecosystem.
       embeddable (lib/bin split so `project.rs` printing stays in the
       CLI shell) + a `--json` diagnostics flag for tool consumers —
       fold into the lexer/parser E-code retrofit
+
+### Language-feature backlog (pointer)
+
+The triaged feature backlog from `docs/Ideas/language_plan.md` section 7
+(tagged unions, interfaces/bundles, channels, `prove`/SymbiYosys, G5
+security features, DX sugar) lives as work items in
+**`docs/plan/phase-2-ir-synthesis.md` → "Language features"** — that list
+is the single source of truth. Rejected ideas stay recorded with reasons
+in the ideas doc itself (Tier 4: physics, not priorities).
 
 ### Documentation & learning
 

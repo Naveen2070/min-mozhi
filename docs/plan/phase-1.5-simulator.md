@@ -20,6 +20,19 @@ Icarus or any external tool involved.
 - [ ] Differential testing: same example, same stimulus → compare against Icarus results
 - [ ] Performance baseline: ≥1M cycle-events/sec on the counter (Rust pays off here)
 
+### From the ideas triage (`docs/Ideas/language_plan.md` section 7, Tier 2)
+
+- [ ] `sim::` namespace: simulation-only asserts (`sim::fatal`, `sim::warn`) —
+      never synthesized, fenced like `test` blocks (idea 4.1); also carries the
+      sim side of `system_fault` (translates to a fatal halt)
+- [ ] Test-syntax ruling: keep `tick(clk)`/`expect` or adopt
+      `await clk.cycles(n)` style (idea 3.3) — decide when `test` blocks land,
+      one Decision block; whichever wins must stay teachable to the spec/01 persona
+- [ ] Step-back ("time-travel") debugging (idea 6.4): on `expect`/assert
+      failure pause and allow cycle-by-cycle `step back` — feasible because this
+      simulator records the full trace; designs are small, history is cheap.
+      Post-v1 stretch: VCD + kernel come first
+
 ## Milestone
 
 `mimz sim` + `mimz test` run all examples; waveforms open in GTKWave;
@@ -37,3 +50,5 @@ results match Icarus bit-for-bit on the differential suite.
   wiring it to the frontend.
 - Don't build a full 4-state (X/Z) simulator in v1; Min-Mozhi semantics are
   2-state by design (resets are mandatory). Log this as a Decision if revisited.
+- The triage-sourced work items above are stretch goals: kernel correctness
+  and the Icarus differential suite always outrank them.
