@@ -1,0 +1,14 @@
+// expect: E0503
+module M {
+  clock clk
+  reset rst
+  out y: bit
+  reg v: bit = 0
+  on rise(clk) {
+    v <- 1
+  }
+  on rise(clk) {
+    v <- 0
+  }
+  y = v
+}

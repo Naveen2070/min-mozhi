@@ -1,0 +1,5 @@
+// expect: E0103
+module M {
+  out y: Foo
+  y = 0
+}

@@ -1,0 +1,7 @@
+// expect: E0003
+module M {
+  in x: bit
+  out y: bit
+  wire x: bit = y
+  y = x
+}

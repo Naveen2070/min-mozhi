@@ -1,0 +1,7 @@
+// expect: E0002
+enum S { A, B }
+enum S { C }
+module M {
+  out y: bit
+  y = 0
+}

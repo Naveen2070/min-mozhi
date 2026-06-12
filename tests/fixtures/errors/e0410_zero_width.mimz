@@ -1,0 +1,5 @@
+// expect: E0410
+module M {
+  out y: bits[0]
+  y = 0
+}

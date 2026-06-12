@@ -1,0 +1,8 @@
+// expect: E0303
+module M {
+  out y: bits[4]
+  repeat i: 0..4 {
+    clock ck
+    y[i] = 0
+  }
+}

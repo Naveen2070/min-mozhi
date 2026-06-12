@@ -1,0 +1,8 @@
+// expect: E0408
+module M {
+  in c: bit
+  in a: bits[4]
+  in b: bits[8]
+  out y: bit
+  y = (if c { a } else { b }) == a
+}

@@ -1,0 +1,7 @@
+// expect: E0201
+const A: int = B
+const B: int = 1
+module M {
+  out y: bit
+  y = 0
+}

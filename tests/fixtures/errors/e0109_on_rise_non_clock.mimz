@@ -1,0 +1,10 @@
+// expect: E0109
+module M {
+  clock clk
+  reset rst
+  in x: bit
+  reg v: bit = 0
+  on rise(x) {
+    v <- 1
+  }
+}

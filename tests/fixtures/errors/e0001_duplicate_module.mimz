@@ -1,0 +1,9 @@
+// expect: E0001
+module A {
+  out y: bit
+  y = 0
+}
+module A {
+  out z: bit
+  z = 0
+}

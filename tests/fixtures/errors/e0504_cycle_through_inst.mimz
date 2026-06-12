@@ -1,0 +1,12 @@
+// expect: E0504
+module Inv {
+  in d: bit
+  out q: bit
+  q = !d
+}
+module M {
+  out y: bit
+  let i1 = Inv() { d: i2.q }
+  let i2 = Inv() { d: i1.q }
+  y = i1.q
+}

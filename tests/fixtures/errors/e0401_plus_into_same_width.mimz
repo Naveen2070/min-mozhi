@@ -1,0 +1,9 @@
+// expect: E0401
+module M {
+  clock clk
+  reset rst
+  reg value: bits[8] = 0
+  on rise(clk) {
+    value <- value + 1
+  }
+}

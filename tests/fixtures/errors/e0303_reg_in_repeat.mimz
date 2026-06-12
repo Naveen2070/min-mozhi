@@ -1,0 +1,10 @@
+// expect: E0303
+module M {
+  clock clk
+  reset rst
+  out y: bits[4]
+  repeat i: 0..4 {
+    reg r: bit = 0
+    y[i] = 0
+  }
+}

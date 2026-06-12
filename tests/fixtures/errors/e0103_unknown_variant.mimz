@@ -1,0 +1,9 @@
+// expect: E0103
+module M {
+  clock c
+  reset r
+  out y: bit
+  enum S { A, B }
+  reg s: S = S.A
+  y = s == S.Z
+}

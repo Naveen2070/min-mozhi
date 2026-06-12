@@ -1,0 +1,6 @@
+// expect: E0406
+module M {
+  in data: bits[8]
+  out y: bit
+  y = data[8]
+}

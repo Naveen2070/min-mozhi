@@ -1,0 +1,9 @@
+// expect: E0601
+module M {
+  in s: bit
+  in a: bit
+  out y: bit
+  y = match s {
+    0 => a
+  }
+}

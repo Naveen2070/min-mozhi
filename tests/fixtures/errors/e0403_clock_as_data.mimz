@@ -1,0 +1,7 @@
+// expect: E0403
+module M {
+  clock clk
+  in x: bit
+  out y: bit
+  y = clk & x
+}

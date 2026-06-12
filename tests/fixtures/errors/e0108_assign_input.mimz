@@ -1,0 +1,5 @@
+// expect: E0108
+module M {
+  in x: bit
+  x = 1
+}

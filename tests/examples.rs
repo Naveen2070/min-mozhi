@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 11] = [
+const BASE_EXAMPLES: [&str; 12] = [
     "adder",
     "alu",
     "blinker",
@@ -22,6 +22,7 @@ const BASE_EXAMPLES: [&str; 11] = [
     "edge_detector",
     "lib/full_adder",
     "mux4",
+    "ripple_adder",
     "shift_register",
     "traffic_light",
 ];
@@ -142,6 +143,53 @@ fn include_alias_compiles_with_dotted_path() {
     assert!(
         v.contains("FullAdder fa0") && v.contains("FullAdder fa1"),
         "both chained instances must be emitted"
+    );
+}
+
+/// `repeat` unrolls at compile time: the WIDTH=4 ripple adder must emit
+/// exactly four FullAdder instances with the carry chained stage to stage,
+/// and the loop variable folded into every index. This is the headline
+/// proof that compile-time generation works end to end.
+#[test]
+fn ripple_adder_unrolls_repeat() {
+    let v = compile_example("english/ripple_adder.mimz");
+    assert!(v.contains("module RippleAdder"));
+    assert!(
+        v.contains("module FullAdder"),
+        "the dotted import must pull lib/full_adder in"
+    );
+    // Four unrolled instances with flattened array names.
+    for i in 0..4 {
+        assert!(
+            v.contains(&format!("FullAdder fa__{i} (")),
+            "instance fa__{i} must be emitted"
+        );
+    }
+    assert!(
+        !v.contains("fa__4"),
+        "the half-open range 0..4 stops at 3 — no fa__4"
+    );
+    // The carry chain: bit 0 takes cin, bit 1 takes bit 0's carry-out.
+    assert!(v.contains(".cin(cin)"), "bit 0 takes the module carry-in");
+    assert!(
+        v.contains(".cin(fa__0_cout)"),
+        "bit 1 takes bit 0's carry-out — the `if i==0` folded away"
+    );
+    // Folded indices in the drives and the final carry-out.
+    assert!(v.contains("assign sum[0] = fa__0_sum;"));
+    assert!(v.contains("assign sum[3] = fa__3_sum;"));
+    assert!(
+        v.contains("assign cout = fa__3_cout;"),
+        "cout = fa[WIDTH-1].cout folds WIDTH-1 to 3"
+    );
+    // `const WIDTH` folded into the port widths (no symbolic WIDTH left).
+    assert!(
+        v.contains("[(4)-1:0] a"),
+        "const WIDTH folds to 4 in widths"
+    );
+    assert!(
+        !v.contains("WIDTH"),
+        "a const is compile-time, never emitted"
     );
 }
 

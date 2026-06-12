@@ -1,0 +1,5 @@
+// expect: E0405
+module M {
+  out y: bits[4]
+  y = 300
+}

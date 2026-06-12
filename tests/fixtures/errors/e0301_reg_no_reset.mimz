@@ -1,0 +1,8 @@
+// expect: E0301
+module M {
+  clock clk
+  reg v: bit = 0
+  on rise(clk) {
+    v <- 1
+  }
+}

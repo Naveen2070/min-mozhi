@@ -1,0 +1,7 @@
+// expect: E0108
+module M {
+  const C: int = 1
+  out y: bit
+  C = 1
+  y = 0
+}

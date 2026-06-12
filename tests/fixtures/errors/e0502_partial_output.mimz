@@ -1,0 +1,7 @@
+// expect: E0502
+module M {
+  in a: bits[4]
+  out y: bits[8]
+  y[3:0] = a
+  y[6:4] = a[2:0]
+}

@@ -20,7 +20,7 @@ use std::process::Command;
 
 /// Testbench file (under tests/icarus/) -> the example it tests.
 /// Testbench module name = file name minus `.v`.
-const TESTBENCHES: [(&str, &str); 11] = [
+const TESTBENCHES: [(&str, &str); 12] = [
     ("adder_tb.v", "english/adder.mimz"),
     ("alu_tb.v", "english/alu.mimz"),
     ("blinker_tb.v", "english/blinker.mimz"),
@@ -30,6 +30,7 @@ const TESTBENCHES: [(&str, &str); 11] = [
     ("edge_detector_tb.v", "english/edge_detector.mimz"),
     ("full_adder_tb.v", "english/lib/full_adder.mimz"),
     ("mux4_tb.v", "english/mux4.mimz"),
+    ("ripple_adder_tb.v", "english/ripple_adder.mimz"),
     ("shift_register_tb.v", "english/shift_register.mimz"),
     ("traffic_light_tb.v", "english/traffic_light.mimz"),
 ];
@@ -151,7 +152,7 @@ fn every_emitted_verilog_passes_iverilog() {
         );
         checked += 1;
     }
-    assert!(checked >= 44, "expected the whole corpus, found {checked}");
+    assert!(checked >= 48, "expected the whole corpus, found {checked}");
 }
 
 /// Layer 2 — the self-checking testbenches: Min-Mozhi semantics encoded

@@ -1,0 +1,7 @@
+// expect: E0404
+module M {
+  in a: bits[4]
+  in b: bits[4]
+  out y: bit
+  y = a && b
+}

@@ -1,0 +1,7 @@
+// expect: E0102
+module M {
+  in a: bit
+  out y: bit
+  let u = Ghost() { a: a }
+  y = u.z
+}

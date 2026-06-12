@@ -1,0 +1,6 @@
+// expect: E0410
+const W: int = 0 - 4
+module M {
+  out y: bits[W]
+  y = 0
+}

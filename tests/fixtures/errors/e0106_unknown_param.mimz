@@ -1,0 +1,10 @@
+// expect: E0106
+module Child(W: int = 1) {
+  out z: bit
+  z = 0
+}
+module M {
+  out y: bit
+  let c = Child(DEPTH: 4)
+  y = c.z
+}

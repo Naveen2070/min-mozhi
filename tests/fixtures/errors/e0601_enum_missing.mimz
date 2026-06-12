@@ -1,0 +1,18 @@
+// expect: E0601
+module M {
+  clock clk
+  reset rst
+  in go: bit
+  out y: bit
+  enum S { A, B, C }
+  reg s: S = S.A
+  on rise(clk) {
+    if go {
+      s <- S.B
+    }
+  }
+  y = match s {
+    S.A => 1
+    S.B => 0
+  }
+}

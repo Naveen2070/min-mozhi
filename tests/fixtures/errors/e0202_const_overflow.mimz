@@ -1,0 +1,6 @@
+// expect: E0202
+const HUGE: int = 170141183460469231731687303715884105727 + 1
+module M {
+  out y: bit
+  y = 0
+}

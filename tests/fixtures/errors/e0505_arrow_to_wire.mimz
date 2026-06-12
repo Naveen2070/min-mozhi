@@ -1,0 +1,11 @@
+// expect: E0505
+module M {
+  clock clk
+  in a: bit
+  out y: bit
+  wire w: bit = a
+  on rise(clk) {
+    w <- a
+  }
+  y = w
+}

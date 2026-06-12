@@ -1,0 +1,5 @@
+// expect: E0101
+module M {
+  out y: bit
+  y = nope
+}

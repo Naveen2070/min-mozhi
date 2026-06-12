@@ -1,0 +1,9 @@
+// expect: E0409
+module M {
+  in s: signed[4]
+  in x: bit
+  out y: bit
+  y = match s {
+    _ => x
+  }
+}

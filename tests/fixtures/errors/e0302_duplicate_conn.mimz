@@ -1,0 +1,13 @@
+// expect: E0302
+module FA {
+  in a: bit
+  in b: bit
+  out s: bit
+  s = a ^ b
+}
+module M {
+  in x: bit
+  out y: bit
+  let u = FA() { a: x, a: x, b: x }
+  y = u.s
+}

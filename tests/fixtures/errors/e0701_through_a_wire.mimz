@@ -1,0 +1,20 @@
+// expect: E0701
+module M {
+  clock cka
+  clock ckb
+  reset rst
+  in a: bit
+  out ya: bit
+  out yb: bit
+  reg ra: bit = 0
+  reg rb: bit = 0
+  wire w: bit = !ra
+  on rise(cka) {
+    ra <- a
+  }
+  on rise(ckb) {
+    rb <- w
+  }
+  ya = ra
+  yb = rb
+}

@@ -1,0 +1,7 @@
+// expect: E0403
+module M {
+  in a: bits[8]
+  in b: bits[8]
+  out y: bits[9]
+  y = signed(a) + b
+}

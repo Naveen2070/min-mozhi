@@ -1,0 +1,12 @@
+// expect: E0601
+module M {
+  in sel: bits[2]
+  in a: bit
+  in b: bit
+  out y: bit
+  y = match sel {
+    0 => a
+    1 => b
+    2 => a
+  }
+}

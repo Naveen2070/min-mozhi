@@ -1,0 +1,7 @@
+// expect: E0004
+const N: int = 1
+const N: int = 2
+module M {
+  out y: bit
+  y = 0
+}

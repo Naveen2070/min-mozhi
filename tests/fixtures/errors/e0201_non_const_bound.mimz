@@ -1,0 +1,8 @@
+// expect: E0201
+module M {
+  in x: bits[4]
+  out y: bits[4]
+  repeat i: 0..x {
+    y[i] = 0
+  }
+}

@@ -1,0 +1,12 @@
+// expect: E0401
+module Child {
+  in a: bits[8]
+  out z: bits[8]
+  z = a
+}
+module M {
+  in x: bits[4]
+  out y: bits[8]
+  let c = Child() { a: x }
+  y = c.z
+}

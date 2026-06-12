@@ -1,0 +1,10 @@
+// expect: E0409
+module M {
+  in op: bits[2]
+  in x: bit
+  out y: bit
+  y = match op {
+    0b100 => x
+    _ => x
+  }
+}
