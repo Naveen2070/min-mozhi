@@ -216,6 +216,15 @@ module Chaser(N: int = 8) {
 - Instances declared inside a `repeat` are arrays: declare `let name[i] = …`,
   reference `name[i].port`. Outside the loop they are addressable only with
   constant indices.
+- A `repeat` body may only **generate** hardware — drives, instances, and
+  nested `repeat`s. It may **not declare** anything (a port, `wire`, `reg`,
+  `clock`, `reset`, `const`, `enum`, or `on` block): N copies of one name is
+  not a thing. Declare the signal once outside the loop and drive bit `i`
+  inside. A declaration inside `repeat` is **E0303**.
+- The bounds and any index/condition over the loop variable fold at compile
+  time, so an `if` on `i` selects a branch per iteration rather than emitting
+  a run-time mux (this is what lets `if i == 0 { … } else { name[i-1] … }`
+  chain cleanly without ever referencing `name[-1]`).
 
 ### 1.7 Signed numbers
 
@@ -470,6 +479,14 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.4 (2026-06-12):** `repeat` semantics nailed down while implementing
+  emitter unrolling (section 1.6): a `repeat` body generates hardware only —
+  declarations inside it are **E0303**; bounds, indices, and conditions over
+  the loop variable fold at compile time (a compile-time `if i == …` selects
+  its branch, never emitting the dead arm). The emitter now unrolls `repeat`
+  (instance arrays `name[i]` flatten to `name__<i>` with outputs
+  `name__<i>_<port>`); `const`s fold to literals in emitted Verilog (they are
+  compile-time-only, never hardware — section 4). No grammar change.
 - **v0.2.3 (2026-06-12):** exhaustiveness rulings, settled while
   implementing the checker's completion slice (E0302/E0601/E0602/E0701):
   full enum/value coverage is exhaustive WITHOUT `_`; a defensive `_`

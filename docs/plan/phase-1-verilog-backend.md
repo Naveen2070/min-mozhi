@@ -34,7 +34,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 - [x] Recursive-descent parser for the `code-order` profile (EBNF in `spec/02` section 5)
 - [x] AST types: module, ports, clock/reset, wire/reg, const, enum, instance, on-block, repeat, tests, expressions
 - [x] `import` resolution: file-relative, project-unique module names, cycle-safe visited set (spec/02 section 1.5); `include` accepted as en alias (v0.2.1, 2026-06-11)
-- [ ] `repeat` compile-time unrolling (parses; unrolling needs const-eval — work item 4)
+- [x] `repeat` compile-time unrolling — ✅ 2026-06-12: checker walks each iteration (widths/drivers), emitter unrolls into flat instance arrays (`name__<i>`); declarations inside `repeat` are E0303; `ripple_adder` example (4 flavors) + exhaustive Icarus TB
 - [x] Error recovery good enough to report >1 error per run (verified: 3 errors in one `check`)
 - [x] Rust precedence incl. non-associative comparisons (`x & 1 == 0` test locked in)
 
@@ -65,10 +65,11 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 - [x] AST → synthesizable Verilog-2005: modules, assigns, always-blocks, FSM enums as localparams, match→ternary chains, instances with auto-wired outputs, implicit clk/rst connection
 - [x] Reset generation from reg reset values (sync reset, active-high, v1)
-- [x] Integration tests: all 44 examples compile (11 base examples × 4 flavor folders: english/tanglish/tamil/mixed); each base example emits **byte-identical** Verilog from all four flavors; FSM localparams verified (2026-06-11)
-- [ ] `repeat` emission (blocked on const-eval); non-ASCII identifier transliteration; width-aware `extend`
-- [ ] Golden-file tests: each example → expected `.v` (string-contains asserts exist; full goldens pending)
-- [x] Icarus Verilog differential tests, local + CI — ✅ 2026-06-11, `tests/icarus.rs`: all 44 emitted `.v` pass `iverilog -t null`; one self-checking TB per base example (`tests/icarus/*_tb.v`, 11 files) simulates to PASS under `vvp`. Skips with a note when Icarus is absent; CI installs it and sets `REQUIRE_IVERILOG=1` so it can never silently skip
+- [x] Integration tests: all 48 examples compile (12 base examples × 4 flavor folders: english/tanglish/tamil/mixed); each base example emits **byte-identical** Verilog from all four flavors; FSM localparams verified (2026-06-11)
+- [x] `repeat` emission — ✅ 2026-06-12: env-based unrolling reusing the const-eval engine; instance arrays flatten to `name__<i>` with outputs `name__<i>_<port>`; compile-time `if`/index folding; `REPEAT_BUDGET` runaway guard. (non-ASCII transliteration + width-aware `extend` remain — Phase C)
+- [ ] Golden-file tests: each example → expected `.v` (string-contains asserts exist; full goldens pending — Phase C)
+- [x] Icarus Verilog differential tests, local + CI — ✅ 2026-06-11, `tests/icarus.rs`: all 48 emitted `.v` pass `iverilog -t null`; one self-checking TB per base example (`tests/icarus/*_tb.v`, 12 files) simulates to PASS under `vvp` (incl. `ripple_adder` exhaustive 512-combo add). Skips with a note when Icarus is absent; CI installs it and sets `REQUIRE_IVERILOG=1` so it can never silently skip
+- [x] End-to-end **error** validation — ✅ 2026-06-12, `tests/errors.rs` + `tests/fixtures/errors/` (~67 broken `.mimz`): every checker E-code (E0001–E0701) has a fixture the real binary must reject with that code on stderr; a completeness guard blocks shipping a new code without one. Compile-time only by design — broken code never reaches the emitter
 
 ### 6. Visibility (decision D4)
 

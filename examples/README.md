@@ -25,6 +25,7 @@ keywords differ**. CI asserts that each example compiles to
 | `blinker.mimz`        | clock divider + toggle with `^`                              |
 | `edge_detector.mimz`  | one-cycle pulse from a previous-value register               |
 | `chained.mimz`        | `include` (alias of `import`) + dotted path `lib.full_adder` |
+| `ripple_adder.mimz`   | `repeat` unrolling + instance array + `const`-driven width   |
 | `lib/full_adder.mimz` | import target — one-bit full adder                           |
 
 Adding an example? It goes into **all four folders** (keyword spellings

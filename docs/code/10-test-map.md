@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**118 tests** as of 2026-06-12: 102 unit + 7 integration + 2 Icarus differential + 4 docs-sync + 3 grammar-sync.
+**133 tests** as of 2026-06-12: 114 unit + 8 integration + 2 Icarus differential + 2 error-fixture + 4 docs-sync + 3 grammar-sync. (The 2 error-fixture tests are data-driven over ~67 broken `.mimz` fixtures.)
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 4 tests)
 
@@ -50,7 +50,7 @@ The four error-path tests assert on message/help **substrings** —
 deliberately loose so wording can be polished without breaking tests,
 tight enough that the teaching content can't silently vanish.
 
-## Unit: checker (`src/checker/tests.rs`, 80 tests)
+## Unit: checker (`src/checker/tests.rs`, 85 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -87,16 +87,23 @@ deserve a note:
 | `clock_and_reset_ports_may_be_omitted`                                | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract              |
 | `same_domain_logic_under_two_declared_clocks_passes`                  | E0701 colors by USE, not by declaration count — an unused clock changes nothing        |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 1 test)
+## Unit: emitter (`src/emit_verilog/mod.rs`, 8 tests)
 
-| Test                         | Locks in                                                                                                                                   |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `diags_carry_the_file_index` | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt |
+| Test                                                 | Locks in                                                                                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `diags_carry_the_file_index`                         | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt |
+| `repeat_unrolls_drives_with_folded_indices`          | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3                                                       |
+| `repeat_var_folds_in_index_arithmetic`               | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal                                              |
+| `empty_and_reversed_ranges_emit_nothing`             | `0..0` and `4..0` generate no hardware (no crash, no partial output)                                                                       |
+| `repeat_over_budget_errors_cleanly`                  | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                                                                 |
+| `nested_repeat_folds_both_variables`                 | nested loops bind both `i` and `j` per iteration; `y[1] = 1` proves the inner+outer fold                                                   |
+| `repeat_instance_array_gets_flat_names`              | `let u[i] = …` → `u__<i>` with outputs `u__<i>_<port>`; `u[i].o` reads back the same flat wire                                             |
+| `module_const_folds_in_widths_and_emits_no_hardware` | a `const` folds to a literal in port widths and bounds, and declares no Verilog of its own                                                 |
 
-## Integration (`tests/examples.rs`, 7 tests — run the real binary)
+## Integration (`tests/examples.rs`, 8 tests — run the real binary)
 
 `examples/` holds four flavor folders — `english/`, `tanglish/`, `tamil/`,
-`mixed/` — each with the SAME 11 base examples (identical identifiers,
+`mixed/` — each with the SAME 12 base examples (identical identifiers,
 only keywords differ; `lib/` subfolders hold dotted-import targets). The
 base-example list lives in the `BASE_EXAMPLES` const in the test file.
 
@@ -108,6 +115,7 @@ base-example list lives in the `BASE_EXAMPLES` const in the test file.
 | `counter_compiles_to_verilog`                   | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                 |
 | `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                      |
 | `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                        |
+| `ripple_adder_unrolls_repeat`                   | `repeat` end-to-end: four `FullAdder fa__0..3` with the carry chained, folded indices, `const WIDTH` folded into widths — compile-time generation proven through the real binary                                                                 |
 | `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                              |
 
 ## Icarus differential (`tests/icarus.rs`, 2 tests — run a REAL Verilog tool)
@@ -122,13 +130,32 @@ never skip silently. Local install: the Windows installer
 
 | Test                                    | Locks in                                                                                                                                                                                                         |
 | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog` | all 44 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment                                                                                                             |
+| `every_emitted_verilog_passes_iverilog` | all 48 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment                                                                                                             |
 | `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing) and must print PASS under `vvp` — the differential |
 
 House rule for the testbenches: each prints `PASS` exactly once or
 `FAIL: reason` and stops — the Rust side asserts on those markers, so a
 broken TB fails loudly, never silently. The Blinker TB overrides the
 `LIMIT` parameter (`#(.LIMIT(3))`) instead of simulating 50M cycles.
+
+## Error fixtures (`tests/errors.rs`, 2 tests — run the real binary on broken code)
+
+End-to-end **failure** validation, the mirror of the checker unit tests: those
+prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it.
+`tests/fixtures/errors/*.mimz` holds ~67 intentionally-broken files (kept OUT of
+`examples/`, which is asserted valid), each declaring its expected code in a
+`// expect: Exxxx` header. Source bodies are lifted from `src/checker/tests.rs`.
+
+| Test                                     | Locks in                                                                                                                                                             |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_error_fixture_reports_its_code`   | each fixture, run through `mimz check`, exits non-zero AND prints `error[<code>]` to stderr — the rendered code is the stable user-facing contract, checked for real |
+| `error_corpus_covers_every_checker_code` | completeness guard: every code in `ALL_CHECKER_CODES` (the 36 stable checker codes) has at least one fixture — a new E-code can't ship without an end-to-end fixture |
+
+Coverage is **every distinct edge case**, not one per code: E0302 missing-input
+AND duplicate-conn; E0407 extend-narrowing AND `-` on bits; E0303 all eight
+forbidden declaration kinds; E0601 enum/`bits[N]`/`bit`; E0701's three crossings;
+etc. The assertion is "stderr _contains_ the code", tolerant of a fixture that
+incidentally trips a second rule. Convention + how-to: `tests/fixtures/errors/README.md`.
 
 ## Docs-sync (`tests/docs_sync.rs`, 4 tests)
 
@@ -158,7 +185,7 @@ plain `contains` would pass vacuously), and that the manifest registers
 | Gap                                                     | Why it's open                                                  | Closes when                                                 |
 | ------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
 | Cross-INSTANCE clock-domain tracking                    | pass 6 is module-local (instance outputs carry no domain)      | with the Phase 2 `sync`/multi-clock design                  |
-| `repeat` emission                                       | unsupported (clean error, tested implicitly by none)           | checker const-eval; add an unrolling golden test then       |
+| `repeat` golden output (exact `.v`)                     | only substring + Icarus asserts today                          | the Phase C golden-file harness pins the unrolled text      |
 | Diagnostic rendering format (`render`'s caret layout)   | low risk, changes are cosmetic                                 | worth a snapshot test if/when output stabilizes for E-codes |
 | CLI surface (`--tokens`, exit codes, `-o` default path) | thin wrappers; breakage is loud in manual use                  | cheap `assert_cmd`-style tests if the CLI grows             |
 | Golden-file (full output) comparison                    | deliberate: substring asserts survive cosmetic emitter changes | revisit when the emitter output is contractual (Phase 2)    |

@@ -17,9 +17,12 @@ Same module-scoping pattern as the parser: state and shared helpers in
 ## Architecture invariant #6: deliberately dumb and readable
 
 The emitter is **string-based** — it formats text directly from the AST,
-no IR in between. Key consequence: **widths are emitted symbolically**.
-`bits[WIDTH]` becomes `[(WIDTH)-1:0]` and module parameters pass straight
-through to Verilog parameters. No const evaluation happens here at all.
+no IR in between. Key consequence: **module parameters are emitted
+symbolically**. `bits[WIDTH]` becomes `[(WIDTH)-1:0]` and parameters pass
+straight through to Verilog parameters. The only constant folding here is
+the compile-time machinery `repeat` requires — `const`s and loop variables
+fold to literals (see "Compile-time generation" below); parameters never
+do, so the symbolic-width property holds.
 
 This is staged on purpose (see
 [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md)): a
@@ -112,15 +115,45 @@ Mostly 1:1 symbol mapping. The interesting cases:
 - **Literals** preserve the writer's base via the token's `raw` spelling:
   `0xFF` → `'hFF`, `0b1010` → `'b1010`, decimal stays decimal.
 
+## Compile-time generation: `repeat` unrolling
+
+`repeat` is **not** emitted as a Verilog `generate` loop — the dumb-emitter
+invariant says no symbolic generation. Instead the emitter carries a small
+`env: HashMap<String, i128>` of compile-time values (file consts, then module
+consts, then enclosing `repeat` loop variables) and **unrolls** each block,
+reusing the checker's `consteval::eval` rather than reimplementing it:
+
+- **Where it folds.** An `Ident` found in `env` renders as its decimal
+  literal; index/bound expressions (`sum[i]`, `i + 1`, `WIDTH - 1`) fold the
+  same way; a compile-time `if` (`if i == 0 { … } else { … }`) collapses to
+  the taken branch. Module **parameters are deliberately absent** from `env`,
+  so they stay symbolic Verilog `parameter`s (`[WIDTH-1:0]`) — only literals,
+  named `const`s, and loop variables fold. A `const` therefore emits **no
+  hardware**; it is compile-time-only (spec/02 section 4).
+- **Two passes, budgeted.** Instances are unrolled before drives (Verilog
+  declare-before-use); each pass resets a `REPEAT_BUDGET` (4096) and errors
+  if a single expansion would exceed it — a runaway-bound backstop.
+- **Flat names.** An array instance `let fa[i] = …` becomes `fa__<i>`
+  (double underscore to stay clear of user names); its auto-wired outputs
+  become `fa__<i>_<port>`, which is exactly what an indexed field read
+  `fa[i].port` renders to. The dead `fa[-1]` arm never appears because the
+  guarding `if i == 0` folds first.
+- **Declarations are rejected upstream.** A `wire`/`reg`/`const`/… inside
+  `repeat` is **E0303** (checker), so the emitter only ever sees drives,
+  instances, and nested `repeat`s in a loop body.
+
+`ripple_adder` (4 flavors) is the worked example: a `const WIDTH = 4`
+ripple-carry adder built by unrolling one `FullAdder` per bit, verified
+exhaustively under Icarus.
+
 ## Known gaps (clean errors, not wrong output)
 
 The emitter's rule for unimplemented features: **error, never guess.**
 
-| Gap                           | Error points at    | Lands with                                     |
-| ----------------------------- | ------------------ | ---------------------------------------------- |
-| `repeat` unrolling            | the `repeat` block | checker's const-eval (work item 4)             |
-| Non-ASCII identifiers         | the identifier     | a transliteration pass (Verilog is ASCII-only) |
-| Field access on complex exprs | the expression     | checker/IR                                     |
+| Gap                           | Error points at | Lands with                                     |
+| ----------------------------- | --------------- | ---------------------------------------------- |
+| Non-ASCII identifiers         | the identifier  | a transliteration pass (Verilog is ASCII-only) |
+| Field access on complex exprs | the expression  | checker/IR                                     |
 
 ## Testing
 
