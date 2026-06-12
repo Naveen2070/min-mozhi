@@ -13,10 +13,19 @@ Language support for `.mimz` files:
 ## Diagnostics need the compiler
 
 The extension launches `mimz lsp` (diagnostics-only language server,
-Phase 1 v0). It looks for `mimz` on PATH; point the **`mimz.serverPath`**
-setting at the binary otherwise (e.g. `target/debug/mimz.exe` during
-development). Without the binary, syntax highlighting still works — the
-extension shows one warning and carries on.
+Phase 1 v0), so it must be able to find the `mimz` binary. Two options:
+
+- **Option A — put `mimz` on PATH (recommended).** From the repo root run
+  `cargo install --path .`; that places `mimz` in `~/.cargo/bin`, which a
+  normal Rust install already has on PATH. Re-run it after pulling
+  compiler changes.
+- **Option B — point the `mimz.serverPath` setting at the binary.** Use
+  an **absolute** path (e.g. `D:\…\min-mozhi\target\debug\mimz.exe`
+  during development). Restart VS Code (or "Developer: Reload Window")
+  after changing the setting — the server is spawned at activation.
+
+Without the binary, syntax highlighting still works — the extension
+shows one warning and carries on.
 
 Known v0 limitation: `import`ed files are read from disk, so an edited
 but UNSAVED import is seen as last saved. Hover, go-to-definition, and
