@@ -58,12 +58,14 @@ fn rust_precedence_defuses_the_c_trap() {
 #[test]
 fn chained_comparison_is_an_error() {
     let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  y = a < a < a\n}\n");
+    assert_eq!(d[0].code, Some("E1109"));
     assert!(d[0].msg.contains("chained"));
 }
 
 #[test]
 fn wire_if_without_else_teaches_about_latches() {
     let d = parse_err("module M {\n  in s: bit\n  out y: bit\n  y = if s { 1 }\n}\n");
+    assert_eq!(d[0].code, Some("E1108"));
     assert!(d[0].msg.contains("else"));
     assert!(d[0].help.as_ref().unwrap().contains("latch"));
 }
@@ -71,6 +73,7 @@ fn wire_if_without_else_teaches_about_latches() {
 #[test]
 fn reg_without_reset_value_is_an_error() {
     let d = parse_err("module M {\n  clock clk\n  reset rst\n  reg v: bits[8]\n}\n");
+    assert_eq!(d[0].code, Some("E1104"));
     assert!(d[0].msg.contains("reset value"));
 }
 
@@ -79,7 +82,30 @@ fn assign_arrow_confusion_teaches() {
     let d = parse_err(
         "module M {\n  clock clk\n  reset rst\n  reg v: bits[8] = 0\n  on rise(clk) {\n    v = 1\n  }\n}\n",
     );
+    assert_eq!(d[0].code, Some("E1106"));
     assert!(d[0].help.as_ref().unwrap().contains("<-"));
+}
+
+#[test]
+fn every_parse_error_carries_a_code() {
+    // The structural promise behind the E11xx retrofit: no parser
+    // diagnostic ships codeless (the `error()` helper makes it
+    // impossible; this locks the contract from the outside).
+    let broken = [
+        "module M {\n  out y: bit\n  y = if y { 1 }\n}\n",
+        "garbage here\n",
+        "module M {\n  out y: bit\n  enum E {\n  }\n  y = 0\n}\n",
+        "module M {\n  out y: bit\n  y = nope(1)\n}\n",
+    ];
+    for src in broken {
+        for d in parse_err(src) {
+            assert!(
+                d.code.is_some_and(|c| c.starts_with("E11")),
+                "codeless or mis-blocked parse error: {}",
+                d.msg
+            );
+        }
+    }
 }
 
 #[test]

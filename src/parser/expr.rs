@@ -61,7 +61,11 @@ impl Parser {
         self.expect(TokKind::RBrace, "`}` after the value")?;
         if !self.at_kw(Kw::Else) {
             let span = self.peek().span;
-            self.error(span, "this `if` drives a value, so `else` is mandatory");
+            self.error(
+                span,
+                "E1108",
+                "this `if` drives a value, so `else` is mandatory",
+            );
             self.help(
                 "without `else` the wire would be undriven in some cycles — that is how latches are born (spec/02 section 1.3)",
             );
@@ -107,7 +111,7 @@ impl Parser {
             }
             if let TokKind::Eof = self.peek_kind() {
                 let span = self.peek().span;
-                self.error(span, "`match` is missing its closing `}`");
+                self.error(span, "E1101", "`match` is missing its closing `}`");
                 break span;
             }
             match self.arm() {
@@ -166,6 +170,7 @@ impl Parser {
                 let span = self.peek().span;
                 self.error(
                     span,
+                    "E1101",
                     format!("expected a pattern (number, `Enum.Variant`, or `_`), found {found}"),
                 );
                 None
@@ -188,7 +193,7 @@ impl Parser {
             if prec == 2 {
                 if comparison_seen {
                     let span = self.peek().span;
-                    self.error(span, "comparisons cannot be chained");
+                    self.error(span, "E1109", "comparisons cannot be chained");
                     self.help(
                         "write `(a < b) && (b < c)` — each comparison produces a single `bit`",
                     );
@@ -353,7 +358,11 @@ impl Parser {
             other => {
                 let found = kind_name(&other);
                 let span = self.peek().span;
-                self.error(span, format!("expected a value here, found {found}"));
+                self.error(
+                    span,
+                    "E1101",
+                    format!("expected a value here, found {found}"),
+                );
                 None
             }
         }
@@ -371,6 +380,7 @@ impl Parser {
             other => {
                 self.error(
                     id.span,
+                    "E1110",
                     format!(
                         "`{other}` is not a function — Min-Mozhi has no user functions, only modules"
                     ),
@@ -395,6 +405,7 @@ impl Parser {
         if args.len() != arity {
             self.error(
                 id.span.join(t.span),
+                "E1110",
                 format!("`{name}` takes {arity} argument(s), got {}", args.len()),
             );
             return None;

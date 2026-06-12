@@ -93,8 +93,10 @@ impl Parser {
         }
     }
 
-    fn error(&mut self, span: Span, msg: impl Into<String>) {
-        self.diags.push(Diag::new(span, msg));
+    /// Record one parse error. The code is mandatory (same discipline as
+    /// `Checker::err`) — the E11xx catalog lives in docs/code/06.
+    fn error(&mut self, span: Span, code: &'static str, msg: impl Into<String>) {
+        self.diags.push(Diag::new(span, msg).with_code(code));
     }
 
     /// Attach a help line to the most recent error.
@@ -110,7 +112,7 @@ impl Parser {
         } else {
             let found = kind_name(self.peek_kind());
             let span = self.peek().span;
-            self.error(span, format!("expected {what}, found {found}"));
+            self.error(span, "E1101", format!("expected {what}, found {found}"));
             None
         }
     }
@@ -121,7 +123,7 @@ impl Parser {
         } else {
             let found = kind_name(self.peek_kind());
             let span = self.peek().span;
-            self.error(span, format!("expected {what}, found {found}"));
+            self.error(span, "E1101", format!("expected {what}, found {found}"));
             None
         }
     }
@@ -136,7 +138,7 @@ impl Parser {
         } else {
             let found = kind_name(self.peek_kind());
             let span = self.peek().span;
-            self.error(span, format!("expected {what}, found {found}"));
+            self.error(span, "E1101", format!("expected {what}, found {found}"));
             None
         }
     }
@@ -157,6 +159,7 @@ impl Parser {
         let span = self.peek().span;
         self.error(
             span,
+            "E1101",
             format!("expected end of line after statement, found {found}"),
         );
         self.sync_to_newline();

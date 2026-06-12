@@ -50,6 +50,7 @@ impl Parser {
                     let span = self.peek().span;
                     self.error(
                         span,
+                        "E1102",
                         format!("expected `module`, `import`, `const`, `enum`, or `test` at file level, found {found}"),
                     );
                     self.sync_to_newline();
@@ -97,6 +98,7 @@ impl Parser {
             other => {
                 self.error(
                     id.span,
+                    "E1111",
                     format!(
                         "parameters and constants are compile-time `int` or `bool`, not `{other}`"
                     ),
@@ -126,7 +128,7 @@ impl Parser {
             }
         }
         if variants.is_empty() {
-            self.error(name.span, "an enum needs at least one variant");
+            self.error(name.span, "E1103", "an enum needs at least one variant");
             return None;
         }
         Some(EnumDecl { name, variants })
@@ -176,6 +178,7 @@ impl Parser {
                 let span = self.peek().span;
                 self.error(
                     span,
+                    "E1101",
                     format!("module `{}` is missing its closing `}}`", name.name),
                 );
                 break span;
@@ -232,7 +235,11 @@ impl Parser {
                 let ty = self.ty()?;
                 if !self.at(&TokKind::Assign) {
                     let span = self.peek().span;
-                    self.error(span, format!("register `{}` has no reset value", name.name));
+                    self.error(
+                        span,
+                        "E1104",
+                        format!("register `{}` has no reset value", name.name),
+                    );
                     self.help(
                         "every reg declares its reset value: `reg name: type = 0` — no uninitialized state (spec/02 section 1.2)",
                     );
@@ -252,7 +259,11 @@ impl Parser {
                 let lhs = self.lvalue()?;
                 if self.at(&TokKind::LArrow) {
                     let span = self.peek().span;
-                    self.error(span, "`<-` is only for registers inside an `on` block");
+                    self.error(
+                        span,
+                        "E1105",
+                        "`<-` is only for registers inside an `on` block",
+                    );
                     self.help(
                         "combinational drives use `=`; sequential updates use `<-` inside `on rise(clk) { ... }` (spec/02 section 1.2)",
                     );
@@ -268,6 +279,7 @@ impl Parser {
                 let span = self.peek().span;
                 self.error(
                     span,
+                    "E1101",
                     format!(
                         "expected a declaration or assignment in the module body, found {found}"
                     ),
@@ -384,7 +396,7 @@ impl Parser {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "block is missing its closing `}`");
+                    self.error(span, "E1101", "block is missing its closing `}`");
                     break span;
                 }
                 _ => match self.seq_stmt() {
@@ -406,7 +418,7 @@ impl Parser {
             let lhs = self.lvalue()?;
             if self.at(&TokKind::Assign) {
                 let span = self.peek().span;
-                self.error(span, "`=` is only for wires, outside `on` blocks");
+                self.error(span, "E1106", "`=` is only for wires, outside `on` blocks");
                 self.help(
                     "registers update with `<-` inside `on` blocks: `value <- value +% 1` (spec/02 section 1.2)",
                 );
@@ -421,6 +433,7 @@ impl Parser {
         let span = self.peek().span;
         self.error(
             span,
+            "E1101",
             format!("expected a register update or `if` inside the `on` block, found {found}"),
         );
         None
@@ -513,7 +526,7 @@ impl Parser {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "`repeat` block is missing its closing `}`");
+                    self.error(span, "E1101", "`repeat` block is missing its closing `}`");
                     break span;
                 }
                 _ => match self.module_item() {
@@ -543,6 +556,7 @@ impl Parser {
             let span = self.peek().span;
             self.error(
                 span,
+                "E1107",
                 "expected a test name in quotes: `test \"counter counts\" for ...`",
             );
             return None;
@@ -587,7 +601,7 @@ impl Parser {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "test block is missing its closing `}`");
+                    self.error(span, "E1101", "test block is missing its closing `}`");
                     break span;
                 }
                 TokKind::Kw(Kw::Tick) => {
@@ -626,7 +640,7 @@ impl Parser {
                 other => {
                     let found = kind_name(&other);
                     let span = self.peek().span;
-                    self.error(span, format!("expected `tick`, `expect`, an input drive, or `if` in the test body, found {found}"));
+                    self.error(span, "E1107", format!("expected `tick`, `expect`, an input drive, or `if` in the test body, found {found}"));
                     self.sync_to_newline();
                 }
             }
