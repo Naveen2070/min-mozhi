@@ -630,3 +630,56 @@ fn same_domain_logic_under_two_declared_clocks_passes() {
     let src = "module M {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out y: bit\n  reg r1: bit = 0\n  reg r2: bit = 0\n  wire w: bit = r1 ^ r2\n  on rise(cka) {\n    r1 <- a\n    r2 <- w\n  }\n  y = w\n}\n";
     check_one(src).expect("everything lives on cka — the unused ckb changes nothing");
 }
+
+// ---- no declarations inside `repeat` (E0303) ------------------------------
+
+/// True if any diagnostic carries `code` (E0303 may not be the FIRST error,
+/// since a forbidden declaration also trips later passes).
+fn any_code(src: &str, code: &str) -> bool {
+    errs(src).iter().any(|d| d.code == Some(code))
+}
+
+#[test]
+fn wire_inside_repeat_is_e0303() {
+    let src = "module M {\n  out y: bits[4]\n  repeat i: 0..4 {\n    wire w: bit = 0\n    y[i] = w\n  }\n}\n";
+    assert!(
+        any_code(src, "E0303"),
+        "a wire declared inside repeat is E0303"
+    );
+}
+
+#[test]
+fn reg_inside_repeat_is_e0303() {
+    let src = "module M {\n  clock clk\n  reset rst\n  out y: bits[4]\n  repeat i: 0..4 {\n    reg r: bit = 0\n    y[i] = 0\n  }\n}\n";
+    assert!(
+        any_code(src, "E0303"),
+        "a reg declared inside repeat is E0303"
+    );
+}
+
+#[test]
+fn on_block_inside_repeat_is_e0303() {
+    let src = "module M {\n  clock clk\n  reset rst\n  out y: bits[4]\n  reg r: bit = 0\n  repeat i: 0..4 {\n    on rise(clk) {\n      r <- 1\n    }\n    y[i] = r\n  }\n}\n";
+    assert!(
+        any_code(src, "E0303"),
+        "an `on` block inside repeat is E0303"
+    );
+}
+
+#[test]
+fn const_inside_repeat_is_e0303() {
+    let src = "module M {\n  out y: bits[4]\n  repeat i: 0..4 {\n    const C: int = 1\n    y[i] = 0\n  }\n}\n";
+    let d = errs(src)
+        .into_iter()
+        .find(|d| d.code == Some("E0303"))
+        .expect("a const inside repeat is E0303");
+    assert!(d.help.unwrap().contains("Declare the signal once outside"));
+}
+
+#[test]
+fn repeat_with_only_drives_and_nested_repeat_is_clean() {
+    // Drives and nested `repeat`s are the legal contents; each bit is
+    // driven exactly once (i*2 + j covers 0..4).
+    let src = "module M {\n  out y: bits[4]\n  repeat i: 0..2 {\n    repeat j: 0..2 {\n      y[i * 2 + j] = 0\n    }\n  }\n}\n";
+    check_one(src).expect("a repeat that only generates hardware is clean");
+}

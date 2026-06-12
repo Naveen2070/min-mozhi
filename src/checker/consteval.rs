@@ -19,7 +19,9 @@ use super::Checker;
 
 /// Environment for one evaluation: name -> value. Built from file consts
 /// plus (in `names.rs`) module consts and enclosing `repeat` variables.
-pub(super) type Env = HashMap<String, i128>;
+/// `pub(crate)` so the Verilog emitter can fold the same constants when it
+/// unrolls `repeat` (it shares this evaluator rather than reimplementing it).
+pub(crate) type Env = HashMap<String, i128>;
 
 impl<'a> Checker<'a> {
     /// Evaluate every file-level `const`, in source order, into
@@ -57,7 +59,7 @@ impl<'a> Checker<'a> {
 /// Evaluate `e` to a compile-time value, or explain why it is not one.
 /// The returned diagnostic carries its code but NOT a file index — the
 /// caller stamps that (`.with_file(...)`), since only it knows the file.
-pub(super) fn eval(e: &Expr, env: &Env) -> Result<i128, Diag> {
+pub(crate) fn eval(e: &Expr, env: &Env) -> Result<i128, Diag> {
     let not_const = |what: &str, why: &str| {
         Err(
             Diag::new(e.span, format!("{what} is not a compile-time constant"))

@@ -214,6 +214,7 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, rhs);
                 }
                 ModuleItem::Repeat(r) => {
+                    self.no_decls_in_repeat(file, &r.items);
                     let lo = self.const_pos(file, env, &r.lo);
                     self.const_pos(file, env, &r.hi);
                     // The loop variable is a compile-time int inside the
@@ -250,6 +251,39 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// E0303 — a `repeat` body may only generate hardware (drives,
+    /// instances, nested `repeat`s), never declare it. A declaration
+    /// inside `repeat` would mean N copies of the same name — there is no
+    /// such thing; declare the signal once outside and drive bit `i`
+    /// inside. Reports each offending item at its own span (the immediate
+    /// level only; nested `repeat`s are checked when the walk reaches
+    /// them).
+    fn no_decls_in_repeat(&mut self, file: usize, items: &'a [ModuleItem]) {
+        for item in items {
+            let (span, what) = match item {
+                ModuleItem::Drive { .. } | ModuleItem::Inst(_) | ModuleItem::Repeat(_) => continue,
+                ModuleItem::Port { name, .. } => (name.span, "an input/output port"),
+                ModuleItem::Wire { name, .. } => (name.span, "a wire"),
+                ModuleItem::Reg { name, .. } => (name.span, "a register"),
+                ModuleItem::Clock(n) => (n.span, "a clock"),
+                ModuleItem::Reset(n) => (n.span, "a reset"),
+                ModuleItem::Const(c) => (c.name.span, "a const"),
+                ModuleItem::Enum(e) => (e.name.span, "an enum"),
+                ModuleItem::On(on) => (on.span, "an `on` block"),
+            };
+            self.err(
+                file,
+                span,
+                "E0303",
+                format!("`repeat` cannot contain {what}"),
+                "`repeat` unrolls at compile time — it may only generate \
+                 hardware (drives, instances, nested `repeat`s). Declare \
+                 the signal once outside the loop and drive bit `i` inside \
+                 (spec/02 section 1.6).",
+            );
         }
     }
 
