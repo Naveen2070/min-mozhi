@@ -7,8 +7,11 @@
 //! instance ports. Test blocks only get their header checked (module +
 //! params); body checking lands with the simulator (Phase 1.5).
 //!
-//! Width/driver/exhaustiveness rules are NOT here — they are the next
-//! checker slices (docs/code/11-checker.md lists what is deferred).
+//! Width/driver/exhaustiveness rules are NOT here — they live in the
+//! later passes (widths/drivers/clocks). This pass DOES own the
+//! structure rules that need only names: reg-requires-reset (E0301) and
+//! instantiation completeness (E0302 — every input connected exactly
+//! once; clock/reset connect implicitly by name).
 
 use std::collections::HashMap;
 
@@ -339,22 +342,27 @@ impl<'a> Checker<'a> {
             self.expr(file, sc, env, value);
         }
 
-        let mut inputs: Vec<&str> = Vec::new();
+        // Data inputs must each be connected exactly once (E0302);
+        // clock/reset ports may be omitted — they connect implicitly by
+        // name (the emitter's rule, spec/02 section 1.5).
+        let mut ins: Vec<&str> = Vec::new();
+        let mut implicit: Vec<&str> = Vec::new();
         let mut outputs: Vec<&str> = Vec::new();
         for item in &target.items {
             match item {
                 ModuleItem::Port {
                     dir: Dir::In, name, ..
-                } => inputs.push(&name.name),
+                } => ins.push(&name.name),
                 ModuleItem::Port {
                     dir: Dir::Out,
                     name,
                     ..
                 } => outputs.push(&name.name),
-                ModuleItem::Clock(n) | ModuleItem::Reset(n) => inputs.push(&n.name),
+                ModuleItem::Clock(n) | ModuleItem::Reset(n) => implicit.push(&n.name),
                 _ => {}
             }
         }
+        let mut connected: Vec<&str> = Vec::new();
         for Conn { port, signal } in &inst.conns {
             if outputs.contains(&port.name.as_str()) {
                 self.err(
@@ -368,16 +376,51 @@ impl<'a> Checker<'a> {
                         inst.name.name, port.name
                     ),
                 );
-            } else if !inputs.contains(&port.name.as_str()) {
+            } else if !ins.contains(&port.name.as_str()) && !implicit.contains(&port.name.as_str())
+            {
+                let mut all = ins.clone();
+                all.extend(&implicit);
                 self.err(
                     file,
                     port.span,
                     "E0107",
                     format!("`{}` has no input named `{}`", target.name.name, port.name),
-                    format!("`{}`'s inputs are: {}", target.name.name, inputs.join(", ")),
+                    format!("`{}`'s inputs are: {}", target.name.name, all.join(", ")),
                 );
+            } else if connected.contains(&port.name.as_str()) {
+                self.err(
+                    file,
+                    port.span,
+                    "E0302",
+                    format!("input `{}` is connected twice", port.name),
+                    "every input is connected exactly once — delete the \
+                     duplicate connection",
+                );
+            } else {
+                connected.push(&port.name);
             }
             self.expr(file, sc, env, signal);
+        }
+        let missing: Vec<&str> = ins
+            .iter()
+            .copied()
+            .filter(|i| !connected.contains(i))
+            .collect();
+        if !missing.is_empty() {
+            self.err(
+                file,
+                inst.name.span,
+                "E0302",
+                format!(
+                    "`{}` leaves input{} `{}` unconnected",
+                    target.name.name,
+                    if missing.len() == 1 { "" } else { "s" },
+                    missing.join("`, `")
+                ),
+                "every input of an instance must be connected — hardware \
+                 has no default arguments (clock/reset connect implicitly \
+                 by name and may be omitted)",
+            );
         }
     }
 

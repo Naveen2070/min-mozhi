@@ -478,3 +478,115 @@ fn defaultless_module_with_param_indexed_drives_is_not_e0501() {
     let src = "module C(W: int) {\n  in a: bits[W]\n  out y: bits[W]\n  y[W - 1] = a[0]\n  y[0] = a[1]\n}\nmodule M {\n  in x: bits[2]\n  out y: bits[2]\n  let c = C(W: 2) { a: x }\n  y = c.y\n}\n";
     check_one(src).expect("unevaluable extents never conflict (no false positives)");
 }
+
+// ---- exhaustiveness (E0601/E0602) ----------------------------------------
+
+#[test]
+fn enum_match_covering_every_variant_needs_no_wildcard() {
+    let src = "module M {\n  clock clk\n  reset rst\n  in go: bit\n  out y: bit\n  enum S { A, B, C }\n  reg s: S = S.A\n  on rise(clk) {\n    if go {\n      s <- S.B\n    }\n  }\n  y = match s {\n    S.A => 1\n    S.B => 0\n    S.C => 1\n  }\n}\n";
+    check_one(src).expect("full variant coverage is exhaustive without `_` (v0.2.3 ruling)");
+}
+
+#[test]
+fn enum_match_missing_a_variant_is_e0601_naming_it() {
+    let src = "module M {\n  clock clk\n  reset rst\n  in go: bit\n  out y: bit\n  enum S { A, B, C }\n  reg s: S = S.A\n  on rise(clk) {\n    if go {\n      s <- S.B\n    }\n  }\n  y = match s {\n    S.A => 1\n    S.B => 0\n  }\n}\n";
+    let d = first_err(src, "E0601");
+    assert!(d.msg.contains("C"), "names the missing variant: {}", d.msg);
+    assert!(d.help.unwrap().contains("_"));
+}
+
+#[test]
+fn wildcard_after_full_enum_coverage_is_allowed() {
+    let src = "module M {\n  clock clk\n  reset rst\n  in go: bit\n  out y: bit\n  enum S { A, B }\n  reg s: S = S.A\n  on rise(clk) {\n    if go {\n      s <- S.B\n    }\n  }\n  y = match s {\n    S.A => 1\n    S.B => 0\n    _ => 0\n  }\n}\n";
+    check_one(src).expect("defensive `_` after full coverage is legal");
+}
+
+#[test]
+fn duplicate_variant_pattern_is_e0602() {
+    let src = "module M {\n  clock clk\n  reset rst\n  in go: bit\n  out y: bit\n  enum S { A, B }\n  reg s: S = S.A\n  on rise(clk) {\n    if go {\n      s <- S.B\n    }\n  }\n  y = match s {\n    S.A => 1\n    S.A => 0\n    _ => 0\n  }\n}\n";
+    let d = first_err(src, "E0602");
+    assert!(d.msg.contains("S.A"));
+}
+
+#[test]
+fn arm_after_wildcard_is_e0602() {
+    let src = "module M {\n  in sel: bits[2]\n  in a: bit\n  out y: bit\n  y = match sel {\n    _ => a\n    0 => a\n  }\n}\n";
+    let d = first_err(src, "E0602");
+    assert!(d.msg.contains("unreachable"));
+}
+
+#[test]
+fn bits2_match_covering_all_four_values_passes() {
+    let src = "module M {\n  in sel: bits[2]\n  in a: bit\n  in b: bit\n  out y: bit\n  y = match sel {\n    0 => a\n    1 => b\n    2 => a\n    3 => b\n  }\n}\n";
+    check_one(src).expect("all 2^2 values covered — exhaustive without `_`");
+}
+
+#[test]
+fn bits2_match_missing_a_value_is_e0601_naming_it() {
+    let src = "module M {\n  in sel: bits[2]\n  in a: bit\n  in b: bit\n  out y: bit\n  y = match sel {\n    0 => a\n    1 => b\n    2 => a\n  }\n}\n";
+    let d = first_err(src, "E0601");
+    assert!(d.help.unwrap().contains('3'), "names the first gap");
+}
+
+#[test]
+fn bit_match_missing_one_is_e0601() {
+    let src =
+        "module M {\n  in s: bit\n  in a: bit\n  out y: bit\n  y = match s {\n    0 => a\n  }\n}\n";
+    let d = first_err(src, "E0601");
+    assert!(d.help.unwrap().contains('1'));
+}
+
+#[test]
+fn wide_match_without_wildcard_is_e0601() {
+    let src = "module M {\n  in v: bits[8]\n  in a: bit\n  in b: bit\n  out y: bit\n  y = match v {\n    0 => a\n    1 => b\n  }\n}\n";
+    let d = first_err(src, "E0601");
+    assert!(d.msg.contains("bits[8]"));
+}
+
+#[test]
+fn multi_pattern_arms_count_toward_coverage() {
+    let src = "module M {\n  in sel: bits[2]\n  in a: bit\n  in b: bit\n  out y: bit\n  y = match sel {\n    0, 1 => a\n    2, 3 => b\n  }\n}\n";
+    check_one(src).expect("`0, 1 =>` covers two values");
+}
+
+#[test]
+fn duplicate_value_in_multi_pattern_arm_is_e0602() {
+    let src = "module M {\n  in sel: bits[2]\n  in a: bit\n  out y: bit\n  y = match sel {\n    0, 0 => a\n    _ => a\n  }\n}\n";
+    let d = first_err(src, "E0602");
+    assert!(d.msg.contains("already covered"));
+}
+
+// ---- instantiation completeness (E0302) -----------------------------------
+
+const FA2: &str = "module FA {\n  in a: bit\n  in b: bit\n  out s: bit\n  s = a ^ b\n}\n";
+
+#[test]
+fn unconnected_input_is_e0302_naming_it() {
+    let src = format!(
+        "{FA2}module M {{\n  in x: bit\n  out y: bit\n  let u = FA() {{ a: x }}\n  y = u.s\n}}\n"
+    );
+    let d = first_err(&src, "E0302");
+    assert!(d.msg.contains('b'), "names the missing input: {}", d.msg);
+}
+
+#[test]
+fn several_unconnected_inputs_are_listed_in_one_error() {
+    let src = format!("{FA2}module M {{\n  out y: bit\n  let u = FA() {{}}\n  y = u.s\n}}\n");
+    let d = first_err(&src, "E0302");
+    assert!(d.msg.contains('a') && d.msg.contains('b'));
+}
+
+#[test]
+fn clock_and_reset_ports_may_be_omitted() {
+    let src = "module Tick {\n  clock clk\n  reset rst\n  out q: bit\n  reg v: bit = 0\n  on rise(clk) {\n    v <- !v\n  }\n  q = v\n}\nmodule M {\n  out y: bit\n  let u = Tick() {}\n  y = u.q\n}\n";
+    check_one(src).expect("clock/reset connect implicitly by name — never E0302");
+}
+
+#[test]
+fn connecting_an_input_twice_is_e0302() {
+    let src = format!(
+        "{FA2}module M {{\n  in x: bit\n  out y: bit\n  let u = FA() {{ a: x, a: x, b: x }}\n  y = u.s\n}}\n"
+    );
+    let d = first_err(&src, "E0302");
+    assert!(d.msg.contains("twice"));
+}
