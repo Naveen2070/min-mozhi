@@ -45,7 +45,10 @@ cumulative throughput (LOC/s) to history.
 
 ---
 
-## Phase 1: Cache Warm-up & I/O Isolation (highest ROI, smallest change)
+## Phase 1: Cache Warm-up & I/O Isolation — ✅ DONE 2026-06-13
+
+Implemented: `measure_speed` (`src/bin/mimz-bench/metrics.rs`) runs one untimed
+full pipeline per example before the timed loop.
 
 **The goal:** decouple disk speed from compiler speed.
 Reading `.mimz` files off an SSD/HDD introduces statistical noise. We only want
@@ -65,7 +68,11 @@ metric the harness already reports, which is why it leads the roadmap.
 
 ---
 
-## Phase 2: Micro-Benchmarking (`criterion`, a separate harness)
+## Phase 2: Micro-Benchmarking (`criterion`, a separate harness) — ✅ DONE 2026-06-13
+
+Implemented: `benches/compile.rs` (`[[bench]]`, `harness = false`) isolates
+lexer / parser / checker / emit over `traffic_light`; run with `cargo bench`,
+compile-checked in CI via `cargo bench --no-run`.
 
 **The goal:** isolate specific compiler phases to detect micro-regressions.
 `mimz-bench` is a macro benchmark — if compilation slows by 2 ms, it can't tell
@@ -94,21 +101,20 @@ as `critcmp` or a benchmark-threshold GitHub Action on top.
 
 ---
 
-## Phase 3: Memory Profiling
+## Phase 3: Memory Profiling — ✅ DONE 2026-06-13 (tier 1; dhat tier deferred)
 
-**The goal:** a fast compiler is useless if it consumes gigabytes of RAM. ASTs
-are notorious for memory bloat, so track peak heap/RSS alongside speed.
+The goal: a fast compiler is useless if it consumes gigabytes of RAM. ASTs are
+notorious for memory bloat, so track peak heap/RSS alongside speed.
 
-**Implementation strategy (two tiers, kept separate):**
+**Two tiers, kept separate:**
 
-- **Default (`memory-stats`, peak RSS):** measure peak resident set around a
-  full-corpus compile and record it in `bench-report.json` /
-  `bench-history.jsonl` plus a memory-trend chart. `memory-stats` is
-  lightweight and **can coexist with a normal run**, so it rides the existing
-  `mimz-bench` flow.
-- **Opt-in (`dhat`, precise heap):** for detailed allocation profiles. `dhat`
-  installs a custom `#[global_allocator]` and slows execution by roughly 10×,
-  so it can **never** share a timed run — gate it behind a dedicated
+- **Default (`memory-stats`, peak RSS) — ✅ DONE:** `measure_memory` records
+  peak resident set over a full-corpus compile into `bench-report.json` /
+  `bench-history.jsonl`, surfaced as a card + memory-trend chart. `memory-stats`
+  is lightweight (no allocator swap), so it rides a normal `mimz-bench` run.
+- **Opt-in (`dhat`, precise heap) — deferred:** for detailed allocation
+  profiles. `dhat` installs a custom `#[global_allocator]` and slows execution
+  ~10×, so it can **never** share a timed run — gate it behind a dedicated
   `--profile-mem` build/feature and never report its timings as speed.
 
 If a developer accidentally clones heavy `String`s instead of borrowing, the
@@ -138,29 +144,17 @@ makes them contend for CPU and cache, which corrupts the LOC/s measurement.
 
 ## 5. Execution Strategy for CI/CD
 
-**Wired now** (`.github/workflows/ci.yml`):
+The full CI strategy, security model, and hardening roadmap now live in
+[`ci_plan.md`](ci_plan.md). Benchmark-relevant summary:
 
-- **Every push / PR:**
-  - the `check` job runs the full R8 gate — `fmt --check`, `clippy
---all-targets -D warnings`, **rustdoc `-D warnings`**, `cargo test` (with
-    `REQUIRE_IVERILOG=1`), `cargo build`, and **`cargo bench --no-run`** so the
-    `criterion` harness is type-checked but never gated on noisy timings;
-  - the `bench` job runs `cargo run --release --bin mimz-bench -- --no-cov
---no-icarus` — its non-zero exit is a hard **correctness gate** (goldens,
-    flavor byte-identity, fixtures, no-false-positives).
-- **Perf batch (`nightly-bench` job):** runs `mimz-bench --no-cov --iterations
-100`, accumulates `bench-history.jsonl` across runs via a rolling
-  `actions/cache` (restore-keys prefix), and uploads `bench-report.html` /
-  `.json` as artifacts — a growing perf trend without committing the gitignored
-  history. Triggered **manually** today (Actions tab → CI → Run workflow, i.e.
-  `workflow_dispatch`); the nightly `schedule:` cron is committed-out in
-  `ci.yml` and can be uncommented to run it automatically at 03:00 UTC (the job
-  already accepts that trigger).
+- **push / PR — `bench` job:** `mimz-bench --no-cov --no-icarus` as a hard
+  correctness gate; `--history` routed to a temp path so it records no point.
+  The `check` job also `cargo bench --no-run`s the `criterion` harness.
+- **Perf batch — `nightly-bench` job:** `mimz-bench --no-cov --iterations 500`,
+  then **commits the appended `bench-history.jsonl` back to the repo**
+  (`[skip ci]`) and uploads the report as an artifact. The committed JSONL is
+  the canonical, version-controlled trend. Triggered **manually** today
+  (`workflow_dispatch`); the nightly cron is commented out in `ci.yml`.
 
-**Future:**
-
-- A **public dashboard** (publish the nightly `bench-report.html` to GitHub
-  Pages) instead of per-run artifacts.
-- **PR timing gate:** `cargo bench` + `critcmp`/a threshold action to fail PRs
-  that slow a phase — deferred until run-to-run noise on shared runners is
-  characterized (today the benches are only compile-checked).
+Deferred CI items (a public GitHub Pages dashboard, a `critcmp` PR timing gate,
+commit-SHA action pinning) are tracked in [`ci_plan.md`](ci_plan.md).

@@ -78,8 +78,9 @@ planned.
 
 ## 3. Code Layout (Rust)
 
-One **library crate** with a thin binary (the lib/bin split happened
-2026-06-12 when the LSP arrived); a WORKSPACE split stays trigger-based:
+One **library crate** with two thin binaries — the `mimz` CLI and the
+`mimz-bench` harness (the lib/bin split happened 2026-06-12 when the LSP
+arrived); a WORKSPACE split stays trigger-based:
 
 ```
 mimz/
@@ -134,6 +135,9 @@ mimz/
     grammar_sync.rs      # VS Code grammar ↔ keywords.toml      ✅
     golden/              # pinned .v output per base example
     fixtures/errors/     # the broken corpus
+  benches/
+    compile.rs           # criterion per-phase micro-benchmarks ✅
+                         #   (cargo bench; lexer/parser/checker/emit)
   editors/vscode/        # extension: grammar + LSP client      ✅
 ```
 

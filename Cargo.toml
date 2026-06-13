@@ -8,6 +8,9 @@ repository = "https://github.com/Naveen2070/min-mozhi"
 keywords = ["hdl", "hardware", "verilog", "fpga", "tamil"]
 categories = ["compilers", "hardware-support"]
 rust-version = "1.85"
+# Two binaries exist (`mimz`, `mimz-bench`); make `cargo run` default to the
+# compiler so `cargo run -- check …` works without `--bin mimz`.
+default-run = "mimz"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

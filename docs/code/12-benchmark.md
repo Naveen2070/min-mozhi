@@ -36,13 +36,18 @@ The harness **re-measures what the test suite asserts**: `cargo test`
 answers pass/fail; `mimz-bench` answers _how fast, how complete, and is
 it trending the right way_ — and renders it for humans.
 
-## Outputs (all gitignored — regenerate any time)
+## Outputs
+
+`bench-report.html` / `bench-report.json` are gitignored — regenerate any time.
+`bench-history.jsonl` is **tracked** (version-controlled): the CI perf-batch job
+appends a point and commits it back to the repo, so the trend is the canonical,
+shared performance record.
 
 | File                  | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `bench-report.html`   | The graph report, in two bands. **This run:** verdict banner, summary cards (golden, flavor identity, fixtures, testbenches, peak RSS, line + function coverage), stacked per-example timing bars, rate bars, and a line/function/region coverage breakdown (corpus-completeness doughnut when llvm-cov is skipped). **Across runs:** four trend charts — validation rates (golden, fixtures, flavor identity, no-false-positives, help lines, line coverage on one 0–105 % axis), pipeline time (ms), throughput (LOC/s), peak memory (MB) — plus a run-details table |
 | `bench-report.json`   | The full `BenchReport`, machine-readable (same data the HTML embeds)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `bench-history.jsonl` | One JSON line per run (timestamp, git rev, `total_ms`, `loc_per_sec`, the validation rates — `golden_pct`, `fixture_pct`, `flavor_identity_pct`, `clean_pct`, `help_pct` — `llvm_line_pct`, `peak_rss_mb`) — feeds the trend charts. New fields are `#[serde(default)]`, so older lines still parse and simply show as gaps                                                                                                                                                                                                                                            |
+| `bench-history.jsonl` | One JSON line per run (timestamp, git rev, `total_ms`, `loc_per_sec`, the validation rates — `golden_pct`, `fixture_pct`, `flavor_identity_pct`, `clean_pct`, `help_pct` — `llvm_line_pct`, `peak_rss_mb`) — feeds the trend charts. **Tracked in git**; the CI perf batch commits a point per run. New fields are `#[serde(default)]`, so older lines still parse and simply show as gaps                                                                                                                                                                             |
 
 The HTML pulls Chart.js from the jsDelivr CDN (user decision
 2026-06-12): the file is a single portable page, but drawing the charts

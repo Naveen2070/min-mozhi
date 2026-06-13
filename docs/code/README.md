@@ -69,8 +69,12 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-12 EOD (Phase 1 COMPLETE — checker
-all six passes, `repeat` emission, transliteration, signed emission,
-golden files, full E-code coverage incl. lexer E10xx/parser
-E11xx/loader E1201, lib/bin split (`src/lib.rs`), `--json` diagnostics,
-LSP v0 — plus the `mimz-bench` benchmark harness, page 12)._
+_Last synced with the code: 2026-06-13 (adds: monotonic chained comparison
+`a <= b <= c` in the parser; the `window` example; the `mimz-bench` memory
+metric (peak RSS) + an upgraded HTML report; a `criterion` per-phase
+micro-benchmark harness (`benches/compile.rs`, `cargo bench`); CI extended
+with rustdoc/bench/perf-batch jobs and a committed `bench-history.jsonl`.
+Prior 2026-06-12 baseline: Phase 1 COMPLETE — checker all six passes,
+`repeat` emission, transliteration, signed emission, golden files, full
+E-code coverage incl. lexer E10xx/parser E11xx/loader E1201, lib/bin split
+(`src/lib.rs`), `--json` diagnostics, LSP v0, `mimz-bench` harness page 12)._
