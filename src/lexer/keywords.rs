@@ -46,6 +46,10 @@ struct Spellings {
 pub struct KeywordTable {
     /// spelling -> (token, which column it came from)
     map: HashMap<String, (Kw, Flavor)>,
+    /// token -> its canonical spelling in each column, `[en, tanglish, tamil]`.
+    /// The reverse of `map`; drives `mimz translate`'s keyword reskin. Every
+    /// `Kw` has all three (REQUIRED_KEYS guarantees the rows exist).
+    by_kw: HashMap<Kw, [String; 3]>,
     reserved: Vec<String>,
 }
 
@@ -54,6 +58,18 @@ impl KeywordTable {
     /// column it came from (drives error language + `mimz fmt`, P1.8).
     pub fn lookup(&self, ident: &str) -> Option<(Kw, Flavor)> {
         self.map.get(ident).copied()
+    }
+
+    /// The canonical spelling of `kw` in `flavor` — the reverse lookup that
+    /// `mimz translate` uses to reskin keyword tokens into a target flavor.
+    /// Always succeeds: every keyword has a spelling in every column.
+    pub fn canonical(&self, kw: Kw, flavor: Flavor) -> &str {
+        let cols = &self.by_kw[&kw];
+        match flavor {
+            Flavor::English => &cols[0],
+            Flavor::Tanglish => &cols[1],
+            Flavor::Tamil => &cols[2],
+        }
     }
 
     /// Reserved for a future feature (e.g. `fall`, `struct`, `mem`) —
@@ -87,9 +103,11 @@ pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
         );
     }
     let mut map = HashMap::new();
+    let mut by_kw = HashMap::new();
     for (key, s) in &file.keywords {
         let kw = kw_for_key(key)
             .unwrap_or_else(|| panic!("keywords.toml has unknown keyword key `{key}`"));
+        by_kw.insert(kw, [s.en.clone(), s.tanglish.clone(), s.tamil.clone()]);
         let mut column = |spellings: Vec<&String>, flavor: Flavor| {
             for spelling in spellings {
                 let prev = map.insert(spelling.clone(), (kw, flavor));
@@ -116,6 +134,7 @@ pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
     }
     KeywordTable {
         map,
+        by_kw,
         reserved: file.reserved,
     }
 });

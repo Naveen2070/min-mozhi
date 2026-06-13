@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**160 tests** as of 2026-06-13: 128 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.)
+**182 tests** as of 2026-06-13: 141 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 6 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -233,15 +233,74 @@ The `criterion` micro-benchmark harness (`benches/compile.rs`, run with
 test functions, so it doesn't affect the count above. It's a separate
 performance tool, not part of the assertion suite.
 
+## Unit: explain (`src/explain.rs`, 3 tests)
+
+The 8.1 long-form diagnostic catalog behind `mimz explain <CODE>`.
+
+| Test                                       | Locks in                                                                                       |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `every_checker_code_has_an_explanation`    | every `ALL_CHECKER_CODES` entry has long-form text — a new checker code can't ship without one |
+| `table_is_sorted_unique_and_self_labelled` | the `EXPLANATIONS` table is ordered, duplicate-free, and each entry opens with its own code    |
+| `lookup_is_case_insensitive_and_trims`     | `explain("e0501")` / `" E0501 "` resolve; unknown codes return `None`                          |
+
+## Unit: translate (`src/translate.rs`, 3 tests)
+
+The keyword-flavor reskin behind `mimz translate --to`.
+
+| Test                                                       | Locks in                                                             |
+| ---------------------------------------------------------- | -------------------------------------------------------------------- |
+| `parse_flavor_accepts_the_three_columns`                   | `english`/`tanglish`/`tamil` (case-insensitive) parse; junk → `None` |
+| `reskins_keywords_keeps_everything_else`                   | keywords swap; comments, layout, identifiers, numbers stay verbatim  |
+| `translating_to_the_same_flavor_is_identity_for_canonical` | canonical English → English is a no-op                               |
+
+## Integration: translate (`tests/translate.rs`, 3 tests — the four-flavor oracle)
+
+The `examples/{english,tanglish,tamil}/` folders are byte-identical
+keyword-swaps (R9), so they validate the reskin against committed truth.
+
+| Test                                                               | Locks in                                                                                                   |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `round_trip_to_every_flavor_is_byte_identical`                     | translate-and-back reproduces the canonical source byte-for-byte (lossless; anchored past alias normalize) |
+| `translating_english_matches_the_committed_flavor_token_for_token` | translating english `X` to flavor `T` lexes identically to the committed `T/X` (comments excluded)         |
+| `every_keyword_token_is_in_the_target_flavor`                      | the reskin actually fires — English `module` is gone, Tamil `தொகுதி` present                               |
+
+## Unit: combinational evaluator (`src/sim/comb.rs`, 7 tests)
+
+The Phase 1.5 simulator's combinational slice behind `mimz eval`.
+
+| Test                         | Locks in                                                                          |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `adder_grows_losslessly`     | `+` grows `bits[W]` → `bits[W+1]`; 200+100 carries into the 9th bit (no wrap)     |
+| `wrapping_add_keeps_width`   | `+%` keeps width and wraps (300 → 44 in `bits[8]`)                                |
+| `comparator_if_and_compares` | `==`, `>`, and a value `if/else` evaluate together                                |
+| `mux_match_selects`          | `match` on `bits[2]` picks the right arm                                          |
+| `chained_comparison_window`  | `lo <= value <= hi` (desugared) incl. the inclusive boundary                      |
+| `rejects_sequential_logic`   | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
+| `reports_missing_input`      | a missing `--in` value names the input                                            |
+
+## Integration: eval (`tests/eval.rs`, 6 tests — run the real binary)
+
+End-to-end `mimz eval` over corpus examples — proves the lib evaluator AND the
+`--in`/`--module` plumbing.
+
+| Test                                      | Locks in                                                          |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| `adder_carries`                           | `mimz eval adder --in a=200,b=100` prints `sum = 300`             |
+| `mux4_selects_with_hex_and_binary_inputs` | `--in sel=0b10,...` parses bases; selects the right input         |
+| `comparator_reports_all_three_outputs`    | all three outputs print with correct values                       |
+| `window_chained_comparison_boundaries`    | inclusive boundary in / below out                                 |
+| `multi_module_file_needs_module_flag`     | a 2-module file asks for `--module`, then accepts it              |
+| `instances_are_rejected_clearly`          | a file with sub-module instances is rejected with a clear message |
+
 ## Deliberately NOT covered (and what would close each gap)
 
-| Gap                                                     | Why it's open                                                                                                            | Closes when                                                 |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
-| Cross-INSTANCE clock-domain tracking                    | pass 6 is module-local (instance outputs carry no domain)                                                                | with the Phase 2 `sync`/multi-clock design                  |
-| Diagnostic rendering format (`render`'s caret layout)   | low risk, changes are cosmetic                                                                                           | worth a snapshot test if/when output stabilizes for E-codes |
-| CLI surface (`--tokens`, exit codes, `-o` default path) | thin wrappers; breakage is loud in manual use                                                                            | cheap `assert_cmd`-style tests if the CLI grows             |
-| `mimz-bench` end-to-end (a full run as a test)          | it is a measuring tool over this very suite — running it under `cargo test` would re-run everything for no new assertion | if its orchestration grows logic worth locking              |
-| `mimz translate`, `fmt`, simulator, grammar engine      | not built yet                                                                                                            | with their phases                                           |
+| Gap                                                     | Why it's open                                                                                                                                 | Closes when                                                 |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Cross-INSTANCE clock-domain tracking                    | pass 6 is module-local (instance outputs carry no domain)                                                                                     | with the Phase 2 `sync`/multi-clock design                  |
+| Diagnostic rendering format (`render`'s caret layout)   | low risk, changes are cosmetic                                                                                                                | worth a snapshot test if/when output stabilizes for E-codes |
+| CLI surface (`--tokens`, exit codes, `-o` default path) | thin wrappers; breakage is loud in manual use                                                                                                 | cheap `assert_cmd`-style tests if the CLI grows             |
+| `mimz-bench` end-to-end (a full run as a test)          | it is a measuring tool over this very suite — running it under `cargo test` would re-run everything for no new assertion                      | if its orchestration grows logic worth locking              |
+| `fmt`, grammar engine, full simulator (clocked kernel)  | not built yet (`translate` flavor-reskin and the `sim::comb` combinational slice now exist; word-order `translate` + the event kernel remain) | with their phases (1.8 / 1.5)                               |
 
 ## House rules for new tests
 
