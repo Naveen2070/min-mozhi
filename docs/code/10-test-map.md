@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**192 tests** as of 2026-06-13: 146 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 5 grammar integration + 6 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**197 tests** as of 2026-06-14: 148 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 5 grammar integration + 9 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -33,7 +33,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 17 tests)
+## Unit: parser (`src/parser/tests.rs`, 19 tests)
 
 | Test                                                        | Locks in                                                                   |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -54,6 +54,8 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `parses_test_block`                                         | `test "..." for M(...) { tick/expect }` parses                             |
 | `every_parse_error_carries_a_code`                          | the E11xx retrofit, locked from outside: no parse error is codeless        |
 | `stray_top_level_brace_does_not_hang`                       | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)   |
+| `deeply_nested_expression_errors_not_overflows`             | `(((…)))` past the depth cap → clean E1113, not a stack overflow (SEC-1)   |
+| `deeply_nested_unary_errors_not_overflows`                  | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash           |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
@@ -283,19 +285,23 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `rejects_sequential_logic`   | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
 | `reports_missing_input`      | a missing `--in` value names the input                                            |
 
-## Integration: eval (`tests/eval.rs`, 6 tests — run the real binary)
+## Integration: eval (`tests/eval.rs`, 9 tests — run the real binary)
 
 End-to-end `mimz eval` over corpus examples — proves the lib evaluator AND the
-`--in`/`--module` plumbing.
+`--in`/`--module` plumbing. The last three are security cases: the `eval` path
+skips the checker, so `comb.rs` is the only overflow guard (audit SEC-2).
 
-| Test                                      | Locks in                                                          |
-| ----------------------------------------- | ----------------------------------------------------------------- |
-| `adder_carries`                           | `mimz eval adder --in a=200,b=100` prints `sum = 300`             |
-| `mux4_selects_with_hex_and_binary_inputs` | `--in sel=0b10,...` parses bases; selects the right input         |
-| `comparator_reports_all_three_outputs`    | all three outputs print with correct values                       |
-| `window_chained_comparison_boundaries`    | inclusive boundary in / below out                                 |
-| `multi_module_file_needs_module_flag`     | a 2-module file asks for `--module`, then accepts it              |
-| `instances_are_rejected_clearly`          | a file with sub-module instances is rejected with a clear message |
+| Test                                        | Locks in                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| `adder_carries`                             | `mimz eval adder --in a=200,b=100` prints `sum = 300`               |
+| `mux4_selects_with_hex_and_binary_inputs`   | `--in sel=0b10,...` parses bases; selects the right input           |
+| `comparator_reports_all_three_outputs`      | all three outputs print with correct values                         |
+| `window_chained_comparison_boundaries`      | inclusive boundary in / below out                                   |
+| `multi_module_file_needs_module_flag`       | a 2-module file asks for `--module`, then accepts it                |
+| `instances_are_rejected_clearly`            | a file with sub-module instances is rejected with a clear message   |
+| `oversized_shift_const_does_not_panic`      | `a[1 << 200]` → clean overflow error, no panic/wrap (debug+release) |
+| `overflowing_multiply_const_does_not_panic` | a const product past i128::MAX → overflow error, not a panic        |
+| `out_of_range_index_is_rejected_cleanly`    | a literal index past the width → clean error, not a truncating cast |
 
 ## Integration: grammar engine (`tests/grammar.rs`, 5 tests — run the real binary)
 

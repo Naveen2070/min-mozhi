@@ -37,9 +37,26 @@ pub struct LoadedFile {
     pub ast: ast::File,
 }
 
+/// Largest source file the compiler will read, in bytes. Real HDL modules are
+/// kilobytes; this 32 MB ceiling bounds the lexer's `Vec<(usize, char)>` (which
+/// is several times the file size) so a pathological input cannot exhaust
+/// memory. Generous enough that no legitimate file is ever refused.
+const MAX_SOURCE_BYTES: u64 = 32 * 1024 * 1024;
+
 /// Read + NFC-normalize a source file (spec/02 section 2: lexing is defined over
-/// NFC-normalized text so Tamil combining marks compare consistently).
+/// NFC-normalized text so Tamil combining marks compare consistently). Rejects
+/// files over `MAX_SOURCE_BYTES` before reading them into memory.
 pub fn read_source(path: &Path) -> Result<String, String> {
+    if let Ok(meta) = std::fs::metadata(path)
+        && meta.len() > MAX_SOURCE_BYTES
+    {
+        return Err(format!(
+            "`{}` is {} bytes, over the {} MB source-size limit",
+            path.display(),
+            meta.len(),
+            MAX_SOURCE_BYTES / (1024 * 1024)
+        ));
+    }
     match std::fs::read_to_string(path) {
         Ok(s) => Ok(s.nfc().collect()),
         Err(e) => Err(format!("cannot read `{}`: {e}", path.display())),

@@ -7,9 +7,28 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn mimz() -> Command {
     Command::new(env!("CARGO_BIN_EXE_mimz"))
+}
+
+/// Write inline source to a unique temp file and `mimz eval` it; return
+/// (success, stdout, stderr). For the security cases that need crafted source
+/// outside the corpus.
+fn eval_src(src: &str, args: &[&str]) -> (bool, String, String) {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let f = std::env::temp_dir().join(format!(
+        "mimz_eval_sec_{}.mimz",
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::write(&f, src).unwrap();
+    let out = mimz().arg("eval").arg(&f).args(args).output().unwrap();
+    (
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
 }
 
 fn example(name: &str) -> PathBuf {
@@ -94,5 +113,53 @@ fn instances_are_rejected_clearly() {
     assert!(
         err.contains("sub-module"),
         "expected an instance rejection: {err}"
+    );
+}
+
+// ---- security: crafted consts must not panic the evaluator (the `eval` path
+// skips the checker, so comb.rs is the only overflow guard) ----
+
+#[test]
+fn oversized_shift_const_does_not_panic() {
+    // `1 << 200` as a bit index: raw `<<` would panic (debug) / wrap (release).
+    // The hardened evaluator must report a clean overflow error instead.
+    let (ok, _, err) = eval_src(
+        "module M {\n  in a: bits[8]\n  out y: bit\n  y = a[1 << 200]\n}\n",
+        &["--in", "a=5"],
+    );
+    assert!(!ok, "must fail, not panic");
+    assert!(
+        err.to_lowercase().contains("overflow"),
+        "expected an overflow diagnostic, got: {err}"
+    );
+}
+
+#[test]
+fn overflowing_multiply_const_does_not_panic() {
+    // Four 10-digit factors ~= 1e40, past i128::MAX (~1.7e38) → checked_mul
+    // overflows. Raw `*` would panic (debug) / wrap (release); must be clean.
+    let (ok, _, err) = eval_src(
+        "const W: int = 9999999999 * 9999999999 * 9999999999 * 9999999999\nmodule M {\n  in a: bits[8]\n  out y: bits[W]\n  y = extend(a, W)\n}\n",
+        &["--in", "a=1"],
+    );
+    assert!(!ok);
+    assert!(
+        err.to_lowercase().contains("overflow"),
+        "expected an overflow diagnostic, got: {err}"
+    );
+}
+
+#[test]
+fn out_of_range_index_is_rejected_cleanly() {
+    // A literal index past the value's width must be a clean error, not a
+    // truncating `as u32` cast or an oversized shift.
+    let (ok, _, err) = eval_src(
+        "module M {\n  in a: bits[8]\n  out y: bit\n  y = a[200]\n}\n",
+        &["--in", "a=5"],
+    );
+    assert!(!ok);
+    assert!(
+        err.contains("out of range"),
+        "expected an out-of-range diagnostic, got: {err}"
     );
 }

@@ -95,6 +95,32 @@ fn flipped_on_block_needs_the_directive() {
 }
 
 #[test]
+fn deeply_nested_expression_errors_not_overflows() {
+    // Security: a recursive-descent parser with no depth limit stack-overflows
+    // (aborts the process) on `(((…)))`. The MAX_DEPTH guard must turn that into
+    // a clean E1113. 2000 parens is far past the cap (64) and cheap to parse.
+    let src = format!(
+        "module M {{\n  out y: bit\n  y = {}1{}\n}}\n",
+        "(".repeat(2000),
+        ")".repeat(2000)
+    );
+    let d = parse_err(&src);
+    assert!(d.iter().any(|e| e.code == Some("E1113")));
+}
+
+#[test]
+fn deeply_nested_unary_errors_not_overflows() {
+    // The prefix-operator chain `!!!!…x` recurses through `unary`, not `expr` —
+    // its own guard must catch it too.
+    let src = format!(
+        "module M {{\n  out y: bit\n  y = {}1\n}}\n",
+        "!".repeat(2000)
+    );
+    let d = parse_err(&src);
+    assert!(d.iter().any(|e| e.code == Some("E1113")));
+}
+
+#[test]
 fn stray_top_level_brace_does_not_hang() {
     // Regression: a stray `}` at file level (e.g. unbalanced braces from error
     // recovery) once spun `file()` forever — `sync_to_newline` stops at `}`

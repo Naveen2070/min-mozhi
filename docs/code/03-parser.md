@@ -122,6 +122,6 @@ the checker's six passes (`docs/code/11-checker.md`). The parser only
 enforces what is syntactically decidable, which includes several safety
 rules: `=` vs `<-` placement, mandatory reg reset values, mandatory
 `else` on if-expressions, no user-defined function calls. Every parse
-error carries a stable code (**E1101–E1112** — `self.error(span, code,
+error carries a stable code (**E1101–E1113** — `self.error(span, code,
 msg)` makes the code mandatory; catalog and the E1101 grouping rule in
 [`06-diagnostics.md`](06-diagnostics.md)).

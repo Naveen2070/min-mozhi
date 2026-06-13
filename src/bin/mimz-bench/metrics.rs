@@ -540,7 +540,10 @@ fn run_icarus_layers(bin: &Path, failures: &mut Vec<String>) -> (Rate, Rate) {
                 continue;
             }
         };
-        let vvp_out = std::env::temp_dir().join(format!("mimz_bench_{tb_module}.vvp"));
+        // Per-process path so two bench runs (or two users on a shared host)
+        // cannot clobber each other's output or be pre-created via symlink.
+        let vvp_out =
+            std::env::temp_dir().join(format!("mimz_bench_{}_{tb_module}.vvp", std::process::id()));
         let built = tool(bin, "iverilog")
             .arg("-o")
             .arg(&vvp_out)
