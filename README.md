@@ -135,7 +135,7 @@ npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jso
 | [`spec/02-syntax-and-grammar.md`](spec/02-syntax-and-grammar.md)     | Syntax tour, operators, types, formal EBNF grammar              |
 | [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables            |
 | [`spec/04-grammar-engine.md`](spec/04-grammar-engine.md)             | Grammar Engine — natural Tamil word order (Phase 1.8)           |
-| [`examples/`](examples/)                                             | 14 examples × 4 flavor folders: english, tanglish, tamil, mixed |
+| [`examples/`](examples/)                                             | 15 examples × 4 flavor folders: english, tanglish, tamil, mixed |
 | [`editors/vscode/`](editors/vscode/)                                 | VS Code syntax highlighting for `.mimz` (all three flavors)     |
 | [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture    |
 | [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)        |

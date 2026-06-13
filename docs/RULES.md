@@ -70,6 +70,11 @@ architecture.
 ## R6 — Repo conventions
 
 - File names: `kebab-case.md`; logs: `YYYY-MM-DD.md`.
+- **No section-sign character** (the silcrow, Unicode U+00A7) anywhere — docs,
+  code, comments, commit messages. Always spell it out: `section 8`,
+  `spec/02 section 3`. It reads badly in plain-text terminals, breaks
+  grep-by-word, and isn't on most keyboards. (`grep -rn` for it before closing
+  a session; `docs/log/` history is exempt — append-only.)
 - Markdown is formatted by **Prettier** (`npx prettier --write "**/*.md"`)
   and linted by **markdownlint** (`npx markdownlint-cli2`, config in
   `.markdownlint-cli2.jsonc`). Both run in CI. `docs/archive/` is exempt —
@@ -159,7 +164,7 @@ example) over ad-hoc ones.
 ## R13 — Impact analysis & breaking-change alert (before writing code)
 
 - Before executing a change, weigh it against the spec, the philosophy
-  (`spec/01`), and existing features (mirrors `.claude/Rules.md` §4).
+  (`spec/01`), and existing features (mirrors `.claude/Rules.md` section 4).
 - If a request **contradicts or breaks** existing spec, architecture, or
   behavior, **stop and alert the user** with the conflict and the options
   before writing any code.

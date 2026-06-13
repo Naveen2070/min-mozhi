@@ -1,0 +1,14 @@
+// Min-Mozhi example: a window/range comparator using a chained comparison.
+// `lo <= value <= hi` is a monotonic one-direction chain — it desugars to
+// `(lo <= value) && (value <= hi)`. Reads like the math; the result is a
+// single `bit`, always driven (no latch possible).
+
+தொகுதி Window {
+  உள் lo:    bits[8]
+  உள் value: bits[8]
+  உள் hi:    bits[8]
+
+  வெளி in_range: bit
+
+  in_range = lo <= value <= hi
+}

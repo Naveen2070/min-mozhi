@@ -497,7 +497,7 @@ all punctuation, operators, and built-in type/function names are universal.
 ## Changelog
 
 - **v0.2.6 (2026-06-13):** two pre-v0.1.0-freeze syntax rulings (idea triage
-  §8, `docs/Ideas/language_plan.md` §9). (1) **Comparison chaining allowed**:
+  section 8, `docs/Ideas/language_plan.md` section 9). (1) **Comparison chaining allowed**:
   a monotonic one-direction chain (`0 <= x < 100`) desugars to `&&` of its
   adjacent pairs; mixed-direction and `==`/`!=` chains stay E1109. This only
   widens what compiles — `a < b < c` was already rejected, so no program

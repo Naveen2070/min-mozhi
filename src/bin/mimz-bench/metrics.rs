@@ -19,7 +19,7 @@ use mimz::{ast, checker, emit_verilog, project};
 pub const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example (same list the integration tests pin).
-pub const BASE_EXAMPLES: [&str; 14] = [
+pub const BASE_EXAMPLES: [&str; 15] = [
     "adder",
     "alu",
     "blinker",
@@ -34,11 +34,12 @@ pub const BASE_EXAMPLES: [&str; 14] = [
     "signed_math",
     "traffic_light",
     "vilakku",
+    "window",
 ];
 
 /// Testbench file (tests/icarus/) -> the example it simulates
 /// (same table as tests/icarus.rs).
-pub const TESTBENCHES: [(&str, &str); 13] = [
+pub const TESTBENCHES: [(&str, &str); 14] = [
     ("adder_tb.v", "english/adder.mimz"),
     ("alu_tb.v", "english/alu.mimz"),
     ("blinker_tb.v", "english/blinker.mimz"),
@@ -52,6 +53,7 @@ pub const TESTBENCHES: [(&str, &str); 13] = [
     ("shift_register_tb.v", "english/shift_register.mimz"),
     ("signed_math_tb.v", "english/signed_math.mimz"),
     ("traffic_light_tb.v", "english/traffic_light.mimz"),
+    ("window_tb.v", "english/window.mimz"),
 ];
 
 pub fn repo() -> PathBuf {

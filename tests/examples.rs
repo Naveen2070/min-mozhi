@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 14] = [
+const BASE_EXAMPLES: [&str; 15] = [
     "adder",
     "alu",
     "blinker",
@@ -27,6 +27,7 @@ const BASE_EXAMPLES: [&str; 14] = [
     "signed_math",
     "traffic_light",
     "vilakku",
+    "window",
 ];
 
 fn examples_dir() -> PathBuf {

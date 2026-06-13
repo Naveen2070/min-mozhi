@@ -121,7 +121,7 @@ deserve a note:
 ## Integration (`tests/examples.rs`, 9 tests — run the real binary)
 
 `examples/` holds four flavor folders — `english/`, `tanglish/`, `tamil/`,
-`mixed/` — each with the SAME 14 base examples (identical identifiers,
+`mixed/` — each with the SAME 15 base examples (identical identifiers,
 only keywords differ; `lib/` subfolders hold dotted-import targets). The
 base-example list lives in the `BASE_EXAMPLES` const in the test file.
 
@@ -149,8 +149,8 @@ never skip silently. Local install: the Windows installer
 
 | Test                                    | Locks in                                                                                                                                                                                                                                          |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog` | all 56 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated `vilakku` and `wire signed` `signed_math`)                                                                         |
-| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`, 13) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison) and must print PASS under `vvp` — the differential |
+| `every_emitted_verilog_passes_iverilog` | all 60 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated `vilakku` and `wire signed` `signed_math`)                                                                         |
+| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`, 14) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison) and must print PASS under `vvp` — the differential |
 
 House rule for the testbenches: each prints `PASS` exactly once or
 `FAIL: reason` and stops — the Rust side asserts on those markers, so a

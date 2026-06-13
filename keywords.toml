@@ -11,8 +11,8 @@
 
 # Reserved for the future — using these is a compile error suggesting why.
 # (Must stay above the first [keywords.*] table: top-level TOML keys.)
-# Lines 2–3 are the v0.3 security/DX backlog; line 4 the §8 deep-triage words
-# (fixed-point, contracts) — see docs/Ideas/language_plan.md §9. Reserved now
+# Lines 2–3 are the v0.3 security/DX backlog; line 4 the section 8 deep-triage words
+# (fixed-point, contracts) — see docs/Ideas/language_plan.md section 9. Reserved now
 # so v0.1 programs cannot claim them, untranslated until each feature lands
 # (spec/03 section "Reserved words").
 reserved = [

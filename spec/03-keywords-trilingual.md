@@ -115,26 +115,26 @@ Set aside for future features — using one as an identifier is a compile
 error (E1005) explaining why. They live in the `reserved` list in
 `keywords.toml`, above the keyword tables:
 
-| Reserved                 | Held for                                   |
-| ------------------------ | ------------------------------------------ |
-| `fall`                   | falling-edge `on` blocks (post-v1)         |
-| `syntax`                 | the `syntax thamizh` directive (Phase 1.8) |
-| `ilakkanam` / `இலக்கணம்` | the Tanglish/Tamil spellings of `syntax`   |
-| `mem`                    | memories/arrays (Phase 2)                  |
-| `sync`                   | clock-domain crossing (Phase 2)            |
-| `inout`                  | top-level bidirectional pads (Phase 2)     |
-| `struct`                 | bundles/interfaces (post-Phase 2)          |
-| `secret`                 | explicit information-flow types (v0.3 G5)  |
-| `declassify`             | the only `secret`→public escape (v0.3 G5)  |
-| `default`                | sticky-fault / default values (v0.3)       |
-| `pipeline`               | pipeline-stage construct (v0.3 backlog)    |
-| `interface`              | named port bundles (v0.3 backlog)          |
-| `chan`                   | handshake channels (v0.3 backlog)          |
-| `prove`                  | formal/temporal assertions (v0.3 backlog)  |
-| `await`                  | handshake sequencing (v0.3 backlog)        |
-| `fixed`                  | fixed-point arithmetic type (§8 triage)    |
-| `requires`               | caller-side precondition contract (§8)     |
-| `ensures`                | module postcondition contract (§8)         |
+| Reserved                 | Held for                                       |
+| ------------------------ | ---------------------------------------------- |
+| `fall`                   | falling-edge `on` blocks (post-v1)             |
+| `syntax`                 | the `syntax thamizh` directive (Phase 1.8)     |
+| `ilakkanam` / `இலக்கணம்` | the Tanglish/Tamil spellings of `syntax`       |
+| `mem`                    | memories/arrays (Phase 2)                      |
+| `sync`                   | clock-domain crossing (Phase 2)                |
+| `inout`                  | top-level bidirectional pads (Phase 2)         |
+| `struct`                 | bundles/interfaces (post-Phase 2)              |
+| `secret`                 | explicit information-flow types (v0.3 G5)      |
+| `declassify`             | the only `secret`→public escape (v0.3 G5)      |
+| `default`                | sticky-fault / default values (v0.3)           |
+| `pipeline`               | pipeline-stage construct (v0.3 backlog)        |
+| `interface`              | named port bundles (v0.3 backlog)              |
+| `chan`                   | handshake channels (v0.3 backlog)              |
+| `prove`                  | formal/temporal assertions (v0.3 backlog)      |
+| `await`                  | handshake sequencing (v0.3 backlog)            |
+| `fixed`                  | fixed-point arithmetic type (section 8 triage) |
+| `requires`               | caller-side precondition contract (section 8)  |
+| `ensures`                | module postcondition contract (section 8)      |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).
@@ -261,11 +261,11 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
-- **v0.2.4 (2026-06-13):** Reserved three §8 deep-triage words — `fixed`
+- **v0.2.4 (2026-06-13):** Reserved three section 8 deep-triage words — `fixed`
   (fixed-point arithmetic), `requires` / `ensures` (boundary contracts) —
   so v0.1 programs cannot claim them (E1005). Namespace protection ahead of
   the v0.1.0 freeze; English-only until each feature lands (rationale in
-  `docs/Ideas/language_plan.md` §9).
+  `docs/Ideas/language_plan.md` section 9).
 - **v0.2.3 (2026-06-12):** Reserved the eight v0.3 backlog words
   (`secret`, `declassify`, `default`, `pipeline`, `interface`, `chan`,
   `prove`, `await`) so v0.1 programs cannot claim them as identifiers

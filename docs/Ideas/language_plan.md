@@ -712,7 +712,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 
 ---
 
-## 9. §8 deep triage (2026-06-13): sugar vs breaking, under the freeze doctrine
+## 9. section 8 deep triage (2026-06-13): sugar vs breaking, under the freeze doctrine
 
 ### Growth doctrine (Decision 2026-06-13)
 
@@ -725,23 +725,23 @@ breaking change is nearly free _now_ and expensive _later_.
 adds syntax that didn't exist) is edition-safe — it can land any time, even
 post-freeze, without breaking code. A _breaking_ change (re-means or removes
 existing valid syntax) must land **before v0.1.0** or owe an edition + `translate`
-rule. So the freeze deadline pressures **only the §8 ideas that touch already-shipped
+rule. So the freeze deadline pressures **only the section 8 ideas that touch already-shipped
 syntax**: 8.9 and 8.10. The other eight are additive and can come whenever.
 
 ### Per-idea verdicts
 
-| Idea                               | Path                  | Tier               | Recommendation                                                                                                                                                               |
-| ---------------------------------- | --------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8.1 Elm-style didactic errors      | additive              | 2                  | Build incrementally now — it IS the G1 promise. Extend `Diag` + a `mimz explain <CODE>` long-form. Diagrams must depict real hardware (honesty).                             |
-| 8.2 Contracts `requires`/`ensures` | additive              | 3 (after `prove`)  | Edition-safe. Caller-side `requires` (compile-time div-by-zero) is the high-value half. Reserve the two keywords now.                                                        |
-| 8.3 Fixed-point `fixed[N,F]`       | additive              | 3                  | Highest standalone educational/DSP value. Needs float literals + a rounding/overflow spec section (the honest part). Reserve `fixed` now.                                    |
-| 8.4 `$comptime` / `$if`            | additive (split)      | 3 / 4              | Adopt item-level const-`if` (a **keyword**, not a `$` sigil). Reject the general comptime interpreter — `repeat`+const-`if` cover ~90%.                                      |
-| 8.5 Hardware REPL                  | tool, not syntax      | 3 (Phase 4)        | Rides the approved WASM playground + Phase 1.5 sim evaluator. Scope to combinational. No syntax cost.                                                                        |
-| 8.6 Pipe `\|>`                     | additive              | 3 (blocked)        | Needs callables (only builtins exist, E1110) AND is a 2nd way to write calls (G1 one-way). Park until extension functions land.                                              |
-| 8.7 Spread `..bus` (wiring)        | additive              | 3 (after bundles)  | Rank-1 honesty tension — implicit wiring hides connectivity. Allow only spreading a **declared interface type**; keep expansion greppable.                                   |
-| 8.8 Struct update `..old`          | additive              | 3 (after bundles)  | Clean FSM ergonomics, low risk. Base is named, stays honest. `struct` already reserved.                                                                                      |
-| 8.9 Chained comparison             | **additive widening** | ✅ DONE 2026-06-13 | **Allowed** — monotonic one-direction chain desugars to `&&` (`comparison_chain` in `src/parser/expr.rs`); mixed-direction + `==`/`!=` chains stay E1109. spec/02 v0.2.6 §3. |
-| 8.10 Range slice `[8..16]`         | **breaking**          | ✅ DONE 2026-06-13 | **Ratified `[hi:lo]` as final; break rejected** — universal hardware vocabulary wins; no range form. spec/02 v0.2.6 §1.8.                                                    |
+| Idea                               | Path                  | Tier               | Recommendation                                                                                                                                                                      |
+| ---------------------------------- | --------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8.1 Elm-style didactic errors      | additive              | 2                  | Build incrementally now — it IS the G1 promise. Extend `Diag` + a `mimz explain <CODE>` long-form. Diagrams must depict real hardware (honesty).                                    |
+| 8.2 Contracts `requires`/`ensures` | additive              | 3 (after `prove`)  | Edition-safe. Caller-side `requires` (compile-time div-by-zero) is the high-value half. Reserve the two keywords now.                                                               |
+| 8.3 Fixed-point `fixed[N,F]`       | additive              | 3                  | Highest standalone educational/DSP value. Needs float literals + a rounding/overflow spec section (the honest part). Reserve `fixed` now.                                           |
+| 8.4 `$comptime` / `$if`            | additive (split)      | 3 / 4              | Adopt item-level const-`if` (a **keyword**, not a `$` sigil). Reject the general comptime interpreter — `repeat`+const-`if` cover ~90%.                                             |
+| 8.5 Hardware REPL                  | tool, not syntax      | 3 (Phase 4)        | Rides the approved WASM playground + Phase 1.5 sim evaluator. Scope to combinational. No syntax cost.                                                                               |
+| 8.6 Pipe `\|>`                     | additive              | 3 (blocked)        | Needs callables (only builtins exist, E1110) AND is a 2nd way to write calls (G1 one-way). Park until extension functions land.                                                     |
+| 8.7 Spread `..bus` (wiring)        | additive              | 3 (after bundles)  | Rank-1 honesty tension — implicit wiring hides connectivity. Allow only spreading a **declared interface type**; keep expansion greppable.                                          |
+| 8.8 Struct update `..old`          | additive              | 3 (after bundles)  | Clean FSM ergonomics, low risk. Base is named, stays honest. `struct` already reserved.                                                                                             |
+| 8.9 Chained comparison             | **additive widening** | ✅ DONE 2026-06-13 | **Allowed** — monotonic one-direction chain desugars to `&&` (`comparison_chain` in `src/parser/expr.rs`); mixed-direction + `==`/`!=` chains stay E1109. spec/02 v0.2.6 section 3. |
+| 8.10 Range slice `[8..16]`         | **breaking**          | ✅ DONE 2026-06-13 | **Ratified `[hi:lo]` as final; break rejected** — universal hardware vocabulary wins; no range form. spec/02 v0.2.6 section 1.8.                                                    |
 
 ### The `..` operator (recommendation)
 
@@ -759,8 +759,8 @@ features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specce
 2. **Reserve the `..` spread operator** when interfaces/bundles (2.4) are specced
    (lexer/grammar matter, not the keyword table).
 3. ~~**Decide 8.9**~~ ✅ **DONE 2026-06-13** — monotonic chained comparison allowed
-   (`comparison_chain`, spec/02 v0.2.6 §3).
+   (`comparison_chain`, spec/02 v0.2.6 section 3).
 4. ~~**Ratify `[hi:lo]` slicing as final**~~ ✅ **DONE 2026-06-13** — break rejected,
-   `[hi:lo]`/`{a,b}` are canonical (spec/02 v0.2.6 §1.8).
+   `[hi:lo]`/`{a,b}` are canonical (spec/02 v0.2.6 section 1.8).
 5. Everything else (8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8) is additive / edition-safe →
    can land after v0.1.0 with no breakage; none of it pressures the freeze date.
