@@ -7,13 +7,14 @@
 
 mod lsp;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser as ClapParser, Subcommand};
 
 use mimz::project::{LoadError, LoadedFile};
-use mimz::{ast, checker, diag, emit_verilog, lexer, project};
+use mimz::{ast, checker, diag, emit_verilog, lexer, parser, project, sim};
 
 /// Top-level CLI definition. The `///` docs on [`Cmd`] variants and fields
 /// double as the `--help` text (clap derive).
@@ -28,8 +29,8 @@ struct Cli {
     command: Cmd,
 }
 
-/// The `mimz` subcommands. Planned but not yet implemented: `translate`,
-/// `fmt`, `test`, `sim` (docs/plan/).
+/// The `mimz` subcommands. Planned but not yet implemented: `fmt`, `test`,
+/// and the full `sim` (docs/plan/); `eval` below is its combinational slice.
 #[derive(Subcommand)]
 enum Cmd {
     /// Lex + parse + check a file and report errors (no output written)
@@ -57,6 +58,39 @@ enum Cmd {
     /// Run the language server over stdio (diagnostics-only v0;
     /// editors launch this — not for interactive use)
     Lsp,
+    /// Explain a diagnostic code in depth (e.g. `mimz explain E0501`)
+    Explain {
+        /// The diagnostic code to explain (case-insensitive, e.g. E0501)
+        code: String,
+    },
+    /// Reskin a file's keywords into another flavor — lossless (word-order
+    /// `--order thamizh` lands in Phase 1.8; this is flavor-only)
+    Translate {
+        /// The .mimz file to translate
+        file: PathBuf,
+        /// Target keyword flavor: english | tanglish | tamil
+        #[arg(long)]
+        to: String,
+        /// Output path (default: print the result to stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// (experimental) Evaluate a combinational module's outputs from inputs.
+    /// Combinational only — no clocks/regs/instances (that is the Phase 1.5
+    /// simulator); a slice of it, for quick checks and the future REPL.
+    Eval {
+        /// The .mimz file
+        file: PathBuf,
+        /// Input values, comma-separated: `--in a=3,b=5` (dec/0x/0b)
+        #[arg(long = "in", value_name = "NAME=VAL,...")]
+        inputs: String,
+        /// Parameter overrides, comma-separated: `--param WIDTH=4`
+        #[arg(long, default_value = "")]
+        param: String,
+        /// Which module to evaluate (default: the file's only module)
+        #[arg(long)]
+        module: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -66,6 +100,149 @@ fn main() -> ExitCode {
         Cmd::Lsp => {
             lsp::run();
             ExitCode::SUCCESS
+        }
+        Cmd::Explain { code } => explain_code(&code),
+        Cmd::Translate { file, to, output } => translate_file(&file, &to, output),
+        Cmd::Eval {
+            file,
+            inputs,
+            param,
+            module,
+        } => eval_file(&file, &inputs, &param, module),
+    }
+}
+
+/// `mimz eval <file> --in a=3,b=5` — interpret a combinational module and print
+/// each output. Lexes/parses the file directly (no import resolution — the
+/// evaluator is single-module, combinational only) and reports a clear message
+/// on anything out of that scope.
+fn eval_file(path: &Path, inputs: &str, param: &str, module: Option<String>) -> ExitCode {
+    let src = match project::read_source(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let path_str = path.display().to_string();
+    let tokens = match lexer::lex(&src) {
+        Ok(t) => t,
+        Err(diags) => return Output::Human.one_file(&diags, &src, &path_str),
+    };
+    let file = match parser::parse(tokens) {
+        Ok(f) => f,
+        Err(diags) => return Output::Human.one_file(&diags, &src, &path_str),
+    };
+    let inputs = match parse_bindings(inputs, parse_u128) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let params = match parse_bindings(param, |s| parse_u128(s).map(|v| v as i128)) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match sim::comb::eval_outputs(&file, module.as_deref(), &inputs, &params) {
+        Ok(outputs) => {
+            for o in outputs {
+                let kind = if o.signed { "signed" } else { "bits" };
+                println!("{} = {}  ({kind}[{}])", o.name, o.value, o.width);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Parse `name=val,name=val` into a map, applying `val_parser` to each value.
+/// An empty string is an empty map.
+fn parse_bindings<T>(
+    s: &str,
+    val_parser: impl Fn(&str) -> Result<T, String>,
+) -> Result<BTreeMap<String, T>, String> {
+    let mut map = BTreeMap::new();
+    for part in s.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let (name, val) = part
+            .split_once('=')
+            .ok_or_else(|| format!("expected `name=value`, got `{part}`"))?;
+        map.insert(name.trim().to_string(), val_parser(val.trim())?);
+    }
+    Ok(map)
+}
+
+/// Parse a `u128` literal in decimal, `0x` hex, or `0b` binary.
+fn parse_u128(s: &str) -> Result<u128, String> {
+    let parsed = if let Some(hex) = s.strip_prefix("0x") {
+        u128::from_str_radix(hex, 16)
+    } else if let Some(bin) = s.strip_prefix("0b") {
+        u128::from_str_radix(bin, 2)
+    } else {
+        s.parse::<u128>()
+    };
+    parsed.map_err(|_| format!("`{s}` is not a number (use decimal, 0x.., or 0b..)"))
+}
+
+/// `mimz translate <file> --to <flavor>` — reskin the file's keywords into the
+/// target flavor and write the result (default: stdout). Lossless; fails only
+/// if the source doesn't lex (surfaced like any other one-file diagnostic).
+fn translate_file(path: &Path, to: &str, output: Option<PathBuf>) -> ExitCode {
+    let Some(flavor) = mimz::translate::parse_flavor(to) else {
+        eprintln!("error: unknown flavor `{to}` — expected english, tanglish, or tamil");
+        return ExitCode::FAILURE;
+    };
+    let src = match project::read_source(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match mimz::translate::translate(&src, flavor) {
+        Ok(text) => match output {
+            Some(out_path) => {
+                if let Err(e) = std::fs::write(&out_path, &text) {
+                    eprintln!("error: cannot write `{}`: {e}", out_path.display());
+                    return ExitCode::FAILURE;
+                }
+                println!(
+                    "translated {} -> {} ({})",
+                    path.display(),
+                    out_path.display(),
+                    mimz::translate::flavor_name(flavor)
+                );
+                ExitCode::SUCCESS
+            }
+            None => {
+                print!("{text}");
+                ExitCode::SUCCESS
+            }
+        },
+        Err(diags) => Output::Human.one_file(&diags, &src, &path.display().to_string()),
+    }
+}
+
+/// `mimz explain <CODE>` — print the long-form teaching text for a diagnostic
+/// code on stdout, or a friendly "unknown code" message (listing the valid
+/// ones) on stderr. Backed by the lib so editors/WASM share the same catalog.
+fn explain_code(code: &str) -> ExitCode {
+    match mimz::explain::explain(code) {
+        Some(text) => {
+            println!("{text}");
+            ExitCode::SUCCESS
+        }
+        None => {
+            eprintln!("error: no explanation for `{code}` — is it a real diagnostic code?");
+            let codes: Vec<&str> = mimz::explain::codes().collect();
+            eprintln!("known codes: {}", codes.join(", "));
+            ExitCode::FAILURE
         }
     }
 }

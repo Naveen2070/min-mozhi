@@ -3,7 +3,7 @@
 > **Get something working end-to-end.**
 > Window: months 3–7 · Target: **31 Dec 2026** (solo, ~8–10 h/wk) ·
 > Status: 🟢 **COMPLETE 2026-06-12** — every work item ticked, gating and
-> non-gating (150 tests; the 31 Dec 2026 target beaten by six months).
+> non-gating (160 tests at completion; the 31 Dec 2026 target beaten by six months).
 > v0.1.0 tag is the founder's call.
 
 ## Goal

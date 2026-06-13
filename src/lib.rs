@@ -20,6 +20,14 @@
 //! | [`emit_verilog`]| AST → Verilog-2005 text (+ Tamil→ASCII transliteration)    |
 //! | [`project`]     | File loading, NFC normalization, `import` resolution       |
 //!
+//! Tooling modules consume the pipeline above (they are not stages in it):
+//!
+//! | Module          | Role                                                       |
+//! | --------------- | ---------------------------------------------------------- |
+//! | [`explain`]     | Long-form teaching text per E-code (`mimz explain`)        |
+//! | [`translate`]   | Keyword-flavor reskin (`mimz translate --to`)              |
+//! | [`sim`]         | Combinational evaluator (`mimz eval`) — Phase 1.5 slice    |
+//!
 //! This table is mechanically checked against the `mod` list by
 //! `tests/docs_sync.rs` — add a module, add a row (and a docs/code/ page).
 //!
@@ -29,7 +37,10 @@ pub mod ast;
 pub mod checker;
 pub mod diag;
 pub mod emit_verilog;
+pub mod explain;
 pub mod lexer;
 pub mod parser;
 pub mod project;
+pub mod sim;
 pub mod span;
+pub mod translate;

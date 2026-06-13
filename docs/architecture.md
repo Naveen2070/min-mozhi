@@ -3,9 +3,10 @@
 > Living document (RULES.md R3: update whenever components or data flow change).
 > Status: **Phase 1 complete** (2026-06-12) — lexer, parser, full checker
 > (six passes), Verilog emitter (repeat unrolling, transliteration,
-> signed), CLI (`check`/`compile`/`lsp`, `--json`), LSP v0, all
-> Icarus-validated. Simulator and IR are still design.
-> Last updated: 2026-06-12
+> signed), CLI (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`,
+> `--json`), LSP v0, all Icarus-validated. The full simulator and IR are
+> still design (`eval` is the combinational slice only).
+> Last updated: 2026-06-13 (quick-wins tooling: explain/translate/eval)
 
 ---
 
@@ -43,7 +44,11 @@
  └─────────────────────────────────────────────────┘
 
  side tools (share lexer/parser/AST + pretty-printer):
-   mimz translate  — flavor/order conversion (lossless, trivia-preserving)
+   mimz translate  — flavor reskin ✅ 2026-06-13 (--to; lossless, token-level);
+                     word-order (--order thamizh) in Phase 1.8
+   mimz explain    — long-form text per E-code ✅ 2026-06-13 (lib `explain`)
+   mimz eval       — combinational evaluator ✅ 2026-06-13 (lib `sim::comb`;
+                     a slice of the Phase 1.5 simulator — no clocks/regs yet)
    mimz fmt        — formatter
    mimz lsp        — language server ✅ v0 SHIPPED 2026-06-12
                      (diagnostics-only; hover/go-to-def in Phase 4)

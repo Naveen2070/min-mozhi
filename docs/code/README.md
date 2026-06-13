@@ -40,6 +40,7 @@ is a bug — fix it the same day (RULES R1).
 | [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test         |
 | [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning       |
 | [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report    |
+| [`13-tooling.md`](13-tooling.md)                                 | Tooling modules: `explain`, `translate`, and the `sim` combinational eval |
 
 ## The 60-second version
 
@@ -60,6 +61,12 @@ is a bug — fix it the same day (RULES R1).
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
+Three **tooling** modules consume the pipeline rather than forming a stage in
+it (page 13): `explain` (long-form text per E-code, `mimz explain`),
+`translate` (keyword-flavor reskin, `mimz translate`), and `sim` (the
+combinational evaluator behind `mimz eval`, a slice of the Phase 1.5
+simulator).
+
 ## Keeping these docs honest
 
 The structural facts in this folder (module lists, file-layout tables)
@@ -69,7 +76,10 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-13 (adds: monotonic chained comparison
+_Last synced with the code: 2026-06-13 (adds: the quick-wins tooling block —
+`explain` (`mimz explain <CODE>`), `translate` (`mimz translate --to <flavor>`),
+and `sim::comb` (`mimz eval`), documented in page 13; and earlier the same day:
+monotonic chained comparison
 `a <= b <= c` in the parser; the `window` example; the `mimz-bench` memory
 metric (peak RSS) + an upgraded HTML report; a `criterion` per-phase
 micro-benchmark harness (`benches/compile.rs`, `cargo bench`); CI extended
