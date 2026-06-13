@@ -6,6 +6,12 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  # Manual "run the perf batch" button (Actions tab → CI → Run workflow).
+  workflow_dispatch:
+  # Nightly perf batch — disabled for now. Uncomment to schedule it (03:00
+  # UTC); the nightly-bench job already accepts this trigger.
+  # schedule:
+  #   - cron: "0 3 * * *"
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,6 +20,7 @@ jobs:
   check:
     name: fmt + clippy + test
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v6
 
@@ -33,6 +40,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Rustdoc (warnings are errors)
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
       - name: Tests
         # REQUIRE_IVERILOG turns a missing Icarus install into a hard
         # failure — CI must never silently skip the differential tests.
@@ -43,9 +55,71 @@ jobs:
       - name: Build
         run: cargo build
 
+      - name: Compile benches (criterion harness must not bit-rot)
+        # --no-run type-checks benches/compile.rs without timing anything —
+        # microbench timings on shared runners are too noisy to gate on.
+        run: cargo bench --no-run
+
+  bench:
+    name: mimz-bench correctness gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run mimz-bench (exit code is the gate)
+        # Non-zero on any accuracy/safety failure: goldens, 4-flavor
+        # byte-identity, error fixtures, no-false-positives. --no-cov skips the
+        # slow llvm-cov rerun; --no-icarus because the Icarus differential
+        # layer is already hard-gated in `check` via REQUIRE_IVERILOG.
+        run: cargo run --release --bin mimz-bench -- --no-cov --no-icarus
+
+  nightly-bench:
+    name: perf batch (manual / nightly)
+    runs-on: ubuntu-latest
+    # Manual dispatch now; also runs on `schedule` if the cron is uncommented.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Icarus Verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      - name: Restore benchmark history
+        # Rolling cache: restore the latest previous history, the run appends
+        # to it, and it is saved under a fresh key after the job — a growing
+        # trend without committing the gitignored file.
+        uses: actions/cache@v5
+        with:
+          path: bench-history.jsonl
+          key: bench-history-${{ github.run_id }}
+          restore-keys: bench-history-
+
+      - name: Run mimz-bench batch (100 iterations)
+        run: cargo run --release --bin mimz-bench -- --no-cov --iterations 100
+
+      - name: Upload report
+        uses: actions/upload-artifact@v5
+        with:
+          name: bench-report
+          path: |
+            bench-report.html
+            bench-report.json
+
   docs:
     name: markdown lint + format
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v6
 

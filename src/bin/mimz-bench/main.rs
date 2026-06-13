@@ -61,6 +61,9 @@ fn main() -> ExitCode {
     );
     let speed = metrics::measure_speed(cli.iterations);
 
+    println!("mimz-bench: measuring memory (peak RSS over the corpus)...");
+    let memory = metrics::measure_memory();
+
     println!("mimz-bench: measuring accuracy (goldens, flavors, Icarus)...");
     if !cli.no_icarus && metrics::iverilog_bin().is_none() {
         println!("  note: iverilog not found — Icarus layers will be skipped");
@@ -80,6 +83,7 @@ fn main() -> ExitCode {
     let report = metrics::BenchReport {
         meta: metrics::collect_meta(cli.iterations),
         speed,
+        memory,
         accuracy,
         safety,
         coverage,
@@ -149,6 +153,10 @@ fn print_summary(report: &metrics::BenchReport, cli: &Cli) {
     println!(
         "  pipeline total {:.1} ms (median of {}), {:.0} LOC/s",
         report.speed.total_ms, report.meta.iterations, report.speed.loc_per_sec
+    );
+    println!(
+        "  peak RSS over corpus               {:.1} MB",
+        report.memory.peak_rss_mb
     );
     rate("golden-file match", &report.accuracy.golden);
     rate("flavor byte-identity", &report.accuracy.flavor_identity);

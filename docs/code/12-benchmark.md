@@ -1,11 +1,17 @@
 # 12 — Benchmark Harness (`mimz-bench`)
 
 The repo's benchmark & validation harness: one run measures **speed,
-accuracy, safety, and coverage**, then writes an **HTML report with
-graphs** plus a machine-readable JSON twin. It is a separate binary
+memory, accuracy, safety, and coverage**, then writes an **HTML report
+with graphs** plus a machine-readable JSON twin. It is a separate binary
 (decision 2026-06-12) — NOT a `mimz` subcommand — because it measures
 the corpora under `examples/` and `tests/`, which only exist in a
 checkout.
+
+For per-phase micro-timings (lexer vs parser vs checker vs emit) there is
+a **separate** `criterion` harness, `benches/compile.rs`, run with
+`cargo bench`. The two are complementary: `mimz-bench` tracks the whole
+corpus and gates correctness; `criterion` does statistical per-phase
+regression timing. See `docs/Ideas/benchmark_plan.md` for the roadmap.
 
 ```text
 cargo run --release --bin mimz-bench              # full run (Icarus + cargo-llvm-cov)
@@ -18,12 +24,13 @@ absence, not the compiler.
 
 ## What it measures
 
-| Section      | Metrics                                                                                                                                                | Source of truth                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| **Speed**    | per-phase wall time (load+parse / check / emit) per base example, **median** of N iterations (`--iterations`, default 5); total LOC/s throughput       | the lib pipeline, timed with `std::time::Instant`                        |
-| **Accuracy** | golden-file match rate, 4-flavor byte-identity rate, `iverilog -t null` accept rate, self-checking testbench PASS rate                                 | `tests/golden/`, `tests/icarus/` (Icarus skipped gracefully if missing)  |
-| **Safety**   | error-fixture rate (each fixture's diagnostics contain its declared E-code **with** a help line), false-positive rate (every example must check clean) | `tests/fixtures/errors/`, `mimz::diag::ALL_CHECKER_CODES`                |
-| **Coverage** | corpus: codes-with-fixture, examples-with-golden/-testbench, flavor completeness; code: line/function/region % via cargo-llvm-cov                      | computed internally; `cargo llvm-cov --json --summary-only` for real cov |
+| Section      | Metrics                                                                                                                                                                     | Source of truth                                                          |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Speed**    | per-phase wall time (load+parse / check / emit) per base example, **median** of N iterations (`--iterations`, default 5; one untimed warm-up first); total LOC/s throughput | the lib pipeline, timed with `std::time::Instant`                        |
+| **Memory**   | peak process RSS (MB) observed while compiling the whole corpus in one pass — coarse high-water mark, not a per-allocation heap figure                                      | `memory-stats` (no allocator swap, so it rides a normal run)             |
+| **Accuracy** | golden-file match rate, 4-flavor byte-identity rate, `iverilog -t null` accept rate, self-checking testbench PASS rate                                                      | `tests/golden/`, `tests/icarus/` (Icarus skipped gracefully if missing)  |
+| **Safety**   | error-fixture rate (each fixture's diagnostics contain its declared E-code **with** a help line), false-positive rate (every example must check clean)                      | `tests/fixtures/errors/`, `mimz::diag::ALL_CHECKER_CODES`                |
+| **Coverage** | corpus: codes-with-fixture, examples-with-golden/-testbench, flavor completeness; code: line/function/region % via cargo-llvm-cov                                           | computed internally; `cargo llvm-cov --json --summary-only` for real cov |
 
 The harness **re-measures what the test suite asserts**: `cargo test`
 answers pass/fail; `mimz-bench` answers _how fast, how complete, and is
@@ -31,11 +38,11 @@ it trending the right way_ — and renders it for humans.
 
 ## Outputs (all gitignored — regenerate any time)
 
-| File                  | Contents                                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `bench-report.html`   | The graph report: verdict banner, summary cards, stacked timing bars, rate bars, coverage doughnut, trend line |
-| `bench-report.json`   | The full `BenchReport`, machine-readable (same data the HTML embeds)                                           |
-| `bench-history.jsonl` | One JSON line per run (timestamp, git rev, headline numbers) — feeds the trend chart                           |
+| File                  | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bench-report.html`   | The graph report, in two bands. **This run:** verdict banner, summary cards (golden, flavor identity, fixtures, testbenches, peak RSS, line + function coverage), stacked per-example timing bars, rate bars, and a line/function/region coverage breakdown (corpus-completeness doughnut when llvm-cov is skipped). **Across runs:** four trend charts — validation rates (golden, fixtures, flavor identity, no-false-positives, help lines, line coverage on one 0–105 % axis), pipeline time (ms), throughput (LOC/s), peak memory (MB) — plus a run-details table |
+| `bench-report.json`   | The full `BenchReport`, machine-readable (same data the HTML embeds)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `bench-history.jsonl` | One JSON line per run (timestamp, git rev, `total_ms`, `loc_per_sec`, the validation rates — `golden_pct`, `fixture_pct`, `flavor_identity_pct`, `clean_pct`, `help_pct` — `llvm_line_pct`, `peak_rss_mb`) — feeds the trend charts. New fields are `#[serde(default)]`, so older lines still parse and simply show as gaps                                                                                                                                                                                                                                            |
 
 The HTML pulls Chart.js from the jsDelivr CDN (user decision
 2026-06-12): the file is a single portable page, but drawing the charts

@@ -228,6 +228,11 @@ pass/fail — so its own logic is unit-tested here:
 | `report_renders_a_complete_page` (html)    | the HTML report renders whole: charts, tables, embedded JSON   |
 | `failures_flip_the_verdict_and_are_listed` | a failing validation turns the verdict red and is named        |
 
+The `criterion` micro-benchmark harness (`benches/compile.rs`, run with
+`cargo bench`) carries **no `#[test]`s** — `criterion` benchmarks aren't
+test functions, so it doesn't affect the count above. It's a separate
+performance tool, not part of the assertion suite.
+
 ## Deliberately NOT covered (and what would close each gap)
 
 | Gap                                                     | Why it's open                                                                                                            | Closes when                                                 |

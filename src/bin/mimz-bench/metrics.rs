@@ -68,6 +68,7 @@ pub fn repo() -> PathBuf {
 pub struct BenchReport {
     pub meta: Meta,
     pub speed: Speed,
+    pub memory: Memory,
     pub accuracy: Accuracy,
     pub safety: Safety,
     pub coverage: Coverage,
@@ -127,6 +128,16 @@ pub struct ExampleTiming {
     pub load_ms: f64,
     pub check_ms: f64,
     pub emit_ms: f64,
+}
+
+#[derive(Serialize)]
+pub struct Memory {
+    /// Peak process resident set (MB) observed while compiling the whole
+    /// corpus in one pass. Coarse but honest — the real OS-reported RSS
+    /// high-water mark, not a per-allocation heap figure (that's the opt-in
+    /// dhat profile, docs/Ideas/benchmark_plan.md Phase 3). 0.0 if the
+    /// platform doesn't report RSS.
+    pub peak_rss_mb: f64,
 }
 
 #[derive(Serialize)]
@@ -190,6 +201,18 @@ pub struct HistoryEntry {
     pub golden_pct: f64,
     pub fixture_pct: f64,
     pub llvm_line_pct: Option<f64>,
+    /// Peak RSS (MB). `#[serde(default)]` so history lines written before
+    /// this field existed still parse (they read back as None).
+    #[serde(default)]
+    pub peak_rss_mb: Option<f64>,
+    // More validation rates for the trend chart. `#[serde(default)]` (None)
+    // keeps pre-existing history lines parseable — they show as gaps.
+    #[serde(default)]
+    pub flavor_identity_pct: Option<f64>,
+    #[serde(default)]
+    pub clean_pct: Option<f64>,
+    #[serde(default)]
+    pub help_pct: Option<f64>,
 }
 
 impl HistoryEntry {
@@ -202,6 +225,10 @@ impl HistoryEntry {
             golden_pct: r.accuracy.golden.percent(),
             fixture_pct: r.safety.fixtures.percent(),
             llvm_line_pct: r.coverage.llvm.as_ref().map(|l| l.line_percent),
+            peak_rss_mb: Some(r.memory.peak_rss_mb),
+            flavor_identity_pct: Some(r.accuracy.flavor_identity.percent()),
+            clean_pct: Some(r.safety.clean_examples.percent()),
+            help_pct: Some(r.safety.help_lines.percent()),
         }
     }
 }
@@ -261,6 +288,19 @@ pub fn measure_speed(iterations: usize) -> Speed {
         let mut checks = Vec::new();
         let mut emits = Vec::new();
         let mut loc = 0usize;
+
+        // Warm-up: one untimed full pipeline so the OS file cache and branch
+        // predictors are hot before the timer starts. Decouples disk-read
+        // noise from compiler speed and makes `--iterations 1` honest.
+        {
+            let files = load(&path).expect("examples compile — gated by cargo test");
+            let mut asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+            checker::check(&asts).expect("examples check clean");
+            emit_verilog::transliterate(&mut asts);
+            let proj = emit_verilog::Project::from_files(&asts).expect("project builds");
+            emit_verilog::emit(&proj, &asts).expect("examples emit");
+        }
+
         for _ in 0..iterations.max(1) {
             let t = Instant::now();
             let files = load(&path).expect("examples compile — gated by cargo test");
@@ -306,6 +346,32 @@ pub fn measure_speed(iterations: usize) -> Speed {
 pub fn median(xs: &mut [f64]) -> f64 {
     xs.sort_by(|a, b| a.partial_cmp(b).expect("timings are finite"));
     if xs.is_empty() { 0.0 } else { xs[xs.len() / 2] }
+}
+
+// --------------------------------------------------------------- memory
+
+/// Peak process RSS observed while compiling the whole corpus in one pass.
+/// Every emitted string is retained in a sink so the allocator can't reclaim
+/// it between files — we want the corpus's true high-water mark, sampled
+/// after each compile. Lightweight (no allocator swap), so it's safe to run
+/// in a normal `mimz-bench` invocation.
+pub fn measure_memory() -> Memory {
+    let mut peak = current_rss_mb();
+    let mut sink: Vec<String> = Vec::new();
+    for path in all_example_files() {
+        if let Ok(v) = compile_to_verilog(&path) {
+            sink.push(v);
+        }
+        peak = peak.max(current_rss_mb());
+    }
+    std::hint::black_box(&sink);
+    Memory { peak_rss_mb: peak }
+}
+
+fn current_rss_mb() -> f64 {
+    memory_stats::memory_stats()
+        .map(|m| m.physical_mem as f64 / (1024.0 * 1024.0))
+        .unwrap_or(0.0)
 }
 
 // ------------------------------------------------------------- accuracy

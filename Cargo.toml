@@ -16,10 +16,24 @@ serde_json = "1"
 toml = "0.8"
 unicode-ident = "1"
 unicode-normalization = "0.1"
+# Peak process RSS for the mimz-bench memory metric. Lightweight (no
+# allocator swap), so it coexists with a normal timed run — unlike the
+# opt-in dhat profile. See docs/Ideas/benchmark_plan.md Phase 3.
+memory-stats = "1"
 # LSP server (`mimz lsp`, bin-only module — the lib itself stays
 # async-free so the Phase 4 WASM build never meets tokio).
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
 tower-lsp = "0.20"
+
+[dev-dependencies]
+# Statistical per-phase micro-benchmarks (a SEPARATE harness from mimz-bench;
+# run with `cargo bench`). See docs/Ideas/benchmark_plan.md Phase 2.
+criterion = "0.5"
+
+# Per-phase micro-benchmarks: isolate lexer/parser/checker/emit timings.
+[[bench]]
+name = "compile"
+harness = false
 
 [profile.release]
 lto = true
