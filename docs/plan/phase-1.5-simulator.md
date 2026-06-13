@@ -32,6 +32,9 @@ Icarus or any external tool involved.
       failure pause and allow cycle-by-cycle `step back` — feasible because this
       simulator records the full trace; designs are small, history is cheap.
       Post-v1 stretch: VCD + kernel come first
+- Note: the combinational evaluator built here is what the Phase 4 hardware
+  REPL (idea 8.5, `language_plan.md` section 9) rides on — keep it callable on a
+  single expression, not only a full design.
 
 ## Milestone
 
