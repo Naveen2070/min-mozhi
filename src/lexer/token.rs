@@ -35,6 +35,8 @@ pub enum Kw {
     And,
     Or,
     Not,
+    Syntax,
+    Thamizh,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).

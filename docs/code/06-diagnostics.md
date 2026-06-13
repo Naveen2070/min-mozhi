@@ -89,6 +89,7 @@ will key off them — never renumber.
 | E1109 | chained comparison                                         |
 | E1110 | call errors (not a builtin, wrong arity)                   |
 | E1111 | parameter/const type is not `int`/`bool`                   |
+| E1112 | unknown `syntax` profile (only `thamizh` is valid)         |
 | E1201 | imported file does not exist                               |
 
 Grouping rule: E1101 deliberately covers the whole expected/found

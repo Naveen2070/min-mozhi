@@ -110,11 +110,13 @@ mimz/
       keywords.rs        #   keywords.toml loader (REQUIRED_KEYS)
       tests.rs           #   unit tests
     parser/              # E11xx                                ✅
-      mod.rs             #   entry, Parser state, plumbing
-      items.rs           #   file/module/seq/test items
+      mod.rs             #   entry, Parser state + Profile, plumbing
+      items.rs           #   file/module/seq/test items; syntax directive +
+                         #     clocked-block flip (P1.8 keystone)
       expr.rs            #   precedence climbing, patterns
       tests.rs           #   unit tests
-      thamizh_order.rs   #   (P1.8) flipped clause heads
+      # thamizh_order.rs #   (P1.8, planned) the remaining flips move here
+                         #     once the expr-first conditional/match path lands
     emit_verilog/        #                                      ✅
       mod.rs             #   Project symtab, entry, helpers
       module.rs          #   shells, instances, always-blocks

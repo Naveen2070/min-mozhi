@@ -1,7 +1,16 @@
-//! Recursive-descent parser for the `code-order` profile (spec/02 section 5).
-//! The `thamizh-order` profile (spec/04) arrives in Phase 1.8 — it will
-//! share every expression/declaration routine here and flip only the
-//! clause heads.
+//! Recursive-descent parser. Two word-order profiles share every
+//! expression/declaration routine and differ only at the clause heads
+//! (spec/04, the Phase 1.8 grammar engine):
+//!
+//! - `code-order` (default, spec/02 section 5): English-derived order.
+//! - `thamizh-order` (`syntax thamizh` directive): SOV/postpositional clause
+//!   heads. It produces the EXACT same AST — the profile is consumed by the
+//!   `syntax_directive` routine and never reaches the tree, so a thamizh-order
+//!   file and its code-order twin emit byte-identical Verilog.
+//!
+//! Slice landed so far: the directive + the clocked-block flip
+//! (`rise(clk) on { }`). The conditional / match / test flips and the
+//! `translate --order` pretty-printer are the remaining 1.8 work items.
 //!
 //! Module layout:
 //! - `mod.rs`   — entry point, `Parser` state, token plumbing, error recovery
@@ -26,6 +35,7 @@ pub fn parse(toks: Vec<Token>) -> Result<File, Vec<Diag>> {
         toks,
         pos: 0,
         diags: Vec::new(),
+        profile: Profile::CodeOrder,
     };
     let file = p.file();
     if p.diags.is_empty() {
@@ -35,6 +45,17 @@ pub fn parse(toks: Vec<Token>) -> Result<File, Vec<Diag>> {
     }
 }
 
+/// Word-order profile (spec/04). Selected once by the optional leading
+/// `syntax thamizh` directive; it only steers which clause-head productions
+/// the parser uses — it has no effect on the resulting AST.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Profile {
+    /// English-derived order (spec/02 section 5). The default — no directive.
+    CodeOrder,
+    /// SOV/postpositional clause heads (`syntax thamizh`).
+    Thamizh,
+}
+
 /// Parser state: a cursor over the token stream plus collected errors.
 /// Parse routines return `Option<T>` — `None` means "errored, diagnostics
 /// already recorded; caller decides where to recover".
@@ -42,6 +63,8 @@ pub(crate) struct Parser {
     toks: Vec<Token>,
     pos: usize,
     diags: Vec<Diag>,
+    /// The active word-order profile, set by the `syntax` directive.
+    profile: Profile,
 }
 
 /// Token plumbing and error recovery, shared by `items.rs` and `expr.rs`.
