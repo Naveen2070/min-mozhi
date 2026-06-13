@@ -87,10 +87,10 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 26] = [
+const REQUIRED_KEYS: [&str; 28] = [
     "module", "in", "out", "wire", "reg", "clock", "reset", "on", "rise", "if", "else", "match",
     "enum", "let", "const", "repeat", "import", "true", "false", "test", "for", "tick", "expect",
-    "and", "or", "not",
+    "and", "or", "not", "syntax", "thamizh",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -110,11 +110,22 @@ pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
         by_kw.insert(kw, [s.en.clone(), s.tanglish.clone(), s.tamil.clone()]);
         let mut column = |spellings: Vec<&String>, flavor: Flavor| {
             for spelling in spellings {
-                let prev = map.insert(spelling.clone(), (kw, flavor));
-                assert!(
-                    prev.is_none(),
-                    "keywords.toml: spelling `{spelling}` appears twice — all spellings (canonical + aliases) must be disjoint"
-                );
+                // A spelling may repeat ACROSS columns of the SAME keyword
+                // (e.g. the profile name `thamizh` is identical in the English
+                // and Tanglish columns) — that is unambiguous. What must never
+                // happen is one spelling resolving to two DIFFERENT keywords.
+                // First column wins the recorded flavor (English before
+                // Tanglish before Tamil), which is irrelevant to lexing since
+                // the keyword is the same either way.
+                if let Some((prev_kw, _)) = map.get(spelling) {
+                    assert!(
+                        *prev_kw == kw,
+                        "keywords.toml: spelling `{spelling}` maps to two different keywords — \
+                         spellings across different keywords must be disjoint"
+                    );
+                    continue;
+                }
+                map.insert(spelling.clone(), (kw, flavor));
             }
         };
         column(
@@ -169,6 +180,8 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "and" => Kw::And,
         "or" => Kw::Or,
         "not" => Kw::Not,
+        "syntax" => Kw::Syntax,
+        "thamizh" => Kw::Thamizh,
         _ => return None,
     })
 }

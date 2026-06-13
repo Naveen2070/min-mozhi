@@ -1,0 +1,22 @@
+// Thamizh-order twin of examples/tanglish/counter.mimz (spec/04, Phase 1.8).
+// Same identifiers, same keywords (Tanglish) — only the WORD ORDER differs:
+// the `ilakkanam thamizh` directive selects SOV order, so the clocked block
+// reads `yetram(clk) pothu { }` (edge first, `on` trailing) instead of the
+// code-order `pothu yetram(clk) { }`. It must compile to byte-identical
+// Verilog as its code-order twin — the same-AST guarantee.
+ilakkanam thamizh
+
+thoguthi Counter(WIDTH: int = 8) {
+  kadigaram clk
+  meetamai rst
+
+  veli count: bits[WIDTH]
+
+  nilai value: bits[WIDTH] = 0
+
+  yetram(clk) pothu {
+    value <- value +% 1
+  }
+
+  count = value
+}

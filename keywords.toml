@@ -16,7 +16,7 @@
 # so v0.1 programs cannot claim them, untranslated until each feature lands
 # (spec/03 section "Reserved words").
 reserved = [
-  "fall", "syntax", "ilakkanam", "இலக்கணம்", "mem", "sync", "inout", "struct",
+  "fall", "mem", "sync", "inout", "struct",
   "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "await",
   "fixed", "requires", "ensures",
 ]
@@ -151,3 +151,20 @@ tamil = "அல்லது"
 en = "not"
 tanglish = "illa"
 tamil = "இல்லா"
+
+# Grammar-engine directive (Phase 1.8, spec/04). `syntax thamizh` at the top
+# of a file selects the SOV/postpositional word-order profile; absence of the
+# directive means code-order (the default). The profile NAME `thamizh` is a
+# keyword too — Tamil-script `தமிழ்` cannot be a plain identifier (those stay
+# Latin per R9), so the profile name must lex as a keyword. There is no `code`
+# profile word: code-order is the no-directive default, and inventing a Tamil
+# spelling for "code" would violate R9 (never invent a Tamil/Tanglish word).
+[keywords.syntax]
+en = "syntax"
+tanglish = "ilakkanam"
+tamil = "இலக்கணம்"
+
+[keywords.thamizh]
+en = "thamizh"
+tanglish = "thamizh"
+tamil = "தமிழ்"

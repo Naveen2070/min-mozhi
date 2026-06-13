@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**182 tests** as of 2026-06-13: 141 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 6 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**192 tests** as of 2026-06-13: 146 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 5 grammar integration + 6 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -33,22 +33,27 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 12 tests)
+## Unit: parser (`src/parser/tests.rs`, 17 tests)
 
-| Test                                           | Locks in                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------- |
-| `parses_counter`                               | the canonical example parses; module has the expected 6 items             |
-| `parses_tanglish_counter_to_same_shape`        | Tanglish source → structurally identical AST (the thesis, AST level)      |
-| `rust_precedence_defuses_the_c_trap`           | `x & 1 == 0` parses as `(x & 1) == 0` — **never** change this             |
-| `monotonic_chained_comparison_desugars_to_and` | `0 <= x <= 7` desugars to `(0<=x) && (x<=7)` — the safe Python form (8.9) |
-| `mixed_direction_chain_is_an_error`            | `a < b > c` stays E1109 (the confusing form)                              |
-| `equality_cannot_be_chained`                   | `a == b == c` stays E1109                                                 |
-| `wire_if_without_else_teaches_about_latches`   | mandatory `else` on if-expressions + the latch help text                  |
-| `reg_without_reset_value_is_an_error`          | mandatory reg reset (safety rule)                                         |
-| `assign_arrow_confusion_teaches`               | `=` inside `on` → help text pointing to `<-`                              |
-| `parses_repeat_and_const`                      | `repeat i: 0..8` and file-level `const` parse                             |
-| `parses_test_block`                            | `test "..." for M(...) { tick/expect }` parses                            |
-| `every_parse_error_carries_a_code`             | the E11xx retrofit, locked from outside: no parse error is codeless       |
+| Test                                                        | Locks in                                                                   |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `parses_counter`                                            | the canonical example parses; module has the expected 6 items              |
+| `parses_tanglish_counter_to_same_shape`                     | Tanglish source → structurally identical AST (the thesis, AST level)       |
+| `thamizh_order_on_block_parses_to_the_same_shape`           | `syntax thamizh` + `yetram(clk) pothu { }` → the same module (spec/04)     |
+| `english_syntax_thamizh_directive_also_selects_the_profile` | flavor and word-order profile are orthogonal (`syntax thamizh` in English) |
+| `unknown_syntax_profile_is_e1112`                           | `syntax wibble` → E1112, not silently ignored                              |
+| `flipped_on_block_needs_the_directive`                      | a leading `rise(...)` is a parse error without the directive (gated flip)  |
+| `rust_precedence_defuses_the_c_trap`                        | `x & 1 == 0` parses as `(x & 1) == 0` — **never** change this              |
+| `monotonic_chained_comparison_desugars_to_and`              | `0 <= x <= 7` desugars to `(0<=x) && (x<=7)` — the safe Python form (8.9)  |
+| `mixed_direction_chain_is_an_error`                         | `a < b > c` stays E1109 (the confusing form)                               |
+| `equality_cannot_be_chained`                                | `a == b == c` stays E1109                                                  |
+| `wire_if_without_else_teaches_about_latches`                | mandatory `else` on if-expressions + the latch help text                   |
+| `reg_without_reset_value_is_an_error`                       | mandatory reg reset (safety rule)                                          |
+| `assign_arrow_confusion_teaches`                            | `=` inside `on` → help text pointing to `<-`                               |
+| `parses_repeat_and_const`                                   | `repeat i: 0..8` and file-level `const` parse                              |
+| `parses_test_block`                                         | `test "..." for M(...) { tick/expect }` parses                             |
+| `every_parse_error_carries_a_code`                          | the E11xx retrofit, locked from outside: no parse error is codeless        |
+| `stray_top_level_brace_does_not_hang`                       | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)   |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
@@ -292,15 +297,31 @@ End-to-end `mimz eval` over corpus examples — proves the lib evaluator AND the
 | `multi_module_file_needs_module_flag`     | a 2-module file asks for `--module`, then accepts it              |
 | `instances_are_rejected_clearly`          | a file with sub-module instances is rejected with a clear message |
 
+## Integration: grammar engine (`tests/grammar.rs`, 5 tests — run the real binary)
+
+The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
+profile-blind backend: a thamizh-order file and its code-order twin must emit
+byte-identical Verilog, so equal Verilog proves the same AST. Fixtures live in
+`tests/fixtures/grammar/` (not `examples/`, which stays byte-identical
+four-flavor per R9).
+
+| Test                                                  | Locks in                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin  |
+| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin |
+| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                  |
+| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                    |
+| `flipped_on_block_is_rejected_in_code_order`          | the flip is gated on the profile, not always on                |
+
 ## Deliberately NOT covered (and what would close each gap)
 
-| Gap                                                     | Why it's open                                                                                                                                 | Closes when                                                 |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Cross-INSTANCE clock-domain tracking                    | pass 6 is module-local (instance outputs carry no domain)                                                                                     | with the Phase 2 `sync`/multi-clock design                  |
-| Diagnostic rendering format (`render`'s caret layout)   | low risk, changes are cosmetic                                                                                                                | worth a snapshot test if/when output stabilizes for E-codes |
-| CLI surface (`--tokens`, exit codes, `-o` default path) | thin wrappers; breakage is loud in manual use                                                                                                 | cheap `assert_cmd`-style tests if the CLI grows             |
-| `mimz-bench` end-to-end (a full run as a test)          | it is a measuring tool over this very suite — running it under `cargo test` would re-run everything for no new assertion                      | if its orchestration grows logic worth locking              |
-| `fmt`, grammar engine, full simulator (clocked kernel)  | not built yet (`translate` flavor-reskin and the `sim::comb` combinational slice now exist; word-order `translate` + the event kernel remain) | with their phases (1.8 / 1.5)                               |
+| Gap                                                                      | Why it's open                                                                                                                                                                                        | Closes when                                                 |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Cross-INSTANCE clock-domain tracking                                     | pass 6 is module-local (instance outputs carry no domain)                                                                                                                                            | with the Phase 2 `sync`/multi-clock design                  |
+| Diagnostic rendering format (`render`'s caret layout)                    | low risk, changes are cosmetic                                                                                                                                                                       | worth a snapshot test if/when output stabilizes for E-codes |
+| CLI surface (`--tokens`, exit codes, `-o` default path)                  | thin wrappers; breakage is loud in manual use                                                                                                                                                        | cheap `assert_cmd`-style tests if the CLI grows             |
+| `mimz-bench` end-to-end (a full run as a test)                           | it is a measuring tool over this very suite — running it under `cargo test` would re-run everything for no new assertion                                                                             | if its orchestration grows logic worth locking              |
+| `fmt`, grammar engine (remaining flips), full simulator (clocked kernel) | partly built: the grammar engine's `syntax thamizh` directive + clocked-block flip ship now (`tests/grammar.rs`); the conditional/match/test flips, `translate --order`, and the event kernel remain | with their phases (1.8 / 1.5)                               |
 
 ## House rules for new tests
 

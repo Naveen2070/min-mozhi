@@ -9,11 +9,42 @@ use super::*;
 impl Parser {
     // ---------- file level ----------
 
+    /// Optional leading `syntax <profile>` directive (spec/04). `syntax thamizh`
+    /// selects the SOV/postpositional word order; no directive means the default
+    /// `code-order`. The directive is consumed here and never enters the AST, so
+    /// a thamizh-order file and its code-order twin parse to the same tree.
+    /// `thamizh` is the only profile word — code-order is the no-directive
+    /// default (there is no `syntax code` form).
+    fn syntax_directive(&mut self) {
+        self.skip_newlines();
+        if !self.at_kw(Kw::Syntax) {
+            return;
+        }
+        self.bump(); // syntax
+        if self.eat_kw(Kw::Thamizh) {
+            self.profile = Profile::Thamizh;
+            self.terminator();
+        } else {
+            let found = kind_name(self.peek_kind());
+            let span = self.peek().span;
+            self.error(
+                span,
+                "E1112",
+                format!("unknown syntax profile: expected `thamizh`, found {found}"),
+            );
+            self.help(
+                "`syntax thamizh` selects natural Tamil word order; omit the directive for the default code order (spec/04)",
+            );
+            self.sync_to_newline();
+        }
+    }
+
     /// `file = { importDecl } { constDecl | module | enumDecl | testDecl }`
     ///
     /// The whole-file entry point. Never fails — a bad item records its
     /// error and recovery skips to the next line.
     pub(super) fn file(&mut self) -> File {
+        self.syntax_directive();
         let mut imports = Vec::new();
         let mut items = Vec::new();
         loop {
@@ -53,7 +84,16 @@ impl Parser {
                         "E1102",
                         format!("expected `module`, `import`, `const`, `enum`, or `test` at file level, found {found}"),
                     );
-                    self.sync_to_newline();
+                    // Always make progress. `sync_to_newline` STOPS at `}`
+                    // without consuming it (it is a block terminator inside
+                    // items) — but a `}` here is stray (e.g. unbalanced braces
+                    // left by error recovery inside a module). Bump it directly,
+                    // or the loop spins forever re-reporting the same token.
+                    if matches!(self.peek_kind(), TokKind::RBrace) {
+                        self.bump();
+                    } else {
+                        self.sync_to_newline();
+                    }
                 }
             }
         }
@@ -254,6 +294,7 @@ impl Parser {
             TokKind::Kw(Kw::Enum) => Some(ModuleItem::Enum(self.enum_decl()?)),
             TokKind::Kw(Kw::Let) => self.inst(),
             TokKind::Kw(Kw::On) => self.on_block(),
+            TokKind::Kw(Kw::Rise) if self.profile == Profile::Thamizh => self.on_block_thamizh(),
             TokKind::Kw(Kw::Repeat) => self.repeat_block(),
             TokKind::Ident(_) => {
                 let lhs = self.lvalue()?;
@@ -370,19 +411,42 @@ impl Parser {
         }))
     }
 
-    /// `onBlock = "on" "rise" "(" ident ")" seqBlock`
+    /// code-order: `onBlock = "on" "rise" "(" ident ")" seqBlock`
     fn on_block(&mut self) -> Option<ModuleItem> {
         let start = self.bump().span; // on
         self.expect_kw(Kw::Rise, "`rise` — Min-Mozhi v0.2 is rising-edge only")?;
-        self.expect(TokKind::LParen, "`(` then the clock name")?;
-        let clock = self.ident("a clock name")?;
-        self.expect(TokKind::RParen, "`)` after the clock name")?;
+        let clock = self.clock_edge_args()?;
         let (body, end) = self.seq_block()?;
         Some(ModuleItem::On(OnBlock {
             clock,
             body,
             span: start.join(end),
         }))
+    }
+
+    /// thamizh-order: `onBlock = "rise" "(" ident ")" "on" seqBlock` — the
+    /// clocked block with the edge head leading and `on` (pothu) trailing
+    /// (spec/04 section 3: `yetram(clk) pothu { }`). Produces the identical
+    /// [`OnBlock`] AST as the code-order form.
+    fn on_block_thamizh(&mut self) -> Option<ModuleItem> {
+        let start = self.bump().span; // rise
+        let clock = self.clock_edge_args()?;
+        self.expect_kw(Kw::On, "`on` (pothu) after the clock edge in thamizh order")?;
+        let (body, end) = self.seq_block()?;
+        Some(ModuleItem::On(OnBlock {
+            clock,
+            body,
+            span: start.join(end),
+        }))
+    }
+
+    /// `"(" ident ")"` — the clock name inside a `rise(clk)` edge head,
+    /// shared by both word-order profiles.
+    fn clock_edge_args(&mut self) -> Option<Ident> {
+        self.expect(TokKind::LParen, "`(` then the clock name")?;
+        let clock = self.ident("a clock name")?;
+        self.expect(TokKind::RParen, "`)` after the clock name")?;
+        Some(clock)
     }
 
     /// `seqBlock = "{" { seqStmt } "}"` — returns the statements plus the

@@ -3,7 +3,8 @@
 > **Tamil code that reads like Tamil, not transliterated English.**
 > Window: months 8–9, **directly after Phase 1, before 1.5** (solo-dev order,
 > decision D3) · Target: 28 Feb 2027, then repo goes public (D7) ·
-> Status: ⚪ designed (`spec/04`), not started
+> Status: 🟡 in progress — keystone landed 2026-06-13 (the `syntax thamizh`
+> directive + the clocked-block flip, same-AST proven)
 
 ## Goal
 
@@ -15,10 +16,20 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
 
 ### Parser profile
 
-- [ ] `syntax thamizh` file directive (no auto-detection)
-- [ ] Flipped productions per `spec/04` section 3: `<cond> endral { }`, `yetram(clk) pothu { }`, `<expr> poruthu { }`, test form
-- [ ] Expression-first parsing with one-token lookahead after expression (no backtracking)
-- [ ] Same-AST guarantee tests: thamizh-order file and its code-order twin produce byte-identical AST dumps
+- [x] `syntax thamizh` file directive (no auto-detection) — `Profile` on the
+      parser, parsed by `syntax_directive`, never enters the AST. `syntax`
+      promoted from reserved to KW_SYNTAX; KW_THAMIZH added (spec/03 v0.2.5).
+- [~] Flipped productions per `spec/04` section 3: **clocked block done**
+  (`yetram(clk) pothu { }`); `<cond> endral { }`, `<expr> poruthu { }`, and
+  the test form remain.
+- [~] Expression-first parsing with one-token lookahead after expression (no
+  backtracking) — the clocked-block flip dispatches on `Kw::Rise` under the
+  profile; the expr-first seq-statement path lands with the conditional flip.
+- [x] Same-AST guarantee tests via the profile-blind backend: a thamizh-order
+      file and its code-order twin emit **byte-identical Verilog**
+      (`tests/grammar.rs`, fixtures in `tests/fixtures/grammar/`). (Verilog
+      equality is the span-free oracle the four-flavor rule already uses; a raw
+      AST dump would differ only in spans.)
 
 ### Translate / format
 
