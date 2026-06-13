@@ -40,3 +40,6 @@ editors/vscode/*.vsix
 # Benchmark outputs (regenerate with `cargo run --release --bin mimz-bench`)
 bench-report.html
 bench-report.json
+
+# serena
+.serena
