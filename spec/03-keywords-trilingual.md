@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.3.**
+> **Spec v0.2.4.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -132,6 +132,9 @@ error (E1005) explaining why. They live in the `reserved` list in
 | `chan`                   | handshake channels (v0.3 backlog)          |
 | `prove`                  | formal/temporal assertions (v0.3 backlog)  |
 | `await`                  | handshake sequencing (v0.3 backlog)        |
+| `fixed`                  | fixed-point arithmetic type (§8 triage)    |
+| `requires`               | caller-side precondition contract (§8)     |
+| `ensures`                | module postcondition contract (§8)         |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).
@@ -258,6 +261,11 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.4 (2026-06-13):** Reserved three §8 deep-triage words — `fixed`
+  (fixed-point arithmetic), `requires` / `ensures` (boundary contracts) —
+  so v0.1 programs cannot claim them (E1005). Namespace protection ahead of
+  the v0.1.0 freeze; English-only until each feature lands (rationale in
+  `docs/Ideas/language_plan.md` §9).
 - **v0.2.3 (2026-06-12):** Reserved the eight v0.3 backlog words
   (`secret`, `declassify`, `default`, `pipeline`, `interface`, `chan`,
   `prove`, `await`) so v0.1 programs cannot claim them as identifiers

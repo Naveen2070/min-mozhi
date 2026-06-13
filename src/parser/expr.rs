@@ -1,12 +1,13 @@
 //! Expression parsing: Rust-style precedence climbing (bitwise binds
-//! tighter than comparison; comparisons are non-associative — spec/02 section 3),
+//! tighter than comparison; comparisons allow a monotonic one-direction
+//! chain and reject the confusing forms — spec/02 section 3),
 //! `if`/`match` expressions, patterns, and builtin calls.
 
 use super::*;
 
 /// Binary operator precedence, Rust-style. Higher binds tighter.
 /// unary(9) → mul(8) → add(7) → shift(6) → & (5) → ^ (4) → | (3)
-/// → comparison(2, non-assoc) → && (1) → || (0)
+/// → comparison(2, chain via `comparison_chain`) → && (1) → || (0)
 fn bin_op(kind: &TokKind) -> Option<(BinOp, u8)> {
     use TokKind::*;
     Some(match kind {
@@ -180,26 +181,21 @@ impl Parser {
 
     /// Precedence climbing: parse a unary operand, then greedily fold
     /// operators of precedence ≥ `min_prec`. Recursing with `prec + 1`
-    /// makes every level left-associative; comparison chaining (`a < b < c`)
-    /// is rejected outright.
+    /// makes every level left-associative. The comparison level (prec 2) is
+    /// special: it routes to [`Self::comparison_chain`], which allows a
+    /// monotonic one-direction chain (`0 <= x < 100`) but rejects the
+    /// confusing forms — spec/02 section 3.
     fn binary(&mut self, min_prec: u8) -> Option<Expr> {
         let mut lhs = self.unary()?;
-        let mut comparison_seen = false;
         while let Some((op, prec)) = bin_op(self.peek_kind()) {
             if prec < min_prec {
                 break;
             }
-            // Comparisons are non-associative (spec/02 section 3).
             if prec == 2 {
-                if comparison_seen {
-                    let span = self.peek().span;
-                    self.error(span, "E1109", "comparisons cannot be chained");
-                    self.help(
-                        "write `(a < b) && (b < c)` — each comparison produces a single `bit`",
-                    );
-                    return None;
-                }
-                comparison_seen = true;
+                // Parse the whole (possibly chained) comparison here, then
+                // re-check the loop — only lower-prec `&&`/`||` may follow.
+                lhs = self.comparison_chain(lhs)?;
+                continue;
             }
             self.bump();
             self.skip_newlines();
@@ -215,6 +211,100 @@ impl Parser {
             };
         }
         Some(lhs)
+    }
+
+    /// Parse a comparison, possibly a Python-style chain (`first` is the
+    /// already-parsed left operand). A single comparison (`a < b`) is one
+    /// `Binary`. A **monotonic** chain in ONE direction (`0 <= x < 100`)
+    /// desugars to `&&` of the pairwise comparisons, sharing the middle
+    /// operands — a combinational value read twice is identical in hardware,
+    /// so there is no evaluation-order subtlety (unlike software). The
+    /// genuinely confusing forms stay rejected (E1109): mixed-direction
+    /// (`a < b > c`) and any chain involving `==`/`!=`. spec/02 section 3.
+    fn comparison_chain(&mut self, first: Expr) -> Option<Expr> {
+        let chain_start = self.peek().span; // first comparison op (for errors)
+        let mut operands = vec![first];
+        let mut ops: Vec<BinOp> = Vec::new();
+        while let Some((op, 2)) = bin_op(self.peek_kind()) {
+            self.bump();
+            self.skip_newlines();
+            operands.push(self.binary(3)?); // operands never contain a comparison
+            ops.push(op);
+        }
+
+        // The common case: a single comparison, no desugaring.
+        if ops.len() == 1 {
+            let rhs = operands.pop().unwrap();
+            let lhs = operands.pop().unwrap();
+            let span = lhs.span.join(rhs.span);
+            return Some(Expr {
+                kind: ExprKind::Binary {
+                    op: ops[0],
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                },
+                span,
+            });
+        }
+
+        // A chain — only monotonic ordering chains are allowed. Direction:
+        // +1 ascending (`<`,`<=`), -1 descending (`>`,`>=`), 0 = `==`/`!=`.
+        let dir = |op: BinOp| match op {
+            BinOp::Lt | BinOp::Le => 1i8,
+            BinOp::Gt | BinOp::Ge => -1i8,
+            _ => 0i8,
+        };
+        if ops.iter().any(|o| dir(*o) == 0) {
+            self.error(
+                chain_start,
+                "E1109",
+                "`==`/`!=` cannot be part of a comparison chain",
+            );
+            self.help("compare equality on its own, e.g. `(a == b) && (b < c)`");
+            return None;
+        }
+        let first_dir = dir(ops[0]);
+        if ops.iter().any(|o| dir(*o) != first_dir) {
+            self.error(
+                chain_start,
+                "E1109",
+                "a comparison chain must point in one direction",
+            );
+            self.help("keep one direction, e.g. `0 <= x <= 100` — or split with `&&`");
+            return None;
+        }
+
+        // Desugar to `(a op b) && (b op c) && …`, cloning the shared middle
+        // operands (each interior operand appears in two comparisons).
+        let mut acc: Option<Expr> = None;
+        for (i, op) in ops.iter().enumerate() {
+            let lhs = operands[i].clone();
+            let rhs = operands[i + 1].clone();
+            let span = lhs.span.join(rhs.span);
+            let cmp = Expr {
+                kind: ExprKind::Binary {
+                    op: *op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                },
+                span,
+            };
+            acc = Some(match acc {
+                None => cmp,
+                Some(prev) => {
+                    let span = prev.span.join(cmp.span);
+                    Expr {
+                        kind: ExprKind::Binary {
+                            op: BinOp::LogicAnd,
+                            lhs: Box::new(prev),
+                            rhs: Box::new(cmp),
+                        },
+                        span,
+                    }
+                }
+            });
+        }
+        acc
     }
 
     /// `unary = [ "-" | "~" | "!" | "not" | "&" | "|" | "^" ] unary | postfix`

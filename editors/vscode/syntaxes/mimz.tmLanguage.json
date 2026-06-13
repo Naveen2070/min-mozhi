@@ -68,7 +68,7 @@
     "reserved-words": {
       "comment": "reserved for future features — using them is a compile error",
       "name": "invalid.illegal.reserved.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(fall|syntax|ilakkanam|இலக்கணம்|mem|sync|inout|struct|secret|declassify|default|pipeline|interface|chan|prove|await)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(fall|syntax|ilakkanam|இலக்கணம்|mem|sync|inout|struct|secret|declassify|default|pipeline|interface|chan|prove|await|fixed|requires|ensures)(?![\\p{L}\\p{N}_])"
     },
     "types": {
       "comment": "universal vocabulary — never translated",

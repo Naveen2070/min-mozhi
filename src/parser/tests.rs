@@ -56,10 +56,42 @@ fn rust_precedence_defuses_the_c_trap() {
 }
 
 #[test]
-fn chained_comparison_is_an_error() {
-    let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  y = a < a < a\n}\n");
+fn monotonic_chained_comparison_desugars_to_and() {
+    // 0 <= x <= 7  →  (0 <= x) && (x <= 7); the shared `x` is read twice
+    // (identical combinational value). The safe Python-style form (8.9).
+    let f = parse_ok("module M {\n  in x: bits[8]\n  out y: bit\n  y = 0 <= x <= 7\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
+    let ExprKind::Binary { op, lhs, rhs } = &rhs.kind else {
+        panic!()
+    };
+    assert_eq!(*op, BinOp::LogicAnd, "a chain desugars to &&");
+    let ExprKind::Binary { op: lop, .. } = &lhs.kind else {
+        panic!("left of && is the first comparison")
+    };
+    let ExprKind::Binary { op: rop, .. } = &rhs.kind else {
+        panic!("right of && is the second comparison")
+    };
+    assert_eq!(*lop, BinOp::Le);
+    assert_eq!(*rop, BinOp::Le);
+}
+
+#[test]
+fn mixed_direction_chain_is_an_error() {
+    // `a < b > c` is the genuinely confusing form — still rejected.
+    let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  y = a < a > a\n}\n");
     assert_eq!(d[0].code, Some("E1109"));
-    assert!(d[0].msg.contains("chained"));
+    assert!(d[0].msg.contains("one direction"));
+}
+
+#[test]
+fn equality_cannot_be_chained() {
+    let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  y = a == a == a\n}\n");
+    assert_eq!(d[0].code, Some("E1109"));
 }
 
 #[test]

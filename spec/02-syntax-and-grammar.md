@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.2.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.6.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -265,6 +265,12 @@ wire k2: bits[8] = 0xA1               // hex
 wire k3: bits[8] = 161                // decimal — must fit the target width
 ```
 
+- The slice syntax is `x[hi:lo]` (inclusive, msb:lsb) and concatenation is
+  `{a, b}` (msb-first) — these are the **canonical, final forms** (ratified
+  2026-06-13). Rust-style range slicing (`x[lo..hi]`) is deliberately **not**
+  adopted: `[hi:lo]` is the universal hardware convention (Verilog/VHDL/every
+  textbook), and matching it keeps a student fluent across tools — the
+  cross-tool familiarity outweighs the cosmetic gain.
 - There is **no implicit** widening or truncation anywhere. `extend(x, N)`
   widens; slicing narrows. Both are visible at the call site.
 - `extend(x, N)` requires `N >=` the current width; `trunc(x, N)` requires
@@ -324,16 +330,16 @@ hardware. `tick` and `expect` are keywords valid only inside `test`.
 
 ## 3. Operators (universal across flavors)
 
-| Category               | Operators                   | Width rule                                                                                                                     |
-| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Lossless arithmetic    | `+` `-` `*`                 | result grows (`+`/`-`: max+1, `*`: sum of widths)                                                                              |
-| Wrapping arithmetic    | `+%` `-%` `*%`              | result = width of operands (must match)                                                                                        |
-| Bitwise                | `&` `\|` `^` `~`            | operand widths must match                                                                                                      |
-| Shifts                 | `<<` `>>`                   | width preserved; amount is a constant or unsigned signal (never `signed`); shifted-out bits dropped _explicitly by definition_ |
-| Comparison             | `==` `!=` `<` `<=` `>` `>=` | result is `bit`; non-associative (`a < b < c` is an error)                                                                     |
-| Logical (on `bit`)     | `&&` `\|\|` `!`             | `bit` only — see keyword aliases below                                                                                         |
-| Reduction              | `&x` `\|x` `^x` (prefix)    | any `bits[N]` → `bit`                                                                                                          |
-| Concat / slice / index | `{a, b}` `x[hi:lo]` `x[i]`  | as written                                                                                                                     |
+| Category               | Operators                   | Width rule                                                                                                                                                |
+| ---------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lossless arithmetic    | `+` `-` `*`                 | result grows (`+`/`-`: max+1, `*`: sum of widths)                                                                                                         |
+| Wrapping arithmetic    | `+%` `-%` `*%`              | result = width of operands (must match)                                                                                                                   |
+| Bitwise                | `&` `\|` `^` `~`            | operand widths must match                                                                                                                                 |
+| Shifts                 | `<<` `>>`                   | width preserved; amount is a constant or unsigned signal (never `signed`); shifted-out bits dropped _explicitly by definition_                            |
+| Comparison             | `==` `!=` `<` `<=` `>` `>=` | result is `bit`; a monotonic one-direction chain (`0 <= x < 100`) desugars to `&&`; mixed-direction (`a < b > c`) and `==`/`!=` chains are errors (E1109) |
+| Logical (on `bit`)     | `&&` `\|\|` `!`             | `bit` only — see keyword aliases below                                                                                                                    |
+| Reduction              | `&x` `\|x` `^x` (prefix)    | any `bits[N]` → `bit`                                                                                                                                     |
+| Concat / slice / index | `{a, b}` `x[hi:lo]` `x[i]`  | as written                                                                                                                                                |
 
 **Logical-operator aliases (the one G1 exception):** the keyword forms
 `and` / `or` / `not` are exact aliases of `&&` / `||` / `!` and, unlike the
@@ -345,10 +351,21 @@ symbols, are **translated** in the Tanglish/Tamil flavors
 
 ```
 unary  →  * *%  →  + - +% -%  →  << >>  →  &  →  ^  →  |
-       →  comparison (non-associative)  →  && / and  →  || / or
+       →  comparison (chainable, one direction)  →  && / and  →  || / or
 ```
 
 So `x & 1 == 0` parses as `(x & 1) == 0` — the C trap is defused.
+
+**Comparison chaining:** a chain of comparisons that all point the **same
+direction** — all `<`/`<=` (ascending) or all `>`/`>=` (descending) — is
+allowed and desugars to the `&&` of its adjacent pairs:
+`0 <= x < 100` becomes `(0 <= x) && (x < 100)`. The shared middle operand is
+a combinational value, so reading it twice is identical — there is none of
+software's evaluation-order subtlety. The genuinely confusing forms stay
+**errors (E1109)**: mixed-direction chains (`a < b > c`) and any chain that
+mixes in `==`/`!=`. A lone comparison is unaffected. _The original C trap —
+`a < b < c` meaning `(a<b)<c` — was never legal here, so allowing the safe
+monotonic form only widens what compiles; it breaks no existing program._
 
 **Deliberately absent:** division `/` and modulo `%` do not exist — they
 synthesize to large, slow hardware and beginners reach for them by reflex.
@@ -479,6 +496,15 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.6 (2026-06-13):** two pre-v0.1.0-freeze syntax rulings (idea triage
+  §8, `docs/Ideas/language_plan.md` §9). (1) **Comparison chaining allowed**:
+  a monotonic one-direction chain (`0 <= x < 100`) desugars to `&&` of its
+  adjacent pairs; mixed-direction and `==`/`!=` chains stay E1109. This only
+  widens what compiles — `a < b < c` was already rejected, so no program
+  breaks (section 3). (2) **Slice/concat ratified final**: `x[hi:lo]` and
+  `{a, b}` are the canonical forms; Rust-style range slicing is not adopted
+  (universal hardware convention wins — section 1.8). (Header version note was
+  stale at v0.2.2; corrected to track the changelog.)
 - **v0.2.5 (2026-06-12):** emission rulings, settled while finishing the
   Phase 1 emitter. (1) **Transliteration**: Tamil-script identifiers emit
   as readable ASCII Verilog names via a pragmatic ISO-15919-flavored

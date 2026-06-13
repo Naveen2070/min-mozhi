@@ -210,4 +210,21 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn the_section8_keywords_are_reserved() {
+        // §8 deep-triage (docs/Ideas/language_plan.md §9): fixed-point and
+        // contracts. Reserved before the v0.1.0 freeze so v0.1 programs cannot
+        // claim them; untranslated until each feature lands.
+        for word in ["fixed", "requires", "ensures"] {
+            assert!(
+                TABLE.is_reserved(word),
+                "`{word}` is a reserved §8 future keyword — it must stay reserved"
+            );
+            assert!(
+                TABLE.lookup(word).is_none(),
+                "`{word}` must not be a keyword yet"
+            );
+        }
+    }
 }

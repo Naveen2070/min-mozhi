@@ -11,12 +11,14 @@
 
 # Reserved for the future — using these is a compile error suggesting why.
 # (Must stay above the first [keywords.*] table: top-level TOML keys.)
-# The last eight are the v0.3 security/DX backlog (docs/Ideas/language_plan.md);
-# reserved now so v0.1 programs cannot claim them, untranslated until each
-# feature lands (spec/03 section "Reserved words").
+# Lines 2–3 are the v0.3 security/DX backlog; line 4 the §8 deep-triage words
+# (fixed-point, contracts) — see docs/Ideas/language_plan.md §9. Reserved now
+# so v0.1 programs cannot claim them, untranslated until each feature lands
+# (spec/03 section "Reserved words").
 reserved = [
   "fall", "syntax", "ilakkanam", "இலக்கணம்", "mem", "sync", "inout", "struct",
   "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "await",
+  "fixed", "requires", "ensures",
 ]
 
 [keywords.module]

@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**157 tests** as of 2026-06-12 (EOD): 125 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.)
+**160 tests** as of 2026-06-13: 128 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.)
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -33,20 +33,22 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 10 tests)
+## Unit: parser (`src/parser/tests.rs`, 12 tests)
 
-| Test                                         | Locks in                                                             |
-| -------------------------------------------- | -------------------------------------------------------------------- |
-| `parses_counter`                             | the canonical example parses; module has the expected 6 items        |
-| `parses_tanglish_counter_to_same_shape`      | Tanglish source → structurally identical AST (the thesis, AST level) |
-| `rust_precedence_defuses_the_c_trap`         | `x & 1 == 0` parses as `(x & 1) == 0` — **never** change this        |
-| `chained_comparison_is_an_error`             | `a < b < c` is rejected (non-associative comparisons)                |
-| `wire_if_without_else_teaches_about_latches` | mandatory `else` on if-expressions + the latch help text             |
-| `reg_without_reset_value_is_an_error`        | mandatory reg reset (safety rule)                                    |
-| `assign_arrow_confusion_teaches`             | `=` inside `on` → help text pointing to `<-`                         |
-| `parses_repeat_and_const`                    | `repeat i: 0..8` and file-level `const` parse                        |
-| `parses_test_block`                          | `test "..." for M(...) { tick/expect }` parses                       |
-| `every_parse_error_carries_a_code`           | the E11xx retrofit, locked from outside: no parse error is codeless  |
+| Test                                           | Locks in                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| `parses_counter`                               | the canonical example parses; module has the expected 6 items             |
+| `parses_tanglish_counter_to_same_shape`        | Tanglish source → structurally identical AST (the thesis, AST level)      |
+| `rust_precedence_defuses_the_c_trap`           | `x & 1 == 0` parses as `(x & 1) == 0` — **never** change this             |
+| `monotonic_chained_comparison_desugars_to_and` | `0 <= x <= 7` desugars to `(0<=x) && (x<=7)` — the safe Python form (8.9) |
+| `mixed_direction_chain_is_an_error`            | `a < b > c` stays E1109 (the confusing form)                              |
+| `equality_cannot_be_chained`                   | `a == b == c` stays E1109                                                 |
+| `wire_if_without_else_teaches_about_latches`   | mandatory `else` on if-expressions + the latch help text                  |
+| `reg_without_reset_value_is_an_error`          | mandatory reg reset (safety rule)                                         |
+| `assign_arrow_confusion_teaches`               | `=` inside `on` → help text pointing to `<-`                              |
+| `parses_repeat_and_const`                      | `repeat i: 0..8` and file-level `const` parse                             |
+| `parses_test_block`                            | `test "..." for M(...) { tick/expect }` parses                            |
+| `every_parse_error_carries_a_code`             | the E11xx retrofit, locked from outside: no parse error is codeless       |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the

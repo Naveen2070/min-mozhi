@@ -93,4 +93,85 @@ Before ending a working session, check:
 - [ ] Today's log entry written (`docs/log/`)
 - [ ] Any plan change reflected in `docs/plan/` + root roadmap (R2)
 - [ ] Any design decision logged with a Decision block (R3/R4)
-- [ ] Examples still match the spec (R6)
+- [ ] Examples still match the spec (R6) and the four-flavor rule (R9)
+- [ ] Quality gate clean: `fmt`, `clippy -D warnings`, `test`, rustdoc, prettier, markdownlint (R8)
+- [ ] New/removed tests reflected in `docs/code/10-test-map.md` (R8)
+- [ ] No commit or tag made unless the user asked (R12)
+- [ ] `graphify update .` run if code changed (R14)
+
+## R8 — Code quality gate
+
+Run the gate CI runs **before declaring any session done** — all clean, no
+exceptions:
+
+- `cargo fmt --all`
+- `cargo clippy --all-targets -- -D warnings`
+- `cargo test` (all green — record the new total in `docs/code/10-test-map.md`)
+- `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` (docs build warning-free)
+- `npx prettier --check "**/*.md"` + `npx markdownlint-cli2` (R6)
+
+New behavior ships **with its test in the same session**. Prefer the existing
+test layers (keyword/lexer/parser/checker units; integration over a real
+example) over ad-hoc ones.
+
+## R9 — Examples are four-flavor and byte-identical
+
+- Every example exists in **all four** flavor folders —
+  `examples/{english,tanglish,tamil,mixed}/` — with **identical identifiers**;
+  only keywords differ.
+- All four must compile to **byte-identical Verilog** (CI-asserted) and pass
+  Icarus (`iverilog` lint + a self-checking testbench) where one exists.
+- A new example: add it to all four folders, to `BASE_EXAMPLES` in
+  `tests/examples.rs`, with a golden in `tests/golden/` and, ideally, an Icarus
+  testbench in `tests/icarus/`.
+- Keyword spellings come from `keywords.toml` **only — never invent a Tanglish
+  or Tamil spelling.** If a word is not in the table, it is not ready to use.
+
+## R10 — Diagnostics are a stable contract
+
+- Every error carries a stable `E`-code; codes are **never renumbered or
+  reused** — editors, tests, and docs key off them.
+- A new checker code needs all three, same session: an entry in
+  `mimz::diag::ALL_CHECKER_CODES` (the machine list), a row in
+  `docs/code/11-checker.md`, and an end-to-end fixture under
+  `tests/fixtures/errors/` (the corpus test fails otherwise). Lexer/parser/
+  loader codes are cataloged in `docs/code/06-diagnostics.md`.
+- Every diagnostic carries a teaching `help:` line (G1, `spec/01`).
+
+## R11 — Reserved words & future keywords
+
+- Reserve a future keyword **as soon as a feature is planned**, so v0.1
+  programs cannot claim it. Full pipeline, same session: the `reserved` list in
+  `keywords.toml` + the reserved table & changelog in `spec/03` + the TextMate
+  grammar invalid pattern (`editors/vscode/syntaxes/mimz.tmLanguage.json`) + a
+  reserved-word test in `src/lexer/keywords.rs`. `tests/grammar_sync.rs`
+  enforces the grammar half.
+- Reserved words stay **English-only** until their feature lands and native
+  review supplies the Tanglish/Tamil spellings — same rule as R9.
+
+## R12 — Version control discipline
+
+- **Never commit or tag unless the user asks.** When work is done, report it
+  and let the user decide the commit and any version tag.
+- New work branches off `master`; never bypass hooks (`--no-verify`) or signing
+  unless the user explicitly asks.
+
+## R13 — Impact analysis & breaking-change alert (before writing code)
+
+- Before executing a change, weigh it against the spec, the philosophy
+  (`spec/01`), and existing features (mirrors `.claude/Rules.md` §4).
+- If a request **contradicts or breaks** existing spec, architecture, or
+  behavior, **stop and alert the user** with the conflict and the options
+  before writing any code.
+- **Growth doctrine** (Decision 2026-06-13): break freely until v0.1.0, then
+  freeze; break afterward only if it benefits the language's future, via
+  **Editions + `mimz translate`**. Additive changes are edition-safe; breaking
+  changes are not.
+
+## R14 — Keep derived artifacts current
+
+- After code changes, run `graphify update .` to refresh the knowledge graph
+  (`graphify-out/`, AST-only, no API cost).
+- When tests are added or removed, update the count and the ledger in
+  `docs/code/10-test-map.md` (it is the human "what does a failing test mean"
+  map; no test asserts the total).

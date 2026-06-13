@@ -579,6 +579,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 - **Explanation:** Replacing the macro-preprocessor with actual language execution. Instead of `generate for`, you run actual Min-Mozhi code at compile-time to stamp out hardware.
 - **Feasibility:** Medium. Extends the existing `repeat` functionality into a true compile-time interpreter.
 - **Example:**
+
   ```mimz
   $if (DEBUG_MODE) {
       // This register physically exists ONLY if DEBUG_MODE is true.
@@ -596,6 +597,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 
 - **Explanation:** Hardware design is fundamentally about data flowing through logic blocks. The pipe operator allows engineers to visually write combinational logic exactly how it looks on a schematic diagram, reading left-to-right instead of inside-out.
 - **Example:**
+
   ```mimz
   // Instead of: truncate(apply_gain(filter_noise(raw_data), 2.0))
   let out = raw_data
@@ -608,6 +610,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 
 - **Explanation:** In hardware, you frequently instantiate a module and pass signals that have the exact same names as your local wires (like clocks, resets, and buses). Verilog requires typing them all out redundantly (`.clk(clk), .rst(rst)`). The spread operator automates this.
 - **Example:**
+
   ```mimz
   // Automatically wires up all matching names from 'standard_bus'
   let my_alu = ALU(..standard_bus, custom_flag: 1)
@@ -617,6 +620,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 
 - **Explanation:** When transitioning states in a Finite State Machine, you often want to keep 90% of a bundle/struct the same, but change one flag. The update syntax prevents massive boilerplate blocks.
 - **Example:**
+
   ```mimz
   // Creates a new state bundle with the exact same values as 'old_state',
   // but overwrites the 'active' flag.
@@ -627,6 +631,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 
 - **Explanation:** Checking if a hardware sensor value falls within a specific range requires verbose logical ANDs in C/Verilog (`if (val >= 0 && val <= 100)`). Python-style chained comparisons are much more mathematically readable.
 - **Example:**
+
   ```mimz
   if (0 <= sensor_val <= 100) {
       // Safe operating range
@@ -704,3 +709,58 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
   doubling its apparent size.
 - Several samples above contradict the current spec (wires assigned inside `on`,
   `=`/`<-` mixing) — each Tier 3 item needs a real spec section before code.
+
+---
+
+## 9. §8 deep triage (2026-06-13): sugar vs breaking, under the freeze doctrine
+
+### Growth doctrine (Decision 2026-06-13)
+
+**Break freely until v0.1.0, then freeze; apply a breaking change only if it
+benefits the language's future; use Editions + `mimz translate` as the migration
+path** after the freeze. The repo is private and pre-v0.1.0 (no users), so a
+breaking change is nearly free _now_ and expensive _later_.
+
+**Organizing insight:** an _additive_ change (turns an error into valid code, or
+adds syntax that didn't exist) is edition-safe — it can land any time, even
+post-freeze, without breaking code. A _breaking_ change (re-means or removes
+existing valid syntax) must land **before v0.1.0** or owe an edition + `translate`
+rule. So the freeze deadline pressures **only the §8 ideas that touch already-shipped
+syntax**: 8.9 and 8.10. The other eight are additive and can come whenever.
+
+### Per-idea verdicts
+
+| Idea                               | Path                  | Tier               | Recommendation                                                                                                                                                               |
+| ---------------------------------- | --------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8.1 Elm-style didactic errors      | additive              | 2                  | Build incrementally now — it IS the G1 promise. Extend `Diag` + a `mimz explain <CODE>` long-form. Diagrams must depict real hardware (honesty).                             |
+| 8.2 Contracts `requires`/`ensures` | additive              | 3 (after `prove`)  | Edition-safe. Caller-side `requires` (compile-time div-by-zero) is the high-value half. Reserve the two keywords now.                                                        |
+| 8.3 Fixed-point `fixed[N,F]`       | additive              | 3                  | Highest standalone educational/DSP value. Needs float literals + a rounding/overflow spec section (the honest part). Reserve `fixed` now.                                    |
+| 8.4 `$comptime` / `$if`            | additive (split)      | 3 / 4              | Adopt item-level const-`if` (a **keyword**, not a `$` sigil). Reject the general comptime interpreter — `repeat`+const-`if` cover ~90%.                                      |
+| 8.5 Hardware REPL                  | tool, not syntax      | 3 (Phase 4)        | Rides the approved WASM playground + Phase 1.5 sim evaluator. Scope to combinational. No syntax cost.                                                                        |
+| 8.6 Pipe `\|>`                     | additive              | 3 (blocked)        | Needs callables (only builtins exist, E1110) AND is a 2nd way to write calls (G1 one-way). Park until extension functions land.                                              |
+| 8.7 Spread `..bus` (wiring)        | additive              | 3 (after bundles)  | Rank-1 honesty tension — implicit wiring hides connectivity. Allow only spreading a **declared interface type**; keep expansion greppable.                                   |
+| 8.8 Struct update `..old`          | additive              | 3 (after bundles)  | Clean FSM ergonomics, low risk. Base is named, stays honest. `struct` already reserved.                                                                                      |
+| 8.9 Chained comparison             | **additive widening** | ✅ DONE 2026-06-13 | **Allowed** — monotonic one-direction chain desugars to `&&` (`comparison_chain` in `src/parser/expr.rs`); mixed-direction + `==`/`!=` chains stay E1109. spec/02 v0.2.6 §3. |
+| 8.10 Range slice `[8..16]`         | **breaking**          | ✅ DONE 2026-06-13 | **Ratified `[hi:lo]` as final; break rejected** — universal hardware vocabulary wins; no range form. spec/02 v0.2.6 §1.8.                                                    |
+
+### The `..` operator (recommendation)
+
+Use `..` for the **spread/splat family only** — wiring (8.7), struct-update (8.8),
+concat-spread — because those are genuinely one operation (expand-a-bundle-in-place),
+so one token is honest and learnable. **Do NOT overload `..` for ranges** (keep
+slicing `[hi:lo]`, per 8.10) — that avoids the range/splat semantic collision and the
+ascending-exclusive vs descending-inclusive mental-model clash. All `..`-spread
+features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specced.
+
+### Pre-v0.1.0 freeze checklist (what the doctrine forces now)
+
+1. **Reserve keywords** (non-breaking, protects the namespace): `fixed`, `requires`,
+   `ensures` — same pipeline as the eight v0.3-backlog words.
+2. **Reserve the `..` spread operator** when interfaces/bundles (2.4) are specced
+   (lexer/grammar matter, not the keyword table).
+3. ~~**Decide 8.9**~~ ✅ **DONE 2026-06-13** — monotonic chained comparison allowed
+   (`comparison_chain`, spec/02 v0.2.6 §3).
+4. ~~**Ratify `[hi:lo]` slicing as final**~~ ✅ **DONE 2026-06-13** — break rejected,
+   `[hi:lo]`/`{a,b}` are canonical (spec/02 v0.2.6 §1.8).
+5. Everything else (8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8) is additive / edition-safe →
+   can land after v0.1.0 with no breakage; none of it pressures the freeze date.
