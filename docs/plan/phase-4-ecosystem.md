@@ -28,6 +28,11 @@ and the Tamil Nadu VLSI ecosystem.
       lab, just a URL. Highest education-per-hour; serves the spec/01
       persona directly. Needs the simulator (Phase 1.5) to be a real
       playground, not just a Verilog printer.
+- [ ] **Interactive hardware REPL `mimz repl`** (idea 8.5,
+      `language_plan.md` section 9) — define an expression/gate, flip
+      inputs, see combinational logic evaluate live. No new syntax: rides
+      the WASM playground above + the Phase 1.5 sim evaluator. Scope to
+      combinational logic.
 - [ ] **npm wrapper package** (esbuild model: tiny package that fetches
       the platform binary / loads the WASM and shells out) — TS/JS devs
       run `mimz` in their build like any other tool
@@ -41,12 +46,16 @@ and the Tamil Nadu VLSI ecosystem.
 
 ### Language-feature backlog (pointer)
 
-The triaged feature backlog from `docs/Ideas/language_plan.md` section 7
-(tagged unions, interfaces/bundles, channels, `prove`/SymbiYosys, G5
-security features, DX sugar) lives as work items in
+The triaged feature backlog from `docs/Ideas/language_plan.md` sections 7
+and 9 (tagged unions, interfaces/bundles, channels, `prove`/SymbiYosys, G5
+security features, DX sugar, plus the section-8 additive ideas —
+`fixed`-point, `requires`/`ensures` contracts, `..` spread/struct-update,
+pipe `|>`, didactic errors) lives as work items in
 **`docs/plan/phase-2-ir-synthesis.md` → "Language features"** — that list
-is the single source of truth. Rejected ideas stay recorded with reasons
-in the ideas doc itself (Tier 4: physics, not priorities).
+is the single source of truth. The hardware REPL (8.5) is the one
+section-8 item that lands in this phase (above). Rejected ideas stay
+recorded with reasons in the ideas doc itself (Tier 4: physics, not
+priorities).
 
 ### Documentation & learning
 

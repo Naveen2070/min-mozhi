@@ -43,14 +43,17 @@ FPGA hardware via the open toolchain: `.mimz → IR → Yosys/nextpnr → bitstr
       2026-06-12: per-reg `@ clk` domain tags + a `sync.double_flop` stdlib
       synchronizer; cross-domain reads without one become a checker error)
 
-### Language features (window: alongside IR work — from `docs/Ideas/language_plan.md` section 7, Tier 3)
+### Language features (window: alongside IR work — from `docs/Ideas/language_plan.md` sections 7 and 9, Tier 3)
 
 This is the single source of truth for the triaged feature backlog; the
 phase-4 plan only points here. Every item needs a spec section + a Decision
 block BEFORE code, and every new keyword (`secret`, `declassify`, `default`,
-`pipeline`, `interface`, `chan`, `prove`, …) needs Tanglish + Tamil spellings
-through keywords.toml + native-speaker review. Order below is the build order
-from the triage; items late in the list may slip to the Phase 3 window.
+`pipeline`, `interface`, `chan`, `prove`, `fixed`, `requires`, `ensures`, …)
+needs Tanglish + Tamil spellings through keywords.toml + native-speaker review
+(English-only while reserved, R11). The `..` spread operator is reserved at the
+lexer/grammar level (not the keyword table) when interfaces/bundles are specced.
+Order below is the build order from the triage; items late in the list may slip
+to the Phase 3 window.
 
 - [ ] **Tagged unions with payloads** (2.7) — FIRST: enums + match exist;
       payload = tag bits + max-payload bits; gives `Result` (4.2) for free
@@ -65,7 +68,9 @@ from the triage; items late in the list may slip to the Phase 3 window.
 - [ ] Wire type inference (2.3 other half) — `wire sum = a + b`; widths.rs
       already computes the type, only the parser requires the annotation
 - [ ] `default` assignments (salvaged from 3.2) — value unless assigned this cycle
-- [ ] Item-level const-`if` (salvaged from 2.6) — conditional elaboration
+- [ ] Item-level const-`if` (salvaged from 2.6; section 9 confirms 8.4) —
+      conditional elaboration as a **keyword**, not a `$` sigil; the general
+      `$comptime` interpreter is rejected (`repeat` + const-`if` cover ~90%)
 - [ ] `count_ones`-style builtins (cheap version of 2.2)
 - [ ] `pipeline(stages = N)` (salvaged from 6.1) — inserts N register stages +
       vendor retiming attribute; never promises Fmax
@@ -73,6 +78,33 @@ from the triage; items late in the list may slip to the Phase 3 window.
       SymbiYosys (never in-house SMT; the Icarus lean-on-tools pattern)
 - [ ] Prove-backed shared-resource access (1.1 via 6.3) — checker accepts a
       guarded double-drive once the user-stated exclusion property is proved
+
+#### section 8 additive ideas (deep triage 2026-06-13, `language_plan.md` section 9)
+
+All edition-safe (no freeze pressure); 8.9/8.10 already shipped in Phase 1, the
+rest land here or in Phase 4. Reserve `fixed`/`requires`/`ensures` is done; spec
+section + Decision block still required before code, same as above.
+
+- [ ] **Elm-style didactic errors** (8.1, Tier 2 — **incremental/ongoing**, IS
+      the G1 promise) — Phase 1 shipped the base (E-codes + `help:`); extend
+      `Diag` toward full "teaching errors" plus a long-form `mimz explain` for
+      each code. ASCII hardware diagrams must depict real hardware (honesty). No
+      freeze pressure; improve as codes are added
+- [ ] **Native fixed-point `fixed[N, F]`** (8.3) — highest standalone DSP/edu
+      value; integer adders/multipliers under the hood, compiler aligns radix
+      points. Needs float literals + a rounding/overflow spec section (the
+      honest part). Keyword `fixed` reserved
+- [ ] **Contracts `requires` / `ensures`** (8.2, after `prove`) — caller-side
+      `requires` (e.g. compile-time div-by-zero) is the high-value half; rides
+      the `prove`/SymbiYosys backend. Keywords `requires`/`ensures` reserved
+- [ ] Struct/bundle update `State { active: 1, ..old }` (8.8, after bundles) —
+      named base stays honest; low risk
+- [ ] Spread `..bus` module wiring (8.7, after bundles) — allow only spreading a
+      **declared interface type** so connectivity stays greppable (rank-1
+      honesty tension otherwise)
+- [ ] Pipe `|>` (8.6, **parked**) — blocked on callables (only builtins exist,
+      E1110) and a 2nd way to write calls (G1 one-way); revisit once extension
+      functions land
 
 ### G5 security features (constitution goals since spec/01 v0.3)
 

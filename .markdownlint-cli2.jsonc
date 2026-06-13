@@ -8,7 +8,8 @@
     ".remember/**",
     "**/node_modules/**",
     "CLAUDE.md", // tool-generated agent config (graphify), not project docs
-    "graphify-out/**"
+    "graphify-out/**",
+    ".venv/**",
   ],
   "config": {
     "default": true,
@@ -26,6 +27,6 @@
     // Table pipe alignment: Tamil combining marks make visual width differ
     // from character count, so Prettier's alignment and this rule can never
     // both be satisfied in tables containing Tamil. Prettier owns formatting.
-    "MD060": false
-  }
+    "MD060": false,
+  },
 }

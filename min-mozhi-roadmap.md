@@ -107,9 +107,11 @@ order, compiles to the same Verilog as its English twin
 - Integrate or study **Yosys** internals for technology mapping
 - Target: FPGA primitive mapping (LUTs, flip-flops)
 - **Language features** from the ideas triage (`docs/Ideas/language_plan.md`
-  section 7; work items in the phase-2 plan): tagged unions, interfaces,
+  sections 7 and 9; work items in the phase-2 plan): tagged unions, interfaces,
   channels, `prove` via SymbiYosys, G5 security (`secret` taint +
-  `system_fault` network v1), DX sugar
+  `system_fault` network v1), DX sugar, plus the section-8 additive ideas
+  (`fixed`-point, `requires`/`ensures` contracts, `..` spread/struct-update,
+  pipe `|>`, didactic-error layer)
 
 **Milestone:** `.mimz → IR → FPGA bitstream` via open source toolchain (hardware demo once a board is acquired; until then simulation/emulation only)
 
@@ -141,11 +143,14 @@ order, compiles to the same Verilog as its English twin
 - Documentation site
 - Ecosystem drivers: WASM browser playground first, then npm/PyPI
   wrappers around the one Rust core (thin wrappers, never
-  reimplementations — Decision 2026-06-11)
+  reimplementations — Decision 2026-06-11); the playground carries the
+  interactive hardware REPL (`mimz repl`, idea 8.5)
 - Language-feature backlog triaged from `docs/Ideas/language_plan.md`
-  (Decision 2026-06-12): tagged unions, interfaces/bundles, and
-  clock-domain checking lead; `prove` rides SymbiYosys; rejected items
-  recorded with reasons in the ideas doc
+  (Decisions 2026-06-12 and 2026-06-13): tagged unions, interfaces/bundles, and
+  clock-domain checking lead; `prove` rides SymbiYosys; the section-8 additive
+  ideas (fixed-point, contracts, spread/struct-update, pipe, didactic errors)
+  are edition-safe and land in Phase 2/4; rejected items recorded with reasons
+  in the ideas doc
 - Constitution v0.3 (Decision 2026-06-12): modern-secure-HDL is now a
   co-primary goal with education — new spec/01 G5 (explicit-flow
   `secret` taint, fail-secure `system_fault` network v1); tie-breakers
