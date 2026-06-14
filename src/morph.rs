@@ -79,6 +79,20 @@ pub fn effective_lang(cli: Option<Flavor>, tokens: &[Token]) -> Flavor {
     cli.unwrap_or_else(|| majority_flavor(tokens))
 }
 
+/// The distinct keyword flavors that appear in a token stream, in column order
+/// (English → Tanglish → Tamil). `mimz fmt --strict` uses this to flag a file
+/// that mixes flavors (mixing stays legal — spec/03 — it is the learning path).
+pub fn flavors_used(tokens: &[Token]) -> Vec<Flavor> {
+    [Flavor::English, Flavor::Tanglish, Flavor::Tamil]
+        .into_iter()
+        .filter(|&f| {
+            tokens
+                .iter()
+                .any(|t| matches!(t.kind, TokKind::Kw(_)) && t.flavor == Some(f))
+        })
+        .collect()
+}
+
 // ---- Morphology (case-suffix inflection) --------------------------------
 
 /// The four Tamil grammatical cases the error catalog inflects names into

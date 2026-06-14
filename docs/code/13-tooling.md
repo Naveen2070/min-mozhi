@@ -41,6 +41,12 @@ natural Tamil WORD-ORDER half (`--order code|thamizh`) lives in `pretty` below.
   byte-identical (modulo alias canonicalization).
 - NOTE: tanglish/tamil targets ride the DRAFT keyword columns until
   native-speaker review closes (keywords.toml header).
+- **`mimz fmt` rides this too.** The `fmt` subcommand (`fmt_file` in `main.rs`)
+  is `translate` pointed at a file in place: it normalizes every keyword to one
+  flavor (default = the file's `morph::majority_flavor`, `--to` overrides),
+  losslessly. `--strict` reports a mixed-flavor file (`morph::flavors_used`) and
+  exits non-zero, still writing the fix. Word-ORDER reformatting stays with
+  `--order` (the `pretty` path) — it is not lossless, so `fmt` does not use it.
 
 ## `pretty` (`src/pretty.rs`) — `mimz translate --order code|thamizh`
 
