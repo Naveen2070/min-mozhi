@@ -1,0 +1,24 @@
+// Min-Mozhi example: the arithmetic / reduction built-ins.
+// min/max pick the smaller/larger of two same-width values; abs takes the
+// magnitude of a signed value (growing one bit so abs(MIN) fits); nand/nor/xnor
+// are the negated bit-reductions. All combinational, all plain Verilog-2005.
+
+module BitOps {
+  in a: bits[4]
+  in b: bits[4]
+  in s: signed[4]
+
+  out lo:  bits[4]
+  out hi:  bits[4]
+  out mag: signed[5]
+  out nd:  bit
+  out nr:  bit
+  out xn:  bit
+
+  lo  = min(a, b)
+  hi  = max(a, b)
+  mag = abs(s)
+  nd  = nand(a)
+  nr  = nor(a)
+  xn  = xnor(a)
+}

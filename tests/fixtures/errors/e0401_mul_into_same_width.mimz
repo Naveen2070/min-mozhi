@@ -1,0 +1,9 @@
+// expect: E0401
+// Lossless `*` grows to N+M bits (bits[4] * bits[4] = bits[8]); assigning that
+// into a 4-bit output is the width mismatch. Use `*%` to wrap, or widen the out.
+module M {
+  in a: bits[4]
+  in b: bits[4]
+  out p: bits[4]
+  p = a * b
+}

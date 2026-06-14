@@ -1,0 +1,7 @@
+// expect: E0402
+module M {
+  in a: bits[4]
+  in b: bits[8]
+  out y: bits[8]
+  y = min(a, b)
+}

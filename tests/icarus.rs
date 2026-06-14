@@ -20,13 +20,15 @@ use std::process::Command;
 
 /// Testbench file (under tests/icarus/) -> the example it tests.
 /// Testbench module name = file name minus `.v`.
-const TESTBENCHES: [(&str, &str); 14] = [
+const TESTBENCHES: [(&str, &str); 16] = [
     ("adder_tb.v", "english/adder.mimz"),
     ("alu_tb.v", "english/alu.mimz"),
+    ("bitops_tb.v", "english/bitops.mimz"),
     ("blinker_tb.v", "english/blinker.mimz"),
     ("chained_tb.v", "english/chained.mimz"),
     ("comparator_tb.v", "english/comparator.mimz"),
     ("counter_tb.v", "english/counter.mimz"),
+    ("datapath_tb.v", "english/datapath.mimz"),
     ("edge_detector_tb.v", "english/edge_detector.mimz"),
     ("full_adder_tb.v", "english/lib/full_adder.mimz"),
     ("mux4_tb.v", "english/mux4.mimz"),

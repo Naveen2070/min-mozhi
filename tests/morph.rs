@@ -140,6 +140,26 @@ fn uncovered_code_is_identical_across_languages() {
 }
 
 #[test]
+fn compile_also_localizes_diagnostics() {
+    // The localization path is shared by `check` AND `compile` (both render via
+    // morph). A failing compile under `--lang ta` shows the Tamil E0501 line.
+    let path = temp_mimz(DOUBLE_DRIVE);
+    let out = mimz()
+        .arg("compile")
+        .arg("--lang")
+        .arg("ta")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "double-drive must fail to compile");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("error[E0501]: y-க்கு"),
+        "compile localizes too, got:\n{err}"
+    );
+}
+
+#[test]
 fn unknown_lang_is_a_clean_error() {
     let err = check_stderr(DOUBLE_DRIVE, Some("klingon"));
     assert!(

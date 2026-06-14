@@ -1,0 +1,25 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one
+// file; mixing freely is the migration path): the datapath operators that no other
+// example reaches.
+// `*` is lossless multiply (4+4 -> 8 bits); `*%` is the wrapping twin (keeps 4);
+// `>>` shifts right; `{a, b}` concatenates (a is the high half); `a[3:2]` slices
+// (both bounds inclusive); `trunc(a, 2)` keeps the low bits. All combinational.
+
+module DataPath {
+  ulle a: bits[4]
+  உள் b: bits[4]
+
+  veli prod: bits[8]
+  வெளி wrap: bits[4]
+  out rsh:  bits[4]
+  veli cat:  bits[8]
+  வெளி hi2:  bits[2]
+  out lo2:  bits[2]
+
+  prod = a * b
+  wrap = a *% b
+  rsh  = a >> 1
+  cat  = {a, b}
+  hi2  = a[3:2]
+  lo2  = trunc(a, 2)
+}
