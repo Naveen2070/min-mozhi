@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**200 tests** as of 2026-06-14: 146 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 13 grammar integration + 6 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-14: the Phase 1.8 conditional / if-expression / match thamizh-order flips added 8 grammar integration tests.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**207 tests** as of 2026-06-14: 148 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 15 grammar integration + 9 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -303,34 +303,18 @@ skips the checker, so `comb.rs` is the only overflow guard (audit SEC-2).
 | `overflowing_multiply_const_does_not_panic` | a const product past i128::MAX → overflow error, not a panic        |
 | `out_of_range_index_is_rejected_cleanly`    | a literal index past the width → clean error, not a truncating cast |
 
-## Integration: grammar engine (`tests/grammar.rs`, 5 tests — run the real binary)
-
-The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
-profile-blind backend: a thamizh-order file and its code-order twin must emit
-byte-identical Verilog, so equal Verilog proves the same AST. Fixtures live in
-`tests/fixtures/grammar/` (not `examples/`, which stays byte-identical
-four-flavor per R9).
-
-| Test                                                  | Locks in                                                       |
-| ----------------------------------------------------- | -------------------------------------------------------------- |
-| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin  |
-| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin |
-| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                  |
-| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                    |
-| `flipped_on_block_is_rejected_in_code_order`          | the flip is gated on the profile, not always on                |
-
 ## Fuzzing: `fuzz/fuzz_targets/lex_parse_eval.rs` (CI-only, not a `cargo test` unit)
 
 A `cargo-fuzz` harness over the untrusted-input path — NFC-normalize → `lex`
 → `parse` → `sim::comb::eval_outputs` — asserting the audit's core guarantee
 (any byte string yields a value or a clean `Diag`/`Err`, never a panic / abort /
-hang). It is **not** part of the 197-test count: it needs a nightly toolchain +
+hang). It is **not** part of the test count above: it needs a nightly toolchain +
 libFuzzer (Linux/macOS), lives in a standalone `fuzz/` crate the root gate never
 builds, and runs as the CI `fuzz` job (60 s smoke per push/PR). Run locally under
 WSL2/Linux with `cargo +nightly fuzz run lex_parse_eval`. See
 [`../audit/hardening.md`](../audit/hardening.md) "Ongoing assurance".
 
-## Integration: grammar engine (`tests/grammar.rs`, 5 tests — run the real binary)
+## Integration: grammar engine (`tests/grammar.rs`, 15 tests — run the real binary)
 
 The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
 profile-blind backend: a thamizh-order file and its code-order twin must emit
@@ -338,37 +322,23 @@ byte-identical Verilog, so equal Verilog proves the same AST. Fixtures live in
 `tests/fixtures/grammar/` (not `examples/`, which stays byte-identical
 four-flavor per R9).
 
-| Test                                                  | Locks in                                                       |
-| ----------------------------------------------------- | -------------------------------------------------------------- |
-| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin  |
-| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin |
-| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                  |
-| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                    |
-| `flipped_on_block_is_rejected_in_code_order`          | the flip is gated on the profile, not always on                |
-
-## Integration: grammar engine (`tests/grammar.rs`, 13 tests — run the real binary)
-
-The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
-profile-blind backend: a thamizh-order file and its code-order twin must emit
-byte-identical Verilog, so equal Verilog proves the same AST. Fixtures live in
-`tests/fixtures/grammar/` (not `examples/`, which stays byte-identical
-four-flavor per R9).
-
-| Test                                                  | Locks in                                                        |
-| ----------------------------------------------------- | --------------------------------------------------------------- |
-| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin   |
-| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin  |
-| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                   |
-| `thamizh_order_blinker_matches_code_order_twin`       | seq conditional `<cond> endral { } illaiyel { }` → same Verilog |
-| `thamizh_order_blinker_tamil_matches_code_order_twin` | the conditional flip in pure Tamil script → same Verilog        |
-| `thamizh_order_blinker_agrees_with_english_golden`    | conditional flip is invisible to the backend (English golden)   |
-| `thamizh_order_comparator_matches_code_order_twin`    | if-expression `c endral { } illaiyel { }` → same Verilog        |
-| `thamizh_order_match_matches_code_order_twin`         | match `<expr> poruthu { }` → same Verilog (self-contained pair) |
-| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                     |
-| `flipped_on_block_is_rejected_in_code_order`          | the clocked-block flip is gated on the profile                  |
-| `flipped_conditional_is_rejected_in_code_order`       | `<cond> endral { }` rejected without the directive              |
-| `flipped_if_expr_is_rejected_in_code_order`           | `a > b endral { } illaiyel { }` rejected without the directive  |
-| `flipped_match_is_rejected_in_code_order`             | `op poruthu { }` rejected without the directive                 |
+| Test                                                  | Locks in                                                                                               |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin                                          |
+| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin                                         |
+| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                                                          |
+| `thamizh_order_blinker_matches_code_order_twin`       | seq conditional `<cond> endral { } illaiyel { }` → same Verilog                                        |
+| `thamizh_order_blinker_tamil_matches_code_order_twin` | the conditional flip in pure Tamil script → same Verilog                                               |
+| `thamizh_order_blinker_agrees_with_english_golden`    | conditional flip is invisible to the backend (English golden)                                          |
+| `thamizh_order_comparator_matches_code_order_twin`    | if-expression `c endral { } illaiyel { }` → same Verilog                                               |
+| `thamizh_order_match_matches_code_order_twin`         | match `<expr> poruthu { }` → same Verilog (self-contained pair)                                        |
+| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                                                            |
+| `flipped_on_block_is_rejected_in_code_order`          | the clocked-block flip is gated on the profile                                                         |
+| `flipped_conditional_is_rejected_in_code_order`       | `<cond> endral { }` rejected without the directive                                                     |
+| `flipped_if_expr_is_rejected_in_code_order`           | `a > b endral { } illaiyel { }` rejected without the directive                                         |
+| `flipped_match_is_rejected_in_code_order`             | `op poruthu { }` rejected without the directive                                                        |
+| `code_order_if_is_rejected_in_thamizh`                | leading `endral` (code order) in a thamizh file errors — symmetric profile boundary                    |
+| `deeply_nested_thamizh_else_if_errors_not_overflows`  | deep thamizh `illaiyel … endral` chain → clean E1113, no stack overflow (SEC-1 guard on the flip path) |
 
 ## Deliberately NOT covered (and what would close each gap)
 

@@ -254,3 +254,17 @@ fn deeply_nested_thamizh_else_if_errors_not_overflows() {
         "expected a clean E1113 depth error (not a stack-overflow crash), got:\n{stderr}"
     );
 }
+
+/// The profile boundary is symmetric: just as a trailing `endral`/`poruthu` is
+/// rejected in code order, a LEADING one (code-order syntax) inside a `syntax
+/// thamizh` file must error — not silently parse as code order. Guards the
+/// profile-aware dispatch in `primary`.
+#[test]
+fn code_order_if_is_rejected_in_thamizh() {
+    let src = "syntax thamizh\nmodule M {\n  in a: bit\n  in b: bit\n  out y: bit\n  y = endral a { b } illaiyel { a }\n}\n";
+    let (ok, _stderr) = compile_src(src, "codeorder_if_in_thamizh");
+    assert!(
+        !ok,
+        "a leading `endral` (code order) must be rejected inside a thamizh file"
+    );
+}

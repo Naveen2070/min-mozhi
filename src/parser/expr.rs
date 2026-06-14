@@ -549,6 +549,29 @@ impl Parser {
                     span: start.join(t.span),
                 })
             }
+            // In code order the clause head LEADS, so `if`/`match` start a
+            // primary. In thamizh order it TRAILS the operand (handled in
+            // `expr_thamizh`), so a leading `endral`/`poruthu` here is the
+            // wrong order — reject it cleanly rather than silently parsing it
+            // as code order inside a thamizh file.
+            TokKind::Kw(Kw::If) if self.profile == Profile::Thamizh => {
+                let span = self.peek().span;
+                self.error(
+                    span,
+                    "E1101",
+                    "in thamizh order the condition comes first: `<cond> endral { … }` — parenthesize if you need it as a value",
+                );
+                None
+            }
+            TokKind::Kw(Kw::Match) if self.profile == Profile::Thamizh => {
+                let span = self.peek().span;
+                self.error(
+                    span,
+                    "E1101",
+                    "in thamizh order the scrutinee comes first: `<expr> poruthu { … }` — parenthesize if you need it as a value",
+                );
+                None
+            }
             TokKind::Kw(Kw::If) => self.if_expr(),
             TokKind::Kw(Kw::Match) => self.match_expr(),
             TokKind::Ident(name) => {
