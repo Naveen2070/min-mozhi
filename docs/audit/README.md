@@ -22,6 +22,7 @@ locks it). New audits append here; nothing is deleted.
 | Date       | Scope                                                                    | Result                                                         |
 | ---------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
 | 2026-06-14 | Full `src/` sweep: overflow, panics, recursion, resources, memory safety | 2 real defects fixed (1 CRITICAL, 1 HIGH) + 1 hang + hardening |
+| 2026-06-14 | Continuous fuzzing of the untrusted-input path                           | `cargo-fuzz` target `fuzz/` + CI smoke job landed              |
 
 ## Threat model
 

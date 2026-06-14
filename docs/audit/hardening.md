@@ -57,13 +57,24 @@ verification against the code**. Recording them so they are not re-investigated:
 
 ---
 
-## Ongoing assurance (recommended, not yet done)
+## Ongoing assurance
 
-- **Fuzz target:** a `cargo-fuzz` harness over `lex → parse → eval` (the full
-  untrusted-input path) would catch the next SEC-1-class crash automatically;
-  run nightly in CI.
-- **CI** already enforces `clippy -D warnings` + full tests; `#![forbid(unsafe_code)]`
-  now makes memory-unsafe code a hard error.
+- **Fuzz target (done).** A `cargo-fuzz` harness over `lex → parse → eval` (the
+  full untrusted-input path) lives in `fuzz/fuzz_targets/lex_parse_eval.rs`. It
+  NFC-normalizes the raw bytes (like `project::read_source`), lexes, parses, and
+  constant-evaluates — any panic / abort / hang is a finding. The CI `fuzz` job
+  (`.github/workflows/ci.yml`) runs a bounded 60 s smoke on every push/PR; a
+  crash writes a reproducer to `fuzz/artifacts/` and fails the build. libFuzzer
+  needs a nightly toolchain and runs on Linux/macOS only, so it is **not** built
+  on the Windows dev box — run it locally under WSL2/Linux with
+  `cargo +nightly fuzz run lex_parse_eval`. The `fuzz/` crate is standalone (own
+  manifest + `[workspace]`), so the normal `cargo build`/`clippy`/`test` gate
+  never sees it. Possible extensions: seed the corpus from `examples/`, derive
+  dummy input-port values from the AST to exercise runtime (not just constant)
+  evaluation, add a `lex → parse → compile` target for the Verilog backend, and
+  a longer scheduled run.
+- **CI** also enforces `clippy -D warnings` + full tests; `#![forbid(unsafe_code)]`
+  makes memory-unsafe code a hard error.
 
 ## Scope boundary
 

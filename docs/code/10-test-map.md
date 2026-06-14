@@ -319,6 +319,17 @@ four-flavor per R9).
 | `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                    |
 | `flipped_on_block_is_rejected_in_code_order`          | the flip is gated on the profile, not always on                |
 
+## Fuzzing: `fuzz/fuzz_targets/lex_parse_eval.rs` (CI-only, not a `cargo test` unit)
+
+A `cargo-fuzz` harness over the untrusted-input path — NFC-normalize → `lex`
+→ `parse` → `sim::comb::eval_outputs` — asserting the audit's core guarantee
+(any byte string yields a value or a clean `Diag`/`Err`, never a panic / abort /
+hang). It is **not** part of the 197-test count: it needs a nightly toolchain +
+libFuzzer (Linux/macOS), lives in a standalone `fuzz/` crate the root gate never
+builds, and runs as the CI `fuzz` job (60 s smoke per push/PR). Run locally under
+WSL2/Linux with `cargo +nightly fuzz run lex_parse_eval`. See
+[`../audit/hardening.md`](../audit/hardening.md) "Ongoing assurance".
+
 ## Deliberately NOT covered (and what would close each gap)
 
 | Gap                                                                      | Why it's open                                                                                                                                                                                        | Closes when                                                 |
