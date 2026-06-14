@@ -204,6 +204,51 @@ fn connection_width_mismatch_is_e0401_naming_the_port() {
 }
 
 #[test]
+fn min_max_take_two_same_width_operands() {
+    check_one(
+        "module M {\n  in a: bits[8]\n  in b: bits[8]\n  out y: bits[8]\n  y = max(a, b)\n}\n",
+    )
+    .expect("max of two bits[8] is bits[8]");
+}
+
+#[test]
+fn min_of_mismatched_widths_is_e0402() {
+    first_err(
+        "module M {\n  in a: bits[4]\n  in b: bits[8]\n  out y: bits[8]\n  y = min(a, b)\n}\n",
+        "E0402",
+    );
+}
+
+#[test]
+fn abs_of_signed_grows_one_bit() {
+    // abs(signed[4]) is signed[5] (room for abs(MIN)).
+    check_one("module M {\n  in a: signed[4]\n  out y: signed[5]\n  y = abs(a)\n}\n")
+        .expect("abs grows to signed[N+1]");
+}
+
+#[test]
+fn abs_of_unsigned_is_e0407() {
+    first_err(
+        "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = abs(a)\n}\n",
+        "E0407",
+    );
+}
+
+#[test]
+fn nand_reduces_to_a_bit() {
+    check_one("module M {\n  in a: bits[4]\n  out y: bit\n  y = nand(a)\n}\n")
+        .expect("nand of bits[4] is a bit");
+}
+
+#[test]
+fn nor_of_signed_is_e0403() {
+    first_err(
+        "module M {\n  in a: signed[4]\n  out y: bit\n  y = nor(a)\n}\n",
+        "E0403",
+    );
+}
+
+#[test]
 fn bitwise_operand_mismatch_is_e0402() {
     let src = "module M {\n  in a: bits[4]\n  in b: bits[8]\n  out y: bits[8]\n  y = a & b\n}\n";
     let d = first_err(src, "E0402");

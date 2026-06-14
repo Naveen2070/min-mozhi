@@ -606,6 +606,12 @@ impl Parser {
             "trunc" => (Builtin::Trunc, 2),
             "signed" => (Builtin::SignedCast, 1),
             "unsigned" => (Builtin::UnsignedCast, 1),
+            "min" => (Builtin::Min, 2),
+            "max" => (Builtin::Max, 2),
+            "abs" => (Builtin::Abs, 1),
+            "nand" => (Builtin::Nand, 1),
+            "nor" => (Builtin::Nor, 1),
+            "xnor" => (Builtin::Xnor, 1),
             other => {
                 self.error(
                     id.span,
@@ -615,7 +621,7 @@ impl Parser {
                     ),
                 );
                 self.help(
-                    "built-ins are `extend(x, N)`, `trunc(x, N)`, `signed(x)`, `unsigned(x)`; modules are instantiated with `let` (spec/02 section 1.5)",
+                    "built-ins are `extend(x, N)`, `trunc(x, N)`, `signed(x)`, `unsigned(x)`, `min(a, b)`, `max(a, b)`, `abs(x)`, `nand|nor|xnor(x)`; modules are instantiated with `let` (spec/02 section 1.5)",
                 );
                 return None;
             }

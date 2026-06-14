@@ -599,5 +599,11 @@ fn builtin(b: Builtin) -> &'static str {
         Builtin::Trunc => "trunc",
         Builtin::SignedCast => "signed",
         Builtin::UnsignedCast => "unsigned",
+        Builtin::Min => "min",
+        Builtin::Max => "max",
+        Builtin::Abs => "abs",
+        Builtin::Nand => "nand",
+        Builtin::Nor => "nor",
+        Builtin::Xnor => "xnor",
     }
 }

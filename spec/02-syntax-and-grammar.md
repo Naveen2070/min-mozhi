@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.6.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.7.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -279,6 +279,14 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
   `WIDTH = 1` instantiation.
 - An unsized literal adapts to the context width if it fits; otherwise it is a
   compile error (never a silent wrap).
+- **Arithmetic / reduction built-ins** (added v0.2.7): `min(a, b)` / `max(a, b)`
+  take two operands of the same width (a literal adapts to the sized side, like a
+  comparison) and return that type; `abs(x)` takes a `signed[N]` and returns
+  `signed[N+1]` (room for `abs(MIN)`); `nand(x)` / `nor(x)` / `xnor(x)` are the
+  negated bit-reductions (one bit out), the dictionary spellings of `~&x` / `~|x`
+  / `~^x`. They lower to plain Verilog-2005 (a `?:` for min/max/abs, the negated
+  reduction operators for nand/nor/xnor) — no SystemVerilog. Like `extend`/`trunc`,
+  they are runtime built-ins, not compile-time constant folders.
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
   accepted in literals.
 
@@ -445,7 +453,9 @@ postfix     = primary { "[" expr [ ":" expr ] "]" | "." IDENT } ;
 primary     = literal | IDENT | "(" expr ")" | concat | callExpr ;
 concat      = "{" expr { "," expr } "}" ;
 callExpr    = ( "extend" | "trunc" ) "(" expr "," constExpr ")"
-            | ( "signed" | "unsigned" ) "(" expr ")" ;
+            | ( "signed" | "unsigned" | "abs"
+              | "nand" | "nor" | "xnor" ) "(" expr ")"
+            | ( "min" | "max" ) "(" expr "," expr ")" ;
 
 literal     = [ "-" ] INT | BIN | HEX | "true" | "false" ;
 constExpr   = expr ;   (* must fold to a constant at compile time *)

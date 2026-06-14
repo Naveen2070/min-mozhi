@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**234 tests** as of 2026-06-14: 156 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 7 morph integration + 5 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**241 tests** as of 2026-06-14: 162 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 10 eval integration + 7 translate integration + 7 morph integration + 5 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Arithmetic built-ins `min`/`max`/`abs`/`nand`/`nor`/`xnor` added 6 checker unit tests + 1 `eval` integration test.) (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -61,7 +61,7 @@ The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 85 tests)
+## Unit: checker (`src/checker/tests.rs`, 91 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -338,7 +338,7 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `rejects_sequential_logic`   | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
 | `reports_missing_input`      | a missing `--in` value names the input                                            |
 
-## Integration: eval (`tests/eval.rs`, 9 tests — run the real binary)
+## Integration: eval (`tests/eval.rs`, 10 tests — run the real binary)
 
 End-to-end `mimz eval` over corpus examples — proves the lib evaluator AND the
 `--in`/`--module` plumbing. The last three are security cases: the `eval` path

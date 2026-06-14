@@ -77,6 +77,20 @@ fn comparator_reports_all_three_outputs() {
 }
 
 #[test]
+fn arithmetic_builtins_compute_min_max_abs_and_negated_reductions() {
+    // a=3 (0b0011), b=10, s=-3 (signed[4] = 0b1101 = 13).
+    let src = "module B {\n  in a: bits[4]\n  in b: bits[4]\n  in s: signed[4]\n  out mn: bits[4]\n  out mx: bits[4]\n  out ab: signed[5]\n  out nd: bit\n  out nr: bit\n  out xn: bit\n  mn = min(a, b)\n  mx = max(a, b)\n  ab = abs(s)\n  nd = nand(a)\n  nr = nor(a)\n  xn = xnor(a)\n}\n";
+    let (ok, out, err) = eval_src(src, &["--in", "a=3,b=10,s=13"]);
+    assert!(ok, "stderr: {err}");
+    assert!(out.contains("mn = 3"), "min: {out}");
+    assert!(out.contains("mx = 10"), "max: {out}");
+    assert!(out.contains("ab = 3"), "abs(-3): {out}");
+    assert!(out.contains("nd = 1"), "nand(0b0011): {out}"); // &=0 → 1
+    assert!(out.contains("nr = 0"), "nor(0b0011): {out}"); // |=1 → 0
+    assert!(out.contains("xn = 1"), "xnor(0b0011): {out}"); // ^=0 → 1
+}
+
+#[test]
 fn window_chained_comparison_boundaries() {
     let (_, inside, _) = eval("window.mimz", &["--in", "lo=10,value=100,hi=100"]);
     assert!(
