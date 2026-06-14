@@ -330,6 +330,22 @@ builds, and runs as the CI `fuzz` job (60 s smoke per push/PR). Run locally unde
 WSL2/Linux with `cargo +nightly fuzz run lex_parse_eval`. See
 [`../audit/hardening.md`](../audit/hardening.md) "Ongoing assurance".
 
+## Integration: grammar engine (`tests/grammar.rs`, 5 tests — run the real binary)
+
+The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
+profile-blind backend: a thamizh-order file and its code-order twin must emit
+byte-identical Verilog, so equal Verilog proves the same AST. Fixtures live in
+`tests/fixtures/grammar/` (not `examples/`, which stays byte-identical
+four-flavor per R9).
+
+| Test                                                  | Locks in                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin  |
+| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin |
+| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                  |
+| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                    |
+| `flipped_on_block_is_rejected_in_code_order`          | the flip is gated on the profile, not always on                |
+
 ## Deliberately NOT covered (and what would close each gap)
 
 | Gap                                                                      | Why it's open                                                                                                                                                                                        | Closes when                                                 |
