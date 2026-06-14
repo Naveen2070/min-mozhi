@@ -365,6 +365,16 @@ fn zero_width_is_e0410() {
 }
 
 #[test]
+fn zero_width_output_with_indexed_drivers_does_not_panic() {
+    // Regression (fuzz `lex_parse_compile`): a zero-width output — `!W` folds
+    // to 0 — driven by per-bit `Range` sites reached the coverage check, where
+    // `covered.len() as u128 - 1` underflowed on the empty vec. Must report
+    // E0410, not panic.
+    let src = "module M {\n  const W: int = 4\n  in a: bits[W]\n  out sum: bits[!W]\n  repeat i: 0..W {\n    sum[i] = a[i]\n  }\n}\n";
+    first_err(src, "E0410");
+}
+
+#[test]
 fn adder_growth_passes() {
     let src = "module Adder(WIDTH: int = 8) {\n  in a: bits[WIDTH]\n  in b: bits[WIDTH]\n  out sum: bits[WIDTH + 1]\n  sum = a + b\n}\n";
     check_one(src).expect("lossless + grows into the wider target");

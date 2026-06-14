@@ -102,3 +102,45 @@ classic buffer overflow (out-of-bounds write) cannot occur. The risk reduces to
 **Hardening.** `#![forbid(unsafe_code)]` was added to `src/lib.rs` and
 `src/main.rs` so this guarantee is now enforced by the compiler — any future
 `unsafe` is a build error. See [`hardening.md`](hardening.md).
+
+---
+
+## SEC-4 (LOW) — Subtract overflow in zero-width output coverage check
+
+**What.** `Checker::report_coverage` (`src/checker/drivers.rs`) computes per-bit
+driver coverage for an output. For a **zero-width** output whose drivers are
+per-bit `Range` sites, it built `covered = vec![false; 0]` and then clamped the
+upper bound with `covered.len() as u128 - 1` — `0u128 - 1`, an **arithmetic
+overflow** (debug panic / release wrap, since `overflow-checks = true`). A
+zero-width type is already an `E0410`, but the checker records that error and
+**continues**, so this later pass still ran on the bad signal.
+
+**How found.** The `lex_parse_compile` fuzz target — its first finding. The
+reproducer was a mutated `ripple_adder` with `out sum: bits[!WIDTH]` (the unary
+`!` folds `9` to `0`) driven per-bit by `sum[i] = …` inside a `repeat`. Minimal
+import-free trigger:
+
+```mimz
+module M {
+  const W: int = 4
+  in a: bits[W]
+  out sum: bits[!W]
+  repeat i: 0..W {
+    sum[i] = a[i]
+  }
+}
+```
+
+**Severity.** LOW — a checker-internal panic on already-invalid input (the file
+is rejected either way); reachable from `check`/`compile`. No miscompile: the
+emitter never runs on a failed check.
+
+**Fix.** `report_coverage` now skips a zero-width signal (`if width == 0 {
+continue; }`) before allocating `covered` — coverage analysis is meaningless on
+it, and the `E0410` already reports the real problem.
+
+**Verified.** The reproducer now prints `error[E0410]: \`0\` is not a valid
+width` and exits non-zero — no panic in debug or release.
+
+**Tests.** `zero_width_output_with_indexed_drivers_does_not_panic`
+(`src/checker/tests.rs`).
