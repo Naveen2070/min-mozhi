@@ -1,15 +1,18 @@
 # Min-Mozhi — Grammar Engine (இலக்கண இயந்திரம்)
 
-> **Spec v0.2 DRAFT — Phase 1.8 in progress.**
+> **Spec v0.2.1 DRAFT — Phase 1.8 in progress.**
 > Goal: let Tamil and Tanglish code read with **natural Tamil word order**
 > (SOV, postpositional), not just Tamil words in English order.
 >
-> **Implemented so far (2026-06-13):** the `syntax thamizh` directive and the
-> clocked-block flip — `rise(clk) on { }` (section 3 row "clocked block"). It
-> parses to the same AST as code-order and emits byte-identical Verilog
-> (`tests/grammar.rs`, `tests/fixtures/grammar/`). Still to do: the conditional
-> / match / if-expression / test flips, the `translate --order` pretty-printer,
-> and the morphology error helper (section 5).
+> **Implemented so far (2026-06-14):** the `syntax thamizh` directive and four
+> of the five clause flips in section 3 — the **clocked block**
+> (`rise(clk) on { }`), the **conditional** (`<cond> endral { }`), the
+> **if-expression** (`c endral { a } illaiyel { b }`), and **match**
+> (`<expr> poruthu { }`). All parse to the same AST as code-order and emit
+> byte-identical Verilog (`tests/grammar.rs`, `tests/fixtures/grammar/`). Still
+> to do: the **test** flip (deferred to Phase 1.5 — `test` blocks emit no
+> Verilog yet, so there is no same-Verilog oracle), the `translate --order`
+> pretty-printer, and the morphology error helper (section 5).
 
 ---
 

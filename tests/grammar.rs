@@ -7,8 +7,11 @@
 //! BYTE-IDENTICAL Verilog. Equal Verilog out of a profile-blind backend means
 //! the parser built the same tree from both orders — which is the contract.
 //!
-//! Slice landed: the clocked-block flip (`rise(clk) on { }`). The conditional
-//! / match / test flips arrive with the rest of Phase 1.8.
+//! Slices landed: the clocked-block flip (`rise(clk) on { }`), the seq
+//! conditional (`<cond> endral { }`), the if-expression (`c endral { } illaiyel
+//! { }`), and match (`<expr> poruthu { }`). The test-form flip arrives with
+//! Phase 1.5 (test blocks emit no Verilog yet, so they have no same-Verilog
+//! oracle).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -138,5 +141,130 @@ fn flipped_on_block_is_rejected_in_code_order() {
     assert!(
         !ok,
         "`rise(clk) on {{}}` must be a parse error without `syntax thamizh`"
+    );
+}
+
+/// Seq conditional flip: the Tanglish thamizh-order blinker (clocked block +
+/// `<cond> endral { } illaiyel { }`) emits byte-identical Verilog to its
+/// code-order twin.
+#[test]
+fn thamizh_order_blinker_matches_code_order_twin() {
+    let thamizh = compile(&fixture("blinker.thamizh.mimz"));
+    let code_order = compile(&example("tanglish/blinker.mimz"));
+    assert_eq!(
+        thamizh, code_order,
+        "thamizh-order conditional must emit byte-identical Verilog to its code-order twin"
+    );
+}
+
+/// The same seq-conditional flip in pure Tamil script — profile and keyword
+/// flavor are orthogonal.
+#[test]
+fn thamizh_order_blinker_tamil_matches_code_order_twin() {
+    let thamizh = compile(&fixture("blinker_tamil.thamizh.mimz"));
+    let code_order = compile(&example("tamil/blinker.mimz"));
+    assert_eq!(thamizh, code_order);
+}
+
+/// All three blinker flavors agree with the English golden — the SOV
+/// conditional changes nothing the backend can see.
+#[test]
+fn thamizh_order_blinker_agrees_with_english_golden() {
+    let english = compile(&example("english/blinker.mimz"));
+    assert_eq!(compile(&fixture("blinker.thamizh.mimz")), english);
+    assert_eq!(compile(&fixture("blinker_tamil.thamizh.mimz")), english);
+}
+
+/// If-expression flip: the thamizh-order comparator (`max = a > b endral { a }
+/// illaiyel { b }`) emits byte-identical Verilog to its code-order twin.
+#[test]
+fn thamizh_order_comparator_matches_code_order_twin() {
+    let thamizh = compile(&fixture("comparator.thamizh.mimz"));
+    let code_order = compile(&example("tanglish/comparator.mimz"));
+    assert_eq!(
+        thamizh, code_order,
+        "thamizh-order if-expression must emit byte-identical Verilog to its code-order twin"
+    );
+}
+
+/// Match flip: the thamizh-order ALU (`y = op poruthu { … }`) emits
+/// byte-identical Verilog to its code-order twin (a self-contained fixture
+/// pair — the tanglish ALU example imports `adder`).
+#[test]
+fn thamizh_order_match_matches_code_order_twin() {
+    let thamizh = compile(&fixture("match.thamizh.mimz"));
+    let code_order = compile(&fixture("match.code.mimz"));
+    assert_eq!(
+        thamizh, code_order,
+        "thamizh-order match must emit byte-identical Verilog to its code-order twin"
+    );
+}
+
+/// The flipped forms are gated on the profile: without `syntax thamizh`, the
+/// trailing-keyword forms (`<cond> endral`, `a > b endral { } illaiyel { }`,
+/// `op poruthu { }`) are parse errors, not silently accepted.
+#[test]
+fn flipped_conditional_is_rejected_in_code_order() {
+    let src = "module M {\n  clock clk\n  reg r: bit = 0\n  on rise(clk) {\n    r == 0 endral {\n      r <- 1\n    }\n  }\n}\n";
+    let (ok, _stderr) = compile_src(src, "flip_cond_code");
+    assert!(
+        !ok,
+        "`<cond> endral {{}}` must be a parse error without `syntax thamizh`"
+    );
+}
+
+#[test]
+fn flipped_if_expr_is_rejected_in_code_order() {
+    let src = "module M {\n  in a: bit\n  in b: bit\n  out y: bit\n  y = a > b endral { a } illaiyel { b }\n}\n";
+    let (ok, _stderr) = compile_src(src, "flip_ifexpr_code");
+    assert!(
+        !ok,
+        "`a > b endral {{ }} illaiyel {{ }}` must be a parse error without `syntax thamizh`"
+    );
+}
+
+#[test]
+fn flipped_match_is_rejected_in_code_order() {
+    let src = "module M {\n  in op: bits[2]\n  out y: bit\n  y = op poruthu {\n    0b00 => 1\n    _ => 0\n  }\n}\n";
+    let (ok, _stderr) = compile_src(src, "flip_match_code");
+    assert!(
+        !ok,
+        "`op poruthu {{}}` must be a parse error without `syntax thamizh`"
+    );
+}
+
+/// The thamizh-order recursion necks are depth-guarded too: a deep
+/// `illaiyel <cond> endral …` chain (well past `MAX_DEPTH` = 64) must fail with
+/// a clean E1113, NOT abort the process with a stack overflow. This locks the
+/// SEC-1 depth guard onto the Phase 1.8 thamizh if-expression path — the merge
+/// of the security and grammar branches dropped it and it was restored. 200
+/// levels is comfortably past the cap while staying small enough to avoid the
+/// (separate) error-recovery rendering blow-up on a single huge line.
+#[test]
+fn deeply_nested_thamizh_else_if_errors_not_overflows() {
+    let mut src = String::from("syntax thamizh\nmodule M {\n  in a: bit\n  out y: bit\n  y = ");
+    for _ in 0..200 {
+        src.push_str("a == 0 endral { 1 } illaiyel ");
+    }
+    src.push_str("{ 0 }\n}\n");
+    let (ok, stderr) = compile_src(&src, "deep_thamizh_elseif");
+    assert!(!ok, "a 200-deep thamizh else-if chain must not compile");
+    assert!(
+        stderr.contains("E1113"),
+        "expected a clean E1113 depth error (not a stack-overflow crash), got:\n{stderr}"
+    );
+}
+
+/// The profile boundary is symmetric: just as a trailing `endral`/`poruthu` is
+/// rejected in code order, a LEADING one (code-order syntax) inside a `syntax
+/// thamizh` file must error — not silently parse as code order. Guards the
+/// profile-aware dispatch in `primary`.
+#[test]
+fn code_order_if_is_rejected_in_thamizh() {
+    let src = "syntax thamizh\nmodule M {\n  in a: bit\n  in b: bit\n  out y: bit\n  y = endral a { b } illaiyel { a }\n}\n";
+    let (ok, _stderr) = compile_src(src, "codeorder_if_in_thamizh");
+    assert!(
+        !ok,
+        "a leading `endral` (code order) must be rejected inside a thamizh file"
     );
 }

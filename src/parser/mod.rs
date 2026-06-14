@@ -67,10 +67,10 @@ pub(crate) struct Parser {
     diags: Vec<Diag>,
     /// The active word-order profile, set by the `syntax` directive.
     profile: Profile,
-    /// Current recursive-descent nesting depth (see `enter`). Bounds
-    /// the stack so a pathological `((((…))))` cannot abort the process.
+    /// Current recursive-descent nesting depth (see `enter`/`leave`,
+    /// `MAX_DEPTH`) — the anti-stack-overflow guard (E1113).
     depth: usize,
-    /// Latch: emit the "nested too deeply" diagnostic at most once per parse.
+    /// Latch so the depth-limit diagnostic (E1113) is emitted only once.
     too_deep: bool,
 }
 

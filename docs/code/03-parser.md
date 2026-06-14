@@ -94,27 +94,6 @@ Other notable spots:
   only one token of lookahead, so it can reuse this machinery with
   flipped clause heads.
 
-## Word-order profiles (the grammar engine, spec/04)
-
-The parser carries a `Profile` (`mod.rs`): `CodeOrder` (default) or `Thamizh`.
-An optional leading `syntax thamizh` directive — parsed once by
-`syntax_directive` before any item — switches it to `Thamizh`. The directive is
-consumed and **never enters the AST**, so a thamizh-order file and its
-code-order twin parse to the same tree and emit byte-identical Verilog (the
-same-AST contract, tested in `tests/grammar.rs`).
-
-A profile only steers which clause-head production runs; everything else
-(expressions, declarations, types, operators) is shared. The flip is a one-token
-decision at the clause head — no backtracking — exactly the lookahead the
-expression parser already uses.
-
-Landed so far: the **clocked-block flip**. Code-order `on rise(clk) { }`
-dispatches on `Kw::On`; thamizh-order `rise(clk) on { }` dispatches on `Kw::Rise`
-(guarded by `profile == Thamizh`) into `on_block_thamizh`. Both share
-`clock_edge_args` and build the identical `OnBlock`. A leading `rise(...)` in
-code-order stays an error — the flip is gated, not always on. Remaining 1.8
-flips (conditional / match / if-expression / test) follow the same pattern.
-
 ## What the parser deliberately does NOT do
 
 No name resolution, no width checking, no const evaluation — those are
@@ -122,6 +101,6 @@ the checker's six passes (`docs/code/11-checker.md`). The parser only
 enforces what is syntactically decidable, which includes several safety
 rules: `=` vs `<-` placement, mandatory reg reset values, mandatory
 `else` on if-expressions, no user-defined function calls. Every parse
-error carries a stable code (**E1101–E1113** — `self.error(span, code,
+error carries a stable code (**E1101–E1111** — `self.error(span, code,
 msg)` makes the code mandatory; catalog and the E1101 grouping rule in
 [`06-diagnostics.md`](06-diagnostics.md)).

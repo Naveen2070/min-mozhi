@@ -1,0 +1,29 @@
+// Thamizh-order twin of examples/tanglish/blinker.mimz (spec/04, Phase 1.8).
+// Same identifiers and keywords (Tanglish) — only the WORD ORDER differs.
+// `ilakkanam thamizh` selects SOV order, so the clause heads trail: the
+// clocked block is `yetram(clk) pothu { }` and the conditional is
+// `<cond> endral { } illaiyel { }` (head after the condition) instead of the
+// code-order `pothu yetram(clk)` / `endral <cond>`. Must emit byte-identical
+// Verilog to its code-order twin — the same-AST guarantee.
+ilakkanam thamizh
+
+thoguthi Blinker(LIMIT: int = 50000000) {
+  kadigaram clk
+  meetamai rst
+
+  veli led: bit
+
+  nilai cnt:   bits[26] = 0
+  nilai state: bit      = 0
+
+  yetram(clk) pothu {
+    cnt == LIMIT endral {
+      cnt   <- 0
+      state <- state ^ 1
+    } illaiyel {
+      cnt <- cnt +% 1
+    }
+  }
+
+  led = state
+}
