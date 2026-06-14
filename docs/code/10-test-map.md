@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**227 tests** as of 2026-06-14: 156 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 7 morph integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**232 tests** as of 2026-06-14: 156 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 7 morph integration + 5 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -308,6 +308,19 @@ every flavor.
 | `covered_code_stays_english_with_lang_en`            | `--lang en` keeps the original English wording                                |
 | `uncovered_code_is_identical_across_languages`       | **the fallback invariant** — E0401 is byte-identical under en / ta / tanglish |
 | `unknown_lang_is_a_clean_error`                      | `--lang klingon` fails with a clear "unknown language" message                |
+
+## Integration: fmt (`tests/fmt.rs`, 5 tests — run the real binary)
+
+`mimz fmt` — the in-place keyword-flavor normalizer (the lossless `translate`
+token reskin, not the comment-dropping `--order` printer).
+
+| Test                                              | Locks in                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `normalizes_to_majority_and_is_idempotent`        | a mixed file normalizes to its majority flavor; comments survive; re-run no-ops |
+| `to_flag_forces_the_target_flavor`                | `--to tamil` overrides the majority; comment preserved                          |
+| `strict_warns_and_fails_on_mixed_but_still_fixes` | `--strict` warns + exits non-zero on a mixed file, still writing the fix        |
+| `strict_is_clean_on_a_single_flavor_file`         | a single-flavor file passes `--strict` (no warning, exit 0)                     |
+| `output_flag_leaves_the_input_untouched`          | `-o <dest>` writes the result elsewhere; the input is unchanged                 |
 
 ## Unit: combinational evaluator (`src/sim/comb.rs`, 7 tests)
 

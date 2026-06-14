@@ -67,6 +67,23 @@ enum Cmd {
         #[arg(long)]
         lang: Option<String>,
     },
+    /// Normalize a file's keyword flavor in place (lossless — comments and
+    /// layout are preserved; only keyword spellings change). Default target is
+    /// the flavor the file predominantly uses; `--to` overrides. (Word-order
+    /// reformatting is `translate --order`, which is not lossless.)
+    Fmt {
+        /// The .mimz file to format
+        file: PathBuf,
+        /// Target flavor: english | tanglish | tamil (default: the file's majority)
+        #[arg(long)]
+        to: Option<String>,
+        /// Warn when the file mixes keyword flavors (mixing stays legal)
+        #[arg(long)]
+        strict: bool,
+        /// Write here instead of overwriting the input file
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Run the language server over stdio (diagnostics-only v0;
     /// editors launch this — not for interactive use)
     Lsp,
@@ -129,6 +146,12 @@ fn main() -> ExitCode {
             json,
             lang,
         } => compile(&file, output, json, lang.as_deref()),
+        Cmd::Fmt {
+            file,
+            to,
+            strict,
+            output,
+        } => fmt_file(&file, to.as_deref(), strict, output),
         Cmd::Lsp => {
             lsp::run();
             ExitCode::SUCCESS
@@ -237,6 +260,76 @@ fn parse_u128(s: &str) -> Result<u128, String> {
         s.parse::<u128>()
     };
     parsed.map_err(|_| format!("`{s}` is not a number (use decimal, 0x.., or 0b..)"))
+}
+
+/// `mimz fmt <file>` — normalize the file's keyword flavor in place. Token-based
+/// (via [`translate`](mimz::translate)), so comments, layout, identifiers, and
+/// numbers are preserved byte-for-byte — only keyword spellings change. The
+/// target flavor is `--to` if given, else the file's predominant flavor
+/// (`morph::majority_flavor`). With `--strict`, a file that mixes keyword flavors
+/// gets a warning first (mixing stays legal — spec/03, the learning path).
+fn fmt_file(path: &Path, to: Option<&str>, strict: bool, output: Option<PathBuf>) -> ExitCode {
+    let src = match project::read_source(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let path_str = path.display().to_string();
+    let tokens = match lexer::lex(&src) {
+        Ok(t) => t,
+        Err(diags) => return Output::Human(Flavor::English).one_file(&diags, &src, &path_str),
+    };
+    // Target flavor: explicit `--to`, else the flavor the file mostly uses.
+    let target = match to {
+        Some(s) => match morph::parse_lang(s) {
+            Some(f) => f,
+            None => {
+                eprintln!("error: unknown flavor `{s}` — expected english, tanglish, or tamil");
+                return ExitCode::FAILURE;
+            }
+        },
+        None => morph::majority_flavor(&tokens),
+    };
+    // `--strict` is the lint mode: it still normalizes (writes the fix), but a
+    // mixed-flavor input is also reported and makes the command exit non-zero so
+    // CI can flag it. Mixing stays legal under a plain `fmt`.
+    let mut mixed = false;
+    if strict {
+        let used = morph::flavors_used(&tokens);
+        if used.len() > 1 {
+            mixed = true;
+            let names: Vec<&str> = used
+                .iter()
+                .map(|&f| mimz::translate::flavor_name(f))
+                .collect();
+            eprintln!(
+                "warning: `{path_str}` mixes keyword flavors ({}) — normalizing to {}",
+                names.join(", "),
+                mimz::translate::flavor_name(target)
+            );
+        }
+    }
+    let text = match mimz::translate::translate(&src, target) {
+        Ok(t) => t,
+        Err(diags) => return Output::Human(Flavor::English).one_file(&diags, &src, &path_str),
+    };
+    let out_path = output.unwrap_or_else(|| path.to_path_buf());
+    if let Err(e) = std::fs::write(&out_path, &text) {
+        eprintln!("error: cannot write `{}`: {e}", out_path.display());
+        return ExitCode::FAILURE;
+    }
+    println!(
+        "formatted {} ({})",
+        out_path.display(),
+        mimz::translate::flavor_name(target)
+    );
+    if mixed {
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
+    }
 }
 
 /// `mimz translate <file> [--to <flavor>] [--order code|thamizh]` — re-emit the

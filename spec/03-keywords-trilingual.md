@@ -63,7 +63,10 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
 - `mimz translate file.mimz --to english|tanglish|tamil` — lossless,
   token-level keyword rename. Comments and identifiers untouched.
 - `mimz fmt` — can normalize a file to one flavor; `--strict` also warns on
-  mixed flavors (mixing stays legal — it is the learning path).
+  mixed flavors (mixing stays legal — it is the learning path). Implemented
+  2026-06-14: in-place, lossless (the `translate` token reskin); default target
+  is the file's predominant flavor, `--to` overrides; `--strict` warns + exits
+  non-zero on a mixed file (still normalizing it).
 - Error messages are emitted in the flavor the file predominantly uses
   (`--lang` flag overrides). Implemented 2026-06-14 (`src/morph.rs`,
   `check`/`compile`/`eval`); the localized catalog itself is panel-gated — see
