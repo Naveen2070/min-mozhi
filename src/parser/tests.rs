@@ -16,6 +16,13 @@ fn parse_err(src: &str) -> Vec<Diag> {
 }
 
 #[test]
+fn builtin_with_wrong_arity_is_e1110() {
+    // `min` takes two arguments; calling it with one is a parse-time arity error.
+    let d = parse_err("module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = min(a)\n}\n");
+    assert_eq!(d[0].code, Some("E1110"));
+}
+
+#[test]
 fn parses_counter() {
     let f = parse_ok(
         "module Counter(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  out count: bits[WIDTH]\n  reg value: bits[WIDTH] = 0\n  on rise(clk) {\n    value <- value +% 1\n  }\n  count = value\n}\n",

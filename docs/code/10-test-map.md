@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**241 tests** as of 2026-06-14: 162 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 10 eval integration + 7 translate integration + 7 morph integration + 5 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Arithmetic built-ins `min`/`max`/`abs`/`nand`/`nor`/`xnor` added 6 checker unit tests + 1 `eval` integration test.) (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**247 tests** as of 2026-06-14: 165 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 10 eval integration + 7 translate integration + 8 morph integration + 7 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (A QA pass for the new built-ins added the `bitops` example in all four flavors — golden + a self-checking Icarus testbench incl. the abs(MIN) width-growth case — plus edge tests: parser arity E1110, checker literal-adapt + abs-of-literal, fmt keyword-free/non-lexing, and `compile --lang` localization.) (Arithmetic built-ins `min`/`max`/`abs`/`nand`/`nor`/`xnor` added 6 checker unit tests + 1 `eval` integration test.) (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~70 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -33,7 +33,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 19 tests)
+## Unit: parser (`src/parser/tests.rs`, 20 tests)
 
 | Test                                                        | Locks in                                                                   |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -53,6 +53,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `parses_repeat_and_const`                                   | `repeat i: 0..8` and file-level `const` parse                              |
 | `parses_test_block`                                         | `test "..." for M(...) { tick/expect }` parses                             |
 | `every_parse_error_carries_a_code`                          | the E11xx retrofit, locked from outside: no parse error is codeless        |
+| `builtin_with_wrong_arity_is_e1110`                         | a built-in called with the wrong argument count (e.g. `min(a)`) is E1110   |
 | `stray_top_level_brace_does_not_hang`                       | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)   |
 | `deeply_nested_expression_errors_not_overflows`             | `(((…)))` past the depth cap → clean E1113, not a stack overflow (SEC-1)   |
 | `deeply_nested_unary_errors_not_overflows`                  | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash           |
@@ -61,7 +62,7 @@ The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 91 tests)
+## Unit: checker (`src/checker/tests.rs`, 93 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -128,9 +129,11 @@ deserve a note:
 ## Integration (`tests/examples.rs`, 9 tests — run the real binary)
 
 `examples/` holds four flavor folders — `english/`, `tanglish/`, `tamil/`,
-`mixed/` — each with the SAME 15 base examples (identical identifiers,
+`mixed/` — each with the SAME 17 base examples (identical identifiers,
 only keywords differ; `lib/` subfolders hold dotted-import targets). The
 base-example list lives in the `BASE_EXAMPLES` const in the test file.
+(`bitops` — the arithmetic / reduction built-ins — and `datapath` —
+`*`/`*%`, `>>`, concat, slice, `trunc` — were added 2026-06-14.)
 
 | Test                                            | Locks in                                                                                                                                                                                                                                                          |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -154,10 +157,10 @@ PATH → the Windows installer default `C:\iverilog\bin`); in CI
 never skip silently. Local install: the Windows installer
 (bleyer.org/icarus) or `apt-get install iverilog`.
 
-| Test                                    | Locks in                                                                                                                                                                                                                                          |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog` | all 60 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated `vilakku` and `wire signed` `signed_math`)                                                                         |
-| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`, 14) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison) and must print PASS under `vvp` — the differential |
+| Test                                    | Locks in                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_emitted_verilog_passes_iverilog` | all 68 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated `vilakku` and `wire signed` `signed_math`)                                                                                                                                                                                      |
+| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`, 16) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential |
 
 House rule for the testbenches: each prints `PASS` exactly once or
 `FAIL: reason` and stops — the Rust side asserts on those markers, so a
@@ -168,7 +171,7 @@ broken TB fails loudly, never silently. The Blinker TB overrides the
 
 End-to-end **failure** validation, the mirror of the checker unit tests: those
 prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it.
-`tests/fixtures/errors/*.mimz` holds ~67 intentionally-broken files (kept OUT of
+`tests/fixtures/errors/*.mimz` holds ~71 intentionally-broken files (kept OUT of
 `examples/`, which is asserted valid), each declaring its expected code in a
 `// expect: Exxxx` header. Source bodies are lifted from `src/checker/tests.rs`.
 
@@ -294,7 +297,7 @@ Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 §5)
 | `localized_is_none_for_uncovered_codes_and_for_english` | the catalog returns `None` for English and for codes outside the stub                |
 | `fill_inflects_the_stub_template`                       | the template's `{name.dat}` slot renders the inflected identifier                    |
 
-## Integration: morph (`tests/morph.rs`, 7 tests — run the real binary)
+## Integration: morph (`tests/morph.rs`, 8 tests — run the real binary)
 
 The end-to-end `--lang` path through `mimz check`. The catalog is a stub (one
 shape, E0501); these assert the MECHANISM and, crucially, the **English-fallback
@@ -309,9 +312,10 @@ every flavor.
 | `covered_code_auto_selects_tamil_from_the_file`      | a Tamil-keyword file with no `--lang` auto-renders E0501 in Tamil             |
 | `covered_code_stays_english_with_lang_en`            | `--lang en` keeps the original English wording                                |
 | `uncovered_code_is_identical_across_languages`       | **the fallback invariant** — E0401 is byte-identical under en / ta / tanglish |
+| `compile_also_localizes_diagnostics`                 | the localization path is shared — `compile --lang ta` shows Tamil E0501 too   |
 | `unknown_lang_is_a_clean_error`                      | `--lang klingon` fails with a clear "unknown language" message                |
 
-## Integration: fmt (`tests/fmt.rs`, 5 tests — run the real binary)
+## Integration: fmt (`tests/fmt.rs`, 7 tests — run the real binary)
 
 `mimz fmt` — the in-place keyword-flavor normalizer (the lossless `translate`
 token reskin, not the comment-dropping `--order` printer).
@@ -322,6 +326,8 @@ token reskin, not the comment-dropping `--order` printer).
 | `to_flag_forces_the_target_flavor`                | `--to tamil` overrides the majority; comment preserved                          |
 | `strict_warns_and_fails_on_mixed_but_still_fixes` | `--strict` warns + exits non-zero on a mixed file, still writing the fix        |
 | `strict_is_clean_on_a_single_flavor_file`         | a single-flavor file passes `--strict` (no warning, exit 0)                     |
+| `a_keyword_free_file_is_left_intact`              | a comment-only file (no keywords) normalizes to a no-op                         |
+| `a_non_lexing_file_is_a_clean_error`              | a lex error (e.g. `/`) is reported, exits non-zero, and does not clobber input  |
 | `output_flag_leaves_the_input_untouched`          | `-o <dest>` writes the result elsewhere; the input is unchanged                 |
 
 ## Unit: combinational evaluator (`src/sim/comb.rs`, 7 tests)

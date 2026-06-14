@@ -1,0 +1,6 @@
+// expect: E0403
+module M {
+  in a: signed[4]
+  out y: bit
+  y = nor(a)
+}

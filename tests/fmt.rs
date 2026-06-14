@@ -91,6 +91,32 @@ fn strict_is_clean_on_a_single_flavor_file() {
 }
 
 #[test]
+fn a_keyword_free_file_is_left_intact() {
+    // No keywords → majority is English; the token reskin changes nothing.
+    let src = "// just a comment, no code\n";
+    let path = temp_mimz(src);
+    let (ok, _, _) = run_fmt(&path, &[]);
+    assert!(ok);
+    assert_eq!(fs::read_to_string(&path).unwrap(), src, "nothing to change");
+}
+
+#[test]
+fn a_non_lexing_file_is_a_clean_error() {
+    // `/` is a hard lexer error (division is rejected) — fmt must report it, not
+    // panic, and must not clobber the file.
+    let src = "module M {\n  wire w: bit = a / b\n}\n";
+    let path = temp_mimz(src);
+    let (ok, _, err) = run_fmt(&path, &[]);
+    assert!(!ok, "must fail on a lex error");
+    assert!(err.contains("error"), "reports the diagnostic: {err}");
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        src,
+        "input not clobbered"
+    );
+}
+
+#[test]
 fn output_flag_leaves_the_input_untouched() {
     let path = temp_mimz(MIXED);
     let dest = temp_mimz(""); // reuse the unique-name helper for a dest path

@@ -1,0 +1,6 @@
+// expect: E0407
+module M {
+  in a: bits[4]
+  out y: bits[4]
+  y = abs(a)
+}

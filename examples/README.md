@@ -1,6 +1,6 @@
 # Examples
 
-The same 14 examples, four times — one folder per keyword flavor:
+The same 17 examples, four times — one folder per keyword flavor:
 
 | Folder      | Keywords                                                                       |
 | ----------- | ------------------------------------------------------------------------------ |
@@ -27,6 +27,9 @@ keywords differ**. CI asserts that each example compiles to
 | `chained.mimz`        | `include` (alias of `import`) + dotted path `lib.full_adder`   |
 | `ripple_adder.mimz`   | `repeat` unrolling + instance array + `const`-driven width     |
 | `signed_math.mimz`    | `signed[N]`: sign-extending `extend`, signed `<`, lossless `+` |
+| `window.mimz`         | monotonic chained comparison `lo <= value <= hi`               |
+| `bitops.mimz`         | `min`/`max`/`abs` + negated reductions `nand`/`nor`/`xnor`     |
+| `datapath.mimz`       | `*`/`*%`, `>>`, concat `{a, b}`, slice `a[3:2]`, `trunc`       |
 | `vilakku.mimz`        | Tamil IDENTIFIERS end to end — transliterated to ASCII Verilog |
 | `lib/full_adder.mimz` | import target — one-bit full adder                             |
 

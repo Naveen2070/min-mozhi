@@ -249,6 +249,18 @@ fn nor_of_signed_is_e0403() {
 }
 
 #[test]
+fn max_with_a_literal_operand_adapts() {
+    // A bare literal adapts to the sized side, like a comparison operand.
+    check_one("module M {\n  in a: bits[8]\n  out y: bits[8]\n  y = max(a, 0)\n}\n")
+        .expect("max(x, 0) adapts the literal to bits[8]");
+}
+
+#[test]
+fn abs_of_a_literal_is_e0407() {
+    first_err("module M {\n  out y: signed[4]\n  y = abs(3)\n}\n", "E0407");
+}
+
+#[test]
 fn bitwise_operand_mismatch_is_e0402() {
     let src = "module M {\n  in a: bits[4]\n  in b: bits[8]\n  out y: bits[8]\n  y = a & b\n}\n";
     let d = first_err(src, "E0402");
