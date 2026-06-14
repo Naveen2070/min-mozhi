@@ -108,12 +108,31 @@ A profile only steers which clause-head production runs; everything else
 decision at the clause head — no backtracking — exactly the lookahead the
 expression parser already uses.
 
-Landed so far: the **clocked-block flip**. Code-order `on rise(clk) { }`
+**Leading-keyword flip — the clocked block.** Code-order `on rise(clk) { }`
 dispatches on `Kw::On`; thamizh-order `rise(clk) on { }` dispatches on `Kw::Rise`
 (guarded by `profile == Thamizh`) into `on_block_thamizh`. Both share
 `clock_edge_args` and build the identical `OnBlock`. A leading `rise(...)` in
-code-order stays an error — the flip is gated, not always on. Remaining 1.8
-flips (conditional / match / if-expression / test) follow the same pattern.
+code-order stays an error — the flip is gated, not always on.
+
+**Expression-first flips — conditional, if-expression, match.** These move the
+clause head to a _postposition_, so there is no leading keyword to dispatch on.
+Instead the operand is parsed first with `binary(0)`, then one token of trailing
+lookahead decides the form (no backtracking):
+
+- In `expr` (gated to `expr_thamizh`): `<cond> endral { … } illaiyel { … }` →
+  `if_expr_thamizh`; `<expr> poruthu { … }` → `match_expr_thamizh`. Both build
+  the same `ExprKind::IfExpr` / `ExprKind::Match` as code order; `match_expr` and
+  its thamizh twin share the arm loop in `finish_match`.
+- In `seq_stmt` (gated to `seq_stmt_thamizh`): the head decides between a
+  conditional (`<cond> endral { … }` → `seq_if_thamizh`) and a register update
+  (`<lvalue> <- expr`). Since both can begin with an identifier, the head is
+  parsed as an expression and `expr_to_lvalue` reinterprets it as the assignment
+  target when `<-` follows — the assignment grammar is unchanged, only the parse
+  route differs.
+
+Like the clocked block, the flipped forms are **gated**: a trailing `endral` /
+`poruthu` in code-order is a parse error. **Deferred:** the `test` flip (Phase
+1.5 — test blocks emit no Verilog yet).
 
 ## What the parser deliberately does NOT do
 

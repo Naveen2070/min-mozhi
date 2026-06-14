@@ -1,0 +1,20 @@
+// Thamizh-order twin of examples/tanglish/comparator.mimz (spec/04, Phase 1.8).
+// Exercises the if-EXPRESSION flip: the condition leads and `endral` trails —
+// `max = a > b endral { a } illaiyel { b }` — instead of the code-order
+// `max = endral a > b { a } illaiyel { b }`. `else` (`illaiyel`) is still
+// mandatory (a wire-driving `if` must always drive). Byte-identical Verilog to
+// its code-order twin.
+ilakkanam thamizh
+
+thoguthi Comparator(WIDTH: int = 8) {
+  ulle  a: bits[WIDTH]
+  ulle  b: bits[WIDTH]
+
+  veli eq:  bit
+  veli gt:  bit
+  veli max: bits[WIDTH]
+
+  eq  = a == b
+  gt  = a > b
+  max = a > b endral { a } illaiyel { b }
+}

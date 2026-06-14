@@ -19,12 +19,16 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
 - [x] `syntax thamizh` file directive (no auto-detection) — `Profile` on the
       parser, parsed by `syntax_directive`, never enters the AST. `syntax`
       promoted from reserved to KW_SYNTAX; KW_THAMIZH added (spec/03 v0.2.5).
-- [~] Flipped productions per `spec/04` section 3: **clocked block done**
-  (`yetram(clk) pothu { }`); `<cond> endral { }`, `<expr> poruthu { }`, and
-  the test form remain.
-- [~] Expression-first parsing with one-token lookahead after expression (no
-  backtracking) — the clocked-block flip dispatches on `Kw::Rise` under the
-  profile; the expr-first seq-statement path lands with the conditional flip.
+- [~] Flipped productions per `spec/04` section 3: **clocked block, seq
+  conditional (`<cond> endral { }`), if-expression (`c endral { } illaiyel
+{ }`), and match (`<expr> poruthu { }`) done** (2026-06-14). The **test**
+  form remains — deferred to Phase 1.5 (test blocks emit no Verilog yet, so no
+  same-Verilog oracle).
+- [x] Expression-first parsing with one-token lookahead after the operand (no
+      backtracking) — the clocked-block flip dispatches on the leading `Kw::Rise`;
+      the conditional/if-expr/match flips parse the operand with `binary(0)` then
+      dispatch on the trailing `endral`/`poruthu` (`expr_thamizh`,
+      `seq_stmt_thamizh`, with `expr_to_lvalue` recovering the assignment lhs).
 - [x] Same-AST guarantee tests via the profile-blind backend: a thamizh-order
       file and its code-order twin emit **byte-identical Verilog**
       (`tests/grammar.rs`, fixtures in `tests/fixtures/grammar/`). (Verilog

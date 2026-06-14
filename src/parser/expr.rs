@@ -38,8 +38,13 @@ fn bin_op(kind: &TokKind) -> Option<(BinOp, u8)> {
 
 impl Parser {
     /// `expr = ifExpr | matchExpr | binExpr` — the expression entry point
-    /// used by everything in `items.rs`.
+    /// used by everything in `items.rs`. In `thamizh` order the clause head
+    /// trails the operand, so we parse the operand first and let the trailing
+    /// keyword decide (see `expr_thamizh`).
     pub(super) fn expr(&mut self) -> Option<Expr> {
+        if self.profile == Profile::Thamizh {
+            return self.expr_thamizh();
+        }
         if self.at_kw(Kw::If) {
             return self.if_expr();
         }
@@ -47,6 +52,23 @@ impl Parser {
             return self.match_expr();
         }
         self.binary(0)
+    }
+
+    /// `thamizh`-order expression entry: parse the operand with `binary(0)`,
+    /// then one-token lookahead on the trailing clause head — `endral` makes
+    /// it an if-expression over that operand as the condition, `poruthu` a
+    /// match over it as the scrutinee. No backtracking (spec/04). A nested
+    /// `if`/`match` as the condition/scrutinee needs parens, exactly as the
+    /// code-order match scrutinee already requires.
+    fn expr_thamizh(&mut self) -> Option<Expr> {
+        let head = self.binary(0)?;
+        if self.at_kw(Kw::If) {
+            return self.if_expr_thamizh(head);
+        }
+        if self.at_kw(Kw::Match) {
+            return self.match_expr_thamizh(head);
+        }
+        Some(head)
     }
 
     /// `ifExpr = "if" expr "{" expr "}" "else" ("{" expr "}" | ifExpr)` —
@@ -97,12 +119,82 @@ impl Parser {
         })
     }
 
+    /// `thamizh`-order if-expression: `<cond> "endral" "{" expr "}" "illaiyel"
+    /// ("{" expr "}" | <cond> "endral" …)`. The condition is already parsed
+    /// (the `head` from `expr_thamizh`); everything from `endral` onward mirrors
+    /// `if_expr` and builds the SAME `ExprKind::IfExpr`. `else` (`illaiyel`) is
+    /// still mandatory — an if-expression drives a value (spec/02 section 1.3).
+    fn if_expr_thamizh(&mut self, cond: Expr) -> Option<Expr> {
+        let start = cond.span;
+        self.bump(); // endral (Kw::If)
+        self.expect(TokKind::LBrace, "`{` then the value when true")?;
+        self.skip_newlines();
+        let then = self.expr()?;
+        self.skip_newlines();
+        self.expect(TokKind::RBrace, "`}` after the value")?;
+        if !self.at_kw(Kw::Else) {
+            let span = self.peek().span;
+            self.error(
+                span,
+                "E1108",
+                "this `if` drives a value, so `else` is mandatory",
+            );
+            self.help(
+                "without `else` the wire would be undriven in some cycles — that is how latches are born (spec/02 section 1.3)",
+            );
+            return None;
+        }
+        self.bump(); // illaiyel (else)
+        // A chained alternative in thamizh order is `illaiyel <cond> endral …`,
+        // so anything other than a `{` starts another condition.
+        let els = if !self.at(&TokKind::LBrace) {
+            let head = self.binary(0)?;
+            self.if_expr_thamizh(head)?
+        } else {
+            self.expect(TokKind::LBrace, "`{` then the value when false")?;
+            self.skip_newlines();
+            let e = self.expr()?;
+            self.skip_newlines();
+            let t = self.expect(TokKind::RBrace, "`}` after the value")?;
+            Expr {
+                span: e.span.join(t.span),
+                ..e
+            }
+        };
+        let span = start.join(els.span);
+        Some(Expr {
+            kind: ExprKind::IfExpr {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                els: Box::new(els),
+            },
+            span,
+        })
+    }
+
     /// `matchExpr = "match" binExpr "{" { arm } "}"` — the scrutinee is
     /// `binary(0)`, not `expr()`, so a nested `if`/`match` head needs
     /// parentheses (avoids `match if ...` ambiguity).
     fn match_expr(&mut self) -> Option<Expr> {
         let start = self.bump().span; // match
         let scrutinee = self.binary(0)?;
+        self.finish_match(scrutinee, start)
+    }
+
+    /// `thamizh`-order match: `<expr> "poruthu" "{" { arm } "}"`. The scrutinee
+    /// is already parsed (the `head` from `expr_thamizh`); from the `poruthu`
+    /// keyword onward it is identical to code order, building the SAME
+    /// `ExprKind::Match`.
+    fn match_expr_thamizh(&mut self, scrutinee: Expr) -> Option<Expr> {
+        let start = scrutinee.span;
+        self.bump(); // poruthu (Kw::Match)
+        self.finish_match(scrutinee, start)
+    }
+
+    /// Shared arm loop for both word-order profiles. Called with the cursor at
+    /// the opening `{`. `start` anchors the node span (the `match` keyword in
+    /// code order, the scrutinee in thamizh order).
+    fn finish_match(&mut self, scrutinee: Expr, start: Span) -> Option<Expr> {
         self.expect(TokKind::LBrace, "`{` to start the match arms")?;
         let mut arms = Vec::new();
         let end = loop {
@@ -185,7 +277,10 @@ impl Parser {
     /// special: it routes to [`Self::comparison_chain`], which allows a
     /// monotonic one-direction chain (`0 <= x < 100`) but rejects the
     /// confusing forms — spec/02 section 3.
-    fn binary(&mut self, min_prec: u8) -> Option<Expr> {
+    ///
+    /// `pub(super)` so the thamizh-order item parsers (`items.rs`) can parse a
+    /// clause head as an operand before the trailing keyword decides the form.
+    pub(super) fn binary(&mut self, min_prec: u8) -> Option<Expr> {
         let mut lhs = self.unary()?;
         while let Some((op, prec)) = bin_op(self.peek_kind()) {
             if prec < min_prec {

@@ -7,8 +7,11 @@
 //! BYTE-IDENTICAL Verilog. Equal Verilog out of a profile-blind backend means
 //! the parser built the same tree from both orders — which is the contract.
 //!
-//! Slice landed: the clocked-block flip (`rise(clk) on { }`). The conditional
-//! / match / test flips arrive with the rest of Phase 1.8.
+//! Slices landed: the clocked-block flip (`rise(clk) on { }`), the seq
+//! conditional (`<cond> endral { }`), the if-expression (`c endral { } illaiyel
+//! { }`), and match (`<expr> poruthu { }`). The test-form flip arrives with
+//! Phase 1.5 (test blocks emit no Verilog yet, so they have no same-Verilog
+//! oracle).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -138,5 +141,94 @@ fn flipped_on_block_is_rejected_in_code_order() {
     assert!(
         !ok,
         "`rise(clk) on {{}}` must be a parse error without `syntax thamizh`"
+    );
+}
+
+/// Seq conditional flip: the Tanglish thamizh-order blinker (clocked block +
+/// `<cond> endral { } illaiyel { }`) emits byte-identical Verilog to its
+/// code-order twin.
+#[test]
+fn thamizh_order_blinker_matches_code_order_twin() {
+    let thamizh = compile(&fixture("blinker.thamizh.mimz"));
+    let code_order = compile(&example("tanglish/blinker.mimz"));
+    assert_eq!(
+        thamizh, code_order,
+        "thamizh-order conditional must emit byte-identical Verilog to its code-order twin"
+    );
+}
+
+/// The same seq-conditional flip in pure Tamil script — profile and keyword
+/// flavor are orthogonal.
+#[test]
+fn thamizh_order_blinker_tamil_matches_code_order_twin() {
+    let thamizh = compile(&fixture("blinker_tamil.thamizh.mimz"));
+    let code_order = compile(&example("tamil/blinker.mimz"));
+    assert_eq!(thamizh, code_order);
+}
+
+/// All three blinker flavors agree with the English golden — the SOV
+/// conditional changes nothing the backend can see.
+#[test]
+fn thamizh_order_blinker_agrees_with_english_golden() {
+    let english = compile(&example("english/blinker.mimz"));
+    assert_eq!(compile(&fixture("blinker.thamizh.mimz")), english);
+    assert_eq!(compile(&fixture("blinker_tamil.thamizh.mimz")), english);
+}
+
+/// If-expression flip: the thamizh-order comparator (`max = a > b endral { a }
+/// illaiyel { b }`) emits byte-identical Verilog to its code-order twin.
+#[test]
+fn thamizh_order_comparator_matches_code_order_twin() {
+    let thamizh = compile(&fixture("comparator.thamizh.mimz"));
+    let code_order = compile(&example("tanglish/comparator.mimz"));
+    assert_eq!(
+        thamizh, code_order,
+        "thamizh-order if-expression must emit byte-identical Verilog to its code-order twin"
+    );
+}
+
+/// Match flip: the thamizh-order ALU (`y = op poruthu { … }`) emits
+/// byte-identical Verilog to its code-order twin (a self-contained fixture
+/// pair — the tanglish ALU example imports `adder`).
+#[test]
+fn thamizh_order_match_matches_code_order_twin() {
+    let thamizh = compile(&fixture("match.thamizh.mimz"));
+    let code_order = compile(&fixture("match.code.mimz"));
+    assert_eq!(
+        thamizh, code_order,
+        "thamizh-order match must emit byte-identical Verilog to its code-order twin"
+    );
+}
+
+/// The flipped forms are gated on the profile: without `syntax thamizh`, the
+/// trailing-keyword forms (`<cond> endral`, `a > b endral { } illaiyel { }`,
+/// `op poruthu { }`) are parse errors, not silently accepted.
+#[test]
+fn flipped_conditional_is_rejected_in_code_order() {
+    let src = "module M {\n  clock clk\n  reg r: bit = 0\n  on rise(clk) {\n    r == 0 endral {\n      r <- 1\n    }\n  }\n}\n";
+    let (ok, _stderr) = compile_src(src, "flip_cond_code");
+    assert!(
+        !ok,
+        "`<cond> endral {{}}` must be a parse error without `syntax thamizh`"
+    );
+}
+
+#[test]
+fn flipped_if_expr_is_rejected_in_code_order() {
+    let src = "module M {\n  in a: bit\n  in b: bit\n  out y: bit\n  y = a > b endral { a } illaiyel { b }\n}\n";
+    let (ok, _stderr) = compile_src(src, "flip_ifexpr_code");
+    assert!(
+        !ok,
+        "`a > b endral {{ }} illaiyel {{ }}` must be a parse error without `syntax thamizh`"
+    );
+}
+
+#[test]
+fn flipped_match_is_rejected_in_code_order() {
+    let src = "module M {\n  in op: bits[2]\n  out y: bit\n  y = op poruthu {\n    0b00 => 1\n    _ => 0\n  }\n}\n";
+    let (ok, _stderr) = compile_src(src, "flip_match_code");
+    assert!(
+        !ok,
+        "`op poruthu {{}}` must be a parse error without `syntax thamizh`"
     );
 }

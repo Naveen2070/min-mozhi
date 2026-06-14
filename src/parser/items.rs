@@ -473,8 +473,13 @@ impl Parser {
     }
 
     /// `seqStmt = seqIf | lvalue "<-" expr` — using `=` on a register is
-    /// caught here with a teaching error (the `=`/`<-` safety rule).
+    /// caught here with a teaching error (the `=`/`<-` safety rule). In
+    /// `thamizh` order the clause head trails the operand, so that case is
+    /// handled expression-first by `seq_stmt_thamizh`.
     fn seq_stmt(&mut self) -> Option<SeqStmt> {
+        if self.profile == Profile::Thamizh {
+            return self.seq_stmt_thamizh();
+        }
         if self.at_kw(Kw::If) {
             return self.seq_if();
         }
@@ -526,6 +531,112 @@ impl Parser {
             None
         };
         Some(SeqStmt::If { cond, then, els })
+    }
+
+    /// `thamizh`-order seq statement: either `<cond> endral seqBlock …` or the
+    /// unchanged register update `lvalue <- expr`. Both can begin with an
+    /// identifier, so we parse the head as an expression and let the trailing
+    /// token decide (no backtracking, spec/04): `endral` → conditional, `<-` →
+    /// assignment (the head is reinterpreted as the lvalue), `=` → the teaching
+    /// error.
+    fn seq_stmt_thamizh(&mut self) -> Option<SeqStmt> {
+        let head = self.binary(0)?;
+        if self.at_kw(Kw::If) {
+            return self.seq_if_thamizh(head);
+        }
+        if self.at(&TokKind::Assign) {
+            let span = self.peek().span;
+            self.error(span, "E1106", "`=` is only for wires, outside `on` blocks");
+            self.help(
+                "registers update with `<-` inside `on` blocks: `value <- value +% 1` (spec/02 section 1.2)",
+            );
+            return None;
+        }
+        self.expect(TokKind::LArrow, "`<-` to update this register")?;
+        let lhs = self.expr_to_lvalue(head)?;
+        let rhs = self.expr()?;
+        self.terminator();
+        Some(SeqStmt::Assign { lhs, rhs })
+    }
+
+    /// `thamizh`-order seq `if`: `<cond> "endral" seqBlock [ "illaiyel"
+    /// (<cond> "endral" … | seqBlock) ]`. The condition is already parsed; from
+    /// `endral` onward it mirrors `seq_if` and builds the SAME `SeqStmt::If`.
+    /// `else` (`illaiyel`) is optional (a register holds its value — no latch).
+    fn seq_if_thamizh(&mut self, cond: Expr) -> Option<SeqStmt> {
+        self.bump(); // endral (Kw::If)
+        let (then, _) = self.seq_block()?;
+        let save = self.pos;
+        self.skip_newlines();
+        let els = if self.at_kw(Kw::Else) {
+            self.bump(); // illaiyel
+            // A chained `illaiyel <cond> endral …` starts with a condition;
+            // a plain alternative starts with `{`.
+            if !self.at(&TokKind::LBrace) {
+                let head = self.binary(0)?;
+                Some(vec![self.seq_if_thamizh(head)?])
+            } else {
+                let (b, _) = self.seq_block()?;
+                Some(b)
+            }
+        } else {
+            self.pos = save;
+            None
+        };
+        Some(SeqStmt::If { cond, then, els })
+    }
+
+    /// Reinterpret an already-parsed expression as an assignment target —
+    /// `ident`, `ident[i]`, or `ident[hi:lo]`. The thamizh-order seq statement
+    /// parses its head as an expression before it knows whether it is a
+    /// condition or an assignment lvalue, so this recovers the `LValue` the
+    /// code-order path gets straight from `lvalue()`. Emits E1101 if the
+    /// expression is not a valid target.
+    fn expr_to_lvalue(&mut self, e: Expr) -> Option<LValue> {
+        let span = e.span;
+        match e.kind {
+            ExprKind::Ident(name) => Some(LValue {
+                base: Ident { name, span },
+                index: None,
+                span,
+            }),
+            ExprKind::Index { base, index } => {
+                let base = self.ident_from_expr(*base)?;
+                Some(LValue {
+                    span: base.span.join(span),
+                    base,
+                    index: Some((*index, None)),
+                })
+            }
+            ExprKind::Slice { base, hi, lo } => {
+                let base = self.ident_from_expr(*base)?;
+                Some(LValue {
+                    span: base.span.join(span),
+                    base,
+                    index: Some((*hi, Some(*lo))),
+                })
+            }
+            _ => {
+                self.error(
+                    span,
+                    "E1101",
+                    "the left of `<-` must be a register name, optionally indexed",
+                );
+                self.help("for example: `value <- value +% 1` or `bus[0] <- bit`");
+                None
+            }
+        }
+    }
+
+    /// The base of an indexed lvalue must be a bare register name.
+    fn ident_from_expr(&mut self, e: Expr) -> Option<Ident> {
+        match e.kind {
+            ExprKind::Ident(name) => Some(Ident { name, span: e.span }),
+            _ => {
+                self.error(e.span, "E1101", "the indexed thing must be a register name");
+                None
+            }
+        }
     }
 
     /// `lvalue = ident [ "[" expr [ ":" expr ] "]" ]`

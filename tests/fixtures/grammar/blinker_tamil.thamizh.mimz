@@ -1,0 +1,27 @@
+// Thamizh-order twin of examples/tamil/blinker.mimz (spec/04, Phase 1.8).
+// Pure Tamil script AND natural SOV word order: the clocked block reads
+// `ஏற்றம்(clk) போது { }` and the conditional `<cond> என்றால் { } இல்லையேல் { }`
+// (clause head trailing). Proves the word-order profile and the keyword flavor
+// are orthogonal — must emit byte-identical Verilog to the code-order Tamil twin.
+இலக்கணம் தமிழ்
+
+தொகுதி Blinker(LIMIT: int = 50000000) {
+  கடிகாரம் clk
+  மீட்டமை rst
+
+  வெளி led: bit
+
+  நிலை cnt:   bits[26] = 0
+  நிலை state: bit      = 0
+
+  ஏற்றம்(clk) போது {
+    cnt == LIMIT என்றால் {
+      cnt   <- 0
+      state <- state ^ 1
+    } இல்லையேல் {
+      cnt <- cnt +% 1
+    }
+  }
+
+  led = state
+}
