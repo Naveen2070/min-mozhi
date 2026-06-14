@@ -402,6 +402,39 @@ impl Env<'_> {
                 let v = self.eval(&args[0])?;
                 Ok(Val::new(v.bits, v.width, false))
             }
+            Builtin::Min => {
+                let a = self.eval(&args[0])?;
+                let b = self.eval(&args[1])?;
+                Ok(if cmp_lt(a, b) { a } else { b })
+            }
+            Builtin::Max => {
+                let a = self.eval(&args[0])?;
+                let b = self.eval(&args[1])?;
+                Ok(if cmp_lt(a, b) { b } else { a })
+            }
+            Builtin::Abs => {
+                let v = self.eval(&args[0])?;
+                // signed magnitude into width+1 (room for abs(MIN))
+                let m = v.as_i128().unsigned_abs();
+                Ok(Val::new(m & mask(v.width + 1), v.width + 1, true))
+            }
+            Builtin::Nand => {
+                let v = self.eval(&args[0])?;
+                let mk = mask(v.width);
+                Ok(Val::new(((v.bits & mk) != mk) as u128, 1, false))
+            }
+            Builtin::Nor => {
+                let v = self.eval(&args[0])?;
+                Ok(Val::new(((v.bits & mask(v.width)) == 0) as u128, 1, false))
+            }
+            Builtin::Xnor => {
+                let v = self.eval(&args[0])?;
+                Ok(Val::new(
+                    (((v.bits & mask(v.width)).count_ones() & 1) == 0) as u128,
+                    1,
+                    false,
+                ))
+            }
         }
     }
 }

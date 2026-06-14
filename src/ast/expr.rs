@@ -155,4 +155,16 @@ pub enum Builtin {
     SignedCast,
     /// `unsigned(x)`
     UnsignedCast,
+    /// `min(a, b)` — the smaller of two same-width values
+    Min,
+    /// `max(a, b)` — the larger of two same-width values
+    Max,
+    /// `abs(x)` — absolute value of a `signed[N]` (result `signed[N+1]`)
+    Abs,
+    /// `nand(x)` — negated and-reduction (`~&x` in Verilog)
+    Nand,
+    /// `nor(x)` — negated or-reduction (`~|x`)
+    Nor,
+    /// `xnor(x)` — negated xor-reduction (`~^x`)
+    Xnor,
 }

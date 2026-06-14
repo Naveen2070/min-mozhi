@@ -198,6 +198,26 @@ impl Emitter<'_> {
                     let n = self.expr_subst(&args[1], subst);
                     format!("{x}[({n})-1:0]")
                 }
+                Builtin::Min => {
+                    let a = self.expr_subst(&args[0], subst);
+                    let b = self.expr_subst(&args[1], subst);
+                    format!("(({a} < {b}) ? ({a}) : ({b}))")
+                }
+                Builtin::Max => {
+                    let a = self.expr_subst(&args[0], subst);
+                    let b = self.expr_subst(&args[1], subst);
+                    format!("(({a} < {b}) ? ({b}) : ({a}))")
+                }
+                // Result is `signed[N+1]`; the assignment context sign-extends
+                // both ternary arms (the operand is declared `signed`).
+                Builtin::Abs => {
+                    let x = self.expr_subst(&args[0], subst);
+                    format!("(({x} < 0) ? (-{x}) : ({x}))")
+                }
+                // Verilog-2005 negated reduction operators — one bit out.
+                Builtin::Nand => format!("(~&({}))", self.expr_subst(&args[0], subst)),
+                Builtin::Nor => format!("(~|({}))", self.expr_subst(&args[0], subst)),
+                Builtin::Xnor => format!("(~^({}))", self.expr_subst(&args[0], subst)),
             },
         }
     }

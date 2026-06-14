@@ -552,6 +552,77 @@ impl<'a> Checker<'a> {
                 }
                 other => self.not_numeric(cx, x.span, &other, "`unsigned`"),
             },
+            Builtin::Min | Builtin::Max => {
+                let name = if func == Builtin::Min { "min" } else { "max" };
+                let Some(b) = args.get(1) else {
+                    return Ty::Unknown;
+                };
+                let bt = self.infer_ty(cx, b);
+                if matches!(bt, Ty::Unknown) {
+                    return Ty::Unknown;
+                }
+                if let (Ty::CtInt(_), Ty::CtInt(_)) = (xt, bt) {
+                    self.err(
+                        cx.file,
+                        e.span,
+                        "E0407",
+                        format!("`{name}` of two literals has no width"),
+                        "give at least one operand a fixed width — a signal, or \
+                         `extend(x, N)`",
+                    );
+                    return Ty::Unknown;
+                }
+                // Same operand rule as a comparison: equal kind + width (a
+                // literal adapts to the sized side). The result is that type.
+                self.matched_ty(cx, name, (x, xt), (b, bt))
+            }
+            Builtin::Abs => match xt {
+                // Lossless like unary `-`: `abs(MIN)` needs the extra bit.
+                Ty::Signed(n) => Ty::Signed(n + 1),
+                Ty::CtInt(_) => {
+                    self.err(
+                        cx.file,
+                        e.span,
+                        "E0407",
+                        "`abs` of a bare literal does nothing",
+                        "write the non-negative value directly",
+                    );
+                    Ty::Unknown
+                }
+                other => {
+                    self.err(
+                        cx.file,
+                        e.span,
+                        "E0407",
+                        format!("`abs` needs a `signed` value, found {}", show(&other)),
+                        "absolute value is signed-only — `bits` are already \
+                         non-negative; cast with `signed(x)` if needed",
+                    );
+                    Ty::Unknown
+                }
+            },
+            Builtin::Nand | Builtin::Nor | Builtin::Xnor => {
+                let name = match func {
+                    Builtin::Nand => "`nand`",
+                    Builtin::Nor => "`nor`",
+                    _ => "`xnor`",
+                };
+                match xt {
+                    // Negated reductions: a vector (or bit) collapses to one bit.
+                    Ty::Bit | Ty::Bits(_) => Ty::Bit,
+                    Ty::Signed(_) => {
+                        self.err(
+                            cx.file,
+                            e.span,
+                            "E0403",
+                            "reductions work on `bits`, not `signed`",
+                            "cast first: `nand(unsigned(x))` (spec/02 section 3)",
+                        );
+                        Ty::Unknown
+                    }
+                    other => self.not_numeric(cx, x.span, &other, name),
+                }
+            }
         }
     }
 }
