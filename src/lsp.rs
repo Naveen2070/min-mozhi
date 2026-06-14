@@ -16,8 +16,9 @@ use std::path::{Path, PathBuf};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server, jsonrpc};
 
+use mimz::lexer::token::Flavor;
 use mimz::project::{LoadError, LoadedFile};
-use mimz::{checker, diag, lexer, parser, project};
+use mimz::{checker, diag, lexer, morph, parser, project};
 
 /// Serve LSP over stdio until the client disconnects.
 pub fn run() {
@@ -54,7 +55,12 @@ impl Backend {
             let Ok(file_uri) = Url::from_file_path(&r.path) else {
                 continue;
             };
-            let diags = r.diags.iter().map(|d| to_lsp(d, &r.src)).collect();
+            // Localize messages to the file's predominant flavor, exactly as
+            // `check`/`compile` do (additive English-fallback via `morph`).
+            let flavor = lexer::lex(&r.src)
+                .map(|t| morph::majority_flavor(&t))
+                .unwrap_or(Flavor::English);
+            let diags = r.diags.iter().map(|d| to_lsp(d, &r.src, flavor)).collect();
             current.insert(file_uri.clone());
             self.client.publish_diagnostics(file_uri, diags, None).await;
         }
@@ -227,10 +233,13 @@ fn analyze(entry: &Path, text: &str) -> Vec<FileReport> {
 /// One [`diag::Diag`] → one LSP diagnostic. The help line travels in the
 /// message (below the WHAT line) — v0 keeps the teaching content visible
 /// without related-information plumbing.
-fn to_lsp(d: &diag::Diag, src: &str) -> Diagnostic {
+fn to_lsp(d: &diag::Diag, src: &str, flavor: Flavor) -> Diagnostic {
+    // The WHAT line localizes where the catalog covers the code (else English);
+    // the help line stays English for now (the catalog is message-only).
+    let what = morph::localized_msg(d, src, flavor).unwrap_or_else(|| d.msg.clone());
     let message = match &d.help {
-        Some(h) => format!("{}\nhelp: {h}", d.msg),
-        None => d.msg.clone(),
+        Some(h) => format!("{what}\nhelp: {h}"),
+        None => what,
     };
     Diagnostic {
         range: Range {
@@ -299,5 +308,36 @@ mod tests {
         let reports = analyze(&entry, "module M {\n  out y: bit\n  y = nope\n}\n");
         assert_eq!(reports.len(), 1);
         assert_eq!(reports[0].diags[0].code, Some("E0101"));
+    }
+
+    #[test]
+    fn diagnostics_localize_to_the_chosen_flavor() {
+        let entry = std::env::temp_dir().join("mimz_lsp_unit/dd.mimz");
+        // Double-driven `y` → E0501, the one shape the stub catalog covers.
+        let src = "module M {\n  in a: bit\n  out y: bit\n  y = a\n  y = a\n}\n";
+        let reports = analyze(&entry, src);
+        let d = &reports[0].diags[0];
+        assert_eq!(d.code, Some("E0501"));
+        // Tamil render uses the localized template with the inflected name.
+        let ta = to_lsp(d, src, Flavor::Tamil);
+        assert!(ta.message.starts_with("y-க்கு"), "got {:?}", ta.message);
+        // English is the original wording (the verbatim fallback).
+        let en = to_lsp(d, src, Flavor::English);
+        assert!(en.message.starts_with("`y` has more than one driver"));
+    }
+
+    #[test]
+    fn uncovered_code_is_not_localized_in_lsp() {
+        let entry = std::env::temp_dir().join("mimz_lsp_unit/wm.mimz");
+        // Width mismatch → E0401, NOT in the stub catalog.
+        let src = "module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = a\n}\n";
+        let reports = analyze(&entry, src);
+        let d = &reports[0].diags[0];
+        assert_eq!(d.code, Some("E0401"));
+        // Same message under every flavor (additive plumbing leaves it English).
+        assert_eq!(
+            to_lsp(d, src, Flavor::Tamil).message,
+            to_lsp(d, src, Flavor::English).message
+        );
     }
 }
