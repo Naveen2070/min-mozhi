@@ -356,15 +356,23 @@ skips the checker, so `comb.rs` is the only overflow guard (audit SEC-2).
 | `overflowing_multiply_const_does_not_panic` | a const product past i128::MAX → overflow error, not a panic        |
 | `out_of_range_index_is_rejected_cleanly`    | a literal index past the width → clean error, not a truncating cast |
 
-## Fuzzing: `fuzz/fuzz_targets/lex_parse_eval.rs` (CI-only, not a `cargo test` unit)
+## Fuzzing: `fuzz/fuzz_targets/` (CI-only, not `cargo test` units)
 
-A `cargo-fuzz` harness over the untrusted-input path — NFC-normalize → `lex`
-→ `parse` → `sim::comb::eval_outputs` — asserting the audit's core guarantee
-(any byte string yields a value or a clean `Diag`/`Err`, never a panic / abort /
-hang). It is **not** part of the test count above: it needs a nightly toolchain +
-libFuzzer (Linux/macOS), lives in a standalone `fuzz/` crate the root gate never
-builds, and runs as the CI `fuzz` job (60 s smoke per push/PR). Run locally under
-WSL2/Linux with `cargo +nightly fuzz run lex_parse_eval`. See
+Two `cargo-fuzz` harnesses over the untrusted-input path, asserting the audit's
+core guarantee (any byte string yields a value/Verilog or a clean `Diag`/`Err`,
+never a panic / abort / hang):
+
+- `lex_parse_eval` — NFC → `lex` → `parse` → `sim::comb::eval_outputs`, run twice
+  (empty inputs for the const path, then AST-derived per-port values for the
+  runtime datapath).
+- `lex_parse_compile` — NFC → `lex` → `parse` → `checker::check` →
+  `transliterate` → `Project::from_files` → `emit` (the Verilog backend).
+
+**Not** part of the test count above: they need a nightly toolchain + libFuzzer
+(Linux/macOS), live in a standalone `fuzz/` crate the root gate never builds, and
+run as the CI `fuzz` job (60 s smoke per target on push/PR, corpus seeded from
+`examples/`) plus a weekly `fuzz-nightly` job (10 min per target). Run locally
+under WSL2/Linux with `cargo +nightly fuzz run <target>`. See
 [`../audit/hardening.md`](../audit/hardening.md) "Ongoing assurance".
 
 ## Integration: grammar engine (`tests/grammar.rs`, 16 tests — run the real binary)

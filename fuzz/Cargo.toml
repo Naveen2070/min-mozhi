@@ -32,5 +32,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "lex_parse_compile"
+path = "fuzz_targets/lex_parse_compile.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1
