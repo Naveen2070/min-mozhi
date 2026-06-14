@@ -1,0 +1,28 @@
+# Tamil case suffixes (வேற்றுமை உருபுகள்) for error-message identifier inflection.
+#
+# This is DATA, not code (same doctrine as keywords.toml): the engineering
+# mechanism in src/morph.rs reads this table; native-speaker review changes the
+# table, never the code (spec/04 §5).
+#
+# The accusative/dative/locative/instrumental forms are the four named in
+# spec/04 §5 (-ஐ, -க்கு, -இல், -ஆல்). The Tanglish (romanized) column and the
+# sandhi-joining rules that attach a suffix to a stem are PROVISIONAL — they ride
+# until the native-speaker panel (decision C3) authors the real error catalog and
+# signs off on the morphology. Only the *mechanism* (table lookup + join) is
+# committed now; this content is a stub.
+
+[suffix.accusative]
+tamil = "ஐ"
+tanglish = "ai"
+
+[suffix.dative]
+tamil = "க்கு"
+tanglish = "kku"
+
+[suffix.locative]
+tamil = "இல்"
+tanglish = "il"
+
+[suffix.instrumental]
+tamil = "ஆல்"
+tanglish = "aal"

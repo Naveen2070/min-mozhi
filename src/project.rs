@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use unicode_normalization::UnicodeNormalization;
 
+use crate::lexer::token::Flavor;
 use crate::{ast, diag, lexer, parser};
 
 /// Why loading failed. Carries everything a caller needs to REPORT the
@@ -100,13 +101,21 @@ pub fn parse_file(path: &Path) -> Result<LoadedFile, LoadError> {
 /// whole project (`Project::from_files`, the emitter), whose spans may
 /// point into any loaded file.
 pub fn render_diags(diags: &[diag::Diag], files: &[LoadedFile]) -> String {
+    render_diags_lang(diags, files, Flavor::English)
+}
+
+/// Like [`render_diags`], but renders each message in `flavor` where the
+/// localized catalog covers its E-code (Phase 1.8, spec/04 §5); English
+/// otherwise. The CLI passes the file's effective error language here.
+pub fn render_diags_lang(diags: &[diag::Diag], files: &[LoadedFile], flavor: Flavor) -> String {
     let mut out = String::new();
     for d in diags {
         let f = &files[d.file.unwrap_or(0).min(files.len() - 1)];
-        out.push_str(&diag::render(
+        out.push_str(&diag::render_lang(
             std::slice::from_ref(d),
             &f.src,
             &f.path.display().to_string(),
+            flavor,
         ));
     }
     out
