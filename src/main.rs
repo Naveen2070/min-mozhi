@@ -66,14 +66,20 @@ enum Cmd {
         /// The diagnostic code to explain (case-insensitive, e.g. E0501)
         code: String,
     },
-    /// Reskin a file's keywords into another flavor — lossless (word-order
-    /// `--order thamizh` lands in Phase 1.8; this is flavor-only)
+    /// Reskin a file's keywords into another flavor, and/or convert its word
+    /// order between `code` and `thamizh` (spec/04). `--to` alone is lossless
+    /// (keyword tokens only, comments/layout preserved); `--order` re-emits
+    /// from the AST (canonical layout, comments dropped).
     Translate {
         /// The .mimz file to translate
         file: PathBuf,
-        /// Target keyword flavor: english | tanglish | tamil
+        /// Target keyword flavor: english | tanglish | tamil (default: english)
         #[arg(long)]
-        to: String,
+        to: Option<String>,
+        /// Word order: code | thamizh. Omit to keep the source order
+        /// (keyword-only, trivia-preserving reskin).
+        #[arg(long)]
+        order: Option<String>,
         /// Output path (default: print the result to stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -105,7 +111,12 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Cmd::Explain { code } => explain_code(&code),
-        Cmd::Translate { file, to, output } => translate_file(&file, &to, output),
+        Cmd::Translate {
+            file,
+            to,
+            order,
+            output,
+        } => translate_file(&file, to.as_deref(), order.as_deref(), output),
         Cmd::Eval {
             file,
             inputs,
@@ -193,13 +204,32 @@ fn parse_u128(s: &str) -> Result<u128, String> {
     parsed.map_err(|_| format!("`{s}` is not a number (use decimal, 0x.., or 0b..)"))
 }
 
-/// `mimz translate <file> --to <flavor>` — reskin the file's keywords into the
-/// target flavor and write the result (default: stdout). Lossless; fails only
-/// if the source doesn't lex (surfaced like any other one-file diagnostic).
-fn translate_file(path: &Path, to: &str, output: Option<PathBuf>) -> ExitCode {
+/// `mimz translate <file> [--to <flavor>] [--order code|thamizh]` — re-emit the
+/// file in another keyword flavor and/or word order (default: stdout).
+///
+/// `--to` defaults to english. With no `--order`, this is the lossless
+/// keyword-only reskin (comments/layout preserved). With `--order`, it parses
+/// to the AST and pretty-prints in the requested order — canonical layout,
+/// comments dropped (spec/04: trivia-preservation is the `--to` path).
+fn translate_file(
+    path: &Path,
+    to: Option<&str>,
+    order: Option<&str>,
+    output: Option<PathBuf>,
+) -> ExitCode {
+    let to = to.unwrap_or("english");
     let Some(flavor) = mimz::translate::parse_flavor(to) else {
         eprintln!("error: unknown flavor `{to}` — expected english, tanglish, or tamil");
         return ExitCode::FAILURE;
+    };
+    let order = match order {
+        None => None,
+        Some("code") => Some(mimz::pretty::Order::Code),
+        Some("thamizh") => Some(mimz::pretty::Order::Thamizh),
+        Some(other) => {
+            eprintln!("error: unknown order `{other}` — expected code or thamizh");
+            return ExitCode::FAILURE;
+        }
     };
     let src = match project::read_source(path) {
         Ok(s) => s,
@@ -208,27 +238,51 @@ fn translate_file(path: &Path, to: &str, output: Option<PathBuf>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match mimz::translate::translate(&src, flavor) {
-        Ok(text) => match output {
-            Some(out_path) => {
-                if let Err(e) = std::fs::write(&out_path, &text) {
-                    eprintln!("error: cannot write `{}`: {e}", out_path.display());
-                    return ExitCode::FAILURE;
+
+    // Produce the translated text. `--order` goes through the AST pretty-printer
+    // (it can reorder clause heads); `--to` alone uses the trivia-preserving
+    // token reskin.
+    let text = match order {
+        Some(order) => {
+            let tokens = match mimz::lexer::lex(&src) {
+                Ok(t) => t,
+                Err(diags) => {
+                    return Output::Human.one_file(&diags, &src, &path.display().to_string());
                 }
-                println!(
-                    "translated {} -> {} ({})",
-                    path.display(),
-                    out_path.display(),
-                    mimz::translate::flavor_name(flavor)
-                );
-                ExitCode::SUCCESS
+            };
+            match mimz::parser::parse(tokens) {
+                Ok(file) => mimz::pretty::pretty_print(&file, flavor, order),
+                Err(diags) => {
+                    return Output::Human.one_file(&diags, &src, &path.display().to_string());
+                }
             }
-            None => {
-                print!("{text}");
-                ExitCode::SUCCESS
+        }
+        None => match mimz::translate::translate(&src, flavor) {
+            Ok(t) => t,
+            Err(diags) => {
+                return Output::Human.one_file(&diags, &src, &path.display().to_string());
             }
         },
-        Err(diags) => Output::Human.one_file(&diags, &src, &path.display().to_string()),
+    };
+
+    match output {
+        Some(out_path) => {
+            if let Err(e) = std::fs::write(&out_path, &text) {
+                eprintln!("error: cannot write `{}`: {e}", out_path.display());
+                return ExitCode::FAILURE;
+            }
+            println!(
+                "translated {} -> {} ({})",
+                path.display(),
+                out_path.display(),
+                mimz::translate::flavor_name(flavor)
+            );
+            ExitCode::SUCCESS
+        }
+        None => {
+            print!("{text}");
+            ExitCode::SUCCESS
+        }
     }
 }
 

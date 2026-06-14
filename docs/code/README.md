@@ -26,21 +26,21 @@ is a bug — fix it the same day (RULES R1).
 
 (File numbers are stable IDs, not reading order — read top to bottom.)
 
-| Document                                                         | Covers                                                                    |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| [`01-pipeline.md`](01-pipeline.md)                               | End-to-end: what happens when you run `mimz compile`                      |
-| [`09-walkthrough-counter.md`](09-walkthrough-counter.md)         | The same pipeline SHOWN: real tokens, AST, and Verilog for `counter.mimz` |
-| [`02-lexer.md`](02-lexer.md)                                     | Tokens, the trilingual keyword table, the newline policy                  |
-| [`03-parser.md`](03-parser.md)                                   | Recursive descent, error recovery, operator precedence                    |
-| [`04-ast.md`](04-ast.md)                                         | The one shared AST and its design rules                                   |
-| [`11-checker.md`](11-checker.md)                                 | The checker passes + the stable error-code catalog                        |
-| [`05-emit-verilog.md`](05-emit-verilog.md)                       | How `.mimz` becomes Verilog text                                          |
-| [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                   |
-| [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow           |
-| [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test         |
-| [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning       |
-| [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report    |
-| [`13-tooling.md`](13-tooling.md)                                 | Tooling modules: `explain`, `translate`, and the `sim` combinational eval |
+| Document                                                         | Covers                                                                             |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`01-pipeline.md`](01-pipeline.md)                               | End-to-end: what happens when you run `mimz compile`                               |
+| [`09-walkthrough-counter.md`](09-walkthrough-counter.md)         | The same pipeline SHOWN: real tokens, AST, and Verilog for `counter.mimz`          |
+| [`02-lexer.md`](02-lexer.md)                                     | Tokens, the trilingual keyword table, the newline policy                           |
+| [`03-parser.md`](03-parser.md)                                   | Recursive descent, error recovery, operator precedence                             |
+| [`04-ast.md`](04-ast.md)                                         | The one shared AST and its design rules                                            |
+| [`11-checker.md`](11-checker.md)                                 | The checker passes + the stable error-code catalog                                 |
+| [`05-emit-verilog.md`](05-emit-verilog.md)                       | How `.mimz` becomes Verilog text                                                   |
+| [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                            |
+| [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow                    |
+| [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test                  |
+| [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning                |
+| [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report             |
+| [`13-tooling.md`](13-tooling.md)                                 | Tooling modules: `explain`, `translate`/`pretty`, and the `sim` combinational eval |
 
 ## The 60-second version
 
@@ -61,10 +61,11 @@ is a bug — fix it the same day (RULES R1).
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
-Three **tooling** modules consume the pipeline rather than forming a stage in
+Four **tooling** modules consume the pipeline rather than forming a stage in
 it (page 13): `explain` (long-form text per E-code, `mimz explain`),
-`translate` (keyword-flavor reskin, `mimz translate`), and `sim` (the
-combinational evaluator behind `mimz eval`, a slice of the Phase 1.5
+`translate` (keyword-flavor reskin, `mimz translate --to`), `pretty` (the
+AST → source pretty-printer behind `mimz translate --order code|thamizh`), and
+`sim` (the combinational evaluator behind `mimz eval`, a slice of the Phase 1.5
 simulator).
 
 ## Keeping these docs honest
@@ -76,7 +77,10 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-13 (adds: the quick-wins tooling block —
+_Last synced with the code: 2026-06-14 (adds: the `pretty` module — the AST →
+source pretty-printer behind `mimz translate --order code|thamizh` (Phase 1.8),
+documented in page 13; and the Phase 1.8 thamizh-order parser flips. Prior
+2026-06-13 (adds: the quick-wins tooling block —
 `explain` (`mimz explain <CODE>`), `translate` (`mimz translate --to <flavor>`),
 and `sim::comb` (`mimz eval`), documented in page 13; and earlier the same day:
 monotonic chained comparison
