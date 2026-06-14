@@ -2,6 +2,7 @@
 //! HOW to fix it (spec/01 G1). Rendered with source excerpt and carets.
 //! (English catalog first; Tanglish/Tamil catalogs land with Phase 1.8.)
 
+use crate::lexer::token::Flavor;
 use crate::span::Span;
 
 /// Every stable checker error code (catalog: docs/code/11-checker.md).
@@ -80,13 +81,24 @@ impl Diag {
 ///    |   ^^^
 ///    = help: every reg declares its reset value ...
 /// ```
+///
+/// Messages render in English. For another error `flavor` see [`render_lang`].
 pub fn render(diags: &[Diag], src: &str, path: &str) -> String {
+    render_lang(diags, src, path, Flavor::English)
+}
+
+/// Like [`render`], but emits each message in `flavor` when the localized
+/// catalog covers its E-code (`morph::localized_msg`); otherwise the English
+/// `msg` is used verbatim. The caret/location/help layout is identical — only
+/// the WHAT line is localized (Phase 1.8, spec/04 §5).
+pub fn render_lang(diags: &[Diag], src: &str, path: &str, flavor: Flavor) -> String {
     let mut out = String::new();
     for d in diags {
         let (line_no, col, line_text, line_start) = locate(src, d.span.start);
+        let msg = crate::morph::localized_msg(d, src, flavor).unwrap_or_else(|| d.msg.clone());
         match d.code {
-            Some(c) => out.push_str(&format!("error[{c}]: {}\n", d.msg)),
-            None => out.push_str(&format!("error: {}\n", d.msg)),
+            Some(c) => out.push_str(&format!("error[{c}]: {msg}\n")),
+            None => out.push_str(&format!("error: {msg}\n")),
         }
         out.push_str(&format!("  --> {path}:{line_no}:{col}\n"));
         out.push_str("   |\n");

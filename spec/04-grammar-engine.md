@@ -1,6 +1,6 @@
 # Min-Mozhi — Grammar Engine (இலக்கண இயந்திரம்)
 
-> **Spec v0.2.2 DRAFT — Phase 1.8 in progress.**
+> **Spec v0.2.3 DRAFT — Phase 1.8 in progress.**
 > Goal: let Tamil and Tanglish code read with **natural Tamil word order**
 > (SOV, postpositional), not just Tamil words in English order.
 >
@@ -11,9 +11,14 @@
 > (`<expr> poruthu { }`) — and **`mimz translate --order code|thamizh`**, which
 > converts a file between the two orders via an AST pretty-printer (`src/pretty.rs`).
 > All flips parse to the same AST as code-order and emit byte-identical Verilog
-> (`tests/grammar.rs`, `tests/fixtures/grammar/`). Still to do: the **test** flip
+> (`tests/grammar.rs`, `tests/fixtures/grammar/`). The **error-language
+> plumbing** of section 5 also landed (2026-06-14): error-language **selection**
+> (file-flavor majority + `--lang` override) and the case-suffix **inflection
+> mechanism** (`src/morph.rs`), wired into `check`/`compile`/`eval` as an
+> **additive, English-fallback** layer. Still to do: the **test** flip
 > (deferred to Phase 1.5 — `test` blocks emit no Verilog yet, so there is no
-> same-Verilog oracle) and the morphology error helper (section 5).
+> same-Verilog oracle) and the human-authored Tamil/Tanglish error catalog +
+> final sandhi rules (section 5 — gated on the native-speaker panel, decision C3).
 
 ---
 
@@ -186,6 +191,30 @@ This is a suffix lookup table plus sandhi-joining rules for the ~10 message
 shapes the compiler emits — **not** NLP, not machine translation. Error texts
 are authored once per language by humans; the helper only inflects the
 interpolated identifiers correctly.
+
+### Status (2026-06-14): mechanism implemented, content panel-gated
+
+The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
+`eval`:
+
+- **Selection** — `majority_flavor` counts a file's keyword flavors;
+  `effective_lang` lets `--lang en|tanglish|tamil` override it (the spec/03 rule).
+- **Inflection** — the four case suffixes are DATA in `case_suffixes.toml` (the
+  keywords.toml doctrine); `inflect(name, case, flavor)` attaches them.
+- **Additive, English-fallback** — diagnostics render in the chosen flavor only
+  for E-codes the localized catalog covers; every other message keeps its
+  English text verbatim, byte-for-byte. The plumbing is inert until content lands.
+
+> **Decision (R3, 2026-06-14): build the mechanism now, gate the content on C3.**
+> The full Tamil + Tanglish catalog and the real **sandhi-joining rules** require
+> the native-speaker panel (decision C3) — machine-guessed Tamil is exactly the
+> "broken Tamil" this section warns against. So the catalog ships as a **stub**
+> (one worked shape, E0501) that exercises the whole path, and the committed
+> sandhi rule is deliberately minimal and marked PROVISIONAL. JSON diagnostic
+> output stays English (the machine contract in `06-diagnostics.md` is unchanged).
+> Rejected: authoring the catalog without the panel (would bake in errors);
+> refactoring the ~36 inline English messages into the catalog now (unnecessary
+> while English is the fallback).
 
 ## 6. Scope Fence (v1 of the engine)
 

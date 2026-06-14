@@ -16,8 +16,9 @@ use std::process::ExitCode;
 
 use clap::{Parser as ClapParser, Subcommand};
 
+use mimz::lexer::token::Flavor;
 use mimz::project::{LoadError, LoadedFile};
-use mimz::{ast, checker, diag, emit_verilog, lexer, parser, project, sim};
+use mimz::{ast, checker, diag, emit_verilog, lexer, morph, parser, project, sim};
 
 /// Top-level CLI definition. The `///` docs on [`Cmd`] variants and fields
 /// double as the `--help` text (clap derive).
@@ -46,6 +47,10 @@ enum Cmd {
         /// Print diagnostics as a JSON array on stdout (tool consumers)
         #[arg(long)]
         json: bool,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses). JSON output stays English.
+        #[arg(long)]
+        lang: Option<String>,
     },
     /// Compile a .mimz file (and its imports) to Verilog
     Compile {
@@ -57,6 +62,10 @@ enum Cmd {
         /// Print diagnostics as a JSON array on stdout (tool consumers)
         #[arg(long)]
         json: bool,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses). JSON output stays English.
+        #[arg(long)]
+        lang: Option<String>,
     },
     /// Run the language server over stdio (diagnostics-only v0;
     /// editors launch this — not for interactive use)
@@ -99,13 +108,27 @@ enum Cmd {
         /// Which module to evaluate (default: the file's only module)
         #[arg(long)]
         module: Option<String>,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses)
+        #[arg(long)]
+        lang: Option<String>,
     },
 }
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        Cmd::Check { file, tokens, json } => check(&file, tokens, json),
-        Cmd::Compile { file, output, json } => compile(&file, output, json),
+        Cmd::Check {
+            file,
+            tokens,
+            json,
+            lang,
+        } => check(&file, tokens, json, lang.as_deref()),
+        Cmd::Compile {
+            file,
+            output,
+            json,
+            lang,
+        } => compile(&file, output, json, lang.as_deref()),
         Cmd::Lsp => {
             lsp::run();
             ExitCode::SUCCESS
@@ -122,7 +145,8 @@ fn main() -> ExitCode {
             inputs,
             param,
             module,
-        } => eval_file(&file, &inputs, &param, module),
+            lang,
+        } => eval_file(&file, &inputs, &param, module, lang.as_deref()),
     }
 }
 
@@ -130,7 +154,18 @@ fn main() -> ExitCode {
 /// each output. Lexes/parses the file directly (no import resolution — the
 /// evaluator is single-module, combinational only) and reports a clear message
 /// on anything out of that scope.
-fn eval_file(path: &Path, inputs: &str, param: &str, module: Option<String>) -> ExitCode {
+fn eval_file(
+    path: &Path,
+    inputs: &str,
+    param: &str,
+    module: Option<String>,
+    lang: Option<&str>,
+) -> ExitCode {
+    let flavor = match resolve_lang(path, lang) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let out = Output::Human(flavor);
     let src = match project::read_source(path) {
         Ok(s) => s,
         Err(e) => {
@@ -141,11 +176,11 @@ fn eval_file(path: &Path, inputs: &str, param: &str, module: Option<String>) -> 
     let path_str = path.display().to_string();
     let tokens = match lexer::lex(&src) {
         Ok(t) => t,
-        Err(diags) => return Output::Human.one_file(&diags, &src, &path_str),
+        Err(diags) => return out.one_file(&diags, &src, &path_str),
     };
     let file = match parser::parse(tokens) {
         Ok(f) => f,
-        Err(diags) => return Output::Human.one_file(&diags, &src, &path_str),
+        Err(diags) => return out.one_file(&diags, &src, &path_str),
     };
     let inputs = match parse_bindings(inputs, parse_u128) {
         Ok(m) => m,
@@ -247,20 +282,32 @@ fn translate_file(
             let tokens = match mimz::lexer::lex(&src) {
                 Ok(t) => t,
                 Err(diags) => {
-                    return Output::Human.one_file(&diags, &src, &path.display().to_string());
+                    return Output::Human(Flavor::English).one_file(
+                        &diags,
+                        &src,
+                        &path.display().to_string(),
+                    );
                 }
             };
             match mimz::parser::parse(tokens) {
                 Ok(file) => mimz::pretty::pretty_print(&file, flavor, order),
                 Err(diags) => {
-                    return Output::Human.one_file(&diags, &src, &path.display().to_string());
+                    return Output::Human(Flavor::English).one_file(
+                        &diags,
+                        &src,
+                        &path.display().to_string(),
+                    );
                 }
             }
         }
         None => match mimz::translate::translate(&src, flavor) {
             Ok(t) => t,
             Err(diags) => {
-                return Output::Human.one_file(&diags, &src, &path.display().to_string());
+                return Output::Human(Flavor::English).one_file(
+                    &diags,
+                    &src,
+                    &path.display().to_string(),
+                );
             }
         },
     };
@@ -309,19 +356,24 @@ fn explain_code(code: &str) -> ExitCode {
 /// schema in docs/code/06-diagnostics.md).
 #[derive(Clone, Copy)]
 enum Output {
-    Human,
+    /// Human carets on stderr, with the error-message language to render in.
+    Human(Flavor),
     Json,
 }
 
 impl Output {
-    fn new(json: bool) -> Self {
-        if json { Output::Json } else { Output::Human }
+    fn new(json: bool, lang: Flavor) -> Self {
+        if json {
+            Output::Json
+        } else {
+            Output::Human(lang)
+        }
     }
 
     /// Report diagnostics that all point into ONE known source.
     fn one_file(self, diags: &[diag::Diag], src: &str, path: &str) -> ExitCode {
         match self {
-            Output::Human => eprint!("{}", diag::render(diags, src, path)),
+            Output::Human(flavor) => eprint!("{}", diag::render_lang(diags, src, path, flavor)),
             Output::Json => {
                 let json: Vec<diag::JsonDiag> = diags
                     .iter()
@@ -336,7 +388,9 @@ impl Output {
     /// Report project-wide diagnostics (each carries a file index).
     fn project(self, diags: &[diag::Diag], files: &[LoadedFile]) -> ExitCode {
         match self {
-            Output::Human => eprint!("{}", project::render_diags(diags, files)),
+            Output::Human(flavor) => {
+                eprint!("{}", project::render_diags_lang(diags, files, flavor))
+            }
             Output::Json => {
                 let json: Vec<diag::JsonDiag> = diags
                     .iter()
@@ -356,7 +410,7 @@ impl Output {
         match e {
             LoadError::Io(msg) => {
                 match self {
-                    Output::Human => eprintln!("error: {msg}"),
+                    Output::Human(_) => eprintln!("error: {msg}"),
                     Output::Json => {
                         println!("{}", serde_json::json!([{ "code": null, "message": msg }]))
                     }
@@ -370,12 +424,35 @@ impl Output {
     }
 }
 
+/// The error-message language for a command: an explicit `--lang` (validated,
+/// erroring with `ExitCode::FAILURE` on an unknown value) else the entry file's
+/// predominant keyword flavor (`morph::majority_flavor`). Majority detection is
+/// best-effort — the command re-reads and reports any real I/O / lex failure
+/// itself, so a file that cannot be read here simply defaults to English.
+fn resolve_lang(path: &Path, lang: Option<&str>) -> Result<Flavor, ExitCode> {
+    if let Some(s) = lang {
+        return morph::parse_lang(s).ok_or_else(|| {
+            eprintln!("error: unknown language `{s}` — expected english, tanglish, or tamil");
+            ExitCode::FAILURE
+        });
+    }
+    Ok(project::read_source(path)
+        .ok()
+        .and_then(|src| lexer::lex(&src).ok())
+        .map(|toks| morph::majority_flavor(&toks))
+        .unwrap_or(Flavor::English))
+}
+
 /// `mimz check` — lex + parse + checker passes over the file AND its
 /// imports (cross-file names must resolve), reporting all diagnostics.
 /// With `--tokens` it stops after the lexer and dumps the token stream
 /// instead (the standard way to debug lexer issues).
-fn check(path: &Path, tokens: bool, json: bool) -> ExitCode {
-    let out = Output::new(json);
+fn check(path: &Path, tokens: bool, json: bool, lang: Option<&str>) -> ExitCode {
+    let flavor = match resolve_lang(path, lang) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let out = Output::new(json, flavor);
     if tokens {
         let src = match project::read_source(path) {
             Ok(s) => s,
@@ -428,8 +505,12 @@ fn check(path: &Path, tokens: bool, json: bool) -> ExitCode {
 /// `mimz compile` — load the entry file and all transitive imports, build
 /// the project symbol table, and emit one Verilog file (default: entry
 /// path with `.v` extension).
-fn compile(path: &Path, output: Option<PathBuf>, json: bool) -> ExitCode {
-    let out = Output::new(json);
+fn compile(path: &Path, output: Option<PathBuf>, json: bool, lang: Option<&str>) -> ExitCode {
+    let flavor = match resolve_lang(path, lang) {
+        Ok(f) => f,
+        Err(code) => return code,
+    };
+    let out = Output::new(json, flavor);
     let files = match project::load_project(path) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),

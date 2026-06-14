@@ -65,7 +65,9 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
 - `mimz fmt` — can normalize a file to one flavor; `--strict` also warns on
   mixed flavors (mixing stays legal — it is the learning path).
 - Error messages are emitted in the flavor the file predominantly uses
-  (`--lang` flag overrides).
+  (`--lang` flag overrides). Implemented 2026-06-14 (`src/morph.rs`,
+  `check`/`compile`/`eval`); the localized catalog itself is panel-gated — see
+  `04-grammar-engine.md` §5.
 
 ### Identifiers
 

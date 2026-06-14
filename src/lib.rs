@@ -27,6 +27,7 @@
 //! | [`explain`]     | Long-form teaching text per E-code (`mimz explain`)        |
 //! | [`translate`]   | Keyword-flavor reskin (`mimz translate --to`)              |
 //! | [`pretty`]      | AST → source pretty-printer (`mimz translate --order`)     |
+//! | [`morph`]       | Error-language selection + Tamil case-suffix inflection    |
 //! | [`sim`]         | Combinational evaluator (`mimz eval`) — Phase 1.5 slice    |
 //!
 //! This table is mechanically checked against the `mod` list by
@@ -45,6 +46,7 @@ pub mod diag;
 pub mod emit_verilog;
 pub mod explain;
 pub mod lexer;
+pub mod morph;
 pub mod parser;
 pub mod pretty;
 pub mod project;

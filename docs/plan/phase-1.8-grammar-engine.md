@@ -49,9 +49,16 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
 
 ### Morphology helper (error messages)
 
-- [ ] Tamil case-suffix table (-ஐ, -க்கு, -இல், -ஆல்) + sandhi-joining rules for interpolated identifiers
-- [ ] Error catalog authored in Tamil + Tanglish by humans (not machine-translated); helper only inflects names
-- [ ] Error-language selection: file flavor majority, `--lang` override
+- [~] Tamil case-suffix table (-ஐ, -க்கு, -இல், -ஆல்) + sandhi-joining rules for
+  interpolated identifiers — **mechanism done** (2026-06-14): suffixes are data
+  in `case_suffixes.toml`, `morph::inflect` attaches them. The sandhi-joining
+  rule committed now is minimal and **PROVISIONAL** (panel-gated, C3).
+- [ ] Error catalog authored in Tamil + Tanglish by humans (not machine-translated);
+      helper only inflects names — **panel-gated (C3)**; ships as a one-shape STUB
+      (`morph::MESSAGES`, E0501) so the path is exercised end-to-end.
+- [x] Error-language selection: file flavor majority, `--lang` override
+      (`morph::majority_flavor` / `effective_lang`, wired into `check`/`compile`/`eval`,
+      2026-06-14). Additive English-fallback: uncovered codes render unchanged.
 
 ### Validation
 

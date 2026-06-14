@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**212 tests** as of 2026-06-14: 148 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**227 tests** as of 2026-06-14: 156 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 7 morph integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -276,6 +276,38 @@ comments, so its oracle is semantic (same Verilog) + idempotency, not bytes.
 | `pretty_print_is_idempotent`                                       | the pretty-printer is a stable canonical form (re-printing its own output is a fixed point), all examples  |
 | `thamizh_order_emits_the_directive`                                | thamizh output starts with `syntax thamizh` / `இலக்கணம் தமிழ்`; code order emits none                      |
 | `cli_translate_order_thamizh_compiles`                             | `--order thamizh --to tamil` on the traffic light yields compilable, same-Verilog Tamil SOV source         |
+
+## Unit: morph (`src/morph.rs`, 8 tests)
+
+Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 §5).
+
+| Test                                                    | Locks in                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `majority_picks_the_dominant_keyword_flavor`            | all-English vs all-Tamil keyword files resolve to English / Tamil                    |
+| `majority_falls_back_to_english_with_no_keywords`       | a keyword-free token stream defaults to English                                      |
+| `effective_lang_override_beats_majority`                | `--lang` wins over the file majority; absence uses the majority                      |
+| `parse_lang_matches_translate_flavor`                   | `--lang` parsing reuses `translate::parse_flavor` (spellings never drift)            |
+| `inflect_attaches_each_case_suffix`                     | each case attaches its spec suffix; Latin stems hyphenate, Tamil joins, English none |
+| `suffix_table_has_every_case`                           | `case_suffixes.toml` parses and defines all four cases (startup validation)          |
+| `localized_is_none_for_uncovered_codes_and_for_english` | the catalog returns `None` for English and for codes outside the stub                |
+| `fill_inflects_the_stub_template`                       | the template's `{name.dat}` slot renders the inflected identifier                    |
+
+## Integration: morph (`tests/morph.rs`, 7 tests — run the real binary)
+
+The end-to-end `--lang` path through `mimz check`. The catalog is a stub (one
+shape, E0501); these assert the MECHANISM and, crucially, the **English-fallback
+invariant** — codes the catalog does not cover render byte-identically across
+every flavor.
+
+| Test                                                 | Locks in                                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `majority_and_effective_lang_track_the_keywords`     | selection: majority + override, via the public lib API                        |
+| `inflect_attaches_the_spec_case_suffixes`            | inflection: the four suffixes across Tamil / Tanglish / English               |
+| `covered_code_renders_tamil_with_the_inflected_name` | E0501 under `--lang ta` shows the localized Tamil line with `y-க்கு`          |
+| `covered_code_auto_selects_tamil_from_the_file`      | a Tamil-keyword file with no `--lang` auto-renders E0501 in Tamil             |
+| `covered_code_stays_english_with_lang_en`            | `--lang en` keeps the original English wording                                |
+| `uncovered_code_is_identical_across_languages`       | **the fallback invariant** — E0401 is byte-identical under en / ta / tanglish |
+| `unknown_lang_is_a_clean_error`                      | `--lang klingon` fails with a clear "unknown language" message                |
 
 ## Unit: combinational evaluator (`src/sim/comb.rs`, 7 tests)
 
