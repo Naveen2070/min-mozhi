@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**207 tests** as of 2026-06-14: 148 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 15 grammar integration + 9 eval integration + 3 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**212 tests** as of 2026-06-14: 148 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -260,16 +260,22 @@ The keyword-flavor reskin behind `mimz translate --to`.
 | `reskins_keywords_keeps_everything_else`                   | keywords swap; comments, layout, identifiers, numbers stay verbatim  |
 | `translating_to_the_same_flavor_is_identity_for_canonical` | canonical English → English is a no-op                               |
 
-## Integration: translate (`tests/translate.rs`, 3 tests — the four-flavor oracle)
+## Integration: translate (`tests/translate.rs`, 7 tests — the four-flavor oracle + the `--order` pretty-printer)
 
 The `examples/{english,tanglish,tamil}/` folders are byte-identical
-keyword-swaps (R9), so they validate the reskin against committed truth.
+keyword-swaps (R9), so they validate the reskin against committed truth. The
+last four cover `--order` (the `pretty` AST printer): it reformats and drops
+comments, so its oracle is semantic (same Verilog) + idempotency, not bytes.
 
 | Test                                                               | Locks in                                                                                                   |
 | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `round_trip_to_every_flavor_is_byte_identical`                     | translate-and-back reproduces the canonical source byte-for-byte (lossless; anchored past alias normalize) |
 | `translating_english_matches_the_committed_flavor_token_for_token` | translating english `X` to flavor `T` lexes identically to the committed `T/X` (comments excluded)         |
 | `every_keyword_token_is_in_the_target_flavor`                      | the reskin actually fires — English `module` is gone, Tamil `தொகுதி` present                               |
+| `pretty_print_preserves_verilog_across_flavor_and_order`           | every import-free example × flavor × order pretty-prints to byte-identical Verilog (meaning preserved)     |
+| `pretty_print_is_idempotent`                                       | the pretty-printer is a stable canonical form (re-printing its own output is a fixed point), all examples  |
+| `thamizh_order_emits_the_directive`                                | thamizh output starts with `syntax thamizh` / `இலக்கணம் தமிழ்`; code order emits none                      |
+| `cli_translate_order_thamizh_compiles`                             | `--order thamizh --to tamil` on the traffic light yields compilable, same-Verilog Tamil SOV source         |
 
 ## Unit: combinational evaluator (`src/sim/comb.rs`, 7 tests)
 
@@ -314,7 +320,7 @@ builds, and runs as the CI `fuzz` job (60 s smoke per push/PR). Run locally unde
 WSL2/Linux with `cargo +nightly fuzz run lex_parse_eval`. See
 [`../audit/hardening.md`](../audit/hardening.md) "Ongoing assurance".
 
-## Integration: grammar engine (`tests/grammar.rs`, 15 tests — run the real binary)
+## Integration: grammar engine (`tests/grammar.rs`, 16 tests — run the real binary)
 
 The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
 profile-blind backend: a thamizh-order file and its code-order twin must emit
@@ -332,6 +338,7 @@ four-flavor per R9).
 | `thamizh_order_blinker_agrees_with_english_golden`    | conditional flip is invisible to the backend (English golden)                                          |
 | `thamizh_order_comparator_matches_code_order_twin`    | if-expression `c endral { } illaiyel { }` → same Verilog                                               |
 | `thamizh_order_match_matches_code_order_twin`         | match `<expr> poruthu { }` → same Verilog (self-contained pair)                                        |
+| `traffic_light_tamil_thamizh_matches_code_order_twin` | Tamil thamizh-order FSM (all four flips at once) → same Verilog; the committed `pretty`-built artifact |
 | `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                                                            |
 | `flipped_on_block_is_rejected_in_code_order`          | the clocked-block flip is gated on the profile                                                         |
 | `flipped_conditional_is_rejected_in_code_order`       | `<cond> endral { }` rejected without the directive                                                     |

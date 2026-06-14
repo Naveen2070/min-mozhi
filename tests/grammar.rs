@@ -255,6 +255,21 @@ fn deeply_nested_thamizh_else_if_errors_not_overflows() {
     );
 }
 
+/// The pure-Tamil-script, thamizh-order traffic light (an FSM exercising all
+/// four flips at once — clocked block, conditional, if/else, and `match` over
+/// an enum) emits byte-identical Verilog to its code-order Tamil twin. The
+/// fixture was produced by `mimz translate --order thamizh --to tamil` and is
+/// committed as a human-readable validation artifact (spec/04 Phase 1.8).
+#[test]
+fn traffic_light_tamil_thamizh_matches_code_order_twin() {
+    let thamizh = compile(&fixture("traffic_light_tamil.thamizh.mimz"));
+    let code_order = compile(&example("tamil/traffic_light.mimz"));
+    assert_eq!(
+        thamizh, code_order,
+        "the Tamil thamizh-order traffic light must emit byte-identical Verilog to its twin"
+    );
+}
+
 /// The profile boundary is symmetric: just as a trailing `endral`/`poruthu` is
 /// rejected in code order, a LEADING one (code-order syntax) inside a `syntax
 /// thamizh` file must error — not silently parse as code order. Guards the

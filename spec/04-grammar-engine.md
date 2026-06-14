@@ -1,18 +1,19 @@
 # Min-Mozhi — Grammar Engine (இலக்கண இயந்திரம்)
 
-> **Spec v0.2.1 DRAFT — Phase 1.8 in progress.**
+> **Spec v0.2.2 DRAFT — Phase 1.8 in progress.**
 > Goal: let Tamil and Tanglish code read with **natural Tamil word order**
 > (SOV, postpositional), not just Tamil words in English order.
 >
-> **Implemented so far (2026-06-14):** the `syntax thamizh` directive and four
+> **Implemented so far (2026-06-14):** the `syntax thamizh` directive, four
 > of the five clause flips in section 3 — the **clocked block**
 > (`rise(clk) on { }`), the **conditional** (`<cond> endral { }`), the
 > **if-expression** (`c endral { a } illaiyel { b }`), and **match**
-> (`<expr> poruthu { }`). All parse to the same AST as code-order and emit
-> byte-identical Verilog (`tests/grammar.rs`, `tests/fixtures/grammar/`). Still
-> to do: the **test** flip (deferred to Phase 1.5 — `test` blocks emit no
-> Verilog yet, so there is no same-Verilog oracle), the `translate --order`
-> pretty-printer, and the morphology error helper (section 5).
+> (`<expr> poruthu { }`) — and **`mimz translate --order code|thamizh`**, which
+> converts a file between the two orders via an AST pretty-printer (`src/pretty.rs`).
+> All flips parse to the same AST as code-order and emit byte-identical Verilog
+> (`tests/grammar.rs`, `tests/fixtures/grammar/`). Still to do: the **test** flip
+> (deferred to Phase 1.5 — `test` blocks emit no Verilog yet, so there is no
+> same-Verilog oracle) and the morphology error helper (section 5).
 
 ---
 
@@ -74,8 +75,14 @@ syntax thamizh
   parser works, so it must be unambiguous before parsing starts.
 - **Keyword flavors remain freely mixable** in both profiles (Layer 1 rule).
   Only the _order_ is fixed per file.
-- `mimz translate` gains `--order code|thamizh` and converts losslessly in
-  both directions (parse to AST → pretty-print with the target profile).
+- `mimz translate` gains `--order code|thamizh`, which converts between the two
+  orders by parsing to the AST and pretty-printing with the target profile
+  (`src/pretty.rs`). **Decision (2026-06-14):** because the AST holds no comments
+  or original layout, `--order` output is **canonically formatted and drops
+  comments** — meaning-preserving (same Verilog, same AST), not byte-preserving.
+  Trivia-preservation stays with the keyword-only `--to` path (the token
+  reskin). Lossless round-tripping including comments would require carrying
+  trivia in the AST — a separate, later change.
 
 ## 3. What Flips in `thamizh-order`
 

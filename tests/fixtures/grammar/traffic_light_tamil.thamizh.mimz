@@ -1,0 +1,31 @@
+இலக்கணம் தமிழ்
+
+தொகுதி TrafficLight {
+  கடிகாரம் clk
+  மீட்டமை rst
+  வெளி red: bit
+  வெளி yellow: bit
+  வெளி green: bit
+  வகை State { Red, Green, Yellow }
+  நிலை state: State = State.Red
+  நிலை timer: bits[8] = 0
+  ஏற்றம்(clk) போது {
+    (timer == 0) என்றால் {
+      state <- state பொருத்து {
+        State.Red => State.Green
+        State.Green => State.Yellow
+        State.Yellow => State.Red
+      }
+      timer <- state பொருத்து {
+        State.Red => 50
+        State.Green => 40
+        State.Yellow => 10
+      }
+    } இல்லையேல் {
+      timer <- timer -% 1
+    }
+  }
+  red = state == State.Red
+  yellow = state == State.Yellow
+  green = state == State.Green
+}

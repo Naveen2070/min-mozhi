@@ -26,6 +26,7 @@
 //! | --------------- | ---------------------------------------------------------- |
 //! | [`explain`]     | Long-form teaching text per E-code (`mimz explain`)        |
 //! | [`translate`]   | Keyword-flavor reskin (`mimz translate --to`)              |
+//! | [`pretty`]      | AST → source pretty-printer (`mimz translate --order`)     |
 //! | [`sim`]         | Combinational evaluator (`mimz eval`) — Phase 1.5 slice    |
 //!
 //! This table is mechanically checked against the `mod` list by
@@ -45,6 +46,7 @@ pub mod emit_verilog;
 pub mod explain;
 pub mod lexer;
 pub mod parser;
+pub mod pretty;
 pub mod project;
 pub mod sim;
 pub mod span;
