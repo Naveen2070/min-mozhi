@@ -33,6 +33,11 @@
 //!
 //! Generate the API reference with `cargo doc --open`.
 
+// Memory safety is a hard guarantee for this compiler: there is no `unsafe`
+// anywhere, and this makes any future `unsafe` a compile error. A buffer
+// overflow / out-of-bounds write is therefore impossible by construction.
+#![forbid(unsafe_code)]
+
 pub mod ast;
 pub mod checker;
 pub mod diag;

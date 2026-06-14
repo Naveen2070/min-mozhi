@@ -68,29 +68,30 @@ will key off them — never renumber.
 | E11xx       | parser  | below                            |
 | E12xx       | loader  | below                            |
 
-| Code  | Meaning                                                    |
-| ----- | ---------------------------------------------------------- |
-| E1001 | unterminated block comment                                 |
-| E1002 | unterminated string                                        |
-| E1003 | Tamil digits in a literal (ASCII digits are universal)     |
-| E1004 | malformed number                                           |
-| E1005 | reserved word used as a name                               |
-| E1006 | division `/` does not exist (teaches the hardware cost)    |
-| E1007 | modulo `%` does not exist (teaches `+%`/slicing)           |
-| E1008 | unexpected character                                       |
-| E1101 | expected-X-found-Y family (incl. terminators, missing `}`) |
-| E1102 | bad top-level item                                         |
-| E1103 | enum needs at least one variant                            |
-| E1104 | register has no reset value                                |
-| E1105 | `<-` outside an `on` block                                 |
-| E1106 | `=` inside an `on` block                                   |
-| E1107 | `test` block syntax (name, body statements)                |
-| E1108 | value-driving `if` without `else` (the latch lesson)       |
-| E1109 | chained comparison                                         |
-| E1110 | call errors (not a builtin, wrong arity)                   |
-| E1111 | parameter/const type is not `int`/`bool`                   |
-| E1112 | unknown `syntax` profile (only `thamizh` is valid)         |
-| E1201 | imported file does not exist                               |
+| Code  | Meaning                                                       |
+| ----- | ------------------------------------------------------------- |
+| E1001 | unterminated block comment                                    |
+| E1002 | unterminated string                                           |
+| E1003 | Tamil digits in a literal (ASCII digits are universal)        |
+| E1004 | malformed number                                              |
+| E1005 | reserved word used as a name                                  |
+| E1006 | division `/` does not exist (teaches the hardware cost)       |
+| E1007 | modulo `%` does not exist (teaches `+%`/slicing)              |
+| E1008 | unexpected character                                          |
+| E1101 | expected-X-found-Y family (incl. terminators, missing `}`)    |
+| E1102 | bad top-level item                                            |
+| E1103 | enum needs at least one variant                               |
+| E1104 | register has no reset value                                   |
+| E1105 | `<-` outside an `on` block                                    |
+| E1106 | `=` inside an `on` block                                      |
+| E1107 | `test` block syntax (name, body statements)                   |
+| E1108 | value-driving `if` without `else` (the latch lesson)          |
+| E1109 | chained comparison                                            |
+| E1110 | call errors (not a builtin, wrong arity)                      |
+| E1111 | parameter/const type is not `int`/`bool`                      |
+| E1112 | unknown `syntax` profile (only `thamizh` is valid)            |
+| E1113 | nesting too deep (recursion-depth guard, anti stack-overflow) |
+| E1201 | imported file does not exist                                  |
 
 Grouping rule: E1101 deliberately covers the whole expected/found
 family — those messages share one translation shape; the codes that

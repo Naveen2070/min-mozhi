@@ -5,6 +5,9 @@
 //! file output, and the LSP server (`lsp.rs` — bin-only so the lib
 //! stays async-free) live here — every compiler stage lives in the lib.
 
+// No `unsafe` in the CLI either (see `lib.rs`) — locked by the compiler.
+#![forbid(unsafe_code)]
+
 mod lsp;
 
 use std::collections::BTreeMap;

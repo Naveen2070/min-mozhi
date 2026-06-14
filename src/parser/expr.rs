@@ -38,8 +38,17 @@ fn bin_op(kind: &TokKind) -> Option<(BinOp, u8)> {
 
 impl Parser {
     /// `expr = ifExpr | matchExpr | binExpr` — the expression entry point
-    /// used by everything in `items.rs`.
+    /// used by everything in `items.rs`. Depth-guarded (every nested `(…)`,
+    /// `if`/`match` head, concat part, and call argument re-enters here), so
+    /// pathological nesting fails with E1113 rather than overflowing the stack.
     pub(super) fn expr(&mut self) -> Option<Expr> {
+        self.enter()?;
+        let r = self.expr_inner();
+        self.leave();
+        r
+    }
+
+    fn expr_inner(&mut self) -> Option<Expr> {
         if self.at_kw(Kw::If) {
             return self.if_expr();
         }
@@ -53,6 +62,13 @@ impl Parser {
     /// `else` is MANDATORY: an if-expression drives a value, and a missing
     /// branch is how latches are born (safety rule, spec/02 section 1.3).
     fn if_expr(&mut self) -> Option<Expr> {
+        self.enter()?;
+        let r = self.if_expr_inner();
+        self.leave();
+        r
+    }
+
+    fn if_expr_inner(&mut self) -> Option<Expr> {
         let start = self.bump().span; // if
         let cond = self.expr()?;
         self.expect(TokKind::LBrace, "`{` then the value when true")?;
@@ -311,6 +327,13 @@ impl Parser {
     /// — prefix `&`/`|`/`^` are the reduction operators (fold a vector to
     /// one bit), same symbols as the binary bitwise ops.
     fn unary(&mut self) -> Option<Expr> {
+        self.enter()?;
+        let r = self.unary_inner();
+        self.leave();
+        r
+    }
+
+    fn unary_inner(&mut self) -> Option<Expr> {
         let op = match self.peek_kind() {
             TokKind::Minus => Some(UnOp::Neg),
             TokKind::Tilde => Some(UnOp::BitNot),

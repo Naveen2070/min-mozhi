@@ -1,0 +1,36 @@
+# cargo-fuzz harness for the untrusted-input path (lex -> parse -> eval).
+#
+# This is a SEPARATE crate from `mimz` (own manifest, own `[workspace]` so the
+# parent never tries to build it). The repo's normal gate — `cargo build`,
+# `cargo clippy --all-targets`, `cargo test` at the root — does not see it.
+#
+# libFuzzer needs a NIGHTLY toolchain and runs on Linux/macOS only; it does not
+# build on Windows. Run it in CI (the `fuzz` job) or locally under WSL2/Linux:
+#   cargo +nightly fuzz run lex_parse_eval -- -max_total_time=30
+[package]
+name = "mimz-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Detach from any parent workspace so root cargo commands ignore this crate.
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+mimz = { path = ".." }
+# Same crate the lib uses; the harness NFC-normalizes input like the CLI does.
+unicode-normalization = "0.1"
+
+[[bin]]
+name = "lex_parse_eval"
+path = "fuzz_targets/lex_parse_eval.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1

@@ -7,6 +7,7 @@
 | [`architecture.md`](architecture.md)                     | Compiler architecture — pipeline, components, crate layout                                                                     |
 | [`prior-art.md`](prior-art.md)                           | Prior art — Veryl/Spade/Amaranth/Chisel design choices mapped to our open decisions                                            |
 | [`code/`](code/)                                         | **How the code works** — maintainer docs: pipeline, per-module internals, decisions, contributor recipes                       |
+| [`audit/`](audit/)                                       | **Security & robustness audit** — input-hardening defects found and how each was fixed (security / bugs / hardening)           |
 | [`Ideas/`](Ideas/)                                       | Forward-looking plans — language roadmap (`language_plan.md`), benchmark roadmap (`benchmark_plan.md`), CI plan (`ci_plan.md`) |
 | [`plan/`](plan/)                                         | **Detailed per-phase plans** (source of truth for execution)                                                                   |
 | [`log/`](log/)                                           | **Dev log** — dated, append-only record of decisions and progress                                                              |

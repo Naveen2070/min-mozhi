@@ -126,6 +126,32 @@ jobs:
             bench-report.html
             bench-report.json
 
+  fuzz:
+    name: fuzz smoke (lex → parse → eval)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+
+      # cargo-fuzz / libFuzzer need nightly; the lib itself stays on stable.
+      - name: Install Rust (nightly)
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Smoke run (60s; any panic / abort / timeout fails the job)
+        # Run from the repo root — cargo-fuzz finds the ./fuzz crate itself.
+        # Bounded so it gates PRs without dominating CI. A reproducer for any
+        # crash is written under fuzz/artifacts/ and the non-zero exit fails
+        # the job. Run a longer batch out of band via `cargo fuzz run` locally
+        # (WSL2/Linux) or a future scheduled job.
+        run: cargo fuzz run lex_parse_eval -- -max_total_time=60 -rss_limit_mb=2048
+
   docs:
     name: markdown lint + format
     runs-on: ubuntu-latest

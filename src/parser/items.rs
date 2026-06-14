@@ -507,6 +507,13 @@ impl Parser {
     /// statement-level `if`: `else` is OPTIONAL here (an unassigned
     /// register holds its value; no latch risk, unlike wires).
     fn seq_if(&mut self) -> Option<SeqStmt> {
+        self.enter()?;
+        let r = self.seq_if_inner();
+        self.leave();
+        r
+    }
+
+    fn seq_if_inner(&mut self) -> Option<SeqStmt> {
         self.bump(); // if
         let cond = self.expr()?;
         let (then, _) = self.seq_block()?;
@@ -714,6 +721,13 @@ impl Parser {
 
     /// `testIf = "if" expr testBlock [ "else" (testIf | testBlock) ]`
     fn test_if(&mut self) -> Option<TestStmt> {
+        self.enter()?;
+        let r = self.test_if_inner();
+        self.leave();
+        r
+    }
+
+    fn test_if_inner(&mut self) -> Option<TestStmt> {
         self.bump(); // if
         let cond = self.expr()?;
         let (then, _) = self.test_block()?;
