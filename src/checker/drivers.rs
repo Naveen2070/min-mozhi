@@ -576,6 +576,12 @@ impl<'a> Checker<'a> {
                 Type::Named(_) => None,
             };
             let Some(width) = width else { continue };
+            // A zero-width output is already an E0410 elsewhere; coverage
+            // analysis is meaningless on it and would underflow the bound
+            // below (`covered.len() - 1` on an empty vec).
+            if width == 0 {
+                continue;
+            }
             let mut covered = vec![false; width.min(4096) as usize];
             for s in sites {
                 if let Extent::Range(lo, hi) = s.extent {

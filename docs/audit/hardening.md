@@ -75,7 +75,11 @@ verification against the code**. Recording them so they are not re-investigated:
   a second target `lex_parse_compile` fuzzes the Verilog backend
   (`lex → parse → check → emit`), and a weekly `fuzz-nightly` job runs 10 min per
   target (vs the 60 s per-PR smoke). All CI-verified (nightly/Linux); the Windows
-  dev box still cannot build the fuzz crate.
+  dev box still cannot build the fuzz crate. **First finding (2026-06-14):** the
+  `lex_parse_compile` target caught a subtract-overflow panic in the checker's
+  zero-width output coverage check — fixed and regression-tested (SEC-4 in
+  [`security.md`](security.md)). The reproducer is in the gitignored
+  `fuzz/corpus/`; the durable guard is the checker unit test.
 - **CI** also enforces `clippy -D warnings` + full tests; `#![forbid(unsafe_code)]`
   makes memory-unsafe code a hard error.
 
