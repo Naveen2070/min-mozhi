@@ -512,6 +512,13 @@ impl Parser {
     /// statement-level `if`: `else` is OPTIONAL here (an unassigned
     /// register holds its value; no latch risk, unlike wires).
     fn seq_if(&mut self) -> Option<SeqStmt> {
+        self.enter()?;
+        let r = self.seq_if_inner();
+        self.leave();
+        r
+    }
+
+    fn seq_if_inner(&mut self) -> Option<SeqStmt> {
         self.bump(); // if
         let cond = self.expr()?;
         let (then, _) = self.seq_block()?;
@@ -563,7 +570,17 @@ impl Parser {
     /// (<cond> "endral" … | seqBlock) ]`. The condition is already parsed; from
     /// `endral` onward it mirrors `seq_if` and builds the SAME `SeqStmt::If`.
     /// `else` (`illaiyel`) is optional (a register holds its value — no latch).
+    /// Depth-guarded like `seq_if`: the `illaiyel <cond> endral …` chain recurses
+    /// here, so the guard must wrap the whole call (incl. the recursion) for a
+    /// deep chain to fail with E1113 instead of overflowing the stack.
     fn seq_if_thamizh(&mut self, cond: Expr) -> Option<SeqStmt> {
+        self.enter()?;
+        let r = self.seq_if_thamizh_inner(cond);
+        self.leave();
+        r
+    }
+
+    fn seq_if_thamizh_inner(&mut self, cond: Expr) -> Option<SeqStmt> {
         self.bump(); // endral (Kw::If)
         let (then, _) = self.seq_block()?;
         let save = self.pos;
@@ -825,6 +842,13 @@ impl Parser {
 
     /// `testIf = "if" expr testBlock [ "else" (testIf | testBlock) ]`
     fn test_if(&mut self) -> Option<TestStmt> {
+        self.enter()?;
+        let r = self.test_if_inner();
+        self.leave();
+        r
+    }
+
+    fn test_if_inner(&mut self) -> Option<TestStmt> {
         self.bump(); // if
         let cond = self.expr()?;
         let (then, _) = self.test_block()?;

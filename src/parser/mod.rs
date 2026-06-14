@@ -36,6 +36,8 @@ pub fn parse(toks: Vec<Token>) -> Result<File, Vec<Diag>> {
         pos: 0,
         diags: Vec::new(),
         profile: Profile::CodeOrder,
+        depth: 0,
+        too_deep: false,
     };
     let file = p.file();
     if p.diags.is_empty() {
@@ -65,7 +67,22 @@ pub(crate) struct Parser {
     diags: Vec<Diag>,
     /// The active word-order profile, set by the `syntax` directive.
     profile: Profile,
+    /// Current recursive-descent nesting depth (see `enter`/`leave`,
+    /// `MAX_DEPTH`) — the anti-stack-overflow guard (E1113).
+    depth: usize,
+    /// Latch so the depth-limit diagnostic (E1113) is emitted only once.
+    too_deep: bool,
 }
+
+/// Hard cap on recursive-descent nesting. Each level of source nesting costs
+/// ~12 Rust stack frames (`expr → binary(0..9) → unary → postfix → primary`),
+/// and `mimz` parses on the default thread stack (1 MB on Windows), so the cap
+/// must stay well under `stack / (12 * frame)`. 64 levels is far more than any
+/// human-written HDL expression needs while leaving a wide safety margin;
+/// deeper adversarial input fails with a clean E1113 instead of overflowing
+/// the stack. See `enter`. (Machine-generated extremes can raise this
+/// once parsing moves onto a dedicated large-stack thread.)
+const MAX_DEPTH: usize = 64;
 
 /// Token plumbing and error recovery, shared by `items.rs` and `expr.rs`.
 ///
@@ -127,6 +144,33 @@ impl Parser {
         if let Some(d) = self.diags.last_mut() {
             d.help = Some(help.into());
         }
+    }
+
+    /// Enter one level of recursive descent. Returns `None` (after recording
+    /// E1113 once) when nesting would risk a stack overflow, so a pathological
+    /// input — `((((…))))`, `!!!!…x`, a 50k-deep `if`/`else if` chain — fails
+    /// with a clean diagnostic instead of aborting the process. Every
+    /// `self.enter()?` MUST be paired with a later `self.leave()`; the wrapper
+    /// routines (`expr`, `unary`, `if_expr`, `seq_if`, `test_if`) do this.
+    fn enter(&mut self) -> Option<()> {
+        if self.depth >= MAX_DEPTH {
+            if !self.too_deep {
+                let span = self.peek().span;
+                self.error(span, "E1113", "nested too deeply to parse safely");
+                self.help(format!(
+                    "Min-Mozhi limits nesting to {MAX_DEPTH} levels so the parser stays within its stack — flatten the expression or split it into named wires/consts"
+                ));
+                self.too_deep = true;
+            }
+            return None;
+        }
+        self.depth += 1;
+        Some(())
+    }
+
+    /// Leave one level of recursive descent (pairs with `enter`).
+    fn leave(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
     }
 
     fn expect(&mut self, kind: TokKind, what: &str) -> Option<Token> {

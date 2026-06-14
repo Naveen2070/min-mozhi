@@ -40,3 +40,8 @@ harness = false
 
 [profile.release]
 lto = true
+# Defense in depth: panic on integer overflow in release too, instead of
+# wrapping silently. The evaluators use checked arithmetic (a wrong value is
+# never produced quietly); this turns any overflow we missed into a loud,
+# debuggable abort rather than a silent miscompile of hardware.
+overflow-checks = true

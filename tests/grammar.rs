@@ -232,3 +232,25 @@ fn flipped_match_is_rejected_in_code_order() {
         "`op poruthu {{}}` must be a parse error without `syntax thamizh`"
     );
 }
+
+/// The thamizh-order recursion necks are depth-guarded too: a deep
+/// `illaiyel <cond> endral …` chain (well past `MAX_DEPTH` = 64) must fail with
+/// a clean E1113, NOT abort the process with a stack overflow. This locks the
+/// SEC-1 depth guard onto the Phase 1.8 thamizh if-expression path — the merge
+/// of the security and grammar branches dropped it and it was restored. 200
+/// levels is comfortably past the cap while staying small enough to avoid the
+/// (separate) error-recovery rendering blow-up on a single huge line.
+#[test]
+fn deeply_nested_thamizh_else_if_errors_not_overflows() {
+    let mut src = String::from("syntax thamizh\nmodule M {\n  in a: bit\n  out y: bit\n  y = ");
+    for _ in 0..200 {
+        src.push_str("a == 0 endral { 1 } illaiyel ");
+    }
+    src.push_str("{ 0 }\n}\n");
+    let (ok, stderr) = compile_src(&src, "deep_thamizh_elseif");
+    assert!(!ok, "a 200-deep thamizh else-if chain must not compile");
+    assert!(
+        stderr.contains("E1113"),
+        "expected a clean E1113 depth error (not a stack-overflow crash), got:\n{stderr}"
+    );
+}

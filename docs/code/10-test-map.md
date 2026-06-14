@@ -33,7 +33,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 17 tests)
+## Unit: parser (`src/parser/tests.rs`, 19 tests)
 
 | Test                                                        | Locks in                                                                   |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -54,6 +54,8 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `parses_test_block`                                         | `test "..." for M(...) { tick/expect }` parses                             |
 | `every_parse_error_carries_a_code`                          | the E11xx retrofit, locked from outside: no parse error is codeless        |
 | `stray_top_level_brace_does_not_hang`                       | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)   |
+| `deeply_nested_expression_errors_not_overflows`             | `(((…)))` past the depth cap → clean E1113, not a stack overflow (SEC-1)   |
+| `deeply_nested_unary_errors_not_overflows`                  | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash           |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
@@ -283,19 +285,66 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `rejects_sequential_logic`   | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
 | `reports_missing_input`      | a missing `--in` value names the input                                            |
 
-## Integration: eval (`tests/eval.rs`, 6 tests — run the real binary)
+## Integration: eval (`tests/eval.rs`, 9 tests — run the real binary)
 
 End-to-end `mimz eval` over corpus examples — proves the lib evaluator AND the
-`--in`/`--module` plumbing.
+`--in`/`--module` plumbing. The last three are security cases: the `eval` path
+skips the checker, so `comb.rs` is the only overflow guard (audit SEC-2).
 
-| Test                                      | Locks in                                                          |
-| ----------------------------------------- | ----------------------------------------------------------------- |
-| `adder_carries`                           | `mimz eval adder --in a=200,b=100` prints `sum = 300`             |
-| `mux4_selects_with_hex_and_binary_inputs` | `--in sel=0b10,...` parses bases; selects the right input         |
-| `comparator_reports_all_three_outputs`    | all three outputs print with correct values                       |
-| `window_chained_comparison_boundaries`    | inclusive boundary in / below out                                 |
-| `multi_module_file_needs_module_flag`     | a 2-module file asks for `--module`, then accepts it              |
-| `instances_are_rejected_clearly`          | a file with sub-module instances is rejected with a clear message |
+| Test                                        | Locks in                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| `adder_carries`                             | `mimz eval adder --in a=200,b=100` prints `sum = 300`               |
+| `mux4_selects_with_hex_and_binary_inputs`   | `--in sel=0b10,...` parses bases; selects the right input           |
+| `comparator_reports_all_three_outputs`      | all three outputs print with correct values                         |
+| `window_chained_comparison_boundaries`      | inclusive boundary in / below out                                   |
+| `multi_module_file_needs_module_flag`       | a 2-module file asks for `--module`, then accepts it                |
+| `instances_are_rejected_clearly`            | a file with sub-module instances is rejected with a clear message   |
+| `oversized_shift_const_does_not_panic`      | `a[1 << 200]` → clean overflow error, no panic/wrap (debug+release) |
+| `overflowing_multiply_const_does_not_panic` | a const product past i128::MAX → overflow error, not a panic        |
+| `out_of_range_index_is_rejected_cleanly`    | a literal index past the width → clean error, not a truncating cast |
+
+## Integration: grammar engine (`tests/grammar.rs`, 5 tests — run the real binary)
+
+The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
+profile-blind backend: a thamizh-order file and its code-order twin must emit
+byte-identical Verilog, so equal Verilog proves the same AST. Fixtures live in
+`tests/fixtures/grammar/` (not `examples/`, which stays byte-identical
+four-flavor per R9).
+
+| Test                                                  | Locks in                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin  |
+| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin |
+| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                  |
+| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                    |
+| `flipped_on_block_is_rejected_in_code_order`          | the flip is gated on the profile, not always on                |
+
+## Fuzzing: `fuzz/fuzz_targets/lex_parse_eval.rs` (CI-only, not a `cargo test` unit)
+
+A `cargo-fuzz` harness over the untrusted-input path — NFC-normalize → `lex`
+→ `parse` → `sim::comb::eval_outputs` — asserting the audit's core guarantee
+(any byte string yields a value or a clean `Diag`/`Err`, never a panic / abort /
+hang). It is **not** part of the 197-test count: it needs a nightly toolchain +
+libFuzzer (Linux/macOS), lives in a standalone `fuzz/` crate the root gate never
+builds, and runs as the CI `fuzz` job (60 s smoke per push/PR). Run locally under
+WSL2/Linux with `cargo +nightly fuzz run lex_parse_eval`. See
+[`../audit/hardening.md`](../audit/hardening.md) "Ongoing assurance".
+
+## Integration: grammar engine (`tests/grammar.rs`, 5 tests — run the real binary)
+
+The `syntax thamizh` word-order profile (spec/04, Phase 1.8). Oracle = the
+profile-blind backend: a thamizh-order file and its code-order twin must emit
+byte-identical Verilog, so equal Verilog proves the same AST. Fixtures live in
+`tests/fixtures/grammar/` (not `examples/`, which stays byte-identical
+four-flavor per R9).
+
+| Test                                                  | Locks in                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------- |
+| `thamizh_order_counter_matches_code_order_twin`       | Tanglish `rise(clk) on { }` → same Verilog as code-order twin  |
+| `thamizh_order_tamil_counter_matches_code_order_twin` | pure Tamil script + SOV order → same Verilog as the Tamil twin |
+| `thamizh_order_agrees_with_english_golden`            | profile and keyword skin are fully orthogonal                  |
+| `unknown_syntax_profile_is_an_error`                  | `syntax wibble` fails to compile with E1112                    |
+| `flipped_on_block_is_rejected_in_code_order`          | the flip is gated on the profile, not always on                |
 
 ## Integration: grammar engine (`tests/grammar.rs`, 13 tests — run the real binary)
 

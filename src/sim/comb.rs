@@ -333,10 +333,12 @@ impl Env<'_> {
                     .iter()
                     .map(|p| self.eval(p))
                     .collect::<Result<_, _>>()?;
-                let total: u32 = vals.iter().map(|v| v.width).sum();
-                if total > 128 {
+                // Sum in u64 so many parts cannot wrap a u32 below the guard.
+                let total64: u64 = vals.iter().map(|v| v.width as u64).sum();
+                if total64 > 128 {
                     return Err("concatenation exceeds 128 bits (evaluator limit)".into());
                 }
+                let total = total64 as u32;
                 let mut bits = 0u128;
                 let mut shift = total;
                 for v in &vals {
@@ -347,13 +349,13 @@ impl Env<'_> {
             }
             ExprKind::Index { base, index } => {
                 let b = self.eval(base)?;
-                let i = const_eval(index, self.ints)? as u32;
+                let i = checked_index(const_eval(index, self.ints)?, b.width, "bit index")?;
                 Ok(Val::new((b.bits >> i) & 1, 1, false))
             }
             ExprKind::Slice { base, hi, lo } => {
                 let b = self.eval(base)?;
-                let hi = const_eval(hi, self.ints)? as u32;
-                let lo = const_eval(lo, self.ints)? as u32;
+                let hi = checked_index(const_eval(hi, self.ints)?, b.width, "slice high bound")?;
+                let lo = checked_index(const_eval(lo, self.ints)?, b.width, "slice low bound")?;
                 if hi < lo {
                     return Err("slice bounds reversed (write `[hi:lo]`, msb first)".into());
                 }
@@ -373,7 +375,7 @@ impl Env<'_> {
         match func {
             Builtin::Extend => {
                 let v = self.eval(&args[0])?;
-                let n = const_eval(&args[1], self.ints)? as u32;
+                let n = checked_width(const_eval(&args[1], self.ints)?)?;
                 if n < v.width {
                     return Err(format!(
                         "extend to {n} bits is narrower than the {}-bit value — use trunc",
@@ -389,7 +391,7 @@ impl Env<'_> {
             }
             Builtin::Trunc => {
                 let v = self.eval(&args[0])?;
-                let n = const_eval(&args[1], self.ints)? as u32;
+                let n = checked_width(const_eval(&args[1], self.ints)?)?;
                 Ok(Val::new(v.bits & mask(n), n, v.signed))
             }
             Builtin::SignedCast => {
@@ -407,7 +409,7 @@ impl Env<'_> {
 fn unary(op: UnOp, v: Val) -> Val {
     match op {
         UnOp::Neg => {
-            let bits = (0i128 - v.as_i128()) as u128;
+            let bits = v.as_i128().wrapping_neg() as u128;
             Val::new(bits, v.width, true)
         }
         UnOp::BitNot => Val::new(!v.bits, v.width, v.signed),
@@ -432,7 +434,11 @@ fn binary(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
     let v = match op {
         // Lossless growth (spec/02 section 3).
         BinOp::Add => Val::new(l.bits.wrapping_add(r.bits), wmax + 1, signed),
-        BinOp::Sub => Val::new((l.as_i128() - r.as_i128()) as u128, wmax + 1, true),
+        BinOp::Sub => Val::new(
+            l.as_i128().wrapping_sub(r.as_i128()) as u128,
+            wmax + 1,
+            true,
+        ),
         BinOp::Mul => Val::new(l.bits.wrapping_mul(r.bits), l.width + r.width, signed),
         // Wrapping family: keep operand width.
         BinOp::AddWrap => Val::new(l.bits.wrapping_add(r.bits), wmax, signed),
@@ -517,59 +523,32 @@ fn checked_width(n: i128) -> Result<u32, String> {
     }
 }
 
-/// A small const-evaluator for widths, parameters, consts, indices, and slice
-/// bounds. Mirrors `checker::consteval` on the subset the evaluator needs;
-/// works in i128 and refuses anything that is not compile-time here.
+/// Compile-time const evaluation for widths, parameters, consts, indices, and
+/// slice bounds. **Delegates to the checker's hardened evaluator**
+/// (`checker::consteval::eval`) — the single source of truth — which uses
+/// `checked_*` arithmetic and guarded shifts, so an oversized const such as
+/// `1 << 200` or `9e30 * 9e30` is a clean error, never a debug panic or a
+/// silent release wrap. This matters because the `mimz eval` path does **not**
+/// run the checker (`main::eval_file`), so this is the only overflow guard on
+/// that path. The checker's `Diag` is flattened to the `String` the evaluator
+/// reports.
 fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, String> {
-    Ok(match &e.kind {
-        ExprKind::Int { value, .. } => *value as i128,
-        ExprKind::Bool(b) => *b as i128,
-        ExprKind::Ident(n) => *ints
-            .get(n)
-            .ok_or_else(|| format!("`{n}` is not a compile-time constant here"))?,
-        ExprKind::Unary { op, expr } => {
-            let v = const_eval(expr, ints)?;
-            match op {
-                UnOp::Neg => -v,
-                UnOp::LogicNot => (v == 0) as i128,
-                UnOp::BitNot => !v,
-                _ => return Err("reduction operator is not a compile-time value".into()),
-            }
-        }
-        ExprKind::Binary { op, lhs, rhs } => {
-            let a = const_eval(lhs, ints)?;
-            let b = const_eval(rhs, ints)?;
-            match op {
-                BinOp::Add => a + b,
-                BinOp::Sub => a - b,
-                BinOp::Mul => a * b,
-                BinOp::Shl => a << b,
-                BinOp::Shr => a >> b,
-                BinOp::BitAnd => a & b,
-                BinOp::BitOr => a | b,
-                BinOp::BitXor => a ^ b,
-                BinOp::Eq => (a == b) as i128,
-                BinOp::Ne => (a != b) as i128,
-                BinOp::Lt => (a < b) as i128,
-                BinOp::Le => (a <= b) as i128,
-                BinOp::Gt => (a > b) as i128,
-                BinOp::Ge => (a >= b) as i128,
-                BinOp::LogicAnd => ((a != 0) && (b != 0)) as i128,
-                BinOp::LogicOr => ((a != 0) || (b != 0)) as i128,
-                BinOp::AddWrap | BinOp::SubWrap | BinOp::MulWrap => {
-                    return Err("wrapping operators have no compile-time meaning".into());
-                }
-            }
-        }
-        ExprKind::IfExpr { cond, then, els } => {
-            if const_eval(cond, ints)? != 0 {
-                const_eval(then, ints)?
-            } else {
-                const_eval(els, ints)?
-            }
-        }
-        _ => return Err("not a compile-time constant expression".into()),
-    })
+    let env: crate::checker::consteval::Env = ints.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    crate::checker::consteval::eval(e, &env).map_err(|d| d.msg)
+}
+
+/// A bit index or slice bound must be a non-negative integer inside the value's
+/// width. Rejects negative / out-of-range positions with a clear error instead
+/// of truncating via `as u32` (which silently wrapped before) and instead of a
+/// later oversized shift (`>> n`, `n >= 128`, which panics in debug).
+fn checked_index(n: i128, width: u32, what: &str) -> Result<u32, String> {
+    if (0..width as i128).contains(&n) {
+        Ok(n as u32)
+    } else {
+        Err(format!(
+            "{what} {n} is out of range for a {width}-bit value"
+        ))
+    }
 }
 
 #[cfg(test)]

@@ -94,46 +94,6 @@ Other notable spots:
   only one token of lookahead, so it can reuse this machinery with
   flipped clause heads.
 
-## Word-order profiles (the grammar engine, spec/04)
-
-The parser carries a `Profile` (`mod.rs`): `CodeOrder` (default) or `Thamizh`.
-An optional leading `syntax thamizh` directive — parsed once by
-`syntax_directive` before any item — switches it to `Thamizh`. The directive is
-consumed and **never enters the AST**, so a thamizh-order file and its
-code-order twin parse to the same tree and emit byte-identical Verilog (the
-same-AST contract, tested in `tests/grammar.rs`).
-
-A profile only steers which clause-head production runs; everything else
-(expressions, declarations, types, operators) is shared. The flip is a one-token
-decision at the clause head — no backtracking — exactly the lookahead the
-expression parser already uses.
-
-**Leading-keyword flip — the clocked block.** Code-order `on rise(clk) { }`
-dispatches on `Kw::On`; thamizh-order `rise(clk) on { }` dispatches on `Kw::Rise`
-(guarded by `profile == Thamizh`) into `on_block_thamizh`. Both share
-`clock_edge_args` and build the identical `OnBlock`. A leading `rise(...)` in
-code-order stays an error — the flip is gated, not always on.
-
-**Expression-first flips — conditional, if-expression, match.** These move the
-clause head to a _postposition_, so there is no leading keyword to dispatch on.
-Instead the operand is parsed first with `binary(0)`, then one token of trailing
-lookahead decides the form (no backtracking):
-
-- In `expr` (gated to `expr_thamizh`): `<cond> endral { … } illaiyel { … }` →
-  `if_expr_thamizh`; `<expr> poruthu { … }` → `match_expr_thamizh`. Both build
-  the same `ExprKind::IfExpr` / `ExprKind::Match` as code order; `match_expr` and
-  its thamizh twin share the arm loop in `finish_match`.
-- In `seq_stmt` (gated to `seq_stmt_thamizh`): the head decides between a
-  conditional (`<cond> endral { … }` → `seq_if_thamizh`) and a register update
-  (`<lvalue> <- expr`). Since both can begin with an identifier, the head is
-  parsed as an expression and `expr_to_lvalue` reinterprets it as the assignment
-  target when `<-` follows — the assignment grammar is unchanged, only the parse
-  route differs.
-
-Like the clocked block, the flipped forms are **gated**: a trailing `endral` /
-`poruthu` in code-order is a parse error. **Deferred:** the `test` flip (Phase
-1.5 — test blocks emit no Verilog yet).
-
 ## What the parser deliberately does NOT do
 
 No name resolution, no width checking, no const evaluation — those are
@@ -141,6 +101,6 @@ the checker's six passes (`docs/code/11-checker.md`). The parser only
 enforces what is syntactically decidable, which includes several safety
 rules: `=` vs `<-` placement, mandatory reg reset values, mandatory
 `else` on if-expressions, no user-defined function calls. Every parse
-error carries a stable code (**E1101–E1112** — `self.error(span, code,
+error carries a stable code (**E1101–E1111** — `self.error(span, code,
 msg)` makes the code mandatory; catalog and the E1101 grouping rule in
 [`06-diagnostics.md`](06-diagnostics.md)).

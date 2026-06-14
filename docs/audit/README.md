@@ -1,0 +1,47 @@
+# Security & Robustness Audit
+
+A standing record of defects found by auditing the compiler against
+**malicious or malformed input**, and exactly how each was fixed. Min-Mozhi
+emits hardware-level logic, so the compiler must never crash, corrupt memory,
+silently miscompute, or exhaust resources on a crafted `.mimz` file.
+
+Each entry states: **what** was found, **how** it was found, its **severity and
+reachability**, and the **fix** (with the file and the regression test that
+locks it). New audits append here; nothing is deleted.
+
+## Files
+
+| Category                       | What it covers                                                              |
+| ------------------------------ | --------------------------------------------------------------------------- |
+| [`security.md`](security.md)   | Input-triggered crashes, overflow, memory safety — the threat-model defects |
+| [`bugs.md`](bugs.md)           | Functional defects (wrong behavior, hangs) found along the way              |
+| [`hardening.md`](hardening.md) | Preventive measures + what was checked and found already-safe               |
+
+## Audit log
+
+| Date       | Scope                                                                    | Result                                                         |
+| ---------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| 2026-06-14 | Full `src/` sweep: overflow, panics, recursion, resources, memory safety | 2 real defects fixed (1 CRITICAL, 1 HIGH) + 1 hang + hardening |
+| 2026-06-14 | Continuous fuzzing of the untrusted-input path                           | `cargo-fuzz` target `fuzz/` + CI smoke job landed              |
+
+## Threat model
+
+`mimz compile | check | eval <file>` is run on an untrusted `.mimz` file (which
+may `import` others). The requirements:
+
+1. **No crash.** No panic, no stack overflow, no abort on any input.
+2. **No memory unsafety.** No buffer overflow / out-of-bounds write — ever.
+3. **No silent miscompute.** Integer overflow must error, never wrap quietly to
+   a wrong value (a wrong width is wrong hardware).
+4. **No resource exhaustion.** Bounded memory and CPU for bounded input.
+
+## Method
+
+Three independent read-only review passes (arithmetic/overflow, panics/recursion,
+resources/imports), each finding cross-checked **against the actual code** before
+acceptance — several initially-reported "criticals" did not survive that check
+and were downgraded (see [`hardening.md`](hardening.md), "Checked and safe").
+Every fix ships with a regression test run in **both debug and release** (the two
+builds fail differently on overflow). Standard gate after: `cargo fmt`,
+`clippy -D warnings`, `cargo test` (+`--release`), rustdoc, prettier,
+markdownlint.
