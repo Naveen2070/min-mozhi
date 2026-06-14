@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**232 tests** as of 2026-06-14: 156 lib unit + 3 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 7 morph integration + 5 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**234 tests** as of 2026-06-14: 156 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 9 eval integration + 7 translate integration + 7 morph integration + 5 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~67 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -211,13 +211,15 @@ a whole alternation member in `editors/vscode/syntaxes/mimz.tmLanguage.json`
 plain `contains` would pass vacuously), and that the manifest registers
 `.mimz` with the matching scope name. When one fails: fix the grammar.
 
-## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 4 tests)
+## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 6 tests)
 
 | Test                                                        | Locks in                                                                                                                                     |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `positions_are_utf16_lines_and_columns`                     | byte span → LSP Position math (0-based lines)                                                                                                |
 | `tamil_text_counts_utf16_units_not_bytes`                   | LSP columns are UTF-16 code units — a Tamil identifier before the error must not skew the squiggle                                           |
 | `analyze_reports_checker_errors_with_codes`                 | the in-memory pipeline (didOpen text, never on disk) produces coded checker diagnostics                                                      |
+| `diagnostics_localize_to_the_chosen_flavor`                 | the LSP renders E0501 in Tamil (`y-க்கு` via `morph`) and English verbatim — same plumbing as `check`/`compile`                              |
+| `uncovered_code_is_not_localized_in_lsp`                    | an uncovered code (E0401) is byte-identical across flavors in the LSP (the English-fallback invariant)                                       |
 | `opening_a_broken_file_publishes_coded_diagnostics` (smoke) | the REAL binary over the real wire protocol: framed JSON-RPC initialize → didOpen → publishDiagnostics with code, source, help, and position |
 
 ## Benchmark harness (`src/bin/mimz-bench/`, 6 unit tests)

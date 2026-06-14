@@ -106,6 +106,10 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
   tested; the full Tamil + Tanglish catalog and the final sandhi rules await the
   native-speaker panel (decision C3). The committed join rule is minimal and
   marked PROVISIONAL.
+- **Consumers.** `check`/`compile`/`eval` (`--lang`) and the **LSP** all localize
+  through `morph::localized_msg` with `majority_flavor` — editors get the same
+  flavored diagnostics as the CLI (`src/lsp.rs` `to_lsp`). JSON output stays
+  English (machine contract).
 
 ## `sim` (`src/sim/`) — `mimz eval` (combinational slice of Phase 1.5)
 
