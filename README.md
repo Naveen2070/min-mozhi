@@ -131,6 +131,7 @@ npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jso
 
 | Document                                                             | Contents                                                        |
 | -------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`docs/guide/`](docs/guide/README.md)                                | **Learn the language** — a from-scratch tutorial book           |
 | [`spec/01-goals-and-philosophy.md`](spec/01-goals-and-philosophy.md) | Goals, safety guarantees, non-goals, design principles          |
 | [`spec/02-syntax-and-grammar.md`](spec/02-syntax-and-grammar.md)     | Syntax tour, operators, types, formal EBNF grammar              |
 | [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables            |

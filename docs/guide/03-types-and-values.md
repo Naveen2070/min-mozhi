@@ -1,0 +1,116 @@
+# 3 — Types and Values
+
+Every signal in Min-Mozhi has a **type**, and the type carries a **width** (how
+many bits the wire is). Widths are checked everywhere — the compiler never
+silently widens or truncates a value. Getting comfortable with widths is most of
+learning the language.
+
+## The three hardware types
+
+| Type        | Meaning                     | Example values            |
+| ----------- | --------------------------- | ------------------------- |
+| `bit`       | a single wire, one bit      | `true`, `false`, `0`, `1` |
+| `bits[N]`   | `N` wires, unsigned integer | `bits[8]` holds 0..255    |
+| `signed[N]` | `N` wires, two's-complement | `signed[4]` holds −8..7   |
+
+```mimz
+in  flag:  bit
+in  data:  bits[8]
+in  delta: signed[4]
+```
+
+`N` is a **width expression** — usually a literal, but it can be a parameter or a
+`const`, which the compiler folds at build time:
+
+```mimz
+module Reg(WIDTH: int = 8) {
+  in  d: bits[WIDTH]
+  out q: bits[WIDTH]
+  q = d
+}
+```
+
+A width must be a positive compile-time integer. `bits[0]` and a negative width
+are rejected (`E0410`).
+
+## `bit` vs `bits[1]`
+
+`bit` is the boolean type: it is what conditions and logic operators produce and
+consume. It is distinct from `bits[1]`; do not expect them to interchange. Use
+`bit` for flags and control, `bits[N]` for data.
+
+## Booleans
+
+`true` and `false` are the two `bit` literals:
+
+```mimz
+out ready: bit
+ready = true
+```
+
+## Signed vs unsigned, and why they never mix
+
+`bits[N]` is unsigned; `signed[N]` is two's-complement. Min-Mozhi will **not**
+let you combine them in one operation without an explicit cast — silent
+sign-confusion is a notorious bug source:
+
+```mimz
+in a: bits[4]
+in b: signed[4]
+// out y: ... = a + b      // ERROR E0403: kind mixing
+```
+
+Convert deliberately with the cast built-ins (chapter 6): `signed(a)` reinterprets
+the bits as signed, `unsigned(b)` the other way. Neither changes the bit pattern;
+they change how the _next_ operator treats it.
+
+## Number literals and their width
+
+A bare number like `7` is a compile-time integer with no fixed width yet — it
+adapts to the context it is used in, as long as it fits. Assigning a literal that
+does not fit its target is rejected:
+
+```mimz
+out small: bits[2]
+small = 3      // ok: 3 fits in 2 bits
+// small = 9   // ERROR E0405: 9 does not fit in bits[2]
+```
+
+For a `signed` target, a negative literal is fine; a negative literal into an
+unsigned `bits[N]` is rejected (`E0405`).
+
+## Enums: named states
+
+An `enum` is a set of named values, perfect for state machines. The compiler
+assigns each variant a bit pattern and computes the width for you:
+
+```mimz
+enum State { Red, Green, Yellow }
+```
+
+You refer to a variant with `Enum.Variant`:
+
+```mimz
+reg s: State = State.Red
+```
+
+`enum` needs at least one variant. Enums shine with `match`, which forces you to
+handle every variant (chapter 7).
+
+## Compile-time types: `int` and `bool`
+
+Parameters and `const`s are compile-time values, not hardware. They use the
+compile-time types `int` and `bool` — never `bits[N]`:
+
+```mimz
+const LANES: int = 4
+const DEBUG: bool = false
+
+module Bus(WIDTH: int = 8) { /* ... */ }
+```
+
+These exist only during compilation; they fold into widths and unrolled hardware
+and never become wires themselves. More on parameters and `const` in
+[chapter 9](09-modules-and-reuse.md).
+
+Next: [signals — ports, wires, and registers](04-signals.md).
