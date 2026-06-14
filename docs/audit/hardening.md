@@ -69,10 +69,13 @@ verification against the code**. Recording them so they are not re-investigated:
   on the Windows dev box — run it locally under WSL2/Linux with
   `cargo +nightly fuzz run lex_parse_eval`. The `fuzz/` crate is standalone (own
   manifest + `[workspace]`), so the normal `cargo build`/`clippy`/`test` gate
-  never sees it. Possible extensions: seed the corpus from `examples/`, derive
-  dummy input-port values from the AST to exercise runtime (not just constant)
-  evaluation, add a `lex → parse → compile` target for the Verilog backend, and
-  a longer scheduled run.
+  never sees it. **Extensions landed 2026-06-14:** the corpus is seeded from
+  `examples/` (CI step, flattened names), the eval target now also feeds each
+  input port an AST-derived value (runtime datapath, not just constant folding),
+  a second target `lex_parse_compile` fuzzes the Verilog backend
+  (`lex → parse → check → emit`), and a weekly `fuzz-nightly` job runs 10 min per
+  target (vs the 60 s per-PR smoke). All CI-verified (nightly/Linux); the Windows
+  dev box still cannot build the fuzz crate.
 - **CI** also enforces `clippy -D warnings` + full tests; `#![forbid(unsafe_code)]`
   makes memory-unsafe code a hard error.
 
