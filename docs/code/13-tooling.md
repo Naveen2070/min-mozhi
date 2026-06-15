@@ -50,6 +50,23 @@ natural Tamil WORD-ORDER half (`--order code|thamizh`) lives in `pretty` below.
   keyword-only reskin (ignored, with a warning, under `--order`). Validated in
   `tests/translate.rs` over the `examples/tamil-pure/` showcase, including the
   invariant that romanizing-then-compiling matches compiling the original.
+- **`--romanize-names` is reversible via a sidecar name-map.** With `-o <out>`,
+  romanizing also writes `<out>.names.json` — a per-file [`NameMap`] (`{ version,
+names }`, `romanized → original Tamil`, capturing the `_2`/`_3` uniquing).
+  `restore_with_map` reads it on a reverse run and restores the exact Tamil
+  identifiers, so `Tamil → Latin → Tamil` is byte-for-byte lossless
+  (`romanize_with_map` + `restore_with_map` share the `reskin` span-walk).
+  Per-file, not central: the uniquing is per-file and the same Latin name can mean
+  different Tamil words in different files. Without `-o` (stdout) no map is written
+  and the CLI says so. `--names-map` and `--romanize-names` are opposite
+  directions — using both is an error.
+- **Auto-discovery (no flag needed).** A reverse reskin auto-loads the
+  `<input>.names.json` sidecar when it sits next to the file — so
+  `mimz translate k.mimz --to tamil` restores names with no `--names-map`. An
+  explicit `--names-map <path>` overrides the discovered path; `--no-names-map`
+  (or `[translate] names_map = "off"` in `mimz.toml`) disables it; `--order` and
+  `--romanize-names` runs never auto-restore. The CLI prints a `note:` when it
+  auto-loads a map.
 - **`mimz fmt` rides this too.** The `fmt` subcommand (`fmt_file` in `main.rs`)
   is `translate` pointed at a file in place: it normalizes every keyword to one
   flavor (default = the file's `morph::majority_flavor`, `--to` overrides),
@@ -140,6 +157,40 @@ Phase 1.5 proper, `docs/plan/phase-1.5-simulator.md`).
   which is why it lives in the lib and stays callable on a single module. The
   `mimz eval` CLI is its experimental surface (`--in a=3,b=5`, `--module`,
   `--param`).
+
+## `config` (`src/config.rs`) — `mimz.toml` project defaults
+
+Per-project defaults for CLI flags, so a flag set once for a project need not be
+repeated. **Precedence: CLI flag › `mimz.toml` value › built-in default** — the
+config only fills in what the command line omitted.
+
+- **Discovery.** `Config::discover` walks up from the input file (canonicalized
+  first) to the nearest `mimz.toml`, like `Cargo.toml`/`rustfmt.toml`; the global
+  `--config <path>` overrides the search. `Config::resolve(input, explicit)` is
+  the entry point used by every subcommand in `main.rs`; no file found ⇒
+  `Config::default()` (all `None`).
+- **Format & shape.** TOML (matching `keywords.toml`/`case_suffixes.toml`; the
+  machine-written name-map sidecar stays JSON). All fields are `Option`, so
+  "absent" is distinct from "set", and the CLI does the
+  `cli.or(config).unwrap_or(default)` merge. `deny_unknown_fields` turns a typo'd
+  key into an error, not a silent no-op; a malformed file is a clean error
+  (user-authored + per-project — unlike the embedded keyword tables, which panic).
+- **Keys.** Top-level `lang` (diagnostics language for `check`/`compile`/`eval`);
+  `[translate]` `to` / `order` / `romanize_names` / `names_map` (`"auto"` | `"off"`
+  — controls the sidecar auto-discovery above); `[fmt]` `to` / `strict`.
+
+```toml
+# mimz.toml — CLI flags always override these.
+lang = "tamil"
+
+[translate]
+to             = "tanglish"
+romanize_names = false
+names_map      = "auto"
+
+[fmt]
+strict = true
+```
 
 ## Scope discipline
 

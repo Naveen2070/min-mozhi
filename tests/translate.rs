@@ -22,7 +22,9 @@ use mimz::lexer::lex;
 use mimz::lexer::token::{Flavor, TokKind};
 use mimz::parser::parse;
 use mimz::pretty::{Order, pretty_print};
-use mimz::translate::{TranslateOpts, translate, translate_opts};
+use mimz::translate::{
+    NameMap, TranslateOpts, restore_with_map, romanize_with_map, translate, translate_opts,
+};
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -193,6 +195,74 @@ fn pure_tamil_round_trips_losslessly() {
             "{name}: default translate must round-trip losslessly (Tamil names preserved)"
         );
     }
+}
+
+/// With the sidecar name-map, romanization is fully reversible: Tamil →
+/// (romanize) Latin → (restore via map) Tamil reproduces the canonical Tamil
+/// source byte-for-byte. This is the lossless guarantee the map exists for.
+#[test]
+fn romanized_round_trips_losslessly_via_the_name_map() {
+    for name in PURE_TAMIL {
+        let canonical =
+            translate(&read("tamil-pure", &format!("{name}.mimz")), Flavor::Tamil).expect("lexes");
+        let (romanized, map) = romanize_with_map(&canonical, Flavor::Tanglish).expect("lexes");
+        let restored = restore_with_map(&romanized, Flavor::Tamil, &map).expect("lexes");
+        assert_eq!(
+            restored, canonical,
+            "{name}: romanize → restore via the name-map must reproduce the Tamil source"
+        );
+    }
+}
+
+/// End-to-end through the real binary: `--romanize-names -o` writes a parseable
+/// `<out>.names.json`, and a reverse run with `--names-map` restores the exact
+/// Tamil source.
+#[test]
+fn cli_romanize_then_restore_round_trips() {
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let tag = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir();
+    let fwd = dir.join(format!("mimz_namemap_fwd_{tag}.mimz"));
+    let rev = dir.join(format!("mimz_namemap_rev_{tag}.mimz"));
+    let sidecar = dir.join(format!("mimz_namemap_fwd_{tag}.mimz.names.json"));
+    let input = root().join("examples/tamil-pure/kanakki.mimz");
+
+    // Forward: romanize to Tanglish, writing the sidecar beside the output.
+    let out = mimz()
+        .arg("translate")
+        .arg(&input)
+        .args(["--to", "tanglish", "--romanize-names", "-o"])
+        .arg(&fwd)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "forward translate failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let sidecar_json = fs::read_to_string(&sidecar).expect("sidecar name-map was written");
+    let map: NameMap = serde_json::from_str(&sidecar_json).expect("sidecar parses as NameMap");
+    assert_eq!(map.names.get("kannakki").map(String::as_str), Some("கணக்கி"));
+
+    // Reverse: restore Tamil from the sidecar.
+    let out = mimz()
+        .arg("translate")
+        .arg(&fwd)
+        .args(["--to", "tamil", "--names-map"])
+        .arg(&sidecar)
+        .args(["-o"])
+        .arg(&rev)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "reverse translate failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let restored = fs::read_to_string(&rev).unwrap();
+    let canonical = translate(&fs::read_to_string(&input).unwrap(), Flavor::Tamil).expect("lexes");
+    assert_eq!(restored, canonical, "CLI round-trip lost the Tamil source");
 }
 
 // ---- `--order` AST pretty-printer (Phase 1.8) ----

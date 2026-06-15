@@ -67,7 +67,8 @@ it (page 13): `explain` (long-form text per E-code, `mimz explain`),
 AST → source pretty-printer behind `mimz translate --order code|thamizh`),
 `morph` (error-language selection + Tamil case-suffix inflection, behind
 `--lang`), and `sim` (the combinational evaluator behind `mimz eval`, a slice of
-the Phase 1.5 simulator).
+the Phase 1.5 simulator). A sixth, `config`, reads per-project defaults from
+`mimz.toml` (CLI flags override it) — also page 13.
 
 ## Keeping these docs honest
 
@@ -78,7 +79,10 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-14 (adds: the `morph` module — error-language
+_Last synced with the code: 2026-06-15 (adds: the `config` module — `mimz.toml`
+project defaults for CLI flags, discovered by walking up from the input file,
+with precedence CLI › config › default (page 13); and reversible romanization +
+auto name-map discovery on `mimz translate`. Prior 2026-06-14 (adds: the `morph` module — error-language
 selection (file-flavor majority + `--lang`) and the Tamil case-suffix inflection
 mechanism behind localized diagnostics (Phase 1.8, spec/04 §5), an additive
 English-fallback layer documented in page 13; the catalog content + final sandhi

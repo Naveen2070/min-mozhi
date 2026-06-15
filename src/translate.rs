@@ -19,7 +19,9 @@
 //! targets ride the DRAFT keyword columns until native-speaker review closes
 //! (keywords.toml header).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+use serde::{Deserialize, Serialize};
 
 use crate::diag::Diag;
 use crate::emit_verilog::romanize;
@@ -68,15 +70,81 @@ pub fn translate(src: &str, target: Flavor) -> Result<String, Vec<Diag>> {
 /// not lex, returning the lexer's diagnostics (translation runs before any
 /// semantic check — it is pure surface rewriting).
 pub fn translate_opts(src: &str, target: Flavor, opts: TranslateOpts) -> Result<String, Vec<Diag>> {
+    if opts.romanize_names {
+        return romanize_with_map(src, target).map(|(out, _map)| out);
+    }
     let tokens = lex(src)?;
-    let renames = if opts.romanize_names {
-        build_rename_map(&tokens)
-    } else {
-        HashMap::new()
+    Ok(reskin(src, &tokens, target, &|_| None))
+}
+
+/// A per-file identifier name-map — the sidecar that makes `--romanize-names`
+/// reversible. `names` maps the **romanized** spelling (as it appears in the
+/// translated source) back to the **original Tamil** name, capturing the
+/// `_2`/`_3` uniquing. Written next to a `--romanize-names` output, read back by
+/// `restore_with_map` (CLI `--names-map`). The `BTreeMap` keeps the JSON sorted
+/// and deterministic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NameMap {
+    /// Format version (currently 1) — lets the reader reject a future format.
+    pub version: u32,
+    /// romanized (Latin) -> original Tamil.
+    pub names: BTreeMap<String, String>,
+}
+
+impl NameMap {
+    /// The current format version.
+    pub const VERSION: u32 = 1;
+}
+
+/// Reskin keywords to `target` AND romanize Tamil identifiers to Latin, returning
+/// the translated source together with the [`NameMap`] needed to reverse it.
+/// One-way on its own — pair the map with [`restore_with_map`] for a lossless
+/// round-trip.
+pub fn romanize_with_map(src: &str, target: Flavor) -> Result<(String, NameMap), Vec<Diag>> {
+    let tokens = lex(src)?;
+    let forward = build_rename_map(&tokens); // Tamil -> Latin
+    let out = reskin(src, &tokens, target, &|name| {
+        if name.is_ascii() {
+            None
+        } else {
+            forward.get(name).cloned()
+        }
+    });
+    // Invert for the sidecar: the reverse pass looks up by the Latin spelling.
+    let names = forward
+        .into_iter()
+        .map(|(tamil, latin)| (latin, tamil))
+        .collect();
+    let map = NameMap {
+        version: NameMap::VERSION,
+        names,
     };
+    Ok((out, map))
+}
+
+/// Reskin keywords to `target` AND restore original Tamil identifiers from a
+/// [`NameMap`] (the inverse of [`romanize_with_map`]). An identifier is replaced
+/// iff it appears as a key in `map.names` — and the forward pass's uniquing
+/// guarantees those keys never collide with a genuine ASCII identifier, so the
+/// substitution is unambiguous.
+pub fn restore_with_map(src: &str, target: Flavor, map: &NameMap) -> Result<String, Vec<Diag>> {
+    let tokens = lex(src)?;
+    Ok(reskin(src, &tokens, target, &|name| {
+        map.names.get(name).cloned()
+    }))
+}
+
+/// The shared span-walk: copy `src` verbatim, swap keyword lexemes to `target`'s
+/// canonical spelling, and replace an identifier when `sub` returns `Some`.
+fn reskin(
+    src: &str,
+    tokens: &[Token],
+    target: Flavor,
+    sub: &dyn Fn(&str) -> Option<String>,
+) -> String {
     let mut out = String::with_capacity(src.len() + src.len() / 8);
     let mut pos = 0usize;
-    for t in &tokens {
+    for t in tokens {
         // Defensive clamp: token spans are ordered and non-overlapping, but a
         // synthetic newline/EOF token may be zero-width at the current cursor.
         // Clamping keeps the slice indices valid (never panics) and emits each
@@ -86,10 +154,8 @@ pub fn translate_opts(src: &str, target: Flavor, opts: TranslateOpts) -> Result<
         out.push_str(&src[pos..start]); // verbatim gap: whitespace + comments
         match &t.kind {
             TokKind::Kw(kw) => out.push_str(TABLE.canonical(*kw, target)),
-            // A Tamil identifier becomes its romanization (kept consistent and
-            // collision-free by `build_rename_map`); ASCII names are untouched.
-            TokKind::Ident(name) if !name.is_ascii() => match renames.get(name) {
-                Some(latin) => out.push_str(latin),
+            TokKind::Ident(name) => match sub(name) {
+                Some(replacement) => out.push_str(&replacement),
                 None => out.push_str(&src[start..end]),
             },
             _ => out.push_str(&src[start..end]),
@@ -97,7 +163,7 @@ pub fn translate_opts(src: &str, target: Flavor, opts: TranslateOpts) -> Result<
         pos = end;
     }
     out.push_str(&src[pos..]); // trailing bytes after the last token
-    Ok(out)
+    out
 }
 
 /// Build the `Tamil name -> romanized Latin` map for `--romanize-names`. Mirrors
@@ -200,5 +266,41 @@ mod tests {
         .unwrap();
         assert!(out.contains("reg kannakku: bit = 0"));
         assert!(out.contains("reg kannakku_2: bit = 0"), "got: {out}");
+    }
+
+    #[test]
+    fn romanize_with_map_returns_the_inverse_map() {
+        let src = "module M {\n  reg கணக்கு: bit = 0\n}\n";
+        let (out, map) = romanize_with_map(src, Flavor::English).unwrap();
+        assert!(out.contains("reg kannakku: bit = 0"));
+        assert_eq!(map.version, NameMap::VERSION);
+        // Keyed by the Latin spelling (what the reverse pass sees), value Tamil.
+        assert_eq!(map.names.get("kannakku").map(String::as_str), Some("கணக்கு"));
+    }
+
+    #[test]
+    fn restore_with_map_inverts_romanize() {
+        // Tamil -> (romanize) Latin -> (restore) Tamil reproduces the canonical
+        // Tamil source byte-for-byte. Anchor on the canonical form so alias
+        // normalization is not mistaken for a round-trip failure. (Identifiers
+        // here — count/value — are NOT keyword spellings, so they lex as names.)
+        let src = "module M {\n  reg கணக்கு: bit = 0\n  out மதிப்பு: bit\n  மதிப்பு = கணக்கு\n}\n";
+        let canonical = translate(src, Flavor::Tamil).unwrap();
+        let (romanized, map) = romanize_with_map(&canonical, Flavor::Tanglish).unwrap();
+        let restored = restore_with_map(&romanized, Flavor::Tamil, &map).unwrap();
+        assert_eq!(restored, canonical);
+    }
+
+    #[test]
+    fn name_map_json_round_trips() {
+        let mut names = BTreeMap::new();
+        names.insert("kannakku".to_string(), "கணக்கு".to_string());
+        let map = NameMap {
+            version: NameMap::VERSION,
+            names,
+        };
+        let json = serde_json::to_string(&map).unwrap();
+        let back: NameMap = serde_json::from_str(&json).unwrap();
+        assert_eq!(map, back);
     }
 }

@@ -56,11 +56,27 @@ their English twin (canonical identifier renaming) and locked by their own
 goldens + Icarus testbenches. They are a showcase, not part of the four-flavor
 set (see R9 in `docs/RULES.md`).
 
-Convert one to readable Tanglish — keywords **and** names — with the opt-in flag:
+Convert one to readable Tanglish — keywords **and** names — with the opt-in flag.
+With `-o`, a `<out>.names.json` sidecar is written so the romanization is
+reversible:
 
 ```sh
-mimz translate --to tanglish --romanize-names tamil-pure/kanakki.mimz
+# Tamil -> Tanglish with Latin names (writes k.mimz.names.json beside k.mimz)
+mimz translate --to tanglish --romanize-names -o k.mimz tamil-pure/kanakki.mimz
+
+# back to the exact Tamil names — the sidecar is found automatically
+mimz translate --to tamil k.mimz
 ```
 
-Without `--romanize-names`, translate swaps only the keywords and keeps the Tamil
-names verbatim (the lossless default). The romanization is one-way.
+The reverse run auto-discovers `k.mimz.names.json` next to the file, so no
+`--names-map` is needed (`--no-names-map` opts out). Without `--romanize-names`,
+translate swaps only the keywords and keeps the Tamil names verbatim (the lossless
+default). Romanization itself is one-way — the sidecar name-map is what makes the
+round-trip lossless.
+
+Repeated flags can live in a project **`mimz.toml`** (CLI flags override it):
+
+```toml
+[translate]
+to = "tanglish"
+```

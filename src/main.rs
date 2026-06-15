@@ -29,6 +29,10 @@ use mimz::{ast, checker, diag, emit_verilog, lexer, morph, parser, project, sim}
     about = "Min-Mozhi (மின்மொழி) — the first Tamil-rooted HDL. Reads like Go/TypeScript, safe like Rust."
 )]
 struct Cli {
+    /// Path to a `mimz.toml` config. Default: discovered by walking up from the
+    /// input file (CLI flags always override config values).
+    #[arg(long, global = true, value_name = "FILE")]
+    config: Option<PathBuf>,
     #[command(subcommand)]
     command: Cmd,
 }
@@ -107,11 +111,21 @@ enum Cmd {
         #[arg(long)]
         order: Option<String>,
         /// Romanize Tamil identifiers to readable Latin (கணக்கி -> kannakki),
-        /// the same scheme the Verilog emitter uses. One-way (not reversible),
-        /// so the round-trip is no longer byte-identical. Applies to the
-        /// keyword-only reskin (no `--order`).
+        /// the same scheme the Verilog emitter uses. One-way on its own, but with
+        /// `-o` a `<out>.names.json` sidecar is written so `--names-map` can
+        /// restore the exact Tamil names. Applies to the keyword-only reskin
+        /// (no `--order`).
         #[arg(long)]
         romanize_names: bool,
+        /// Restore original Tamil identifiers from a name-map. Default: the
+        /// `<input>.names.json` sidecar is auto-loaded when present; this flag
+        /// overrides the path.
+        #[arg(long, value_name = "FILE")]
+        names_map: Option<PathBuf>,
+        /// Do not auto-load the `<input>.names.json` sidecar (keep romanized
+        /// Latin names as-is).
+        #[arg(long)]
+        no_names_map: bool,
         /// Output path (default: print the result to stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -139,25 +153,49 @@ enum Cmd {
 }
 
 fn main() -> ExitCode {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    let config_path = cli.config;
+    match cli.command {
         Cmd::Check {
             file,
             tokens,
             json,
             lang,
-        } => check(&file, tokens, json, lang.as_deref()),
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang = lang.or(cfg.lang);
+            check(&file, tokens, json, lang.as_deref())
+        }
         Cmd::Compile {
             file,
             output,
             json,
             lang,
-        } => compile(&file, output, json, lang.as_deref()),
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang = lang.or(cfg.lang);
+            compile(&file, output, json, lang.as_deref())
+        }
         Cmd::Fmt {
             file,
             to,
             strict,
             output,
-        } => fmt_file(&file, to.as_deref(), strict, output),
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let to = to.or(cfg.fmt.to);
+            let strict = strict || cfg.fmt.strict.unwrap_or(false);
+            fmt_file(&file, to.as_deref(), strict, output)
+        }
         Cmd::Lsp => {
             lsp::run();
             ExitCode::SUCCESS
@@ -168,22 +206,68 @@ fn main() -> ExitCode {
             to,
             order,
             romanize_names,
+            names_map,
+            no_names_map,
             output,
-        } => translate_file(
-            &file,
-            to.as_deref(),
-            order.as_deref(),
-            romanize_names,
-            output,
-        ),
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let to = to.or(cfg.translate.to);
+            let order = order.or(cfg.translate.order);
+            let romanize_names = romanize_names || cfg.translate.romanize_names.unwrap_or(false);
+            // Auto name-map discovery is on unless `--no-names-map` or the config
+            // turns it off (an unrecognized value warns and falls back to auto).
+            let auto_names_map = if no_names_map {
+                false
+            } else {
+                match cfg.translate.names_map.as_deref() {
+                    Some("off") => false,
+                    Some("auto") | None => true,
+                    Some(other) => {
+                        eprintln!(
+                            "warning: [translate] names_map = \"{other}\" is not recognized — use \"auto\" or \"off\"; assuming \"auto\""
+                        );
+                        true
+                    }
+                }
+            };
+            translate_file(
+                &file,
+                to.as_deref(),
+                order.as_deref(),
+                romanize_names,
+                names_map.as_deref(),
+                auto_names_map,
+                output,
+            )
+        }
         Cmd::Eval {
             file,
             inputs,
             param,
             module,
             lang,
-        } => eval_file(&file, &inputs, &param, module, lang.as_deref()),
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang = lang.or(cfg.lang);
+            eval_file(&file, &inputs, &param, module, lang.as_deref())
+        }
     }
+}
+
+/// Resolve the `mimz.toml` governing `input` (explicit `--config` wins, else
+/// walk up from the file), turning a parse error into a printed message + the
+/// failing exit code.
+fn resolve_config(input: &Path, explicit: Option<&Path>) -> Result<mimz::config::Config, ExitCode> {
+    mimz::config::Config::resolve(input, explicit).map_err(|e| {
+        eprintln!("error: {e}");
+        ExitCode::FAILURE
+    })
 }
 
 /// `mimz eval <file> --in a=3,b=5` — interpret a combinational module and print
@@ -373,6 +457,8 @@ fn translate_file(
     to: Option<&str>,
     order: Option<&str>,
     romanize_names: bool,
+    names_map: Option<&Path>,
+    auto_names_map: bool,
     output: Option<PathBuf>,
 ) -> ExitCode {
     let to = to.unwrap_or("english");
@@ -380,11 +466,22 @@ fn translate_file(
         eprintln!("error: unknown flavor `{to}` — expected english, tanglish, or tamil");
         return ExitCode::FAILURE;
     };
+    // `--romanize-names` (Tamil -> Latin) and `--names-map` (Latin -> Tamil) are
+    // opposite directions; running both at once is a mistake, not a no-op.
+    if romanize_names && names_map.is_some() {
+        eprintln!(
+            "error: --romanize-names and --names-map are opposite directions — use one (romanize to Latin, or restore Tamil from a map)"
+        );
+        return ExitCode::FAILURE;
+    }
     if romanize_names && order.is_some() {
         eprintln!(
             "warning: --romanize-names applies to the keyword-only reskin; \
              ignored with --order"
         );
+    }
+    if names_map.is_some() && order.is_some() {
+        eprintln!("warning: --names-map applies to the keyword-only reskin; ignored with --order");
     }
     let order = match order {
         None => None,
@@ -403,45 +500,67 @@ fn translate_file(
         }
     };
 
+    // Resolve the name-map for a reverse reskin: an explicit `--names-map` wins;
+    // otherwise auto-discover the `<input>.names.json` sidecar (when present and
+    // not disabled). Only the plain token reskin restores names — never `--order`
+    // (AST path) or a forward `--romanize-names`. The bool records whether it was
+    // auto-discovered, so we can tell the user.
+    let names_for_restore: Option<(PathBuf, bool)> = if order.is_some() || romanize_names {
+        None
+    } else if let Some(p) = names_map {
+        Some((p.to_path_buf(), false))
+    } else if auto_names_map {
+        let sidecar = names_sidecar(path);
+        sidecar.is_file().then_some((sidecar, true))
+    } else {
+        None
+    };
+
     // Produce the translated text. `--order` goes through the AST pretty-printer
     // (it can reorder clause heads); `--to` alone uses the trivia-preserving
-    // token reskin.
+    // token reskin. On a forward romanize, `captured_map` holds the sidecar.
+    let render_err = |diags: &[diag::Diag]| {
+        Output::Human(Flavor::English).one_file(diags, &src, &path.display().to_string())
+    };
+    let mut captured_map: Option<mimz::translate::NameMap> = None;
     let text = match order {
         Some(order) => {
             let tokens = match mimz::lexer::lex(&src) {
                 Ok(t) => t,
-                Err(diags) => {
-                    return Output::Human(Flavor::English).one_file(
-                        &diags,
-                        &src,
-                        &path.display().to_string(),
-                    );
-                }
+                Err(diags) => return render_err(&diags),
             };
             match mimz::parser::parse(tokens) {
                 Ok(file) => mimz::pretty::pretty_print(&file, flavor, order),
-                Err(diags) => {
-                    return Output::Human(Flavor::English).one_file(
-                        &diags,
-                        &src,
-                        &path.display().to_string(),
-                    );
-                }
+                Err(diags) => return render_err(&diags),
             }
         }
-        None => match mimz::translate::translate_opts(
-            &src,
-            flavor,
-            mimz::translate::TranslateOpts { romanize_names },
-        ) {
-            Ok(t) => t,
-            Err(diags) => {
-                return Output::Human(Flavor::English).one_file(
-                    &diags,
-                    &src,
-                    &path.display().to_string(),
+        None if names_for_restore.is_some() => {
+            let (map_path, auto) = names_for_restore.as_ref().unwrap();
+            let map = match load_name_map(map_path) {
+                Ok(m) => m,
+                Err(code) => return code,
+            };
+            if *auto {
+                eprintln!(
+                    "note: restoring names from {} (auto-discovered; --no-names-map to disable)",
+                    map_path.display()
                 );
             }
+            match mimz::translate::restore_with_map(&src, flavor, &map) {
+                Ok(t) => t,
+                Err(diags) => return render_err(&diags),
+            }
+        }
+        None if romanize_names => match mimz::translate::romanize_with_map(&src, flavor) {
+            Ok((t, map)) => {
+                captured_map = Some(map);
+                t
+            }
+            Err(diags) => return render_err(&diags),
+        },
+        None => match mimz::translate::translate(&src, flavor) {
+            Ok(t) => t,
+            Err(diags) => return render_err(&diags),
         },
     };
 
@@ -450,6 +569,17 @@ fn translate_file(
             if let Err(e) = std::fs::write(&out_path, &text) {
                 eprintln!("error: cannot write `{}`: {e}", out_path.display());
                 return ExitCode::FAILURE;
+            }
+            // Forward romanize with names to record: write the sidecar beside the
+            // output (`<out>.names.json`) so the run is reversible via --names-map.
+            if let Some(map) = captured_map.filter(|m| !m.names.is_empty()) {
+                let sidecar = names_sidecar(&out_path);
+                let json = serde_json::to_string_pretty(&map).expect("NameMap serializes");
+                if let Err(e) = std::fs::write(&sidecar, json) {
+                    eprintln!("error: cannot write name map `{}`: {e}", sidecar.display());
+                    return ExitCode::FAILURE;
+                }
+                println!("wrote name map {}", sidecar.display());
             }
             println!(
                 "translated {} -> {} ({})",
@@ -460,10 +590,36 @@ fn translate_file(
             ExitCode::SUCCESS
         }
         None => {
+            if captured_map.is_some_and(|m| !m.names.is_empty()) {
+                eprintln!(
+                    "note: --romanize-names without -o does not write a name map — the round-trip back to Tamil won't be reversible"
+                );
+            }
             print!("{text}");
             ExitCode::SUCCESS
         }
     }
+}
+
+/// The sidecar path for a translate output: `<out>.names.json` (append, so
+/// `foo.mimz` → `foo.mimz.names.json`, never replacing the existing extension).
+fn names_sidecar(out: &Path) -> PathBuf {
+    let mut name = out.as_os_str().to_owned();
+    name.push(".names.json");
+    PathBuf::from(name)
+}
+
+/// Read + parse a `--names-map` file into a [`mimz::translate::NameMap`], or print
+/// a clean error and return the failing exit code.
+fn load_name_map(path: &Path) -> Result<mimz::translate::NameMap, ExitCode> {
+    let text = std::fs::read_to_string(path).map_err(|e| {
+        eprintln!("error: cannot read name map `{}`: {e}", path.display());
+        ExitCode::FAILURE
+    })?;
+    serde_json::from_str(&text).map_err(|e| {
+        eprintln!("error: invalid name map `{}`: {e}", path.display());
+        ExitCode::FAILURE
+    })
 }
 
 /// `mimz explain <CODE>` — print the long-form teaching text for a diagnostic

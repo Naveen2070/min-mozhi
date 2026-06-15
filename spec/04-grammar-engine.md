@@ -94,8 +94,10 @@ syntax thamizh
   `kannakki`). It is **one-way** (transliteration cannot be inverted by rule), so
   it is OFF by default; the lossless round-trip holds only with it off. It exists
   so a fully-Tamil program (`examples/tamil-pure/`) can be converted to readable
-  Tanglish/English. Restoring exact Tamil names from a romanized file is future
-  work (a per-file sidecar name-map; see `docs/log/2026-06-15.md`). Full behavior:
+  Tanglish/English. **Reversibility:** with `-o <out>`, romanizing also writes a
+  per-file sidecar `<out>.names.json` (`romanized → original Tamil`); a reverse
+  run with `--names-map <file>` restores the exact Tamil names, making the full
+  `Tamil → Latin → Tamil` round-trip lossless. Full behavior:
   `docs/code/13-tooling.md`.
 
 ## 3. What Flips in `thamizh-order`
