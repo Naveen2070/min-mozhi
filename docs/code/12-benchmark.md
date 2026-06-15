@@ -73,11 +73,16 @@ test suite** — minutes, not seconds; `--no-cov` skips it.
 
 ## Code layout (`src/bin/mimz-bench/`)
 
-| File         | Role                                                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `main.rs`    | clap CLI, section orchestration, history append, console summary, exit code                                            |
-| `metrics.rs` | the measurement engine — every section returns plain serializable structs; mirrors the corpus conventions of the tests |
-| `html.rs`    | `BenchReport` + history → the single-file Chart.js report                                                              |
+| File       | Role                                                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `main.rs`  | clap CLI, section orchestration, history append, console summary, exit code                                            |
+| `metrics/` | the measurement engine — every section returns plain serializable structs; mirrors the corpus conventions of the tests |
+| `html.rs`  | `BenchReport` + history → the single-file Chart.js report                                                              |
+
+`metrics/` splits by measurement phase: `metrics/mod.rs` (report structs +
+shared helpers + `collect_meta`), then one file each for `speed`, `memory`,
+`accuracy` (incl. iverilog layers), `safety`, and `coverage` — re-exported
+from `mod.rs` so callers see the same paths.
 
 Corpus constants (`BASE_EXAMPLES`, `TESTBENCHES`, the fixture-header
 convention, iverilog detection) intentionally mirror

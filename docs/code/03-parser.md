@@ -9,11 +9,18 @@ able to map "the spec says X" to "the function that parses X" in seconds.
 | File       | Owns                                                               |
 | ---------- | ------------------------------------------------------------------ |
 | `mod.rs`   | `parse()` entry, `Parser` state, token plumbing, error recovery    |
-| `items.rs` | File level, modules, `on`-blocks, `repeat`, `test` blocks          |
+| `items/`   | File level, modules, `on`-blocks, `repeat`, `test` blocks          |
 | `expr.rs`  | Expressions: precedence climbing, `if`/`match`, patterns, builtins |
 | `tests.rs` | Unit tests (see [`10-test-map.md`](10-test-map.md))                |
 
-`mod.rs` owns the struct and all private plumbing; `items.rs` and
+The `items/` submodule splits item parsing across files by grammar
+section: `items/mod.rs` (shared `ty`/`lvalue`/`repeat_block` helpers +
+the `pub(in crate::parser) file()` entry), `items/file.rs` (imports,
+consts, enums), `items/module.rs` (modules and ports), `items/inst.rs`
+(instance declarations), `items/seq.rs` (`on`-blocks + thamizh
+variants), `items/test.rs` (`test` blocks).
+
+`mod.rs` owns the struct and all private plumbing; the `items/` files and
 `expr.rs` are `impl Parser` blocks reached through `pub(super)` entry
 points (`file()`, `expr()`, `lvalue()`). Rust privacy makes this work:
 items in `mod.rs` are visible to descendant modules without being public

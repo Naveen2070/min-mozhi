@@ -88,10 +88,10 @@ migration path for a team moving between English and Tamil.
 
 ```mimz
 module Mux {
-  ulle a: bit      // tanglish `in`
-  உள் b: bit       // tamil `in`
-  in  s: bit       // english `in`
-  veli y: bit      // tanglish `out`
+  ulleedu a: bit    // tanglish `in`
+  உள்ளீடு b: bit    // tamil `in`
+  in  s: bit        // english `in`
+  veliyeedu y: bit  // tanglish `out`
   y = if s { b } else { a }
 }
 ```

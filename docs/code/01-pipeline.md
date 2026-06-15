@@ -48,24 +48,6 @@ Tokens → `ast::File`. Recursive descent with statement-level error
 recovery, so one bad line doesn't hide the next error. Details in
 [`03-parser.md`](03-parser.md).
 
-## Step 4 — Build the project symbol table (`src/emit_verilog/mod.rs`)
-
-`Project::from_files` collects **every module and enum across all files**
-into name → node maps. This is what lets `let u = Adder(...)` find
-`Adder` no matter which imported file defines it. Duplicate module names
-are rejected here (module names are project-unique, spec/02 section 1.5).
-
-> This table currently lives in `emit_verilog` because the emitter is its
-> only consumer. When the checker lands it will need the same table — at
-> that point the table moves to the checker (or its own module) and the
-> emitter consumes checked output. See
-> [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md).
-
-## Step 5 — Emit Verilog (`src/emit_verilog/`)
-
-ASTs + symbol table → one Verilog-2005 source string, written to the
-output path. Details in [`05-emit-verilog.md`](05-emit-verilog.md).
-
 ## Step 4 — Check (`src/checker/`)
 
 Between parse and emit, `checker::check` runs over all loaded files (in
@@ -83,6 +65,24 @@ once), and the **clock-domain pass** (per-reg clock ownership,
 cross-domain reads rejected until Phase 2's `sync`).
 Every checker error carries a stable code (`E0101`) — catalog and
 details in [`11-checker.md`](11-checker.md).
+
+## Step 5 — Build the project symbol table (`src/emit_verilog/mod.rs`)
+
+`Project::from_files` collects **every module and enum across all files**
+into name → node maps. This is what lets `let u = Adder(...)` find
+`Adder` no matter which imported file defines it. Duplicate module names
+are rejected here (module names are project-unique, spec/02 section 1.5).
+
+> This table lives in `emit_verilog` because the emitter is its only
+> consumer; the checker (which landed 2026-06-11/12) does its own
+> project-wide name resolution in `src/checker/symbols.rs` rather than
+> sharing this one. See
+> [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md).
+
+## Step 6 — Emit Verilog (`src/emit_verilog/`)
+
+ASTs + symbol table → one Verilog-2005 source string, written to the
+output path. Details in [`05-emit-verilog.md`](05-emit-verilog.md).
 
 After the checker, `emit_verilog::transliterate` rewrites Tamil
 identifiers to readable ASCII (விளக்கு → `villakku`), and the emitter

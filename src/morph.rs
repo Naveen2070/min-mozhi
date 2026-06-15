@@ -19,13 +19,15 @@
 //! those — [`localized_msg`] looks up a localized template for a diagnostic's
 //! E-code and, only if one exists for the chosen flavor, returns it (running
 //! interpolated names through [`inflect`]); otherwise the renderer keeps the
-//! English `msg` verbatim. So with the (currently stub) catalog, output is
-//! byte-identical to before — the plumbing is inert until real content lands.
+//! English `msg` verbatim. So for any code the catalog does not cover, output
+//! is byte-identical to the English baseline.
 //!
-//! **Panel-gated content (decision C3).** The full Tamil + Tanglish error
-//! catalog and the real sandhi rules need the native-speaker panel. What is
-//! committed here is the *mechanism*; the `MESSAGES` catalog holds ONE worked
-//! stub so the whole path (select → catalog → inflect → render) runs end-to-end.
+//! **Panel-authored content (decision C3, ratified 2026-06-15).** The Tamil +
+//! Tanglish catalog and the sandhi rules came from the native-speaker panel and
+//! now live in `messages.toml` / `case_suffixes.toml`. `MESSAGES` localizes
+//! **33 of the 36 checker E-codes**; E0403/E0404/E0405 are deferred (each emits
+//! many message shapes one template can't fit faithfully — English kept, Tamil
+//! preserved as comments in `messages.toml`).
 
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -231,7 +233,7 @@ pub fn inflect(name: &str, case: Case, flavor: Flavor) -> String {
     }
 }
 
-// ---- Localized catalog (stub) + render hook -----------------------------
+// ---- Localized catalog (messages.toml) + render hook --------------------
 
 /// The localized error catalog, parsed once from the embedded `messages.toml`.
 ///

@@ -77,7 +77,7 @@ names }`, `romanized → original Tamil`, capturing the `_2`/`_3` uniquing).
   (or `[translate] names_map = "off"` in `mimz.toml`) disables it; `--order` and
   `--romanize-names` runs never auto-restore. The CLI prints a `note:` when it
   auto-loads a map.
-- **`mimz fmt` rides this too.** The `fmt` subcommand (`fmt_file` in `main.rs`)
+- **`mimz fmt` rides this too.** The `fmt` subcommand (`fmt_file` in `commands/fmt.rs`)
   is `translate` pointed at a file in place: it normalizes every keyword to one
   flavor (default = the file's `morph::majority_flavor`, `--to` overrides),
   losslessly. `--strict` reports a mixed-flavor file (`morph::flavors_used`) and
@@ -177,7 +177,7 @@ config only fills in what the command line omitted.
 - **Discovery.** `Config::discover` walks up from the input file (canonicalized
   first) to the nearest `mimz.toml`, like `Cargo.toml`/`rustfmt.toml`; the global
   `--config <path>` overrides the search. `Config::resolve(input, explicit)` is
-  the entry point used by every subcommand in `main.rs`; no file found ⇒
+  the entry point used by every subcommand handler in `commands/`; no file found ⇒
   `Config::default()` (all `None`).
 - **Format & shape.** TOML (matching `keywords.toml`/`case_suffixes.toml`; the
   machine-written name-map sidecar stays JSON). All fields are `Option`, so

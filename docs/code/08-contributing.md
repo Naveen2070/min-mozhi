@@ -48,7 +48,7 @@ disjoint.
    example. Bump the spec version.
 2. AST node in `src/ast/` — with a `Span`, with rustdoc explaining the
    form and any safety-rule angle.
-3. Parse routine in `src/parser/items.rs` or `expr.rs`:
+3. Parse routine in `src/parser/items/` or `expr.rs`:
    - doc comment = the EBNF production (house rule);
    - return `Option<T>`, record errors before returning `None`;
    - `expect(..., "learner-phrased what")` for every required token.

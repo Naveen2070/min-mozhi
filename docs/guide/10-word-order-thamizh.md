@@ -38,12 +38,12 @@ thamizh word order:
 ilakkanam thamizh
 
 thoguthi Counter(WIDTH: int = 8) {
-  kadigaram clk
-  meetamai rst
+  thudippu clk
+  meettamai rst
 
-  veli count: bits[WIDTH]
+  veliyeedu count: bits[WIDTH]
 
-  nilai value: bits[WIDTH] = 0
+  pathivedu value: bits[WIDTH] = 0
 
   yetram(clk) pothu {
     value <- value +% 1
@@ -57,7 +57,7 @@ thoguthi Counter(WIDTH: int = 8) {
 trails. A `match` flips the same way, scrutinee first:
 
 ```mimz
-y = op poruthu {
+y = op thernthedu {
   0b00 => a +% b
   0b01 => a -% b
   0b10 => a & b
