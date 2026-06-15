@@ -144,13 +144,36 @@ fn spec_04_uses_no_superseded_keyword_spellings() {
     // Old spellings replaced by the v1 native set (both Tanglish and Tamil).
     // Whole-word matching means `veli` here cannot false-match `veliyeedu`.
     const SUPERSEDED: &[&str] = &[
-        "ulle", "veli", "nilai", "kadigaram", "meetamai", "endral", "illaiyel",
-        "poruthu", "vai", "maara", "unmai", "thattu", "ethirpaar", "illa",
-        "உள்", "வெளி", "நிலை", "கடிகாரம்", "என்றால்", "பொருத்து", "இல்லையேல்",
-        "வை", "மாறா", "உண்மை", "தட்டு", "எதிர்பார்", "இல்லா",
+        "ulle",
+        "veli",
+        "nilai",
+        "kadigaram",
+        "meetamai",
+        "endral",
+        "illaiyel",
+        "poruthu",
+        "vai",
+        "maara",
+        "unmai",
+        "thattu",
+        "ethirpaar",
+        "illa",
+        "உள்",
+        "வெளி",
+        "நிலை",
+        "கடிகாரம்",
+        "என்றால்",
+        "பொருத்து",
+        "இல்லையேல்",
+        "வை",
+        "மாறா",
+        "உண்மை",
+        "தட்டு",
+        "எதிர்பார்",
+        "இல்லா",
     ];
-    let spec = fs::read_to_string(root().join("spec/04-grammar-engine.md"))
-        .expect("spec/04 exists");
+    let spec =
+        fs::read_to_string(root().join("spec/04-grammar-engine.md")).expect("spec/04 exists");
     for token in spec.split(|c: char| !is_word(c)).filter(|s| !s.is_empty()) {
         assert!(
             !SUPERSEDED.contains(&token),
