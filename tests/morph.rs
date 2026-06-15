@@ -167,3 +167,60 @@ fn unknown_lang_is_a_clean_error() {
         "expected a clean unknown-language error, got:\n{err}"
     );
 }
+
+// ---- Mixed-flavor lint (W0001) -----------------------------------------
+
+/// Tamil `module` keyword + English `in`/`out` — a VALID program, so the only
+/// diagnostic is the non-fatal mixed-flavor warning.
+const TAMIL_ENGLISH_MIX: &str = "தொகுதி M {\n  in a: bit\n  out y: bit\n  y = a\n}\n";
+
+#[test]
+fn mixing_tamil_with_english_warns_but_check_succeeds() {
+    let path = temp_mimz(TAMIL_ENGLISH_MIX);
+    let out = mimz().arg("check").arg(&path).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "the mixed-flavor lint is non-fatal — check must still succeed:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("warning[W0001]"),
+        "expected the W0001 warning on stderr, got:\n{stderr}"
+    );
+}
+
+#[test]
+fn a_single_flavor_file_has_no_mix_warning() {
+    let path = temp_mimz("module M {\n  in a: bit\n  out y: bit\n  y = a\n}\n");
+    let out = mimz().arg("check").arg(&path).output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success());
+    assert!(
+        !stderr.contains("W0001"),
+        "a clean single-flavor file must not warn, got:\n{stderr}"
+    );
+}
+
+#[test]
+fn json_check_carries_the_warning_and_still_succeeds() {
+    let path = temp_mimz(TAMIL_ENGLISH_MIX);
+    let out = mimz()
+        .arg("check")
+        .arg("--json")
+        .arg(&path)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "warnings are non-fatal under --json too"
+    );
+    assert!(
+        stdout.contains("\"W0001\""),
+        "the JSON array must include the warning, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("\"severity\":\"warning\""),
+        "the JSON diagnostic must mark its severity, got:\n{stdout}"
+    );
+}

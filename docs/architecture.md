@@ -134,8 +134,8 @@ mimz/
     sim/                 # (P1.5) elaborate, kernel, vcd
     ir/                  # (P2)
   tests/
-    examples.rs          # all 68 examples + 4-flavor identity + goldens ✅
-    errors.rs            # ~71 broken fixtures, code per E-code ✅
+    examples.rs          # all 72 examples + 4-flavor identity + goldens ✅
+    errors.rs            # ~72 broken fixtures, code per E-code ✅
     icarus.rs            # iverilog lint + 16 self-checking TBs ✅
     lsp.rs               # wire-protocol smoke test             ✅
     docs_sync.rs         # docs ↔ code staleness guard          ✅

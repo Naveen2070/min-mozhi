@@ -57,10 +57,17 @@ impl Backend {
             };
             // Localize messages to the file's predominant flavor, exactly as
             // `check`/`compile` do (additive English-fallback via `morph`).
-            let flavor = lexer::lex(&r.src)
-                .map(|t| morph::majority_flavor(&t))
+            let toks = lexer::lex(&r.src).ok();
+            let flavor = toks
+                .as_ref()
+                .map(|t| morph::majority_flavor(t))
                 .unwrap_or(Flavor::English);
-            let diags = r.diags.iter().map(|d| to_lsp(d, &r.src, flavor)).collect();
+            let mut diags: Vec<Diagnostic> =
+                r.diags.iter().map(|d| to_lsp(d, &r.src, flavor)).collect();
+            // Surface the non-fatal mixed-flavor warning (W0001) as a WARNING.
+            if let Some(w) = toks.as_ref().and_then(|t| morph::flavor_mix_warning(t)) {
+                diags.push(to_lsp(&w, &r.src, flavor));
+            }
             current.insert(file_uri.clone());
             self.client.publish_diagnostics(file_uri, diags, None).await;
         }
@@ -246,7 +253,10 @@ fn to_lsp(d: &diag::Diag, src: &str, flavor: Flavor) -> Diagnostic {
             start: position(src, d.span.start),
             end: position(src, d.span.end.max(d.span.start + 1)),
         },
-        severity: Some(DiagnosticSeverity::ERROR),
+        severity: Some(match d.severity {
+            diag::Severity::Error => DiagnosticSeverity::ERROR,
+            diag::Severity::Warning => DiagnosticSeverity::WARNING,
+        }),
         code: d.code.map(|c| NumberOrString::String(c.to_string())),
         source: Some("mimz".into()),
         message,
@@ -339,5 +349,17 @@ mod tests {
             to_lsp(d, src, Flavor::Tamil).message,
             to_lsp(d, src, Flavor::English).message
         );
+    }
+
+    #[test]
+    fn mixed_flavor_lint_publishes_as_a_warning() {
+        // Tamil `module` + English `in`/`out`: a valid program whose only
+        // diagnostic is the non-fatal mixed-flavor lint (W0001).
+        let src = "தொகுதி M {\n  in a: bit\n  out y: bit\n  y = a\n}\n";
+        let toks = lexer::lex(src).expect("lexes");
+        let w = morph::flavor_mix_warning(&toks).expect("mix warns");
+        let d = to_lsp(&w, src, Flavor::English);
+        assert_eq!(d.severity, Some(DiagnosticSeverity::WARNING));
+        assert_eq!(d.code, Some(NumberOrString::String("W0001".to_string())));
     }
 }

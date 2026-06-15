@@ -93,6 +93,35 @@ pub fn flavors_used(tokens: &[Token]) -> Vec<Flavor> {
         .collect()
 }
 
+/// A non-fatal warning (W0001) when a file mixes **Tamil** keywords with English
+/// or Tanglish ones. English and Tanglish share code word order (SVO) and may
+/// mix freely; Tamil reads differently, so mixing it with the others is flagged
+/// for readability. Returns `None` for a single-flavor file or an
+/// English+Tanglish mix. The span points at the first keyword whose flavor is
+/// not the file's majority — the odd one out. (`mimz fmt` normalizes any mix;
+/// this only nudges, and never fails the build.)
+pub fn flavor_mix_warning(tokens: &[Token]) -> Option<Diag> {
+    let used = flavors_used(tokens);
+    if !(used.contains(&Flavor::Tamil) && used.len() > 1) {
+        return None;
+    }
+    let majority = majority_flavor(tokens);
+    let span = tokens
+        .iter()
+        .find(|t| matches!(t.kind, TokKind::Kw(_)) && t.flavor.is_some_and(|f| f != majority))
+        .or_else(|| tokens.iter().find(|t| t.flavor == Some(Flavor::Tamil)))
+        .map(|t| t.span)?;
+    Some(
+        Diag::new(span, "this file mixes Tamil keywords with English/Tanglish")
+            .with_code("W0001")
+            .with_help(
+                "Tamil reads differently from English/Tanglish — keep one language per file, \
+                 or run `mimz fmt` to normalize",
+            )
+            .as_warning(),
+    )
+}
+
 // ---- Morphology (case-suffix inflection) --------------------------------
 
 /// The four Tamil grammatical cases the error catalog inflects names into
@@ -310,6 +339,31 @@ mod tests {
         // A diagnostic whose span did not resolve must not render as `ஐ …`.
         assert_eq!(inflect("", Case::Accusative, Flavor::Tamil), "");
         assert_eq!(inflect("", Case::Dative, Flavor::Tanglish), "");
+    }
+
+    #[test]
+    fn flavor_mix_warns_only_when_tamil_meets_the_others() {
+        let warns = |src: &str| flavor_mix_warning(&lex(src).expect("lexes")).is_some();
+        // Tamil keyword + a non-Tamil keyword → warn (the SOV/SVO clash).
+        assert!(warns("தொகுதி in\n")); // module(tamil) + in(english)
+        assert!(warns("தொகுதி veli\n")); // module(tamil) + out(tanglish)
+        assert!(warns("module veli தொகுதி\n")); // all three
+        // English + Tanglish share code order — mixing them stays clean.
+        assert!(!warns("module veli\n"));
+        // Single flavor → clean.
+        assert!(!warns("தொகுதி வெளி\n")); // both Tamil
+        assert!(!warns("module in\n")); // both English
+        assert!(!warns("")); // no keywords
+    }
+
+    #[test]
+    fn flavor_mix_warning_is_a_nonfatal_w0001() {
+        let d = flavor_mix_warning(&lex("தொகுதி in\n").expect("lexes")).expect("mix warns");
+        assert_eq!(d.code, Some("W0001"));
+        assert!(
+            !d.is_error(),
+            "the mixed-flavor lint must not fail the build"
+        );
     }
 
     #[test]

@@ -36,3 +36,31 @@ keywords differ**. CI asserts that each example compiles to
 Adding an example? It goes into **all four folders** (keyword spellings
 come from `keywords.toml` — never invent words) plus the `BASE_EXAMPLES`
 list in `tests/examples.rs`. See `docs/code/10-test-map.md`.
+
+## `tamil-pure/` — the fully-Tamil showcase
+
+A fifth folder holds programs written **entirely in Tamil** — both keywords AND
+identifiers:
+
+| Example        | Twin of      | Shows                                   |
+| -------------- | ------------ | --------------------------------------- |
+| `kanakki.mimz` | `counter`    | a counter, names and all, in Tamil      |
+| `cimitti.mimz` | `blinker`    | a blinker in Tamil                      |
+| `oppidi.mimz`  | `comparator` | a comparator (`if`-expression) in Tamil |
+| `thervi.mimz`  | `mux4`       | a 4-way mux (`match`) in Tamil          |
+
+Because the identifiers are localized, these do **not** compile to byte-identical
+Verilog — the compiler transliterates the names (`கணக்கி` → `kannakki`,
+`மதிப்பு` → `mathippu`). They are instead proven to be the **same circuit** as
+their English twin (canonical identifier renaming) and locked by their own
+goldens + Icarus testbenches. They are a showcase, not part of the four-flavor
+set (see R9 in `docs/RULES.md`).
+
+Convert one to readable Tanglish — keywords **and** names — with the opt-in flag:
+
+```sh
+mimz translate --to tanglish --romanize-names tamil-pure/kanakki.mimz
+```
+
+Without `--romanize-names`, translate swaps only the keywords and keeps the Tamil
+names verbatim (the lossless default). The romanization is one-way.

@@ -106,6 +106,12 @@ enum Cmd {
         /// (keyword-only, trivia-preserving reskin).
         #[arg(long)]
         order: Option<String>,
+        /// Romanize Tamil identifiers to readable Latin (கணக்கி -> kannakki),
+        /// the same scheme the Verilog emitter uses. One-way (not reversible),
+        /// so the round-trip is no longer byte-identical. Applies to the
+        /// keyword-only reskin (no `--order`).
+        #[arg(long)]
+        romanize_names: bool,
         /// Output path (default: print the result to stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -161,8 +167,15 @@ fn main() -> ExitCode {
             file,
             to,
             order,
+            romanize_names,
             output,
-        } => translate_file(&file, to.as_deref(), order.as_deref(), output),
+        } => translate_file(
+            &file,
+            to.as_deref(),
+            order.as_deref(),
+            romanize_names,
+            output,
+        ),
         Cmd::Eval {
             file,
             inputs,
@@ -201,6 +214,10 @@ fn eval_file(
         Ok(t) => t,
         Err(diags) => return out.one_file(&diags, &src, &path_str),
     };
+    // Non-fatal mixed-flavor warning (W0001) — printed, never blocks eval.
+    if let Some(w) = morph::flavor_mix_warning(&tokens) {
+        eprint!("{}", diag::render_lang(&[w], &src, &path_str, flavor));
+    }
     let file = match parser::parse(tokens) {
         Ok(f) => f,
         Err(diags) => return out.one_file(&diags, &src, &path_str),
@@ -355,6 +372,7 @@ fn translate_file(
     path: &Path,
     to: Option<&str>,
     order: Option<&str>,
+    romanize_names: bool,
     output: Option<PathBuf>,
 ) -> ExitCode {
     let to = to.unwrap_or("english");
@@ -362,6 +380,12 @@ fn translate_file(
         eprintln!("error: unknown flavor `{to}` — expected english, tanglish, or tamil");
         return ExitCode::FAILURE;
     };
+    if romanize_names && order.is_some() {
+        eprintln!(
+            "warning: --romanize-names applies to the keyword-only reskin; \
+             ignored with --order"
+        );
+    }
     let order = match order {
         None => None,
         Some("code") => Some(mimz::pretty::Order::Code),
@@ -405,7 +429,11 @@ fn translate_file(
                 }
             }
         }
-        None => match mimz::translate::translate(&src, flavor) {
+        None => match mimz::translate::translate_opts(
+            &src,
+            flavor,
+            mimz::translate::TranslateOpts { romanize_names },
+        ) {
             Ok(t) => t,
             Err(diags) => {
                 return Output::Human(Flavor::English).one_file(
@@ -475,7 +503,9 @@ impl Output {
         }
     }
 
-    /// Report diagnostics that all point into ONE known source.
+    /// Report diagnostics that all point into ONE known source. Exits FAILURE
+    /// only if some diagnostic is an error — a warning-only set (or empty, on
+    /// `--json`) still succeeds.
     fn one_file(self, diags: &[diag::Diag], src: &str, path: &str) -> ExitCode {
         match self {
             Output::Human(flavor) => eprint!("{}", diag::render_lang(diags, src, path, flavor)),
@@ -487,10 +517,11 @@ impl Output {
                 println!("{}", serde_json::to_string(&json).expect("diag serializes"));
             }
         }
-        ExitCode::FAILURE
+        Self::exit_for(diags)
     }
 
-    /// Report project-wide diagnostics (each carries a file index).
+    /// Report project-wide diagnostics (each carries a file index). Exits
+    /// FAILURE only if some diagnostic is an error (warnings are non-fatal).
     fn project(self, diags: &[diag::Diag], files: &[LoadedFile]) -> ExitCode {
         match self {
             Output::Human(flavor) => {
@@ -507,7 +538,17 @@ impl Output {
                 println!("{}", serde_json::to_string(&json).expect("diag serializes"));
             }
         }
-        ExitCode::FAILURE
+        Self::exit_for(diags)
+    }
+
+    /// FAILURE if any diagnostic is an error; SUCCESS otherwise (warnings-only
+    /// or empty).
+    fn exit_for(diags: &[diag::Diag]) -> ExitCode {
+        if diags.iter().any(|d| d.is_error()) {
+            ExitCode::FAILURE
+        } else {
+            ExitCode::SUCCESS
+        }
     }
 
     /// Report a load failure (I/O, or lexer/parser/import diagnostics).
@@ -517,7 +558,10 @@ impl Output {
                 match self {
                     Output::Human(_) => eprintln!("error: {msg}"),
                     Output::Json => {
-                        println!("{}", serde_json::json!([{ "code": null, "message": msg }]))
+                        println!(
+                            "{}",
+                            serde_json::json!([{ "severity": "error", "code": null, "message": msg }])
+                        )
                     }
                 }
                 ExitCode::FAILURE
@@ -546,6 +590,22 @@ fn resolve_lang(path: &Path, lang: Option<&str>) -> Result<Flavor, ExitCode> {
         .and_then(|src| lexer::lex(&src).ok())
         .map(|toks| morph::majority_flavor(&toks))
         .unwrap_or(Flavor::English))
+}
+
+/// Non-fatal warnings for a loaded project (currently just the mixed-flavor
+/// lint, W0001), each tagged with its file index. Re-lexes each already-loaded
+/// source — cheap, and it lexed clean during `load_project`.
+fn project_warnings(files: &[LoadedFile]) -> Vec<diag::Diag> {
+    files
+        .iter()
+        .enumerate()
+        .filter_map(|(i, f)| {
+            lexer::lex(&f.src)
+                .ok()
+                .and_then(|toks| morph::flavor_mix_warning(&toks))
+                .map(|d| d.with_file(i))
+        })
+        .collect()
 }
 
 /// `mimz check` — lex + parse + checker passes over the file AND its
@@ -582,12 +642,22 @@ fn check(path: &Path, tokens: bool, json: bool, lang: Option<&str>) -> ExitCode 
         Err(e) => return out.load_error(&e),
     };
     let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
-    if let Err(diags) = checker::check(&asts) {
+    // Non-fatal warnings (W0001 mixed-flavor) ride alongside any checker errors.
+    let mut diags = project_warnings(&files);
+    if let Err(errors) = checker::check(&asts) {
+        diags.extend(errors);
+    }
+    let has_error = diags.iter().any(|d| d.is_error());
+    if json {
+        // Stable contract: stdout is ALWAYS a JSON array (warnings included, or
+        // `[]`). Exit reflects severity.
         return out.project(&diags, &files);
     }
-    if json {
-        println!("[]"); // stable contract: stdout is ALWAYS a JSON array
-        return ExitCode::SUCCESS;
+    if !diags.is_empty() {
+        eprint!("{}", project::render_diags_lang(&diags, &files, flavor));
+    }
+    if has_error {
+        return ExitCode::FAILURE;
     }
     let modules = asts
         .iter()
@@ -621,9 +691,17 @@ fn compile(path: &Path, output: Option<PathBuf>, json: bool, lang: Option<&str>)
         Err(e) => return out.load_error(&e),
     };
     let mut asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+    // Non-fatal warnings (W0001 mixed-flavor) ride alongside any stage errors,
+    // and are surfaced on success too.
+    let warnings = project_warnings(&files);
+    let report_err = |errors: Vec<diag::Diag>| {
+        let mut diags = warnings.clone();
+        diags.extend(errors);
+        out.project(&diags, &files)
+    };
 
-    if let Err(diags) = checker::check(&asts) {
-        return out.project(&diags, &files);
+    if let Err(errors) = checker::check(&asts) {
+        return report_err(errors);
     }
 
     // Tamil identifiers become readable ASCII (விளக்கு → villakku) —
@@ -633,11 +711,11 @@ fn compile(path: &Path, output: Option<PathBuf>, json: bool, lang: Option<&str>)
 
     let project = match emit_verilog::Project::from_files(&asts) {
         Ok(p) => p,
-        Err(diags) => return out.project(&diags, &files),
+        Err(errors) => return report_err(errors),
     };
     let verilog = match emit_verilog::emit(&project, &asts) {
         Ok(v) => v,
-        Err(diags) => return out.project(&diags, &files),
+        Err(errors) => return report_err(errors),
     };
 
     let out_path = output.unwrap_or_else(|| {
@@ -649,9 +727,13 @@ fn compile(path: &Path, output: Option<PathBuf>, json: bool, lang: Option<&str>)
         eprintln!("error: cannot write `{}`: {e}", out_path.display());
         return ExitCode::FAILURE;
     }
+    // Success: surface any non-fatal warnings (json → the array, else stderr).
     if json {
-        println!("[]");
+        out.project(&warnings, &files);
     } else {
+        if !warnings.is_empty() {
+            eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
+        }
         println!("compiled {} -> {}", path.display(), out_path.display());
     }
     ExitCode::SUCCESS

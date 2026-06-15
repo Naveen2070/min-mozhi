@@ -1,0 +1,20 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a 4-way
+// multiplexer — the Tamil twin of english/mux4.mimz. `match` on the select must
+// cover every case — a missing arm is a compile error, so no inferred latches.
+// Abstract inputs use Tamil letters (அ, ஆ, இ, ஈ).
+
+தொகுதி தேர்வி(அகலம்: int = 8) {
+  உள் தேர்வு: bits[2]
+  உள் அ: bits[அகலம்]
+  உள் ஆ: bits[அகலம்]
+  உள் இ: bits[அகலம்]
+  உள் ஈ: bits[அகலம்]
+  வெளி விளைவு: bits[அகலம்]
+
+  விளைவு = பொருத்து தேர்வு {
+    0b00 => அ
+    0b01 => ஆ
+    0b10 => இ
+    0b11 => ஈ
+  }
+}

@@ -22,7 +22,7 @@ use mimz::lexer::lex;
 use mimz::lexer::token::{Flavor, TokKind};
 use mimz::parser::parse;
 use mimz::pretty::{Order, pretty_print};
-use mimz::translate::translate;
+use mimz::translate::{TranslateOpts, translate, translate_opts};
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -113,6 +113,86 @@ fn every_keyword_token_is_in_the_target_flavor() {
     let tamil = translate(&english, Flavor::Tamil).expect("lexes");
     assert!(tamil.contains("தொகுதி"), "expected Tamil `module`");
     assert!(!tamil.contains("module"), "English `module` should be gone");
+}
+
+// ---- `--romanize-names`: Tamil identifiers -> readable Latin (opt-in) ----
+//
+// The pure-Tamil showcase (examples/tamil-pure/) has Tamil identifiers. With the
+// flag, translate rewrites them to the same Latin the emitter uses; without it,
+// they ride through verbatim (the lossless default).
+
+const PURE_TAMIL: [&str; 4] = ["kanakki", "cimitti", "oppidi", "thervi"];
+
+/// With `--romanize-names`, Tamil identifiers become Latin in the CODE (comments
+/// may keep the original spelling — they are trivia, preserved verbatim).
+#[test]
+fn romanize_names_converts_tamil_identifiers_to_latin() {
+    let src = read("tamil-pure", "kanakki.mimz");
+    let out = translate_opts(
+        &src,
+        Flavor::Tanglish,
+        TranslateOpts {
+            romanize_names: true,
+        },
+    )
+    .expect("lexes");
+    assert!(
+        out.contains("thoguthi kannakki("),
+        "module decl: Tanglish keyword + romanized name"
+    );
+    assert!(out.contains("nilai mathippu:"), "reg name romanized");
+    assert!(out.contains("kannakku = mathippu"), "body romanized");
+    // No Tamil-script identifier survives in code (strip line comments first).
+    for line in out.lines() {
+        let code = line.split("//").next().unwrap_or("");
+        assert!(
+            !code.chars().any(|c| ('\u{0B80}'..='\u{0BFF}').contains(&c)),
+            "Tamil script leaked into code: {code:?}"
+        );
+    }
+}
+
+/// The romanization matches the emitter's, so romanized-then-compiled is
+/// byte-identical to compiling the original Tamil source — meaning preserved.
+#[test]
+fn romanized_translation_compiles_to_the_same_verilog() {
+    for name in PURE_TAMIL {
+        let src = read("tamil-pure", &format!("{name}.mimz"));
+        let romanized = translate_opts(
+            &src,
+            Flavor::English,
+            TranslateOpts {
+                romanize_names: true,
+            },
+        )
+        .expect("lexes");
+        let from_original = compile_file(
+            &root()
+                .join("examples/tamil-pure")
+                .join(format!("{name}.mimz")),
+        );
+        let from_romanized = compile_src(&romanized);
+        assert_eq!(
+            from_romanized, from_original,
+            "{name}: romanized translation must compile to the same Verilog"
+        );
+    }
+}
+
+/// The DEFAULT (no flag) stays lossless even for Tamil-named files: the names
+/// ride through untouched, so Tamil -> English -> Tamil round-trips to identity.
+#[test]
+fn pure_tamil_round_trips_losslessly() {
+    for name in PURE_TAMIL {
+        let canonical =
+            translate(&read("tamil-pure", &format!("{name}.mimz")), Flavor::Tamil).expect("lexes");
+        let there = translate(&canonical, Flavor::English).expect("lexes");
+        let back = translate(&there, Flavor::Tamil).expect("lexes");
+        assert_eq!(
+            back, canonical,
+            "{name}: default translate must round-trip losslessly (Tamil names preserved)"
+        );
+    }
 }
 
 // ---- `--order` AST pretty-printer (Phase 1.8) ----

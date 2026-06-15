@@ -1,8 +1,8 @@
 //! Integration tests over examples/ (RULES R6: examples always match the
 //! spec). The folder has four flavor directories — english/, tanglish/,
-//! tamil/, mixed/ — each holding the SAME example set with identical
-//! identifiers, so every example must lex + parse clean, compile to
-//! Verilog, and compile to byte-identical Verilog in all four flavors.
+//! tamil/, mixed/. The `BASE_EXAMPLES` set exists in ALL FOUR with identical
+//! identifiers (only keywords differ), so each compiles to byte-identical
+//! Verilog across flavors — the project's keyword-skin thesis.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -30,6 +30,19 @@ const BASE_EXAMPLES: [&str; 17] = [
     "traffic_light",
     "vilakku",
     "window",
+];
+
+/// Pure-Tamil showcase examples (Tamil keywords AND identifiers), each paired
+/// with the English base example it mirrors. They live ONLY in
+/// `examples/tamil-pure/` — they are language-pure, so they are NOT byte-identical
+/// to any other flavor (localized names). Instead they are golden-locked and
+/// proven equivalent to their counterpart by canonical identifier renaming
+/// (see `pure_tamil_examples_are_equivalent_to_their_counterparts`).
+const PURE_TAMIL: [(&str, &str); 4] = [
+    ("kanakki", "counter"),
+    ("cimitti", "blinker"),
+    ("oppidi", "comparator"),
+    ("thervi", "mux4"),
 ];
 
 fn examples_dir() -> PathBuf {
@@ -258,6 +271,131 @@ fn emitted_verilog_matches_the_goldens() {
             );
         }
     }
+}
+
+/// Each pure-Tamil showcase example must be the SAME circuit as its English
+/// counterpart. They are NOT byte-identical (the identifiers are localized to
+/// Tamil), so we compare modulo identifier renaming: `canonicalize_verilog`
+/// rewrites every identifier to `id<N>` in first-occurrence order, leaving
+/// keywords/numbers/punctuation alone. Equal canonical forms ⇒ same circuit,
+/// just named in Tamil. This is the showcase folder's correctness guarantee.
+#[test]
+fn pure_tamil_examples_are_equivalent_to_their_counterparts() {
+    for (pure, base) in PURE_TAMIL {
+        let ta = canonicalize_verilog(&strip_banner(&compile_file_tagged(
+            &examples_dir().join(format!("tamil-pure/{pure}.mimz")),
+            "equiv_pure_",
+        )));
+        let en = canonicalize_verilog(&strip_banner(&compile_file_tagged(
+            &examples_dir().join(format!("english/{base}.mimz")),
+            "equiv_base_",
+        )));
+        assert_eq!(
+            ta, en,
+            "tamil-pure/{pure}.mimz must be the same circuit as english/{base}.mimz (identifier names aside)"
+        );
+    }
+}
+
+/// Golden lock for the pure-Tamil showcase — pins the transliterated Verilog so
+/// a romanization change can't slip through silently. Regenerate with
+/// `MIMZ_UPDATE_GOLDENS=1` like the four-flavor goldens.
+#[test]
+fn pure_tamil_examples_match_goldens() {
+    let update = std::env::var("MIMZ_UPDATE_GOLDENS").is_ok();
+    let golden_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("golden");
+    for (pure, _base) in PURE_TAMIL {
+        let v = strip_banner(&compile_file_tagged(
+            &examples_dir().join(format!("tamil-pure/{pure}.mimz")),
+            "tamil_pure_golden_",
+        ));
+        let golden_path = golden_dir.join(format!("tamil_pure_{pure}.v"));
+        if update {
+            std::fs::create_dir_all(&golden_dir).unwrap();
+            std::fs::write(&golden_path, &v).unwrap();
+            continue;
+        }
+        let want = std::fs::read_to_string(&golden_path)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "missing golden {} — run with MIMZ_UPDATE_GOLDENS=1 to create it",
+                    golden_path.display()
+                )
+            })
+            .replace("\r\n", "\n");
+        assert_eq!(v, want, "{pure}: emitted Verilog differs from the golden");
+    }
+}
+
+/// Canonicalize Verilog for alpha-equivalence: rename every identifier to
+/// `id<N>` in first-occurrence order so two programs that differ ONLY in
+/// identifier names produce the same string. Verilog keywords, numbers, and
+/// punctuation are left untouched; a base letter right after `'` (sized
+/// literals like `2'b00`) is not treated as an identifier.
+fn canonicalize_verilog(v: &str) -> String {
+    use std::collections::HashMap;
+    const KEYWORDS: &[&str] = &[
+        "module",
+        "endmodule",
+        "input",
+        "output",
+        "inout",
+        "wire",
+        "reg",
+        "assign",
+        "always",
+        "begin",
+        "end",
+        "if",
+        "else",
+        "case",
+        "endcase",
+        "default",
+        "posedge",
+        "negedge",
+        "parameter",
+        "localparam",
+        "signed",
+        "integer",
+        "initial",
+        "for",
+    ];
+    let bytes = v.as_bytes();
+    let mut out = String::with_capacity(v.len());
+    let mut map: HashMap<&str, usize> = HashMap::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        if c.is_ascii_alphabetic() || c == '_' {
+            let prev = if i > 0 { bytes[i - 1] as char } else { '\0' };
+            let start = i;
+            let mut j = i + 1;
+            while j < bytes.len() {
+                let d = bytes[j] as char;
+                if d.is_ascii_alphanumeric() || d == '_' {
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            let word = &v[start..j];
+            if prev == '\'' || KEYWORDS.contains(&word) {
+                out.push_str(word);
+            } else {
+                let n = map.len();
+                let id = *map.entry(word).or_insert(n);
+                out.push_str("id");
+                out.push_str(&id.to_string());
+            }
+            i = j;
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Drop the `// Generated by mimz <version>` banner — it carries the crate

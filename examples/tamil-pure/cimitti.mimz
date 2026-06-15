@@ -1,0 +1,25 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): an LED
+// blinker — the Tamil twin of english/blinker.mimz. Divide the clock with a
+// counter and toggle the output with `^` on wrap. Names transliterate to ASCII
+// Verilog (சிமிட்டி → cimitti, நிலைமை → nilaimai).
+
+தொகுதி சிமிட்டி(வரம்பு: int = 50000000) {
+  கடிகாரம் கடிகை
+  மீட்டமை மீள்
+
+  வெளி ஒளி: bit
+
+  நிலை கணக்கு: bits[26] = 0
+  நிலை நிலைமை: bit = 0
+
+  போது ஏற்றம்(கடிகை) {
+    என்றால் கணக்கு == வரம்பு {
+      கணக்கு <- 0
+      நிலைமை <- நிலைமை ^ 1
+    } இல்லையேல் {
+      கணக்கு <- கணக்கு +% 1
+    }
+  }
+
+  ஒளி = நிலைமை
+}

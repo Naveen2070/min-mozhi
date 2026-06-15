@@ -1,0 +1,17 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a
+// comparator with an if-expression — the Tamil twin of english/comparator.mimz.
+// A wire-driving `if` must have an `else`, so the output is always driven.
+// Abstract operands use Tamil letters (அ, ஆ).
+
+தொகுதி ஒப்பிடி(அகலம்: int = 8) {
+  உள் அ: bits[அகலம்]
+  உள் ஆ: bits[அகலம்]
+
+  வெளி சமம்: bit
+  வெளி பெரிது: bit
+  வெளி பெரியது: bits[அகலம்]
+
+  சமம் = அ == ஆ
+  பெரிது = அ > ஆ
+  பெரியது = என்றால் அ > ஆ { அ } இல்லையேல் { ஆ }
+}

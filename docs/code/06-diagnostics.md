@@ -105,6 +105,7 @@ pass/fail. Each entry is a `diag::JsonDiag`:
 
 ```json
 {
+  "severity": "error",
   "code": "E0601",
   "message": "`match` on enum `S` is missing `C`",
   "help": "every variant needs an arm, or end with `_ =>` ...",
@@ -115,10 +116,26 @@ pass/fail. Each entry is a `diag::JsonDiag`:
 }
 ```
 
-`line`/`col` are 1-based (columns count chars, matching the caret
-renderer); `span` is the byte range into the NFC-normalized source.
-Locked end-to-end by `json_flag_emits_machine_readable_diagnostics`
-(`tests/errors.rs`).
+`severity` is `"error"` or `"warning"`; `line`/`col` are 1-based (columns
+count chars, matching the caret renderer); `span` is the byte range into
+the NFC-normalized source. Locked end-to-end by
+`json_flag_emits_machine_readable_diagnostics` (`tests/errors.rs`).
+
+## Warnings (`Wxxxx`) — non-fatal lints
+
+A `Diag` carries a `Severity` (`Error` or `Warning`). An **error** fails the
+build; a **warning** is advisory — `check`/`compile`/`eval` print it (rendered
+`warning[Wxxxx]: …`, or with `"severity": "warning"` under `--json`) and still
+**succeed (exit 0) and still produce output**. The LSP shows warnings with
+`DiagnosticSeverity::WARNING` (a yellow squiggle, not red). Warnings are opt-in
+via `Diag::as_warning`; almost every diagnostic is an error.
+
+W-codes are NOT in `ALL_CHECKER_CODES` (that list is checker errors, locked to
+the table above and required to have an error-fixture). Current warnings:
+
+| Code  | Fires when                                                                                                                                                                                                  |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W0001 | a file mixes **Tamil** keywords with English/Tanglish ones — English+Tanglish share code order (SVO) and mix freely, but Tamil reads differently; run `mimz fmt` to normalize (`morph::flavor_mix_warning`) |
 
 ## Known limitations / planned evolution
 

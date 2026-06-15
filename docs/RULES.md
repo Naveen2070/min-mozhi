@@ -131,6 +131,17 @@ example) over ad-hoc ones.
   testbench in `tests/icarus/`.
 - Keyword spellings come from `keywords.toml` **only — never invent a Tanglish
   or Tamil spelling.** If a word is not in the table, it is not ready to use.
+- **Exception — language-pure showcase examples.** A program written fully in one
+  language (keywords AND identifiers, e.g. `examples/tamil-pure/`) cannot be
+  byte-identical to the other flavors — localized identifiers transliterate to
+  different Verilog names. Such examples live in their OWN folder, OUTSIDE the
+  four-flavor set, and are validated instead by: (a) equivalence to an existing
+  base example via canonical identifier renaming (alpha-equivalence —
+  `pure_tamil_examples_are_equivalent_to_their_counterparts`), (b) their own
+  golden (`tests/golden/tamil_pure_*.v`), and (c) their own self-checking Icarus
+  testbench. They are NOT added to `BASE_EXAMPLES` and do NOT take part in the
+  byte-identity test. Identifier names are the author's choice; keyword spellings
+  still come from `keywords.toml` only.
 
 ## R10 — Diagnostics are a stable contract
 

@@ -92,7 +92,11 @@ pub fn transliterate(files: &mut [File]) {
 
 /// One name, romanized — pure and total (any string in, valid ASCII
 /// identifier out). No uniquing here; `transliterate` owns that.
-fn romanize(name: &str) -> String {
+///
+/// `pub(crate)` so `mimz translate --romanize-names` can reuse the exact same
+/// scheme to convert Tamil identifiers to readable Latin in source (the result
+/// then transliterates to the SAME Verilog — see `tests/translate.rs`).
+pub(crate) fn romanize(name: &str) -> String {
     let mut out = String::new();
     let mut chars = name.chars().peekable();
     while let Some(c) = chars.next() {

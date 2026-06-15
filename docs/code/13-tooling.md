@@ -41,6 +41,15 @@ natural Tamil WORD-ORDER half (`--order code|thamizh`) lives in `pretty` below.
   byte-identical (modulo alias canonicalization).
 - NOTE: tanglish/tamil targets ride the DRAFT keyword columns until
   native-speaker review closes (keywords.toml header).
+- **`--romanize-names` (opt-in):** also rewrites non-ASCII (Tamil) IDENTIFIERS to
+  readable Latin, reusing the emitter's `romanize` (`கணக்கி` → `kannakki`) with
+  the same `_2`/`_3` uniquing so a romanization never shadows an ASCII name or
+  re-lexes as a keyword (`build_rename_map`). This is **one-way** —
+  transliteration can't be inverted by rule — so it is OFF by default and the
+  lossless round-trip contract only holds with it off. Applies to the
+  keyword-only reskin (ignored, with a warning, under `--order`). Validated in
+  `tests/translate.rs` over the `examples/tamil-pure/` showcase, including the
+  invariant that romanizing-then-compiling matches compiling the original.
 - **`mimz fmt` rides this too.** The `fmt` subcommand (`fmt_file` in `main.rs`)
   is `translate` pointed at a file in place: it normalizes every keyword to one
   flavor (default = the file's `morph::majority_flavor`, `--to` overrides),

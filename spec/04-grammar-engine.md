@@ -88,6 +88,15 @@ syntax thamizh
   Trivia-preservation stays with the keyword-only `--to` path (the token
   reskin). Lossless round-tripping including comments would require carrying
   trivia in the AST — a separate, later change.
+- `mimz translate` also gains **`--romanize-names`** (2026-06-15), an opt-in flag
+  on the keyword-only `--to` path that rewrites non-ASCII (Tamil) IDENTIFIERS to
+  readable Latin, reusing the Verilog emitter's `romanize` (`கணக்கி` →
+  `kannakki`). It is **one-way** (transliteration cannot be inverted by rule), so
+  it is OFF by default; the lossless round-trip holds only with it off. It exists
+  so a fully-Tamil program (`examples/tamil-pure/`) can be converted to readable
+  Tanglish/English. Restoring exact Tamil names from a romanized file is future
+  work (a per-file sidecar name-map; see `docs/log/2026-06-15.md`). Full behavior:
+  `docs/code/13-tooling.md`.
 
 ## 3. What Flips in `thamizh-order`
 

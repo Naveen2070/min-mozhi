@@ -17,7 +17,17 @@ pub const ALL_CHECKER_CODES: [&str; 36] = [
     "E0503", "E0504", "E0505", "E0601", "E0602", "E0701",
 ];
 
-/// One compiler error. Diagnostics are plain values — passes collect
+/// How loud a diagnostic is. `Error` fails the build; `Warning` is advisory —
+/// it is printed but the command still succeeds (exit 0) and still produces
+/// output. Almost every `Diag` is an `Error`; warnings are opt-in via
+/// [`Diag::as_warning`] (e.g. the mixed-flavor lint, W0001).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Severity {
+    Error,
+    Warning,
+}
+
+/// One compiler diagnostic. Diagnostics are plain values — passes collect
 /// `Vec<Diag>` and keep going (multi-error reporting), they never panic
 /// or print directly. Rendering happens once, in [`render`].
 #[derive(Clone, Debug)]
@@ -34,10 +44,14 @@ pub struct Diag {
     /// (`Project::from_files`, the checker, the emitter) MUST set this —
     /// see `project::render_diags`.
     pub file: Option<usize>,
-    /// Stable error code (`E0101`), rendered as `error[E0101]: ...`.
-    /// Catalog lives in docs/code/11-checker.md. Checker errors always
+    /// Stable code (`E0101` error, `W0001` warning), rendered as
+    /// `error[E0101]: ...` / `warning[W0001]: ...`. Catalog lives in
+    /// docs/code/11-checker.md + 06-diagnostics.md. Checker errors always
     /// carry one; lexer/parser errors will be retrofitted (Phase 1).
     pub code: Option<&'static str>,
+    /// Error (fails the build) or Warning (advisory; exit 0). Defaults to
+    /// `Error` in [`Diag::new`]; flip with [`Diag::as_warning`].
+    pub severity: Severity,
 }
 
 impl Diag {
@@ -48,6 +62,7 @@ impl Diag {
             help: None,
             file: None,
             code: None,
+            severity: Severity::Error,
         }
     }
 
@@ -67,6 +82,18 @@ impl Diag {
     pub fn with_code(mut self, code: &'static str) -> Self {
         self.code = Some(code);
         self
+    }
+
+    /// Builder-style: mark this diagnostic as a non-fatal warning (advisory;
+    /// the command still succeeds and still produces output).
+    pub fn as_warning(mut self) -> Self {
+        self.severity = Severity::Warning;
+        self
+    }
+
+    /// Whether this diagnostic should fail the build.
+    pub fn is_error(&self) -> bool {
+        self.severity == Severity::Error
     }
 }
 
@@ -96,9 +123,13 @@ pub fn render_lang(diags: &[Diag], src: &str, path: &str, flavor: Flavor) -> Str
     for d in diags {
         let (line_no, col, line_text, line_start) = locate(src, d.span.start);
         let msg = crate::morph::localized_msg(d, src, flavor).unwrap_or_else(|| d.msg.clone());
+        let label = match d.severity {
+            Severity::Error => "error",
+            Severity::Warning => "warning",
+        };
         match d.code {
-            Some(c) => out.push_str(&format!("error[{c}]: {msg}\n")),
-            None => out.push_str(&format!("error: {msg}\n")),
+            Some(c) => out.push_str(&format!("{label}[{c}]: {msg}\n")),
+            None => out.push_str(&format!("{label}: {msg}\n")),
         }
         out.push_str(&format!("  --> {path}:{line_no}:{col}\n"));
         out.push_str("   |\n");
@@ -125,7 +156,9 @@ pub fn render_lang(diags: &[Diag], src: &str, path: &str, flavor: Flavor) -> Str
 /// human renderer); the byte span is included for exact tooling.
 #[derive(serde::Serialize)]
 pub struct JsonDiag {
-    /// Stable error code (`"E0101"`), or `null` for pre-code diagnostics.
+    /// `"error"` or `"warning"` — the diagnostic's severity.
+    pub severity: &'static str,
+    /// Stable code (`"E0101"`/`"W0001"`), or `null` for pre-code diagnostics.
     pub code: Option<&'static str>,
     /// WHAT is wrong.
     pub message: String,
@@ -146,6 +179,10 @@ impl JsonDiag {
     pub fn new(d: &Diag, path: &str, src: &str) -> Self {
         let (line, col, _, _) = locate(src, d.span.start);
         JsonDiag {
+            severity: match d.severity {
+                Severity::Error => "error",
+                Severity::Warning => "warning",
+            },
             code: d.code,
             message: d.msg.clone(),
             help: d.help.clone(),

@@ -19,6 +19,7 @@ mod expr;
 mod module;
 mod translit;
 
+pub(crate) use translit::romanize;
 pub use translit::transliterate;
 
 use std::collections::HashMap;

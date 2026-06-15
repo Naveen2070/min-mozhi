@@ -39,6 +39,17 @@ const TESTBENCHES: [(&str, &str); 16] = [
     ("window_tb.v", "english/window.mimz"),
 ];
 
+/// Pure-Tamil showcase testbenches (examples/tamil-pure/) — the same circuits as
+/// their English counterparts, instantiated through the romanized Tamil port
+/// names (clk=katikai, rst=miill, …). Proves the transliterated Verilog
+/// simulates correctly, not just that it elaborates.
+const PURE_TESTBENCHES: [(&str, &str); 4] = [
+    ("kanakki_tb.v", "tamil-pure/kanakki.mimz"),
+    ("cimitti_tb.v", "tamil-pure/cimitti.mimz"),
+    ("oppidi_tb.v", "tamil-pure/oppidi.mimz"),
+    ("thervi_tb.v", "tamil-pure/thervi.mimz"),
+];
+
 fn repo() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -159,22 +170,17 @@ fn every_emitted_verilog_passes_iverilog() {
     assert!(checked >= 48, "expected the whole corpus, found {checked}");
 }
 
-/// Layer 2 — the self-checking testbenches: Min-Mozhi semantics encoded
-/// in Verilog asserts, simulated by Icarus. Each prints PASS exactly once
-/// or FAIL with a reason.
-#[test]
-fn self_checking_testbenches_pass() {
-    let Some(bin) = require_iverilog() else {
-        return;
-    };
-    for (tb_file, example) in TESTBENCHES {
+/// Run a testbench table through iverilog + vvp, asserting each prints PASS
+/// exactly once and never FAIL. Shared by the English and pure-Tamil layers.
+fn run_self_checking(bin: &Path, table: &[(&str, &str)]) {
+    for (tb_file, example) in table {
         let tb = repo().join("tests").join("icarus").join(tb_file);
         assert!(tb.exists(), "missing testbench {}", tb.display());
         let design = compile_example(&repo().join("examples").join(example));
         let tb_module = tb_file.trim_end_matches(".v");
         let vvp_out = std::env::temp_dir().join(format!("mimz_icarus_{tb_module}.vvp"));
 
-        let out = tool(&bin, "iverilog")
+        let out = tool(bin, "iverilog")
             .arg("-o")
             .arg(&vvp_out)
             .args(["-s", tb_module])
@@ -188,7 +194,7 @@ fn self_checking_testbenches_pass() {
             String::from_utf8_lossy(&out.stderr)
         );
 
-        let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+        let sim = tool(bin, "vvp").arg(&vvp_out).output().unwrap();
         let stdout = String::from_utf8_lossy(&sim.stdout);
         assert!(
             sim.status.success(),
@@ -204,4 +210,26 @@ fn self_checking_testbenches_pass() {
             "{tb_module} never reached PASS (testbench bug?):\n{stdout}"
         );
     }
+}
+
+/// Layer 2 — the self-checking testbenches: Min-Mozhi semantics encoded
+/// in Verilog asserts, simulated by Icarus. Each prints PASS exactly once
+/// or FAIL with a reason.
+#[test]
+fn self_checking_testbenches_pass() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    run_self_checking(&bin, &TESTBENCHES);
+}
+
+/// Layer 2 for the pure-Tamil showcase: the same semantics, driven through the
+/// romanized Tamil port names — the transliterated Verilog must simulate, not
+/// just elaborate.
+#[test]
+fn self_checking_pure_tamil_testbenches_pass() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    run_self_checking(&bin, &PURE_TESTBENCHES);
 }

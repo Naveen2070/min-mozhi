@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**259 tests** as of 2026-06-15: 175 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 10 eval integration + 7 translate integration + 8 morph integration + 9 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-15 robustness follow-up to the 2026-06-14 batch audit: +9 lib unit — 2 `morph` (tie-break + empty-stem inflection), 5 checker (two-literal `min` E0407, `nand` of a bare `bit`, nested `abs(min)`/`min(abs)`, `abs` at the width boundary), 1 parser (a long flat binary chain parses without tripping the E1113 depth guard), 1 emitter (a built-in lowers parenthesized inside a larger expression) — and +2 `fmt` integration (`-o` onto the input path round-trips via the new atomic write; an unknown `--to` is a clean error). A `pretty_roundtrip` cargo-fuzz target was added (CI-only, outside this count).) (A QA pass for the new built-ins added the `bitops` example in all four flavors — golden + a self-checking Icarus testbench incl. the abs(MIN) width-growth case — plus edge tests: parser arity E1110, checker literal-adapt + abs-of-literal, fmt keyword-free/non-lexing, and `compile --lang` localization.) (Arithmetic built-ins `min`/`max`/`abs`/`nand`/`nor`/`xnor` added 6 checker unit tests + 1 `eval` integration test.) (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~70 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**273 tests** as of 2026-06-15: 179 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 10 translate integration + 11 morph integration + 9 fmt integration + 3 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-15 pure-Tamil showcase + opt-in `translate --romanize-names`: a new `examples/tamil-pure/` folder holds fully-Tamil programs — Tamil keywords AND identifiers — exempt from the four-flavor byte-identity rule (R9) and instead proven equivalent to their English counterparts by canonical identifier renaming. `mimz translate --romanize-names` reuses the emitter's `romanize` to rewrite Tamil identifiers to Latin (opt-in, one-way; lossless default unchanged). +2 lib unit (`translate`), +2 example integration (pure-Tamil golden + equivalence), +1 Icarus (pure-Tamil testbenches), +3 translate integration.) (2026-06-15 mixed-flavor lint: a non-fatal warning **W0001** fires when a file mixes Tamil keywords with English/Tanglish — `Diag` gained a `Severity` (Error/Warning), `check`/`compile`/`eval` print it and still succeed, and the LSP shows it as a WARNING. +2 `morph` lib unit, +1 LSP unit, +3 `morph` integration.) (2026-06-15 robustness follow-up to the 2026-06-14 batch audit: +9 lib unit — 2 `morph` (tie-break + empty-stem inflection), 5 checker (two-literal `min` E0407, `nand` of a bare `bit`, nested `abs(min)`/`min(abs)`, `abs` at the width boundary), 1 parser (a long flat binary chain parses without tripping the E1113 depth guard), 1 emitter (a built-in lowers parenthesized inside a larger expression) — and +2 `fmt` integration (`-o` onto the input path round-trips via the new atomic write; an unknown `--to` is a clean error). A `pretty_roundtrip` cargo-fuzz target was added (CI-only, outside this count).) (A QA pass for the new built-ins added the `bitops` example in all four flavors — golden + a self-checking Icarus testbench incl. the abs(MIN) width-growth case — plus edge tests: parser arity E1110, checker literal-adapt + abs-of-literal, fmt keyword-free/non-lexing, and `compile --lang` localization.) (Arithmetic built-ins `min`/`max`/`abs`/`nand`/`nor`/`xnor` added 6 checker unit tests + 1 `eval` integration test.) (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~70 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -126,7 +126,7 @@ deserve a note:
 | `tamil_identifiers_emit_as_romanized_verilog`                   | the transliterated pipeline end to end: module/ports/regs/always all use the SAME romanization; no non-ASCII outside the banner comment     |
 | `colliding_romanizations_get_suffixes_and_ascii_names_are_safe` | ந/ன clash + an existing ASCII `nii`: user names are never stolen; clashes get `_2`, `_3` deterministically                                  |
 
-## Integration (`tests/examples.rs`, 9 tests — run the real binary)
+## Integration (`tests/examples.rs`, 11 tests — run the real binary)
 
 `examples/` holds four flavor folders — `english/`, `tanglish/`, `tamil/`,
 `mixed/` — each with the SAME 17 base examples (identical identifiers,
@@ -135,19 +135,28 @@ base-example list lives in the `BASE_EXAMPLES` const in the test file.
 (`bitops` — the arithmetic / reduction built-ins — and `datapath` —
 `*`/`*%`, `>>`, concat, slice, `trunc` — were added 2026-06-14.)
 
-| Test                                            | Locks in                                                                                                                                                                                                                                                          |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_example_checks_clean`                    | every `.mimz` under `examples/` (recursive) passes `mimz check` — which now runs the CHECKER over the file and its imports, so this is also a zero-false-positives test for every checker rule. At least 4 × 11 files — RULES R6 made executable                  |
-| `every_example_compiles`                        | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                                                                                                                                          |
-| `all_four_flavors_compile_to_identical_verilog` | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                                                                                                                                        |
-| `counter_compiles_to_verilog`                   | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                                  |
-| `alu_with_import_compiles`                      | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                                       |
-| `include_alias_compiles_with_dotted_path`       | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                                         |
-| `ripple_adder_unrolls_repeat`                   | `repeat` end-to-end: four `FullAdder fa__0..3` with the carry chained, folded indices, `const WIDTH` folded into widths — compile-time generation proven through the real binary                                                                                  |
-| `traffic_light_fsm_compiles`                    | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                                               |
-| `emitted_verilog_matches_the_goldens`           | every base example's FULL output equals `tests/golden/<base>.v` byte for byte (banner stripped). On an INTENDED emitter change: `MIMZ_UPDATE_GOLDENS=1 cargo test --test examples`, then review the golden diff like code. Failure names the first differing line |
+A fifth folder, `examples/tamil-pure/`, holds the **pure-Tamil showcase** —
+fully-Tamil programs (Tamil keywords AND identifiers; the `PURE_TAMIL` const
+pairs each with the English base example it mirrors). Being language-pure, they
+are NOT byte-identical to any other flavor, so they sit OUTSIDE the four-flavor
+identity rule (R9) and are validated by equivalence-to-counterpart + their own
+goldens (`tests/golden/tamil_pure_*.v`) + their own testbenches.
 
-## Icarus differential (`tests/icarus.rs`, 2 tests — run a REAL Verilog tool)
+| Test                                                       | Locks in                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_example_checks_clean`                               | every `.mimz` under `examples/` (recursive) passes `mimz check` — which now runs the CHECKER over the file and its imports, so this is also a zero-false-positives test for every checker rule. At least 4 × 11 files — RULES R6 made executable                  |
+| `every_example_compiles`                                   | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                                                                                                                                          |
+| `all_four_flavors_compile_to_identical_verilog`            | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                                                                                                                                        |
+| `counter_compiles_to_verilog`                              | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                                  |
+| `alu_with_import_compiles`                                 | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                                       |
+| `include_alias_compiles_with_dotted_path`                  | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                                         |
+| `ripple_adder_unrolls_repeat`                              | `repeat` end-to-end: four `FullAdder fa__0..3` with the carry chained, folded indices, `const WIDTH` folded into widths — compile-time generation proven through the real binary                                                                                  |
+| `traffic_light_fsm_compiles`                               | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                                               |
+| `emitted_verilog_matches_the_goldens`                      | every base example's FULL output equals `tests/golden/<base>.v` byte for byte (banner stripped). On an INTENDED emitter change: `MIMZ_UPDATE_GOLDENS=1 cargo test --test examples`, then review the golden diff like code. Failure names the first differing line |
+| `pure_tamil_examples_match_goldens`                        | each `examples/tamil-pure/<x>.mimz` output equals `tests/golden/tamil_pure_<x>.v` (banner stripped) — pins the transliterated Verilog so a romanization regression can't slip through                                                                             |
+| `pure_tamil_examples_are_equivalent_to_their_counterparts` | each pure-Tamil example is the SAME circuit as its English twin, proven by `canonicalize_verilog` (alpha-equivalence: identifiers renamed to `id<N>` by first appearance). Equal canonical forms ⇒ same hardware, just named in Tamil                             |
+
+## Icarus differential (`tests/icarus.rs`, 3 tests — run a REAL Verilog tool)
 
 The independent judge: our substring asserts check OUR expectations of
 the output; these check a real tool's. **Skips with a printed note when
@@ -157,10 +166,11 @@ PATH → the Windows installer default `C:\iverilog\bin`); in CI
 never skip silently. Local install: the Windows installer
 (bleyer.org/icarus) or `apt-get install iverilog`.
 
-| Test                                    | Locks in                                                                                                                                                                                                                                                                                                                                                       |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog` | all 68 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated `vilakku` and `wire signed` `signed_math`)                                                                                                                                                                                      |
-| `self_checking_testbenches_pass`        | one hand-written TB per base example (`tests/icarus/*_tb.v`, 16) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential |
+| Test                                        | Locks in                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_emitted_verilog_passes_iverilog`     | all 72 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated Tamil-identifier `vilakku`, the pure-Tamil showcase, and `wire signed` `signed_math`)                                                                                                                                           |
+| `self_checking_testbenches_pass`            | one hand-written TB per base example (`tests/icarus/*_tb.v`, 16) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential |
+| `self_checking_pure_tamil_testbenches_pass` | the four pure-Tamil showcase circuits (`kanakki`/`cimitti`/`oppidi`/`thervi`), driven through their **romanized** ports (clk=`katikai`, rst=`miill`, …) — proves the transliterated Verilog SIMULATES, not just elaborates. Shares the `run_self_checking` helper with the English layer                                                                       |
 
 House rule for the testbenches: each prints `PASS` exactly once or
 `FAIL: reason` and stops — the Rust side asserts on those markers, so a
@@ -214,7 +224,7 @@ a whole alternation member in `editors/vscode/syntaxes/mimz.tmLanguage.json`
 plain `contains` would pass vacuously), and that the manifest registers
 `.mimz` with the matching scope name. When one fails: fix the grammar.
 
-## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 6 tests)
+## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 7 tests)
 
 | Test                                                        | Locks in                                                                                                                                     |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -255,34 +265,42 @@ The 8.1 long-form diagnostic catalog behind `mimz explain <CODE>`.
 | `table_is_sorted_unique_and_self_labelled` | the `EXPLANATIONS` table is ordered, duplicate-free, and each entry opens with its own code    |
 | `lookup_is_case_insensitive_and_trims`     | `explain("e0501")` / `" E0501 "` resolve; unknown codes return `None`                          |
 
-## Unit: translate (`src/translate.rs`, 3 tests)
+## Unit: translate (`src/translate.rs`, 5 tests)
 
-The keyword-flavor reskin behind `mimz translate --to`.
+The keyword-flavor reskin behind `mimz translate --to`, plus the opt-in
+`--romanize-names` identifier rewrite (reuses the emitter's `romanize`).
 
-| Test                                                       | Locks in                                                             |
-| ---------------------------------------------------------- | -------------------------------------------------------------------- |
-| `parse_flavor_accepts_the_three_columns`                   | `english`/`tanglish`/`tamil` (case-insensitive) parse; junk → `None` |
-| `reskins_keywords_keeps_everything_else`                   | keywords swap; comments, layout, identifiers, numbers stay verbatim  |
-| `translating_to_the_same_flavor_is_identity_for_canonical` | canonical English → English is a no-op                               |
+| Test                                                        | Locks in                                                                          |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `parse_flavor_accepts_the_three_columns`                    | `english`/`tanglish`/`tamil` (case-insensitive) parse; junk → `None`              |
+| `reskins_keywords_keeps_everything_else`                    | keywords swap; comments, layout, identifiers, numbers stay verbatim               |
+| `translating_to_the_same_flavor_is_identity_for_canonical`  | canonical English → English is a no-op                                            |
+| `romanize_names_rewrites_tamil_identifiers_only_when_asked` | `--romanize-names` turns `கணக்கு` → `kannakku`; the default leaves the Tamil name |
+| `romanize_names_uniques_against_an_existing_ascii_name`     | a romanization clashing with an ASCII name gets `_2` — names never silently merge |
 
-## Integration: translate (`tests/translate.rs`, 7 tests — the four-flavor oracle + the `--order` pretty-printer)
+## Integration: translate (`tests/translate.rs`, 10 tests — the four-flavor oracle + the `--order` pretty-printer + `--romanize-names`)
 
 The `examples/{english,tanglish,tamil}/` folders are byte-identical
-keyword-swaps (R9), so they validate the reskin against committed truth. The
-last four cover `--order` (the `pretty` AST printer): it reformats and drops
-comments, so its oracle is semantic (same Verilog) + idempotency, not bytes.
+keyword-swaps (R9), so they validate the reskin against committed truth. Four
+cover `--order` (the `pretty` AST printer): it reformats and drops comments, so
+its oracle is semantic (same Verilog) + idempotency, not bytes. The final three
+cover `--romanize-names` over the pure-Tamil showcase (Tamil identifiers → Latin,
+opt-in and one-way; the default stays lossless).
 
-| Test                                                               | Locks in                                                                                                   |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `round_trip_to_every_flavor_is_byte_identical`                     | translate-and-back reproduces the canonical source byte-for-byte (lossless; anchored past alias normalize) |
-| `translating_english_matches_the_committed_flavor_token_for_token` | translating english `X` to flavor `T` lexes identically to the committed `T/X` (comments excluded)         |
-| `every_keyword_token_is_in_the_target_flavor`                      | the reskin actually fires — English `module` is gone, Tamil `தொகுதி` present                               |
-| `pretty_print_preserves_verilog_across_flavor_and_order`           | every import-free example × flavor × order pretty-prints to byte-identical Verilog (meaning preserved)     |
-| `pretty_print_is_idempotent`                                       | the pretty-printer is a stable canonical form (re-printing its own output is a fixed point), all examples  |
-| `thamizh_order_emits_the_directive`                                | thamizh output starts with `syntax thamizh` / `இலக்கணம் தமிழ்`; code order emits none                      |
-| `cli_translate_order_thamizh_compiles`                             | `--order thamizh --to tamil` on the traffic light yields compilable, same-Verilog Tamil SOV source         |
+| Test                                                               | Locks in                                                                                                                                                  |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `round_trip_to_every_flavor_is_byte_identical`                     | translate-and-back reproduces the canonical source byte-for-byte (lossless; anchored past alias normalize)                                                |
+| `translating_english_matches_the_committed_flavor_token_for_token` | translating english `X` to flavor `T` lexes identically to the committed `T/X` (comments excluded)                                                        |
+| `every_keyword_token_is_in_the_target_flavor`                      | the reskin actually fires — English `module` is gone, Tamil `தொகுதி` present                                                                              |
+| `pretty_print_preserves_verilog_across_flavor_and_order`           | every import-free example × flavor × order pretty-prints to byte-identical Verilog (meaning preserved)                                                    |
+| `pretty_print_is_idempotent`                                       | the pretty-printer is a stable canonical form (re-printing its own output is a fixed point), all examples                                                 |
+| `thamizh_order_emits_the_directive`                                | thamizh output starts with `syntax thamizh` / `இலக்கணம் தமிழ்`; code order emits none                                                                     |
+| `cli_translate_order_thamizh_compiles`                             | `--order thamizh --to tamil` on the traffic light yields compilable, same-Verilog Tamil SOV source                                                        |
+| `romanize_names_converts_tamil_identifiers_to_latin`               | `--romanize-names` rewrites Tamil identifiers to Latin in the CODE (comments keep the original); no Tamil-script char survives outside comments           |
+| `romanized_translation_compiles_to_the_same_verilog`               | romanizing then compiling a pure-Tamil file is byte-identical to compiling the original — the romanization matches the emitter's, so meaning is preserved |
+| `pure_tamil_round_trips_losslessly`                                | the DEFAULT (no flag) still round-trips Tamil → English → Tamil byte-for-byte — the lossless contract holds for Tamil-named files too                     |
 
-## Unit: morph (`src/morph.rs`, 10 tests)
+## Unit: morph (`src/morph.rs`, 12 tests)
 
 Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 §5).
 
@@ -297,7 +315,7 @@ Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 §5)
 | `localized_is_none_for_uncovered_codes_and_for_english` | the catalog returns `None` for English and for codes outside the stub                |
 | `fill_inflects_the_stub_template`                       | the template's `{name.dat}` slot renders the inflected identifier                    |
 
-## Integration: morph (`tests/morph.rs`, 8 tests — run the real binary)
+## Integration: morph (`tests/morph.rs`, 11 tests — run the real binary)
 
 The end-to-end `--lang` path through `mimz check`. The catalog is a stub (one
 shape, E0501); these assert the MECHANISM and, crucially, the **English-fallback
