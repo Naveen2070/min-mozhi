@@ -55,8 +55,33 @@ lexer/grammar level (not the keyword table) when interfaces/bundles are specced.
 Order below is the build order from the triage; items late in the list may slip
 to the Phase 3 window.
 
-- [ ] **Tagged unions with payloads** (2.7) — FIRST: enums + match exist;
-      payload = tag bits + max-payload bits; gives `Result` (4.2) for free
+RTL-parity pull-forward (added from the HDL gap analysis,
+`docs/Ideas/language_plan.md` section 10, 2026-06-15) — synthesizable gaps vs
+VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
+
+- [ ] **Replication `{N{x}}`** (gap §10, add-now) — compile-time N; parser +
+      checker width + emitter `{N{x}}`. Smallest single win, no new keyword
+- [ ] **Don't-care `match` patterns** `0b1??` (gap §10, add-now) — the
+      casex/casez analogue; pattern parsing + exhaustiveness rule
+- [ ] **Falling-edge `on fall(clk)`** (gap §10, add-now) — `fall` already
+      reserved; negedge sequential block (parser + emitter + checker)
+- [ ] **Memories / arrays / RAM (`mem`)** (gap §10) — array type + indexed
+      clocked read/write + emitter array; highest "every HDL has it" value.
+      New spec section; `mem` reserved
+- [ ] **Combinational `function`** (gap §10 — NEW, not previously tracked) —
+      pure/stateless user functions inlined at emit; unblocks pipe `|>` (8.6)
+- [ ] **Async reset / reset polarity** (gap §10) — small spec+emitter widening
+      over today's sync active-high only
+- [ ] **Packages / namespacing** (gap §10 — NEW) — modest module-namespacing
+      step beyond bare `import`; consider
+- [ ] **Controlled loop `suzhal`/`சுழல்`** (gap §10) — bounded/FSM-lowered
+      iteration distinct from `repeat`; static/provable trip-count bound is the
+      load-bearing rule. Both spellings already reserved
+- [ ] **`foreach`** (gap §10 — NEW) — sugar over `repeat`/`suzhal` once
+      array/`mem` types exist
+- [ ] **Tagged unions with payloads** (2.7) — FIRST of the original Tier-3 line:
+      enums + match exist; payload = tag bits + max-payload bits; gives `Result`
+      (4.2) for free
 - [ ] **Interfaces/bundles + destructuring** (2.4) — flatten to nets in the
       emitter; unlocks the next three items
 - [ ] Structural interface matching (2.9) — small checker rule once bundles exist
@@ -116,6 +141,20 @@ section + Decision block still required before code, same as above.
       `FAULT_OUT` pin + safe-state mux on declared outputs + lockout until
       cold reset; plain synthesizable logic, no clock gating (clock-stop
       stays parked). Sim side lands earlier in Phase 1.5 (4.3, spec/01 G5)
+
+### Verification layer (deferred, revisitable — NOT a rejection)
+
+From the HDL gap analysis (`docs/Ideas/language_plan.md` section 10, 2026-06-15).
+SV-style DV — `class`/OOP, `rand`/constraints, functional coverage
+(covergroup/coverpoint/cross), concurrent (SVA) assertions, `fork/join`,
+dynamic/associative arrays, queues — is **not** in the synthesizable language but
+is **kept open as a future co-goal** (user intent 2026-06-15: include verification
+logic later if needed). It belongs to a fenced **verification layer** that rides
+the **simulator track** (Phase 1.5+) and the **`prove`** track, never synthesized
+— the same fence as today's `test` blocks. Pursuing the heavy DV pieces is a
+deliberate **spec/01 co-goal amendment** once the simulator is mature. Build the
+already-mapped substitutes first: `test`/`tick`/`expect` (have), `sim::*` asserts
+(Phase 1.5), `prove` → SymbiYosys (above), `requires`/`ensures` (above).
 
 ## Milestone
 
