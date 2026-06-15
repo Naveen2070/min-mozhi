@@ -95,6 +95,37 @@ fn every_reserved_word_is_marked_invalid() {
     }
 }
 
+/// spec/03's keyword table is the human-readable mirror of `keywords.toml`.
+/// Every spelling (all three columns + aliases) must appear in spec/03 as a
+/// backtick-delimited `word`, so the spec can never silently drift from the
+/// table after the v1 lock. Same philosophy as the grammar sync above.
+#[test]
+fn spec_03_keyword_table_matches_keywords_toml() {
+    let spec =
+        fs::read_to_string(root().join("spec/03-keywords-trilingual.md")).expect("spec/03 exists");
+    let t = table();
+    for (key, s) in t.keywords {
+        let spellings = [&s.en, &s.tanglish, &s.tamil]
+            .into_iter()
+            .chain(&s.en_aliases)
+            .chain(&s.tanglish_aliases)
+            .chain(&s.tamil_aliases);
+        for sp in spellings {
+            assert!(
+                spec.contains(&format!("`{sp}`")),
+                "keyword `{key}` spelling `{sp}` is missing from spec/03-keywords-trilingual.md — \
+                 update the keyword table there to match keywords.toml"
+            );
+        }
+    }
+    for word in t.reserved {
+        assert!(
+            spec.contains(&format!("`{word}`")),
+            "reserved word `{word}` is missing from spec/03's reserved-words section"
+        );
+    }
+}
+
 #[test]
 fn grammar_and_extension_manifest_agree() {
     let manifest = fs::read_to_string(root().join("editors/vscode/package.json")).unwrap();

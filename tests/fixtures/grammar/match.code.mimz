@@ -1,13 +1,13 @@
 // Code-order twin of match.thamizh.mimz (spec/04, Phase 1.8). Self-contained
 // (no `import`) so the same-Verilog oracle compares two fixtures directly. The
-// match head leads: `y = poruthu op { … }`.
+// match head leads: `y = thernthedu op { … }`.
 thoguthi Alu(WIDTH: int = 8) {
-  ulle  a:  bits[WIDTH]
-  ulle  b:  bits[WIDTH]
-  ulle  op: bits[2]
-  veli y:  bits[WIDTH]
+  ulleedu  a:  bits[WIDTH]
+  ulleedu  b:  bits[WIDTH]
+  ulleedu  op: bits[2]
+  veliyeedu y:  bits[WIDTH]
 
-  y = poruthu op {
+  y = thernthedu op {
     0b00 => a +% b
     0b01 => a -% b
     0b10 => a & b

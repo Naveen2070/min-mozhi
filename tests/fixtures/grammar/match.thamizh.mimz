@@ -1,17 +1,17 @@
 // Thamizh-order match flip (spec/04, Phase 1.8). Twin: match.code.mimz in this
 // directory (a self-contained pair — the tanglish ALU example imports `adder`,
 // which would not resolve from the fixtures directory). The scrutinee leads and
-// `poruthu` trails — `y = op poruthu { … }` — instead of the code-order
-// `y = poruthu op { … }`. Byte-identical Verilog to the code-order twin.
+// `thernthedu` trails — `y = op thernthedu { … }` — instead of the code-order
+// `y = thernthedu op { … }`. Byte-identical Verilog to the code-order twin.
 ilakkanam thamizh
 
 thoguthi Alu(WIDTH: int = 8) {
-  ulle  a:  bits[WIDTH]
-  ulle  b:  bits[WIDTH]
-  ulle  op: bits[2]
-  veli y:  bits[WIDTH]
+  ulleedu  a:  bits[WIDTH]
+  ulleedu  b:  bits[WIDTH]
+  ulleedu  op: bits[2]
+  veliyeedu y:  bits[WIDTH]
 
-  y = op poruthu {
+  y = op thernthedu {
     0b00 => a +% b
     0b01 => a -% b
     0b10 => a & b

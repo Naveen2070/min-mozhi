@@ -32,9 +32,9 @@ fn run_fmt(path: &std::path::Path, args: &[&str]) -> (bool, String, String) {
     )
 }
 
-/// `module` (english) + `veli` (tanglish `out`) — a deliberately mixed file with
-/// a comment and an identifier to prove they survive.
-const MIXED: &str = "module M {  // keep me\n  in a: bit\n  veli y: bit\n  y = a\n}\n";
+/// `module` (english) + `veliyeedu` (tanglish `out`) — a deliberately mixed file
+/// with a comment and an identifier to prove they survive.
+const MIXED: &str = "module M {  // keep me\n  in a: bit\n  veliyeedu y: bit\n  y = a\n}\n";
 
 #[test]
 fn normalizes_to_majority_and_is_idempotent() {
@@ -42,12 +42,12 @@ fn normalizes_to_majority_and_is_idempotent() {
     let (ok, _, _) = run_fmt(&path, &[]);
     assert!(ok, "plain fmt succeeds");
     let once = fs::read_to_string(&path).unwrap();
-    // Majority flavor is english (module + in vs the single tanglish `veli`).
+    // Majority flavor is english (module + in vs the single tanglish `veliyeedu`).
     assert!(
         once.contains("out y: bit"),
-        "veli normalized to out:\n{once}"
+        "veliyeedu normalized to out:\n{once}"
     );
-    assert!(!once.contains("veli"), "no tanglish keyword survives");
+    assert!(!once.contains("veliyeedu"), "no tanglish keyword survives");
     // Comment + identifiers preserved (lossless token reskin).
     assert!(once.contains("// keep me"), "comment preserved");
     // Idempotent: a second run changes nothing.

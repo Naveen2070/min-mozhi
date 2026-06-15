@@ -57,7 +57,7 @@ const WIDTH_MISMATCH: &str = "module M {\n  in a: bits[4]\n  out y: bits[8]\n  y
 #[test]
 fn majority_and_effective_lang_track_the_keywords() {
     let en = lex("module M {\n  in a: bit\n  out y: bit\n  y = a\n}\n").unwrap();
-    let ta = lex("தொகுதி M {\n  உள் a: bit\n  வெளி y: bit\n  y = a\n}\n").unwrap();
+    let ta = lex("தொகுதி M {\n  உள்ளீடு a: bit\n  வெளியீடு y: bit\n  y = a\n}\n").unwrap();
     assert_eq!(majority_flavor(&en), Flavor::English);
     assert_eq!(majority_flavor(&ta), Flavor::Tamil);
     // An explicit choice overrides the majority; absence falls back to it.
@@ -93,7 +93,7 @@ fn covered_code_renders_tamil_with_the_inflected_name() {
 #[test]
 fn covered_code_auto_selects_tamil_from_the_file() {
     // No `--lang`: a Tamil-keyword file must pick Tamil on its own.
-    let tamil_src = "தொகுதி M {\n  உள் a: bit\n  வெளி y: bit\n  y = a\n  y = a\n}\n";
+    let tamil_src = "தொகுதி M {\n  உள்ளீடு a: bit\n  வெளியீடு y: bit\n  y = a\n  y = a\n}\n";
     let err = check_stderr(tamil_src, None);
     assert!(
         err.contains("error[E0501]: y-க்கு"),

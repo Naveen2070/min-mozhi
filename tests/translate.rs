@@ -142,7 +142,7 @@ fn romanize_names_converts_tamil_identifiers_to_latin() {
         out.contains("thoguthi kannakki("),
         "module decl: Tanglish keyword + romanized name"
     );
-    assert!(out.contains("nilai mathippu:"), "reg name romanized");
+    assert!(out.contains("pathivedu mathippu:"), "reg name romanized");
     assert!(out.contains("kannakku = mathippu"), "body romanized");
     // No Tamil-script identifier survives in code (strip line comments first).
     for line in out.lines() {
@@ -438,7 +438,7 @@ fn thamizh_order_emits_the_directive() {
 fn cli_translate_order_thamizh_compiles() {
     let printed = pretty("traffic_light.mimz", Flavor::Tamil, Order::Thamizh);
     assert!(printed.contains("போது")); // `on` in Tamil
-    assert!(printed.contains("பொருத்து")); // `match` in Tamil
+    assert!(printed.contains("தேர்ந்தெடு")); // `match` in Tamil
     let got = compile_src(&printed);
     let original = compile_file(&root().join("examples/english/traffic_light.mimz"));
     assert_eq!(got, original, "Tamil thamizh traffic_light lost meaning");

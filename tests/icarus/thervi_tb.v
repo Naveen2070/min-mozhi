@@ -1,12 +1,12 @@
 // Self-checking TB: theervi — the pure-Tamil 4-way mux (examples/tamil-pure),
 // the same circuit as Mux4 with Tamil names. Every select routes the right
-// input. Ports: sel=theervu, a=a, b=aa, c=i, d=ii, y=villaivu.
+// input. Ports: sel=theer, a=a, b=aa, c=i, d=ii, y=villaivu.
 `timescale 1ns/1ps
 module thervi_tb;
   reg [1:0] sel;
   reg [7:0] a, b, c, d;
   wire [7:0] y;
-  theervi dut (.theervu(sel), .a(a), .aa(b), .i(c), .ii(d), .villaivu(y));
+  theervi dut (.theer(sel), .a(a), .aa(b), .i(c), .ii(d), .villaivu(y));
 
   task check(input [1:0] s, input [7:0] want);
     begin

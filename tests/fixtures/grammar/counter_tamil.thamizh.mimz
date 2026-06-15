@@ -1,20 +1,12 @@
-// Thamizh-order twin of examples/tamil/counter.mimz (spec/04, Phase 1.8) —
-// pure Tamil script, natural SOV word order. `இலக்கணம் தமிழ்` selects the
-// profile; the clocked block reads `ஏற்றம்(clk) போது { }`. Must compile to
-// byte-identical Verilog as the code-order Tamil counter.
 இலக்கணம் தமிழ்
 
 தொகுதி Counter(WIDTH: int = 8) {
-  கடிகாரம் clk
+  துடிப்பு clk
   மீட்டமை rst
-
-  வெளி count: bits[WIDTH]
-
-  நிலை value: bits[WIDTH] = 0
-
+  வெளியீடு count: bits[WIDTH]
+  பதிவேடு value: bits[WIDTH] = 0
   ஏற்றம்(clk) போது {
     value <- value +% 1
   }
-
   count = value
 }
