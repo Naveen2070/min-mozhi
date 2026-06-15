@@ -113,6 +113,24 @@ Run `mimz explain <CODE>` for the full classroom version of any of these.
 | `E1108` | value-driving `if` without an `else`                             |
 | `E1109` | bad chained comparison (mixed direction / `==`)                  |
 | `E1110` | built-in called with the wrong arity                             |
+| `W0001` | (warning) file mixes Tamil keywords with English/Tanglish        |
+
+## Command-line flags
+
+`mimz <command> [file] [flags]`. Per-project defaults can live in a `mimz.toml`
+(CLI flags override it); see [the toolchain](11-toolchain.md).
+
+| Command     | Flags                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| `check`     | `--tokens` (dump tokens) · `--json` (machine-readable) · `--lang <flavor>`                                          |
+| `compile`   | `-o <path>` · `--lang <flavor>`                                                                                     |
+| `eval`      | `--in a=1,b=2` · `--module <M>` · `--param W=8` · `--lang <flavor>`                                                 |
+| `translate` | `--to <flavor>` · `--order code\|thamizh` · `--romanize-names` · `--names-map <f>` · `--no-names-map` · `-o <path>` |
+| `fmt`       | `--to <flavor>` · `--strict` · `-o <path>`                                                                          |
+| `explain`   | _(takes an `E`-code, case-insensitive)_                                                                             |
+
+Global: `--config <path>` points at a specific `mimz.toml`. Flavors are
+`english` / `tanglish` / `tamil` (or `en` / `tl` / `ta`).
 
 ## The safety rules, in one breath
 

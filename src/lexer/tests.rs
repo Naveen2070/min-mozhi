@@ -10,7 +10,7 @@ fn kinds(src: &str) -> Vec<TokKind> {
 
 #[test]
 fn lexes_mixed_flavors() {
-    let toks = lex("module nilai வெளி").unwrap();
+    let toks = lex("module pathivedu வெளியீடு").unwrap();
     assert!(toks[0].is_kw(Kw::Module));
     assert!(toks[1].is_kw(Kw::Reg));
     assert!(toks[2].is_kw(Kw::Out));

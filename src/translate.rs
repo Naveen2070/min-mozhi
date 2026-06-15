@@ -15,9 +15,9 @@
 //! flavor of a base example must reproduce another flavor's file exactly, and
 //! A→B→A round-trips to identity (`tests/translate.rs`).
 //!
-//! Down-payment on Phase 1.8 translate and `mimz fmt`. NOTE: tanglish/tamil
-//! targets ride the DRAFT keyword columns until native-speaker review closes
-//! (keywords.toml header).
+//! Down-payment on Phase 1.8 translate and `mimz fmt`. The tanglish/tamil
+//! columns are the FINALIZED keyword set v1 (native-speaker review closed,
+//! Phase 0; `keywords.toml` header).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 

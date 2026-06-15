@@ -19,10 +19,11 @@ locks it). New audits append here; nothing is deleted.
 
 ## Audit log
 
-| Date       | Scope                                                                    | Result                                                         |
-| ---------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| 2026-06-14 | Full `src/` sweep: overflow, panics, recursion, resources, memory safety | 2 real defects fixed (1 CRITICAL, 1 HIGH) + 1 hang + hardening |
-| 2026-06-14 | Continuous fuzzing of the untrusted-input path                           | `cargo-fuzz` target `fuzz/` + CI smoke job landed              |
+| Date       | Scope                                                                    | Result                                                                                                                                          |
+| ---------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-14 | Full `src/` sweep: overflow, panics, recursion, resources, memory safety | 2 real defects fixed (1 CRITICAL, 1 HIGH) + 1 hang + hardening                                                                                  |
+| 2026-06-14 | Continuous fuzzing of the untrusted-input path                           | `cargo-fuzz` target `fuzz/` + CI smoke job landed                                                                                               |
+| 2026-06-15 | Since-2026-06-14 changes (config, romanization + name-map, morph)        | No overflow/unsafe/crash; F1 map-version check + F4 reskin boundary guard ([`bugs.md`](bugs.md) BUG-2); `translate_roundtrip` fuzz target added |
 
 ## Threat model
 

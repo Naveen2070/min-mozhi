@@ -55,8 +55,8 @@ impl Parser {
     }
 
     /// `thamizh`-order expression entry: parse the operand with `binary(0)`,
-    /// then one-token lookahead on the trailing clause head — `endral` makes
-    /// it an if-expression over that operand as the condition, `poruthu` a
+    /// then one-token lookahead on the trailing clause head — `enil` makes
+    /// it an if-expression over that operand as the condition, `thernthedu` a
     /// match over it as the scrutinee. No backtracking (spec/04). A nested
     /// `if`/`match` as the condition/scrutinee needs parens, exactly as the
     /// code-order match scrutinee already requires.
@@ -126,10 +126,10 @@ impl Parser {
         })
     }
 
-    /// `thamizh`-order if-expression: `<cond> "endral" "{" expr "}" "illaiyel"
-    /// ("{" expr "}" | <cond> "endral" …)`. The condition is already parsed
-    /// (the `head` from `expr_thamizh`); everything from `endral` onward mirrors
-    /// `if_expr` and builds the SAME `ExprKind::IfExpr`. `else` (`illaiyel`) is
+    /// `thamizh`-order if-expression: `<cond> "enil" "{" expr "}" "illaiyenil"
+    /// ("{" expr "}" | <cond> "enil" …)`. The condition is already parsed
+    /// (the `head` from `expr_thamizh`); everything from `enil` onward mirrors
+    /// `if_expr` and builds the SAME `ExprKind::IfExpr`. `else` (`illaiyenil`) is
     /// still mandatory — an if-expression drives a value (spec/02 section 1.3).
     fn if_expr_thamizh(&mut self, cond: Expr) -> Option<Expr> {
         self.enter()?;
@@ -140,7 +140,7 @@ impl Parser {
 
     fn if_expr_thamizh_inner(&mut self, cond: Expr) -> Option<Expr> {
         let start = cond.span;
-        self.bump(); // endral (Kw::If)
+        self.bump(); // enil (Kw::If)
         self.expect(TokKind::LBrace, "`{` then the value when true")?;
         self.skip_newlines();
         let then = self.expr()?;
@@ -158,8 +158,8 @@ impl Parser {
             );
             return None;
         }
-        self.bump(); // illaiyel (else)
-        // A chained alternative in thamizh order is `illaiyel <cond> endral …`,
+        self.bump(); // illaiyenil (else)
+        // A chained alternative in thamizh order is `illaiyenil <cond> enil …`,
         // so anything other than a `{` starts another condition.
         let els = if !self.at(&TokKind::LBrace) {
             let head = self.binary(0)?;
@@ -195,13 +195,13 @@ impl Parser {
         self.finish_match(scrutinee, start)
     }
 
-    /// `thamizh`-order match: `<expr> "poruthu" "{" { arm } "}"`. The scrutinee
-    /// is already parsed (the `head` from `expr_thamizh`); from the `poruthu`
+    /// `thamizh`-order match: `<expr> "thernthedu" "{" { arm } "}"`. The scrutinee
+    /// is already parsed (the `head` from `expr_thamizh`); from the `thernthedu`
     /// keyword onward it is identical to code order, building the SAME
     /// `ExprKind::Match`.
     fn match_expr_thamizh(&mut self, scrutinee: Expr) -> Option<Expr> {
         let start = scrutinee.span;
-        self.bump(); // poruthu (Kw::Match)
+        self.bump(); // thernthedu (Kw::Match)
         self.finish_match(scrutinee, start)
     }
 
@@ -551,7 +551,7 @@ impl Parser {
             }
             // In code order the clause head LEADS, so `if`/`match` start a
             // primary. In thamizh order it TRAILS the operand (handled in
-            // `expr_thamizh`), so a leading `endral`/`poruthu` here is the
+            // `expr_thamizh`), so a leading `enil`/`thernthedu` here is the
             // wrong order — reject it cleanly rather than silently parsing it
             // as code order inside a thamizh file.
             TokKind::Kw(Kw::If) if self.profile == Profile::Thamizh => {
@@ -559,7 +559,7 @@ impl Parser {
                 self.error(
                     span,
                     "E1101",
-                    "in thamizh order the condition comes first: `<cond> endral { … }` — parenthesize if you need it as a value",
+                    "in thamizh order the condition comes first: `<cond> enil { … }` — parenthesize if you need it as a value",
                 );
                 None
             }
@@ -568,7 +568,7 @@ impl Parser {
                 self.error(
                     span,
                     "E1101",
-                    "in thamizh order the scrutinee comes first: `<expr> poruthu { … }` — parenthesize if you need it as a value",
+                    "in thamizh order the scrutinee comes first: `<expr> thernthedu { … }` — parenthesize if you need it as a value",
                 );
                 None
             }

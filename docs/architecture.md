@@ -45,7 +45,8 @@
 
  side tools (share lexer/parser/AST + pretty-printer):
    mimz translate  — flavor reskin ✅ 2026-06-13 (--to; lossless, token-level);
-                     word-order (--order thamizh) in Phase 1.8
+                     word-order (--order thamizh) ✅ Phase 1.8;
+                     --romanize-names + reversible name-map sidecar ✅ 2026-06-15
    mimz explain    — long-form text per E-code ✅ 2026-06-13 (lib `explain`)
    mimz eval       — combinational evaluator ✅ 2026-06-13 (lib `sim::comb`;
                      a slice of the Phase 1.5 simulator — no clocks/regs yet)

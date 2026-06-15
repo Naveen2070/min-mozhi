@@ -314,7 +314,7 @@ mod tests {
         );
         // All-Tamil keywords (தொகுதி = module, etc.).
         assert_eq!(
-            lang_of("தொகுதி M {\n  உள் a: bit\n  வெளி y: bit\n  y = a\n}\n"),
+            lang_of("தொகுதி M {\n  உள்ளீடு a: bit\n  வெளியீடு y: bit\n  y = a\n}\n"),
             Flavor::Tamil
         );
     }
@@ -346,12 +346,12 @@ mod tests {
         let warns = |src: &str| flavor_mix_warning(&lex(src).expect("lexes")).is_some();
         // Tamil keyword + a non-Tamil keyword → warn (the SOV/SVO clash).
         assert!(warns("தொகுதி in\n")); // module(tamil) + in(english)
-        assert!(warns("தொகுதி veli\n")); // module(tamil) + out(tanglish)
-        assert!(warns("module veli தொகுதி\n")); // all three
+        assert!(warns("தொகுதி veliyeedu\n")); // module(tamil) + out(tanglish)
+        assert!(warns("module veliyeedu தொகுதி\n")); // all three
         // English + Tanglish share code order — mixing them stays clean.
-        assert!(!warns("module veli\n"));
+        assert!(!warns("module veliyeedu\n"));
         // Single flavor → clean.
-        assert!(!warns("தொகுதி வெளி\n")); // both Tamil
+        assert!(!warns("தொகுதி வெளியீடு\n")); // both Tamil
         assert!(!warns("module in\n")); // both English
         assert!(!warns("")); // no keywords
     }
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn effective_lang_override_beats_majority() {
-        let toks = lex("தொகுதி M {\n  உள் a: bit\n  வெளி y: bit\n  y = a\n}\n").unwrap();
+        let toks = lex("தொகுதி M {\n  உள்ளீடு a: bit\n  வெளியீடு y: bit\n  y = a\n}\n").unwrap();
         // Majority is Tamil, but an explicit choice wins.
         assert_eq!(
             effective_lang(Some(Flavor::English), &toks),

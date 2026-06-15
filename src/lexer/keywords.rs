@@ -200,8 +200,8 @@ mod tests {
     #[test]
     fn flavors_are_recorded() {
         assert_eq!(TABLE.lookup("reg").unwrap().1, Flavor::English);
-        assert_eq!(TABLE.lookup("nilai").unwrap().1, Flavor::Tanglish);
-        assert_eq!(TABLE.lookup("நிலை").unwrap().1, Flavor::Tamil);
+        assert_eq!(TABLE.lookup("pathivedu").unwrap().1, Flavor::Tanglish);
+        assert_eq!(TABLE.lookup("பதிவேடு").unwrap().1, Flavor::Tamil);
     }
 
     #[test]

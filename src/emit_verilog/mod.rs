@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn tamil_identifiers_emit_as_romanized_verilog() {
-        // Identifiers only — நிலை etc. are KEYWORD spellings
+        // Identifiers only — பதிவேடு etc. are KEYWORD spellings
         // (keywords.toml) and can never be identifiers.
         let v = emit_src_translit(
             "module விளக்கு {\n  clock மணி\n  reset மீள்\n  out ஒளி: bit\n  reg சுடர்: bit = 0\n  on rise(மணி) {\n    சுடர் <- !சுடர்\n  }\n  ஒளி = சுடர்\n}\n",

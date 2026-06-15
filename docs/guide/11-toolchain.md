@@ -63,6 +63,39 @@ Two important differences:
 - `--order` re-emits from the AST, so it **reformats and drops comments** (the
   result still compiles to byte-identical Verilog and re-parses identically).
 
+### Romanizing Tamil names: `--romanize-names`
+
+By default `translate` swaps only keywords and keeps identifiers verbatim — a
+fully-Tamil program (see `examples/tamil-pure/`) keeps its Tamil _names_ even
+when you switch keyword flavor. Add `--romanize-names` to also rewrite Tamil
+identifiers to readable Latin (`கணக்கி` → `kannakki`), using the same scheme the
+Verilog backend uses:
+
+```text
+mimz translate tamil-pure/kanakki.mimz --to tanglish --romanize-names -o k.mimz
+```
+
+Romanization is **one-way** on its own (the rule can't be inverted). To make it
+reversible, pass `-o`: a sidecar **`<out>.names.json`** (here `k.mimz.names.json`)
+is written next to the output, recording `romanized → original Tamil`. A reverse
+run restores the exact Tamil names — and the sidecar is **found automatically**,
+so no flag is needed:
+
+```text
+mimz translate k.mimz --to tamil          # auto-loads k.mimz.names.json
+mimz translate k.mimz --to tamil --names-map other.json   # or point at one
+mimz translate k.mimz --to tamil --no-names-map           # keep the Latin names
+```
+
+The map carries a version; a map this `mimz` doesn't understand is rejected with
+a clear error rather than mis-restoring.
+
+One edge to know: Tamil script can be the _only_ separator between a number and a
+following name (e.g. `42கணக்கி`, written with no space). Romanizing to Latin would
+glue them into an unlexable `42kannakki`, so the reskin inserts a single
+separating space there. Such input round-trips **token-equivalent** (it gains
+that space), not byte-for-byte — normal whitespace-separated code is unaffected.
+
 ## `mimz fmt` — normalize to one flavor
 
 The `gofmt` of Min-Mozhi: rewrite a file in place so every keyword is one flavor.
@@ -77,6 +110,39 @@ mimz fmt messy.mimz -o clean.mimz    # write elsewhere, leave the input alone
 
 `fmt` only normalizes _flavor_; word-order reformatting stays with
 `translate --order` (because that one is not lossless).
+
+## Project defaults: `mimz.toml`
+
+Tired of retyping the same flags? Drop a `mimz.toml` at your project root and
+`mimz` reads its defaults — discovered by walking **up** from the input file (like
+`Cargo.toml`/`rustfmt.toml`), or pointed at explicitly with a global
+`--config <path>`. Precedence is **command-line flag › `mimz.toml` › built-in
+default**, so a one-off flag always wins.
+
+```toml
+lang = "tamil"          # default diagnostics flavor for check/compile/eval
+
+[translate]
+to = "tanglish"         # default --to
+order = "code"          # default --order
+romanize_names = false  # default --romanize-names
+names_map = "auto"      # "auto" = auto-load the sidecar; "off" = don't
+
+[fmt]
+to = "tamil"            # default fmt --to
+strict = true           # default fmt --strict
+```
+
+Every key is optional; an unknown key is reported as an error (a typo never
+silently does nothing).
+
+## A non-fatal lint: `W0001`
+
+Mixing **Tamil** keywords with English/Tanglish ones in one file triggers a
+non-fatal warning (`W0001`) on `check`/`compile`/`eval` and in the editor — Tamil
+reads in a different word order, so one language per file reads best. It never
+fails the build; `mimz fmt` normalizes the mix away. (English + Tanglish share
+code order, so mixing those two stays clean.)
 
 ## Diagnostics in your language: `--lang`
 

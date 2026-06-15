@@ -37,7 +37,7 @@ fn parses_counter() {
 #[test]
 fn parses_tanglish_counter_to_same_shape() {
     let f = parse_ok(
-        "thoguthi Counter(WIDTH: int = 8) {\n  kadigaram clk\n  meetamai rst\n  veli count: bits[WIDTH]\n  nilai value: bits[WIDTH] = 0\n  pothu yetram(clk) {\n    value <- value +% 1\n  }\n  count = value\n}\n",
+        "thoguthi Counter(WIDTH: int = 8) {\n  thudippu clk\n  meettamai rst\n  veliyeedu count: bits[WIDTH]\n  pathivedu value: bits[WIDTH] = 0\n  pothu yetram(clk) {\n    value <- value +% 1\n  }\n  count = value\n}\n",
     );
     let TopItem::Module(m) = &f.items[0] else {
         panic!()
@@ -54,7 +54,7 @@ fn thamizh_order_on_block_parses_to_the_same_shape() {
     // must build the SAME module as the code-order counter: 6 items, an
     // `on` block clocked by `clk`. The directive leaves no trace in the AST.
     let f = parse_ok(
-        "ilakkanam thamizh\nthoguthi Counter(WIDTH: int = 8) {\n  kadigaram clk\n  meetamai rst\n  veli count: bits[WIDTH]\n  nilai value: bits[WIDTH] = 0\n  yetram(clk) pothu {\n    value <- value +% 1\n  }\n  count = value\n}\n",
+        "ilakkanam thamizh\nthoguthi Counter(WIDTH: int = 8) {\n  thudippu clk\n  meettamai rst\n  veliyeedu count: bits[WIDTH]\n  pathivedu value: bits[WIDTH] = 0\n  yetram(clk) pothu {\n    value <- value +% 1\n  }\n  count = value\n}\n",
     );
     let TopItem::Module(m) = &f.items[0] else {
         panic!()

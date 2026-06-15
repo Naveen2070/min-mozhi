@@ -540,10 +540,10 @@ impl Parser {
         Some(SeqStmt::If { cond, then, els })
     }
 
-    /// `thamizh`-order seq statement: either `<cond> endral seqBlock …` or the
+    /// `thamizh`-order seq statement: either `<cond> enil seqBlock …` or the
     /// unchanged register update `lvalue <- expr`. Both can begin with an
     /// identifier, so we parse the head as an expression and let the trailing
-    /// token decide (no backtracking, spec/04): `endral` → conditional, `<-` →
+    /// token decide (no backtracking, spec/04): `enil` → conditional, `<-` →
     /// assignment (the head is reinterpreted as the lvalue), `=` → the teaching
     /// error.
     fn seq_stmt_thamizh(&mut self) -> Option<SeqStmt> {
@@ -566,11 +566,11 @@ impl Parser {
         Some(SeqStmt::Assign { lhs, rhs })
     }
 
-    /// `thamizh`-order seq `if`: `<cond> "endral" seqBlock [ "illaiyel"
-    /// (<cond> "endral" … | seqBlock) ]`. The condition is already parsed; from
-    /// `endral` onward it mirrors `seq_if` and builds the SAME `SeqStmt::If`.
-    /// `else` (`illaiyel`) is optional (a register holds its value — no latch).
-    /// Depth-guarded like `seq_if`: the `illaiyel <cond> endral …` chain recurses
+    /// `thamizh`-order seq `if`: `<cond> "enil" seqBlock [ "illaiyenil"
+    /// (<cond> "enil" … | seqBlock) ]`. The condition is already parsed; from
+    /// `enil` onward it mirrors `seq_if` and builds the SAME `SeqStmt::If`.
+    /// `else` (`illaiyenil`) is optional (a register holds its value — no latch).
+    /// Depth-guarded like `seq_if`: the `illaiyenil <cond> enil …` chain recurses
     /// here, so the guard must wrap the whole call (incl. the recursion) for a
     /// deep chain to fail with E1113 instead of overflowing the stack.
     fn seq_if_thamizh(&mut self, cond: Expr) -> Option<SeqStmt> {
@@ -581,13 +581,13 @@ impl Parser {
     }
 
     fn seq_if_thamizh_inner(&mut self, cond: Expr) -> Option<SeqStmt> {
-        self.bump(); // endral (Kw::If)
+        self.bump(); // enil (Kw::If)
         let (then, _) = self.seq_block()?;
         let save = self.pos;
         self.skip_newlines();
         let els = if self.at_kw(Kw::Else) {
-            self.bump(); // illaiyel
-            // A chained `illaiyel <cond> endral …` starts with a condition;
+            self.bump(); // illaiyenil
+            // A chained `illaiyenil <cond> enil …` starts with a condition;
             // a plain alternative starts with `{`.
             if !self.at(&TokKind::LBrace) {
                 let head = self.binary(0)?;

@@ -82,7 +82,10 @@ and refresh the stamp below.
 _Last synced with the code: 2026-06-15 (adds: the `config` module — `mimz.toml`
 project defaults for CLI flags, discovered by walking up from the input file,
 with precedence CLI › config › default (page 13); and reversible romanization +
-auto name-map discovery on `mimz translate`. Prior 2026-06-14 (adds: the `morph` module — error-language
+auto name-map discovery on `mimz translate`. A same-day fuzz/security audit then
+added the `reskin` script-boundary guard + a `--names-map` version check
+(`docs/audit/bugs.md` BUG-2) and a fourth `translate_roundtrip` cargo-fuzz target.
+Prior 2026-06-14 (adds: the `morph` module — error-language
 selection (file-flavor majority + `--lang`) and the Tamil case-suffix inflection
 mechanism behind localized diagnostics (Phase 1.8, spec/04 §5), an additive
 English-fallback layer documented in page 13; the catalog content + final sandhi
