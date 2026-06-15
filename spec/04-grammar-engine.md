@@ -1,14 +1,17 @@
 # Min-Mozhi — Grammar Engine (இலக்கண இயந்திரம்)
 
-> **Spec v0.2.3 DRAFT — Phase 1.8 in progress.**
+> **Spec v0.2.4 DRAFT — Phase 1.8 in progress.**
+> (v0.2.4, 2026-06-15: section 3 examples synced to the finalized v1 keyword set —
+> `enil`/`thernthedu`/`illaiyenil` and the `thudippu`/`veliyeedu`/`pathivedu`
+> declaration words. `keywords.toml` is the source of truth.)
 > Goal: let Tamil and Tanglish code read with **natural Tamil word order**
 > (SOV, postpositional), not just Tamil words in English order.
 >
 > **Implemented so far (2026-06-14):** the `syntax thamizh` directive, four
 > of the five clause flips in section 3 — the **clocked block**
-> (`rise(clk) on { }`), the **conditional** (`<cond> endral { }`), the
-> **if-expression** (`c endral { a } illaiyel { b }`), and **match**
-> (`<expr> poruthu { }`) — and **`mimz translate --order code|thamizh`**, which
+> (`rise(clk) on { }`), the **conditional** (`<cond> enil { }`), the
+> **if-expression** (`c enil { a } illaiyenil { b }`), and **match**
+> (`<expr> thernthedu { }`) — and **`mimz translate --order code|thamizh`**, which
 > converts a file between the two orders via an AST pretty-printer (`src/pretty.rs`).
 > All flips parse to the same AST as code-order and emit byte-identical Verilog
 > (`tests/grammar.rs`, `tests/fixtures/grammar/`). The **error-language
@@ -29,13 +32,13 @@ but keeps English-derived _word order_:
 
 ```mimz
 pothu yetram(clk) { ... }      // "when rise(clk)" — words Tamil, order English
-endral timer == 0 { ... }      // "if timer == 0" — same issue
+enil timer == 0 { ... }        // "if timer == 0" — same issue
 ```
 
 Real Tamil is **SOV and postpositional** — the condition comes first, the
 conditional word comes after:
 
-> \*timer == 0 **என்றால்\*** — "timer == 0, if-so"
+> \*timer == 0 **எனில்\*** — "timer == 0, if-so"
 > \*clk **ஏறும்போது\*** — "when clk rises"
 
 The Grammar Engine adds a second **syntax profile** to the parser so Tamil and
@@ -111,14 +114,14 @@ Only **clause-level** constructs flip — the places where English order fights
 Tamil grammar. Declarations, expressions, operators, and types stay identical
 (they are not sentences; flipping them buys nothing and costs familiarity).
 
-| Construct     | code-order                      | thamizh-order                                        | Reading                |
-| ------------- | ------------------------------- | ---------------------------------------------------- | ---------------------- |
-| conditional   | `endral <cond> { }`             | `<cond> endral { }`                                  | _timer == 0 என்றால் …_ |
-| alternative   | `illaiyel { }`                  | `illaiyel { }` (unchanged — already leads naturally) | _இல்லையேல் …_          |
-| clocked block | `pothu yetram(clk) { }`         | `yetram(clk) pothu { }`                              | _clk ஏற்றம் போது …_    |
-| match         | `poruthu <expr> { }`            | `<expr> poruthu { }`                                 | _state-ஐப் பொருத்து …_ |
-| if-expression | `endral c { a } illaiyel { b }` | `c endral { a } illaiyel { b }`                      |                        |
-| test          | `sodhanai "…" kaaga M() { }`    | `M() kaaga "…" sodhanai { }`                         | _M-க்காக "…" சோதனை_    |
+| Construct     | code-order                      | thamizh-order                                          | Reading                  |
+| ------------- | ------------------------------- | ------------------------------------------------------ | ------------------------ |
+| conditional   | `enil <cond> { }`               | `<cond> enil { }`                                      | _timer == 0 எனில் …_     |
+| alternative   | `illaiyenil { }`                | `illaiyenil { }` (unchanged — already leads naturally) | _இல்லையெனில் …_          |
+| clocked block | `pothu yetram(clk) { }`         | `yetram(clk) pothu { }`                                | _clk ஏற்றம் போது …_      |
+| match         | `thernthedu <expr> { }`         | `<expr> thernthedu { }`                                | _state-ஐத் தேர்ந்தெடு …_ |
+| if-expression | `enil c { a } illaiyenil { b }` | `c enil { a } illaiyenil { b }`                        |                          |
+| test          | `sodhanai "…" kaaga M() { }`    | `M() kaaga "…" sodhanai { }`                           | _M-க்காக "…" சோதனை_      |
 
 Unchanged in both profiles: `module/thoguthi`, port/wire/reg declarations,
 `let` instantiation, `enum`, assignments (`=`, `<-`), all operators, all types.
@@ -129,11 +132,11 @@ Unchanged in both profiles: `module/thoguthi`, port/wire/reg declarations,
 syntax thamizh
 
 thoguthi Counter(WIDTH: int = 8) {
-  kadigaram clk
-  meetamai rst
-  veli count: bits[WIDTH]
+  thudippu clk
+  meettamai rst
+  veliyeedu count: bits[WIDTH]
 
-  nilai value: bits[WIDTH] = 0
+  pathivedu value: bits[WIDTH] = 0
 
   yetram(clk) pothu {
     value <- value +% 1
@@ -149,22 +152,22 @@ thoguthi Counter(WIDTH: int = 8) {
 syntax thamizh
 
 தொகுதி TrafficLight {
-  கடிகாரம் clk
+  துடிப்பு clk
   மீட்டமை rst
-  வெளி red: bit
+  வெளியீடு red: bit
 
   வகை State { Red, Green, Yellow }
-  நிலை state: State = State.Red
-  நிலை timer: bits[8] = 0
+  பதிவேடு state: State = State.Red
+  பதிவேடு timer: bits[8] = 0
 
   ஏற்றம்(clk) போது {
-    timer == 0 என்றால் {
-      state <- state பொருத்து {
+    timer == 0 எனில் {
+      state <- state தேர்ந்தெடு {
         State.Red    => State.Green
         State.Green  => State.Yellow
         State.Yellow => State.Red
       }
-    } இல்லையேல் {
+    } இல்லையெனில் {
       timer <- timer -% 1
     }
   }
@@ -173,7 +176,7 @@ syntax thamizh
 }
 ```
 
-Read that `on`-block aloud: _"ஏற்றம் clk போது — timer பூஜ்ஜியம் என்றால் …"_ —
+Read that `on`-block aloud: _"ஏற்றம் clk போது — timer பூஜ்ஜியம் எனில் …"_ —
 it parses as a Tamil sentence. That is the whole point of the engine.
 
 ## 4. Parsing Feasibility (why this is cheap, not research)
@@ -181,7 +184,7 @@ it parses as a Tamil sentence. That is the whole point of the engine.
 Postfix conditionals look scary but are routine for a recursive-descent parser:
 
 - In statement position, parse an **expression first**, then look at the next
-  token: `endral` → it was a condition; `poruthu` → it is a match scrutinee;
+  token: `enil` → it was a condition; `thernthedu` → it is a match scrutinee;
   `<-` → it was a register assignment target; otherwise → error.
 - One token of lookahead after an expression resolves every flipped
   production. No backtracking, no GLR, no ambiguity — because we flipped only
@@ -239,12 +242,13 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 - ✅ Morphology-correct error interpolation
 - ❌ Free word order / full Tamil grammar parsing — Min-Mozhi stays a formal
   language with two fixed orders, not a natural-language parser
-- ❌ Flipped declarations (`count: bits[8] veli`) — declarations are not
+- ❌ Flipped declarations (`count: bits[8] veliyeedu`) — declarations are not
   sentences; revisit only if users ask
 - ❌ Verb conjugation in keywords (ஏறும்போது as one inflected word) — keywords
   stay as fixed dictionary forms so the lexer stays a table lookup
 
 ---
 
-_Status: design draft. Build after Phase 1 parser exists; validate the section 3
-table with the same native-speaker review panel as the keyword table._
+_Status: design draft. The section 3 word-order table has been validated by the
+same native-speaker review that finalized the v1 keyword table (Phase 0 closed);
+the keyword spellings here track `keywords.toml`._
