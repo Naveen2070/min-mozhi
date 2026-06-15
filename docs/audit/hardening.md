@@ -79,7 +79,11 @@ verification against the code**. Recording them so they are not re-investigated:
   `lex_parse_compile` target caught a subtract-overflow panic in the checker's
   zero-width output coverage check — fixed and regression-tested (SEC-4 in
   [`security.md`](security.md)). The reproducer is in the gitignored
-  `fuzz/corpus/`; the durable guard is the checker unit test.
+  `fuzz/corpus/`; the durable guard is the checker unit test. **Third target
+  (2026-06-15):** `pretty_roundtrip` fuzzes the `translate --order` AST
+  pretty-printer — printed source must re-parse, and an emittable program must
+  round-trip to byte-identical Verilog; wired into both the per-PR and weekly
+  CI fuzz jobs.
 - **CI** also enforces `clippy -D warnings` + full tests; `#![forbid(unsafe_code)]`
   makes memory-unsafe code a hard error.
 

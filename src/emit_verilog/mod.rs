@@ -360,6 +360,20 @@ mod tests {
     }
 
     #[test]
+    fn a_builtin_lowers_parenthesized_inside_a_larger_expression() {
+        // `min(b, c)` must lower to a self-contained, fully-parenthesized ternary
+        // so it composes correctly under a surrounding operator (here `&`) — no
+        // precedence leak from the host expression into the built-in or back.
+        let v = emit_src(
+            "module M {\n  in a: bits[8]\n  in b: bits[8]\n  in c: bits[8]\n  out y: bits[8]\n  y = a & min(b, c)\n}\n",
+        );
+        assert!(
+            v.contains("((b < c) ? (b) : (c))"),
+            "min lowered + parenthesized:\n{v}"
+        );
+    }
+
+    #[test]
     fn repeat_unrolls_drives_with_folded_indices() {
         let v = emit_src(
             "module M {\n  in x: bits[4]\n  out y: bits[4]\n  repeat i: 0..4 {\n    y[i] = x[i]\n  }\n}\n",

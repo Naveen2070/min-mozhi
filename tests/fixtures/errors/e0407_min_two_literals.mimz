@@ -1,0 +1,5 @@
+// expect: E0407
+module M {
+  out y: bits[8]
+  y = min(5, 10)
+}

@@ -316,7 +316,19 @@ fn fmt_file(path: &Path, to: Option<&str>, strict: bool, output: Option<PathBuf>
         Err(diags) => return Output::Human(Flavor::English).one_file(&diags, &src, &path_str),
     };
     let out_path = output.unwrap_or_else(|| path.to_path_buf());
-    if let Err(e) = std::fs::write(&out_path, &text) {
+    // Write atomically: a sibling temp file then rename over the target, so an
+    // interrupted or failing write can never truncate the file being formatted
+    // (the common case is `fmt` overwriting its own input in place). The temp
+    // name carries the PID so concurrent `fmt` runs don't collide.
+    let mut tmp = out_path.clone().into_os_string();
+    tmp.push(format!(".{}.tmp", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    if let Err(e) = std::fs::write(&tmp, &text) {
+        eprintln!("error: cannot write `{}`: {e}", tmp.display());
+        return ExitCode::FAILURE;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &out_path) {
+        let _ = std::fs::remove_file(&tmp);
         eprintln!("error: cannot write `{}`: {e}", out_path.display());
         return ExitCode::FAILURE;
     }

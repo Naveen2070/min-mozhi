@@ -152,7 +152,7 @@ jobs:
         # Give libFuzzer a known-good starting corpus (flattened names so the
         # same base file across flavor folders doesn't collide).
         run: |
-          for t in lex_parse_eval lex_parse_compile; do
+          for t in lex_parse_eval lex_parse_compile pretty_roundtrip; do
             mkdir -p "fuzz/corpus/$t"
             for f in $(find examples -name '*.mimz'); do cp "$f" "fuzz/corpus/$t/${f//\//_}"; done
           done
@@ -165,6 +165,7 @@ jobs:
         run: |
           cargo fuzz run lex_parse_eval -- -max_total_time=60 -rss_limit_mb=2048
           cargo fuzz run lex_parse_compile -- -max_total_time=60 -rss_limit_mb=2048
+          cargo fuzz run pretty_roundtrip -- -max_total_time=60 -rss_limit_mb=2048
 
   fuzz-nightly:
     name: fuzz (weekly extended)
@@ -187,7 +188,7 @@ jobs:
 
       - name: Seed corpus from examples
         run: |
-          for t in lex_parse_eval lex_parse_compile; do
+          for t in lex_parse_eval lex_parse_compile pretty_roundtrip; do
             mkdir -p "fuzz/corpus/$t"
             for f in $(find examples -name '*.mimz'); do cp "$f" "fuzz/corpus/$t/${f//\//_}"; done
           done
@@ -196,6 +197,7 @@ jobs:
         run: |
           cargo fuzz run lex_parse_eval -- -max_total_time=600 -rss_limit_mb=2048
           cargo fuzz run lex_parse_compile -- -max_total_time=600 -rss_limit_mb=2048
+          cargo fuzz run pretty_roundtrip -- -max_total_time=600 -rss_limit_mb=2048
 
   docs:
     name: markdown lint + format

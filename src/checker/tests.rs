@@ -261,6 +261,47 @@ fn abs_of_a_literal_is_e0407() {
 }
 
 #[test]
+fn min_of_two_literals_is_e0407() {
+    // Neither operand carries a width, so the result type is undefined.
+    first_err(
+        "module M {\n  out y: bits[8]\n  y = min(5, 10)\n}\n",
+        "E0407",
+    );
+}
+
+#[test]
+fn nand_of_a_bare_bit_is_a_bit() {
+    // A `bit` (not `bits[N]`) is a valid reduction operand — collapses to a bit.
+    check_one("module M {\n  in a: bit\n  out y: bit\n  y = nand(a)\n}\n")
+        .expect("nand of a bare bit is a bit");
+}
+
+#[test]
+fn nested_abs_of_min_type_checks() {
+    // min(signed[4], signed[4]) = signed[4]; abs(signed[4]) = signed[5].
+    check_one(
+        "module M {\n  in a: signed[4]\n  in b: signed[4]\n  out y: signed[5]\n  y = abs(min(a, b))\n}\n",
+    )
+    .expect("abs(min(a, b)) composes the type rules");
+}
+
+#[test]
+fn min_of_two_abs_type_checks() {
+    // abs(signed[4]) = signed[5] on both sides; min of equal widths = signed[5].
+    check_one(
+        "module M {\n  in x: signed[4]\n  in y: signed[4]\n  out z: signed[5]\n  z = min(abs(x), abs(y))\n}\n",
+    )
+    .expect("min(abs(x), abs(y)) composes the type rules");
+}
+
+#[test]
+fn abs_grows_at_the_width_boundary() {
+    // The largest abs that still fits: signed[127] → signed[128] (MAX_WIDTH).
+    check_one("module M {\n  in a: signed[127]\n  out y: signed[128]\n  y = abs(a)\n}\n")
+        .expect("abs(signed[127]) is signed[128]");
+}
+
+#[test]
 fn bitwise_operand_mismatch_is_e0402() {
     let src = "module M {\n  in a: bits[4]\n  in b: bits[8]\n  out y: bits[8]\n  y = a & b\n}\n";
     let d = first_err(src, "E0402");

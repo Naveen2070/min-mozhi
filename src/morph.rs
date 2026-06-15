@@ -180,6 +180,12 @@ impl Case {
 /// before the suffix; a Tamil-script stem joins directly. Tanglish (already
 /// romanized) always hyphenates. English returns the bare name.
 pub fn inflect(name: &str, case: Case, flavor: Flavor) -> String {
+    // A missing/empty stem (e.g. a diagnostic whose span did not resolve to
+    // source text) has nothing to inflect — return it bare rather than emitting
+    // a suffix-only fragment like `ஐ`.
+    if name.is_empty() {
+        return String::new();
+    }
     let suffix = case.suffix(flavor);
     if suffix.is_empty() {
         return name.to_string();
@@ -287,6 +293,23 @@ mod tests {
     #[test]
     fn majority_falls_back_to_english_with_no_keywords() {
         assert_eq!(majority_flavor(&[]), Flavor::English);
+    }
+
+    #[test]
+    fn majority_breaks_ties_toward_the_earliest_keyword_column() {
+        // Equal keyword counts → the earliest column wins (en < tl < ta). Each
+        // word below is the `module` keyword in a different flavor (keywords.toml),
+        // so the counts are exact with no type tokens to confound them.
+        assert_eq!(lang_of("module thoguthi\n"), Flavor::English); // en == tl > ta
+        assert_eq!(lang_of("thoguthi தொகுதி\n"), Flavor::Tanglish); // tl == ta > en
+        assert_eq!(lang_of("module thoguthi தொகுதி\n"), Flavor::English); // three-way
+    }
+
+    #[test]
+    fn inflect_of_an_empty_stem_is_empty_not_a_bare_suffix() {
+        // A diagnostic whose span did not resolve must not render as `ஐ …`.
+        assert_eq!(inflect("", Case::Accusative, Flavor::Tamil), "");
+        assert_eq!(inflect("", Case::Dative, Flavor::Tanglish), "");
     }
 
     #[test]

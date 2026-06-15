@@ -128,6 +128,18 @@ fn deeply_nested_unary_errors_not_overflows() {
 }
 
 #[test]
+fn a_long_flat_binary_chain_parses_without_tripping_the_depth_guard() {
+    // `a + a + … + a` is left-associative, parsed ITERATIVELY by the precedence
+    // climb (which only recurses by precedence level — a constant). A chain far
+    // longer than MAX_DEPTH (64) is flat in nesting depth, so it must parse
+    // cleanly: neither a stack overflow nor a spurious E1113. This locks in that
+    // chain LENGTH is unbounded and distinct from nesting DEPTH.
+    let chain = vec!["a"; 5000].join(" + ");
+    let src = format!("module M {{\n  in a: bits[8]\n  out y: bits[8]\n  y = {chain}\n}}\n");
+    parse_ok(&src); // succeeds — no panic, no depth error
+}
+
+#[test]
 fn stray_top_level_brace_does_not_hang() {
     // Regression: a stray `}` at file level (e.g. unbalanced braces from error
     // recovery) once spun `file()` forever — `sync_to_newline` stops at `}`

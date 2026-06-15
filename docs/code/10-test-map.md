@@ -4,7 +4,7 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-**247 tests** as of 2026-06-14: 165 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 10 eval integration + 7 translate integration + 8 morph integration + 7 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (A QA pass for the new built-ins added the `bitops` example in all four flavors — golden + a self-checking Icarus testbench incl. the abs(MIN) width-growth case — plus edge tests: parser arity E1110, checker literal-adapt + abs-of-literal, fmt keyword-free/non-lexing, and `compile --lang` localization.) (Arithmetic built-ins `min`/`max`/`abs`/`nand`/`nor`/`xnor` added 6 checker unit tests + 1 `eval` integration test.) (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~70 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
+**259 tests** as of 2026-06-15: 175 lib unit + 5 LSP unit (bin) + 6 benchmark unit (bin) + 9 example integration + 16 grammar integration + 10 eval integration + 7 translate integration + 8 morph integration + 9 fmt integration + 2 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 3 grammar-sync. (2026-06-15 robustness follow-up to the 2026-06-14 batch audit: +9 lib unit — 2 `morph` (tie-break + empty-stem inflection), 5 checker (two-literal `min` E0407, `nand` of a bare `bit`, nested `abs(min)`/`min(abs)`, `abs` at the width boundary), 1 parser (a long flat binary chain parses without tripping the E1113 depth guard), 1 emitter (a built-in lowers parenthesized inside a larger expression) — and +2 `fmt` integration (`-o` onto the input path round-trips via the new atomic write; an unknown `--to` is a clean error). A `pretty_roundtrip` cargo-fuzz target was added (CI-only, outside this count).) (A QA pass for the new built-ins added the `bitops` example in all four flavors — golden + a self-checking Icarus testbench incl. the abs(MIN) width-growth case — plus edge tests: parser arity E1110, checker literal-adapt + abs-of-literal, fmt keyword-free/non-lexing, and `compile --lang` localization.) (Arithmetic built-ins `min`/`max`/`abs`/`nand`/`nor`/`xnor` added 6 checker unit tests + 1 `eval` integration test.) (Phase 1.8 error-language plumbing added 8 `morph` lib unit tests + 7 `tests/morph.rs` integration tests for selection, inflection, and the additive English-fallback path.) (2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3 `eval` integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then `mimz translate --order` (the `pretty` AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.) (The error-fixture tests are data-driven over ~70 broken `.mimz` fixtures; one locks `ALL_CHECKER_CODES` — now `pub` in `src/diag.rs` — to the 11-checker.md catalog, one locks the `--json` wire format.) The 2026-06-13 quick-wins block added the tooling tests below: `explain` (+3), `translate` (+3 unit, +3 integration), `sim::comb` (+7 unit, +6 `eval` integration).
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
@@ -33,7 +33,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 20 tests)
+## Unit: parser (`src/parser/tests.rs`, 21 tests)
 
 | Test                                                        | Locks in                                                                   |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -62,7 +62,7 @@ The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 93 tests)
+## Unit: checker (`src/checker/tests.rs`, 98 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -109,7 +109,7 @@ deserve a note:
 | `results_always_start_like_an_identifier` | output is always a valid Verilog identifier start                     |
 | `the_two_n_letters_romanize_identically`  | ந/ன → `n` is a DOCUMENTED collision; the suffix counter disambiguates |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 12 tests)
+## Unit: emitter (`src/emit_verilog/mod.rs`, 13 tests)
 
 | Test                                                            | Locks in                                                                                                                                    |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -171,7 +171,7 @@ broken TB fails loudly, never silently. The Blinker TB overrides the
 
 End-to-end **failure** validation, the mirror of the checker unit tests: those
 prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it.
-`tests/fixtures/errors/*.mimz` holds ~71 intentionally-broken files (kept OUT of
+`tests/fixtures/errors/*.mimz` holds ~72 intentionally-broken files (kept OUT of
 `examples/`, which is asserted valid), each declaring its expected code in a
 `// expect: Exxxx` header. Source bodies are lifted from `src/checker/tests.rs`.
 
@@ -282,7 +282,7 @@ comments, so its oracle is semantic (same Verilog) + idempotency, not bytes.
 | `thamizh_order_emits_the_directive`                                | thamizh output starts with `syntax thamizh` / `இலக்கணம் தமிழ்`; code order emits none                      |
 | `cli_translate_order_thamizh_compiles`                             | `--order thamizh --to tamil` on the traffic light yields compilable, same-Verilog Tamil SOV source         |
 
-## Unit: morph (`src/morph.rs`, 8 tests)
+## Unit: morph (`src/morph.rs`, 10 tests)
 
 Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 §5).
 
@@ -315,7 +315,7 @@ every flavor.
 | `compile_also_localizes_diagnostics`                 | the localization path is shared — `compile --lang ta` shows Tamil E0501 too   |
 | `unknown_lang_is_a_clean_error`                      | `--lang klingon` fails with a clear "unknown language" message                |
 
-## Integration: fmt (`tests/fmt.rs`, 7 tests — run the real binary)
+## Integration: fmt (`tests/fmt.rs`, 9 tests — run the real binary)
 
 `mimz fmt` — the in-place keyword-flavor normalizer (the lossless `translate`
 token reskin, not the comment-dropping `--order` printer).
@@ -364,7 +364,7 @@ skips the checker, so `comb.rs` is the only overflow guard (audit SEC-2).
 
 ## Fuzzing: `fuzz/fuzz_targets/` (CI-only, not `cargo test` units)
 
-Two `cargo-fuzz` harnesses over the untrusted-input path, asserting the audit's
+Three `cargo-fuzz` harnesses over the untrusted-input path, asserting the audit's
 core guarantee (any byte string yields a value/Verilog or a clean `Diag`/`Err`,
 never a panic / abort / hang):
 
@@ -373,6 +373,11 @@ never a panic / abort / hang):
   runtime datapath).
 - `lex_parse_compile` — NFC → `lex` → `parse` → `checker::check` →
   `transliterate` → `Project::from_files` → `emit` (the Verilog backend).
+- `pretty_roundtrip` — NFC → `lex` → `parse` → `pretty::pretty_print` → re-`lex`
+  → re-`parse` (the printed source MUST re-parse), and for an emittable program
+  the re-parsed AST must lower to byte-identical Verilog. Exercises the
+  `translate --order` printer on arbitrary input (the unit suite only covers the
+  fixed example corpus).
 
 **Not** part of the test count above: they need a nightly toolchain + libFuzzer
 (Linux/macOS), live in a standalone `fuzz/` crate the root gate never builds, and

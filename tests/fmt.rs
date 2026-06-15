@@ -125,3 +125,44 @@ fn output_flag_leaves_the_input_untouched() {
     assert_eq!(fs::read_to_string(&path).unwrap(), MIXED, "input untouched");
     assert!(fs::read_to_string(&dest).unwrap().contains("தொகுதி"));
 }
+
+#[test]
+fn output_to_the_input_path_round_trips() {
+    // `-o <input>` is the explicit form of an in-place format; the atomic
+    // temp-file + rename must produce exactly what a plain `fmt` does, with no
+    // leftover temp file in the directory.
+    let path = temp_mimz(MIXED);
+    let (ok, _, _) = run_fmt(&path, &["--to", "tamil", "-o", path.to_str().unwrap()]);
+    assert!(ok, "fmt -o <input> succeeds");
+    let out = fs::read_to_string(&path).unwrap();
+    assert!(out.contains("தொகுதி M"), "module → Tamil in place:\n{out}");
+    assert!(out.contains("// keep me"), "comment preserved");
+    // No stray `<input>.<pid>.tmp` sibling left behind.
+    let dir = path.parent().unwrap();
+    let stem = path.file_name().unwrap().to_string_lossy().into_owned();
+    let leftover = fs::read_dir(dir).unwrap().any(|e| {
+        let n = e.unwrap().file_name().to_string_lossy().into_owned();
+        n.starts_with(&stem) && n.ends_with(".tmp")
+    });
+    assert!(
+        !leftover,
+        "temp file should be renamed away, not left behind"
+    );
+}
+
+#[test]
+fn unknown_to_flavor_is_a_clean_error() {
+    let src = "module M {\n  in a: bit\n  out y: bit\n  y = a\n}\n";
+    let path = temp_mimz(src);
+    let (ok, _, err) = run_fmt(&path, &["--to", "klingon"]);
+    assert!(!ok, "an unknown --to value exits non-zero");
+    assert!(
+        err.contains("unknown flavor"),
+        "reports the bad flavor: {err}"
+    );
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        src,
+        "input not clobbered on a bad --to"
+    );
+}
