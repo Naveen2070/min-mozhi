@@ -214,6 +214,42 @@ fn romanized_round_trips_losslessly_via_the_name_map() {
     }
 }
 
+/// Regression (2026-06-15 fuzz audit): a numeric literal directly abutting a
+/// Tamil keyword or identifier — separated only by the Latin/Tamil script change
+/// — must not glue into an invalid lexeme when reskinned to ASCII. `42தொகுதி`
+/// (number + `module` keyword) and `42கணக்கி` (number + Tamil name) once became
+/// `42module` / `42kannakki`, which no longer lex. The boundary guard inserts a
+/// separating space so the output stays lexable and token-equivalent.
+#[test]
+fn number_abutting_tamil_keeps_a_separator_when_reskinned() {
+    let norm = |s: &str| s.split_whitespace().collect::<String>();
+    // number + Tamil keyword -> ASCII keyword (default keyword reskin).
+    let kw = "module M {\n  reg x: bits[8] = 42தொகுதி\n}\n";
+    if lex(kw).is_ok() {
+        let out = translate(kw, Flavor::English).expect("lexes");
+        assert!(lex(&out).is_ok(), "reskin output must re-lex: {out}");
+        assert!(
+            out.contains("42 module") || !out.contains("42module"),
+            "got: {out}"
+        );
+    }
+    // number + Tamil identifier -> Latin (romanize) and back via the map.
+    let id = "module M {\n  reg x: bits[8] = 42கணக்கி\n}\n";
+    if lex(id).is_ok() {
+        let (rom, map) = romanize_with_map(id, Flavor::English).expect("lexes");
+        assert!(lex(&rom).is_ok(), "romanized output must re-lex: {rom}");
+        assert!(!rom.contains("42kannakki"), "must not glue: {rom}");
+        let back = restore_with_map(&rom, Flavor::Tamil, &map).expect("lexes");
+        // Token-equivalent to the canonical Tamil (a separator space may differ).
+        let canonical = translate(id, Flavor::Tamil).expect("lexes");
+        assert_eq!(
+            norm(&back),
+            norm(&canonical),
+            "round-trip must be token-equivalent"
+        );
+    }
+}
+
 /// End-to-end through the real binary: `--romanize-names -o` writes a parseable
 /// `<out>.names.json`, and a reverse run with `--names-map` restores the exact
 /// Tamil source.

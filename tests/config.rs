@@ -142,6 +142,32 @@ fn config_default_flavor_is_overridden_by_the_cli() {
     fs::remove_dir_all(&dir).ok();
 }
 
+/// A `--names-map` whose `version` is not understood is rejected with a clean
+/// error (the `version` field exists to fail closed, not mis-restore).
+#[test]
+fn name_map_with_unknown_version_is_rejected() {
+    let dir = work_dir("ver");
+    let file = dir.join("k.mimz");
+    fs::copy(repo().join("examples/tanglish/counter.mimz"), &file).unwrap();
+    let bad = dir.join("k.names.json");
+    fs::write(&bad, "{\"version\":999,\"names\":{}}").unwrap();
+
+    let out = mimz()
+        .arg("translate")
+        .arg(&file)
+        .args(["--to", "english", "--names-map"])
+        .arg(&bad)
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "an unknown map version must fail");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("version 999") && stderr.contains("understand"),
+        "error should name the version mismatch:\n{stderr}"
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
 /// A malformed `mimz.toml` is a clean error, not a panic.
 #[test]
 fn malformed_config_is_a_clean_error() {

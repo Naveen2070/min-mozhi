@@ -46,5 +46,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "translate_roundtrip"
+path = "fuzz_targets/translate_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1

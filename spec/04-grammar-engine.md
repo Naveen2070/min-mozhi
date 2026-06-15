@@ -96,9 +96,14 @@ syntax thamizh
   so a fully-Tamil program (`examples/tamil-pure/`) can be converted to readable
   Tanglish/English. **Reversibility:** with `-o <out>`, romanizing also writes a
   per-file sidecar `<out>.names.json` (`romanized → original Tamil`); a reverse
-  run with `--names-map <file>` restores the exact Tamil names, making the full
-  `Tamil → Latin → Tamil` round-trip lossless. Full behavior:
-  `docs/code/13-tooling.md`.
+  run with `--names-map <file>` restores the exact Tamil names. For idiomatic,
+  whitespace-separated code (the whole `examples/tamil-pure/` corpus) the full
+  `Tamil → Latin → Tamil` round-trip is byte-identical. One narrow exception: a
+  numeric literal directly abutting a Tamil keyword/identifier (e.g. `42தொகுதி`)
+  relies on the Latin/Tamil script change as its only separator; reskinning to
+  ASCII would glue it (`42module`), so the reskin inserts a single separating
+  space — the result stays lexable and token-equivalent, but the restored source
+  gains that space. Full behavior: `docs/code/13-tooling.md`.
 
 ## 3. What Flips in `thamizh-order`
 

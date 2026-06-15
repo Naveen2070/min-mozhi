@@ -616,10 +616,22 @@ fn load_name_map(path: &Path) -> Result<mimz::translate::NameMap, ExitCode> {
         eprintln!("error: cannot read name map `{}`: {e}", path.display());
         ExitCode::FAILURE
     })?;
-    serde_json::from_str(&text).map_err(|e| {
+    let map: mimz::translate::NameMap = serde_json::from_str(&text).map_err(|e| {
         eprintln!("error: invalid name map `{}`: {e}", path.display());
         ExitCode::FAILURE
-    })
+    })?;
+    // Honor the format version: reject a map written by a newer/unknown format
+    // rather than silently mis-restoring (the `version` field exists for this).
+    if map.version != mimz::translate::NameMap::VERSION {
+        eprintln!(
+            "error: name map `{}` is format version {}, but this mimz understands version {} — regenerate it with --romanize-names",
+            path.display(),
+            map.version,
+            mimz::translate::NameMap::VERSION
+        );
+        return Err(ExitCode::FAILURE);
+    }
+    Ok(map)
 }
 
 /// `mimz explain <CODE>` — print the long-form teaching text for a diagnostic

@@ -72,7 +72,10 @@ The reverse run auto-discovers `k.mimz.names.json` next to the file, so no
 `--names-map` is needed (`--no-names-map` opts out). Without `--romanize-names`,
 translate swaps only the keywords and keeps the Tamil names verbatim (the lossless
 default). Romanization itself is one-way — the sidecar name-map is what makes the
-round-trip lossless.
+round-trip reversible (byte-identical for normal whitespace-separated code). One
+edge: a number directly abutting a Tamil name (e.g. `42கணக்கி`, no space between)
+gains a separating space when reskinned to ASCII, since the script change was the
+only token boundary — so it round-trips token-equivalent, not byte-identical.
 
 Repeated flags can live in a project **`mimz.toml`** (CLI flags override it):
 

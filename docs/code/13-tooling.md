@@ -54,12 +54,22 @@ natural Tamil WORD-ORDER half (`--order code|thamizh`) lives in `pretty` below.
   romanizing also writes `<out>.names.json` — a per-file [`NameMap`] (`{ version,
 names }`, `romanized → original Tamil`, capturing the `_2`/`_3` uniquing).
   `restore_with_map` reads it on a reverse run and restores the exact Tamil
-  identifiers, so `Tamil → Latin → Tamil` is byte-for-byte lossless
+  identifiers, so `Tamil → Latin → Tamil` is byte-for-byte lossless for
+  whitespace-separated code (the whole `examples/tamil-pure/` corpus)
   (`romanize_with_map` + `restore_with_map` share the `reskin` span-walk).
+  **Boundary guard (2026-06-15):** Tamil script can be the ONLY separator between
+  a numeric literal and a following keyword/identifier (`42தொகுதி`, `42கணக்கி`);
+  reskinning to ASCII would glue them into an unlexable lexeme (`42module`,
+  `42kannakki`), so `reskin` inserts a single separating space there. Such input
+  round-trips token-equivalent but gains that space (not byte-identical) — caught
+  by a deterministic fuzz audit and locked by a regression test in
+  `tests/translate.rs`.
   Per-file, not central: the uniquing is per-file and the same Latin name can mean
   different Tamil words in different files. Without `-o` (stdout) no map is written
   and the CLI says so. `--names-map` and `--romanize-names` are opposite
-  directions — using both is an error.
+  directions — using both is an error. The map carries a `version`; `load_name_map`
+  rejects a map whose version this build does not understand with a clean error
+  (fail closed, never mis-restore).
 - **Auto-discovery (no flag needed).** A reverse reskin auto-loads the
   `<input>.names.json` sidecar when it sits next to the file — so
   `mimz translate k.mimz --to tamil` restores names with no `--names-map`. An

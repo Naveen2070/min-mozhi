@@ -134,6 +134,34 @@ pub fn restore_with_map(src: &str, target: Flavor, map: &NameMap) -> Result<Stri
     }))
 }
 
+/// An ASCII "word" byte — what the lexer treats as identifier-continue, so two
+/// such bytes meeting with no separator would lex as ONE token. A digit counts
+/// (a number followed by such a byte is also a single, invalid lexeme). Any
+/// UTF-8 lead/continuation byte (>= 0x80) is not a word byte, so a Tamil
+/// neighbor is correctly a token boundary.
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Append `text` to `out`, inserting a single space on either side if `text`
+/// would otherwise glue onto an adjacent ASCII word byte — the previously
+/// emitted byte, or `next` (the source byte that follows this token). Keeps a
+/// script-changing re-emit (Tamil keyword/name -> ASCII) lexing as it did before.
+fn push_guarded(out: &mut String, text: &str, next: Option<u8>) {
+    let bytes = text.as_bytes();
+    if let (Some(&prev), Some(&first)) = (out.as_bytes().last(), bytes.first()) {
+        if is_word_byte(prev) && is_word_byte(first) {
+            out.push(' ');
+        }
+    }
+    out.push_str(text);
+    if let (Some(&last), Some(n)) = (bytes.last(), next) {
+        if is_word_byte(last) && is_word_byte(n) {
+            out.push(' ');
+        }
+    }
+}
+
 /// The shared span-walk: copy `src` verbatim, swap keyword lexemes to `target`'s
 /// canonical spelling, and replace an identifier when `sub` returns `Some`.
 fn reskin(
@@ -152,10 +180,18 @@ fn reskin(
         let start = t.span.start.max(pos);
         let end = t.span.end.max(start);
         out.push_str(&src[pos..start]); // verbatim gap: whitespace + comments
+        // A re-emitted token whose text CHANGES SCRIPT (a Tamil keyword swapped
+        // to an ASCII spelling, or a Tamil identifier romanized to Latin) can
+        // lose the boundary that the Tamil script alone provided — e.g. a number
+        // directly followed by a Tamil keyword/name (`42தொகுதி`, `42ஒளி`) becomes
+        // `42module` / `42olli`, which no longer lexes. `push_guarded` re-inserts
+        // a single separating space in exactly that case. The verbatim arm copies
+        // bytes unchanged (same script as the source), so it needs no guard.
+        let next = src.as_bytes().get(end).copied();
         match &t.kind {
-            TokKind::Kw(kw) => out.push_str(TABLE.canonical(*kw, target)),
+            TokKind::Kw(kw) => push_guarded(&mut out, TABLE.canonical(*kw, target), next),
             TokKind::Ident(name) => match sub(name) {
-                Some(replacement) => out.push_str(&replacement),
+                Some(replacement) => push_guarded(&mut out, &replacement, next),
                 None => out.push_str(&src[start..end]),
             },
             _ => out.push_str(&src[start..end]),

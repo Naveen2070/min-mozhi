@@ -83,7 +83,13 @@ verification against the code**. Recording them so they are not re-investigated:
   (2026-06-15):** `pretty_roundtrip` fuzzes the `translate --order` AST
   pretty-printer — printed source must re-parse, and an emittable program must
   round-trip to byte-identical Verilog; wired into both the per-PR and weekly
-  CI fuzz jobs.
+  CI fuzz jobs. **Fourth target (2026-06-15):** `translate_roundtrip` fuzzes the
+  `translate` byte-walk — keyword reskin, `--romanize-names`, and the name-map
+  restore: every reskin/romanize output must re-lex, and `romanize → restore`
+  must be token-equivalent to the plain reskin. Added after a deterministic
+  stress audit found a numeric literal abutting a Tamil token (`42தொகுதி`) glued
+  into an unlexable lexeme on reskin (fixed by the `push_guarded` boundary guard
+  in `reskin`). Also wired into both CI fuzz jobs.
 - **CI** also enforces `clippy -D warnings` + full tests; `#![forbid(unsafe_code)]`
   makes memory-unsafe code a hard error.
 
