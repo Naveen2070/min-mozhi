@@ -21,7 +21,7 @@ coding starts with zero open design questions.
 - [x] Design review: 44-question register answered → spec v0.2 (`docs/archive/open-questions-2026-06-10.md`)
 - [x] License decided: **MIT + Apache-2.0 dual**
 - [x] Naming decided: extension **`.mimz`**, CLI **`mimz`**, project name Min-Mozhi
-- [ ] Native-speaker review of Tanglish/Tamil keyword table (panel: tech/coder friends)
+- [x] Native-speaker review of Tanglish/Tamil keyword table (panel: tech/coder friends) — keyword set v1, 2026-06-15 (C3 ratified)
 - [x] Study list: Verilog internals + **Veryl, Spade, Amaranth, Chisel** → `docs/prior-art.md` (2026-06-11)
 - [x] `git init` + first commit + LICENSE files (done 2026-06-10; repo stays **private until after Phase 1.8** — decision D7)
 

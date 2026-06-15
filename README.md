@@ -30,11 +30,11 @@ flavors can be mixed freely in one file:
 
 ```mimz
 thoguthi Counter(WIDTH: int = 8) {
-  kadigaram clk
-  meetamai rst
-  veli count: bits[WIDTH]
+  thudippu clk
+  meettamai rst
+  veliyeedu count: bits[WIDTH]
 
-  nilai value: bits[WIDTH] = 0
+  pathivedu value: bits[WIDTH] = 0
 
   pothu yetram(clk) {
     value <- value +% 1
@@ -92,7 +92,7 @@ stable `E`-code, `mimz check --json` emits machine-readable diagnostics,
 and **`mimz lsp` brings live squiggles to VS Code** (diagnostics-only v0,
 `editors/vscode`). **Every Phase 1 work item is complete** — what remains
 before going public is the Grammar Engine (Phase 1.8, decision D7). With
-157 passing tests and a benchmark harness (`mimz-bench`) that renders
+288 passing tests and a benchmark harness (`mimz-bench`) that renders
 speed, accuracy, safety, and coverage into an HTML graph report.
 
 ## Build, Test, Run
@@ -136,7 +136,7 @@ npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jso
 | [`spec/02-syntax-and-grammar.md`](spec/02-syntax-and-grammar.md)     | Syntax tour, operators, types, formal EBNF grammar              |
 | [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables            |
 | [`spec/04-grammar-engine.md`](spec/04-grammar-engine.md)             | Grammar Engine — natural Tamil word order (Phase 1.8)           |
-| [`examples/`](examples/)                                             | 15 examples × 4 flavor folders: english, tanglish, tamil, mixed |
+| [`examples/`](examples/)                                             | 17 examples × 4 flavor folders: english, tanglish, tamil, mixed |
 | [`editors/vscode/`](editors/vscode/)                                 | VS Code syntax highlighting for `.mimz` (all three flavors)     |
 | [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture    |
 | [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)        |

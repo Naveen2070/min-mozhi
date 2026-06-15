@@ -6,7 +6,7 @@
 > signed), CLI (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`,
 > `--json`), LSP v0, all Icarus-validated. The full simulator and IR are
 > still design (`eval` is the combinational slice only).
-> Last updated: 2026-06-13 (quick-wins tooling: explain/translate/eval)
+> Last updated: 2026-06-15 (code-split: parser `items/`, `commands/`, bench `metrics/`)
 
 ---
 
@@ -69,7 +69,7 @@ planned.
 
 | Component           | Phase   | Key design points                                                                                                                                                  |
 | ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **CLI** (`mimz`)    | 1       | `clap`; subcommands: `compile`, `check`, `sim`, `test`, `translate`, `fmt`, `build`                                                                                |
+| **CLI** (`mimz`)    | 1       | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp` (handlers in `src/commands/`)                                                |
 | **Keyword table**   | 1       | `keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                    |
 | **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                  |
 | **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile |
@@ -94,11 +94,12 @@ mimz/
   keywords.toml          # trilingual table — data, not code
   src/
     lib.rs               # pub mod × 8 + the crate map          ✅
-    main.rs              # thin CLI (clap, human/JSON output)   ✅
+    main.rs              # thin CLI (clap, dispatch, Output)     ✅
+    commands/            #   per-subcommand handlers + helpers   ✅
     lsp.rs               # `mimz lsp` server (BIN-only module,  ✅
                          #   keeps tokio out of the lib)
     bin/mimz-bench/      # benchmark harness (docs/code/12)     ✅
-                         #   main.rs / metrics.rs / html.rs
+                         #   main.rs / metrics/ / html.rs
     project.rs           # loading, imports; LoadError values   ✅
     span.rs              # byte-offset spans                    ✅
     diag.rs              # teaching diagnostics + JSON format   ✅
@@ -112,12 +113,12 @@ mimz/
       tests.rs           #   unit tests
     parser/              # E11xx                                ✅
       mod.rs             #   entry, Parser state + Profile, plumbing
-      items.rs           #   file/module/seq/test items; syntax directive +
-                         #     clocked-block flip (P1.8 keystone)
-      expr.rs            #   precedence climbing, patterns
+      items/             #   file/module/inst/seq/test items;
+                         #     syntax directive + clocked-block & seq
+                         #     conditional flips (P1.8, in seq.rs)
+      expr.rs            #   precedence climbing, patterns;
+                         #     if-expr & match flips (P1.8)
       tests.rs           #   unit tests
-      # thamizh_order.rs #   (P1.8, planned) the remaining flips move here
-                         #     once the expr-first conditional/match path lands
     emit_verilog/        #                                      ✅
       mod.rs             #   Project symtab, entry, helpers
       module.rs          #   shells, instances, always-blocks
@@ -135,7 +136,7 @@ mimz/
     sim/                 # (P1.5) elaborate, kernel, vcd
     ir/                  # (P2)
   tests/
-    examples.rs          # all 72 examples + 4-flavor identity + goldens ✅
+    examples.rs          # all 68 examples (17 × 4 flavors) + identity + goldens ✅
     errors.rs            # ~72 broken fixtures, code per E-code ✅
     icarus.rs            # iverilog lint + 16 self-checking TBs ✅
     lsp.rs               # wire-protocol smoke test             ✅

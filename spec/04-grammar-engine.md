@@ -18,10 +18,14 @@
 > plumbing** of section 5 also landed (2026-06-14): error-language **selection**
 > (file-flavor majority + `--lang` override) and the case-suffix **inflection
 > mechanism** (`src/morph.rs`), wired into `check`/`compile`/`eval` as an
-> **additive, English-fallback** layer. Still to do: the **test** flip
-> (deferred to Phase 1.5 — `test` blocks emit no Verilog yet, so there is no
-> same-Verilog oracle) and the human-authored Tamil/Tanglish error catalog +
-> final sandhi rules (section 5 — gated on the native-speaker panel, decision C3).
+> **additive, English-fallback** layer. **The human-authored Tamil/Tanglish
+> error catalog also landed (2026-06-15):** `messages.toml` localizes **33 of
+> the 36 checker E-codes** (the panel-authored Tamil + Tanglish forms; decision
+> C3 ratified, sandhi rule finalized in `case_suffixes.toml`). E0403/E0404/E0405
+> are deferred — each emits many heterogeneous message shapes that one template
+> cannot fit faithfully, so they keep their English text (Tamil preserved as
+> comments). Still to do: the **test** flip (deferred to Phase 1.5 — `test`
+> blocks emit no Verilog yet, so there is no same-Verilog oracle).
 
 ---
 
@@ -222,18 +226,22 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
   keywords.toml doctrine); `inflect(name, case, flavor)` attaches them.
 - **Additive, English-fallback** — diagnostics render in the chosen flavor only
   for E-codes the localized catalog covers; every other message keeps its
-  English text verbatim, byte-for-byte. The plumbing is inert until content lands.
+  English text verbatim, byte-for-byte.
 
 > **Decision (R3, 2026-06-14): build the mechanism now, gate the content on C3.**
 > The full Tamil + Tanglish catalog and the real **sandhi-joining rules** require
 > the native-speaker panel (decision C3) — machine-guessed Tamil is exactly the
-> "broken Tamil" this section warns against. So the catalog ships as a **stub**
-> (one worked shape, E0501) that exercises the whole path, and the committed
-> sandhi rule is deliberately minimal and marked PROVISIONAL. JSON diagnostic
-> output stays English (the machine contract in `06-diagnostics.md` is unchanged).
-> Rejected: authoring the catalog without the panel (would bake in errors);
-> refactoring the ~36 inline English messages into the catalog now (unnecessary
-> while English is the fallback).
+> "broken Tamil" this section warns against.
+>
+> **Resolved (2026-06-15, C3 ratified):** the panel authored the catalog. It now
+> ships in `messages.toml` covering **33 of 36 checker E-codes** in Tamil and
+> Tanglish; the sandhi rule in `case_suffixes.toml` is finalized (no longer
+> PROVISIONAL). **E0403/E0404/E0405 are deferred** — each emits many
+> heterogeneous message shapes that a single template cannot render faithfully,
+> so they keep their English text with the Tamil preserved as comments. JSON
+> diagnostic output stays English (the machine contract in `06-diagnostics.md`
+> is unchanged). The ~36 inline English messages were not refactored into the
+> catalog — they remain the byte-for-byte fallback for any uncovered code.
 
 ## 6. Scope Fence (v1 of the engine)
 

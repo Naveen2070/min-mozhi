@@ -29,7 +29,7 @@ input.
 
 **Fix.** `file()` now bumps a stray `}` directly (rather than relying on
 `sync_to_newline`), guaranteeing forward progress every iteration
-(`src/parser/items.rs`).
+(`src/parser/items/file.rs`; was `items.rs` before the 2026-06-15 split).
 
 **Test.** `stray_top_level_brace_does_not_hang` (`src/parser/tests.rs`) asserts
 a stray `}` yields E1102 and terminates.

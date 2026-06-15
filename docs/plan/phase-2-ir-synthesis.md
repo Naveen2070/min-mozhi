@@ -43,7 +43,7 @@ FPGA hardware via the open toolchain: `.mimz → IR → Yosys/nextpnr → bitstr
       2026-06-12: per-reg `@ clk` domain tags + a `sync.double_flop` stdlib
       synchronizer; cross-domain reads without one become a checker error)
 
-### Language features (window: alongside IR work — from `docs/Ideas/language_plan.md` sections 7 and 9, Tier 3)
+### Language features (window: alongside IR work — from `docs/Ideas/language_plan.md` sections 7 (feasibility triage) and 10 (HDL parity gap analysis), Tier 3)
 
 This is the single source of truth for the triaged feature backlog; the
 phase-4 plan only points here. Every item needs a spec section + a Decision

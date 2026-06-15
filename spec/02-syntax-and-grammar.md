@@ -352,7 +352,7 @@ hardware. `tick` and `expect` are keywords valid only inside `test`.
 **Logical-operator aliases (the one G1 exception):** the keyword forms
 `and` / `or` / `not` are exact aliases of `&&` / `||` / `!` and, unlike the
 symbols, are **translated** in the Tanglish/Tamil flavors
-(`mattrum`/`alladhu`/`illa`). Both forms are always accepted;
+(`mattrum`/`alladhu`/`alla`). Both forms are always accepted;
 `mimz fmt --strict` normalizes a file to one style.
 
 **Precedence (Rust-style — bitwise binds tighter than comparison):**

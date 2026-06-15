@@ -218,7 +218,7 @@ a doc comment, so the code and the spec read side by side.
 | File              | Does what                                                           |
 | ----------------- | ------------------------------------------------------------------- |
 | `parser/mod.rs`   | the `Parser` state (current position, collected errors), `parse()`  |
-| `parser/items.rs` | big structures: modules, ports, regs, `on` blocks, imports, tests   |
+| `parser/items/`   | big structures: modules, ports, regs, `on` blocks, imports, tests   |
 | `parser/expr.rs`  | expressions: operators, precedence, calls, `if`/`match` expressions |
 | `parser/tests.rs` | unit tests for tree shapes and teaching errors                      |
 
@@ -382,7 +382,7 @@ whatever comes back and sets the exit code.
 | ------------------------------------------- | ---------------------------------------------------- |
 | change/add a keyword spelling               | `keywords.toml` (data only — no code)                |
 | see why `<-` lexes as one token             | `src/lexer/mod.rs` + `lexer/tests.rs`                |
-| change what a construct LOOKS like (syntax) | `src/parser/items.rs` or `parser/expr.rs`            |
+| change what a construct LOOKS like (syntax) | `src/parser/items/` or `parser/expr.rs`              |
 | change what the tree STORES                 | `src/ast/` (then fix parser + checker + emitter)     |
 | add a new error / safety rule               | `src/checker/` — recipe in `docs/code/11-checker.md` |
 | change the generated Verilog                | `src/emit_verilog/module.rs` or `expr.rs`            |

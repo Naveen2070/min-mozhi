@@ -83,8 +83,9 @@ matching, which compilers lean on heavily.)
 > Natural Tamil word order — இலக்கண இயந்திரம் (see `spec/04-grammar-engine.md`)
 
 - Add the `thamizh-order` syntax profile to the parser (SOV/postpositional
-  clause forms: `<cond> endral { }`, `yetram(clk) pothu { }`, `<expr> poruthu { }`)
-  — **clocked-block flip done** (2026-06-13); conditional/match/test flips remain
+  clause forms: `<cond> enil { }`, `yetram(clk) pothu { }`, `<expr> thernthedu { }`)
+  — **clocked-block, conditional, if-expression, and match flips done**
+  (2026-06-14); only the **test**-header flip remains (deferred to Phase 1.5)
 - File-level `syntax thamizh` directive ✅ — same AST as code-order, parser-level only
 - `mimz translate --order code|thamizh` — lossless conversion both directions
 - Morphology helper for error messages (Tamil case suffixes on interpolated

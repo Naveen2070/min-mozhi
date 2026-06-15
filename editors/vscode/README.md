@@ -93,8 +93,8 @@ and reopen.
 
 ## What gets highlighted
 
-- Declaration keywords (`module`/`thoguthi`/`தொகுதி`, `reg`/`nilai`/`நிலை`, …) — all flavors, plus the `include` alias of `import`
-- Control keywords (`if`/`endral`/`என்றால்`, `match`/`poruthu`/`பொருத்து`, …)
+- Declaration keywords (`module`/`thoguthi`/`தொகுதி`, `reg`/`pathivedu`/`பதிவேடு`, …) — all flavors, plus the `include` alias of `import`
+- Control keywords (`if`/`enil`/`எனில்`, `match`/`thernthedu`/`தேர்ந்தெடு`, …)
 - Module and enum names at their declaration
 - Types (`bit`, `bits[…]`, `signed[…]`) and builtins (`extend`, `trunc`, …)
 - Numbers with bases and `_` separators; test-name strings; both comment forms
