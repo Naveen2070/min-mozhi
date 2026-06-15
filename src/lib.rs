@@ -29,6 +29,7 @@
 //! | [`pretty`]      | AST → source pretty-printer (`mimz translate --order`)     |
 //! | [`morph`]       | Error-language selection + Tamil case-suffix inflection    |
 //! | [`sim`]         | Combinational evaluator (`mimz eval`) — Phase 1.5 slice    |
+//! | [`config`]      | `mimz.toml` project defaults for CLI flags (CLI overrides)  |
 //!
 //! This table is mechanically checked against the `mod` list by
 //! `tests/docs_sync.rs` — add a module, add a row (and a docs/code/ page).
@@ -42,6 +43,7 @@
 
 pub mod ast;
 pub mod checker;
+pub mod config;
 pub mod diag;
 pub mod emit_verilog;
 pub mod explain;
