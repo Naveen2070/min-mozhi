@@ -4,12 +4,12 @@
 serkka adder
 
 thoguthi Alu(WIDTH: int = 8) {
-  ulle  a:  bits[WIDTH]
-  ulle  b:  bits[WIDTH]
-  ulle  op: bits[2]
-  veli y:  bits[WIDTH]
+  ulleedu  a:  bits[WIDTH]
+  ulleedu  b:  bits[WIDTH]
+  ulleedu  op: bits[2]
+  veliyeedu y:  bits[WIDTH]
 
-  y = poruthu op {
+  y = thernthedu op {
     0b00 => a +% b
     0b01 => a -% b
     0b10 => a & b
@@ -18,13 +18,13 @@ thoguthi Alu(WIDTH: int = 8) {
 }
 
 thoguthi Top {
-  kadigaram clk
-  meetamai rst
+  thudippu clk
+  meettamai rst
 
-  ulle  x:     bits[8]
-  ulle  y:     bits[8]
-  veli total: bits[9]
+  ulleedu  x:     bits[8]
+  ulleedu  y:     bits[8]
+  veliyeedu total: bits[9]
 
-  vai add = Adder(WIDTH: 8) { a: x, b: y }
+  amai add = Adder(WIDTH: 8) { a: x, b: y }
   total = add.sum
 }

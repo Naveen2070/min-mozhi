@@ -7,19 +7,19 @@
 include lib.full_adder
 
 thoguthi RippleAdder {
-  மாறா WIDTH: int = 4
+  மாறிலி WIDTH: int = 4
 
   in   a:   bits[WIDTH]
-  உள்  b:   bits[WIDTH]
-  ulle cin: bit
+  உள்ளீடு  b:   bits[WIDTH]
+  ulleedu cin: bit
 
-  veli sum:  bits[WIDTH]
-  வெளி cout: bit
+  veliyeedu sum:  bits[WIDTH]
+  வெளியீடு cout: bit
 
   // One FullAdder per bit; the carry ripples from each stage to the next.
   // Bit 0 takes the module's carry-in; bit i takes bit (i-1)'s carry-out.
   meendum i: 0..WIDTH {
-    வை fa[i] = FullAdder() { a: a[i], b: b[i], cin: if i == 0 { cin } illaiyel { fa[i - 1].cout } }
+    அமை fa[i] = FullAdder() { a: a[i], b: b[i], cin: if i == 0 { cin } illaiyenil { fa[i - 1].cout } }
     sum[i] = fa[i].sum
   }
 

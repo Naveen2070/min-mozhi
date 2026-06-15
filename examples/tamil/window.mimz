@@ -4,11 +4,11 @@
 // single `bit`, always driven (no latch possible).
 
 தொகுதி Window {
-  உள் lo:    bits[8]
-  உள் value: bits[8]
-  உள் hi:    bits[8]
+  உள்ளீடு  lo:    bits[8]
+  உள்ளீடு  value: bits[8]
+  உள்ளீடு  hi:    bits[8]
 
-  வெளி in_range: bit
+  வெளியீடு in_range: bit
 
   in_range = lo <= value <= hi
 }

@@ -4,16 +4,16 @@
 // are the negated bit-reductions. All combinational, all plain Verilog-2005.
 
 thoguthi BitOps {
-  ulle a: bits[4]
-  ulle b: bits[4]
-  ulle s: signed[4]
+  ulleedu a: bits[4]
+  ulleedu b: bits[4]
+  ulleedu s: signed[4]
 
-  veli lo:  bits[4]
-  veli hi:  bits[4]
-  veli mag: signed[5]
-  veli nd:  bit
-  veli nr:  bit
-  veli xn:  bit
+  veliyeedu lo:  bits[4]
+  veliyeedu hi:  bits[4]
+  veliyeedu mag: signed[5]
+  veliyeedu nd:  bit
+  veliyeedu nr:  bit
+  veliyeedu xn:  bit
 
   lo  = min(a, b)
   hi  = max(a, b)

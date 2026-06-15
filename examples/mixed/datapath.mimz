@@ -6,14 +6,14 @@
 // (both bounds inclusive); `trunc(a, 2)` keeps the low bits. All combinational.
 
 module DataPath {
-  ulle a: bits[4]
-  உள் b: bits[4]
+  ulleedu a: bits[4]
+  உள்ளீடு b: bits[4]
 
-  veli prod: bits[8]
-  வெளி wrap: bits[4]
+  veliyeedu prod: bits[8]
+  வெளியீடு wrap: bits[4]
   out rsh:  bits[4]
-  veli cat:  bits[8]
-  வெளி hi2:  bits[2]
+  veliyeedu cat:  bits[8]
+  வெளியீடு hi2:  bits[2]
   out lo2:  bits[2]
 
   prod = a * b

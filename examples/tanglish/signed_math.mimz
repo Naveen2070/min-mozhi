@@ -6,12 +6,12 @@
 // exhaustively by the Icarus testbench (all 256 input pairs).
 
 thoguthi SignedMath {
-  ulle a: signed[4]
-  ulle b: signed[4]
+  ulleedu a: signed[4]
+  ulleedu b: signed[4]
 
-  veli ext: signed[8]
-  veli sum: signed[5]
-  veli lt:  bit
+  veliyeedu ext: signed[8]
+  veliyeedu sum: signed[5]
+  veliyeedu lt:  bit
 
   ext = extend(a, 8)
   sum = a + b

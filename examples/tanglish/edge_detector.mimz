@@ -3,13 +3,13 @@
 // compare it with the current one.
 
 thoguthi EdgeDetector {
-  kadigaram clk
-  meetamai rst
+  thudippu clk
+  meettamai rst
 
-  ulle  din:   bit
-  veli pulse: bit
+  ulleedu  din:   bit
+  veliyeedu pulse: bit
 
-  nilai prev: bit = 0
+  pathivedu prev: bit = 0
 
   pothu yetram(clk) {
     prev <- din

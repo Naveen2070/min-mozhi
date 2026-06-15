@@ -3,31 +3,31 @@
 // no forgotten states.
 
 thoguthi TrafficLight {
-  kadigaram clk
-  meetamai rst
+  thudippu clk
+  meettamai rst
 
-  veli red:    bit
-  veli yellow: bit
-  veli green:  bit
+  veliyeedu red:    bit
+  veliyeedu yellow: bit
+  veliyeedu green:  bit
 
   vagai State { Red, Green, Yellow }
 
-  nilai state: State   = State.Red
-  nilai timer: bits[8] = 0
+  pathivedu state: State   = State.Red
+  pathivedu timer: bits[8] = 0
 
   pothu yetram(clk) {
-    endral timer == 0 {
-      state <- poruthu state {
+    enil timer == 0 {
+      state <- thernthedu state {
         State.Red    => State.Green
         State.Green  => State.Yellow
         State.Yellow => State.Red
       }
-      timer <- poruthu state {
+      timer <- thernthedu state {
         State.Red    => 50
         State.Green  => 40
         State.Yellow => 10
       }
-    } illaiyel {
+    } illaiyenil {
       timer <- timer -% 1
     }
   }

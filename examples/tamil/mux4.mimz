@@ -3,14 +3,14 @@
 // compile error, so no inferred latches.
 
 தொகுதி Mux4(WIDTH: int = 8) {
-  உள்  sel: bits[2]
-  உள்  a: bits[WIDTH]
-  உள்  b: bits[WIDTH]
-  உள்  c: bits[WIDTH]
-  உள்  d: bits[WIDTH]
-  வெளி y: bits[WIDTH]
+  உள்ளீடு  sel: bits[2]
+  உள்ளீடு  a: bits[WIDTH]
+  உள்ளீடு  b: bits[WIDTH]
+  உள்ளீடு  c: bits[WIDTH]
+  உள்ளீடு  d: bits[WIDTH]
+  வெளியீடு y: bits[WIDTH]
 
-  y = பொருத்து sel {
+  y = தேர்ந்தெடு sel {
     0b00 => a
     0b01 => b
     0b10 => c

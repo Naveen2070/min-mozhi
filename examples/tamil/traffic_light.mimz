@@ -3,31 +3,31 @@
 // no forgotten states.
 
 தொகுதி TrafficLight {
-  கடிகாரம் clk
+  துடிப்பு clk
   மீட்டமை rst
 
-  வெளி red:    bit
-  வெளி yellow: bit
-  வெளி green:  bit
+  வெளியீடு red:    bit
+  வெளியீடு yellow: bit
+  வெளியீடு green:  bit
 
   வகை State { Red, Green, Yellow }
 
-  நிலை state: State   = State.Red
-  நிலை timer: bits[8] = 0
+  பதிவேடு state: State   = State.Red
+  பதிவேடு timer: bits[8] = 0
 
   போது ஏற்றம்(clk) {
-    என்றால் timer == 0 {
-      state <- பொருத்து state {
+    எனில் timer == 0 {
+      state <- தேர்ந்தெடு state {
         State.Red    => State.Green
         State.Green  => State.Yellow
         State.Yellow => State.Red
       }
-      timer <- பொருத்து state {
+      timer <- தேர்ந்தெடு state {
         State.Red    => 50
         State.Green  => 40
         State.Yellow => 10
       }
-    } இல்லையேல் {
+    } இல்லையெனில் {
       timer <- timer -% 1
     }
   }

@@ -2,12 +2,12 @@
 // chained.mimz via the dotted path `lib.full_adder`.
 
 thoguthi FullAdder {
-  ulle  a:    bit
-  ulle  b:    bit
-  ulle  cin:  bit
+  ulleedu  a:    bit
+  ulleedu  b:    bit
+  ulleedu  cin:  bit
 
-  veli sum:  bit
-  veli cout: bit
+  veliyeedu sum:  bit
+  veliyeedu cout: bit
 
   sum  = a ^ b ^ cin
   cout = (a & b) | (cin & (a ^ b))

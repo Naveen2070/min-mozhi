@@ -4,16 +4,16 @@
 // are the negated bit-reductions. All combinational, all plain Verilog-2005.
 
 தொகுதி BitOps {
-  உள் a: bits[4]
-  உள் b: bits[4]
-  உள் s: signed[4]
+  உள்ளீடு a: bits[4]
+  உள்ளீடு b: bits[4]
+  உள்ளீடு s: signed[4]
 
-  வெளி lo:  bits[4]
-  வெளி hi:  bits[4]
-  வெளி mag: signed[5]
-  வெளி nd:  bit
-  வெளி nr:  bit
-  வெளி xn:  bit
+  வெளியீடு lo:  bits[4]
+  வெளியீடு hi:  bits[4]
+  வெளியீடு mag: signed[5]
+  வெளியீடு nd:  bit
+  வெளியீடு nr:  bit
+  வெளியீடு xn:  bit
 
   lo  = min(a, b)
   hi  = max(a, b)

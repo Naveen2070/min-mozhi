@@ -2,19 +2,19 @@
 // and toggle the output with `^` each time it wraps.
 
 thoguthi Blinker(LIMIT: int = 50000000) {
-  kadigaram clk
-  meetamai rst
+  thudippu clk
+  meettamai rst
 
-  veli led: bit
+  veliyeedu led: bit
 
-  nilai cnt:   bits[26] = 0
-  nilai state: bit      = 0
+  pathivedu cnt:   bits[26] = 0
+  pathivedu state: bit      = 0
 
   pothu yetram(clk) {
-    endral cnt == LIMIT {
+    enil cnt == LIMIT {
       cnt   <- 0
       state <- state ^ 1
-    } illaiyel {
+    } illaiyenil {
       cnt <- cnt +% 1
     }
   }

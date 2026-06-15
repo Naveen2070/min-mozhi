@@ -4,11 +4,11 @@
 // single `bit`, always driven (no latch possible).
 
 thoguthi Window {
-  ulle lo:    bits[8]
-  ulle value: bits[8]
-  ulle hi:    bits[8]
+  ulleedu  lo:    bits[8]
+  ulleedu  value: bits[8]
+  ulleedu  hi:    bits[8]
 
-  veli in_range: bit
+  veliyeedu in_range: bit
 
   in_range = lo <= value <= hi
 }

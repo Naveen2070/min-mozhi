@@ -6,12 +6,12 @@
 // exhaustively by the Icarus testbench (all 256 input pairs).
 
 தொகுதி SignedMath {
-  உள் a: signed[4]
-  உள் b: signed[4]
+  உள்ளீடு a: signed[4]
+  உள்ளீடு b: signed[4]
 
-  வெளி ext: signed[8]
-  வெளி sum: signed[5]
-  வெளி lt:  bit
+  வெளியீடு ext: signed[8]
+  வெளியீடு sum: signed[5]
+  வெளியீடு lt:  bit
 
   ext = extend(a, 8)
   sum = a + b

@@ -5,12 +5,12 @@
 // the flame (சுடர்) flips every clock tick and drives the light (ஒளி).
 
 thoguthi விளக்கு {
-  kadigaram மணி
-  meetamai மீள்
+  thudippu மணி
+  meettamai மீள்
 
-  veli ஒளி: bit
+  veliyeedu ஒளி: bit
 
-  nilai சுடர்: bit = 0
+  pathivedu சுடர்: bit = 0
 
   pothu yetram(மணி) {
     சுடர் <- !சுடர்

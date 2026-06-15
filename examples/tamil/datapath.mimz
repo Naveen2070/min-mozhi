@@ -1,19 +1,18 @@
 // Min-Mozhi example (Tamil flavor — same grammar, only the keywords change):
-// the datapath operators that no other example reaches.
 // `*` is lossless multiply (4+4 -> 8 bits); `*%` is the wrapping twin (keeps 4);
 // `>>` shifts right; `{a, b}` concatenates (a is the high half); `a[3:2]` slices
 // (both bounds inclusive); `trunc(a, 2)` keeps the low bits. All combinational.
 
 தொகுதி DataPath {
-  உள் a: bits[4]
-  உள் b: bits[4]
+  உள்ளீடு a: bits[4]
+  உள்ளீடு b: bits[4]
 
-  வெளி prod: bits[8]
-  வெளி wrap: bits[4]
-  வெளி rsh:  bits[4]
-  வெளி cat:  bits[8]
-  வெளி hi2:  bits[2]
-  வெளி lo2:  bits[2]
+  வெளியீடு prod: bits[8]
+  வெளியீடு wrap: bits[4]
+  வெளியீடு rsh:  bits[4]
+  வெளியீடு cat:  bits[8]
+  வெளியீடு hi2:  bits[2]
+  வெளியீடு lo2:  bits[2]
 
   prod = a * b
   wrap = a *% b

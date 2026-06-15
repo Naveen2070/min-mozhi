@@ -3,13 +3,13 @@
 // compare it with the current one.
 
 module EdgeDetector {
-  kadigaram clk
+  thudippu clk
   மீட்டமை rst
 
   in  din:   bit
-  veli pulse: bit
+  veliyeedu pulse: bit
 
-  நிலை prev: bit = 0
+  பதிவேடு prev: bit = 0
 
   on yetram(clk) {
     prev <- din

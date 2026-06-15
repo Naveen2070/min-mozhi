@@ -3,14 +3,14 @@
 // so the output is always driven.
 
 thoguthi Comparator(WIDTH: int = 8) {
-  ulle  a: bits[WIDTH]
-  ulle  b: bits[WIDTH]
+  ulleedu  a: bits[WIDTH]
+  ulleedu  b: bits[WIDTH]
 
-  veli eq:  bit
-  veli gt:  bit
-  veli max: bits[WIDTH]
+  veliyeedu eq:  bit
+  veliyeedu gt:  bit
+  veliyeedu max: bits[WIDTH]
 
   eq  = a == b
   gt  = a > b
-  max = endral a > b { a } illaiyel { b }
+  max = enil a > b { a } illaiyenil { b }
 }

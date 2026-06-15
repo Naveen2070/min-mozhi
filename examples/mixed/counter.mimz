@@ -3,12 +3,12 @@
 // `+%` is wrapping add: same width, wraps on overflow — on purpose, visibly.
 
 module Counter(WIDTH: int = 8) {
-  kadigaram clk
+  thudippu clk
   மீட்டமை rst
 
   out count: bits[WIDTH]
 
-  nilai value: bits[WIDTH] = 0
+  pathivedu value: bits[WIDTH] = 0
 
   போது rise(clk) {
     value <- value +% 1

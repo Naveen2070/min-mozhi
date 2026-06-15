@@ -5,18 +5,18 @@
 serkka lib.full_adder
 
 thoguthi Chained {
-  ulle  a0:  bit
-  ulle  a1:  bit
-  ulle  b0:  bit
-  ulle  b1:  bit
-  ulle  cin: bit
+  ulleedu  a0:  bit
+  ulleedu  a1:  bit
+  ulleedu  b0:  bit
+  ulleedu  b1:  bit
+  ulleedu  cin: bit
 
-  veli sum0: bit
-  veli sum1: bit
-  veli cout: bit
+  veliyeedu sum0: bit
+  veliyeedu sum1: bit
+  veliyeedu cout: bit
 
-  vai fa0 = FullAdder() { a: a0, b: b0, cin: cin }
-  vai fa1 = FullAdder() { a: a1, b: b1, cin: fa0.cout }
+  amai fa0 = FullAdder() { a: a0, b: b0, cin: cin }
+  amai fa1 = FullAdder() { a: a1, b: b1, cin: fa0.cout }
 
   sum0 = fa0.sum
   sum1 = fa1.sum

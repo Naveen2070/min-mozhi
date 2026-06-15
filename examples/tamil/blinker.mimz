@@ -2,19 +2,19 @@
 // and toggle the output with `^` each time it wraps.
 
 தொகுதி Blinker(LIMIT: int = 50000000) {
-  கடிகாரம் clk
+  துடிப்பு clk
   மீட்டமை rst
 
-  வெளி led: bit
+  வெளியீடு led: bit
 
-  நிலை cnt:   bits[26] = 0
-  நிலை state: bit      = 0
+  பதிவேடு cnt:   bits[26] = 0
+  பதிவேடு state: bit      = 0
 
   போது ஏற்றம்(clk) {
-    என்றால் cnt == LIMIT {
+    எனில் cnt == LIMIT {
       cnt   <- 0
       state <- state ^ 1
-    } இல்லையேல் {
+    } இல்லையெனில் {
       cnt <- cnt +% 1
     }
   }

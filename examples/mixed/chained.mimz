@@ -5,18 +5,18 @@
 include lib.full_adder
 
 thoguthi Chained {
-  உள்  a0:  bit
+  உள்ளீடு  a0:  bit
   in  a1:  bit
-  ulle  b0:  bit
-  உள்  b1:  bit
+  ulleedu  b0:  bit
+  உள்ளீடு  b1:  bit
   in  cin: bit
 
-  veli sum0: bit
-  வெளி sum1: bit
+  veliyeedu sum0: bit
+  வெளியீடு sum1: bit
   out cout: bit
 
-  vai fa0 = FullAdder() { a: a0, b: b0, cin: cin }
-  வை fa1 = FullAdder() { a: a1, b: b1, cin: fa0.cout }
+  amai fa0 = FullAdder() { a: a0, b: b0, cin: cin }
+  அமை fa1 = FullAdder() { a: a1, b: b1, cin: fa0.cout }
 
   sum0 = fa0.sum
   sum1 = fa1.sum

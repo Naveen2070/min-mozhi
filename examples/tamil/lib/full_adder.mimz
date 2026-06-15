@@ -2,12 +2,12 @@
 // chained.mimz via the dotted path `lib.full_adder`.
 
 தொகுதி FullAdder {
-  உள்  a:    bit
-  உள்  b:    bit
-  உள்  cin:  bit
+  உள்ளீடு  a:    bit
+  உள்ளீடு  b:    bit
+  உள்ளீடு  cin:  bit
 
-  வெளி sum:  bit
-  வெளி cout: bit
+  வெளியீடு sum:  bit
+  வெளியீடு cout: bit
 
   sum  = a ^ b ^ cin
   cout = (a & b) | (cin & (a ^ b))

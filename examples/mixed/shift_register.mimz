@@ -4,13 +4,13 @@
 // match implicitly, so `extend(din, WIDTH)` makes the resize visible.
 
 module ShiftRegister(WIDTH: int = 8) {
-  kadigaram clk
+  thudippu clk
   மீட்டமை rst
 
   in  din:  bit
-  veli dout: bits[WIDTH]
+  veliyeedu dout: bits[WIDTH]
 
-  நிலை sr: bits[WIDTH] = 0
+  பதிவேடு sr: bits[WIDTH] = 0
 
   on yetram(clk) {
     sr <- (sr << 1) | extend(din, WIDTH)

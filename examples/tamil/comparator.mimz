@@ -3,14 +3,14 @@
 // so the output is always driven.
 
 தொகுதி Comparator(WIDTH: int = 8) {
-  உள்  a: bits[WIDTH]
-  உள்  b: bits[WIDTH]
+  உள்ளீடு  a: bits[WIDTH]
+  உள்ளீடு  b: bits[WIDTH]
 
-  வெளி eq:  bit
-  வெளி gt:  bit
-  வெளி max: bits[WIDTH]
+  வெளியீடு eq:  bit
+  வெளியீடு gt:  bit
+  வெளியீடு max: bits[WIDTH]
 
   eq  = a == b
   gt  = a > b
-  max = என்றால் a > b { a } இல்லையேல் { b }
+  max = எனில் a > b { a } இல்லையெனில் { b }
 }

@@ -3,14 +3,14 @@
 // compile error, so no inferred latches.
 
 module Mux4(WIDTH: int = 8) {
-  ulle  sel: bits[2]
-  உள்  a: bits[WIDTH]
+  ulleedu  sel: bits[2]
+  உள்ளீடு  a: bits[WIDTH]
   in  b: bits[WIDTH]
-  ulle  c: bits[WIDTH]
-  உள்  d: bits[WIDTH]
+  ulleedu  c: bits[WIDTH]
+  உள்ளீடு  d: bits[WIDTH]
   out y: bits[WIDTH]
 
-  y = poruthu sel {
+  y = thernthedu sel {
     0b00 => a
     0b01 => b
     0b10 => c

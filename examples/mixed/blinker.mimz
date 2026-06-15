@@ -2,16 +2,16 @@
 // and toggle the output with `^` each time it wraps.
 
 module Blinker(LIMIT: int = 50000000) {
-  kadigaram clk
+  thudippu clk
   மீட்டமை rst
 
   out led: bit
 
-  nilai cnt:   bits[26] = 0
-  நிலை state: bit      = 0
+  pathivedu cnt:   bits[26] = 0
+  பதிவேடு state: bit      = 0
 
   on yetram(clk) {
-    என்றால் cnt == LIMIT {
+    எனில் cnt == LIMIT {
       cnt   <- 0
       state <- state ^ 1
     } else {

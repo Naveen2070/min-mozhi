@@ -3,14 +3,14 @@
 // compile error, so no inferred latches.
 
 thoguthi Mux4(WIDTH: int = 8) {
-  ulle  sel: bits[2]
-  ulle  a: bits[WIDTH]
-  ulle  b: bits[WIDTH]
-  ulle  c: bits[WIDTH]
-  ulle  d: bits[WIDTH]
-  veli y: bits[WIDTH]
+  ulleedu  sel: bits[2]
+  ulleedu  a: bits[WIDTH]
+  ulleedu  b: bits[WIDTH]
+  ulleedu  c: bits[WIDTH]
+  ulleedu  d: bits[WIDTH]
+  veliyeedu y: bits[WIDTH]
 
-  y = poruthu sel {
+  y = thernthedu sel {
     0b00 => a
     0b01 => b
     0b10 => c

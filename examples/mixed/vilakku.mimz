@@ -5,12 +5,12 @@
 // the flame (சுடர்) flips every clock tick and drives the light (ஒளி).
 
 module விளக்கு {
-  kadigaram மணி
+  thudippu மணி
   மீட்டமை மீள்
 
   out ஒளி: bit
 
-  nilai சுடர்: bit = 0
+  pathivedu சுடர்: bit = 0
 
   on ஏற்றம்(மணி) {
     சுடர் <- !சுடர்

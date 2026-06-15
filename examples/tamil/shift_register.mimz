@@ -4,13 +4,13 @@
 // match implicitly, so `extend(din, WIDTH)` makes the resize visible.
 
 தொகுதி ShiftRegister(WIDTH: int = 8) {
-  கடிகாரம் clk
+  துடிப்பு clk
   மீட்டமை rst
 
-  உள்  din:  bit
-  வெளி dout: bits[WIDTH]
+  உள்ளீடு  din:  bit
+  வெளியீடு dout: bits[WIDTH]
 
-  நிலை sr: bits[WIDTH] = 0
+  பதிவேடு sr: bits[WIDTH] = 0
 
   போது ஏற்றம்(clk) {
     sr <- (sr << 1) | extend(din, WIDTH)

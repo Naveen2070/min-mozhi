@@ -4,12 +4,12 @@
 சேர்க்க adder
 
 தொகுதி Alu(WIDTH: int = 8) {
-  உள்  a:  bits[WIDTH]
-  உள்  b:  bits[WIDTH]
-  உள்  op: bits[2]
-  வெளி y:  bits[WIDTH]
+  உள்ளீடு  a:  bits[WIDTH]
+  உள்ளீடு  b:  bits[WIDTH]
+  உள்ளீடு  op: bits[2]
+  வெளியீடு y:  bits[WIDTH]
 
-  y = பொருத்து op {
+  y = தேர்ந்தெடு op {
     0b00 => a +% b
     0b01 => a -% b
     0b10 => a & b
@@ -18,13 +18,13 @@
 }
 
 தொகுதி Top {
-  கடிகாரம் clk
+  துடிப்பு clk
   மீட்டமை rst
 
-  உள்  x:     bits[8]
-  உள்  y:     bits[8]
-  வெளி total: bits[9]
+  உள்ளீடு  x:     bits[8]
+  உள்ளீடு  y:     bits[8]
+  வெளியீடு total: bits[9]
 
-  வை add = Adder(WIDTH: 8) { a: x, b: y }
+  அமை add = Adder(WIDTH: 8) { a: x, b: y }
   total = add.sum
 }

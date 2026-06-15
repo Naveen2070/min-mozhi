@@ -4,15 +4,15 @@
 // are the negated bit-reductions. All combinational, all plain Verilog-2005.
 
 module BitOps {
-  ulle a: bits[4]
-  உள் b: bits[4]
+  ulleedu a: bits[4]
+  உள்ளீடு b: bits[4]
   in s: signed[4]
 
-  veli lo:  bits[4]
-  வெளி hi:  bits[4]
+  veliyeedu lo:  bits[4]
+  வெளியீடு hi:  bits[4]
   out mag: signed[5]
-  veli nd:  bit
-  வெளி nr:  bit
+  veliyeedu nd:  bit
+  வெளியீடு nr:  bit
   out xn:  bit
 
   lo  = min(a, b)

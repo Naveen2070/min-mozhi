@@ -6,12 +6,12 @@
 // exhaustively by the Icarus testbench (all 256 input pairs).
 
 module SignedMath {
-  ulle a: signed[4]
-  உள் b: signed[4]
+  ulleedu a: signed[4]
+  உள்ளீடு b: signed[4]
 
   out ext: signed[8]
-  veli sum: signed[5]
-  வெளி lt:  bit
+  veliyeedu sum: signed[5]
+  வெளியீடு lt:  bit
 
   ext = extend(a, 8)
   sum = a + b
