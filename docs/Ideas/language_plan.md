@@ -764,3 +764,93 @@ features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specce
    `[hi:lo]`/`{a,b}` are canonical (spec/02 v0.2.6 section 1.8).
 5. Everything else (8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8) is additive / edition-safe →
    can land after v0.1.0 with no breakage; none of it pressures the freeze date.
+
+---
+
+## 10. HDL parity gap analysis (2026-06-15)
+
+Reviewed Min-Mozhi against the full feature sets of **VHDL, Verilog, and
+SystemVerilog** ("variables/types → operators → control → loops → subprograms →
+concurrency → OOP → verification"). **Decision:** scope = _curated subset +
+broaden RTL parity_ — stay synthesizable, safe-by-default, educational; pull the
+big **synthesizable** RTL gaps forward; do **not** chase SV verification/OOP now
+(but keep that door open, see below). "Full parity" is the wrong target — half
+the SV list is verification/software, which violates tie-breaker #1 (hardware
+honesty). The right target is **complete synthesizable-RTL coverage** + the
+safety/trilingual differentiators.
+
+### Status key
+
+✅ have · 🟢 add-now (small, additive) · 🟡 pull-forward (synthesizable, was later)
+· 🔵 already-planned Phase 2+ · ⛔ permanent-out (physics/honesty) · 🟣 deferred
+verification layer (revisitable).
+
+### What we already have (often safer than the originals)
+
+`bit`/`bits[N]`/`signed[N]`/`enum`; lossless `+ - *` + wrapping `+% -% *%`;
+`<< >>`, `& | ^ ~`, reductions `&x |x ^x`; comparison + monotonic chaining;
+`{a,b}` concat, `x[i]`, `x[hi:lo]`; `if`-expr (mandatory else) + exhaustive
+`match`; `repeat` generate; modules + params + instances + imports +
+instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
+`expect`; 10 builtins.
+
+### Gaps, triaged
+
+| Feature (V/VHDL/SV)                                                                                                             | Status | Note                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| replication `{N{x}}`                                                                                                            | 🟢     | parser+checker+emit; compile-time N                                                     |
+| don't-care `match` (casex/casez)                                                                                                | 🟢     | patterns `0b1??` + exhaustiveness rule                                                  |
+| falling-edge `on fall(clk)`                                                                                                     | 🟢     | `fall` reserved; negedge block                                                          |
+| memories / arrays / RAM (`mem`)                                                                                                 | 🟡     | array type + indexed clocked read/write; highest "every HDL has it" value               |
+| struct / record + interfaces (`struct`/`interface`)                                                                             | 🟡     | bundles flattened to nets; unblocks 2.9/8.7/8.8                                         |
+| combinational `function`                                                                                                        | 🟡     | **new — not previously tracked**; pure/stateless, inlined at emit; unblocks pipe-op 8.6 |
+| async reset / reset polarity                                                                                                    | 🟡     | small spec+emit widening (sync active-high only today)                                  |
+| packages / namespacing                                                                                                          | 🟡     | **new — not previously tracked**; modest, consider                                      |
+| tagged-union payloads (2.7) · `sync` CDC (1.2) · `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | already in §7/§9 + phase-2 plan, unchanged order                                        |
+| ternary `?:`                                                                                                                    | ⛔     | `if {} else {}` expr is the one way (G1)                                                |
+| division `/` / modulo `%` operators                                                                                             | ⛔     | no cheap operator form; future stdlib divider module                                    |
+| internal tri-state; auto-retiming-with-Fmax                                                                                     | ⛔     | physics / honesty (Tier 4, §7)                                                          |
+
+### Loops (explicit — three honest hardware shapes)
+
+1. **Compile-time unroll** — `repeat i: lo..hi` — ✅ have (≈ `generate`,
+   SV statically-bounded `for`).
+2. **Controlled `for` (`suzhal`/`சுழல்`, reserved)** — 🟡 pull-forward, distinct
+   from `repeat`: a statically/provably **bounded** count that elaborates to
+   hardware, or a cycle-iterating form lowered to an **FSM + counter**. The bound
+   is the spec's load-bearing rule. `சுழல்` already reserved (both spellings).
+3. **`foreach`** — 🟡 **new — not previously tracked**; sugar over (1)/(2) once
+   array/`mem` types exist.
+
+A data-dependent unbounded `while` has no fixed silicon → accepted **only** in a
+bounded or FSM-lowered form, never free-running.
+
+### Verification / OOP / DV — 🟣 deferred, revisitable (NOT permanent-out)
+
+SV `class`/OOP, `rand`/constraints, covergroup/coverpoint/cross, immediate +
+concurrent (SVA) assertions, `fork/join`, dynamic/associative arrays, queues,
+mailboxes. **User intent (2026-06-15):** _"in future if needed we will include
+verification logic too."_ These form a separate **verification layer** (not RTL):
+they ride the **simulator track** (Phase 1.5+) and the **`prove`** track, fenced
+from synthesis exactly like today's `test` blocks. Pursuing the heavier DV pieces
+later is a deliberate **co-goal amendment to spec/01** when the simulator is
+mature — recorded as a future option, not a rejection. Substitutes to build
+first (cover most needs): `test`/`tick`/`expect` (have) · `sim::fatal`/`sim::warn`
+(Phase 1.5) · `prove` → SymbiYosys (Phase 2, SVA-style) · `requires`/`ensures`
+(Phase 2+).
+
+### Recommended pull-forward order (synthesizable RTL)
+
+1. Small additive batch: replication `{N{x}}`, `on fall`, don't-care `match`.
+2. Memories/arrays (`mem`). 3. Structs + interfaces. 4. Combinational `function`.
+3. Async reset / polarity. 6. Controlled loop (`suzhal`) + `foreach`.
+4. Then the unchanged Phase-2 line (tagged unions → `sync` → `prove`/contracts →
+   `secret`/`system_fault` → fixed-point). 8. Verification layer — future,
+   post-simulator, spec/01 amendment.
+
+### Newly-tracked items (were missing from this plan / phase-2)
+
+Combinational **functions**, **replication `{N{x}}`**, **don't-care match
+patterns**, **packages/namespacing**, explicit **async-reset**, **`foreach`**, a
+clarified **controlled-loop (`suzhal`)** spec, and the **deferred verification
+co-goal**. These are added to the phase-2 backlog ("Language features").
