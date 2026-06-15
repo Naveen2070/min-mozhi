@@ -30,7 +30,7 @@ impl<'a> Checker<'a> {
                     None => acc = Some(*t),
                     Some(prev) if same(prev, t) => {}
                     Some(prev) => {
-                        self.err(
+                        self.err_args(
                             cx.file,
                             whole,
                             "E0408",
@@ -38,6 +38,7 @@ impl<'a> Checker<'a> {
                             "every arm becomes the same wire, so all arms must \
                              have one type and width — `extend`/`trunc` the odd \
                              one out",
+                            vec![("first", show(prev)), ("second", show(t))],
                         );
                         return Ty::Unknown;
                     }
@@ -187,7 +188,7 @@ impl<'a> Checker<'a> {
                             .find(|&(i, &v)| v != i as u128)
                             .map(|(i, _)| i as u128)
                             .unwrap_or(vals.len() as u128);
-                        self.err(
+                        self.err_args(
                             cx.file,
                             scrutinee,
                             "E0601",
@@ -196,6 +197,7 @@ impl<'a> Checker<'a> {
                                 "value `{missing}` has no arm (there may be more) — \
                                  add arms, or end with `_ =>` for the rest"
                             ),
+                            vec![("type", show(&st))],
                         );
                     }
                 }

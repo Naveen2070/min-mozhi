@@ -330,7 +330,7 @@ mod tests {
         assert_eq!(d.code, Some("E0501"));
         // Tamil render uses the localized template with the inflected name.
         let ta = to_lsp(d, src, Flavor::Tamil);
-        assert!(ta.message.starts_with("y-க்கு"), "got {:?}", ta.message);
+        assert!(ta.message.starts_with("`y-க்கு`"), "got {:?}", ta.message);
         // English is the original wording (the verbatim fallback).
         let en = to_lsp(d, src, Flavor::English);
         assert!(en.message.starts_with("`y` has more than one driver"));
@@ -339,11 +339,11 @@ mod tests {
     #[test]
     fn uncovered_code_is_not_localized_in_lsp() {
         let entry = std::env::temp_dir().join("mimz_lsp_unit/wm.mimz");
-        // Width mismatch → E0401, NOT in the stub catalog.
-        let src = "module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = a\n}\n";
+        // Literal too large → E0405, a multi-shape code that is NOT localized.
+        let src = "module M {\n  out y: bits[2]\n  y = 9\n}\n";
         let reports = analyze(&entry, src);
         let d = &reports[0].diags[0];
-        assert_eq!(d.code, Some("E0401"));
+        assert_eq!(d.code, Some("E0405"));
         // Same message under every flavor (additive plumbing leaves it English).
         assert_eq!(
             to_lsp(d, src, Flavor::Tamil).message,

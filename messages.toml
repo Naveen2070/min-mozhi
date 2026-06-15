@@ -1,0 +1,171 @@
+# Localized error-message catalog (Tamil + Tanglish) — spec/04 §5.
+#
+# DATA, not code (same doctrine as keywords.toml / case_suffixes.toml): the
+# engineering mechanism in src/morph.rs reads this table; the native-speaker
+# panel edits the table, never the code. Authored by native speakers (v1,
+# 2026-06-15) and consistent with the v1 keyword set.
+#
+# English is NOT here — it is the verbatim fallback (the inline `Diag.msg`), so a
+# code with no entry below renders in English unchanged. Only the two localized
+# flavors live here, and a covered code must define BOTH (a sync guard enforces
+# it). Every key must be a real checker code from `diag::ALL_CHECKER_CODES`.
+#
+# Templates are plain text with interpolation tokens filled by `morph::fill`:
+#   {name}        the bare identifier the diagnostic underlines
+#   {name.acc}    accusative (-ஐ)      {name.dat}   dative (-க்கு)
+#   {name.loc}    locative (-இல்)      {name.inst}  instrumental (-ஆல்)
+# Named tokens like {expected}/{found}/{op} are filled from a diagnostic's
+# structured args (see Diag::with_arg); codes needing those are added in step 2.
+
+[message.E0001]
+tamil = "`{name}` என்ற தொகுதி ஒன்றுக்கு மேற்பட்ட இடங்களில் வரையறுக்கப்பட்டுள்ளது"
+tanglish = "`{name}` endra thoguthi ondrukku merpatta idangalil varaiyarukkappattullathu"
+
+[message.E0002]
+tamil = "`{name}` என்ற வகை ஒன்றுக்கு மேற்பட்ட இடங்களில் வரையறுக்கப்பட்டுள்ளது"
+tanglish = "`{name}` endra vagai ondrukku merpatta idangalil varaiyarukkappattullathu"
+
+[message.E0003]
+tamil = "இந்தத் தொகுதியில் `{name}` இரண்டு முறை அறிவிக்கப்பட்டுள்ளது"
+tanglish = "Indha thoguthiyil `{name}` irandu murai arivikkappattullathu"
+
+[message.E0004]
+tamil = "இந்தக் கோப்பில் `{name}` என்ற மாறிலி ஒன்றுக்கு மேற்பட்ட இடங்களில் வரையறுக்கப்பட்டுள்ளது"
+tanglish = "Indha goppil `{name}` endra maarili ondrukku merpatta idangalil varaiyarukkappattullathu"
+
+[message.E0101]
+tamil = "`{name}` என்பது அறியப்படாத பெயர்"
+tanglish = "`{name}` enbadhu ariyappadha peyar"
+
+[message.E0102]
+tamil = "இந்தத் திட்டத்தில் `{name}` என்ற தொகுதி எதுவும் இல்லை"
+tanglish = "Indha thittathil `{name}` endra thoguthi edhum illai"
+
+[message.E0103]
+tamil = "`{name}` என்பது அறியப்படாத வகை"
+tanglish = "`{name}` enbadhu ariyappadha vagai"
+
+[message.E0104]
+tamil = "`{name}` கூறுக்கு இந்த வெளியீடு தடம் இல்லை"
+tanglish = "`{name}` koorukku indha veliyeedu thadam illai"
+
+[message.E0105]
+tamil = "வகைகளும் கூறுகளும் மட்டுமே துணைத் தடங்களைக் கொண்டிருக்க முடியும்"
+tanglish = "Vagaigalum koorugalum mattume thunai thadangalaik kondirukka mudiyum"
+
+[message.E0106]
+tamil = "`{name}` தொகுதியில் இந்த அளபுரு இல்லை"
+tanglish = "`{name}` thoguthiyil indha alaburu illai"
+
+[message.E0107]
+tamil = "`{name}` தொகுதியில் இந்த உள்ளீடு தடம் இல்லை"
+tanglish = "`{name}` thoguthiyil indha ulleedu thadam illai"
+
+[message.E0108]
+tamil = "`{name}` என்ற உள்ளீடு தடத்திற்கு மதிப்பை அமைக்க முடியாது"
+tanglish = "`{name}` endra ulleedu thadathirkku madhippai amaikka mudiyathu"
+
+[message.E0109]
+tamil = "`{name}` என்பது துடிப்பு தடம் அல்ல"
+tanglish = "`{name}` enbadhu thudippu thadam alla"
+
+[message.E0201]
+tamil = "`{name}` என்பது தொகுப்பு நேர மாறிலி அல்ல"
+tanglish = "`{name}` enbadhu thoguppu nera maarili alla"
+
+[message.E0202]
+tamil = "மாறிலியின் கணக்கீடு வரம்பை மீறிவிட்டது"
+tanglish = "Maariliyin kanakkeedu varambai meerivittathu"
+
+[message.E0301]
+tamil = "`{name}` தொகுதியில் பதிவேடுகள் உள்ளன, ஆனால் மீட்டமை தடம் இல்லை"
+tanglish = "`{name}` thoguthiyil pathivedugal ullana, aanaal meettamai thadam illai"
+
+[message.E0302]
+tamil = "`{name}` என்ற உள்ளீடு தடம் இரண்டு முறை இணைக்கப்பட்டுள்ளது"
+tanglish = "`{name}` endra ulleedu thadam irandu murai inaikkappattullathu"
+
+[message.E0303]
+tamil = "மீண்டும் சுழற்சிக்குள் புதிய அறிவிப்புகளைச் செய்ய முடியாது"
+tanglish = "Meendum suzhartsikkul pudhiya arivippugalai seya mudiyathu"
+
+[message.E0406]
+tamil = "`{name}` என்ற சுட்டெண் வரம்பை மீறி உள்ளது"
+tanglish = "`{name}` endra sutten varambai meeriyullathu"
+
+[message.E0407]
+tamil = "அகலப்படுத்துதல் தற்போதைய மதிப்பை விடச் சுருக்க முற்படுகிறது"
+tanglish = "Agalappaduthudhal tharpodhaya madhippai vida churakka murpadugirathu"
+
+[message.E0409]
+tamil = "குறிவடிவ மதிப்பில் தேர்ந்தெடு செய்ய முடியாது"
+tanglish = "Kuri-vadiva madhippil thernthedu seya mudiyathu"
+
+[message.E0410]
+tamil = "`{name}` என்பது சரியான தடா அகலம் அல்ல"
+tanglish = "`{name}` enbadhu sariyaana thada agalam alla"
+
+[message.E0501]
+tamil = "`{name.dat}` ஒன்றுக்கு மேற்பட்ட இயக்கிகள் உள்ளன"
+tanglish = "`{name.dat}` ondrukku merpatta iyakkigal ullana"
+
+[message.E0502]
+tamil = "`{name}` என்ற வெளியீடு தடம் எங்கும் இயக்கப்படவில்லை"
+tanglish = "`{name}` endra veliyeedu thadam engum iyakkappadavillai"
+
+[message.E0503]
+tamil = "`{name}` என்ற பதிவேட்டிற்கு எந்த மதிப்பும் ஒதுக்கப்படவில்லை"
+tanglish = "`{name}` endra pathivedhirkku endha madhippum odhukkappadavillai"
+
+[message.E0504]
+tamil = "`{name}` தடத்தின் வழியே தொடர்சுழற்சி ஏற்படுகிறது"
+tanglish = "`{name}` thadathin vazhiye thodar-suzharci erpadugirathu"
+
+[message.E0505]
+tamil = "`{name}` பதிவேட்டை `=` கொண்டு இயக்க முடியாது; `<-` பயன்படுத்தவும்"
+tanglish = "`{name}` pathivedai `=` kondu iyakka mudiyathu; `<-` payanpaduthavum"
+
+[message.E0602]
+tamil = "இந்தக் கிளையை எட்ட முடியாது"
+tanglish = "Indha kilaiyai etta mudiyathu"
+
+[message.E0701]
+tamil = "`{name}` தடம் இரண்டு வெவ்வேறு clock domain-களைக் கலக்கிறது"
+tanglish = "`{name}` thadam irandu vevveru clock domain-galai kalakkirathu"
+
+# --- Codes that carry structured args (Diag::with_arg → morph::fill). The
+# --- token names below must match the args attached at the err site. A
+# --- diagnostic of the same code whose shape does NOT supply these tokens
+# --- falls back to English (localized_msg drops a template with a leftover
+# --- {token}), so these stay correct even though each code has other shapes.
+
+[message.E0401]
+tamil = "தட அகலப் பொருத்தம் இல்லை: {expected} எதிர்பார்க்கப்பட்டது, ஆனால் {found} உள்ளது"
+tanglish = "Thada agala porutham illai: {expected} edhirpaarkkappattathu, aanaal {found} ullathu"
+
+[message.E0402]
+tamil = "`{op}` இயக்கிக்கு சமமான அகலங்கள் தேவை, ஆனால் {lhs} மற்றும் {rhs} உள்ளன"
+tanglish = "`{op}` iyakkikku samamaana agalangal thevai, aanaal {lhs} mattrum {rhs} ullana"
+
+[message.E0408]
+tamil = "நிபந்தனைக் கிளையின் முடிவுகள் மாறுபடுகின்றன: {first} மற்றும் {second}"
+tanglish = "Nibandhanai kilaiyin mudivugal maarubadugindrana: {first} mattrum {second}"
+
+[message.E0601]
+tamil = "தேர்ந்தெடு கூற்று {type} வகையின் அனைத்து மதிப்புகளையும் உள்ளடக்கவில்லை"
+tanglish = "Thernthedu kootru {type} vagaiyin anaithu madhippugalaiyum ulladakkavillai"
+
+# --- DEFERRED (not active): E0403 / E0404 / E0405 each emit MANY distinct
+# --- message shapes, so a single template can only fit one of them. Native
+# --- authoring exists (kept here for the future per-SHAPE catalog); not wired
+# --- until each shape gets its own template. They render in English today.
+#
+# E0403 (one shape — "<type> is not data"):
+#   tamil    = "{reason} என்பது தரவு வடிவம் அல்ல"
+#   tanglish = "{reason} enbadhu tharavu vadivam alla"
+# E0404 (one shape — "`!` works on a single bit"):
+#   tamil    = "`!` இயக்கி ஒற்றை பிட்டில் மட்டுமே செயல்படும், ஆனால் {found} உள்ளது"
+#   tanglish = "`!` iyakki ottrai bittil mattume seyalpadum, aanaal {found} ullathu"
+# E0405 (one shape — "<value> does not fit in <type>"):
+#   tamil    = "`{name}` என்ற மதிப்பு {type} வரம்பிற்குள் அடங்கவில்லை"
+#   tanglish = "`{name}` endra madhippu {type} varambirkul adangavillai"

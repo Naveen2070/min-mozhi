@@ -6,10 +6,8 @@
 #
 # The accusative/dative/locative/instrumental forms are the four named in
 # spec/04 §5 (-ஐ, -க்கு, -இல், -ஆல்). The Tanglish (romanized) column and the
-# sandhi-joining rules that attach a suffix to a stem are PROVISIONAL — they ride
-# until the native-speaker panel (decision C3) authors the real error catalog and
-# signs off on the morphology. Only the *mechanism* (table lookup + join) is
-# committed now; this content is a stub.
+# sandhi-joining rule (src/morph.rs::inflect) were RATIFIED by the v1
+# native-speaker review (2026-06-15, decision C3 closed).
 
 [suffix.accusative]
 tamil = "ஐ"
