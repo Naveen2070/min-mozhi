@@ -6,40 +6,41 @@ One-page reference. The authoritative sources are
 
 ## Keywords — all three flavors
 
-| English   | Tanglish    | Tamil       | Used for                        |
-| --------- | ----------- | ----------- | ------------------------------- |
-| `module`  | `thoguthi`  | `தொகுதி`    | declare a module                |
-| `in`      | `ulle`      | `உள்`       | input port                      |
-| `out`     | `veli`      | `வெளி`      | output port                     |
-| `wire`    | `kambi`     | `கம்பி`     | combinational signal            |
-| `reg`     | `nilai`     | `நிலை`      | register (memory)               |
-| `clock`   | `kadigaram` | `கடிகாரம்`  | clock signal                    |
-| `reset`   | `meetamai`  | `மீட்டமை`   | reset signal                    |
-| `on`      | `pothu`     | `போது`      | clocked block                   |
-| `rise`    | `yetram`    | `ஏற்றம்`    | rising-edge selector            |
-| `if`      | `endral`    | `என்றால்`   | conditional                     |
-| `else`    | `illaiyel`  | `இல்லையேல்` | else branch                     |
-| `match`   | `poruthu`   | `பொருத்து`  | pattern match                   |
-| `enum`    | `vagai`     | `வகை`       | enumeration                     |
-| `let`     | `vai`       | `வை`        | instantiate a module            |
-| `const`   | `maara`     | `மாறா`      | compile-time constant           |
-| `repeat`  | `meendum`   | `மீண்டும்`  | compile-time unroll             |
-| `import`  | `serkka`    | `சேர்க்க`   | import a file (`include` alias) |
-| `true`    | `unmai`     | `உண்மை`     | boolean literal                 |
-| `false`   | `poi`       | `பொய்`      | boolean literal                 |
-| `test`    | `sodhanai`  | `சோதனை`     | test block                      |
-| `for`     | `kaaga`     | `க்காக`     | test instantiation              |
-| `tick`    | `thattu`    | `தட்டு`     | advance a clock in a test       |
-| `expect`  | `ethirpaar` | `எதிர்பார்` | assert in a test                |
-| `and`     | `mattrum`   | `மற்றும்`   | logical and (`&&`)              |
-| `or`      | `alladhu`   | `அல்லது`    | logical or (`\|\|`)             |
-| `not`     | `illa`      | `இல்லா`     | logical not (`!`)               |
-| `syntax`  | `ilakkanam` | `இலக்கணம்`  | grammar directive               |
-| `thamizh` | `thamizh`   | `தமிழ்`     | thamizh word-order profile      |
+| English   | Tanglish     | Tamil         | Used for                        |
+| --------- | ------------ | ------------- | ------------------------------- |
+| `module`  | `thoguthi`   | `தொகுதி`      | declare a module                |
+| `in`      | `ulleedu`    | `உள்ளீடு`     | input port                      |
+| `out`     | `veliyeedu`  | `வெளியீடு`    | output port                     |
+| `wire`    | `kambi`      | `கம்பி`       | combinational signal            |
+| `reg`     | `pathivedu`  | `பதிவேடு`     | register (memory)               |
+| `clock`   | `thudippu`   | `துடிப்பு`    | clock signal                    |
+| `reset`   | `meettamai`  | `மீட்டமை`     | reset signal                    |
+| `on`      | `pothu`      | `போது`        | clocked block                   |
+| `rise`    | `yetram`     | `ஏற்றம்`      | rising-edge selector            |
+| `if`      | `enil`       | `எனில்`       | conditional                     |
+| `else`    | `illaiyenil` | `இல்லையெனில்` | else branch                     |
+| `match`   | `thernthedu` | `தேர்ந்தெடு`  | pattern match                   |
+| `enum`    | `vagai`      | `வகை`         | enumeration                     |
+| `let`     | `amai`       | `அமை`         | instantiate a module            |
+| `const`   | `maarili`    | `மாறிலி`      | compile-time constant           |
+| `repeat`  | `meendum`    | `மீண்டும்`    | compile-time unroll             |
+| `import`  | `serkka`     | `சேர்க்க`     | import a file (`include` alias) |
+| `true`    | `mei`        | `மெய்`        | boolean literal                 |
+| `false`   | `poi`        | `பொய்`        | boolean literal                 |
+| `test`    | `sodhanai`   | `சோதனை`       | test block                      |
+| `for`     | `kaaga`      | `க்காக`       | test instantiation              |
+| `tick`    | `kanam`      | `கணம்`        | advance a clock in a test       |
+| `expect`  | `uruthisei`  | `உறுதிசெய்`   | assert in a test                |
+| `and`     | `mattrum`    | `மற்றும்`     | logical and (`&&`)              |
+| `or`      | `alladhu`    | `அல்லது`      | logical or (`\|\|`)             |
+| `not`     | `alla`       | `அல்ல`        | logical not (`!`)               |
+| `syntax`  | `ilakkanam`  | `இலக்கணம்`    | grammar directive               |
+| `thamizh` | `thamizh`    | `தமிழ்`       | thamizh word-order profile      |
 
 Reserved for future features (using one is an error): `fall`, `mem`, `sync`,
 `inout`, `struct`, `secret`, `declassify`, `default`, `pipeline`, `interface`,
-`chan`, `prove`, `await`, `fixed`, `requires`, `ensures`.
+`chan`, `prove`, `await`, `fixed`, `requires`, `ensures`, `suzhal` (future
+controlled `for`-loop).
 
 ## Types
 

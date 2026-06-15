@@ -10,7 +10,7 @@
 
 ---
 
-## Phase 0 — Foundation _(1–2 months)_
+## Phase 0 — Foundation _(1–2 months)_ ✅ COMPLETE (2026-06-15)
 
 > Design before you code
 
@@ -178,7 +178,7 @@ Ongoing      Phase 4     Ecosystem & community
 ### Proposed solo-dev deadlines (assumes ~8–10 h/week — correct me and these shift)
 
 ```
-Phase 0 wrap-up       → 30 Jun 2026   (keyword review can trail into Phase 1)
+Phase 0 wrap-up       → 2026-06-15 ✅  (keyword set v1 finalized; DRAFT removed)
 Phase 1  compiler     → 31 Dec 2026   (v0.1.0 tag when executable + testable)
 Phase 1.8 grammar eng → 28 Feb 2027   (go public after this works)
 Phase 1.5 simulator   → 31 May 2027

@@ -56,11 +56,11 @@ A keyword is a word the grammar reserves — `module`, `in`, `out`, `wire`, `reg
 `if`, `match`, and so on. Min-Mozhi has the unusual property that every keyword
 has **three spellings**, called flavors:
 
-| Flavor       | `module`   | `in`   | `out`  | `wire`  | `reg`   |
-| ------------ | ---------- | ------ | ------ | ------- | ------- |
-| English      | `module`   | `in`   | `out`  | `wire`  | `reg`   |
-| Tanglish     | `thoguthi` | `ulle` | `veli` | `kambi` | `nilai` |
-| Tamil script | `தொகுதி`   | `உள்`  | `வெளி` | `கம்பி` | `நிலை`  |
+| Flavor       | `module`   | `in`      | `out`       | `wire`  | `reg`       |
+| ------------ | ---------- | --------- | ----------- | ------- | ----------- |
+| English      | `module`   | `in`      | `out`       | `wire`  | `reg`       |
+| Tanglish     | `thoguthi` | `ulleedu` | `veliyeedu` | `kambi` | `pathivedu` |
+| Tamil script | `தொகுதி`   | `உள்ளீடு` | `வெளியீடு`  | `கம்பி` | `பதிவேடு`   |
 
 All three lex to the same token, so these two modules are identical to the
 compiler:
@@ -70,7 +70,7 @@ module M { in a: bit  out y: bit  y = a }
 ```
 
 ```mimz
-தொகுதி M { உள் a: bit  வெளி y: bit  y = a }
+தொகுதி M { உள்ளீடு a: bit  வெளியீடு y: bit  y = a }
 ```
 
 The full table of all 28 keywords in all three flavors is in the

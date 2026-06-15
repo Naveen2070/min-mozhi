@@ -1,7 +1,7 @@
 # Phase 0 — Foundation
 
 > **Design before you code.**
-> Window: months 1–2 · Status: 🟢 mostly complete (June 2026)
+> Window: months 1–2 · Status: ✅ COMPLETE (2026-06-15)
 
 ## Goal
 
@@ -33,7 +33,7 @@ write valid Min-Mozhi on paper.
 ## Exit criteria
 
 1. All four spec docs exist and agree with each other and the examples. ✅
-2. Keyword table reviewed by native speakers (DRAFT marks removed). ⬜
+2. Keyword table reviewed by native speakers (DRAFT marks removed). ✅ (keyword set v1, 2026-06-15)
 3. Repo under git with LICENSE files (private; public comes after Phase 1.8). ✅
 
 ## Risks / notes

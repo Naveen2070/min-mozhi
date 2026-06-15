@@ -39,8 +39,8 @@ natural Tamil WORD-ORDER half (`--order code|thamizh`) lives in `pretty` below.
   keyword-swaps (R9), so `tests/translate.rs` checks that translating one
   flavor reproduces another at the token level, and that round-trips are
   byte-identical (modulo alias canonicalization).
-- NOTE: tanglish/tamil targets ride the DRAFT keyword columns until
-  native-speaker review closes (keywords.toml header).
+- NOTE: tanglish/tamil targets use the FINALIZED keyword set v1 (native-speaker
+  review closed in Phase 0; keywords.toml header).
 - **`--romanize-names` (opt-in):** also rewrites non-ASCII (Tamil) IDENTIFIERS to
   readable Latin, reusing the emitter's `romanize` (`கணக்கி` → `kannakki`) with
   the same `_2`/`_3` uniquing so a romanization never shadows an ASCII name or

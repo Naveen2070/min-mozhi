@@ -79,42 +79,43 @@ is valid even in an otherwise-English file.
 
 ---
 
-## 2. Keyword Table — v0.2 DRAFT
+## 2. Keyword Table — v1 (FINALIZED)
 
-> ⚠️ **Status: DRAFT — needs native-speaker review** (panel: tech/coder
-> friends). English column is frozen for Phase 1. Weakest picks flagged in
-> notes; check against TN SCERT vocabulary before freezing.
+> ✅ **Status: keyword set v1, FINALIZED** by native-speaker review (2026-06-15,
+> Phase 0 closed). English column frozen. Spellings may change in a future v2;
+> `keywords.toml` carries `version = 1`. This table mirrors `keywords.toml`
+> exactly (`tests/grammar_sync.rs` enforces it).
 
-| Token         | English   | Tanglish    | Tamil       | Notes / alternatives                                                                                                                  |
-| ------------- | --------- | ----------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| KW_MODULE     | `module`  | `thoguthi`  | `தொகுதி`    | standard CS-textbook word for "module"                                                                                                |
-| KW_IN         | `in`      | `ulle`      | `உள்`       | or `ulleedu` (உள்ளீடு, "input") — longer but more precise                                                                             |
-| KW_OUT        | `out`     | `veli`      | `வெளி`      | or `veliyeedu` (வெளியீடு, "output")                                                                                                   |
-| KW_WIRE       | `wire`    | `kambi`     | `கம்பி`     | literal "wire" — strong pick                                                                                                          |
-| KW_REG        | `reg`     | `nilai`     | `நிலை`      | "state" — strong pick                                                                                                                 |
-| KW_CLOCK      | `clock`   | `kadigaram` | `கடிகாரம்`  | literal "clock"; long — `gadi` is a casual option                                                                                     |
-| KW_RESET      | `reset`   | `meetamai`  | `மீட்டமை`   | "restore/reset"                                                                                                                       |
-| KW_ON         | `on`      | `pothu`     | `போது`      | "when/at the time of"                                                                                                                 |
-| KW_RISE       | `rise`    | `yetram`    | `ஏற்றம்`    | "ascent/rise" (`fall` removed in v0.2 — reserved, untranslated until needed)                                                          |
-| KW_IF         | `if`      | `endral`    | `என்றால்`   | classic conditional suffix                                                                                                            |
-| KW_ELSE       | `else`    | `illaiyel`  | `இல்லையேல்` | "otherwise"                                                                                                                           |
-| KW_MATCH      | `match`   | `poruthu`   | `பொருத்து`  | "fit/match"                                                                                                                           |
-| KW_ENUM       | `enum`    | `vagai`     | `வகை`       | "kind/category"                                                                                                                       |
-| KW_LET        | `let`     | `vai`       | `வை`        | "place/put" — weakest pick, review. EN `let` also flagged: binds an instance, not a variable — JS-instinct risk (spec/02 section 1.5) |
-| KW_CONST      | `const`   | `maara`     | `மாறா`      | "unchanging"                                                                                                                          |
-| KW_REPEAT     | `repeat`  | `meendum`   | `மீண்டும்`  | "again" — new in v0.2 (compile-time generation)                                                                                       |
-| KW_IMPORT     | `import`  | `serkka`    | `சேர்க்க`   | en alias: `include`; "to add/include"; `irakkumathi` is literal but trade-flavored                                                    |
-| KW_TRUE       | `true`    | `unmai`     | `உண்மை`     |                                                                                                                                       |
-| KW_FALSE      | `false`   | `poi`       | `பொய்`      |                                                                                                                                       |
-| KW_TEST       | `test`    | `sodhanai`  | `சோதனை`     | "test/experiment"                                                                                                                     |
-| KW_FOR (test) | `for`     | `kaaga`     | `க்காக`     | "for the sake of"                                                                                                                     |
-| KW_TICK       | `tick`    | `thattu`    | `தட்டு`     | "tap/knock" — new in v0.2 (test blocks only), review                                                                                  |
-| KW_EXPECT     | `expect`  | `ethirpaar` | `எதிர்பார்` | "expect" — new in v0.2 (test blocks only)                                                                                             |
-| KW_AND        | `and`     | `mattrum`   | `மற்றும்`   | alias of universal `&&` (G1-x)                                                                                                        |
-| KW_OR         | `or`      | `alladhu`   | `அல்லது`    | alias of universal `\|\|`                                                                                                             |
-| KW_NOT        | `not`     | `illa`      | `இல்லா`     | alias of universal `!`; review vs KW_ELSE family for confusion                                                                        |
-| KW_SYNTAX     | `syntax`  | `ilakkanam` | `இலக்கணம்`  | grammar-engine directive (Layer 2): `syntax thamizh` (section 04). Promoted from reserved in v0.2.5                                   |
-| KW_THAMIZH    | `thamizh` | `thamizh`   | `தமிழ்`     | the `thamizh-order` profile name; en==tanglish (no separate English word), Tamil script `தமிழ்`. New in v0.2.5                        |
+| Token         | English   | Tanglish     | Tamil         | Notes                                                                                                      |
+| ------------- | --------- | ------------ | ------------- | ---------------------------------------------------------------------------------------------------------- |
+| KW_MODULE     | `module`  | `thoguthi`   | `தொகுதி`      | standard CS-textbook word for "module"                                                                     |
+| KW_IN         | `in`      | `ulleedu`    | `உள்ளீடு`     | "input" — precise port direction (v1: was `உள்`)                                                           |
+| KW_OUT        | `out`     | `veliyeedu`  | `வெளியீடு`    | "output" — exact counterpart to உள்ளீடு (v1: was `வெளி`)                                                   |
+| KW_WIRE       | `wire`    | `kambi`      | `கம்பி`       | literal "wire"                                                                                             |
+| KW_REG        | `reg`     | `pathivedu`  | `பதிவேடு`     | "register" — exact CS term (v1: was `நிலை`/"state")                                                        |
+| KW_CLOCK      | `clock`   | `thudippu`   | `துடிப்பு`    | "pulse/beat" — a clock is a pulse (v1: was `கடிகாரம்`)                                                     |
+| KW_RESET      | `reset`   | `meettamai`  | `மீட்டமை`     | "restore/reset" (standard UI/CS term)                                                                      |
+| KW_ON         | `on`      | `pothu`      | `போது`        | "when/at the time of" (trails in thamizh order)                                                            |
+| KW_RISE       | `rise`    | `yetram`     | `ஏற்றம்`      | "ascent/rise" (`fall` reserved, untranslated until needed)                                                 |
+| KW_IF         | `if`      | `enil`       | `எனில்`       | conditional particle — natural trailing "if" in thamizh order (v1: was `என்றால்`)                          |
+| KW_ELSE       | `else`    | `illaiyenil` | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                          |
+| KW_MATCH      | `match`   | `thernthedu` | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                           |
+| KW_ENUM       | `enum`    | `vagai`      | `வகை`         | "kind/category"                                                                                            |
+| KW_LET        | `let`     | `amai`       | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 §1.5) |
+| KW_CONST      | `const`   | `maarili`    | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                      |
+| KW_REPEAT     | `repeat`  | `meendum`    | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                        |
+| KW_IMPORT     | `import`  | `serkka`     | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                      |
+| KW_TRUE       | `true`    | `mei`        | `மெய்`        | boolean true — standard CS/math term (v1: was `உண்மை`)                                                     |
+| KW_FALSE      | `false`   | `poi`        | `பொய்`        | boolean false                                                                                              |
+| KW_TEST       | `test`    | `sodhanai`   | `சோதனை`       | "test/experiment"                                                                                          |
+| KW_FOR (test) | `for`     | `kaaga`      | `க்காக`       | "for the sake of" — **binds** a module in a test (NOT a loop; `repeat` is the loop)                        |
+| KW_TICK       | `tick`    | `kanam`      | `கணம்`        | "moment/instant" — a discrete time step (v1: was `தட்டு`)                                                  |
+| KW_EXPECT     | `expect`  | `uruthisei`  | `உறுதிசெய்`   | "ensure/assert" — hardware assertion (v1: was `எதிர்பார்`)                                                 |
+| KW_AND        | `and`     | `mattrum`    | `மற்றும்`     | alias of universal `&&` (G1-x)                                                                             |
+| KW_OR         | `or`      | `alladhu`    | `அல்லது`      | alias of universal `\|\|`                                                                                  |
+| KW_NOT        | `not`     | `alla`       | `அல்ல`        | alias of universal `!` (v1: was `இல்லா`)                                                                   |
+| KW_SYNTAX     | `syntax`  | `ilakkanam`  | `இலக்கணம்`    | grammar-engine directive (Layer 2): `syntax thamizh` (section 04)                                          |
+| KW_THAMIZH    | `thamizh` | `thamizh`    | `தமிழ்`       | the `thamizh-order` profile name; en==tanglish, Tamil script `தமிழ்`                                       |
 
 ### Reserved words
 
@@ -122,24 +123,25 @@ Set aside for future features — using one as an identifier is a compile
 error (E1005) explaining why. They live in the `reserved` list in
 `keywords.toml`, above the keyword tables:
 
-| Reserved     | Held for                                       |
-| ------------ | ---------------------------------------------- |
-| `fall`       | falling-edge `on` blocks (post-v1)             |
-| `mem`        | memories/arrays (Phase 2)                      |
-| `sync`       | clock-domain crossing (Phase 2)                |
-| `inout`      | top-level bidirectional pads (Phase 2)         |
-| `struct`     | bundles/interfaces (post-Phase 2)              |
-| `secret`     | explicit information-flow types (v0.3 G5)      |
-| `declassify` | the only `secret`→public escape (v0.3 G5)      |
-| `default`    | sticky-fault / default values (v0.3)           |
-| `pipeline`   | pipeline-stage construct (v0.3 backlog)        |
-| `interface`  | named port bundles (v0.3 backlog)              |
-| `chan`       | handshake channels (v0.3 backlog)              |
-| `prove`      | formal/temporal assertions (v0.3 backlog)      |
-| `await`      | handshake sequencing (v0.3 backlog)            |
-| `fixed`      | fixed-point arithmetic type (section 8 triage) |
-| `requires`   | caller-side precondition contract (section 8)  |
-| `ensures`    | module postcondition contract (section 8)      |
+| Reserved           | Held for                                                                |
+| ------------------ | ----------------------------------------------------------------------- |
+| `fall`             | falling-edge `on` blocks (post-v1)                                      |
+| `mem`              | memories/arrays (Phase 2)                                               |
+| `sync`             | clock-domain crossing (Phase 2)                                         |
+| `inout`            | top-level bidirectional pads (Phase 2)                                  |
+| `struct`           | bundles/interfaces (post-Phase 2)                                       |
+| `secret`           | explicit information-flow types (v0.3 G5)                               |
+| `declassify`       | the only `secret`→public escape (v0.3 G5)                               |
+| `default`          | sticky-fault / default values (v0.3)                                    |
+| `pipeline`         | pipeline-stage construct (v0.3 backlog)                                 |
+| `interface`        | named port bundles (v0.3 backlog)                                       |
+| `chan`             | handshake channels (v0.3 backlog)                                       |
+| `prove`            | formal/temporal assertions (v0.3 backlog)                               |
+| `await`            | handshake sequencing (v0.3 backlog)                                     |
+| `fixed`            | fixed-point arithmetic type (section 8 triage)                          |
+| `requires`         | caller-side precondition contract (section 8)                           |
+| `ensures`          | module postcondition contract (section 8)                               |
+| `suzhal` / `சுழல்` | a future controlled `for`-loop (v1 reserved; `repeat` stays the unroll) |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).
@@ -167,7 +169,7 @@ review (section "Review & governance") — no new Tamil words before that.
 Tamil syntax (Tamil is SOV: "clk ஏறும்போது"). Natural Tamil word order is
 **Layer 2 — the Grammar Engine** (`04-grammar-engine.md`, Phase 1.8), which
 adds a `thamizh-order` parser profile (`yetram(clk) pothu { }`,
-`<cond> endral { }`) over the same AST. Layer 1 ships first; Layer 2 follows
+`<cond> enil { }`) over the same AST. Layer 1 ships first; Layer 2 follows
 once the Phase 1 parser exists.
 
 ---
@@ -196,11 +198,11 @@ module Counter(WIDTH: int = 8) {
 
 ```mimz
 thoguthi Counter(WIDTH: int = 8) {
-  kadigaram clk
-  meetamai rst
-  veli count: bits[WIDTH]
+  thudippu clk
+  meettamai rst
+  veliyeedu count: bits[WIDTH]
 
-  nilai value: bits[WIDTH] = 0
+  pathivedu value: bits[WIDTH] = 0
 
   pothu yetram(clk) {
     value <- value +% 1
@@ -214,11 +216,11 @@ thoguthi Counter(WIDTH: int = 8) {
 
 ```mimz
 தொகுதி Counter(WIDTH: int = 8) {
-  கடிகாரம் clk
+  துடிப்பு clk
   மீட்டமை rst
-  வெளி count: bits[WIDTH]
+  வெளியீடு count: bits[WIDTH]
 
-  நிலை value: bits[WIDTH] = 0
+  பதிவேடு value: bits[WIDTH] = 0
 
   போது ஏற்றம்(clk) {
     value <- value +% 1
@@ -234,9 +236,9 @@ thoguthi Counter(WIDTH: int = 8) {
 module Counter(WIDTH: int = 8) {
   clock clk
   reset rst
-  veli count: bits[WIDTH]          // out → veli, rest still English
+  veliyeedu count: bits[WIDTH]     // out → veliyeedu, rest still English
 
-  nilai value: bits[WIDTH] = 0     // reg → nilai
+  pathivedu value: bits[WIDTH] = 0 // reg → pathivedu
 
   on rise(clk) {
     value <- value +% 1

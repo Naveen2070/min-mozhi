@@ -4,10 +4,14 @@
 # list (e.g. `en_aliases`). Aliases lex to the same token; future tooling
 # (`mimz translate`, `mimz fmt`) normalizes them to the canonical spelling.
 #
-# Status: Tanglish/Tamil columns are DRAFT pending native-speaker review.
+# Keyword set: v1 (2026-06-15) — Tanglish/Tamil columns FINALIZED by native-speaker
+# review (Phase 0 closed). Frozen for v1; spellings may change in a future v2.
 # Changing a word here is a data change — no compiler code is touched.
 #
 # Columns: en = English (frozen) · tanglish = romanized Tamil · tamil = Tamil script
+
+# Keyword-set version. Bumped when canonical spellings change (v1 → v2 …).
+version = 1
 
 # Reserved for the future — using these is a compile error suggesting why.
 # (Must stay above the first [keywords.*] table: top-level TOML keys.)
@@ -19,6 +23,9 @@ reserved = [
   "fall", "mem", "sync", "inout", "struct",
   "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "await",
   "fixed", "requires", "ensures",
+  # Parked for a future controlled `for`-loop (v1 reserved both spellings so no
+  # program can claim them before the feature lands). `repeat`/மீண்டும் stays the unroll.
+  "suzhal", "சுழல்",
 ]
 
 [keywords.module]
@@ -28,13 +35,13 @@ tamil = "தொகுதி"
 
 [keywords.in]
 en = "in"
-tanglish = "ulle"
-tamil = "உள்"
+tanglish = "ulleedu"
+tamil = "உள்ளீடு"
 
 [keywords.out]
 en = "out"
-tanglish = "veli"
-tamil = "வெளி"
+tanglish = "veliyeedu"
+tamil = "வெளியீடு"
 
 [keywords.wire]
 en = "wire"
@@ -43,17 +50,17 @@ tamil = "கம்பி"
 
 [keywords.reg]
 en = "reg"
-tanglish = "nilai"
-tamil = "நிலை"
+tanglish = "pathivedu"
+tamil = "பதிவேடு"
 
 [keywords.clock]
 en = "clock"
-tanglish = "kadigaram"
-tamil = "கடிகாரம்"
+tanglish = "thudippu"
+tamil = "துடிப்பு"
 
 [keywords.reset]
 en = "reset"
-tanglish = "meetamai"
+tanglish = "meettamai"
 tamil = "மீட்டமை"
 
 [keywords.on]
@@ -68,18 +75,18 @@ tamil = "ஏற்றம்"
 
 [keywords.if]
 en = "if"
-tanglish = "endral"
-tamil = "என்றால்"
+tanglish = "enil"
+tamil = "எனில்"
 
 [keywords.else]
 en = "else"
-tanglish = "illaiyel"
-tamil = "இல்லையேல்"
+tanglish = "illaiyenil"
+tamil = "இல்லையெனில்"
 
 [keywords.match]
 en = "match"
-tanglish = "poruthu"
-tamil = "பொருத்து"
+tanglish = "thernthedu"
+tamil = "தேர்ந்தெடு"
 
 [keywords.enum]
 en = "enum"
@@ -88,13 +95,13 @@ tamil = "வகை"
 
 [keywords.let]
 en = "let"
-tanglish = "vai"
-tamil = "வை"
+tanglish = "amai"
+tamil = "அமை"
 
 [keywords.const]
 en = "const"
-tanglish = "maara"
-tamil = "மாறா"
+tanglish = "maarili"
+tamil = "மாறிலி"
 
 [keywords.repeat]
 en = "repeat"
@@ -109,8 +116,8 @@ tamil = "சேர்க்க"
 
 [keywords.true]
 en = "true"
-tanglish = "unmai"
-tamil = "உண்மை"
+tanglish = "mei"
+tamil = "மெய்"
 
 [keywords.false]
 en = "false"
@@ -129,13 +136,13 @@ tamil = "க்காக"
 
 [keywords.tick]
 en = "tick"
-tanglish = "thattu"
-tamil = "தட்டு"
+tanglish = "kanam"
+tamil = "கணம்"
 
 [keywords.expect]
 en = "expect"
-tanglish = "ethirpaar"
-tamil = "எதிர்பார்"
+tanglish = "uruthisei"
+tamil = "உறுதிசெய்"
 
 [keywords.and]
 en = "and"
@@ -149,8 +156,8 @@ tamil = "அல்லது"
 
 [keywords.not]
 en = "not"
-tanglish = "illa"
-tamil = "இல்லா"
+tanglish = "alla"
+tamil = "அல்ல"
 
 # Grammar-engine directive (Phase 1.8, spec/04). `syntax thamizh` at the top
 # of a file selects the SOV/postpositional word-order profile; absence of the
