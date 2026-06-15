@@ -95,4 +95,27 @@ impl<'a> Checker<'a> {
                 .with_help(help),
         );
     }
+
+    /// Like [`Self::err`], but also attaches structured `(token, value)` args for
+    /// the localized catalog (`morph::fill` interpolates them into a localized
+    /// template; the English `msg` already contains the same values). Pass the
+    /// SAME values you `format!`'d into `msg`, under the token names the
+    /// `messages.toml` template uses.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn err_args(
+        &mut self,
+        file: usize,
+        span: Span,
+        code: &'static str,
+        msg: impl Into<String>,
+        help: impl Into<String>,
+        args: Vec<(&'static str, String)>,
+    ) {
+        let mut d = Diag::new(span, msg)
+            .with_code(code)
+            .with_file(file)
+            .with_help(help);
+        d.args = args;
+        self.diags.push(d);
+    }
 }

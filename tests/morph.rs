@@ -48,9 +48,10 @@ fn check_stderr(src: &str, lang: Option<&str>) -> String {
 /// covers (E0501). The offending span is the signal name `y`.
 const DOUBLE_DRIVE: &str = "module M {\n  in a: bit\n  out y: bit\n  y = a\n  y = a\n}\n";
 
-/// A program with a width mismatch (E0401) — a code the stub catalog does NOT
-/// cover, so it must stay English under every `--lang`.
-const WIDTH_MISMATCH: &str = "module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = a\n}\n";
+/// A program with a literal that doesn't fit (E0405) — a multi-shape code the
+/// catalog deliberately does NOT localize, so it must stay English under every
+/// `--lang` (the English-fallback invariant).
+const UNCOVERED_E0405: &str = "module M {\n  out y: bits[2]\n  y = 9\n}\n";
 
 // ---- Selection ----------------------------------------------------------
 
@@ -80,7 +81,7 @@ fn covered_code_renders_tamil_with_the_inflected_name() {
     let err = check_stderr(DOUBLE_DRIVE, Some("ta"));
     // The stub E0501 template, with the dative-inflected signal name.
     assert!(
-        err.contains("error[E0501]: y-க்கு"),
+        err.contains("error[E0501]: `y-க்கு`"),
         "expected the localized Tamil E0501 line, got:\n{err}"
     );
     // The English wording must be gone from the WHAT line.
@@ -96,7 +97,7 @@ fn covered_code_auto_selects_tamil_from_the_file() {
     let tamil_src = "தொகுதி M {\n  உள்ளீடு a: bit\n  வெளியீடு y: bit\n  y = a\n  y = a\n}\n";
     let err = check_stderr(tamil_src, None);
     assert!(
-        err.contains("error[E0501]: y-க்கு"),
+        err.contains("error[E0501]: `y-க்கு`"),
         "majority detection should have rendered Tamil, got:\n{err}"
     );
 }
@@ -114,15 +115,15 @@ fn covered_code_stays_english_with_lang_en() {
 
 #[test]
 fn uncovered_code_is_identical_across_languages() {
-    // E0401 is not in the stub catalog, so the WHAT line must be byte-identical
-    // under every flavor — proof the additive plumbing leaves untouched messages
+    // E0405 is not localized, so the WHAT line must be byte-identical under
+    // every flavor — proof the additive plumbing leaves untouched messages
     // exactly as they were.
-    let en = check_stderr(WIDTH_MISMATCH, Some("en"));
-    let ta = check_stderr(WIDTH_MISMATCH, Some("ta"));
-    let tl = check_stderr(WIDTH_MISMATCH, Some("tanglish"));
+    let en = check_stderr(UNCOVERED_E0405, Some("en"));
+    let ta = check_stderr(UNCOVERED_E0405, Some("ta"));
+    let tl = check_stderr(UNCOVERED_E0405, Some("tanglish"));
     let line = |s: &str| {
         s.lines()
-            .find(|l| l.starts_with("error[E0401]"))
+            .find(|l| l.starts_with("error[E0405]"))
             .unwrap_or("<none>")
             .to_string()
     };
@@ -136,7 +137,7 @@ fn uncovered_code_is_identical_across_languages() {
         line(&tl),
         "uncovered code changed under --lang tanglish"
     );
-    assert!(line(&en).starts_with("error[E0401]:"), "expected E0401");
+    assert!(line(&en).starts_with("error[E0405]:"), "expected E0405");
 }
 
 #[test]
@@ -154,7 +155,7 @@ fn compile_also_localizes_diagnostics() {
     assert!(!out.status.success(), "double-drive must fail to compile");
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(
-        err.contains("error[E0501]: y-க்கு"),
+        err.contains("error[E0501]: `y-க்கு`"),
         "compile localizes too, got:\n{err}"
     );
 }
@@ -166,6 +167,89 @@ fn unknown_lang_is_a_clean_error() {
         err.contains("unknown language `klingon`"),
         "expected a clean unknown-language error, got:\n{err}"
     );
+}
+
+// ---- Newly-wired catalog codes (v1 native-authored) --------------------
+
+/// An undriven output (E0502) — a `{name}`-only template, now localized.
+#[test]
+fn e0502_renders_tamil() {
+    let src = "தொகுதி M {\n  உள்ளீடு a: bit\n  வெளியீடு y: bit\n}\n";
+    let err = check_stderr(src, None);
+    assert!(
+        err.contains("error[E0502]: `y`") && err.contains("இயக்கப்படவில்லை"),
+        "expected localized Tamil E0502, got:\n{err}"
+    );
+}
+
+/// `=` on a reg (E0505) — Tamil under an explicit `--lang ta`.
+#[test]
+fn e0505_renders_tamil() {
+    let src = "module M {\n  clock clk\n  reset rst\n  reg r: bit = 0\n  on rise(clk) {\n    r <- 1\n  }\n  r = 1\n}\n";
+    let err = check_stderr(src, Some("ta"));
+    assert!(
+        err.contains("error[E0505]: `r`") && err.contains("பதிவேட்டை"),
+        "expected localized Tamil E0505, got:\n{err}"
+    );
+}
+
+/// A name-less template (E0202 const overflow) localizes with no `{name}` slot.
+#[test]
+fn e0202_renders_tanglish_nameless() {
+    let src = "thoguthi M {\n  maarili HUGE: int = 170141183460469231731687303715884105727 + 1\n  veliyeedu y: bit\n  y = 0\n}\n";
+    let err = check_stderr(src, None);
+    assert!(
+        err.contains("error[E0202]: Maariliyin kanakkeedu"),
+        "expected localized Tanglish E0202, got:\n{err}"
+    );
+}
+
+// ---- Step 2: structured-arg interpolation ------------------------------
+
+/// E0401 carries `{expected}`/`{found}` args, so its localized template
+/// interpolates the two type strings (the renderer extension).
+#[test]
+fn e0401_interpolates_expected_and_found() {
+    let src = "தொகுதி M {\n  உள்ளீடு a: bits[4]\n  வெளியீடு y: bits[8]\n  y = a\n}\n";
+    let err = check_stderr(src, None);
+    assert!(
+        err.contains("error[E0401]:")
+            && err.contains("bits[8]")
+            && err.contains("bits[4]")
+            && err.contains("எதிர்பார்க்கப்பட்டது"),
+        "expected localized Tamil E0401 with interpolated widths, got:\n{err}"
+    );
+    // No leftover template token leaked into the message.
+    assert!(
+        !err.contains("{expected}") && !err.contains("{found}"),
+        "got:\n{err}"
+    );
+}
+
+// ---- Catalog completeness guard ----------------------------------------
+
+/// Every `[message.Exxxx]` key in `messages.toml` must be a real checker code.
+/// A typo'd key would be a dead localization that silently never fires; this
+/// fails naming it. (Both flavors are required by the loader's serde schema, so
+/// a half-localized entry fails to parse and panics at startup — this guards the
+/// key namespace, the part serde cannot.)
+#[test]
+fn message_catalog_keys_are_real_checker_codes() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("messages.toml");
+    let toml = fs::read_to_string(&path).expect("messages.toml exists");
+    let keys: Vec<&str> = toml
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("[message."))
+        .filter_map(|r| r.strip_suffix(']'))
+        .collect();
+    assert!(!keys.is_empty(), "messages.toml has no [message.*] entries");
+    for code in keys {
+        assert!(
+            mimz::diag::ALL_CHECKER_CODES.contains(&code),
+            "messages.toml localizes `{code}`, which is not a checker code in \
+             diag::ALL_CHECKER_CODES — fix the typo or remove the entry"
+        );
+    }
 }
 
 // ---- Mixed-flavor lint (W0001) -----------------------------------------

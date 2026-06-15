@@ -52,6 +52,12 @@ pub struct Diag {
     /// Error (fails the build) or Warning (advisory; exit 0). Defaults to
     /// `Error` in [`Diag::new`]; flip with [`Diag::as_warning`].
     pub severity: Severity,
+    /// Structured interpolation args for the localized catalog, `(token, value)`
+    /// — e.g. `("expected", "bits[8]")`. The English `msg` already bakes these
+    /// in via `format!`; this carries the SAME values to `morph::fill` so a
+    /// localized template can interpolate `{expected}` etc. Empty for most
+    /// diagnostics. The `--json` and English paths ignore it.
+    pub args: Vec<(&'static str, String)>,
 }
 
 impl Diag {
@@ -63,7 +69,15 @@ impl Diag {
             file: None,
             code: None,
             severity: Severity::Error,
+            args: Vec::new(),
         }
+    }
+
+    /// Builder-style: attach a `(token, value)` interpolation arg for the
+    /// localized catalog (the localizer fills `{token}`; see `morph::fill`).
+    pub fn with_arg(mut self, key: &'static str, value: impl Into<String>) -> Self {
+        self.args.push((key, value.into()));
+        self
     }
 
     /// Builder-style: attach the `= help:` line.

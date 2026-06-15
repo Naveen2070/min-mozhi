@@ -307,7 +307,7 @@ impl<'a> Checker<'a> {
                  visibly with `signed(x)` / `unsigned(x)` (spec/02 section 1.7)",
             );
         } else {
-            self.err(
+            self.err_args(
                 cx.file,
                 lhs.span.join(rhs.span),
                 "E0402",
@@ -319,6 +319,7 @@ impl<'a> Checker<'a> {
                 "this operator works bit-for-bit, so both sides must be the \
                  same width — `extend(x, N)` the narrow side, or slice the \
                  wide one (spec/02 section 3)",
+                vec![("op", op.to_string()), ("lhs", show(&a)), ("rhs", show(&b))],
             );
         }
         Ty::Unknown

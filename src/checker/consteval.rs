@@ -59,6 +59,10 @@ impl<'a> Checker<'a> {
 /// Evaluate `e` to a compile-time value, or explain why it is not one.
 /// The returned diagnostic carries its code but NOT a file index — the
 /// caller stamps that (`.with_file(...)`), since only it knows the file.
+// `Diag` is intentionally the error type (it carries the teaching message); this
+// is a cold compile-error path, not a hot return, so the large-Err move cost the
+// lint warns about is irrelevant here.
+#[allow(clippy::result_large_err)]
 pub(crate) fn eval(e: &Expr, env: &Env) -> Result<i128, Diag> {
     let not_const = |what: &str, why: &str| {
         Err(

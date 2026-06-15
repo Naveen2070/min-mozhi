@@ -200,12 +200,13 @@ impl<'a> Checker<'a> {
                         show(&t)
                     )
                 };
-                self.err(
+                self.err_args(
                     cx.file,
                     e.span,
                     "E0401",
                     format!("expected {}, found {}", show(&t), show(&g)),
                     help,
+                    vec![("expected", show(&t)), ("found", show(&g))],
                 );
             }
         }

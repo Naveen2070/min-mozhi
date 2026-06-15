@@ -203,11 +203,12 @@ impl Case {
 
 /// Attach `case`'s suffix to `name` in `flavor`.
 ///
-/// PROVISIONAL sandhi — full Tamil euphonic joining waits on the native-speaker
-/// panel (decision C3). The committed rule is deliberately minimal and matches
-/// the spec/04 §5 example (`'sum'-ஐ`): a Latin-script identifier takes a hyphen
-/// before the suffix; a Tamil-script stem joins directly. Tanglish (already
-/// romanized) always hyphenates. English returns the bare name.
+/// Sandhi rule — RATIFIED by the v1 native-speaker review (2026-06-15,
+/// decision C3 closed). Identifiers in Min-Mozhi are Latin (R9: Tamil-script
+/// names are transliterated), so the join is: a Latin-script stem takes a hyphen
+/// before the suffix (`'sum'-ஐ`, matching spec/04 §5); a Tamil-script stem (only
+/// reachable via a hand-written template, not an identifier) joins directly;
+/// Tanglish always hyphenates. English returns the bare name.
 pub fn inflect(name: &str, case: Case, flavor: Flavor) -> String {
     // A missing/empty stem (e.g. a diagnostic whose span did not resolve to
     // source text) has nothing to inflect — return it bare rather than emitting
@@ -232,54 +233,63 @@ pub fn inflect(name: &str, case: Case, flavor: Flavor) -> String {
 
 // ---- Localized catalog (stub) + render hook -----------------------------
 
-/// One localized message template, keyed by E-code + flavor. The template is
-/// plain text with interpolation tokens filled by [`fill`]:
-/// `{name}` (bare identifier) and `{name.acc|dat|loc|inst}` (inflected).
-struct Localized {
-    code: &'static str,
-    flavor: Flavor,
-    template: &'static str,
+/// The localized error catalog, parsed once from the embedded `messages.toml`.
+///
+/// DATA, not code (the keywords.toml / case_suffixes.toml doctrine): the
+/// native-speaker panel edits `messages.toml`, never this file. English is
+/// absent — it is the verbatim fallback — so an uncovered code renders in
+/// English unchanged. A covered code defines BOTH localized flavors (enforced
+/// by a sync guard in `tests/morph.rs`). Templates interpolate `{name}` and
+/// `{name.acc|dat|loc|inst}` via [`fill`].
+const MESSAGES_TOML: &str = include_str!("../messages.toml");
+
+#[derive(Deserialize)]
+struct MessageFile {
+    #[serde(default)]
+    message: HashMap<String, MessageForms>,
 }
 
-/// The localized error catalog.
-///
-/// STUB — ONE worked shape (E0501, "more than one driver") in Tamil and
-/// Tanglish, so the select → catalog → inflect → render path is real and
-/// tested. The full ~10-shape catalog is authored by the native-speaker panel
-/// (decision C3); every other E-code falls back to its English `msg`.
-const MESSAGES: &[Localized] = &[
-    Localized {
-        code: "E0501",
-        flavor: Flavor::Tamil,
-        template: "{name.dat} ஒன்றுக்கு மேற்பட்ட இயக்கிகள் உள்ளன",
-    },
-    Localized {
-        code: "E0501",
-        flavor: Flavor::Tanglish,
-        template: "{name.dat} oru iyakkikku mael ulladhu",
-    },
-];
+#[derive(Deserialize)]
+struct MessageForms {
+    tamil: String,
+    tanglish: String,
+}
+
+static MESSAGES: LazyLock<HashMap<String, MessageForms>> = LazyLock::new(|| {
+    let file: MessageFile =
+        toml::from_str(MESSAGES_TOML).expect("messages.toml is malformed — fix the catalog");
+    file.message
+});
 
 /// Look up the localized template for a code in a flavor, if the catalog has
-/// one. English always returns `None` (it is the verbatim fallback).
+/// one. English always returns `None` (it is the verbatim fallback). The
+/// `&'static` borrow is sound: `MESSAGES` is a `static`, so its entries live
+/// for the whole program (same as `SUFFIXES`).
 fn localized(code: &str, flavor: Flavor) -> Option<&'static str> {
-    if flavor == Flavor::English {
-        return None;
+    let forms = MESSAGES.get(code)?;
+    match flavor {
+        Flavor::Tamil => Some(forms.tamil.as_str()),
+        Flavor::Tanglish => Some(forms.tanglish.as_str()),
+        Flavor::English => None,
     }
-    MESSAGES
-        .iter()
-        .find(|m| m.code == code && m.flavor == flavor)
-        .map(|m| m.template)
 }
 
-/// Fill a template's interpolation tokens with `name`, inflected per token.
-fn fill(template: &str, name: &str, flavor: Flavor) -> String {
-    template
+/// Fill a template's interpolation tokens: the inflected identifier
+/// (`{name}` / `{name.acc|dat|loc|inst}`) plus any structured `{key}` args the
+/// diagnostic carried (e.g. `{expected}`/`{found}`). A token with no value is
+/// left intact — [`localized_msg`] treats a leftover `{…}` as "this template
+/// doesn't fit this diagnostic" and falls back to English.
+fn fill(template: &str, name: &str, args: &[(&'static str, String)], flavor: Flavor) -> String {
+    let mut out = template
         .replace("{name.acc}", &inflect(name, Case::Accusative, flavor))
         .replace("{name.dat}", &inflect(name, Case::Dative, flavor))
         .replace("{name.loc}", &inflect(name, Case::Locative, flavor))
         .replace("{name.inst}", &inflect(name, Case::Instrumental, flavor))
-        .replace("{name}", name)
+        .replace("{name}", name);
+    for (key, value) in args {
+        out = out.replace(&format!("{{{key}}}"), value);
+    }
+    out
 }
 
 /// The localized rendering of a diagnostic's message in `flavor`, or `None` to
@@ -293,7 +303,14 @@ pub fn localized_msg(d: &Diag, src: &str, flavor: Flavor) -> Option<String> {
     let code = d.code?;
     let template = localized(code, flavor)?;
     let name = src.get(d.span.start..d.span.end).unwrap_or("");
-    Some(fill(template, name, flavor))
+    let rendered = fill(template, name, &d.args, flavor);
+    // A leftover `{token}` means this template needs a structured arg the
+    // diagnostic did not supply (a different message shape under the same code).
+    // Fall back to the English `msg` rather than print a literal `{token}`.
+    if rendered.contains('{') {
+        return None;
+    }
+    Some(rendered)
 }
 
 #[cfg(test)]
@@ -419,12 +436,19 @@ mod tests {
     fn localized_is_none_for_uncovered_codes_and_for_english() {
         assert!(localized("E0501", Flavor::Tamil).is_some());
         assert!(localized("E0501", Flavor::English).is_none()); // English = fallback
-        assert!(localized("E0001", Flavor::Tamil).is_none()); // not in the stub catalog
+        // E0403 has many message shapes, so it is intentionally not localized
+        // (it falls back to English) — a stable "uncovered" example.
+        assert!(localized("E0403", Flavor::Tamil).is_none());
     }
 
     #[test]
     fn fill_inflects_the_stub_template() {
-        let out = fill("{name.dat} ஒன்றுக்கு மேற்பட்ட இயக்கிகள் உள்ளன", "y", Flavor::Tamil);
+        let out = fill(
+            "{name.dat} ஒன்றுக்கு மேற்பட்ட இயக்கிகள் உள்ளன",
+            "y",
+            &[],
+            Flavor::Tamil,
+        );
         assert!(out.starts_with("y-க்கு"), "got {out:?}");
     }
 }
