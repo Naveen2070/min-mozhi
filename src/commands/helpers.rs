@@ -75,6 +75,39 @@ pub(crate) fn parse_bindings<T>(
     Ok(map)
 }
 
+/// Resolve the console-trace scope from the flags, shared by `sim` and `test`.
+/// `--signals` (an explicit, validated subset) overrides `--verbose` (all
+/// signals), which overrides the default (interface + state). An unknown
+/// `--signals` name is a clean error naming `module`.
+pub(crate) fn trace_scope(
+    all: &[String],
+    default: &[String],
+    verbose: bool,
+    signals: &Option<String>,
+    module: &str,
+) -> Result<Vec<String>, String> {
+    match signals {
+        Some(list) => {
+            let chosen: Vec<String> = list
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect();
+            for s in &chosen {
+                if !all.iter().any(|n| n == s) {
+                    return Err(format!(
+                        "--signals names `{s}`, which is not a signal of `{module}`"
+                    ));
+                }
+            }
+            Ok(chosen)
+        }
+        None if verbose => Ok(all.to_vec()),
+        None => Ok(default.to_vec()),
+    }
+}
+
 /// Parse a `u128` literal in decimal, `0x` hex, or `0b` binary.
 pub(crate) fn parse_u128(s: &str) -> Result<u128, String> {
     let parsed = if let Some(hex) = s.strip_prefix("0x") {

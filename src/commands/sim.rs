@@ -7,7 +7,7 @@ use mimz::sim::run::{SimOpts, run};
 use mimz::sim::{elaborate, trace, vcd};
 use mimz::{diag, lexer, morph, parser, project};
 
-use super::helpers::{parse_bindings, parse_u128, resolve_lang};
+use super::helpers::{parse_bindings, parse_u128, resolve_lang, trace_scope};
 use crate::Output;
 
 /// `mimz sim <file>` — simulate a clocked module under a default stimulus
@@ -110,31 +110,17 @@ pub(crate) fn sim_file(
     // Console trace — only when `--trace` is given.
     if let Some(style) = &trace_style {
         let all_names: Vec<String> = timeline.signals.iter().map(|s| s.name.clone()).collect();
-        let scope = match &signals {
-            Some(list) => {
-                let chosen: Vec<String> = list
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(String::from)
-                    .collect();
-                for s in &chosen {
-                    if !all_names.contains(s) {
-                        eprintln!(
-                            "error: --signals names `{s}`, which is not a signal of `{}`",
-                            timeline.module
-                        );
-                        return ExitCode::FAILURE;
-                    }
-                }
-                chosen
+        let default: Vec<String> = in_names
+            .into_iter()
+            .chain(out_names)
+            .chain(reg_names)
+            .collect();
+        let scope = match trace_scope(&all_names, &default, verbose, &signals, &timeline.module) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
             }
-            None if verbose => all_names,
-            None => in_names
-                .into_iter()
-                .chain(out_names)
-                .chain(reg_names)
-                .collect(),
         };
         print!("{}", trace::render(&timeline, style, &scope));
     }

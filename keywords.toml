@@ -21,7 +21,7 @@ version = 1
 # (spec/03 section "Reserved words").
 reserved = [
   "fall", "mem", "sync", "inout", "struct",
-  "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "await",
+  "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "async", "await",
   "fixed", "requires", "ensures",
   # Combinational functions (Phase 2 RTL parity; also unblocks the pipe `|>`).
   # Both spellings reserved pre-v0.1.0 freeze so no program can claim either;

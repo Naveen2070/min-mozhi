@@ -1,8 +1,9 @@
 //! The simulator (Phase 1.5) — today only its combinational SLICE exists.
 //!
 //! [`comb`] evaluates a clockless module's outputs from a set of input values:
-//! no clock, no registers, no instances, no event kernel. The full
-//! event-driven engine, VCD output, and `test` execution are Phase 1.5 proper
+//! no clock, no registers, no instances, no event kernel. The event-driven
+//! engine, VCD output ([`vcd`]), console trace ([`trace`]), and `test`
+//! execution ([`harness`]) are Phase 1.5 proper
 //! (docs/plan/phase-1.5-simulator.md).
 //!
 //! This slice exists now as a deliberate down-payment: it is the engine the
@@ -16,12 +17,15 @@
 //! [`elaborate::Design`] (signals, registers, combinational drivers, sequential
 //! processes) with widths and reset values folded; [`kernel`] interprets a
 //! `Design` over clock cycles with an event-driven two-phase commit and emits
-//! the per-cycle snapshot the VCD writer and console tracer will consume.
+//! the per-cycle snapshot the VCD writer and console tracer consume; [`run`]
+//! drives a default stimulus for `mimz sim`, while [`harness`] runs `test`
+//! blocks (`drive`/`tick`/`expect`/`if`) for `mimz test`.
 
 mod value;
 
 pub mod comb;
 pub mod elaborate;
+pub mod harness;
 pub mod kernel;
 pub mod run;
 pub mod trace;

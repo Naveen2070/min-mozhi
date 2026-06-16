@@ -13,7 +13,10 @@ fn mimz() -> Command {
 /// Write `src` to a unique temp `.mimz` and return its path.
 fn temp_mimz(src: &str) -> PathBuf {
     static N: AtomicUsize = AtomicUsize::new(0);
-    let p = std::env::temp_dir().join(format!("mimz_sim_{}.mimz", N.fetch_add(1, Ordering::Relaxed)));
+    let p = std::env::temp_dir().join(format!(
+        "mimz_sim_{}.mimz",
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
     fs::write(&p, src).unwrap();
     p
 }

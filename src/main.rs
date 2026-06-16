@@ -21,7 +21,8 @@ use mimz::project::{LoadError, LoadedFile};
 use mimz::{diag, project};
 
 use commands::{
-    check, compile, eval_file, explain_code, fmt_file, resolve_config, sim_file, translate_file,
+    check, compile, eval_file, explain_code, fmt_file, resolve_config, sim_file, test_file,
+    translate_file,
 };
 
 /// Top-level CLI definition. The `///` docs on [`Cmd`] variants and fields
@@ -195,6 +196,31 @@ enum Cmd {
         #[arg(long)]
         lang: Option<String>,
     },
+    /// Run the file's `test` blocks and report pass/fail. A failing `expect`
+    /// prints a teaching-quality message (the expression, the cycle, each side's
+    /// value); the command exits non-zero if any test fails. Add `--trace` for a
+    /// per-cycle console trace.
+    Test {
+        /// The .mimz file
+        file: PathBuf,
+        /// Run only tests whose name contains this substring
+        #[arg(long)]
+        filter: Option<String>,
+        /// Per-cycle console trace: `--trace` (every-cycle table) or
+        /// `--trace=changes` (on-change, `$monitor`-style)
+        #[arg(long, value_name = "STYLE", num_args = 0..=1, default_missing_value = "table")]
+        trace: Option<String>,
+        /// Trace ALL signals (clocks/resets/wires too), not just inputs/outputs/regs
+        #[arg(long)]
+        verbose: bool,
+        /// Trace only these comma-separated signals
+        #[arg(long)]
+        signals: Option<String>,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses)
+        #[arg(long)]
+        lang: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -333,6 +359,21 @@ fn main() -> ExitCode {
                 signals,
                 lang.as_deref(),
             )
+        }
+        Cmd::Test {
+            file,
+            filter,
+            trace,
+            verbose,
+            signals,
+            lang,
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang = lang.or(cfg.lang);
+            test_file(&file, filter, trace, verbose, signals, lang.as_deref())
         }
     }
 }

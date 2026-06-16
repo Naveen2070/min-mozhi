@@ -245,6 +245,7 @@ mod tests {
             "interface",
             "chan",
             "prove",
+            "async",
             "await",
         ] {
             assert!(

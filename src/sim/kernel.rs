@@ -171,6 +171,13 @@ impl Sim {
         Ok(out)
     }
 
+    /// Evaluate an expression against the current state — settling the
+    /// combinational layer on demand. The test harness (B6) uses this for
+    /// `expect`/`if` conditions, input drives, and `tick` counts.
+    pub(super) fn eval(&self, e: &Expr) -> Result<Val, String> {
+        value::eval(&mut self.comb_env(), e)
+    }
+
     /// A combinational resolver over the current state: registers and leaves are
     /// known leaf values; wires/outputs resolve through their drivers.
     fn comb_env(&self) -> CombEnv<'_> {

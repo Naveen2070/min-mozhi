@@ -36,8 +36,10 @@ or VCD library) — see the 2026-06-16 Decision in `docs/log/`.
 
 ## 3. `test` blocks (`mimz test`)
 
-`test` blocks are simulation-only and never emit hardware (spec/02 §1.10). Two
-equivalent forms are supported:
+`test` blocks are simulation-only and never emit hardware (spec/02 §1.10). The
+`tick`/`expect` form below is **implemented** (B6); the `await` form is reserved
+pending its native-review spelling (see Deferred). Two equivalent forms are
+specified:
 
 ```mimz
 test "counter counts" for Counter(WIDTH: 4) {
@@ -63,17 +65,24 @@ test "counter counts (await form)" for Counter(WIDTH: 4) {
   readability alternative, not a new execution mechanism. It is a dedicated
   await-timing production, **not** general method-call syntax.
 - `expect <bool-expr>` checks a condition at the current cycle. A failing `expect`
-  **halts that test** and reports a teaching-quality message (the expression, the
-  expected vs actual values, the cycle). `mimz test` exits non-zero if any test
-  fails.
+  **halts that test** and reports a teaching-quality message (the expression's
+  source, the cycle, and — for a comparison — each side's actual value). `mimz
+test` exits non-zero if any test fails.
+- **Implemented (B6, `src/sim/harness.rs`):** `mimz test <file>` runs every
+  `test` block (drive / `tick` / `expect` / `if`), prints `ok` / `FAIL` per test
+  with the teaching message, and sets the exit code. `--filter <substr>` selects
+  tests by name; `--trace` / `--trace=changes` (with `--verbose` / `--signals`)
+  add a per-cycle console trace, riding the same snapshot as `mimz sim`.
 
 ### Deferred (NOT in v0.1)
 
 - **Method-await** (`let r = await uart.read_byte()`, idea 3.3) — needs
   callables/methods (currently E1110); the syntax stays reserved.
 - The **`await` keyword** is reserved (English-only); its Tanglish/Tamil spellings
-  come from native review before activation (R9/R11). Whether an `async` test-block
-  marker is required is an open sub-decision (see the 2026-06-16 log).
+  come from native review before activation (R9/R11). **`async` is now also
+  reserved** (spec/03 v0.2.7) so the open sub-decision — whether the `await`
+  test-timing form needs an `async` test-block marker — can be settled later
+  without a freeze-breaking keyword addition (see the 2026-06-16 log).
 
 ## 4. Waveforms (`mimz sim`) — VCD output
 
