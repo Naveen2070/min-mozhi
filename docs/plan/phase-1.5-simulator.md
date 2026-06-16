@@ -87,9 +87,12 @@ _What was PLANNED for C1 but NOT done (carried forward):_
 
 _Out of C1 scope by design (the rest of full parity — C2–C4):_
 
-- [ ] **C2 — instance / multi-module elaboration** in `src/sim/elaborate.rs` (rejects
-      instances today) + switch `mimz sim`/`mimz test` to `project::load_project` for
-      imports. Unblocks `alu`, `chained`. Then add to the differential.
+- [x] **C2 — instance / multi-module elaboration** (2026-06-16): `elaborate_project`
+      in `src/sim/elaborate.rs` flattens `let` instances (incl. across `import`s) —
+      each child inlined with signals prefixed `{inst}_{name}`, `inst.port` → wire
+      `inst_port` (matches the emitter), so the flat `Design` is bit-for-bit
+      equivalent. `mimz sim`/`mimz test` now `load_project`. `alu` (`Top`) and
+      `chained` added to the Layer-3 differential (16 → 18 examples).
 - [ ] **C3 — `repeat` unrolling** in `src/sim/elaborate.rs`. Unblocks `ripple_adder`.
 - [ ] **C4 — enum-typed signals** (`value.rs::type_width` errors on `Type::Named`).
       Unblocks the `traffic_light` FSM.
@@ -111,8 +114,9 @@ register / edge detector), and a golden VCD locks the writer's exact bytes.
 3. ✅ Differential suite green against Icarus — three-way (kernel / VCD / Icarus),
    plus the ≥1M cycle-events/sec perf baseline.
 
-_Single-module only for now: instances/`repeat` are rejected by the simulator's
-elaborator (a logged, additive follow-up); the emitter already lowers them._
+_Module instances are flattened (C2); `repeat` and enum signals are still rejected
+by the simulator's elaborator (C3/C4 — logged, additive follow-ups); the emitter
+already lowers all of them._
 
 ## Risks / notes
 

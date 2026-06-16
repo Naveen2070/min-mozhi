@@ -15,11 +15,12 @@
 //! install into a failure, so CI can never skip silently. Local install:
 //! the Windows installer (bleyer.org/icarus) or `apt-get install iverilog`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use mimz::sim::elaborate::elaborate;
+use mimz::ast::{File, ModuleItem, TopItem};
+use mimz::sim::elaborate::elaborate_project;
 use mimz::sim::run::{SimOpts, Timeline, comb_run, run};
 use mimz::sim::vcd::to_vcd;
 
@@ -250,8 +251,10 @@ fn self_checking_pure_tamil_testbenches_pass() {
 // default stimulus (reset the first cycle, inputs held, clock toggled for
 // `steps` cycles); a combinational design settles one frame per generated input
 // vector (`steps` vectors). Output values are compared via Verilog `%b` (binary),
-// so the comparison is signedness-agnostic and exact. The example's source names
-// must be ASCII (the romanized tamil-pure layer is covered by Layers 1–2).
+// so the comparison is signedness-agnostic and exact. Tamil-identifier examples
+// work too: the testbench romanizes interface names (via the emitter's own
+// `transliterate`) to match the compiled Verilog, while the kernel keeps source
+// names — see `interface_name_map`.
 
 /// One held input: name + value (clocked designs only).
 type Stim<'a> = &'a [(&'a str, u128)];
@@ -267,7 +270,7 @@ fn mask(w: u32) -> u128 {
 
 /// `name #(.P(v), …) uut (conns)` — the instantiation line, with optional
 /// parameter overrides (so a design can be driven at a chosen width/limit).
-fn instantiation(module: &str, params: &[(&str, i128)], conns: &[String]) -> String {
+fn instantiation(module: &str, params: &[(String, i128)], conns: &[String]) -> String {
     let p = if params.is_empty() {
         String::new()
     } else {
@@ -282,7 +285,7 @@ fn instantiation(module: &str, params: &[(&str, i128)], conns: &[String]) -> Str
 #[allow(clippy::too_many_arguments)]
 fn clocked_testbench(
     module: &str,
-    params: &[(&str, i128)],
+    params: &[(String, i128)],
     clock: &str,
     reset: Option<&str>,
     inputs: &[(String, u32, u128)],
@@ -330,7 +333,7 @@ fn clocked_testbench(
 /// vector set the inputs, settle (`#1`), and print `DIFF <i> <out>=<bits> …`.
 fn comb_testbench(
     module: &str,
-    params: &[(&str, i128)],
+    params: &[(String, i128)],
     inputs: &[(String, u32)],
     outputs: &[(String, u32)],
     vectors: &[BTreeMap<String, u128>],
@@ -502,7 +505,11 @@ fn compare_three_ways(
     tl: &Timeline,
     icarus: &BTreeMap<u64, BTreeMap<String, u128>>,
     outputs: &[(String, u32)],
+    outputs_rom: &[(String, u32)],
 ) {
+    // Our kernel + VCD key outputs by their SOURCE name (`name`); the Icarus row
+    // keys them by the ROMANIZED Verilog name (`rom`). For ASCII examples the two
+    // are identical; for tamil-pure they differ, so look each side up by its own.
     let vcd = vcd_snapshots(&to_vcd(tl));
     let mut compared = 0;
     for f in tl.frames.iter().filter(|f| f.cycle.is_some()) {
@@ -513,17 +520,17 @@ fn compare_three_ways(
         let wave = vcd
             .get(&(step * 10))
             .unwrap_or_else(|| panic!("our VCD has no frame at time {} for {example}", step * 10));
-        for (name, _) in outputs {
+        for ((name, _), (rom, _)) in outputs.iter().zip(outputs_rom) {
             let kernel = f.values[name];
-            let icarus_v = theirs[name];
+            let icarus_v = theirs[rom];
             let vcd_v = wave[name];
             assert_eq!(
                 kernel, icarus_v,
-                "{example} step {step}: our kernel `{name}`={kernel} but Icarus={icarus_v}"
+                "{example} step {step}: our kernel `{name}`={kernel} but Icarus `{rom}`={icarus_v}"
             );
             assert_eq!(
                 vcd_v, icarus_v,
-                "{example} step {step}: our VCD `{name}`={vcd_v} but Icarus={icarus_v}"
+                "{example} step {step}: our VCD `{name}`={vcd_v} but Icarus `{rom}`={icarus_v}"
             );
             compared += 1;
         }
@@ -531,31 +538,67 @@ fn compare_three_ways(
     assert!(compared > 0, "{example}: nothing was compared");
 }
 
-/// Run one example through our simulator (kernel + VCD) and Icarus, asserting the
-/// outputs match bit-for-bit, per step. Auto-routes on the elaborated design: a
-/// **clocked** design runs the default stimulus for `steps` cycles with the held
-/// `stim` inputs; a **combinational** design settles `steps` generated input
-/// vectors (`stim` ignored). `params` overrides module parameters on both sides.
+/// Run the entry module of `example` through our simulator (kernel + VCD) and
+/// Icarus, asserting the outputs match bit-for-bit, per step. `module` picks the
+/// entry module when the file has more than one (else `None`).
 fn differential(bin: &Path, example: &str, params: &[(&str, i128)], stim: Stim, steps: u64) {
-    let path = repo().join("examples").join(example);
-    let src = std::fs::read_to_string(&path).expect("read example");
-    let file = mimz::parser::parse(mimz::lexer::lex(&src).expect("lexes")).expect("parses");
-    let pmap: BTreeMap<String, i128> = params.iter().map(|(n, v)| (n.to_string(), *v)).collect();
-    let design = elaborate(&file, None, &pmap).expect("elaborates");
+    differential_m(bin, example, None, params, stim, steps);
+}
 
-    let module = design.module.clone();
+/// As [`differential`], with an explicit entry-module name. Auto-routes on the
+/// elaborated design: a **clocked** design runs the default stimulus for `steps`
+/// cycles with the held `stim` inputs; a **combinational** design settles `steps`
+/// generated vectors (`stim` ignored). `params` overrides module parameters on
+/// both sides. Loads the entry file AND its imports, so an instantiating module
+/// is flattened the same way the emitter lowers it.
+fn differential_m(
+    bin: &Path,
+    example: &str,
+    module: Option<&str>,
+    params: &[(&str, i128)],
+    stim: Stim,
+    steps: u64,
+) {
+    let path = repo().join("examples").join(example);
+    let files = match mimz::project::load_project(&path) {
+        Ok(f) => f,
+        Err(_) => panic!("load_project failed for {example}"),
+    };
+    let asts: Vec<File> = files.iter().map(|f| f.ast.clone()).collect();
+    let entry = asts[0].clone();
+    let pmap: BTreeMap<String, i128> = params.iter().map(|(n, v)| (n.to_string(), *v)).collect();
+    let design = elaborate_project(&asts, module, &pmap).expect("elaborates");
+
+    // The emitted Verilog romanizes Tamil identifiers (`emit_verilog::transliterate`),
+    // but our kernel/Design keep the SOURCE names. Transliterate a clone of the
+    // project exactly as the emitter does and pair identifiers positionally to map
+    // source → romanized, so the generated testbench references the names the
+    // compiled module actually exposes. ASCII names map to themselves.
+    let mut tasts = asts.clone();
+    mimz::emit_verilog::transliterate(&mut tasts);
+    let rom = interface_name_map(&entry, &tasts[0]);
+    let r = |n: &str| rom.get(n).cloned().unwrap_or_else(|| n.to_string());
+
+    let module = r(&design.module);
+    let params_rom: Vec<(String, i128)> = params.iter().map(|(n, v)| (r(n), *v)).collect();
+    // Source-named outputs (kernel/VCD lookup) paired with romanized (TB/Icarus).
     let outputs: Vec<(String, u32)> = design
         .outputs
         .iter()
         .map(|s| (s.name.clone(), s.width.bits))
+        .collect();
+    let outputs_rom: Vec<(String, u32)> = design
+        .outputs
+        .iter()
+        .map(|s| (r(&s.name), s.width.bits))
         .collect();
     let design_v = compile_example(&path);
 
     let (tl, tb) = if !design.clocks.is_empty() {
         // Clocked: default stimulus, held inputs.
         const RESET_CYCLES: u64 = 1;
-        let clock = design.clocks[0].clone();
-        let reset = design.resets.first().cloned();
+        let clock = r(&design.clocks[0]);
+        let reset = design.resets.first().map(|s| r(s));
         let held: Vec<(String, u32, u128)> = design
             .inputs
             .iter()
@@ -565,7 +608,7 @@ fn differential(bin: &Path, example: &str, params: &[(&str, i128)], stim: Stim, 
                     .find(|(n, _)| *n == s.name)
                     .map(|(_, v)| *v)
                     .unwrap_or(0);
-                (s.name.clone(), s.width.bits, v)
+                (r(&s.name), s.width.bits, v)
             })
             .collect();
         let opts = SimOpts {
@@ -577,38 +620,95 @@ fn differential(bin: &Path, example: &str, params: &[(&str, i128)], stim: Stim, 
         let tl = run(design, &opts).expect("our sim runs");
         let tb = clocked_testbench(
             &module,
-            params,
+            &params_rom,
             &clock,
             reset.as_deref(),
             &held,
-            &outputs,
+            &outputs_rom,
             steps,
             RESET_CYCLES,
         );
         (tl, tb)
     } else {
-        // Combinational: one settled frame per generated input vector.
+        // Combinational: one settled frame per generated input vector. Vectors are
+        // generated source-keyed (for our kernel) and re-keyed to romanized names
+        // for the Verilog testbench.
         let inputs: Vec<(String, u32)> = design
             .inputs
             .iter()
             .map(|s| (s.name.clone(), s.width.bits))
             .collect();
+        let inputs_rom: Vec<(String, u32)> = design
+            .inputs
+            .iter()
+            .map(|s| (r(&s.name), s.width.bits))
+            .collect();
         let vectors = gen_vectors(&inputs, steps);
+        let vectors_rom: Vec<BTreeMap<String, u128>> = vectors
+            .iter()
+            .map(|m| m.iter().map(|(k, v)| (r(k), *v)).collect())
+            .collect();
         let tl = comb_run(design, &vectors).expect("our comb sim runs");
-        let tb = comb_testbench(&module, params, &inputs, &outputs, &vectors);
+        let tb = comb_testbench(
+            &module,
+            &params_rom,
+            &inputs_rom,
+            &outputs_rom,
+            &vectors_rom,
+        );
         (tl, tb)
     };
 
     let stdout = run_vvp(bin, example, &design_v, &tb);
     let icarus = parse_icarus(&stdout);
-    compare_three_ways(example, &tl, &icarus, &outputs);
+    compare_three_ways(example, &tl, &icarus, &outputs, &outputs_rom);
+}
+
+/// Identifier from an interface module item (port/clock/reset); `None` for
+/// internals (wire/reg/instance/on-block/…), which never reach the testbench.
+fn item_ident(it: &ModuleItem) -> Option<String> {
+    match it {
+        ModuleItem::Port { name, .. } => Some(name.name.clone()),
+        ModuleItem::Clock(n) | ModuleItem::Reset(n) => Some(n.name.clone()),
+        _ => None,
+    }
+}
+
+/// Map every interface identifier (module name, params, ports) from its SOURCE
+/// spelling to the ROMANIZED spelling the emitter produces. `trans` is `orig`
+/// after `emit_verilog::transliterate`, which only renames in place, so the two
+/// ASTs pair positionally.
+fn interface_name_map(orig: &File, trans: &File) -> HashMap<String, String> {
+    fn modules(f: &File) -> Vec<&mimz::ast::Module> {
+        f.items
+            .iter()
+            .filter_map(|it| match it {
+                TopItem::Module(m) => Some(m),
+                _ => None,
+            })
+            .collect()
+    }
+    let mut map = HashMap::new();
+    for (om, tm) in modules(orig).into_iter().zip(modules(trans)) {
+        map.insert(om.name.name.clone(), tm.name.name.clone());
+        for (op, tp) in om.params.iter().zip(&tm.params) {
+            map.insert(op.name.name.clone(), tp.name.name.clone());
+        }
+        for (oi, ti) in om.items.iter().zip(&tm.items) {
+            if let (Some(on), Some(tn)) = (item_ident(oi), item_ident(ti)) {
+                map.insert(on, tn);
+            }
+        }
+    }
+    map
 }
 
 /// Layer 3 — the simulator differential, bit-for-bit vs Icarus (kernel == VCD ==
 /// Icarus). Covers clocked designs (register/reset/wrap, held inputs, FSM-free)
-/// and combinational designs (incl. SIGNED) across the ASCII-named english corpus.
-/// The romanized tamil-pure examples stay on Layers 1–2 (their emitted Verilog
-/// names differ from the source). Instance/`repeat`/enum designs land in C2–C4.
+/// and combinational designs (incl. SIGNED) across the english corpus, the
+/// pure-Tamil examples (interface names romanized to match the emitted Verilog),
+/// AND cross-file module instances flattened by the elaborator (C2: alu, chained).
+/// `repeat` and enum-FSM designs land in C3/C4.
 #[test]
 fn our_simulator_matches_icarus_bit_for_bit() {
     let Some(bin) = require_iverilog() else {
@@ -630,4 +730,23 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     // Combinational + SIGNED — the `%b` binary compare makes signedness moot.
     differential(&bin, "english/bitops.mimz", &[], &[], 8);
     differential(&bin, "english/signed_math.mimz", &[], &[], 8);
+    // Pure-Tamil (Tamil keywords AND identifiers): the testbench romanizes names
+    // to match the emitted Verilog, so these now ride the same bit-for-bit
+    // differential as their english twins (`கணக்கி`/kanakki = counter, etc.).
+    differential(&bin, "tamil-pure/kanakki.mimz", &[], &[], 16);
+    differential(&bin, "tamil-pure/cimitti.mimz", &[("வரம்பு", 3)], &[], 12);
+    differential(&bin, "tamil-pure/oppidi.mimz", &[], &[], 8);
+    differential(&bin, "tamil-pure/thervi.mimz", &[], &[], 8);
+    // Cross-file module instances, flattened by the sim elaborator (C2): alu's
+    // `Top` instantiates `Adder` (imported); `chained` chains two `FullAdder`s
+    // (an instance output feeds the next instance's input).
+    differential_m(
+        &bin,
+        "english/alu.mimz",
+        Some("Top"),
+        &[],
+        &[("x", 7), ("y", 5)],
+        6,
+    );
+    differential(&bin, "english/chained.mimz", &[], &[], 8);
 }

@@ -110,8 +110,9 @@ test` exits non-zero if any test fails.
   comparator, mux4, datapath, window, full_adder, and SIGNED `bitops` /
   `signed_math`). Compared via Verilog `%b` so signedness needs no special-casing.
   This is independent of Layer 2 (Icarus vs hand-written asserts) — Layer 3 pits
-  our simulator directly against Icarus. (Romanized tamil-pure examples and
-  instance/`repeat`/enum designs are not yet in Layer 3 — see the phase plan.)
+  our simulator directly against Icarus. (Covers the english corpus, the
+  romanized tamil-pure examples, and cross-file module instances; `repeat` and
+  enum-FSM designs are not yet in Layer 3 — see the phase plan.)
 - **Perf baseline:** the event-driven kernel sustains **≥ 1M cycle-events/sec**
   on the counter in release (`tests/sim.rs`), measured on the bare `tick` hot
   path.

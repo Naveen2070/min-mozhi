@@ -27,13 +27,47 @@ mimz compile counter.mimz -o build/c.v    # choose the output path
 
 ## `mimz eval` — run combinational logic
 
-Evaluate a purely combinational module's outputs for a set of inputs, without a
-simulator. (No clock, `reg`, instances, or `repeat` — those need the full
-simulator, which is a later phase.)
+Evaluate a purely combinational module's outputs for a set of inputs, without
+running the clock — a quick one-shot. (For clocked designs, registers, and
+waveforms use `mimz sim`.)
 
 ```text
 mimz eval adder.mimz --in a=3,b=5
 mimz eval alu.mimz --module Alu --in a=10,b=4,op=1 --param WIDTH=8
+```
+
+## `mimz sim` — simulate and write a waveform
+
+Run a design under a default stimulus (reset asserted the first cycle, inputs
+held, the clock toggled) and capture a waveform. Clocked **and** combinational
+modules work; `-o` writes a VCD, `--trace` prints a per-cycle table.
+
+```text
+mimz sim counter.mimz --cycles 16 -o counter.vcd   # waveform → counter.vcd
+mimz sim counter.mimz --cycles 8 --trace           # per-cycle table to stdout
+mimz sim adder.mimz --in a=3,b=5                    # combinational: one frame
+mimz sim adder.mimz --sweep a=1|2|3 --in b=10      # a frame per input combo
+```
+
+### Viewing the VCD
+
+`mimz` emits a standard IEEE-1364 VCD that any waveform viewer opens:
+
+- **Web, no install:** open <https://app.surfer-project.org> (Surfer, runs in the
+  browser) and drag the `.vcd` in — the file stays local. Alt: <https://vc.drom.io>.
+- **Desktop:** GTKWave — `winget install GTKWave` (or `scoop install gtkwave`),
+  then `gtkwave counter.vcd`.
+- **VS Code:** the Surfer / VaporView / WaveTrace extension opens `.vcd` in-editor.
+
+## `mimz test` — run `test` blocks
+
+Run a file's `test "…" for M(…) { … }` blocks (`tick`/`expect`), reporting
+pass/fail with teaching messages; exits non-zero if any test fails.
+
+```text
+mimz test counter.mimz
+mimz test counter.mimz --filter "counts up"   # only matching tests
+mimz test counter.mimz --trace                # waveform table per test
 ```
 
 ## `mimz explain` — the long-form error book

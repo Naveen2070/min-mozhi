@@ -5,10 +5,11 @@ use std::process::ExitCode;
 
 use mimz::sim::run::{SimOpts, comb_run, run};
 use mimz::sim::{elaborate, trace, vcd};
-use mimz::{diag, lexer, morph, parser, project};
+use mimz::{ast, project};
 
 use super::helpers::{
-    parse_bindings, parse_sweep, parse_u128, resolve_lang, sweep_vectors, trace_scope,
+    parse_bindings, parse_sweep, parse_u128, project_warnings, resolve_lang, sweep_vectors,
+    trace_scope,
 };
 use crate::Output;
 
@@ -38,25 +39,17 @@ pub(crate) fn sim_file(
         Err(code) => return code,
     };
     let out = Output::Human(flavor);
-    let src = match project::read_source(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let path_str = path.display().to_string();
-    let tokens = match lexer::lex(&src) {
-        Ok(t) => t,
-        Err(diags) => return out.one_file(&diags, &src, &path_str),
-    };
-    if let Some(w) = morph::flavor_mix_warning(&tokens) {
-        eprint!("{}", diag::render_lang(&[w], &src, &path_str, flavor));
-    }
-    let file = match parser::parse(tokens) {
+    // Load the entry file and all transitive imports, so a module that
+    // instantiates a sub-module from another file can be flattened.
+    let files = match project::load_project(path) {
         Ok(f) => f,
-        Err(diags) => return out.one_file(&diags, &src, &path_str),
+        Err(e) => return out.load_error(&e),
     };
+    let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+    let warnings = project_warnings(&files);
+    if !warnings.is_empty() {
+        eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
+    }
 
     let inputs = match parse_bindings(inputs, parse_u128) {
         Ok(m) => m,
@@ -80,7 +73,7 @@ pub(crate) fn sim_file(
         }
     };
 
-    let design = match elaborate::elaborate(&file, module.as_deref(), &params) {
+    let design = match elaborate::elaborate_project(&asts, module.as_deref(), &params) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("error: {e}");

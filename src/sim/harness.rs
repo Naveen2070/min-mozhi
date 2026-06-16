@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 
 use crate::ast::{self, BinOp, Expr, ExprKind, TestDecl, TestStmt};
 
-use super::elaborate::{Signal, elaborate};
+use super::elaborate::{Signal, elaborate_project};
 use super::kernel::Sim;
 use super::run::{Frame, MAX_SIM_CYCLES, Timeline};
 use super::value::{self, Val};
@@ -55,13 +55,14 @@ pub enum TestResult {
     Fail(String),
 }
 
-/// Run one `test` block from `file` (whose source is `src`, for rendering
-/// expressions in failure messages). `Err` is a setup/semantic error (bad
-/// parameter, unknown module/clock/input, an unsupported construct); a normal
+/// Run one `test` block. `files` is the loaded project (`files[0]` the entry,
+/// the rest its imports) so a module-under-test that instantiates a sub-module
+/// from another file flattens; `src` is the entry source (for rendering
+/// expressions in failure messages). `Err` is a setup/semantic error; a normal
 /// `expect` failure is `Ok(Outcome { result: Fail(..), .. })`.
-pub fn run_test(file: &ast::File, src: &str, decl: &TestDecl) -> Result<Outcome, String> {
+pub fn run_test(files: &[ast::File], src: &str, decl: &TestDecl) -> Result<Outcome, String> {
     let params = params(decl)?;
-    let design = elaborate(file, Some(&decl.module.name), &params)?;
+    let design = elaborate_project(files, Some(&decl.module.name), &params)?;
 
     let module = design.module.clone();
     let clocks = design.clocks.clone();
@@ -267,7 +268,9 @@ mod tests {
         f.items
             .iter()
             .filter_map(|i| match i {
-                ast::TopItem::Test(t) => Some(run_test(&f, src, t).expect("runs")),
+                ast::TopItem::Test(t) => {
+                    Some(run_test(std::slice::from_ref(&f), src, t).expect("runs"))
+                }
                 _ => None,
             })
             .collect()
@@ -350,7 +353,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(&f, &src, decl).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), &src, decl).unwrap_err();
         assert!(err.contains("not a clock"), "got: {err}");
     }
 

@@ -3,12 +3,12 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use mimz::ast::TopItem;
+use mimz::ast::{self, TopItem};
+use mimz::project;
 use mimz::sim::harness::{TestResult, run_test};
 use mimz::sim::trace;
-use mimz::{diag, lexer, morph, parser, project};
 
-use super::helpers::{resolve_lang, trace_scope};
+use super::helpers::{project_warnings, resolve_lang, trace_scope};
 use crate::Output;
 
 /// `mimz test <file>` — run the file's `test "…" for M(…) { … }` blocks and
@@ -30,27 +30,21 @@ pub(crate) fn test_file(
         Err(code) => return code,
     };
     let out = Output::Human(flavor);
-    let src = match project::read_source(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let path_str = path.display().to_string();
-    let tokens = match lexer::lex(&src) {
-        Ok(t) => t,
-        Err(diags) => return out.one_file(&diags, &src, &path_str),
-    };
-    if let Some(w) = morph::flavor_mix_warning(&tokens) {
-        eprint!("{}", diag::render_lang(&[w], &src, &path_str, flavor));
-    }
-    let file = match parser::parse(tokens) {
+    // Load imports too, so a module-under-test that instantiates a sub-module
+    // from another file can be flattened.
+    let files = match project::load_project(path) {
         Ok(f) => f,
-        Err(diags) => return out.one_file(&diags, &src, &path_str),
+        Err(e) => return out.load_error(&e),
     };
+    let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+    let warnings = project_warnings(&files);
+    if !warnings.is_empty() {
+        eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
+    }
+    let path_str = path.display().to_string();
+    let src = files[0].src.clone();
 
-    let tests: Vec<_> = file
+    let tests: Vec<_> = asts[0]
         .items
         .iter()
         .filter_map(|i| match i {
@@ -71,7 +65,7 @@ pub(crate) fn test_file(
     let mut passed = 0usize;
     let mut failed = 0usize;
     for t in tests {
-        match run_test(&file, &src, t) {
+        match run_test(&asts, &src, t) {
             Ok(o) => {
                 match &o.result {
                     TestResult::Pass => {
