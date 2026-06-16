@@ -7,6 +7,8 @@
 /build/
 *.v.out
 *.vcd
+# …but the byte-for-byte VCD golden fixtures ARE tracked
+!tests/golden/*.vcd
 
 # IDE / editor
 /.vscode/
