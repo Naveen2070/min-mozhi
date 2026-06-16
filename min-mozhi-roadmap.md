@@ -181,8 +181,8 @@ Ongoing      Phase 4     Ecosystem & community
 ```
 Phase 0 wrap-up       → 2026-06-15 ✅  (keyword set v1 finalized; DRAFT removed)
 Phase 1  compiler     → 31 Dec 2026   (v0.1.0 tag when executable + testable)
-Phase 1.8 grammar eng → 28 Feb 2027   (go public after this works)
-Phase 1.5 simulator   → 31 May 2027
+Phase 1.8 grammar eng → 28 Feb 2027
+Phase 1.5 simulator   → 31 May 2027   (tag v0.1.0 + go public after this — D7 amended 2026-06-16)
 Phase 2  IR+synthesis → mid 2028      (bitstream in CI; hardware when board arrives)
 ```
 

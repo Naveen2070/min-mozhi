@@ -99,7 +99,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 ## Milestone
 
 All `examples/*.mimz` compile and simulate correctly under Icarus.
-**Tag v0.1.0. Repo goes public after Phase 1.8 (decision D7).**
+**Tag v0.1.0 + repo goes public after Phase 1.5 (decision D7, amended 2026-06-16 — the simulator ships before the freeze so a self-contained sim/test loop is in the first public release and the `test`-block syntax is validated before it locks).**
 
 ## Exit criteria
 

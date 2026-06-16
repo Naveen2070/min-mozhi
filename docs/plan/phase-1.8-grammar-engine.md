@@ -2,7 +2,7 @@
 
 > **Tamil code that reads like Tamil, not transliterated English.**
 > Window: months 8–9, **directly after Phase 1, before 1.5** (solo-dev order,
-> decision D3) · Target: 28 Feb 2027, then repo goes public (D7) ·
+> decision D3) · Target: 28 Feb 2027 · public follows Phase 1.5 (D7 amended 2026-06-16) ·
 > Status: 🟢 complete (2026-06-16) — grammar engine finalized, panel-ratified
 > (C3, 2026-06-15), spec/04 bumped to stable; the `test`-header flip stays in Phase 1.5
 
