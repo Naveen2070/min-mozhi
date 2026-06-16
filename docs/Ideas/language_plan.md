@@ -651,6 +651,35 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
   let combined_bus = [..upper_byte, ..lower_byte, padding_bit]
   ```
 
+### 8.11 Vim-like TUI Workbench (`mimz tui`) — no-IDE interactive driver
+
+- **Explanation:** a full-screen, keyboard-driven terminal UI (vim-like panes/modal
+  keys) that wraps the whole toolchain so a user with **no IDE** still gets
+  compiler help interactively. On start it asks the **output mode** — (a) emit
+  Verilog, (b) just run the simulation and show the log (pass/fail + `$monitor`
+  trace), or (c) also produce a waveform (VCD) — then opens an edit pane + a
+  results pane that re-runs on save. Diagnostics (the friendly errors of 8.1) render
+  inline against the source; `test` blocks run with their teaching messages; the
+  waveform option writes a VCD and/or shows the console trace. Think "`mimz check`
+  - `mimz sim`/`mimz test` + `mimz compile` behind one live TUI," not a new
+    language surface.
+- **How it differs from 8.5:** 8.5 is a narrow line REPL for **combinational**
+  expressions (`let out = a & !b`, flip inputs, see the value). 8.11 is the
+  **whole-design** workbench — clocked sim, waveforms, Verilog emit, test runs,
+  inline diagnostics — for editing and running real `.mimz` files without an
+  editor/IDE. 8.5's evaluator is one of the engines it drives.
+- **Feasibility:** Medium, **tool not syntax** (zero language/freeze cost; additive,
+  edition-safe). Rides what already ships: `src/sim` (Phase 1.5 kernel + VCD +
+  `mimz test`), the emitter (`mimz compile`), the checker's diagnostics, and the
+  trilingual front-end. A TUI crate (e.g. `ratatui`) would be the first real UI
+  dependency — weigh against the minimal-dep ethos; the output-mode prompt + a
+  re-run-on-save loop is the MVP. Post-Phase-1.5; pairs naturally with the Phase 4
+  WASM playground (same engines, different shell).
+- **Example Use Case:** `mimz tui counter.mimz` → prompt "Output: [v]erilog /
+  [r]un+log / [w]aveform?" → pick `w` → edit pane on the left, on save the right
+  pane shows the `test` results + a `$monitor` trace and writes `counter.vcd`; a
+  width error underlines the offending wire with the E0301 teaching message.
+
 ---
 
 ### Tier 1 — Already shipped (the idea renames an existing rule)

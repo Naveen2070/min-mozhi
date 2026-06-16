@@ -91,6 +91,11 @@ This is recorded as a Decision in `docs/log/2026-06-16.md`.
   already callable on one module/expression; the Phase 1.5 kernel extends it to
   sequential. The WASM playground (Phase 4) reuses the same engine.
 - **Status:** Phase 4; no new syntax.
+- **Bigger sibling — `mimz tui` (idea 8.11):** a vim-like full-screen TUI
+  workbench that, on start, asks the output mode (emit Verilog / run+log /
+  waveform) and drives the WHOLE toolchain (clocked sim, VCD, `mimz test`, inline
+  diagnostics) for real `.mimz` files with no IDE. 8.5's combinational evaluator
+  is one engine it drives. Tool, not syntax; post-1.5. See `language_plan.md` 8.11.
 
 ## 5. Testbench ergonomics: the `await` evolution
 

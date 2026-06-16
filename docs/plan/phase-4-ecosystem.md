@@ -33,6 +33,17 @@ and the Tamil Nadu VLSI ecosystem.
       inputs, see combinational logic evaluate live. No new syntax: rides
       the WASM playground above + the Phase 1.5 sim evaluator. Scope to
       combinational logic.
+- [ ] **Vim-like TUI workbench `mimz tui`** (idea 8.11,
+      `language_plan.md` section 8) — a no-IDE, full-screen terminal driver
+      for whole `.mimz` files: on start it asks the output mode (emit
+      Verilog / run + log / waveform), then edits + re-runs on save with
+      inline diagnostics, `test` results, a `$monitor` trace, and an
+      optional VCD. The broader sibling of `mimz repl` (8.5): clocked sim + waveforms + emit, not just combinational expressions. Tool, not
+      syntax — rides the Phase 1.5 sim (`src/sim`), the emitter, and the
+      checker's diagnostics; pairs with the WASM playground (same engines,
+      different shell). A TUI crate (e.g. `ratatui`) would be the first UI
+      dependency — weigh against the minimal-dep ethos; MVP is the
+      output-mode prompt + a re-run-on-save loop.
 - [ ] **npm wrapper package** (esbuild model: tiny package that fetches
       the platform binary / loads the WASM and shells out) — TS/JS devs
       run `mimz` in their build like any other tool
@@ -52,9 +63,10 @@ security features, DX sugar, plus the section-8 additive ideas —
 `fixed`-point, `requires`/`ensures` contracts, `..` spread/struct-update,
 pipe `|>`, didactic errors) lives as work items in
 **`docs/plan/phase-2-ir-synthesis.md` → "Language features"** — that list
-is the single source of truth. The hardware REPL (8.5) is the one
-section-8 item that lands in this phase (above). Rejected ideas stay
-recorded with reasons in the ideas doc itself (Tier 4: physics, not
+is the single source of truth. The hardware REPL (8.5) and the `mimz tui`
+workbench (8.11) are the section-8 items that land in this phase (above) —
+both are tools, not syntax, so they carry no freeze cost. Rejected ideas
+stay recorded with reasons in the ideas doc itself (Tier 4: physics, not
 priorities).
 
 ### Documentation & learning

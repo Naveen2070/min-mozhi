@@ -94,6 +94,18 @@ test` exits non-zero if any test fails.
   differential suite (same stimulus → compare against Icarus) and by GTKWave
   loading the file.
 
+### Validation & performance (B8)
+
+- **Differential vs Icarus (`tests/icarus.rs`, Layer 3):** the kernel runs a
+  design in-process while the emitted Verilog runs the SAME stimulus under
+  `iverilog`/`vvp`; the per-cycle output values must match **bit-for-bit** (the
+  counter and the shift register today). This is independent of Layer 2 (Icarus
+  vs hand-written semantic asserts) — Layer 3 pits our simulator directly against
+  Icarus.
+- **Perf baseline:** the event-driven kernel sustains **≥ 1M cycle-events/sec**
+  on the counter in release (`tests/sim.rs`), measured on the bare `tick` hot
+  path.
+
 ## 5. Console trace (`--trace`)
 
 Both `mimz sim` and `mimz test` accept an opt-in console trace, **off by default**
@@ -121,7 +133,14 @@ feature, not this uniform engine-driven trace.)
 
 ---
 
-_Status: DRAFT. Records the Phase 1.5 kickoff decisions (2026-06-16); fills in as
-the simulator is built. The combinational evaluator (`src/sim/comb.rs`) already
-exists and is reused; the event-driven kernel, stimulus, VCD writer, and test
-runner are the Phase 1.5 deliverables._
+_Status: DRAFT — the Phase 1.5 engine is fully built (B1–B8): elaboration
+(`src/sim/elaborate.rs`), the event-driven two-phase kernel (`src/sim/kernel.rs`,
+reusing the shared evaluator `src/sim/value.rs`), the default stimulus
+(`src/sim/run.rs`), the hand-written VCD writer (`src/sim/vcd.rs`), the console
+trace (`src/sim/trace.rs`), the `test`-block harness (`src/sim/harness.rs`), and
+the `mimz sim` / `mimz test` commands — validated by the Icarus differential and
+the ≥1M cycle-events/sec perf baseline (B8). The combinational evaluator
+(`src/sim/comb.rs`) is reused. Stabilizes (DRAFT → stable) when Phase 1.5 is
+committed and the release step opens. Deferred within v1: the `await
+clk.cycles(n)` test sugar (awaits its native-review spelling), `sim::fatal` /
+`sim::warn`, and 4-state simulation._
