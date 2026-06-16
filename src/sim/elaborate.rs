@@ -11,17 +11,23 @@
 //! folded reset value, else → the on-block result` so its results match the
 //! emitted Verilog (the differential oracle).
 //!
-//! Module **instances are flattened** (C2): each child is elaborated and inlined
-//! with its signals name-prefixed (`inst.port` → wire `inst_port`), mirroring the
-//! Verilog emitter's instance lowering. `repeat` and enum-typed signals are still
-//! rejected (C3/C4). Const/width folding is shared with the combinational
-//! evaluator ([`super::comb`]).
+//! Full structural elaboration, mirroring the Verilog emitter so the flat
+//! `Design` matches the emitted hardware: module **instances are flattened**
+//! (C2, signals name-prefixed `inst.port` → `inst_port`), **`repeat` is
+//! unrolled** (C3, array instances `arr__i`, bit-indexed drives assembled into a
+//! Concat), and **enum-typed signals** are encoded by variant index with width
+//! `clog2(variants)` (C4, variant reads/patterns → their index). Const/width
+//! folding is shared with the combinational evaluator ([`super::comb`]).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::ast::{self, Dir, Expr, ExprKind, ModuleItem, SeqStmt, UnOp};
+use crate::ast::{self, Dir, Expr, ExprKind, ModuleItem, Pattern, SeqStmt, UnOp};
 
 use super::value::{const_eval, pick_module, type_width};
+
+/// Max `repeat` iterations the simulator will unroll — matches the emitter's and
+/// checker's `REPEAT_BUDGET` so a design that compiles also elaborates.
+const REPEAT_BUDGET: i128 = 4096;
 
 /// Module registry across all loaded files: name → (its file, its AST). Module
 /// names are project-unique (checker-enforced), so a child instance resolves by
@@ -101,8 +107,7 @@ pub struct Design {
 /// Elaborate `module` (or the file's only module when `module` is `None`) into a
 /// flat [`Design`]. Single-file entry point: a module that instantiates a
 /// sub-module defined in ANOTHER file needs [`elaborate_project`] (so the
-/// imported file is available). `repeat` and enum-typed signals are still
-/// rejected (C3/C4).
+/// imported file is available). Handles instances, `repeat`, and enum signals.
 pub fn elaborate(
     file: &ast::File,
     module: Option<&str>,
@@ -167,17 +172,48 @@ fn elaborate_module(
         }
     }
 
-    // Instance names, so a `Field` like `add.sum` (an instance-port read) can be
-    // rewritten to the flat wire name `add_sum` in the parent's own expressions.
-    let insts: HashSet<String> = m
+    // Module-level enums: name → ordered variant names. A variant encodes as its
+    // index, width `clog2(count)` — exactly the Verilog emitter's encoding.
+    let enums: HashMap<String, Vec<String>> = m
         .items
         .iter()
         .filter_map(|it| match it {
-            ModuleItem::Inst(i) => Some(i.name.name.clone()),
+            ModuleItem::Enum(e) => Some((
+                e.name.name.clone(),
+                e.variants.iter().map(|v| v.name.clone()).collect(),
+            )),
             _ => None,
         })
         .collect();
-    let fr = |e: &Expr| field_rewrite(e, &insts);
+
+    // Instance names (top-level AND inside `repeat`), so `inst.port` and the
+    // array form `arr[i].port` rewrite to their flat wire names.
+    let mut insts: HashSet<String> = HashSet::new();
+    collect_inst_names(&m.items, &mut insts);
+
+    // Folded width of a type — an enum type resolves to `clog2(variants)`.
+    let width_of = |ty: &ast::Type, ints: &BTreeMap<String, i128>| -> Result<Width, String> {
+        if let ast::Type::Named(n) = ty {
+            let vs = enums
+                .get(&n.name)
+                .ok_or_else(|| format!("unknown enum type `{}`", n.name))?;
+            Ok(Width {
+                bits: clog2(vs.len()),
+                signed: false,
+            })
+        } else {
+            let (bits, signed) = type_width(ty, ints)?;
+            Ok(Width { bits, signed })
+        }
+    };
+
+    let no_subst: HashMap<String, Expr> = HashMap::new();
+    let rw0 = Rw {
+        insts: &insts,
+        enums: &enums,
+        consts: &consts,
+        subst: &no_subst,
+    };
 
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
@@ -187,14 +223,17 @@ fn elaborate_module(
     let mut procs = Vec::new();
     let mut clocks = Vec::new();
     let mut resets = Vec::new();
+    // Bit-indexed drives (`sum[i] = …`, from `repeat`), assembled into one
+    // whole-signal Concat driver after the loop.
+    let mut bit_drives: BTreeMap<String, BTreeMap<u32, Expr>> = BTreeMap::new();
+    let mut flat = Flat::default();
 
     for it in &m.items {
         match it {
             ModuleItem::Port { dir, name, ty } => {
-                let (bits, signed) = type_width(ty, &consts)?;
                 let sig = Signal {
                     name: name.name.clone(),
-                    width: Width { bits, signed },
+                    width: width_of(ty, &consts)?,
                 };
                 match dir {
                     Dir::In => inputs.push(sig),
@@ -204,56 +243,127 @@ fn elaborate_module(
             ModuleItem::Clock(n) => clocks.push(n.name.clone()),
             ModuleItem::Reset(n) => resets.push(n.name.clone()),
             ModuleItem::Wire { name, ty, init } => {
-                let (bits, signed) = type_width(ty, &consts)?;
                 wires.push(Signal {
                     name: name.name.clone(),
-                    width: Width { bits, signed },
+                    width: width_of(ty, &consts)?,
                 });
-                comb.insert(name.name.clone(), fr(init));
+                comb.insert(name.name.clone(), rw0.expr(init)?);
             }
             ModuleItem::Reg { name, ty, reset } => {
-                let (bits, signed) = type_width(ty, &consts)?;
-                let reset = const_eval(reset, &consts)?;
+                let width = width_of(ty, &consts)?;
+                let reset = const_eval(&rw0.expr(reset)?, &consts)?;
                 regs.push(Reg {
                     name: name.name.clone(),
-                    width: Width { bits, signed },
+                    width,
                     reset,
                     clock: String::new(),
                 });
             }
             ModuleItem::Drive { lhs, rhs } => {
-                if lhs.index.is_some() {
-                    return Err(format!(
-                        "driving a slice/bit of `{}` is not supported by the simulator yet — \
-                         drive the whole signal",
-                        lhs.base.name
-                    ));
-                }
-                comb.insert(lhs.base.name.clone(), fr(rhs));
+                record_drive(lhs, rhs, &rw0, &consts, &mut comb, &mut bit_drives)?
             }
             ModuleItem::On(on) => procs.push(Process {
                 clock: on.clock.name.clone(),
                 body: on
                     .body
                     .iter()
-                    .map(|s| rewrite_seq(s, &fr, &|n| n.to_string()))
-                    .collect(),
+                    .map(|s| rw0.seq(s, &|n| n.to_string()))
+                    .collect::<Result<_, _>>()?,
             }),
-            // Consts are folded above; enum decls carry no runtime state.
+            // Consts are folded above; enum decls become the encoding above.
             ModuleItem::Const(_) | ModuleItem::Enum(_) => {}
             ModuleItem::Inst(inst) => {
-                let flat = flatten_instance(reg, &consts, &insts, inst)?;
-                wires.extend(flat.wires);
-                regs.extend(flat.regs);
-                comb.extend(flat.comb);
-                procs.extend(flat.procs);
+                let f = flatten_instance(
+                    reg,
+                    &consts,
+                    &insts,
+                    &enums,
+                    &no_subst,
+                    inst,
+                    &inst.name.name,
+                )?;
+                flat.absorb(f);
             }
-            ModuleItem::Repeat(_) => {
-                return Err(
-                    "module uses `repeat` — unrolling is not supported by the simulator yet".into(),
-                );
+            ModuleItem::Repeat(r) => {
+                let lo = const_eval(&r.lo, &consts)?;
+                let hi = const_eval(&r.hi, &consts)?;
+                let count = (hi - lo).max(0);
+                if count > REPEAT_BUDGET {
+                    return Err(format!(
+                        "`repeat` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                    ));
+                }
+                for iv in lo..hi {
+                    let mut ci = consts.clone();
+                    ci.insert(r.var.name.clone(), iv);
+                    let subst = HashMap::from([(r.var.name.clone(), int_expr(iv, r.span))]);
+                    let rwi = Rw {
+                        insts: &insts,
+                        enums: &enums,
+                        consts: &ci,
+                        subst: &subst,
+                    };
+                    for body_it in &r.items {
+                        match body_it {
+                            ModuleItem::Inst(inst) => {
+                                let iname = match &inst.index {
+                                    Some(_) => format!("{}__{}", inst.name.name, iv),
+                                    None => inst.name.name.clone(),
+                                };
+                                let f = flatten_instance(
+                                    reg, &ci, &insts, &enums, &subst, inst, &iname,
+                                )?;
+                                flat.absorb(f);
+                            }
+                            ModuleItem::Drive { lhs, rhs } => {
+                                record_drive(lhs, rhs, &rwi, &ci, &mut comb, &mut bit_drives)?
+                            }
+                            ModuleItem::Repeat(_) => {
+                                return Err(
+                                    "nested `repeat` is not supported by the simulator yet".into(),
+                                );
+                            }
+                            _ => {
+                                return Err(
+                                    "a `repeat` body may only contain instances and drives".into(),
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    // Merge inlined-instance pieces, then assemble bit-indexed drives into one
+    // whole-signal Concat (widest bit first, Verilog concat order).
+    wires.extend(flat.wires);
+    regs.extend(flat.regs);
+    comb.extend(flat.comb);
+    procs.extend(flat.procs);
+    for (sig, bits) in bit_drives {
+        let width = inputs
+            .iter()
+            .chain(&outputs)
+            .chain(&wires)
+            .find(|s| s.name == sig)
+            .map(|s| s.width.bits)
+            .ok_or_else(|| format!("bit-driven signal `{sig}` has no declaration"))?;
+        let mut parts = Vec::with_capacity(width as usize);
+        for b in (0..width).rev() {
+            let e = bits
+                .get(&b)
+                .ok_or_else(|| format!("signal `{sig}` bit {b} is not driven"))?;
+            parts.push(e.clone());
+        }
+        let span = parts.first().map(|e| e.span).unwrap_or(m.span);
+        comb.insert(
+            sig,
+            Expr {
+                kind: ExprKind::Concat(parts),
+                span,
+            },
+        );
     }
 
     // Each reg's clock is the clock of the `on` block that assigns it (the
@@ -282,6 +392,7 @@ fn elaborate_module(
 }
 
 /// The flat pieces one instance contributes to its parent.
+#[derive(Default)]
 struct Flat {
     wires: Vec<Signal>,
     regs: Vec<Reg>,
@@ -289,20 +400,30 @@ struct Flat {
     procs: Vec<Process>,
 }
 
+impl Flat {
+    fn absorb(&mut self, other: Flat) {
+        self.wires.extend(other.wires);
+        self.regs.extend(other.regs);
+        self.comb.extend(other.comb);
+        self.procs.extend(other.procs);
+    }
+}
+
 /// Elaborate the child module of `inst` and inline it into the parent: every
 /// child signal becomes a parent wire/reg named `{inst}_{name}`, child inputs
 /// are driven by their connection expressions, and child clock/reset map to the
 /// connected parent signals. Mirrors the Verilog emitter's instance lowering so
 /// the simulator agrees bit-for-bit.
+#[allow(clippy::too_many_arguments)]
 fn flatten_instance(
     reg: &Registry,
     parent_consts: &BTreeMap<String, i128>,
     parent_insts: &HashSet<String>,
+    parent_enums: &HashMap<String, Vec<String>>,
+    parent_subst: &HashMap<String, Expr>,
     inst: &ast::Inst,
+    iname: &str,
 ) -> Result<Flat, String> {
-    if inst.index.is_some() {
-        return Err("instance arrays (`let name[i] = …`) need `repeat`, not supported yet".into());
-    }
     let (cfile, cm) = *reg.get(&inst.module.name).ok_or_else(|| {
         format!(
             "instance `{}` uses unknown module `{}` — is the file that defines it imported?",
@@ -328,12 +449,22 @@ fn flatten_instance(
     }
 
     let child = elaborate_module(reg, cfile, cm, &cp)?;
-    let pfx = format!("{}_", inst.name.name);
-    let fr = |e: &Expr| field_rewrite(e, parent_insts);
+    let pfx = format!("{iname}_");
 
-    // Substitution for the child's own expressions: a child const folds to a
-    // literal; any child signal becomes its prefixed name; a child clock/reset
-    // becomes the connected parent signal.
+    // Parent-context rewriter for connection expressions: folds the `repeat`
+    // loop var and resolves nested `arr[i-1].port` reads.
+    let prw = Rw {
+        insts: parent_insts,
+        enums: parent_enums,
+        consts: parent_consts,
+        subst: parent_subst,
+    };
+
+    // The child body is already flat (no `Field`/enum nodes survive its own
+    // elaboration), so a subst-only rewriter suffices: child const → literal,
+    // child signal → prefixed name, child clock/reset → connected parent signal.
+    let no_insts = HashSet::new();
+    let no_enums = HashMap::new();
     let mut subst: HashMap<String, Expr> = HashMap::new();
     for (n, &v) in &child.consts {
         subst.insert(n.clone(), int_expr(v, inst.span));
@@ -363,20 +494,20 @@ fn flatten_instance(
             .conns
             .iter()
             .find(|cn| cn.port.name == *c)
-            .map(|cn| conn_signal_name(&fr(&cn.signal)))
+            .map(|cn| conn_signal_name(&prw.expr(&cn.signal)?))
             .transpose()?
             .unwrap_or_else(|| c.clone());
         subst.insert(c.clone(), ident_expr(parent.clone(), inst.span));
         clock_map.insert(c.clone(), parent);
     }
 
-    let sb = |e: &Expr| subst_rewrite(e, &subst);
-    let mut flat = Flat {
-        wires: Vec::new(),
-        regs: Vec::new(),
-        comb: Vec::new(),
-        procs: Vec::new(),
+    let crw = Rw {
+        insts: &no_insts,
+        enums: &no_enums,
+        consts: &child.consts,
+        subst: &subst,
     };
+    let mut flat = Flat::default();
 
     // Child inputs: a parent wire driven by the (required) connection.
     for s in &child.inputs {
@@ -395,7 +526,7 @@ fn flatten_instance(
             width: s.width,
         });
         flat.comb
-            .push((format!("{pfx}{}", s.name), fr(&conn.signal)));
+            .push((format!("{pfx}{}", s.name), prw.expr(&conn.signal)?));
     }
     // Child outputs + wires: a parent wire driven by the child's (rewritten) logic.
     for s in child.outputs.iter().chain(&child.wires) {
@@ -404,7 +535,7 @@ fn flatten_instance(
                 name: format!("{pfx}{}", s.name),
                 width: s.width,
             });
-            flat.comb.push((format!("{pfx}{}", s.name), sb(drv)));
+            flat.comb.push((format!("{pfx}{}", s.name), crw.expr(drv)?));
         }
     }
     // Child registers (clock filled by the parent's reg-clock pass).
@@ -418,15 +549,18 @@ fn flatten_instance(
     }
     // Child processes: prefix assigned regs, rewrite bodies, map the clock.
     for p in &child.procs {
-        let clk = clock_map.get(&p.clock).cloned().unwrap_or(p.clock.clone());
+        let clk = clock_map
+            .get(&p.clock)
+            .cloned()
+            .unwrap_or_else(|| p.clock.clone());
         let rename = |n: &str| format!("{pfx}{n}");
         flat.procs.push(Process {
             clock: clk,
             body: p
                 .body
                 .iter()
-                .map(|s| rewrite_seq(s, &sb, &rename))
-                .collect(),
+                .map(|s| crw.seq(s, &rename))
+                .collect::<Result<_, _>>()?,
         });
     }
     Ok(flat)
@@ -467,105 +601,238 @@ fn int_expr(v: i128, span: crate::span::Span) -> Expr {
     }
 }
 
-/// Rewrite `inst.port` (instance-port read) to the flat wire `inst_port` for
-/// every name in `insts`; other `Field`s (enum variants) are left untouched.
-fn field_rewrite(e: &Expr, insts: &HashSet<String>) -> Expr {
-    map_expr(e, &|n| {
-        if let ExprKind::Field { base, field } = &n.kind
-            && let ExprKind::Ident(b) = &base.kind
-            && insts.contains(b)
-        {
-            return Some(ident_expr(format!("{b}_{}", field.name), n.span));
+/// Collect every instance name (top-level and inside `repeat`), so an
+/// instance-port read resolves whether the instance is plain or an array.
+fn collect_inst_names(items: &[ModuleItem], out: &mut HashSet<String>) {
+    for it in items {
+        match it {
+            ModuleItem::Inst(i) => {
+                out.insert(i.name.name.clone());
+            }
+            ModuleItem::Repeat(r) => collect_inst_names(&r.items, out),
+            _ => {}
         }
-        None
-    })
-}
-
-/// Rewrite child identifiers through `subst` (const → literal, signal → prefixed,
-/// clock/reset → connected parent signal).
-fn subst_rewrite(e: &Expr, subst: &HashMap<String, Expr>) -> Expr {
-    map_expr(e, &|n| match &n.kind {
-        ExprKind::Ident(name) => subst.get(name).cloned(),
-        _ => None,
-    })
-}
-
-/// Rebuild `e`, giving `f` first say at each node (a `Some` replaces the node and
-/// stops; `None` recurses into the children).
-fn map_expr(e: &Expr, f: &dyn Fn(&Expr) -> Option<Expr>) -> Expr {
-    if let Some(r) = f(e) {
-        return r;
     }
-    let kind = match &e.kind {
-        ExprKind::Int { .. } | ExprKind::Bool(_) | ExprKind::Ident(_) => e.kind.clone(),
-        ExprKind::Field { base, field } => ExprKind::Field {
-            base: Box::new(map_expr(base, f)),
-            field: field.clone(),
-        },
-        ExprKind::Unary { op, expr } => ExprKind::Unary {
-            op: *op,
-            expr: Box::new(map_expr(expr, f)),
-        },
-        ExprKind::Binary { op, lhs, rhs } => ExprKind::Binary {
-            op: *op,
-            lhs: Box::new(map_expr(lhs, f)),
-            rhs: Box::new(map_expr(rhs, f)),
-        },
-        ExprKind::IfExpr { cond, then, els } => ExprKind::IfExpr {
-            cond: Box::new(map_expr(cond, f)),
-            then: Box::new(map_expr(then, f)),
-            els: Box::new(map_expr(els, f)),
-        },
-        ExprKind::Match { scrutinee, arms } => ExprKind::Match {
-            scrutinee: Box::new(map_expr(scrutinee, f)),
-            arms: arms
-                .iter()
-                .map(|a| ast::Arm {
-                    patterns: a.patterns.clone(),
-                    value: map_expr(&a.value, f),
-                })
-                .collect(),
-        },
-        ExprKind::Concat(parts) => ExprKind::Concat(parts.iter().map(|p| map_expr(p, f)).collect()),
-        ExprKind::Index { base, index } => ExprKind::Index {
-            base: Box::new(map_expr(base, f)),
-            index: Box::new(map_expr(index, f)),
-        },
-        ExprKind::Slice { base, hi, lo } => ExprKind::Slice {
-            base: Box::new(map_expr(base, f)),
-            hi: Box::new(map_expr(hi, f)),
-            lo: Box::new(map_expr(lo, f)),
-        },
-        ExprKind::Call { func, args } => ExprKind::Call {
-            func: *func,
-            args: args.iter().map(|a| map_expr(a, f)).collect(),
-        },
-    };
-    Expr { kind, span: e.span }
 }
 
-/// Rewrite a sequential statement: map every expression through `f`, and rename
-/// each assignment's target via `rename` (prefixing inlined child regs).
-fn rewrite_seq(s: &SeqStmt, f: &dyn Fn(&Expr) -> Expr, rename: &dyn Fn(&str) -> String) -> SeqStmt {
-    match s {
-        SeqStmt::Assign { lhs, rhs } => SeqStmt::Assign {
-            lhs: ast::LValue {
-                base: ast::Ident {
-                    name: rename(&lhs.base.name),
-                    span: lhs.base.span,
-                },
-                index: lhs.index.as_ref().map(|(a, b)| (f(a), b.as_ref().map(f))),
-                span: lhs.span,
+/// Record one combinational drive. A whole-signal drive becomes a `comb` entry;
+/// a bit-indexed drive (`sum[i] = …`, from `repeat`) is collected per bit and
+/// assembled into a Concat after the item loop. Slice drives are not yet handled.
+fn record_drive(
+    lhs: &ast::LValue,
+    rhs: &Expr,
+    rw: &Rw,
+    consts: &BTreeMap<String, i128>,
+    comb: &mut BTreeMap<String, Expr>,
+    bit_drives: &mut BTreeMap<String, BTreeMap<u32, Expr>>,
+) -> Result<(), String> {
+    match &lhs.index {
+        None => {
+            comb.insert(lhs.base.name.clone(), rw.expr(rhs)?);
+        }
+        Some((idx, None)) => {
+            let bit = const_eval(&rw.expr(idx)?, consts)?;
+            if bit < 0 {
+                return Err(format!("negative bit index driving `{}`", lhs.base.name));
+            }
+            bit_drives
+                .entry(lhs.base.name.clone())
+                .or_default()
+                .insert(bit as u32, rw.expr(rhs)?);
+        }
+        Some((_, Some(_))) => {
+            return Err(format!(
+                "driving a slice of `{}` is not supported by the simulator yet",
+                lhs.base.name
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// `clog2` matching the Verilog emitter (`emit_verilog::clog2`): the bit width of
+/// an `n`-variant enum encoding. `n <= 1` ⇒ 1.
+fn clog2(n: usize) -> u32 {
+    if n <= 1 {
+        1
+    } else {
+        usize::BITS - (n - 1).leading_zeros()
+    }
+}
+
+/// Rewrites expressions/statements during elaboration: enum-variant reads
+/// (`State.Red`) → their index literal, instance-port reads (`add.sum`,
+/// `fa[i].sum`) → the flat wire name, `match` variant patterns → their index,
+/// plus a name substitution map (the `repeat` loop var and inlined child
+/// signals). `consts` folds an array index to its concrete value.
+struct Rw<'a> {
+    insts: &'a HashSet<String>,
+    enums: &'a HashMap<String, Vec<String>>,
+    consts: &'a BTreeMap<String, i128>,
+    subst: &'a HashMap<String, Expr>,
+}
+
+impl Rw<'_> {
+    fn expr(&self, e: &Expr) -> Result<Expr, String> {
+        let kind = match &e.kind {
+            ExprKind::Int { .. } | ExprKind::Bool(_) => e.kind.clone(),
+            ExprKind::Ident(n) => {
+                if let Some(r) = self.subst.get(n) {
+                    return Ok(r.clone());
+                }
+                e.kind.clone()
+            }
+            ExprKind::Field { base, field } => return self.field(e, base, field),
+            ExprKind::Unary { op, expr } => ExprKind::Unary {
+                op: *op,
+                expr: Box::new(self.expr(expr)?),
             },
-            rhs: f(rhs),
-        },
-        SeqStmt::If { cond, then, els } => SeqStmt::If {
-            cond: f(cond),
-            then: then.iter().map(|x| rewrite_seq(x, f, rename)).collect(),
-            els: els
-                .as_ref()
-                .map(|e| e.iter().map(|x| rewrite_seq(x, f, rename)).collect()),
-        },
+            ExprKind::Binary { op, lhs, rhs } => ExprKind::Binary {
+                op: *op,
+                lhs: Box::new(self.expr(lhs)?),
+                rhs: Box::new(self.expr(rhs)?),
+            },
+            ExprKind::IfExpr { cond, then, els } => ExprKind::IfExpr {
+                cond: Box::new(self.expr(cond)?),
+                then: Box::new(self.expr(then)?),
+                els: Box::new(self.expr(els)?),
+            },
+            ExprKind::Match { scrutinee, arms } => ExprKind::Match {
+                scrutinee: Box::new(self.expr(scrutinee)?),
+                arms: arms
+                    .iter()
+                    .map(|a| {
+                        Ok::<_, String>(ast::Arm {
+                            patterns: a
+                                .patterns
+                                .iter()
+                                .map(|p| self.pattern(p))
+                                .collect::<Result<_, _>>()?,
+                            value: self.expr(&a.value)?,
+                        })
+                    })
+                    .collect::<Result<_, _>>()?,
+            },
+            ExprKind::Concat(parts) => ExprKind::Concat(
+                parts
+                    .iter()
+                    .map(|p| self.expr(p))
+                    .collect::<Result<_, _>>()?,
+            ),
+            ExprKind::Index { base, index } => ExprKind::Index {
+                base: Box::new(self.expr(base)?),
+                index: Box::new(self.expr(index)?),
+            },
+            ExprKind::Slice { base, hi, lo } => ExprKind::Slice {
+                base: Box::new(self.expr(base)?),
+                hi: Box::new(self.expr(hi)?),
+                lo: Box::new(self.expr(lo)?),
+            },
+            ExprKind::Call { func, args } => ExprKind::Call {
+                func: *func,
+                args: args
+                    .iter()
+                    .map(|a| self.expr(a))
+                    .collect::<Result<_, _>>()?,
+            },
+        };
+        Ok(Expr { kind, span: e.span })
+    }
+
+    fn field(&self, e: &Expr, base: &Expr, field: &ast::Ident) -> Result<Expr, String> {
+        if let ExprKind::Ident(b) = &base.kind {
+            // `Enum.Variant` → its index literal.
+            if let Some(vs) = self.enums.get(b) {
+                let idx = vs
+                    .iter()
+                    .position(|v| v == &field.name)
+                    .ok_or_else(|| format!("enum `{b}` has no variant `{}`", field.name))?;
+                return Ok(int_expr(idx as i128, e.span));
+            }
+            // `inst.port` → flat wire `inst_port`.
+            if self.insts.contains(b) {
+                return Ok(ident_expr(format!("{b}_{}", field.name), e.span));
+            }
+        }
+        // `arr[i].port` → flat wire `arr__<i>_port` (the index folds here).
+        if let ExprKind::Index { base: arr, index } = &base.kind
+            && let ExprKind::Ident(arr_name) = &arr.kind
+            && self.insts.contains(arr_name)
+        {
+            let n = const_eval(&self.expr(index)?, self.consts)?;
+            return Ok(ident_expr(
+                format!("{arr_name}__{n}_{}", field.name),
+                e.span,
+            ));
+        }
+        // Some other field access — keep the shape (recurse into the base).
+        Ok(Expr {
+            kind: ExprKind::Field {
+                base: Box::new(self.expr(base)?),
+                field: field.clone(),
+            },
+            span: e.span,
+        })
+    }
+
+    fn pattern(&self, p: &Pattern) -> Result<Pattern, String> {
+        match p {
+            Pattern::Variant { enum_name, variant } => {
+                let vs = self
+                    .enums
+                    .get(&enum_name.name)
+                    .ok_or_else(|| format!("unknown enum `{}`", enum_name.name))?;
+                let idx = vs.iter().position(|v| v == &variant.name).ok_or_else(|| {
+                    format!(
+                        "enum `{}` has no variant `{}`",
+                        enum_name.name, variant.name
+                    )
+                })?;
+                Ok(Pattern::Int {
+                    value: idx as u128,
+                    raw: idx.to_string(),
+                })
+            }
+            other => Ok(other.clone()),
+        }
+    }
+
+    /// Rewrite a sequential statement, renaming each assignment target via
+    /// `rename` (prefixing inlined child regs; identity for the parent).
+    fn seq(&self, s: &SeqStmt, rename: &dyn Fn(&str) -> String) -> Result<SeqStmt, String> {
+        Ok(match s {
+            SeqStmt::Assign { lhs, rhs } => SeqStmt::Assign {
+                lhs: ast::LValue {
+                    base: ast::Ident {
+                        name: rename(&lhs.base.name),
+                        span: lhs.base.span,
+                    },
+                    index: match &lhs.index {
+                        Some((a, b)) => {
+                            Some((self.expr(a)?, b.as_ref().map(|x| self.expr(x)).transpose()?))
+                        }
+                        None => None,
+                    },
+                    span: lhs.span,
+                },
+                rhs: self.expr(rhs)?,
+            },
+            SeqStmt::If { cond, then, els } => SeqStmt::If {
+                cond: self.expr(cond)?,
+                then: then
+                    .iter()
+                    .map(|x| self.seq(x, rename))
+                    .collect::<Result<_, _>>()?,
+                els: match els {
+                    Some(e) => Some(
+                        e.iter()
+                            .map(|x| self.seq(x, rename))
+                            .collect::<Result<_, _>>()?,
+                    ),
+                    None => None,
+                },
+            },
+        })
     }
 }
 
@@ -708,5 +975,46 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("unknown module"), "got: {err}");
+    }
+
+    #[test]
+    fn unrolls_repeat_with_instance_array_and_bit_drives() {
+        // `repeat` inlines one `Xor` per bit; `s[i] = fa[i].o` collects bit drives
+        // that assemble into a whole-signal Concat.
+        let d = elaborate(
+            &parse(
+                "module Xor {\n  in a: bit\n  in b: bit\n  out o: bit\n  o = a ^ b\n}\n\
+                 module R {\n  in x: bits[2]\n  in y: bits[2]\n  out s: bits[2]\n  \
+                 repeat i: 0..2 {\n    let fa[i] = Xor() { a: x[i], b: y[i] }\n    \
+                 s[i] = fa[i].o\n  }\n}\n",
+            ),
+            Some("R"),
+            &BTreeMap::new(),
+        )
+        .expect("unrolls");
+        let wires: Vec<&str> = d.wires.iter().map(|w| w.name.as_str()).collect();
+        assert!(wires.contains(&"fa__0_o"), "wires: {wires:?}");
+        assert!(wires.contains(&"fa__1_o"), "wires: {wires:?}");
+        // `s` assembled from its per-bit drives.
+        assert!(
+            matches!(d.comb["s"].kind, ExprKind::Concat(_)),
+            "s not a concat"
+        );
+    }
+
+    #[test]
+    fn elaborates_an_enum_signal_and_match() {
+        // `reg st: S` width = clog2(2) = 1; `S.A` reset = 0; the match over the
+        // enum elaborates (variant patterns rewritten to their indices).
+        let d = design(
+            "module FSM {\n  clock clk\n  reset rst\n  out o: bit\n  \
+             enum S { A, B }\n  reg st: S = S.A\n  \
+             on rise(clk) { st <- match st { S.A => S.B\n S.B => S.A } }\n  \
+             o = st == S.B\n}\n",
+        );
+        let st = d.regs.iter().find(|r| r.name == "st").expect("reg st");
+        assert_eq!(st.width.bits, 1);
+        assert_eq!(st.reset, 0);
+        assert!(d.comb.contains_key("o"));
     }
 }

@@ -93,9 +93,16 @@ _Out of C1 scope by design (the rest of full parity — C2–C4):_
       `inst_port` (matches the emitter), so the flat `Design` is bit-for-bit
       equivalent. `mimz sim`/`mimz test` now `load_project`. `alu` (`Top`) and
       `chained` added to the Layer-3 differential (16 → 18 examples).
-- [ ] **C3 — `repeat` unrolling** in `src/sim/elaborate.rs`. Unblocks `ripple_adder`.
-- [ ] **C4 — enum-typed signals** (`value.rs::type_width` errors on `Type::Named`).
-      Unblocks the `traffic_light` FSM.
+- [x] **C3 — `repeat` unrolling** (2026-06-16): `ModuleItem::Repeat` folds
+      `lo..hi` (capped at `REPEAT_BUDGET = 4096`) and inlines the body per
+      iteration — array instances `fa__{i}`, `fa[i].port` → `fa__{i}_port`,
+      bit-indexed drives (`sum[i] = …`) assembled into a whole-signal Concat.
+      Unblocks `ripple_adder`.
+- [x] **C4 — enum-typed signals** (2026-06-16): a module's `enum` encodes each
+      variant by index, width `clog2(variants)` (the emitter's encoding); variant
+      reads + `match` patterns rewrite to their index. Unblocks `traffic_light`.
+      The differential now covers the **entire single-file corpus (21 examples)**
+      — full simulator parity (C1–C4 complete).
 - [ ] Optional: per-design golden VCD beyond the counter (byte-lock is counter-only).
 
 ## Milestone
@@ -114,9 +121,9 @@ register / edge detector), and a golden VCD locks the writer's exact bytes.
 3. ✅ Differential suite green against Icarus — three-way (kernel / VCD / Icarus),
    plus the ≥1M cycle-events/sec perf baseline.
 
-_Module instances are flattened (C2); `repeat` and enum signals are still rejected
-by the simulator's elaborator (C3/C4 — logged, additive follow-ups); the emitter
-already lowers all of them._
+_Full structural parity: the simulator's elaborator flattens instances (C2),
+unrolls `repeat` (C3), and encodes enum signals (C4) — the same constructs the
+emitter lowers. Every single-file example simulates bit-for-bit vs Icarus._
 
 ## Risks / notes
 

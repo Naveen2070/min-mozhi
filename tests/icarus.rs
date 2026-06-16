@@ -705,10 +705,10 @@ fn interface_name_map(orig: &File, trans: &File) -> HashMap<String, String> {
 
 /// Layer 3 — the simulator differential, bit-for-bit vs Icarus (kernel == VCD ==
 /// Icarus). Covers clocked designs (register/reset/wrap, held inputs, FSM-free)
-/// and combinational designs (incl. SIGNED) across the english corpus, the
-/// pure-Tamil examples (interface names romanized to match the emitted Verilog),
-/// AND cross-file module instances flattened by the elaborator (C2: alu, chained).
-/// `repeat` and enum-FSM designs land in C3/C4.
+/// and combinational designs (incl. SIGNED) across the **entire single-file
+/// corpus** — english + pure-Tamil (romanized interface names), cross-file
+/// instances (C2), `repeat`/instance-arrays (C3: ripple_adder), and enum FSMs
+/// (C4: traffic_light). Every example the emitter compiles also simulates here.
 #[test]
 fn our_simulator_matches_icarus_bit_for_bit() {
     let Some(bin) = require_iverilog() else {
@@ -749,4 +749,12 @@ fn our_simulator_matches_icarus_bit_for_bit() {
         6,
     );
     differential(&bin, "english/chained.mimz", &[], &[], 8);
+    // `repeat` unrolling (C3): ripple_adder chains a FullAdder per bit via
+    // `repeat` + an instance array + bit-indexed drives.
+    differential(&bin, "english/ripple_adder.mimz", &[], &[], 8);
+    // enum-typed signals (C4): the traffic-light FSM (`reg state: State`, `match`
+    // over the enum). 12 cycles cover the reset + the first state transition.
+    differential(&bin, "english/traffic_light.mimz", &[], &[], 12);
+    // Tamil-identifier toggler (interface names romanize like tamil-pure).
+    differential(&bin, "english/vilakku.mimz", &[], &[], 8);
 }
