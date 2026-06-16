@@ -20,7 +20,9 @@ use mimz::lexer::token::Flavor;
 use mimz::project::{LoadError, LoadedFile};
 use mimz::{diag, project};
 
-use commands::{check, compile, eval_file, explain_code, fmt_file, resolve_config, translate_file};
+use commands::{
+    check, compile, eval_file, explain_code, fmt_file, resolve_config, sim_file, translate_file,
+};
 
 /// Top-level CLI definition. The `///` docs on [`Cmd`] variants and fields
 /// double as the `--help` text (clap derive).
@@ -39,8 +41,9 @@ struct Cli {
     command: Cmd,
 }
 
-/// The `mimz` subcommands. Planned but not yet implemented: `fmt`, `test`,
-/// and the full `sim` (docs/plan/); `eval` below is its combinational slice.
+/// The `mimz` subcommands. `test` execution is still ahead (Phase 1.5, B6);
+/// `sim` ships a first cut (default stimulus + VCD + console trace), and `eval`
+/// is its combinational slice.
 #[derive(Subcommand)]
 enum Cmd {
     /// Lex + parse + check a file and report errors (no output written)
@@ -152,6 +155,46 @@ enum Cmd {
         #[arg(long)]
         lang: Option<String>,
     },
+    /// (experimental) Simulate a clocked module: run a default stimulus (reset
+    /// asserted the first cycle, inputs held, the clock toggled) and write a VCD
+    /// waveform (`-o`) and/or a per-cycle console trace (`--trace`). Single-module
+    /// for now; use `mimz eval` for a combinational module.
+    Sim {
+        /// The .mimz file
+        file: PathBuf,
+        /// Write a VCD waveform here (open in GTKWave). Omit to skip the VCD.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Number of clock cycles to run
+        #[arg(long, default_value_t = 16)]
+        cycles: u64,
+        /// Which clock to drive (default: the module's only clock)
+        #[arg(long)]
+        clock: Option<String>,
+        /// Input values, comma-separated, held for the run: `--in a=3,b=5`
+        #[arg(long = "in", default_value = "")]
+        inputs: String,
+        /// Parameter overrides, comma-separated: `--param WIDTH=4`
+        #[arg(long, default_value = "")]
+        param: String,
+        /// Which module to simulate (default: the file's only module)
+        #[arg(long)]
+        module: Option<String>,
+        /// Per-cycle console trace: `--trace` (every-cycle table) or
+        /// `--trace=changes` (on-change, `$monitor`-style)
+        #[arg(long, value_name = "STYLE", num_args = 0..=1, default_missing_value = "table")]
+        trace: Option<String>,
+        /// Trace ALL signals (clocks/resets/wires too), not just inputs/outputs/regs
+        #[arg(long)]
+        verbose: bool,
+        /// Trace only these comma-separated signals
+        #[arg(long)]
+        signals: Option<String>,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses)
+        #[arg(long)]
+        lang: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -258,6 +301,38 @@ fn main() -> ExitCode {
             };
             let lang = lang.or(cfg.lang);
             eval_file(&file, &inputs, &param, module, lang.as_deref())
+        }
+        Cmd::Sim {
+            file,
+            output,
+            cycles,
+            clock,
+            inputs,
+            param,
+            module,
+            trace,
+            verbose,
+            signals,
+            lang,
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang = lang.or(cfg.lang);
+            sim_file(
+                &file,
+                output,
+                cycles,
+                clock,
+                &inputs,
+                &param,
+                module,
+                trace,
+                verbose,
+                signals,
+                lang.as_deref(),
+            )
         }
     }
 }

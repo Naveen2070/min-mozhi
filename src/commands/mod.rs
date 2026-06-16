@@ -9,6 +9,7 @@ mod eval;
 mod explain;
 mod fmt;
 mod helpers;
+mod sim;
 mod translate;
 
 pub(crate) use check::check;
@@ -17,4 +18,5 @@ pub(crate) use eval::eval_file;
 pub(crate) use explain::explain_code;
 pub(crate) use fmt::fmt_file;
 pub(crate) use helpers::resolve_config;
+pub(crate) use sim::sim_file;
 pub(crate) use translate::translate_file;

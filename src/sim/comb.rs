@@ -8,10 +8,10 @@
 //! slices/concat/`extend`/`trunc` resize — so the result matches what the
 //! Verilog emitter would produce for the same combinational logic.
 //!
-//! The value model and the expression evaluator live in [`super::value`]; this
+//! The value model and the expression evaluator live in `super::value`; this
 //! module adds combinational driver resolution — a memoized walk with cycle
-//! detection — on top, implementing [`super::value::Resolver`]. `mimz eval` is
-//! its CLI surface.
+//! detection — on top, implementing that module's `Resolver` trait. `mimz eval`
+//! is its CLI surface.
 
 use std::collections::BTreeMap;
 

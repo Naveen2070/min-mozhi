@@ -10,7 +10,7 @@
 //! and stays callable on a single module / single expression. `mimz eval` is
 //! its (experimental) CLI surface.
 //!
-//! The full engine is being built in steps (Phase 1.5): [`value`] holds the
+//! The full engine is being built in steps (Phase 1.5): `value` holds the
 //! shared 2-state value model + expression evaluator (a `Resolver` trait both
 //! evaluators implement); [`elaborate`] flattens an AST module into a
 //! [`elaborate::Design`] (signals, registers, combinational drivers, sequential
@@ -23,3 +23,6 @@ mod value;
 pub mod comb;
 pub mod elaborate;
 pub mod kernel;
+pub mod run;
+pub mod trace;
+pub mod vcd;
