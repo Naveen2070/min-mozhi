@@ -372,4 +372,35 @@ mod tests {
         assert!(s.set("count", 1).is_err()); // an output, not drivable
         assert!(s.set("nope", 1).is_err()); // unknown
     }
+
+    #[test]
+    fn combinational_chain_propagates_in_order() {
+        // y ← b ← a ← x, and b also reads reg r: a multi-level comb chain plus a
+        // register input. The lazy memoized resolver must settle a, then b, then
+        // y each cycle: y = ((x +% 1) +% r) +% 1 = x + r + 2.
+        let mut s = sim(
+            "module Chain {\n  clock clk\n  reset rst\n  in x: bits[8]\n  out y: bits[8]\n  \
+             reg r: bits[8] = 0\n  wire a: bits[8] = x +% 1\n  wire b: bits[8] = a +% r\n  \
+             on rise(clk) { r <- r +% 1 }\n  y = b +% 1\n}\n",
+        );
+        s.set("rst", 0).unwrap();
+        s.set("x", 10).unwrap();
+        assert_eq!(s.peek("y").unwrap(), 12); // r = 0
+        s.tick("clk").unwrap();
+        assert_eq!(s.peek("y").unwrap(), 13); // r = 1
+        s.tick("clk").unwrap();
+        assert_eq!(s.peek("y").unwrap(), 14); // r = 2
+    }
+
+    #[test]
+    fn combinational_cycle_is_reported() {
+        // `a = b; b = a` is a pure combinational loop. Elaboration does not
+        // reject it (that is the checker's job); the kernel's resolver must catch
+        // it at settle time rather than spin.
+        let s = sim(
+            "module Cyc {\n  out y: bits[8]\n  wire a: bits[8] = b\n  wire b: bits[8] = a\n  y = a\n}\n",
+        );
+        let err = s.peek("y").unwrap_err();
+        assert!(err.contains("cycle"), "expected a cycle error, got: {err}");
+    }
 }
