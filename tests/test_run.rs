@@ -104,3 +104,24 @@ fn a_file_with_no_tests_is_reported() {
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(s.contains("no `test` blocks"), "{s}");
 }
+
+// A fully thamizh-order, all-tanglish program: the clocked-block flip
+// (`yetram(clk) pothu`) AND the test-header flip (`M(args) kaaga "…" sodhanai`)
+// in one file. Execution is the oracle (B7) — it must run and pass exactly like
+// its code-order twin, proving the flipped header builds the same `TestDecl`.
+const THAMIZH_COUNTER: &str = "ilakkanam thamizh\n\
+    thoguthi Counter(WIDTH: int = 4) {\n  thudippu clk\n  meettamai rst\n  \
+    veliyeedu count: bits[WIDTH]\n  pathivedu value: bits[WIDTH] = 0\n  \
+    yetram(clk) pothu { value <- value +% 1 }\n  count = value\n}\n\n\
+    Counter(WIDTH: 4) kaaga \"counts up\" sodhanai {\n  rst = 1\n  kanam(clk)\n  \
+    uruthisei count == 0\n  rst = 0\n  kanam(clk, 4)\n  uruthisei count == 4\n}\n";
+
+#[test]
+fn a_thamizh_order_test_header_runs_like_its_code_order_twin() {
+    let p = temp_mimz(THAMIZH_COUNTER);
+    let out = mimz().args(["test"]).arg(&p).output().unwrap();
+    assert!(out.status.success(), "thamizh test should pass: {:?}", out);
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("ok"), "no ok line:\n{s}");
+    assert!(s.contains("1 passed, 0 failed"), "no summary:\n{s}");
+}

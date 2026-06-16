@@ -73,6 +73,15 @@ impl Parser {
                         items.push(TopItem::Test(t));
                     }
                 }
+                // thamizh order: a test header leads with the module under test,
+                // so a bare identifier at file level starts `M(args) kaaga "…"
+                // sodhanai { }`. The leading `ident()` always bumps, so the loop
+                // makes progress even if the rest of the header is malformed.
+                TokKind::Ident(_) if self.profile == Profile::Thamizh => {
+                    if let Some(t) = self.test_decl_thamizh() {
+                        items.push(TopItem::Test(t));
+                    }
+                }
                 _ => {
                     let found = kind_name(self.peek_kind());
                     let span = self.peek().span;

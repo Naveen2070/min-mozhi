@@ -13,7 +13,7 @@
 | [`plan/`](plan/)                                         | **Detailed per-phase plans** (source of truth for execution)                                                                                                           |
 | [`log/`](log/)                                           | **Dev log** — dated, append-only record of decisions and progress                                                                                                      |
 | [`archive/`](archive/)                                   | Closed working documents (e.g. the answered 2026-06-10 design-review register)                                                                                         |
-| [`../spec/`](../spec/)                                   | Language specification — philosophy **v0.3.1**, grammar **v0.2.7**, keywords **v0.2.7**, grammar engine **v0.2.5**, simulator **v0.1 DRAFT**                           |
+| [`../spec/`](../spec/)                                   | Language specification — philosophy **v0.3.1**, grammar **v0.2.7**, keywords **v0.2.7**, grammar engine **v0.2.6**, simulator **v0.1 DRAFT**                           |
 | [`../examples/`](../examples/)                           | Example `.mimz` programs                                                                                                                                               |
 | [`../min-mozhi-roadmap.md`](../min-mozhi-roadmap.md)     | High-level roadmap summary (kept in sync with `plan/`)                                                                                                                 |
 

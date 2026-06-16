@@ -1,22 +1,28 @@
 # Min-Mozhi — Grammar Engine (இலக்கண இயந்திரம்)
 
-> **Spec v0.2.5 — Phase 1.8 complete.**
+> **Spec v0.2.6 — Phase 1.8 complete; the test-header flip landed in Phase 1.5.**
+> (v0.2.6, 2026-06-16: the **test-header flip** (`M(args) kaaga "…" sodhanai { }`,
+> section 3 row 6) is now implemented — Phase 1.5 B6 gave `test` blocks an
+> execution oracle (`mimz test`), so B7 added the flip with running tests as the
+> proof (`src/parser/items/test.rs::test_decl_thamizh`,
+> `src/pretty.rs`). This completes all five clause flips of the word-order engine.)
 > (v0.2.5, 2026-06-16: DRAFT → stable. Phase 1.8 closed — the same-AST/round-trip
 > suites are green, the native-speaker panel ratified the word order + error
 > rendering (C3, 2026-06-15), and 33/36 checker codes are localized. The
-> `test`-header word-order flip stays deferred to Phase 1.5 per the section 6
-> scope fence.)
+> `test`-header word-order flip was deferred to Phase 1.5 per the section 6
+> scope fence — now closed, see above.)
 > (v0.2.4, 2026-06-15: section 3 examples synced to the finalized v1 keyword set —
 > `enil`/`thernthedu`/`illaiyenil` and the `thudippu`/`veliyeedu`/`pathivedu`
 > declaration words. `keywords.toml` is the source of truth.)
 > Goal: let Tamil and Tanglish code read with **natural Tamil word order**
 > (SOV, postpositional), not just Tamil words in English order.
 >
-> **Implemented so far (2026-06-14):** the `syntax thamizh` directive, four
-> of the five clause flips in section 3 — the **clocked block**
-> (`rise(clk) on { }`), the **conditional** (`<cond> enil { }`), the
-> **if-expression** (`c enil { a } illaiyenil { b }`), and **match**
-> (`<expr> thernthedu { }`) — and **`mimz translate --order code|thamizh`**, which
+> **Implemented:** the `syntax thamizh` directive and **all five** clause flips
+> in section 3 — the **clocked block** (`rise(clk) on { }`), the **conditional**
+> (`<cond> enil { }`), the **if-expression** (`c enil { a } illaiyenil { b }`),
+> **match** (`<expr> thernthedu { }`), and the **test header**
+> (`M(args) kaaga "…" sodhanai { }`, Phase 1.5 B7) — and **`mimz translate --order
+code|thamizh`**, which
 > converts a file between the two orders via an AST pretty-printer (`src/pretty.rs`).
 > All flips parse to the same AST as code-order and emit byte-identical Verilog
 > (`tests/grammar.rs`, `tests/fixtures/grammar/`). The **error-language
@@ -29,8 +35,9 @@
 > C3 ratified, sandhi rule finalized in `case_suffixes.toml`). E0403/E0404/E0405
 > are deferred — each emits many heterogeneous message shapes that one template
 > cannot fit faithfully, so they keep their English text (Tamil preserved as
-> comments). Still to do: the **test** flip (deferred to Phase 1.5 — `test`
-> blocks emit no Verilog yet, so there is no same-Verilog oracle).
+> comments). The **test** flip landed in Phase 1.5 (B7) — `mimz test` runs the
+> blocks, so a passing thamizh-order test (re-parsing to the same `TestDecl`) is
+> the oracle in place of a same-Verilog comparison.
 
 ---
 
