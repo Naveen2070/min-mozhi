@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 
 use crate::ast::{self, Dir, Expr, ModuleItem, SeqStmt};
 
-use super::comb::{const_eval, pick_module, type_width};
+use super::value::{const_eval, pick_module, type_width};
 
 /// A signal's concrete type after width folding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
