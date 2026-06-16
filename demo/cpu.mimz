@@ -1,0 +1,79 @@
+// demo/cpu.mimz — the most feature-dense design Min-Mozhi can build today:
+// a single-clock accumulator "CPU" that exercises EVERY structural feature
+// the simulator supports end-to-end.
+//
+//   * module instance + cross-file import .... the ALU (alu.mimz)        [C2]
+//   * `repeat` + bit-indexed drives .......... the LED bus               [C3]
+//   * `enum` + state register ................ the Run/Halt phase        [C4]
+//   * `match`-as-ROM ......................... the program memory
+//   * registers, sync reset, `on rise` ....... acc / pc / phase
+//   * slices, wrapping arithmetic ............ instruction decode + ALU
+//
+// It runs a fixed 16-word program: each rising clock fetches ROM[pc],
+// feeds (acc, imm) to the ALU under the decoded opcode, latches the result
+// into acc, and advances pc — until pc hits the end and the FSM halts.
+
+import alu
+
+module Cpu {
+  clock clk
+  reset rst
+
+  out acc:  bits[8]      // the accumulator (observable)
+  out pc:   bits[4]      // the program counter (observable)
+  out leds: bits[4]      // low nibble of acc, mirrored on an LED bus
+
+  // Two-state control FSM (enum signal — C4).
+  enum Phase { Run, Halt }
+
+  reg phase: Phase   = Phase.Run
+  reg pcr:   bits[4] = 0
+  reg accr:  bits[8] = 0
+
+  // Program ROM: 16 words of {op[1:0], imm[7:0]} packed into 10 bits,
+  // addressed by the program counter (a `match` is a read-only memory).
+  //   op: 00=add  01=sub  10=and  11=or        (matches alu.mimz)
+  wire instr: bits[10] = match pcr {
+    0  => 0b00_00000101   // acc = acc + 5      -> 5
+    1  => 0b00_00000011   // acc = acc + 3      -> 8
+    2  => 0b01_00000010   // acc = acc - 2      -> 6
+    3  => 0b10_00001111   // acc = acc & 0x0F   -> 6
+    4  => 0b11_10000000   // acc = acc | 0x80   -> 0x86
+    _  => 0b00_00000000   // add 0 (hold)
+  }
+
+  wire op:  bits[2] = instr[9:8]
+  wire imm: bits[8] = instr[7:0]
+
+  // The datapath is the imported ALU instance (C2): acc <op> imm.
+  let alu = Alu() { a: accr, b: imm, op: op }
+
+  wire at_end: bit = pcr == 5
+
+  on rise(clk) {
+    if phase == Phase.Run {
+      accr  <- alu.y
+      pcr   <- pcr +% 1
+      if at_end {
+        phase <- Phase.Halt
+      }
+    }
+  }
+
+  // LED bus built with `repeat` + bit-indexed drives (C3): mirror acc[3:0].
+  repeat i: 0..4 {
+    leds[i] = accr[i]
+  }
+
+  acc = accr
+  pc  = pcr
+}
+
+// Self-checking test: reset, run the program, assert the final accumulator.
+test "program computes 0x86" for Cpu {
+  rst = 1
+  tick(clk)            // synchronous reset: acc=0, pc=0, phase=Run
+  rst = 0
+  tick(clk, 5)         // execute instructions 0..4
+  expect acc == 0x86
+}
