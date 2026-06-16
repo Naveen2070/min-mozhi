@@ -318,7 +318,9 @@ test "counter counts" for Counter(WIDTH: 4) {
 ```
 
 `test` blocks are simulation-only (Phase 1.5 executes them); they never emit
-hardware. `tick` and `expect` are keywords valid only inside `test`.
+hardware. `tick` and `expect` are keywords valid only inside `test`. Execution
+semantics (and the equivalent `await clk.cycles(n)` timing form) are specified in
+[`spec/05-simulator.md`](05-simulator.md).
 
 ---
 

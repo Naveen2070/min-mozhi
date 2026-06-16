@@ -1,21 +1,21 @@
 # Min-Mozhi — Documentation Index
 
-| Section                                                  | What lives here                                                                                                                 |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| [`RULES.md`](RULES.md)                                   | **Repo working rules** — how plans, specs, and logs are kept in sync                                                            |
-| [`guide/`](guide/)                                       | **Learn the language** — a from-scratch book: syntax, types, operators, control flow, sequential logic, modules, and word order |
-| [`how-the-compiler-works.md`](how-the-compiler-works.md) | **Start here (compiler)** — beginner's tour: the five pipeline stations, traced on one real example                             |
-| [`architecture.md`](architecture.md)                     | Compiler architecture — pipeline, components, crate layout                                                                      |
-| [`prior-art.md`](prior-art.md)                           | Prior art — Veryl/Spade/Amaranth/Chisel design choices mapped to our open decisions                                             |
-| [`code/`](code/)                                         | **How the code works** — maintainer docs: pipeline, per-module internals, decisions, contributor recipes                        |
-| [`audit/`](audit/)                                       | **Security & robustness audit** — input-hardening defects found and how each was fixed (security / bugs / hardening)            |
-| [`Ideas/`](Ideas/)                                       | Forward-looking plans — language roadmap (`language_plan.md`), benchmark roadmap (`benchmark_plan.md`), CI plan (`ci_plan.md`)  |
-| [`plan/`](plan/)                                         | **Detailed per-phase plans** (source of truth for execution)                                                                    |
-| [`log/`](log/)                                           | **Dev log** — dated, append-only record of decisions and progress                                                               |
-| [`archive/`](archive/)                                   | Closed working documents (e.g. the answered 2026-06-10 design-review register)                                                  |
-| [`../spec/`](../spec/)                                   | Language specification — philosophy **v0.3.1**, grammar **v0.2.7**, keywords **v0.2.6**, grammar engine **v0.2.5**              |
-| [`../examples/`](../examples/)                           | Example `.mimz` programs                                                                                                        |
-| [`../min-mozhi-roadmap.md`](../min-mozhi-roadmap.md)     | High-level roadmap summary (kept in sync with `plan/`)                                                                          |
+| Section                                                  | What lives here                                                                                                                              |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`RULES.md`](RULES.md)                                   | **Repo working rules** — how plans, specs, and logs are kept in sync                                                                         |
+| [`guide/`](guide/)                                       | **Learn the language** — a from-scratch book: syntax, types, operators, control flow, sequential logic, modules, and word order              |
+| [`how-the-compiler-works.md`](how-the-compiler-works.md) | **Start here (compiler)** — beginner's tour: the five pipeline stations, traced on one real example                                          |
+| [`architecture.md`](architecture.md)                     | Compiler architecture — pipeline, components, crate layout                                                                                   |
+| [`prior-art.md`](prior-art.md)                           | Prior art — Veryl/Spade/Amaranth/Chisel design choices mapped to our open decisions                                                          |
+| [`code/`](code/)                                         | **How the code works** — maintainer docs: pipeline, per-module internals, decisions, contributor recipes                                     |
+| [`audit/`](audit/)                                       | **Security & robustness audit** — input-hardening defects found and how each was fixed (security / bugs / hardening)                         |
+| [`Ideas/`](Ideas/)                                       | Forward-looking plans — language roadmap (`language_plan.md`), benchmark roadmap (`benchmark_plan.md`), CI plan (`ci_plan.md`)               |
+| [`plan/`](plan/)                                         | **Detailed per-phase plans** (source of truth for execution)                                                                                 |
+| [`log/`](log/)                                           | **Dev log** — dated, append-only record of decisions and progress                                                                            |
+| [`archive/`](archive/)                                   | Closed working documents (e.g. the answered 2026-06-10 design-review register)                                                               |
+| [`../spec/`](../spec/)                                   | Language specification — philosophy **v0.3.1**, grammar **v0.2.7**, keywords **v0.2.6**, grammar engine **v0.2.5**, simulator **v0.1 DRAFT** |
+| [`../examples/`](../examples/)                           | Example `.mimz` programs                                                                                                                     |
+| [`../min-mozhi-roadmap.md`](../min-mozhi-roadmap.md)     | High-level roadmap summary (kept in sync with `plan/`)                                                                                       |
 
 ## Plan files (solo-dev execution order)
 
