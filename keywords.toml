@@ -23,6 +23,11 @@ reserved = [
   "fall", "mem", "sync", "inout", "struct",
   "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "await",
   "fixed", "requires", "ensures",
+  # Combinational functions (Phase 2 RTL parity; also unblocks the pipe `|>`).
+  # Both spellings reserved pre-v0.1.0 freeze so no program can claim either;
+  # canonical TBD when the feature lands (likely `fn` + `function` alias).
+  # English-only until native review supplies Tamil (R11).
+  "fn", "function",
   # Parked for a future controlled `for`-loop (v1 reserved both spellings so no
   # program can claim them before the feature lands). `repeat`/மீண்டும் stays the unroll.
   "suzhal", "சுழல்",

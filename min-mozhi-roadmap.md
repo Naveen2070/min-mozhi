@@ -78,7 +78,7 @@ matching, which compilers lean on heavily.)
 
 ---
 
-## Phase 1.8 — Grammar Engine _(1–2 months, directly after Phase 1 — solo dev runs 1.8 before 1.5; 🟡 in progress)_
+## Phase 1.8 — Grammar Engine _(1–2 months, directly after Phase 1 — solo dev runs 1.8 before 1.5; 🟢 complete 2026-06-16)_
 
 > Natural Tamil word order — இலக்கண இயந்திரம் (see `spec/04-grammar-engine.md`)
 

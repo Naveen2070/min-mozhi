@@ -3,8 +3,8 @@
 > **Tamil code that reads like Tamil, not transliterated English.**
 > Window: months 8–9, **directly after Phase 1, before 1.5** (solo-dev order,
 > decision D3) · Target: 28 Feb 2027, then repo goes public (D7) ·
-> Status: 🟡 in progress — keystone landed 2026-06-13 (the `syntax thamizh`
-> directive + the clocked-block flip, same-AST proven)
+> Status: 🟢 complete (2026-06-16) — grammar engine finalized, panel-ratified
+> (C3, 2026-06-15), spec/04 bumped to stable; the `test`-header flip stays in Phase 1.5
 
 ## Goal
 
@@ -78,9 +78,9 @@ Verilog as its English twin; its error messages read as correct Tamil.
 
 ## Exit criteria
 
-1. Same-AST and round-trip test suites green.
-2. Panel sign-off on word order + error rendering.
-3. Docs: `spec/04` bumped from DRAFT to stable.
+1. ✅ Same-AST and round-trip test suites green.
+2. ✅ Panel sign-off on word order + error rendering (C3, 2026-06-15).
+3. ✅ Docs: `spec/04` bumped from DRAFT to stable (2026-06-16).
 
 ## Risks / notes
 

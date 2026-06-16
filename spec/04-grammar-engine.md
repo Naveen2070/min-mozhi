@@ -1,6 +1,11 @@
 # Min-Mozhi — Grammar Engine (இலக்கண இயந்திரம்)
 
-> **Spec v0.2.4 DRAFT — Phase 1.8 in progress.**
+> **Spec v0.2.5 — Phase 1.8 complete.**
+> (v0.2.5, 2026-06-16: DRAFT → stable. Phase 1.8 closed — the same-AST/round-trip
+> suites are green, the native-speaker panel ratified the word order + error
+> rendering (C3, 2026-06-15), and 33/36 checker codes are localized. The
+> `test`-header word-order flip stays deferred to Phase 1.5 per the section 6
+> scope fence.)
 > (v0.2.4, 2026-06-15: section 3 examples synced to the finalized v1 keyword set —
 > `enil`/`thernthedu`/`illaiyenil` and the `thudippu`/`veliyeedu`/`pathivedu`
 > declaration words. `keywords.toml` is the source of truth.)
@@ -257,6 +262,6 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 
 ---
 
-_Status: design draft. The section 3 word-order table has been validated by the
+_Status: stable (Phase 1.8 closed 2026-06-16). The section 3 word-order table has been validated by the
 same native-speaker review that finalized the v1 keyword table (Phase 0 closed);
 the keyword spellings here track `keywords.toml`._

@@ -221,6 +221,21 @@ mod tests {
     }
 
     #[test]
+    fn fn_and_function_are_reserved() {
+        // Reserved pre-v0.1.0 freeze for a future combinational-function construct
+        // (docs/log/2026-06-16.md; also unblocks the pipe `|>`). Both spellings
+        // held so v0.1 programs cannot claim either as an identifier; untranslated
+        // until the feature lands.
+        for word in ["fn", "function"] {
+            assert!(TABLE.is_reserved(word), "`{word}` must be reserved");
+            assert!(
+                TABLE.lookup(word).is_none(),
+                "`{word}` must not be a keyword"
+            );
+        }
+    }
+
+    #[test]
     fn the_v03_backlog_keywords_are_reserved() {
         for word in [
             "secret",

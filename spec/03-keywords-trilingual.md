@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.5.**
+> **Spec v0.2.6.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -123,25 +123,26 @@ Set aside for future features — using one as an identifier is a compile
 error (E1005) explaining why. They live in the `reserved` list in
 `keywords.toml`, above the keyword tables:
 
-| Reserved           | Held for                                                                |
-| ------------------ | ----------------------------------------------------------------------- |
-| `fall`             | falling-edge `on` blocks (post-v1)                                      |
-| `mem`              | memories/arrays (Phase 2)                                               |
-| `sync`             | clock-domain crossing (Phase 2)                                         |
-| `inout`            | top-level bidirectional pads (Phase 2)                                  |
-| `struct`           | bundles/interfaces (post-Phase 2)                                       |
-| `secret`           | explicit information-flow types (v0.3 G5)                               |
-| `declassify`       | the only `secret`→public escape (v0.3 G5)                               |
-| `default`          | sticky-fault / default values (v0.3)                                    |
-| `pipeline`         | pipeline-stage construct (v0.3 backlog)                                 |
-| `interface`        | named port bundles (v0.3 backlog)                                       |
-| `chan`             | handshake channels (v0.3 backlog)                                       |
-| `prove`            | formal/temporal assertions (v0.3 backlog)                               |
-| `await`            | handshake sequencing (v0.3 backlog)                                     |
-| `fixed`            | fixed-point arithmetic type (section 8 triage)                          |
-| `requires`         | caller-side precondition contract (section 8)                           |
-| `ensures`          | module postcondition contract (section 8)                               |
-| `suzhal` / `சுழல்` | a future controlled `for`-loop (v1 reserved; `repeat` stays the unroll) |
+| Reserved           | Held for                                                                 |
+| ------------------ | ------------------------------------------------------------------------ |
+| `fall`             | falling-edge `on` blocks (post-v1)                                       |
+| `mem`              | memories/arrays (Phase 2)                                                |
+| `sync`             | clock-domain crossing (Phase 2)                                          |
+| `inout`            | top-level bidirectional pads (Phase 2)                                   |
+| `struct`           | bundles/interfaces (post-Phase 2)                                        |
+| `secret`           | explicit information-flow types (v0.3 G5)                                |
+| `declassify`       | the only `secret`→public escape (v0.3 G5)                                |
+| `default`          | sticky-fault / default values (v0.3)                                     |
+| `pipeline`         | pipeline-stage construct (v0.3 backlog)                                  |
+| `interface`        | named port bundles (v0.3 backlog)                                        |
+| `chan`             | handshake channels (v0.3 backlog)                                        |
+| `prove`            | formal/temporal assertions (v0.3 backlog)                                |
+| `await`            | handshake sequencing (v0.3 backlog)                                      |
+| `fixed`            | fixed-point arithmetic type (section 8 triage)                           |
+| `requires`         | caller-side precondition contract (section 8)                            |
+| `ensures`          | module postcondition contract (section 8)                                |
+| `fn` / `function`  | a future combinational-function construct (Phase 2; unblocks pipe `\|>`) |
+| `suzhal` / `சுழல்` | a future controlled `for`-loop (v1 reserved; `repeat` stays the unroll)  |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).
@@ -268,6 +269,11 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.6 (2026-06-16):** Reserved `fn` and `function` for a future
+  combinational-function construct (Phase 2 RTL parity; also unblocks the pipe
+  `|>` operator). Both spellings reserved pre-v0.1.0 freeze so no program can
+  claim either (E1005); English-only until the feature lands and native review
+  supplies Tamil (R11). Closes the last keyword-namespace gap before the freeze.
 - **v0.2.5 (2026-06-13):** Promoted `syntax` / `ilakkanam` / `இலக்கணம்` from
   reserved to active keyword KW_SYNTAX, and added KW_THAMIZH
   (`thamizh` / `thamizh` / `தமிழ்`) — the `syntax thamizh` grammar-engine
