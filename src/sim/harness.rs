@@ -24,7 +24,7 @@ use crate::ast::{self, BinOp, Expr, ExprKind, TestDecl, TestStmt};
 
 use super::elaborate::{Signal, elaborate};
 use super::kernel::Sim;
-use super::run::{Frame, Timeline};
+use super::run::{Frame, MAX_SIM_CYCLES, Timeline};
 use super::value::{self, Val};
 
 /// Period between captured frames, in the timeline's time units (matches the
@@ -164,6 +164,13 @@ impl Run<'_> {
                         }
                         None => 1,
                     };
+                    // Bound total simulated cycles so a `tick(clk, <huge>)` in an
+                    // untrusted test can't hang the tool or exhaust memory.
+                    if self.cycle.saturating_add(n) > MAX_SIM_CYCLES {
+                        return Err(Stop::Err(format!(
+                            "test exceeds the {MAX_SIM_CYCLES}-cycle simulation limit"
+                        )));
+                    }
                     for _ in 0..n {
                         self.sim.tick(&clock.name).map_err(Stop::Err)?;
                         self.cycle += 1;

@@ -144,3 +144,62 @@ width` and exits non-zero — no panic in debug or release.
 
 **Tests.** `zero_width_output_with_indexed_drivers_does_not_panic`
 (`src/checker/tests.rs`).
+
+---
+
+## SEC-5 (HIGH/MEDIUM) — Unbounded count inputs in the Phase 1.5 simulator → DoS
+
+**What.** The audit of the new simulator (`src/sim/`, `src/commands/{sim,test}`)
+found the count-like inputs were **not bounded**, unlike the rest of the
+codebase (parser `MAX_DEPTH=64`, emitter `REPEAT_BUDGET=4096`, `MAX_SOURCE_BYTES`).
+Three reachable DoS paths:
+
+- **(HIGH, untrusted input)** `tick(clk, n)` in a `test` block (`src/sim/harness.rs`)
+  looped `for _ in 0..n` — `n` evaluated from a test-block expression — pushing a
+  timeline frame each iteration. `mimz test` on an **untrusted `.mimz`** with
+  `tick(clk, 9999999999)` hung the process and exhausted memory.
+- **(MEDIUM, operator flag)** `sweep_vectors` (`src/commands/helpers.rs`) built the
+  `--sweep` cartesian product with an **unchecked `usize` multiply** and no cap →
+  OOM/hang on a large sweep.
+- **(MEDIUM, operator flag)** the clocked `run()` loop (`src/sim/run.rs`) ran
+  `0..opts.cycles` with no cap; `--cycles` was an unbounded `u64`.
+
+**How found.** Three-agent audit (severity critical→medium) weighted to the
+newest code; each finding traced to a reachable path and verified by reading the
+call chain (the multiply-overflow variants the agents also flagged are
+**unreachable** — the loop cannot complete ~10^18 iterations — so bounding the
+loops subsumes them; no separate fix).
+
+**Severity.** HIGH for the test-harness path (untrusted-input hang/OOM), MEDIUM
+for the operator-supplied `--sweep`/`--cycles` self-DoS. No memory unsafety / RCE
+(safe Rust, `#![forbid(unsafe)]`).
+
+**Fix** (extends the existing "bound every count" doctrine into `src/sim`):
+
+- New `MAX_SIM_CYCLES = 1_000_000` and `MAX_SWEEP_VECTORS = 1_000_000`
+  (`src/sim/run.rs`), documented like `REPEAT_BUDGET`.
+- `harness.rs`: the `tick` handler rejects when the cumulative cycle count would
+  exceed `MAX_SIM_CYCLES` (clean `Stop::Err`, fails fast — no loop).
+- `sweep_vectors` returns `Result`, folding the product with `checked_mul` and
+  erroring past `MAX_SWEEP_VECTORS` before allocating; caller updated.
+- `run()` rejects `opts.cycles > MAX_SIM_CYCLES`, and `--cycles` is range-capped
+  at parse time via clap (`value_parser!(u64).range(1..=MAX_SIM_CYCLES)`).
+
+Two LOW defensive fixes landed alongside: `translate.rs` replaced a
+`.expect("NameMap serializes")` with a clean error (no-input-panic rule), and
+`config.rs` bounded the `mimz.toml` walk-up at `MAX_CONFIG_WALK_DEPTH = 256`.
+
+**Verified.** `mimz test` with `tick(clk, 2000000)` now fails fast with
+"test exceeds the 1000000-cycle simulation limit"; `mimz sim --cycles 2000000` is
+rejected by clap; an oversized `--sweep` errors before allocating.
+
+**Tests.** `a_tick_count_over_the_cycle_limit_errors_fast_not_hangs`
+(`tests/test_run.rs`), `cycles_over_the_limit_is_rejected_by_the_cli`
+(`tests/sim.rs`), `sweep_vectors_rejects_an_oversized_product` /
+`_allows_a_normal_product` (`src/commands/helpers.rs`).
+
+**Audited clean (no change needed).** The core pipeline (lexer→parser→checker→
+emitter) and the untrusted-input boundary (project/import loading, config
+discovery, name-map deserialization) audited clean: SEC-1..4 + BUG-1/2 intact,
+all five thamizh-order flips depth-guarded, checked arithmetic throughout, and
+no path traversal (import segments are XID identifiers — `..`/`/` inexpressible).

@@ -111,7 +111,13 @@ pub(crate) fn sim_file(
             }
         }
     } else {
-        let vectors = sweep_vectors(&inputs, &sweep);
+        let vectors = match sweep_vectors(&inputs, &sweep) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
         match comb_run(design, &vectors) {
             Ok(t) => t,
             Err(e) => {
