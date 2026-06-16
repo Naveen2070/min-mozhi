@@ -19,6 +19,11 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+/// Max directories the `mimz.toml` walk-up will visit before giving up. Bounds
+/// the directory-stat chain for a pathologically deep input path; far beyond any
+/// real project nesting.
+const MAX_CONFIG_WALK_DEPTH: usize = 256;
+
 /// A parsed `mimz.toml`. All fields optional; `deny_unknown_fields` turns a
 /// typo'd key (e.g. `[tranlsate]`) into an error rather than a silent no-op.
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
@@ -72,7 +77,10 @@ impl Config {
         } else {
             abs.parent()
         };
-        while let Some(d) = dir {
+        // Bound the walk-up so a pathologically deep input path can't trigger an
+        // unbounded chain of directory stats (defensive; far past any real tree).
+        for _ in 0..MAX_CONFIG_WALK_DEPTH {
+            let Some(d) = dir else { break };
             let candidate = d.join("mimz.toml");
             if candidate.is_file() {
                 return Some(candidate);

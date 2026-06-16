@@ -48,6 +48,17 @@ pub struct Timeline {
 const HALF: u64 = 5;
 const PERIOD: u64 = 2 * HALF;
 
+/// Upper bound on simulated cycles/ticks in a single run. Bounds frame memory
+/// and wall time so a huge `--cycles`, or a `tick(clk, <huge>)` in an untrusted
+/// `.mimz` test, cannot hang the tool or exhaust memory — the simulator's
+/// analogue of the parser's `MAX_DEPTH` and the emitter's `REPEAT_BUDGET`. Far
+/// above any real waveform; 1M cycles already produces a multi-MB VCD.
+pub const MAX_SIM_CYCLES: u64 = 1_000_000;
+
+/// Upper bound on the number of input vectors a `--sweep` cartesian product may
+/// expand to, so a large sweep cannot OOM/hang the tool.
+pub const MAX_SWEEP_VECTORS: usize = 1_000_000;
+
 /// Run `design` under the default stimulus and capture its [`Timeline`].
 pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
     let clock = match &opts.clock {
@@ -78,6 +89,12 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
             }
         },
     };
+    if opts.cycles > MAX_SIM_CYCLES {
+        return Err(format!(
+            "run requests {} cycles, over the {MAX_SIM_CYCLES} limit",
+            opts.cycles
+        ));
+    }
     let module = design.module.clone();
     let resets = design.resets.clone();
 

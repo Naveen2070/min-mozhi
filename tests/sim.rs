@@ -43,6 +43,25 @@ fn trace_table_shows_a_row_per_cycle() {
 }
 
 #[test]
+fn cycles_over_the_limit_is_rejected_by_the_cli() {
+    // SEC: --cycles past MAX_SIM_CYCLES (1_000_000) is rejected at parse time, so
+    // a huge value can't drive an unbounded frame-allocation loop.
+    let p = temp_mimz(COUNTER);
+    let out = mimz()
+        .args(["sim"])
+        .arg(&p)
+        .args(["--cycles", "2000000"])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "over-limit --cycles must be rejected"
+    );
+    let s = String::from_utf8_lossy(&out.stderr);
+    assert!(s.contains("not in"), "no clap range error:\n{s}");
+}
+
+#[test]
 fn changes_trace_is_monitor_style() {
     let p = temp_mimz(COUNTER);
     let out = mimz()

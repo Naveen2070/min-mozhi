@@ -9,6 +9,7 @@ use std::process::ExitCode;
 
 use mimz::lexer::token::Flavor;
 use mimz::project::LoadedFile;
+use mimz::sim::run::MAX_SWEEP_VECTORS;
 use mimz::{diag, lexer, morph, project};
 
 /// Resolve the `mimz.toml` governing `input` (explicit `--config` wins, else
@@ -132,11 +133,21 @@ pub(crate) fn parse_sweep(s: &str) -> Result<Vec<(String, Vec<u128>)>, String> {
 
 /// The input vectors to drive a combinational run: the cartesian product of the
 /// `sweep` dimensions, each combination overlaid on the held `base` inputs. No
-/// sweep ⇒ a single vector equal to `base`.
+/// sweep ⇒ a single vector equal to `base`. Errors if the product would exceed
+/// [`MAX_SWEEP_VECTORS`] (a large sweep must not OOM/hang the tool).
 pub(crate) fn sweep_vectors(
     base: &BTreeMap<String, u128>,
     sweep: &[(String, Vec<u128>)],
-) -> Vec<BTreeMap<String, u128>> {
+) -> Result<Vec<BTreeMap<String, u128>>, String> {
+    // Fold the product with checked arithmetic before allocating anything.
+    let mut product: usize = 1;
+    for (_, values) in sweep {
+        product = product
+            .checked_mul(values.len())
+            .filter(|p| *p <= MAX_SWEEP_VECTORS)
+            .ok_or_else(|| format!("--sweep expands to over {MAX_SWEEP_VECTORS} input vectors"))?;
+    }
+
     let mut vectors = vec![base.clone()];
     for (name, values) in sweep {
         let mut next = Vec::with_capacity(vectors.len() * values.len());
@@ -149,7 +160,7 @@ pub(crate) fn sweep_vectors(
         }
         vectors = next;
     }
-    vectors
+    Ok(vectors)
 }
 
 /// Parse a `u128` literal in decimal, `0x` hex, or `0b` binary.
@@ -162,4 +173,32 @@ pub(crate) fn parse_u128(s: &str) -> Result<u128, String> {
         s.parse::<u128>()
     };
     parsed.map_err(|_| format!("`{s}` is not a number (use decimal, 0x.., or 0b..)"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sweep_vectors_rejects_an_oversized_product() {
+        // SEC: 7 dims × 10 values = 10^7 > MAX_SWEEP_VECTORS — must error before
+        // allocating, not OOM/hang.
+        let base = BTreeMap::new();
+        let dim: Vec<u128> = (0..10).collect();
+        let sweep: Vec<(String, Vec<u128>)> =
+            (0..7).map(|i| (format!("x{i}"), dim.clone())).collect();
+        let err = sweep_vectors(&base, &sweep).unwrap_err();
+        assert!(err.contains("input vectors"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn sweep_vectors_allows_a_normal_product() {
+        let base = BTreeMap::new();
+        let sweep = vec![
+            ("a".to_string(), vec![0u128, 1]),
+            ("b".to_string(), vec![0u128, 1, 2]),
+        ];
+        let v = sweep_vectors(&base, &sweep).unwrap();
+        assert_eq!(v.len(), 6, "2 × 3 cartesian product");
+    }
 }

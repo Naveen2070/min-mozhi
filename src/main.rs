@@ -167,7 +167,7 @@ enum Cmd {
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Number of clock cycles to run
-        #[arg(long, default_value_t = 16)]
+        #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..=mimz::sim::run::MAX_SIM_CYCLES))]
         cycles: u64,
         /// Which clock to drive (default: the module's only clock)
         #[arg(long)]
