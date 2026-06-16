@@ -3,18 +3,21 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use mimz::sim::run::{SimOpts, run};
+use mimz::sim::run::{SimOpts, comb_run, run};
 use mimz::sim::{elaborate, trace, vcd};
 use mimz::{diag, lexer, morph, parser, project};
 
-use super::helpers::{parse_bindings, parse_u128, resolve_lang, trace_scope};
+use super::helpers::{
+    parse_bindings, parse_sweep, parse_u128, resolve_lang, sweep_vectors, trace_scope,
+};
 use crate::Output;
 
-/// `mimz sim <file>` — simulate a clocked module under a default stimulus
-/// (reset asserted the first cycle, inputs held, the clock toggled for
-/// `cycles`) and emit a VCD waveform (`-o`) and/or a console trace (`--trace`).
-/// Single-file/single-module for now (like `mimz eval`); a clockless module is
-/// rejected with a pointer to `mimz eval`.
+/// `mimz sim <file>` — simulate a module and emit a VCD waveform (`-o`) and/or a
+/// console trace (`--trace`). A **clocked** module runs under the default
+/// stimulus (reset asserted the first cycle, inputs held, the clock toggled for
+/// `cycles`); a **combinational** module settles once per input vector (held
+/// `--in`, or one frame per `--sweep` combination). Single-file/single-module for
+/// now (like `mimz eval`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn sim_file(
     path: &Path,
@@ -23,6 +26,7 @@ pub(crate) fn sim_file(
     clock: Option<String>,
     inputs: &str,
     param: &str,
+    sweep: &str,
     module: Option<String>,
     trace_style: Option<String>,
     verbose: bool,
@@ -68,6 +72,13 @@ pub(crate) fn sim_file(
             return ExitCode::FAILURE;
         }
     };
+    let sweep = match parse_sweep(sweep) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     let design = match elaborate::elaborate(&file, module.as_deref(), &params) {
         Ok(d) => d,
@@ -76,24 +87,40 @@ pub(crate) fn sim_file(
             return ExitCode::FAILURE;
         }
     };
-    // Capture the trace-scope groups before `run` consumes the design.
+    // Capture the trace-scope groups + whether the design is clocked before the
+    // run consumes it.
     let in_names: Vec<String> = design.inputs.iter().map(|s| s.name.clone()).collect();
     let out_names: Vec<String> = design.outputs.iter().map(|s| s.name.clone()).collect();
     let reg_names: Vec<String> = design.regs.iter().map(|r| r.name.clone()).collect();
+    let clocked = !design.clocks.is_empty();
 
-    let opts = SimOpts {
-        clock,
-        inputs,
-        cycles,
-        reset_cycles: 1,
-    };
-    let timeline = match run(design, &opts) {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
+    // Clocked → default stimulus over `cycles`. Combinational → one settled frame
+    // per input vector (held `--in`, fanned out by `--sweep`).
+    let timeline = if clocked {
+        let opts = SimOpts {
+            clock,
+            inputs,
+            cycles,
+            reset_cycles: 1,
+        };
+        match run(design, &opts) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        let vectors = sweep_vectors(&inputs, &sweep);
+        match comb_run(design, &vectors) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
         }
     };
+    let steps = timeline.frames.iter().filter(|f| f.cycle.is_some()).count();
 
     // VCD waveform — only when `-o` is given.
     if let Some(dest) = &output {
@@ -101,8 +128,9 @@ pub(crate) fn sim_file(
             eprintln!("error: writing VCD to {}: {e}", dest.display());
             return ExitCode::FAILURE;
         }
+        let unit = if clocked { "cycles" } else { "input vectors" };
         println!(
-            "wrote {} ({cycles} cycles) — open in GTKWave",
+            "wrote {} ({steps} {unit}) — open in GTKWave",
             dest.display()
         );
     }
@@ -126,8 +154,13 @@ pub(crate) fn sim_file(
     }
 
     if output.is_none() && trace_style.is_none() {
+        let what = if clocked {
+            format!("{steps} cycle(s)")
+        } else {
+            format!("{steps} input vector(s)")
+        };
         println!(
-            "simulated {cycles} cycle(s) of `{}` — pass -o <file.vcd> for a waveform \
+            "simulated {what} of `{}` — pass -o <file.vcd> for a waveform \
              or --trace for a console trace",
             timeline.module
         );

@@ -108,6 +108,50 @@ pub(crate) fn trace_scope(
     }
 }
 
+/// Parse a `--sweep name=v1|v2|v3,other=w1|w2` spec into ordered
+/// `(name, [values])` pairs: entries split on `,`, the value list on `|`.
+pub(crate) fn parse_sweep(s: &str) -> Result<Vec<(String, Vec<u128>)>, String> {
+    let mut out = Vec::new();
+    for entry in s.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let (name, vals) = entry
+            .split_once('=')
+            .ok_or_else(|| format!("expected `name=v1|v2`, got `{entry}`"))?;
+        let values = vals
+            .split('|')
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(parse_u128)
+            .collect::<Result<Vec<u128>, String>>()?;
+        if values.is_empty() {
+            return Err(format!("sweep input `{}` lists no values", name.trim()));
+        }
+        out.push((name.trim().to_string(), values));
+    }
+    Ok(out)
+}
+
+/// The input vectors to drive a combinational run: the cartesian product of the
+/// `sweep` dimensions, each combination overlaid on the held `base` inputs. No
+/// sweep ⇒ a single vector equal to `base`.
+pub(crate) fn sweep_vectors(
+    base: &BTreeMap<String, u128>,
+    sweep: &[(String, Vec<u128>)],
+) -> Vec<BTreeMap<String, u128>> {
+    let mut vectors = vec![base.clone()];
+    for (name, values) in sweep {
+        let mut next = Vec::with_capacity(vectors.len() * values.len());
+        for v in &vectors {
+            for val in values {
+                let mut m = v.clone();
+                m.insert(name.clone(), *val);
+                next.push(m);
+            }
+        }
+        vectors = next;
+    }
+    vectors
+}
+
 /// Parse a `u128` literal in decimal, `0x` hex, or `0b` binary.
 pub(crate) fn parse_u128(s: &str) -> Result<u128, String> {
     let parsed = if let Some(hex) = s.strip_prefix("0x") {

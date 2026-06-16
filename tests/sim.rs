@@ -92,13 +92,60 @@ fn signals_flag_limits_the_trace() {
     assert!(!s.contains("value"), "scope should exclude `value`:\n{s}");
 }
 
+const ADDER: &str =
+    "module Adder {\n  in a: bits[8]\n  in b: bits[8]\n  out sum: bits[9]\n  sum = a + b\n}\n";
+
 #[test]
-fn a_clockless_module_is_rejected_with_a_pointer_to_eval() {
-    let p = temp_mimz("module C {\n  in a: bits[8]\n  out y: bits[8]\n  y = a\n}\n");
-    let out = mimz().args(["sim"]).arg(&p).output().unwrap();
-    assert!(!out.status.success(), "a clockless module should fail sim");
-    let s = String::from_utf8_lossy(&out.stderr);
-    assert!(s.contains("no clock") && s.contains("eval"), "got: {s}");
+fn a_combinational_module_settles_one_frame() {
+    let p = temp_mimz(ADDER);
+    let out = mimz()
+        .args(["sim"])
+        .arg(&p)
+        .args(["--in", "a=200,b=100", "--trace"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "combinational sim failed: {:?}", out);
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("sum"), "no sum column:\n{s}");
+    assert!(s.contains("300"), "expected sum=300 (lossless add):\n{s}");
+    // One settled frame: header + separator + a single row.
+    assert_eq!(s.lines().count(), 3, "expected one frame:\n{s}");
+}
+
+#[test]
+fn sweep_emits_a_frame_per_combination() {
+    let p = temp_mimz(ADDER);
+    let out = mimz()
+        .args(["sim"])
+        .arg(&p)
+        .args(["--in", "b=10", "--sweep", "a=1|2|3", "--trace"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{:?}", out);
+    let s = String::from_utf8_lossy(&out.stdout);
+    // header + separator + 3 swept rows; sums are 11/12/13.
+    assert_eq!(s.lines().count(), 5, "expected 3 swept frames:\n{s}");
+    assert!(
+        s.contains("11") && s.contains("12") && s.contains("13"),
+        "{s}"
+    );
+}
+
+#[test]
+fn a_combinational_module_writes_a_vcd() {
+    let p = temp_mimz(ADDER);
+    let vcd = std::env::temp_dir().join(format!("mimz_comb_{}.vcd", std::process::id()));
+    let out = mimz()
+        .args(["sim"])
+        .arg(&p)
+        .args(["--in", "a=5,b=7", "-o"])
+        .arg(&vcd)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{:?}", out);
+    let v = fs::read_to_string(&vcd).unwrap();
+    assert!(v.contains("$timescale") && v.contains(" sum $end"), "{v}");
+    assert!(v.contains("b1100 "), "expected sum=12 vector line:\n{v}");
 }
 
 /// Phase 1.5 B8 perf baseline: the event-driven kernel must clear **1M

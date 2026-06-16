@@ -178,6 +178,10 @@ enum Cmd {
         /// Parameter overrides, comma-separated: `--param WIDTH=4`
         #[arg(long, default_value = "")]
         param: String,
+        /// Combinational only: sweep inputs over value lists, one frame per
+        /// combination: `--sweep a=0|1|2,b=3|4` (entries `,`, values `|`)
+        #[arg(long, default_value = "")]
+        sweep: String,
         /// Which module to simulate (default: the file's only module)
         #[arg(long)]
         module: Option<String>,
@@ -335,6 +339,7 @@ fn main() -> ExitCode {
             clock,
             inputs,
             param,
+            sweep,
             module,
             trace,
             verbose,
@@ -353,6 +358,7 @@ fn main() -> ExitCode {
                 clock,
                 &inputs,
                 &param,
+                &sweep,
                 module,
                 trace,
                 verbose,

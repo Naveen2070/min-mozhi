@@ -236,14 +236,27 @@ fn binary(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
     let wmax = l.width.max(r.width);
     let signed = l.signed || r.signed;
     let v = match op {
-        // Lossless growth (spec/02 section 3).
-        BinOp::Add => Val::new(l.bits.wrapping_add(r.bits), wmax + 1, signed),
+        // Lossless growth (spec/02 section 3). Operate on the SIGN-EXTENDED
+        // values (`as_i128`) so a negative signed operand is widened correctly
+        // before the result grows — matching Verilog's signed arithmetic. For
+        // unsigned operands `as_i128` is the plain magnitude, so this is
+        // identical to a raw-bit add/mul. (The wrapping family below keeps the
+        // operand width, where the raw-bit op is already correct mod 2^width.)
+        BinOp::Add => Val::new(
+            l.as_i128().wrapping_add(r.as_i128()) as u128,
+            wmax + 1,
+            signed,
+        ),
         BinOp::Sub => Val::new(
             l.as_i128().wrapping_sub(r.as_i128()) as u128,
             wmax + 1,
             true,
         ),
-        BinOp::Mul => Val::new(l.bits.wrapping_mul(r.bits), l.width + r.width, signed),
+        BinOp::Mul => Val::new(
+            l.as_i128().wrapping_mul(r.as_i128()) as u128,
+            l.width + r.width,
+            signed,
+        ),
         // Wrapping family: keep operand width.
         BinOp::AddWrap => Val::new(l.bits.wrapping_add(r.bits), wmax, signed),
         BinOp::SubWrap => Val::new(l.bits.wrapping_sub(r.bits), wmax, signed),

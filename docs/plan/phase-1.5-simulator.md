@@ -50,29 +50,50 @@ Icarus or any external tool involved.
 - `sim::fatal` / `sim::warn` simulation-only asserts.
 - Step-back debugging.
 
-#### Differential-coverage follow-ups (B8 is real but narrow) — TODO
+#### Simulator-on-par-with-compiler — full-parity follow-on (workflow: `full-parity-simulator-workflow.md`)
 
-The B8 bit-for-bit differential (`tests/icarus.rs::our_simulator_matches_icarus_bit_for_bit`)
-currently covers **3 clocked single-module designs** (counter / shift register /
-edge detector). Layer 1 still elaborates all 72 examples under Icarus, but the
-**value-level** "our kernel == our VCD == Icarus" check is narrow. To widen it:
+To make the simulator cover every example the emitter compiles. Tracked as
+increments C1–C4.
 
-- [ ] **Multi-module / instance elaboration in the simulator.** `src/sim/elaborate.rs`
-      rejects sub-module instances and `repeat` today, so `mimz sim` / `mimz test`
-      can't run those designs at all (e.g. `ripple_adder`). The Verilog emitter
-      already lowers them — this is the sim-side follow-up. Unblocks adding
-      instance/`repeat` designs to the differential.
-- [ ] **Signed-aware differential comparison.** The differential reads Icarus
-      values via Verilog `%0d`, which prints a _signed_ wire as a negative number
-      while our compare uses unsigned magnitudes — so signed-output designs
-      (`signed_math`, signed `alu` paths) are excluded to avoid a false mismatch.
-      Mask/interpret each port by its declared signedness on both sides (~15 lines)
-      to fold them in.
-- [ ] **Broaden the clocked-design differential** once the two above land — aim to
-      cover every clocked single-module example (combinational-only examples stay
-      on `mimz eval`, not `mimz sim`).
-- [ ] Optional: a per-design golden VCD beyond the counter (the byte-for-byte lock
-      is currently counter-only).
+**C1 — combinational simulation + signed-aware differential — ✅ DONE (2026-06-16).**
+
+_C1 was PLANNED to:_ add a clockless `mimz sim` path (`comb_run`, `--in`/`--sweep`);
+make the Icarus differential signedness-agnostic; and broaden the bit-for-bit
+differential to **all single-module examples** — every combinational + signed +
+remaining clocked design.
+
+_What landed (done):_
+
+- [x] `comb_run` (`src/sim/run.rs`) — `mimz sim` runs **combinational** modules:
+      `--in` settles one frame, `--sweep a=0|1|2` one frame per combination; same
+      VCD/trace path. (+5 lib unit, +3 sim integration, −1 obsolete reject test.)
+- [x] **Signed-aware differential via Verilog `%b`** (binary) — replaced `%0d`; the
+      Layer-3 differential auto-routes clocked-vs-combinational, with per-example
+      param overrides. Now covers **12 ASCII-named english examples** incl. SIGNED
+      (`bitops`, `signed_math`).
+- [x] **Bug found + fixed by the new differential:** the shared evaluator's lossless
+      signed `+`/`*` (`src/sim/value.rs`) added raw bits without sign-extending a
+      negative operand → wrong result (also affected `mimz eval`). Fixed to use
+      `as_i128` (matches Verilog). Regression `signed_lossless_add_sign_extends`.
+
+_What was PLANNED for C1 but NOT done (carried forward):_
+
+- [ ] **Romanized tamil-pure / `vilakku` examples are NOT in the bit-for-bit
+      differential** — the C1 plan said "all single-module examples", but these were
+      scoped out: their emitted Verilog identifiers (module + ports) are romanized,
+      so they differ from the source names our kernel uses; an auto-generated TB must
+      apply the emitter's `romanize` to names on both sides. They keep Layer-1
+      (elaborate) + Layer-2 (hand-written romanized TBs) for now. Small follow-up.
+
+_Out of C1 scope by design (the rest of full parity — C2–C4):_
+
+- [ ] **C2 — instance / multi-module elaboration** in `src/sim/elaborate.rs` (rejects
+      instances today) + switch `mimz sim`/`mimz test` to `project::load_project` for
+      imports. Unblocks `alu`, `chained`. Then add to the differential.
+- [ ] **C3 — `repeat` unrolling** in `src/sim/elaborate.rs`. Unblocks `ripple_adder`.
+- [ ] **C4 — enum-typed signals** (`value.rs::type_width` errors on `Type::Named`).
+      Unblocks the `traffic_light` FSM.
+- [ ] Optional: per-design golden VCD beyond the counter (byte-lock is counter-only).
 
 ## Milestone
 

@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use mimz::sim::elaborate::elaborate;
-use mimz::sim::run::{SimOpts, run};
+use mimz::sim::run::{SimOpts, Timeline, comb_run, run};
 use mimz::sim::vcd::to_vcd;
 
 /// Testbench file (under tests/icarus/) -> the example it tests.
@@ -239,22 +239,50 @@ fn self_checking_pure_tamil_testbenches_pass() {
     run_self_checking(&bin, &PURE_TESTBENCHES);
 }
 
-// ---- Layer 3 (Phase 1.5 B8): OUR simulator vs Icarus, bit-for-bit ----
+// ---- Layer 3 (Phase 1.5 B8 + C1): OUR simulator vs Icarus, bit-for-bit ----
 //
 // Layer 2 compares Icarus against hand-written semantic asserts. Layer 3 compares
 // Icarus against MIN-MOZZHI'S OWN event-driven kernel: elaborate + run the design
-// in-process (the exact engine behind `mimz sim` / `mimz test`), then drive the
-// emitted Verilog through a generated testbench applying the SAME stimulus (reset
-// the first cycle, inputs held, clock toggled) and assert the per-cycle output
-// values match exactly. Two independent simulators, same program, same stimulus.
+// in-process (the exact engine behind `mimz sim` / `mimz test`), reconstruct the
+// values from the VCD our writer emits, then drive the emitted Verilog through a
+// generated testbench under the SAME stimulus, and assert all three agree
+// bit-for-bit, per step. `differential` auto-routes: a clocked design runs the
+// default stimulus (reset the first cycle, inputs held, clock toggled for
+// `steps` cycles); a combinational design settles one frame per generated input
+// vector (`steps` vectors). Output values are compared via Verilog `%b` (binary),
+// so the comparison is signedness-agnostic and exact. The example's source names
+// must be ASCII (the romanized tamil-pure layer is covered by Layers 1–2).
 
-/// One drivable input: name + value, held for the whole run.
+/// One held input: name + value (clocked designs only).
 type Stim<'a> = &'a [(&'a str, u128)];
 
-/// Generate a Verilog testbench that instantiates `module` and applies the
-/// default stimulus, printing `DIFF <cycle> <out>=<val> …` after each rising edge.
-fn diff_testbench(
+/// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
+fn mask(w: u32) -> u128 {
+    if w >= 128 {
+        u128::MAX
+    } else {
+        (1u128 << w) - 1
+    }
+}
+
+/// `name #(.P(v), …) uut (conns)` — the instantiation line, with optional
+/// parameter overrides (so a design can be driven at a chosen width/limit).
+fn instantiation(module: &str, params: &[(&str, i128)], conns: &[String]) -> String {
+    let p = if params.is_empty() {
+        String::new()
+    } else {
+        let items: Vec<String> = params.iter().map(|(n, v)| format!(".{n}({v})")).collect();
+        format!(" #({})", items.join(", "))
+    };
+    format!("  {module}{p} uut ({});\n", conns.join(", "))
+}
+
+/// Clocked testbench: instantiate, apply the default stimulus, and print
+/// `DIFF <cycle> <out>=<bits> …` (binary) after each rising edge.
+#[allow(clippy::too_many_arguments)]
+fn clocked_testbench(
     module: &str,
+    params: &[(&str, i128)],
     clock: &str,
     reset: Option<&str>,
     inputs: &[(String, u32, u128)],
@@ -281,19 +309,10 @@ fn diff_testbench(
     }
     conns.extend(inputs.iter().map(|(n, _, _)| format!(".{n}({n})")));
     conns.extend(outputs.iter().map(|(n, _)| format!(".{n}({n})")));
-    s += &format!("  {module} uut ({});\n", conns.join(", "));
+    s += &instantiation(module, params, &conns);
 
-    let fmt: String = outputs
-        .iter()
-        .map(|(n, _)| format!("{n}=%0d"))
-        .collect::<Vec<_>>()
-        .join(" ");
-    let args: String = outputs
-        .iter()
-        .map(|(n, _)| n.clone())
-        .collect::<Vec<_>>()
-        .join(", ");
-
+    let fmt = display_fmt(outputs);
+    let args = display_args(outputs);
     s += "  initial begin\n";
     s += &format!("    for (cyc = 0; cyc < {cycles}; cyc = cyc + 1) begin\n");
     if let Some(r) = reset {
@@ -305,6 +324,76 @@ fn diff_testbench(
     s += &format!("      #4 {clock} = 0;\n");
     s += "    end\n    $finish;\n  end\nendmodule\n";
     s
+}
+
+/// Combinational testbench: instantiate (no clock/reset), and for each input
+/// vector set the inputs, settle (`#1`), and print `DIFF <i> <out>=<bits> …`.
+fn comb_testbench(
+    module: &str,
+    params: &[(&str, i128)],
+    inputs: &[(String, u32)],
+    outputs: &[(String, u32)],
+    vectors: &[BTreeMap<String, u128>],
+) -> String {
+    let mut s = String::from("module diff_tb;\n");
+    for (n, w) in inputs {
+        s += &format!("  reg [{}:0] {n} = 0;\n", w - 1);
+    }
+    for (n, w) in outputs {
+        s += &format!("  wire [{}:0] {n};\n", w - 1);
+    }
+    let mut conns: Vec<String> = inputs.iter().map(|(n, _)| format!(".{n}({n})")).collect();
+    conns.extend(outputs.iter().map(|(n, _)| format!(".{n}({n})")));
+    s += &instantiation(module, params, &conns);
+
+    let fmt = display_fmt(outputs);
+    let args = display_args(outputs);
+    s += "  initial begin\n";
+    for (i, vec) in vectors.iter().enumerate() {
+        for (n, w) in inputs {
+            let v = vec.get(n).copied().unwrap_or(0);
+            s += &format!("    {n} = {w}'d{v};\n");
+        }
+        s += "    #1;\n";
+        s += &format!("    $display(\"DIFF {i} {fmt}\", {args});\n");
+    }
+    s += "    $finish;\n  end\nendmodule\n";
+    s
+}
+
+fn display_fmt(outputs: &[(String, u32)]) -> String {
+    outputs
+        .iter()
+        .map(|(n, _)| format!("{n}=%b"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn display_args(outputs: &[(String, u32)]) -> String {
+    outputs
+        .iter()
+        .map(|(n, _)| n.clone())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Deterministic pseudo-random input vectors, each value masked to its input's
+/// width — the same vectors fed to our kernel and the Verilog testbench.
+fn gen_vectors(inputs: &[(String, u32)], n: u64) -> Vec<BTreeMap<String, u128>> {
+    (0..n)
+        .map(|k| {
+            inputs
+                .iter()
+                .enumerate()
+                .map(|(j, (name, w))| {
+                    let raw = (k as u128)
+                        .wrapping_mul(2_654_435_761)
+                        .wrapping_add((j as u128 + 1).wrapping_mul(40_503));
+                    (name.clone(), raw & mask(*w))
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// Replay a VCD document into `time -> {signal: value}` snapshots. VCD lists
@@ -361,75 +450,18 @@ fn vcd_snapshots(text: &str) -> BTreeMap<u64, BTreeMap<String, u128>> {
     snaps
 }
 
-/// Run one example through both simulators and assert every output agrees at
-/// every cycle. Three independent views are compared per cycle: our event-driven
-/// kernel (in-process), the **VCD waveform** our writer emits from that run, and
-/// Icarus running the emitted Verilog under the same stimulus.
-fn differential(bin: &Path, example: &str, stim: Stim, cycles: u64) {
-    const RESET_CYCLES: u64 = 1;
-    let path = repo().join("examples").join(example);
-    let src = std::fs::read_to_string(&path).expect("read example");
-    let file = mimz::parser::parse(mimz::lexer::lex(&src).expect("lexes")).expect("parses");
-    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
-
-    // Capture the port shape before `run` consumes the design.
-    let module = design.module.clone();
-    let clock = design.clocks.first().expect("a clock").clone();
-    let reset = design.resets.first().cloned();
-    let outputs: Vec<(String, u32)> = design
-        .outputs
-        .iter()
-        .map(|s| (s.name.clone(), s.width.bits))
-        .collect();
-    let inputs: Vec<(String, u32, u128)> = design
-        .inputs
-        .iter()
-        .map(|s| {
-            let v = stim
-                .iter()
-                .find(|(n, _)| *n == s.name)
-                .map(|(_, v)| *v)
-                .unwrap_or(0);
-            (s.name.clone(), s.width.bits, v)
-        })
-        .collect();
-
-    // OUR side: the kernel that `mimz sim` / `mimz test` use.
-    let opts = SimOpts {
-        clock: None,
-        inputs: stim.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
-        cycles,
-        reset_cycles: RESET_CYCLES,
-    };
-    let tl = run(design, &opts).expect("our sim runs");
-
-    // OUR VCD: the waveform our writer emits from this same run. Reconstruct the
-    // value of each signal at every rising-edge time (`cycle * 10`, where the
-    // frame carries the post-edge state) so we can check the file is correct too.
-    let vcd = vcd_snapshots(&to_vcd(&tl));
-
-    // ICARUS side: emit Verilog + a stimulus-matched testbench, run under vvp.
-    let design_v = compile_example(&path);
-    let tb = diff_testbench(
-        &module,
-        &clock,
-        reset.as_deref(),
-        &inputs,
-        &outputs,
-        cycles,
-        RESET_CYCLES,
-    );
+/// Build + run a testbench under `iverilog`/`vvp`; return vvp's stdout.
+fn run_vvp(bin: &Path, example: &str, design_v: &Path, tb: &str) -> String {
     let safe = example.replace(['\\', '/', ':', '.'], "_");
     let tb_path = std::env::temp_dir().join(format!("mimz_diff_{safe}.v"));
-    std::fs::write(&tb_path, &tb).unwrap();
+    std::fs::write(&tb_path, tb).unwrap();
     let vvp_out = std::env::temp_dir().join(format!("mimz_diff_{safe}.vvp"));
-
     let build = tool(bin, "iverilog")
         .arg("-o")
         .arg(&vvp_out)
         .args(["-s", "diff_tb"])
         .arg(&tb_path)
-        .arg(&design_v)
+        .arg(design_v)
         .output()
         .unwrap();
     assert!(
@@ -438,45 +470,60 @@ fn differential(bin: &Path, example: &str, stim: Stim, cycles: u64) {
         String::from_utf8_lossy(&build.stderr)
     );
     let sim = tool(bin, "vvp").arg(&vvp_out).output().unwrap();
-    let stdout = String::from_utf8_lossy(&sim.stdout);
+    let stdout = String::from_utf8_lossy(&sim.stdout).to_string();
     assert!(sim.status.success(), "vvp failed on {example}:\n{stdout}");
+    stdout
+}
 
-    // Parse `DIFF <cyc> name=val …` into cycle -> {name: value}.
+/// Parse `DIFF <step> name=<bits> …` (binary values) into `step -> {name: value}`.
+fn parse_icarus(stdout: &str) -> BTreeMap<u64, BTreeMap<String, u128>> {
     let mut icarus: BTreeMap<u64, BTreeMap<String, u128>> = BTreeMap::new();
     for line in stdout.lines() {
         let Some(rest) = line.strip_prefix("DIFF ") else {
             continue;
         };
         let mut it = rest.split_whitespace();
-        let cyc: u64 = it.next().unwrap().parse().unwrap();
-        let row = icarus.entry(cyc).or_default();
+        let step: u64 = it.next().unwrap().parse().unwrap();
+        let row = icarus.entry(step).or_default();
         for pair in it {
             let (n, v) = pair.split_once('=').unwrap();
-            row.insert(n.to_string(), v.parse().unwrap());
+            row.insert(
+                n.to_string(),
+                u128::from_str_radix(v, 2).expect("binary value"),
+            );
         }
     }
+    icarus
+}
 
-    // Compare every rising-edge frame, output by output: kernel == VCD == Icarus.
+/// Assert kernel == VCD waveform == Icarus, per step, for every output.
+fn compare_three_ways(
+    example: &str,
+    tl: &Timeline,
+    icarus: &BTreeMap<u64, BTreeMap<String, u128>>,
+    outputs: &[(String, u32)],
+) {
+    let vcd = vcd_snapshots(&to_vcd(tl));
     let mut compared = 0;
     for f in tl.frames.iter().filter(|f| f.cycle.is_some()) {
-        let cyc = f.cycle.unwrap();
+        let step = f.cycle.unwrap();
         let theirs = icarus
-            .get(&cyc)
-            .unwrap_or_else(|| panic!("Icarus produced no row for cycle {cyc} of {example}"));
+            .get(&step)
+            .unwrap_or_else(|| panic!("Icarus produced no row for step {step} of {example}"));
         let wave = vcd
-            .get(&(cyc * 10))
-            .unwrap_or_else(|| panic!("our VCD has no rising-edge frame at time {}", cyc * 10));
-        for (name, _) in &outputs {
+            .get(&(step * 10))
+            .unwrap_or_else(|| panic!("our VCD has no frame at time {} for {example}", step * 10));
+        for (name, _) in outputs {
             let kernel = f.values[name];
             let icarus_v = theirs[name];
             let vcd_v = wave[name];
             assert_eq!(
                 kernel, icarus_v,
-                "{example} cycle {cyc}: our kernel `{name}`={kernel} but Icarus={icarus_v}"
+                "{example} step {step}: our kernel `{name}`={kernel} but Icarus={icarus_v}"
             );
             assert_eq!(
                 vcd_v, icarus_v,
-                "{example} cycle {cyc}: our VCD waveform `{name}`={vcd_v} but Icarus={icarus_v}"
+                "{example} step {step}: our VCD `{name}`={vcd_v} but Icarus={icarus_v}"
             );
             compared += 1;
         }
@@ -484,19 +531,103 @@ fn differential(bin: &Path, example: &str, stim: Stim, cycles: u64) {
     assert!(compared > 0, "{example}: nothing was compared");
 }
 
-/// Layer 3 — the simulator differential. Per cycle, three independent views must
-/// agree bit-for-bit: our event-driven kernel, the **VCD waveform** our writer
-/// emits from that run, and Icarus running the emitted Verilog under the same
-/// stimulus. The counter exercises a register + sync reset + wrapping arithmetic;
-/// the shift register adds a held input and a shift/extend combinational path.
+/// Run one example through our simulator (kernel + VCD) and Icarus, asserting the
+/// outputs match bit-for-bit, per step. Auto-routes on the elaborated design: a
+/// **clocked** design runs the default stimulus for `steps` cycles with the held
+/// `stim` inputs; a **combinational** design settles `steps` generated input
+/// vectors (`stim` ignored). `params` overrides module parameters on both sides.
+fn differential(bin: &Path, example: &str, params: &[(&str, i128)], stim: Stim, steps: u64) {
+    let path = repo().join("examples").join(example);
+    let src = std::fs::read_to_string(&path).expect("read example");
+    let file = mimz::parser::parse(mimz::lexer::lex(&src).expect("lexes")).expect("parses");
+    let pmap: BTreeMap<String, i128> = params.iter().map(|(n, v)| (n.to_string(), *v)).collect();
+    let design = elaborate(&file, None, &pmap).expect("elaborates");
+
+    let module = design.module.clone();
+    let outputs: Vec<(String, u32)> = design
+        .outputs
+        .iter()
+        .map(|s| (s.name.clone(), s.width.bits))
+        .collect();
+    let design_v = compile_example(&path);
+
+    let (tl, tb) = if !design.clocks.is_empty() {
+        // Clocked: default stimulus, held inputs.
+        const RESET_CYCLES: u64 = 1;
+        let clock = design.clocks[0].clone();
+        let reset = design.resets.first().cloned();
+        let held: Vec<(String, u32, u128)> = design
+            .inputs
+            .iter()
+            .map(|s| {
+                let v = stim
+                    .iter()
+                    .find(|(n, _)| *n == s.name)
+                    .map(|(_, v)| *v)
+                    .unwrap_or(0);
+                (s.name.clone(), s.width.bits, v)
+            })
+            .collect();
+        let opts = SimOpts {
+            clock: None,
+            inputs: stim.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
+            cycles: steps,
+            reset_cycles: RESET_CYCLES,
+        };
+        let tl = run(design, &opts).expect("our sim runs");
+        let tb = clocked_testbench(
+            &module,
+            params,
+            &clock,
+            reset.as_deref(),
+            &held,
+            &outputs,
+            steps,
+            RESET_CYCLES,
+        );
+        (tl, tb)
+    } else {
+        // Combinational: one settled frame per generated input vector.
+        let inputs: Vec<(String, u32)> = design
+            .inputs
+            .iter()
+            .map(|s| (s.name.clone(), s.width.bits))
+            .collect();
+        let vectors = gen_vectors(&inputs, steps);
+        let tl = comb_run(design, &vectors).expect("our comb sim runs");
+        let tb = comb_testbench(&module, params, &inputs, &outputs, &vectors);
+        (tl, tb)
+    };
+
+    let stdout = run_vvp(bin, example, &design_v, &tb);
+    let icarus = parse_icarus(&stdout);
+    compare_three_ways(example, &tl, &icarus, &outputs);
+}
+
+/// Layer 3 — the simulator differential, bit-for-bit vs Icarus (kernel == VCD ==
+/// Icarus). Covers clocked designs (register/reset/wrap, held inputs, FSM-free)
+/// and combinational designs (incl. SIGNED) across the ASCII-named english corpus.
+/// The romanized tamil-pure examples stay on Layers 1–2 (their emitted Verilog
+/// names differ from the source). Instance/`repeat`/enum designs land in C2–C4.
 #[test]
 fn our_simulator_matches_icarus_bit_for_bit() {
     let Some(bin) = require_iverilog() else {
         return;
     };
-    differential(&bin, "english/counter.mimz", &[], 20);
-    differential(&bin, "english/shift_register.mimz", &[("din", 1)], 16);
-    // A held input feeding a combinational output that also reads a register
-    // (`pulse = din && !prev`) — the rising-edge detector pulses once then holds.
-    differential(&bin, "english/edge_detector.mimz", &[("din", 1)], 8);
+    // Clocked.
+    differential(&bin, "english/counter.mimz", &[], &[], 20);
+    differential(&bin, "english/shift_register.mimz", &[], &[("din", 1)], 16);
+    differential(&bin, "english/edge_detector.mimz", &[], &[("din", 1)], 8);
+    // Blinker at a tiny LIMIT so `led` actually toggles within the run.
+    differential(&bin, "english/blinker.mimz", &[("LIMIT", 3)], &[], 12);
+    // Combinational (generated input vectors).
+    differential(&bin, "english/adder.mimz", &[], &[], 8);
+    differential(&bin, "english/comparator.mimz", &[], &[], 8);
+    differential(&bin, "english/mux4.mimz", &[], &[], 8);
+    differential(&bin, "english/datapath.mimz", &[], &[], 8);
+    differential(&bin, "english/window.mimz", &[], &[], 8);
+    differential(&bin, "english/lib/full_adder.mimz", &[], &[], 8);
+    // Combinational + SIGNED — the `%b` binary compare makes signedness moot.
+    differential(&bin, "english/bitops.mimz", &[], &[], 8);
+    differential(&bin, "english/signed_math.mimz", &[], &[], 8);
 }

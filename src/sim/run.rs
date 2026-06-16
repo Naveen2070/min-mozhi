@@ -122,6 +122,55 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
     })
 }
 
+/// Run a COMBINATIONAL (clockless, register-free) design under one or more input
+/// vectors, capturing one settled frame per vector — the no-clock path for
+/// `mimz sim`. A single vector (held `--in`) gives a one-frame waveform; several
+/// vectors (`--sweep`) give a frame each. Each vector is applied over the prior
+/// state, so an input not re-listed keeps its last value. Errors if `design` is
+/// clocked or has registers (use [`run`] for those).
+pub fn comb_run(design: Design, vectors: &[BTreeMap<String, u128>]) -> Result<Timeline, String> {
+    if !design.clocks.is_empty() || !design.regs.is_empty() {
+        return Err(format!(
+            "module `{}` is clocked — run it with the clocked stimulus, not `comb_run`",
+            design.module
+        ));
+    }
+    let module = design.module.clone();
+    let mut sim = Sim::new(design);
+
+    // The signal list is stable across the run — take it once.
+    let signals: Vec<Signal> = sim
+        .snapshot()?
+        .into_iter()
+        .map(|(name, _, width)| Signal { name, width })
+        .collect();
+
+    // No vectors → a single all-default (zero-input) frame.
+    let empty = BTreeMap::new();
+    let vectors: &[BTreeMap<String, u128>] = if vectors.is_empty() {
+        std::slice::from_ref(&empty)
+    } else {
+        vectors
+    };
+
+    let mut frames = Vec::new();
+    for (i, vec) in vectors.iter().enumerate() {
+        for (name, value) in vec {
+            sim.set(name, *value)?; // an unknown input name is a clean error
+        }
+        frames.push(Frame {
+            time: i as u64 * PERIOD,
+            cycle: Some(i as u64),
+            values: values(&sim)?,
+        });
+    }
+    Ok(Timeline {
+        module,
+        signals,
+        frames,
+    })
+}
+
 /// A name → value snapshot of the current state (drops the widths, which the
 /// timeline already carries in `signals`).
 fn values(sim: &Sim) -> Result<BTreeMap<String, u128>, String> {
@@ -199,5 +248,57 @@ mod tests {
         let mut o = opts(2);
         o.inputs.insert("nope".into(), 1);
         assert!(run(design(COUNTER), &o).is_err());
+    }
+
+    const ADDER: &str =
+        "module Adder { in a: bits[8]\n  in b: bits[8]\n  out sum: bits[9]\n  sum = a + b\n}\n";
+
+    #[test]
+    fn comb_run_settles_one_frame_per_vector() {
+        let mut v = BTreeMap::new();
+        v.insert("a".to_string(), 200u128);
+        v.insert("b".to_string(), 100u128);
+        let tl = comb_run(design(ADDER), std::slice::from_ref(&v)).expect("runs");
+        assert_eq!(tl.frames.len(), 1);
+        assert_eq!(tl.frames[0].values["sum"], 300); // lossless 9-bit add
+    }
+
+    #[test]
+    fn comb_run_sweeps_a_frame_per_vector() {
+        let vectors: Vec<BTreeMap<String, u128>> = [1u128, 2, 3]
+            .iter()
+            .map(|&a| BTreeMap::from([("a".to_string(), a), ("b".to_string(), 10)]))
+            .collect();
+        let tl = comb_run(design(ADDER), &vectors).expect("runs");
+        assert_eq!(tl.frames.len(), 3);
+        assert_eq!(tl.frames[0].values["sum"], 11);
+        assert_eq!(tl.frames[1].values["sum"], 12);
+        assert_eq!(tl.frames[2].values["sum"], 13);
+        // Each frame is a distinct settle point, on the same period as a clocked run.
+        assert_eq!(tl.frames[2].time, 2 * PERIOD);
+    }
+
+    #[test]
+    fn comb_run_with_no_vectors_is_one_zero_frame() {
+        let tl = comb_run(design(ADDER), &[]).expect("runs");
+        assert_eq!(tl.frames.len(), 1);
+        assert_eq!(tl.frames[0].values["sum"], 0);
+    }
+
+    #[test]
+    fn comb_run_rejects_a_clocked_design() {
+        assert!(comb_run(design(COUNTER), &[]).is_err());
+    }
+
+    #[test]
+    fn signed_lossless_add_sign_extends() {
+        // Regression (C1, found by the Icarus differential): a lossless signed
+        // `+` must SIGN-EXTEND a negative operand before growing the width.
+        // a = +7, b = 0b1110 = -2 (signed[4]) ⇒ a + b = +5, not 21.
+        let src = "module S { in a: signed[4]\n  in b: signed[4]\n  \
+                   out sum: signed[5]\n  sum = a + b\n}\n";
+        let v = BTreeMap::from([("a".to_string(), 7u128), ("b".to_string(), 0b1110u128)]);
+        let tl = comb_run(design(src), std::slice::from_ref(&v)).expect("runs");
+        assert_eq!(tl.frames[0].values["sum"], 5, "signed add must sign-extend");
     }
 }

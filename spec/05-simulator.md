@@ -29,10 +29,16 @@ or VCD library) — see the 2026-06-16 Decision in `docs/log/`.
 
 ## 2. Stimulus & timing
 
-- A simulation drives clocks and resets and advances time in cycles. `tick(clk)`
-  advances **one** rising edge of `clk`; `tick(clk, n)` advances `n` rising edges.
+- A **clocked** simulation drives clocks and resets and advances time in cycles.
+  `tick(clk)` advances **one** rising edge of `clk`; `tick(clk, n)` advances `n`
+  rising edges.
 - Reset is applied per the design's declared reset (synchronous, active per the
   reg's reset value) — the same semantics the Verilog emitter generates.
+- A **combinational** module (no clock, no registers) settles instead of ticking:
+  `mimz sim` (C1) captures one frame per input vector — `--in a=3,b=5` is a single
+  settled frame, `--sweep a=0|1|2` is one frame per combination — and emits the
+  same VCD/console trace. (`mimz eval` remains the one-shot CLI for a single set of
+  inputs.)
 
 ## 3. `test` blocks (`mimz test`)
 
@@ -98,10 +104,14 @@ test` exits non-zero if any test fails.
 
 - **Differential vs Icarus (`tests/icarus.rs`, Layer 3):** the kernel runs a
   design in-process while the emitted Verilog runs the SAME stimulus under
-  `iverilog`/`vvp`; the per-cycle output values must match **bit-for-bit** (the
-  counter and the shift register today). This is independent of Layer 2 (Icarus
-  vs hand-written semantic asserts) — Layer 3 pits our simulator directly against
-  Icarus.
+  `iverilog`/`vvp`; the per-step output values must match **bit-for-bit**. Covers
+  12 ASCII-named english examples (C1): clocked (counter, shift register, edge
+  detector, blinker) and combinational over generated input vectors (adder,
+  comparator, mux4, datapath, window, full_adder, and SIGNED `bitops` /
+  `signed_math`). Compared via Verilog `%b` so signedness needs no special-casing.
+  This is independent of Layer 2 (Icarus vs hand-written asserts) — Layer 3 pits
+  our simulator directly against Icarus. (Romanized tamil-pure examples and
+  instance/`repeat`/enum designs are not yet in Layer 3 — see the phase plan.)
 - **Perf baseline:** the event-driven kernel sustains **≥ 1M cycle-events/sec**
   on the counter in release (`tests/sim.rs`), measured on the bare `tick` hot
   path.
