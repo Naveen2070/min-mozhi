@@ -59,6 +59,10 @@ mimz sim adder.mimz --sweep a=1|2|3 --in b=10      # a frame per input combo
   then `gtkwave counter.vcd`.
 - **VS Code:** the Surfer / VaporView / WaveTrace extension opens `.vcd` in-editor.
 
+For a full check → test → sim → view-waveform walkthrough on a real design (an
+accumulator CPU exercising instances, imports, `repeat`, enum state, and
+`match`-as-ROM), see [`../../demo/`](../../demo/).
+
 ## `mimz test` — run `test` blocks
 
 Run a file's `test "…" for M(…) { … }` blocks (`tick`/`expect`), reporting
@@ -154,7 +158,7 @@ Tired of retyping the same flags? Drop a `mimz.toml` at your project root and
 default**, so a one-off flag always wins.
 
 ```toml
-lang = "tamil"          # default diagnostics flavor for check/compile/eval
+lang = "tamil"          # default diagnostics flavor for check/compile/eval/sim/test
 
 [translate]
 to = "tanglish"         # default --to
@@ -180,8 +184,8 @@ code order, so mixing those two stays clean.)
 
 ## Diagnostics in your language: `--lang`
 
-`check`, `compile`, and `eval` render diagnostics in the flavor your file mostly
-uses, and `--lang` overrides:
+`check`, `compile`, `eval`, `sim`, and `test` render diagnostics in the flavor
+your file mostly uses, and `--lang` overrides:
 
 ```text
 mimz check counter_tamil.mimz --lang tamil

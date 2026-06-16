@@ -2,9 +2,12 @@
 
 > **Your own behavioral engine — no external tools.**
 > Window: months 10–12, **after Phase 1.8** (solo-dev order, decision D3) ·
-> Target: 31 May 2027 · Status: 🟢 **feature-complete (2026-06-16, branch
-> `phase-1.5-simulator`)** — all eight core work items land (B1–B8); see the
-> 2026-06-16 dev log. Stabilizes when committed + the release step opens (D7).
+> Target: 31 May 2027 · Status: 🟢 **COMPLETE (2026-06-16, branch
+> `phase-1.5-simulator`)** — all eight core work items (B1–B8) **and** the
+> full-parity follow-on (C1–C4) have landed; see the 2026-06-16 dev log. The
+> simulator now covers the **entire single-file corpus bit-for-bit vs Icarus**
+> (21 examples). Stabilizes (→ release) when the public-repo step opens (D7).
+> Suite: 364 tests green. Only additive, non-blocking items remain (listed below).
 
 ## Goal
 
@@ -13,7 +16,7 @@ Icarus or any external tool involved.
 
 ## Work items
 
-- [x] **B1** Elaboration: AST → flat signal/process graph, params/widths/reset folded (`src/sim/elaborate.rs`). Single-module for now; instances/`repeat` rejected with a clear message (a later increment — see notes).
+- [x] **B1** Elaboration: AST → flat signal/process graph, params/widths/reset folded (`src/sim/elaborate.rs`). B1 shipped single-module; the C2/C3/C4 follow-on (below) lifted that — `elaborate_project` now flattens cross-file instances, unrolls `repeat`, and encodes enum signals.
 - [x] **B2** Event-driven simulation kernel: two-phase update (compute `<-` values, then commit) so register semantics are exact (`src/sim/kernel.rs`; shared evaluator `src/sim/value.rs`).
 - [x] **B3** Combinational propagation in topological order — the kernel's memoized resolver settles the DAG on demand and reports comb cycles.
 - [x] **B4** Clock/reset stimulus generation (`src/sim/run.rs` → `Timeline`).
@@ -76,14 +79,17 @@ _What landed (done):_
       negative operand → wrong result (also affected `mimz eval`). Fixed to use
       `as_i128` (matches Verilog). Regression `signed_lossless_add_sign_extends`.
 
-_What was PLANNED for C1 but NOT done (carried forward):_
+_Tamil-pure / `vilakku` examples — now IN the bit-for-bit differential (done):_
 
-- [ ] **Romanized tamil-pure / `vilakku` examples are NOT in the bit-for-bit
-      differential** — the C1 plan said "all single-module examples", but these were
-      scoped out: their emitted Verilog identifiers (module + ports) are romanized,
-      so they differ from the source names our kernel uses; an auto-generated TB must
-      apply the emitter's `romanize` to names on both sides. They keep Layer-1
-      (elaborate) + Layer-2 (hand-written romanized TBs) for now. Small follow-up.
+- [x] **Romanized tamil-pure / `vilakku` examples ARE in the bit-for-bit
+      differential.** The C1 plan said "all single-module examples"; the initial cut
+      scoped these out because their emitted Verilog identifiers (module + ports) are
+      romanized, so they differ from the source names our kernel uses. The Layer-3
+      harness now maps source → romanized names on both sides via the emitter's own
+      `transliterate` (`interface_name_map` in `tests/icarus.rs`), so the four
+      tamil-pure designs (`kanakki`/counter, `cimitti`/blinker, `oppidi`/comparator,
+      `thervi`/test) and `vilakku` ride the same kernel == VCD == Icarus check as
+      their english twins.
 
 _Out of C1 scope by design (the rest of full parity — C2–C4):_
 

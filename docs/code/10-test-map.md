@@ -42,36 +42,40 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 21 tests)
+## Unit: parser (`src/parser/tests.rs`, 24 tests)
 
-| Test                                                        | Locks in                                                                   |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `parses_counter`                                            | the canonical example parses; module has the expected 6 items              |
-| `parses_tanglish_counter_to_same_shape`                     | Tanglish source → structurally identical AST (the thesis, AST level)       |
-| `thamizh_order_on_block_parses_to_the_same_shape`           | `syntax thamizh` + `yetram(clk) pothu { }` → the same module (spec/04)     |
-| `english_syntax_thamizh_directive_also_selects_the_profile` | flavor and word-order profile are orthogonal (`syntax thamizh` in English) |
-| `unknown_syntax_profile_is_e1112`                           | `syntax wibble` → E1112, not silently ignored                              |
-| `flipped_on_block_needs_the_directive`                      | a leading `rise(...)` is a parse error without the directive (gated flip)  |
-| `rust_precedence_defuses_the_c_trap`                        | `x & 1 == 0` parses as `(x & 1) == 0` — **never** change this              |
-| `monotonic_chained_comparison_desugars_to_and`              | `0 <= x <= 7` desugars to `(0<=x) && (x<=7)` — the safe Python form (8.9)  |
-| `mixed_direction_chain_is_an_error`                         | `a < b > c` stays E1109 (the confusing form)                               |
-| `equality_cannot_be_chained`                                | `a == b == c` stays E1109                                                  |
-| `wire_if_without_else_teaches_about_latches`                | mandatory `else` on if-expressions + the latch help text                   |
-| `reg_without_reset_value_is_an_error`                       | mandatory reg reset (safety rule)                                          |
-| `assign_arrow_confusion_teaches`                            | `=` inside `on` → help text pointing to `<-`                               |
-| `parses_repeat_and_const`                                   | `repeat i: 0..8` and file-level `const` parse                              |
-| `parses_test_block`                                         | `test "..." for M(...) { tick/expect }` parses                             |
-| `every_parse_error_carries_a_code`                          | the E11xx retrofit, locked from outside: no parse error is codeless        |
-| `builtin_with_wrong_arity_is_e1110`                         | a built-in called with the wrong argument count (e.g. `min(a)`) is E1110   |
-| `stray_top_level_brace_does_not_hang`                       | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)   |
-| `deeply_nested_expression_errors_not_overflows`             | `(((…)))` past the depth cap → clean E1113, not a stack overflow (SEC-1)   |
-| `deeply_nested_unary_errors_not_overflows`                  | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash           |
+| Test                                                               | Locks in                                                                                |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `parses_counter`                                                   | the canonical example parses; module has the expected 6 items                           |
+| `parses_tanglish_counter_to_same_shape`                            | Tanglish source → structurally identical AST (the thesis, AST level)                    |
+| `thamizh_order_on_block_parses_to_the_same_shape`                  | `syntax thamizh` + `yetram(clk) pothu { }` → the same module (spec/04)                  |
+| `english_syntax_thamizh_directive_also_selects_the_profile`        | flavor and word-order profile are orthogonal (`syntax thamizh` in English)              |
+| `unknown_syntax_profile_is_e1112`                                  | `syntax wibble` → E1112, not silently ignored                                           |
+| `flipped_on_block_needs_the_directive`                             | a leading `rise(...)` is a parse error without the directive (gated flip)               |
+| `thamizh_order_test_header_parses_to_the_same_shape`               | `M(args) kaaga "…" sodhanai { }` → the SAME `TestDecl` as the code-order header (B7)    |
+| `thamizh_test_header_with_no_params_parses`                        | the flipped test header with no params (`Counter kaaga "…" sodhanai`) parses            |
+| `the_test_header_flip_needs_the_directive`                         | a leading identifier test header without `syntax thamizh` is E1102 (gated flip)         |
+| `a_long_flat_binary_chain_parses_without_tripping_the_depth_guard` | a 5000-term `a + a + …` chain parses — LENGTH is unbounded, distinct from nesting DEPTH |
+| `rust_precedence_defuses_the_c_trap`                               | `x & 1 == 0` parses as `(x & 1) == 0` — **never** change this                           |
+| `monotonic_chained_comparison_desugars_to_and`                     | `0 <= x <= 7` desugars to `(0<=x) && (x<=7)` — the safe Python form (8.9)               |
+| `mixed_direction_chain_is_an_error`                                | `a < b > c` stays E1109 (the confusing form)                                            |
+| `equality_cannot_be_chained`                                       | `a == b == c` stays E1109                                                               |
+| `wire_if_without_else_teaches_about_latches`                       | mandatory `else` on if-expressions + the latch help text                                |
+| `reg_without_reset_value_is_an_error`                              | mandatory reg reset (safety rule)                                                       |
+| `assign_arrow_confusion_teaches`                                   | `=` inside `on` → help text pointing to `<-`                                            |
+| `parses_repeat_and_const`                                          | `repeat i: 0..8` and file-level `const` parse                                           |
+| `parses_test_block`                                                | `test "..." for M(...) { tick/expect }` parses                                          |
+| `every_parse_error_carries_a_code`                                 | the E11xx retrofit, locked from outside: no parse error is codeless                     |
+| `builtin_with_wrong_arity_is_e1110`                                | a built-in called with the wrong argument count (e.g. `min(a)`) is E1110                |
+| `stray_top_level_brace_does_not_hang`                              | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)                |
+| `deeply_nested_expression_errors_not_overflows`                    | `(((…)))` past the depth cap → clean E1113, not a stack overflow (SEC-1)                |
+| `deeply_nested_unary_errors_not_overflows`                         | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash                        |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 98 tests)
+## Unit: checker (`src/checker/tests.rs`, 99 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -151,19 +155,19 @@ are NOT byte-identical to any other flavor, so they sit OUTSIDE the four-flavor
 identity rule (R9) and are validated by equivalence-to-counterpart + their own
 goldens (`tests/golden/tamil_pure_*.v`) + their own testbenches.
 
-| Test                                                       | Locks in                                                                                                                                                                                                                                                          |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_example_checks_clean`                               | every `.mimz` under `examples/` (recursive) passes `mimz check` — which now runs the CHECKER over the file and its imports, so this is also a zero-false-positives test for every checker rule. At least 4 × 11 files — RULES R6 made executable                  |
-| `every_example_compiles`                                   | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                                                                                                                                          |
-| `all_four_flavors_compile_to_identical_verilog`            | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                                                                                                                                        |
-| `counter_compiles_to_verilog`                              | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                                  |
-| `alu_with_import_compiles`                                 | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                                       |
-| `include_alias_compiles_with_dotted_path`                  | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                                         |
-| `ripple_adder_unrolls_repeat`                              | `repeat` end-to-end: four `FullAdder fa__0..3` with the carry chained, folded indices, `const WIDTH` folded into widths — compile-time generation proven through the real binary                                                                                  |
-| `traffic_light_fsm_compiles`                               | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                                               |
-| `emitted_verilog_matches_the_goldens`                      | every base example's FULL output equals `tests/golden/<base>.v` byte for byte (banner stripped). On an INTENDED emitter change: `MIMZ_UPDATE_GOLDENS=1 cargo test --test examples`, then review the golden diff like code. Failure names the first differing line |
-| `pure_tamil_examples_match_goldens`                        | each `examples/tamil-pure/<x>.mimz` output equals `tests/golden/tamil_pure_<x>.v` (banner stripped) — pins the transliterated Verilog so a romanization regression can't slip through                                                                             |
-| `pure_tamil_examples_are_equivalent_to_their_counterparts` | each pure-Tamil example is the SAME circuit as its English twin, proven by `canonicalize_verilog` (alpha-equivalence: identifiers renamed to `id<N>` by first appearance). Equal canonical forms ⇒ same hardware, just named in Tamil                             |
+| Test                                                       | Locks in                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_example_checks_clean`                               | every `.mimz` under `examples/` (recursive) passes `mimz check` — which now runs the CHECKER over the file and its imports, so this is also a zero-false-positives test for every checker rule. At least 4 × 17 base files (plus `lib/` helpers and the pure-Tamil showcase) — RULES R6 made executable |
+| `every_example_compiles`                                   | every example **compiles to Verilog**, including the `lib/` helpers. A new example that doesn't compile fails CI by name                                                                                                                                                                                |
+| `all_four_flavors_compile_to_identical_verilog`            | each base example → **byte-identical** Verilog from all four flavors. The project's thesis. Never break it                                                                                                                                                                                              |
+| `counter_compiles_to_verilog`                              | end-to-end compile; asserts the parameter, the always-block, the **generated reset**, the assign                                                                                                                                                                                                        |
+| `alu_with_import_compiles`                                 | `import` resolution end-to-end; instances with params; auto-wired child outputs (`add_sum`)                                                                                                                                                                                                             |
+| `include_alias_compiles_with_dotted_path`                  | `include lib.full_adder` works through the whole pipeline — the alias AND dotted-path resolution, in one example (`english/chained.mimz`)                                                                                                                                                               |
+| `ripple_adder_unrolls_repeat`                              | `repeat` end-to-end: four `FullAdder fa__0..3` with the carry chained, folded indices, `const WIDTH` folded into widths — compile-time generation proven through the real binary                                                                                                                        |
+| `traffic_light_fsm_compiles`                               | enums → localparams (`STATE_RED` …)                                                                                                                                                                                                                                                                     |
+| `emitted_verilog_matches_the_goldens`                      | every base example's FULL output equals `tests/golden/<base>.v` byte for byte (banner stripped). On an INTENDED emitter change: `MIMZ_UPDATE_GOLDENS=1 cargo test --test examples`, then review the golden diff like code. Failure names the first differing line                                       |
+| `pure_tamil_examples_match_goldens`                        | each `examples/tamil-pure/<x>.mimz` output equals `tests/golden/tamil_pure_<x>.v` (banner stripped) — pins the transliterated Verilog so a romanization regression can't slip through                                                                                                                   |
+| `pure_tamil_examples_are_equivalent_to_their_counterparts` | each pure-Tamil example is the SAME circuit as its English twin, proven by `canonicalize_verilog` (alpha-equivalence: identifiers renamed to `id<N>` by first appearance). Equal canonical forms ⇒ same hardware, just named in Tamil                                                                   |
 
 ## Icarus differential (`tests/icarus.rs`, 4 tests — run a REAL Verilog tool)
 
@@ -175,12 +179,12 @@ PATH → the Windows installer default `C:\iverilog\bin`); in CI
 never skip silently. Local install: the Windows installer
 (bleyer.org/icarus) or `apt-get install iverilog`.
 
-| Test                                        | Locks in                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog`     | all 72 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated Tamil-identifier `vilakku`, the pure-Tamil showcase, and `wire signed` `signed_math`)                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `self_checking_testbenches_pass`            | one hand-written TB per base example (`tests/icarus/*_tb.v`, 16) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential                                                                                                                                                                                                                                                                                                        |
-| `self_checking_pure_tamil_testbenches_pass` | the four pure-Tamil showcase circuits (`kanakki`/`cimitti`/`oppidi`/`thervi`), driven through their **romanized** ports (clk=`katikai`, rst=`miill`, …) — proves the transliterated Verilog SIMULATES, not just elaborates. Shares the `run_self_checking` helper with the English layer                                                                                                                                                                                                                                                                                                                                                                              |
-| `our_simulator_matches_icarus_bit_for_bit`  | **Layer 3 (B8 + C1):** three views must agree bit-for-bit per step — our kernel (in-process), the VCD waveform our writer emits, and Icarus on the emitted Verilog under the same stimulus. Auto-routes per design: **clocked** (counter, shift register, edge detector, blinker @ `LIMIT=3`) and **combinational** over generated input vectors (adder, comparator, mux4, datapath, window, full_adder + SIGNED `bitops`/`signed_math`) — 12 ASCII-named english examples, compared via Verilog `%b` (binary ⇒ signedness-agnostic). Where Layer 2 checks Icarus against hand-written asserts, this pits our simulator (engine AND waveform) directly against Icarus |
+| Test                                        | Locks in                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_emitted_verilog_passes_iverilog`     | all 72 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated Tamil-identifier `vilakku`, the pure-Tamil showcase, and `wire signed` `signed_math`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `self_checking_testbenches_pass`            | one hand-written TB per base example (`tests/icarus/*_tb.v`, 16) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `self_checking_pure_tamil_testbenches_pass` | the four pure-Tamil showcase circuits (`kanakki`/`cimitti`/`oppidi`/`thervi`), driven through their **romanized** ports (clk=`katikai`, rst=`miill`, …) — proves the transliterated Verilog SIMULATES, not just elaborates. Shares the `run_self_checking` helper with the English layer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `our_simulator_matches_icarus_bit_for_bit`  | **Layer 3 (B8 + C1–C4):** three views must agree bit-for-bit per step — our kernel (in-process), the VCD waveform our writer emits, and Icarus on the emitted Verilog under the same stimulus. Auto-routes per design: **clocked** (counter, shift register, edge detector, blinker @ `LIMIT=3`) and **combinational** over generated input vectors (adder, comparator, mux4, datapath, window, full_adder + SIGNED `bitops`/`signed_math`) — 12 ASCII-named english examples — plus the 4 pure-Tamil showcases (kanakki/cimitti/oppidi/thervi, driven through romanized port names) and the full-parity additions: **alu** (cross-file instance, C2), **chained** (chained instances, C2), **ripple_adder** (`repeat`, C3), **traffic_light** (enum FSM, C4), and **vilakku** (Tamil identifiers). **21 examples** in all — the entire single-file corpus the emitter compiles. Compared via Verilog `%b` (binary ⇒ signedness-agnostic). Where Layer 2 checks Icarus against hand-written asserts, this pits our simulator (engine AND waveform) directly against Icarus |
 
 House rule for the testbenches: each prints `PASS` exactly once or
 `FAIL: reason` and stops — the Rust side asserts on those markers, so a
@@ -430,19 +434,25 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `rejects_sequential_logic`   | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
 | `reports_missing_input`      | a missing `--in` value names the input                                            |
 
-## Unit: elaboration (`src/sim/elaborate.rs`, 5 tests)
+## Unit: elaboration (`src/sim/elaborate.rs`, 8 tests)
 
-Phase 1.5 step B1: flatten one AST module into a `Design` (signals with folded
-widths, regs with folded reset + clock, comb drivers, sequential processes). The
-event-driven kernel (next step) interprets a `Design`.
+Phase 1.5 steps B1 + C2–C4: flatten an AST module (and its instances) into a
+`Design` (signals with folded widths, regs with folded reset + clock, comb
+drivers, sequential processes), via the `elaborate_project` flattener and the
+`Rw` elaborate-time rewriter (enum→index, `repeat` unroll, instance flattening,
+array instances, bit-indexed drives). The event-driven kernel interprets a
+`Design`.
 
-| Test                                     | Locks in                                                                                                                                      |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `elaborates_the_counter`                 | the canonical counter flattens correctly: one reg (`value`, reset 0, clock `clk`), the `count` comb driver, `clk`/`rst` recorded, one process |
-| `param_override_folds_widths`            | passing `WIDTH=4` folds the reg and output widths to 4                                                                                        |
-| `elaborates_a_combinational_module`      | a clockless module has empty regs/procs/clocks/resets, only comb drivers                                                                      |
-| `reg_takes_a_nonzero_folded_reset_value` | `reg r: bits[8] = 5` folds the reset to 5 and binds the reg to its `on`-block clock                                                           |
-| `rejects_instances_for_now`              | a module with a `let` instance is rejected with a clear message (instance elaboration is a later step)                                        |
+| Test                                                | Locks in                                                                                                                                        |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elaborates_the_counter`                            | the canonical counter flattens correctly: one reg (`value`, reset 0, clock `clk`), the `count` comb driver, `clk`/`rst` recorded, one process   |
+| `param_override_folds_widths`                       | passing `WIDTH=4` folds the reg and output widths to 4                                                                                          |
+| `elaborates_a_combinational_module`                 | a clockless module has empty regs/procs/clocks/resets, only comb drivers                                                                        |
+| `reg_takes_a_nonzero_folded_reset_value`            | `reg r: bits[8] = 5` folds the reset to 5 and binds the reg to its `on`-block clock                                                             |
+| `flattens_a_same_file_instance`                     | C2: `Top`'s `let u = Add()` inlines the child's signals prefixed `u_*`; the `u.s` field-read resolves to the flattened `u_s` wire               |
+| `rejects_unknown_instance_module`                   | C2: a `let` instance of a module that doesn't exist is a clean "unknown module" error                                                           |
+| `unrolls_repeat_with_instance_array_and_bit_drives` | C3: `repeat` inlines one child per bit (`fa__<i>`); the per-bit `s[i] = …` drives assemble into a whole-signal Concat                           |
+| `elaborates_an_enum_signal_and_match`               | C4: an enum reg gets width `clog2(variants)`, its reset folds to the variant index, and a `match` over the enum elaborates (patterns → indices) |
 
 ## Unit: kernel (`src/sim/kernel.rs`, 9 tests)
 
@@ -487,7 +497,7 @@ renderer (`trace.rs`) — all over one per-cycle snapshot from the kernel.
 | `table_has_a_row_per_cycle` (trace)                | `--trace` renders one table row per cycle with the right count                      |
 | `changes_style_omits_unchanged_frames` (trace)     | `--trace=changes` only prints when a watched signal changes (`$monitor`-style)      |
 
-## Integration: sim (`tests/sim.rs`, 9 tests — run the real binary + lib in-process)
+## Integration: sim (`tests/sim.rs`, 10 tests — run the real binary + lib in-process)
 
 End-to-end `mimz sim` over a counter (clocked) and an adder (combinational): the
 stimulus, the VCD, the console trace, the `--sweep`; plus the B8 kernel perf
@@ -496,6 +506,7 @@ baseline and the golden VCD byte-lock (both run the lib in-process).
 | Test                                               | Locks in                                                                                                |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `trace_table_shows_a_row_per_cycle`                | `--trace` prints the per-cycle table (header + separator + N rows)                                      |
+| `cycles_over_the_limit_is_rejected_by_the_cli`     | SEC: `--cycles` past `MAX_SIM_CYCLES` (1_000_000) is rejected at clap parse time — no unbounded loop    |
 | `changes_trace_is_monitor_style`                   | `--trace=changes` prints `$monitor`-style lines (reaches `count=3`)                                     |
 | `writes_a_gtkwave_vcd`                             | `-o` writes a VCD with `$timescale`/`$enddefinitions`/`$dumpvars`/`count`                               |
 | `signals_flag_limits_the_trace`                    | `--signals count` shows only `count`, excluding `value`                                                 |
@@ -520,14 +531,15 @@ form only (the `await clk.cycles(n)` sugar awaits its native-review spelling).
 | `an_unknown_clock_is_an_error`                   | `tick(<not-a-clock>)` is a setup error, not a test failure                      |
 | `the_timeline_has_a_frame_per_tick`              | one trace frame per tick (+ the initial frame); default scope = interface+state |
 
-## Integration: test (`tests/test_run.rs`, 6 tests — run the real binary)
+## Integration: test (`tests/test_run.rs`, 7 tests — run the real binary)
 
 End-to-end `mimz test`: exit codes, the teaching message, `--filter`, `--trace`,
-and the thamizh-order test header (B7).
+the cycle-limit guard, and the thamizh-order test header (B7).
 
 | Test                                                        | Locks in                                                                                                                         |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `a_passing_test_exits_zero`                                 | a passing block prints `ok` + the summary and exits 0                                                                            |
+| `a_tick_count_over_the_cycle_limit_errors_fast_not_hangs`   | SEC: `tick(clk, n)` past `MAX_SIM_CYCLES` (1_000_000) fails fast with a clean error — no untrusted-input frame-push DoS          |
 | `a_failing_expect_exits_nonzero_with_a_teaching_message`    | a failing block prints `FAIL` + the expression/operands and exits 1                                                              |
 | `the_filter_selects_tests_by_name`                          | `--filter` runs only the matching test (skips the failing other one)                                                             |
 | `trace_shows_a_per_cycle_table`                             | `--trace` prints the per-cycle table for a test                                                                                  |

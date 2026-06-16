@@ -19,11 +19,15 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
 - [x] `syntax thamizh` file directive (no auto-detection) — `Profile` on the
       parser, parsed by `syntax_directive`, never enters the AST. `syntax`
       promoted from reserved to KW_SYNTAX; KW_THAMIZH added (spec/03 v0.2.5).
-- [~] Flipped productions per `spec/04` section 3: **clocked block, seq
-  conditional (`<cond> enil { }`), if-expression (`c enil { } illaiyenil
+- [x] Flipped productions per `spec/04` section 3: **clocked block, seq
+      conditional (`<cond> enil { }`), if-expression (`c enil { } illaiyenil
 { }`), and match (`<expr> thernthedu { }`) done** (2026-06-14). The **test**
-  form remains — deferred to Phase 1.5 (test blocks emit no Verilog yet, so no
-  same-Verilog oracle).
+      form (`M(args) kaaga "…" sodhanai { }`) was deferred to Phase 1.5 (test
+      blocks emit no Verilog, so no same-Verilog oracle) and **landed there as B7**
+      (2026-06-16): `mimz test` executes the blocks, so a passing thamizh-order test
+      re-parsing to the same `TestDecl` is the oracle
+      (`src/parser/items/test.rs::test_decl_thamizh`, `src/pretty.rs`). All five
+      clause flips are now implemented.
 - [x] Expression-first parsing with one-token lookahead after the operand (no
       backtracking) — the clocked-block flip dispatches on the leading `Kw::Rise`;
       the conditional/if-expr/match flips parse the operand with `binary(0)` then

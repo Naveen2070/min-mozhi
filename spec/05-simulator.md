@@ -1,9 +1,12 @@
 # Min-Mozhi — Simulator
 
-> **Spec v0.1 DRAFT — Phase 1.5 in progress.**
-> (v0.1, 2026-06-16: initial skeleton — records the execution semantics decided at
-> the Phase 1.5 kickoff so the spec leads the build. Stabilizes when Phase 1.5
-> lands. The Tamil subtitle is deferred to native review, per R9.)
+> **Spec v0.2 — Phase 1.5 complete (2026-06-16).**
+> (v0.1, 2026-06-16: initial skeleton — recorded the execution semantics decided
+> at the Phase 1.5 kickoff so the spec led the build. v0.2, 2026-06-16: Phase 1.5
+> landed in full — B1–B8 plus the full-parity follow-on C1–C4 (combinational sim,
+> instance flattening, `repeat` unrolling, enum signals); the differential now
+> covers the entire single-file corpus (21 examples) bit-for-bit vs Icarus. The
+> Tamil subtitle is deferred to native review, per R9.)
 > Goal: run Min-Mozhi designs and their `test` blocks **with no external tool** —
 > `mimz sim` produces waveforms, `mimz test` runs the test blocks and reports
 > pass/fail with teaching-quality messages.
@@ -145,14 +148,17 @@ feature, not this uniform engine-driven trace.)
 
 ---
 
-_Status: DRAFT — the Phase 1.5 engine is fully built (B1–B8): elaboration
+_Status: Phase 1.5 complete (2026-06-16) — the engine is fully built (B1–B8) and
+at full parity with the emitter (C1–C4): elaboration
 (`src/sim/elaborate.rs`), the event-driven two-phase kernel (`src/sim/kernel.rs`,
 reusing the shared evaluator `src/sim/value.rs`), the default stimulus
 (`src/sim/run.rs`), the hand-written VCD writer (`src/sim/vcd.rs`), the console
 trace (`src/sim/trace.rs`), the `test`-block harness (`src/sim/harness.rs`), and
 the `mimz sim` / `mimz test` commands — validated by the Icarus differential and
 the ≥1M cycle-events/sec perf baseline (B8). The combinational evaluator
-(`src/sim/comb.rs`) is reused. Stabilizes (DRAFT → stable) when Phase 1.5 is
-committed and the release step opens. Deferred within v1: the `await
-clk.cycles(n)` test sugar (awaits its native-review spelling), `sim::fatal` /
-`sim::warn`, and 4-state simulation._
+(`src/sim/comb.rs`) is reused. The C1–C4 follow-on brought full structural
+parity: the elaborator flattens cross-file instances (C2), unrolls `repeat`
+(C3), and encodes enum signals (C4), so the differential now covers the **entire
+single-file corpus (21 examples)** bit-for-bit vs Icarus. Deferred within v1: the
+`await clk.cycles(n)` test sugar (awaits its native-review spelling), `sim::fatal`
+/ `sim::warn`, and 4-state simulation._

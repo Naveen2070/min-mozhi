@@ -1,4 +1,4 @@
-# 13 — Tooling modules (`explain`, `translate`, `pretty`, `morph`, `sim`)
+# 13 — Tooling modules (`explain`, `translate`, `pretty`, `morph`, `sim`, `config`)
 
 Lib modules that **consume** the pipeline rather than forming a stage in
 it. Each is the lib-backed core of one CLI subcommand, kept in the library (not
@@ -95,9 +95,10 @@ it can move clause heads between the two word orders: `on rise(clk)` ⇄
 output gets a leading `syntax thamizh` directive so it re-parses.
 
 - `pretty_print(&File, Flavor, Order) -> String`; `Order` is a public mirror of
-  the parser's `pub(crate) Profile`. Only `OnBlock` / `SeqStmt::If` / `IfExpr` /
-  `Match` are order-sensitive; the test header and test-block `if` stay
-  code-order (the test-form flip is deferred to Phase 1.5).
+  the parser's `pub(crate) Profile`. The order-sensitive forms are `OnBlock` /
+  `SeqStmt::If` / `IfExpr` / `Match` and — since Phase 1.5 B7 — the **test header**
+  (`TestDecl`: `M(args) kaaga "…" sodhanai { }` in thamizh order); the test-block
+  `if` stays code-order. That completes all five word-order flips of the engine.
 - **Canonical, not trivia-preserving (the key contrast with `translate`).** The
   AST carries no comments and no original layout, so the output is reformatted
   and **comments are dropped** — it is NOT byte-identical to the input. The
@@ -153,26 +154,53 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
   flavored diagnostics as the CLI (`src/lsp.rs` `to_lsp`). JSON output stays
   English (machine contract).
 
-## `sim` (`src/sim/`) — `mimz eval` (combinational slice of Phase 1.5)
+## `sim` (`src/sim/`) — `mimz eval` / `mimz sim` / `mimz test` (Phase 1.5, complete)
 
-`sim::comb::eval_outputs` interprets a single **combinational** module: given a
-value per input, it computes the outputs by walking the AST. No clock, no `reg`,
-no instances, no `repeat` — those are rejected with a clear message, not
-half-evaluated (the full event-driven engine, VCD, and `test` execution are
-Phase 1.5 proper, `docs/plan/phase-1.5-simulator.md`).
+The simulator. Phase 1.5 is **feature-complete** (B1–B8 + full parity C1–C4):
+the combinational evaluator behind `mimz eval`, the event-driven kernel behind
+`mimz sim` / `mimz test`, VCD + console-trace output, and the `test`-block
+runner. The `src/sim/` directory:
 
-- Values are unsigned bit-vectors up to 128 bits, carrying a width and a signed
-  flag; it honors the spec's width semantics (lossless `+ - *` grow, the
-  `+% -% *%` family wraps, slices/concat/`extend`/`trunc` resize), so a result
-  matches what the Verilog emitter would produce for the same logic.
-- A private `const_eval` delegates to the checker's hardened
-  `consteval::eval` (single source of truth, `checked_*` arithmetic) for widths,
-  parameters, consts, and slice/index bounds — the 2026-06-14 security audit
-  removed the earlier divergent copy (`docs/audit/security.md`, SEC-2).
+| File           | Owns                                                                                                 |
+| -------------- | ---------------------------------------------------------------------------------------------------- |
+| `mod.rs`       | the module tree + the shared overview                                                                |
+| `value.rs`     | the 2-state value model + expression evaluator (a `Resolver` trait both engines implement)           |
+| `comb.rs`      | the combinational evaluator (`eval_outputs`) behind `mimz eval`                                      |
+| `elaborate.rs` | `elaborate_project` flattening (instances, `repeat`, enums) + the `Rw` rewriter → a `Design`         |
+| `kernel.rs`    | the event-driven, two-phase commit kernel that interprets a `Design`                                 |
+| `run.rs`       | the default stimulus + `comb_run` per-vector settle; the `MAX_SIM_CYCLES`/`MAX_SWEEP_VECTORS` bounds |
+| `vcd.rs`       | the hand-written 2-state VCD writer                                                                  |
+| `trace.rs`     | the console trace table (`--trace` / `--trace=changes`)                                              |
+| `harness.rs`   | the `test`-block runner (`drive`/`tick`/`expect`/`if`) behind `mimz test`                            |
+
+- **`mimz eval` (`comb`).** `sim::comb::eval_outputs` interprets a single
+  **combinational** module: given a value per input, it computes the outputs by
+  walking the AST. Values are unsigned bit-vectors up to 128 bits, carrying a
+  width and a signed flag; it honors the spec's width semantics (lossless
+  `+ - *` grow, the `+% -% *%` family wraps, slices/concat/`extend`/`trunc`
+  resize), so a result matches what the Verilog emitter would produce. A private
+  `const_eval` delegates to the checker's hardened `consteval::eval` (single
+  source of truth, `checked_*` arithmetic) — the 2026-06-14 audit removed the
+  earlier divergent copy (`docs/audit/security.md`, SEC-2). Surface:
+  `--in a=3,b=5`, `--module`, `--param`.
+- **`mimz sim` (`elaborate` → `kernel` → `run`/`vcd`/`trace`).** `load_project`,
+  flatten to a `Design` (folding widths/resets, inlining instances, unrolling
+  `repeat`, encoding enum signals by variant index), then run the event-driven
+  two-phase kernel under a default stimulus (clocked) or settle one frame per
+  input vector (combinational `comb_run`). Emits a GTKWave VCD (`-o`) and/or a
+  console trace. `--cycles`/`--sweep` are bounded by `MAX_SIM_CYCLES` /
+  `MAX_SWEEP_VECTORS` (`run.rs`, audit SEC-5).
+- **`mimz test` (`harness`).** Runs each `test` block (`drive`/`tick`/`expect`/
+  `if`) on the kernel, halting a failing `expect` with a teaching message
+  (expression source + cycle + each operand's value) and exiting non-zero on any
+  failure; `--filter`/`--trace`/`--verbose`/`--signals` supported. The
+  `tick`-count is bounded by `MAX_SIM_CYCLES`.
 - This is the engine the 8.5 hardware REPL and the WASM playground will ride on,
-  which is why it lives in the lib and stays callable on a single module. The
-  `mimz eval` CLI is its experimental surface (`--in a=3,b=5`, `--module`,
-  `--param`).
+  which is why it lives in the lib and stays callable on a single module.
+- **Independently judged.** The Layer-3 Icarus differential
+  (`tests/icarus.rs::our_simulator_matches_icarus_bit_for_bit`) pits this
+  simulator (engine AND VCD waveform) against Icarus bit-for-bit across the whole
+  single-file corpus (21 examples).
 
 ## `config` (`src/config.rs`) — `mimz.toml` project defaults
 
@@ -210,11 +238,11 @@ strict = true
 
 ## Scope discipline
 
-These are intentionally small slices, not finished features: `explain` grows one
-code at a time, `translate`/`pretty` cover keyword flavor and the four landed
-word-order flips (the test-form flip is still ahead), `morph` ships the
-selection + inflection mechanism with the native-authored catalog (33 of 36
-codes; C3 ratified 2026-06-15), and `sim::comb` is combinational
-only (the kernel is Phase 1.5). Each
-documents its own limits in its module header so the honesty rule (spec/01)
-holds for the tooling too.
+Most of these grow incrementally: `explain` grows one code at a time,
+`translate`/`pretty` cover keyword flavor and all five landed word-order flips
+(clocked block, conditional, if-expression, match, test header), and `morph`
+ships the selection + inflection mechanism with the native-authored catalog
+(33 of 36 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
+feature-complete (the combinational `comb`, the event-driven kernel, VCD/trace,
+and `mimz test`). Each documents its own limits in its module header so the
+honesty rule (spec/01) holds for the tooling too.

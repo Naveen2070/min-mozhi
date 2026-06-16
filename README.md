@@ -1,13 +1,24 @@
-# Min-Mozhi (மின்மொழி)
+<h1 align="center">Min-Mozhi · மின்மொழி</h1>
 
-> **A modern hardware description language — modern programming syntax, safe
-> by default — and the first Tamil-rooted HDL, built to help students learn
-> digital design.**
-> Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.
-> Built in Tamil Nadu, India. 🇮🇳
+<p align="center">
+  <b>A modern, safe-by-default hardware description language — and the first Tamil-rooted HDL.</b><br>
+  <i>Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.</i>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-364%20passing-brightgreen.svg"></a>
+  <img alt="Status" src="https://img.shields.io/badge/status-compiler%20%2B%20simulator-success.svg">
+  <a href="https://rustup.rs"><img alt="Rust" src="https://img.shields.io/badge/rust-%E2%89%A5%201.85-orange.svg"></a>
+  <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-blue.svg">
+  <img alt="Made in Tamil Nadu" src="https://img.shields.io/badge/made%20in-Tamil%20Nadu%20%F0%9F%87%AE%F0%9F%87%B3-blueviolet.svg">
+</p>
+
+---
 
 Min-Mozhi ("language of electricity") is a modern HDL for designing digital
-circuits. It compiles to Verilog today, with a native FPGA path on the roadmap.
+circuits. It **compiles to synthesizable Verilog** today and ships with its **own
+event-driven simulator** — with a native FPGA path on the roadmap.
 
 ```mimz
 module Counter(WIDTH: int = 8) {
@@ -25,8 +36,8 @@ module Counter(WIDTH: int = 8) {
 }
 ```
 
-The same module in **Tanglish** — same grammar, only keywords change, and
-flavors can be mixed freely in one file:
+<details>
+<summary>The same module in <b>Tanglish</b> — same grammar, only the keywords change (flavors mix freely in one file)</summary>
 
 ```mimz
 thoguthi Counter(WIDTH: int = 8) {
@@ -44,122 +55,105 @@ thoguthi Counter(WIDTH: int = 8) {
 }
 ```
 
+</details>
+
 ## Why
 
 - **Modern syntax** — Go/TypeScript-style braces and `: type` annotations,
-  expression-oriented `if`/`match`; no `begin/end`, no preprocessor.
-- **Safe by default** — no inferred latches, no silent truncation, no
-  multiple drivers, no uninitialized registers, no blocking/non-blocking
-  confusion, no signed/unsigned mixing, no `x & 1 == 0` precedence traps —
-  every one rejected at compile time.
-- **Trilingual by design** — English, Tanglish, and Tamil are keyword skins
-  over one grammar; `mimz translate` converts losslessly between them.
-- **Beginner-first, measurably** — understand the basics in 1–2 hours; compile
-  a counter within 5 minutes of installing.
-
-## Who it's for (and not for)
-
-For students and the curious — Min-Mozhi is an **educational project, honestly
-framed** — and equally (`spec/01` v0.3) for modern developers who want a
-safe-by-default, ergonomic HDL, drawn by the compile-time checks rather than
-by Tamil. If you are a professional Verilog/Chisel user who needs production
-completeness, keep using Verilog/Chisel: Min-Mozhi is new, experimental, and
-not a replacement. It will, however, always emit Verilog, so nothing you build
-here is a dead end.
+  expression-oriented `if`/`match`. No `begin/end`, no preprocessor.
+- **Safe by default** — no inferred latches, silent truncation, multiple
+  drivers, uninitialized registers, or signed/unsigned mixing. Every one is a
+  compile-time error with a stable `E`-code.
+- **Trilingual by design** — English, Tanglish, and Tamil are keyword skins over
+  one grammar; `mimz translate` converts losslessly between them.
+- **Beginner-first** — understand the basics in 1–2 hours; compile a counter
+  within 5 minutes of installing.
 
 Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
-## Project Status
-
-**Phase 1 — compiler under construction (spec v0.2.5).** The front end works:
-`mimz compile` turns `.mimz` files into synthesizable Verilog today — lexer
-(all three keyword flavors), full parser, a real checker enforcing **every
-safety rule in the spec** (name resolution, const evaluation, width/type
-rules, single-driver + combinational-cycle rules, match exhaustiveness,
-instantiation completeness, clock-domain ownership — all with stable
-`E0101`-style error codes), and a Verilog emitter that unrolls `repeat`
-(compile-time hardware generation), **transliterates Tamil identifiers to
-readable ASCII** (விளக்கு → `villakku`), and emits real `wire signed`
-two's-complement semantics — with golden-file output pinning and an
-end-to-end error corpus.
-Every example exists in all four flavor folders (`english/`, `tanglish/`,
-`tamil/`, `mixed/`), compiles to **byte-identical** Verilog from each
-(CI-asserted), and the emitted Verilog is **validated by Icarus Verilog**:
-every file passes `iverilog`, and a self-checking testbench per example
-simulates Min-Mozhi's documented semantics to PASS — including exhaustive
-signed-arithmetic verification. Every diagnostic at every stage carries a
-stable `E`-code, `mimz check --json` emits machine-readable diagnostics,
-and **`mimz lsp` brings live squiggles to VS Code** (diagnostics-only v0,
-`editors/vscode`). **Every Phase 1 work item is complete** — what remains
-before going public is the Grammar Engine (Phase 1.8, decision D7). With
-288 passing tests and a benchmark harness (`mimz-bench`) that renders
-speed, accuracy, safety, and coverage into an HTML graph report.
-
-## Build, Test, Run
+## Quick start
 
 Prerequisite: [Rust](https://rustup.rs) stable ≥ 1.85.
 
 ```text
-cargo build                # build the compiler  (binary: target/debug/mimz)
-cargo test                 # run all unit + integration tests
-cargo run -- --help        # CLI help
-cargo doc --document-private-items --open   # browsable API reference
+cargo build                                   # binary: target/debug/mimz
 
-# check a file (lex + parse, teaching diagnostics):
-cargo run -- check examples/english/counter.mimz
-
-# compile to Verilog (resolves imports, writes counter.v):
-cargo run -- compile examples/english/counter.mimz -o counter.v
-
-# see the token stream (debugging):
-cargo run -- check examples/english/counter.mimz --tokens
-
-# benchmark: speed, accuracy, safety, coverage -> bench-report.html with graphs
-# (docs/code/12-benchmark.md; drop --no-cov if cargo-llvm-cov is installed):
-cargo run --release --bin mimz-bench -- --no-cov
+mimz check   examples/english/counter.mimz    # lex + parse + safety checks
+mimz compile examples/english/counter.mimz -o counter.v   # emit Verilog
+mimz sim     demo/cpu.mimz --cycles 8 -o demo/cpu.vcd     # simulate → VCD waveform
+mimz test    demo/cpu.mimz                     # run tick/expect test blocks
 ```
 
-Before committing: `cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test`
-(this is exactly what CI runs).
+> Replace `mimz` with `cargo run --` if you haven't installed the binary.
 
-Docs are checked too (needs Node.js):
+A full showcase — an accumulator CPU you can check, test, simulate, and view as a
+waveform — lives in **[`demo/`](demo/)**.
+
+Before committing (exactly what CI runs):
 
 ```text
-npx prettier --write "**/*.md"   # format markdown
-npx markdownlint-cli2            # lint markdown (config: .markdownlint-cli2.jsonc)
+cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test
 ```
 
-| Document                                                             | Contents                                                        |
-| -------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`docs/guide/`](docs/guide/README.md)                                | **Learn the language** — a from-scratch tutorial book           |
-| [`spec/01-goals-and-philosophy.md`](spec/01-goals-and-philosophy.md) | Goals, safety guarantees, non-goals, design principles          |
-| [`spec/02-syntax-and-grammar.md`](spec/02-syntax-and-grammar.md)     | Syntax tour, operators, types, formal EBNF grammar              |
-| [`spec/03-keywords-trilingual.md`](spec/03-keywords-trilingual.md)   | The trilingual keyword mechanism + draft word tables            |
-| [`spec/04-grammar-engine.md`](spec/04-grammar-engine.md)             | Grammar Engine — natural Tamil word order (Phase 1.8)           |
-| [`examples/`](examples/)                                             | 17 examples × 4 flavor folders: english, tanglish, tamil, mixed |
-| [`editors/vscode/`](editors/vscode/)                                 | VS Code syntax highlighting for `.mimz` (all three flavors)     |
-| [`docs/`](docs/README.md)                                            | Docs hub: per-phase plans, dev log, repo rules, architecture    |
-| [`docs/plan/`](docs/plan/)                                           | Detailed per-phase plans (source of truth for execution)        |
-| [`docs/architecture.md`](docs/architecture.md)                       | Compiler architecture — pipeline, components, layout            |
-| [`docs/code/`](docs/code/)                                           | How the code works — maintainer & contributor docs              |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                 | How to contribute — quick start (details in `docs/code/`)       |
-| [`docs/RULES.md`](docs/RULES.md)                                     | Repo working rules (plans, logs, spec versioning)               |
-| [`min-mozhi-roadmap.md`](min-mozhi-roadmap.md)                       | Roadmap summary (details live in `docs/plan/`)                  |
+## Status
 
-## Roadmap (short version, solo-dev order)
+**Phases 1, 1.8, and 1.5 complete — a working compiler _and_ simulator**, with
+**364 passing tests**.
 
-1. **Phase 1** — Rust compiler: lexer → parser → AST → Verilog emitter, tested with Icarus Verilog (+ VS Code syntax highlighting, CI from first commit)
-2. **Phase 1.8** — Grammar Engine: `thamizh-order` syntax profile so Tamil/Tanglish code reads in natural SOV word order
-3. **Phase 1.5** — own event-driven simulator with VCD waveform output
-4. **Phase 2** — own IR + synthesis via open toolchain (Yosys/nextpnr)
-5. **Phase 3** — native iCE40 bitstream generation
-6. **Phase 4** — stdlib (UART, SPI, PWM), package manager, docs site, community
+- **Compiler** — lexer (all three flavors) → parser → checker (every spec safety
+  rule, stable `E`-codes) → Verilog emitter (`repeat` unrolling, Tamil→ASCII
+  transliteration, real `signed` two's-complement). Every example compiles to
+  **byte-identical** Verilog from all four flavor folders and is **validated by
+  Icarus Verilog**.
+- **Simulator** — `mimz sim` runs clocked and combinational designs
+  (`--in`/`--sweep`, `--cycles`, `--trace`, deterministic `-o file.vcd`) and
+  `mimz test` runs `tick`/`expect` blocks, cross-checked against Icarus
+  bit-for-bit (`our_simulator_matches_icarus_bit_for_bit`).
+- **Tooling** — `mimz lsp` (live VS Code diagnostics), `mimz check --json`, and
+  `mimz-bench` (speed / accuracy / safety / coverage → HTML report).
+
+## Who it's for (and not for)
+
+Min-Mozhi is an **educational project, honestly framed** — built for students and
+the curious, and equally (`spec/01` v0.3) for developers who want a
+safe-by-default, ergonomic HDL and are drawn by the compile-time checks rather
+than the Tamil roots. It is new and experimental, **not** a production
+replacement: if you need the completeness of Verilog or Chisel, keep using them.
+But it always emits Verilog — so nothing you build here is a dead end.
+
+## Documentation
+
+| Where                                      | What                                                |
+| ------------------------------------------ | --------------------------------------------------- |
+| [`docs/guide/`](docs/guide/README.md)      | **Learn the language** — from-scratch tutorial book |
+| [`spec/`](spec/01-goals-and-philosophy.md) | Language spec — goals, grammar, keywords, simulator |
+| [`examples/`](examples/)                   | 17 examples × 4 flavor folders                      |
+| [`demo/`](demo/)                           | Accumulator-CPU showcase: check → test → sim → wave |
+| [`docs/`](docs/README.md)                  | Docs hub — phase plans, architecture, dev log       |
+| [`docs/code/`](docs/code/)                 | How the code works (maintainers & contributors)     |
+| [`editors/vscode/`](editors/vscode/)       | VS Code syntax highlighting for `.mimz`             |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | How to contribute                                   |
+
+## Roadmap
+
+| Phase | Status | Summary                                                         |
+| ----- | ------ | --------------------------------------------------------------- |
+| 1     | ✅     | Rust compiler: lexer → parser → AST → Verilog (Icarus-tested)   |
+| 1.8   | ✅     | Grammar Engine — natural Tamil SOV word order (`thamizh-order`) |
+| 1.5   | ✅     | Own event-driven simulator + VCD, Icarus-differentiated         |
+| 2     | ⏳     | Own IR + synthesis via open toolchain (Yosys/nextpnr)           |
+| 3     | ⏳     | Native iCE40 bitstream generation                               |
+| 4     | ⏳     | Stdlib (UART/SPI/PWM), package manager, docs site, community    |
 
 ## License
 
-MIT + Apache-2.0 dual-licensed (the Rust ecosystem norm). Free and open
-source forever — that's constitutional (`spec/01` section 4).
+MIT **+** Apache-2.0 dual-licensed (the Rust ecosystem norm). Free and open
+source forever — that's constitutional (`spec/01` § 4).
 
 ---
 
+<div align="center">
+
 _Min-Mozhi — மின்மொழி — Speak in Circuits_
+
+</div>

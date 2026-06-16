@@ -32,7 +32,8 @@ defect. (Production parsers, including rustc, all cap recursion depth.)
   conservative (an initial 256 still overflowed before tripping — the cap **must**
   suit the smallest stack the parser runs on).
 - `enter()` / `leave()` wrap the five recursion necks — `expr`, `unary`,
-  `if_expr` (`src/parser/expr.rs`), `seq_if`, `test_if` (`src/parser/items.rs`).
+  `if_expr` (`src/parser/expr.rs`), `seq_if` (`src/parser/items/seq.rs`),
+  `test_if` (`src/parser/items/test.rs`).
   On exceeding the cap, `enter()` emits the new diagnostic **E1113** once and
   returns `None`, so parsing fails cleanly instead of crashing.
 

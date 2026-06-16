@@ -19,14 +19,14 @@
 
 ## Plan files (solo-dev execution order)
 
-| Order | Phase | Plan                                                                   | Status                                                                   |
-| ----- | ----- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 1     | 0     | [`plan/phase-0-foundation.md`](plan/phase-0-foundation.md)             | 🟢 **Complete (2026-06-15)** — keyword set v1 locked                     |
-| 2     | 1     | [`plan/phase-1-verilog-backend.md`](plan/phase-1-verilog-backend.md)   | 🟢 **Complete 2026-06-12** (target was 31 Dec 2026) — v0.1.0 tag pending |
-| 3     | 1.8   | [`plan/phase-1.8-grammar-engine.md`](plan/phase-1.8-grammar-engine.md) | 🟢 **Complete (2026-06-16)** — grammar engine finalized, spec/04 stable  |
-| 4     | 1.5   | [`plan/phase-1.5-simulator.md`](plan/phase-1.5-simulator.md)           | ⚪ Not started · target 31 May 2027                                      |
-| 5     | 2     | [`plan/phase-2-ir-synthesis.md`](plan/phase-2-ir-synthesis.md)         | ⚪ Not started                                                           |
-| 6     | 3     | [`plan/phase-3-native-backend.md`](plan/phase-3-native-backend.md)     | ⚪ Not started                                                           |
-| 7     | 4     | [`plan/phase-4-ecosystem.md`](plan/phase-4-ecosystem.md)               | ⚪ Not started                                                           |
+| Order | Phase | Plan                                                                   | Status                                                                          |
+| ----- | ----- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 1     | 0     | [`plan/phase-0-foundation.md`](plan/phase-0-foundation.md)             | 🟢 **Complete (2026-06-15)** — keyword set v1 locked                            |
+| 2     | 1     | [`plan/phase-1-verilog-backend.md`](plan/phase-1-verilog-backend.md)   | 🟢 **Complete 2026-06-12** (target was 31 Dec 2026) — v0.1.0 tag pending        |
+| 3     | 1.8   | [`plan/phase-1.8-grammar-engine.md`](plan/phase-1.8-grammar-engine.md) | 🟢 **Complete (2026-06-16)** — grammar engine finalized, spec/04 stable         |
+| 4     | 1.5   | [`plan/phase-1.5-simulator.md`](plan/phase-1.5-simulator.md)           | 🟢 **Complete** — own simulator (`mimz sim`/`mimz test`), Icarus-differentiated |
+| 5     | 2     | [`plan/phase-2-ir-synthesis.md`](plan/phase-2-ir-synthesis.md)         | ⚪ Not started                                                                  |
+| 6     | 3     | [`plan/phase-3-native-backend.md`](plan/phase-3-native-backend.md)     | ⚪ Not started                                                                  |
+| 7     | 4     | [`plan/phase-4-ecosystem.md`](plan/phase-4-ecosystem.md)               | ⚪ Not started                                                                  |
 
 Status legend: ⚪ not started · 🟡 in progress · 🟢 done (per exit criteria in each plan)

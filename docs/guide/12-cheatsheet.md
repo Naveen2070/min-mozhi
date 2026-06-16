@@ -39,7 +39,8 @@ One-page reference. The authoritative sources are
 
 Reserved for future features (using one is an error): `fall`, `mem`, `sync`,
 `inout`, `struct`, `secret`, `declassify`, `default`, `pipeline`, `interface`,
-`chan`, `prove`, `await`, `fixed`, `requires`, `ensures`, `suzhal` (future
+`chan`, `prove`, `async`, `await`, `fixed`, `requires`, `ensures`, `fn` /
+`function` (future combinational functions), `suzhal` / `சுழல்` (future
 controlled `for`-loop).
 
 ## Types
@@ -121,14 +122,16 @@ Run `mimz explain <CODE>` for the full classroom version of any of these.
 `mimz <command> [file] [flags]`. Per-project defaults can live in a `mimz.toml`
 (CLI flags override it); see [the toolchain](11-toolchain.md).
 
-| Command     | Flags                                                                                                               |
-| ----------- | ------------------------------------------------------------------------------------------------------------------- |
-| `check`     | `--tokens` (dump tokens) · `--json` (machine-readable) · `--lang <flavor>`                                          |
-| `compile`   | `-o <path>` · `--lang <flavor>`                                                                                     |
-| `eval`      | `--in a=1,b=2` · `--module <M>` · `--param W=8` · `--lang <flavor>`                                                 |
-| `translate` | `--to <flavor>` · `--order code\|thamizh` · `--romanize-names` · `--names-map <f>` · `--no-names-map` · `-o <path>` |
-| `fmt`       | `--to <flavor>` · `--strict` · `-o <path>`                                                                          |
-| `explain`   | _(takes an `E`-code, case-insensitive)_                                                                             |
+| Command     | Flags                                                                                                                                                                                               |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check`     | `--tokens` (dump tokens) · `--json` (machine-readable) · `--lang <flavor>`                                                                                                                          |
+| `compile`   | `-o <path>` · `--lang <flavor>`                                                                                                                                                                     |
+| `eval`      | `--in a=1,b=2` · `--module <M>` · `--param W=8` · `--lang <flavor>`                                                                                                                                 |
+| `sim`       | `-o <path.vcd>` · `--cycles N` · `--clock <c>` · `--in a=1,b=2` · `--param W=8` · `--sweep a=0\|1,b=2` · `--module <M>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>` |
+| `test`      | `--filter <substr>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>`                                                                                                     |
+| `translate` | `--to <flavor>` · `--order code\|thamizh` · `--romanize-names` · `--names-map <f>` · `--no-names-map` · `-o <path>`                                                                                 |
+| `fmt`       | `--to <flavor>` · `--strict` · `-o <path>`                                                                                                                                                          |
+| `explain`   | _(takes an `E`-code, case-insensitive)_                                                                                                                                                             |
 
 Global: `--config <path>` points at a specific `mimz.toml`. Flavors are
 `english` / `tanglish` / `tamil` (or `en` / `tl` / `ta`).
