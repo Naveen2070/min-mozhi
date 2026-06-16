@@ -218,7 +218,10 @@ pub fn eval_outputs(
     Ok(outputs)
 }
 
-fn pick_module<'a>(file: &'a ast::File, want: Option<&str>) -> Result<&'a ast::Module, String> {
+pub(super) fn pick_module<'a>(
+    file: &'a ast::File,
+    want: Option<&str>,
+) -> Result<&'a ast::Module, String> {
     let mods: Vec<&ast::Module> = file
         .items
         .iter()
@@ -534,7 +537,7 @@ fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
 
 /// The declared (width, signed) of a hardware type, evaluating any width
 /// expression in the const environment.
-fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u32, bool), String> {
+pub(super) fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u32, bool), String> {
     match ty {
         Type::Bit => Ok((1, false)),
         Type::Bits(e) => Ok((checked_width(const_eval(e, ints)?)?, false)),
@@ -565,7 +568,7 @@ fn checked_width(n: i128) -> Result<u32, String> {
 /// run the checker (`main::eval_file`), so this is the only overflow guard on
 /// that path. The checker's `Diag` is flattened to the `String` the evaluator
 /// reports.
-fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, String> {
+pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, String> {
     let env: crate::checker::consteval::Env = ints.iter().map(|(k, v)| (k.clone(), *v)).collect();
     crate::checker::consteval::eval(e, &env).map_err(|d| d.msg)
 }

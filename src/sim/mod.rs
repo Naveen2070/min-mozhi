@@ -9,5 +9,11 @@
 //! 8.5 hardware REPL and the WASM playground ride on, so it lives in the lib
 //! and stays callable on a single module / single expression. `mimz eval` is
 //! its (experimental) CLI surface.
+//!
+//! [`elaborate`] is the first piece of the full engine (Phase 1.5, step B1): it
+//! flattens an AST module into a [`elaborate::Design`] (signals, registers,
+//! combinational drivers, sequential processes) with widths and reset values
+//! folded — the input the event-driven kernel will interpret.
 
 pub mod comb;
+pub mod elaborate;

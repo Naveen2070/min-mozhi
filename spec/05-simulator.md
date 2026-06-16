@@ -85,7 +85,25 @@ test "counter counts (await form)" for Counter(WIDTH: 4) {
   differential suite (same stimulus → compare against Icarus) and by GTKWave
   loading the file.
 
-## 5. Out of scope (v1)
+## 5. Console trace (`--trace`)
+
+Both `mimz sim` and `mimz test` accept an opt-in console trace, **off by default**
+(normal output — the VCD + run status, or the test pass/fail + messages — is
+unchanged). The tracer rides the **same per-cycle signal snapshot that feeds the
+VCD**, so the console view always matches the waveform.
+
+- `--trace` — an every-cycle table (one row per clock cycle, columns = signals).
+- `--trace=changes` — print a line only when a watched signal changes
+  (`$monitor`-style; compact on long or idle runs).
+- **Scope:** default is interface + state (inputs, outputs, registers).
+  `--verbose` widens to all signals (incl. internal wires); `--signals <a,b,…>`
+  selects an explicit subset (unknown names are a clean error).
+
+This is a CLI/observation feature only — no language surface, no synthesizable
+output. (`sim::fatal` / `sim::warn`, deferred below, are a separate user-log
+feature, not this uniform engine-driven trace.)
+
+## 6. Out of scope (v1)
 
 - 4-state (X/Z) simulation; `real`/`time` value types.
 - `sim::fatal` / `sim::warn` simulation-only assertions — deferred to a later
