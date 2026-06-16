@@ -1,0 +1,14 @@
+# Standalone dev-tool crate behind `cargo test-summary` (alias in
+# `.cargo/config.toml`). Deliberately NOT a member of the root `mimz` package /
+# workspace and built into its OWN target dir, so the main `cargo test` it wraps
+# never rebuilds this (a running) executable — which on Windows would fail with
+# "Access is denied" on the locked .exe.
+[package]
+name = "test-summary"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "test-summary"
+path = "src/main.rs"

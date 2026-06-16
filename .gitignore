@@ -1,6 +1,7 @@
 # Rust
 /target/
 **/*.rs.bk
+**/target/
 
 # Generated outputs (compiler artifacts during development)
 /build/

@@ -1,0 +1,9 @@
+# Cargo aliases for this repo. `cargo test-summary [args]` runs the whole suite
+# and prints a per-binary breakdown + grand total (see src/bin/test-summary.rs).
+# All `cargo test` args are forwarded, e.g.:
+#   cargo test-summary
+#   cargo test-summary --release
+#   cargo test-summary --test sim
+# Set REQUIRE_IVERILOG=1 in the env to make the Icarus differential mandatory.
+[alias]
+test-summary = "run --quiet --manifest-path tools/test-summary/Cargo.toml --"
