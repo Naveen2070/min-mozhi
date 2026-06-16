@@ -8,10 +8,13 @@ mimz compile examples/english/alu.mimz -o alu.v
 
 ## Step 0 — CLI dispatch (`src/main.rs`)
 
-`main.rs` is **CLI-only** on purpose: clap parsing, the two subcommands
-(`check`, `compile`), and exit codes. No compilation logic lives there, so
-the pipeline can later be reused by other frontends (LSP, web playground)
-without untangling it from the terminal.
+`main.rs` is **CLI-only** on purpose: clap parsing, subcommand dispatch
+(`check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`), config
+resolution, and exit codes. Each subcommand's handler lives in its own file
+under `src/commands/` (`check.rs`, `compile.rs`, …) — `main.rs` only parses
+args and calls them. No compilation logic lives there, so the pipeline can later
+be reused by other frontends (LSP, web playground) without untangling it from
+the terminal.
 
 - `mimz check file` → lex + parse one file, print diagnostics, exit code.
 - `mimz check file --tokens` → stop after the lexer, dump the token stream

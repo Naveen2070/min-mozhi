@@ -126,6 +126,46 @@ fn spec_03_keyword_table_matches_keywords_toml() {
     }
 }
 
+/// Old spellings replaced by the v1 native keyword set (both Tanglish and Tamil).
+/// Whole-word matching means `veli` here cannot false-match `veliyeedu`. Shared
+/// by the spec/04 scan and the keywords.toml reintroduction guard below.
+const SUPERSEDED: &[&str] = &[
+    "ulle",
+    "veli",
+    "nilai",
+    "kadigaram",
+    "meetamai",
+    "endral",
+    "illaiyel",
+    "poruthu",
+    "vai",
+    "maara",
+    "unmai",
+    "thattu",
+    "ethirpaar",
+    "illa",
+    "உள்",
+    "வெளி",
+    "நிலை",
+    "கடிகாரம்",
+    "என்றால்",
+    "பொருத்து",
+    "இல்லையேல்",
+    "வை",
+    "மாறா",
+    "உண்மை",
+    "தட்டு",
+    "எதிர்பார்",
+    "இல்லா",
+];
+
+/// A char is part of a "word" if it is alphanumeric, `_`, or any Tamil-block
+/// codepoint (U+0B80..=U+0BFF) — the latter keeps combining marks (pulli, vowel
+/// signs) attached so `என்றால்` stays one token, not split at `்`.
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || ('\u{0B80}'..='\u{0BFF}').contains(&c)
+}
+
 /// spec/04 (the grammar-engine spec) shows worked examples in Tamil/Tanglish
 /// keywords, but — unlike spec/03 — it is NOT covered by the table-sync test
 /// above and carries no "v1: was `X`" changelog annotations. It silently drifted
@@ -135,43 +175,6 @@ fn spec_03_keyword_table_matches_keywords_toml() {
 /// changelog, so it must not be scanned here.
 #[test]
 fn spec_04_uses_no_superseded_keyword_spellings() {
-    // A char is part of a "word" if it is alphanumeric, `_`, or any Tamil-block
-    // codepoint (U+0B80..=U+0BFF) — the latter keeps combining marks (pulli,
-    // vowel signs) attached so `என்றால்` stays one token, not split at `்`.
-    fn is_word(c: char) -> bool {
-        c.is_alphanumeric() || c == '_' || ('\u{0B80}'..='\u{0BFF}').contains(&c)
-    }
-    // Old spellings replaced by the v1 native set (both Tanglish and Tamil).
-    // Whole-word matching means `veli` here cannot false-match `veliyeedu`.
-    const SUPERSEDED: &[&str] = &[
-        "ulle",
-        "veli",
-        "nilai",
-        "kadigaram",
-        "meetamai",
-        "endral",
-        "illaiyel",
-        "poruthu",
-        "vai",
-        "maara",
-        "unmai",
-        "thattu",
-        "ethirpaar",
-        "illa",
-        "உள்",
-        "வெளி",
-        "நிலை",
-        "கடிகாரம்",
-        "என்றால்",
-        "பொருத்து",
-        "இல்லையேல்",
-        "வை",
-        "மாறா",
-        "உண்மை",
-        "தட்டு",
-        "எதிர்பார்",
-        "இல்லா",
-    ];
     let spec =
         fs::read_to_string(root().join("spec/04-grammar-engine.md")).expect("spec/04 exists");
     for token in spec.split(|c: char| !is_word(c)).filter(|s| !s.is_empty()) {
@@ -180,6 +183,29 @@ fn spec_04_uses_no_superseded_keyword_spellings() {
             "spec/04-grammar-engine.md uses the superseded keyword `{token}` — \
              sync its examples to the v1 spellings in keywords.toml"
         );
+    }
+}
+
+/// The source-of-truth guard: a superseded spelling must never reappear in
+/// `keywords.toml` itself — as a canonical spelling OR any `*_aliases` entry. A
+/// future "add `ulle` back for compatibility" would reintroduce the dialect the
+/// v1 lock removed; this fails at the table, not just in one doc.
+#[test]
+fn keywords_toml_has_no_superseded_spelling() {
+    let t = table();
+    for (key, s) in t.keywords {
+        let all = [&s.en, &s.tanglish, &s.tamil]
+            .into_iter()
+            .chain(&s.en_aliases)
+            .chain(&s.tanglish_aliases)
+            .chain(&s.tamil_aliases);
+        for sp in all {
+            assert!(
+                !SUPERSEDED.contains(&sp.as_str()),
+                "keywords.toml maps `{key}` to the superseded v1 spelling `{sp}` — \
+                 a superseded word must not return as a keyword or alias"
+            );
+        }
     }
 }
 

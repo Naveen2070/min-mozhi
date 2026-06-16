@@ -6,7 +6,10 @@
 > signed), CLI (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`,
 > `--json`), LSP v0, all Icarus-validated. The full simulator and IR are
 > still design (`eval` is the combinational slice only).
-> Last updated: 2026-06-15 (code-split: parser `items/`, `commands/`, bench `metrics/`)
+> Last updated: 2026-06-16 (Phase 0 closed + keyword set v1 locked 2026-06-15;
+> native-authored Tamil/Tanglish error catalog with structured-arg interpolation,
+> `messages.toml`, 33/36 codes — PR #16; behavior-preserving code-split: parser
+> `items/`, `commands/`, bench `metrics/` — PR #17)
 
 ---
 

@@ -344,6 +344,24 @@ mod tests {
     }
 
     #[test]
+    fn arg_code_without_args_falls_back_to_english() {
+        // E0401's template needs {expected}/{found}; a Diag carrying NO args
+        // leaves them unfilled, so the leftover `{` must trip the English
+        // fallback (localized_msg → None), never print a literal `{expected}`.
+        let d = Diag::new(crate::span::Span::new(0, 1), "msg").with_code("E0401");
+        assert_eq!(localized_msg(&d, "y", Flavor::Tamil), None);
+    }
+
+    #[test]
+    fn fill_with_empty_name_leaves_no_stray_fragment() {
+        // A nameless span (empty `name`) must not produce a bare suffix or a
+        // dangling `{name}` — it interpolates to empty.
+        assert_eq!(fill("[{name}] ok", "", &[], Flavor::Tamil), "[] ok");
+        // A bare {name} template with a real name still fills.
+        assert_eq!(fill("{name}!", "kannakki", &[], Flavor::Tamil), "kannakki!");
+    }
+
+    #[test]
     fn majority_breaks_ties_toward_the_earliest_keyword_column() {
         // Equal keyword counts → the earliest column wins (en < tl < ta). Each
         // word below is the `module` keyword in a different flavor (keywords.toml),

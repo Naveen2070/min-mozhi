@@ -79,7 +79,12 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-15 (adds: the `config` module — `mimz.toml`
+_Last synced with the code: 2026-06-16 (Phase 0 closed + **keyword set v1
+locked** 2026-06-15; the **native-authored Tamil/Tanglish error catalog** shipped
+(decision C3 ratified) — `messages.toml` + structured-arg interpolation through
+`Diag::with_arg`/`Checker::err_args`, 33 of 36 checker codes localized (pages 6,
+13); no longer a stub. A docs-currency pass refreshed pages 1, 6, 13, the test map
+(page 10), and this stamp. Prior 2026-06-15 (adds: the `config` module — `mimz.toml`
 project defaults for CLI flags, discovered by walking up from the input file,
 with precedence CLI › config › default (page 13); and reversible romanization +
 auto name-map discovery on `mimz translate`. A same-day fuzz/security audit then

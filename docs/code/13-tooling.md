@@ -137,11 +137,17 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
   verbatim. So uncovered codes are byte-identical to before — proven by
   `tests/morph.rs::uncovered_code_is_identical_across_languages`. JSON diagnostics
   stay English (the machine contract in `06-diagnostics.md` is unchanged).
-- **Stub / panel-gated.** The localized catalog (`MESSAGES`) holds ONE worked
-  shape (E0501) so the select → catalog → inflect → render path is real and
-  tested; the full Tamil + Tanglish catalog and the final sandhi rules await the
-  native-speaker panel (decision C3). The committed join rule is minimal and
-  marked PROVISIONAL.
+- **Native-speaker-authored (decision C3 ratified, 2026-06-15).** The localized
+  catalog (`MESSAGES`, loaded once via `LazyLock` from `messages.toml`) and the
+  sandhi rules in `case_suffixes.toml` came from native-speaker review — no longer
+  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 36 checker codes**;
+  E0403/E0404/E0405 are deferred (each emits many distinct message shapes — English
+  kept, the Tamil drafts preserved as comments in `messages.toml`). Templates also
+  interpolate **structured args** the checker attaches via `Diag::with_arg`
+  (`Checker::err_args`): `{expected}/{found}` (E0401), `{op}/{lhs}/{rhs}` (E0402),
+  `{first}/{second}` (E0408), `{type}` (E0601). A leftover `{` in a rendered
+  template forces the English fallback, so a typo'd placeholder fails safe (guarded
+  by `tests/morph.rs::message_catalog_placeholders_are_known_tokens`).
 - **Consumers.** `check`/`compile`/`eval` (`--lang`) and the **LSP** all localize
   through `morph::localized_msg` with `majority_flavor` — editors get the same
   flavored diagnostics as the CLI (`src/lsp.rs` `to_lsp`). JSON output stays
@@ -207,8 +213,8 @@ strict = true
 These are intentionally small slices, not finished features: `explain` grows one
 code at a time, `translate`/`pretty` cover keyword flavor and the four landed
 word-order flips (the test-form flip is still ahead), `morph` ships the
-selection + inflection mechanism with a stub catalog (the human-authored
-catalog + final sandhi are panel-gated, C3), and `sim::comb` is combinational
+selection + inflection mechanism with the native-authored catalog (33 of 36
+codes; C3 ratified 2026-06-15), and `sim::comb` is combinational
 only (the kernel is Phase 1.5). Each
 documents its own limits in its module header so the honesty rule (spec/01)
 holds for the tooling too.

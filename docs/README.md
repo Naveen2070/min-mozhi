@@ -21,7 +21,7 @@
 
 | Order | Phase | Plan                                                                   | Status                                                                   |
 | ----- | ----- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 1     | 0     | [`plan/phase-0-foundation.md`](plan/phase-0-foundation.md)             | 🟢 Mostly complete                                                       |
+| 1     | 0     | [`plan/phase-0-foundation.md`](plan/phase-0-foundation.md)             | 🟢 **Complete (2026-06-15)** — keyword set v1 locked                     |
 | 2     | 1     | [`plan/phase-1-verilog-backend.md`](plan/phase-1-verilog-backend.md)   | 🟢 **Complete 2026-06-12** (target was 31 Dec 2026) — v0.1.0 tag pending |
 | 3     | 1.8   | [`plan/phase-1.8-grammar-engine.md`](plan/phase-1.8-grammar-engine.md) | 🟡 In progress — keystone landed 2026-06-13 · target 28 Feb 2027         |
 | 4     | 1.5   | [`plan/phase-1.5-simulator.md`](plan/phase-1.5-simulator.md)           | ⚪ Not started · target 31 May 2027                                      |

@@ -1,11 +1,14 @@
 //! Error-language plumbing (Phase 1.8, spec/04 §5): selection + inflection +
-//! the additive English-fallback render path, end-to-end through the CLI.
+//! structured-arg interpolation + the additive English-fallback render path,
+//! end-to-end through the CLI.
 //!
-//! The localized catalog is a STUB (one shape, E0501, pending the C3 panel), so
-//! these tests assert the MECHANISM — that the right flavor is chosen, that the
-//! interpolated identifier is inflected, and crucially that any code the catalog
-//! does NOT cover renders exactly as it did before (English, byte-for-byte) —
-//! not the linguistic correctness of the stub strings.
+//! The localized catalog is now the native-authored one (`messages.toml`, 33 of
+//! 36 codes, decision C3 ratified 2026-06-15), so these tests assert the
+//! MECHANISM — that the right flavor is chosen, that the interpolated identifier
+//! is inflected and the structured args (`{expected}`/`{op}`/`{type}`/…) are
+//! filled, and crucially that any code the catalog does NOT cover (E0403/E0404/
+//! E0405) renders exactly as before (English, byte-for-byte) — not the linguistic
+//! correctness of the catalog strings.
 
 use std::fs;
 use std::path::PathBuf;
@@ -226,6 +229,61 @@ fn e0401_interpolates_expected_and_found() {
     );
 }
 
+/// E0402 carries `{op}`/`{lhs}`/`{rhs}` — an unequal-width binary op localizes
+/// with the operator token and both operand widths interpolated.
+#[test]
+fn e0402_interpolates_op_lhs_rhs() {
+    let src = "module M {\n  in a: bits[4]\n  in b: bits[8]\n  out y: bits[8]\n  y = a +% b\n}\n";
+    let err = check_stderr(src, Some("ta"));
+    assert!(
+        err.contains("error[E0402]:")
+            && err.contains("`+%`")
+            && err.contains("bits[4]")
+            && err.contains("bits[8]")
+            && err.contains("அகலங்கள்"),
+        "expected localized Tamil E0402 with op/lhs/rhs interpolated, got:\n{err}"
+    );
+    assert!(
+        !err.contains("{op}") && !err.contains("{lhs}") && !err.contains("{rhs}"),
+        "no template token may leak:\n{err}"
+    );
+}
+
+/// E0408 carries `{first}`/`{second}` — disagreeing `if`-arms in a width-inferred
+/// (operand) position localize with both arm types interpolated.
+#[test]
+fn e0408_interpolates_first_and_second() {
+    let src = "module M {\n  in c: bit\n  in a: bits[4]\n  in b: bits[8]\n  out y: bits[8]\n  y = (if c { a } else { b }) | b\n}\n";
+    let err = check_stderr(src, Some("ta"));
+    assert!(
+        err.contains("error[E0408]:")
+            && err.contains("bits[4]")
+            && err.contains("bits[8]")
+            && err.contains("மாறுபடுகின்றன"),
+        "expected localized Tamil E0408 with first/second interpolated, got:\n{err}"
+    );
+    assert!(
+        !err.contains("{first}") && !err.contains("{second}"),
+        "no template token may leak:\n{err}"
+    );
+}
+
+/// E0601 carries `{type}` — a non-exhaustive `match` localizes with the
+/// scrutinee type interpolated.
+#[test]
+fn e0601_interpolates_type() {
+    let src = "module M {\n  in sel: bits[2]\n  out y: bits[8]\n  y = match sel {\n    0b00 => 1\n    0b01 => 2\n  }\n}\n";
+    let err = check_stderr(src, Some("ta"));
+    assert!(
+        err.contains("error[E0601]:") && err.contains("bits[2]") && err.contains("உள்ளடக்கவில்லை"),
+        "expected localized Tamil E0601 with type interpolated, got:\n{err}"
+    );
+    assert!(
+        !err.contains("{type}"),
+        "no template token may leak:\n{err}"
+    );
+}
+
 // ---- Catalog completeness guard ----------------------------------------
 
 /// Every `[message.Exxxx]` key in `messages.toml` must be a real checker code.
@@ -249,6 +307,50 @@ fn message_catalog_keys_are_real_checker_codes() {
             "messages.toml localizes `{code}`, which is not a checker code in \
              diag::ALL_CHECKER_CODES — fix the typo or remove the entry"
         );
+    }
+}
+
+/// Every `{token}` placeholder in `messages.toml` must be one `morph::fill`
+/// actually fills — the `{name}`/`{name.*}` identifier tokens or a structured
+/// arg key wired in the checker. A typo (`{expcted}`) or an arg no diagnostic
+/// supplies would silently never fill, leaving the leftover `{` to force English
+/// fallback FOREVER — a dead localization no other test would notice. This fails
+/// naming the bad token. (Comment/doc lines in the file use only known tokens, so
+/// scanning the whole file is fine and also guards the doc examples.)
+#[test]
+fn message_catalog_placeholders_are_known_tokens() {
+    const KNOWN: &[&str] = &[
+        "name",
+        "name.acc",
+        "name.dat",
+        "name.loc",
+        "name.inst", // identifier
+        "expected",
+        "found",
+        "op",
+        "lhs",
+        "rhs",
+        "first",
+        "second",
+        "type", // structured args
+    ];
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("messages.toml");
+    let toml = fs::read_to_string(&path).expect("messages.toml exists");
+    // Only ACTIVE template lines — skip `#` comments (doc header + the
+    // commented-out DEFERRED examples legitimately mention `{reason}`/`{token}`).
+    for line in toml.lines().filter(|l| !l.trim_start().starts_with('#')) {
+        let mut rest = line;
+        while let Some(open) = rest.find('{') {
+            rest = &rest[open + 1..];
+            let Some(close) = rest.find('}') else { break };
+            let token = &rest[..close];
+            assert!(
+                KNOWN.contains(&token),
+                "messages.toml has placeholder `{{{token}}}` that morph::fill does not \
+                 fill — fix the typo, or wire the arg via Diag::with_arg and add it to KNOWN"
+            );
+            rest = &rest[close + 1..];
+        }
     }
 }
 
