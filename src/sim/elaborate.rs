@@ -288,7 +288,14 @@ fn elaborate_module(
                 }
             }
             ModuleItem::Clock(n) => clocks.push(n.name.clone()),
-            ModuleItem::Reset(n) => resets.push(n.name.clone()),
+            // The cycle-based kernel applies reset at the clock edge; an async
+            // reset is observationally identical at the per-cycle sample points
+            // (sub-cycle timing is out of the kernel's model), so `is_async` is
+            // an emitter-only distinction and the sim just records the name. The
+            // path to modeling sub-cycle reset timing is the three-tier fidelity
+            // roadmap in docs/plan/phase-1.5-simulator.md (currently Tier 3:
+            // delegate timing-faithful runs to the Verilog/Icarus oracle).
+            ModuleItem::Reset { name: n, .. } => resets.push(n.name.clone()),
             ModuleItem::Wire { name, ty, init } => {
                 wires.push(Signal {
                     name: name.name.clone(),

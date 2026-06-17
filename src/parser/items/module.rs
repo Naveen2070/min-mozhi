@@ -83,7 +83,23 @@ impl Parser {
                 self.bump();
                 let name = self.ident("a reset name")?;
                 self.terminator();
-                Some(ModuleItem::Reset(name))
+                Some(ModuleItem::Reset {
+                    name,
+                    is_async: false,
+                })
+            }
+            TokKind::Kw(Kw::Async) => {
+                self.bump();
+                self.expect(
+                    TokKind::Kw(Kw::Reset),
+                    "`reset` — `async` modifies a reset declaration (`async reset rst`)",
+                )?;
+                let name = self.ident("a reset name")?;
+                self.terminator();
+                Some(ModuleItem::Reset {
+                    name,
+                    is_async: true,
+                })
             }
             TokKind::Kw(Kw::Wire) => {
                 self.bump();

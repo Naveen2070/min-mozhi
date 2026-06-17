@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.11.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.12.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -56,6 +56,11 @@ Rules on display:
 - `clock` / `reset` are dedicated declarations, not ordinary `bit` inputs.
   Reset behavior is generated automatically from each register's reset value.
   A module that declares any `reg` **must** declare a `reset`.
+- Reset is **synchronous, active-high** by default (`reset rst`): registers take
+  their reset value on the clock edge while `rst` is high. Prefix `async`
+  (`async reset rst`) for an **asynchronous** reset — the register clears the
+  instant `rst` is asserted, lowering to `always @(posedge clk or posedge rst)`.
+  (`async`'s Tanglish/Tamil spellings are provisional, pending native review.)
 - `reg name: type = resetValue` — the reset value is **mandatory**. No
   uninitialized state.
 - `on rise(clk) { ... }` (and `on fall(clk) { ... }`) is the only place
@@ -466,7 +471,7 @@ moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
 
 portDecl    = ( "in" | "out" ) IDENT ":" type NEWLINE ;
 clockDecl   = "clock" IDENT NEWLINE ;
-resetDecl   = "reset" IDENT NEWLINE ;
+resetDecl   = [ "async" ] "reset" IDENT NEWLINE ;
 wireDecl    = "wire" IDENT ":" type "=" expr NEWLINE ;
 regDecl     = "reg"  IDENT ":" type "=" constExpr NEWLINE ;
 memDecl     = "mem"  IDENT ":" type "[" constExpr "]" "=" constExpr NEWLINE ;
@@ -566,6 +571,16 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.12 (2026-06-17):** **Asynchronous reset** added (section 1.2) — prefix a
+  reset declaration with `async` (`async reset rst`) to widen every always-block
+  that uses it to `@(posedge clk or posedge rst)`; a plain `reset` stays
+  synchronous (the default). Active-high only for this cut (active-low polarity is
+  deferred — no polarity keyword is reserved yet). `async` was promoted from
+  reserved to an active keyword (KW_ASYNC; Tanglish/Tamil provisional). Additive.
+  Grammar `resetDecl` gained the optional `async`. The cycle-based kernel models
+  async and sync reset identically at its per-cycle sample points (sub-cycle
+  timing is out of scope); the distinction lives in the emitted Verilog. Covered
+  by the `async_reset` four-flavor example (kernel == VCD == Icarus).
 - **v0.2.11 (2026-06-17):** **Memories `mem`** added (new section 1.11) — an
   addressable array `mem name: <element>[DEPTH] = init`, with a combinational
   indexed read (`m[addr]`) and a clocked indexed write (`m[addr] <- v`); lowers

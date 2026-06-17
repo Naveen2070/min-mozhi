@@ -21,7 +21,7 @@ version = 1
 # (spec/03 section "Reserved words").
 reserved = [
   "sync", "inout", "struct",
-  "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "async", "await",
+  "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "await",
   "fixed", "requires", "ensures",
   # Combinational functions (Phase 2 RTL parity; also unblocks the pipe `|>`).
   # Both spellings reserved pre-v0.1.0 freeze so no program can claim either;
@@ -78,6 +78,17 @@ tamil = "துடிப்பு"
 en = "reset"
 tanglish = "meettamai"
 tamil = "மீட்டமை"
+
+# Asynchronous-reset modifier (`async reset rst` → Verilog `always @(… or posedge rst)`).
+# The Tanglish/Tamil spellings here are PROVISIONAL dev/testing placeholders —
+# `otthisaivatra`/`ஒத்திசைவற்ற` ("non-synchronous", the negation of synchrony
+# `ஒத்திசைவு`) — pending native-speaker review (R9/R11). Founder-authorized
+# 2026-06-17 so the four-flavor tooling works now; native review confirms or
+# replaces them before the v0.1.0 freeze.
+[keywords.async]
+en = "async"
+tanglish = "otthisaivatra"
+tamil = "ஒத்திசைவற்ற"
 
 [keywords.on]
 en = "on"

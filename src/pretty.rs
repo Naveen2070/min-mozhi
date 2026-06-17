@@ -182,8 +182,12 @@ impl Pretty {
                 let s = format!("{} {}", self.kw(Kw::Clock), c.name);
                 self.line(&s);
             }
-            ModuleItem::Reset(r) => {
-                let s = format!("{} {}", self.kw(Kw::Reset), r.name);
+            ModuleItem::Reset { name: r, is_async } => {
+                let s = if *is_async {
+                    format!("{} {} {}", self.kw(Kw::Async), self.kw(Kw::Reset), r.name)
+                } else {
+                    format!("{} {}", self.kw(Kw::Reset), r.name)
+                };
                 self.line(&s);
             }
             ModuleItem::Wire { name, ty, init } => {

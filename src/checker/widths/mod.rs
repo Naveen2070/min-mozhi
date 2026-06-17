@@ -317,7 +317,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Clock(n) => {
                     cx.sigs.insert(n.name.clone(), Ty::Clock);
                 }
-                ModuleItem::Reset(n) => {
+                ModuleItem::Reset { name: n, .. } => {
                     cx.sigs.insert(n.name.clone(), Ty::Reset);
                 }
                 ModuleItem::Repeat(r) => {
@@ -483,7 +483,7 @@ impl<'a> Checker<'a> {
                 }
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
-                | ModuleItem::Reset(_)
+                | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
                 | ModuleItem::Enum(_) => {}
             }

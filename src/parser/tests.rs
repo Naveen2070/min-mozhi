@@ -94,6 +94,40 @@ fn a_mem_without_an_init_value_is_e1104() {
 }
 
 #[test]
+fn async_reset_parses_with_the_async_flag() {
+    let f = parse_ok("module M {\n  clock clk\n  async reset rst\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let is_async = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::Reset { is_async, .. } => Some(*is_async),
+            _ => None,
+        })
+        .expect("a reset declaration");
+    assert!(is_async, "`async reset` should set is_async");
+}
+
+#[test]
+fn a_plain_reset_is_synchronous() {
+    let f = parse_ok("module M {\n  clock clk\n  reset rst\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let is_async = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::Reset { is_async, .. } => Some(*is_async),
+            _ => None,
+        })
+        .expect("a reset declaration");
+    assert!(!is_async, "a plain `reset` stays synchronous");
+}
+
+#[test]
 fn thamizh_order_on_fall_parses_to_the_fall_edge() {
     // `irakkam(clk) pothu { }` — the thamizh-order falling-edge block.
     let f = parse_ok(

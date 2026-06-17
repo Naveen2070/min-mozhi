@@ -110,8 +110,13 @@ pub enum ModuleItem {
     /// `clock clk` — clocks are a dedicated type, never plain bits (safety
     /// rule: clock-domain typing).
     Clock(Ident),
-    /// `reset rst` — synchronous, active-high (v0.2).
-    Reset(Ident),
+    /// `reset rst` (synchronous, active-high) or `async reset rst`
+    /// (asynchronous). `is_async` widens every always-block that uses this
+    /// reset to `@(… or posedge rst)`; polarity stays active-high (v0.2).
+    Reset {
+        name: Ident,
+        is_async: bool,
+    },
     /// `wire name: type = expr` — declared and driven in one statement;
     /// an undriven wire cannot be written.
     Wire {

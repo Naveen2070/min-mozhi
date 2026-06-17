@@ -283,7 +283,7 @@ impl<'a> Checker<'a> {
                 }
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
-                | ModuleItem::Reset(_)
+                | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
                 | ModuleItem::Enum(_) => {}
             }

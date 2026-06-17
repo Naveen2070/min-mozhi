@@ -1,0 +1,18 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): a counter with an asynchronous reset.
+// `ஒத்திசைவற்ற மீட்டமை rst` (async reset) clears the register the instant
+// `rst` is asserted, not at the next clock edge. Reset is active-high.
+
+தொகுதி ACounter {
+  துடிப்பு clk
+  ஒத்திசைவற்ற மீட்டமை rst
+
+  வெளியீடு count: bits[8]
+
+  பதிவேடு value: bits[8] = 0
+
+  போது ஏற்றம்(clk) {
+    value <- value +% 1
+  }
+
+  count = value
+}

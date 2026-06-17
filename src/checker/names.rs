@@ -144,7 +144,7 @@ impl<'a> Checker<'a> {
                     self.declare(file, sc, name, bind);
                 }
                 ModuleItem::Clock(n) => self.declare(file, sc, n, Bind::Clock),
-                ModuleItem::Reset(n) => self.declare(file, sc, n, Bind::Reset),
+                ModuleItem::Reset { name: n, .. } => self.declare(file, sc, n, Bind::Reset),
                 ModuleItem::Wire { name, .. } => self.declare(file, sc, name, Bind::Wire),
                 ModuleItem::Reg { name, .. } => self.declare(file, sc, name, Bind::Reg),
                 ModuleItem::Mem { name, .. } => self.declare(file, sc, name, Bind::Mem),
@@ -239,7 +239,7 @@ impl<'a> Checker<'a> {
                     };
                 }
                 ModuleItem::Clock(_)
-                | ModuleItem::Reset(_)
+                | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
                 | ModuleItem::Enum(_) => {}
             }
@@ -280,7 +280,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Reg { name, .. } => (name.span, "a register"),
                 ModuleItem::Mem { name, .. } => (name.span, "a memory"),
                 ModuleItem::Clock(n) => (n.span, "a clock"),
-                ModuleItem::Reset(n) => (n.span, "a reset"),
+                ModuleItem::Reset { name: n, .. } => (n.span, "a reset"),
                 ModuleItem::Const(c) => (c.name.span, "a const"),
                 ModuleItem::Enum(e) => (e.name.span, "an enum"),
                 ModuleItem::On(on) => (on.span, "an `on` block"),
@@ -403,7 +403,7 @@ impl<'a> Checker<'a> {
                     name,
                     ..
                 } => outputs.push(&name.name),
-                ModuleItem::Clock(n) | ModuleItem::Reset(n) => implicit.push(&n.name),
+                ModuleItem::Clock(n) | ModuleItem::Reset { name: n, .. } => implicit.push(&n.name),
                 _ => {}
             }
         }

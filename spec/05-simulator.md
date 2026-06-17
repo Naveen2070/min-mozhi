@@ -142,6 +142,16 @@ feature, not this uniform engine-driven trace.)
 ## 6. Out of scope (v1)
 
 - 4-state (X/Z) simulation; `real`/`time` value types.
+- **Sub-cycle / clock-independent timing.** The kernel samples once per clock
+  period, so an `async reset` is modeled as ≡ a sync reset at the sample points —
+  it does not show a reset landing **between** edges. The async behavior is
+  realized faithfully in the emitted Verilog (`always @(… or posedge rst)`) and
+  confirmed by the Icarus differential under clock-aligned stimulus; sub-cycle
+  reset timing (recovery/removal, metastability) is a timing-closure concern, not
+  RTL-functional. This shares the Tier-2 "higher-fidelity engine" with X/Z above.
+  The concrete path to higher fidelity is the **three-tier roadmap in
+  [`docs/plan/phase-1.5-simulator.md`](../docs/plan/phase-1.5-simulator.md)**
+  (current status: Tier 3 — delegate timing-faithful runs to the Verilog oracle).
 - `sim::fatal` / `sim::warn` simulation-only assertions — deferred to a later
   increment (`expect` covers test pass/fail for now).
 - Step-back ("time-travel") debugging — post-v1 stretch.

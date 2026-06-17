@@ -669,7 +669,7 @@ fn differential_m(
 fn item_ident(it: &ModuleItem) -> Option<String> {
     match it {
         ModuleItem::Port { name, .. } => Some(name.name.clone()),
-        ModuleItem::Clock(n) | ModuleItem::Reset(n) => Some(n.name.clone()),
+        ModuleItem::Clock(n) | ModuleItem::Reset { name: n, .. } => Some(n.name.clone()),
         _ => None,
     }
 }
@@ -723,6 +723,10 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/dual_edge.mimz", &[], &[("d", 1)], 8);
     // Blinker at a tiny LIMIT so `led` actually toggles within the run.
     differential(&bin, "english/blinker.mimz", &[("LIMIT", 3)], &[], 12);
+    // Async reset (A5): `always @(posedge clk or posedge rst)`. Under the
+    // clock-aligned default stimulus the kernel (reset at the edge) and the
+    // async Verilog agree at every sample point.
+    differential(&bin, "english/async_reset.mimz", &[], &[], 20);
     // Combinational (generated input vectors).
     differential(&bin, "english/adder.mimz", &[], &[], 8);
     differential(&bin, "english/comparator.mimz", &[], &[], 8);

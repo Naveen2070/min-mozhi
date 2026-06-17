@@ -142,7 +142,8 @@ Tamil grammar. Declarations, expressions, operators, and types stay identical
 Unchanged in both profiles: `module/thoguthi`, port/wire/reg/mem declarations,
 `let` instantiation, `enum`, assignments (`=`, `<-`), all operators, all types.
 (A `mem`/`ninaivagam` declaration is order-free like `reg`; its indexed read and
-`<-` write reuse the same productions in both profiles.)
+`<-` write reuse the same productions in both profiles. An `async`/`ஒத்திசைவற்ற`
+reset modifier prefixes the reset declaration identically in both profiles.)
 
 ### The counter, thamizh-order Tanglish
 

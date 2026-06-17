@@ -17,6 +17,7 @@ pub enum Kw {
     Mem,
     Clock,
     Reset,
+    Async,
     On,
     Rise,
     Fall,

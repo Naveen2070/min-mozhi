@@ -87,10 +87,10 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 30] = [
-    "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "on", "rise", "fall", "if",
-    "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test", "for",
-    "tick", "expect", "and", "or", "not", "syntax", "thamizh",
+const REQUIRED_KEYS: [&str; 31] = [
+    "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
+    "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
+    "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -162,6 +162,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "mem" => Kw::Mem,
         "clock" => Kw::Clock,
         "reset" => Kw::Reset,
+        "async" => Kw::Async,
         "on" => Kw::On,
         "rise" => Kw::Rise,
         "fall" => Kw::Fall,
@@ -251,7 +252,6 @@ mod tests {
             "interface",
             "chan",
             "prove",
-            "async",
             "await",
         ] {
             assert!(

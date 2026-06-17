@@ -11,10 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**396 tests** as of 2026-06-17: 261 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
+**401 tests** as of 2026-06-17: 266 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-17 A5 asynchronous reset `async reset` (pre-v0.1.0 RTL-parity batch) — `async` promoted from reserved to an active keyword KW_ASYNC (Tanglish/Tamil `otthisaivatra`/`ஒத்திசைவற்ற` PROVISIONAL, pending native review). `ModuleItem::Reset` became `{ name, is_async }`; the emitter widens the sensitivity list to `@(posedge clk or posedge rst)` for an async reset. Active-high only (active-low polarity deferred). The cycle-based kernel is unchanged — async and sync reset are observationally identical at per-cycle sample points, so it's an emitter-only distinction. +5 lib unit (lexer `async_is_an_active_keyword`; parser `async_reset_parses_with_the_async_flag`, `a_plain_reset_is_synchronous`; emitter `async_reset_widens_the_sensitivity_list`, `a_sync_reset_stays_clock_only`). New four-flavor `async_reset` example (`BASE_EXAMPLES` 21 → 22, golden + the Icarus three-way differential). Spec `02` → v0.2.12, `03` → v0.2.10. Suite 396 → 401.
 - 2026-06-17 A4 memories `mem` (pre-v0.1.0 RTL-parity batch) — `mem` promoted from reserved to an active keyword KW_MEM (Tanglish/Tamil `ninaivagam`/`நினைவகம்` PROVISIONAL, pending native review). New `ModuleItem::Mem`; checker `Ty::Memory` (indexed read/write yields the element type, address range-checked against `depth`); emitter `reg [W-1:0] m [0:DEPTH-1]` + an `initial` power-on seed; the sim kernel gained a sparse cell store (`is_mem`/`mem_read` on the `Resolver`, indexed write into `next_mems`). +10 lib unit (lexer `mem_is_an_active_keyword`; parser `mem_declaration_parses_to_a_mem_item`, `a_mem_without_an_init_value_is_e1104`; checker `register_file_passes`, `a_non_constant_memory_depth_is_e0201`, `a_zero_memory_depth_is_e0410`, `a_memory_init_that_overflows_the_element_is_e0405`, `a_constant_address_past_the_depth_is_e0406`, `a_memory_inside_repeat_is_e0303`; kernel `memory_write_then_read_round_trips_a_cell`). New four-flavor `regfile` example (`BASE_EXAMPLES` 20 → 21, golden + the Icarus three-way differential; the `regfile` cells are internal-only — not dumped to VCD, like the tamil-pure exemption note). Spec `02` → v0.2.11, `03` → v0.2.9. Suite 386 → 396.
 - 2026-06-17 A3 falling-edge `on fall(clk)` (pre-v0.1.0 RTL-parity batch) — `fall` promoted from reserved to an active keyword KW_FALL (Tanglish/Tamil `irakkam`/`இறக்கம்` PROVISIONAL, pending native review); `OnBlock`/`Reg`/`Process` gained an `edge`; emitter lowers `posedge`/`negedge`; the sim kernel is now edge-aware (rise → sample → fall per period) so mixed-edge designs match Icarus bit-for-bit. +4 lib unit (parser `on_fall_parses_with_the_fall_edge`, `thamizh_order_on_fall_parses_to_the_fall_edge`; emitter `on_fall_emits_negedge`; kernel `dual_edge_negedge_reg_captures_posedge_within_a_period`); 2 lexer tests renamed (`fall_is_an_active_keyword`, `a_reserved_word_is_an_error`). New four-flavor `dual_edge` example (`BASE_EXAMPLES` 19 → 20, golden + the Icarus three-way differential). Spec `02` → v0.2.10, `03` → v0.2.8. Suite 382 → 386.
 - 2026-06-17 A2 don't-care `match` patterns `0b1??` (pre-v0.1.0 RTL-parity batch) — new `TokKind::MaskedInt` / `Pattern::IntMask` (binary `?` don't-care), mirroring the literal-pattern path; additive, no new keyword. +6 lib unit (lexer `dont_care_binary_literal_lexes_to_masked_int`; parser `dont_care_pattern_parses_to_intmask`; checker `dont_care_pattern_must_match_the_scrutinee_width`, `a_dont_care_match_still_needs_a_wildcard`, `a_dont_care_pattern_on_an_enum_is_e0409`; sim `dont_care_match_picks_the_masked_arm`). New four-flavor example `priority` (`BASE_EXAMPLES` 18 → 19, golden + the Icarus three-way differential) — no new test functions. Exact-width reuses E0409, still-needs-`_` is E0601 (no new code). Spec `02` → v0.2.9. Suite 376 → 382.
@@ -63,22 +64,23 @@ Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
 **every** test fails if the table is broken. That's by design.
 
-## Unit: lexer (`src/lexer/tests.rs`, 10 tests)
+## Unit: lexer (`src/lexer/tests.rs`, 11 tests)
 
-| Test                                           | Locks in                                                                                        |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `lexes_mixed_flavors`                          | mixing three flavors in ONE line works — the migration path                                     |
-| `tamil_identifiers_work`                       | Tamil-script identifiers lex as identifiers (XID rules)                                         |
-| `numbers`                                      | decimal / `0b` / `0x` parse, `_` separators, correct values                                     |
-| `wrapping_operators`                           | `+%` / `-%` are single tokens                                                                   |
-| `larrow_vs_comparison`                         | `<-` vs `<=` vs `<<` disambiguation — longest match                                             |
-| `newline_continuation_after_operator`          | the Go-style newline policy, both directions (kept AND dropped)                                 |
-| `division_is_rejected_with_teaching_error`     | `/` errors AND the help text teaches the alternative                                            |
-| `a_reserved_word_is_an_error`                  | a reserved word (`sync`) is a clean E1005, not a silent identifier (was `mem`)                  |
-| `mem_is_an_active_keyword`                     | `mem`/`ninaivagam`/`நினைவகம்` lex as KW_MEM in all three flavors (A4 promoted it from reserved) |
-| `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2)                 |
+| Test                                           | Locks in                                                                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `lexes_mixed_flavors`                          | mixing three flavors in ONE line works — the migration path                                               |
+| `tamil_identifiers_work`                       | Tamil-script identifiers lex as identifiers (XID rules)                                                   |
+| `numbers`                                      | decimal / `0b` / `0x` parse, `_` separators, correct values                                               |
+| `wrapping_operators`                           | `+%` / `-%` are single tokens                                                                             |
+| `larrow_vs_comparison`                         | `<-` vs `<=` vs `<<` disambiguation — longest match                                                       |
+| `newline_continuation_after_operator`          | the Go-style newline policy, both directions (kept AND dropped)                                           |
+| `division_is_rejected_with_teaching_error`     | `/` errors AND the help text teaches the alternative                                                      |
+| `a_reserved_word_is_an_error`                  | a reserved word (`sync`) is a clean E1005, not a silent identifier (was `mem`)                            |
+| `mem_is_an_active_keyword`                     | `mem`/`ninaivagam`/`நினைவகம்` lex as KW_MEM in all three flavors (A4 promoted it from reserved)           |
+| `async_is_an_active_keyword`                   | `async`/`otthisaivatra`/`ஒத்திசைவற்ற` lex as KW_ASYNC in all three flavors (A5 promoted it from reserved) |
+| `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2)                           |
 
-## Unit: parser (`src/parser/tests.rs`, 31 tests)
+## Unit: parser (`src/parser/tests.rs`, 33 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -113,6 +115,8 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `dont_care_pattern_parses_to_intmask`                              | `0b1??` in a match arm parses as `Pattern::IntMask` (value/mask/width) (A2)             |
 | `mem_declaration_parses_to_a_mem_item`                             | `mem m: bits[8][4] = 0` parses to `ModuleItem::Mem` (name/ty/depth/init) (A4)           |
 | `a_mem_without_an_init_value_is_e1104`                             | a `mem` missing its `= init` is E1104 (no uninitialized state), like a reg (A4)         |
+| `async_reset_parses_with_the_async_flag`                           | `async reset rst` sets `Reset.is_async` (A5)                                            |
+| `a_plain_reset_is_synchronous`                                     | a bare `reset rst` leaves `is_async` false — sync is the default (A5)                   |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
@@ -178,13 +182,15 @@ deserve a note:
 | `results_always_start_like_an_identifier` | output is always a valid Verilog identifier start                     |
 | `the_two_n_letters_romanize_identically`  | ந/ன → `n` is a DOCUMENTED collision; the suffix counter disambiguates |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 14 tests)
+## Unit: emitter (`src/emit_verilog/mod.rs`, 16 tests)
 
 | Test                                                            | Locks in                                                                                                                                    |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `diags_carry_the_file_index`                                    | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt  |
 | `repeat_unrolls_drives_with_folded_indices`                     | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3                                                        |
 | `on_fall_emits_negedge`                                         | `on fall(clk)` lowers to `always @(negedge clk)` (A3)                                                                                       |
+| `async_reset_widens_the_sensitivity_list`                       | `async reset` lowers to `always @(posedge clk or posedge rst)` (A5)                                                                         |
+| `a_sync_reset_stays_clock_only`                                 | a plain `reset` keeps `always @(posedge clk)` — no sensitivity widening (A5)                                                                |
 | `repeat_var_folds_in_index_arithmetic`                          | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal                                               |
 | `empty_and_reversed_ranges_emit_nothing`                        | `0..0` and `4..0` generate no hardware (no crash, no partial output)                                                                        |
 | `repeat_over_budget_errors_cleanly`                             | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                                                                  |

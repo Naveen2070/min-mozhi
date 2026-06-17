@@ -103,3 +103,13 @@ fn mem_is_an_active_keyword() {
         assert!(toks[0].is_kw(Kw::Mem), "`{src}` should lex to Kw::Mem");
     }
 }
+
+#[test]
+fn async_is_an_active_keyword() {
+    // A5 promoted `async` from reserved to a keyword, with provisional Tanglish/Tamil
+    // spellings (pending native review). All three flavors lex to `Kw::Async`.
+    for src in ["async", "otthisaivatra", "ஒத்திசைவற்ற"] {
+        let toks = lex(src).unwrap();
+        assert!(toks[0].is_kw(Kw::Async), "`{src}` should lex to Kw::Async");
+    }
+}
