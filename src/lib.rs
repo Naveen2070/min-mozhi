@@ -30,6 +30,7 @@
 //! | [`morph`]       | Error-language selection + Tamil case-suffix inflection    |
 //! | [`sim`]         | Combinational evaluator (`mimz eval`) — Phase 1.5 slice    |
 //! | [`config`]      | `mimz.toml` project defaults for CLI flags (CLI overrides)  |
+//! | [`version`]     | The compiler-version vs language-edition axes + history    |
 //!
 //! This table is mechanically checked against the `mod` list by
 //! `tests/docs_sync.rs` — add a module, add a row (and a docs/code/ page).
@@ -55,3 +56,4 @@ pub mod project;
 pub mod sim;
 pub mod span;
 pub mod translate;
+pub mod version;

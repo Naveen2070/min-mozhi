@@ -11,10 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**401 tests** as of 2026-06-17: 266 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
+**404 tests** as of 2026-06-17: 269 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-17 Workstream B versioning + language edition — new `src/version.rs`: the compiler-version vs language-edition axes, `EDITION_HISTORY` (first edition **Wingless Butterfly** `wingless-butterfly-2026-1`), `version_block()` (uname-style `mimz --version`), and `KEYWORD_SET_VERSION` cross-checked against `keywords.toml`'s `version` (now parsed + exposed via `KeywordTable::version`). The Verilog header carries both axes. +3 lib unit (`version`: `current_is_the_last_history_row`, `keyword_set_version_matches_keywords_toml`, `version_block_shows_both_axes`). Crate stays `0.1.0-dev` (drops `-dev` at the v0.1.0 tag, Workstream D). Suite 401 → 404.
 - 2026-06-17 A5 asynchronous reset `async reset` (pre-v0.1.0 RTL-parity batch) — `async` promoted from reserved to an active keyword KW_ASYNC (Tanglish/Tamil `otthisaivatra`/`ஒத்திசைவற்ற` PROVISIONAL, pending native review). `ModuleItem::Reset` became `{ name, is_async }`; the emitter widens the sensitivity list to `@(posedge clk or posedge rst)` for an async reset. Active-high only (active-low polarity deferred). The cycle-based kernel is unchanged — async and sync reset are observationally identical at per-cycle sample points, so it's an emitter-only distinction. +5 lib unit (lexer `async_is_an_active_keyword`; parser `async_reset_parses_with_the_async_flag`, `a_plain_reset_is_synchronous`; emitter `async_reset_widens_the_sensitivity_list`, `a_sync_reset_stays_clock_only`). New four-flavor `async_reset` example (`BASE_EXAMPLES` 21 → 22, golden + the Icarus three-way differential). Spec `02` → v0.2.12, `03` → v0.2.10. Suite 396 → 401.
 - 2026-06-17 A4 memories `mem` (pre-v0.1.0 RTL-parity batch) — `mem` promoted from reserved to an active keyword KW_MEM (Tanglish/Tamil `ninaivagam`/`நினைவகம்` PROVISIONAL, pending native review). New `ModuleItem::Mem`; checker `Ty::Memory` (indexed read/write yields the element type, address range-checked against `depth`); emitter `reg [W-1:0] m [0:DEPTH-1]` + an `initial` power-on seed; the sim kernel gained a sparse cell store (`is_mem`/`mem_read` on the `Resolver`, indexed write into `next_mems`). +10 lib unit (lexer `mem_is_an_active_keyword`; parser `mem_declaration_parses_to_a_mem_item`, `a_mem_without_an_init_value_is_e1104`; checker `register_file_passes`, `a_non_constant_memory_depth_is_e0201`, `a_zero_memory_depth_is_e0410`, `a_memory_init_that_overflows_the_element_is_e0405`, `a_constant_address_past_the_depth_is_e0406`, `a_memory_inside_repeat_is_e0303`; kernel `memory_write_then_read_round_trips_a_cell`). New four-flavor `regfile` example (`BASE_EXAMPLES` 20 → 21, golden + the Icarus three-way differential; the `regfile` cells are internal-only — not dumped to VCD, like the tamil-pure exemption note). Spec `02` → v0.2.11, `03` → v0.2.9. Suite 386 → 396.
 - 2026-06-17 A3 falling-edge `on fall(clk)` (pre-v0.1.0 RTL-parity batch) — `fall` promoted from reserved to an active keyword KW_FALL (Tanglish/Tamil `irakkam`/`இறக்கம்` PROVISIONAL, pending native review); `OnBlock`/`Reg`/`Process` gained an `edge`; emitter lowers `posedge`/`negedge`; the sim kernel is now edge-aware (rise → sample → fall per period) so mixed-edge designs match Icarus bit-for-bit. +4 lib unit (parser `on_fall_parses_with_the_fall_edge`, `thamizh_order_on_fall_parses_to_the_fall_edge`; emitter `on_fall_emits_negedge`; kernel `dual_edge_negedge_reg_captures_posedge_within_a_period`); 2 lexer tests renamed (`fall_is_an_active_keyword`, `a_reserved_word_is_an_error`). New four-flavor `dual_edge` example (`BASE_EXAMPLES` 19 → 20, golden + the Icarus three-way differential). Spec `02` → v0.2.10, `03` → v0.2.8. Suite 382 → 386.
@@ -402,6 +403,17 @@ exercised by the integration tests below).
 | `parses_every_section`                    | `lang` + `[translate]` + `[fmt]` keys deserialize to the right fields                    |
 | `unknown_key_is_rejected`                 | a typo'd key (`too`, `flavour`) errors via `deny_unknown_fields`, never silently dropped |
 | `discover_walks_up_to_the_nearest_config` | discovery climbs from a nested file to the ancestor `mimz.toml`                          |
+
+## Unit: version (`src/version.rs`, 3 tests)
+
+The two version axes — compiler (crate) vs language edition — and the
+`EDITION_HISTORY` source of truth (Workstream B).
+
+| Test                                        | Locks in                                                                                        |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `current_is_the_last_history_row`           | `current()` is the tail of `EDITION_HISTORY`, which stays ordered oldest-first by (year, code)  |
+| `keyword_set_version_matches_keywords_toml` | `KEYWORD_SET_VERSION` == `keywords.toml`'s `version` == the current edition's `code` (no drift) |
+| `version_block_shows_both_axes`             | `mimz --version` block has the variant on top + the compiler and edition (language) lines       |
 
 ## Integration: config (`tests/config.rs`, 5 tests — run the real binary)
 

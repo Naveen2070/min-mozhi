@@ -16,9 +16,18 @@ const KEYWORDS_TOML: &str = include_str!("../../keywords.toml");
 /// TOML root keys cannot follow a table header).
 #[derive(Deserialize)]
 struct TableFile {
+    /// Keyword-set version (`version = N` at the TOML root). Bumped when
+    /// canonical spellings change; cross-checked against
+    /// [`crate::version::KEYWORD_SET_VERSION`].
+    #[serde(default = "default_kw_version")]
+    version: u8,
     keywords: HashMap<String, Spellings>,
     #[serde(default)]
     reserved: Vec<String>,
+}
+
+fn default_kw_version() -> u8 {
+    1
 }
 
 /// The three canonical spellings of one keyword, plus optional per-column
@@ -51,6 +60,7 @@ pub struct KeywordTable {
     /// `Kw` has all three (REQUIRED_KEYS guarantees the rows exist).
     by_kw: HashMap<Kw, [String; 3]>,
     reserved: Vec<String>,
+    version: u8,
 }
 
 impl KeywordTable {
@@ -72,10 +82,17 @@ impl KeywordTable {
         }
     }
 
-    /// Reserved for a future feature (e.g. `fall`, `struct`, `mem`) —
+    /// Reserved for a future feature (e.g. `sync`, `struct`, `inout`) —
     /// not a keyword yet, but not usable as an identifier either.
     pub fn is_reserved(&self, ident: &str) -> bool {
         self.reserved.iter().any(|r| r == ident)
+    }
+
+    /// The keyword-set version from `keywords.toml` (`version = N`). The
+    /// language edition's `code` aligns with this;
+    /// [`crate::version::KEYWORD_SET_VERSION`] mirrors it (a test cross-checks).
+    pub fn version(&self) -> u8 {
+        self.version
     }
 }
 
@@ -147,6 +164,7 @@ pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
         map,
         by_kw,
         reserved: file.reserved,
+        version: file.version,
     }
 });
 
