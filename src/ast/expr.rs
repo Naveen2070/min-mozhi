@@ -53,6 +53,12 @@ pub enum ExprKind {
     },
     /// `{a, b, c}` — bit concatenation, widest part first (Verilog order).
     Concat(Vec<Expr>),
+    /// `{N{a, b}}` — replication: the inner concatenation `{a, b}` repeated
+    /// `count` times (Verilog `{N{...}}`). `count` is a compile-time constant.
+    Replicate {
+        count: Box<Expr>,
+        parts: Vec<Expr>,
+    },
     /// `base[i]` — single-bit select.
     Index {
         base: Box<Expr>,

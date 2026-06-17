@@ -229,6 +229,36 @@ fn monotonic_chained_comparison_desugars_to_and() {
 }
 
 #[test]
+fn replication_parses_to_replicate() {
+    // `{2{a}}` is replication (count 2, one inner part), NOT concatenation.
+    let f = parse_ok("module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = {2{a}}\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
+    let ExprKind::Replicate { count, parts } = &rhs.kind else {
+        panic!("`{{2{{a}}}}` must parse as replication")
+    };
+    assert!(matches!(&count.kind, ExprKind::Int { value: 2, .. }));
+    assert_eq!(parts.len(), 1, "one inner part");
+}
+
+#[test]
+fn braces_without_an_inner_group_stay_concat() {
+    // `{a, a}` is still concatenation — the replication path must not regress it.
+    let f = parse_ok("module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = {a, a}\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
+    assert!(matches!(&rhs.kind, ExprKind::Concat(p) if p.len() == 2));
+}
+
+#[test]
 fn mixed_direction_chain_is_an_error() {
     // `a < b > c` is the genuinely confusing form — still rejected.
     let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  y = a < a > a\n}\n");

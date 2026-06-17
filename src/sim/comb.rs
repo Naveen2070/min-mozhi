@@ -281,6 +281,21 @@ mod tests {
     }
 
     #[test]
+    fn replication_repeats_the_group() {
+        // `{2{a}}` = `{a, a}`, `{3{a}}` = `{a, a, a}`; a = 0b1010 (4 bits).
+        let f = parse(
+            "module R {\n  in a: bits[4]\n  out y: bits[8]\n  out z: bits[12]\n  y = {2{a}}\n  z = {3{a}}\n}\n",
+        );
+        let o = one(&f, &[("a", 0b1010)]);
+        let m: BTreeMap<_, _> = o
+            .iter()
+            .map(|x| (x.name.as_str(), (x.value, x.width)))
+            .collect();
+        assert_eq!(m["y"], (0b1010_1010, 8));
+        assert_eq!(m["z"], (0b1010_1010_1010, 12));
+    }
+
+    #[test]
     fn mux_match_selects() {
         let f = parse(
             "module M(W: int = 8) {\n  in sel: bits[2]\n  in a: bits[W]\n  in b: bits[W]\n  in c: bits[W]\n  in d: bits[W]\n  out y: bits[W]\n  y = match sel {\n    0b00 => a\n    0b01 => b\n    0b10 => c\n    0b11 => d\n  }\n}\n",

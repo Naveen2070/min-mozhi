@@ -637,6 +637,12 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, p);
                 }
             }
+            ExprKind::Replicate { count, parts } => {
+                self.expr(file, sc, env, count);
+                for p in parts {
+                    self.expr(file, sc, env, p);
+                }
+            }
             ExprKind::Index { base, index } => {
                 self.expr(file, sc, env, base);
                 self.expr(file, sc, env, index);

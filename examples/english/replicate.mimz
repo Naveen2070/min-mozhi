@@ -1,0 +1,12 @@
+// Min-Mozhi example: bit replication `{N{x}}` — repeat a group N times.
+// `{2{a}}` is `{a, a}`; the count is compile-time, like concatenation.
+
+module Replicate {
+  in  a: bits[4]
+
+  out doubled: bits[8]
+  out tripled: bits[12]
+
+  doubled = {2{a}}
+  tripled = {3{a}}
+}

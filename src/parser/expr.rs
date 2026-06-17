@@ -498,9 +498,10 @@ impl Parser {
         Some(e)
     }
 
-    /// `primary = int | "true" | "false" | "(" expr ")" | "{" exprList "}"
+    /// `primary = int | "true" | "false" | "(" expr ")"
+    ///          | "{" exprList "}" | "{" expr "{" exprList "}" "}"
     ///          | ifExpr | matchExpr | ident | builtinCall` —
-    /// `{a, b}` is bit concatenation, not a block.
+    /// `{a, b}` is bit concatenation; `{N{a, b}}` is replication (not a block).
     fn primary(&mut self) -> Option<Expr> {
         match self.peek_kind().clone() {
             TokKind::Int { value, raw } => {
@@ -533,21 +534,49 @@ impl Parser {
                 Some(e)
             }
             TokKind::LBrace => {
+                // `{ ... }` is either concatenation `{a, b}` or replication
+                // `{N{a, b}}` — disambiguated by what follows the first part:
+                // a `{` means the first part was the replication count.
                 let start = self.bump().span;
-                let mut parts = Vec::new();
-                loop {
-                    self.skip_newlines();
-                    parts.push(self.expr()?);
-                    self.skip_newlines();
-                    if !self.eat(&TokKind::Comma) {
-                        break;
+                self.skip_newlines();
+                let first = self.expr()?;
+                self.skip_newlines();
+                if matches!(self.peek_kind(), TokKind::LBrace) {
+                    // Replication: `first` is the count, `{ parts }` the group.
+                    self.bump();
+                    let mut parts = Vec::new();
+                    loop {
+                        self.skip_newlines();
+                        parts.push(self.expr()?);
+                        self.skip_newlines();
+                        if !self.eat(&TokKind::Comma) {
+                            break;
+                        }
                     }
+                    self.expect(TokKind::RBrace, "`}` to close the replication group")?;
+                    self.skip_newlines();
+                    let t = self.expect(TokKind::RBrace, "`}` to close the replication")?;
+                    Some(Expr {
+                        kind: ExprKind::Replicate {
+                            count: Box::new(first),
+                            parts,
+                        },
+                        span: start.join(t.span),
+                    })
+                } else {
+                    // Concatenation: `first` is the first part.
+                    let mut parts = vec![first];
+                    while self.eat(&TokKind::Comma) {
+                        self.skip_newlines();
+                        parts.push(self.expr()?);
+                        self.skip_newlines();
+                    }
+                    let t = self.expect(TokKind::RBrace, "`}` to close the concatenation")?;
+                    Some(Expr {
+                        kind: ExprKind::Concat(parts),
+                        span: start.join(t.span),
+                    })
                 }
-                let t = self.expect(TokKind::RBrace, "`}` to close the concatenation")?;
-                Some(Expr {
-                    kind: ExprKind::Concat(parts),
-                    span: start.join(t.span),
-                })
             }
             // In code order the clause head LEADS, so `if`/`match` start a
             // primary. In thamizh order it TRAILS the operand (handled in

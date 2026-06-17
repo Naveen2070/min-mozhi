@@ -121,6 +121,33 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
             }
             Ok(Val::new(bits, total, false))
         }
+        ExprKind::Replicate { count, parts } => {
+            let n = const_eval(count, r.ints())?;
+            if n < 1 {
+                return Err("replication count must be at least 1".into());
+            }
+            let vals: Vec<Val> = parts.iter().map(|p| eval(r, p)).collect::<Result<_, _>>()?;
+            // Inner group width, then the replicated total — both in u64 so the
+            // product cannot wrap a u32 below the 128-bit guard.
+            let inner64: u64 = vals.iter().map(|v| v.width as u64).sum();
+            let total64 = inner64
+                .checked_mul(n as u64)
+                .filter(|t| *t <= 128)
+                .ok_or("replication exceeds 128 bits (evaluator limit)")?;
+            let inner = inner64 as u32;
+            // Assemble the inner group once (widest part first), then repeat it.
+            let mut chunk = 0u128;
+            let mut shift = inner;
+            for v in &vals {
+                shift -= v.width;
+                chunk |= (v.bits & mask(v.width)) << shift;
+            }
+            let mut bits = 0u128;
+            for _ in 0..n {
+                bits = (bits << inner) | chunk;
+            }
+            Ok(Val::new(bits, total64 as u32, false))
+        }
         ExprKind::Index { base, index } => {
             let b = eval(r, base)?;
             let i = checked_index(const_eval(index, r.ints())?, b.width, "bit index")?;

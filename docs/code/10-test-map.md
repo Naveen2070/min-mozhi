@@ -11,10 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**369 tests** as of 2026-06-17: 234 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
+**376 tests** as of 2026-06-17: 241 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-17 A1 replication `{N{x}}` (pre-v0.1.0 RTL-parity batch) — new `ExprKind::Replicate` mirroring concat through the whole pipeline; purely additive, no new keyword. +7 lib unit (parser `replication_parses_to_replicate`, `braces_without_an_inner_group_stay_concat`; checker `replication_width_is_count_times_inner`, `replication_width_mismatch_is_e0401`, `a_non_constant_replication_count_is_e0201`, `a_zero_replication_count_is_e0410`; sim `replication_repeats_the_group`). New four-flavor example `replicate` (`BASE_EXAMPLES` 17 → 18, golden + the Icarus three-way differential) — no new test functions (existing parametrized iterators). Width reuses E0410, non-const count reuses E0201 (no new code). Spec `02` → v0.2.8. Suite 369 → 376.
 - 2026-06-17 SEC-6 hardening audit — C2–C4 elaboration-time DoS bounds: `mimz sim`/`mimz test` skip the checker, so the structural elaborator (`src/sim/elaborate.rs`) gained `MAX_INSTANCE_DEPTH = 16` (recursive/cyclic instantiation → clean error, not a stack-overflow abort), `checked_sub` on the `repeat` span (extreme `hi - lo` → over-budget error, not an overflow panic), a `0..128` bound on bit-index drives (no silent `as u32` truncation), and a flatten name-collision error (no silent overwrite). A same-day follow-up pass added a 5th finding (SIM-5): `int_expr`, which lowers each flattened child const to a literal, built a negative value via a raw `i128` negation that overflow-panicked on `i128::MIN` (reachable via `(-i128::MAX) - 1`) — now non-recursive and `unsigned_abs`-based. +5 lib unit (`recursive_instantiation_errors_not_overflows`, `extreme_repeat_bounds_error_not_overflow`, `an_out_of_range_bit_index_errors`, `a_flatten_name_collision_errors`, `an_i128_min_const_elaborates_without_overflow` — `src/sim/elaborate.rs`). See SEC-6/HARD-6 in `docs/audit/`.
 - 2026-06-16 Phase 1.5 C3 + C4 — full simulator parity: the sim elaborator now unrolls `repeat` (array instances `fa__i`, bit-indexed drives assembled into a Concat — ripple\*adder) and encodes enum-typed signals by variant index with width `clog2(variants)` (variant reads/patterns → index — traffic_light), via a unified `Rw` elaborate-time rewriter (`src/sim/elaborate.rs`). The Layer-3 differential now covers the **entire single-file corpus, 18 → 21 examples** (added ripple_adder, traffic_light, vilakku) — every example the emitter compiles also simulates bit-for-bit vs Icarus. +2 lib unit (`unrolls_repeat_with_instance_array_and_bit_drives`, `elaborates_an_enum_signal_and_match`). Phase 1.5 full-parity simulator complete (C1–C4).
 - 2026-06-16 Phase 1.5 C2 — module-instance flattening in the sim elaborator: `elaborate_project` (`src/sim/elaborate.rs`) flattens `let` instances (incl. across `import`s) by inlining each child with signals name-prefixed `{inst}*{name}`, so `inst.port`reads resolve to the wire`inst*port`the emitter auto-declares — the flattened`Design`matches the emitted Verilog bit-for-bit.`mimz sim`/`mimz test`now`load_project`; the Layer-3 differential gained **alu** (`Top`instantiating the imported`Adder`) and **chained** (two chained `FullAdder`s), 16 → **18 examples**. +2 lib unit (`flattens_a_same_file_instance`, `rejects_unknown_instance_module`, replacing `rejects_instances_for_now`); the differential is one `#[test]`so the new examples add no separate count. Remaining sim parity: C3`repeat`(ripple_adder), C4 enum FSM (traffic_light).
@@ -72,7 +73,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
 | `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
 
-## Unit: parser (`src/parser/tests.rs`, 24 tests)
+## Unit: parser (`src/parser/tests.rs`, 26 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -100,12 +101,14 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `stray_top_level_brace_does_not_hang`                              | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)                |
 | `deeply_nested_expression_errors_not_overflows`                    | `(((…)))` past the depth cap → clean E1113, not a stack overflow (SEC-1)                |
 | `deeply_nested_unary_errors_not_overflows`                         | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash                        |
+| `replication_parses_to_replicate`                                  | `{2{a}}` parses as `Replicate` (count + inner parts), not concatenation (A1)            |
+| `braces_without_an_inner_group_stay_concat`                        | `{a, a}` still parses as `Concat` — the replication path is no regression               |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 99 tests)
+## Unit: checker (`src/checker/tests.rs`, 103 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -131,6 +134,10 @@ deserve a note:
 | `duplicate_module_across_files_is_e0001_in_the_right_file`            | checker diagnostics carry the file index (multi-file rendering contract)               |
 | `plus_into_same_width_target_teaches_wrap_in_e0401`                   | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable    |
 | `defaultless_param_module_is_checked_per_instantiation`               | a module with no param defaults is checked under each instantiation's concrete binding |
+| `replication_width_is_count_times_inner`                              | `{2{bits[4]}}` is `bits[8]`, `{3{bits[4]}}` is `bits[12]` (A1)                         |
+| `replication_width_mismatch_is_e0401`                                 | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                |
+| `a_non_constant_replication_count_is_e0201`                           | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)            |
+| `a_zero_replication_count_is_e0410`                                   | `{0{a}}` has zero width — reuses the "not a valid width" code                          |
 | `repeat_index_out_of_range_at_the_last_iteration_is_e0406`            | `repeat` bodies are width-checked per iteration value, not just once                   |
 | `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape — explicit `extend` where widths differ                 |
 | `disjoint_per_bit_drives_via_repeat_pass`                             | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal |
@@ -450,19 +457,20 @@ token reskin, not the comment-dropping `--order` printer).
 | `a_non_lexing_file_is_a_clean_error`              | a lex error (e.g. `/`) is reported, exits non-zero, and does not clobber input  |
 | `output_flag_leaves_the_input_untouched`          | `-o <dest>` writes the result elsewhere; the input is unchanged                 |
 
-## Unit: combinational evaluator (`src/sim/comb.rs`, 7 tests)
+## Unit: combinational evaluator (`src/sim/comb.rs`, 8 tests)
 
 The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 
-| Test                         | Locks in                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `adder_grows_losslessly`     | `+` grows `bits[W]` → `bits[W+1]`; 200+100 carries into the 9th bit (no wrap)     |
-| `wrapping_add_keeps_width`   | `+%` keeps width and wraps (300 → 44 in `bits[8]`)                                |
-| `comparator_if_and_compares` | `==`, `>`, and a value `if/else` evaluate together                                |
-| `mux_match_selects`          | `match` on `bits[2]` picks the right arm                                          |
-| `chained_comparison_window`  | `lo <= value <= hi` (desugared) incl. the inclusive boundary                      |
-| `rejects_sequential_logic`   | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
-| `reports_missing_input`      | a missing `--in` value names the input                                            |
+| Test                            | Locks in                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------- |
+| `adder_grows_losslessly`        | `+` grows `bits[W]` → `bits[W+1]`; 200+100 carries into the 9th bit (no wrap)     |
+| `wrapping_add_keeps_width`      | `+%` keeps width and wraps (300 → 44 in `bits[8]`)                                |
+| `comparator_if_and_compares`    | `==`, `>`, and a value `if/else` evaluate together                                |
+| `mux_match_selects`             | `match` on `bits[2]` picks the right arm                                          |
+| `chained_comparison_window`     | `lo <= value <= hi` (desugared) incl. the inclusive boundary                      |
+| `rejects_sequential_logic`      | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
+| `reports_missing_input`         | a missing `--in` value names the input                                            |
+| `replication_repeats_the_group` | `{2{a}}`/`{3{a}}` repeat the group (a=0b1010 → 0xAA / 0xAAA) (A1)                 |
 
 ## Unit: elaboration (`src/sim/elaborate.rs`, 13 tests)
 

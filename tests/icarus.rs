@@ -730,6 +730,8 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     // Combinational + SIGNED — the `%b` binary compare makes signedness moot.
     differential(&bin, "english/bitops.mimz", &[], &[], 8);
     differential(&bin, "english/signed_math.mimz", &[], &[], 8);
+    // Replication `{N{x}}` (combinational).
+    differential(&bin, "english/replicate.mimz", &[], &[], 8);
     // Pure-Tamil (Tamil keywords AND identifiers): the testbench romanizes names
     // to match the emitted Verilog, so these now ride the same bit-for-bit
     // differential as their english twins (`கணக்கி`/kanakki = counter, etc.).

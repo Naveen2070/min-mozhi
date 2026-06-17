@@ -511,6 +511,14 @@ impl Pretty {
                     .join(", ");
                 format!("{{{p}}}")
             }
+            ExprKind::Replicate { count, parts } => {
+                let p = parts
+                    .iter()
+                    .map(|e| self.expr(e, ind))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{{{}{{{p}}}}}", self.expr(count, ind))
+            }
             ExprKind::Index { base, index } => {
                 format!("{}[{}]", self.operand(base, ind), self.expr(index, ind))
             }

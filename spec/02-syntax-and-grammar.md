@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.7.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.8.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -258,6 +258,7 @@ wire eq: bit        = t < s                // signed comparison
 wire lo:   bits[4] = data[3:0]        // slice (inclusive, msb:lsb)
 wire hi:   bits[4] = data[7:4]
 wire both: bits[8] = { hi, lo }       // concatenation, msb-first
+wire quad: bits[16] = {4{hi}}         // replication — {hi, hi, hi, hi}
 wire wide: bits[16] = extend(data, 16)  // explicit zero-extension
 
 wire k1: bits[8] = 0b1010_0001        // binary, `_` separators allowed
@@ -271,6 +272,10 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
   adopted: `[hi:lo]` is the universal hardware convention (Verilog/VHDL/every
   textbook), and matching it keeps a student fluent across tools — the
   cross-tool familiarity outweighs the cosmetic gain.
+- **Replication** is `{N{x}}` — the inner concatenation group repeated `N`
+  times, msb-first, where `N` is a compile-time constant: `{4{hi}}` is
+  `{hi, hi, hi, hi}`. Like Verilog's `{N{...}}`; the result width is `N *` the
+  inner width (E0410 if that is not a valid width, E0201 if `N` is not constant).
 - There is **no implicit** widening or truncation anywhere. `extend(x, N)`
   widens; slicing narrows. Both are visible at the call site.
 - `extend(x, N)` requires `N >=` the current width; `trunc(x, N)` requires
@@ -452,8 +457,9 @@ binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&&" | "||" | "and" | "or" ;
 unary       = [ "~" | "-" | "!" | "not" | "&" | "|" | "^" ] postfix ;
 postfix     = primary { "[" expr [ ":" expr ] "]" | "." IDENT } ;
-primary     = literal | IDENT | "(" expr ")" | concat | callExpr ;
+primary     = literal | IDENT | "(" expr ")" | concat | replication | callExpr ;
 concat      = "{" expr { "," expr } "}" ;
+replication = "{" expr "{" expr { "," expr } "}" "}" ;
 callExpr    = ( "extend" | "trunc" ) "(" expr "," constExpr ")"
             | ( "signed" | "unsigned" | "abs"
               | "nand" | "nor" | "xnor" ) "(" expr ")"
@@ -508,6 +514,12 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.8 (2026-06-17):** **Replication `{N{x}}`** added (section 1.8) — repeats
+  an inner concatenation group `N` times, `N` a compile-time constant; the result
+  width is `N *` the inner width (E0410 if that is not a valid width, E0201 if `N`
+  is not constant). Additive (no new keyword) — the first of the pre-v0.1.0
+  RTL-parity batch. Lowers to Verilog `{N{...}}`; covered by the `replicate`
+  four-flavor example and the Icarus differential.
 - **v0.2.6 (2026-06-13):** two pre-v0.1.0-freeze syntax rulings (idea triage
   section 8, `docs/Ideas/language_plan.md` section 9). (1) **Comparison chaining allowed**:
   a monotonic one-direction chain (`0 <= x < 100`) desugars to `&&` of its

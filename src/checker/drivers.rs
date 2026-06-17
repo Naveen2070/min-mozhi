@@ -471,6 +471,12 @@ impl<'a> Checker<'a> {
                     self.expr_reads(dcx, p, out);
                 }
             }
+            ExprKind::Replicate { count, parts } => {
+                self.expr_reads(dcx, count, out);
+                for p in parts {
+                    self.expr_reads(dcx, p, out);
+                }
+            }
             ExprKind::Index { base, index } => {
                 self.expr_reads(dcx, base, out);
                 self.expr_reads(dcx, index, out);

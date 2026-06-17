@@ -204,6 +204,39 @@ fn connection_width_mismatch_is_e0401_naming_the_port() {
 }
 
 #[test]
+fn replication_width_is_count_times_inner() {
+    check_one("module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = {2{a}}\n}\n")
+        .expect("{2{bits[4]}} is bits[8]");
+    check_one("module M {\n  in a: bits[4]\n  out z: bits[12]\n  z = {3{a}}\n}\n")
+        .expect("{3{bits[4]}} is bits[12]");
+}
+
+#[test]
+fn replication_width_mismatch_is_e0401() {
+    // {2{a}} of a bits[4] is bits[8] — assigning it to bits[4] is a width error.
+    first_err(
+        "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = {2{a}}\n}\n",
+        "E0401",
+    );
+}
+
+#[test]
+fn a_non_constant_replication_count_is_e0201() {
+    first_err(
+        "module M {\n  in a: bits[4]\n  in n: bits[4]\n  out y: bits[8]\n  y = {n{a}}\n}\n",
+        "E0201",
+    );
+}
+
+#[test]
+fn a_zero_replication_count_is_e0410() {
+    first_err(
+        "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = {0{a}}\n}\n",
+        "E0410",
+    );
+}
+
+#[test]
 fn min_max_take_two_same_width_operands() {
     check_one(
         "module M {\n  in a: bits[8]\n  in b: bits[8]\n  out y: bits[8]\n  y = max(a, b)\n}\n",

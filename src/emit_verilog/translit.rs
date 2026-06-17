@@ -392,6 +392,12 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
                 expr(p, visit);
             }
         }
+        ExprKind::Replicate { count, parts } => {
+            expr(count, visit);
+            for p in parts {
+                expr(p, visit);
+            }
+        }
         ExprKind::Index { base, index } => {
             expr(base, visit);
             expr(index, visit);

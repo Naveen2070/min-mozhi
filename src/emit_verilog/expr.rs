@@ -172,6 +172,11 @@ impl Emitter<'_> {
                 let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst)).collect();
                 format!("{{{}}}", ps.join(", "))
             }
+            ExprKind::Replicate { count, parts } => {
+                let c = self.index_expr(count, subst);
+                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst)).collect();
+                format!("{{{c}{{{}}}}}", ps.join(", "))
+            }
             ExprKind::Index { base, index } => {
                 let b = self.expr_subst(base, subst);
                 let i = self.index_expr(index, subst);

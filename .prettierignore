@@ -6,6 +6,9 @@ target/
 .remember/
 .claude/
 
+# Local-only plan/workflow docs (git-excluded via .git/info/exclude)
+*.local.md
+
 # Not Prettier's formats
 *.mimz
 *.v

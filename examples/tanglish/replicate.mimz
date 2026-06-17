@@ -1,0 +1,12 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): bit replication `{N{x}}`.
+// `{2{a}}` is `{a, a}`; the count is compile-time, like concatenation.
+
+thoguthi Replicate {
+  ulleedu  a: bits[4]
+
+  veliyeedu doubled: bits[8]
+  veliyeedu tripled: bits[12]
+
+  doubled = {2{a}}
+  tripled = {3{a}}
+}

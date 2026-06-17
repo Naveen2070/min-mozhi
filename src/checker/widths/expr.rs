@@ -335,6 +335,7 @@ impl<'a> Checker<'a> {
                 self.unify_arms(cx, e.span, &arm_tys)
             }
             ExprKind::Concat(parts) => self.concat_ty(cx, parts),
+            ExprKind::Replicate { count, parts } => self.replicate_ty(cx, count, parts),
             ExprKind::Index { base, index } => {
                 let bt = self.infer_ty(cx, base);
                 let n = match bt {

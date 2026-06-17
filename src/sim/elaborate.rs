@@ -772,6 +772,13 @@ impl Rw<'_> {
                     .map(|p| self.expr(p))
                     .collect::<Result<_, _>>()?,
             ),
+            ExprKind::Replicate { count, parts } => ExprKind::Replicate {
+                count: Box::new(self.expr(count)?),
+                parts: parts
+                    .iter()
+                    .map(|p| self.expr(p))
+                    .collect::<Result<_, _>>()?,
+            },
             ExprKind::Index { base, index } => ExprKind::Index {
                 base: Box::new(self.expr(base)?),
                 index: Box::new(self.expr(index)?),
