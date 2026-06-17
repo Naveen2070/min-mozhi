@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 20] = [
+const BASE_EXAMPLES: [&str; 21] = [
     "adder",
     "alu",
     "bitops",
@@ -26,6 +26,7 @@ const BASE_EXAMPLES: [&str; 20] = [
     "lib/full_adder",
     "mux4",
     "priority",
+    "regfile",
     "replicate",
     "ripple_adder",
     "shift_register",

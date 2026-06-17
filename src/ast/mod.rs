@@ -126,6 +126,17 @@ pub enum ModuleItem {
         ty: Type,
         reset: Expr,
     },
+    /// `mem name: element_type[DEPTH] = init` — an addressable memory of
+    /// `DEPTH` elements. Read combinationally (`m[addr]`), written on a clock
+    /// (`m[addr] <- v` inside `on`). The init value is mandatory and seeds
+    /// every cell at power-on (safety rule: no uninitialized state); `depth`
+    /// must const-evaluate to a positive width.
+    Mem {
+        name: Ident,
+        ty: Type,
+        depth: Expr,
+        init: Expr,
+    },
     Const(ConstDecl),
     Enum(EnumDecl),
     /// Child-module instantiation (`let u = Adder(...) { ... }`).

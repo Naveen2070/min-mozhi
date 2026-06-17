@@ -104,6 +104,13 @@ impl<'a> Checker<'a> {
             Ty::Clock | Ty::Reset => {
                 let _ = self.not_data(cx, scrutinee, &st);
             }
+            Ty::Memory { .. } => self.err(
+                cx.file,
+                scrutinee,
+                "E0409",
+                format!("cannot `match` on {}", show(&st)),
+                "read one cell first — `match m[addr] { ... }`",
+            ),
             Ty::Bit | Ty::Bits(_) => {
                 let n = if let Ty::Bits(n) = st { n } else { 1 };
                 let mut bad = false;

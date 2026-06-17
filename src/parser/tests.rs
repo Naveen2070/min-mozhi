@@ -69,6 +69,31 @@ fn on_fall_parses_with_the_fall_edge() {
 }
 
 #[test]
+fn mem_declaration_parses_to_a_mem_item() {
+    let f = parse_ok("module M {\n  mem m: bits[8][4] = 0\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let mem = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::Mem {
+                name, depth, init, ..
+            } => Some((name, depth, init)),
+            _ => None,
+        })
+        .expect("a `mem` declaration");
+    assert_eq!(mem.0.name, "m");
+}
+
+#[test]
+fn a_mem_without_an_init_value_is_e1104() {
+    let d = parse_err("module M {\n  mem m: bits[8][4]\n}\n");
+    assert_eq!(d[0].code, Some("E1104"));
+}
+
+#[test]
 fn thamizh_order_on_fall_parses_to_the_fall_edge() {
     // `irakkam(clk) pothu { }` — the thamizh-order falling-edge block.
     let f = parse_ok(

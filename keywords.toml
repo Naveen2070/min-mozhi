@@ -20,7 +20,7 @@ version = 1
 # so v0.1 programs cannot claim them, untranslated until each feature lands
 # (spec/03 section "Reserved words").
 reserved = [
-  "mem", "sync", "inout", "struct",
+  "sync", "inout", "struct",
   "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "async", "await",
   "fixed", "requires", "ensures",
   # Combinational functions (Phase 2 RTL parity; also unblocks the pipe `|>`).
@@ -57,6 +57,17 @@ tamil = "கம்பி"
 en = "reg"
 tanglish = "pathivedu"
 tamil = "பதிவேடு"
+
+# Memory / register array (`mem m: bits[W][DEPTH] = 0` → Verilog `reg [W-1:0] m [0:DEPTH-1]`).
+# The Tanglish/Tamil spellings here are PROVISIONAL dev/testing placeholders —
+# `ninaivagam`/`நினைவகம்` (the established Tamil term for computer "memory"; pairs with
+# `reg`/`pathivedu` = "ledger") — pending native-speaker review (R9/R11). Founder-authorized
+# 2026-06-17 so the four-flavor tooling works now; native review confirms or replaces them
+# before the v0.1.0 freeze.
+[keywords.mem]
+en = "mem"
+tanglish = "ninaivagam"
+tamil = "நினைவகம்"
 
 [keywords.clock]
 en = "clock"

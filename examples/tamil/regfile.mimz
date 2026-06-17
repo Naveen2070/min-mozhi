@@ -1,0 +1,24 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): a small register file.
+// A `நினைவகம்` (mem) is an addressable memory — 4 cells of 8 bits. It is
+// written on the clock when `we` is high and read combinationally. Every cell
+// is seeded to the init value (0) at power-on.
+
+தொகுதி RegFile {
+  துடிப்பு clk
+
+  உள்ளீடு  we: bit
+  உள்ளீடு  waddr: bits[2]
+  உள்ளீடு  wdata: bits[8]
+  உள்ளீடு  raddr: bits[2]
+  வெளியீடு rdata: bits[8]
+
+  நினைவகம் m: bits[8][4] = 0
+
+  போது ஏற்றம்(clk) {
+    எனில் we {
+      m[waddr] <- wdata
+    }
+  }
+
+  rdata = m[raddr]
+}

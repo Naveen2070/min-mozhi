@@ -49,7 +49,7 @@
     "keywords-declaration": {
       "comment": "declaration keywords, all flavors (incl. the `include` alias of import)",
       "name": "storage.type.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(module|thoguthi|தொகுதி|in|ulleedu|உள்ளீடு|out|veliyeedu|வெளியீடு|wire|kambi|கம்பி|reg|pathivedu|பதிவேடு|clock|thudippu|துடிப்பு|reset|meettamai|மீட்டமை|enum|vagai|வகை|let|amai|அமை|const|maarili|மாறிலி|import|include|serkka|சேர்க்க|test|sodhanai|சோதனை|for|kaaga|க்காக|tick|kanam|கணம்|expect|uruthisei|உறுதிசெய்)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(module|thoguthi|தொகுதி|in|ulleedu|உள்ளீடு|out|veliyeedu|வெளியீடு|wire|kambi|கம்பி|reg|pathivedu|பதிவேடு|mem|ninaivagam|நினைவகம்|clock|thudippu|துடிப்பு|reset|meettamai|மீட்டமை|enum|vagai|வகை|let|amai|அமை|const|maarili|மாறிலி|import|include|serkka|சேர்க்க|test|sodhanai|சோதனை|for|kaaga|க்காக|tick|kanam|கணம்|expect|uruthisei|உறுதிசெய்)(?![\\p{L}\\p{N}_])"
     },
     "keywords-control": {
       "comment": "control-flow keywords, all flavors",
@@ -68,7 +68,7 @@
     "reserved-words": {
       "comment": "reserved for future features — using them is a compile error",
       "name": "invalid.illegal.reserved.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(mem|sync|inout|struct|secret|declassify|default|pipeline|interface|chan|prove|async|await|fixed|requires|ensures|fn|function|suzhal|சுழல்)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(sync|inout|struct|secret|declassify|default|pipeline|interface|chan|prove|async|await|fixed|requires|ensures|fn|function|suzhal|சுழல்)(?![\\p{L}\\p{N}_])"
     },
     "types": {
       "comment": "universal vocabulary — never translated",

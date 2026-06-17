@@ -11,10 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**386 tests** as of 2026-06-17: 251 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
+**396 tests** as of 2026-06-17: 261 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-17 A4 memories `mem` (pre-v0.1.0 RTL-parity batch) — `mem` promoted from reserved to an active keyword KW_MEM (Tanglish/Tamil `ninaivagam`/`நினைவகம்` PROVISIONAL, pending native review). New `ModuleItem::Mem`; checker `Ty::Memory` (indexed read/write yields the element type, address range-checked against `depth`); emitter `reg [W-1:0] m [0:DEPTH-1]` + an `initial` power-on seed; the sim kernel gained a sparse cell store (`is_mem`/`mem_read` on the `Resolver`, indexed write into `next_mems`). +10 lib unit (lexer `mem_is_an_active_keyword`; parser `mem_declaration_parses_to_a_mem_item`, `a_mem_without_an_init_value_is_e1104`; checker `register_file_passes`, `a_non_constant_memory_depth_is_e0201`, `a_zero_memory_depth_is_e0410`, `a_memory_init_that_overflows_the_element_is_e0405`, `a_constant_address_past_the_depth_is_e0406`, `a_memory_inside_repeat_is_e0303`; kernel `memory_write_then_read_round_trips_a_cell`). New four-flavor `regfile` example (`BASE_EXAMPLES` 20 → 21, golden + the Icarus three-way differential; the `regfile` cells are internal-only — not dumped to VCD, like the tamil-pure exemption note). Spec `02` → v0.2.11, `03` → v0.2.9. Suite 386 → 396.
 - 2026-06-17 A3 falling-edge `on fall(clk)` (pre-v0.1.0 RTL-parity batch) — `fall` promoted from reserved to an active keyword KW_FALL (Tanglish/Tamil `irakkam`/`இறக்கம்` PROVISIONAL, pending native review); `OnBlock`/`Reg`/`Process` gained an `edge`; emitter lowers `posedge`/`negedge`; the sim kernel is now edge-aware (rise → sample → fall per period) so mixed-edge designs match Icarus bit-for-bit. +4 lib unit (parser `on_fall_parses_with_the_fall_edge`, `thamizh_order_on_fall_parses_to_the_fall_edge`; emitter `on_fall_emits_negedge`; kernel `dual_edge_negedge_reg_captures_posedge_within_a_period`); 2 lexer tests renamed (`fall_is_an_active_keyword`, `a_reserved_word_is_an_error`). New four-flavor `dual_edge` example (`BASE_EXAMPLES` 19 → 20, golden + the Icarus three-way differential). Spec `02` → v0.2.10, `03` → v0.2.8. Suite 382 → 386.
 - 2026-06-17 A2 don't-care `match` patterns `0b1??` (pre-v0.1.0 RTL-parity batch) — new `TokKind::MaskedInt` / `Pattern::IntMask` (binary `?` don't-care), mirroring the literal-pattern path; additive, no new keyword. +6 lib unit (lexer `dont_care_binary_literal_lexes_to_masked_int`; parser `dont_care_pattern_parses_to_intmask`; checker `dont_care_pattern_must_match_the_scrutinee_width`, `a_dont_care_match_still_needs_a_wildcard`, `a_dont_care_pattern_on_an_enum_is_e0409`; sim `dont_care_match_picks_the_masked_arm`). New four-flavor example `priority` (`BASE_EXAMPLES` 18 → 19, golden + the Icarus three-way differential) — no new test functions. Exact-width reuses E0409, still-needs-`_` is E0601 (no new code). Spec `02` → v0.2.9. Suite 376 → 382.
 - 2026-06-17 A1 replication `{N{x}}` (pre-v0.1.0 RTL-parity batch) — new `ExprKind::Replicate` mirroring concat through the whole pipeline; purely additive, no new keyword. +7 lib unit (parser `replication_parses_to_replicate`, `braces_without_an_inner_group_stay_concat`; checker `replication_width_is_count_times_inner`, `replication_width_mismatch_is_e0401`, `a_non_constant_replication_count_is_e0201`, `a_zero_replication_count_is_e0410`; sim `replication_repeats_the_group`). New four-flavor example `replicate` (`BASE_EXAMPLES` 17 → 18, golden + the Icarus three-way differential) — no new test functions (existing parametrized iterators). Width reuses E0410, non-const count reuses E0201 (no new code). Spec `02` → v0.2.8. Suite 369 → 376.
@@ -62,21 +63,22 @@ Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
 **every** test fails if the table is broken. That's by design.
 
-## Unit: lexer (`src/lexer/tests.rs`, 9 tests)
+## Unit: lexer (`src/lexer/tests.rs`, 10 tests)
 
-| Test                                           | Locks in                                                                        |
-| ---------------------------------------------- | ------------------------------------------------------------------------------- |
-| `lexes_mixed_flavors`                          | mixing three flavors in ONE line works — the migration path                     |
-| `tamil_identifiers_work`                       | Tamil-script identifiers lex as identifiers (XID rules)                         |
-| `numbers`                                      | decimal / `0b` / `0x` parse, `_` separators, correct values                     |
-| `wrapping_operators`                           | `+%` / `-%` are single tokens                                                   |
-| `larrow_vs_comparison`                         | `<-` vs `<=` vs `<<` disambiguation — longest match                             |
-| `newline_continuation_after_operator`          | the Go-style newline policy, both directions (kept AND dropped)                 |
-| `division_is_rejected_with_teaching_error`     | `/` errors AND the help text teaches the alternative                            |
-| `a_reserved_word_is_an_error`                  | a reserved word (`mem`) is a clean E1005, not a silent identifier (was `fall`)  |
-| `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2) |
+| Test                                           | Locks in                                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `lexes_mixed_flavors`                          | mixing three flavors in ONE line works — the migration path                                     |
+| `tamil_identifiers_work`                       | Tamil-script identifiers lex as identifiers (XID rules)                                         |
+| `numbers`                                      | decimal / `0b` / `0x` parse, `_` separators, correct values                                     |
+| `wrapping_operators`                           | `+%` / `-%` are single tokens                                                                   |
+| `larrow_vs_comparison`                         | `<-` vs `<=` vs `<<` disambiguation — longest match                                             |
+| `newline_continuation_after_operator`          | the Go-style newline policy, both directions (kept AND dropped)                                 |
+| `division_is_rejected_with_teaching_error`     | `/` errors AND the help text teaches the alternative                                            |
+| `a_reserved_word_is_an_error`                  | a reserved word (`sync`) is a clean E1005, not a silent identifier (was `mem`)                  |
+| `mem_is_an_active_keyword`                     | `mem`/`ninaivagam`/`நினைவகம்` lex as KW_MEM in all three flavors (A4 promoted it from reserved) |
+| `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2)                 |
 
-## Unit: parser (`src/parser/tests.rs`, 29 tests)
+## Unit: parser (`src/parser/tests.rs`, 31 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -109,12 +111,14 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `replication_parses_to_replicate`                                  | `{2{a}}` parses as `Replicate` (count + inner parts), not concatenation (A1)            |
 | `braces_without_an_inner_group_stay_concat`                        | `{a, a}` still parses as `Concat` — the replication path is no regression               |
 | `dont_care_pattern_parses_to_intmask`                              | `0b1??` in a match arm parses as `Pattern::IntMask` (value/mask/width) (A2)             |
+| `mem_declaration_parses_to_a_mem_item`                             | `mem m: bits[8][4] = 0` parses to `ModuleItem::Mem` (name/ty/depth/init) (A4)           |
+| `a_mem_without_an_init_value_is_e1104`                             | a `mem` missing its `= init` is E1104 (no uninitialized state), like a reg (A4)         |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 106 tests)
+## Unit: checker (`src/checker/tests.rs`, 112 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -157,6 +161,12 @@ deserve a note:
 | `wildcard_after_full_enum_coverage_is_allowed`                        | the defensive `_` (bit-flip recovery) is never flagged unreachable                     |
 | `clock_and_reset_ports_may_be_omitted`                                | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract              |
 | `same_domain_logic_under_two_declared_clocks_passes`                  | E0701 colors by USE, not by declaration count — an unused clock changes nothing        |
+| `register_file_passes`                                                | a `mem` with a clocked indexed write + combinational indexed read checks clean (A4)    |
+| `a_non_constant_memory_depth_is_e0201`                                | a memory `DEPTH` that is not a compile-time constant is E0201 (A4)                     |
+| `a_zero_memory_depth_is_e0410`                                        | a memory `DEPTH` of 0 is E0410 — a memory needs at least one cell (A4)                 |
+| `a_memory_init_that_overflows_the_element_is_e0405`                   | a `mem` init value too wide for the element type is E0405 (A4)                         |
+| `a_constant_address_past_the_depth_is_e0406`                          | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                          |
+| `a_memory_inside_repeat_is_e0303`                                     | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                |
 
 ## Unit: transliteration (`src/emit_verilog/translit.rs`, 5 tests)
 
@@ -508,7 +518,7 @@ array instances, bit-indexed drives). The event-driven kernel interprets a
 | `a_flatten_name_collision_errors`                   | SEC-6: a parent signal colliding with a flattened `inst_port` wire errors instead of silently overwriting                                           |
 | `an_i128_min_const_elaborates_without_overflow`     | SEC-6 (SIM-5): a flattened child const evaluating to `i128::MIN` lowers via `unsigned_abs` instead of overflow-panicking the negation in `int_expr` |
 
-## Unit: kernel (`src/sim/kernel.rs`, 10 tests)
+## Unit: kernel (`src/sim/kernel.rs`, 11 tests)
 
 Phase 1.5 step B2: the event-driven, two-phase simulation kernel that interprets
 a `Design` over clock cycles (regs init to reset; each rising edge settles
@@ -519,6 +529,7 @@ Shares the value model + expression evaluator with `comb` via `src/sim/value.rs`
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `counter_counts_and_resets`                              | the counter counts 0→1→2→3 on rising edges; asserting `rst` forces it back to 0 (synchronous reset)       |
 | `dual_edge_negedge_reg_captures_posedge_within_a_period` | a `posedge` reg feeds a `negedge` reg; the rise→fall tick lets `b` see the new `a` same period (A3)       |
+| `memory_write_then_read_round_trips_a_cell`              | a `mem` cell reads init until written, then holds the clocked value; another cell still reads init (A4)   |
 | `regs_init_to_their_reset_value`                         | before any tick a reg holds its (non-zero) folded reset value                                             |
 | `wraps_at_declared_width`                                | `+%` on a `bits[2]` reg wraps 3→0 — width masking on the next value                                       |
 | `two_phase_commit_swaps_registers`                       | `a <- b; b <- a` SWAPS (non-blocking): each reads the OLD value, proving the two-phase commit             |

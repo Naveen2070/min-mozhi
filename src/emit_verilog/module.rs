@@ -93,7 +93,36 @@ impl Emitter<'_> {
                     let w = self.width(ty);
                     self.out.push_str(&format!("    reg {w}{};\n", name.name));
                 }
+                ModuleItem::Mem {
+                    name, ty, depth, ..
+                } => {
+                    self.check_ascii(name);
+                    let w = self.width(ty);
+                    let d = self.expr(depth);
+                    self.out
+                        .push_str(&format!("    reg {w}{} [0:({d})-1];\n", name.name));
+                }
                 _ => {}
+            }
+        }
+
+        // Power-on init: seed every cell of each memory to its init value
+        // (mirrors the simulator, which initializes all cells at construction).
+        // Mandatory init value → no uninitialized state, without a per-cycle
+        // reset (the `reset` line clears registers only).
+        for item in &m.items {
+            if let ModuleItem::Mem {
+                name, depth, init, ..
+            } = item
+            {
+                let d = self.expr(depth);
+                let v = self.expr(init);
+                let iv = format!("__mimz_{}_i", name.name);
+                self.out.push_str(&format!("    integer {iv};\n"));
+                self.out.push_str(&format!(
+                    "    initial for ({iv} = 0; {iv} < ({d}); {iv} = {iv} + 1) {}[{iv}] = {v};\n",
+                    name.name
+                ));
             }
         }
 

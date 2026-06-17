@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.10.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.11.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -334,6 +334,49 @@ hardware. `tick` and `expect` are keywords valid only inside `test`. Execution
 semantics (and the equivalent `await clk.cycles(n)` timing form) are specified in
 [`spec/05-simulator.md`](05-simulator.md).
 
+### 1.11 Memories — `mem`
+
+```mimz
+module RegFile {
+  clock clk
+  in  we: bit
+  in  waddr: bits[2]
+  in  wdata: bits[8]
+  in  raddr: bits[2]
+  out rdata: bits[8]
+
+  mem m: bits[8][4] = 0       // 4 cells of bits[8], every cell seeded to 0
+
+  on rise(clk) {
+    if we {
+      m[waddr] <- wdata       // clocked, indexed write
+    }
+  }
+
+  rdata = m[raddr]            // combinational, indexed read
+}
+```
+
+A `mem` is an **addressable memory** — `DEPTH` cells, each of an element type
+(`bit` / `bits[W]` / `signed[W]`), declared `mem name: <element>[DEPTH] = init`.
+It lowers to a Verilog packed-element memory `reg [W-1:0] name [0:DEPTH-1]`.
+
+- **`DEPTH`** is a compile-time constant (`1..` cells; E0410 otherwise, E0201 if
+  not constant).
+- **Init.** The init value is **mandatory** and seeds **every** cell at power-on
+  (Verilog `initial`) — the "no uninitialized state" safety rule, without an
+  unsynthesizable whole-memory clear. A `reset` line clears registers only, not
+  memory; so a memory-only module needs no `reset`.
+- **Read** `m[addr]` is **combinational** and yields the element type; the
+  address may be a runtime signal. A compile-time address outside `0..DEPTH-1` is
+  E0406; a runtime out-of-range read yields the init value.
+- **Write** `m[addr] <- v` is **sequential** — only inside an `on` block, where
+  it binds to that block's clock/edge. `=` cannot write a memory (E0505), and a
+  memory cannot be sliced or assigned as a whole (E0108). A memory is written by
+  at most one `on` block (E0503).
+- A memory is internal: its cells are not dumped to VCD (only the signals that
+  read it are). Enum-element memories and 2-D memories are deferred (section 7).
+
 ---
 
 ## 2. Lexical Rules
@@ -417,7 +460,7 @@ moduleDecl  = "module" IDENT [ "(" [ paramList ] ")" ] "{" { moduleItem } "}" ;
 paramList   = param { "," param } ;
 param       = IDENT ":" ( "int" | "bool" ) [ "=" constExpr ] ;
 
-moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl
+moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
             | constDecl | enumDecl | instDecl | onBlock | driveStmt
             | repeatBlock ;
 
@@ -426,6 +469,7 @@ clockDecl   = "clock" IDENT NEWLINE ;
 resetDecl   = "reset" IDENT NEWLINE ;
 wireDecl    = "wire" IDENT ":" type "=" expr NEWLINE ;
 regDecl     = "reg"  IDENT ":" type "=" constExpr NEWLINE ;
+memDecl     = "mem"  IDENT ":" type "[" constExpr "]" "=" constExpr NEWLINE ;
 enumDecl    = "enum" IDENT "{" IDENT { "," IDENT } [ "," ] "}" ;
 instDecl    = "let" instName "=" IDENT "(" [ argList ] ")"
               [ "{" [ connList ] "}" ] NEWLINE ;
@@ -508,21 +552,29 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## 7. Deferred Features (explicitly out of v0.2)
 
-| Feature                                              | Target                                              |
-| ---------------------------------------------------- | --------------------------------------------------- |
-| `on fall(...)` falling-edge blocks                   | reserved keyword, post-v1                           |
-| `inout`/tristate ports                               | Phase 2                                             |
-| Memories/arrays (`mem`)                              | Phase 2 spec bump                                   |
-| Clock-domain crossing (`sync`)                       | Phase 2                                             |
-| Structs/bundles/buses                                | post-Phase 2 (stdlib time)                          |
-| `match` ranges and don't-care bit patterns (`0b1??`) | v0.3+                                               |
-| Division/modulo                                      | never as operators; stdlib divider module (Phase 4) |
-| Wrapping/instantiating external Verilog modules      | per Constitution — design in Phase 2+               |
+| Feature                                         | Target                                                |
+| ----------------------------------------------- | ----------------------------------------------------- |
+| `inout`/tristate ports                          | Phase 2                                               |
+| Enum-element and 2-D memories (`mem`)           | post-v1 (scalar `bit`/`bits`/`signed` cells ship now) |
+| Clock-domain crossing (`sync`)                  | Phase 2                                               |
+| Structs/bundles/buses                           | post-Phase 2 (stdlib time)                            |
+| `match` ranges (e.g. `0..7`)                    | v0.3+                                                 |
+| Division/modulo                                 | never as operators; stdlib divider module (Phase 4)   |
+| Wrapping/instantiating external Verilog modules | per Constitution — design in Phase 2+                 |
 
 ---
 
 ## Changelog
 
+- **v0.2.11 (2026-06-17):** **Memories `mem`** added (new section 1.11) — an
+  addressable array `mem name: <element>[DEPTH] = init`, with a combinational
+  indexed read (`m[addr]`) and a clocked indexed write (`m[addr] <- v`); lowers
+  to a Verilog packed-element `reg [W-1:0] m [0:DEPTH-1]` with an `initial`
+  power-on seed. `mem` was promoted from reserved to an active keyword (KW_MEM;
+  Tanglish/Tamil provisional). Additive. Grammar gained `memDecl`. Covered by the
+  `regfile` four-flavor example (kernel == VCD == Icarus). Also corrected the
+  Deferred table: `on fall` (shipped v0.2.10) and don't-care patterns (shipped
+  v0.2.9) were stale entries; enum-element / 2-D memories remain deferred.
 - **v0.2.10 (2026-06-17):** **Falling-edge `on fall(clk)`** added (section 1.2) —
   the negedge sibling of `on rise(clk)`; lowers to Verilog `always @(negedge clk)`.
   `fall` was promoted from reserved to an active keyword (KW_FALL; see

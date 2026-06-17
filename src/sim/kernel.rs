@@ -33,6 +33,22 @@ pub struct Sim {
     leaves: BTreeMap<String, Val>,
     /// Current register state.
     regs: BTreeMap<String, Val>,
+    /// Written memory cells, keyed by (memory name, address). Sparse: a cell
+    /// absent here reads as its memory's init value (power-on seed).
+    mems: BTreeMap<(String, u128), Val>,
+    /// Per-memory metadata for the resolver (element width, init, depth).
+    mem_meta: BTreeMap<String, MemInfo>,
+}
+
+/// What the resolver and writer need to know about a memory without scanning
+/// `design.mems`: the element width, the init value returned for an unwritten
+/// or out-of-range cell, and the depth (writes past it are dropped, as in
+/// Verilog).
+#[derive(Clone, Copy)]
+struct MemInfo {
+    width: Width,
+    init: i128,
+    depth: u128,
 }
 
 impl Sim {
@@ -79,11 +95,25 @@ impl Sim {
                 Val::new(r.reset as u128, r.width.bits, r.width.signed),
             );
         }
+        // Memories start empty (sparse): an unwritten cell reads its init value.
+        let mut mem_meta = BTreeMap::new();
+        for mem in &design.mems {
+            mem_meta.insert(
+                mem.name.clone(),
+                MemInfo {
+                    width: mem.width,
+                    init: mem.init,
+                    depth: mem.depth,
+                },
+            );
+        }
         Sim {
             design,
             widths,
             leaves,
             regs,
+            mems: BTreeMap::new(),
+            mem_meta,
         }
     }
 
@@ -140,8 +170,17 @@ impl Sim {
             .any(|r| self.leaves.get(r).is_some_and(|v| v.bits & 1 == 1));
 
         // Start from the current registers (hold-by-default), overlay this
-        // edge's updates, then commit.
+        // edge's updates, then commit. Memory holds across reset (power-on
+        // init only — the reset line clears registers, not memory). A design
+        // with no memories pays nothing here: no clone, no commit (keeps the
+        // mem-free kernel hot path byte-for-byte as before A4).
+        let has_mems = !self.mem_meta.is_empty();
         let mut next = self.regs.clone();
+        let mut next_mems = if has_mems {
+            self.mems.clone()
+        } else {
+            BTreeMap::new()
+        };
         if reset_now {
             for reg in &self.design.regs {
                 if reg.clock == clock && reg.edge == edge {
@@ -155,11 +194,20 @@ impl Sim {
             let mut env = self.comb_env();
             for proc in &self.design.procs {
                 if proc.clock == clock && proc.edge == edge {
-                    run_seq(&mut env, &proc.body, &mut next, &self.widths)?;
+                    run_seq(
+                        &mut env,
+                        &proc.body,
+                        &mut next,
+                        &mut next_mems,
+                        &self.widths,
+                    )?;
                 }
             }
         }
         self.regs = next;
+        if has_mems {
+            self.mems = next_mems;
+        }
         Ok(())
     }
 
@@ -205,6 +253,8 @@ impl Sim {
             widths: &self.widths,
             memo: BTreeMap::new(),
             stack: Vec::new(),
+            mem_cells: &self.mems,
+            mem_meta: &self.mem_meta,
         }
     }
 }
@@ -216,29 +266,52 @@ fn run_seq(
     env: &mut CombEnv,
     body: &[SeqStmt],
     next: &mut BTreeMap<String, Val>,
+    next_mems: &mut BTreeMap<(String, u128), Val>,
     widths: &BTreeMap<String, Width>,
 ) -> Result<(), String> {
     for s in body {
         match s {
             SeqStmt::Assign { lhs, rhs } => {
-                if lhs.index.is_some() {
-                    return Err(format!(
-                        "assigning a slice/bit of `{}` is not supported by the simulator yet",
-                        lhs.base.name
-                    ));
+                match &lhs.index {
+                    // Whole-register update.
+                    None => {
+                        let v = value::eval(env, rhs)?;
+                        let w = widths.get(&lhs.base.name).copied().unwrap_or(Width {
+                            bits: v.width,
+                            signed: v.signed,
+                        });
+                        next.insert(lhs.base.name.clone(), Val::new(v.bits, w.bits, w.signed));
+                    }
+                    // Memory cell write `m[addr] <- v`. The address reads the
+                    // CURRENT state (`env`); the write lands in `next_mems`, so
+                    // a same-cycle read of the cell still sees the old value.
+                    Some((addr_expr, None)) if env.is_mem(&lhs.base.name) => {
+                        let info = env.mem_info(&lhs.base.name);
+                        let addr = value::eval(env, addr_expr)?.bits;
+                        let v = value::eval(env, rhs)?;
+                        // A write past the end is dropped (matches Verilog).
+                        if let Some(info) = info {
+                            if addr < info.depth {
+                                next_mems.insert(
+                                    (lhs.base.name.clone(), addr),
+                                    Val::new(v.bits, info.width.bits, info.width.signed),
+                                );
+                            }
+                        }
+                    }
+                    Some(_) => {
+                        return Err(format!(
+                            "assigning a slice/bit of `{}` is not supported by the simulator yet",
+                            lhs.base.name
+                        ));
+                    }
                 }
-                let v = value::eval(env, rhs)?;
-                let w = widths.get(&lhs.base.name).copied().unwrap_or(Width {
-                    bits: v.width,
-                    signed: v.signed,
-                });
-                next.insert(lhs.base.name.clone(), Val::new(v.bits, w.bits, w.signed));
             }
             SeqStmt::If { cond, then, els } => {
                 if value::eval(env, cond)?.bits & 1 == 1 {
-                    run_seq(env, then, next, widths)?;
+                    run_seq(env, then, next, next_mems, widths)?;
                 } else if let Some(e) = els {
-                    run_seq(env, e, next, widths)?;
+                    run_seq(env, e, next, next_mems, widths)?;
                 }
             }
         }
@@ -255,9 +328,36 @@ struct CombEnv<'a> {
     widths: &'a BTreeMap<String, Width>,
     memo: BTreeMap<String, Val>,
     stack: Vec<String>,
+    mem_cells: &'a BTreeMap<(String, u128), Val>,
+    mem_meta: &'a BTreeMap<String, MemInfo>,
+}
+
+impl CombEnv<'_> {
+    /// Metadata of memory `name`, if it is one (`Copy`, so the caller is free
+    /// of the borrow afterward).
+    fn mem_info(&self, name: &str) -> Option<MemInfo> {
+        self.mem_meta.get(name).copied()
+    }
 }
 
 impl Resolver for CombEnv<'_> {
+    fn is_mem(&self, name: &str) -> bool {
+        self.mem_meta.contains_key(name)
+    }
+
+    fn mem_read(&mut self, name: &str, addr: u128) -> Result<Val, String> {
+        let info = self
+            .mem_meta
+            .get(name)
+            .ok_or_else(|| format!("`{name}` is not a memory"))?;
+        // An unwritten or out-of-range cell reads the memory's init value.
+        Ok(self
+            .mem_cells
+            .get(&(name.to_string(), addr))
+            .copied()
+            .unwrap_or_else(|| Val::new(info.init as u128, info.width.bits, info.width.signed)))
+    }
+
     fn signal(&mut self, name: &str) -> Result<Val, String> {
         if let Some(v) = self.known.get(name) {
             return Ok(*v);
@@ -340,6 +440,29 @@ mod tests {
         s.tick("clk").unwrap();
         assert_eq!(s.peek("a").unwrap(), 5);
         assert_eq!(s.peek("q").unwrap(), 5, "negedge `b` captured the new `a`");
+    }
+
+    #[test]
+    fn memory_write_then_read_round_trips_a_cell() {
+        let mut s = sim(
+            "module RF {\n  clock clk\n  in we: bit\n  in waddr: bits[2]\n  in wdata: bits[8]\n  in raddr: bits[2]\n  out rdata: bits[8]\n  mem m: bits[8][4] = 0\n  on rise(clk) {\n    if we {\n      m[waddr] <- wdata\n    }\n  }\n  rdata = m[raddr]\n}\n",
+        );
+        // Every cell starts at the init value (power-on seed).
+        s.set("raddr", 2).unwrap();
+        assert_eq!(s.peek("rdata").unwrap(), 0, "an unwritten cell reads init");
+        // Write 165 to cell 2, then read it back.
+        s.set("we", 1).unwrap();
+        s.set("waddr", 2).unwrap();
+        s.set("wdata", 165).unwrap();
+        s.tick("clk").unwrap();
+        assert_eq!(
+            s.peek("rdata").unwrap(),
+            165,
+            "cell 2 holds the written value"
+        );
+        // A different, never-written cell still reads init.
+        s.set("raddr", 1).unwrap();
+        assert_eq!(s.peek("rdata").unwrap(), 0, "cell 1 was never written");
     }
 
     #[test]

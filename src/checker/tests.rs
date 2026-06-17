@@ -508,6 +508,44 @@ fn enum_state_machine_passes() {
 }
 
 #[test]
+fn register_file_passes() {
+    // A `mem`: clocked indexed write under `we`, combinational indexed read.
+    // No reset line needed — a memory power-on-inits itself.
+    let src = "module RF {\n  clock clk\n  in we: bit\n  in waddr: bits[2]\n  in wdata: bits[8]\n  in raddr: bits[2]\n  out rdata: bits[8]\n  mem m: bits[8][4] = 0\n  on rise(clk) {\n    if we {\n      m[waddr] <- wdata\n    }\n  }\n  rdata = m[raddr]\n}\n";
+    check_one(src).expect("a register file: indexed write + read, element-typed");
+}
+
+#[test]
+fn a_non_constant_memory_depth_is_e0201() {
+    let src = "module M {\n  in n: bits[4]\n  mem m: bits[8][n] = 0\n}\n";
+    first_err(src, "E0201");
+}
+
+#[test]
+fn a_zero_memory_depth_is_e0410() {
+    let d = first_err("module M {\n  mem m: bits[8][0] = 0\n}\n", "E0410");
+    assert!(d.msg.contains("depth"));
+}
+
+#[test]
+fn a_memory_init_that_overflows_the_element_is_e0405() {
+    first_err("module M {\n  mem m: bits[8][4] = 300\n}\n", "E0405");
+}
+
+#[test]
+fn a_constant_address_past_the_depth_is_e0406() {
+    let src = "module M {\n  out y: bits[8]\n  mem m: bits[8][4] = 0\n  y = m[4]\n}\n";
+    let d = first_err(src, "E0406");
+    assert!(d.msg.contains("address"));
+}
+
+#[test]
+fn a_memory_inside_repeat_is_e0303() {
+    let src = "module M {\n  repeat i: 0..2 {\n    mem m: bits[8][4] = 0\n  }\n}\n";
+    first_err(src, "E0303");
+}
+
+#[test]
 fn extend_of_a_bit_into_bitwise_passes() {
     let src = "module Sr(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  in din: bit\n  out dout: bits[WIDTH]\n  reg sr: bits[WIDTH] = 0\n  on rise(clk) {\n    sr <- (sr << 1) | extend(din, WIDTH)\n  }\n  dout = sr\n}\n";
     check_one(src).expect("the shift-register shape, widths made explicit");

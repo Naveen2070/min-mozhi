@@ -88,6 +88,22 @@ pub struct Reg {
     pub edge: Edge,
 }
 
+/// A memory: an array of `depth` cells, each `width` bits, seeded to the folded
+/// `init` value at construction (power-on init). Read combinationally
+/// (`m[addr]`) and written on `clock`'s `edge` (`m[addr] <- v`); a memory with
+/// no writing `on` block is a read-only ROM holding `init`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mem {
+    pub name: String,
+    pub width: Width,
+    pub depth: u128,
+    pub init: i128,
+    /// The clock of the `on` block that writes this memory (empty if none does).
+    pub clock: String,
+    /// The edge of the writing `on` block (`rise`/`fall`).
+    pub edge: Edge,
+}
+
 /// One sequential process — the body of an `on rise(clock)` block. The kernel
 /// interprets `body` each rising edge of `clock` (after the synthesized reset
 /// branch). Registers left unassigned on a path hold their current value.
@@ -111,6 +127,8 @@ pub struct Design {
     pub outputs: Vec<Signal>,
     pub wires: Vec<Signal>,
     pub regs: Vec<Reg>,
+    /// Memories (RAM/register arrays), seeded at construction.
+    pub mems: Vec<Mem>,
     /// Combinational drivers: signal name → driving expression. Covers wire
     /// `init` and `out = expr` drives (outputs and wires only; never regs).
     pub comb: BTreeMap<String, Expr>,
@@ -247,6 +265,7 @@ fn elaborate_module(
     let mut outputs = Vec::new();
     let mut wires = Vec::new();
     let mut regs = Vec::new();
+    let mut mems = Vec::new();
     let mut comb: BTreeMap<String, Expr> = BTreeMap::new();
     let mut procs = Vec::new();
     let mut clocks = Vec::new();
@@ -284,6 +303,28 @@ fn elaborate_module(
                     name: name.name.clone(),
                     width,
                     reset,
+                    clock: String::new(),
+                    edge: Edge::Rise,
+                });
+            }
+            ModuleItem::Mem {
+                name,
+                ty,
+                depth,
+                init,
+            } => {
+                let width = width_of(ty, &consts)?;
+                // The sim runs WITHOUT the checker, so guard the depth here too.
+                let d = const_eval(&rw0.expr(depth)?, &consts)?;
+                let depth = u128::try_from(d).ok().filter(|d| *d >= 1).ok_or_else(|| {
+                    format!("memory `{}` has a non-positive depth ({d})", name.name)
+                })?;
+                let init = const_eval(&rw0.expr(init)?, &consts)?;
+                mems.push(Mem {
+                    name: name.name.clone(),
+                    width,
+                    depth,
+                    init,
                     clock: String::new(),
                     edge: Edge::Rise,
                 });
@@ -383,6 +424,7 @@ fn elaborate_module(
         }
     }
     procs.extend(flat.procs);
+    mems.extend(flat.mems);
     for (sig, bits) in bit_drives {
         let width = inputs
             .iter()
@@ -418,6 +460,12 @@ fn elaborate_module(
                 reg.edge = proc.edge;
             }
         }
+        for mem in &mut mems {
+            if assigns(&proc.body, &mem.name) {
+                mem.clock = proc.clock.clone();
+                mem.edge = proc.edge;
+            }
+        }
     }
 
     Ok(Design {
@@ -427,6 +475,7 @@ fn elaborate_module(
         outputs,
         wires,
         regs,
+        mems,
         comb,
         procs,
         clocks,
@@ -439,6 +488,7 @@ fn elaborate_module(
 struct Flat {
     wires: Vec<Signal>,
     regs: Vec<Reg>,
+    mems: Vec<Mem>,
     comb: Vec<(String, Expr)>,
     procs: Vec<Process>,
 }
@@ -447,6 +497,7 @@ impl Flat {
     fn absorb(&mut self, other: Flat) {
         self.wires.extend(other.wires);
         self.regs.extend(other.regs);
+        self.mems.extend(other.mems);
         self.comb.extend(other.comb);
         self.procs.extend(other.procs);
     }
@@ -530,6 +581,12 @@ fn flatten_instance(
             ident_expr(format!("{pfx}{}", r.name), inst.span),
         );
     }
+    for mem in &child.mems {
+        subst.insert(
+            mem.name.clone(),
+            ident_expr(format!("{pfx}{}", mem.name), inst.span),
+        );
+    }
 
     // Clock/reset: explicit connection, else the same-named parent signal.
     let mut clock_map: HashMap<String, String> = HashMap::new();
@@ -590,6 +647,17 @@ fn flatten_instance(
             reset: r.reset,
             clock: String::new(),
             edge: r.edge,
+        });
+    }
+    // Child memories (clock filled by the parent's clock-binding pass).
+    for mem in &child.mems {
+        flat.mems.push(Mem {
+            name: format!("{pfx}{}", mem.name),
+            width: mem.width,
+            depth: mem.depth,
+            init: mem.init,
+            clock: String::new(),
+            edge: mem.edge,
         });
     }
     // Child processes: prefix assigned regs, rewrite bodies, map the clock.

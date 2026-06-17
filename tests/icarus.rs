@@ -737,6 +737,16 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/replicate.mimz", &[], &[], 8);
     // Don't-care `match` patterns `0b1??` (combinational priority decoder).
     differential(&bin, "english/priority.mimz", &[], &[], 8);
+    // Memory `mem` (A4): a register file — `initial`-seeded cells, a clocked
+    // indexed write (`m[waddr] <- wdata` when `we`), and a combinational indexed
+    // read (`rdata = m[raddr]`). Held stimulus writes and reads the same cell.
+    differential(
+        &bin,
+        "english/regfile.mimz",
+        &[],
+        &[("we", 1), ("waddr", 2), ("wdata", 165), ("raddr", 2)],
+        8,
+    );
     // Pure-Tamil (Tamil keywords AND identifiers): the testbench romanizes names
     // to match the emitted Verilog, so these now ride the same bit-for-bit
     // differential as their english twins (`கணக்கி`/kanakki = counter, etc.).

@@ -72,6 +72,17 @@ pub(super) trait Resolver {
     fn signal(&mut self, name: &str) -> Result<Val, String>;
     /// The compile-time integer environment (params + consts).
     fn ints(&self) -> &BTreeMap<String, i128>;
+    /// Is `name` a memory? Distinguishes `m[addr]` (a runtime-addressed memory
+    /// read returning the element) from `s[i]` (a constant-indexed bit select).
+    /// Resolvers without memory state (the combinational-only evaluator) say no.
+    fn is_mem(&self, _name: &str) -> bool {
+        false
+    }
+    /// Read cell `addr` of memory `name`. Returns the cell's current value (or
+    /// the memory's init value for a never-written / out-of-range cell).
+    fn mem_read(&mut self, name: &str, _addr: u128) -> Result<Val, String> {
+        Err(format!("memory `{name}` is not available in this context"))
+    }
 }
 
 /// Evaluate `e` against `r`. The single source of Min-Mozhi's expression
@@ -149,6 +160,15 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
             Ok(Val::new(bits, total64 as u32, false))
         }
         ExprKind::Index { base, index } => {
+            // A memory read `m[addr]` resolves the address at RUNTIME and
+            // returns the whole element; a bit-vector `s[i]` selects one bit
+            // at a compile-time index.
+            if let ExprKind::Ident(name) = &base.kind {
+                if r.is_mem(name) {
+                    let addr = eval(r, index)?;
+                    return r.mem_read(name, addr.bits);
+                }
+            }
             let b = eval(r, base)?;
             let i = checked_index(const_eval(index, r.ints())?, b.width, "bit index")?;
             Ok(Val::new((b.bits >> i) & 1, 1, false))

@@ -139,8 +139,10 @@ Tamil grammar. Declarations, expressions, operators, and types stay identical
 | if-expression | `enil c { a } illaiyenil { b }` | `c enil { a } illaiyenil { b }`                        |                          |
 | test          | `sodhanai "…" kaaga M() { }`    | `M() kaaga "…" sodhanai { }`                           | _M-க்காக "…" சோதனை_      |
 
-Unchanged in both profiles: `module/thoguthi`, port/wire/reg declarations,
+Unchanged in both profiles: `module/thoguthi`, port/wire/reg/mem declarations,
 `let` instantiation, `enum`, assignments (`=`, `<-`), all operators, all types.
+(A `mem`/`ninaivagam` declaration is order-free like `reg`; its indexed read and
+`<-` write reuse the same productions in both profiles.)
 
 ### The counter, thamizh-order Tanglish
 

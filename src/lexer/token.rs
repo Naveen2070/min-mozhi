@@ -14,6 +14,7 @@ pub enum Kw {
     Out,
     Wire,
     Reg,
+    Mem,
     Clock,
     Reset,
     On,

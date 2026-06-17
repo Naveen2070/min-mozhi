@@ -32,6 +32,7 @@ pub(super) enum Bind<'a> {
     Out,
     Wire,
     Reg,
+    Mem,
     Clock,
     Reset,
     Param,
@@ -48,6 +49,7 @@ impl Bind<'_> {
             Bind::Out => "an output port",
             Bind::Wire => "a wire",
             Bind::Reg => "a reg",
+            Bind::Mem => "a memory",
             Bind::Clock => "a clock",
             Bind::Reset => "a reset",
             Bind::Param => "a parameter",
@@ -145,6 +147,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Reset(n) => self.declare(file, sc, n, Bind::Reset),
                 ModuleItem::Wire { name, .. } => self.declare(file, sc, name, Bind::Wire),
                 ModuleItem::Reg { name, .. } => self.declare(file, sc, name, Bind::Reg),
+                ModuleItem::Mem { name, .. } => self.declare(file, sc, name, Bind::Mem),
                 ModuleItem::Const(c) => self.declare(file, sc, &c.name, Bind::Const),
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
@@ -189,6 +192,13 @@ impl<'a> Checker<'a> {
                 ModuleItem::Reg { ty, reset, .. } => {
                     self.ty(file, sc, env, ty);
                     self.expr(file, sc, env, reset);
+                }
+                ModuleItem::Mem {
+                    ty, depth, init, ..
+                } => {
+                    self.ty(file, sc, env, ty);
+                    self.expr(file, sc, env, depth);
+                    self.expr(file, sc, env, init);
                 }
                 ModuleItem::Inst(i) => self.check_inst(file, sc, env, i),
                 ModuleItem::On(on) => {
@@ -268,6 +278,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Port { name, .. } => (name.span, "an input/output port"),
                 ModuleItem::Wire { name, .. } => (name.span, "a wire"),
                 ModuleItem::Reg { name, .. } => (name.span, "a register"),
+                ModuleItem::Mem { name, .. } => (name.span, "a memory"),
                 ModuleItem::Clock(n) => (n.span, "a clock"),
                 ModuleItem::Reset(n) => (n.span, "a reset"),
                 ModuleItem::Const(c) => (c.name.span, "a const"),
@@ -490,6 +501,19 @@ impl<'a> Checker<'a> {
     fn lvalue(&mut self, file: usize, sc: &Scope<'a>, env: &Env, lv: &'a LValue) {
         match sc.names.get(&lv.base.name) {
             Some(Bind::Out | Bind::Wire | Bind::Reg) => {}
+            Some(Bind::Mem) => {
+                // A memory is addressed one cell at a time — a whole-memory
+                // assignment is meaningless.
+                if lv.index.is_none() {
+                    self.err(
+                        file,
+                        lv.base.span,
+                        "E0108",
+                        format!("cannot assign to memory `{}` as a whole", lv.base.name),
+                        "address one cell — `m[addr] <- value`",
+                    );
+                }
+            }
             Some(Bind::In) => self.err(
                 file,
                 lv.base.span,

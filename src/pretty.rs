@@ -206,6 +206,22 @@ impl Pretty {
                 );
                 self.line(&s);
             }
+            ModuleItem::Mem {
+                name,
+                ty,
+                depth,
+                init,
+            } => {
+                let s = format!(
+                    "{} {}: {}[{}] = {}",
+                    self.kw(Kw::Mem),
+                    name.name,
+                    self.ty(ty, ind),
+                    self.expr(depth, ind),
+                    self.expr(init, ind)
+                );
+                self.line(&s);
+            }
             ModuleItem::Const(c) => self.const_decl(c),
             ModuleItem::Enum(e) => self.enum_decl(e),
             ModuleItem::Inst(inst) => self.inst(inst),

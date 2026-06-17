@@ -48,6 +48,11 @@ use super::names::Scope;
 /// trivially safe, and no real design comes close.
 const MAX_WIDTH: i128 = 1_000_000;
 
+/// Memory depth ceiling (number of cells). Like [`MAX_WIDTH`], a sanity bound
+/// far above any real design — keeps `initial`-seed emission and the kernel's
+/// address space trivially safe.
+const MAX_DEPTH: i128 = 1_000_000;
+
 /// Distinct (module, parameter binding) configurations checked before the
 /// worklist stops enqueuing. Terminates pathological recursive
 /// instantiation (`A(W)` containing `A(W+1)`); a real error for that
@@ -72,6 +77,14 @@ enum Ty<'a> {
     Signed(u128),
     /// An enum value; compared by enum NAME (project-unique per E0002).
     Enum(&'a EnumDecl),
+    /// `mem ...[DEPTH]` — an addressable memory. Stores the resolved element
+    /// width/signedness inline (not a nested `Ty`, so `Ty` stays `Copy`) plus
+    /// the depth. Indexing it (`m[addr]`) yields the element type.
+    Memory {
+        width: u128,
+        signed: bool,
+        depth: u128,
+    },
     /// A compile-time integer: literal, const, parameter, or `repeat`
     /// variable. Polymorphic — adapts to any sized context it fits
     /// (spec/02 section 1.8). Carries the value for the fit check.
@@ -105,6 +118,18 @@ fn show(t: &Ty) -> String {
         Ty::Bits(n) => format!("`bits[{n}]`"),
         Ty::Signed(n) => format!("`signed[{n}]`"),
         Ty::Enum(e) => format!("enum `{}`", e.name.name),
+        Ty::Memory {
+            width,
+            signed,
+            depth,
+        } => {
+            let elem = if *signed {
+                format!("signed[{width}]")
+            } else {
+                format!("bits[{width}]")
+            };
+            format!("memory `{elem}[{depth}]`")
+        }
         Ty::CtInt(v) => format!("the compile-time value `{v}`"),
         Ty::Clock => "a clock".into(),
         Ty::Reset => "a reset".into(),
@@ -259,6 +284,36 @@ impl<'a> Checker<'a> {
                     let t = self.resolve_ty(cx, ty);
                     cx.sigs.insert(name.name.clone(), t);
                 }
+                ModuleItem::Mem {
+                    name, ty, depth, ..
+                } => {
+                    let t = match self.resolve_ty(cx, ty) {
+                        Ty::Bit => Some((1, false)),
+                        Ty::Bits(n) => Some((n, false)),
+                        Ty::Signed(n) => Some((n, true)),
+                        Ty::Unknown => None, // width error already reported
+                        other => {
+                            self.err(
+                                cx.file,
+                                name.span,
+                                "E0409",
+                                format!("{} cannot be a memory element type", show(&other)),
+                                "memory elements are `bit`, `bits[N]`, or `signed[N]` — \
+                                 store an enum's encoding as `bits[N]` for now",
+                            );
+                            None
+                        }
+                    };
+                    let resolved = match (t, self.eval_depth(cx, depth)) {
+                        (Some((width, signed)), Some(d)) => Ty::Memory {
+                            width,
+                            signed,
+                            depth: d,
+                        },
+                        _ => Ty::Unknown,
+                    };
+                    cx.sigs.insert(name.name.clone(), resolved);
+                }
                 ModuleItem::Clock(n) => {
                     cx.sigs.insert(n.name.clone(), Ty::Clock);
                 }
@@ -339,6 +394,32 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Evaluate a memory depth expression and validate it (E0410). Like a
+    /// width, a depth must be a positive compile-time constant within
+    /// [`MAX_DEPTH`].
+    fn eval_depth(&mut self, cx: &Wcx<'a>, e: &'a Expr) -> Option<u128> {
+        match consteval::eval(e, &cx.env) {
+            Ok(v) if (1..=MAX_DEPTH).contains(&v) => Some(v as u128),
+            Ok(v) => {
+                self.err(
+                    cx.file,
+                    e.span,
+                    "E0410",
+                    format!("`{v}` is not a valid memory depth"),
+                    format!(
+                        "a memory needs at least one cell — the depth must be between 1 \
+                         and {MAX_DEPTH}"
+                    ),
+                );
+                None
+            }
+            Err(d) => {
+                self.diags.push(d.with_file(cx.file));
+                None
+            }
+        }
+    }
+
     /// Walk a module body, checking every width-bearing position.
     fn walk_width_items(
         &mut self,
@@ -355,6 +436,21 @@ impl<'a> Checker<'a> {
                 ModuleItem::Reg { name, reset, .. } => {
                     let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
                     self.check_expr(cx, reset, expected);
+                }
+                ModuleItem::Mem { name, init, .. } => {
+                    // The init value seeds every cell, so it is checked against
+                    // the element type.
+                    let expected = match cx.sigs.get(&name.name) {
+                        Some(Ty::Memory { width, signed, .. }) => {
+                            if *signed {
+                                Ty::Signed(*width)
+                            } else {
+                                bits(*width)
+                            }
+                        }
+                        _ => Ty::Unknown,
+                    };
+                    self.check_expr(cx, init, expected);
                 }
                 ModuleItem::Drive { lhs, rhs } => {
                     let expected = self.lvalue_ty(cx, lhs);

@@ -258,6 +258,17 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 type_widths(ty, visit);
                 expr(reset, visit);
             }
+            ModuleItem::Mem {
+                name,
+                ty,
+                depth,
+                init,
+            } => {
+                visit(&mut name.name);
+                type_widths(ty, visit);
+                expr(depth, visit);
+                expr(init, visit);
+            }
             ModuleItem::Const(c) => {
                 visit(&mut c.name.name);
                 expr(&mut c.value, visit);

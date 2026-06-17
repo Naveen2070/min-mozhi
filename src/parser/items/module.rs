@@ -120,6 +120,39 @@ impl Parser {
                 self.terminator();
                 Some(ModuleItem::Reg { name, ty, reset })
             }
+            TokKind::Kw(Kw::Mem) => {
+                self.bump();
+                let name = self.ident("a memory name")?;
+                self.expect(TokKind::Colon, "`:` then the memory's element type")?;
+                let ty = self.ty()?;
+                self.expect(
+                    TokKind::LBracket,
+                    "`[` then the depth — memories are written `mem m: type[DEPTH] = 0`",
+                )?;
+                let depth = self.expr()?;
+                self.expect(TokKind::RBracket, "`]` after the depth")?;
+                if !self.at(&TokKind::Assign) {
+                    let span = self.peek().span;
+                    self.error(
+                        span,
+                        "E1104",
+                        format!("memory `{}` has no init value", name.name),
+                    );
+                    self.help(
+                        "every mem declares its init value: `mem m: bits[8][256] = 0` — every cell is initialized at power-on (spec/02 section 1.2)",
+                    );
+                    return None;
+                }
+                self.bump(); // =
+                let init = self.expr()?;
+                self.terminator();
+                Some(ModuleItem::Mem {
+                    name,
+                    ty,
+                    depth,
+                    init,
+                })
+            }
             TokKind::Kw(Kw::Const) => Some(ModuleItem::Const(self.const_decl()?)),
             TokKind::Kw(Kw::Enum) => Some(ModuleItem::Enum(self.enum_decl()?)),
             TokKind::Kw(Kw::Let) => self.inst(),
