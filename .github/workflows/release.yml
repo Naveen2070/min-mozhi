@@ -1,0 +1,180 @@
+# Cross-platform release binaries (Workstream C). Builds the `mimz` compiler for
+# Linux (musl, static), Windows (MSVC), and macOS (Intel + Apple Silicon) on
+# native runners — no cross-compilation. Triggered by a `v*` tag (creates the
+# GitHub Release) or manually (`workflow_dispatch`, build-only — uploads run
+# artifacts so the binaries can be tested before tagging).
+#
+# Two jobs:
+#   build   — a matrix, one native runner per target, each producing one archive.
+#   release — a single job (tags only): gathers every archive, computes one
+#             SHA256SUMS, and creates the Release. Title + body come from
+#             RELEASE_NOTES.md (line 1 = title, the rest = body) — REWRITE that
+#             file for each release.
+#
+# Why this is safe in CI: mimz's dependency tree is 100% pure Rust (no C deps, no
+# build.rs; iverilog is test-only), so each native runner yields a correct,
+# self-contained binary. Binaries are UNSIGNED for v0.1.0 (see UNSIGNED.txt in
+# each archive); code signing is deferred post-v0.1.0.
+#
+# Third-party actions are SHA-pinned (ci_plan.md §3.1); the trailing `# vX`
+# comment records the human version each SHA corresponds to.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Least privilege by default (ci_plan.md §3.4); only the `release` job opts into
+# `contents: write` to create the Release.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            musl: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build (release, mimz only)
+        run: cargo build --release --bin mimz --target ${{ matrix.target }}
+
+      # No iverilog / differential here — correctness is already gated by `ci.yml`.
+      # This only confirms the produced binary actually runs.
+      - name: Smoke-test the binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          BIN="target/${{ matrix.target }}/release/mimz"
+          strip "$BIN"
+          "$BIN" --version
+
+      - name: Smoke-test the binary (Windows)
+        if: runner.os == 'Windows'
+        run: target\${{ matrix.target }}\release\mimz.exe --version
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          STAGE="mimz-${VERSION}-${{ matrix.target }}"
+          mkdir "$STAGE"
+          cp "target/${{ matrix.target }}/release/mimz" "$STAGE/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$STAGE/" 2>/dev/null || true
+          cat > "$STAGE/UNSIGNED.txt" <<'EOF'
+          This mimz binary is UNSIGNED (v0.1.0). It is safe; signing is deferred.
+
+          macOS: the first run may be blocked by Gatekeeper. Clear the quarantine
+            attribute once with:  xattr -d com.apple.quarantine ./mimz
+            (or right-click the binary → Open → Open).
+
+          Verify your download against the release's SHA256SUMS:
+            shasum -a 256 -c SHA256SUMS --ignore-missing
+          EOF
+          tar czf "$STAGE.tar.gz" "$STAGE"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          $stage = "mimz-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item "target\${{ matrix.target }}\release\mimz.exe" $stage
+          foreach ($f in "README.md","LICENSE-MIT","LICENSE-APACHE") {
+            if (Test-Path $f) { Copy-Item $f $stage }
+          }
+          @"
+          This mimz binary is UNSIGNED (v0.1.0). It is safe; signing is deferred.
+
+          Windows: SmartScreen may warn on first run. Click "More info" -> "Run anyway".
+
+          Verify your download against the release's SHA256SUMS.
+          "@ | Set-Content "$stage\UNSIGNED.txt"
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+
+      - name: Upload archive (run artifact)
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mimz-${{ matrix.target }}
+          path: |
+            mimz-*.tar.gz
+            mimz-*.zip
+          if-no-files-found: error
+
+  release:
+    name: create release
+    # Tag pushes only — `workflow_dispatch` stops after `build` (artifacts only).
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the Release + attach assets
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Download all build archives
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums + release title/body
+        id: notes
+        shell: bash
+        run: |
+          # One SHA256SUMS over every archive (uniform format — computed here so
+          # Windows/Unix hashes never disagree).
+          ( cd dist && shasum -a 256 mimz-* > SHA256SUMS )
+          # Title = line 1 of RELEASE_NOTES.md (leading `#`s stripped); body = the
+          # rest. REWRITE RELEASE_NOTES.md for each release.
+          if [ ! -f RELEASE_NOTES.md ]; then
+            echo "::error::RELEASE_NOTES.md is missing — it provides the release title and body."
+            exit 1
+          fi
+          TITLE=$(head -n 1 RELEASE_NOTES.md | sed -E 's/^#+[[:space:]]*//')
+          # Body = everything after line 1, with HTML comments (the maintainer
+          # instructions) stripped and leading blank lines trimmed.
+          tail -n +2 RELEASE_NOTES.md | sed '/<!--/,/-->/d' | sed '/./,$!d' > dist/BODY.md
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          name: ${{ steps.notes.outputs.title }}
+          body_path: dist/BODY.md
+          files: |
+            dist/mimz-*.tar.gz
+            dist/mimz-*.zip
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
