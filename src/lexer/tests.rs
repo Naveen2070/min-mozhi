@@ -36,6 +36,25 @@ fn numbers() {
 }
 
 #[test]
+fn dont_care_binary_literal_lexes_to_masked_int() {
+    // `0b1??` — the high bit cares (value 0b100), the low two are don't-care.
+    assert!(matches!(
+        kinds("0b1??")[0],
+        TokKind::MaskedInt {
+            value: 0b100,
+            mask: 0b100,
+            width: 3,
+            ..
+        }
+    ));
+    // A plain binary literal is still an `Int` — no regression.
+    assert!(matches!(
+        kinds("0b101")[0],
+        TokKind::Int { value: 0b101, .. }
+    ));
+}
+
+#[test]
 fn wrapping_operators() {
     assert_eq!(kinds("a +% b")[1], TokKind::PlusPct);
     assert_eq!(kinds("a -% b")[1], TokKind::MinusPct);

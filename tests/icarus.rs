@@ -732,6 +732,8 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/signed_math.mimz", &[], &[], 8);
     // Replication `{N{x}}` (combinational).
     differential(&bin, "english/replicate.mimz", &[], &[], 8);
+    // Don't-care `match` patterns `0b1??` (combinational priority decoder).
+    differential(&bin, "english/priority.mimz", &[], &[], 8);
     // Pure-Tamil (Tamil keywords AND identifiers): the testbench romanizes names
     // to match the emitted Verilog, so these now ride the same bit-for-bit
     // differential as their english twins (`கணக்கி`/kanakki = counter, etc.).

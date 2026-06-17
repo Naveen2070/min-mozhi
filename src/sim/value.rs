@@ -336,6 +336,7 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
     match p {
         Pattern::Wildcard => Ok(true),
         Pattern::Int { value, .. } => Ok((s.bits & mask(s.width)) == (*value & mask(s.width))),
+        Pattern::IntMask { value, mask: m, .. } => Ok((s.bits & *m) == (*value & *m)),
         Pattern::Bool(b) => Ok((s.bits & 1) == (*b as u128)),
         Pattern::Variant { .. } => {
             Err("enum-variant patterns are not supported by the evaluator yet".into())

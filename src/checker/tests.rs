@@ -237,6 +237,35 @@ fn a_zero_replication_count_is_e0410() {
 }
 
 #[test]
+fn dont_care_pattern_must_match_the_scrutinee_width() {
+    // `0b1??` is 3 bits — clean on bits[3], a width error on bits[4].
+    check_one(
+        "module M {\n  in s: bits[3]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    _ => false\n  }\n}\n",
+    )
+    .expect("0b1?? matches a bits[3]");
+    first_err(
+        "module M {\n  in s: bits[4]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    _ => false\n  }\n}\n",
+        "E0409",
+    );
+}
+
+#[test]
+fn a_dont_care_match_still_needs_a_wildcard() {
+    // Masked patterns earn no exhaustiveness credit, so even though `0b1??`
+    // and `0b0??` together cover every 3-bit value, a `_` is still required.
+    first_err(
+        "module M {\n  in s: bits[3]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    0b0?? => false\n  }\n}\n",
+        "E0601",
+    );
+}
+
+#[test]
+fn a_dont_care_pattern_on_an_enum_is_e0409() {
+    let src = "module M {\n  clock clk\n  reset rst\n  enum S { A, B }\n  reg s: S = S.A\n  out y: bit\n  on rise(clk) {\n    s <- s\n  }\n  y = match s {\n    0b1? => true\n    _ => false\n  }\n}\n";
+    first_err(src, "E0409");
+}
+
+#[test]
 fn min_max_take_two_same_width_operands() {
     check_one(
         "module M {\n  in a: bits[8]\n  in b: bits[8]\n  out y: bits[8]\n  y = max(a, b)\n}\n",

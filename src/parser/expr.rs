@@ -254,6 +254,20 @@ impl Parser {
                 self.bump();
                 Some(Pattern::Int { value, raw })
             }
+            TokKind::MaskedInt {
+                value,
+                mask,
+                width,
+                raw,
+            } => {
+                self.bump();
+                Some(Pattern::IntMask {
+                    value,
+                    mask,
+                    width,
+                    raw,
+                })
+            }
             TokKind::Kw(Kw::True) => {
                 self.bump();
                 Some(Pattern::Bool(true))

@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.8.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.9.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -103,6 +103,11 @@ module Alu(WIDTH: int = 8) {
   path for invalid encodings (e.g. after a bit flip), and the emitted
   Verilog makes the last arm the default either way. An arm placed after
   `_`, or a pattern value already covered, is an error (unreachable).
+- **Don't-care patterns**: a binary pattern may use `?` for a don't-care bit —
+  `0b1??` matches any value whose high bit is 1 (the Verilog `casez` idiom). A
+  don't-care pattern must be **exactly as wide** as the scrutinee, and on its own
+  it does **not** prove exhaustiveness — keep a `_` arm (or exact literal
+  coverage). Binary only for now.
 - `wire name: type = expr` introduces a named combinational signal.
 
 ### 1.4 State machines — `enum` + `match`
@@ -449,7 +454,9 @@ expr        = ifExpr | matchExpr | binExpr ;
 ifExpr      = "if" expr "{" expr "}" "else" ( "{" expr "}" | ifExpr ) ;
 matchExpr   = "match" expr "{" { matchArm } "}" ;
 matchArm    = ( pattern { "," pattern } | "_" ) "=>" expr NEWLINE ;
-pattern     = literal | IDENT "." IDENT ;       (* value or Enum.Variant *)
+pattern     = literal | maskLiteral | IDENT "." IDENT ; (* value, don't-care, or Enum.Variant *)
+maskLiteral = "0b" binMaskDigit { binMaskDigit } ;      (* `0b1??` — `?` is don't-care *)
+binMaskDigit = "0" | "1" | "?" | "_" ;
 
 binExpr     = unary { binOp unary } ;           (* precedence table, section 3 *)
 binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
@@ -514,6 +521,13 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.9 (2026-06-17):** **Don't-care `match` patterns** added (section 1.3) —
+  a binary pattern may use `?` for a don't-care bit (`0b1??`, the `casez` idiom).
+  It must match the scrutinee width exactly (E0409 otherwise) and earns no
+  exhaustiveness credit (a `_` arm or exact literal coverage is still required —
+  E0601). Additive (no new keyword); binary only. Lowers to a masked equality
+  `(s & MASK) == VALUE`; covered by the `priority` four-flavor example and the
+  Icarus differential.
 - **v0.2.8 (2026-06-17):** **Replication `{N{x}}`** added (section 1.8) — repeats
   an inner concatenation group `N` times, `N` a compile-time constant; the result
   width is `N *` the inner width (E0410 if that is not a valid width, E0201 if `N`

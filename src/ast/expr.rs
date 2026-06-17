@@ -93,6 +93,15 @@ pub enum Pattern {
         value: u128,
         raw: String,
     },
+    /// `0b1??` — a binary literal with don't-care bits. `mask` is 1 where the
+    /// bit must equal `value` (don't-care bits are 0 in both); `width` is the
+    /// digit count. Matches `s` iff `s & mask == value`.
+    IntMask {
+        value: u128,
+        mask: u128,
+        width: u32,
+        raw: String,
+    },
     Bool(bool),
     /// `Enum.Variant`
     Variant {

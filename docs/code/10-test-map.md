@@ -11,10 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**376 tests** as of 2026-06-17: 241 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
+**382 tests** as of 2026-06-17: 247 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-17 A2 don't-care `match` patterns `0b1??` (pre-v0.1.0 RTL-parity batch) — new `TokKind::MaskedInt` / `Pattern::IntMask` (binary `?` don't-care), mirroring the literal-pattern path; additive, no new keyword. +6 lib unit (lexer `dont_care_binary_literal_lexes_to_masked_int`; parser `dont_care_pattern_parses_to_intmask`; checker `dont_care_pattern_must_match_the_scrutinee_width`, `a_dont_care_match_still_needs_a_wildcard`, `a_dont_care_pattern_on_an_enum_is_e0409`; sim `dont_care_match_picks_the_masked_arm`). New four-flavor example `priority` (`BASE_EXAMPLES` 18 → 19, golden + the Icarus three-way differential) — no new test functions. Exact-width reuses E0409, still-needs-`_` is E0601 (no new code). Spec `02` → v0.2.9. Suite 376 → 382.
 - 2026-06-17 A1 replication `{N{x}}` (pre-v0.1.0 RTL-parity batch) — new `ExprKind::Replicate` mirroring concat through the whole pipeline; purely additive, no new keyword. +7 lib unit (parser `replication_parses_to_replicate`, `braces_without_an_inner_group_stay_concat`; checker `replication_width_is_count_times_inner`, `replication_width_mismatch_is_e0401`, `a_non_constant_replication_count_is_e0201`, `a_zero_replication_count_is_e0410`; sim `replication_repeats_the_group`). New four-flavor example `replicate` (`BASE_EXAMPLES` 17 → 18, golden + the Icarus three-way differential) — no new test functions (existing parametrized iterators). Width reuses E0410, non-const count reuses E0201 (no new code). Spec `02` → v0.2.8. Suite 369 → 376.
 - 2026-06-17 SEC-6 hardening audit — C2–C4 elaboration-time DoS bounds: `mimz sim`/`mimz test` skip the checker, so the structural elaborator (`src/sim/elaborate.rs`) gained `MAX_INSTANCE_DEPTH = 16` (recursive/cyclic instantiation → clean error, not a stack-overflow abort), `checked_sub` on the `repeat` span (extreme `hi - lo` → over-budget error, not an overflow panic), a `0..128` bound on bit-index drives (no silent `as u32` truncation), and a flatten name-collision error (no silent overwrite). A same-day follow-up pass added a 5th finding (SIM-5): `int_expr`, which lowers each flattened child const to a literal, built a negative value via a raw `i128` negation that overflow-panicked on `i128::MIN` (reachable via `(-i128::MAX) - 1`) — now non-recursive and `unsigned_abs`-based. +5 lib unit (`recursive_instantiation_errors_not_overflows`, `extreme_repeat_bounds_error_not_overflow`, `an_out_of_range_bit_index_errors`, `a_flatten_name_collision_errors`, `an_i128_min_const_elaborates_without_overflow` — `src/sim/elaborate.rs`). See SEC-6/HARD-6 in `docs/audit/`.
 - 2026-06-16 Phase 1.5 C3 + C4 — full simulator parity: the sim elaborator now unrolls `repeat` (array instances `fa__i`, bit-indexed drives assembled into a Concat — ripple\*adder) and encodes enum-typed signals by variant index with width `clog2(variants)` (variant reads/patterns → index — traffic_light), via a unified `Rw` elaborate-time rewriter (`src/sim/elaborate.rs`). The Layer-3 differential now covers the **entire single-file corpus, 18 → 21 examples** (added ripple_adder, traffic_light, vilakku) — every example the emitter compiles also simulates bit-for-bit vs Icarus. +2 lib unit (`unrolls_repeat_with_instance_array_and_bit_drives`, `elaborates_an_enum_signal_and_match`). Phase 1.5 full-parity simulator complete (C1–C4).
@@ -60,20 +61,21 @@ Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
 **every** test fails if the table is broken. That's by design.
 
-## Unit: lexer (`src/lexer/tests.rs`, 8 tests)
+## Unit: lexer (`src/lexer/tests.rs`, 9 tests)
 
-| Test                                       | Locks in                                                        |
-| ------------------------------------------ | --------------------------------------------------------------- |
-| `lexes_mixed_flavors`                      | mixing three flavors in ONE line works — the migration path     |
-| `tamil_identifiers_work`                   | Tamil-script identifiers lex as identifiers (XID rules)         |
-| `numbers`                                  | decimal / `0b` / `0x` parse, `_` separators, correct values     |
-| `wrapping_operators`                       | `+%` / `-%` are single tokens                                   |
-| `larrow_vs_comparison`                     | `<-` vs `<=` vs `<<` disambiguation — longest match             |
-| `newline_continuation_after_operator`      | the Go-style newline policy, both directions (kept AND dropped) |
-| `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
-| `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
+| Test                                           | Locks in                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------- |
+| `lexes_mixed_flavors`                          | mixing three flavors in ONE line works — the migration path                     |
+| `tamil_identifiers_work`                       | Tamil-script identifiers lex as identifiers (XID rules)                         |
+| `numbers`                                      | decimal / `0b` / `0x` parse, `_` separators, correct values                     |
+| `wrapping_operators`                           | `+%` / `-%` are single tokens                                                   |
+| `larrow_vs_comparison`                         | `<-` vs `<=` vs `<<` disambiguation — longest match                             |
+| `newline_continuation_after_operator`          | the Go-style newline policy, both directions (kept AND dropped)                 |
+| `division_is_rejected_with_teaching_error`     | `/` errors AND the help text teaches the alternative                            |
+| `fall_is_reserved_error`                       | reserved-word path produces a real diagnostic                                   |
+| `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2) |
 
-## Unit: parser (`src/parser/tests.rs`, 26 tests)
+## Unit: parser (`src/parser/tests.rs`, 27 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -103,12 +105,13 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `deeply_nested_unary_errors_not_overflows`                         | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash                        |
 | `replication_parses_to_replicate`                                  | `{2{a}}` parses as `Replicate` (count + inner parts), not concatenation (A1)            |
 | `braces_without_an_inner_group_stay_concat`                        | `{a, a}` still parses as `Concat` — the replication path is no regression               |
+| `dont_care_pattern_parses_to_intmask`                              | `0b1??` in a match arm parses as `Pattern::IntMask` (value/mask/width) (A2)             |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 103 tests)
+## Unit: checker (`src/checker/tests.rs`, 106 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -138,6 +141,9 @@ deserve a note:
 | `replication_width_mismatch_is_e0401`                                 | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                |
 | `a_non_constant_replication_count_is_e0201`                           | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)            |
 | `a_zero_replication_count_is_e0410`                                   | `{0{a}}` has zero width — reuses the "not a valid width" code                          |
+| `dont_care_pattern_must_match_the_scrutinee_width`                    | `0b1??` is fine on `bits[3]`, a width error (E0409) on `bits[4]` (A2)                  |
+| `a_dont_care_match_still_needs_a_wildcard`                            | masked patterns earn no coverage — `0b1??`+`0b0??` without `_` is E0601 (A2)           |
+| `a_dont_care_pattern_on_an_enum_is_e0409`                             | a masked pattern on an enum scrutinee is rejected (match variants by name) (A2)        |
 | `repeat_index_out_of_range_at_the_last_iteration_is_e0406`            | `repeat` bodies are width-checked per iteration value, not just once                   |
 | `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape — explicit `extend` where widths differ                 |
 | `disjoint_per_bit_drives_via_repeat_pass`                             | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal |
@@ -457,20 +463,21 @@ token reskin, not the comment-dropping `--order` printer).
 | `a_non_lexing_file_is_a_clean_error`              | a lex error (e.g. `/`) is reported, exits non-zero, and does not clobber input  |
 | `output_flag_leaves_the_input_untouched`          | `-o <dest>` writes the result elsewhere; the input is unchanged                 |
 
-## Unit: combinational evaluator (`src/sim/comb.rs`, 8 tests)
+## Unit: combinational evaluator (`src/sim/comb.rs`, 9 tests)
 
 The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 
-| Test                            | Locks in                                                                          |
-| ------------------------------- | --------------------------------------------------------------------------------- |
-| `adder_grows_losslessly`        | `+` grows `bits[W]` → `bits[W+1]`; 200+100 carries into the 9th bit (no wrap)     |
-| `wrapping_add_keeps_width`      | `+%` keeps width and wraps (300 → 44 in `bits[8]`)                                |
-| `comparator_if_and_compares`    | `==`, `>`, and a value `if/else` evaluate together                                |
-| `mux_match_selects`             | `match` on `bits[2]` picks the right arm                                          |
-| `chained_comparison_window`     | `lo <= value <= hi` (desugared) incl. the inclusive boundary                      |
-| `rejects_sequential_logic`      | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
-| `reports_missing_input`         | a missing `--in` value names the input                                            |
-| `replication_repeats_the_group` | `{2{a}}`/`{3{a}}` repeat the group (a=0b1010 → 0xAA / 0xAAA) (A1)                 |
+| Test                                   | Locks in                                                                          |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| `adder_grows_losslessly`               | `+` grows `bits[W]` → `bits[W+1]`; 200+100 carries into the 9th bit (no wrap)     |
+| `wrapping_add_keeps_width`             | `+%` keeps width and wraps (300 → 44 in `bits[8]`)                                |
+| `comparator_if_and_compares`           | `==`, `>`, and a value `if/else` evaluate together                                |
+| `mux_match_selects`                    | `match` on `bits[2]` picks the right arm                                          |
+| `chained_comparison_window`            | `lo <= value <= hi` (desugared) incl. the inclusive boundary                      |
+| `rejects_sequential_logic`             | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
+| `reports_missing_input`                | a missing `--in` value names the input                                            |
+| `replication_repeats_the_group`        | `{2{a}}`/`{3{a}}` repeat the group (a=0b1010 → 0xAA / 0xAAA) (A1)                 |
+| `dont_care_match_picks_the_masked_arm` | `0b1??`/`0b01?`/`_` priority decoder picks the right arm per input (A2)           |
 
 ## Unit: elaboration (`src/sim/elaborate.rs`, 13 tests)
 

@@ -136,6 +136,30 @@ impl<'a> Checker<'a> {
                                     self.covered_already(cx, arm.value.span, raw);
                                 }
                             }
+                            Pattern::IntMask { width, raw, .. } => {
+                                // A don't-care pattern must match the value's
+                                // width exactly. It covers a SET of values, so
+                                // it earns NO exhaustiveness credit (not added
+                                // to `seen`) — a `_` arm or full literal
+                                // coverage is still required, and overlap
+                                // between masked arms is not diagnosed (first
+                                // match wins).
+                                if u128::from(*width) != n {
+                                    bad = true;
+                                    self.err(
+                                        cx.file,
+                                        arm.value.span,
+                                        "E0409",
+                                        format!(
+                                            "don't-care pattern `{raw}` is {width} bits, \
+                                             but the matched value is {}",
+                                            show(&st)
+                                        ),
+                                        "a `0b…?…` pattern must be exactly as wide as the \
+                                         value it matches",
+                                    );
+                                }
+                            }
                             Pattern::Bool(b) => {
                                 if n != 1 {
                                     bad = true;
@@ -249,6 +273,20 @@ impl<'a> Checker<'a> {
                                     arm.value.span,
                                     "E0409",
                                     format!("number pattern `{raw}` on enum `{}`", en.name.name),
+                                    "an enum's encoding is a compiler detail — match \
+                                     its variants by name",
+                                );
+                            }
+                            Pattern::IntMask { raw, .. } => {
+                                bad = true;
+                                self.err(
+                                    cx.file,
+                                    arm.value.span,
+                                    "E0409",
+                                    format!(
+                                        "don't-care pattern `{raw}` on enum `{}`",
+                                        en.name.name
+                                    ),
                                     "an enum's encoding is a compiler detail — match \
                                      its variants by name",
                                 );

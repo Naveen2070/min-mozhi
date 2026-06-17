@@ -259,6 +259,32 @@ fn braces_without_an_inner_group_stay_concat() {
 }
 
 #[test]
+fn dont_care_pattern_parses_to_intmask() {
+    // `0b1??` in a `match` arm parses as a masked pattern.
+    let f = parse_ok(
+        "module M {\n  in s: bits[3]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    _ => false\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
+    let ExprKind::Match { arms, .. } = &rhs.kind else {
+        panic!("a match expression")
+    };
+    assert!(matches!(
+        &arms[0].patterns[0],
+        Pattern::IntMask {
+            value: 0b100,
+            mask: 0b100,
+            width: 3,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn mixed_direction_chain_is_an_error() {
     // `a < b > c` is the genuinely confusing form — still rejected.
     let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  y = a < a > a\n}\n");

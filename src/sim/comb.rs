@@ -296,6 +296,19 @@ mod tests {
     }
 
     #[test]
+    fn dont_care_match_picks_the_masked_arm() {
+        // `0b1?? => 3`, `0b01? => 2`, `_ => 0` on a bits[3] priority decoder.
+        let f = parse(
+            "module D {\n  in s: bits[3]\n  out y: bits[2]\n  y = match s {\n    0b1?? => 0b11\n    0b01? => 0b10\n    _ => 0b00\n  }\n}\n",
+        );
+        let pick = |v: u128| one(&f, &[("s", v)])[0].value;
+        assert_eq!(pick(0b100), 3); // matches 0b1??
+        assert_eq!(pick(0b111), 3); // matches 0b1??
+        assert_eq!(pick(0b010), 2); // matches 0b01?
+        assert_eq!(pick(0b001), 0); // falls to `_`
+    }
+
+    #[test]
     fn mux_match_selects() {
         let f = parse(
             "module M(W: int = 8) {\n  in sel: bits[2]\n  in a: bits[W]\n  in b: bits[W]\n  in c: bits[W]\n  in d: bits[W]\n  out y: bits[W]\n  y = match sel {\n    0b00 => a\n    0b01 => b\n    0b10 => c\n    0b11 => d\n  }\n}\n",

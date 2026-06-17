@@ -562,6 +562,7 @@ fn param_ty(t: ParamTy) -> &'static str {
 fn pattern(p: &Pattern) -> String {
     match p {
         Pattern::Int { raw, .. } => raw.clone(),
+        Pattern::IntMask { raw, .. } => raw.clone(),
         Pattern::Bool(b) => if *b { "true" } else { "false" }.to_string(),
         Pattern::Variant { enum_name, variant } => format!("{}.{}", enum_name.name, variant.name),
         Pattern::Wildcard => "_".to_string(),
