@@ -199,6 +199,54 @@ rejected by clap; an oversized `--sweep` errors before allocating.
 (`tests/sim.rs`), `sweep_vectors_rejects_an_oversized_product` /
 `_allows_a_normal_product` (`src/commands/helpers.rs`).
 
+## SEC-6 (HIGH/LOW) — Phase 1.5 C2–C4 elaboration-time bounds → DoS
+
+**What.** The C1–C4 audit (2026) found SEC-5 bounded the simulator's _runtime_
+counts but left its _elaboration-time_ ones unbounded in the new structural
+elaborator (`src/sim/elaborate.rs`). `mimz sim`/`mimz test` run on the parsed AST
+**without the checker** (which has its own recursion guard), so:
+
+- **(HIGH, untrusted input)** instance flattening recursed with **no depth limit
+  or visited-set** — `elaborate_module` → `flatten_instance` → `elaborate_module`.
+  A recursive/cyclic instantiation (`module A { let u = A() … }`, or A→B→A) in an
+  untrusted `.mimz` overflowed the stack and aborted the process (verified: `mimz
+sim`/`mimz test` "has overflowed its stack").
+- **(LOW)** the `repeat` span `(hi - lo)` was a **raw `i128` subtraction** before
+  the `REPEAT_BUDGET` check — extreme bounds (`hi - lo` past `i128::MAX`) panicked
+  under release `overflow-checks`.
+- **(LOW)** a bit-indexed drive `sig[idx] = …` cast `idx as u32` after only a
+  `< 0` check — an index ≥ 2³² truncated silently.
+- **(LOW, found in the 2026-06-17 follow-up pass)** `int_expr`, which substitutes
+  each flattened child const as a literal, built a negative value as
+  `Neg(int_expr(-v))` — a **raw `i128` negation**. The one value whose magnitude
+  does not fit `i128`, `i128::MIN` (magnitude 2¹²⁷), overflow-panicked. It is
+  reachable on the checker-skipping sim path: a child const can evaluate to
+  `i128::MIN` via checked arithmetic (`(-i128::MAX) - 1`), and **every** child
+  const passes through `int_expr` during instance flattening.
+
+**Fix** (extends the "bound every count" doctrine into the structural elaborator):
+
+- `MAX_INSTANCE_DEPTH = 16` (`src/sim/elaborate.rs`), threaded through
+  `elaborate_module`/`flatten_instance`; past it, a clean error naming the likely
+  recursive module. Kept small so the bound fires well within the 1 MB default
+  main-thread stack (each level is a large frame).
+- The `repeat` span uses `checked_sub` (overflow ⇒ the existing over-budget error).
+- A bit-index drive is bounded to `0..128` (the evaluator's max width) before the
+  `as u32` cast.
+- Flattened-instance merge now errors on a name collision instead of silently
+  overwriting (a parent signal named like a flattened `inst_port` wire).
+- `int_expr` is now non-recursive and takes the magnitude via `unsigned_abs`
+  (always fits `u128`), so `i128::MIN` lowers to `-2¹²⁷` instead of panicking.
+
+**Verified.** `mimz sim` / `mimz test` on a self-instantiating module now exit
+non-zero with "instance nesting exceeds 16 levels …" instead of overflowing the
+stack; the cpu/alu demos (depth-1 instances) still run.
+
+**Tests.** `recursive_instantiation_errors_not_overflows`,
+`extreme_repeat_bounds_error_not_overflow`, `an_out_of_range_bit_index_errors`,
+`a_flatten_name_collision_errors`, `an_i128_min_const_elaborates_without_overflow`
+(`src/sim/elaborate.rs`).
+
 **Audited clean (no change needed).** The core pipeline (lexer→parser→checker→
 emitter) and the untrusted-input boundary (project/import loading, config
 discovery, name-map deserialization) audited clean: SEC-1..4 + BUG-1/2 intact,

@@ -47,6 +47,20 @@ clap range on `--cycles`), extending the parser-`MAX_DEPTH` / emitter-`REPEAT_BU
 doctrine into the sim. Also bounded the `mimz.toml` walk-up
 (`MAX_CONFIG_WALK_DEPTH = 256`). See SEC-5 in [`security.md`](security.md).
 
+### HARD-6 — Simulator elaboration-time bounds (instance depth + repeat span)
+
+The C1–C4 audit (2026) found SEC-5 bounded the simulator's _runtime_ counts but
+not its _elaboration-time_ ones. `MAX_INSTANCE_DEPTH = 16` (`src/sim/elaborate.rs`)
+now bounds instance-flattening recursion so a recursive/cyclic instantiation fails
+cleanly instead of overflowing the stack (the checker guards this, but
+`mimz sim`/`test` skip the checker); the `repeat` span now uses `checked_sub` so an
+extreme `hi - lo` is an over-budget error, not an overflow panic; and a bit-index
+drive is bounded to `0..128` before the `as u32` cast. A 2026-06-17 follow-up pass
+also made `int_expr` (which lowers each flattened child const to a literal)
+non-recursive and `unsigned_abs`-based, so a const evaluating to `i128::MIN`
+lowers to `-2¹²⁷` instead of overflow-panicking the negation. See SEC-6 in
+[`security.md`](security.md).
+
 ---
 
 ## Checked and found safe (no change needed)

@@ -29,6 +29,19 @@ use super::value::{const_eval, pick_module, type_width};
 /// checker's `REPEAT_BUDGET` so a design that compiles also elaborates.
 const REPEAT_BUDGET: i128 = 4096;
 
+/// Max instance-nesting depth the simulator will flatten. `mimz sim`/`mimz test`
+/// run on the parsed AST WITHOUT the checker (which has its own recursion guard),
+/// so a recursive/cyclic instantiation (`module A { let u = A() … }`, or A→B→A)
+/// would otherwise recurse until the stack overflows and the process aborts. This
+/// bound turns that into a clean error — the simulator's analogue of the parser's
+/// `MAX_DEPTH` and the emitter's `REPEAT_BUDGET` (see SEC-6 in docs/audit).
+///
+/// Kept deliberately small: each level is a large `elaborate_module` +
+/// `flatten_instance` stack frame, and the bound must fire well within the 1 MB
+/// default main-thread stack on Windows. Real hardware nests instances only a few
+/// levels deep, so 16 is generous for valid designs while staying crash-safe.
+const MAX_INSTANCE_DEPTH: u32 = 16;
+
 /// Module registry across all loaded files: name → (its file, its AST). Module
 /// names are project-unique (checker-enforced), so a child instance resolves by
 /// name regardless of which imported file defines it.
@@ -130,7 +143,7 @@ pub fn elaborate_project(
     let reg = build_registry(files);
     let entry = files.first().ok_or("no files to elaborate")?;
     let m = pick_module(entry, module)?;
-    elaborate_module(&reg, entry, m, params)
+    elaborate_module(&reg, entry, m, params, 0)
 }
 
 /// Elaborate one module (`m`, defined in `file`) under concrete `params`,
@@ -140,7 +153,17 @@ fn elaborate_module(
     file: &ast::File,
     m: &ast::Module,
     params: &BTreeMap<String, i128>,
+    depth: u32,
 ) -> Result<Design, String> {
+    // Guard against recursive/cyclic instantiation (the checker would catch it,
+    // but `mimz sim`/`test` skip the checker) — bound the stack, fail cleanly.
+    if depth > MAX_INSTANCE_DEPTH {
+        return Err(format!(
+            "instance nesting exceeds {MAX_INSTANCE_DEPTH} levels in `{}` — \
+             a module likely instantiates itself (directly or in a cycle)",
+            m.name.name
+        ));
+    }
     // Compile-time integer environment: params (override or default), then
     // file-level and module-level consts (same order as `comb::eval_outputs`).
     let mut consts: BTreeMap<String, i128> = BTreeMap::new();
@@ -281,13 +304,16 @@ fn elaborate_module(
                     &no_subst,
                     inst,
                     &inst.name.name,
+                    depth,
                 )?;
                 flat.absorb(f);
             }
             ModuleItem::Repeat(r) => {
                 let lo = const_eval(&r.lo, &consts)?;
                 let hi = const_eval(&r.hi, &consts)?;
-                let count = (hi - lo).max(0);
+                // `checked_sub`: extreme bounds (`hi - lo` past i128::MAX) must not
+                // overflow-panic — treat an out-of-range span as over-budget.
+                let count = hi.checked_sub(lo).unwrap_or(i128::MAX).max(0);
                 if count > REPEAT_BUDGET {
                     return Err(format!(
                         "`repeat` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
@@ -311,7 +337,7 @@ fn elaborate_module(
                                     None => inst.name.name.clone(),
                                 };
                                 let f = flatten_instance(
-                                    reg, &ci, &insts, &enums, &subst, inst, &iname,
+                                    reg, &ci, &insts, &enums, &subst, inst, &iname, depth,
                                 )?;
                                 flat.absorb(f);
                             }
@@ -339,7 +365,16 @@ fn elaborate_module(
     // whole-signal Concat (widest bit first, Verilog concat order).
     wires.extend(flat.wires);
     regs.extend(flat.regs);
-    comb.extend(flat.comb);
+    // Merge instance drivers, erroring on a name collision instead of silently
+    // overwriting (a parent signal named like a flattened `inst_port` wire).
+    for (name, driver) in flat.comb {
+        if comb.insert(name.clone(), driver).is_some() {
+            return Err(format!(
+                "flattened instance signal `{name}` collides with an existing signal in `{}`",
+                m.name.name
+            ));
+        }
+    }
     procs.extend(flat.procs);
     for (sig, bits) in bit_drives {
         let width = inputs
@@ -423,6 +458,7 @@ fn flatten_instance(
     parent_subst: &HashMap<String, Expr>,
     inst: &ast::Inst,
     iname: &str,
+    depth: u32,
 ) -> Result<Flat, String> {
     let (cfile, cm) = *reg.get(&inst.module.name).ok_or_else(|| {
         format!(
@@ -448,7 +484,7 @@ fn flatten_instance(
         cp.insert(p.name.name.clone(), v);
     }
 
-    let child = elaborate_module(reg, cfile, cm, &cp)?;
+    let child = elaborate_module(reg, cfile, cm, &cp, depth + 1)?;
     let pfx = format!("{iname}_");
 
     // Parent-context rewriter for connection expressions: folds the `repeat`
@@ -583,21 +619,33 @@ fn ident_expr(name: String, span: crate::span::Span) -> Expr {
 
 fn int_expr(v: i128, span: crate::span::Span) -> Expr {
     if v >= 0 {
-        Expr {
+        return Expr {
             kind: ExprKind::Int {
                 value: v as u128,
                 raw: v.to_string(),
             },
             span,
-        }
-    } else {
-        Expr {
-            kind: ExprKind::Unary {
-                op: UnOp::Neg,
-                expr: Box::new(int_expr(-v, span)),
-            },
-            span,
-        }
+        };
+    }
+    // Negative: emit `-<magnitude>`. Use `unsigned_abs` (not `-v`) so the one
+    // value whose magnitude does not fit `i128` — `i128::MIN`, magnitude 2^127 —
+    // is representable in the `u128` literal instead of overflow-panicking the
+    // negation. `i128::MIN` is reachable on the unchecked sim path: a child
+    // const can evaluate to it via checked arithmetic (e.g. `(-i128::MAX) - 1`),
+    // and every flattened const passes through here.
+    let mag = v.unsigned_abs();
+    Expr {
+        kind: ExprKind::Unary {
+            op: UnOp::Neg,
+            expr: Box::new(Expr {
+                kind: ExprKind::Int {
+                    value: mag,
+                    raw: mag.to_string(),
+                },
+                span,
+            }),
+        },
+        span,
     }
 }
 
@@ -632,8 +680,13 @@ fn record_drive(
         }
         Some((idx, None)) => {
             let bit = const_eval(&rw.expr(idx)?, consts)?;
-            if bit < 0 {
-                return Err(format!("negative bit index driving `{}`", lhs.base.name));
+            // Bound to the evaluator's max width BEFORE `as u32`, so an oversized
+            // index can't silently truncate into a valid bit.
+            if !(0..128).contains(&bit) {
+                return Err(format!(
+                    "bit index {bit} driving `{}` is out of range (0..128)",
+                    lhs.base.name
+                ));
             }
             bit_drives
                 .entry(lhs.base.name.clone())
@@ -1016,5 +1069,84 @@ mod tests {
         assert_eq!(st.width.bits, 1);
         assert_eq!(st.reset, 0);
         assert!(d.comb.contains_key("o"));
+    }
+
+    // ---- C1–C4 hardening regressions (SEC-6 / the 2026 audit) ----
+
+    #[test]
+    fn recursive_instantiation_errors_not_overflows() {
+        // SIM-1: `mimz sim`/`test` skip the checker, so a self-instantiating
+        // module must error on the depth bound, not recurse into a stack overflow.
+        let err = elaborate(
+            &parse("module A {\n  out y: bits[8]\n  let u = A() { }\n  y = 0\n}\n"),
+            None,
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(err.contains("nesting"), "got: {err}");
+    }
+
+    #[test]
+    fn extreme_repeat_bounds_error_not_overflow() {
+        // SIM-2: `hi - lo` past i128::MAX must be a clean over-budget error, not an
+        // overflow panic.
+        let big = "100000000000000000000000000000000000000"; // ~1e38, fits i128
+        let src = format!(
+            "module R {{\n  out y: bit\n  repeat i: -{big}..{big} {{\n    y[i] = 0\n  }}\n}}\n"
+        );
+        let err = elaborate(&parse(&src), None, &BTreeMap::new()).unwrap_err();
+        assert!(err.contains("unroll"), "got: {err}");
+    }
+
+    #[test]
+    fn an_out_of_range_bit_index_errors() {
+        // SIM-3: a bit index past 128 must error, not truncate via `as u32`.
+        let err = elaborate(
+            &parse("module R {\n  out y: bits[4]\n  y[200] = 0\n}\n"),
+            None,
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(err.contains("out of range"), "got: {err}");
+    }
+
+    #[test]
+    fn a_flatten_name_collision_errors() {
+        // SIM-4: a parent signal named like a flattened `inst_port` wire must error
+        // instead of silently overwriting.
+        let err = elaborate(
+            &parse(
+                "module Add {\n  in a: bits[8]\n  in b: bits[8]\n  out s: bits[9]\n  \
+                 s = a + b\n}\n\
+                 module Top {\n  in x: bits[8]\n  out t: bits[9]\n  wire u_s: bits[9] = 0\n  \
+                 let u = Add() { a: x, b: x }\n  t = u_s\n}\n",
+            ),
+            Some("Top"),
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(err.contains("collides"), "got: {err}");
+    }
+
+    #[test]
+    fn an_i128_min_const_elaborates_without_overflow() {
+        // SIM-5: a flattened child const that evaluates to i128::MIN must not
+        // overflow-panic the negation in `int_expr`. i128::MAX is
+        // 170141183460469231731687303715884105727, so `-MAX - 1` is i128::MIN,
+        // reachable via checked arithmetic even on the checker-skipping sim path.
+        let res = elaborate(
+            &parse(
+                "module Child {\n  \
+                 const M: int = -170141183460469231731687303715884105727 - 1\n  \
+                 out y: bit\n  y = 0\n}\n\
+                 module Top {\n  out t: bit\n  let u = Child() { }\n  t = u_y\n}\n",
+            ),
+            Some("Top"),
+            &BTreeMap::new(),
+        );
+        assert!(
+            res.is_ok(),
+            "i128::MIN const should elaborate, got: {res:?}"
+        );
     }
 }
