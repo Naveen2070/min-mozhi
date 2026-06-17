@@ -443,3 +443,41 @@ fn cli_translate_order_thamizh_compiles() {
     let original = compile_file(&root().join("examples/english/traffic_light.mimz"));
     assert_eq!(got, original, "Tamil thamizh traffic_light lost meaning");
 }
+
+/// The test-header flip (B7) round-trips through the pretty-printer: a code-order
+/// `test "…" for M(args) { }` printed in thamizh order becomes the flipped
+/// `M(args) for "…" test { }`, and that re-parses to the identical `TestDecl`.
+#[test]
+fn pretty_print_thamizh_flips_the_test_header_and_reparses() {
+    use mimz::ast::TopItem;
+
+    let src = "module Counter(WIDTH: int = 4) {\n  clock clk\n  reset rst\n  \
+        out count: bits[WIDTH]\n  reg value: bits[WIDTH] = 0\n  \
+        on rise(clk) { value <- value +% 1 }\n  count = value\n}\n\
+        test \"counts up\" for Counter(WIDTH: 4) {\n  rst = 0\n  tick(clk)\n  \
+        expect count == 1\n}\n";
+    let file = parse(lex(src).expect("lexes")).expect("parses");
+
+    let printed = pretty_print(&file, Flavor::English, Order::Thamizh);
+    // The module under test now LEADS its trailing `for`/`test` clause heads.
+    assert!(
+        printed.contains("Counter(WIDTH: 4) for \"counts up\" test {"),
+        "header was not flipped:\n{printed}"
+    );
+
+    // Re-parse the thamizh-order output and compare the recovered test.
+    let back = parse(lex(&printed).expect("re-lexes")).expect("re-parses");
+    let orig = file.items.iter().find_map(|i| match i {
+        TopItem::Test(t) => Some(t),
+        _ => None,
+    });
+    let round = back.items.iter().find_map(|i| match i {
+        TopItem::Test(t) => Some(t),
+        _ => None,
+    });
+    let (orig, round) = (orig.expect("orig test"), round.expect("round test"));
+    assert_eq!(orig.name, round.name);
+    assert_eq!(orig.module.name, round.module.name);
+    assert_eq!(orig.args.len(), round.args.len());
+    assert_eq!(orig.body.len(), round.body.len());
+}

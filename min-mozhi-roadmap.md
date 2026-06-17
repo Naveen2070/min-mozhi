@@ -146,7 +146,9 @@ order, compiles to the same Verilog as its English twin
 - Ecosystem drivers: WASM browser playground first, then npm/PyPI
   wrappers around the one Rust core (thin wrappers, never
   reimplementations — Decision 2026-06-11); the playground carries the
-  interactive hardware REPL (`mimz repl`, idea 8.5)
+  interactive hardware REPL (`mimz repl`, idea 8.5) and the no-IDE
+  vim-like TUI workbench (`mimz tui`, idea 8.11 — output-mode prompt +
+  whole-file edit/run/waveform; tool, not syntax)
 - Language-feature backlog triaged from `docs/Ideas/language_plan.md`
   (Decisions 2026-06-12 and 2026-06-13): tagged unions, interfaces/bundles, and
   clock-domain checking lead; `prove` rides SymbiYosys; the section-8 additive

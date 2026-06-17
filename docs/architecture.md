@@ -1,15 +1,18 @@
 # Min-Mozhi — Architecture
 
 > Living document (RULES.md R3: update whenever components or data flow change).
-> Status: **Phase 1 complete** (2026-06-12) — lexer, parser, full checker
-> (six passes), Verilog emitter (repeat unrolling, transliteration,
-> signed), CLI (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`,
-> `--json`), LSP v0, all Icarus-validated. The full simulator and IR are
-> still design (`eval` is the combinational slice only).
+> Status: **Phases 1, 1.8, and 1.5 complete** — lexer, parser (code-order +
+> thamizh-order), full checker (six passes), Verilog emitter (repeat unrolling,
+> transliteration, signed), CLI
+> (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`/`sim`/`test`, `--json`),
+> LSP v0, all Icarus-validated. The **own simulator** is built and shipped
+> (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
+> tick/expect; three-layer Icarus differential). The IR is still design.
 > Last updated: 2026-06-16 (Phase 0 closed + keyword set v1 locked 2026-06-15;
 > native-authored Tamil/Tanglish error catalog with structured-arg interpolation,
 > `messages.toml`, 33/36 codes — PR #16; behavior-preserving code-split: parser
-> `items/`, `commands/`, bench `metrics/` — PR #17)
+> `items/`, `commands/`, bench `metrics/` — PR #17; Phase 1.5 simulator
+> `src/sim/` + `src/commands/{sim,test}` + `src/config.rs`)
 
 ---
 
@@ -52,7 +55,10 @@
                      --romanize-names + reversible name-map sidecar ✅ 2026-06-15
    mimz explain    — long-form text per E-code ✅ 2026-06-13 (lib `explain`)
    mimz eval       — combinational evaluator ✅ 2026-06-13 (lib `sim::comb`;
-                     a slice of the Phase 1.5 simulator — no clocks/regs yet)
+                     a slice of the Phase 1.5 simulator — no clocks/regs)
+   mimz sim        — full simulator ✅ Phase 1.5 (lib `src/sim/`; clocked +
+                     combinational, --in/--sweep, --cycles, --trace, -o .vcd)
+   mimz test       — tick/expect test runner ✅ Phase 1.5 (lib `sim::harness`)
    mimz fmt        — formatter
    mimz lsp        — language server ✅ v0 SHIPPED 2026-06-12
                      (diagnostics-only; hover/go-to-def in Phase 4)
@@ -67,23 +73,24 @@ instantiation completeness E0302, match exhaustiveness E06xx, clock
 domains E0701), Verilog emitter (repeat unrolling, Tamil→ASCII
 transliteration, `wire signed`; validated by Icarus differential tests
 and golden files), CLI (`check`, `compile`, `lsp`, `--json`), and the
-diagnostics-only LSP v0 with its VS Code client. Everything else:
-planned.
+diagnostics-only LSP v0 with its VS Code client. Also built (Phase 1.8 +
+1.5): the thamizh-order parser profile, and the own simulator (`src/sim/`,
+`mimz sim`/`mimz test`). The IR and native backend remain planned.
 
-| Component           | Phase   | Key design points                                                                                                                                                  |
-| ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **CLI** (`mimz`)    | 1       | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp` (handlers in `src/commands/`)                                                |
-| **Keyword table**   | 1       | `keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                    |
-| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                  |
-| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile |
-| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                   |
-| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; six passes (symbols/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0701             |
-| **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper      |
-| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                    |
-| **Simulator**       | 1.5     | Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; VCD out                                          |
-| **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                      |
-| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                            |
-| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                      |
+| Component           | Phase   | Key design points                                                                                                                                                                                                 |
+| ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test` (handlers in `src/commands/`)                                                                                |
+| **Keyword table**   | 1       | `keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                                   |
+| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                 |
+| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                |
+| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                  |
+| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; six passes (symbols/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0701                                                            |
+| **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper                                                     |
+| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                   |
+| **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `src/sim/` (comb, kernel, elaborate, harness, run, value, vcd, trace) |
+| **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                                                                     |
+| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                                                                           |
+| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                                                                     |
 
 ## 3. Code Layout (Rust)
 
@@ -96,7 +103,7 @@ mimz/
   Cargo.toml
   keywords.toml          # trilingual table — data, not code
   src/
-    lib.rs               # pub mod × 8 + the crate map          ✅
+    lib.rs               # pub mod × 14 + the crate map         ✅
     main.rs              # thin CLI (clap, dispatch, Output)     ✅
     commands/            #   per-subcommand handlers + helpers   ✅
     lsp.rs               # `mimz lsp` server (BIN-only module,  ✅
@@ -136,12 +143,17 @@ mimz/
       drivers.rs         #   single-driver + comb-DAG (E05xx)
       clocks.rs          #   clock-domain ownership (E0701)
       tests.rs           #   unit tests (one per E-code)
-    sim/                 # (P1.5) elaborate, kernel, vcd
+    sim/                 # (P1.5) comb, kernel, elaborate,       ✅
+                         #   harness, run, value, vcd, trace
+    config.rs            # mimz.toml project defaults            ✅
     ir/                  # (P2)
   tests/
     examples.rs          # all 68 examples (17 × 4 flavors) + identity + goldens ✅
-    errors.rs            # ~72 broken fixtures, code per E-code ✅
-    icarus.rs            # iverilog lint + 16 self-checking TBs ✅
+    errors.rs            # broken fixtures, one code per E-code  ✅
+    icarus.rs            # iverilog lint + self-checking TBs +   ✅
+                         #   our_simulator_matches_icarus_bit_for_bit (~21 ex)
+    sim.rs / test_run.rs # simulator + tick/expect runner tests  ✅
+    eval.rs / fmt.rs / translate.rs / morph.rs / grammar.rs / config.rs  ✅
     lsp.rs               # wire-protocol smoke test             ✅
     docs_sync.rs         # docs ↔ code staleness guard          ✅
     grammar_sync.rs      # VS Code grammar ↔ keywords.toml      ✅
@@ -167,6 +179,8 @@ min-mozhi/
   docs/                # the PROJECT — plan/, log/, archive/, RULES, this file
   examples/            # .mimz example programs (no .rs files, so cargo's
                        #   examples/ auto-discovery is unaffected)
+  demo/                # accumulator-CPU showcase (cpu.mimz + alu.mimz +
+                       #   README): check → test → sim → waveform
   src/                 # the compiler (tree above)
   tests/               # integration tests
   .github/workflows/   # CI
@@ -177,14 +191,12 @@ implementation; `docs/` tracks this implementation and process. Never mix.
 
 Future directories (created when their trigger fires, not before):
 
-| Directory       | Arrives with                                   |
-| --------------- | ---------------------------------------------- |
-| `tools/vscode/` | TextMate grammar (Phase 1 work item 6)         |
-| `tests/golden/` | golden `.v` files when the emitter hardens     |
-| `stdlib/`       | `.mimz` standard library modules (Phase 4)     |
-| `crates/`       | the workspace split (see Evolution Triggers)   |
-| `targets/`      | board/constraint files (Phase 2 hardware flow) |
-| `site/`         | docs website (Phase 4)                         |
+| Directory  | Arrives with                                   |
+| ---------- | ---------------------------------------------- |
+| `stdlib/`  | `.mimz` standard library modules (Phase 4)     |
+| `crates/`  | the workspace split (see Evolution Triggers)   |
+| `targets/` | board/constraint files (Phase 2 hardware flow) |
+| `site/`    | docs website (Phase 4)                         |
 
 ## 4. Cross-Cutting Invariants
 
@@ -207,15 +219,15 @@ The architecture is staged on purpose; each piece below is _correct now_ and
 has a known moment when it must change. When a trigger fires, do the listed
 move and log it (R3). Letting a trigger pass is how architectures rot.
 
-| Current shape                                        | Trigger                                                                              | Required move                                                                                                             |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| String-based Verilog emitter reading the AST         | Checker lands (work item 4)                                                          | Move all semantic errors (unknown module, port connectivity) out of the emitter into checker passes; emitter only renders |
-| Emitter has no width knowledge (`extend` is a no-op) | IR exists (Phase 2)                                                                  | Emit from typed IR, demote AST→Verilog path to a debug backend                                                            |
-| ~~Diagnostics are free-text, no IDs~~                | ✅ FIRED — every stage's errors carry stable codes (2026-06-12; map in docs/code/06) | Done: codes everywhere; the P1.8 message catalogs key off them                                                            |
-| ~~Single binary crate~~                              | ✅ FIRED — LSP + `--json` consumers arrived (2026-06-12)                             | Done: `lib.rs` + thin `main.rs`; the WORKSPACE split (`mimz-syntax`/`mimz-check`/`mimz-backends`) stays trigger-based     |
-| Lexer discards comments/whitespace                   | `mimz fmt` work starts                                                               | Add a trivia-preserving lexing mode; `translate` stays token-level and is unaffected                                      |
-| Tokens own `String`s, cloned freely                  | Compile time on real projects becomes noticeable (not before)                        | String interning + token indices — contained inside `lexer/`                                                              |
-| Emitter semantic checks duplicated per backend       | Simulator (P1.5) starts                                                              | Elaboration (`project.rs` + checker output) becomes the single pre-backend stage both consume                             |
+| Current shape                                        | Trigger                                                                              | Required move                                                                                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| String-based Verilog emitter reading the AST         | Checker lands (work item 4)                                                          | Move all semantic errors (unknown module, port connectivity) out of the emitter into checker passes; emitter only renders              |
+| Emitter has no width knowledge (`extend` is a no-op) | IR exists (Phase 2)                                                                  | Emit from typed IR, demote AST→Verilog path to a debug backend                                                                         |
+| ~~Diagnostics are free-text, no IDs~~                | ✅ FIRED — every stage's errors carry stable codes (2026-06-12; map in docs/code/06) | Done: codes everywhere; the P1.8 message catalogs key off them                                                                         |
+| ~~Single binary crate~~                              | ✅ FIRED — LSP + `--json` consumers arrived (2026-06-12)                             | Done: `lib.rs` + thin `main.rs`; the WORKSPACE split (`mimz-syntax`/`mimz-check`/`mimz-backends`) stays trigger-based                  |
+| Lexer discards comments/whitespace                   | `mimz fmt` work starts                                                               | Add a trivia-preserving lexing mode; `translate` stays token-level and is unaffected                                                   |
+| Tokens own `String`s, cloned freely                  | Compile time on real projects becomes noticeable (not before)                        | String interning + token indices — contained inside `lexer/`                                                                           |
+| ~~Emitter semantic checks duplicated per backend~~   | ✅ FIRED — Simulator (P1.5) shipped                                                  | Done: the simulator elaborates from `project.rs` + checker output (`src/sim/elaborate.rs`); both backends consume the same checked AST |
 
 ## 6. Open Questions (log a Decision when resolved)
 

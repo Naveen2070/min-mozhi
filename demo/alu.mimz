@@ -1,0 +1,16 @@
+// A tiny 8-bit ALU — instantiated by cpu.mimz (module composition / C2).
+// `op` selects the operation; all four arms are 8-bit, so `y` stays bits[8].
+
+module Alu {
+  in  a:  bits[8]
+  in  b:  bits[8]
+  in  op: bits[2]
+  out y:  bits[8]
+
+  y = match op {
+    0b00 => a +% b      // add (wrapping)
+    0b01 => a -% b      // subtract (wrapping)
+    0b10 => a & b       // bitwise and
+    0b11 => a | b       // bitwise or
+  }
+}

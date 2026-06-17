@@ -137,7 +137,13 @@ pub(crate) fn translate_file(
             // output (`<out>.names.json`) so the run is reversible via --names-map.
             if let Some(map) = captured_map.filter(|m| !m.names.is_empty()) {
                 let sidecar = names_sidecar(&out_path);
-                let json = serde_json::to_string_pretty(&map).expect("NameMap serializes");
+                let json = match serde_json::to_string_pretty(&map) {
+                    Ok(j) => j,
+                    Err(e) => {
+                        eprintln!("error: cannot serialize name map: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
                 if let Err(e) = std::fs::write(&sidecar, json) {
                     eprintln!("error: cannot write name map `{}`: {e}", sidecar.display());
                     return ExitCode::FAILURE;

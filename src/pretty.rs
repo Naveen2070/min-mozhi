@@ -332,14 +332,16 @@ impl Pretty {
     // flip is deferred to Phase 1.5, so they are not reorderable) ----------
 
     fn test_decl(&mut self, t: &TestDecl) {
-        let head = format!(
-            "{} {:?} {} {}{} {{",
-            self.kw(Kw::Test),
-            t.name,
-            self.kw(Kw::For),
-            t.module.name,
-            self.named_args(&t.args),
-        );
+        let test_kw = self.kw(Kw::Test);
+        let for_kw = self.kw(Kw::For);
+        let module = &t.module.name;
+        let args = self.named_args(&t.args);
+        let head = match self.order {
+            // code-order:    test "name" for M(args) {
+            Order::Code => format!("{test_kw} {:?} {for_kw} {module}{args} {{", t.name),
+            // thamizh-order: M(args) kaaga "name" sodhanai {
+            Order::Thamizh => format!("{module}{args} {for_kw} {:?} {test_kw} {{", t.name),
+        };
         self.line(&head);
         self.indent += 1;
         for st in &t.body {

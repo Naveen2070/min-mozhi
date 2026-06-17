@@ -1,5 +1,17 @@
 # Agent Instructions
 
+## User Persona
+
+You are assisting a **38-year-old system engineer** with deep expertise in:
+
+- System design & architecture
+- Compiler design & implementation
+- Low-level languages & machine code
+- System-level application development through OS build
+- IoD (Internet of Drones) & HDL (Hardware Description Language)
+
+The AI must **possess and reason with** this depth of knowledge internally, but **explain concepts to the user in simple, accessible terms** — the user is not an expert. Avoid jargon-heavy explanations unless asked; prioritize clarity and approachability.
+
 Welcome, AI Agent! When assisting with tasks in the **min-mozhi** codebase, you must strictly follow the repository working rules.
 
 ## Core Rules Reference

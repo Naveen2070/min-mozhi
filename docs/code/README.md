@@ -66,9 +66,10 @@ it (page 13): `explain` (long-form text per E-code, `mimz explain`),
 `translate` (keyword-flavor reskin, `mimz translate --to`), `pretty` (the
 AST → source pretty-printer behind `mimz translate --order code|thamizh`),
 `morph` (error-language selection + Tamil case-suffix inflection, behind
-`--lang`), and `sim` (the combinational evaluator behind `mimz eval`, a slice of
-the Phase 1.5 simulator). A sixth, `config`, reads per-project defaults from
-`mimz.toml` (CLI flags override it) — also page 13.
+`--lang`), and `sim` (the Phase 1.5 simulator — the combinational evaluator
+behind `mimz eval` plus the event-driven kernel, VCD/trace, and `test` runner
+behind `mimz sim` / `mimz test`). A sixth, `config`, reads per-project defaults
+from `mimz.toml` (CLI flags override it) — also page 13.
 
 ## Keeping these docs honest
 
@@ -79,8 +80,16 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-16 (Phase 0 closed + **keyword set v1
-locked** 2026-06-15; the **native-authored Tamil/Tanglish error catalog** shipped
+_Last synced with the code: 2026-06-16 (a docs-currency pass for the **completed
+Phase 1.5 simulator** (C1–C4): refreshed the `sim` description on pages 1, 13 and
+this README (full event-driven engine + `mimz sim`/`mimz test`, not just the
+combinational slice); flipped pages 1 and 7's "next pipeline work" from Phase 1.8
+/ Phase 1.5 to the Phase 2 IR; added `sim`/`test` to the page-1 subcommand list;
+and corrected the test map (page 10) per-section counts to match reality
+(parser 21 → 24, checker 98 → 99, elaboration 5 → 8, sim integration 9 → 10, test
+integration 6 → 7) and broadened the Layer-3 Icarus differential row to the full
+21-example single-file corpus. The 364 grand total was already correct. Prior:
+Phase 0 closed + **keyword set v1 locked** 2026-06-15; the **native-authored Tamil/Tanglish error catalog** shipped
 (decision C3 ratified) — `messages.toml` + structured-arg interpolation through
 `Diag::with_arg`/`Checker::err_args`, 33 of 36 checker codes localized (pages 6,
 13); no longer a stub. A docs-currency pass refreshed pages 1, 6, 13, the test map

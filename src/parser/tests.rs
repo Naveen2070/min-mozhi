@@ -102,6 +102,45 @@ fn flipped_on_block_needs_the_directive() {
 }
 
 #[test]
+fn thamizh_order_test_header_parses_to_the_same_shape() {
+    // `syntax thamizh` + the flipped test header `M(args) kaaga "…" sodhanai { }`
+    // must build the SAME `TestDecl` as the code-order `test "…" for M(args) { }`:
+    // same name, module, args, and body. The clause heads trail the module.
+    let f = parse_ok(
+        "syntax thamizh\nCounter(WIDTH: 4) kaaga \"counts up\" sodhanai {\n  \
+         rst = 0\n  tick(clk)\n  expect count == 1\n}\n",
+    );
+    let TopItem::Test(t) = &f.items[0] else {
+        panic!("expected a test decl")
+    };
+    assert_eq!(t.name, "counts up");
+    assert_eq!(t.module.name, "Counter");
+    assert_eq!(t.args.len(), 1);
+    assert_eq!(t.args[0].name.name, "WIDTH");
+    assert_eq!(t.body.len(), 3); // drive, tick, expect
+}
+
+#[test]
+fn thamizh_test_header_with_no_params_parses() {
+    let f = parse_ok(
+        "syntax thamizh\nCounter kaaga \"runs\" sodhanai {\n  tick(clk)\n  expect count == 0\n}\n",
+    );
+    let TopItem::Test(t) = &f.items[0] else {
+        panic!("expected a test decl")
+    };
+    assert_eq!(t.module.name, "Counter");
+    assert!(t.args.is_empty());
+}
+
+#[test]
+fn the_test_header_flip_needs_the_directive() {
+    // Without `syntax thamizh`, a leading identifier at file level is not a
+    // valid item (a code-order test must start with `test`).
+    let d = parse_err("Counter kaaga \"runs\" sodhanai {\n  tick(clk)\n}\n");
+    assert!(d.iter().any(|e| e.code == Some("E1102")));
+}
+
+#[test]
 fn deeply_nested_expression_errors_not_overflows() {
     // Security: a recursive-descent parser with no depth limit stack-overflows
     // (aborts the process) on `(((…)))`. The MAX_DEPTH guard must turn that into

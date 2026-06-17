@@ -8,9 +8,12 @@
 //!   `syntax_directive` routine and never reaches the tree, so a thamizh-order
 //!   file and its code-order twin emit byte-identical Verilog.
 //!
-//! Slice landed so far: the directive + the clocked-block flip
-//! (`rise(clk) on { }`). The conditional / match / test flips and the
-//! `translate --order` pretty-printer are the remaining 1.8 work items.
+//! Flips landed: the `syntax` directive; the clocked-block flip
+//! (`rise(clk) on { }`); the conditional / if-expression / match flips
+//! (`enil` / `illaiyenil` / `thernthedu`); and the test-header flip
+//! (`M(args) kaaga "…" sodhanai { }`, Phase 1.5 B7). Together these complete
+//! the word-order engine's clause-head set; `translate --order` round-trips
+//! between the two orders.
 //!
 //! Module layout:
 //! - `mod.rs`   — entry point, `Parser` state, token plumbing, error recovery

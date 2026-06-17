@@ -101,12 +101,18 @@ message. Push enforcement as early as it can correctly live.
    E11xx, loader E12xx — full map in docs/code/06).
 3. ~~**Icarus Verilog differential tests**~~ — ✅ landed 2026-06-11
    (`tests/icarus.rs`, self-checking TBs per example).
-4. **`repeat` emission + emitter hardening** — unrolling via const-eval,
-   transliteration, golden files (Phase 1 remainder).
-5. **Phase 1.8 grammar engine** — second parser profile
-   (`thamizh-order`), same productions with flipped clause heads, same
+4. ~~**`repeat` emission + emitter hardening**~~ — ✅ done: unrolling via
+   const-eval, transliteration, golden files (Phase 1 complete).
+5. ~~**Phase 1.8 grammar engine**~~ — ✅ done: the second parser profile
+   (`thamizh-order`) ships all five clause flips (clocked block,
+   conditional, if-expression, match, test header), same productions, same
    AST. The parser was built one-token-lookahead to keep this cheap.
-6. **Phase 1.5 simulator** — first consumer of `TestDecl`/`TestStmt`
-   (and the point where `ast`'s `#![allow(dead_code)]` gets deleted).
+6. ~~**Phase 1.5 simulator**~~ — ✅ done: the event-driven engine, VCD/console
+   trace, `mimz sim`/`mimz test`, and full parity (C1 combinational, C2
+   instance flattening, C3 `repeat` unroll, C4 enum signals) all ship,
+   validated by the Icarus differential. The first consumer of
+   `TestDecl`/`TestStmt`.
 
-Each of these has a full plan file in [`docs/plan/`](../plan/).
+Each of these has a full plan file in [`docs/plan/`](../plan/). The next
+pipeline work is the Phase 2 IR (the named trigger that demotes the string
+emitter to a debugging backend).

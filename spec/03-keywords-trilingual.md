@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.6.**
+> **Spec v0.2.7.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -137,6 +137,7 @@ error (E1005) explaining why. They live in the `reserved` list in
 | `interface`        | named port bundles (v0.3 backlog)                                        |
 | `chan`             | handshake channels (v0.3 backlog)                                        |
 | `prove`            | formal/temporal assertions (v0.3 backlog)                                |
+| `async`            | async/await (v0.3 backlog)                                               |
 | `await`            | handshake sequencing (v0.3 backlog)                                      |
 | `fixed`            | fixed-point arithmetic type (section 8 triage)                           |
 | `requires`         | caller-side precondition contract (section 8)                            |
@@ -269,6 +270,11 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.7 (2026-06-16):** Reserved `async` to pair with the already-reserved
+  `await` (async/await, v0.3 backlog). Reserved pre-v0.1.0 freeze so no program
+  can claim it (E1005); English-only until the feature lands and native review
+  supplies Tamil (R11). This keeps open the Phase 1.5 sub-decision of whether the
+  `await clk.cycles(n)` test-timing form needs an `async` test-block marker.
 - **v0.2.6 (2026-06-16):** Reserved `fn` and `function` for a future
   combinational-function construct (Phase 2 RTL parity; also unblocks the pipe
   `|>` operator). Both spellings reserved pre-v0.1.0 freeze so no program can

@@ -73,13 +73,14 @@ Now let's walk through what actually happens, station by station.
 
 ## Where it all starts: `src/main.rs` (and `src/lib.rs`)
 
-The compiler itself is a **library** — `src/lib.rs` lists its eight
-modules, one per station or shared tool. `main.rs` is the thin front
-door over it: it reads the command line (`check`, `compile`, or `lsp` —
-the `Cli` / `Cmd` structs at the top), calls the stations in order, and
-renders whatever comes back (human carets, or one JSON array with
-`--json`). The `compile()` function is literally the pipeline written
-out:
+The compiler itself is a **library** — `src/lib.rs` lists its modules
+(the pipeline stages plus shared tools like `translate`, `sim`, and
+`config`). `main.rs` is the thin front door over it: it reads the command
+line (`check`, `compile`, `sim`, `test`, `lsp`, …) and dispatches to a
+per-subcommand handler in `src/commands/`, which calls the stations in
+order and renders whatever comes back (human carets, or one JSON array
+with `--json`). The `compile` handler (`src/commands/compile.rs`) is
+literally the pipeline written out:
 
 ```text
 load_project(path)            // station 0
@@ -90,10 +91,11 @@ std::fs::write(out_path, ...) // save the .v file
 ```
 
 `main.rs` contains NO language logic. If you ever wonder "what is the
-true order of the stages?", read `compile()` in `main.rs` — it cannot
-lie, it IS the order. (The same library also powers `mimz lsp`, the
-language server behind the VS Code squiggles — same stations, errors
-delivered to your editor instead of the terminal.)
+true order of the stages?", read the `compile` handler in
+`src/commands/compile.rs` — it cannot lie, it IS the order. (The same
+library also powers `mimz lsp`, the language server behind the VS Code
+squiggles, and the Phase 1.5 simulator `mimz sim`/`mimz test` — same
+front-end stations, then a different back end.)
 
 ## Station 0 — Load (`src/project.rs`)
 
@@ -388,7 +390,7 @@ whatever comes back and sets the exit code.
 | change the generated Verilog                | `src/emit_verilog/module.rs` or `expr.rs`            |
 | change how errors are printed               | `src/diag.rs` (`render`)                             |
 | change import resolution / file loading     | `src/project.rs`                                     |
-| add a CLI flag or subcommand                | `src/main.rs`                                        |
+| add a CLI flag or subcommand                | `src/main.rs` (clap) + a handler in `src/commands/`  |
 | see errors as squiggles in VS Code          | `editors/vscode` (the extension runs `mimz lsp`)     |
 | debug "what tokens does this file produce?" | `mimz check file.mimz --tokens`                      |
 

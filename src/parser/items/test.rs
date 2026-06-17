@@ -6,23 +6,66 @@ use super::super::*;
 impl Parser {
     // ---------- tests ----------
 
-    /// `testDecl = "test" string "for" ident [ "(" argList ")" ] testBlock`
+    /// code-order: `testDecl = "test" string "for" ident [ "(" argList ")" ]
+    /// testBlock`
     pub(super) fn test_decl(&mut self) -> Option<TestDecl> {
         let start = self.bump().span; // test
-        let name = if let TokKind::Str(s) = self.peek_kind().clone() {
+        let name = self.test_name()?;
+        self.expect_kw(Kw::For, "`for` then the module under test")?;
+        let module = self.ident("the module under test")?;
+        let args = self.test_args()?;
+        let (body, end) = self.test_block()?;
+        Some(TestDecl {
+            name,
+            module,
+            args,
+            body,
+            span: start.join(end),
+        })
+    }
+
+    /// thamizh-order: `testDecl = ident [ "(" argList ")" ] "kaaga" string
+    /// "sodhanai" testBlock` — the module under test leads; `kaaga` (for) and
+    /// `sodhanai` (test) are the trailing clause heads (spec/04). Produces the
+    /// identical [`TestDecl`] AST as the code-order form, so a thamizh-order test
+    /// and its code-order twin run the same way.
+    pub(super) fn test_decl_thamizh(&mut self) -> Option<TestDecl> {
+        let module = self.ident("the module under test")?;
+        let start = module.span;
+        let args = self.test_args()?;
+        self.expect_kw(Kw::For, "`kaaga` (for) after the module under test")?;
+        let name = self.test_name()?;
+        self.expect_kw(Kw::Test, "`sodhanai` (test) then the test body")?;
+        let (body, end) = self.test_block()?;
+        Some(TestDecl {
+            name,
+            module,
+            args,
+            body,
+            span: start.join(end),
+        })
+    }
+
+    /// The quoted test name — after `test` in code order, after `kaaga` in
+    /// thamizh order.
+    fn test_name(&mut self) -> Option<String> {
+        if let TokKind::Str(s) = self.peek_kind().clone() {
             self.bump();
-            s
+            Some(s)
         } else {
             let span = self.peek().span;
             self.error(
                 span,
                 "E1107",
-                "expected a test name in quotes: `test \"counter counts\" for ...`",
+                "expected a test name in quotes, e.g. `test \"counter counts\" for ...`",
             );
-            return None;
-        };
-        self.expect_kw(Kw::For, "`for` then the module under test")?;
-        let module = self.ident("the module under test")?;
+            None
+        }
+    }
+
+    /// Optional `"(" name ":" expr { "," … } ")"` parameter list for the module
+    /// under test, shared by both word-order profiles. An absent list is `[]`.
+    fn test_args(&mut self) -> Option<Vec<NamedArg>> {
         let mut args = Vec::new();
         if self.eat(&TokKind::LParen) {
             loop {
@@ -41,14 +84,7 @@ impl Parser {
                 }
             }
         }
-        let (body, end) = self.test_block()?;
-        Some(TestDecl {
-            name,
-            module,
-            args,
-            body,
-            span: start.join(end),
-        })
+        Some(args)
     }
 
     /// `testBlock = "{" { tick | expect | drive | testIf } "}"`

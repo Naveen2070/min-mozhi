@@ -34,8 +34,32 @@ memory-proportional-to-input gap.
 
 `mimz-bench`'s `iverilog` output path was module-name-predictable in the shared
 temp dir (TOCTOU / symlink-clobber on a multi-user host). It now includes the
-process id (`src/bin/mimz-bench/metrics.rs`). Dev-tool only, inputs not
+process id (`src/bin/mimz-bench/metrics/`). Dev-tool only, inputs not
 attacker-controlled — low severity, fixed while in the area.
+
+### HARD-5 — Simulator count caps (`MAX_SIM_CYCLES` / `MAX_SWEEP_VECTORS`)
+
+The Phase 1.5 simulator originally left its count-like inputs unbounded — the
+`tick(clk, n)` loop, the `--sweep` cartesian product, and the `--cycles` run
+length. `MAX_SIM_CYCLES = 1_000_000` and `MAX_SWEEP_VECTORS = 1_000_000`
+(`src/sim/run.rs`) now bound them (test harness, `sweep_vectors`, `run()`, and a
+clap range on `--cycles`), extending the parser-`MAX_DEPTH` / emitter-`REPEAT_BUDGET`
+doctrine into the sim. Also bounded the `mimz.toml` walk-up
+(`MAX_CONFIG_WALK_DEPTH = 256`). See SEC-5 in [`security.md`](security.md).
+
+### HARD-6 — Simulator elaboration-time bounds (instance depth + repeat span)
+
+The C1–C4 audit (2026) found SEC-5 bounded the simulator's _runtime_ counts but
+not its _elaboration-time_ ones. `MAX_INSTANCE_DEPTH = 16` (`src/sim/elaborate.rs`)
+now bounds instance-flattening recursion so a recursive/cyclic instantiation fails
+cleanly instead of overflowing the stack (the checker guards this, but
+`mimz sim`/`test` skip the checker); the `repeat` span now uses `checked_sub` so an
+extreme `hi - lo` is an over-budget error, not an overflow panic; and a bit-index
+drive is bounded to `0..128` before the `as u32` cast. A 2026-06-17 follow-up pass
+also made `int_expr` (which lowers each flattened child const to a literal)
+non-recursive and `unsigned_abs`-based, so a const evaluating to `i128::MIN`
+lowers to `-2¹²⁷` instead of overflow-panicking the negation. See SEC-6 in
+[`security.md`](security.md).
 
 ---
 
@@ -44,16 +68,19 @@ attacker-controlled — low severity, fixed while in the area.
 The audit produced several initial "critical" claims that **did not survive
 verification against the code**. Recording them so they are not re-investigated:
 
-| Area                         | Why it is safe                                                                                                                                             |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Checker width arithmetic     | `MAX_WIDTH = 1_000_000` is enforced (`checker/widths/mod.rs`) before any width `+`/`*`/concat-sum, so u128 cannot overflow in practice.                    |
-| `repeat` unrolling           | Capped at `REPEAT_BUDGET = 4096` in **both** the checker (`drivers.rs`) and the emitter (`emit_verilog/mod.rs`). Not a bomb.                               |
-| Import cycles                | Detected via a canonicalized `visited` set (`project.rs`) — no infinite loop. (It silently skips a cycle rather than emitting an error — cosmetic.)        |
-| Import path traversal        | Import segments are XID identifiers; `..` and `/` are not expressible, so `import ../../etc/x` cannot be written. Symlink escape needs local write access. |
-| Import file count            | Each import must resolve to a real on-disk file, so loading is **linear in attacker-created files** — no amplification (no zip-bomb analogue).             |
-| Panics / `unwrap` on input   | No `unwrap`/`expect`/`panic!` reachable from input in `src/` (outside tests).                                                                              |
-| Checker cycle walk           | Combinational-cycle detection uses an explicit stack (`drivers.rs`), not recursion — cannot stack-overflow.                                                |
-| `comb::mask`, runtime shifts | Already shift-guarded (`if w >= 128`, `checked_shl`, `.min(127)`) before this audit — only `const_eval`'s shifts were raw (fixed, SEC-2).                  |
+| Area                                  | Why it is safe                                                                                                                                                                                                                                                   |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checker width arithmetic              | `MAX_WIDTH = 1_000_000` is enforced (`checker/widths/mod.rs`) before any width `+`/`*`/concat-sum, so u128 cannot overflow in practice.                                                                                                                          |
+| `repeat` unrolling                    | Capped at `REPEAT_BUDGET = 4096` in **both** the checker (`drivers.rs`) and the emitter (`emit_verilog/mod.rs`). Not a bomb.                                                                                                                                     |
+| Import cycles                         | Detected via a canonicalized `visited` set (`project.rs`) — no infinite loop. (It silently skips a cycle rather than emitting an error — cosmetic.)                                                                                                              |
+| Import path traversal                 | Import segments are XID identifiers; `..` and `/` are not expressible, so `import ../../etc/x` cannot be written. Symlink escape needs local write access.                                                                                                       |
+| Import file count                     | Each import must resolve to a real on-disk file, so loading is **linear in attacker-created files** — no amplification (no zip-bomb analogue).                                                                                                                   |
+| Panics / `unwrap` on input            | No `unwrap`/`expect`/`panic!` reachable from input in `src/` (outside tests).                                                                                                                                                                                    |
+| Checker cycle walk                    | Combinational-cycle detection uses an explicit stack (`drivers.rs`), not recursion — cannot stack-overflow.                                                                                                                                                      |
+| `comb::mask`, runtime shifts          | Already shift-guarded (`if w >= 128`, `checked_shl`, `.min(127)`) before this audit — only `const_eval`'s shifts were raw (fixed, SEC-2).                                                                                                                        |
+| Sim frame-time `cycle * PERIOD`       | Flagged as a u64-overflow "high", but **unreachable**: the cap (HARD-5) bounds `cycle ≤ 1_000_000`, so the product is ≤ 10^7. The loop could never complete ~10^18 iterations anyway — bounding the loop subsumes it. No checked-mul added (would be dead code). |
+| Sim concat `as u32` cast (`value.rs`) | Guarded by the `total > 128` check immediately above it — the cast is never reached with an out-of-range value.                                                                                                                                                  |
+| Thamizh-order flip recursion          | All five clause flips (incl. `seq_if_thamizh`, `if_expr_thamizh`) route through the SEC-1 `enter()`/`leave()` depth guard — no new unguarded neck.                                                                                                               |
 
 ---
 

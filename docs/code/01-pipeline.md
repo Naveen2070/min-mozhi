@@ -9,8 +9,8 @@ mimz compile examples/english/alu.mimz -o alu.v
 ## Step 0 — CLI dispatch (`src/main.rs`)
 
 `main.rs` is **CLI-only** on purpose: clap parsing, subcommand dispatch
-(`check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`), config
-resolution, and exit codes. Each subcommand's handler lives in its own file
+(`check`, `compile`, `fmt`, `translate`, `eval`, `sim`, `test`, `explain`,
+`lsp`), config resolution, and exit codes. Each subcommand's handler lives in its own file
 under `src/commands/` (`check.rs`, `compile.rs`, …) — `main.rs` only parses
 args and calls them. No compilation logic lives there, so the pipeline can later
 be reused by other frontends (LSP, web playground) without untangling it from
@@ -90,8 +90,10 @@ output path. Details in [`05-emit-verilog.md`](05-emit-verilog.md).
 After the checker, `emit_verilog::transliterate` rewrites Tamil
 identifiers to readable ASCII (விளக்கு → `villakku`), and the emitter
 unrolls `repeat` at compile time. **Phase 1 is complete** — every plan
-item in `docs/plan/phase-1-verilog-backend.md` is ticked; the next
-pipeline work is the Phase 1.8 grammar engine.
+item in `docs/plan/phase-1-verilog-backend.md` is ticked. The Phase 1.8
+grammar engine (the `thamizh-order` parser profile, all five clause flips)
+and the Phase 1.5 simulator (`mimz sim` / `mimz test`, full parity) have
+since landed too; the next pipeline work is the Phase 2 IR.
 
 ## Error flow
 

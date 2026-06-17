@@ -88,5 +88,8 @@ five. For the deep tour of the pipeline on a real example, see
 
 ## Where to go next
 
-You now have the loop: write → `check` → `compile`. The next chapters fill in the
+You now have the loop: write → `check` → `compile`. Once a design is clocked you
+can also `mimz sim` it to a waveform and `mimz test` it against self-checking
+testbenches ([chapter 11](11-toolchain.md)); the [`../../demo/`](../../demo/)
+folder walks that full loop on a worked example. The next chapters fill in the
 language itself, starting with [the lexical basics](02-lexical-basics.md).
