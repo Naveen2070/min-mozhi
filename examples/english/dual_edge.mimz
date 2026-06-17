@@ -1,0 +1,23 @@
+// Min-Mozhi example: dual-edge pipeline. A posedge register `a` captures the
+// input; a negedge register `b` captures `a` half a period later (same period),
+// so `on rise` and `on fall` both appear and their ordering is observable.
+
+module DualEdge {
+  clock clk
+  reset rst
+
+  in  d: bits[8]
+  out q: bits[8]
+
+  reg a: bits[8] = 0
+  reg b: bits[8] = 0
+
+  on rise(clk) {
+    a <- d
+  }
+  on fall(clk) {
+    b <- a
+  }
+
+  q = b
+}

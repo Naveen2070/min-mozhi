@@ -12,6 +12,8 @@
 
 use std::collections::BTreeMap;
 
+use crate::ast::Edge;
+
 use super::elaborate::{Design, Signal};
 use super::kernel::Sim;
 
@@ -116,16 +118,20 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
         for r in &resets {
             sim.set(r, rst)?;
         }
-        // Rising edge: clock high, advance state, capture the settled frame.
+        // Rising edge: clock high, apply posedge updates, capture the settled
+        // frame. Like the differential testbench, sample AFTER the posedge but
+        // BEFORE the negedge — so `on fall` registers update half a period later
+        // (visible next cycle), matching Verilog bit-for-bit.
         sim.set(&clock, 1)?;
-        sim.tick(&clock)?;
+        sim.tick_edge(&clock, Edge::Rise)?;
         frames.push(Frame {
             time: cycle * PERIOD,
             cycle: Some(cycle),
             values: values(&sim)?,
         });
-        // Falling edge: clock low, state held.
+        // Falling edge: clock low, apply negedge updates.
         sim.set(&clock, 0)?;
+        sim.tick_edge(&clock, Edge::Fall)?;
         frames.push(Frame {
             time: cycle * PERIOD + HALF,
             cycle: None,

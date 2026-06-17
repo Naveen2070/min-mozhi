@@ -1,0 +1,23 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): dual-edge pipeline.
+// A posedge register `a` captures the input; a negedge register `b` captures
+// `a` half a period later (same period) — `on rise` and `on fall` both appear.
+
+தொகுதி DualEdge {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  உள்ளீடு  d: bits[8]
+  வெளியீடு q: bits[8]
+
+  பதிவேடு a: bits[8] = 0
+  பதிவேடு b: bits[8] = 0
+
+  போது ஏற்றம்(clk) {
+    a <- d
+  }
+  போது இறக்கம்(clk) {
+    b <- a
+  }
+
+  q = b
+}

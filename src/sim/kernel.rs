@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::ast::{Expr, SeqStmt};
+use crate::ast::{Edge, Expr, SeqStmt};
 
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
@@ -116,8 +116,23 @@ impl Sim {
         Ok(env.signal(name)?.masked())
     }
 
-    /// Advance one rising edge of `clock` (two-phase commit, see the module doc).
+    /// Advance one full period of `clock`: the rising edge, then the falling
+    /// edge. A register/process acts only in its own edge phase, so a
+    /// pure-`rise` design behaves exactly as before (the fall phase is a no-op);
+    /// a mixed design sees `posedge` regs update before `negedge` regs within the
+    /// period, matching Verilog (and the Icarus differential).
     pub fn tick(&mut self, clock: &str) -> Result<(), String> {
+        self.tick_edge(clock, Edge::Rise)?;
+        self.tick_edge(clock, Edge::Fall)?;
+        Ok(())
+    }
+
+    /// One edge of `clock` (two-phase commit, see the module doc): the regs and
+    /// processes bound to `clock` whose `edge` matches update; everything else
+    /// holds. Synchronous active-high reset wins over the `on`-block result.
+    /// Public within the sim so [`super::run`] can sample BETWEEN the rising and
+    /// falling edges (matching the Verilog testbench's mid-cycle sample point).
+    pub(super) fn tick_edge(&mut self, clock: &str, edge: Edge) -> Result<(), String> {
         let reset_now = self
             .design
             .resets
@@ -125,11 +140,11 @@ impl Sim {
             .any(|r| self.leaves.get(r).is_some_and(|v| v.bits & 1 == 1));
 
         // Start from the current registers (hold-by-default), overlay this
-        // clock's updates, then commit.
+        // edge's updates, then commit.
         let mut next = self.regs.clone();
         if reset_now {
             for reg in &self.design.regs {
-                if reg.clock == clock {
+                if reg.clock == clock && reg.edge == edge {
                     next.insert(
                         reg.name.clone(),
                         Val::new(reg.reset as u128, reg.width.bits, reg.width.signed),
@@ -139,7 +154,7 @@ impl Sim {
         } else {
             let mut env = self.comb_env();
             for proc in &self.design.procs {
-                if proc.clock == clock {
+                if proc.clock == clock && proc.edge == edge {
                     run_seq(&mut env, &proc.body, &mut next, &self.widths)?;
                 }
             }
@@ -310,6 +325,21 @@ mod tests {
         s.set("rst", 1).unwrap();
         s.tick("clk").unwrap();
         assert_eq!(s.peek("count").unwrap(), 0);
+    }
+
+    #[test]
+    fn dual_edge_negedge_reg_captures_posedge_within_a_period() {
+        // a (posedge) <- d; b (negedge) <- a. The rise-then-fall tick lets the
+        // negedge `b` see the NEW `a` in the same period — matching Verilog (the
+        // `dual_edge` example proves this bit-for-bit vs Icarus).
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  in d: bits[8]\n  out q: bits[8]\n  reg a: bits[8] = 0\n  reg b: bits[8] = 0\n  on rise(clk) { a <- d }\n  on fall(clk) { b <- a }\n  q = b\n}\n",
+        );
+        s.set("d", 5).unwrap();
+        s.set("rst", 0).unwrap();
+        s.tick("clk").unwrap();
+        assert_eq!(s.peek("a").unwrap(), 5);
+        assert_eq!(s.peek("q").unwrap(), 5, "negedge `b` captured the new `a`");
     }
 
     #[test]

@@ -185,12 +185,21 @@ pub struct Conn {
     pub signal: Expr,
 }
 
-/// `on rise(clk) { ... }` — everything inside updates registers with `<-`
-/// on the rising edge of `clock`. Rising-edge only in v0.2 (`fall` is
-/// reserved).
+/// Which clock edge a sequential block (and its registers) triggers on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    /// `on rise(clk)` — Verilog `posedge`.
+    Rise,
+    /// `on fall(clk)` — Verilog `negedge`.
+    Fall,
+}
+
+/// `on rise(clk) { ... }` / `on fall(clk) { ... }` — everything inside updates
+/// registers with `<-` on the chosen `edge` of `clock`.
 #[derive(Clone, Debug)]
 pub struct OnBlock {
     pub clock: Ident,
+    pub edge: Edge,
     pub body: Vec<SeqStmt>,
     pub span: Span,
 }

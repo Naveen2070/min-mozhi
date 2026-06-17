@@ -87,10 +87,10 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 28] = [
-    "module", "in", "out", "wire", "reg", "clock", "reset", "on", "rise", "if", "else", "match",
-    "enum", "let", "const", "repeat", "import", "true", "false", "test", "for", "tick", "expect",
-    "and", "or", "not", "syntax", "thamizh",
+const REQUIRED_KEYS: [&str; 29] = [
+    "module", "in", "out", "wire", "reg", "clock", "reset", "on", "rise", "fall", "if", "else",
+    "match", "enum", "let", "const", "repeat", "import", "true", "false", "test", "for", "tick",
+    "expect", "and", "or", "not", "syntax", "thamizh",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -163,6 +163,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "reset" => Kw::Reset,
         "on" => Kw::On,
         "rise" => Kw::Rise,
+        "fall" => Kw::Fall,
         "if" => Kw::If,
         "else" => Kw::Else,
         "match" => Kw::Match,
@@ -215,9 +216,13 @@ mod tests {
     }
 
     #[test]
-    fn fall_is_reserved() {
-        assert!(TABLE.is_reserved("fall"));
-        assert!(TABLE.lookup("fall").is_none());
+    fn fall_is_an_active_keyword() {
+        // Promoted from reserved to active for `on fall(clk)` (A3, 2026-06-17).
+        // Tanglish/Tamil spellings are PROVISIONAL pending native review (R9/R11).
+        assert!(!TABLE.is_reserved("fall"));
+        assert_eq!(TABLE.lookup("fall").unwrap().0, Kw::Fall);
+        assert_eq!(TABLE.lookup("irakkam").unwrap().0, Kw::Fall);
+        assert_eq!(TABLE.lookup("இறக்கம்").unwrap().0, Kw::Fall);
     }
 
     #[test]

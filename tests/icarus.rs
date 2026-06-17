@@ -718,6 +718,9 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/counter.mimz", &[], &[], 20);
     differential(&bin, "english/shift_register.mimz", &[], &[("din", 1)], 16);
     differential(&bin, "english/edge_detector.mimz", &[], &[("din", 1)], 8);
+    // Dual-edge: a posedge reg feeding a negedge reg — exercises the edge-aware
+    // kernel's rise-before-fall ordering against Icarus (A3).
+    differential(&bin, "english/dual_edge.mimz", &[], &[("d", 1)], 8);
     // Blinker at a tiny LIMIT so `led` actually toggles within the run.
     differential(&bin, "english/blinker.mimz", &[("LIMIT", 3)], &[], 12);
     // Combinational (generated input vectors).

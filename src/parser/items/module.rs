@@ -124,7 +124,9 @@ impl Parser {
             TokKind::Kw(Kw::Enum) => Some(ModuleItem::Enum(self.enum_decl()?)),
             TokKind::Kw(Kw::Let) => self.inst(),
             TokKind::Kw(Kw::On) => self.on_block(),
-            TokKind::Kw(Kw::Rise) if self.profile == Profile::Thamizh => self.on_block_thamizh(),
+            TokKind::Kw(Kw::Rise | Kw::Fall) if self.profile == Profile::Thamizh => {
+                self.on_block_thamizh()
+            }
             TokKind::Kw(Kw::Repeat) => self.repeat_block(),
             TokKind::Ident(_) => {
                 let lhs = self.lvalue()?;

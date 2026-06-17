@@ -1,0 +1,23 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): dual-edge pipeline.
+// A posedge register `a` captures the input; a negedge register `b` captures
+// `a` half a period later (same period) — `on rise` and `on fall` both appear.
+
+module DualEdge {
+  thudippu clk
+  மீட்டமை rst
+
+  ulleedu  d: bits[8]
+  வெளியீடு q: bits[8]
+
+  pathivedu a: bits[8] = 0
+  reg b: bits[8] = 0
+
+  போது rise(clk) {
+    a <- d
+  }
+  pothu irakkam(clk) {
+    b <- a
+  }
+
+  q = b
+}

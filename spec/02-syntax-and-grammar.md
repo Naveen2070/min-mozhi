@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.9.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.10.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -58,10 +58,12 @@ Rules on display:
   A module that declares any `reg` **must** declare a `reset`.
 - `reg name: type = resetValue` — the reset value is **mandatory**. No
   uninitialized state.
-- `on rise(clk) { ... }` is the only place registers update, and `<-` is the
-  only assignment allowed inside it. Using `=` on a reg, or `<-` on a wire, is
-  a compile error with a teaching message. (v0.2: rising-edge only; `fall` is
-  a reserved word for the future.)
+- `on rise(clk) { ... }` (and `on fall(clk) { ... }`) is the only place
+  registers update, and `<-` is the only assignment allowed inside it. Using `=`
+  on a reg, or `<-` on a wire, is a compile error with a teaching message.
+  `rise` lowers to Verilog `posedge`, `fall` to `negedge`; a register samples on
+  the edge of its block. (`fall`'s Tanglish/Tamil spellings are provisional,
+  pending native review.)
 - `value + 1` would be `bits[WIDTH+1]` and fail to assign. `+%` is the
   explicit wrapping (modulo) operator — counters wrap **on purpose**, visibly.
   The error message for `+` suggests `+%` so beginners learn the distinction
@@ -436,7 +438,7 @@ conn        = IDENT ":" expr ;
 repeatBlock = "repeat" IDENT ":" constExpr ".." constExpr
               "{" { moduleItem } "}" ;             (* compile-time unrolled *)
 
-onBlock     = "on" "rise" "(" IDENT ")" seqBlock ; (* "fall" reserved *)
+onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
 seqStmt     = regAssign | seqIf ;
 regAssign   = lvalue "<-" expr NEWLINE ;
@@ -521,6 +523,13 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.10 (2026-06-17):** **Falling-edge `on fall(clk)`** added (section 1.2) —
+  the negedge sibling of `on rise(clk)`; lowers to Verilog `always @(negedge clk)`.
+  `fall` was promoted from reserved to an active keyword (KW_FALL; see
+  `03-keywords-trilingual.md`, Tanglish/Tamil provisional). Additive. The
+  simulator gained an edge-aware kernel (posedge updates before negedge within a
+  period), so mixed-edge designs match Icarus bit-for-bit — covered by the
+  `dual_edge` four-flavor example.
 - **v0.2.9 (2026-06-17):** **Don't-care `match` patterns** added (section 1.3) —
   a binary pattern may use `?` for a don't-care bit (`0b1??`, the `casez` idiom).
   It must match the scrutinee width exactly (E0409 otherwise) and earns no

@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::ast::{self, Dir, Expr, ExprKind, ModuleItem, Pattern, SeqStmt, UnOp};
+use crate::ast::{self, Dir, Edge, Expr, ExprKind, ModuleItem, Pattern, SeqStmt, UnOp};
 
 use super::value::{const_eval, pick_module, type_width};
 
@@ -83,6 +83,9 @@ pub struct Reg {
     /// The clock of the `on` block that assigns this reg (empty if none does,
     /// in which case the reg simply holds its reset value forever).
     pub clock: String,
+    /// The edge of the assigning `on` block (`rise`/`fall`). Defaults to `Rise`
+    /// for an unassigned reg (it never ticks).
+    pub edge: Edge,
 }
 
 /// One sequential process — the body of an `on rise(clock)` block. The kernel
@@ -91,6 +94,8 @@ pub struct Reg {
 #[derive(Clone, Debug)]
 pub struct Process {
     pub clock: String,
+    /// The edge this block triggers on (`on rise`/`on fall`).
+    pub edge: Edge,
     pub body: Vec<SeqStmt>,
 }
 
@@ -280,6 +285,7 @@ fn elaborate_module(
                     width,
                     reset,
                     clock: String::new(),
+                    edge: Edge::Rise,
                 });
             }
             ModuleItem::Drive { lhs, rhs } => {
@@ -287,6 +293,7 @@ fn elaborate_module(
             }
             ModuleItem::On(on) => procs.push(Process {
                 clock: on.clock.name.clone(),
+                edge: on.edge,
                 body: on
                     .body
                     .iter()
@@ -408,6 +415,7 @@ fn elaborate_module(
         for reg in &mut regs {
             if assigns(&proc.body, &reg.name) {
                 reg.clock = proc.clock.clone();
+                reg.edge = proc.edge;
             }
         }
     }
@@ -581,6 +589,7 @@ fn flatten_instance(
             width: r.width,
             reset: r.reset,
             clock: String::new(),
+            edge: r.edge,
         });
     }
     // Child processes: prefix assigned regs, rewrite bodies, map the clock.
@@ -592,6 +601,7 @@ fn flatten_instance(
         let rename = |n: &str| format!("{pfx}{n}");
         flat.procs.push(Process {
             clock: clk,
+            edge: p.edge,
             body: p
                 .body
                 .iter()
@@ -950,6 +960,7 @@ mod tests {
                 },
                 reset: 0,
                 clock: "clk".into(),
+                edge: Edge::Rise,
             }]
         );
         assert!(d.comb.contains_key("count")); // count = value

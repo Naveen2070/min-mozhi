@@ -85,8 +85,11 @@ fn division_is_rejected_with_teaching_error() {
 }
 
 #[test]
-fn fall_is_reserved_error() {
-    let errs = lex("on fall(clk)").unwrap_err();
+fn a_reserved_word_is_an_error() {
+    // A reserved-but-not-yet-active word (e.g. `mem`) is a clean E1005, not a
+    // silent identifier. (`fall` was promoted from reserved to a keyword in A3,
+    // so `mem` now carries this check.)
+    let errs = lex("mem").unwrap_err();
     assert_eq!(errs[0].code, Some("E1005"));
     assert!(errs[0].msg.contains("reserved"));
 }

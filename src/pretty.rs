@@ -275,12 +275,15 @@ impl Pretty {
 
     fn on_block(&mut self, on: &OnBlock) {
         let on_kw = self.kw(Kw::On);
-        let rise = self.kw(Kw::Rise);
+        let edge = self.kw(match on.edge {
+            crate::ast::Edge::Rise => Kw::Rise,
+            crate::ast::Edge::Fall => Kw::Fall,
+        });
         let head = match self.order {
-            // code-order:  on rise(clk) {
-            Order::Code => format!("{on_kw} {rise}({}) {{", on.clock.name),
-            // thamizh-order:  rise(clk) on {
-            Order::Thamizh => format!("{rise}({}) {on_kw} {{", on.clock.name),
+            // code-order:  on rise(clk) {  /  on fall(clk) {
+            Order::Code => format!("{on_kw} {edge}({}) {{", on.clock.name),
+            // thamizh-order:  rise(clk) on {  /  fall(clk) on {
+            Order::Thamizh => format!("{edge}({}) {on_kw} {{", on.clock.name),
         };
         self.line(&head);
         self.indent += 1;

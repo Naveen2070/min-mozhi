@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.7.**
+> **Spec v0.2.8.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -96,7 +96,8 @@ is valid even in an otherwise-English file.
 | KW_CLOCK      | `clock`   | `thudippu`   | `துடிப்பு`    | "pulse/beat" — a clock is a pulse (v1: was `கடிகாரம்`)                                                     |
 | KW_RESET      | `reset`   | `meettamai`  | `மீட்டமை`     | "restore/reset" (standard UI/CS term)                                                                      |
 | KW_ON         | `on`      | `pothu`      | `போது`        | "when/at the time of" (trails in thamizh order)                                                            |
-| KW_RISE       | `rise`    | `yetram`     | `ஏற்றம்`      | "ascent/rise" (`fall` reserved, untranslated until needed)                                                 |
+| KW_RISE       | `rise`    | `yetram`     | `ஏற்றம்`      | "ascent/rise" — `on rise(clk)` (posedge)                                                                   |
+| KW_FALL       | `fall`    | `irakkam`    | `இறக்கம்`     | "descent/fall" — `on fall(clk)` (negedge); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)      |
 | KW_IF         | `if`      | `enil`       | `எனில்`       | conditional particle — natural trailing "if" in thamizh order (v1: was `என்றால்`)                          |
 | KW_ELSE       | `else`    | `illaiyenil` | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                          |
 | KW_MATCH      | `match`   | `thernthedu` | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                           |
@@ -125,7 +126,6 @@ error (E1005) explaining why. They live in the `reserved` list in
 
 | Reserved           | Held for                                                                 |
 | ------------------ | ------------------------------------------------------------------------ |
-| `fall`             | falling-edge `on` blocks (post-v1)                                       |
 | `mem`              | memories/arrays (Phase 2)                                                |
 | `sync`             | clock-domain crossing (Phase 2)                                          |
 | `inout`            | top-level bidirectional pads (Phase 2)                                   |
@@ -270,6 +270,13 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.8 (2026-06-17):** Promoted `fall` from **reserved** to an active keyword
+  KW_FALL for falling-edge `on fall(clk)` blocks (A3, Verilog `negedge`). Its
+  Tanglish/Tamil spellings — `irakkam` / `இறக்கம்` ("descent", the antonym of
+  `yetram`/`ஏற்றம்` = "ascent") — are **PROVISIONAL** dev/testing placeholders
+  pending native-speaker review (R9/R11), founder-authorized so the four-flavor
+  tooling works before the v0.1.0 freeze. Removed `fall` from the reserved table;
+  added the grammar keyword rule + lexer test (the R11 pipeline, reversed).
 - **v0.2.7 (2026-06-16):** Reserved `async` to pair with the already-reserved
   `await` (async/await, v0.3 backlog). Reserved pre-v0.1.0 freeze so no program
   can claim it (E1005); English-only until the feature lands and native review

@@ -361,6 +361,17 @@ mod tests {
     }
 
     #[test]
+    fn on_fall_emits_negedge() {
+        let v = emit_src(
+            "module M {\n  clock clk\n  reset rst\n  out q: bit\n  reg r: bit = 0\n  on fall(clk) { r <- !r }\n  q = r\n}\n",
+        );
+        assert!(
+            v.contains("always @(negedge clk)"),
+            "`on fall` must lower to a negedge block:\n{v}"
+        );
+    }
+
+    #[test]
     fn a_builtin_lowers_parenthesized_inside_a_larger_expression() {
         // `min(b, c)` must lower to a self-contained, fully-parenthesized ternary
         // so it composes correctly under a surrounding operator (here `&`) — no

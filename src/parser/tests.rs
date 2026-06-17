@@ -49,6 +49,46 @@ fn parses_tanglish_counter_to_same_shape() {
 // ---- grammar engine: thamizh-order profile (spec/04, Phase 1.8) ----
 
 #[test]
+fn on_fall_parses_with_the_fall_edge() {
+    let f = parse_ok(
+        "module M {\n  clock clk\n  reset rst\n  reg r: bits[8] = 0\n  on fall(clk) {\n    r <- r +% 1\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let on = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::On(o) => Some(o),
+            _ => None,
+        })
+        .expect("an `on` block");
+    assert_eq!(on.edge, Edge::Fall);
+    assert_eq!(on.clock.name, "clk");
+}
+
+#[test]
+fn thamizh_order_on_fall_parses_to_the_fall_edge() {
+    // `irakkam(clk) pothu { }` — the thamizh-order falling-edge block.
+    let f = parse_ok(
+        "ilakkanam thamizh\nthoguthi M {\n  thudippu clk\n  meettamai rst\n  pathivedu r: bits[8] = 0\n  irakkam(clk) pothu {\n    r <- r +% 1\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let on = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::On(o) => Some(o),
+            _ => None,
+        })
+        .expect("an `on` block");
+    assert_eq!(on.edge, Edge::Fall);
+}
+
+#[test]
 fn thamizh_order_on_block_parses_to_the_same_shape() {
     // `syntax thamizh` + the flipped clocked block `yetram(clk) pothu { }`
     // must build the SAME module as the code-order counter: 6 items, an

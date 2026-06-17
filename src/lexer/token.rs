@@ -18,6 +18,7 @@ pub enum Kw {
     Reset,
     On,
     Rise,
+    Fall,
     If,
     Else,
     Match,

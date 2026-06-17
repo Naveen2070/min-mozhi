@@ -162,6 +162,11 @@ thoguthi Counter(WIDTH: int = 8) {
 }
 ```
 
+The falling-edge block flips identically: `on fall(clk) { }` ↔
+`irakkam(clk) pothu { }` (`fall`/`irakkam`/`இறக்கம்` — the negedge sibling of
+`rise`, added 2026-06-17; Tanglish/Tamil spellings provisional pending native
+review).
+
 ### The traffic light, thamizh-order Tamil script
 
 ```mimz

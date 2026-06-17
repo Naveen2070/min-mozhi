@@ -127,8 +127,13 @@ impl Emitter<'_> {
                 let mut assigned: Vec<&str> = Vec::new();
                 collect_assigned(&on.body, &mut assigned);
 
+                let edge = if matches!(on.edge, crate::ast::Edge::Fall) {
+                    "negedge"
+                } else {
+                    "posedge"
+                };
                 self.out
-                    .push_str(&format!("    always @(posedge {}) begin\n", on.clock.name));
+                    .push_str(&format!("    always @({edge} {}) begin\n", on.clock.name));
                 if let Some(rst) = &reset_name {
                     self.out.push_str(&format!("        if ({rst}) begin\n"));
                     for r in &assigned {

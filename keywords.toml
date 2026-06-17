@@ -20,7 +20,7 @@ version = 1
 # so v0.1 programs cannot claim them, untranslated until each feature lands
 # (spec/03 section "Reserved words").
 reserved = [
-  "fall", "mem", "sync", "inout", "struct",
+  "mem", "sync", "inout", "struct",
   "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "async", "await",
   "fixed", "requires", "ensures",
   # Combinational functions (Phase 2 RTL parity; also unblocks the pipe `|>`).
@@ -77,6 +77,16 @@ tamil = "போது"
 en = "rise"
 tanglish = "yetram"
 tamil = "ஏற்றம்"
+
+# Falling-edge clock head (`on fall(clk)` → Verilog `negedge`). The Tanglish/Tamil
+# spellings here are PROVISIONAL dev/testing placeholders — `irakkam`/`இறக்கம்`
+# ("descent", the natural antonym of `yetram`/`ஏற்றம்` = "ascent") — pending
+# native-speaker review (R9/R11). Founder-authorized 2026-06-17 so the four-flavor
+# tooling works now; native review confirms or replaces them before the v0.1.0 freeze.
+[keywords.fall]
+en = "fall"
+tanglish = "irakkam"
+tamil = "இறக்கம்"
 
 [keywords.if]
 en = "if"

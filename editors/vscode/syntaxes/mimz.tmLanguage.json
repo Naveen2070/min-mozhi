@@ -54,7 +54,7 @@
     "keywords-control": {
       "comment": "control-flow keywords, all flavors",
       "name": "keyword.control.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(if|enil|எனில்|else|illaiyenil|இல்லையெனில்|match|thernthedu|தேர்ந்தெடு|on|pothu|போது|rise|yetram|ஏற்றம்|repeat|meendum|மீண்டும்|syntax|ilakkanam|இலக்கணம்|thamizh|தமிழ்)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(if|enil|எனில்|else|illaiyenil|இல்லையெனில்|match|thernthedu|தேர்ந்தெடு|on|pothu|போது|rise|yetram|ஏற்றம்|fall|irakkam|இறக்கம்|repeat|meendum|மீண்டும்|syntax|ilakkanam|இலக்கணம்|thamizh|தமிழ்)(?![\\p{L}\\p{N}_])"
     },
     "keywords-constant": {
       "name": "constant.language.mimz",
@@ -68,7 +68,7 @@
     "reserved-words": {
       "comment": "reserved for future features — using them is a compile error",
       "name": "invalid.illegal.reserved.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(fall|mem|sync|inout|struct|secret|declassify|default|pipeline|interface|chan|prove|async|await|fixed|requires|ensures|fn|function|suzhal|சுழல்)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(mem|sync|inout|struct|secret|declassify|default|pipeline|interface|chan|prove|async|await|fixed|requires|ensures|fn|function|suzhal|சுழல்)(?![\\p{L}\\p{N}_])"
     },
     "types": {
       "comment": "universal vocabulary — never translated",

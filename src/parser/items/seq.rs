@@ -4,33 +4,61 @@
 use super::super::*;
 
 impl Parser {
-    /// code-order: `onBlock = "on" "rise" "(" ident ")" seqBlock`
+    /// code-order: `onBlock = "on" ("rise" | "fall") "(" ident ")" seqBlock`
     pub(super) fn on_block(&mut self) -> Option<ModuleItem> {
         let start = self.bump().span; // on
-        self.expect_kw(Kw::Rise, "`rise` — Min-Mozhi v0.2 is rising-edge only")?;
+        let edge = self.clock_edge_kw()?;
         let clock = self.clock_edge_args()?;
         let (body, end) = self.seq_block()?;
         Some(ModuleItem::On(OnBlock {
             clock,
+            edge,
             body,
             span: start.join(end),
         }))
     }
 
-    /// thamizh-order: `onBlock = "rise" "(" ident ")" "on" seqBlock` — the
-    /// clocked block with the edge head leading and `on` (pothu) trailing
+    /// thamizh-order: `onBlock = ("rise" | "fall") "(" ident ")" "on" seqBlock` —
+    /// the clocked block with the edge head leading and `on` (pothu) trailing
     /// (spec/04 section 3: `yetram(clk) pothu { }`). Produces the identical
     /// [`OnBlock`] AST as the code-order form.
     pub(super) fn on_block_thamizh(&mut self) -> Option<ModuleItem> {
-        let start = self.bump().span; // rise
+        // The dispatcher only calls this on a leading `rise`/`fall` head.
+        let edge = if self.at_kw(Kw::Fall) {
+            Edge::Fall
+        } else {
+            Edge::Rise
+        };
+        let start = self.bump().span; // rise / fall
         let clock = self.clock_edge_args()?;
         self.expect_kw(Kw::On, "`on` (pothu) after the clock edge in thamizh order")?;
         let (body, end) = self.seq_block()?;
         Some(ModuleItem::On(OnBlock {
             clock,
+            edge,
             body,
             span: start.join(end),
         }))
+    }
+
+    /// `("rise" | "fall")` — the clock-edge head keyword, returning the [`Edge`].
+    fn clock_edge_kw(&mut self) -> Option<Edge> {
+        if self.at_kw(Kw::Rise) {
+            self.bump();
+            Some(Edge::Rise)
+        } else if self.at_kw(Kw::Fall) {
+            self.bump();
+            Some(Edge::Fall)
+        } else {
+            let span = self.peek().span;
+            self.error(
+                span,
+                "E1101",
+                "expected `rise` or `fall` for the clock edge",
+            );
+            self.help("a sequential block is `on rise(clk) { … }` or `on fall(clk) { … }`");
+            None
+        }
     }
 
     /// `"(" ident ")"` — the clock name inside a `rise(clk)` edge head,
