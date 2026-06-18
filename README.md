@@ -153,12 +153,15 @@ But it always emits Verilog — so nothing you build here is a dead end.
 ## License
 
 MIT **+** Apache-2.0 dual-licensed (the Rust ecosystem norm). Free and open
-source forever — that's constitutional (`spec/01` section 4).
+source forever — that's constitutional (`spec/01` section 4). © 2026 Naveen R —
+see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
 
 ---
 
 <div align="center">
 
 _Min-Mozhi — மின்மொழி — Speak in Circuits_
+
+Made with ♥ by [Naveen R](https://github.com/Naveen2070)
 
 </div>

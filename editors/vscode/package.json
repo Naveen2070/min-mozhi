@@ -5,6 +5,15 @@
   "version": "0.2.0",
   "publisher": "min-mozhi",
   "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Naveen2070/min-mozhi.git",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/Naveen2070/min-mozhi/issues"
+  },
+  "homepage": "https://github.com/Naveen2070/min-mozhi#readme",
   "engines": {
     "vscode": "^1.75.0"
   },

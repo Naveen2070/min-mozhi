@@ -4,6 +4,7 @@ import path from "node:path";
 import { Code } from "astro:components";
 import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
 import Hero from "../components/Hero.tsx";
 
 // repo root is the parent of site/ (cwd during astro build/dev). Plain fs read,
@@ -137,18 +138,5 @@ const highlights = [
     </section>
   </main>
 
-  <footer
-    class="border-t py-8 text-sm"
-    style="border-color: var(--border); color: var(--text-muted)"
-  >
-    <div
-      class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4"
-    >
-      <span>
-        <span style="font-family: var(--font-tamil)">மின்மொழி</span> — Speak in Circuits
-        · MIT + Apache-2.0
-      </span>
-      <span>Built in Tamil Nadu 🇮🇳</span>
-    </div>
-  </footer>
+  <Footer />
 </Base>

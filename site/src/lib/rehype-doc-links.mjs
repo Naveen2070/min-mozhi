@@ -11,10 +11,19 @@ import path from "node:path";
 //     examples/, src/, …) -> GitHub (files -> blob/, directories -> tree/)
 // Anchors (#...) are preserved; external / mailto / in-page / site-absolute links
 // are left untouched.
+//
+// Paths are resolved to repo-relative form with posix `join` (never `resolve`),
+// because `path.posix.resolve` treats a Windows "D:/…" path as relative and falls
+// back to the build cwd, corrupting the result.
 
 const REPO = "https://github.com/Naveen2070/min-mozhi";
 const GH_BLOB = `${REPO}/blob/master/`;
 const GH_TREE = `${REPO}/tree/master/`;
+
+// Common extension-less files, so e.g. `LICENSE-MIT` routes to blob/ (a file), not
+// tree/ (a directory). Anything else extension-less is treated as a directory.
+const EXTLESS_FILE =
+  /^(LICEN[CS]E|COPYING|NOTICE|AUTHORS|CONTRIBUTING|CHANGELOG|README|CODEOWNERS|Makefile|Dockerfile|Justfile)(-[\w.]+)?$/i;
 
 export default function rehypeDocLinks() {
   return (tree, file) => {
@@ -22,9 +31,10 @@ export default function rehypeDocLinks() {
       /\\/g,
       "/",
     );
-    const fileDir = path.posix.dirname(filePath);
     const cut = filePath.search(/\/(docs|spec)\//);
-    const repoRoot = cut >= 0 ? filePath.slice(0, cut) : "";
+    if (cut < 0) return; // not a repo doc we recognize; leave its links alone
+    const repoRoot = filePath.slice(0, cut);
+    const relDir = path.posix.dirname(filePath).slice(repoRoot.length + 1); // "docs/guide" | "spec"
 
     visit(tree, "element", (node) => {
       if (node.tagName !== "a") return;
@@ -36,43 +46,41 @@ export default function rehypeDocLinks() {
       const [rel, anchor] = href.split("#");
       if (!rel) return;
 
-      const abs = path.posix.resolve(fileDir, rel);
+      // Repo-relative target, e.g. "spec/01-x.md", "keywords.toml", "spec/".
+      const target = path.posix.join(relDir, rel);
+      if (target.startsWith("..") || path.posix.isAbsolute(target)) return; // escapes the repo
+
+      const isDir = rel.endsWith("/") || target.endsWith("/");
+      const clean = target.replace(/\/+$/, "");
       const withAnchor = (u) => (anchor ? `${u}#${anchor}` : u);
 
       // 1. A published markdown page -> its site route (README -> section root).
-      const m = abs.match(/\/(docs\/guide|spec)\/([^/]+)\.md$/);
+      const m = clean.match(/^(docs\/guide|spec)\/([^/]+)\.md$/);
       if (m) {
         const section = m[1] === "spec" ? "spec" : "guide";
-        const out =
-          m[2].toLowerCase() === "readme" ? `/${section}` : `/${section}/${m[2]}`;
-        node.properties.href = withAnchor(out);
-        return;
-      }
-
-      // 2. A published section directory -> its landing route.
-      if (repoRoot && abs === `${repoRoot}/spec`) {
-        node.properties.href = withAnchor("/spec");
-        return;
-      }
-      if (repoRoot && abs === `${repoRoot}/docs/guide`) {
-        node.properties.href = withAnchor("/guide");
-        return;
-      }
-
-      // 3. Anything else that lives in the repo -> GitHub (the site doesn't ship it).
-      if (repoRoot && abs.startsWith(`${repoRoot}/`)) {
-        const relFromRoot = abs.slice(repoRoot.length + 1);
-        // A trailing slash or a basename with no extension reads as a directory.
-        const isDir = rel.endsWith("/") || !path.posix.basename(abs).includes(".");
         node.properties.href = withAnchor(
-          (isDir ? GH_TREE : GH_BLOB) + relFromRoot,
+          m[2].toLowerCase() === "readme" ? `/${section}` : `/${section}/${m[2]}`,
         );
         return;
       }
 
-      // 4. Couldn't resolve within the repo: best-effort GitHub blob by basename.
-      const base = path.posix.basename(abs);
-      if (base) node.properties.href = withAnchor(GH_BLOB + base);
+      // 2. A published section directory -> its landing route.
+      if (clean === "spec") {
+        node.properties.href = withAnchor("/spec");
+        return;
+      }
+      if (clean === "docs/guide") {
+        node.properties.href = withAnchor("/guide");
+        return;
+      }
+
+      // 3. Anything else in the repo -> GitHub (files -> blob, directories -> tree).
+      const base = path.posix.basename(clean);
+      let dir;
+      if (isDir) dir = true; // explicit trailing slash
+      else if (base.includes(".")) dir = false; // has an extension
+      else dir = !EXTLESS_FILE.test(base); // extension-less: file if known, else dir
+      node.properties.href = withAnchor((dir ? GH_TREE : GH_BLOB) + clean);
     });
   };
 }

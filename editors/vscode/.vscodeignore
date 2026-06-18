@@ -1,0 +1,16 @@
+# Files excluded from the packaged .vsix (keeps it lean; runtime JS in
+# node_modules is kept — only dev cruft, sources, maps, and tests are dropped).
+.vscode/**
+.vscode-test/**
+**/*.vsix
+**/tsconfig.json
+**/.eslintrc*
+.gitignore
+.vscodeignore
+package-lock.json
+node_modules/.package-lock.json
+node_modules/**/*.ts
+node_modules/**/*.map
+node_modules/**/*.md
+node_modules/**/{test,tests,.github,docs}/**
+node_modules/**/.bin/**
