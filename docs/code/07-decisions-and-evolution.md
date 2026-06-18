@@ -85,7 +85,7 @@ message. Push enforcement as early as it can correctly live.
 - The trilingual thesis held with **zero** extra code outside the lexer:
   the EN/Tanglish byte-identical-output test passed on first run once the
   table loaded. The "one shared AST" invariant is doing real work.
-- Things that bit us, recorded so they don't bite twice: the TOML
+- Pitfalls hit during implementation, recorded so they don't recur: the TOML
   root-key ordering trap (`02-lexer.md`), `use TokKind::*` glob shadowing
   the `Kw` type in pattern positions (write `Kw(token::Kw::And)`),
   clippy's `manual_strip` pushing us to the cleaner `verilog_literal`

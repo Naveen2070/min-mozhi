@@ -1,0 +1,12 @@
+---
+import { getCollection, render } from "astro:content";
+import Docs from "../../layouts/Docs.astro";
+
+// The spec hub (spec/README.md) as the /spec landing page.
+const [entry] = await getCollection("specIndex");
+const { Content } = await render(entry);
+---
+
+<Docs title="Specification" current="spec">
+  <Content />
+</Docs>

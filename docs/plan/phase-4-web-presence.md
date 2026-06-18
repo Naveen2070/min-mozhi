@@ -2,15 +2,15 @@
 
 > **One static site: a landing page, the docs, and a WASM playground where you
 > write `.mimz` and see the Verilog _and the waveform_ in the browser.**
-> Window: pre-v0.1.0 public launch · Status: 🟡 in progress · Founder-gated (R12)
+> Window: pre-v0.1.0 public launch · Status: 🟡 in progress · Maintainer-gated (R12)
 
 ## Why now
 
-Min-Mozhi is about to go public for **v0.1.0**. Its primary audience
-([`spec/01-goals-and-philosophy.md`](../spec/01-goals-and-philosophy.md)) is **Tamil
-Nadu students with no toolchain, no install rights — just a URL**. The
-highest-impact thing for that audience is a **browser playground**: nothing to
-install, just type and run.
+Min-Mozhi is about to go public for **v0.1.0**. Its audience
+([`spec/01-goals-and-philosophy.md`](../spec/01-goals-and-philosophy.md)) is
+**learners of digital design — especially those underserved by English-only
+tools — with no toolchain or install rights, just a URL**. The highest-impact
+thing for them is a **browser playground**: nothing to install, just type and run.
 
 This is already the project's own #1 ecosystem priority
 ([`phase-4-ecosystem.md`](phase-4-ecosystem.md): "WASM build + browser playground —
@@ -23,13 +23,13 @@ differentiator** rather than a README alone.
 **WASM-ready today** — pure-sync, no C deps, no `build.rs`, nothing that breaks
 `wasm32`; the whole pipeline is already string-in / string-out and in-memory.
 
-## Decisions (locked with founder, 2026-06-18)
+## Decisions (locked with the maintainer, 2026-06-18)
 
 - **Framework: a custom Astro app** (full design control; _not_ Starlight). Astro
   gives content-collections for docs (existing markdown → pages) + islands for the
   interactive playground, so we don't re-implement markdown rendering.
 - **Sequencing: build the full site + playground first, _then_ flip public.** Launch
-  with the wow factor. Still founder-gated (R12).
+  with the wow factor. Still maintainer-gated (R12).
 - **Waveform: a custom canvas/SVG renderer behind a swappable
   `WaveformViewer({vcd})` boundary.** The VCD string is the stable contract; **Surfer
   (surfer.dev, Rust+WASM)** is the documented drop-in upgrade if/when VCD gains x/z
@@ -42,13 +42,13 @@ differentiator** rather than a README alone.
   toolchain is isolated under `site/` (its own `package.json`), and
   `crates/mimz-wasm` is kept **out of `default-members`** so the existing R8 gate
   never builds it for the host — it's built for `wasm32` only, explicitly, in the
-  Pages workflow.
+  deploy workflow.
 
-## Architecture (one static site on GitHub Pages — no backend, free)
+## Architecture (one static site — no backend, free)
 
 ```
 crates/mimz-wasm  →  mimz_wasm_bg.wasm + JS glue   ┐
-src/lib.rs (+compile_string)                        ├─→  site/ (Astro)  →  GitHub Pages
+src/lib.rs (+compile_string)                        ├─→  site/ (Astro)  →  Vercel
 docs/guide/*, spec/*  (existing markdown)           ┘
 ```
 
@@ -97,11 +97,11 @@ docs/guide/*, spec/*  (existing markdown)           ┘
   as `<WaveformViewer vcd={…}/>`. VCD string is the contract; **Surfer** is the
   documented upgrade path (swap the component, no playground refactor).
 
-### 4. Deploy — **Vercel, on a founder-owned subdomain** (e.g. `minmozhi.<domain>`)
+### 4. Deploy — **Vercel, on a maintainer-owned subdomain** (e.g. `minmozhi.<domain>`)
 
 Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which keeps
 **WASM/asset loading in the playground** simple; first-class Astro support; a CDN; and
-**per-branch preview deploys** for showing the founder the live site pre-launch.
+**per-branch preview deploys** for showing the maintainer the live site pre-launch.
 
 - **Build wrinkle:** the build has two halves — compile `crates/mimz-wasm` (needs
   **Rust + `wasm-pack`**, _not_ in Vercel's default image) and `astro build`. Approach
@@ -113,7 +113,7 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
     Simpler, less control over the toolchain. Fine for v0.1.0.
 - **Subdomain:** add it in Vercel + a DNS `CNAME`.
 - **R12 / outward-facing:** deploying — even a preview — makes the **site** reachable
-  on the internet while the **repo** stays private. Good for founder preview; the
+  on the internet while the **repo** stays private. Good for maintainer preview; the
   "go public" gate still applies to the repo flip + `v0.1.0` tag. Vercel can
   password-protect the preview if a private pre-launch is wanted.
 
@@ -126,7 +126,7 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
 4. **Playground page**: editor + Compile→Verilog panel wired to WASM.
 5. **Waveform**: custom renderer behind the boundary + Simulate wiring.
 6. **Vercel deploy** (subdomain) + landing polish (domain-themed flashy hero, see
-   below) → (founder) flip public + tag `v0.1.0` (Workstream D, R12).
+   below) → (maintainer) flip public + tag `v0.1.0` (Workstream D, R12).
 
 ## Reused code (do not reinvent)
 
@@ -164,6 +164,19 @@ References: [`phase-4-ecosystem.md`](phase-4-ecosystem.md),
 ## Not in this milestone (deferred, per Phase 4)
 
 Hardware REPL (`mimz repl`), `mimz tui`, npm/PyPI wrapper packages, and the Tamil
-translation of docs prose. (The founder subdomain on Vercel is now _in_ scope — see
+translation of docs prose. (The maintainer subdomain on Vercel is now _in_ scope — see
 section 4.) The playground engine here is what those later ride
 on.
+
+## Build status (2026-06-18)
+
+- **Phase 1 (landing + docs): built & verified.** Official `npm create astro@latest`
+  scaffold under `site/` — **Astro 6.4.7**, **npm**, **React** (single island
+  framework; Lit was considered then dropped), **Tailwind v4**, **Shiki** (reusing
+  the TextMate grammar), **Pagefind**, **`@astrojs/vercel`** adapter. Palette: \*\*blue
+  - lightning-yellow\*\*. Landing + `/guide/[slug]` + `/spec/[slug]` (docs sourced via
+    the content-layer glob loader, never copied) + 404. `npm run build` clean (20
+    pages), `astro check` 0/0/0. Details + decisions in `docs/log/2026-06-18.md`.
+- **Open:** root domain for `mimz.<domain>` DNS; first Vercel preview deploy.
+- **Next:** Phase 2 — `compile_string` lib wrapper + `crates/mimz-wasm` (the
+  playground engine). No commit yet (R12).

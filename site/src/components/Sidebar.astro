@@ -1,0 +1,75 @@
+---
+import { getCollection } from "astro:content";
+import { docLabel, sortDocs } from "../lib/docs";
+
+interface Props {
+  current: string; // e.g. "guide/04-signals"
+}
+const { current } = Astro.props;
+
+const guide = sortDocs(await getCollection("guide"));
+const spec = sortDocs(await getCollection("spec"));
+
+const sections = [
+  { title: "Guide", base: "guide", entries: guide },
+  { title: "Spec", base: "spec", entries: spec },
+];
+---
+
+<nav aria-label="Documentation" class="text-sm">
+  {
+    sections.map((section) => (
+      <div class="mb-7">
+        <p
+          class="mb-2 text-xs font-semibold uppercase tracking-wider"
+          style="color: var(--text-muted)"
+        >
+          {section.title}
+        </p>
+        <ul class="space-y-0.5">
+          <li>
+            <a
+              href={`/${section.base}`}
+              class:list={[
+                "doc-link block rounded px-2 py-1",
+                { active: current === section.base },
+              ]}
+            >
+              Overview
+            </a>
+          </li>
+          {section.entries.map((e) => {
+            const href = `${section.base}/${e.id}`;
+            const active = current === href;
+            return (
+              <li>
+                <a
+                  href={`/${href}`}
+                  class:list={["doc-link block rounded px-2 py-1", { active }]}
+                >
+                  {docLabel(e.id)}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ))
+  }
+</nav>
+
+<style>
+  .doc-link {
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .doc-link:hover {
+    color: var(--text);
+    background-color: var(--bg-soft);
+  }
+  .doc-link.active {
+    color: var(--accent);
+    background-color: var(--bg-soft);
+    font-weight: 600;
+  }
+</style>

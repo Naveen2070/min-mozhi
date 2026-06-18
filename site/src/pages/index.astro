@@ -1,0 +1,154 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { Code } from "astro:components";
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Hero from "../components/Hero.tsx";
+
+// repo root is the parent of site/ (cwd during astro build/dev). Plain fs read,
+// not `new URL(..., import.meta.url)` — Vite would treat that as an asset import.
+const repoRoot = path.resolve(process.cwd(), "..");
+const counter = readFileSync(
+  path.join(repoRoot, "examples/english/counter.mimz"),
+  "utf-8",
+).trim();
+
+const mimzGrammar = JSON.parse(
+  readFileSync(
+    path.join(repoRoot, "editors/vscode/syntaxes/mimz.tmLanguage.json"),
+    "utf-8",
+  ),
+);
+const mimzLang = { ...mimzGrammar, name: "mimz" };
+const shikiThemes = { light: "github-light", dark: "github-dark" } as const;
+
+const highlights = [
+  {
+    title: "Modern & safe by default",
+    body: "Go/TypeScript-style syntax with Rust-like, compile-time safety: no inferred latches, silent truncation, multiple drivers, or uninitialized registers — each a teaching error. Security checks are a first-class goal on the roadmap.",
+  },
+  {
+    title: "Built to teach",
+    body: "Made for students learning digital design: a small surface, one obvious way to do things, and diagnostics that explain what is wrong, why it is unsafe in hardware, and how to fix it.",
+  },
+  {
+    title: "Trilingual, Tamil-first",
+    body: "Write the same circuit in English, Tanglish, or Tamil — one grammar, byte-identical Verilog. The first Tamil-rooted HDL: native Tamil to reach Tamil-speaking learners and grow Tamil-rooted programming.",
+  },
+];
+---
+
+<Base>
+  <Nav />
+
+  <main class="mx-auto max-w-6xl px-4">
+    <!-- Hero -->
+    <section class="grid items-center gap-10 py-16 lg:grid-cols-2 lg:py-24">
+      <div>
+        <p class="mb-4 text-sm font-medium" style="color: var(--text-muted)">
+          <span style="font-family: var(--font-tamil)">மின்மொழி</span> · the language
+          of electricity
+        </p>
+        <h1
+          class="text-4xl font-bold leading-tight tracking-tight sm:text-5xl"
+          style="color: var(--text)"
+        >
+          A modern, <span class="spark-gradient bg-clip-text text-transparent"
+            >safe-by-default</span
+          > hardware description language.
+        </h1>
+        <p class="mt-5 max-w-xl text-lg" style="color: var(--text-muted)">
+          Built to teach digital design — and the first Tamil-rooted HDL. Reads
+          like Go/TypeScript, safe like Rust, speaks English, Tanglish, and
+          Tamil.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          <a
+            href="/guide/01-getting-started"
+            class="rounded-md px-5 py-2.5 text-sm font-semibold no-underline"
+            style="background-color: var(--accent); color: #081120"
+          >
+            Get started
+          </a>
+          <a
+            href="https://github.com/Naveen2070/min-mozhi"
+            class="rounded-md border px-5 py-2.5 text-sm font-semibold no-underline"
+            style="border-color: var(--border); color: var(--text)"
+          >
+            GitHub
+          </a>
+          <span class="text-sm" style="color: var(--text-muted)"
+            >Playground — coming soon</span
+          >
+        </div>
+      </div>
+
+      <!-- Oscilloscope: the clock waveform an HDL describes -->
+      <div
+        class="overflow-hidden rounded-xl border"
+        style="border-color: var(--border); background-color: var(--bg-soft)"
+      >
+        <div
+          class="flex items-center justify-between border-b px-4 py-2 text-xs"
+          style="border-color: var(--border); color: var(--text-muted)"
+        >
+          <span style="font-family: var(--font-mono)">clk · rising edge</span>
+          <span
+            class="spark-gradient bg-clip-text font-semibold text-transparent"
+            >live</span
+          >
+        </div>
+        <div class="h-56">
+          <Hero client:visible />
+        </div>
+      </div>
+    </section>
+
+    <!-- Code sample -->
+    <section class="pb-16">
+      <p class="mb-3 text-sm" style="color: var(--text-muted)">
+        A counter in Min-Mozhi — <code style="font-family: var(--font-mono)"
+          >counter.mimz</code
+        > compiles to synthesizable Verilog and simulates to that waveform.
+      </p>
+      <Code code={counter} lang={mimzLang} themes={shikiThemes} />
+    </section>
+
+    <!-- Why -->
+    <section class="border-t py-16" style="border-color: var(--border)">
+      <div class="grid gap-8 md:grid-cols-3">
+        {
+          highlights.map((h) => (
+            <div>
+              <h2 class="mb-2 text-lg font-semibold" style="color: var(--text)">
+                {h.title}
+              </h2>
+              <p
+                class="text-sm leading-relaxed"
+                style="color: var(--text-muted)"
+              >
+                {h.body}
+              </p>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+  </main>
+
+  <footer
+    class="border-t py-8 text-sm"
+    style="border-color: var(--border); color: var(--text-muted)"
+  >
+    <div
+      class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4"
+    >
+      <span>
+        <span style="font-family: var(--font-tamil)">மின்மொழி</span> — Speak in Circuits
+        · MIT + Apache-2.0
+      </span>
+      <span>Built in Tamil Nadu 🇮🇳</span>
+    </div>
+  </footer>
+</Base>

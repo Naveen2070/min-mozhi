@@ -44,17 +44,18 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
 
 ### Word-selection criteria (in order)
 
-1. A TN polytechnic student recognizes it in a technical context.
+1. A student — or any Tamil-speaking HDL developer — recognizes it in a technical
+   context.
 2. **Aligns with TN SCERT school-textbook technical vocabulary** where a
    textbook term exists.
 3. Short enough to type comfortably.
 
 ### Review & governance
 
-- Reviewers: native-speaker tech/coder friends of the founder (the initial
-  panel), growing to a community panel post-release.
-- Final say: panel majority wins — even over the founder's preference — once
-  a panel exists; until then the founder + available native speakers decide.
+- Reviewers: native-speaker engineers and developers (the initial panel),
+  growing to a community panel post-release.
+- Final say: panel majority wins — even over the maintainers' preference — once
+  a panel exists; until then the maintainers and available native speakers decide.
 - The table is a **data file** (`keywords.toml` in the compiler), so word
   changes are data changes, reviewable without touching code.
 
@@ -275,7 +276,7 @@ module Counter(WIDTH: int = 8) {
   `always @(… or posedge rst)`). Its Tanglish/Tamil spellings — `otthisaivatra` /
   `ஒத்திசைவற்ற` ("non-synchronous", the negation of synchrony `ஒத்திசைவு`) — are
   **PROVISIONAL** dev/testing placeholders pending native-speaker review (R9/R11),
-  founder-authorized so the four-flavor tooling works before the v0.1.0 freeze.
+  used provisionally so the four-flavor tooling works before the v0.1.0 freeze.
   Removed `async` from the reserved table; added the grammar keyword rule + lexer
   test (the R11 pipeline, reversed).
 - **v0.2.9 (2026-06-17):** Promoted `mem` from **reserved** to an active keyword
@@ -283,14 +284,14 @@ module Counter(WIDTH: int = 8) {
   `reg`). Its Tanglish/Tamil spellings — `ninaivagam` / `நினைவகம்` (the established
   Tamil term for computer "memory", pairing with `reg`/`pathivedu` = "ledger") —
   are **PROVISIONAL** dev/testing placeholders pending native-speaker review
-  (R9/R11), founder-authorized so the four-flavor tooling works before the v0.1.0
+  (R9/R11), used provisionally so the four-flavor tooling works before the v0.1.0
   freeze. Removed `mem` from the reserved table; added the grammar keyword rule +
   lexer test (the R11 pipeline, reversed).
 - **v0.2.8 (2026-06-17):** Promoted `fall` from **reserved** to an active keyword
   KW_FALL for falling-edge `on fall(clk)` blocks (A3, Verilog `negedge`). Its
   Tanglish/Tamil spellings — `irakkam` / `இறக்கம்` ("descent", the antonym of
   `yetram`/`ஏற்றம்` = "ascent") — are **PROVISIONAL** dev/testing placeholders
-  pending native-speaker review (R9/R11), founder-authorized so the four-flavor
+  pending native-speaker review (R9/R11), used provisionally so the four-flavor
   tooling works before the v0.1.0 freeze. Removed `fall` from the reserved table;
   added the grammar keyword rule + lexer test (the R11 pipeline, reversed).
 - **v0.2.7 (2026-06-16):** Reserved `async` to pair with the already-reserved

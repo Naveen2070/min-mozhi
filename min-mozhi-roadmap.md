@@ -78,7 +78,7 @@ matching, which compilers lean on heavily.)
 
 ---
 
-## Phase 1.8 — Grammar Engine _(1–2 months, directly after Phase 1 — solo dev runs 1.8 before 1.5; 🟢 complete 2026-06-16)_
+## Phase 1.8 — Grammar Engine _(1–2 months, runs directly after Phase 1, before Phase 1.5)_ ✅ COMPLETE (2026-06-16)
 
 > Natural Tamil word order — இலக்கண இயந்திரம் (see `spec/04-grammar-engine.md`)
 
@@ -148,7 +148,7 @@ order, compiles to the same Verilog as its English twin
   reimplementations — Decision 2026-06-11); the playground carries the
   interactive hardware REPL (`mimz repl`, idea 8.5) and the no-IDE
   vim-like TUI workbench (`mimz tui`, idea 8.11 — output-mode prompt +
-  whole-file edit/run/waveform; tool, not syntax)
+  whole-file edit/run/waveform)
 - Language-feature backlog triaged from `docs/Ideas/language_plan.md`
   (Decisions 2026-06-12 and 2026-06-13): tagged unions, interfaces/bundles, and
   clock-domain checking lead; `prove` rides SymbiYosys; the section-8 additive
@@ -178,7 +178,7 @@ Year 2–4     Phase 3     Native bitstream generation
 Ongoing      Phase 4     Ecosystem & community
 ```
 
-### Proposed solo-dev deadlines (assumes ~8–10 h/week — correct me and these shift)
+### Proposed deadlines (assume ~8–10 h/week; subject to change)
 
 ```
 Phase 0 wrap-up       → 2026-06-15 ✅  (keyword set v1 finalized; DRAFT removed)

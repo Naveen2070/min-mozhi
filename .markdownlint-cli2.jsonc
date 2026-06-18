@@ -7,6 +7,7 @@
     "target/**",
     ".remember/**",
     "**/node_modules/**",
+    "site/**", // the website has its own toolchain, not the repo docs gate
     "CLAUDE.md", // tool-generated agent config (graphify), not project docs
     "graphify-out/**",
     ".venv/**",

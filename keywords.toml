@@ -61,7 +61,7 @@ tamil = "பதிவேடு"
 # Memory / register array (`mem m: bits[W][DEPTH] = 0` → Verilog `reg [W-1:0] m [0:DEPTH-1]`).
 # The Tanglish/Tamil spellings here are PROVISIONAL dev/testing placeholders —
 # `ninaivagam`/`நினைவகம்` (the established Tamil term for computer "memory"; pairs with
-# `reg`/`pathivedu` = "ledger") — pending native-speaker review (R9/R11). Founder-authorized
+# `reg`/`pathivedu` = "ledger") — pending native-speaker review (R9/R11). Maintainer-authorized
 # 2026-06-17 so the four-flavor tooling works now; native review confirms or replaces them
 # before the v0.1.0 freeze.
 [keywords.mem]
@@ -82,7 +82,7 @@ tamil = "மீட்டமை"
 # Asynchronous-reset modifier (`async reset rst` → Verilog `always @(… or posedge rst)`).
 # The Tanglish/Tamil spellings here are PROVISIONAL dev/testing placeholders —
 # `otthisaivatra`/`ஒத்திசைவற்ற` ("non-synchronous", the negation of synchrony
-# `ஒத்திசைவு`) — pending native-speaker review (R9/R11). Founder-authorized
+# `ஒத்திசைவு`) — pending native-speaker review (R9/R11). Maintainer-authorized
 # 2026-06-17 so the four-flavor tooling works now; native review confirms or
 # replaces them before the v0.1.0 freeze.
 [keywords.async]
@@ -103,7 +103,7 @@ tamil = "ஏற்றம்"
 # Falling-edge clock head (`on fall(clk)` → Verilog `negedge`). The Tanglish/Tamil
 # spellings here are PROVISIONAL dev/testing placeholders — `irakkam`/`இறக்கம்`
 # ("descent", the natural antonym of `yetram`/`ஏற்றம்` = "ascent") — pending
-# native-speaker review (R9/R11). Founder-authorized 2026-06-17 so the four-flavor
+# native-speaker review (R9/R11). Maintainer-authorized 2026-06-17 so the four-flavor
 # tooling works now; native review confirms or replaces them before the v0.1.0 freeze.
 [keywords.fall]
 en = "fall"

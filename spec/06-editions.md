@@ -25,7 +25,7 @@ target the same edition. An edition changes far more rarely.
 An edition is named **`<variant>-<year>-<code>`**, e.g. `wingless-butterfly-2026-1`:
 
 - **variant** — a freeform memorable codename (an animal or object), the
-  founder's pick. It is **NOT** R9-bound — it is a label, not a keyword, so it
+  maintainer's pick. It is **NOT** R9-bound — it is a label, not a keyword, so it
   does not need a Tamil/Tanglish spelling (like Ubuntu's "Jammy Jellyfish" or a
   Debian/Android codename). The slug is the kebab-case form used in the string.
 - **year** — the calendar year the edition was set.

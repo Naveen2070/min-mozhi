@@ -12,7 +12,7 @@ follow [SemVer](https://semver.org) for the compiler axis.
 ## [Unreleased] — compiler `0.1.0-dev`
 
 Preparing the first public release. The crate keeps the `-dev` suffix until the
-`v0.1.0` tag is cut (the release step is founder-gated).
+`v0.1.0` tag is cut (the release step is maintainer-gated).
 
 ### Language edition: Wingless Butterfly — `wingless-butterfly-2026-1`
 

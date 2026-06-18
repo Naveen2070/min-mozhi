@@ -6,6 +6,9 @@ target/
 .remember/
 .claude/
 
+# The website has its own toolchain (formats with its own Prettier, not the repo docs gate)
+site/
+
 # Local-only plan/workflow docs (git-excluded via .git/info/exclude)
 *.local.md
 

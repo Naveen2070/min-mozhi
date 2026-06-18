@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (toggled on <html class="dark">). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- Brand tokens: blue + lightning-yellow ("மின்" = electricity) ----- */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, "Noto Sans Tamil", sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "SFMono-Regular", "Noto Sans Tamil", monospace;
+  --font-tamil: "Noto Sans Tamil", "Inter", sans-serif;
+
+  /* Lightning yellow (primary spark / accent). */
+  --color-bolt-300: #ffe066;
+  --color-bolt-400: #ffd60a;
+  --color-bolt-500: #f5c211;
+  --color-bolt-600: #c79100;
+
+  /* Electric blue (links / secondary). */
+  --color-volt-300: #7cc4ff;
+  --color-volt-400: #3b9eff;
+  --color-volt-500: #1e7fff;
+  --color-volt-600: #0a5fd6;
+}
+
+/* ---- Theme surfaces (dark-first navy; light overrides) ---------------- */
+:root {
+  --bg: #081120;
+  --bg-soft: #0d1a2e;
+  --surface: #122340;
+  --border: #1e3658;
+  --text: #e8eef7;
+  --text-muted: #93a7c4;
+  --accent: var(--color-bolt-400); /* lightning yellow */
+  --accent-blue: var(--color-volt-400);
+  --link: var(--color-volt-300);
+  color-scheme: dark;
+}
+
+:root:not(.dark) {
+  --bg: #ffffff;
+  --bg-soft: #f4f7fb;
+  --surface: #ffffff;
+  --border: #d8e2ef;
+  --text: #0a1424;
+  --text-muted: #4a5b72;
+  --accent: var(--color-bolt-600); /* readable gold on white */
+  --accent-blue: var(--color-volt-600);
+  --link: var(--color-volt-600);
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--link);
+}
+
+/* A blue→yellow "current" used for the wordmark / hero accents. */
+.spark-gradient {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-volt-400),
+    var(--color-bolt-400)
+  );
+}
+
+/* ---- Shiki dual-theme: honour the dark vars under html.dark ----------- */
+.dark .astro-code,
+.dark .astro-code span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+.astro-code {
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 1rem 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+/* ---- Rendered docs (.prose) ------------------------------------------- */
+.prose {
+  line-height: 1.7;
+  color: var(--text);
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 1rem;
+}
+.prose h2 {
+  font-size: 1.4rem;
+  font-weight: 650;
+  margin: 2.2rem 0 0.8rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border);
+}
+.prose h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 1.8rem 0 0.6rem;
+}
+.prose h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.4rem 0 0.5rem;
+}
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote,
+.prose table {
+  margin: 0 0 1rem;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.4rem;
+}
+.prose li {
+  margin: 0.3rem 0;
+}
+.prose a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.2rem 0 0.2rem 1rem;
+  color: var(--text-muted);
+}
+/* Inline code (not the Shiki block). */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background-color: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.35rem;
+}
+.prose pre {
+  margin: 0 0 1rem;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.9rem;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.7rem;
+  text-align: left;
+}
+.prose th {
+  background-color: var(--bg-soft);
+  font-weight: 600;
+}
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+

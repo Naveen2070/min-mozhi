@@ -154,4 +154,4 @@ step if verifiable provenance is wanted); pinning runner images
 security-critical; section 3.5 public perf dashboard (not security); section 3.6 PR timing gate.
 
 > Both items 1 & 2 are new work beyond the approved Workstream C scope and are
-> SHA-pin-consistent, push-gated, and uncommitted (R12) — awaiting founder go.
+> SHA-pin-consistent, push-gated, and uncommitted (R12) — awaiting maintainer go.

@@ -40,9 +40,8 @@ One-page reference. The authoritative sources are
 | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar directive               |
 | `thamizh` | `thamizh`       | `தமிழ்`       | thamizh word-order profile      |
 
-The Tanglish/Tamil spellings of `mem`, `async`, and `fall` are **provisional**
-(founder-authorized for the tooling; pending native-speaker review before the
-v0.1.0 freeze).
+The Tanglish/Tamil spellings of `mem`, `async`, and `fall` are **provisional**,
+pending native-speaker review before the v0.1.0 release.
 
 Reserved for future features (using one is an error): `sync`, `inout`, `struct`,
 `secret`, `declassify`, `default`, `pipeline`, `interface`, `chan`, `prove`,

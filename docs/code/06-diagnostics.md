@@ -30,8 +30,9 @@ bytes, so Tamil identifiers underline correctly).
 
 ## How to write a good Min-Mozhi error
 
-The persona check: would a 20-year-old polytechnic student, not fully
-comfortable in English, know what to DO after reading it?
+The persona check: would a student new to hardware design know what to DO after
+reading it — including the native-Tamil audience this is built for, a Tamil-speaking
+polytechnic student not fully comfortable in English?
 
 - **`msg`** names the construct and the problem, quoting the user's own
   identifier: ``register `value` has no reset value``.

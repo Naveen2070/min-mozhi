@@ -1,0 +1,14 @@
+---
+interface Props {
+  class?: string;
+}
+const { class: className = "" } = Astro.props;
+---
+
+<span class={`inline-flex items-baseline gap-2 ${className}`}>
+  <span
+    class="spark-gradient bg-clip-text font-semibold text-transparent"
+    style="font-family: var(--font-tamil); font-size: 1.15em;">மின்மொழி</span
+  >
+  <span class="font-semibold" style="color: var(--text)">Min-Mozhi</span>
+</span>

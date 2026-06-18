@@ -1,0 +1,44 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "Min-Mozhi — a modern, safe-by-default HDL",
+  description = "A modern, safe-by-default hardware description language — built to teach digital design, and the first Tamil-rooted HDL. Reads like Go/TypeScript, safe like Rust, speaks English, Tanglish, and Tamil.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- Set the theme before paint to avoid a flash of the wrong colors. -->
+    <script is:inline>
+      (() => {
+        const saved = localStorage.getItem("theme");
+        const dark = saved ? saved === "dark" : true; // dark-first default
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Tamil:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
