@@ -1,12 +1,16 @@
 # Min-Mozhi (மின்மொழி) — Goals & Philosophy
 
-> **Spec v0.3.1** — v0.2 rewritten from the founder's answers to the 2026-06-10
+> **Spec v0.3.2** — v0.2 rewritten from the founder's answers to the 2026-06-10
 > design review (`docs/archive/open-questions-2026-06-10.md`); v0.3 adds the
 > modern-secure-HDL co-goal (Decision 2026-06-12, `docs/log/2026-06-12.md`);
-> v0.3.1 rewords the pitch (same log, no goal change).
-> **A modern HDL — modern programming syntax, safe by default — and the first
-> Tamil-rooted Hardware Description Language, built to help students learn
-> digital design.** Built in Tamil Nadu, India.
+> v0.3.1 rewords the pitch; v0.3.2 reorders the outward pitch to lead with
+> modern + safe, then educational, then trilingual / first-Tamil
+> (Decision 2026-06-18, wording/emphasis only — the goal ranking in section 1 is
+> unchanged).
+> **A modern, safe-by-default HDL — with security as a first-class compile-time
+> goal — built to help students learn digital design, and the first Hardware
+> Description Language with Tamil and Tanglish as first-class keyword flavors
+> alongside English.** Built in Tamil Nadu, India.
 
 ---
 
@@ -22,9 +26,10 @@
 5. **Personal mastery of compilers** — and a portfolio that shows it (the
    showcase is a side effect, never the driver).
 
-In one sentence: **Min-Mozhi is a modern HDL — modern programming syntax,
-safe by default — Tamil-rooted, with Tamil and Tanglish as first-class keyword
-flavors, built to help students learn digital design.**
+In one sentence: **Min-Mozhi is a modern, safe-by-default HDL — with security as
+a first-class compile-time goal — built to help students learn digital design,
+and the first HDL with Tamil and Tanglish as first-class keyword flavors
+alongside English.**
 
 This is an **educational project, honestly framed**: if even one person learns
 from it or appreciates it, it has succeeded. The only true failure is if the
@@ -33,21 +38,33 @@ modern HDL whose security and ergonomics are checked by the compiler, not
 promised by convention. When the two ambitions conflict, the tie-breakers
 (section 7) decide.
 
-## 2. The One Person It Is For
+## 2. Who It Is For
 
-> A 20-year-old polytechnic student in Tamil Nadu, curious about hardware
-> design but **not comfortable in English**. Today, every HDL forces them to
-> fight the language before they can fight the logic. Min-Mozhi lets them see
-> their own language running in semiconductors — and that pride matters.
+**Students, broadly** — anyone learning digital design who is better served by a
+modern, safe, teaching-first HDL than by industrial Verilog. Every other HDL
+makes a beginner fight the tool before the logic; Min-Mozhi is built to teach.
+
+The learner the design is tuned for — and serves **most acutely** — is the
+archetype it was first imagined for:
+
+> A 20-year-old polytechnic student in Tamil Nadu, curious about hardware design
+> but **not comfortable in English**. Every other HDL forces them to fight the
+> language before they can fight the logic. Min-Mozhi lets them see their own
+> language running in semiconductors — and that pride matters.
+
+Native Tamil therefore serves a **double purpose**: it reaches Tamil-speaking
+learners blocked at the language barrier, and it advances **Tamil as a language
+you can actually program in** — a small push for Tamil-rooted programming
+generally.
 
 **Who it is NOT for:** professional Verilog/Chisel users who need production
-completeness. Min-Mozhi is new and experimental — it is _not_ a replacement
-for Verilog or Chisel, and does not try to be.
+completeness. Min-Mozhi is new and experimental — _not_ a replacement for
+Verilog or Chisel, and it does not try to be.
 
 **Second audience (equal rank since v0.3):** a modern developer who wants a
-secure, ergonomic HDL — drawn by the compile-time security checks (G5) and
-the Go/TypeScript-feel syntax, not by Tamil. Production completeness is still
-a non-goal; language quality is the draw, not feature parity.
+safe, ergonomic HDL — drawn by the compile-time checks and the
+Go/TypeScript-feel syntax, not by Tamil. Production completeness is still a
+non-goal; language quality is the draw, not feature parity.
 
 Student-first in tone, but a working VLSI engineer should be able to read any
 Min-Mozhi file and understand it immediately.
@@ -59,11 +76,14 @@ A hardware description language for digital circuits (FPGAs first). It is
 — wires, registers, modules — and what you write maps obviously to what gets
 built on silicon.
 
-> **Modern syntax, safe by default, Tamil at heart.**
+> **Modern and safe by default. Built to teach. Tamil at heart.**
 > Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.
 
-The pitch to a non-Tamil user: the **safety** and the **syntax** (and maybe
-speed, later). The trilingual system is the soul, not the sales pitch.
+The pitch leads with the **safety** and the **syntax**, then the **teaching**
+mission; the trilingual system is the soul, not the opening sales line (its
+presence is constitutional, section 4.3, never in question). Security (G5) is a
+compile-time **design goal** that lands post-Phase-1 — named as a goal, not yet
+claimed as a shipped feature.
 
 ## 4. The Constitution (non-negotiable, forever)
 
@@ -189,6 +209,17 @@ and DX merged into readability in v0.3, Decision 2026-06-12):
 
 ## Changelog
 
+- **v0.3.2 (2026-06-18):** Outward pitch **reordered** to lead with
+  **modern + safe by default**, then **educational (built to teach)**, then
+  **trilingual / first-native-Tamil** — header, section 1 identity sentence,
+  section 3 pitch line. **Section 2 audience broadened** from a single
+  Tamil-Nadu persona to **students broadly**, keeping the TN student as the
+  archetype served most acutely, and naming native Tamil's **double purpose**
+  (reach Tamil-speaking learners + grow Tamil-rooted programming). "Secure" is
+  framed as a first-class compile-time **goal** (G5 lands post-Phase-1), never as
+  a shipped v0.1.0 feature, to keep the hardware-honesty principle.
+  Wording/emphasis only: the section 1 goal ranking, G1–G5, the Constitution, and
+  the tie-breakers are unchanged (Decision 2026-06-18, `docs/log/2026-06-18.md`).
 - **v0.3.1 (2026-06-12):** Pitch reworded to lead with **modern HDL / modern
   programming syntax / safe by default / Tamil-rooted (Tamil + Tanglish
   first-class) / educational** — header, section 1 identity sentence, section 3

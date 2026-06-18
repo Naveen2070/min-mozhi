@@ -81,7 +81,7 @@ will key off them — never renumber.
 | E1101 | expected-X-found-Y family (incl. terminators, missing `}`) |
 | E1102 | bad top-level item                                         |
 | E1103 | enum needs at least one variant                            |
-| E1104 | register has no reset value                                |
+| E1104 | register has no reset value, or memory has no init value   |
 | E1105 | `<-` outside an `on` block                                 |
 | E1106 | `=` inside an `on` block                                   |
 | E1107 | `test` block syntax (name, body statements)                |

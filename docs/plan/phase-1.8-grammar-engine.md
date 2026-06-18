@@ -47,7 +47,7 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
       meaning-preserving (same Verilog/AST), **not** trivia-preserving — the AST
       has no comments/layout, so the pretty-printer reformats and drops
       comments. The `--to`-only token path stays trivia-preserving. (Decision
-      logged 2026-06-14; spec/04 §2.)
+      logged 2026-06-14; spec/04 section 2.)
 - [x] Round-trip tests: every example × flavor × order compiles to identical
       Verilog and the printer is idempotent (`tests/translate.rs`).
 

@@ -835,10 +835,10 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 | combinational `function`                                                                                                        | 🟡     | **new — not previously tracked**; pure/stateless, inlined at emit; unblocks pipe-op 8.6 |
 | async reset / reset polarity                                                                                                    | 🟡     | small spec+emit widening (sync active-high only today)                                  |
 | packages / namespacing                                                                                                          | 🟡     | **new — not previously tracked**; modest, consider                                      |
-| tagged-union payloads (2.7) · `sync` CDC (1.2) · `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | already in §7/§9 + phase-2 plan, unchanged order                                        |
+| tagged-union payloads (2.7) · `sync` CDC (1.2) · `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | already in sections 7/9 + phase-2 plan, unchanged order                                 |
 | ternary `?:`                                                                                                                    | ⛔     | `if {} else {}` expr is the one way (G1)                                                |
 | division `/` / modulo `%` operators                                                                                             | ⛔     | no cheap operator form; future stdlib divider module                                    |
-| internal tri-state; auto-retiming-with-Fmax                                                                                     | ⛔     | physics / honesty (Tier 4, §7)                                                          |
+| internal tri-state; auto-retiming-with-Fmax                                                                                     | ⛔     | physics / honesty (Tier 4, section 7)                                                   |
 
 ### Loops (explicit — three honest hardware shapes)
 

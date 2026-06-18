@@ -9,23 +9,26 @@
 -->
 
 The first public release of **Min-Mozhi (மின்மொழி)** — a modern, safe-by-default
-HDL, and the first Tamil-rooted one. It reads like Go/TypeScript, is safe like
-Rust, and speaks English, Tanglish, and Tamil from one grammar.
+HDL, built to teach digital design, and the first Tamil-rooted one. It reads like
+Go/TypeScript, is safe like Rust, and speaks English, Tanglish, and Tamil from one
+grammar — native Tamil to reach Tamil-speaking learners and to grow Tamil-rooted
+programming.
 
 **Language edition:** Wingless Butterfly (`wingless-butterfly-2026-1`).
 
 ## Highlights
 
+- **Safety by construction** — mandatory reset values, lossless arithmetic by
+  default, exhaustive `match`, single-driver and clock-domain checks, with
+  teaching-quality diagnostics. (Compile-time _security_ checks — `secret` flow,
+  fail-secure faults — are a design goal on the roadmap, post-v0.1.0.)
 - **RTL parity batch** — replication `{N{x}}`, don't-care `match` patterns
   (`0b1??`), falling-edge blocks (`on fall(clk)`), memories (`mem`), and
   asynchronous reset (`async reset`).
-- **Trilingual keywords** — write the same circuit in English, Tanglish, or Tamil
-  (or mix them); every flavor compiles to byte-identical Verilog-2005.
-- **Safety by construction** — mandatory reset values, lossless arithmetic by
-  default, exhaustive `match`, single-driver and clock-domain checks, with
-  teaching-quality diagnostics.
 - **Built-in simulator** — `mimz sim` / `mimz test` run an in-house cycle-based
   engine, validated bit-for-bit against Icarus Verilog.
+- **Trilingual keywords** — write the same circuit in English, Tanglish, or Tamil
+  (or mix them); every flavor compiles to byte-identical Verilog-2005.
 - **Versioning model** — two clear axes: the compiler version and the language
   edition (`mimz --version` shows both).
 

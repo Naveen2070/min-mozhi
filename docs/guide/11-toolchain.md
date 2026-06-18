@@ -4,6 +4,23 @@ The `mimz` CLI is how you check, build, run, and reshape your code. Every comman
 takes a `.mimz` file; run them through `cargo run --` until `mimz` is on your
 `PATH`.
 
+## `mimz --version` — compiler and language edition
+
+`mimz` has **two version axes** (like `rustc 1.x` versus the Rust `2021` edition):
+the compiler's own version and the language edition. `--version` prints both,
+with the edition's codename on top:
+
+```text
+Wingless Butterfly
+mimz    0.1.0-dev                   (compiler)
+edition wingless-butterfly-2026-1   (language)
+```
+
+The compiler version comes from the crate; the edition (`variant-year-code`)
+tracks the language itself. See
+[`../../spec/06-editions.md`](../../spec/06-editions.md) for what the two axes
+mean and how editions evolve.
+
 ## `mimz check` — lex, parse, and verify
 
 The workhorse. Runs the front end and the full safety checker; writes nothing.

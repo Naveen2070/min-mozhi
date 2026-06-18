@@ -114,12 +114,19 @@ Build and take apart buses:
 
 ```mimz
 {a, b}        // concatenation: a is the high half, b the low half
+{N{x}}        // replication: x repeated N times (N is compile-time)
 data[3]       // index: a single bit
 data[7:4]     // slice: bits 7 down to 4 (both bounds inclusive)
 ```
 
 A slice's bounds are inclusive, so `data[7:4]` is four bits wide. An
 out-of-range index or a reversed slice (`data[4:7]`) is caught (`E0406`).
+
+**Replication** `{N{x}}` is concatenation's shorthand: `{2{a}}` is exactly
+`{a, a}`, and `{4{a}}` is `a` four times over. The count `N` is compile-time, so
+the result width is `N` times the width of `x` — `{2{a}}` on a `bits[4]` value is
+`bits[8]`. Nest it inside a wider concat just like any other piece, e.g.
+`{2{a}, b}`.
 
 ## Precedence — the C trap is disarmed
 

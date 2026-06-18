@@ -1,8 +1,8 @@
 # Min-Mozhi (மின்மொழி) — Roadmap & Phases
 
-> **"Language of Electricity"** — a modern, safe-by-default HDL and the first
-> Tamil-rooted Hardware Description Language, built to help students learn
-> digital design.
+> **"Language of Electricity"** — a modern, safe-by-default HDL, built to help
+> students learn digital design, and the first Tamil-rooted Hardware Description
+> Language.
 >
 > ℹ️ This file is the **summary**. Detailed, task-level plans live in
 > [`docs/plan/`](docs/plan/) (source of truth — see [`docs/RULES.md`](docs/RULES.md) R1/R2).

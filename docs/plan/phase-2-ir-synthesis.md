@@ -59,25 +59,25 @@ RTL-parity pull-forward (added from the HDL gap analysis,
 `docs/Ideas/language_plan.md` section 10, 2026-06-15) — synthesizable gaps vs
 VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
 
-- [ ] **Replication `{N{x}}`** (gap §10, add-now) — compile-time N; parser +
+- [ ] **Replication `{N{x}}`** (gap section 10, add-now) — compile-time N; parser +
       checker width + emitter `{N{x}}`. Smallest single win, no new keyword
-- [ ] **Don't-care `match` patterns** `0b1??` (gap §10, add-now) — the
+- [ ] **Don't-care `match` patterns** `0b1??` (gap section 10, add-now) — the
       casex/casez analogue; pattern parsing + exhaustiveness rule
-- [ ] **Falling-edge `on fall(clk)`** (gap §10, add-now) — `fall` already
+- [ ] **Falling-edge `on fall(clk)`** (gap section 10, add-now) — `fall` already
       reserved; negedge sequential block (parser + emitter + checker)
-- [ ] **Memories / arrays / RAM (`mem`)** (gap §10) — array type + indexed
+- [ ] **Memories / arrays / RAM (`mem`)** (gap section 10) — array type + indexed
       clocked read/write + emitter array; highest "every HDL has it" value.
       New spec section; `mem` reserved
-- [ ] **Combinational `function`** (gap §10 — NEW, not previously tracked) —
+- [ ] **Combinational `function`** (gap section 10 — NEW, not previously tracked) —
       pure/stateless user functions inlined at emit; unblocks pipe `|>` (8.6)
-- [ ] **Async reset / reset polarity** (gap §10) — small spec+emitter widening
+- [ ] **Async reset / reset polarity** (gap section 10) — small spec+emitter widening
       over today's sync active-high only
-- [ ] **Packages / namespacing** (gap §10 — NEW) — modest module-namespacing
+- [ ] **Packages / namespacing** (gap section 10 — NEW) — modest module-namespacing
       step beyond bare `import`; consider
-- [ ] **Controlled loop `suzhal`/`சுழல்`** (gap §10) — bounded/FSM-lowered
+- [ ] **Controlled loop `suzhal`/`சுழல்`** (gap section 10) — bounded/FSM-lowered
       iteration distinct from `repeat`; static/provable trip-count bound is the
       load-bearing rule. Both spellings already reserved
-- [ ] **`foreach`** (gap §10 — NEW) — sugar over `repeat`/`suzhal` once
+- [ ] **`foreach`** (gap section 10 — NEW) — sugar over `repeat`/`suzhal` once
       array/`mem` types exist
 - [ ] **Tagged unions with payloads** (2.7) — FIRST of the original Tier-3 line:
       enums + match exist; payload = tag bits + max-payload bits; gives `Result`

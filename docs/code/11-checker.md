@@ -87,44 +87,44 @@ tombstone row here. Each code is exercised two ways: in-process by
 `tests/fixtures/errors/` that the real binary must reject with this code
 (`tests/errors.rs` — a completeness guard fails if any code lacks one).
 
-| Code  | Meaning                                                                             | Typical fix the help teaches                                    |
-| ----- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| E0001 | duplicate module name (project-wide)                                                | rename — module names are project-unique                        |
-| E0002 | duplicate file-level enum name (project-wide)                                       | rename — enums travel with `import`                             |
-| E0003 | name declared twice inside one module                                               | rename; the message says what holds the name                    |
-| E0004 | duplicate file-level `const`                                                        | rename within the file                                          |
-| E0101 | unknown name in an expression                                                       | check spelling / declare it                                     |
-| E0102 | unknown module (instantiation or test header)                                       | check spelling / add the missing `import`                       |
-| E0103 | unknown enum, variant, or named type                                                | lists the enum's real variants                                  |
-| E0104 | reading a non-output of an instance (`inst.x`)                                      | lists the module's outputs; inputs connect at `let`             |
-| E0105 | `.field` on something that has no fields                                            | `.` is for `Enum.Variant` / `inst.output` only                  |
-| E0106 | unknown parameter in instantiation or test header                                   | lists the module's parameters                                   |
-| E0107 | bad connection port (unknown, or an output)                                         | outputs are read with `.`, not connected                        |
-| E0108 | assigning to a non-signal (input, const, clock, …)                                  | only out ports, wires, regs are assignable                      |
-| E0109 | `on rise(x)` where `x` is not a clock                                               | declare `clock clk`                                             |
-| E0201 | expression is not a compile-time constant                                           | what IS allowed in const positions                              |
-| E0202 | constant evaluation overflow (i128 range)                                           | —                                                               |
-| E0301 | module has regs but no `reset` declaration                                          | add `reset rst`                                                 |
-| E0302 | instance input unconnected, or connected twice                                      | connect every input exactly once; clock/reset connect by name   |
-| E0303 | declaration (port/`wire`/`reg`/`clock`/`reset`/`const`/`enum`/`on`) inside `repeat` | declare once outside; `repeat` only generates hardware          |
-| E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)                       | `extend`/`trunc`/slice; `+` into same width teaches `+%`        |
-| E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)                         | `extend` the narrow side                                        |
-| E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data                     | the visible casts `signed()`/`unsigned()`                       |
-| E0404 | logical op / condition on a non-`bit`                                               | compare (`x != 0`) or reduce (`\|x`)                            |
-| E0405 | compile-time value does not fit, or has no width to adopt                           | the value, the width, and the max that fits                     |
-| E0406 | index/slice out of range, reversed bounds, base not indexable                       | indices `0..=N-1`; slices `[hi:lo]` msb first                   |
-| E0407 | builtin/unary misuse (`extend` narrowing, `-` on bits, …)                           | what the builtin is FOR; `0 -% x` for wrap-negate               |
-| E0408 | `if`/`match` arms disagree on type/width                                            | every arm becomes the same wire                                 |
-| E0409 | pattern errors (match on signed, wrong enum, too-wide value)                        | what the scrutinee's type admits                                |
-| E0410 | width expression invalid (zero, negative, absurd)                                   | hardware needs at least one bit                                 |
-| E0501 | more than one driver (2nd drive, drive-to-wire, overlapping bit ranges)             | one `=` per signal; `if`/`match` exprs choose; disjoint bits OK |
-| E0502 | output never driven, or driven on only some bits                                    | drive it; names the first undriven bit                          |
-| E0503 | reg assigned from zero or several `on` blocks                                       | exactly one `on` block owns each reg                            |
-| E0504 | combinational cycle (path shown, incl. through instances)                           | every feedback loop passes through a `reg`                      |
-| E0505 | wrong assignment kind: `<-` to wire/out, `=` to reg                                 | `<-` = registers in `on`; `=` = combinational                   |
-| E0601 | `match` not exhaustive (names a missing value/variant)                              | add the missing arms, or end with `_ =>`                        |
-| E0602 | unreachable `match` arm (after `_`, or a duplicate value)                           | move `_` last / delete the duplicate                            |
-| E0701 | cross-clock-domain read, or a wire mixing two domains                               | one domain per signal; `sync` (Phase 2) will allow crossings    |
+| Code  | Meaning                                                                                   | Typical fix the help teaches                                    |
+| ----- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| E0001 | duplicate module name (project-wide)                                                      | rename — module names are project-unique                        |
+| E0002 | duplicate file-level enum name (project-wide)                                             | rename — enums travel with `import`                             |
+| E0003 | name declared twice inside one module                                                     | rename; the message says what holds the name                    |
+| E0004 | duplicate file-level `const`                                                              | rename within the file                                          |
+| E0101 | unknown name in an expression                                                             | check spelling / declare it                                     |
+| E0102 | unknown module (instantiation or test header)                                             | check spelling / add the missing `import`                       |
+| E0103 | unknown enum, variant, or named type                                                      | lists the enum's real variants                                  |
+| E0104 | reading a non-output of an instance (`inst.x`)                                            | lists the module's outputs; inputs connect at `let`             |
+| E0105 | `.field` on something that has no fields                                                  | `.` is for `Enum.Variant` / `inst.output` only                  |
+| E0106 | unknown parameter in instantiation or test header                                         | lists the module's parameters                                   |
+| E0107 | bad connection port (unknown, or an output)                                               | outputs are read with `.`, not connected                        |
+| E0108 | assigning to a non-signal (input, const, clock, …)                                        | only out ports, wires, regs are assignable                      |
+| E0109 | `on rise(x)` where `x` is not a clock                                                     | declare `clock clk`                                             |
+| E0201 | expression is not a compile-time constant                                                 | what IS allowed in const positions                              |
+| E0202 | constant evaluation overflow (i128 range)                                                 | —                                                               |
+| E0301 | module has regs but no `reset` declaration                                                | add `reset rst`                                                 |
+| E0302 | instance input unconnected, or connected twice                                            | connect every input exactly once; clock/reset connect by name   |
+| E0303 | declaration (port/`wire`/`reg`/`clock`/`reset`/`const`/`enum`/`on`) inside `repeat`       | declare once outside; `repeat` only generates hardware          |
+| E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)                             | `extend`/`trunc`/slice; `+` into same width teaches `+%`        |
+| E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)                               | `extend` the narrow side                                        |
+| E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data                           | the visible casts `signed()`/`unsigned()`                       |
+| E0404 | logical op / condition on a non-`bit`                                                     | compare (`x != 0`) or reduce (`\|x`)                            |
+| E0405 | compile-time value does not fit, or has no width to adopt                                 | the value, the width, and the max that fits                     |
+| E0406 | index/slice out of range, reversed bounds, base not indexable                             | indices `0..=N-1`; slices `[hi:lo]` msb first                   |
+| E0407 | builtin/unary misuse (`extend` narrowing, `-` on bits, …)                                 | what the builtin is FOR; `0 -% x` for wrap-negate               |
+| E0408 | `if`/`match` arms disagree on type/width                                                  | every arm becomes the same wire                                 |
+| E0409 | pattern errors (match on signed, wrong enum, too-wide value)                              | what the scrutinee's type admits                                |
+| E0410 | width expression invalid (zero, negative, absurd)                                         | hardware needs at least one bit                                 |
+| E0501 | more than one driver (2nd drive, drive-to-wire, overlapping bit ranges)                   | one `=` per signal; `if`/`match` exprs choose; disjoint bits OK |
+| E0502 | output never driven, or driven on only some bits                                          | drive it; names the first undriven bit                          |
+| E0503 | reg assigned from zero or several `on` blocks, or memory written from several `on` blocks | exactly one `on` block owns each reg or memory                  |
+| E0504 | combinational cycle (path shown, incl. through instances)                                 | every feedback loop passes through a `reg`                      |
+| E0505 | wrong assignment kind: `<-` to wire/out, `=` to reg                                       | `<-` = registers in `on`; `=` = combinational                   |
+| E0601 | `match` not exhaustive (names a missing value/variant)                                    | add the missing arms, or end with `_ =>`                        |
+| E0602 | unreachable `match` arm (after `_`, or a duplicate value)                                 | move `_` last / delete the duplicate                            |
+| E0701 | cross-clock-domain read, or a wire mixing two domains                                     | one domain per signal; `sync` (Phase 2) will allow crossings    |
 
 Numbering scheme: E00xx structure/duplicates, E01xx name resolution,
 E02xx const evaluation, E03xx module structure rules, E04xx width/type

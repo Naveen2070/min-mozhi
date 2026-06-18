@@ -429,7 +429,7 @@ The CLI merge (CLI › config › default) and name-map auto-discovery, end to e
 
 ## Unit: morph (`src/morph.rs`, 14 tests)
 
-Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 §5),
+Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 section 5),
 the W0001 mixed-flavor lint, and the structured-arg / English-fallback guards.
 
 | Test                                                      | Locks in                                                                                                                                     |

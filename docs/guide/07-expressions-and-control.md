@@ -45,8 +45,8 @@ y = match sel {
 }
 ```
 
-Patterns can be integers, booleans, enum variants, or the wildcard `_` which
-matches anything left over:
+Patterns can be integers, booleans, enum variants, binary don't-care patterns
+(below), or the wildcard `_` which matches anything left over:
 
 ```mimz
 y = match op {
@@ -55,6 +55,26 @@ y = match op {
   _    => default_case
 }
 ```
+
+### Don't-care patterns
+
+A **binary** pattern may use `?` for a don't-care bit, matching any value at that
+position — the `casez` idiom, ideal for priority decoders:
+
+```mimz
+grant = match req {
+  0b1?? => 0b11      // any value whose high bit is 1: 100, 101, 110, 111
+  0b01? => 0b10      // 010 or 011
+  0b001 => 0b01
+  _     => 0b00      // required — see below
+}
+```
+
+- A masked pattern must be **binary** (`0b…`) and match the scrutinee's width
+  exactly.
+- Don't-care patterns **do not earn exhaustiveness on their own** — the compiler
+  cannot prove they cover every value, so keep a `_` arm (or literal coverage) or
+  you get a non-exhaustive error (`E0601`).
 
 Rules the compiler enforces:
 

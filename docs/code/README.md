@@ -111,7 +111,7 @@ A behavior-preserving code-split then broke three oversized files into submodule
 `src/bin/mimz-bench/metrics.rs` → `metrics/` (pages 3, 13, 12).
 Prior 2026-06-14 (adds: the `morph` module — error-language
 selection (file-flavor majority + `--lang`) and the Tamil case-suffix inflection
-mechanism behind localized diagnostics (Phase 1.8, spec/04 §5), an additive
+mechanism behind localized diagnostics (Phase 1.8, spec/04 section 5), an additive
 English-fallback layer documented in page 13; the catalog content + final sandhi
 are panel-gated (C3). Earlier the same day: the `pretty` module — the AST →
 source pretty-printer behind `mimz translate --order code|thamizh` (Phase 1.8),

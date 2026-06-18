@@ -86,7 +86,7 @@ names }`, `romanized → original Tamil`, capturing the `_2`/`_3` uniquing).
 
 ## `pretty` (`src/pretty.rs`) — `mimz translate --order code|thamizh`
 
-The word-ORDER half of `translate` (`spec/04` §3, Phase 1.8). Where `translate`
+The word-ORDER half of `translate` (`spec/04` section 3, Phase 1.8). Where `translate`
 re-spells keyword tokens, `pretty` re-emits the **AST** as Min-Mozhi source, so
 it can move clause heads between the two word orders: `on rise(clk)` ⇄
 `rise(clk) on`, `if c { }` ⇄ `c if { }`, `match e { }` ⇄ `e match { }`. Flavor
@@ -117,7 +117,7 @@ output gets a leading `syntax thamizh` directive so it re-parses.
 ## `morph` (`src/morph.rs`) — error-language selection + Tamil inflection
 
 The "which language is this error in, and how do its identifiers inflect?" half
-of the grammar engine (`spec/04` §5, Phase 1.8). Two concerns, one module:
+of the grammar engine (`spec/04` section 5, Phase 1.8). Two concerns, one module:
 
 - **Selection.** `majority_flavor(tokens)` counts a file's keyword flavors (only
   keywords carry a `Flavor`); `effective_lang(cli, tokens)` lets a `--lang`
@@ -128,7 +128,7 @@ of the grammar engine (`spec/04` §5, Phase 1.8). Two concerns, one module:
 - **Inflection.** The four Tamil case suffixes (வேற்றுமை உருபுகள் -ஐ/-க்கு/-இல்/
   -ஆல்) are DATA in `case_suffixes.toml` (the keywords.toml doctrine — review
   edits the table, not the code); `inflect(name, case, flavor)` attaches one.
-  This is "a suffix lookup table plus sandhi rules, not NLP" (spec/04 §5).
+  This is "a suffix lookup table plus sandhi rules, not NLP" (spec/04 section 5).
 
 - **Additive, English-fallback (the load-bearing contract).** The ~36 inline
   English `self.err()` messages are NOT touched. `localized_msg(diag, src,
@@ -235,6 +235,36 @@ names_map      = "auto"
 [fmt]
 strict = true
 ```
+
+## `version` (`src/version.rs`) — the two version axes
+
+Min-Mozhi has **two independent versions**, the way `rustc 1.x` is distinct from
+the Rust `2021` edition; conflating them is the confusion this module removes.
+
+- **Compiler version** — `COMPILER_VERSION` (from `env!("CARGO_PKG_VERSION")`, the
+  single crate source). Also stamped into the Verilog header banner.
+- **Keyword-set version** — `KEYWORD_SET_VERSION`, cross-checked against the
+  `version` field in `keywords.toml` (`KeywordTable::version()`); a unit test
+  asserts the two agree, so a keyword-table bump that forgets the constant fails
+  CI.
+- **Language edition** — an `Edition { variant, year, code }` shown
+  `variant-year-code` (e.g. `wingless-butterfly-2026-1`). `EDITION_HISTORY` is a
+  `const` table, one row per edition, kept **in source** so the language's history
+  is transparent; `current()` returns the last row, and a test asserts it is the
+  tail.
+
+`version_block()` renders the uname-style block `mimz --version` prints — the
+edition codename on top, then the compiler and edition lines:
+
+```text
+Wingless Butterfly
+mimz    0.1.0-dev                   (compiler)
+edition wingless-butterfly-2026-1   (language)
+```
+
+`main.rs` intercepts `--version` to print this block (clap's own `--version`
+would prepend the binary name and lose the codename-on-top layout); `-V` keeps
+clap's short form. The edition design rationale lives in `spec/06-editions.md`.
 
 ## Scope discipline
 

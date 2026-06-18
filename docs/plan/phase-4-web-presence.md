@@ -49,7 +49,7 @@ differentiator** rather than a README alone.
 ```
 crates/mimz-wasm  →  mimz_wasm_bg.wasm + JS glue   ┐
 src/lib.rs (+compile_string)                        ├─→  site/ (Astro)  →  GitHub Pages
-docs/guide/*, docs/spec/*  (existing markdown)      ┘
+docs/guide/*, spec/*  (existing markdown)           ┘
 ```
 
 ### 1. WASM engine — `crates/mimz-wasm/` (new workspace member) + tiny lib add
@@ -71,8 +71,10 @@ docs/guide/*, docs/spec/*  (existing markdown)      ┘
 
 ### 2. Site — `site/` (Astro, custom-themed)
 
-- **Landing** (`/`): reuse the README pitch — tagline ("first Tamil-rooted HDL; reads
-  like Go/TS, safe like Rust"), 3 highlights, a code sample, CTAs to **Playground**,
+- **Landing** (`/`): reuse the README pitch — tagline ("a modern, safe-by-default
+  HDL, built to teach — and the first to speak Tamil"; reads like Go/TS, safe like
+  Rust), 3 highlights in pitch order (modern+safe → educational → trilingual/Tamil),
+  a code sample, CTAs to **Playground**,
   **Docs**, **GitHub**. **Flashy hero allowed but earns its weight (deferred to Step
   6 polish):** a **domain-themed** animation (logic gates / flowing waveforms / clock
   pulse / silicon die — flashy _and_ meaningful), as a **lazy-loaded island** that
@@ -81,7 +83,7 @@ docs/guide/*, docs/spec/*  (existing markdown)      ┘
   depth is truly needed (audience = college labs, modest GPUs/phones). Must not block
   first paint or compete with the playground.
 - **Docs** (`/guide/*`, `/spec/*`): Astro **content collections** sourced from the
-  existing `docs/guide/*.md` (12 chapters) and `docs/spec/*.md` (6 files) — _sourced,
+  existing `docs/guide/*.md` (12 chapters) and `spec/*.md` (6 files) — _sourced,
   not duplicated_, so docs never drift. Custom nav + free client-side search
   (**Pagefind**). Tamil/Tanglish identity in the theme.
 - **Playground** (`/playground`): a **CodeMirror 6** editor with a lightweight `mimz`
@@ -135,7 +137,7 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
   `src/sim/run.rs::{run, comb_run, Timeline}`, `src/sim/vcd.rs::to_vcd`.
 - Diagnostics: `src/diag/mod.rs` (+ existing `--json` shape) for playground errors.
 - Highlight: existing VS Code TextMate grammar (kept in sync by `tests/grammar_sync.rs`).
-- Docs content: `docs/guide/*.md`, `docs/spec/*.md` (sourced, not copied).
+- Docs content: `docs/guide/*.md`, `spec/*.md` (sourced, not copied).
 
 ## Verification
 
@@ -163,5 +165,5 @@ References: [`phase-4-ecosystem.md`](phase-4-ecosystem.md),
 
 Hardware REPL (`mimz repl`), `mimz tui`, npm/PyPI wrapper packages, and the Tamil
 translation of docs prose. (The founder subdomain on Vercel is now _in_ scope — see
-§4.) The playground engine here is what those later ride
+section 4.) The playground engine here is what those later ride
 on.
