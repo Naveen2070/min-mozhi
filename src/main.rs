@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+#[cfg(feature = "lsp")]
 mod lsp;
 
 use std::path::PathBuf;
@@ -96,6 +97,7 @@ enum Cmd {
     },
     /// Run the language server over stdio (diagnostics-only v0;
     /// editors launch this — not for interactive use)
+    #[cfg(feature = "lsp")]
     Lsp,
     /// Explain a diagnostic code in depth (e.g. `mimz explain E0501`)
     Explain {
@@ -278,6 +280,7 @@ fn main() -> ExitCode {
             let strict = strict || cfg.fmt.strict.unwrap_or(false);
             fmt_file(&file, to.as_deref(), strict, output)
         }
+        #[cfg(feature = "lsp")]
         Cmd::Lsp => {
             lsp::run();
             ExitCode::SUCCESS

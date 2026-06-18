@@ -15,7 +15,7 @@
   },
   "homepage": "https://github.com/Naveen2070/min-mozhi#readme",
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.91.0"
   },
   "categories": ["Programming Languages"],
   "main": "./extension.js",
@@ -47,7 +47,7 @@
     }
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.0.0"
   },
   "scripts": {
     "package": "vsce package"

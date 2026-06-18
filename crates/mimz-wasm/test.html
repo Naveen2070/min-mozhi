@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mimz-wasm — throwaway smoke test</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 70ch;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      textarea,
+      pre {
+        width: 100%;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+      }
+      pre {
+        white-space: pre-wrap;
+        background: #f4f4f4;
+        padding: 1rem;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>mimz-wasm</h1>
+    <p>
+      Compile <code>.mimz</code> to Verilog in the browser. Requires a
+      <code>wasm-pack build --target web</code> build (see
+      <code>README.md</code>); serve this folder over HTTP and open this file.
+    </p>
+    <textarea id="src" rows="12">
+module Counter(WIDTH: int = 8) {
+  clock clk
+  reset rst
+  out count: bits[WIDTH]
+  reg value: bits[WIDTH] = 0
+  on rise(clk) {
+    value <- value +% 1
+  }
+  count = value
+}</textarea
+    >
+    <p><button id="go">Compile → Verilog</button></p>
+    <pre id="out">(output appears here)</pre>
+
+    <script type="module">
+      import init, { compileToVerilog } from "./pkg/mimz_wasm.js";
+      await init();
+      const out = document.getElementById("out");
+      document.getElementById("go").addEventListener("click", () => {
+        try {
+          out.textContent = compileToVerilog(
+            document.getElementById("src").value,
+          );
+        } catch (e) {
+          out.textContent = "ERROR:\n" + e.message;
+        }
+      });
+    </script>
+  </body>
+</html>

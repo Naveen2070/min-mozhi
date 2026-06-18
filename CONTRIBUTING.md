@@ -20,6 +20,9 @@ detailed, recipe-level guide lives in
 ## The 30-second rules
 
 - **Spec first.** Language behavior changes start in `spec/`, not in code.
+- **Building anything?** [`docs/BUILD.md`](docs/BUILD.md) is the full reference —
+  required tools, every crate/package, and the native + WASM + site + extension
+  build commands.
 - **Quality gate** (CI enforces exactly this):
 
   ```text

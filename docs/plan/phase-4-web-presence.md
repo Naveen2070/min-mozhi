@@ -120,9 +120,14 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
 ## Build sequence (each step independently reviewable / shippable)
 
 0. **Persist this plan** (this file) + an **R4 dev-log entry**. _(done)_
-1. **`compile_string` lib wrapper + unit tests** — Rust R8 gate stays green.
+1. **`compile_string` lib wrapper + unit tests** — Rust R8 gate stays green. _(done
+   2026-06-18: `mimz::compile_string`, 5 tests)_
 2. **`crates/mimz-wasm`** + `wasm-bindgen` API; prove load+compile in a throwaway HTML.
+   _(done 2026-06-18: `compileToVerilog`; bin-only deps feature-gated so the lib is
+   wasm-clean; wasm32 build + a headless Node smoke test pass; `test.html` for the
+   browser)_
 3. **Astro scaffold**: landing + docs (from existing markdown) + nav/search. Deployable.
+   _(done in website Phase 1, 2026-06-18)_
 4. **Playground page**: editor + Compile→Verilog panel wired to WASM.
 5. **Waveform**: custom renderer behind the boundary + Simulate wiring.
 6. **Vercel deploy** (subdomain) + landing polish (domain-themed flashy hero, see

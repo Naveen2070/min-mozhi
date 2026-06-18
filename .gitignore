@@ -44,6 +44,10 @@ editors/vscode/*.vsix
 bench-report.html
 bench-report.json
 
+# wasm-pack / wasm-bindgen output for the browser playground (regenerate with
+# `wasm-pack build crates/mimz-wasm --target web`)
+crates/mimz-wasm/pkg/
+
 # serena
 .serena
 
