@@ -75,13 +75,15 @@ docs/guide/*, spec/*  (existing markdown)           ┘
   HDL, built to teach — and the first to speak Tamil"; reads like Go/TS, safe like
   Rust), 3 highlights in pitch order (modern+safe → educational → trilingual/Tamil),
   a code sample, CTAs to **Playground**,
-  **Docs**, **GitHub**. **Flashy hero allowed but earns its weight (deferred to Step
-  6 polish):** a **domain-themed** animation (logic gates / flowing waveforms / clock
-  pulse / silicon die — flashy _and_ meaningful), as a **lazy-loaded island** that
-  loads only on `/`; **respect `prefers-reduced-motion`** with a static fallback;
-  prefer a lightweight **WebGL shader / SVG-Canvas** over a full Three.js scene unless
-  depth is truly needed (audience = college labs, modest GPUs/phones). Must not block
-  first paint or compete with the playground.
+  **Docs**, **GitHub**. **Hero (DONE in Step 6, 2026-06-19):** an **interactive 2D
+  oscilloscope** island (`Hero.tsx`) with play/pause + speed + signal (clock /
+  counter bus / random) controls driving a live canvas waveform — domain-themed,
+  lightweight, and `prefers-reduced-motion`-aware (static frame, starts paused). A
+  Three.js scene was prototyped and **removed** in favour of this 2D version (more
+  professional for a language site; no `three`/`@react-three/fiber` deps). The three
+  highlights are now **alternating reveal-on-scroll SVG illustrations**
+  (SafeByDefault / BuiltToTeach / Trilingual). Doesn't block first paint or compete
+  with the playground.
 - **Docs** (`/guide/*`, `/spec/*`): Astro **content collections** sourced from the
   existing `docs/guide/*.md` (12 chapters) and `spec/*.md` (6 files) — _sourced,
   not duplicated_, so docs never drift. Custom nav + free client-side search
@@ -150,7 +152,8 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
    OG/canonical/sitemap/JSON-LD). Pending: maintainer adds the 3 Vercel secrets +
    `vercel link`, then the `mimz.naveenr.in` DNS CNAME.)_
    _(Landing polish DONE 2026-06-19: brand — peacock mascot (footer/404/playground)
-   + waveform logo/favicon; interactive 2D hero (play/pause, speed, signal — no 3D
+   and a waveform logo/favicon; interactive 2D hero (play/pause, speed, signal — no
+   3D
    per maintainer); three alternating reveal-on-scroll feature sections
    (SafeByDefault / BuiltToTeach / Trilingual), no new deps.)_
 
