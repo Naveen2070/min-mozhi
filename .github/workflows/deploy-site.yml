@@ -1,0 +1,133 @@
+# Deploy the Astro site (site/) to Vercel as a PREBUILT bundle.
+#
+# Why prebuilt: the playground's WASM glue (site/src/lib/wasm/) is generated and
+# git-ignored, and Vercel's build image has no Rust. So GitHub Actions does the
+# whole build with a pinned toolchain (Rust -> wasm-bindgen -> Astro), and Vercel
+# only receives the finished `.vercel/output/` (Build Output API) via
+# `vercel deploy --prebuilt`. See docs/plan/phase-4-web-presence.md section 4 (B).
+#
+# Targets:
+#   - PREVIEW  — automatic on PRs and on master pushes that touch the site/engine;
+#                deploys to a unique *.vercel.app URL (does NOT touch production).
+#   - PRODUCTION — manual only: Actions tab -> "deploy-site" -> Run workflow ->
+#                  target = production. Keeps the public flip maintainer-gated (R12).
+#
+# One-time setup (no secrets are committed):
+#   1. `cd site && vercel link`  -> creates .vercel/project.json (orgId, projectId);
+#      set the project's Root Directory to `site`.
+#   2. Add three repo secrets (Settings -> Secrets and variables -> Actions):
+#        VERCEL_TOKEN       (Vercel -> Account Settings -> Tokens)
+#        VERCEL_ORG_ID      (orgId from project.json)
+#        VERCEL_PROJECT_ID  (projectId from project.json)
+name: deploy-site
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deploy target"
+        type: choice
+        options: [preview, production]
+        default: preview
+  pull_request:
+    paths:
+      - "site/**"
+      - "crates/mimz-wasm/**"
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/deploy-site.yml"
+  push:
+    branches: [master]
+    paths:
+      - "site/**"
+      - "crates/mimz-wasm/**"
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+# Least privilege (matches ci.yml): the token only reads the repo.
+permissions:
+  contents: read
+
+# One in-flight deploy per ref; a newer push supersedes an older run.
+concurrency:
+  group: deploy-site-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  # MUST equal the wasm-bindgen crate version mimz-wasm depends on, else
+  # wasm-bindgen errors. Check: cargo tree -i wasm-bindgen -p mimz-wasm.
+  WASM_BINDGEN_VERSION: "0.2.125"
+
+jobs:
+  deploy:
+    name: build (wasm + site) and deploy
+    runs-on: ubuntu-latest
+    # Production is the only path that requires the manual dispatch input; the
+    # whole job still runs for previews. The per-step `if`s below pick the flag.
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      # --- 1. Rust -> wasm (the half Vercel's image cannot do) ---
+      - name: Install Rust (stable) + wasm32 target
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Install wasm-bindgen-cli (version-matched to the crate)
+        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
+
+      - name: Build mimz-wasm + generate the web glue
+        run: |
+          cargo build -p mimz-wasm --target wasm32-unknown-unknown --release
+          wasm-bindgen --target web --out-dir site/src/lib/wasm \
+            target/wasm32-unknown-unknown/release/mimz_wasm.wasm
+
+      # --- 2. Astro build -> site/.vercel/output (Build Output API) ---
+      - name: Install Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install site deps
+        working-directory: site
+        run: npm ci
+
+      - name: Build site
+        working-directory: site
+        run: npm run build
+
+      # --- 3. Hand the prebuilt output to Vercel ---
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+
+      # Preview: PRs, master pushes, and a manual run left on the default target.
+      - name: Deploy preview
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.target == 'production') }}
+        working-directory: site
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
+          echo "Preview: $url"
+          echo "### 🔎 Preview deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+
+      # Production: ONLY a manual dispatch with target=production.
+      - name: Deploy production
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'production' }}
+        working-directory: site
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "Production: $url"
+          echo "### 🚀 Production deploy" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"

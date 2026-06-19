@@ -144,6 +144,11 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
    change + R1 spec update.)_
 6. **Vercel deploy** (subdomain) + landing polish (domain-themed flashy hero, see
    below) → (maintainer) flip public + tag `v0.1.0` (Workstream D, R12).
+   _(CI written 2026-06-19: `.github/workflows/deploy-site.yml` — approach B
+   prebuilt; PRs/`master` → preview, `workflow_dispatch target=production` → prod.
+   Site SEO/perf/security hardened (self-hosted fonts, CSP via `vercel.json`,
+   OG/canonical/sitemap/JSON-LD). Pending: maintainer adds the 3 Vercel secrets +
+   `vercel link`, then the `mimz.naveenr.in` DNS CNAME. Flashy hero still open.)_
 
 ## Reused code (do not reinvent)
 

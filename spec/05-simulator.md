@@ -119,6 +119,7 @@ test` exits non-zero if any test fails.
   - Covers the **entire single-file corpus** — english + pure-Tamil, cross-file
     instances, `repeat`/instance arrays, and enum FSMs — every example the emitter
     compiles also simulates here, bit-for-bit.
+
 - **Perf baseline:** the event-driven kernel sustains **≥ 1M cycle-events/sec**
   on the counter in release (`tests/sim.rs`), measured on the bare `tick` hot
   path.
@@ -157,6 +158,7 @@ feature, not this uniform engine-driven trace.)
     [`docs/plan/phase-1.5-simulator.md`](../docs/plan/phase-1.5-simulator.md)**
     (current status: Tier 3 — delegate timing-faithful runs to the Verilog
     oracle).
+
 - `sim::fatal` / `sim::warn` simulation-only assertions — deferred to a later
   increment (`expect` covers test pass/fail for now).
 - Step-back ("time-travel") debugging — post-v1 stretch.

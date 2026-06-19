@@ -308,6 +308,7 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
   They lower to plain Verilog-2005 (a `?:` for min/max/abs, the negated reduction
   operators for nand/nor/xnor) — no SystemVerilog. Like `extend`/`trunc`, they are
   runtime built-ins, not compile-time constant folders.
+
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
   accepted in literals.
 

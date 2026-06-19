@@ -91,7 +91,5 @@ export default function Hero() {
     };
   }, []);
 
-  return (
-    <canvas ref={ref} className="h-full w-full" aria-hidden="true" />
-  );
+  return <canvas ref={ref} className="h-full w-full" aria-hidden="true" />;
 }

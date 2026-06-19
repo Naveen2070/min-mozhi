@@ -105,7 +105,7 @@ is valid even in an otherwise-English file.
 | KW_ELSE       | `else`    | `illaiyenil`    | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                                                     |
 | KW_MATCH      | `match`   | `thernthedu`    | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                                                      |
 | KW_ENUM       | `enum`    | `vagai`         | `வகை`         | "kind/category"                                                                                                                       |
-| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 section 1.5)                            |
+| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 section 1.5)                     |
 | KW_CONST      | `const`   | `maarili`       | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                                                 |
 | KW_REPEAT     | `repeat`  | `meendum`       | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                                                   |
 | KW_IMPORT     | `import`  | `serkka`        | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                                                 |
