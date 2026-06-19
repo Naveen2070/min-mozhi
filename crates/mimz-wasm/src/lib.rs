@@ -22,3 +22,19 @@ use wasm_bindgen::prelude::*;
 pub fn compile_to_verilog(source: &str) -> Result<String, JsError> {
     mimz::compile_string(source).map_err(|diagnostics| JsError::new(&diagnostics))
 }
+
+/// Run any `mimz` subcommand against the source in memory — the engine behind the
+/// in-browser console.
+///
+/// - `command` is one of `check`, `compile`, `eval`, `sim`, `test`.
+/// - `args` is the flag list after the command, e.g.
+///   `["--in", "a=1", "--cycles", "8", "--trace"]`.
+///
+/// On success returns the command's output text (Verilog, an eval result, a sim
+/// trace, …). On failure a JS `Error` is thrown whose message is the rendered
+/// diagnostics or error text — both are ready to print into the console log.
+#[wasm_bindgen(js_name = runCommand)]
+pub fn run_command(source: &str, command: &str, args: Vec<String>) -> Result<String, JsError> {
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    mimz::run_command(source, command, &argv).map_err(|e| JsError::new(&e))
+}

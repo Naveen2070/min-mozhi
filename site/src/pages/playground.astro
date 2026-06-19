@@ -1,0 +1,37 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+// Aliased: the Astro language server derives a local `Playground` from this
+// page's filename, which would clash with an import of the same name (TS2440).
+import PlaygroundIsland from "../components/Playground.tsx";
+
+// Seed examples read from the repo at build time (single source — same files the
+// CLI and tests use). repo root is the parent of site/ (cwd during astro build).
+const repoRoot = path.resolve(process.cwd(), "..");
+const names = ["counter", "adder", "comparator", "mux4", "shift_register", "traffic_light"];
+const examples = names.map((name) => ({
+  name,
+  code: readFileSync(path.join(repoRoot, `examples/english/${name}.mimz`), "utf-8").replace(/\s+$/, ""),
+}));
+---
+
+<Base title="Playground — Min-Mozhi">
+  <Nav />
+  <main class="mx-auto max-w-6xl px-4 py-10">
+    <h1 class="fg text-2xl font-bold tracking-tight">Playground</h1>
+    <p class="fg-muted mt-2 mb-6 max-w-2xl text-sm leading-relaxed">
+      Write Min-Mozhi on the left and run the compiler in your browser — nothing
+      to install, the whole toolchain is compiled to WebAssembly. Use the console
+      on the right:
+      <code>compile</code>, <code>check</code>, <code>eval --in a=3,b=5</code>,
+      <code>sim --cycles 8 --trace</code>, or
+      <code>sim --sweep a=0|1|2 --trace</code>.
+    </p>
+
+    <PlaygroundIsland examples={examples} client:only="react" />
+  </main>
+  <Footer />
+</Base>

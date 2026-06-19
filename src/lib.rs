@@ -58,6 +58,15 @@ pub mod span;
 pub mod translate;
 pub mod version;
 
+mod runner;
+
+// The in-memory command runner (compile / check / eval / sim / test against a
+// source STRING) powers the browser playground and any embedder; its argument
+// parsers are the single source the CLI command handlers reuse.
+pub use runner::{
+    parse_bindings, parse_sweep, parse_u128, run_command, sweep_vectors, trace_scope,
+};
+
 /// Compile a single Min-Mozhi source string straight to Verilog, entirely in
 /// memory — no filesystem, no `import` resolution. This is the embedding entry
 /// point used by the in-browser playground (`crates/mimz-wasm`) and any tool
@@ -72,33 +81,5 @@ pub mod version;
 /// rendered, caret-annotated diagnostics (English) as one string — the same
 /// text `mimz compile` prints to stderr — suitable for showing to the user.
 pub fn compile_string(source: &str) -> Result<String, String> {
-    use unicode_normalization::UnicodeNormalization;
-
-    // Spans index into the NFC-normalized text (spec/02 section 2), so render
-    // diagnostics against the same normalized `src`. The name is cosmetic — it
-    // is only the path shown in the caret header.
-    const NAME: &str = "input.mimz";
-    let src: String = source.nfc().collect();
-    let render = |diags: &[diag::Diag]| diag::render(diags, &src, NAME);
-
-    let toks = lexer::lex(&src).map_err(|d| render(&d))?;
-    let ast = parser::parse(toks).map_err(|d| render(&d))?;
-
-    if !ast.imports.is_empty() {
-        return Err(
-            "`import` is not supported when compiling a single in-memory source — \
-             the in-browser compiler resolves no files. Paste the imported modules \
-             into this source."
-                .to_string(),
-        );
-    }
-
-    let mut asts = vec![ast];
-    if let Err(d) = checker::check(&asts) {
-        return Err(render(&d));
-    }
-    // Tamil identifiers become readable ASCII before emission (విளக்கு → villakku).
-    emit_verilog::transliterate(&mut asts);
-    let project = emit_verilog::Project::from_files(&asts).map_err(|d| render(&d))?;
-    emit_verilog::emit(&project, &asts).map_err(|d| render(&d))
+    run_command(source, "compile", &[])
 }

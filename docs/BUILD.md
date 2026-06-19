@@ -177,6 +177,19 @@ Output: `site/dist/` (and `.vercel/output/` for the Vercel adapter). If you
 change a markdown/rehype plugin and a rebuild looks stale, clear the content
 cache: `rm -rf site/.astro site/node_modules/.astro` then rebuild.
 
+**Playground prerequisite.** The `/playground` page imports the wasm glue from
+`site/src/lib/wasm/` (git-ignored — generated, not committed). Generate it before
+`dev`/`build`, from the repo root:
+
+```sh
+cargo build -p mimz-wasm --target wasm32-unknown-unknown --release
+wasm-bindgen --target web --out-dir site/src/lib/wasm \
+  target/wasm32-unknown-unknown/release/mimz_wasm.wasm
+```
+
+(`wasm-pack build crates/mimz-wasm --target web` also works; point the import at
+its `pkg/`.) Wiring this into the Vercel build is Step 6 of the web-presence plan.
+
 ---
 
 ## 7. VS Code extension (`editors/vscode/`)

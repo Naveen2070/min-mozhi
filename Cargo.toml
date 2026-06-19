@@ -59,6 +59,9 @@ required-features = ["bench"]
 [workspace]
 members = ["crates/mimz-wasm"]
 default-members = ["."]
+# Standalone dev helper with its own target dir + `cargo test-summary` alias —
+# kept out of the workspace so it stays independent of the release lock/profile.
+exclude = ["tools/test-summary"]
 
 [dev-dependencies]
 # Statistical per-phase micro-benchmarks (a SEPARATE harness from mimz-bench;
