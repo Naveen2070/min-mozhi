@@ -1,0 +1,33 @@
+---
+// Mayil (மயில்) — the Min-Mozhi peacock mascot. Two stored variants in /public:
+//   "full"   → the circuit-trace peacock character (footer-sized → hero/404).
+//   "emblem" → the minimal line-art crest, for small/quiet placements.
+// Raster PNGs (alpha) rather than inline SVG: the art is multi-colour with
+// gradients, so a bitmap stays crisp and small where a trace would bloat.
+interface Props {
+  variant?: "full" | "emblem";
+  /** Accessible description; pass "" to mark purely decorative. */
+  alt?: string;
+  class?: string;
+  loading?: "lazy" | "eager";
+}
+const {
+  variant = "full",
+  alt = "Mayil — the Min-Mozhi peacock mascot",
+  class: className = "",
+  loading = "lazy",
+} = Astro.props;
+
+const SRC = variant === "emblem" ? "/mascot-emblem.png" : "/mascot.png";
+const DIM = variant === "emblem" ? 256 : 512;
+---
+
+<img
+  src={SRC}
+  width={DIM}
+  height={DIM}
+  alt={alt}
+  loading={loading}
+  decoding="async"
+  class={className}
+/>
