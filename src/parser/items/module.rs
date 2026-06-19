@@ -83,7 +83,23 @@ impl Parser {
                 self.bump();
                 let name = self.ident("a reset name")?;
                 self.terminator();
-                Some(ModuleItem::Reset(name))
+                Some(ModuleItem::Reset {
+                    name,
+                    is_async: false,
+                })
+            }
+            TokKind::Kw(Kw::Async) => {
+                self.bump();
+                self.expect(
+                    TokKind::Kw(Kw::Reset),
+                    "`reset` — `async` modifies a reset declaration (`async reset rst`)",
+                )?;
+                let name = self.ident("a reset name")?;
+                self.terminator();
+                Some(ModuleItem::Reset {
+                    name,
+                    is_async: true,
+                })
             }
             TokKind::Kw(Kw::Wire) => {
                 self.bump();
@@ -120,11 +136,46 @@ impl Parser {
                 self.terminator();
                 Some(ModuleItem::Reg { name, ty, reset })
             }
+            TokKind::Kw(Kw::Mem) => {
+                self.bump();
+                let name = self.ident("a memory name")?;
+                self.expect(TokKind::Colon, "`:` then the memory's element type")?;
+                let ty = self.ty()?;
+                self.expect(
+                    TokKind::LBracket,
+                    "`[` then the depth — memories are written `mem m: type[DEPTH] = 0`",
+                )?;
+                let depth = self.expr()?;
+                self.expect(TokKind::RBracket, "`]` after the depth")?;
+                if !self.at(&TokKind::Assign) {
+                    let span = self.peek().span;
+                    self.error(
+                        span,
+                        "E1104",
+                        format!("memory `{}` has no init value", name.name),
+                    );
+                    self.help(
+                        "every mem declares its init value: `mem m: bits[8][256] = 0` — every cell is initialized at power-on (spec/02 section 1.2)",
+                    );
+                    return None;
+                }
+                self.bump(); // =
+                let init = self.expr()?;
+                self.terminator();
+                Some(ModuleItem::Mem {
+                    name,
+                    ty,
+                    depth,
+                    init,
+                })
+            }
             TokKind::Kw(Kw::Const) => Some(ModuleItem::Const(self.const_decl()?)),
             TokKind::Kw(Kw::Enum) => Some(ModuleItem::Enum(self.enum_decl()?)),
             TokKind::Kw(Kw::Let) => self.inst(),
             TokKind::Kw(Kw::On) => self.on_block(),
-            TokKind::Kw(Kw::Rise) if self.profile == Profile::Thamizh => self.on_block_thamizh(),
+            TokKind::Kw(Kw::Rise | Kw::Fall) if self.profile == Profile::Thamizh => {
+                self.on_block_thamizh()
+            }
             TokKind::Kw(Kw::Repeat) => self.repeat_block(),
             TokKind::Ident(_) => {
                 let lhs = self.lvalue()?;

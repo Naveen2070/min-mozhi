@@ -8,7 +8,7 @@ use crate::span::Span;
 
 use super::super::Checker;
 use super::super::consteval;
-use super::{Ty, Wcx, bits, min_bits, min_signed_bits, op_text, same, show};
+use super::{MAX_WIDTH, Ty, Wcx, bits, min_bits, min_signed_bits, op_text, same, show};
 
 impl<'a> Checker<'a> {
     pub(super) fn unary_ty(
@@ -422,6 +422,51 @@ impl<'a> Checker<'a> {
             }
         }
         if ok { bits(sum) } else { Ty::Unknown }
+    }
+
+    /// `{N{a, b}}` — replication: the inner concat repeated `count` times.
+    /// Result width is `count * inner` bits; `count` must be a compile-time
+    /// constant and the product a valid width (1..=`MAX_WIDTH`, E0410).
+    pub(super) fn replicate_ty(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        count: &'a Expr,
+        parts: &'a [Expr],
+    ) -> Ty<'a> {
+        // The inner concat width (also reports signed/literal/non-data parts).
+        let inner = match self.concat_ty(cx, parts) {
+            Ty::Bit => 1u128,
+            Ty::Bits(n) => n,
+            _ => return Ty::Unknown,
+        };
+        // The count must be a compile-time constant.
+        let c = match consteval::eval(count, &cx.env) {
+            Ok(v) => v,
+            Err(d) => {
+                self.diags.push(d.with_file(cx.file));
+                return Ty::Unknown;
+            }
+        };
+        let total = i128::try_from(inner).ok().and_then(|n| c.checked_mul(n));
+        match total {
+            Some(t) if (1..=MAX_WIDTH).contains(&t) => bits(t as u128),
+            _ => {
+                self.err(
+                    cx.file,
+                    count.span,
+                    "E0410",
+                    match total {
+                        Some(t) => format!("`{t}` is not a valid replicated width"),
+                        None => "the replication width overflowed".to_string(),
+                    },
+                    format!(
+                        "`{{N{{...}}}}` repeats its {inner}-bit group N times — N must be a \
+                         constant giving a width between 1 and {MAX_WIDTH}"
+                    ),
+                );
+                Ty::Unknown
+            }
+        }
     }
 
     /// The four builtins (spec/02 sections 1.7–1.8).

@@ -1,0 +1,18 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): a counter with an asynchronous reset.
+// `otthisaivatra meettamai rst` (async reset) clears the register the instant
+// `rst` is asserted, not at the next clock edge. Reset is active-high.
+
+thoguthi ACounter {
+  thudippu clk
+  otthisaivatra meettamai rst
+
+  veliyeedu count: bits[8]
+
+  pathivedu value: bits[8] = 0
+
+  pothu yetram(clk) {
+    value <- value +% 1
+  }
+
+  count = value
+}

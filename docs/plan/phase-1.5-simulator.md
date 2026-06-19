@@ -136,6 +136,56 @@ emitter lowers. Every single-file example simulates bit-for-bit vs Icarus._
 - Two-phase commit is the correctness heart — write kernel unit tests before
   wiring it to the frontend.
 - Don't build a full 4-state (X/Z) simulator in v1; Min-Mozhi semantics are
-  2-state by design (resets are mandatory). Log this as a Decision if revisited.
+  2-state by design (resets are mandatory). If revisited, it lands as the Tier-2
+  milestone in the fidelity roadmap below (X/Z and the event-driven kernel are
+  one engine).
 - The triage-sourced work items above are stretch goals: kernel correctness
   and the Icarus differential suite always outrank them.
+
+## Post-v1 fidelity roadmap — clock-independent behavior
+
+The v1 kernel is **cycle/edge-phased and 2-state by design**: it samples state
+once per clock period (rise → sample → fall, since A3) and resets are mandatory,
+so there is no X/Z and no continuous time axis. For **synchronous RTL** — what
+Min-Mozhi targets — sampling at the clock is the correct, standard abstraction,
+and it is fast (the ≥1M cycle-events/sec baseline rides on it).
+
+That model has a deliberate edge: an **`async reset`** is realized faithfully in
+the _emitted Verilog_ (`always @(… or posedge rst)`) and confirmed by the Icarus
+differential under clock-aligned stimulus, but the _in-house_ kernel models async
+≡ sync at its per-cycle sample points — it does not show a reset landing
+**between** edges. Async reset's **correctness** (the register clears while reset
+is asserted) is captured; its **sub-cycle timing** (resets between edges, reset
+recovery/removal, metastability) is not. That timing is a timing-closure concern
+— handled by static timing analysis + gate-level simulation in any real flow, not
+by an RTL functional simulator. So this is a scope line, not a defect.
+
+The concrete path to higher fidelity, when it is ever wanted, in increasing
+fidelity / cost:
+
+1. **Tier 1 — sub-cycle phase points (incremental).** Extend the phased kernel to
+   re-evaluate at the moments async signals change, not only at clock edges. The
+   A3 edge-aware kernel already proved the model can carry more intra-period
+   phases (rise/sample/fall), so a "reset-edge" phase is a plausible bolt-on. It
+   captures reset edges at _modeled_ points — better, but still not arbitrary
+   continuous time.
+2. **Tier 2 — a true event-driven kernel (the real fix).** Nets with current
+   values, a per-process sensitivity list (sensitive to `posedge rst` too, not
+   just the clock), a time-ordered event queue, delta-cycle settling — Verilog
+   reference semantics. A significant `src/sim/kernel.rs` rewrite that **pairs
+   naturally with adding 4-state X/Z** (a reset recovery/removal violation _is_ an
+   X), so the two land as one "higher-fidelity engine" milestone. This is what
+   makes the in-house sim show "resets between edges."
+3. **Tier 3 — division of labor (today's strategy, made explicit).** Keep the
+   in-house kernel cycle-based and fast for `mimz sim` / `mimz test`, and treat
+   the **emitted Verilog + Icarus** (later Verilator) as the timing-faithful
+   oracle — `or posedge rst` is already correct in the emit path and Icarus
+   already runs it. When sub-cycle async behavior genuinely matters, reach for the
+   gate-level / Verilog tools, which is the normal flow anyway.
+
+**Current status: Tier 3, by deliberate choice.** Tiers 1–2 are post-v1 and
+non-blocking for release; the trigger to build them is a real need the cheap model
+can't serve — e.g. wanting `mimz sim` to _teach_ reset recovery/removal hazards,
+or a design whose correctness depends on sub-cycle reset timing. Until then the
+Icarus differential guards the generated hardware and the cycle kernel stays the
+fast functional model.

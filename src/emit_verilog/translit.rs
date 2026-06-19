@@ -247,7 +247,7 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 visit(&mut name.name);
                 type_widths(ty, visit);
             }
-            ModuleItem::Clock(n) | ModuleItem::Reset(n) => visit(&mut n.name),
+            ModuleItem::Clock(n) | ModuleItem::Reset { name: n, .. } => visit(&mut n.name),
             ModuleItem::Wire { name, ty, init } => {
                 visit(&mut name.name);
                 type_widths(ty, visit);
@@ -257,6 +257,17 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 visit(&mut name.name);
                 type_widths(ty, visit);
                 expr(reset, visit);
+            }
+            ModuleItem::Mem {
+                name,
+                ty,
+                depth,
+                init,
+            } => {
+                visit(&mut name.name);
+                type_widths(ty, visit);
+                expr(depth, visit);
+                expr(init, visit);
             }
             ModuleItem::Const(c) => {
                 visit(&mut c.name.name);
@@ -388,6 +399,12 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
             }
         }
         ExprKind::Concat(parts) => {
+            for p in parts {
+                expr(p, visit);
+            }
+        }
+        ExprKind::Replicate { count, parts } => {
+            expr(count, visit);
             for p in parts {
                 expr(p, visit);
             }

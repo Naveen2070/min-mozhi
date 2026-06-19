@@ -36,6 +36,25 @@ fn numbers() {
 }
 
 #[test]
+fn dont_care_binary_literal_lexes_to_masked_int() {
+    // `0b1??` — the high bit cares (value 0b100), the low two are don't-care.
+    assert!(matches!(
+        kinds("0b1??")[0],
+        TokKind::MaskedInt {
+            value: 0b100,
+            mask: 0b100,
+            width: 3,
+            ..
+        }
+    ));
+    // A plain binary literal is still an `Int` — no regression.
+    assert!(matches!(
+        kinds("0b101")[0],
+        TokKind::Int { value: 0b101, .. }
+    ));
+}
+
+#[test]
 fn wrapping_operators() {
     assert_eq!(kinds("a +% b")[1], TokKind::PlusPct);
     assert_eq!(kinds("a -% b")[1], TokKind::MinusPct);
@@ -66,8 +85,31 @@ fn division_is_rejected_with_teaching_error() {
 }
 
 #[test]
-fn fall_is_reserved_error() {
-    let errs = lex("on fall(clk)").unwrap_err();
+fn a_reserved_word_is_an_error() {
+    // A reserved-but-not-yet-active word (e.g. `sync`) is a clean E1005, not a
+    // silent identifier. (`fall` was promoted in A3 and `mem` in A4, so `sync`
+    // now carries this check.)
+    let errs = lex("sync").unwrap_err();
     assert_eq!(errs[0].code, Some("E1005"));
     assert!(errs[0].msg.contains("reserved"));
+}
+
+#[test]
+fn mem_is_an_active_keyword() {
+    // A4 promoted `mem` from reserved to a keyword, with provisional Tanglish/Tamil
+    // spellings (pending native review). All three flavors lex to `Kw::Mem`.
+    for src in ["mem", "ninaivagam", "நினைவகம்"] {
+        let toks = lex(src).unwrap();
+        assert!(toks[0].is_kw(Kw::Mem), "`{src}` should lex to Kw::Mem");
+    }
+}
+
+#[test]
+fn async_is_an_active_keyword() {
+    // A5 promoted `async` from reserved to a keyword, with provisional Tanglish/Tamil
+    // spellings (pending native review). All three flavors lex to `Kw::Async`.
+    for src in ["async", "otthisaivatra", "ஒத்திசைவற்ற"] {
+        let toks = lex(src).unwrap();
+        assert!(toks[0].is_kw(Kw::Async), "`{src}` should lex to Kw::Async");
+    }
 }

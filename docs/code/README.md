@@ -69,7 +69,10 @@ AST → source pretty-printer behind `mimz translate --order code|thamizh`),
 `--lang`), and `sim` (the Phase 1.5 simulator — the combinational evaluator
 behind `mimz eval` plus the event-driven kernel, VCD/trace, and `test` runner
 behind `mimz sim` / `mimz test`). A sixth, `config`, reads per-project defaults
-from `mimz.toml` (CLI flags override it) — also page 13.
+from `mimz.toml` (CLI flags override it) — also page 13. A seventh, `version`,
+holds the two version axes — the compiler (crate) version vs the language edition
+(`EDITION_HISTORY`) — surfaced by `mimz --version` and the Verilog header (see
+`spec/06-editions.md`).
 
 ## Keeping these docs honest
 
@@ -80,8 +83,12 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-16 (a docs-currency pass for the **completed
-Phase 1.5 simulator** (C1–C4): refreshed the `sim` description on pages 1, 13 and
+_Last synced with the code: 2026-06-17 (post–Phase 1.5 RTL-parity batch A1–A5 —
+replication, don't-care patterns, `on fall`, `mem`, `async reset` — plus
+Workstream B: the new `version` module (compiler vs language-edition axes,
+`EDITION_HISTORY`, `mimz --version`, `spec/06-editions.md`, `CHANGELOG.md`).
+Prior 2026-06-16 (a docs-currency pass for the **completed
+Phase 1.5 simulator** (C1–C4)): refreshed the `sim` description on pages 1, 13 and
 this README (full event-driven engine + `mimz sim`/`mimz test`, not just the
 combinational slice); flipped pages 1 and 7's "next pipeline work" from Phase 1.8
 / Phase 1.5 to the Phase 2 IR; added `sim`/`test` to the page-1 subcommand list;

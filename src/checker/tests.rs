@@ -204,6 +204,68 @@ fn connection_width_mismatch_is_e0401_naming_the_port() {
 }
 
 #[test]
+fn replication_width_is_count_times_inner() {
+    check_one("module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = {2{a}}\n}\n")
+        .expect("{2{bits[4]}} is bits[8]");
+    check_one("module M {\n  in a: bits[4]\n  out z: bits[12]\n  z = {3{a}}\n}\n")
+        .expect("{3{bits[4]}} is bits[12]");
+}
+
+#[test]
+fn replication_width_mismatch_is_e0401() {
+    // {2{a}} of a bits[4] is bits[8] — assigning it to bits[4] is a width error.
+    first_err(
+        "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = {2{a}}\n}\n",
+        "E0401",
+    );
+}
+
+#[test]
+fn a_non_constant_replication_count_is_e0201() {
+    first_err(
+        "module M {\n  in a: bits[4]\n  in n: bits[4]\n  out y: bits[8]\n  y = {n{a}}\n}\n",
+        "E0201",
+    );
+}
+
+#[test]
+fn a_zero_replication_count_is_e0410() {
+    first_err(
+        "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = {0{a}}\n}\n",
+        "E0410",
+    );
+}
+
+#[test]
+fn dont_care_pattern_must_match_the_scrutinee_width() {
+    // `0b1??` is 3 bits — clean on bits[3], a width error on bits[4].
+    check_one(
+        "module M {\n  in s: bits[3]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    _ => false\n  }\n}\n",
+    )
+    .expect("0b1?? matches a bits[3]");
+    first_err(
+        "module M {\n  in s: bits[4]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    _ => false\n  }\n}\n",
+        "E0409",
+    );
+}
+
+#[test]
+fn a_dont_care_match_still_needs_a_wildcard() {
+    // Masked patterns earn no exhaustiveness credit, so even though `0b1??`
+    // and `0b0??` together cover every 3-bit value, a `_` is still required.
+    first_err(
+        "module M {\n  in s: bits[3]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    0b0?? => false\n  }\n}\n",
+        "E0601",
+    );
+}
+
+#[test]
+fn a_dont_care_pattern_on_an_enum_is_e0409() {
+    let src = "module M {\n  clock clk\n  reset rst\n  enum S { A, B }\n  reg s: S = S.A\n  out y: bit\n  on rise(clk) {\n    s <- s\n  }\n  y = match s {\n    0b1? => true\n    _ => false\n  }\n}\n";
+    first_err(src, "E0409");
+}
+
+#[test]
 fn min_max_take_two_same_width_operands() {
     check_one(
         "module M {\n  in a: bits[8]\n  in b: bits[8]\n  out y: bits[8]\n  y = max(a, b)\n}\n",
@@ -443,6 +505,44 @@ fn alu_match_arms_pass() {
 fn enum_state_machine_passes() {
     let src = "module Fsm {\n  clock clk\n  reset rst\n  enum S { A, B }\n  reg state: S = S.A\n  reg timer: bits[8] = 0\n  out o: bit\n  on rise(clk) {\n    state <- match state {\n      S.A => S.B\n      S.B => S.A\n    }\n    timer <- match state {\n      S.A => 50\n      S.B => 0\n    }\n  }\n  o = state == S.B\n}\n";
     check_one(src).expect("enum regs, variant arms, literal arms that fit");
+}
+
+#[test]
+fn register_file_passes() {
+    // A `mem`: clocked indexed write under `we`, combinational indexed read.
+    // No reset line needed — a memory power-on-inits itself.
+    let src = "module RF {\n  clock clk\n  in we: bit\n  in waddr: bits[2]\n  in wdata: bits[8]\n  in raddr: bits[2]\n  out rdata: bits[8]\n  mem m: bits[8][4] = 0\n  on rise(clk) {\n    if we {\n      m[waddr] <- wdata\n    }\n  }\n  rdata = m[raddr]\n}\n";
+    check_one(src).expect("a register file: indexed write + read, element-typed");
+}
+
+#[test]
+fn a_non_constant_memory_depth_is_e0201() {
+    let src = "module M {\n  in n: bits[4]\n  mem m: bits[8][n] = 0\n}\n";
+    first_err(src, "E0201");
+}
+
+#[test]
+fn a_zero_memory_depth_is_e0410() {
+    let d = first_err("module M {\n  mem m: bits[8][0] = 0\n}\n", "E0410");
+    assert!(d.msg.contains("depth"));
+}
+
+#[test]
+fn a_memory_init_that_overflows_the_element_is_e0405() {
+    first_err("module M {\n  mem m: bits[8][4] = 300\n}\n", "E0405");
+}
+
+#[test]
+fn a_constant_address_past_the_depth_is_e0406() {
+    let src = "module M {\n  out y: bits[8]\n  mem m: bits[8][4] = 0\n  y = m[4]\n}\n";
+    let d = first_err(src, "E0406");
+    assert!(d.msg.contains("address"));
+}
+
+#[test]
+fn a_memory_inside_repeat_is_e0303() {
+    let src = "module M {\n  repeat i: 0..2 {\n    mem m: bits[8][4] = 0\n  }\n}\n";
+    first_err(src, "E0303");
 }
 
 #[test]

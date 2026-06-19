@@ -104,6 +104,13 @@ impl<'a> Checker<'a> {
             Ty::Clock | Ty::Reset => {
                 let _ = self.not_data(cx, scrutinee, &st);
             }
+            Ty::Memory { .. } => self.err(
+                cx.file,
+                scrutinee,
+                "E0409",
+                format!("cannot `match` on {}", show(&st)),
+                "read one cell first — `match m[addr] { ... }`",
+            ),
             Ty::Bit | Ty::Bits(_) => {
                 let n = if let Ty::Bits(n) = st { n } else { 1 };
                 let mut bad = false;
@@ -134,6 +141,30 @@ impl<'a> Checker<'a> {
                                     );
                                 } else if !seen.insert(*value) {
                                     self.covered_already(cx, arm.value.span, raw);
+                                }
+                            }
+                            Pattern::IntMask { width, raw, .. } => {
+                                // A don't-care pattern must match the value's
+                                // width exactly. It covers a SET of values, so
+                                // it earns NO exhaustiveness credit (not added
+                                // to `seen`) — a `_` arm or full literal
+                                // coverage is still required, and overlap
+                                // between masked arms is not diagnosed (first
+                                // match wins).
+                                if u128::from(*width) != n {
+                                    bad = true;
+                                    self.err(
+                                        cx.file,
+                                        arm.value.span,
+                                        "E0409",
+                                        format!(
+                                            "don't-care pattern `{raw}` is {width} bits, \
+                                             but the matched value is {}",
+                                            show(&st)
+                                        ),
+                                        "a `0b…?…` pattern must be exactly as wide as the \
+                                         value it matches",
+                                    );
                                 }
                             }
                             Pattern::Bool(b) => {
@@ -249,6 +280,20 @@ impl<'a> Checker<'a> {
                                     arm.value.span,
                                     "E0409",
                                     format!("number pattern `{raw}` on enum `{}`", en.name.name),
+                                    "an enum's encoding is a compiler detail — match \
+                                     its variants by name",
+                                );
+                            }
+                            Pattern::IntMask { raw, .. } => {
+                                bad = true;
+                                self.err(
+                                    cx.file,
+                                    arm.value.span,
+                                    "E0409",
+                                    format!(
+                                        "don't-care pattern `{raw}` on enum `{}`",
+                                        en.name.name
+                                    ),
                                     "an enum's encoding is a compiler detail — match \
                                      its variants by name",
                                 );

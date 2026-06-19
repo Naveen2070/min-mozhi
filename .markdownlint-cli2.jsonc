@@ -10,6 +10,7 @@
     "CLAUDE.md", // tool-generated agent config (graphify), not project docs
     "graphify-out/**",
     ".venv/**",
+    "**/*.local.md", // local-only plan/workflow docs (git-excluded), never committed
   ],
   "config": {
     "default": true,

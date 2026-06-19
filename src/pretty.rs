@@ -182,8 +182,12 @@ impl Pretty {
                 let s = format!("{} {}", self.kw(Kw::Clock), c.name);
                 self.line(&s);
             }
-            ModuleItem::Reset(r) => {
-                let s = format!("{} {}", self.kw(Kw::Reset), r.name);
+            ModuleItem::Reset { name: r, is_async } => {
+                let s = if *is_async {
+                    format!("{} {} {}", self.kw(Kw::Async), self.kw(Kw::Reset), r.name)
+                } else {
+                    format!("{} {}", self.kw(Kw::Reset), r.name)
+                };
                 self.line(&s);
             }
             ModuleItem::Wire { name, ty, init } => {
@@ -203,6 +207,22 @@ impl Pretty {
                     name.name,
                     self.ty(ty, ind),
                     self.expr(reset, ind)
+                );
+                self.line(&s);
+            }
+            ModuleItem::Mem {
+                name,
+                ty,
+                depth,
+                init,
+            } => {
+                let s = format!(
+                    "{} {}: {}[{}] = {}",
+                    self.kw(Kw::Mem),
+                    name.name,
+                    self.ty(ty, ind),
+                    self.expr(depth, ind),
+                    self.expr(init, ind)
                 );
                 self.line(&s);
             }
@@ -275,12 +295,15 @@ impl Pretty {
 
     fn on_block(&mut self, on: &OnBlock) {
         let on_kw = self.kw(Kw::On);
-        let rise = self.kw(Kw::Rise);
+        let edge = self.kw(match on.edge {
+            crate::ast::Edge::Rise => Kw::Rise,
+            crate::ast::Edge::Fall => Kw::Fall,
+        });
         let head = match self.order {
-            // code-order:  on rise(clk) {
-            Order::Code => format!("{on_kw} {rise}({}) {{", on.clock.name),
-            // thamizh-order:  rise(clk) on {
-            Order::Thamizh => format!("{rise}({}) {on_kw} {{", on.clock.name),
+            // code-order:  on rise(clk) {  /  on fall(clk) {
+            Order::Code => format!("{on_kw} {edge}({}) {{", on.clock.name),
+            // thamizh-order:  rise(clk) on {  /  fall(clk) on {
+            Order::Thamizh => format!("{edge}({}) {on_kw} {{", on.clock.name),
         };
         self.line(&head);
         self.indent += 1;
@@ -511,6 +534,14 @@ impl Pretty {
                     .join(", ");
                 format!("{{{p}}}")
             }
+            ExprKind::Replicate { count, parts } => {
+                let p = parts
+                    .iter()
+                    .map(|e| self.expr(e, ind))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{{{}{{{p}}}}}", self.expr(count, ind))
+            }
             ExprKind::Index { base, index } => {
                 format!("{}[{}]", self.operand(base, ind), self.expr(index, ind))
             }
@@ -554,6 +585,7 @@ fn param_ty(t: ParamTy) -> &'static str {
 fn pattern(p: &Pattern) -> String {
     match p {
         Pattern::Int { raw, .. } => raw.clone(),
+        Pattern::IntMask { raw, .. } => raw.clone(),
         Pattern::Bool(b) => if *b { "true" } else { "false" }.to_string(),
         Pattern::Variant { enum_name, variant } => format!("{}.{}", enum_name.name, variant.name),
         Pattern::Wildcard => "_".to_string(),

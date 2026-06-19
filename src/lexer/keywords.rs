@@ -16,9 +16,18 @@ const KEYWORDS_TOML: &str = include_str!("../../keywords.toml");
 /// TOML root keys cannot follow a table header).
 #[derive(Deserialize)]
 struct TableFile {
+    /// Keyword-set version (`version = N` at the TOML root). Bumped when
+    /// canonical spellings change; cross-checked against
+    /// [`crate::version::KEYWORD_SET_VERSION`].
+    #[serde(default = "default_kw_version")]
+    version: u8,
     keywords: HashMap<String, Spellings>,
     #[serde(default)]
     reserved: Vec<String>,
+}
+
+fn default_kw_version() -> u8 {
+    1
 }
 
 /// The three canonical spellings of one keyword, plus optional per-column
@@ -51,6 +60,7 @@ pub struct KeywordTable {
     /// `Kw` has all three (REQUIRED_KEYS guarantees the rows exist).
     by_kw: HashMap<Kw, [String; 3]>,
     reserved: Vec<String>,
+    version: u8,
 }
 
 impl KeywordTable {
@@ -72,10 +82,17 @@ impl KeywordTable {
         }
     }
 
-    /// Reserved for a future feature (e.g. `fall`, `struct`, `mem`) —
+    /// Reserved for a future feature (e.g. `sync`, `struct`, `inout`) —
     /// not a keyword yet, but not usable as an identifier either.
     pub fn is_reserved(&self, ident: &str) -> bool {
         self.reserved.iter().any(|r| r == ident)
+    }
+
+    /// The keyword-set version from `keywords.toml` (`version = N`). The
+    /// language edition's `code` aligns with this;
+    /// [`crate::version::KEYWORD_SET_VERSION`] mirrors it (a test cross-checks).
+    pub fn version(&self) -> u8 {
+        self.version
     }
 }
 
@@ -87,10 +104,10 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 28] = [
-    "module", "in", "out", "wire", "reg", "clock", "reset", "on", "rise", "if", "else", "match",
-    "enum", "let", "const", "repeat", "import", "true", "false", "test", "for", "tick", "expect",
-    "and", "or", "not", "syntax", "thamizh",
+const REQUIRED_KEYS: [&str; 31] = [
+    "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
+    "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
+    "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -147,6 +164,7 @@ pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
         map,
         by_kw,
         reserved: file.reserved,
+        version: file.version,
     }
 });
 
@@ -159,10 +177,13 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "out" => Kw::Out,
         "wire" => Kw::Wire,
         "reg" => Kw::Reg,
+        "mem" => Kw::Mem,
         "clock" => Kw::Clock,
         "reset" => Kw::Reset,
+        "async" => Kw::Async,
         "on" => Kw::On,
         "rise" => Kw::Rise,
+        "fall" => Kw::Fall,
         "if" => Kw::If,
         "else" => Kw::Else,
         "match" => Kw::Match,
@@ -215,9 +236,13 @@ mod tests {
     }
 
     #[test]
-    fn fall_is_reserved() {
-        assert!(TABLE.is_reserved("fall"));
-        assert!(TABLE.lookup("fall").is_none());
+    fn fall_is_an_active_keyword() {
+        // Promoted from reserved to active for `on fall(clk)` (A3, 2026-06-17).
+        // Tanglish/Tamil spellings are PROVISIONAL pending native review (R9/R11).
+        assert!(!TABLE.is_reserved("fall"));
+        assert_eq!(TABLE.lookup("fall").unwrap().0, Kw::Fall);
+        assert_eq!(TABLE.lookup("irakkam").unwrap().0, Kw::Fall);
+        assert_eq!(TABLE.lookup("இறக்கம்").unwrap().0, Kw::Fall);
     }
 
     #[test]
@@ -245,7 +270,6 @@ mod tests {
             "interface",
             "chan",
             "prove",
-            "async",
             "await",
         ] {
             assert!(

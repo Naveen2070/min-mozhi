@@ -1,0 +1,20 @@
+// Min-Mozhi example: a counter with an ASYNCHRONOUS reset. `async reset rst`
+// adds the reset to the always-block's sensitivity list, so the register clears
+// the instant `rst` is asserted (Verilog `always @(posedge clk or posedge rst)`)
+// rather than waiting for the next clock edge. A plain `reset rst` stays
+// synchronous (the default). Reset is active-high.
+
+module ACounter {
+  clock clk
+  async reset rst
+
+  out count: bits[8]
+
+  reg value: bits[8] = 0
+
+  on rise(clk) {
+    value <- value +% 1
+  }
+
+  count = value
+}

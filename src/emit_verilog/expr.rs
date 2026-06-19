@@ -153,6 +153,14 @@ impl Emitter<'_> {
                             Pattern::Int { value, raw } => {
                                 format!("({s} == {})", verilog_literal(*value, raw))
                             }
+                            Pattern::IntMask {
+                                value, mask, width, ..
+                            } => {
+                                // `(s & 'bMASK) == 'bVALUE`, both sized to the
+                                // pattern width (don't-care bits are 0 in both).
+                                let w = *width as usize;
+                                format!("(({s} & 'b{:0w$b}) == 'b{:0w$b})", mask, value, w = w)
+                            }
                             Pattern::Bool(b) => {
                                 format!("({s} == {})", if *b { "1'b1" } else { "1'b0" })
                             }
@@ -171,6 +179,11 @@ impl Emitter<'_> {
             ExprKind::Concat(parts) => {
                 let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst)).collect();
                 format!("{{{}}}", ps.join(", "))
+            }
+            ExprKind::Replicate { count, parts } => {
+                let c = self.index_expr(count, subst);
+                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst)).collect();
+                format!("{{{c}{{{}}}}}", ps.join(", "))
             }
             ExprKind::Index { base, index } => {
                 let b = self.expr_subst(base, subst);

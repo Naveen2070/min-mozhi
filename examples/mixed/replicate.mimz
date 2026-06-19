@@ -1,0 +1,12 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): bit replication `{N{x}}`.
+// `{2{a}}` is `{a, a}`; the count is compile-time, like concatenation.
+
+module Replicate {
+  ulleedu  a: bits[4]
+
+  out doubled: bits[8]
+  வெளியீடு tripled: bits[12]
+
+  doubled = {2{a}}
+  tripled = {3{a}}
+}

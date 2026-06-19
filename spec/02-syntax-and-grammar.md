@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.7.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.12.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -56,12 +56,19 @@ Rules on display:
 - `clock` / `reset` are dedicated declarations, not ordinary `bit` inputs.
   Reset behavior is generated automatically from each register's reset value.
   A module that declares any `reg` **must** declare a `reset`.
+- Reset is **synchronous, active-high** by default (`reset rst`): registers take
+  their reset value on the clock edge while `rst` is high. Prefix `async`
+  (`async reset rst`) for an **asynchronous** reset — the register clears the
+  instant `rst` is asserted, lowering to `always @(posedge clk or posedge rst)`.
+  (`async`'s Tanglish/Tamil spellings are provisional, pending native review.)
 - `reg name: type = resetValue` — the reset value is **mandatory**. No
   uninitialized state.
-- `on rise(clk) { ... }` is the only place registers update, and `<-` is the
-  only assignment allowed inside it. Using `=` on a reg, or `<-` on a wire, is
-  a compile error with a teaching message. (v0.2: rising-edge only; `fall` is
-  a reserved word for the future.)
+- `on rise(clk) { ... }` (and `on fall(clk) { ... }`) is the only place
+  registers update, and `<-` is the only assignment allowed inside it. Using `=`
+  on a reg, or `<-` on a wire, is a compile error with a teaching message.
+  `rise` lowers to Verilog `posedge`, `fall` to `negedge`; a register samples on
+  the edge of its block. (`fall`'s Tanglish/Tamil spellings are provisional,
+  pending native review.)
 - `value + 1` would be `bits[WIDTH+1]` and fail to assign. `+%` is the
   explicit wrapping (modulo) operator — counters wrap **on purpose**, visibly.
   The error message for `+` suggests `+%` so beginners learn the distinction
@@ -103,6 +110,11 @@ module Alu(WIDTH: int = 8) {
   path for invalid encodings (e.g. after a bit flip), and the emitted
   Verilog makes the last arm the default either way. An arm placed after
   `_`, or a pattern value already covered, is an error (unreachable).
+- **Don't-care patterns**: a binary pattern may use `?` for a don't-care bit —
+  `0b1??` matches any value whose high bit is 1 (the Verilog `casez` idiom). A
+  don't-care pattern must be **exactly as wide** as the scrutinee, and on its own
+  it does **not** prove exhaustiveness — keep a `_` arm (or exact literal
+  coverage). Binary only for now.
 - `wire name: type = expr` introduces a named combinational signal.
 
 ### 1.4 State machines — `enum` + `match`
@@ -258,6 +270,7 @@ wire eq: bit        = t < s                // signed comparison
 wire lo:   bits[4] = data[3:0]        // slice (inclusive, msb:lsb)
 wire hi:   bits[4] = data[7:4]
 wire both: bits[8] = { hi, lo }       // concatenation, msb-first
+wire quad: bits[16] = {4{hi}}         // replication — {hi, hi, hi, hi}
 wire wide: bits[16] = extend(data, 16)  // explicit zero-extension
 
 wire k1: bits[8] = 0b1010_0001        // binary, `_` separators allowed
@@ -271,6 +284,10 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
   adopted: `[hi:lo]` is the universal hardware convention (Verilog/VHDL/every
   textbook), and matching it keeps a student fluent across tools — the
   cross-tool familiarity outweighs the cosmetic gain.
+- **Replication** is `{N{x}}` — the inner concatenation group repeated `N`
+  times, msb-first, where `N` is a compile-time constant: `{4{hi}}` is
+  `{hi, hi, hi, hi}`. Like Verilog's `{N{...}}`; the result width is `N *` the
+  inner width (E0410 if that is not a valid width, E0201 if `N` is not constant).
 - There is **no implicit** widening or truncation anywhere. `extend(x, N)`
   widens; slicing narrows. Both are visible at the call site.
 - `extend(x, N)` requires `N >=` the current width; `trunc(x, N)` requires
@@ -321,6 +338,49 @@ test "counter counts" for Counter(WIDTH: 4) {
 hardware. `tick` and `expect` are keywords valid only inside `test`. Execution
 semantics (and the equivalent `await clk.cycles(n)` timing form) are specified in
 [`spec/05-simulator.md`](05-simulator.md).
+
+### 1.11 Memories — `mem`
+
+```mimz
+module RegFile {
+  clock clk
+  in  we: bit
+  in  waddr: bits[2]
+  in  wdata: bits[8]
+  in  raddr: bits[2]
+  out rdata: bits[8]
+
+  mem m: bits[8][4] = 0       // 4 cells of bits[8], every cell seeded to 0
+
+  on rise(clk) {
+    if we {
+      m[waddr] <- wdata       // clocked, indexed write
+    }
+  }
+
+  rdata = m[raddr]            // combinational, indexed read
+}
+```
+
+A `mem` is an **addressable memory** — `DEPTH` cells, each of an element type
+(`bit` / `bits[W]` / `signed[W]`), declared `mem name: <element>[DEPTH] = init`.
+It lowers to a Verilog packed-element memory `reg [W-1:0] name [0:DEPTH-1]`.
+
+- **`DEPTH`** is a compile-time constant (`1..` cells; E0410 otherwise, E0201 if
+  not constant).
+- **Init.** The init value is **mandatory** and seeds **every** cell at power-on
+  (Verilog `initial`) — the "no uninitialized state" safety rule, without an
+  unsynthesizable whole-memory clear. A `reset` line clears registers only, not
+  memory; so a memory-only module needs no `reset`.
+- **Read** `m[addr]` is **combinational** and yields the element type; the
+  address may be a runtime signal. A compile-time address outside `0..DEPTH-1` is
+  E0406; a runtime out-of-range read yields the init value.
+- **Write** `m[addr] <- v` is **sequential** — only inside an `on` block, where
+  it binds to that block's clock/edge. `=` cannot write a memory (E0505), and a
+  memory cannot be sliced or assigned as a whole (E0108). A memory is written by
+  at most one `on` block (E0503).
+- A memory is internal: its cells are not dumped to VCD (only the signals that
+  read it are). Enum-element memories and 2-D memories are deferred (section 7).
 
 ---
 
@@ -405,15 +465,16 @@ moduleDecl  = "module" IDENT [ "(" [ paramList ] ")" ] "{" { moduleItem } "}" ;
 paramList   = param { "," param } ;
 param       = IDENT ":" ( "int" | "bool" ) [ "=" constExpr ] ;
 
-moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl
+moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
             | constDecl | enumDecl | instDecl | onBlock | driveStmt
             | repeatBlock ;
 
 portDecl    = ( "in" | "out" ) IDENT ":" type NEWLINE ;
 clockDecl   = "clock" IDENT NEWLINE ;
-resetDecl   = "reset" IDENT NEWLINE ;
+resetDecl   = [ "async" ] "reset" IDENT NEWLINE ;
 wireDecl    = "wire" IDENT ":" type "=" expr NEWLINE ;
 regDecl     = "reg"  IDENT ":" type "=" constExpr NEWLINE ;
+memDecl     = "mem"  IDENT ":" type "[" constExpr "]" "=" constExpr NEWLINE ;
 enumDecl    = "enum" IDENT "{" IDENT { "," IDENT } [ "," ] "}" ;
 instDecl    = "let" instName "=" IDENT "(" [ argList ] ")"
               [ "{" [ connList ] "}" ] NEWLINE ;
@@ -426,7 +487,7 @@ conn        = IDENT ":" expr ;
 repeatBlock = "repeat" IDENT ":" constExpr ".." constExpr
               "{" { moduleItem } "}" ;             (* compile-time unrolled *)
 
-onBlock     = "on" "rise" "(" IDENT ")" seqBlock ; (* "fall" reserved *)
+onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
 seqStmt     = regAssign | seqIf ;
 regAssign   = lvalue "<-" expr NEWLINE ;
@@ -444,7 +505,9 @@ expr        = ifExpr | matchExpr | binExpr ;
 ifExpr      = "if" expr "{" expr "}" "else" ( "{" expr "}" | ifExpr ) ;
 matchExpr   = "match" expr "{" { matchArm } "}" ;
 matchArm    = ( pattern { "," pattern } | "_" ) "=>" expr NEWLINE ;
-pattern     = literal | IDENT "." IDENT ;       (* value or Enum.Variant *)
+pattern     = literal | maskLiteral | IDENT "." IDENT ; (* value, don't-care, or Enum.Variant *)
+maskLiteral = "0b" binMaskDigit { binMaskDigit } ;      (* `0b1??` — `?` is don't-care *)
+binMaskDigit = "0" | "1" | "?" | "_" ;
 
 binExpr     = unary { binOp unary } ;           (* precedence table, section 3 *)
 binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
@@ -452,8 +515,9 @@ binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&&" | "||" | "and" | "or" ;
 unary       = [ "~" | "-" | "!" | "not" | "&" | "|" | "^" ] postfix ;
 postfix     = primary { "[" expr [ ":" expr ] "]" | "." IDENT } ;
-primary     = literal | IDENT | "(" expr ")" | concat | callExpr ;
+primary     = literal | IDENT | "(" expr ")" | concat | replication | callExpr ;
 concat      = "{" expr { "," expr } "}" ;
+replication = "{" expr "{" expr { "," expr } "}" "}" ;
 callExpr    = ( "extend" | "trunc" ) "(" expr "," constExpr ")"
             | ( "signed" | "unsigned" | "abs"
               | "nand" | "nor" | "xnor" ) "(" expr ")"
@@ -493,21 +557,59 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## 7. Deferred Features (explicitly out of v0.2)
 
-| Feature                                              | Target                                              |
-| ---------------------------------------------------- | --------------------------------------------------- |
-| `on fall(...)` falling-edge blocks                   | reserved keyword, post-v1                           |
-| `inout`/tristate ports                               | Phase 2                                             |
-| Memories/arrays (`mem`)                              | Phase 2 spec bump                                   |
-| Clock-domain crossing (`sync`)                       | Phase 2                                             |
-| Structs/bundles/buses                                | post-Phase 2 (stdlib time)                          |
-| `match` ranges and don't-care bit patterns (`0b1??`) | v0.3+                                               |
-| Division/modulo                                      | never as operators; stdlib divider module (Phase 4) |
-| Wrapping/instantiating external Verilog modules      | per Constitution — design in Phase 2+               |
+| Feature                                         | Target                                                |
+| ----------------------------------------------- | ----------------------------------------------------- |
+| `inout`/tristate ports                          | Phase 2                                               |
+| Enum-element and 2-D memories (`mem`)           | post-v1 (scalar `bit`/`bits`/`signed` cells ship now) |
+| Clock-domain crossing (`sync`)                  | Phase 2                                               |
+| Structs/bundles/buses                           | post-Phase 2 (stdlib time)                            |
+| `match` ranges (e.g. `0..7`)                    | v0.3+                                                 |
+| Division/modulo                                 | never as operators; stdlib divider module (Phase 4)   |
+| Wrapping/instantiating external Verilog modules | per Constitution — design in Phase 2+                 |
 
 ---
 
 ## Changelog
 
+- **v0.2.12 (2026-06-17):** **Asynchronous reset** added (section 1.2) — prefix a
+  reset declaration with `async` (`async reset rst`) to widen every always-block
+  that uses it to `@(posedge clk or posedge rst)`; a plain `reset` stays
+  synchronous (the default). Active-high only for this cut (active-low polarity is
+  deferred — no polarity keyword is reserved yet). `async` was promoted from
+  reserved to an active keyword (KW_ASYNC; Tanglish/Tamil provisional). Additive.
+  Grammar `resetDecl` gained the optional `async`. The cycle-based kernel models
+  async and sync reset identically at its per-cycle sample points (sub-cycle
+  timing is out of scope); the distinction lives in the emitted Verilog. Covered
+  by the `async_reset` four-flavor example (kernel == VCD == Icarus).
+- **v0.2.11 (2026-06-17):** **Memories `mem`** added (new section 1.11) — an
+  addressable array `mem name: <element>[DEPTH] = init`, with a combinational
+  indexed read (`m[addr]`) and a clocked indexed write (`m[addr] <- v`); lowers
+  to a Verilog packed-element `reg [W-1:0] m [0:DEPTH-1]` with an `initial`
+  power-on seed. `mem` was promoted from reserved to an active keyword (KW_MEM;
+  Tanglish/Tamil provisional). Additive. Grammar gained `memDecl`. Covered by the
+  `regfile` four-flavor example (kernel == VCD == Icarus). Also corrected the
+  Deferred table: `on fall` (shipped v0.2.10) and don't-care patterns (shipped
+  v0.2.9) were stale entries; enum-element / 2-D memories remain deferred.
+- **v0.2.10 (2026-06-17):** **Falling-edge `on fall(clk)`** added (section 1.2) —
+  the negedge sibling of `on rise(clk)`; lowers to Verilog `always @(negedge clk)`.
+  `fall` was promoted from reserved to an active keyword (KW_FALL; see
+  `03-keywords-trilingual.md`, Tanglish/Tamil provisional). Additive. The
+  simulator gained an edge-aware kernel (posedge updates before negedge within a
+  period), so mixed-edge designs match Icarus bit-for-bit — covered by the
+  `dual_edge` four-flavor example.
+- **v0.2.9 (2026-06-17):** **Don't-care `match` patterns** added (section 1.3) —
+  a binary pattern may use `?` for a don't-care bit (`0b1??`, the `casez` idiom).
+  It must match the scrutinee width exactly (E0409 otherwise) and earns no
+  exhaustiveness credit (a `_` arm or exact literal coverage is still required —
+  E0601). Additive (no new keyword); binary only. Lowers to a masked equality
+  `(s & MASK) == VALUE`; covered by the `priority` four-flavor example and the
+  Icarus differential.
+- **v0.2.8 (2026-06-17):** **Replication `{N{x}}`** added (section 1.8) — repeats
+  an inner concatenation group `N` times, `N` a compile-time constant; the result
+  width is `N *` the inner width (E0410 if that is not a valid width, E0201 if `N`
+  is not constant). Additive (no new keyword) — the first of the pre-v0.1.0
+  RTL-parity batch. Lowers to Verilog `{N{...}}`; covered by the `replicate`
+  four-flavor example and the Icarus differential.
 - **v0.2.6 (2026-06-13):** two pre-v0.1.0-freeze syntax rulings (idea triage
   section 8, `docs/Ideas/language_plan.md` section 9). (1) **Comparison chaining allowed**:
   a monotonic one-direction chain (`0 <= x < 100`) desugars to `&&` of its

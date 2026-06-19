@@ -110,8 +110,13 @@ pub enum ModuleItem {
     /// `clock clk` — clocks are a dedicated type, never plain bits (safety
     /// rule: clock-domain typing).
     Clock(Ident),
-    /// `reset rst` — synchronous, active-high (v0.2).
-    Reset(Ident),
+    /// `reset rst` (synchronous, active-high) or `async reset rst`
+    /// (asynchronous). `is_async` widens every always-block that uses this
+    /// reset to `@(… or posedge rst)`; polarity stays active-high (v0.2).
+    Reset {
+        name: Ident,
+        is_async: bool,
+    },
     /// `wire name: type = expr` — declared and driven in one statement;
     /// an undriven wire cannot be written.
     Wire {
@@ -125,6 +130,17 @@ pub enum ModuleItem {
         name: Ident,
         ty: Type,
         reset: Expr,
+    },
+    /// `mem name: element_type[DEPTH] = init` — an addressable memory of
+    /// `DEPTH` elements. Read combinationally (`m[addr]`), written on a clock
+    /// (`m[addr] <- v` inside `on`). The init value is mandatory and seeds
+    /// every cell at power-on (safety rule: no uninitialized state); `depth`
+    /// must const-evaluate to a positive width.
+    Mem {
+        name: Ident,
+        ty: Type,
+        depth: Expr,
+        init: Expr,
     },
     Const(ConstDecl),
     Enum(EnumDecl),
@@ -185,12 +201,21 @@ pub struct Conn {
     pub signal: Expr,
 }
 
-/// `on rise(clk) { ... }` — everything inside updates registers with `<-`
-/// on the rising edge of `clock`. Rising-edge only in v0.2 (`fall` is
-/// reserved).
+/// Which clock edge a sequential block (and its registers) triggers on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    /// `on rise(clk)` — Verilog `posedge`.
+    Rise,
+    /// `on fall(clk)` — Verilog `negedge`.
+    Fall,
+}
+
+/// `on rise(clk) { ... }` / `on fall(clk) { ... }` — everything inside updates
+/// registers with `<-` on the chosen `edge` of `clock`.
 #[derive(Clone, Debug)]
 pub struct OnBlock {
     pub clock: Ident,
+    pub edge: Edge,
     pub body: Vec<SeqStmt>,
     pub span: Span,
 }

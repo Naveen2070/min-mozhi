@@ -2,6 +2,35 @@
 
 ## Install
 
+There are two paths: download a prebuilt binary, or build from source.
+
+### Option A — download a prebuilt binary (no Rust needed)
+
+Each tagged release attaches a `mimz` binary for every platform to the GitHub
+Release page. Pick the archive for your OS/arch:
+
+| Platform                   | Archive                                           |
+| -------------------------- | ------------------------------------------------- |
+| Linux (any distro, static) | `mimz-<version>-x86_64-unknown-linux-musl.tar.gz` |
+| Windows (x86-64)           | `mimz-<version>-x86_64-pc-windows-msvc.zip`       |
+| macOS (Intel)              | `mimz-<version>-x86_64-apple-darwin.tar.gz`       |
+| macOS (Apple Silicon)      | `mimz-<version>-aarch64-apple-darwin.tar.gz`      |
+
+Unpack it, then put `mimz` on your `PATH`. Each release also ships a `SHA256SUMS`
+file — verify your download first with `shasum -a 256 -c SHA256SUMS --ignore-missing`
+(macOS/Linux) or `Get-FileHash <archive> -Algorithm SHA256` and compare to the
+matching line in `SHA256SUMS` (Windows).
+
+> **The binaries are UNSIGNED for v0.1.0** (code signing is deferred — see the
+> `UNSIGNED.txt` in each archive). They are safe; the OS just doesn't recognise
+> the (absent) signature on first run:
+>
+> - **macOS** — Gatekeeper may block it. Clear the quarantine once with
+>   `xattr -d com.apple.quarantine ./mimz`, or right-click the binary → **Open**.
+> - **Windows** — SmartScreen may warn. Click **More info → Run anyway**.
+
+### Option B — build from source
+
 Min-Mozhi is a Rust program. With [Rust](https://rustup.rs) (stable ≥ 1.85):
 
 ```text
@@ -14,7 +43,8 @@ Every command below is written as `mimz …`. Until you install the binary on yo
 `PATH`, run it through Cargo instead: `cargo run -- <args>`. For example,
 `mimz check foo.mimz` becomes `cargo run -- check foo.mimz`.
 
-Source files use the `.mimz` extension.
+Source files use the `.mimz` extension. Confirm your install with
+`mimz --version` — it prints the compiler version and the language edition.
 
 ## Your first module
 

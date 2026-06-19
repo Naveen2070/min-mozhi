@@ -25,6 +25,35 @@ impl<'a> Checker<'a> {
         let Some((first, second)) = &lv.index else {
             return base;
         };
+        // A memory write `m[addr] <- v` targets one cell (the element type);
+        // a memory cannot be sliced.
+        if let Ty::Memory {
+            width,
+            signed,
+            depth,
+        } = base
+        {
+            return match second {
+                None => {
+                    self.mem_addr_in_range(cx, first, depth);
+                    if signed {
+                        Ty::Signed(width)
+                    } else {
+                        bits(width)
+                    }
+                }
+                Some(_) => {
+                    self.err(
+                        cx.file,
+                        lv.span,
+                        "E0406",
+                        "a memory is addressed one cell at a time",
+                        "write `m[addr] <- value` — a memory cannot be sliced `[hi:lo]`",
+                    );
+                    Ty::Unknown
+                }
+            };
+        }
         let n = match base {
             Ty::Bit => 1,
             Ty::Bits(n) | Ty::Signed(n) => n,
@@ -79,6 +108,45 @@ impl<'a> Checker<'a> {
                 "E0406",
                 format!("{} cannot be used as an index", show(&other)),
                 "an index is a compile-time value or an unsigned signal",
+            ),
+        }
+    }
+
+    /// Range-check a memory address against a depth of `depth` cells. Mirrors
+    /// [`Self::index_in_range`] but the bound is a cell count, not a bit width,
+    /// so the diagnostic speaks of addresses and cells. A compile-time address
+    /// out of range is E0406; a runtime (signal) address passes unchecked.
+    fn mem_addr_in_range(&mut self, cx: &mut Wcx<'a>, addr: &'a Expr, depth: u128) {
+        let t = self.infer_ty(cx, addr);
+        match t {
+            Ty::CtInt(v) => {
+                if v < 0 || !fits_in_count(v, depth) {
+                    self.err(
+                        cx.file,
+                        addr.span,
+                        "E0406",
+                        format!("address `{v}` is out of range"),
+                        format!(
+                            "the memory has {depth} cells, so addresses run 0..={}",
+                            depth - 1
+                        ),
+                    );
+                }
+            }
+            Ty::Bit | Ty::Bits(_) | Ty::Unknown => {}
+            Ty::Signed(_) => self.err(
+                cx.file,
+                addr.span,
+                "E0403",
+                "a `signed` value cannot be a memory address",
+                "addresses are non-negative — cast with `unsigned(...)` first",
+            ),
+            other => self.err(
+                cx.file,
+                addr.span,
+                "E0406",
+                format!("{} cannot be used as a memory address", show(&other)),
+                "an address is a compile-time value or an unsigned signal",
             ),
         }
     }
@@ -277,6 +345,13 @@ impl<'a> Checker<'a> {
                 format!("a number cannot drive {}", show(&t)),
                 "clocks and resets come from the parent module, never from data",
             ),
+            Ty::Memory { .. } => self.err(
+                cx.file,
+                span,
+                "E0403",
+                format!("a number cannot stand for {}", show(&t)),
+                "address one cell — `m[addr]` — to read or write a value",
+            ),
             Ty::CtInt(_) | Ty::Unknown => {}
         }
     }
@@ -335,8 +410,24 @@ impl<'a> Checker<'a> {
                 self.unify_arms(cx, e.span, &arm_tys)
             }
             ExprKind::Concat(parts) => self.concat_ty(cx, parts),
+            ExprKind::Replicate { count, parts } => self.replicate_ty(cx, count, parts),
             ExprKind::Index { base, index } => {
                 let bt = self.infer_ty(cx, base);
+                // A memory read `m[addr]` yields the element type (the address
+                // may be a runtime signal); a bit-vector index yields one bit.
+                if let Ty::Memory {
+                    width,
+                    signed,
+                    depth,
+                } = bt
+                {
+                    self.mem_addr_in_range(cx, index, depth);
+                    return if signed {
+                        Ty::Signed(width)
+                    } else {
+                        bits(width)
+                    };
+                }
                 let n = match bt {
                     Ty::Bit => 1,
                     Ty::Bits(n) | Ty::Signed(n) => n,

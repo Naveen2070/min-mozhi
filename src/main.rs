@@ -228,6 +228,13 @@ enum Cmd {
 }
 
 fn main() -> ExitCode {
+    // `--version` prints the uname-style block (variant on top, both axes),
+    // handled here so the variant is truly the top line — clap's `long_version`
+    // would prepend the binary name. `-V` keeps clap's short crate version.
+    if std::env::args().skip(1).any(|a| a == "--version") {
+        println!("{}", mimz::version::version_block());
+        return ExitCode::SUCCESS;
+    }
     let cli = Cli::parse();
     let config_path = cli.config;
     match cli.command {

@@ -288,6 +288,12 @@ fn expr_reads<'a>(e: &'a Expr, out: &mut Vec<(&'a str, Span)>) {
                 expr_reads(p, out);
             }
         }
+        ExprKind::Replicate { count, parts } => {
+            expr_reads(count, out);
+            for p in parts {
+                expr_reads(p, out);
+            }
+        }
         ExprKind::Index { base, index } => {
             expr_reads(base, out);
             expr_reads(index, out);

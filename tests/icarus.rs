@@ -669,7 +669,7 @@ fn differential_m(
 fn item_ident(it: &ModuleItem) -> Option<String> {
     match it {
         ModuleItem::Port { name, .. } => Some(name.name.clone()),
-        ModuleItem::Clock(n) | ModuleItem::Reset(n) => Some(n.name.clone()),
+        ModuleItem::Clock(n) | ModuleItem::Reset { name: n, .. } => Some(n.name.clone()),
         _ => None,
     }
 }
@@ -718,8 +718,15 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/counter.mimz", &[], &[], 20);
     differential(&bin, "english/shift_register.mimz", &[], &[("din", 1)], 16);
     differential(&bin, "english/edge_detector.mimz", &[], &[("din", 1)], 8);
+    // Dual-edge: a posedge reg feeding a negedge reg — exercises the edge-aware
+    // kernel's rise-before-fall ordering against Icarus (A3).
+    differential(&bin, "english/dual_edge.mimz", &[], &[("d", 1)], 8);
     // Blinker at a tiny LIMIT so `led` actually toggles within the run.
     differential(&bin, "english/blinker.mimz", &[("LIMIT", 3)], &[], 12);
+    // Async reset (A5): `always @(posedge clk or posedge rst)`. Under the
+    // clock-aligned default stimulus the kernel (reset at the edge) and the
+    // async Verilog agree at every sample point.
+    differential(&bin, "english/async_reset.mimz", &[], &[], 20);
     // Combinational (generated input vectors).
     differential(&bin, "english/adder.mimz", &[], &[], 8);
     differential(&bin, "english/comparator.mimz", &[], &[], 8);
@@ -730,6 +737,20 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     // Combinational + SIGNED — the `%b` binary compare makes signedness moot.
     differential(&bin, "english/bitops.mimz", &[], &[], 8);
     differential(&bin, "english/signed_math.mimz", &[], &[], 8);
+    // Replication `{N{x}}` (combinational).
+    differential(&bin, "english/replicate.mimz", &[], &[], 8);
+    // Don't-care `match` patterns `0b1??` (combinational priority decoder).
+    differential(&bin, "english/priority.mimz", &[], &[], 8);
+    // Memory `mem` (A4): a register file — `initial`-seeded cells, a clocked
+    // indexed write (`m[waddr] <- wdata` when `we`), and a combinational indexed
+    // read (`rdata = m[raddr]`). Held stimulus writes and reads the same cell.
+    differential(
+        &bin,
+        "english/regfile.mimz",
+        &[],
+        &[("we", 1), ("waddr", 2), ("wdata", 165), ("raddr", 2)],
+        8,
+    );
     // Pure-Tamil (Tamil keywords AND identifiers): the testbench romanizes names
     // to match the emitted Verilog, so these now ride the same bit-for-bit
     // differential as their english twins (`கணக்கி`/kanakki = counter, etc.).

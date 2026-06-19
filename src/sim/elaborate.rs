@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::ast::{self, Dir, Expr, ExprKind, ModuleItem, Pattern, SeqStmt, UnOp};
+use crate::ast::{self, Dir, Edge, Expr, ExprKind, ModuleItem, Pattern, SeqStmt, UnOp};
 
 use super::value::{const_eval, pick_module, type_width};
 
@@ -83,6 +83,25 @@ pub struct Reg {
     /// The clock of the `on` block that assigns this reg (empty if none does,
     /// in which case the reg simply holds its reset value forever).
     pub clock: String,
+    /// The edge of the assigning `on` block (`rise`/`fall`). Defaults to `Rise`
+    /// for an unassigned reg (it never ticks).
+    pub edge: Edge,
+}
+
+/// A memory: an array of `depth` cells, each `width` bits, seeded to the folded
+/// `init` value at construction (power-on init). Read combinationally
+/// (`m[addr]`) and written on `clock`'s `edge` (`m[addr] <- v`); a memory with
+/// no writing `on` block is a read-only ROM holding `init`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Mem {
+    pub name: String,
+    pub width: Width,
+    pub depth: u128,
+    pub init: i128,
+    /// The clock of the `on` block that writes this memory (empty if none does).
+    pub clock: String,
+    /// The edge of the writing `on` block (`rise`/`fall`).
+    pub edge: Edge,
 }
 
 /// One sequential process — the body of an `on rise(clock)` block. The kernel
@@ -91,6 +110,8 @@ pub struct Reg {
 #[derive(Clone, Debug)]
 pub struct Process {
     pub clock: String,
+    /// The edge this block triggers on (`on rise`/`on fall`).
+    pub edge: Edge,
     pub body: Vec<SeqStmt>,
 }
 
@@ -106,6 +127,8 @@ pub struct Design {
     pub outputs: Vec<Signal>,
     pub wires: Vec<Signal>,
     pub regs: Vec<Reg>,
+    /// Memories (RAM/register arrays), seeded at construction.
+    pub mems: Vec<Mem>,
     /// Combinational drivers: signal name → driving expression. Covers wire
     /// `init` and `out = expr` drives (outputs and wires only; never regs).
     pub comb: BTreeMap<String, Expr>,
@@ -242,6 +265,7 @@ fn elaborate_module(
     let mut outputs = Vec::new();
     let mut wires = Vec::new();
     let mut regs = Vec::new();
+    let mut mems = Vec::new();
     let mut comb: BTreeMap<String, Expr> = BTreeMap::new();
     let mut procs = Vec::new();
     let mut clocks = Vec::new();
@@ -264,7 +288,14 @@ fn elaborate_module(
                 }
             }
             ModuleItem::Clock(n) => clocks.push(n.name.clone()),
-            ModuleItem::Reset(n) => resets.push(n.name.clone()),
+            // The cycle-based kernel applies reset at the clock edge; an async
+            // reset is observationally identical at the per-cycle sample points
+            // (sub-cycle timing is out of the kernel's model), so `is_async` is
+            // an emitter-only distinction and the sim just records the name. The
+            // path to modeling sub-cycle reset timing is the three-tier fidelity
+            // roadmap in docs/plan/phase-1.5-simulator.md (currently Tier 3:
+            // delegate timing-faithful runs to the Verilog/Icarus oracle).
+            ModuleItem::Reset { name: n, .. } => resets.push(n.name.clone()),
             ModuleItem::Wire { name, ty, init } => {
                 wires.push(Signal {
                     name: name.name.clone(),
@@ -280,6 +311,29 @@ fn elaborate_module(
                     width,
                     reset,
                     clock: String::new(),
+                    edge: Edge::Rise,
+                });
+            }
+            ModuleItem::Mem {
+                name,
+                ty,
+                depth,
+                init,
+            } => {
+                let width = width_of(ty, &consts)?;
+                // The sim runs WITHOUT the checker, so guard the depth here too.
+                let d = const_eval(&rw0.expr(depth)?, &consts)?;
+                let depth = u128::try_from(d).ok().filter(|d| *d >= 1).ok_or_else(|| {
+                    format!("memory `{}` has a non-positive depth ({d})", name.name)
+                })?;
+                let init = const_eval(&rw0.expr(init)?, &consts)?;
+                mems.push(Mem {
+                    name: name.name.clone(),
+                    width,
+                    depth,
+                    init,
+                    clock: String::new(),
+                    edge: Edge::Rise,
                 });
             }
             ModuleItem::Drive { lhs, rhs } => {
@@ -287,6 +341,7 @@ fn elaborate_module(
             }
             ModuleItem::On(on) => procs.push(Process {
                 clock: on.clock.name.clone(),
+                edge: on.edge,
                 body: on
                     .body
                     .iter()
@@ -376,6 +431,7 @@ fn elaborate_module(
         }
     }
     procs.extend(flat.procs);
+    mems.extend(flat.mems);
     for (sig, bits) in bit_drives {
         let width = inputs
             .iter()
@@ -408,6 +464,13 @@ fn elaborate_module(
         for reg in &mut regs {
             if assigns(&proc.body, &reg.name) {
                 reg.clock = proc.clock.clone();
+                reg.edge = proc.edge;
+            }
+        }
+        for mem in &mut mems {
+            if assigns(&proc.body, &mem.name) {
+                mem.clock = proc.clock.clone();
+                mem.edge = proc.edge;
             }
         }
     }
@@ -419,6 +482,7 @@ fn elaborate_module(
         outputs,
         wires,
         regs,
+        mems,
         comb,
         procs,
         clocks,
@@ -431,6 +495,7 @@ fn elaborate_module(
 struct Flat {
     wires: Vec<Signal>,
     regs: Vec<Reg>,
+    mems: Vec<Mem>,
     comb: Vec<(String, Expr)>,
     procs: Vec<Process>,
 }
@@ -439,6 +504,7 @@ impl Flat {
     fn absorb(&mut self, other: Flat) {
         self.wires.extend(other.wires);
         self.regs.extend(other.regs);
+        self.mems.extend(other.mems);
         self.comb.extend(other.comb);
         self.procs.extend(other.procs);
     }
@@ -522,6 +588,12 @@ fn flatten_instance(
             ident_expr(format!("{pfx}{}", r.name), inst.span),
         );
     }
+    for mem in &child.mems {
+        subst.insert(
+            mem.name.clone(),
+            ident_expr(format!("{pfx}{}", mem.name), inst.span),
+        );
+    }
 
     // Clock/reset: explicit connection, else the same-named parent signal.
     let mut clock_map: HashMap<String, String> = HashMap::new();
@@ -581,6 +653,18 @@ fn flatten_instance(
             width: r.width,
             reset: r.reset,
             clock: String::new(),
+            edge: r.edge,
+        });
+    }
+    // Child memories (clock filled by the parent's clock-binding pass).
+    for mem in &child.mems {
+        flat.mems.push(Mem {
+            name: format!("{pfx}{}", mem.name),
+            width: mem.width,
+            depth: mem.depth,
+            init: mem.init,
+            clock: String::new(),
+            edge: mem.edge,
         });
     }
     // Child processes: prefix assigned regs, rewrite bodies, map the clock.
@@ -592,6 +676,7 @@ fn flatten_instance(
         let rename = |n: &str| format!("{pfx}{n}");
         flat.procs.push(Process {
             clock: clk,
+            edge: p.edge,
             body: p
                 .body
                 .iter()
@@ -772,6 +857,13 @@ impl Rw<'_> {
                     .map(|p| self.expr(p))
                     .collect::<Result<_, _>>()?,
             ),
+            ExprKind::Replicate { count, parts } => ExprKind::Replicate {
+                count: Box::new(self.expr(count)?),
+                parts: parts
+                    .iter()
+                    .map(|p| self.expr(p))
+                    .collect::<Result<_, _>>()?,
+            },
             ExprKind::Index { base, index } => ExprKind::Index {
                 base: Box::new(self.expr(base)?),
                 index: Box::new(self.expr(index)?),
@@ -943,6 +1035,7 @@ mod tests {
                 },
                 reset: 0,
                 clock: "clk".into(),
+                edge: Edge::Rise,
             }]
         );
         assert!(d.comb.contains_key("count")); // count = value

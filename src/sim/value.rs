@@ -72,6 +72,17 @@ pub(super) trait Resolver {
     fn signal(&mut self, name: &str) -> Result<Val, String>;
     /// The compile-time integer environment (params + consts).
     fn ints(&self) -> &BTreeMap<String, i128>;
+    /// Is `name` a memory? Distinguishes `m[addr]` (a runtime-addressed memory
+    /// read returning the element) from `s[i]` (a constant-indexed bit select).
+    /// Resolvers without memory state (the combinational-only evaluator) say no.
+    fn is_mem(&self, _name: &str) -> bool {
+        false
+    }
+    /// Read cell `addr` of memory `name`. Returns the cell's current value (or
+    /// the memory's init value for a never-written / out-of-range cell).
+    fn mem_read(&mut self, name: &str, _addr: u128) -> Result<Val, String> {
+        Err(format!("memory `{name}` is not available in this context"))
+    }
 }
 
 /// Evaluate `e` against `r`. The single source of Min-Mozhi's expression
@@ -121,7 +132,43 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
             }
             Ok(Val::new(bits, total, false))
         }
+        ExprKind::Replicate { count, parts } => {
+            let n = const_eval(count, r.ints())?;
+            if n < 1 {
+                return Err("replication count must be at least 1".into());
+            }
+            let vals: Vec<Val> = parts.iter().map(|p| eval(r, p)).collect::<Result<_, _>>()?;
+            // Inner group width, then the replicated total — both in u64 so the
+            // product cannot wrap a u32 below the 128-bit guard.
+            let inner64: u64 = vals.iter().map(|v| v.width as u64).sum();
+            let total64 = inner64
+                .checked_mul(n as u64)
+                .filter(|t| *t <= 128)
+                .ok_or("replication exceeds 128 bits (evaluator limit)")?;
+            let inner = inner64 as u32;
+            // Assemble the inner group once (widest part first), then repeat it.
+            let mut chunk = 0u128;
+            let mut shift = inner;
+            for v in &vals {
+                shift -= v.width;
+                chunk |= (v.bits & mask(v.width)) << shift;
+            }
+            let mut bits = 0u128;
+            for _ in 0..n {
+                bits = (bits << inner) | chunk;
+            }
+            Ok(Val::new(bits, total64 as u32, false))
+        }
         ExprKind::Index { base, index } => {
+            // A memory read `m[addr]` resolves the address at RUNTIME and
+            // returns the whole element; a bit-vector `s[i]` selects one bit
+            // at a compile-time index.
+            if let ExprKind::Ident(name) = &base.kind {
+                if r.is_mem(name) {
+                    let addr = eval(r, index)?;
+                    return r.mem_read(name, addr.bits);
+                }
+            }
             let b = eval(r, base)?;
             let i = checked_index(const_eval(index, r.ints())?, b.width, "bit index")?;
             Ok(Val::new((b.bits >> i) & 1, 1, false))
@@ -309,6 +356,7 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
     match p {
         Pattern::Wildcard => Ok(true),
         Pattern::Int { value, .. } => Ok((s.bits & mask(s.width)) == (*value & mask(s.width))),
+        Pattern::IntMask { value, mask: m, .. } => Ok((s.bits & *m) == (*value & *m)),
         Pattern::Bool(b) => Ok((s.bits & 1) == (*b as u128)),
         Pattern::Variant { .. } => {
             Err("enum-variant patterns are not supported by the evaluator yet".into())

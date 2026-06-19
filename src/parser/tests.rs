@@ -49,6 +49,105 @@ fn parses_tanglish_counter_to_same_shape() {
 // ---- grammar engine: thamizh-order profile (spec/04, Phase 1.8) ----
 
 #[test]
+fn on_fall_parses_with_the_fall_edge() {
+    let f = parse_ok(
+        "module M {\n  clock clk\n  reset rst\n  reg r: bits[8] = 0\n  on fall(clk) {\n    r <- r +% 1\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let on = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::On(o) => Some(o),
+            _ => None,
+        })
+        .expect("an `on` block");
+    assert_eq!(on.edge, Edge::Fall);
+    assert_eq!(on.clock.name, "clk");
+}
+
+#[test]
+fn mem_declaration_parses_to_a_mem_item() {
+    let f = parse_ok("module M {\n  mem m: bits[8][4] = 0\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let mem = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::Mem {
+                name, depth, init, ..
+            } => Some((name, depth, init)),
+            _ => None,
+        })
+        .expect("a `mem` declaration");
+    assert_eq!(mem.0.name, "m");
+}
+
+#[test]
+fn a_mem_without_an_init_value_is_e1104() {
+    let d = parse_err("module M {\n  mem m: bits[8][4]\n}\n");
+    assert_eq!(d[0].code, Some("E1104"));
+}
+
+#[test]
+fn async_reset_parses_with_the_async_flag() {
+    let f = parse_ok("module M {\n  clock clk\n  async reset rst\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let is_async = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::Reset { is_async, .. } => Some(*is_async),
+            _ => None,
+        })
+        .expect("a reset declaration");
+    assert!(is_async, "`async reset` should set is_async");
+}
+
+#[test]
+fn a_plain_reset_is_synchronous() {
+    let f = parse_ok("module M {\n  clock clk\n  reset rst\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let is_async = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::Reset { is_async, .. } => Some(*is_async),
+            _ => None,
+        })
+        .expect("a reset declaration");
+    assert!(!is_async, "a plain `reset` stays synchronous");
+}
+
+#[test]
+fn thamizh_order_on_fall_parses_to_the_fall_edge() {
+    // `irakkam(clk) pothu { }` — the thamizh-order falling-edge block.
+    let f = parse_ok(
+        "ilakkanam thamizh\nthoguthi M {\n  thudippu clk\n  meettamai rst\n  pathivedu r: bits[8] = 0\n  irakkam(clk) pothu {\n    r <- r +% 1\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let on = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::On(o) => Some(o),
+            _ => None,
+        })
+        .expect("an `on` block");
+    assert_eq!(on.edge, Edge::Fall);
+}
+
+#[test]
 fn thamizh_order_on_block_parses_to_the_same_shape() {
     // `syntax thamizh` + the flipped clocked block `yetram(clk) pothu { }`
     // must build the SAME module as the code-order counter: 6 items, an
@@ -226,6 +325,62 @@ fn monotonic_chained_comparison_desugars_to_and() {
     };
     assert_eq!(*lop, BinOp::Le);
     assert_eq!(*rop, BinOp::Le);
+}
+
+#[test]
+fn replication_parses_to_replicate() {
+    // `{2{a}}` is replication (count 2, one inner part), NOT concatenation.
+    let f = parse_ok("module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = {2{a}}\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
+    let ExprKind::Replicate { count, parts } = &rhs.kind else {
+        panic!("`{{2{{a}}}}` must parse as replication")
+    };
+    assert!(matches!(&count.kind, ExprKind::Int { value: 2, .. }));
+    assert_eq!(parts.len(), 1, "one inner part");
+}
+
+#[test]
+fn braces_without_an_inner_group_stay_concat() {
+    // `{a, a}` is still concatenation — the replication path must not regress it.
+    let f = parse_ok("module M {\n  in a: bits[4]\n  out y: bits[8]\n  y = {a, a}\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
+    assert!(matches!(&rhs.kind, ExprKind::Concat(p) if p.len() == 2));
+}
+
+#[test]
+fn dont_care_pattern_parses_to_intmask() {
+    // `0b1??` in a `match` arm parses as a masked pattern.
+    let f = parse_ok(
+        "module M {\n  in s: bits[3]\n  out y: bit\n  y = match s {\n    0b1?? => true\n    _ => false\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
+    let ExprKind::Match { arms, .. } = &rhs.kind else {
+        panic!("a match expression")
+    };
+    assert!(matches!(
+        &arms[0].patterns[0],
+        Pattern::IntMask {
+            value: 0b100,
+            mask: 0b100,
+            width: 3,
+            ..
+        }
+    ));
 }
 
 #[test]

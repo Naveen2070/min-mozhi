@@ -1,0 +1,24 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): a small register file.
+// A `ninaivagam` (mem) is an addressable memory — 4 cells of 8 bits. It is
+// written on the clock when `we` is high and read combinationally. Every cell
+// is seeded to the init value (0) at power-on.
+
+thoguthi RegFile {
+  thudippu clk
+
+  ulleedu  we: bit
+  ulleedu  waddr: bits[2]
+  ulleedu  wdata: bits[8]
+  ulleedu  raddr: bits[2]
+  veliyeedu rdata: bits[8]
+
+  ninaivagam m: bits[8][4] = 0
+
+  pothu yetram(clk) {
+    enil we {
+      m[waddr] <- wdata
+    }
+  }
+
+  rdata = m[raddr]
+}

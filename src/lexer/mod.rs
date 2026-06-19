@@ -182,6 +182,7 @@ impl Lexer<'_> {
         if radix == 10 {
             digits.push(first);
         }
+        let mut has_q = false;
         while let Some(c) = self.peek() {
             if c == '_' {
                 raw.push(c);
@@ -189,6 +190,12 @@ impl Lexer<'_> {
             } else if c.is_ascii_alphanumeric() {
                 raw.push(c);
                 digits.push(c);
+                self.bump();
+            } else if c == '?' && radix == 2 {
+                // Binary don't-care digit — valid only in a `match` pattern.
+                raw.push(c);
+                digits.push(c);
+                has_q = true;
                 self.bump();
             } else {
                 break;
@@ -210,6 +217,55 @@ impl Lexer<'_> {
                 ),
             );
             self.bump();
+            return;
+        }
+
+        // A binary literal with `?` digits is a don't-care pattern literal.
+        if has_q {
+            let mut value = 0u128;
+            let mut mask = 0u128;
+            let mut width = 0u32;
+            let mut ok = !digits.is_empty();
+            for c in digits.chars() {
+                let (bit, care): (u128, u128) = match c {
+                    '0' => (0, 1),
+                    '1' => (1, 1),
+                    '?' => (0, 0),
+                    _ => {
+                        ok = false;
+                        break;
+                    }
+                };
+                if width >= 128 {
+                    ok = false;
+                    break;
+                }
+                value = (value << 1) | bit;
+                mask = (mask << 1) | care;
+                width += 1;
+            }
+            if ok {
+                self.push(
+                    TokKind::MaskedInt {
+                        value,
+                        mask,
+                        width,
+                        raw,
+                    },
+                    start,
+                );
+            } else {
+                self.diags.push(
+                    Diag::new(
+                        Span::new(start, self.offset()),
+                        format!("`{raw}` is not a valid don't-care pattern"),
+                    )
+                    .with_code("E1004")
+                    .with_help(
+                        "a `0b…?…` pattern uses only `0`, `1`, and `?` (don't-care), up to 128 bits",
+                    ),
+                );
+            }
             return;
         }
 

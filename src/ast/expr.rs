@@ -53,6 +53,12 @@ pub enum ExprKind {
     },
     /// `{a, b, c}` — bit concatenation, widest part first (Verilog order).
     Concat(Vec<Expr>),
+    /// `{N{a, b}}` — replication: the inner concatenation `{a, b}` repeated
+    /// `count` times (Verilog `{N{...}}`). `count` is a compile-time constant.
+    Replicate {
+        count: Box<Expr>,
+        parts: Vec<Expr>,
+    },
     /// `base[i]` — single-bit select.
     Index {
         base: Box<Expr>,
@@ -85,6 +91,15 @@ pub struct Arm {
 pub enum Pattern {
     Int {
         value: u128,
+        raw: String,
+    },
+    /// `0b1??` — a binary literal with don't-care bits. `mask` is 1 where the
+    /// bit must equal `value` (don't-care bits are 0 in both); `width` is the
+    /// digit count. Matches `s` iff `s & mask == value`.
+    IntMask {
+        value: u128,
+        mask: u128,
+        width: u32,
         raw: String,
     },
     Bool(bool),

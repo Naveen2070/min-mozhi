@@ -129,6 +129,9 @@ struct Dcx<'a> {
     /// Out ports and regs seen (declaration order), for E0502/E0503.
     outs: Vec<(&'a Ident, &'a Type)>,
     regs: Vec<&'a Ident>,
+    /// Memories seen (declaration order), for the multi-writer check (E0503).
+    /// Unlike regs, a memory with zero writers is a valid power-on-init ROM.
+    mems: Vec<&'a Ident>,
     repeat_budget: i128,
 }
 
@@ -200,12 +203,14 @@ impl<'a> Checker<'a> {
             node_spans: HashMap::new(),
             outs: Vec::new(),
             regs: Vec::new(),
+            mems: Vec::new(),
             repeat_budget: REPEAT_BUDGET,
         };
         self.collect_items(&mut dcx, &m.items, summaries, in_progress);
         self.report_conflicts(&mut dcx);
         self.report_coverage(&mut dcx);
         self.report_reg_blocks(&dcx);
+        self.report_mem_blocks(&dcx);
         self.find_cycles(&mut dcx);
     }
 
@@ -232,6 +237,11 @@ impl<'a> Checker<'a> {
                 ModuleItem::Reg { name, .. } => {
                     if dcx.report && !dcx.regs.iter().any(|n| n.name == name.name) {
                         dcx.regs.push(name);
+                    }
+                }
+                ModuleItem::Mem { name, .. } => {
+                    if dcx.report && !dcx.mems.iter().any(|n| n.name == name.name) {
+                        dcx.mems.push(name);
                     }
                 }
                 ModuleItem::Wire { name, init, .. } => {
@@ -273,7 +283,7 @@ impl<'a> Checker<'a> {
                 }
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
-                | ModuleItem::Reset(_)
+                | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
                 | ModuleItem::Enum(_) => {}
             }
@@ -320,6 +330,20 @@ impl<'a> Checker<'a> {
                 }
                 return; // no edges/sites for a mis-kinded target
             }
+            Some(Bind::Mem) => {
+                if dcx.report && dcx.poisoned.insert(name.clone()) {
+                    self.err(
+                        dcx.file,
+                        lhs.span,
+                        "E0505",
+                        format!("cannot write memory `{name}` with `=`"),
+                        "memories are written with `<-` inside `on rise(clk)`; \
+                         `=` is the combinational drive for wires and outputs \
+                         (spec/02 section 1.2)",
+                    );
+                }
+                return; // no edges/sites for a mis-kinded target
+            }
             _ => return, // E0108/E0101 already reported by pass 3
         }
         let node = Node::Sig(name.clone());
@@ -344,7 +368,7 @@ impl<'a> Checker<'a> {
                 SeqStmt::Assign { lhs, .. } => {
                     let name = &lhs.base.name;
                     match dcx.sc.names.get(name) {
-                        Some(Bind::Reg) => {
+                        Some(Bind::Reg | Bind::Mem) => {
                             dcx.reg_blocks
                                 .entry(name.clone())
                                 .or_default()
@@ -467,6 +491,12 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Concat(parts) => {
+                for p in parts {
+                    self.expr_reads(dcx, p, out);
+                }
+            }
+            ExprKind::Replicate { count, parts } => {
+                self.expr_reads(dcx, count, out);
                 for p in parts {
                     self.expr_reads(dcx, p, out);
                 }
@@ -644,6 +674,34 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// E0503 — a memory written from more than one `on` block. Unlike a reg,
+    /// a memory with zero writers is valid (a power-on-init ROM).
+    fn report_mem_blocks(&mut self, dcx: &Dcx<'a>) {
+        for name in &dcx.mems {
+            if dcx.poisoned.contains(&name.name) {
+                continue;
+            }
+            let blocks = dcx
+                .reg_blocks
+                .get(&name.name)
+                .map(HashSet::len)
+                .unwrap_or(0);
+            if blocks > 1 {
+                self.err(
+                    dcx.file,
+                    name.span,
+                    "E0503",
+                    format!(
+                        "memory `{}` is written in more than one `on` block",
+                        name.name
+                    ),
+                    "a memory is owned by at most one `on` block (spec/02 \
+                     section 6) — merge the writes into one block",
+                );
+            }
+        }
+    }
+
     /// `out -> ins` summary of a module, by reachability over its own
     /// combinational graph. Memoized; recursion yields an empty summary.
     fn comb_summary(
@@ -679,6 +737,7 @@ impl<'a> Checker<'a> {
             node_spans: HashMap::new(),
             outs: Vec::new(),
             regs: Vec::new(),
+            mems: Vec::new(),
             repeat_budget: REPEAT_BUDGET,
         };
         self.collect_items(&mut dcx, &m.items, summaries, in_progress);

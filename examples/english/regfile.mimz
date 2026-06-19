@@ -1,0 +1,25 @@
+// Min-Mozhi example: a small register file. A `mem` is an addressable memory —
+// here 4 cells of 8 bits. It is written on the clock when `we` is high
+// (`m[waddr] <- wdata`) and read combinationally (`rdata = m[raddr]`). Every
+// cell is seeded to the init value (0) at power-on; there is no reset line
+// because a memory initializes itself.
+
+module RegFile {
+  clock clk
+
+  in  we: bit
+  in  waddr: bits[2]
+  in  wdata: bits[8]
+  in  raddr: bits[2]
+  out rdata: bits[8]
+
+  mem m: bits[8][4] = 0
+
+  on rise(clk) {
+    if we {
+      m[waddr] <- wdata
+    }
+  }
+
+  rdata = m[raddr]
+}

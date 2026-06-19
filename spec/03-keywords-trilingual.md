@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.7.**
+> **Spec v0.2.10.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -86,36 +86,39 @@ is valid even in an otherwise-English file.
 > `keywords.toml` carries `version = 1`. This table mirrors `keywords.toml`
 > exactly (`tests/grammar_sync.rs` enforces it).
 
-| Token         | English   | Tanglish     | Tamil         | Notes                                                                                                      |
-| ------------- | --------- | ------------ | ------------- | ---------------------------------------------------------------------------------------------------------- |
-| KW_MODULE     | `module`  | `thoguthi`   | `தொகுதி`      | standard CS-textbook word for "module"                                                                     |
-| KW_IN         | `in`      | `ulleedu`    | `உள்ளீடு`     | "input" — precise port direction (v1: was `உள்`)                                                           |
-| KW_OUT        | `out`     | `veliyeedu`  | `வெளியீடு`    | "output" — exact counterpart to உள்ளீடு (v1: was `வெளி`)                                                   |
-| KW_WIRE       | `wire`    | `kambi`      | `கம்பி`       | literal "wire"                                                                                             |
-| KW_REG        | `reg`     | `pathivedu`  | `பதிவேடு`     | "register" — exact CS term (v1: was `நிலை`/"state")                                                        |
-| KW_CLOCK      | `clock`   | `thudippu`   | `துடிப்பு`    | "pulse/beat" — a clock is a pulse (v1: was `கடிகாரம்`)                                                     |
-| KW_RESET      | `reset`   | `meettamai`  | `மீட்டமை`     | "restore/reset" (standard UI/CS term)                                                                      |
-| KW_ON         | `on`      | `pothu`      | `போது`        | "when/at the time of" (trails in thamizh order)                                                            |
-| KW_RISE       | `rise`    | `yetram`     | `ஏற்றம்`      | "ascent/rise" (`fall` reserved, untranslated until needed)                                                 |
-| KW_IF         | `if`      | `enil`       | `எனில்`       | conditional particle — natural trailing "if" in thamizh order (v1: was `என்றால்`)                          |
-| KW_ELSE       | `else`    | `illaiyenil` | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                          |
-| KW_MATCH      | `match`   | `thernthedu` | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                           |
-| KW_ENUM       | `enum`    | `vagai`      | `வகை`         | "kind/category"                                                                                            |
-| KW_LET        | `let`     | `amai`       | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 §1.5) |
-| KW_CONST      | `const`   | `maarili`    | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                      |
-| KW_REPEAT     | `repeat`  | `meendum`    | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                        |
-| KW_IMPORT     | `import`  | `serkka`     | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                      |
-| KW_TRUE       | `true`    | `mei`        | `மெய்`        | boolean true — standard CS/math term (v1: was `உண்மை`)                                                     |
-| KW_FALSE      | `false`   | `poi`        | `பொய்`        | boolean false                                                                                              |
-| KW_TEST       | `test`    | `sodhanai`   | `சோதனை`       | "test/experiment"                                                                                          |
-| KW_FOR (test) | `for`     | `kaaga`      | `க்காக`       | "for the sake of" — **binds** a module in a test (NOT a loop; `repeat` is the loop)                        |
-| KW_TICK       | `tick`    | `kanam`      | `கணம்`        | "moment/instant" — a discrete time step (v1: was `தட்டு`)                                                  |
-| KW_EXPECT     | `expect`  | `uruthisei`  | `உறுதிசெய்`   | "ensure/assert" — hardware assertion (v1: was `எதிர்பார்`)                                                 |
-| KW_AND        | `and`     | `mattrum`    | `மற்றும்`     | alias of universal `&&` (G1-x)                                                                             |
-| KW_OR         | `or`      | `alladhu`    | `அல்லது`      | alias of universal `\|\|`                                                                                  |
-| KW_NOT        | `not`     | `alla`       | `அல்ல`        | alias of universal `!` (v1: was `இல்லா`)                                                                   |
-| KW_SYNTAX     | `syntax`  | `ilakkanam`  | `இலக்கணம்`    | grammar-engine directive (Layer 2): `syntax thamizh` (section 04)                                          |
-| KW_THAMIZH    | `thamizh` | `thamizh`    | `தமிழ்`       | the `thamizh-order` profile name; en==tanglish, Tamil script `தமிழ்`                                       |
+| Token         | English   | Tanglish        | Tamil         | Notes                                                                                                                                 |
+| ------------- | --------- | --------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| KW_MODULE     | `module`  | `thoguthi`      | `தொகுதி`      | standard CS-textbook word for "module"                                                                                                |
+| KW_IN         | `in`      | `ulleedu`       | `உள்ளீடு`     | "input" — precise port direction (v1: was `உள்`)                                                                                      |
+| KW_OUT        | `out`     | `veliyeedu`     | `வெளியீடு`    | "output" — exact counterpart to உள்ளீடு (v1: was `வெளி`)                                                                              |
+| KW_WIRE       | `wire`    | `kambi`         | `கம்பி`       | literal "wire"                                                                                                                        |
+| KW_REG        | `reg`     | `pathivedu`     | `பதிவேடு`     | "register" — exact CS term (v1: was `நிலை`/"state")                                                                                   |
+| KW_MEM        | `mem`     | `ninaivagam`    | `நினைவகம்`    | "memory" — `mem m: bits[W][DEPTH]` (RAM/array); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                            |
+| KW_CLOCK      | `clock`   | `thudippu`      | `துடிப்பு`    | "pulse/beat" — a clock is a pulse (v1: was `கடிகாரம்`)                                                                                |
+| KW_RESET      | `reset`   | `meettamai`     | `மீட்டமை`     | "restore/reset" (standard UI/CS term)                                                                                                 |
+| KW_ASYNC      | `async`   | `otthisaivatra` | `ஒத்திசைவற்ற` | "non-synchronous" — `async reset rst` (negation of synchrony `ஒத்திசைவு`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
+| KW_ON         | `on`      | `pothu`         | `போது`        | "when/at the time of" (trails in thamizh order)                                                                                       |
+| KW_RISE       | `rise`    | `yetram`        | `ஏற்றம்`      | "ascent/rise" — `on rise(clk)` (posedge)                                                                                              |
+| KW_FALL       | `fall`    | `irakkam`       | `இறக்கம்`     | "descent/fall" — `on fall(clk)` (negedge); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                 |
+| KW_IF         | `if`      | `enil`          | `எனில்`       | conditional particle — natural trailing "if" in thamizh order (v1: was `என்றால்`)                                                     |
+| KW_ELSE       | `else`    | `illaiyenil`    | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                                                     |
+| KW_MATCH      | `match`   | `thernthedu`    | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                                                      |
+| KW_ENUM       | `enum`    | `vagai`         | `வகை`         | "kind/category"                                                                                                                       |
+| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 §1.5)                            |
+| KW_CONST      | `const`   | `maarili`       | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                                                 |
+| KW_REPEAT     | `repeat`  | `meendum`       | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                                                   |
+| KW_IMPORT     | `import`  | `serkka`        | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                                                 |
+| KW_TRUE       | `true`    | `mei`           | `மெய்`        | boolean true — standard CS/math term (v1: was `உண்மை`)                                                                                |
+| KW_FALSE      | `false`   | `poi`           | `பொய்`        | boolean false                                                                                                                         |
+| KW_TEST       | `test`    | `sodhanai`      | `சோதனை`       | "test/experiment"                                                                                                                     |
+| KW_FOR (test) | `for`     | `kaaga`         | `க்காக`       | "for the sake of" — **binds** a module in a test (NOT a loop; `repeat` is the loop)                                                   |
+| KW_TICK       | `tick`    | `kanam`         | `கணம்`        | "moment/instant" — a discrete time step (v1: was `தட்டு`)                                                                             |
+| KW_EXPECT     | `expect`  | `uruthisei`     | `உறுதிசெய்`   | "ensure/assert" — hardware assertion (v1: was `எதிர்பார்`)                                                                            |
+| KW_AND        | `and`     | `mattrum`       | `மற்றும்`     | alias of universal `&&` (G1-x)                                                                                                        |
+| KW_OR         | `or`      | `alladhu`       | `அல்லது`      | alias of universal `\|\|`                                                                                                             |
+| KW_NOT        | `not`     | `alla`          | `அல்ல`        | alias of universal `!` (v1: was `இல்லா`)                                                                                              |
+| KW_SYNTAX     | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar-engine directive (Layer 2): `syntax thamizh` (section 04)                                                                     |
+| KW_THAMIZH    | `thamizh` | `thamizh`       | `தமிழ்`       | the `thamizh-order` profile name; en==tanglish, Tamil script `தமிழ்`                                                                  |
 
 ### Reserved words
 
@@ -125,8 +128,6 @@ error (E1005) explaining why. They live in the `reserved` list in
 
 | Reserved           | Held for                                                                 |
 | ------------------ | ------------------------------------------------------------------------ |
-| `fall`             | falling-edge `on` blocks (post-v1)                                       |
-| `mem`              | memories/arrays (Phase 2)                                                |
 | `sync`             | clock-domain crossing (Phase 2)                                          |
 | `inout`            | top-level bidirectional pads (Phase 2)                                   |
 | `struct`           | bundles/interfaces (post-Phase 2)                                        |
@@ -137,7 +138,6 @@ error (E1005) explaining why. They live in the `reserved` list in
 | `interface`        | named port bundles (v0.3 backlog)                                        |
 | `chan`             | handshake channels (v0.3 backlog)                                        |
 | `prove`            | formal/temporal assertions (v0.3 backlog)                                |
-| `async`            | async/await (v0.3 backlog)                                               |
 | `await`            | handshake sequencing (v0.3 backlog)                                      |
 | `fixed`            | fixed-point arithmetic type (section 8 triage)                           |
 | `requires`         | caller-side precondition contract (section 8)                            |
@@ -270,6 +270,29 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.10 (2026-06-17):** Promoted `async` from **reserved** to an active keyword
+  KW_ASYNC for the asynchronous-reset modifier (`async reset rst`; A5, Verilog
+  `always @(… or posedge rst)`). Its Tanglish/Tamil spellings — `otthisaivatra` /
+  `ஒத்திசைவற்ற` ("non-synchronous", the negation of synchrony `ஒத்திசைவு`) — are
+  **PROVISIONAL** dev/testing placeholders pending native-speaker review (R9/R11),
+  founder-authorized so the four-flavor tooling works before the v0.1.0 freeze.
+  Removed `async` from the reserved table; added the grammar keyword rule + lexer
+  test (the R11 pipeline, reversed).
+- **v0.2.9 (2026-06-17):** Promoted `mem` from **reserved** to an active keyword
+  KW_MEM for memories (`mem m: bits[W][DEPTH] = init`; A4, Verilog packed-element
+  `reg`). Its Tanglish/Tamil spellings — `ninaivagam` / `நினைவகம்` (the established
+  Tamil term for computer "memory", pairing with `reg`/`pathivedu` = "ledger") —
+  are **PROVISIONAL** dev/testing placeholders pending native-speaker review
+  (R9/R11), founder-authorized so the four-flavor tooling works before the v0.1.0
+  freeze. Removed `mem` from the reserved table; added the grammar keyword rule +
+  lexer test (the R11 pipeline, reversed).
+- **v0.2.8 (2026-06-17):** Promoted `fall` from **reserved** to an active keyword
+  KW_FALL for falling-edge `on fall(clk)` blocks (A3, Verilog `negedge`). Its
+  Tanglish/Tamil spellings — `irakkam` / `இறக்கம்` ("descent", the antonym of
+  `yetram`/`ஏற்றம்` = "ascent") — are **PROVISIONAL** dev/testing placeholders
+  pending native-speaker review (R9/R11), founder-authorized so the four-flavor
+  tooling works before the v0.1.0 freeze. Removed `fall` from the reserved table;
+  added the grammar keyword rule + lexer test (the R11 pipeline, reversed).
 - **v0.2.7 (2026-06-16):** Reserved `async` to pair with the already-reserved
   `await` (async/await, v0.3 backlog). Reserved pre-v0.1.0 freeze so no program
   can claim it (E1005); English-only until the feature lands and native review

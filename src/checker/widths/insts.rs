@@ -134,7 +134,9 @@ impl<'a> Checker<'a> {
                         }
                     }
                     ModuleItem::Clock(n) if n.name == port.name => expected = Ty::Clock,
-                    ModuleItem::Reset(n) if n.name == port.name => expected = Ty::Reset,
+                    ModuleItem::Reset { name: n, .. } if n.name == port.name => {
+                        expected = Ty::Reset
+                    }
                     _ => {}
                 }
             }

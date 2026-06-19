@@ -40,7 +40,14 @@ inside the write-enabled job. That's what the hardening below targets.
 
 ## 3. Hardening roadmap
 
-### 3.1 Pin third-party actions to commit SHAs (headline item)
+### 3.1 Pin third-party actions to commit SHAs (headline item) — ✅ DONE (2026-06-17)
+
+**Done, and exceeded the plan.** Every action in **both** workflows
+(`ci.yml` + `release.yml`) is pinned to a 40-char commit SHA with a trailing
+`# vX` comment — including the GitHub first-party actions (`actions/checkout`,
+`actions/upload-artifact`, `actions/download-artifact`) that this plan had
+marked "optional". A hijacked tag can no longer inject code into the
+write-enabled jobs. Original note retained below for context.
 
 Today the workflow references actions by **moving tag refs**
 (`dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2`,
@@ -86,7 +93,11 @@ Add `.github/dependabot.yml` watching `github-actions` and `cargo` so action
 SHAs and crate versions arrive as reviewable PRs (which the `check`/`bench`
 gates then validate).
 
-### 3.4 Tighten default permissions
+### 3.4 Tighten default permissions — ✅ DONE (2026-06-17)
+
+Both workflows now carry a top-level `permissions: contents: read`; `write` is
+scoped to only the jobs that need it (`nightly-bench` in `ci.yml`, the `release`
+job in `release.yml`). Original note below.
 
 Set a top-level `permissions: contents: read` so every job starts read-only and
 only `nightly-bench` opts up to `contents: write` — makes the privilege boundary
@@ -106,7 +117,41 @@ benches are only compile-checked.
 
 ---
 
-## Status
+## Status (2026-06-17)
 
-- Wired: section 1 (all four jobs), history committed to the repo.
-- Open: section 3 hardening — 3.1 SHA pinning is the next recommended step.
+- **Wired:** section 1 (all four jobs), history committed to the repo.
+- **Done this session:** §3.1 SHA-pin (all actions in both workflows, first-party
+  included) and §3.4 least-privilege default permissions. The release pipeline
+  (`release.yml`) ships unsigned binaries + `SHA256SUMS` (signing deferred).
+- **Security verdict:** meaningfully hardened and good for the v0.1.0 public
+  release. The headline supply-chain risk (mutable action tags in a write job) is
+  closed, privileges are least, fork PRs get a read-only token, the only write
+  jobs never run on PRs, and `Cargo.lock` is committed. Two gaps remain to call it
+  _complete_ (below).
+
+## Next session — pick up here (remaining CI hardening, prioritized)
+
+The two highest-value steps are done. What's left, in priority order:
+
+1. **Dependabot (§3.3) — do this before going public.** SHA-pinning is the first
+   half of the pattern; Dependabot is the second. Pins are immutable-safe but go
+   **stale** — without it, no reviewed PR arrives when an action ships a security
+   fix. Fix: add `.github/dependabot.yml` watching `github-actions` + `cargo`
+   (~10 lines); the `check`/`bench` gates validate the bump PRs. Cheap, strongest
+   recommendation.
+2. **Crate supply-chain audit gate.** Actions are pinned and `Cargo.lock` is
+   committed, but nothing flags a **known-vulnerable / yanked crate**. Add
+   `cargo audit` (or `cargo-deny`, which also covers licenses) as a CI step. The
+   pure-Rust tree shrinks but doesn't eliminate this. Strong nice-to-have.
+3. **Branch protection (§3.2) — operational, do when going public.** Protect
+   `master` + require CI before merge; reconcile with the `nightly-bench` bot push
+   (allow bot bypass, or switch that step to a PR). Integrity, not a live hole.
+
+Deferred / optional (not gaps): build provenance / signing (`SHA256SUMS` already
+gives download integrity; SLSA `actions/attest-build-provenance` is the future
+step if verifiable provenance is wanted); pinning runner images
+(`ubuntu-24.04` vs `ubuntu-latest`) — reproducibility hygiene, not
+security-critical; §3.5 public perf dashboard (not security); §3.6 PR timing gate.
+
+> Both items 1 & 2 are new work beyond the approved Workstream C scope and are
+> SHA-pin-consistent, push-gated, and uncommitted (R12) — awaiting founder go.

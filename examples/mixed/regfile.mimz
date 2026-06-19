@@ -1,0 +1,23 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): a small register file.
+// A memory of 4 cells of 8 bits, written on the clock when `we` is high and
+// read combinationally. Every cell is seeded to the init value (0) at power-on.
+
+module RegFile {
+  thudippu clk
+
+  ulleedu  we: bit
+  உள்ளீடு  waddr: bits[2]
+  in  wdata: bits[8]
+  ulleedu  raddr: bits[2]
+  veliyeedu rdata: bits[8]
+
+  ninaivagam m: bits[8][4] = 0
+
+  போது rise(clk) {
+    enil we {
+      m[waddr] <- wdata
+    }
+  }
+
+  rdata = m[raddr]
+}

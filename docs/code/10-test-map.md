@@ -11,10 +11,16 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**369 tests** as of 2026-06-17: 234 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
+**404 tests** as of 2026-06-17: 269 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 2 command unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-17 Workstream B versioning + language edition — new `src/version.rs`: the compiler-version vs language-edition axes, `EDITION_HISTORY` (first edition **Wingless Butterfly** `wingless-butterfly-2026-1`), `version_block()` (uname-style `mimz --version`), and `KEYWORD_SET_VERSION` cross-checked against `keywords.toml`'s `version` (now parsed + exposed via `KeywordTable::version`). The Verilog header carries both axes. +3 lib unit (`version`: `current_is_the_last_history_row`, `keyword_set_version_matches_keywords_toml`, `version_block_shows_both_axes`). Crate stays `0.1.0-dev` (drops `-dev` at the v0.1.0 tag, Workstream D). Suite 401 → 404.
+- 2026-06-17 A5 asynchronous reset `async reset` (pre-v0.1.0 RTL-parity batch) — `async` promoted from reserved to an active keyword KW_ASYNC (Tanglish/Tamil `otthisaivatra`/`ஒத்திசைவற்ற` PROVISIONAL, pending native review). `ModuleItem::Reset` became `{ name, is_async }`; the emitter widens the sensitivity list to `@(posedge clk or posedge rst)` for an async reset. Active-high only (active-low polarity deferred). The cycle-based kernel is unchanged — async and sync reset are observationally identical at per-cycle sample points, so it's an emitter-only distinction. +5 lib unit (lexer `async_is_an_active_keyword`; parser `async_reset_parses_with_the_async_flag`, `a_plain_reset_is_synchronous`; emitter `async_reset_widens_the_sensitivity_list`, `a_sync_reset_stays_clock_only`). New four-flavor `async_reset` example (`BASE_EXAMPLES` 21 → 22, golden + the Icarus three-way differential). Spec `02` → v0.2.12, `03` → v0.2.10. Suite 396 → 401.
+- 2026-06-17 A4 memories `mem` (pre-v0.1.0 RTL-parity batch) — `mem` promoted from reserved to an active keyword KW_MEM (Tanglish/Tamil `ninaivagam`/`நினைவகம்` PROVISIONAL, pending native review). New `ModuleItem::Mem`; checker `Ty::Memory` (indexed read/write yields the element type, address range-checked against `depth`); emitter `reg [W-1:0] m [0:DEPTH-1]` + an `initial` power-on seed; the sim kernel gained a sparse cell store (`is_mem`/`mem_read` on the `Resolver`, indexed write into `next_mems`). +10 lib unit (lexer `mem_is_an_active_keyword`; parser `mem_declaration_parses_to_a_mem_item`, `a_mem_without_an_init_value_is_e1104`; checker `register_file_passes`, `a_non_constant_memory_depth_is_e0201`, `a_zero_memory_depth_is_e0410`, `a_memory_init_that_overflows_the_element_is_e0405`, `a_constant_address_past_the_depth_is_e0406`, `a_memory_inside_repeat_is_e0303`; kernel `memory_write_then_read_round_trips_a_cell`). New four-flavor `regfile` example (`BASE_EXAMPLES` 20 → 21, golden + the Icarus three-way differential; the `regfile` cells are internal-only — not dumped to VCD, like the tamil-pure exemption note). Spec `02` → v0.2.11, `03` → v0.2.9. Suite 386 → 396.
+- 2026-06-17 A3 falling-edge `on fall(clk)` (pre-v0.1.0 RTL-parity batch) — `fall` promoted from reserved to an active keyword KW_FALL (Tanglish/Tamil `irakkam`/`இறக்கம்` PROVISIONAL, pending native review); `OnBlock`/`Reg`/`Process` gained an `edge`; emitter lowers `posedge`/`negedge`; the sim kernel is now edge-aware (rise → sample → fall per period) so mixed-edge designs match Icarus bit-for-bit. +4 lib unit (parser `on_fall_parses_with_the_fall_edge`, `thamizh_order_on_fall_parses_to_the_fall_edge`; emitter `on_fall_emits_negedge`; kernel `dual_edge_negedge_reg_captures_posedge_within_a_period`); 2 lexer tests renamed (`fall_is_an_active_keyword`, `a_reserved_word_is_an_error`). New four-flavor `dual_edge` example (`BASE_EXAMPLES` 19 → 20, golden + the Icarus three-way differential). Spec `02` → v0.2.10, `03` → v0.2.8. Suite 382 → 386.
+- 2026-06-17 A2 don't-care `match` patterns `0b1??` (pre-v0.1.0 RTL-parity batch) — new `TokKind::MaskedInt` / `Pattern::IntMask` (binary `?` don't-care), mirroring the literal-pattern path; additive, no new keyword. +6 lib unit (lexer `dont_care_binary_literal_lexes_to_masked_int`; parser `dont_care_pattern_parses_to_intmask`; checker `dont_care_pattern_must_match_the_scrutinee_width`, `a_dont_care_match_still_needs_a_wildcard`, `a_dont_care_pattern_on_an_enum_is_e0409`; sim `dont_care_match_picks_the_masked_arm`). New four-flavor example `priority` (`BASE_EXAMPLES` 18 → 19, golden + the Icarus three-way differential) — no new test functions. Exact-width reuses E0409, still-needs-`_` is E0601 (no new code). Spec `02` → v0.2.9. Suite 376 → 382.
+- 2026-06-17 A1 replication `{N{x}}` (pre-v0.1.0 RTL-parity batch) — new `ExprKind::Replicate` mirroring concat through the whole pipeline; purely additive, no new keyword. +7 lib unit (parser `replication_parses_to_replicate`, `braces_without_an_inner_group_stay_concat`; checker `replication_width_is_count_times_inner`, `replication_width_mismatch_is_e0401`, `a_non_constant_replication_count_is_e0201`, `a_zero_replication_count_is_e0410`; sim `replication_repeats_the_group`). New four-flavor example `replicate` (`BASE_EXAMPLES` 17 → 18, golden + the Icarus three-way differential) — no new test functions (existing parametrized iterators). Width reuses E0410, non-const count reuses E0201 (no new code). Spec `02` → v0.2.8. Suite 369 → 376.
 - 2026-06-17 SEC-6 hardening audit — C2–C4 elaboration-time DoS bounds: `mimz sim`/`mimz test` skip the checker, so the structural elaborator (`src/sim/elaborate.rs`) gained `MAX_INSTANCE_DEPTH = 16` (recursive/cyclic instantiation → clean error, not a stack-overflow abort), `checked_sub` on the `repeat` span (extreme `hi - lo` → over-budget error, not an overflow panic), a `0..128` bound on bit-index drives (no silent `as u32` truncation), and a flatten name-collision error (no silent overwrite). A same-day follow-up pass added a 5th finding (SIM-5): `int_expr`, which lowers each flattened child const to a literal, built a negative value via a raw `i128` negation that overflow-panicked on `i128::MIN` (reachable via `(-i128::MAX) - 1`) — now non-recursive and `unsigned_abs`-based. +5 lib unit (`recursive_instantiation_errors_not_overflows`, `extreme_repeat_bounds_error_not_overflow`, `an_out_of_range_bit_index_errors`, `a_flatten_name_collision_errors`, `an_i128_min_const_elaborates_without_overflow` — `src/sim/elaborate.rs`). See SEC-6/HARD-6 in `docs/audit/`.
 - 2026-06-16 Phase 1.5 C3 + C4 — full simulator parity: the sim elaborator now unrolls `repeat` (array instances `fa__i`, bit-indexed drives assembled into a Concat — ripple\*adder) and encodes enum-typed signals by variant index with width `clog2(variants)` (variant reads/patterns → index — traffic_light), via a unified `Rw` elaborate-time rewriter (`src/sim/elaborate.rs`). The Layer-3 differential now covers the **entire single-file corpus, 18 → 21 examples** (added ripple_adder, traffic_light, vilakku) — every example the emitter compiles also simulates bit-for-bit vs Icarus. +2 lib unit (`unrolls_repeat_with_instance_array_and_bit_drives`, `elaborates_an_enum_signal_and_match`). Phase 1.5 full-parity simulator complete (C1–C4).
 - 2026-06-16 Phase 1.5 C2 — module-instance flattening in the sim elaborator: `elaborate_project` (`src/sim/elaborate.rs`) flattens `let` instances (incl. across `import`s) by inlining each child with signals name-prefixed `{inst}*{name}`, so `inst.port`reads resolve to the wire`inst*port`the emitter auto-declares — the flattened`Design`matches the emitted Verilog bit-for-bit.`mimz sim`/`mimz test`now`load_project`; the Layer-3 differential gained **alu** (`Top`instantiating the imported`Adder`) and **chained** (two chained `FullAdder`s), 16 → **18 examples**. +2 lib unit (`flattens_a_same_file_instance`, `rejects_unknown_instance_module`, replacing `rejects_instances_for_now`); the differential is one `#[test]`so the new examples add no separate count. Remaining sim parity: C3`repeat`(ripple_adder), C4 enum FSM (traffic_light).
@@ -45,40 +51,45 @@ Changelog of test-count changes (newest first):
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 7 tests)
 
-| Test                                        | Locks in                                               | If it fails…                                            |
-| ------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
-| `all_three_flavors_resolve_to_same_keyword` | EN/Tanglish/Tamil spellings → one `Kw` token           | `keywords.toml` edit broke a mapping                    |
-| `flavors_are_recorded`                      | the lexer remembers which column a spelling came from  | flavor tracking broke (P1.8 depends on it)              |
-| `include_is_an_alias_for_import`            | `include` lexes to the exact same token as `import`    | the alias mechanism or table entry broke                |
-| `fall_is_reserved`                          | `fall` errors as reserved, is not a keyword            | someone un-reserved `fall` without a decision           |
-| `fn_and_function_are_reserved`              | `fn` AND `function` are reserved, neither is a keyword | the pre-freeze function-keyword reservation was dropped |
-| `the_v03_backlog_keywords_are_reserved`     | all 9 v0.3 backlog words (`secret`…`await`) reserved   | a backlog word was claimed without a decision           |
-| `the_section8_keywords_are_reserved`        | `fixed`/`requires`/`ensures` stay reserved             | a section-8 future keyword was claimed                  |
+| Test                                        | Locks in                                                                    | If it fails…                                               |
+| ------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `all_three_flavors_resolve_to_same_keyword` | EN/Tanglish/Tamil spellings → one `Kw` token                                | `keywords.toml` edit broke a mapping                       |
+| `flavors_are_recorded`                      | the lexer remembers which column a spelling came from                       | flavor tracking broke (P1.8 depends on it)                 |
+| `include_is_an_alias_for_import`            | `include` lexes to the exact same token as `import`                         | the alias mechanism or table entry broke                   |
+| `fall_is_an_active_keyword`                 | `fall` lexes as KW_FALL in all three flavors (A3 promoted it from reserved) | someone changed `fall`'s keyword status without a decision |
+| `fn_and_function_are_reserved`              | `fn` AND `function` are reserved, neither is a keyword                      | the pre-freeze function-keyword reservation was dropped    |
+| `the_v03_backlog_keywords_are_reserved`     | all 9 v0.3 backlog words (`secret`…`await`) reserved                        | a backlog word was claimed without a decision              |
+| `the_section8_keywords_are_reserved`        | `fixed`/`requires`/`ensures` stay reserved                                  | a section-8 future keyword was claimed                     |
 
 Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
 **every** test fails if the table is broken. That's by design.
 
-## Unit: lexer (`src/lexer/tests.rs`, 8 tests)
+## Unit: lexer (`src/lexer/tests.rs`, 11 tests)
 
-| Test                                       | Locks in                                                        |
-| ------------------------------------------ | --------------------------------------------------------------- |
-| `lexes_mixed_flavors`                      | mixing three flavors in ONE line works — the migration path     |
-| `tamil_identifiers_work`                   | Tamil-script identifiers lex as identifiers (XID rules)         |
-| `numbers`                                  | decimal / `0b` / `0x` parse, `_` separators, correct values     |
-| `wrapping_operators`                       | `+%` / `-%` are single tokens                                   |
-| `larrow_vs_comparison`                     | `<-` vs `<=` vs `<<` disambiguation — longest match             |
-| `newline_continuation_after_operator`      | the Go-style newline policy, both directions (kept AND dropped) |
-| `division_is_rejected_with_teaching_error` | `/` errors AND the help text teaches the alternative            |
-| `fall_is_reserved_error`                   | reserved-word path produces a real diagnostic                   |
+| Test                                           | Locks in                                                                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `lexes_mixed_flavors`                          | mixing three flavors in ONE line works — the migration path                                               |
+| `tamil_identifiers_work`                       | Tamil-script identifiers lex as identifiers (XID rules)                                                   |
+| `numbers`                                      | decimal / `0b` / `0x` parse, `_` separators, correct values                                               |
+| `wrapping_operators`                           | `+%` / `-%` are single tokens                                                                             |
+| `larrow_vs_comparison`                         | `<-` vs `<=` vs `<<` disambiguation — longest match                                                       |
+| `newline_continuation_after_operator`          | the Go-style newline policy, both directions (kept AND dropped)                                           |
+| `division_is_rejected_with_teaching_error`     | `/` errors AND the help text teaches the alternative                                                      |
+| `a_reserved_word_is_an_error`                  | a reserved word (`sync`) is a clean E1005, not a silent identifier (was `mem`)                            |
+| `mem_is_an_active_keyword`                     | `mem`/`ninaivagam`/`நினைவகம்` lex as KW_MEM in all three flavors (A4 promoted it from reserved)           |
+| `async_is_an_active_keyword`                   | `async`/`otthisaivatra`/`ஒத்திசைவற்ற` lex as KW_ASYNC in all three flavors (A5 promoted it from reserved) |
+| `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2)                           |
 
-## Unit: parser (`src/parser/tests.rs`, 24 tests)
+## Unit: parser (`src/parser/tests.rs`, 33 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
 | `parses_counter`                                                   | the canonical example parses; module has the expected 6 items                           |
 | `parses_tanglish_counter_to_same_shape`                            | Tanglish source → structurally identical AST (the thesis, AST level)                    |
 | `thamizh_order_on_block_parses_to_the_same_shape`                  | `syntax thamizh` + `yetram(clk) pothu { }` → the same module (spec/04)                  |
+| `on_fall_parses_with_the_fall_edge`                                | `on fall(clk)` parses to `OnBlock` with `Edge::Fall` (A3)                               |
+| `thamizh_order_on_fall_parses_to_the_fall_edge`                    | `irakkam(clk) pothu { }` → the same fall block (thamizh order) (A3)                     |
 | `english_syntax_thamizh_directive_also_selects_the_profile`        | flavor and word-order profile are orthogonal (`syntax thamizh` in English)              |
 | `unknown_syntax_profile_is_e1112`                                  | `syntax wibble` → E1112, not silently ignored                                           |
 | `flipped_on_block_needs_the_directive`                             | a leading `rise(...)` is a parse error without the directive (gated flip)               |
@@ -100,12 +111,19 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `stray_top_level_brace_does_not_hang`                              | a stray top-level `}` errors and terminates — `file()` cannot spin (OOM)                |
 | `deeply_nested_expression_errors_not_overflows`                    | `(((…)))` past the depth cap → clean E1113, not a stack overflow (SEC-1)                |
 | `deeply_nested_unary_errors_not_overflows`                         | `!!!!…x` prefix chain → E1113 via the `unary` guard, not a crash                        |
+| `replication_parses_to_replicate`                                  | `{2{a}}` parses as `Replicate` (count + inner parts), not concatenation (A1)            |
+| `braces_without_an_inner_group_stay_concat`                        | `{a, a}` still parses as `Concat` — the replication path is no regression               |
+| `dont_care_pattern_parses_to_intmask`                              | `0b1??` in a match arm parses as `Pattern::IntMask` (value/mask/width) (A2)             |
+| `mem_declaration_parses_to_a_mem_item`                             | `mem m: bits[8][4] = 0` parses to `ModuleItem::Mem` (name/ty/depth/init) (A4)           |
+| `a_mem_without_an_init_value_is_e1104`                             | a `mem` missing its `= init` is E1104 (no uninitialized state), like a reg (A4)         |
+| `async_reset_parses_with_the_async_flag`                           | `async reset rst` sets `Reset.is_async` (A5)                                            |
+| `a_plain_reset_is_synchronous`                                     | a bare `reset rst` leaves `is_async` false — sync is the default (A5)                   |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 99 tests)
+## Unit: checker (`src/checker/tests.rs`, 112 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -131,6 +149,13 @@ deserve a note:
 | `duplicate_module_across_files_is_e0001_in_the_right_file`            | checker diagnostics carry the file index (multi-file rendering contract)               |
 | `plus_into_same_width_target_teaches_wrap_in_e0401`                   | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable    |
 | `defaultless_param_module_is_checked_per_instantiation`               | a module with no param defaults is checked under each instantiation's concrete binding |
+| `replication_width_is_count_times_inner`                              | `{2{bits[4]}}` is `bits[8]`, `{3{bits[4]}}` is `bits[12]` (A1)                         |
+| `replication_width_mismatch_is_e0401`                                 | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                |
+| `a_non_constant_replication_count_is_e0201`                           | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)            |
+| `a_zero_replication_count_is_e0410`                                   | `{0{a}}` has zero width — reuses the "not a valid width" code                          |
+| `dont_care_pattern_must_match_the_scrutinee_width`                    | `0b1??` is fine on `bits[3]`, a width error (E0409) on `bits[4]` (A2)                  |
+| `a_dont_care_match_still_needs_a_wildcard`                            | masked patterns earn no coverage — `0b1??`+`0b0??` without `_` is E0601 (A2)           |
+| `a_dont_care_pattern_on_an_enum_is_e0409`                             | a masked pattern on an enum scrutinee is rejected (match variants by name) (A2)        |
 | `repeat_index_out_of_range_at_the_last_iteration_is_e0406`            | `repeat` bodies are width-checked per iteration value, not just once                   |
 | `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape — explicit `extend` where widths differ                 |
 | `disjoint_per_bit_drives_via_repeat_pass`                             | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal |
@@ -141,6 +166,12 @@ deserve a note:
 | `wildcard_after_full_enum_coverage_is_allowed`                        | the defensive `_` (bit-flip recovery) is never flagged unreachable                     |
 | `clock_and_reset_ports_may_be_omitted`                                | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract              |
 | `same_domain_logic_under_two_declared_clocks_passes`                  | E0701 colors by USE, not by declaration count — an unused clock changes nothing        |
+| `register_file_passes`                                                | a `mem` with a clocked indexed write + combinational indexed read checks clean (A4)    |
+| `a_non_constant_memory_depth_is_e0201`                                | a memory `DEPTH` that is not a compile-time constant is E0201 (A4)                     |
+| `a_zero_memory_depth_is_e0410`                                        | a memory `DEPTH` of 0 is E0410 — a memory needs at least one cell (A4)                 |
+| `a_memory_init_that_overflows_the_element_is_e0405`                   | a `mem` init value too wide for the element type is E0405 (A4)                         |
+| `a_constant_address_past_the_depth_is_e0406`                          | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                          |
+| `a_memory_inside_repeat_is_e0303`                                     | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                |
 
 ## Unit: transliteration (`src/emit_verilog/translit.rs`, 5 tests)
 
@@ -152,12 +183,15 @@ deserve a note:
 | `results_always_start_like_an_identifier` | output is always a valid Verilog identifier start                     |
 | `the_two_n_letters_romanize_identically`  | ந/ன → `n` is a DOCUMENTED collision; the suffix counter disambiguates |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 13 tests)
+## Unit: emitter (`src/emit_verilog/mod.rs`, 16 tests)
 
 | Test                                                            | Locks in                                                                                                                                    |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `diags_carry_the_file_index`                                    | project-level diagnostics (duplicate module, emit errors) record WHICH file they point into, so multi-file errors render the right excerpt  |
 | `repeat_unrolls_drives_with_folded_indices`                     | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3                                                        |
+| `on_fall_emits_negedge`                                         | `on fall(clk)` lowers to `always @(negedge clk)` (A3)                                                                                       |
+| `async_reset_widens_the_sensitivity_list`                       | `async reset` lowers to `always @(posedge clk or posedge rst)` (A5)                                                                         |
+| `a_sync_reset_stays_clock_only`                                 | a plain `reset` keeps `always @(posedge clk)` — no sensitivity widening (A5)                                                                |
 | `repeat_var_folds_in_index_arithmetic`                          | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal                                               |
 | `empty_and_reversed_ranges_emit_nothing`                        | `0..0` and `4..0` generate no hardware (no crash, no partial output)                                                                        |
 | `repeat_over_budget_errors_cleanly`                             | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                                                                  |
@@ -370,6 +404,17 @@ exercised by the integration tests below).
 | `unknown_key_is_rejected`                 | a typo'd key (`too`, `flavour`) errors via `deny_unknown_fields`, never silently dropped |
 | `discover_walks_up_to_the_nearest_config` | discovery climbs from a nested file to the ancestor `mimz.toml`                          |
 
+## Unit: version (`src/version.rs`, 3 tests)
+
+The two version axes — compiler (crate) vs language edition — and the
+`EDITION_HISTORY` source of truth (Workstream B).
+
+| Test                                        | Locks in                                                                                        |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `current_is_the_last_history_row`           | `current()` is the tail of `EDITION_HISTORY`, which stays ordered oldest-first by (year, code)  |
+| `keyword_set_version_matches_keywords_toml` | `KEYWORD_SET_VERSION` == `keywords.toml`'s `version` == the current edition's `code` (no drift) |
+| `version_block_shows_both_axes`             | `mimz --version` block has the variant on top + the compiler and edition (language) lines       |
+
 ## Integration: config (`tests/config.rs`, 5 tests — run the real binary)
 
 The CLI merge (CLI › config › default) and name-map auto-discovery, end to end.
@@ -450,19 +495,21 @@ token reskin, not the comment-dropping `--order` printer).
 | `a_non_lexing_file_is_a_clean_error`              | a lex error (e.g. `/`) is reported, exits non-zero, and does not clobber input  |
 | `output_flag_leaves_the_input_untouched`          | `-o <dest>` writes the result elsewhere; the input is unchanged                 |
 
-## Unit: combinational evaluator (`src/sim/comb.rs`, 7 tests)
+## Unit: combinational evaluator (`src/sim/comb.rs`, 9 tests)
 
 The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 
-| Test                         | Locks in                                                                          |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `adder_grows_losslessly`     | `+` grows `bits[W]` → `bits[W+1]`; 200+100 carries into the 9th bit (no wrap)     |
-| `wrapping_add_keeps_width`   | `+%` keeps width and wraps (300 → 44 in `bits[8]`)                                |
-| `comparator_if_and_compares` | `==`, `>`, and a value `if/else` evaluate together                                |
-| `mux_match_selects`          | `match` on `bits[2]` picks the right arm                                          |
-| `chained_comparison_window`  | `lo <= value <= hi` (desugared) incl. the inclusive boundary                      |
-| `rejects_sequential_logic`   | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
-| `reports_missing_input`      | a missing `--in` value names the input                                            |
+| Test                                   | Locks in                                                                          |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| `adder_grows_losslessly`               | `+` grows `bits[W]` → `bits[W+1]`; 200+100 carries into the 9th bit (no wrap)     |
+| `wrapping_add_keeps_width`             | `+%` keeps width and wraps (300 → 44 in `bits[8]`)                                |
+| `comparator_if_and_compares`           | `==`, `>`, and a value `if/else` evaluate together                                |
+| `mux_match_selects`                    | `match` on `bits[2]` picks the right arm                                          |
+| `chained_comparison_window`            | `lo <= value <= hi` (desugared) incl. the inclusive boundary                      |
+| `rejects_sequential_logic`             | a module with `reg`/`on` is rejected with a clear message (out of the comb slice) |
+| `reports_missing_input`                | a missing `--in` value names the input                                            |
+| `replication_repeats_the_group`        | `{2{a}}`/`{3{a}}` repeat the group (a=0b1010 → 0xAA / 0xAAA) (A1)                 |
+| `dont_care_match_picks_the_masked_arm` | `0b1??`/`0b01?`/`_` priority decoder picks the right arm per input (A2)           |
 
 ## Unit: elaboration (`src/sim/elaborate.rs`, 13 tests)
 
@@ -489,24 +536,26 @@ array instances, bit-indexed drives). The event-driven kernel interprets a
 | `a_flatten_name_collision_errors`                   | SEC-6: a parent signal colliding with a flattened `inst_port` wire errors instead of silently overwriting                                           |
 | `an_i128_min_const_elaborates_without_overflow`     | SEC-6 (SIM-5): a flattened child const evaluating to `i128::MIN` lowers via `unsigned_abs` instead of overflow-panicking the negation in `int_expr` |
 
-## Unit: kernel (`src/sim/kernel.rs`, 9 tests)
+## Unit: kernel (`src/sim/kernel.rs`, 11 tests)
 
 Phase 1.5 step B2: the event-driven, two-phase simulation kernel that interprets
 a `Design` over clock cycles (regs init to reset; each rising edge settles
 combinational signals, computes next reg values, then commits all at once).
 Shares the value model + expression evaluator with `comb` via `src/sim/value.rs`.
 
-| Test                                      | Locks in                                                                                                  |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `counter_counts_and_resets`               | the counter counts 0→1→2→3 on rising edges; asserting `rst` forces it back to 0 (synchronous reset)       |
-| `regs_init_to_their_reset_value`          | before any tick a reg holds its (non-zero) folded reset value                                             |
-| `wraps_at_declared_width`                 | `+%` on a `bits[2]` reg wraps 3→0 — width masking on the next value                                       |
-| `two_phase_commit_swaps_registers`        | `a <- b; b <- a` SWAPS (non-blocking): each reads the OLD value, proving the two-phase commit             |
-| `statement_if_picks_the_next_value`       | a statement-level `if` in the `on` block selects the reg's next value from the current state              |
-| `snapshot_covers_every_signal`            | `snapshot()` lists leaves (clk/rst/inputs), regs, and combinational outputs — the VCD/trace seam          |
-| `set_rejects_a_non_leaf`                  | driving an output or an unknown name is a clean error (only inputs/clocks/resets are drivable)            |
-| `combinational_chain_propagates_in_order` | a multi-level `wire → wire → output` chain (plus a reg input) settles in dependency order each cycle (B3) |
-| `combinational_cycle_is_reported`         | a pure comb loop (`a = b; b = a`) is caught at settle time, not spun on (the kernel's cycle guard, B3)    |
+| Test                                                     | Locks in                                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `counter_counts_and_resets`                              | the counter counts 0→1→2→3 on rising edges; asserting `rst` forces it back to 0 (synchronous reset)       |
+| `dual_edge_negedge_reg_captures_posedge_within_a_period` | a `posedge` reg feeds a `negedge` reg; the rise→fall tick lets `b` see the new `a` same period (A3)       |
+| `memory_write_then_read_round_trips_a_cell`              | a `mem` cell reads init until written, then holds the clocked value; another cell still reads init (A4)   |
+| `regs_init_to_their_reset_value`                         | before any tick a reg holds its (non-zero) folded reset value                                             |
+| `wraps_at_declared_width`                                | `+%` on a `bits[2]` reg wraps 3→0 — width masking on the next value                                       |
+| `two_phase_commit_swaps_registers`                       | `a <- b; b <- a` SWAPS (non-blocking): each reads the OLD value, proving the two-phase commit             |
+| `statement_if_picks_the_next_value`                      | a statement-level `if` in the `on` block selects the reg's next value from the current state              |
+| `snapshot_covers_every_signal`                           | `snapshot()` lists leaves (clk/rst/inputs), regs, and combinational outputs — the VCD/trace seam          |
+| `set_rejects_a_non_leaf`                                 | driving an output or an unknown name is a clean error (only inputs/clocks/resets are drivable)            |
+| `combinational_chain_propagates_in_order`                | a multi-level `wire → wire → output` chain (plus a reg input) settles in dependency order each cycle (B3) |
+| `combinational_cycle_is_reported`                        | a pure comb loop (`a = b; b = a`) is caught at settle time, not spun on (the kernel's cycle guard, B3)    |
 
 ## Unit: sim runner / VCD / console trace (`src/sim/{run,vcd,trace}.rs`, 14 tests)
 

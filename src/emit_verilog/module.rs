@@ -43,7 +43,7 @@ impl Emitter<'_> {
         for item in &m.items {
             match item {
                 ModuleItem::Clock(c) => ports.push(format!("input wire {}", c.name)),
-                ModuleItem::Reset(r) => ports.push(format!("input wire {}", r.name)),
+                ModuleItem::Reset { name: r, .. } => ports.push(format!("input wire {}", r.name)),
                 ModuleItem::Port { dir, name, ty } => {
                     self.check_ascii(name);
                     let w = self.width(ty);
@@ -93,7 +93,36 @@ impl Emitter<'_> {
                     let w = self.width(ty);
                     self.out.push_str(&format!("    reg {w}{};\n", name.name));
                 }
+                ModuleItem::Mem {
+                    name, ty, depth, ..
+                } => {
+                    self.check_ascii(name);
+                    let w = self.width(ty);
+                    let d = self.expr(depth);
+                    self.out
+                        .push_str(&format!("    reg {w}{} [0:({d})-1];\n", name.name));
+                }
                 _ => {}
+            }
+        }
+
+        // Power-on init: seed every cell of each memory to its init value
+        // (mirrors the simulator, which initializes all cells at construction).
+        // Mandatory init value → no uninitialized state, without a per-cycle
+        // reset (the `reset` line clears registers only).
+        for item in &m.items {
+            if let ModuleItem::Mem {
+                name, depth, init, ..
+            } = item
+            {
+                let d = self.expr(depth);
+                let v = self.expr(init);
+                let iv = format!("__mimz_{}_i", name.name);
+                self.out.push_str(&format!("    integer {iv};\n"));
+                self.out.push_str(&format!(
+                    "    initial for ({iv} = 0; {iv} < ({d}); {iv} = {iv} + 1) {}[{iv}] = {v};\n",
+                    name.name
+                ));
             }
         }
 
@@ -110,9 +139,15 @@ impl Emitter<'_> {
         // Sequential blocks: one always per `on`, reset generated from
         // the reset values of the regs each block assigns.
         let reset_name = m.items.iter().find_map(|i| match i {
-            ModuleItem::Reset(r) => Some(r.name.clone()),
+            ModuleItem::Reset { name: r, .. } => Some(r.name.clone()),
             _ => None,
         });
+        // An async reset is added to every always-block's sensitivity list
+        // (`@(… or posedge rst)`); a sync reset only acts on the clock edge.
+        let async_reset = m
+            .items
+            .iter()
+            .any(|i| matches!(i, ModuleItem::Reset { is_async: true, .. }));
         let regs: HashMap<&str, &Expr> = m
             .items
             .iter()
@@ -127,8 +162,17 @@ impl Emitter<'_> {
                 let mut assigned: Vec<&str> = Vec::new();
                 collect_assigned(&on.body, &mut assigned);
 
-                self.out
-                    .push_str(&format!("    always @(posedge {}) begin\n", on.clock.name));
+                let edge = if matches!(on.edge, crate::ast::Edge::Fall) {
+                    "negedge"
+                } else {
+                    "posedge"
+                };
+                // Active-high reset → `posedge rst` in the sensitivity list.
+                let sens = match (&reset_name, async_reset) {
+                    (Some(rst), true) => format!("{edge} {} or posedge {rst}", on.clock.name),
+                    _ => format!("{edge} {}", on.clock.name),
+                };
+                self.out.push_str(&format!("    always @({sens}) begin\n"));
                 if let Some(rst) = &reset_name {
                     self.out.push_str(&format!("        if ({rst}) begin\n"));
                     for r in &assigned {
@@ -257,7 +301,7 @@ impl Emitter<'_> {
                         .unwrap_or_else(|| c.name.clone());
                     port_conns.push(format!(".{}({})", c.name, sig));
                 }
-                ModuleItem::Reset(rstp) => {
+                ModuleItem::Reset { name: rstp, .. } => {
                     let sig = inst
                         .conns
                         .iter()
@@ -298,7 +342,7 @@ impl Emitter<'_> {
         for c in &inst.conns {
             let known = child.items.iter().any(|i| match i {
                 ModuleItem::Port { name, .. } => name.name == c.port.name,
-                ModuleItem::Clock(n) | ModuleItem::Reset(n) => n.name == c.port.name,
+                ModuleItem::Clock(n) | ModuleItem::Reset { name: n, .. } => n.name == c.port.name,
                 _ => false,
             });
             if !known {

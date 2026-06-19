@@ -14,10 +14,13 @@ pub enum Kw {
     Out,
     Wire,
     Reg,
+    Mem,
     Clock,
     Reset,
+    Async,
     On,
     Rise,
+    Fall,
     If,
     Else,
     Match,
@@ -55,6 +58,15 @@ pub enum TokKind {
     /// Integer literal; `raw` preserves the written form (`0b1010`, `0xFF`).
     Int {
         value: u128,
+        raw: String,
+    },
+    /// Binary don't-care literal — `0b1??`, valid only in a `match` pattern.
+    /// `mask` has a 1 where the bit must match `value` (don't-care bits are 0
+    /// in both), `width` is the digit count; `raw` keeps the spelling.
+    MaskedInt {
+        value: u128,
+        mask: u128,
+        width: u32,
         raw: String,
     },
     /// String literal — currently only used for test names.
@@ -135,6 +147,7 @@ pub fn kind_name(kind: &TokKind) -> String {
     match kind {
         TokKind::Ident(s) => format!("identifier `{s}`"),
         TokKind::Int { raw, .. } => format!("number `{raw}`"),
+        TokKind::MaskedInt { raw, .. } => format!("don't-care pattern `{raw}`"),
         TokKind::Str(_) => "string".into(),
         TokKind::Kw(k) => format!("keyword `{k:?}`").to_lowercase(),
         TokKind::Newline => "end of line".into(),
