@@ -71,7 +71,7 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
 - Error messages are emitted in the flavor the file predominantly uses
   (`--lang` flag overrides). Implemented 2026-06-14 (`src/morph.rs`,
   `check`/`compile`/`eval`); the localized catalog itself is panel-gated — see
-  `04-grammar-engine.md` §5.
+  `04-grammar-engine.md` section 5.
 
 ### Identifiers
 
@@ -105,7 +105,7 @@ is valid even in an otherwise-English file.
 | KW_ELSE       | `else`    | `illaiyenil`    | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                                                     |
 | KW_MATCH      | `match`   | `thernthedu`    | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                                                      |
 | KW_ENUM       | `enum`    | `vagai`         | `வகை`         | "kind/category"                                                                                                                       |
-| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 §1.5)                            |
+| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 section 1.5)                            |
 | KW_CONST      | `const`   | `maarili`       | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                                                 |
 | KW_REPEAT     | `repeat`  | `meendum`       | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                                                   |
 | KW_IMPORT     | `import`  | `serkka`        | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                                                 |
@@ -153,10 +153,13 @@ words before the native-speaker review — same rule as aliases).
 
 A column may carry deliberate **synonym aliases** in addition to its
 canonical word — listed per column in `keywords.toml` (e.g. `en_aliases`),
-never invented by the compiler. An alias lexes to the exact same token as
-the canonical word, so nothing after the lexer can tell them apart; tooling
-(`mimz translate`, `mimz fmt`) normalizes aliases to the canonical
-spelling. Aliases are keywords: their words stop being legal identifiers.
+never invented by the compiler.
+
+- An alias lexes to the exact same token as the canonical word, so nothing after
+  the lexer can tell them apart.
+- Tooling (`mimz translate`, `mimz fmt`) normalizes aliases to the canonical
+  spelling.
+- Aliases are keywords: their words stop being legal identifiers.
 
 Current aliases (v0.2.1):
 
@@ -169,11 +172,12 @@ review (section "Review & governance") — no new Tamil words before that.
 
 **Word-order caveat:** this layer keeps one fixed (English-derived) order, so
 `on rise(clk)` becomes `pothu yetram(clk)` — understandable, but not idiomatic
-Tamil syntax (Tamil is SOV: "clk ஏறும்போது"). Natural Tamil word order is
-**Layer 2 — the Grammar Engine** (`04-grammar-engine.md`, Phase 1.8), which
-adds a `thamizh-order` parser profile (`yetram(clk) pothu { }`,
-`<cond> enil { }`) over the same AST. Layer 1 ships first; Layer 2 follows
-once the Phase 1 parser exists.
+Tamil syntax (Tamil is SOV: "clk ஏறும்போது").
+
+Natural Tamil word order is **Layer 2 — the Grammar Engine**
+(`04-grammar-engine.md`, Phase 1.8), which adds a `thamizh-order` parser profile
+(`yetram(clk) pothu { }`, `<cond> enil { }`) over the same AST. Layer 1 ships
+first; Layer 2 follows once the Phase 1 parser exists.
 
 ---
 

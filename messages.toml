@@ -1,4 +1,4 @@
-# Localized error-message catalog (Tamil + Tanglish) — spec/04 §5.
+# Localized error-message catalog (Tamil + Tanglish) — spec/04 section 5.
 #
 # DATA, not code (same doctrine as keywords.toml / case_suffixes.toml): the
 # engineering mechanism in src/morph.rs reads this table; the native-speaker

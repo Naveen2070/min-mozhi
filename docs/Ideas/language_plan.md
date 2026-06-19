@@ -1,6 +1,13 @@
 # Min-Mozhi: Modernization & Advanced Language Plan
 
-This document outlines the conceptual roadmap for elevating Min-Mozhi into the "Ultimate Modern HDL". By combining the strict mathematical safety of **Rust**, the developer ergonomics of **TypeScript** and **Kotlin**, the concurrency paradigms of **Go**, and the testing architecture of **C#**, Min-Mozhi aims to bridge the gap between software engineering and physical silicon design.
+This document outlines the conceptual roadmap for elevating Min-Mozhi into the "Ultimate Modern HDL". It combines the best of several languages:
+
+- the strict mathematical safety of **Rust**,
+- the developer ergonomics of **TypeScript** and **Kotlin**,
+- the concurrency paradigms of **Go**,
+- and the testing architecture of **C#**.
+
+By doing so, Min-Mozhi aims to bridge the gap between software engineering and physical silicon design.
 
 ---
 
@@ -333,7 +340,9 @@ The core philosophy of Rust is catching bugs at compile time. In hardware, runti
 
 ## 4. The Two-Tiered Hardware Error System
 
-Because hardware has no Operating System, a `try/catch` block cannot "unwind a call stack" (there is no stack, only physical wires). Therefore, Min-Mozhi strictly rejects `try/catch` and Go-style `if err != nil` patterns. Instead, error handling is split into Simulation logic and Physical Silicon logic.
+Because hardware has no Operating System, a `try/catch` block cannot "unwind a call stack" (there is no stack, only physical wires). Therefore, Min-Mozhi strictly rejects `try/catch` and Go-style `if err != nil` patterns.
+
+Instead, error handling is split into Simulation logic and Physical Silicon logic.
 
 ### 4.1 Simulation-Only Errors (SystemVerilog Style)
 
@@ -515,15 +524,23 @@ unchanged by this document.
 
 **Re-triaged same day under the v0.3 constitution** (spec/01: modern-secure-HDL
 now co-primary with education; tie-breakers honesty > safety > **security** >
-readability/DX > speed > brevity > Tamil idiom). The goal shift promoted
-`secret` taint, the `system_fault` fault network v1, and the `?` valid-bundle
-re-targeting out of Tier 4 — see the Decision in `docs/log/2026-06-12.md`.
+readability/DX > speed > brevity > Tamil idiom).
+
+The goal shift promoted three items out of Tier 4 (see the Decision in `docs/log/2026-06-12.md`):
+
+- `secret` taint,
+- the `system_fault` fault network v1,
+- and the `?` valid-bundle re-targeting.
 
 ---
 
 ## 8. Future Expansion & Cross-Language Inspirations (New Additions)(2026-06-12)
 
-To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are newly proposed, feasible ideas adopted from other modern languages. These focus heavily on our educational mission, developer experience (DX), and robustness for digital signal processing (DSP).
+To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are newly proposed, feasible ideas adopted from other modern languages. These focus heavily on three things:
+
+- our educational mission,
+- developer experience (DX),
+- and robustness for digital signal processing (DSP).
 
 ### 8.1 Friendly, Didactic Compiler Errors (Inspired by Elm)
 
@@ -750,12 +767,17 @@ benefits the language's future; use Editions + `mimz translate` as the migration
 path** after the freeze. The repo is private and pre-v0.1.0 (no users), so a
 breaking change is nearly free _now_ and expensive _later_.
 
-**Organizing insight:** an _additive_ change (turns an error into valid code, or
-adds syntax that didn't exist) is edition-safe — it can land any time, even
-post-freeze, without breaking code. A _breaking_ change (re-means or removes
-existing valid syntax) must land **before v0.1.0** or owe an edition + `translate`
-rule. So the freeze deadline pressures **only the section 8 ideas that touch already-shipped
-syntax**: 8.9 and 8.10. The other eight are additive and can come whenever.
+**Organizing insight:** changes fall into two kinds.
+
+- An _additive_ change (turns an error into valid code, or adds syntax that didn't
+  exist) is edition-safe — it can land any time, even post-freeze, without breaking
+  code.
+- A _breaking_ change (re-means or removes existing valid syntax) must land
+  **before v0.1.0** or owe an edition + `translate` rule.
+
+So the freeze deadline pressures **only the section 8 ideas that touch
+already-shipped syntax**: 8.9 and 8.10. The other eight are additive and can come
+whenever.
 
 ### Per-idea verdicts
 
@@ -776,10 +798,16 @@ syntax**: 8.9 and 8.10. The other eight are additive and can come whenever.
 
 Use `..` for the **spread/splat family only** — wiring (8.7), struct-update (8.8),
 concat-spread — because those are genuinely one operation (expand-a-bundle-in-place),
-so one token is honest and learnable. **Do NOT overload `..` for ranges** (keep
-slicing `[hi:lo]`, per 8.10) — that avoids the range/splat semantic collision and the
-ascending-exclusive vs descending-inclusive mental-model clash. All `..`-spread
-features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specced.
+so one token is honest and learnable.
+
+**Do NOT overload `..` for ranges** (keep slicing `[hi:lo]`, per 8.10) — that avoids
+two problems:
+
+- the range/splat semantic collision,
+- and the ascending-exclusive vs descending-inclusive mental-model clash.
+
+All `..`-spread features gate on interfaces/bundles (2.4); finalize the token when
+2.4 is specced.
 
 ### Pre-v0.1.0 freeze checklist (what the doctrine forces now)
 
@@ -800,13 +828,17 @@ features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specce
 
 Reviewed Min-Mozhi against the full feature sets of **VHDL, Verilog, and
 SystemVerilog** ("variables/types → operators → control → loops → subprograms →
-concurrency → OOP → verification"). **Decision:** scope = _curated subset +
-broaden RTL parity_ — stay synthesizable, safe-by-default, educational; pull the
-big **synthesizable** RTL gaps forward; do **not** chase SV verification/OOP now
-(but keep that door open, see below). "Full parity" is the wrong target — half
-the SV list is verification/software, which violates tie-breaker #1 (hardware
-honesty). The right target is **complete synthesizable-RTL coverage** + the
-safety/trilingual differentiators.
+concurrency → OOP → verification").
+
+**Decision:** scope = _curated subset + broaden RTL parity_ — stay synthesizable,
+safe-by-default, educational. Concretely:
+
+- pull the big **synthesizable** RTL gaps forward;
+- do **not** chase SV verification/OOP now (but keep that door open, see below).
+
+"Full parity" is the wrong target — half the SV list is verification/software,
+which violates tie-breaker #1 (hardware honesty). The right target is **complete
+synthesizable-RTL coverage** + the safety/trilingual differentiators.
 
 ### Status key
 
@@ -856,17 +888,25 @@ bounded or FSM-lowered form, never free-running.
 
 ### Verification / OOP / DV — 🟣 deferred, revisitable (NOT permanent-out)
 
-SV `class`/OOP, `rand`/constraints, covergroup/coverpoint/cross, immediate +
-concurrent (SVA) assertions, `fork/join`, dynamic/associative arrays, queues,
-mailboxes. **User intent (2026-06-15):** _"in future if needed we will include
-verification logic too."_ These form a separate **verification layer** (not RTL):
-they ride the **simulator track** (Phase 1.5+) and the **`prove`** track, fenced
-from synthesis exactly like today's `test` blocks. Pursuing the heavier DV pieces
-later is a deliberate **co-goal amendment to spec/01** when the simulator is
-mature — recorded as a future option, not a rejection. Substitutes to build
-first (cover most needs): `test`/`tick`/`expect` (have) · `sim::fatal`/`sim::warn`
-(Phase 1.5) · `prove` → SymbiYosys (Phase 2, SVA-style) · `requires`/`ensures`
-(Phase 2+).
+The deferred DV features: SV `class`/OOP, `rand`/constraints,
+covergroup/coverpoint/cross, immediate + concurrent (SVA) assertions, `fork/join`,
+dynamic/associative arrays, queues, mailboxes.
+
+**User intent (2026-06-15):** _"in future if needed we will include verification
+logic too."_
+
+These form a separate **verification layer** (not RTL): they ride the **simulator
+track** (Phase 1.5+) and the **`prove`** track, fenced from synthesis exactly like
+today's `test` blocks. Pursuing the heavier DV pieces later is a deliberate
+**co-goal amendment to spec/01** when the simulator is mature — recorded as a
+future option, not a rejection.
+
+Substitutes to build first (cover most needs):
+
+- `test`/`tick`/`expect` (have);
+- `sim::fatal`/`sim::warn` (Phase 1.5);
+- `prove` → SymbiYosys (Phase 2, SVA-style);
+- `requires`/`ensures` (Phase 2+).
 
 ### Recommended pull-forward order (synthesizable RTL)
 

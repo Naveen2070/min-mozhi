@@ -46,12 +46,16 @@ FPGA hardware via the open toolchain: `.mimz → IR → Yosys/nextpnr → bitstr
 ### Language features (window: alongside IR work — from `docs/Ideas/language_plan.md` sections 7 (feasibility triage) and 10 (HDL parity gap analysis), Tier 3)
 
 This is the single source of truth for the triaged feature backlog; the
-phase-4 plan only points here. Every item needs a spec section + a Decision
-block BEFORE code, and every new keyword (`secret`, `declassify`, `default`,
-`pipeline`, `interface`, `chan`, `prove`, `fixed`, `requires`, `ensures`, …)
-needs Tanglish + Tamil spellings through keywords.toml + native-speaker review
-(English-only while reserved, R11). The `..` spread operator is reserved at the
-lexer/grammar level (not the keyword table) when interfaces/bundles are specced.
+phase-4 plan only points here. The ground rules:
+
+- Every item needs a spec section + a Decision block BEFORE code.
+- Every new keyword (`secret`, `declassify`, `default`, `pipeline`, `interface`,
+  `chan`, `prove`, `fixed`, `requires`, `ensures`, …) needs Tanglish + Tamil
+  spellings through keywords.toml + native-speaker review (English-only while
+  reserved, R11).
+- The `..` spread operator is reserved at the lexer/grammar level (not the keyword
+  table) when interfaces/bundles are specced.
+
 Order below is the build order from the triage; items late in the list may slip
 to the Phase 3 window.
 
@@ -145,16 +149,24 @@ section + Decision block still required before code, same as above.
 ### Verification layer (deferred, revisitable — NOT a rejection)
 
 From the HDL gap analysis (`docs/Ideas/language_plan.md` section 10, 2026-06-15).
+
 SV-style DV — `class`/OOP, `rand`/constraints, functional coverage
 (covergroup/coverpoint/cross), concurrent (SVA) assertions, `fork/join`,
 dynamic/associative arrays, queues — is **not** in the synthesizable language but
 is **kept open as a future co-goal** (user intent 2026-06-15: include verification
-logic later if needed). It belongs to a fenced **verification layer** that rides
-the **simulator track** (Phase 1.5+) and the **`prove`** track, never synthesized
-— the same fence as today's `test` blocks. Pursuing the heavy DV pieces is a
-deliberate **spec/01 co-goal amendment** once the simulator is mature. Build the
-already-mapped substitutes first: `test`/`tick`/`expect` (have), `sim::*` asserts
-(Phase 1.5), `prove` → SymbiYosys (above), `requires`/`ensures` (above).
+logic later if needed).
+
+It belongs to a fenced **verification layer** that rides the **simulator track**
+(Phase 1.5+) and the **`prove`** track, never synthesized — the same fence as
+today's `test` blocks. Pursuing the heavy DV pieces is a deliberate **spec/01
+co-goal amendment** once the simulator is mature.
+
+Build the already-mapped substitutes first:
+
+- `test`/`tick`/`expect` (have),
+- `sim::*` asserts (Phase 1.5),
+- `prove` → SymbiYosys (above),
+- `requires`/`ensures` (above).
 
 ## Milestone
 

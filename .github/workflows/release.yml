@@ -16,7 +16,7 @@
 # self-contained binary. Binaries are UNSIGNED for v0.1.0 (see UNSIGNED.txt in
 # each archive); code signing is deferred post-v0.1.0.
 #
-# Third-party actions are SHA-pinned (ci_plan.md §3.1); the trailing `# vX`
+# Third-party actions are SHA-pinned (ci_plan.md section 3.1); the trailing `# vX`
 # comment records the human version each SHA corresponds to.
 name: Release
 
@@ -25,7 +25,7 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-# Least privilege by default (ci_plan.md §3.4); only the `release` job opts into
+# Least privilege by default (ci_plan.md section 3.4); only the `release` job opts into
 # `contents: write` to create the Release.
 permissions:
   contents: read

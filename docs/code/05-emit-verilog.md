@@ -212,17 +212,23 @@ exhaustively under Icarus.
 
 `signed[N]` signals are declared `wire signed`/`reg signed`/
 `input wire signed …` (`width_subst` adds the modifier), so Verilog's
-native two's-complement semantics apply: assignments SIGN-extend
-(`extend` on signed is correct for free) and comparisons are signed.
+native two's-complement semantics apply:
+
+- assignments SIGN-extend (`extend` on signed is correct for free);
+- comparisons are signed.
+
 Sound because the checker forbids signed/unsigned mixing inside one
 expression (E0403) — a Verilog expression here is either all-signed or
-all-unsigned, never the silent-fallback mix. Verified exhaustively by
-`signed_math` (4 flavors) + its 256-pair Icarus TB; the deliberate
-breakage check (drop the `signed` modifier) makes that TB fail with
-"sign lost". Residual edge, documented honestly: `trunc` emits a
-part-select, which Verilog treats as unsigned MID-expression — at
-declared-signal boundaries (the normal case) signedness is restored by
-the declaration; spec/02 already rules "slicing signed yields bits".
+all-unsigned, never the silent-fallback mix.
+
+Verified exhaustively by `signed_math` (4 flavors) + its 256-pair Icarus
+TB; the deliberate breakage check (drop the `signed` modifier) makes that
+TB fail with "sign lost".
+
+Residual edge, documented honestly: `trunc` emits a part-select, which
+Verilog treats as unsigned MID-expression — at declared-signal
+boundaries (the normal case) signedness is restored by the declaration;
+spec/02 already rules "slicing signed yields bits".
 
 ## Known gaps (clean errors, not wrong output)
 

@@ -2,10 +2,10 @@
 #
 # This is DATA, not code (same doctrine as keywords.toml): the engineering
 # mechanism in src/morph.rs reads this table; native-speaker review changes the
-# table, never the code (spec/04 §5).
+# table, never the code (spec/04 section 5).
 #
 # The accusative/dative/locative/instrumental forms are the four named in
-# spec/04 §5 (-ஐ, -க்கு, -இல், -ஆல்). The Tanglish (romanized) column and the
+# spec/04 section 5 (-ஐ, -க்கு, -இல், -ஆல்). The Tanglish (romanized) column and the
 # sandhi-joining rule (src/morph.rs::inflect) were RATIFIED by the v1
 # native-speaker review (2026-06-15, decision C3 closed).
 

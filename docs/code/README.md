@@ -61,18 +61,23 @@ is a bug — fix it the same day (RULES R1).
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
-Five **tooling** modules consume the pipeline rather than forming a stage in
-it (page 13): `explain` (long-form text per E-code, `mimz explain`),
-`translate` (keyword-flavor reskin, `mimz translate --to`), `pretty` (the
-AST → source pretty-printer behind `mimz translate --order code|thamizh`),
-`morph` (error-language selection + Tamil case-suffix inflection, behind
-`--lang`), and `sim` (the Phase 1.5 simulator — the combinational evaluator
-behind `mimz eval` plus the event-driven kernel, VCD/trace, and `test` runner
-behind `mimz sim` / `mimz test`). A sixth, `config`, reads per-project defaults
-from `mimz.toml` (CLI flags override it) — also page 13. A seventh, `version`,
-holds the two version axes — the compiler (crate) version vs the language edition
-(`EDITION_HISTORY`) — surfaced by `mimz --version` and the Verilog header (see
-`spec/06-editions.md`).
+Seven **tooling** modules consume the pipeline rather than forming a stage in
+it (page 13):
+
+- `explain` — long-form text per E-code, `mimz explain`.
+- `translate` — keyword-flavor reskin, `mimz translate --to`.
+- `pretty` — the AST → source pretty-printer behind
+  `mimz translate --order code|thamizh`.
+- `morph` — error-language selection + Tamil case-suffix inflection,
+  behind `--lang`.
+- `sim` — the Phase 1.5 simulator: the combinational evaluator behind
+  `mimz eval` plus the event-driven kernel, VCD/trace, and `test` runner
+  behind `mimz sim` / `mimz test`.
+- `config` — reads per-project defaults from `mimz.toml` (CLI flags
+  override it).
+- `version` — holds the two version axes, the compiler (crate) version vs
+  the language edition (`EDITION_HISTORY`), surfaced by `mimz --version`
+  and the Verilog header (see `spec/06-editions.md`).
 
 ## Keeping these docs honest
 

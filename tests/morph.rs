@@ -1,4 +1,4 @@
-//! Error-language plumbing (Phase 1.8, spec/04 §5): selection + inflection +
+//! Error-language plumbing (Phase 1.8, spec/04 section 5): selection + inflection +
 //! structured-arg interpolation + the additive English-fallback render path,
 //! end-to-end through the CLI.
 //!

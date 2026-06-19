@@ -19,7 +19,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-# Least privilege by default (ci_plan.md §3.4): a read-only token for every job.
+# Least privilege by default (ci_plan.md section 3.4): a read-only token for every job.
 # The only job that needs write — `nightly-bench`, which commits perf history —
 # opts into `contents: write` locally (below).
 permissions:

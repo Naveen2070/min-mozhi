@@ -126,9 +126,17 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0602 | unreachable `match` arm (after `_`, or a duplicate value)                                 | move `_` last / delete the duplicate                            |
 | E0701 | cross-clock-domain read, or a wire mixing two domains                                     | one domain per signal; `sync` (Phase 2) will allow crossings    |
 
-Numbering scheme: E00xx structure/duplicates, E01xx name resolution,
-E02xx const evaluation, E03xx module structure rules, E04xx width/type
-rules, E05xx drivers/cycles, E06xx exhaustiveness, E07xx clock domains.
+Numbering scheme:
+
+- E00xx — structure/duplicates;
+- E01xx — name resolution;
+- E02xx — const evaluation;
+- E03xx — module structure rules;
+- E04xx — width/type rules;
+- E05xx — drivers/cycles;
+- E06xx — exhaustiveness;
+- E07xx — clock domains.
+
 (Lexer E10xx, parser E11xx, and loader E12xx codes live in
 docs/code/06 — retrofit completed 2026-06-12.) Claim a block when a new
 pass lands, and add the rows in the same commit.

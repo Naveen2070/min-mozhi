@@ -198,9 +198,9 @@ module Top {
   connected; missing or extra connections are compile errors.
 - **`let` binds a hardware instance, not a variable.** Despite the
   JS-flavored keyword, there is no mutation and no re-binding: each `let`
-  places one physical copy of the module, permanently. (Named
-  combinational values use `wire name: type = expr`; registers use
-  `reg`.) Known JS-instinct hazard — flagged for beginner testing.
+  places one physical copy of the module, permanently. Named combinational
+  values use `wire name: type = expr`; registers use `reg`. Known JS-instinct
+  hazard — flagged for beginner testing.
 - A child's `clock`/`reset` with the same name as the parent's is connected
   implicitly; different clocks must be wired explicitly.
 
@@ -280,10 +280,11 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
 
 - The slice syntax is `x[hi:lo]` (inclusive, msb:lsb) and concatenation is
   `{a, b}` (msb-first) — these are the **canonical, final forms** (ratified
-  2026-06-13). Rust-style range slicing (`x[lo..hi]`) is deliberately **not**
-  adopted: `[hi:lo]` is the universal hardware convention (Verilog/VHDL/every
-  textbook), and matching it keeps a student fluent across tools — the
-  cross-tool familiarity outweighs the cosmetic gain.
+  2026-06-13).
+- Rust-style range slicing (`x[lo..hi]`) is deliberately **not** adopted:
+  `[hi:lo]` is the universal hardware convention (Verilog/VHDL/every textbook),
+  and matching it keeps a student fluent across tools — the cross-tool familiarity
+  outweighs the cosmetic gain.
 - **Replication** is `{N{x}}` — the inner concatenation group repeated `N`
   times, msb-first, where `N` is a compile-time constant: `{4{hi}}` is
   `{hi, hi, hi, hi}`. Like Verilog's `{N{...}}`; the result width is `N *` the
@@ -296,14 +297,17 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
   `WIDTH = 1` instantiation.
 - An unsized literal adapts to the context width if it fits; otherwise it is a
   compile error (never a silent wrap).
-- **Arithmetic / reduction built-ins** (added v0.2.7): `min(a, b)` / `max(a, b)`
-  take two operands of the same width (a literal adapts to the sized side, like a
-  comparison) and return that type; `abs(x)` takes a `signed[N]` and returns
-  `signed[N+1]` (room for `abs(MIN)`); `nand(x)` / `nor(x)` / `xnor(x)` are the
-  negated bit-reductions (one bit out), the dictionary spellings of `~&x` / `~|x`
-  / `~^x`. They lower to plain Verilog-2005 (a `?:` for min/max/abs, the negated
-  reduction operators for nand/nor/xnor) — no SystemVerilog. Like `extend`/`trunc`,
-  they are runtime built-ins, not compile-time constant folders.
+- **Arithmetic / reduction built-ins** (added v0.2.7):
+
+  - `min(a, b)` / `max(a, b)` take two operands of the same width (a literal
+    adapts to the sized side, like a comparison) and return that type.
+  - `abs(x)` takes a `signed[N]` and returns `signed[N+1]` (room for `abs(MIN)`).
+  - `nand(x)` / `nor(x)` / `xnor(x)` are the negated bit-reductions (one bit out),
+    the dictionary spellings of `~&x` / `~|x` / `~^x`.
+
+  They lower to plain Verilog-2005 (a `?:` for min/max/abs, the negated reduction
+  operators for nand/nor/xnor) — no SystemVerilog. Like `extend`/`trunc`, they are
+  runtime built-ins, not compile-time constant folders.
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
   accepted in literals.
 
@@ -429,13 +433,19 @@ So `x & 1 == 0` parses as `(x & 1) == 0` — the C trap is defused.
 **Comparison chaining:** a chain of comparisons that all point the **same
 direction** — all `<`/`<=` (ascending) or all `>`/`>=` (descending) — is
 allowed and desugars to the `&&` of its adjacent pairs:
-`0 <= x < 100` becomes `(0 <= x) && (x < 100)`. The shared middle operand is
-a combinational value, so reading it twice is identical — there is none of
-software's evaluation-order subtlety. The genuinely confusing forms stay
-**errors (E1109)**: mixed-direction chains (`a < b > c`) and any chain that
-mixes in `==`/`!=`. A lone comparison is unaffected. _The original C trap —
-`a < b < c` meaning `(a<b)<c` — was never legal here, so allowing the safe
-monotonic form only widens what compiles; it breaks no existing program._
+`0 <= x < 100` becomes `(0 <= x) && (x < 100)`.
+
+The shared middle operand is a combinational value, so reading it twice is
+identical — there is none of software's evaluation-order subtlety.
+
+The genuinely confusing forms stay **errors (E1109)**:
+
+- mixed-direction chains (`a < b > c`)
+- any chain that mixes in `==`/`!=`
+
+A lone comparison is unaffected. _The original C trap — `a < b < c` meaning
+`(a<b)<c` — was never legal here, so allowing the safe monotonic form only widens
+what compiles; it breaks no existing program._
 
 **Deliberately absent:** division `/` and modulo `%` do not exist — they
 synthesize to large, slow hardware and beginners reach for them by reflex.

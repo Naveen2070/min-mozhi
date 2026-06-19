@@ -45,7 +45,7 @@ or VCD library) — see the 2026-06-16 Decision in `docs/log/`.
 
 ## 3. `test` blocks (`mimz test`)
 
-`test` blocks are simulation-only and never emit hardware (spec/02 §1.10). The
+`test` blocks are simulation-only and never emit hardware (spec/02 section 1.10). The
 `tick`/`expect` form below is **implemented** (B6); the `await` form is reserved
 pending its native-review spelling (see Deferred). Two equivalent forms are
 specified:
@@ -107,16 +107,18 @@ test` exits non-zero if any test fails.
 
 - **Differential vs Icarus (`tests/icarus.rs`, Layer 3):** the kernel runs a
   design in-process while the emitted Verilog runs the SAME stimulus under
-  `iverilog`/`vvp`; the per-step output values must match **bit-for-bit**. Covers
-  12 ASCII-named english examples (C1): clocked (counter, shift register, edge
-  detector, blinker) and combinational over generated input vectors (adder,
-  comparator, mux4, datapath, window, full_adder, and SIGNED `bitops` /
-  `signed_math`). Compared via Verilog `%b` so signedness needs no special-casing.
-  This is independent of Layer 2 (Icarus vs hand-written asserts) — Layer 3 pits
-  our simulator directly against Icarus. Covers the **entire single-file
-  corpus** — english + pure-Tamil, cross-file instances, `repeat`/instance
-  arrays, and enum FSMs — every example the emitter compiles also simulates
-  here, bit-for-bit.
+  `iverilog`/`vvp`; the per-step output values must match **bit-for-bit**.
+
+  - Covers 12 ASCII-named english examples (C1): clocked (counter, shift register,
+    edge detector, blinker) and combinational over generated input vectors (adder,
+    comparator, mux4, datapath, window, full_adder, and SIGNED `bitops` /
+    `signed_math`). Compared via Verilog `%b` so signedness needs no
+    special-casing.
+  - This is independent of Layer 2 (Icarus vs hand-written asserts) — Layer 3 pits
+    our simulator directly against Icarus.
+  - Covers the **entire single-file corpus** — english + pure-Tamil, cross-file
+    instances, `repeat`/instance arrays, and enum FSMs — every example the emitter
+    compiles also simulates here, bit-for-bit.
 - **Perf baseline:** the event-driven kernel sustains **≥ 1M cycle-events/sec**
   on the counter in release (`tests/sim.rs`), measured on the bare `tick` hot
   path.
@@ -144,14 +146,17 @@ feature, not this uniform engine-driven trace.)
 - 4-state (X/Z) simulation; `real`/`time` value types.
 - **Sub-cycle / clock-independent timing.** The kernel samples once per clock
   period, so an `async reset` is modeled as ≡ a sync reset at the sample points —
-  it does not show a reset landing **between** edges. The async behavior is
-  realized faithfully in the emitted Verilog (`always @(… or posedge rst)`) and
-  confirmed by the Icarus differential under clock-aligned stimulus; sub-cycle
-  reset timing (recovery/removal, metastability) is a timing-closure concern, not
-  RTL-functional. This shares the Tier-2 "higher-fidelity engine" with X/Z above.
-  The concrete path to higher fidelity is the **three-tier roadmap in
-  [`docs/plan/phase-1.5-simulator.md`](../docs/plan/phase-1.5-simulator.md)**
-  (current status: Tier 3 — delegate timing-faithful runs to the Verilog oracle).
+  it does not show a reset landing **between** edges.
+
+  - The async behavior is realized faithfully in the emitted Verilog
+    (`always @(… or posedge rst)`) and confirmed by the Icarus differential under
+    clock-aligned stimulus; sub-cycle reset timing (recovery/removal,
+    metastability) is a timing-closure concern, not RTL-functional.
+  - This shares the Tier-2 "higher-fidelity engine" with X/Z above. The concrete
+    path to higher fidelity is the **three-tier roadmap in
+    [`docs/plan/phase-1.5-simulator.md`](../docs/plan/phase-1.5-simulator.md)**
+    (current status: Tier 3 — delegate timing-faithful runs to the Verilog
+    oracle).
 - `sim::fatal` / `sim::warn` simulation-only assertions — deferred to a later
   increment (`expect` covers test pass/fail for now).
 - Step-back ("time-travel") debugging — post-v1 stretch.

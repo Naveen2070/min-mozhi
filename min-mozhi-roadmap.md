@@ -109,11 +109,13 @@ order, compiles to the same Verilog as its English twin
 - Integrate or study **Yosys** internals for technology mapping
 - Target: FPGA primitive mapping (LUTs, flip-flops)
 - **Language features** from the ideas triage (`docs/Ideas/language_plan.md`
-  sections 7 and 9; work items in the phase-2 plan): tagged unions, interfaces,
-  channels, `prove` via SymbiYosys, G5 security (`secret` taint +
-  `system_fault` network v1), DX sugar, plus the section-8 additive ideas
-  (`fixed`-point, `requires`/`ensures` contracts, `..` spread/struct-update,
-  pipe `|>`, didactic-error layer)
+  sections 7 and 9; work items in the phase-2 plan):
+  - tagged unions, interfaces, channels;
+  - `prove` via SymbiYosys;
+  - G5 security (`secret` taint + `system_fault` network v1);
+  - DX sugar;
+  - plus the section-8 additive ideas (`fixed`-point, `requires`/`ensures`
+    contracts, `..` spread/struct-update, pipe `|>`, didactic-error layer)
 
 **Milestone:** `.mimz → IR → FPGA bitstream` via open source toolchain (hardware demo once a board is acquired; until then simulation/emulation only)
 
@@ -143,23 +145,26 @@ order, compiles to the same Verilog as its English twin
 - Package manager for Min-Mozhi modules
 - VS Code extension (syntax highlighting, errors)
 - Documentation site
-- Ecosystem drivers: WASM browser playground first, then npm/PyPI
-  wrappers around the one Rust core (thin wrappers, never
-  reimplementations — Decision 2026-06-11); the playground carries the
-  interactive hardware REPL (`mimz repl`, idea 8.5) and the no-IDE
-  vim-like TUI workbench (`mimz tui`, idea 8.11 — output-mode prompt +
-  whole-file edit/run/waveform)
+- Ecosystem drivers:
+  - WASM browser playground first, then npm/PyPI wrappers around the one
+    Rust core (thin wrappers, never reimplementations — Decision 2026-06-11);
+  - the playground carries the interactive hardware REPL (`mimz repl`,
+    idea 8.5) and the no-IDE vim-like TUI workbench (`mimz tui`, idea 8.11 —
+    output-mode prompt + whole-file edit/run/waveform)
 - Language-feature backlog triaged from `docs/Ideas/language_plan.md`
-  (Decisions 2026-06-12 and 2026-06-13): tagged unions, interfaces/bundles, and
-  clock-domain checking lead; `prove` rides SymbiYosys; the section-8 additive
-  ideas (fixed-point, contracts, spread/struct-update, pipe, didactic errors)
-  are edition-safe and land in Phase 2/4; rejected items recorded with reasons
-  in the ideas doc
+  (Decisions 2026-06-12 and 2026-06-13):
+  - tagged unions, interfaces/bundles, and clock-domain checking lead;
+  - `prove` rides SymbiYosys;
+  - the section-8 additive ideas (fixed-point, contracts,
+    spread/struct-update, pipe, didactic errors) are edition-safe and land
+    in Phase 2/4;
+  - rejected items recorded with reasons in the ideas doc
 - Constitution v0.3 (Decision 2026-06-12): modern-secure-HDL is now a
-  co-primary goal with education — new spec/01 G5 (explicit-flow
-  `secret` taint, fail-secure `system_fault` network v1); tie-breakers
-  now honesty > safety > security > readability/DX > speed > brevity >
-  Tamil idiom
+  co-primary goal with education —
+  - new spec/01 G5 (explicit-flow `secret` taint, fail-secure
+    `system_fault` network v1);
+  - tie-breakers now honesty > safety > security > readability/DX > speed >
+    brevity > Tamil idiom
 - Community + Tamil Nadu semiconductor outreach
 
 **Deliverable:** Community language with real users

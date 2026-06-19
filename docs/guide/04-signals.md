@@ -85,9 +85,13 @@ rdata = m[raddr]           // combinational read
 ```
 
 You index into a memory to read or write a cell — you cannot assign the whole
-memory at once, and the usual assignment-kind rule applies (`<-` to write a cell
-on the clock, `=` only in a combinational read context; misuse is `E0505`). A
-given memory must be written from exactly one `on` block (`E0503`).
+memory at once. The usual assignment-kind rule applies:
+
+- `<-` to write a cell on the clock;
+- `=` only in a combinational read context;
+- misuse is `E0505`.
+
+A given memory must be written from exactly one `on` block (`E0503`).
 
 ## `clock` and `reset`
 

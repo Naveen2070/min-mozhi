@@ -35,6 +35,7 @@ be learned from and read clearly — not to chase production use.
 **Learners of digital design** — anyone picking up hardware design who is better
 served by a modern, safe, teaching-first language than by industrial Verilog. Most
 HDLs make a beginner fight the tool before the logic; Min-Mozhi is built to teach.
+
 It especially serves learners who are **not comfortable working in English**:
 native Tamil lets them read and write hardware in their own language, and is a step
 toward Tamil-rooted programming more broadly.
@@ -83,10 +84,14 @@ The targets are numbers, not vibes:
 - A beginner with basic programming understands the **basics in 1–2 hours**.
 - From a fresh install, a **counter compiles within 5 minutes**.
 
-Supporting rules: a small keyword set, one obvious way to do each thing (one
-documented exception: logical operators, G1-x below), modern brace / `: type`
-syntax, and error messages that teach — _what_ is wrong, _why_ it is unsafe in
-hardware terms, _how_ to fix it, in the reader's language.
+Supporting rules:
+
+- a small keyword set
+- one obvious way to do each thing (one documented exception: logical operators,
+  G1-x below)
+- modern brace / `: type` syntax
+- error messages that teach — _what_ is wrong, _why_ it is unsafe in hardware
+  terms, _how_ to fix it, in the reader's language
 
 **G1-x (the one-way exception):** logical operators accept both universal symbols
 (`&&`, `||`, `!`) and translated keyword forms (`and`/`or`/`not`,

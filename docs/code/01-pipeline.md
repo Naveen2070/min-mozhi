@@ -54,18 +54,25 @@ recovery, so one bad line doesn't hide the next error. Details in
 ## Step 4 — Check (`src/checker/`)
 
 Between parse and emit, `checker::check` runs over all loaded files (in
-BOTH `mimz check` and `mimz compile`): project-wide duplicates, name
-resolution (every name points at a declaration — signals, modules,
-enums/variants, instance ports, parameters), const evaluation, the
-reg-requires-reset rule, the **width/type pass** (exact widths,
-lossless growth, signed/bits separation, literal fitting — checked
-under concrete parameter bindings), the **driver pass**
-(single-driver per signal/bit, output coverage, reg-per-`on`-block,
-combinational-cycle DAG incl. through-instance paths, `=` vs `<-`),
-**match exhaustiveness** (every value/variant covered, unreachable arms
-rejected), **instantiation completeness** (every input connected exactly
-once), and the **clock-domain pass** (per-reg clock ownership,
-cross-domain reads rejected until Phase 2's `sync`).
+BOTH `mimz check` and `mimz compile`). It performs:
+
+- project-wide duplicates;
+- name resolution (every name points at a declaration — signals,
+  modules, enums/variants, instance ports, parameters);
+- const evaluation;
+- the reg-requires-reset rule;
+- the **width/type pass** (exact widths, lossless growth, signed/bits
+  separation, literal fitting — checked under concrete parameter
+  bindings);
+- the **driver pass** (single-driver per signal/bit, output coverage,
+  reg-per-`on`-block, combinational-cycle DAG incl. through-instance
+  paths, `=` vs `<-`);
+- **match exhaustiveness** (every value/variant covered, unreachable
+  arms rejected);
+- **instantiation completeness** (every input connected exactly once);
+- the **clock-domain pass** (per-reg clock ownership, cross-domain reads
+  rejected until Phase 2's `sync`).
+
 Every checker error carries a stable code (`E0101`) — catalog and
 details in [`11-checker.md`](11-checker.md).
 

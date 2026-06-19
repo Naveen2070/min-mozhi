@@ -84,12 +84,18 @@ The sections below trace what happens, station by station.
 
 The compiler itself is a **library** — `src/lib.rs` lists its modules
 (the pipeline stages plus shared tools like `translate`, `sim`, and
-`config`). `main.rs` is the thin front door over it: it reads the command
-line (`check`, `compile`, `sim`, `test`, `lsp`, …) and dispatches to a
-per-subcommand handler in `src/commands/`, which calls the stations in
-order and renders whatever comes back (human carets, or one JSON array
-with `--json`). The `compile` handler (`src/commands/compile.rs`) is
-literally the pipeline written out:
+`config`).
+
+`main.rs` is the thin front door over it:
+
+- it reads the command line (`check`, `compile`, `sim`, `test`, `lsp`, …);
+- it dispatches to a per-subcommand handler in `src/commands/`, which calls
+  the stations in order;
+- it renders whatever comes back (human carets, or one JSON array with
+  `--json`).
+
+The `compile` handler (`src/commands/compile.rs`) is literally the pipeline
+written out:
 
 ```text
 load_project(path)            // station 0
@@ -115,12 +121,12 @@ file too.**
   letters can be encoded in more than one byte sequence; NFC makes the
   same-looking text always compare equal. English-only files are
   untouched.)
-- `load_project()` keeps a to-do list of files. It starts with your
-  entry file, parses it (stations 1 and 2 happen here, per file), looks
-  at its `import` lines, turns `import lib.full_adder` into the path
-  `lib/full_adder.mimz` next to the importing file, and adds that file
-  to the to-do list. A "visited" set stops infinite loops if two files
-  import each other.
+- `load_project()` keeps a to-do list of files. Starting with your entry
+  file, for each file it: parses it (stations 1 and 2 happen here, per
+  file), looks at its `import` lines, then turns `import lib.full_adder`
+  into the path `lib/full_adder.mimz` next to the importing file and adds
+  that file to the to-do list. A "visited" set stops infinite loops if two
+  files import each other.
 - The result is a `Vec<LoadedFile>` — every file's path, its source
   text, and its parsed tree, with your entry file first.
 

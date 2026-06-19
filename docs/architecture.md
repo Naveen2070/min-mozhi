@@ -66,16 +66,21 @@
 
 ## 2. Components
 
-Built ✅ as of 2026-06-12 (Phase 1 complete): keyword table, lexer,
-parser (code-order), AST, checker — ALL spec/02 section 6 safety rules
-(names/consts/E-codes, width/type E04xx, driver/cycle E05xx,
-instantiation completeness E0302, match exhaustiveness E06xx, clock
-domains E0701), Verilog emitter (repeat unrolling, Tamil→ASCII
-transliteration, `wire signed`; validated by Icarus differential tests
-and golden files), CLI (`check`, `compile`, `lsp`, `--json`), and the
-diagnostics-only LSP v0 with its VS Code client. Also built (Phase 1.8 +
-1.5): the thamizh-order parser profile, and the own simulator (`src/sim/`,
-`mimz sim`/`mimz test`). The IR and native backend remain planned.
+Built ✅ as of 2026-06-12 (Phase 1 complete):
+
+- keyword table, lexer, parser (code-order), AST;
+- checker — ALL spec/02 section 6 safety rules (names/consts/E-codes,
+  width/type E04xx, driver/cycle E05xx, instantiation completeness E0302,
+  match exhaustiveness E06xx, clock domains E0701);
+- Verilog emitter (repeat unrolling, Tamil→ASCII transliteration,
+  `wire signed`; validated by Icarus differential tests and golden files);
+- CLI (`check`, `compile`, `lsp`, `--json`);
+- the diagnostics-only LSP v0 with its VS Code client.
+
+Also built (Phase 1.8 + 1.5): the thamizh-order parser profile, and the own
+simulator (`src/sim/`, `mimz sim`/`mimz test`).
+
+The IR and native backend remain planned.
 
 | Component           | Phase   | Key design points                                                                                                                                                                                                 |
 | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

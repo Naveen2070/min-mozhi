@@ -16,15 +16,15 @@ the VS Code extension. All commands run from the **repo root** unless noted.
 
 ## 1. Toolchain (prerequisites)
 
-| Tool                                  | Version                                                                           | Needed for                            | Install                                                  |
-| ------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------- |
-| **Rust** (`rustc` + `cargo`)          | **1.85+** (MSRV); edition 2024                                                    | the compiler, everything              | <https://rustup.rs>                                      |
-| **rustup**                            | any                                                                               | managing the wasm target              | comes with the rustup installer                          |
-| **wasm32 target**                     | —                                                                                 | building the WASM crate               | `rustup target add wasm32-unknown-unknown`               |
-| **wasm-pack** _(recommended)_         | latest                                                                            | web `.wasm` + JS glue (runs wasm-opt) | `cargo install wasm-pack`                                |
-| **wasm-bindgen-cli** _(or)_           | **must match** the `wasm-bindgen` crate (see [§5](#5-wasm-crate-cratesmimz-wasm)) | manual/headless wasm glue             | `cargo install wasm-bindgen-cli --version <X.Y.Z>`       |
-| **Node.js** + **npm**                 | Node ≥ 20 (dev on 24); npm 11                                                     | the website + VS Code extension       | <https://nodejs.org>                                     |
-| **Icarus Verilog** (`iverilog`/`vvp`) | any                                                                               | _optional_ — the differential tests   | <https://bleyer.org/icarus> (Win) / your package manager |
+| Tool                                  | Version                                                                                  | Needed for                            | Install                                                  |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------- |
+| **Rust** (`rustc` + `cargo`)          | **1.85+** (MSRV); edition 2024                                                           | the compiler, everything              | <https://rustup.rs>                                      |
+| **rustup**                            | any                                                                                      | managing the wasm target              | comes with the rustup installer                          |
+| **wasm32 target**                     | —                                                                                        | building the WASM crate               | `rustup target add wasm32-unknown-unknown`               |
+| **wasm-pack** _(recommended)_         | latest                                                                                   | web `.wasm` + JS glue (runs wasm-opt) | `cargo install wasm-pack`                                |
+| **wasm-bindgen-cli** _(or)_           | **must match** the `wasm-bindgen` crate (see [section 5](#5-wasm-crate-cratesmimz-wasm)) | manual/headless wasm glue             | `cargo install wasm-bindgen-cli --version <X.Y.Z>`       |
+| **Node.js** + **npm**                 | Node ≥ 20 (dev on 24); npm 11                                                            | the website + VS Code extension       | <https://nodejs.org>                                     |
+| **Icarus Verilog** (`iverilog`/`vvp`) | any                                                                                      | _optional_ — the differential tests   | <https://bleyer.org/icarus> (Win) / your package manager |
 
 `prettier` and `markdownlint-cli2` are run via `npx` — no install needed.
 

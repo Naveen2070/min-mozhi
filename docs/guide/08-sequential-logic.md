@@ -53,10 +53,14 @@ This is the building block for dual-edge (DDR-style) pipelines.
 
 Any module with registers must declare a `reset`. By default reset is
 **synchronous and active-high**: on a rising edge, if reset is asserted, every
-register returns to the value it declared at definition. You do not write the
-reset logic by hand — the reset value on each `reg` _is_ the reset behavior, and
-the emitter generates the `if (rst) … else …` for you. That is why the reset
-value is mandatory: it is the known power-on state.
+register returns to the value it declared at definition.
+
+You do not write the reset logic by hand:
+
+- the reset value on each `reg` _is_ the reset behavior;
+- the emitter generates the `if (rst) … else …` for you.
+
+That is why the reset value is mandatory: it is the known power-on state.
 
 ```mimz
 reset rst              // synchronous (the default)

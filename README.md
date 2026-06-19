@@ -120,11 +120,16 @@ cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test
 Min-Mozhi is an **educational project, honestly framed** — built to teach digital
 design to **students everywhere**, and equally (`spec/01` v0.3) for developers who
 want a safe-by-default, ergonomic HDL drawn by the compile-time checks rather than
-the Tamil roots. Native Tamil serves a **double purpose**: reaching Tamil-speaking
-learners who hit the English barrier, and growing Tamil as a language you can
-actually program in. It is new and experimental, **not** a production
-replacement: if you need the completeness of Verilog or Chisel, keep using them.
-But it always emits Verilog — so nothing you build here is a dead end.
+the Tamil roots.
+
+Native Tamil serves a **double purpose**:
+
+- reaching Tamil-speaking learners who hit the English barrier, and
+- growing Tamil as a language you can actually program in.
+
+It is new and experimental, **not** a production replacement: if you need the
+completeness of Verilog or Chisel, keep using them. But it always emits Verilog —
+so nothing you build here is a dead end.
 
 ## Documentation
 

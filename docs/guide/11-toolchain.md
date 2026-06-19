@@ -131,10 +131,12 @@ mimz translate tamil-pure/kanakki.mimz --to tanglish --romanize-names -o k.mimz
 ```
 
 Romanization is **one-way** on its own (the rule can't be inverted). To make it
-reversible, pass `-o`: a sidecar **`<out>.names.json`** (here `k.mimz.names.json`)
-is written next to the output, recording `romanized → original Tamil`. A reverse
-run restores the exact Tamil names — and the sidecar is **found automatically**,
-so no flag is needed:
+reversible, pass `-o`:
+
+- a sidecar **`<out>.names.json`** (here `k.mimz.names.json`) is written next to
+  the output, recording `romanized → original Tamil`;
+- a reverse run restores the exact Tamil names;
+- the sidecar is **found automatically**, so no flag is needed:
 
 ```text
 mimz translate k.mimz --to tamil          # auto-loads k.mimz.names.json
@@ -146,10 +148,13 @@ The map carries a version; a map this `mimz` doesn't understand is rejected with
 a clear error rather than mis-restoring.
 
 One edge to know: Tamil script can be the _only_ separator between a number and a
-following name (e.g. `42கணக்கி`, written with no space). Romanizing to Latin would
-glue them into an unlexable `42kannakki`, so the reskin inserts a single
-separating space there. Such input round-trips **token-equivalent** (it gains
-that space), not byte-for-byte — normal whitespace-separated code is unaffected.
+following name (e.g. `42கணக்கி`, written with no space).
+
+- Romanizing to Latin would glue them into an unlexable `42kannakki`, so the
+  reskin inserts a single separating space there.
+- Such input round-trips **token-equivalent** (it gains that space), not
+  byte-for-byte.
+- Normal whitespace-separated code is unaffected.
 
 ## `mimz fmt` — normalize to one flavor
 
@@ -169,10 +174,14 @@ mimz fmt messy.mimz -o clean.mimz    # write elsewhere, leave the input alone
 ## Project defaults: `mimz.toml`
 
 Tired of retyping the same flags? Drop a `mimz.toml` at your project root and
-`mimz` reads its defaults — discovered by walking **up** from the input file (like
-`Cargo.toml`/`rustfmt.toml`), or pointed at explicitly with a global
-`--config <path>`. Precedence is **command-line flag › `mimz.toml` › built-in
-default**, so a one-off flag always wins.
+`mimz` reads its defaults. The file is found in one of two ways:
+
+- discovered by walking **up** from the input file (like
+  `Cargo.toml`/`rustfmt.toml`);
+- or pointed at explicitly with a global `--config <path>`.
+
+Precedence is **command-line flag › `mimz.toml` › built-in default**, so a
+one-off flag always wins.
 
 ```toml
 lang = "tamil"          # default diagnostics flavor for check/compile/eval/sim/test

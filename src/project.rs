@@ -105,7 +105,7 @@ pub fn render_diags(diags: &[diag::Diag], files: &[LoadedFile]) -> String {
 }
 
 /// Like [`render_diags`], but renders each message in `flavor` where the
-/// localized catalog covers its E-code (Phase 1.8, spec/04 §5); English
+/// localized catalog covers its E-code (Phase 1.8, spec/04 section 5); English
 /// otherwise. The CLI passes the file's effective error language here.
 pub fn render_diags_lang(diags: &[diag::Diag], files: &[LoadedFile], flavor: Flavor) -> String {
     let mut out = String::new();
