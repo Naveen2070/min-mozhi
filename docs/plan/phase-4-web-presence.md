@@ -97,7 +97,7 @@ docs/guide/*, spec/*  (existing markdown)           ┘
   as `<WaveformViewer vcd={…}/>`. VCD string is the contract; **Surfer** is the
   documented upgrade path (swap the component, no playground refactor).
 
-### 4. Deploy — **Vercel, on a maintainer-owned subdomain** (e.g. `minmozhi.<domain>`)
+### 4. Deploy — **Vercel, on the maintainer-owned subdomain `mimz.naveenr.in`**
 
 Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which keeps
 **WASM/asset loading in the playground** simple; first-class Astro support; a CDN; and
@@ -134,6 +134,14 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
    `--sweep`) over a new lib `run_command` + wasm `runCommand`; seeded with 6
    examples)_
 5. **Waveform**: custom renderer behind the boundary + Simulate wiring.
+   _(done 2026-06-18: a **Simulate** button runs `sim --vcd` via `runCommand` and
+   renders `WaveformViewer.tsx` — a canvas VCD viewer behind the stable `vcd`
+   prop; Surfer remains the documented drop-in upgrade. Made **interactive**
+   2026-06-19: a `ports` command + `sim --steps` flag drive a stimulus panel — an
+   editable step table for combinational designs, held-inputs + cycles for clocked
+   ones — that re-simulates live; the canvas gained a hover cursor reading each
+   signal's value. Per-cycle clocked stimulus deferred — it needs a core-sim
+   change + R1 spec update.)_
 6. **Vercel deploy** (subdomain) + landing polish (domain-themed flashy hero, see
    below) → (maintainer) flip public + tag `v0.1.0` (Workstream D, R12).
 
@@ -186,6 +194,6 @@ on.
   - lightning-yellow\*\*. Landing + `/guide/[slug]` + `/spec/[slug]` (docs sourced via
     the content-layer glob loader, never copied) + 404. `npm run build` clean (20
     pages), `astro check` 0/0/0. Details + decisions in `docs/log/2026-06-18.md`.
-- **Open:** root domain for `mimz.<domain>` DNS; first Vercel preview deploy.
+- **Open:** wire `mimz.naveenr.in` DNS (CNAME → Vercel); first Vercel preview deploy.
 - **Next:** Phase 2 — `compile_string` lib wrapper + `crates/mimz-wasm` (the
   playground engine). No commit yet (R12).

@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::sim::run::{MAX_SIM_CYCLES, MAX_SWEEP_VECTORS, SimOpts, comb_run, run};
-use crate::sim::{comb, elaborate, trace};
+use crate::sim::{comb, elaborate, trace, vcd};
 use crate::{ast, checker, diag, emit_verilog, lexer, parser};
 
 /// The cosmetic file name shown in caret headers for in-memory sources.
@@ -73,6 +73,26 @@ pub fn parse_sweep(s: &str) -> Result<Vec<(String, Vec<u128>)>, String> {
         out.push((name.trim().to_string(), values));
     }
     Ok(out)
+}
+
+/// Parse `--steps "a=3,b=5;a=7,b=1"` into explicit per-step input vectors:
+/// groups split on `;`, each parsed as `name=val,…` bindings (an empty group is
+/// dropped). Bounded by [`MAX_SWEEP_VECTORS`] so a pasted giant table can't hang
+/// the tool. Unlike [`parse_sweep`]/[`sweep_vectors`] (a cartesian product), each
+/// group is one literal vector — what the playground step table produces.
+pub fn parse_steps(s: &str) -> Result<Vec<BTreeMap<String, u128>>, String> {
+    let groups: Vec<&str> = s
+        .split(';')
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+        .collect();
+    if groups.len() > MAX_SWEEP_VECTORS {
+        return Err(format!("--steps lists over {MAX_SWEEP_VECTORS} steps"));
+    }
+    groups
+        .iter()
+        .map(|g| parse_bindings(g, parse_u128))
+        .collect()
 }
 
 /// The input vectors to drive a combinational run: the cartesian product of the
@@ -153,10 +173,11 @@ pub fn run_command(source: &str, command: &str, argv: &[&str]) -> Result<String,
         "check" => check(&src, argv),
         "compile" => compile(&src, argv),
         "eval" => eval(&src, argv),
+        "ports" => ports(&src, argv),
         "sim" => sim(&src, argv),
         "test" => test(&src, argv),
         other => Err(format!(
-            "unknown command `{other}` — try check, compile, eval, sim, or test"
+            "unknown command `{other}` — try check, compile, eval, ports, sim, or test"
         )),
     }
 }
@@ -241,20 +262,65 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     Ok(out)
 }
 
-/// `sim [--in …] [--param …] [--sweep …] [--cycles N] [--clock c] [--module M]
+/// Render one elaborated signal as a JSON object: `{"name","width","signed"}`.
+/// Signal names are identifiers, so they need no JSON string escaping.
+fn signal_json(s: &elaborate::Signal) -> String {
+    format!(
+        "{{\"name\":\"{}\",\"width\":{},\"signed\":{}}}",
+        s.name, s.width.bits, s.width.signed
+    )
+}
+
+/// `ports [--param W=8] [--module M]` — describe a module's interface as JSON so
+/// an embedder (the playground stimulus panel) can build input controls without
+/// re-parsing the source: `{"module","clocked","inputs":[…],"outputs":[…]}`.
+/// `clocked` distinguishes a design driven over cycles (`--in`/`--cycles`) from a
+/// combinational one driven by explicit input vectors (`--steps`).
+fn ports(src: &str, argv: &[&str]) -> Result<String, String> {
+    let mut param_s = "";
+    let mut module: Option<String> = None;
+    let mut i = 0;
+    while i < argv.len() {
+        match argv[i] {
+            "--param" => param_s = flag_value(argv, &mut i, "--param")?,
+            "--module" => module = Some(flag_value(argv, &mut i, "--module")?.to_string()),
+            other => return Err(format!("unknown ports flag `{other}`")),
+        }
+    }
+
+    let file = parse_source(src)?;
+    let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
+    let design =
+        elaborate::elaborate_project(std::slice::from_ref(&file), module.as_deref(), &params)?;
+
+    let join =
+        |sigs: &[elaborate::Signal]| sigs.iter().map(signal_json).collect::<Vec<_>>().join(",");
+    Ok(format!(
+        "{{\"module\":\"{}\",\"clocked\":{},\"inputs\":[{}],\"outputs\":[{}]}}",
+        design.module,
+        !design.clocks.is_empty(),
+        join(&design.inputs),
+        join(&design.outputs),
+    ))
+}
+
+/// `sim [--in …] [--param …] [--sweep …] [--steps …] [--cycles N] [--clock c] [--module M]
 /// [--trace[=changes]] [--verbose] [--signals a,b]` — simulate a module. A
 /// clocked design runs the default stimulus over `cycles`; a combinational one
-/// settles once per input vector (held `--in`, fanned out by `--sweep`).
+/// settles once per input vector — either explicit (`--steps`) or the held
+/// `--in` fanned out by `--sweep`.
 fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     let mut inputs_s = "";
     let mut param_s = "";
     let mut sweep_s = "";
+    let mut steps_s = "";
     let mut cycles: u64 = 16;
     let mut clock: Option<String> = None;
     let mut module: Option<String> = None;
     let mut trace_style: Option<String> = None;
     let mut verbose = false;
     let mut signals: Option<String> = None;
+    let mut want_vcd = false;
 
     let mut i = 0;
     while i < argv.len() {
@@ -272,6 +338,7 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
             "--in" => inputs_s = flag_value(argv, &mut i, "--in")?,
             "--param" => param_s = flag_value(argv, &mut i, "--param")?,
             "--sweep" => sweep_s = flag_value(argv, &mut i, "--sweep")?,
+            "--steps" => steps_s = flag_value(argv, &mut i, "--steps")?,
             "--cycles" => {
                 let v = flag_value(argv, &mut i, "--cycles")?;
                 cycles = v
@@ -283,6 +350,10 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
             "--signals" => signals = Some(flag_value(argv, &mut i, "--signals")?.to_string()),
             "--verbose" => {
                 verbose = true;
+                i += 1;
+            }
+            "--vcd" => {
+                want_vcd = true;
                 i += 1;
             }
             other => return Err(format!("unknown sim flag `{other}`")),
@@ -297,6 +368,13 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     let inputs = parse_bindings(inputs_s, parse_u128)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
     let sweep = parse_sweep(sweep_s)?;
+    // `--steps "a=3,b=5;a=7,b=1"` — explicit per-step input vectors (one `;`-group
+    // each), for the playground's combinational step table. Distinct from
+    // `--sweep`'s cartesian product, so the two cannot be combined.
+    let steps = parse_steps(steps_s)?;
+    if !steps.is_empty() && !sweep.is_empty() {
+        return Err("--steps and --sweep cannot be combined".to_string());
+    }
 
     let design =
         elaborate::elaborate_project(std::slice::from_ref(&file), module.as_deref(), &params)?;
@@ -306,6 +384,14 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     let reg_names: Vec<String> = design.regs.iter().map(|r| r.name.clone()).collect();
     let clocked = !design.clocks.is_empty();
 
+    if clocked && !steps.is_empty() {
+        return Err(
+            "--steps drives a combinational design's input vectors; a clocked design \
+             advances over --cycles with held --in values"
+                .to_string(),
+        );
+    }
+
     let timeline = if clocked {
         let opts = SimOpts {
             clock,
@@ -314,11 +400,19 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
             reset_cycles: 1,
         };
         run(design, &opts)?
+    } else if !steps.is_empty() {
+        comb_run(design, &steps)?
     } else {
         let vectors = sweep_vectors(&inputs, &sweep)?;
         comb_run(design, &vectors)?
     };
     let steps = timeline.frames.iter().filter(|f| f.cycle.is_some()).count();
+
+    // `--vcd` returns the 2-state VCD document (what the playground waveform
+    // viewer parses) instead of a console trace.
+    if want_vcd {
+        return Ok(vcd::to_vcd(&timeline));
+    }
 
     if let Some(style) = &trace_style {
         let all_names: Vec<String> = timeline.signals.iter().map(|s| s.name.clone()).collect();
@@ -455,6 +549,62 @@ mod tests {
         assert!(
             out.contains("count"),
             "trace should name the output, got: {out}"
+        );
+    }
+
+    #[test]
+    fn ports_describes_a_combinational_interface() {
+        let src = "module Add(W: int = 8) {\n in a: bits[W]\n in b: bits[W]\n \
+                   out sum: bits[W]\n sum = a +% b\n}\n";
+        let json = run_command(src, "ports", &[]).unwrap();
+        assert!(json.contains("\"module\":\"Add\""), "got: {json}");
+        assert!(json.contains("\"clocked\":false"), "got: {json}");
+        assert!(
+            json.contains("\"name\":\"a\",\"width\":8,\"signed\":false"),
+            "got: {json}"
+        );
+        assert!(json.contains("\"name\":\"sum\""), "got: {json}");
+    }
+
+    #[test]
+    fn ports_reports_a_clocked_design() {
+        let src = "module Counter {\n clock clk\n reset rst\n out count: bits[4]\n \
+                   reg value: bits[4] = 0\n on rise(clk) { value <- value +% 1 }\n count = value\n}\n";
+        let json = run_command(src, "ports", &[]).unwrap();
+        assert!(json.contains("\"clocked\":true"), "got: {json}");
+    }
+
+    #[test]
+    fn sim_steps_drives_explicit_vectors() {
+        // Three explicit input vectors -> three settled frames in the VCD.
+        let src = "module Add {\n in a: bits[8]\n in b: bits[8]\n out sum: bits[8]\n \
+                   sum = a +% b\n}\n";
+        let vcd =
+            run_command(src, "sim", &["--steps", "a=3,b=5;a=7,b=1;a=0,b=2", "--vcd"]).unwrap();
+        assert!(vcd.contains("$var"), "expected a VCD, got:\n{vcd}");
+        // 8 (3+5) then 8 (7+1) then 2 (0+2) — the last distinct value must appear.
+        assert!(
+            vcd.contains("b10 "),
+            "expected sum=2 (b10) in VCD, got:\n{vcd}"
+        );
+    }
+
+    #[test]
+    fn sim_steps_is_rejected_for_a_clocked_design() {
+        let src = "module Counter {\n clock clk\n reset rst\n out count: bits[4]\n \
+                   reg value: bits[4] = 0\n on rise(clk) { value <- value +% 1 }\n count = value\n}\n";
+        let err = run_command(src, "sim", &["--steps", "x=1", "--vcd"]).unwrap_err();
+        assert!(err.contains("clocked"), "got: {err}");
+    }
+
+    #[test]
+    fn sim_vcd_emits_a_vcd_document() {
+        let src = "module Counter {\n clock clk\n reset rst\n out count: bits[4]\n \
+                   reg value: bits[4] = 0\n on rise(clk) { value <- value +% 1 }\n count = value\n}\n";
+        let vcd = run_command(src, "sim", &["--cycles", "3", "--vcd"]).unwrap();
+        assert!(
+            vcd.contains("$var") && vcd.contains("$enddefinitions"),
+            "expected a VCD document, got:\n{vcd}"
         );
     }
 }

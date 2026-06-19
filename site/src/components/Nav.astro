@@ -3,23 +3,17 @@ import Wordmark from "./Wordmark.astro";
 import ThemeToggle from "./ThemeToggle.tsx";
 ---
 
-<header
-  class="sticky top-0 z-30 border-b backdrop-blur"
-  style="border-color: var(--border); background-color: color-mix(in srgb, var(--bg) 85%, transparent)"
->
+<header class="nav-bar sticky top-0 z-30 border-b backdrop-blur">
   <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-    <a href="/" class="no-underline" style="color: var(--text)">
+    <a href="/" class="fg no-underline">
       <Wordmark />
     </a>
-    <div class="flex items-center gap-4 text-sm" style="color: var(--text)">
-      <a href="/guide" style="color: var(--text)">Docs</a>
-      <a href="/spec" style="color: var(--text)">Spec</a>
-      <a href="/playground" style="color: var(--text)">Playground</a>
-      <a
-        href="https://github.com/Naveen2070/min-mozhi"
-        style="color: var(--text)">GitHub</a
-      >
-      <ThemeToggle client:load />
+    <div class="flex items-center gap-4 text-sm">
+      <a href="/guide" class="fg">Docs</a>
+      <a href="/spec" class="fg">Spec</a>
+      <a href="/playground" class="fg">Playground</a>
+      <a href="https://github.com/Naveen2070/min-mozhi" class="fg">GitHub</a>
+      <ThemeToggle client:idle />
     </div>
   </nav>
 </header>

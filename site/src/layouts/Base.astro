@@ -10,6 +10,12 @@ const {
   title = "Min-Mozhi — a modern, safe-by-default HDL",
   description = "A modern, safe-by-default hardware description language — built to teach digital design, and the first Tamil-rooted HDL. Reads like Go/TypeScript, safe like Rust, speaks English, Tanglish, and Tamil.",
 } = Astro.props;
+
+// Absolute URLs for canonical + social cards. `Astro.site` is the configured
+// production origin; falls back gracefully in dev where it may be undefined.
+const site = Astro.site ?? new URL("https://mimz.naveenr.in");
+const canonical = new URL(Astro.url.pathname, site).href;
+const ogImage = new URL("/og.png", site).href;
 ---
 
 <!doctype html>
@@ -21,6 +27,19 @@ const {
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta name="color-scheme" content="dark light" />
+    <link rel="canonical" href={canonical} />
+
+    <!-- Open Graph / Twitter cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Min-Mozhi" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
 
     <!-- Set the theme before paint to avoid a flash of the wrong colors. -->
     <script is:inline>
@@ -31,12 +50,8 @@ const {
       })();
     </script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Tamil:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Fonts are self-hosted via Fontsource (imported in global.css) — no
+         third-party font request, so no preconnect/stylesheet link here. -->
   </head>
   <body>
     <slot />

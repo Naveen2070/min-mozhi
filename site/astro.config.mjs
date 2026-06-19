@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import react from "@astrojs/react";
+import sitemap from "@astrojs/sitemap";
 import vercel from "@astrojs/vercel";
 import tailwindcss from "@tailwindcss/vite";
 import { unified } from "@astrojs/markdown-remark";
@@ -16,7 +17,10 @@ import rehypeDocLinks from "./src/lib/rehype-doc-links.mjs";
 const mimzGrammar = JSON.parse(
   readFileSync(
     fileURLToPath(
-      new URL("../editors/vscode/syntaxes/mimz.tmLanguage.json", import.meta.url),
+      new URL(
+        "../editors/vscode/syntaxes/mimz.tmLanguage.json",
+        import.meta.url,
+      ),
     ),
     "utf-8",
   ),
@@ -24,12 +28,12 @@ const mimzGrammar = JSON.parse(
 
 // https://astro.build/config
 export default defineConfig({
-  // TODO(deploy): set to the real subdomain (mimz.<root-domain>) once DNS is wired;
-  // only affects absolute URLs / sitemap. Vercel preview works without it.
-  site: "https://mimz.example.com",
+  // Public subdomain (DNS wired at deploy): only affects absolute URLs / sitemap.
+  // Vercel preview URLs work regardless of this value.
+  site: "https://mimz.naveenr.in",
 
   adapter: vercel(),
-  integrations: [react()],
+  integrations: [react(), sitemap()],
 
   vite: {
     plugins: [tailwindcss()],

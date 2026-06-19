@@ -38,28 +38,42 @@ const highlights = [
     body: "Write the same circuit in English, Tanglish, or Tamil — one grammar, byte-identical Verilog. The first Tamil-rooted HDL: native Tamil to reach Tamil-speaking learners and grow Tamil-rooted programming.",
   },
 ];
+
+// JSON-LD: describe the project as open-source software for richer search results.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  name: "Min-Mozhi",
+  alternateName: "மின்மொழி",
+  description:
+    "A modern, safe-by-default hardware description language — built to teach digital design, and the first Tamil-rooted HDL.",
+  url: "https://mimz.naveenr.in",
+  codeRepository: "https://github.com/Naveen2070/min-mozhi",
+  programmingLanguage: ["Rust", "Verilog"],
+  license: "https://spdx.org/licenses/MIT.html",
+  author: { "@type": "Person", name: "Naveen R" },
+};
 ---
 
 <Base>
+  <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
   <Nav />
 
   <main class="mx-auto max-w-6xl px-4">
     <!-- Hero -->
     <section class="grid items-center gap-10 py-16 lg:grid-cols-2 lg:py-24">
       <div>
-        <p class="mb-4 text-sm font-medium" style="color: var(--text-muted)">
-          <span style="font-family: var(--font-tamil)">மின்மொழி</span> · the language
-          of electricity
+        <p class="fg-muted mb-4 text-sm font-medium">
+          <span class="ff-tamil" lang="ta">மின்மொழி</span> · the language of electricity
         </p>
         <h1
-          class="text-4xl font-bold leading-tight tracking-tight sm:text-5xl"
-          style="color: var(--text)"
+          class="fg text-4xl font-bold leading-tight tracking-tight sm:text-5xl"
         >
           A modern, <span class="spark-gradient bg-clip-text text-transparent"
             >safe-by-default</span
           > hardware description language.
         </h1>
-        <p class="mt-5 max-w-xl text-lg" style="color: var(--text-muted)">
+        <p class="fg-muted mt-5 max-w-xl text-lg">
           Built to teach digital design — and the first Tamil-rooted HDL. Reads
           like Go/TypeScript, safe like Rust, speaks English, Tanglish, and
           Tamil.
@@ -67,22 +81,19 @@ const highlights = [
         <div class="mt-8 flex flex-wrap items-center gap-3">
           <a
             href="/guide/01-getting-started"
-            class="rounded-md px-5 py-2.5 text-sm font-semibold no-underline"
-            style="background-color: var(--accent); color: #081120"
+            class="btn-primary rounded-md px-5 py-2.5 text-sm font-semibold no-underline"
           >
             Get started
           </a>
           <a
             href="https://github.com/Naveen2070/min-mozhi"
-            class="rounded-md border px-5 py-2.5 text-sm font-semibold no-underline"
-            style="border-color: var(--border); color: var(--text)"
+            class="btn-outline rounded-md border px-5 py-2.5 text-sm font-semibold no-underline"
           >
             GitHub
           </a>
           <a
             href="/playground"
-            class="rounded-md border px-5 py-2.5 text-sm font-semibold no-underline"
-            style="border-color: var(--border); color: var(--text)"
+            class="btn-outline rounded-md border px-5 py-2.5 text-sm font-semibold no-underline"
           >
             Playground
           </a>
@@ -90,15 +101,11 @@ const highlights = [
       </div>
 
       <!-- Oscilloscope: the clock waveform an HDL describes -->
-      <div
-        class="overflow-hidden rounded-xl border"
-        style="border-color: var(--border); background-color: var(--bg-soft)"
-      >
+      <div class="bd bg-soft overflow-hidden rounded-xl border">
         <div
-          class="flex items-center justify-between border-b px-4 py-2 text-xs"
-          style="border-color: var(--border); color: var(--text-muted)"
+          class="bd fg-muted flex items-center justify-between border-b px-4 py-2 text-xs"
         >
-          <span style="font-family: var(--font-mono)">clk · rising edge</span>
+          <span class="ff-mono">clk · rising edge</span>
           <span
             class="spark-gradient bg-clip-text font-semibold text-transparent"
             >live</span
@@ -112,29 +119,21 @@ const highlights = [
 
     <!-- Code sample -->
     <section class="pb-16">
-      <p class="mb-3 text-sm" style="color: var(--text-muted)">
-        A counter in Min-Mozhi — <code style="font-family: var(--font-mono)"
-          >counter.mimz</code
-        > compiles to synthesizable Verilog and simulates to that waveform.
+      <p class="fg-muted mb-3 text-sm">
+        A counter in Min-Mozhi — <code class="ff-mono">counter.mimz</code> compiles
+        to synthesizable Verilog and simulates to that waveform.
       </p>
       <Code code={counter} lang={mimzLang} themes={shikiThemes} />
     </section>
 
     <!-- Why -->
-    <section class="border-t py-16" style="border-color: var(--border)">
+    <section class="bd border-t py-16">
       <div class="grid gap-8 md:grid-cols-3">
         {
           highlights.map((h) => (
             <div>
-              <h2 class="mb-2 text-lg font-semibold" style="color: var(--text)">
-                {h.title}
-              </h2>
-              <p
-                class="text-sm leading-relaxed"
-                style="color: var(--text-muted)"
-              >
-                {h.body}
-              </p>
+              <h2 class="fg mb-2 text-lg font-semibold">{h.title}</h2>
+              <p class="fg-muted text-sm leading-relaxed">{h.body}</p>
             </div>
           ))
         }

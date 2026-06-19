@@ -1,0 +1,41 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a traffic
+// light — the Tamil twin of english/traffic_light.mimz. A finite state machine
+// with `வகை` (enum) + `தேர்ந்தெடு` (match): match must cover every variant, so a
+// forgotten state is a compile error — no accidental latches. State names read
+// as actions (நிறுத்து = stop / செல் = go / எச்சரி = caution); names
+// transliterate to readable ASCII Verilog.
+
+தொகுதி சாலைவிளக்கு {
+  துடிப்பு கடிகை
+  மீட்டமை மீள்
+
+  வெளியீடு சிவப்பு: bit
+  வெளியீடு மஞ்சள்: bit
+  வெளியீடு பச்சை:  bit
+
+  வகை நிலை { நிறுத்து, செல், எச்சரி }
+
+  பதிவேடு நடப்பு: நிலை    = நிலை.நிறுத்து
+  பதிவேடு நேரம்: bits[8] = 0
+
+  போது ஏற்றம்(கடிகை) {
+    எனில் நேரம் == 0 {
+      நடப்பு <- தேர்ந்தெடு நடப்பு {
+        நிலை.நிறுத்து => நிலை.செல்
+        நிலை.செல்     => நிலை.எச்சரி
+        நிலை.எச்சரி   => நிலை.நிறுத்து
+      }
+      நேரம் <- தேர்ந்தெடு நடப்பு {
+        நிலை.நிறுத்து => 50
+        நிலை.செல்     => 40
+        நிலை.எச்சரி   => 10
+      }
+    } இல்லையெனில் {
+      நேரம் <- நேரம் -% 1
+    }
+  }
+
+  சிவப்பு = நடப்பு == நிலை.நிறுத்து
+  மஞ்சள் = நடப்பு == நிலை.எச்சரி
+  பச்சை  = நடப்பு == நிலை.செல்
+}

@@ -43,11 +43,13 @@ const BASE_EXAMPLES: [&str; 22] = [
 /// to any other flavor (localized names). Instead they are golden-locked and
 /// proven equivalent to their counterpart by canonical identifier renaming
 /// (see `pure_tamil_examples_are_equivalent_to_their_counterparts`).
-const PURE_TAMIL: [(&str, &str); 4] = [
+const PURE_TAMIL: [(&str, &str); 6] = [
     ("kanakki", "counter"),
     ("cimitti", "blinker"),
     ("oppidi", "comparator"),
     ("thervi", "mux4"),
+    ("kuutti", "adder"),
+    ("saalaivilakku", "traffic_light"),
 ];
 
 fn examples_dir() -> PathBuf {

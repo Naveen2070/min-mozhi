@@ -47,4 +47,27 @@ try {
   console.log("OK: runCommand check surfaces E0401");
 }
 
+const vcd = runCommand(counter, "sim", ["--cycles", "3", "--vcd"]);
+assert(/\$var/.test(vcd) && /\$enddefinitions/.test(vcd), `sim --vcd should emit a VCD, got:\n${vcd}`);
+console.log("OK: runCommand sim --vcd produced a VCD document");
+
+// ports: the interface JSON the playground stimulus panel builds controls from.
+const adder = "module Add {\n in a: bits[8]\n in b: bits[8]\n out sum: bits[8]\n sum = a +% b\n}\n";
+const iface = JSON.parse(runCommand(adder, "ports", []));
+assert(iface.clocked === false, `Add should be combinational, got: ${JSON.stringify(iface)}`);
+assert(
+  iface.inputs.some((p) => p.name === "a" && p.width === 8),
+  `ports should list input a[8], got: ${JSON.stringify(iface.inputs)}`,
+);
+assert(iface.outputs.some((p) => p.name === "sum"), "ports should list output sum");
+const counterIface = JSON.parse(runCommand(counter, "ports", []));
+assert(counterIface.clocked === true, "Counter should report clocked:true");
+console.log("OK: runCommand ports describes the module interface");
+
+// sim --steps: explicit per-step input vectors -> a multi-step combinational VCD.
+const stepVcd = runCommand(adder, "sim", ["--steps", "a=3,b=5;a=7,b=1;a=0,b=2", "--vcd"]);
+assert(/\$var/.test(stepVcd), `sim --steps should emit a VCD, got:\n${stepVcd}`);
+assert(/b10 /.test(stepVcd), `expected sum=2 (b10) from the last step, got:\n${stepVcd}`);
+console.log("OK: runCommand sim --steps drove explicit input vectors");
+
 console.log("wasm smoke test passed");

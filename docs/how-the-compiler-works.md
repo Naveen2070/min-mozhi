@@ -438,7 +438,7 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test` runs several layers (**412 tests** today; the full ledger,
+`cargo test` runs several layers (**417 tests** today; the full ledger,
 per-binary breakdown, and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):
 

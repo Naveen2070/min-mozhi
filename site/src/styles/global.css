@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Self-hosted fonts (Fontsource) — no render-blocking third-party request, and
+   the CSP needs no Google hosts. Family names match the --font-* tokens below.
+   Only the weights actually used are imported (Inter 400-700, JetBrains Mono
+   400/500, Noto Sans Tamil 400/500/600). */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/noto-sans-tamil/400.css";
+@import "@fontsource/noto-sans-tamil/500.css";
+@import "@fontsource/noto-sans-tamil/600.css";
+
 /* Class-based dark mode (toggled on <html class="dark">). */
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -7,7 +21,8 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, "Noto Sans Tamil", sans-serif;
   --font-mono:
-    "JetBrains Mono", ui-monospace, "SFMono-Regular", "Noto Sans Tamil", monospace;
+    "JetBrains Mono", ui-monospace, "SFMono-Regular", "Noto Sans Tamil",
+    monospace;
   --font-tamil: "Noto Sans Tamil", "Inter", sans-serif;
 
   /* Lightning yellow (primary spark / accent). */
@@ -188,12 +203,40 @@ a {
   margin: 2rem 0;
 }
 
-/* ---- Text-color utilities (so pages need no inline color styles) ------ */
+/* ---- Design-token utilities (so markup needs no inline styles) -------- */
 .fg {
   color: var(--text);
 }
 .fg-muted {
   color: var(--text-muted);
+}
+.fg-accent {
+  color: var(--accent);
+}
+.ff-tamil {
+  font-family: var(--font-tamil);
+}
+.ff-mono {
+  font-family: var(--font-mono);
+}
+.bd {
+  border-color: var(--border);
+}
+.bg-soft {
+  background-color: var(--bg-soft);
+}
+.btn-primary {
+  background-color: var(--accent);
+  color: #081120;
+}
+.btn-outline {
+  border-color: var(--border);
+  color: var(--text);
+}
+/* Sticky translucent nav bar background. */
+.nav-bar {
+  border-color: var(--border);
+  background-color: color-mix(in srgb, var(--bg) 85%, transparent);
 }
 
 /* ---- Playground (the in-browser console island) ---------------------- */
@@ -281,6 +324,20 @@ a {
   opacity: 0.5;
   cursor: default;
 }
+/* Waveform panel (canvas drawn by WaveformViewer). */
+.pg-wave {
+  overflow-x: auto;
+  background-color: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+}
+.pg-wave canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* Console log line colors. */
 .pg-cmd {
   color: var(--accent);
@@ -295,3 +352,97 @@ a {
   color: var(--text-muted);
 }
 
+/* Stimulus panel — input controls that drive the waveform. */
+.pg-stim {
+  background-color: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+.pg-stim-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.pg-steps {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.pg-steps th,
+.pg-steps td {
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.35rem;
+  text-align: center;
+}
+.pg-steps th[scope="row"] {
+  text-align: left;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pg-step-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+}
+.pg-step-x {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+}
+.pg-step-x:hover {
+  color: #ff6b6b;
+}
+.pg-cell {
+  width: 4.5rem;
+  background-color: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  text-align: right;
+}
+.pg-bit {
+  width: 2rem;
+  background-color: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pg-bit[aria-pressed="true"] {
+  background-color: var(--accent);
+  color: #081120;
+  border-color: var(--accent);
+}
+.pg-held {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.pg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.pg-stim-note {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #ff6b6b;
+  font-family: var(--font-mono);
+}

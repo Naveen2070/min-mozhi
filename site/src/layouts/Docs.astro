@@ -7,11 +7,44 @@ import Sidebar from "../components/Sidebar.astro";
 interface Props {
   title: string;
   current: string; // e.g. "guide/04-signals"
+  description?: string;
 }
-const { title, current } = Astro.props;
+const { title, current, description } = Astro.props;
+const isSpec = current.startsWith("spec");
+const section = isSpec ? "language spec" : "guide";
+const metaDescription =
+  description ??
+  `${title} — Min-Mozhi ${section}. ${section === "guide" ? "Learn the language step by step." : "The language specification."}`;
+
+// JSON-LD breadcrumb: Home › Guide/Spec › this page.
+const site = Astro.site ?? new URL("https://mimz.naveenr.in");
+const sectionBase = isSpec ? "spec" : "guide";
+const sectionName = isSpec ? "Spec" : "Guide";
+const crumbs = [
+  { name: "Home", url: new URL("/", site).href },
+  { name: sectionName, url: new URL(`/${sectionBase}`, site).href },
+];
+if (current !== sectionBase) {
+  crumbs.push({ name: title, url: new URL(`/${current}/`, site).href });
+}
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: crumbs.map((c, i) => ({
+    "@type": "ListItem",
+    position: i + 1,
+    name: c.name,
+    item: c.url,
+  })),
+};
 ---
 
-<Base title={`${title} — Min-Mozhi docs`}>
+<Base title={`${title} — Min-Mozhi docs`} description={metaDescription}>
+  <script
+    type="application/ld+json"
+    is:inline
+    set:html={JSON.stringify(breadcrumbLd)}
+  />
   <Nav />
   <div class="mx-auto flex max-w-6xl gap-10 px-4 py-10">
     <aside class="hidden w-60 shrink-0 lg:block">
@@ -20,9 +53,9 @@ const { title, current } = Astro.props;
         <Sidebar current={current} />
       </div>
     </aside>
-    <article data-pagefind-body class="prose min-w-0 flex-1">
+    <main data-pagefind-body class="prose min-w-0 flex-1">
       <slot />
-    </article>
+    </main>
   </div>
 
   <Footer />

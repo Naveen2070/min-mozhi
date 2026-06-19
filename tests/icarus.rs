@@ -49,11 +49,13 @@ const TESTBENCHES: [(&str, &str); 16] = [
 /// their English counterparts, instantiated through the romanized Tamil port
 /// names (clk=katikai, rst=miill, …). Proves the transliterated Verilog
 /// simulates correctly, not just that it elaborates.
-const PURE_TESTBENCHES: [(&str, &str); 4] = [
+const PURE_TESTBENCHES: [(&str, &str); 6] = [
     ("kanakki_tb.v", "tamil-pure/kanakki.mimz"),
     ("cimitti_tb.v", "tamil-pure/cimitti.mimz"),
     ("oppidi_tb.v", "tamil-pure/oppidi.mimz"),
     ("thervi_tb.v", "tamil-pure/thervi.mimz"),
+    ("kuutti_tb.v", "tamil-pure/kuutti.mimz"),
+    ("saalaivilakku_tb.v", "tamil-pure/saalaivilakku.mimz"),
 ];
 
 fn repo() -> PathBuf {
@@ -758,6 +760,8 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "tamil-pure/cimitti.mimz", &[("வரம்பு", 3)], &[], 12);
     differential(&bin, "tamil-pure/oppidi.mimz", &[], &[], 8);
     differential(&bin, "tamil-pure/thervi.mimz", &[], &[], 8);
+    differential(&bin, "tamil-pure/kuutti.mimz", &[], &[], 8);
+    differential(&bin, "tamil-pure/saalaivilakku.mimz", &[], &[], 12);
     // Cross-file module instances, flattened by the sim elaborator (C2): alu's
     // `Top` instantiates `Adder` (imported); `chained` chains two `FullAdder`s
     // (an instance output feeds the next instance's input).

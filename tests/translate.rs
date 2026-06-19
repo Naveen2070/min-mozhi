@@ -123,7 +123,14 @@ fn every_keyword_token_is_in_the_target_flavor() {
 // flag, translate rewrites them to the same Latin the emitter uses; without it,
 // they ride through verbatim (the lossless default).
 
-const PURE_TAMIL: [&str; 4] = ["kanakki", "cimitti", "oppidi", "thervi"];
+const PURE_TAMIL: [&str; 6] = [
+    "kanakki",
+    "cimitti",
+    "oppidi",
+    "thervi",
+    "kuutti",
+    "saalaivilakku",
+];
 
 /// With `--romanize-names`, Tamil identifiers become Latin in the CODE (comments
 /// may keep the original spelling — they are trivia, preserved verbatim).
