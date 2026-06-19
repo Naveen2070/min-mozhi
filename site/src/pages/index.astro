@@ -6,6 +6,9 @@ import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 import Hero from "../components/Hero.tsx";
+import SafeByDefault from "../components/features/SafeByDefault.tsx";
+import BuiltToTeach from "../components/features/BuiltToTeach.tsx";
+import Trilingual from "../components/features/Trilingual.tsx";
 
 // repo root is the parent of site/ (cwd during astro build/dev). Plain fs read,
 // not `new URL(..., import.meta.url)` — Vite would treat that as an asset import.
@@ -27,15 +30,15 @@ const shikiThemes = { light: "github-light", dark: "github-dark" } as const;
 const highlights = [
   {
     title: "Modern & safe by default",
-    body: "Go/TypeScript-style syntax with Rust-like, compile-time safety: no inferred latches, silent truncation, multiple drivers, or uninitialized registers — each a teaching error. Security checks are a first-class goal on the roadmap.",
+    body: "Familiar Go/TypeScript-style syntax, checked like Rust. The compiler catches the classic hardware footguns — inferred latches, silent width truncation, multiple drivers, uninitialized registers — before they reach Verilog, and reports each as a clear, actionable error.",
   },
   {
     title: "Built to teach",
-    body: "Made for students learning digital design: a small surface, one obvious way to do things, and diagnostics that explain what is wrong, why it is unsafe in hardware, and how to fix it.",
+    body: "A small, focused language with one obvious way to do things. Its diagnostics don't just flag an error — they explain what is wrong, why it is unsafe in hardware, and how to fix it, so learners build the right mental model as they go.",
   },
   {
     title: "Trilingual, Tamil-first",
-    body: "Write the same circuit in English, Tanglish, or Tamil — one grammar, byte-identical Verilog. The first Tamil-rooted HDL: native Tamil to reach Tamil-speaking learners and grow Tamil-rooted programming.",
+    body: "Write the same module with English, Tanglish, or Tamil keywords — one grammar, one compiler. Switch flavors freely and the emitted Verilog stays byte-identical, so a design reads natively in your language without changing what it builds.",
   },
 ];
 
@@ -111,9 +114,7 @@ const jsonLd = {
             >live</span
           >
         </div>
-        <div class="h-56">
-          <Hero client:visible />
-        </div>
+        <Hero client:visible />
       </div>
     </section>
 
@@ -126,17 +127,41 @@ const jsonLd = {
       <Code code={counter} lang={mimzLang} themes={shikiThemes} />
     </section>
 
-    <!-- Why -->
+    <!-- Why — three alternating feature rows with reveal-on-scroll art -->
     <section class="bd border-t py-16">
-      <div class="grid gap-8 md:grid-cols-3">
-        {
-          highlights.map((h) => (
-            <div>
-              <h2 class="fg mb-2 text-lg font-semibold">{h.title}</h2>
-              <p class="fg-muted text-sm leading-relaxed">{h.body}</p>
-            </div>
-          ))
-        }
+      <div class="flex flex-col gap-14 lg:gap-20">
+        <!-- Row 1 — illustration left, text right -->
+        <div class="grid items-center gap-8 lg:grid-cols-2">
+          <div class="bd bg-soft order-last rounded-xl border p-5 lg:order-first">
+            <SafeByDefault client:visible />
+          </div>
+          <div class="lg:order-last">
+            <h2 class="fg mb-3 text-xl font-semibold">{highlights[0].title}</h2>
+            <p class="fg-muted text-sm leading-relaxed">{highlights[0].body}</p>
+          </div>
+        </div>
+
+        <!-- Row 2 — text left, illustration right -->
+        <div class="grid items-center gap-8 lg:grid-cols-2">
+          <div>
+            <h2 class="fg mb-3 text-xl font-semibold">{highlights[1].title}</h2>
+            <p class="fg-muted text-sm leading-relaxed">{highlights[1].body}</p>
+          </div>
+          <div class="bd bg-soft rounded-xl border p-5">
+            <BuiltToTeach client:visible />
+          </div>
+        </div>
+
+        <!-- Row 3 — illustration left, text right -->
+        <div class="grid items-center gap-8 lg:grid-cols-2">
+          <div class="bd bg-soft order-last rounded-xl border p-5 lg:order-first">
+            <Trilingual client:visible />
+          </div>
+          <div class="lg:order-last">
+            <h2 class="fg mb-3 text-xl font-semibold">{highlights[2].title}</h2>
+            <p class="fg-muted text-sm leading-relaxed">{highlights[2].body}</p>
+          </div>
+        </div>
       </div>
     </section>
   </main>

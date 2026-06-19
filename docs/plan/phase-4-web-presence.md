@@ -148,7 +148,11 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
    prebuilt; PRs/`master` → preview, `workflow_dispatch target=production` → prod.
    Site SEO/perf/security hardened (self-hosted fonts, CSP via `vercel.json`,
    OG/canonical/sitemap/JSON-LD). Pending: maintainer adds the 3 Vercel secrets +
-   `vercel link`, then the `mimz.naveenr.in` DNS CNAME. Flashy hero still open.)_
+   `vercel link`, then the `mimz.naveenr.in` DNS CNAME.)_
+   _(Landing polish DONE 2026-06-19: brand — peacock mascot (footer/404/playground)
+   + waveform logo/favicon; interactive 2D hero (play/pause, speed, signal — no 3D
+   per maintainer); three alternating reveal-on-scroll feature sections
+   (SafeByDefault / BuiltToTeach / Trilingual), no new deps.)_
 
 ## Reused code (do not reinvent)
 
