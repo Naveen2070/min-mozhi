@@ -13,10 +13,30 @@ import Trilingual from "../components/features/Trilingual.tsx";
 // repo root is the parent of site/ (cwd during astro build/dev). Plain fs read,
 // not `new URL(..., import.meta.url)` — Vite would treat that as an asset import.
 const repoRoot = path.resolve(process.cwd(), "..");
-const counter = readFileSync(
-  path.join(repoRoot, "examples/english/counter.mimz"),
-  "utf-8",
-).trim();
+const cleanSnippet = (code: string, shortComment: string) => {
+  const lines = code.split('\n');
+  const out = [];
+  let inHeader = true;
+  for (const line of lines) {
+    if (inHeader && (line.trim().startsWith('//') || line.trim() === '')) continue;
+    inHeader = false;
+    out.push(line);
+  }
+  return `// ${shortComment}\n\n${out.join('\n')}`;
+};
+
+const counterEng = cleanSnippet(
+  readFileSync(path.join(repoRoot, "examples/english/counter.mimz"), "utf-8").trim(),
+  "Free-running counter\n// `reg = 0` enforces reset.\n// `+%` allows explicit wrapping."
+);
+const counterTan = cleanSnippet(
+  readFileSync(path.join(repoRoot, "examples/tanglish/counter.mimz"), "utf-8").trim(),
+  "Free-running counter (Tanglish)\n// Keywords change, grammar stays.\n// `+%` allows explicit wrapping."
+);
+const counterTam = cleanSnippet(
+  readFileSync(path.join(repoRoot, "examples/tamil-pure/kanakki.mimz"), "utf-8").trim(),
+  "Free-running counter (Pure Tamil)\n// `இலக்கணம் தமிழ்` enables SOV.\n// Note the trailing `போது`.\n// `+%` allows explicit wrapping."
+);
 
 const mimzGrammar = JSON.parse(
   readFileSync(
@@ -122,12 +142,41 @@ const jsonLd = {
     </section>
 
     <!-- Code sample -->
-    <section class="pb-16">
-      <p class="fg-muted mb-3 text-sm">
-        A counter in Min-Mozhi — <code class="ff-mono">counter.mimz</code> compiles
-        to synthesizable Verilog and simulates to that waveform.
-      </p>
-      <Code code={counter} lang={mimzLang} themes={shikiThemes} />
+    <section class="pb-16 max-w-full">
+      <div class="mb-6 text-center">
+        <h2 class="fg text-2xl font-bold tracking-tight mb-2">One language, three dialects</h2>
+        <p class="fg-muted text-sm max-w-2xl mx-auto">
+          A counter in Min-Mozhi — written in English, Tanglish, and Pure Tamil. All three compile
+          to the exact same synthesizable Verilog byte-for-byte.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="flex flex-col">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-xs font-semibold fg-accent tracking-widest uppercase">English</span>
+          </div>
+          <div class="flex-1 [&>pre]:h-full [&>pre]:overflow-hidden">
+            <Code code={counterEng} lang={mimzLang} themes={shikiThemes} />
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-xs font-semibold fg-accent tracking-widest uppercase">Tanglish</span>
+          </div>
+          <div class="flex-1 [&>pre]:h-full [&>pre]:overflow-hidden">
+            <Code code={counterTan} lang={mimzLang} themes={shikiThemes} />
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-xs font-semibold fg-accent tracking-widest uppercase ff-tamil">தமிழ் <span class="fg-muted font-normal capitalize tracking-normal">(Pure Tamil)</span></span>
+          </div>
+          <div class="flex-1 [&>pre]:h-full [&>pre]:overflow-hidden">
+            <Code code={counterTam} lang={mimzLang} themes={shikiThemes} />
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Why — three alternating feature rows with reveal-on-scroll art -->
