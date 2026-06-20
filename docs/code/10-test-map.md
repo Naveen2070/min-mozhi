@@ -11,10 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**417 tests** as of 2026-06-19: 279 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 10 sim integration + 7 test integration + 5 compile_string integration.
+**424 tests** as of 2026-06-20: 286 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-20 Re-audit `src/sim/value.rs`: Finding A — `BinOp::Shl` used bare `r.bits as u32` to cast the shift amount, silently truncating when bit ≥ 32 was set (e.g. `1 << (1 << 32)` became `1 << 0` = 1 instead of 0). Also corrected `BinOp::Shr`'s `.min(127)` guard which avoided the truncation panic but produced wrong results (shift-by-128 became shift-by-127 instead of 0). Both fixed with `if r.bits >= 128 { 0 } else { … as u32 }`. +7 lib unit in `sim::comb::tests` (all new, section below). Suite 417 → 424.
 - 2026-06-19 Two new pure-Tamil showcase examples so the playground's six curated examples (counter, adder, comparator, mux4, blinker, traffic*light) exist in **every** flavor — `examples/tamil-pure/kuutti.mimz` (adder twin) and `saalaivilakku.mimz` (traffic-light FSM twin), both Tamil keywords AND identifiers. `PURE_TAMIL` (in `tests/examples.rs` and `tests/translate.rs`) grew 4 → 6, so the equivalence, golden, and round-trip checks now cover them (new goldens `tests/golden/tamil_pure*{kuutti,saalaivilakku}.v`); the Icarus suite gained matching self-checking testbenches (`tests/icarus/{kuutti,saalaivilakku}\_tb.v`) + bit-for-bit differentials. **No new `#[test]` functions\*\* (these ride existing loop-driven tests), so the count is unchanged at 417.
 - 2026-06-19 Website Phase 4 — the interactive playground waveform. The runner (`src/runner.rs`) gained a `ports` command (emits the module interface as JSON — `{module, clocked, inputs[], outputs[]}` — so the browser can build input controls without re-parsing) and a `sim --steps "a=3,b=5;a=7,b=1"` flag (explicit per-step input vectors, fed straight into the existing `comb_run`; rejected for clocked designs). The `/playground` got a stimulus panel — an editable step table for combinational designs (the fix for "an adder with a fixed input draws flat") and held-inputs + cycles for clocked ones — that re-simulates live, plus a hover cursor on the canvas reading each signal's value at a time point. +4 lib unit (`runner`: ports×2, sim_steps×2). Suite 413 → 417.
 - 2026-06-18 Website Phase 4 step 5 — the playground waveform viewer. The runner's `sim` gained a `--vcd` flag (returns the 2-state VCD from `sim::vcd::to_vcd` instead of a console trace), so the in-browser **Simulate** button gets a waveform via the existing `runCommand` (no new wasm binding). New `site/src/components/WaveformViewer.tsx` — a self-contained canvas renderer behind the stable `vcd` prop (parses the VCD; square waves for 1-bit, value-labelled buses for wider signals; Surfer is the documented future drop-in). +1 lib unit (`runner::sim_vcd_emits_a_vcd_document`). Suite 412 → 413.
@@ -500,7 +501,7 @@ token reskin, not the comment-dropping `--order` printer).
 | `a_non_lexing_file_is_a_clean_error`              | a lex error (e.g. `/`) is reported, exits non-zero, and does not clobber input  |
 | `output_flag_leaves_the_input_untouched`          | `-o <dest>` writes the result elsewhere; the input is unchanged                 |
 
-## Unit: combinational evaluator (`src/sim/comb.rs`, 9 tests)
+## Unit: combinational evaluator (`src/sim/comb.rs`, 16 tests)
 
 The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 
@@ -515,6 +516,13 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `reports_missing_input`                | a missing `--in` value names the input                                            |
 | `replication_repeats_the_group`        | `{2{a}}`/`{3{a}}` repeat the group (a=0b1010 → 0xAA / 0xAAA) (A1)                 |
 | `dont_care_match_picks_the_masked_arm` | `0b1??`/`0b01?`/`_` priority decoder picks the right arm per input (A2)           |
+| `shift_left_zero_amt`                  | `a << 0` is identity                                                              |
+| `shift_right_zero_amt`                 | `a >> 0` is identity                                                              |
+| `shift_left_max_width`                 | `1 << 127` yields `2¹²⁷` (max valid shift)                                        |
+| `shift_left_exceeding_width_is_zero`   | `1 << 128`, `1 << 200`, `1 << u128::MAX` → 0 (regression for the `as u32` bug)    |
+| `shift_right_exceeding_width_is_zero`  | `2 >> 128`, `2 >> 200`, `2 >> u128::MAX` → 0                                      |
+| `shift_left_bit_32_set_in_amt`         | `1 << (1 << 32)` → 0 (the specific `as u32` truncation trigger)                   |
+| `shift_right_bit_32_set_in_amt`        | `(1 << 63) >> (1 << 32)` → 0                                                      |
 
 ## Unit: elaboration (`src/sim/elaborate.rs`, 13 tests)
 
@@ -655,13 +663,16 @@ skips the checker, so `comb.rs` is the only overflow guard (audit SEC-2).
 
 ## Fuzzing: `fuzz/fuzz_targets/` (CI-only, not `cargo test` units)
 
-Three `cargo-fuzz` harnesses over the untrusted-input path, asserting the audit's
+Four `cargo-fuzz` harnesses over the untrusted-input path, asserting the audit's
 core guarantee (any byte string yields a value/Verilog or a clean `Diag`/`Err`,
 never a panic / abort / hang):
 
 - `lex_parse_eval` — NFC → `lex` → `parse` → `sim::comb::eval_outputs`, run twice
   (empty inputs for the const path, then AST-derived per-port values for the
-  runtime datapath).
+  runtime datapath). After the random pass, 8 fixed edge-case evaluation passes
+  (0, 1, u128::MAX, 1<<32, 1<<63, 1<<127, (1<<126)-1, (1<<64)-1 as all-port
+  values) ensure truncation-prone boundaries are always exercised regardless of
+  the random byte stream.
 - `lex_parse_compile` — NFC → `lex` → `parse` → `checker::check` →
   `transliterate` → `Project::from_files` → `emit` (the Verilog backend).
 - `pretty_roundtrip` — NFC → `lex` → `parse` → `pretty::pretty_print` → re-`lex`
@@ -669,6 +680,11 @@ never a panic / abort / hang):
   the re-parsed AST must lower to byte-identical Verilog. Exercises the
   `translate --order` printer on arbitrary input (the unit suite only covers the
   fixed example corpus).
+- `translate_roundtrip` — NFC → `lex` → `parse` → `translate` (keyword reskin,
+  `--romanize-names`, and name-map restore): every reskin/romanize output must
+  re-lex, and `romanize → restore` must be token-equivalent to the plain reskin.
+  Added 2026-06-15 after a deterministic stress audit found the numeric-literal
+  abutment bug (`42தொகுதி`, fixed by the `push_guarded` boundary guard).
 
 **Not** part of the test count above: they need a nightly toolchain + libFuzzer
 (Linux/macOS), live in a standalone `fuzz/` crate the root gate never builds, and
