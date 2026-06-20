@@ -14,7 +14,7 @@ on:
     # Nightly perf batch is still disabled. Uncomment to schedule it (03:00
     # UTC); `nightly-bench` is gated on exactly this cron so the weekly fuzz
     # schedule above never triggers the perf batch.
-    # - cron: "0 3 * * *"
+    - cron: "0 3 * * *"
 
 env:
   CARGO_TERM_COLOR: always
