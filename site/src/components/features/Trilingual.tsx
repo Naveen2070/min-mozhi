@@ -52,8 +52,9 @@ export default function Trilingual() {
             <div className="feat-tri-cap">Emitted Verilog · identical</div>
             <code className="feat-tri-code">module adder(…)</code>
           </div>
-          <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
-            <path className="feat-ok feat-draw" d="M5 13 l4 4 l10 -12" />
+          <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="var(--border)" strokeWidth="1.5" />
+            <path className="feat-ok feat-draw" d="M7 12.5 l3.5 3.5 l6.5 -7" />
           </svg>
         </div>
       </div>

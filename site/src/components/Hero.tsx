@@ -138,6 +138,7 @@ export default function Hero() {
         <button
           type="button"
           className="hero-btn"
+          style={{ width: "96px", justifyContent: "center" }}
           aria-pressed={playing}
           aria-label={playing ? "Pause waveform" : "Play waveform"}
           onClick={() => setPlaying((p) => !p)}

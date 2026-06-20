@@ -36,7 +36,7 @@ file — verify your download first:
 Min-Mozhi is a Rust program. With [Rust](https://rustup.rs) (stable ≥ 1.85):
 
 ```text
-git clone <the-repo>
+git clone https://github.com/Naveen2070/min-mozhi
 cd min-mozhi
 cargo build            # builds the compiler -> target/debug/mimz
 ```

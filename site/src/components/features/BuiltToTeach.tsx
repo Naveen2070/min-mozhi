@@ -14,39 +14,43 @@ export default function BuiltToTeach() {
         role="img"
         aria-label="A diagnostic names an inferred latch and shows the fix"
       >
-        <text className="feat-label feat-reveal feat-d1" x="24" y="44">
-          q = en &amp; d
+        {/* IDE-like Code */}
+        <text className="feat-label feat-reveal feat-d1" x="32" y="44">
+          q = en &amp; d;
         </text>
-        <path className="feat-wire feat-draw" d="M24 54 H126" />
+        {/* IDE squiggle underline */}
+        <path className="feat-wire feat-draw" d="M32 52 q 4 3 8 0 t 8 0 t 8 0 t 8 0 t 8 0 t 8 0 t 8 0 t 8 0" style={{ strokeWidth: 1.5 }} />
 
+        {/* Diagnostic popup */}
         <g className="feat-reveal feat-d2">
+          {/* Popover pointer */}
+          <path className="feat-badge-box" d="M48 60 l6 -6 l6 6 Z" />
+          {/* Popover box */}
           <rect
             className="feat-badge-box"
-            x="232"
-            y="26"
-            width="104"
-            height="30"
-            rx="8"
+            x="32"
+            y="60"
+            width="296"
+            height="44"
+            rx="4"
           />
-          <text className="feat-badge-text" x="284" y="46" textAnchor="middle">
-            E0107
+          <text className="feat-badge-text" x="44" y="78">
+            E0107: inferred latch
+          </text>
+          <text className="feat-sub" x="44" y="94">
+            “q” isn’t assigned on every path
           </text>
         </g>
 
-        <text className="feat-sub feat-reveal feat-d3" x="24" y="100">
-          inferred latch — “q” isn’t assigned on every path
-        </text>
+        {/* Arrow pointing to fix */}
+        <path className="feat-dashln feat-reveal feat-d3" d="M48 112 V142" />
+        <path className="feat-arrow feat-reveal feat-d3" d="M44 136 L48 144 L52 136 Z" />
 
-        <path className="feat-dashln feat-reveal feat-d3" d="M40 112 V146" />
-        <path
-          className="feat-arrow feat-reveal feat-d3"
-          d="M34 140 L40 150 L46 140 Z"
-        />
-
-        <text className="feat-label feat-reveal feat-d4" x="24" y="176">
-          q = en ? d : q
+        {/* Fixed code */}
+        <text className="feat-label feat-reveal feat-d4" x="32" y="176">
+          q = en ? d : q;
         </text>
-        <path className="feat-ok feat-draw" d="M150 170 l7 8 l14 -18" />
+        <path className="feat-ok feat-draw" d="M160 166 l5 6 l10 -12" />
       </svg>
     </div>
   );

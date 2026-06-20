@@ -17,14 +17,21 @@
   "engines": {
     "vscode": "^1.91.0"
   },
-  "categories": ["Programming Languages"],
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./extension.js",
   "contributes": {
     "languages": [
       {
         "id": "mimz",
-        "aliases": ["Min-Mozhi", "mimz"],
-        "extensions": [".mimz"],
+        "aliases": [
+          "Min-Mozhi",
+          "mimz"
+        ],
+        "extensions": [
+          ".mimz"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
