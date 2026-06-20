@@ -697,6 +697,12 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
   pane shows the `test` results + a `$monitor` trace and writes `counter.vcd`; a
   width error underlines the offending wire with the E0301 teaching message.
 
+### 8.12 Inline Test Modules & Auto-Generated Verilog Testbenches (`--emit-testbench`)
+
+- **Explanation:** Modern languages (like Rust via `#[test]`) allow writing tests in the exact same file as the source code. Min-Mozhi already supports this via inline `test` blocks that run instantly in the built-in simulator. The next step is to add a CLI flag (`mimz compile --emit-testbench`) that automatically translates these inline `test` blocks into a standard, standalone Verilog `_tb.v` testbench. This allows engineers to rapidly write tests without leaving their `.mimz` file, while still outputting standard Verilog testbenches for external validation (like Icarus or EDA tools). Test blocks can be written inline or organized in a separate file.
+- **Feasibility:** High. The compiler's differential test suite (`tests/icarus.rs`) already contains internal logic to generate Verilog testbenches from elaborated designs to cross-check against Icarus. Exposing this as a user-facing flag bridges the gap between fast inline iteration and industry-standard validation.
+- **Example Use Case:** A user writes a module and its `test` block in `adder.mimz`. Running `mimz test` runs it natively. Running `mimz compile adder.mimz --emit-testbench` emits both `adder.v` and `adder_tb.v`, ready for external verification.
+
 ---
 
 ### Tier 1 — Already shipped (the idea renames an existing rule)
