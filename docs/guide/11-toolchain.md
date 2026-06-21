@@ -40,6 +40,7 @@ Runs the whole pipeline and writes synthesizable Verilog. Resolves imports.
 ```text
 mimz compile counter.mimz                 # writes counter.v
 mimz compile counter.mimz -o build/c.v    # choose the output path
+mimz compile counter.mimz --emit-testbench # also writes counter_tb.v from inline tests
 ```
 
 ## `mimz eval` — run combinational logic
@@ -185,6 +186,9 @@ one-off flag always wins.
 
 ```toml
 lang = "tamil"          # default diagnostics flavor for check/compile/eval/sim/test
+
+[compile]
+emit_testbench = true   # always emit _tb.v on compile
 
 [translate]
 to = "tanglish"         # default --to

@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-424%20passing-brightgreen.svg"></a>
+  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-425%20passing-brightgreen.svg"></a>
   <img alt="Status" src="https://img.shields.io/badge/status-compiler%20%2B%20simulator-success.svg">
   <a href="https://rustup.rs"><img alt="Rust" src="https://img.shields.io/badge/rust-%E2%89%A5%201.85-orange.svg"></a>
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-blue.svg">
@@ -82,7 +82,7 @@ Prerequisite: [Rust](https://rustup.rs) stable ≥ 1.85.
 cargo build                                   # binary: target/debug/mimz
 
 mimz check   examples/english/counter.mimz    # lex + parse + safety checks
-mimz compile examples/english/counter.mimz -o counter.v   # emit Verilog
+mimz compile examples/english/counter.mimz -o counter.v --emit-testbench  # emit Verilog & testbench
 mimz sim     demo/cpu.mimz --cycles 8 -o demo/cpu.vcd     # simulate → VCD waveform
 mimz test    demo/cpu.mimz                     # run tick/expect test blocks
 ```
@@ -101,7 +101,7 @@ cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test
 ## Status
 
 **Phases 1, 1.8, and 1.5 complete — a working compiler _and_ simulator**, with
-**424 passing tests**.
+**425 passing tests**.
 
 - **Compiler** — lexer (all three flavors) → parser → checker (every spec safety
   rule, stable `E`-codes) → Verilog emitter (`repeat` unrolling, Tamil→ASCII

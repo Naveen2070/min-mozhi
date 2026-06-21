@@ -17,8 +17,10 @@
 
 mod expr;
 mod module;
+mod testbench;
 mod translit;
 
+pub use testbench::emit_testbench;
 pub(crate) use translit::romanize;
 pub use translit::transliterate;
 

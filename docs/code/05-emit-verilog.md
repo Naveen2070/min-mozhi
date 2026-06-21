@@ -4,12 +4,13 @@ ASTs + project symbol table → one Verilog-2005 source string.
 
 ## File layout
 
-| File          | Owns                                                                                                        |
-| ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `mod.rs`      | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`) |
-| `module.rs`   | Module shells, ports, declarations, instances, always-blocks                                                |
-| `expr.rs`     | Expression rendering (incl. `match` → ternary chains)                                                       |
-| `translit.rs` | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)          |
+| File           | Owns                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mod.rs`       | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`) |
+| `module.rs`    | Module shells, ports, declarations, instances, always-blocks                                                |
+| `expr.rs`      | Expression rendering (incl. `match` → ternary chains)                                                       |
+| `testbench.rs` | Inline `test` blocks → Verilog testbench wrappers (`_tb.v`)                                                 |
+| `translit.rs`  | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)          |
 
 Same module-scoping pattern as the parser: state and shared helpers in
 `mod.rs`, the other files are `impl Emitter` blocks entered via

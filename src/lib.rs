@@ -17,7 +17,7 @@
 //! | [`parser`]      | Tokens → AST (recursive descent, multi-error recovery)     |
 //! | [`ast`]         | The one shared AST — flavor- and word-order-blind          |
 //! | [`checker`]     | Names, consts, widths, drivers, exhaustiveness, clocks     |
-//! | [`emit_verilog`]| AST → Verilog-2005 text (+ Tamil→ASCII transliteration)    |
+//! | [`emit_verilog`]| AST → Verilog-2005 text (+ Tamil→ASCII transliteration + testbenches) |
 //! | [`project`]     | File loading, NFC normalization, `import` resolution       |
 //!
 //! Tooling modules consume the pipeline above (they are not stages in it):

@@ -70,6 +70,9 @@ enum Cmd {
         /// Output path (default: entry file with .v extension)
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// Emit a standalone Verilog testbench (_tb.v) from inline test blocks
+        #[arg(long)]
+        emit_testbench: bool,
         /// Print diagnostics as a JSON array on stdout (tool consumers)
         #[arg(long)]
         json: bool,
@@ -256,6 +259,7 @@ fn main() -> ExitCode {
         Cmd::Compile {
             file,
             output,
+            emit_testbench,
             json,
             lang,
         } => {
@@ -264,7 +268,8 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             let lang = lang.or(cfg.lang);
-            compile(&file, output, json, lang.as_deref())
+            let emit_testbench = emit_testbench || cfg.compile.emit_testbench.unwrap_or(false);
+            compile(&file, output, emit_testbench, json, lang.as_deref())
         }
         Cmd::Fmt {
             file,

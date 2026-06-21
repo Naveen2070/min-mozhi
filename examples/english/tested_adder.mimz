@@ -1,0 +1,20 @@
+// Min-Mozhi example: combinational adder with inline test block
+// `test` blocks do not emit hardware, but can be exported to standard Verilog
+// testbenches using `mimz compile --emit-testbench`
+
+module Adder(WIDTH: int = 8) {
+  in  a: bits[WIDTH]
+  in  b: bits[WIDTH]
+  out sum: bits[WIDTH + 1]
+
+  sum = a + b
+}
+
+test "adder works" for Adder(WIDTH: 4) {
+  a = 5
+  b = 10
+  // Note: Combinational circuits evaluate continuously.
+  // In a test, expect checks the steady state.
+  // We use `#1` equivalent in Verilog, but in mimz we just expect.
+  expect sum == 15
+}

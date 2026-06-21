@@ -1,0 +1,18 @@
+// Min-Mozhi pure-Tamil showcase: a combinational adder with an inline test block
+// `test` blocks do not emit hardware, but can be exported to standard Verilog
+// testbenches using `mimz compile --emit-testbench`
+
+தொகுதி கூட்டி(அகலம்: int = 8) {
+  உள்ளீடு அ: bits[அகலம்]
+  உள்ளீடு ஆ: bits[அகலம்]
+
+  வெளியீடு கூட்டு: bits[அகலம் + 1]
+
+  கூட்டு = அ + ஆ
+}
+
+சோதனை "கூட்டி வேலை செய்கிறது" க்காக கூட்டி(அகலம்: 4) {
+  அ = 5
+  ஆ = 10
+  உறுதிசெய் கூட்டு == 15
+}

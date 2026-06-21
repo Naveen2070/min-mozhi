@@ -14,6 +14,7 @@ use crate::Output;
 pub(crate) fn compile(
     path: &Path,
     output: Option<PathBuf>,
+    emit_testbench: bool,
     json: bool,
     lang: Option<&str>,
 ) -> ExitCode {
@@ -63,6 +64,47 @@ pub(crate) fn compile(
         eprintln!("error: cannot write `{}`: {e}", out_path.display());
         return ExitCode::FAILURE;
     }
+
+    if emit_testbench {
+        let tests: Vec<&ast::TestDecl> = asts
+            .iter()
+            .flat_map(|f| {
+                f.items.iter().filter_map(|i| {
+                    if let ast::TopItem::Test(t) = i {
+                        Some(t)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        if !tests.is_empty() {
+            let tb_verilog = match emit_verilog::emit_testbench(&project, &tests) {
+                Ok(v) => v,
+                Err(errors) => return report_err(errors),
+            };
+
+            let mut tb_path = out_path.clone();
+            let mut name = tb_path.file_stem().unwrap().to_os_string();
+            name.push("_tb");
+            tb_path.set_file_name(name);
+            tb_path.set_extension("v");
+
+            if let Err(e) = std::fs::write(&tb_path, &tb_verilog) {
+                eprintln!("error: cannot write `{}`: {e}", tb_path.display());
+                return ExitCode::FAILURE;
+            }
+            if !json {
+                println!(
+                    "compiled {} -> {} (testbench)",
+                    path.display(),
+                    tb_path.display()
+                );
+            }
+        }
+    }
+
     // Success: surface any non-fatal warnings (json → the array, else stderr).
     if json {
         out.project(&warnings, &files);

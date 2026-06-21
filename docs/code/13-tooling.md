@@ -220,12 +220,15 @@ config only fills in what the command line omitted.
   key into an error, not a silent no-op; a malformed file is a clean error
   (user-authored + per-project — unlike the embedded keyword tables, which panic).
 - **Keys.** Top-level `lang` (diagnostics language for `check`/`compile`/`eval`);
-  `[translate]` `to` / `order` / `romanize_names` / `names_map` (`"auto"` | `"off"`
+  `[compile]` `emit_testbench`; `[translate]` `to` / `order` / `romanize_names` / `names_map` (`"auto"` | `"off"`
   — controls the sidecar auto-discovery above); `[fmt]` `to` / `strict`.
 
 ```toml
 # mimz.toml — CLI flags always override these.
 lang = "tamil"
+
+[compile]
+emit_testbench = true
 
 [translate]
 to             = "tanglish"
