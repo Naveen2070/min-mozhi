@@ -178,6 +178,81 @@ fn every_emitted_verilog_passes_iverilog() {
     assert!(checked >= 48, "expected the whole corpus, found {checked}");
 }
 
+/// Compile one example with `--emit-testbench`; return `(out.v, out_tb.v)` if a testbench was generated.
+fn compile_example_tb(path: &Path) -> Option<(PathBuf, PathBuf)> {
+    let name = path.display().to_string().replace(['\\', '/', ':'], "_");
+    let out_v = std::env::temp_dir().join(format!("mimz_icarus_tb_{name}.v"));
+
+    let stem = out_v.file_stem().unwrap().to_os_string();
+    let mut tb_name = stem.clone();
+    tb_name.push("_tb");
+    let out_tb = out_v.with_file_name(tb_name).with_extension("v");
+
+    let out = mimz()
+        .arg("compile")
+        .arg(path)
+        .arg("-o")
+        .arg(&out_v)
+        .arg("--emit-testbench")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "`mimz compile --emit-testbench {}` failed:\n{}",
+        path.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    if out_tb.exists() {
+        Some((out_v, out_tb))
+    } else {
+        None
+    }
+}
+
+/// Layer 1.5 — every *auto-generated* testbench (`_tb.v`) must be structurally valid
+/// Verilog to Icarus when compiled alongside its generated DUT (`.v`).
+#[test]
+fn every_emitted_testbench_passes_iverilog() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    let mut checked = 0;
+    let mut stack = vec![repo().join("examples")];
+    let mut files = Vec::new();
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "mimz") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    for path in files {
+        if let Some((v, tb)) = compile_example_tb(&path) {
+            let out = tool(&bin, "iverilog")
+                .args(["-t", "null"])
+                .arg(&v)
+                .arg(&tb)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "iverilog rejected the testbench emitted for {}:\n{}",
+                path.display(),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 5,
+        "expected at least the tested examples to have testbenches, found {checked}"
+    );
+}
+
 /// Run a testbench table through iverilog + vvp, asserting each prints PASS
 /// exactly once and never FAIL. Shared by the English and pure-Tamil layers.
 fn run_self_checking(bin: &Path, table: &[(&str, &str)]) {

@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 22] = [
+const BASE_EXAMPLES: [&str; 23] = [
     "adder",
     "alu",
     "async_reset",
@@ -35,6 +35,7 @@ const BASE_EXAMPLES: [&str; 22] = [
     "traffic_light",
     "vilakku",
     "window",
+    "tested_adder",
 ];
 
 /// Pure-Tamil showcase examples (Tamil keywords AND identifiers), each paired
@@ -43,13 +44,14 @@ const BASE_EXAMPLES: [&str; 22] = [
 /// to any other flavor (localized names). Instead they are golden-locked and
 /// proven equivalent to their counterpart by canonical identifier renaming
 /// (see `pure_tamil_examples_are_equivalent_to_their_counterparts`).
-const PURE_TAMIL: [(&str, &str); 6] = [
+const PURE_TAMIL: [(&str, &str); 7] = [
     ("kanakki", "counter"),
     ("cimitti", "blinker"),
     ("oppidi", "comparator"),
     ("thervi", "mux4"),
     ("kuutti", "adder"),
     ("saalaivilakku", "traffic_light"),
+    ("tested_kuutti", "tested_adder"),
 ];
 
 fn examples_dir() -> PathBuf {
@@ -274,6 +276,113 @@ fn emitted_verilog_matches_the_goldens() {
                  If the change is intended, regenerate with MIMZ_UPDATE_GOLDENS=1 \
                  and review the diff.",
                 v.lines().nth(diff_line - 1).unwrap_or("<end of output>"),
+                want.lines().nth(diff_line - 1).unwrap_or("<end of golden>"),
+            );
+        }
+    }
+}
+
+/// Helper that compiles a file with `--emit-testbench` and returns the generated `_tb.v` content.
+/// The tag ensures temp files don't collide when tests run in parallel.
+fn compile_file_tb_tagged(path: &Path, tag: &str) -> Option<String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let name = path.display().to_string().replace(['\\', '/', ':'], "_");
+    let base_v = std::env::temp_dir().join(format!(
+        "mimz_tb_{tag}{}_{name}.v",
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    // The testbench emitter creates a sidecar file next to `base_v` named `{base}_tb.v`.
+    let mut tb_v = base_v.clone();
+    let mut tb_name = tb_v.file_stem().unwrap().to_os_string();
+    tb_name.push("_tb");
+    tb_v.set_file_name(tb_name);
+    tb_v.set_extension("v");
+
+    let out = mimz()
+        .arg("compile")
+        .arg(path)
+        .arg("-o")
+        .arg(&base_v)
+        .arg("--emit-testbench")
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "`mimz compile --emit-testbench {}` failed:\n{}",
+        path.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    if tb_v.exists() {
+        Some(std::fs::read_to_string(&tb_v).unwrap())
+    } else {
+        None
+    }
+}
+
+/// Golden-file comparison for auto-generated testbenches: any base example that
+/// has inline `test` blocks must generate a `_tb.v` that exactly matches the
+/// `tests/golden/<base>_tb.v` golden file.
+#[test]
+fn emitted_testbench_matches_the_goldens() {
+    let update = std::env::var("MIMZ_UPDATE_GOLDENS").is_ok();
+    let golden_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("golden");
+
+    let mut checks = Vec::new();
+    for base in BASE_EXAMPLES {
+        checks.push((
+            format!("english/{base}.mimz"),
+            format!("{}_tb.v", base.replace('/', "_")),
+        ));
+    }
+    for (pure, _base) in PURE_TAMIL {
+        checks.push((
+            format!("tamil-pure/{pure}.mimz"),
+            format!("tamil_pure_{pure}_tb.v"),
+        ));
+    }
+
+    for (input_rel, golden_name) in checks {
+        let input_path = examples_dir().join(&input_rel);
+        let Some(tb) = compile_file_tb_tagged(&input_path, "golden_tb_") else {
+            // No testbench generated for this example (no `test` blocks), skip.
+            continue;
+        };
+        let tb = strip_banner(&tb);
+        let golden_path = golden_dir.join(&golden_name);
+
+        if update {
+            std::fs::create_dir_all(&golden_dir).unwrap();
+            std::fs::write(&golden_path, &tb).unwrap();
+            continue;
+        }
+        let want = std::fs::read_to_string(&golden_path)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "missing testbench golden {} — run with MIMZ_UPDATE_GOLDENS=1 to create it",
+                    golden_path.display()
+                )
+            })
+            .replace("\r\n", "\n");
+
+        if tb != want {
+            let diff_line = tb
+                .lines()
+                .zip(want.lines())
+                .position(|(a, b)| a != b)
+                .map(|i| i + 1)
+                .unwrap_or_else(|| tb.lines().count().min(want.lines().count()) + 1);
+            panic!(
+                "{input_rel}: emitted testbench differs from the golden at line {diff_line}.\n\
+                 got:  {}\n\
+                 want: {}\n\
+                 If the change is intended, regenerate with MIMZ_UPDATE_GOLDENS=1 \
+                 and review the diff.",
+                tb.lines().nth(diff_line - 1).unwrap_or("<end of output>"),
                 want.lines().nth(diff_line - 1).unwrap_or("<end of golden>"),
             );
         }
