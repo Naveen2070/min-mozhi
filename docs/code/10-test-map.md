@@ -11,10 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**425 tests** as of 2026-06-21: 287 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration.
+**428 tests** as of 2026-06-21: 290 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 11 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 4 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration.
 
 Changelog of test-count changes (newest first):
 
+- 2026-06-21 Testbench emitter (`src/emit_verilog/testbench.rs`) `--emit-testbench` fixes: `test_env` now merges the DUT's module-parameter defaults for any arg a test doesn't override (mirrors `sim::elaborate::elaborate_module`'s override-or-default order), and args chain left-to-right so a later arg can reference an earlier one (mirrors `sim::harness::params`) — without this, a defaulted param omitted by a test, or `M(W: 8, DEPTH: W * 2)`-style chaining, failed to resolve width expressions. Also: two tests whose names sanitize to the same Verilog module identifier (e.g. `"edge case"` and `"edge_case"` both → `edge_case_tb`) are now rejected with a diagnostic instead of silently emitting two same-named modules. +3 lib unit (`test_env_falls_back_to_module_param_defaults`, `test_env_chains_earlier_args`, `colliding_sanitized_test_names_are_rejected`). Suite 425 → 428.
 - 2026-06-21 Testbench emitter (`src/emit_verilog/testbench.rs`) security and logic hardening — added `sanitize_verilog_ident` helper, bounded loop iteration counts, properly recursed into nested conditionals within inline tests, and pushed `consteval` errors gracefully. +1 lib unit (`sanitize_verilog_ident_replaces_invalid_chars`). Suite 424 → 425.
 - 2026-06-20 Re-audit `src/sim/value.rs`: Finding A — `BinOp::Shl` used bare `r.bits as u32` to cast the shift amount, silently truncating when bit ≥ 32 was set (e.g. `1 << (1 << 32)` became `1 << 0` = 1 instead of 0). Also corrected `BinOp::Shr`'s `.min(127)` guard which avoided the truncation panic but produced wrong results (shift-by-128 became shift-by-127 instead of 0). Both fixed with `if r.bits >= 128 { 0 } else { … as u32 }`. +7 lib unit in `sim::comb::tests` (all new, section below). Suite 417 → 424.
 - 2026-06-19 Two new pure-Tamil showcase examples so the playground's six curated examples (counter, adder, comparator, mux4, blinker, traffic*light) exist in **every** flavor — `examples/tamil-pure/kuutti.mimz` (adder twin) and `saalaivilakku.mimz` (traffic-light FSM twin), both Tamil keywords AND identifiers. `PURE_TAMIL` (in `tests/examples.rs` and `tests/translate.rs`) grew 4 → 6, so the equivalence, golden, and round-trip checks now cover them (new goldens `tests/golden/tamil_pure*{kuutti,saalaivilakku}.v`); the Icarus suite gained matching self-checking testbenches (`tests/icarus/{kuutti,saalaivilakku}\_tb.v`) + bit-for-bit differentials. **No new `#[test]` functions\*\* (these ride existing loop-driven tests), so the count is unchanged at 417.
@@ -209,6 +210,15 @@ deserve a note:
 | `parent_const_never_substitutes_into_child_widths`              | same const NAME in parent and child: the child's value sizes the wire — never the parent's (silently wrong hardware otherwise)              |
 | `tamil_identifiers_emit_as_romanized_verilog`                   | the transliterated pipeline end to end: module/ports/regs/always all use the SAME romanization; no non-ASCII outside the banner comment     |
 | `colliding_romanizations_get_suffixes_and_ascii_names_are_safe` | ந/ன clash + an existing ASCII `nii`: user names are never stolen; clashes get `_2`, `_3` deterministically                                  |
+
+## Unit: testbench emitter (`src/emit_verilog/testbench.rs`, 4 tests)
+
+| Test                                            | Locks in                                                                                                                    |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `sanitize_verilog_ident_replaces_invalid_chars`  | spaces/symbols/leading digits/empty string all sanitize to a valid Verilog identifier                                       |
+| `test_env_falls_back_to_module_param_defaults`   | `--emit-testbench` resolves a width expression for a module parameter the test never overrides, from its `default` (BUG-3) |
+| `test_env_chains_earlier_args`                   | a test's later `(NAME: expr, …)` arg may reference an earlier one in the same list, e.g. `DOUBLE: WIDTH * 2`                |
+| `colliding_sanitized_test_names_are_rejected`    | two tests whose names sanitize to the same Verilog module id (`"edge case"`/`"edge_case"` -> `edge_case_tb`) error instead of emitting duplicate modules (BUG-4) |
 
 ## Integration (`tests/examples.rs`, 11 tests — run the real binary)
 

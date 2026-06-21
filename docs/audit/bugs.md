@@ -74,3 +74,67 @@ token-equivalent (gains the space), not byte-identical.
 **Test.** `number_abutting_tamil_keeps_a_separator_when_reskinned`
 (`tests/translate.rs`); the path is also covered by the new `translate_roundtrip`
 cargo-fuzz target (see [`hardening.md`](hardening.md)).
+
+---
+
+## BUG-3 (HIGH) — `--emit-testbench` dropped module parameter defaults, breaking width resolution
+
+**What.** `mimz compile --emit-testbench` generates a Verilog testbench from
+inline `test` blocks. The `test_env` used to resolve width expressions (e.g.
+`bits[W]`) for the DUT instance was built only from the test's own explicit
+`(NAME: expr, …)` args — any module parameter with a declared `default` that
+the test didn't re-pass was simply absent from `test_env`, so a width
+expression referencing it failed to resolve.
+
+**Cause.** The loop building `test_env` in `emit_testbench` only walked
+`test.args`; it never consulted the DUT's `params` for ones the test omitted.
+Every other parameter-resolution path in the compiler
+(`sim::elaborate::elaborate_module`, `sim::harness::params`) merges in the
+module's own defaults for anything not explicitly overridden — the testbench
+emitter was the one place that didn't.
+
+**How found.** 2026-06-21 review of the testbench emitter added by the
+`--emit-testbench` feature (commit `a27b12c`).
+
+**Severity.** HIGH — any test for a parameterized module that relies on a
+default (the common case — that is what defaults are for) fails to emit a
+testbench at all.
+
+**Fix.** After resolving explicit `test.args` into `test_env`, walk
+`dut.params` and fill in any parameter not already present from its
+`default` expression (evaluated against the args already bound) — same
+order/semantics as `elaborate_module` (`src/emit_verilog/testbench.rs`).
+
+**Test.** `test_env_falls_back_to_module_param_defaults`
+(`src/emit_verilog/testbench.rs`).
+
+---
+
+## BUG-4 (MEDIUM) — Test names sanitizing to the same Verilog identifier silently collided
+
+**What.** `--emit-testbench` names each generated testbench module by
+sanitizing the test's free-text name (`sanitize_verilog_ident`) and appending
+`_tb`. Two differently-named tests can sanitize to the same identifier — e.g.
+`"edge case"` and `"edge_case"` both become `edge_case_tb` — which silently
+emitted two `module edge_case_tb` blocks into the same output file: invalid
+Verilog (duplicate module definition), with no diagnostic pointing at the
+cause.
+
+**Cause.** Test names are free-text and were never checked for
+post-sanitization uniqueness anywhere upstream (the checker validates
+module/signal identifiers, not test-block names).
+
+**How found.** 2026-06-21 review of the testbench emitter added by the
+`--emit-testbench` feature (commit `a27b12c`).
+
+**Severity.** MEDIUM — produces broken output rather than a crash, but fails
+silently (no compiler error) until the generated file is fed to a Verilog
+toolchain.
+
+**Fix.** Track sanitized testbench names seen so far in a `HashMap`; on a
+collision, push a diagnostic naming both colliding test names and the shared
+identifier instead of emitting the second module
+(`src/emit_verilog/testbench.rs`).
+
+**Test.** `colliding_sanitized_test_names_are_rejected`
+(`src/emit_verilog/testbench.rs`).

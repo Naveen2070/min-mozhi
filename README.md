@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-425%20passing-brightgreen.svg"></a>
+  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-428%20passing-brightgreen.svg"></a>
   <img alt="Status" src="https://img.shields.io/badge/status-compiler%20%2B%20simulator-success.svg">
   <a href="https://rustup.rs"><img alt="Rust" src="https://img.shields.io/badge/rust-%E2%89%A5%201.85-orange.svg"></a>
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-blue.svg">

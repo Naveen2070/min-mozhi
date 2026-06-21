@@ -117,6 +117,8 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         crate::version::current().tag()
     ));
 
+    let mut seen_tb_names: HashMap<String, String> = HashMap::new();
+
     for test in tests {
         let span = test.span;
 
@@ -132,24 +134,68 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         };
 
         let safe_name = sanitize_verilog_ident(&test.name);
-        let base = if safe_name.is_empty() || safe_name == "_empty" {
+        let base = if safe_name == "_empty" {
             "test"
         } else {
             &safe_name
         };
         let tb_name = format!("{}_tb", base);
 
+        // Two differently-named tests can sanitize to the same Verilog
+        // identifier (e.g. "edge case" and "edge_case" both -> `edge_case_tb`),
+        // which would otherwise emit two `module edge_case_tb` blocks into the
+        // same file. Catch it as a clear diagnostic instead of broken Verilog.
+        if let Some(prev_name) = seen_tb_names.get(&tb_name) {
+            em.diags.push(Diag::new(
+                span,
+                format!(
+                    "test \"{}\" and test \"{}\" both sanitize to the Verilog module \
+                     name `{tb_name}` — rename one test",
+                    prev_name, test.name
+                ),
+            ));
+            continue;
+        }
+        seen_tb_names.insert(tb_name.clone(), test.name.clone());
+
         em.out.push_str(&format!("module {};\n", tb_name));
 
+        // Resolve explicit test args first — each may reference an earlier one
+        // (e.g. `M(W: 8, DEPTH: W * 2)`), same as `sim::harness::params` — then
+        // fall back to the module's own parameter defaults for anything the
+        // test didn't override, same order/semantics as
+        // `sim::elaborate::elaborate_module`. Without this, a width expression
+        // like `bits[W]` fails to resolve whenever a test omits a parameter
+        // that has a module-level default.
         let mut test_env = Env::new();
         for a in &test.args {
-            match consteval::eval(&a.value, &Env::new()) {
+            match consteval::eval(&a.value, &test_env) {
                 Ok(v) => {
                     test_env.insert(a.name.name.clone(), v);
                 }
                 Err(e) => {
                     em.diags.push(e);
                 }
+            }
+        }
+        for p in &dut.params {
+            if test_env.contains_key(&p.name.name) {
+                continue;
+            }
+            match &p.default {
+                Some(d) => match consteval::eval(d, &test_env) {
+                    Ok(v) => {
+                        test_env.insert(p.name.name.clone(), v);
+                    }
+                    Err(e) => em.diags.push(e),
+                },
+                None => em.diags.push(Diag::new(
+                    span,
+                    format!(
+                        "parameter `{}` has no default — provide a value for it in the test",
+                        p.name.name
+                    ),
+                )),
             }
         }
 
@@ -220,9 +266,11 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
             format!(" #({})", params.join(", "))
         };
 
+        let space_before_param = if param_str.is_empty() { "" } else { " " };
         em.out.push_str(&format!(
-            "  {} {} _dut_inst (\n    {}\n  );\n\n",
+            "  {}{}{} _dut_inst (\n    {}\n  );\n\n",
             sanitize_verilog_ident(&dut.name.name),
+            space_before_param,
             param_str,
             dut_connections.join(",\n    ")
         ));
@@ -278,6 +326,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{checker, lexer, parser};
 
     #[test]
     fn sanitize_verilog_ident_replaces_invalid_chars() {
@@ -286,5 +335,108 @@ mod tests {
         assert_eq!(sanitize_verilog_ident("has spaces"), "has_spaces");
         assert_eq!(sanitize_verilog_ident("with!sym"), "with_sym");
         assert_eq!(sanitize_verilog_ident(""), "_empty");
+    }
+
+    /// The same single-file pipeline `mimz compile --emit-testbench` runs
+    /// (`src/commands/compile.rs`): lex, parse, check, transliterate, then emit.
+    fn compile_tb(src: &str) -> Result<String, Vec<Diag>> {
+        let toks = lexer::lex(src)?;
+        let ast = parser::parse(toks)?;
+        let mut asts = vec![ast];
+        checker::check(&asts)?;
+        crate::emit_verilog::transliterate(&mut asts);
+        let project = crate::emit_verilog::Project::from_files(&asts)?;
+        let tests: Vec<&TestDecl> = asts
+            .iter()
+            .flat_map(|f| {
+                f.items.iter().filter_map(|i| match i {
+                    crate::ast::TopItem::Test(t) => Some(t),
+                    _ => None,
+                })
+            })
+            .collect();
+        emit_testbench(&project, &tests)
+    }
+
+    /// A test that doesn't override a module parameter must still resolve
+    /// width expressions using the module's own default — mirrors
+    /// `sim::elaborate::elaborate_module`'s override-or-default merge, which
+    /// `mimz test`/`mimz sim` already rely on.
+    #[test]
+    fn test_env_falls_back_to_module_param_defaults() {
+        let src = "\
+module Adder(WIDTH: int = 8) {
+  in a: bits[WIDTH]
+  in b: bits[WIDTH]
+  out sum: bits[WIDTH + 1]
+  sum = a + b
+}
+
+test \"adder defaults\" for Adder {
+  a = 5
+  b = 10
+  expect sum == 15
+}
+";
+        let tb = compile_tb(src)
+            .unwrap_or_else(|d| panic!("expected the WIDTH default (8) to resolve: {d:?}"));
+        assert!(
+            tb.contains("[8-1:0]"),
+            "expected ports sized by the default WIDTH=8, got:\n{tb}"
+        );
+    }
+
+    /// A later test argument may reference an earlier one in the same
+    /// `for Module(...)` argument list.
+    #[test]
+    fn test_env_chains_earlier_args() {
+        let src = "\
+module Adder(WIDTH: int = 8, DOUBLE: int = 1) {
+  in a: bits[WIDTH]
+  out y: bits[WIDTH]
+  y = a
+}
+
+test \"chained args\" for Adder(WIDTH: 4, DOUBLE: WIDTH * 2) {
+  a = 1
+  expect y == 1
+}
+";
+        let tb = compile_tb(src).unwrap_or_else(|d| {
+            panic!("expected DOUBLE: WIDTH * 2 to resolve against the already-bound WIDTH: {d:?}")
+        });
+        assert!(
+            tb.contains("[4-1:0]"),
+            "expected ports sized by WIDTH=4, got:\n{tb}"
+        );
+    }
+
+    /// Two tests whose names sanitize to the same Verilog module identifier
+    /// must be rejected with a clear diagnostic, not silently emitted as two
+    /// `module edge_case_tb` blocks in the same file.
+    #[test]
+    fn colliding_sanitized_test_names_are_rejected() {
+        let src = "\
+module Buf {
+  in a: bit
+  out y: bit
+  y = a
+}
+
+test \"edge case\" for Buf {
+  a = 1
+  expect y == 1
+}
+
+test \"edge_case\" for Buf {
+  a = 0
+  expect y == 0
+}
+";
+        let diags = compile_tb(src).expect_err("colliding sanitized names must error");
+        assert!(
+            diags.iter().any(|d| d.msg.contains("edge_case_tb")),
+            "expected a collision diagnostic naming `edge_case_tb`, got: {diags:?}"
+        );
     }
 }
