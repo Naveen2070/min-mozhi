@@ -22,7 +22,7 @@ CI runs exactly this. Zero warnings is the bar, not a goal.
 
 The native-speaker-review case. **Data change only:**
 
-1. Edit the spelling in `keywords.toml` (keep `reserved` above the first
+1. Edit the spelling in `lang/keywords.toml` (keep `reserved` above the first
    `[keywords.*]` table).
 2. Update the table in `spec/03-keywords-trilingual.md` + its changelog.
 3. Update any example that used the old spelling.
@@ -35,7 +35,7 @@ disjoint.
 
 1. Spec first: `spec/02` (grammar) and `spec/03` (all three spellings) —
    bump versions, changelogs.
-2. `keywords.toml`: add the `[keywords.<key>]` entry.
+2. `lang/keywords.toml`: add the `[keywords.<key>]` entry.
 3. `src/lexer/token.rs`: add the `Kw` variant.
 4. `src/lexer/keywords.rs`: add the `kw_for_key` arm. (Miss this and
    every test fails at startup with "unknown keyword key" — by design.)

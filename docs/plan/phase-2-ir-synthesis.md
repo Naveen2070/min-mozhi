@@ -51,7 +51,7 @@ phase-4 plan only points here. The ground rules:
 - Every item needs a spec section + a Decision block BEFORE code.
 - Every new keyword (`secret`, `declassify`, `default`, `pipeline`, `interface`,
   `chan`, `prove`, `fixed`, `requires`, `ensures`, …) needs Tanglish + Tamil
-  spellings through keywords.toml + native-speaker review (English-only while
+  spellings through lang/keywords.toml + native-speaker review (English-only while
   reserved, R11).
 - The `..` spread operator is reserved at the lexer/grammar level (not the keyword
   table) when interfaces/bundles are specced.

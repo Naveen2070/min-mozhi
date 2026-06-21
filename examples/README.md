@@ -34,7 +34,7 @@ keywords differ**. CI asserts that each example compiles to
 | `lib/full_adder.mimz` | import target — one-bit full adder                             |
 
 Adding an example? It goes into **all four folders** (keyword spellings
-come from `keywords.toml` — never invent words) plus the `BASE_EXAMPLES`
+come from `lang/keywords.toml` — never invent words) plus the `BASE_EXAMPLES`
 list in `tests/examples.rs`. See `docs/code/10-test-map.md`.
 
 ## `tamil-pure/` — the fully-Tamil showcase

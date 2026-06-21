@@ -13,7 +13,7 @@
 > scope fence — now closed, see above.)
 > (v0.2.4, 2026-06-15: section 3 examples synced to the finalized v1 keyword set —
 > `enil`/`thernthedu`/`illaiyenil` and the `thudippu`/`veliyeedu`/`pathivedu`
-> declaration words. `keywords.toml` is the source of truth.)
+> declaration words. `lang/keywords.toml` is the source of truth.)
 > Goal: let Tamil and Tanglish code read with **natural Tamil word order**
 > (SOV, postpositional), not just Tamil words in English order.
 >
@@ -30,9 +30,9 @@ code|thamizh`**, which
 > (file-flavor majority + `--lang` override) and the case-suffix **inflection
 > mechanism** (`src/morph.rs`), wired into `check`/`compile`/`eval` as an
 > **additive, English-fallback** layer. **The human-authored Tamil/Tanglish
-> error catalog also landed (2026-06-15):** `messages.toml` localizes **33 of
+> error catalog also landed (2026-06-15):** `lang/messages.toml` localizes **33 of
 > the 36 checker E-codes** (the panel-authored Tamil + Tanglish forms; decision
-> C3 ratified, sandhi rule finalized in `case_suffixes.toml`). E0403/E0404/E0405
+> C3 ratified, sandhi rule finalized in `lang/case_suffixes.toml`). E0403/E0404/E0405
 > are deferred — each emits many heterogeneous message shapes that one template
 > cannot fit faithfully, so they keep their English text (Tamil preserved as
 > comments). The **test** flip landed in Phase 1.5 (B7) — `mimz test` runs the
@@ -246,8 +246,8 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 
 - **Selection** — `majority_flavor` counts a file's keyword flavors;
   `effective_lang` lets `--lang en|tanglish|tamil` override it (the spec/03 rule).
-- **Inflection** — the four case suffixes are DATA in `case_suffixes.toml` (the
-  keywords.toml doctrine); `inflect(name, case, flavor)` attaches them.
+- **Inflection** — the four case suffixes are DATA in `lang/case_suffixes.toml` (the
+  lang/keywords.toml doctrine); `inflect(name, case, flavor)` attaches them.
 - **Additive, English-fallback** — diagnostics render in the chosen flavor only
   for E-codes the localized catalog covers; every other message keeps its
   English text verbatim, byte-for-byte.
@@ -258,8 +258,8 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 > "broken Tamil" this section warns against.
 >
 > **Resolved (2026-06-15, C3 ratified):** the panel authored the catalog. It now
-> ships in `messages.toml` covering **33 of 36 checker E-codes** in Tamil and
-> Tanglish; the sandhi rule in `case_suffixes.toml` is finalized (no longer
+> ships in `lang/messages.toml` covering **33 of 36 checker E-codes** in Tamil and
+> Tanglish; the sandhi rule in `lang/case_suffixes.toml` is finalized (no longer
 > PROVISIONAL). **E0403/E0404/E0405 are deferred** — each emits many
 > heterogeneous message shapes that a single template cannot render faithfully,
 > so they keep their English text with the Tamil preserved as comments. JSON
@@ -283,4 +283,4 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 
 _Status: stable (Phase 1.8 closed 2026-06-16). The section 3 word-order table has been validated by the
 same native-speaker review that finalized the v1 keyword table (Phase 0 closed);
-the keyword spellings here track `keywords.toml`._
+the keyword spellings here track `lang/keywords.toml`._

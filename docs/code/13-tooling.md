@@ -40,7 +40,7 @@ natural Tamil WORD-ORDER half (`--order code|thamizh`) lives in `pretty` below.
   flavor reproduces another at the token level, and that round-trips are
   byte-identical (modulo alias canonicalization).
 - NOTE: tanglish/tamil targets use the FINALIZED keyword set v1 (native-speaker
-  review closed in Phase 0; keywords.toml header).
+  review closed in Phase 0; lang/keywords.toml header).
 - **`--romanize-names` (opt-in):** also rewrites non-ASCII (Tamil) IDENTIFIERS to
   readable Latin, reusing the emitter's `romanize` (`கணக்கி` → `kannakki`) with
   the same `_2`/`_3` uniquing so a romanization never shadows an ASCII name or
@@ -126,7 +126,7 @@ of the grammar engine (`spec/04` section 5, Phase 1.8). Two concerns, one module
   predominantly uses, `--lang` overrides. `check`/`compile`/`eval` resolve it
   once and thread the `Flavor` into the human render path.
 - **Inflection.** The four Tamil case suffixes (வேற்றுமை உருபுகள் -ஐ/-க்கு/-இல்/
-  -ஆல்) are DATA in `case_suffixes.toml` (the keywords.toml doctrine — review
+  -ஆல்) are DATA in `lang/case_suffixes.toml` (the lang/keywords.toml doctrine — review
   edits the table, not the code); `inflect(name, case, flavor)` attaches one.
   This is "a suffix lookup table plus sandhi rules, not NLP" (spec/04 section 5).
 
@@ -139,11 +139,11 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
   `tests/morph.rs::uncovered_code_is_identical_across_languages`. JSON diagnostics
   stay English (the machine contract in `06-diagnostics.md` is unchanged).
 - **Native-speaker-authored (decision C3 ratified, 2026-06-15).** The localized
-  catalog (`MESSAGES`, loaded once via `LazyLock` from `messages.toml`) and the
-  sandhi rules in `case_suffixes.toml` came from native-speaker review — no longer
+  catalog (`MESSAGES`, loaded once via `LazyLock` from `lang/messages.toml`) and the
+  sandhi rules in `lang/case_suffixes.toml` came from native-speaker review — no longer
   a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 36 checker codes**;
   E0403/E0404/E0405 are deferred (each emits many distinct message shapes — English
-  kept, the Tamil drafts preserved as comments in `messages.toml`). Templates also
+  kept, the Tamil drafts preserved as comments in `lang/messages.toml`). Templates also
   interpolate **structured args** the checker attaches via `Diag::with_arg`
   (`Checker::err_args`): `{expected}/{found}` (E0401), `{op}/{lhs}/{rhs}` (E0402),
   `{first}/{second}` (E0408), `{type}` (E0601). A leftover `{` in a rendered
@@ -213,7 +213,7 @@ config only fills in what the command line omitted.
   `--config <path>` overrides the search. `Config::resolve(input, explicit)` is
   the entry point used by every subcommand handler in `commands/`; no file found ⇒
   `Config::default()` (all `None`).
-- **Format & shape.** TOML (matching `keywords.toml`/`case_suffixes.toml`; the
+- **Format & shape.** TOML (matching `lang/keywords.toml`/`lang/case_suffixes.toml`; the
   machine-written name-map sidecar stays JSON). All fields are `Option`, so
   "absent" is distinct from "set", and the CLI does the
   `cli.or(config).unwrap_or(default)` merge. `deny_unknown_fields` turns a typo'd
@@ -244,7 +244,7 @@ the Rust `2021` edition; conflating them is the confusion this module removes.
 - **Compiler version** — `COMPILER_VERSION` (from `env!("CARGO_PKG_VERSION")`, the
   single crate source). Also stamped into the Verilog header banner.
 - **Keyword-set version** — `KEYWORD_SET_VERSION`, cross-checked against the
-  `version` field in `keywords.toml` (`KeywordTable::version()`); a unit test
+  `version` field in `lang/keywords.toml` (`KeywordTable::version()`); a unit test
   asserts the two agree, so a keyword-table bump that forgets the constant fails
   CI.
 - **Language edition** — an `Edition { variant, year, code }` shown

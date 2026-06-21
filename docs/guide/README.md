@@ -70,5 +70,5 @@ Each rule has a stable `E`-code and a teaching message. See the
 ---
 
 _Source of truth: the formal spec lives in [`../../spec/`](../../spec/); the
-keyword words in [`../../keywords.toml`](../../keywords.toml). This guide
+keyword words in [`../../lang/keywords.toml`](../../lang/keywords.toml). This guide
 teaches; the spec defines._

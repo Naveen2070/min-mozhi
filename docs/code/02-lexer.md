@@ -8,12 +8,12 @@ Source text (NFC-normalized by the caller) → `Vec<Token>`.
 | ------------- | -------------------------------------------------------------- |
 | `mod.rs`      | The `Lexer` state machine and the newline post-pass            |
 | `token.rs`    | `TokKind`, `Kw`, `Flavor`, `Token`, error-message name helpers |
-| `keywords.rs` | Loading `keywords.toml` into the runtime table                 |
+| `keywords.rs` | Loading `lang/keywords.toml` into the runtime table            |
 | `tests.rs`    | Unit tests                                                     |
 
 ## The trilingual keyword table — the heart of the language
 
-`keywords.toml` (repo root) holds one row per keyword with three
+`lang/keywords.toml` (repo root) holds one row per keyword with three
 canonical spellings — `en`, `tanglish`, `tamil` — plus optional
 per-column **alias lists** (`en_aliases` etc.) for deliberate synonyms,
 e.g. `include` as an English alias of `import`. At build time the file is

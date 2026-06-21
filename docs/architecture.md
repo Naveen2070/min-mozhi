@@ -10,7 +10,7 @@
 > tick/expect; three-layer Icarus differential). The IR is still design.
 > Last updated: 2026-06-16 (Phase 0 closed + keyword set v1 locked 2026-06-15;
 > native-authored Tamil/Tanglish error catalog with structured-arg interpolation,
-> `messages.toml`, 33/36 codes — PR #16; behavior-preserving code-split: parser
+> `lang/messages.toml`, 33/36 codes — PR #16; behavior-preserving code-split: parser
 > `items/`, `commands/`, bench `metrics/` — PR #17; Phase 1.5 simulator
 > `src/sim/` + `src/commands/{sim,test}` + `src/config.rs`)
 
@@ -22,7 +22,7 @@
  source (.mimz)  ── any keyword flavor, code-order or thamizh-order
         │
         ▼
- ┌──────────────┐   one trilingual keyword table (keywords.toml)
+ ┌──────────────┐   one trilingual keyword table (lang/keywords.toml)
  │    LEXER     │   Unicode NFC idents · spans on every token
  └──────┬───────┘   records flavor used → error language, fmt
         ▼
@@ -85,7 +85,7 @@ The IR and native backend remain planned.
 | Component           | Phase   | Key design points                                                                                                                                                                                                 |
 | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test` (handlers in `src/commands/`)                                                                                |
-| **Keyword table**   | 1       | `keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                                   |
+| **Keyword table**   | 1       | `lang/keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                              |
 | **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                 |
 | **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                |
 | **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                  |
@@ -106,7 +106,7 @@ arrived); a WORKSPACE split stays trigger-based:
 ```
 mimz/
   Cargo.toml
-  keywords.toml          # trilingual table — data, not code
+  lang/keywords.toml          # trilingual table — data, not code
   src/
     lib.rs               # pub mod × 14 + the crate map         ✅
     main.rs              # thin CLI (clap, dispatch, Output)     ✅
@@ -124,7 +124,7 @@ mimz/
     lexer/               # E10xx                                ✅
       mod.rs             #   scanner + newline policy
       token.rs           #   token kinds, keyword enum, flavors
-      keywords.rs        #   keywords.toml loader (REQUIRED_KEYS)
+      keywords.rs        #   lang/keywords.toml loader (REQUIRED_KEYS)
       tests.rs           #   unit tests
     parser/              # E11xx                                ✅
       mod.rs             #   entry, Parser state + Profile, plumbing
@@ -161,7 +161,7 @@ mimz/
     eval.rs / fmt.rs / translate.rs / morph.rs / grammar.rs / config.rs  ✅
     lsp.rs               # wire-protocol smoke test             ✅
     docs_sync.rs         # docs ↔ code staleness guard          ✅
-    grammar_sync.rs      # VS Code grammar ↔ keywords.toml      ✅
+    grammar_sync.rs      # VS Code grammar ↔ lang/keywords.toml      ✅
     golden/              # pinned .v output per base example
     fixtures/errors/     # the broken corpus
   benches/
@@ -178,7 +178,7 @@ Planned crate split (when needed): `mimz-syntax` (lexer/parser/AST/printer) ·
 ```
 min-mozhi/
   README.md, LICENSE-*, Cargo.toml
-  keywords.toml        # language data (embedded at build time)
+  lang/keywords.toml        # language data (embedded at build time)
   min-mozhi-roadmap.md # roadmap summary
   spec/                # the LANGUAGE — normative, versioned (v0.2)
   docs/                # the PROJECT — plan/, log/, archive/, RULES, this file

@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use super::token::{Flavor, Kw};
 
-const KEYWORDS_TOML: &str = include_str!("../../keywords.toml");
+const KEYWORDS_TOML: &str = include_str!("../../lang/keywords.toml");
 
 /// Shape of `keywords.toml`: one `[keywords.<key>]` table per keyword plus
 /// a root-level `reserved` list (which must sit ABOVE the first table —

@@ -44,7 +44,7 @@ width pass hit 1859 lines) `checker/widths/`:
 
 Follow the pattern when a file outgrows ~600 lines; don't pre-split.
 
-### Keywords are data (`keywords.toml`), loaded once, validated loudly
+### Keywords are data (`lang/keywords.toml`), loaded once, validated loudly
 
 Native-speaker word review must be a data change, never a code change.
 The table panics at startup on any inconsistency — CI catches table bugs

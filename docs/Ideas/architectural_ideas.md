@@ -31,3 +31,9 @@ Eventually, hardware engineers will need to instantiate primitives that Min-Mozh
 Compiling to WebAssembly for the playground (via `crates/mimz-wasm`) is the absolute best way to teach the language without installation friction.
 
 **Idea:** To keep the Wasm build viable and lightweight, ensure the core compiler architecture strictly isolates OS-level operations (like File I/O, multithreading, or environment variables) from the parsing, checking, and emitting logic. The core compiler library should remain perfectly pure: it should only ever take strings as input and return strings/ASTs as output.
+
+## 5. Toolchain as Middleware (Modular Crates)
+
+Currently, Min-Mozhi is built as a monolithic binary (`mimz`) for simplicity. However, as the ecosystem grows, the community might want to plug in custom tools (e.g., a custom simulator, an alternative language frontend, or an LLVM/CIRCT synthesis backend).
+
+**Idea:** Refactor the compiler using Rust's Cargo Workspace model to split it into isolated "middleware" library crates (e.g., `mimz-parser`, `mimz-checker`, `mimz-sim`, `mimz-emit`). These crates would compile down to a single static binary for standard users, but could be swapped or extended individually by community developers. Crucially, the `mimz-checker` crate remains the mandatory gatekeeper in the pipeline, ensuring that swapping other components will never compromise Min-Mozhi's "Safe-by-Default" guarantees.

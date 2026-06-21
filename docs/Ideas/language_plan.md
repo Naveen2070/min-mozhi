@@ -755,7 +755,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 ### Cross-cutting costs (price every Tier 3 item with these)
 
 - Every new keyword (`chan`, `prove`, `interface`, `await`, …) needs Tanglish +
-  Tamil spellings through keywords.toml and native-speaker review — the keyword
+  Tamil spellings through lang/keywords.toml and native-speaker review — the keyword
   table is the bottleneck on every idea here.
 - Every feature ships ×4 example folders (byte-identical Verilog rule), roughly
   doubling its apparent size.

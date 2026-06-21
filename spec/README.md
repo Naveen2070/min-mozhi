@@ -25,7 +25,7 @@ simulation model precisely. When the two disagree, the specification wins.
 | 6   | [Versioning & Editions](06-editions.md)          | The two version axes — compiler version and language edition — and how each advances                    |
 
 Each document carries its own version and changelog. The keyword words themselves
-live in [`../keywords.toml`](../keywords.toml); the compiler implements what is
+live in [`../lang/keywords.toml`](../lang/keywords.toml); the compiler implements what is
 written here.
 
 ## Where to start

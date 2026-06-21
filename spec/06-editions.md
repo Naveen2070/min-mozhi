@@ -30,7 +30,7 @@ An edition is named **`<variant>-<year>-<code>`**, e.g. `wingless-butterfly-2026
   Debian/Android codename). The slug is the kebab-case form used in the string.
 - **year** — the calendar year the edition was set.
 - **code** — a per-edition counter aligned with the **keyword-set version**
-  (`version = N` in `keywords.toml`). Edition `code = 1` ships keyword set v1.
+  (`version = N` in `lang/keywords.toml`). Edition `code = 1` ships keyword set v1.
 
 ## 3. Surfacing — uname-style, variant on top
 
@@ -54,9 +54,11 @@ carries both in its header banner:
 `src/version.rs` holds `EDITION_HISTORY`: one `const` row per edition (variant,
 slug, year, code, date, one-line summary), **oldest first**. The last row is the
 current edition (a unit test asserts this, and that the history is ordered and
-that `code` matches `keywords.toml`'s `version`). The language's lineage thus
+that `code` matches `lang/keywords.toml`'s `version`). The language's lineage thus
 lives next to the compiler that implements it; `CHANGELOG.md` mirrors it for
 humans.
+
+Additionally, to guarantee backward compatibility across editions, structural configuration files (`lang/case_suffixes.toml`, `lang/keywords.toml`, and `lang/messages.toml`) will be accompanied by a dedicated history tracking mechanism (e.g., a `history.toml` file). This will store all older or changed keywords and messages so the compiler can correctly parse and handle source files pinned to previous editions.
 
 ## 5. Migration — `mimz translate` is the future path
 

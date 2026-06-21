@@ -293,7 +293,7 @@ fn e0601_interpolates_type() {
 /// key namespace, the part serde cannot.)
 #[test]
 fn message_catalog_keys_are_real_checker_codes() {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("messages.toml");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lang/messages.toml");
     let toml = fs::read_to_string(&path).expect("messages.toml exists");
     let keys: Vec<&str> = toml
         .lines()
@@ -334,7 +334,7 @@ fn message_catalog_placeholders_are_known_tokens() {
         "second",
         "type", // structured args
     ];
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("messages.toml");
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lang/messages.toml");
     let toml = fs::read_to_string(&path).expect("messages.toml exists");
     // Only ACTIVE template lines — skip `#` comments (doc header + the
     // commented-out DEFERRED examples legitimately mention `{reason}`/`{token}`).

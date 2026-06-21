@@ -56,7 +56,7 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
   growing to a community panel post-release.
 - Final say: panel majority wins — even over the maintainers' preference — once
   a panel exists; until then the maintainers and available native speakers decide.
-- The table is a **data file** (`keywords.toml` in the compiler), so word
+- The table is a **data file** (`lang/keywords.toml` in the compiler), so word
   changes are data changes, reviewable without touching code.
 
 ### Tooling
@@ -84,7 +84,7 @@ is valid even in an otherwise-English file.
 
 > ✅ **Status: keyword set v1, FINALIZED** by native-speaker review (2026-06-15,
 > Phase 0 closed). English column frozen. Spellings may change in a future v2;
-> `keywords.toml` carries `version = 1`. This table mirrors `keywords.toml`
+> `lang/keywords.toml` carries `version = 1`. This table mirrors `lang/keywords.toml`
 > exactly (`tests/grammar_sync.rs` enforces it).
 
 | Token         | English   | Tanglish        | Tamil         | Notes                                                                                                                                 |
@@ -125,7 +125,7 @@ is valid even in an otherwise-English file.
 
 Set aside for future features — using one as an identifier is a compile
 error (E1005) explaining why. They live in the `reserved` list in
-`keywords.toml`, above the keyword tables:
+`lang/keywords.toml`, above the keyword tables:
 
 | Reserved           | Held for                                                                 |
 | ------------------ | ------------------------------------------------------------------------ |
@@ -152,7 +152,7 @@ words before the native-speaker review — same rule as aliases).
 ### Aliases
 
 A column may carry deliberate **synonym aliases** in addition to its
-canonical word — listed per column in `keywords.toml` (e.g. `en_aliases`),
+canonical word — listed per column in `lang/keywords.toml` (e.g. `en_aliases`),
 never invented by the compiler.
 
 - An alias lexes to the exact same token as the canonical word, so nothing after
@@ -260,7 +260,7 @@ module Counter(WIDTH: int = 8) {
 ## 4. Implementation Notes (for the Rust lexer)
 
 - One `phf`/static map: `spelling → KeywordToken`, populated from all three
-  columns of a single source-of-truth table (`keywords.toml` in the repo, so
+  columns of a single source-of-truth table (`lang/keywords.toml` in the repo, so
   community review of word choices is a data change, not a code change).
 - Tokenizer normalizes nothing — exact-match on the spelling, after standard
   Unicode NFC normalization of the source.
@@ -326,12 +326,12 @@ module Counter(WIDTH: int = 8) {
   (E1005). English-only — untranslated until each feature lands, per the
   reserved-words rule above.
 - **v0.2.2 (2026-06-12):** Reserved-words table added (the eight words
-  the `reserved` list in `keywords.toml` holds, each with the feature it
+  the `reserved` list in `lang/keywords.toml` holds, each with the feature it
   waits for) — completeness audit; no word changes. The loader now also
   panics at startup if a required `[keywords.*]` entry is MISSING (the
   unknown-key panic only guarded the other direction).
 - **v0.2.1 (2026-06-11):** Synonym-alias mechanism (per-column
-  `*_aliases` lists in `keywords.toml`); first alias: en `include` for
+  `*_aliases` lists in `lang/keywords.toml`); first alias: en `include` for
   KW_IMPORT. Clarified that the one-canonical-spelling rule bans spelling
   variants, not deliberate synonyms.
 - **v0.2 (2026-06-10):** CLI/extension → `mimz`/`.mimz`. Romanization policy

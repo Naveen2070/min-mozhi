@@ -1,7 +1,7 @@
 # 12 — Cheat Sheet
 
 One-page reference. The authoritative sources are
-[`../../keywords.toml`](../../keywords.toml) (words) and
+[`../../lang/keywords.toml`](../../lang/keywords.toml) (words) and
 [`../../spec/`](../../spec/) (semantics).
 
 ## Keywords — all three flavors

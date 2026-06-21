@@ -17,7 +17,7 @@ Three rules, enforced by convention everywhere in the codebase:
 
 1. **Diagnostics are values.** Passes collect `Vec<Diag>` and keep
    working. Nothing prints mid-pass, nothing panics on user input.
-   (Panics are reserved for OUR bugs — e.g. a malformed `keywords.toml`.)
+   (Panics are reserved for OUR bugs — e.g. a malformed `lang/keywords.toml`.)
 2. **Multi-error always.** Lexer, parser, and emitter all continue after
    an error. A learner gets the whole list, not one error per compile.
 3. **Render once, at the edge.** Only the CLI calls `diag::render`, which
@@ -141,13 +141,13 @@ the table above and required to have an error-fixture). Current warnings:
 ## Known limitations / planned evolution
 
 - **Native-authored Tamil + Tanglish catalogs shipped** (2026-06-15,
-  decision C3 ratified). The localized messages live in `messages.toml`,
+  decision C3 ratified). The localized messages live in `lang/messages.toml`,
   keyed off the codes above; `morph::localized_msg` looks one up per code and
   flavor and interpolates the offending identifier (Tamil case-inflected) plus
   structured args (`{expected}/{found}/{op}/{lhs}/{rhs}/{first}/{second}/{type}`).
   **33 of 36 checker codes** are localized — E0403/E0404/E0405 stay English-only
   (each emits many distinct shapes; the Tamil drafts are preserved as comments in
-  `messages.toml`). Any code with no template renders the English `msg` verbatim,
+  `lang/messages.toml`). Any code with no template renders the English `msg` verbatim,
   so uncovered codes are byte-identical across flavors. JSON diagnostics stay
   English (the machine contract is unchanged). Details in `13-tooling.md`.
 - Caret rendering clamps to a single line; multi-line spans underline

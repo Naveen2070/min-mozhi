@@ -57,7 +57,7 @@ is a bug — fix it the same day (RULES R1).
   and rendered once, never printed mid-pass and never panicked.
 - Every token and AST node carries a `Span` (byte range into the source), so
   every error can point at real code with a caret.
-- The keyword table is **data** (`keywords.toml`), embedded at build time.
+- The keyword table is **data** (`lang/keywords.toml`), embedded at build time.
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
@@ -102,7 +102,7 @@ and corrected the test map (page 10) per-section counts to match reality
 integration 6 → 7) and broadened the Layer-3 Icarus differential row to the full
 21-example single-file corpus. The 364 grand total was already correct. Prior:
 Phase 0 closed + **keyword set v1 locked** 2026-06-15; the **native-authored Tamil/Tanglish error catalog** shipped
-(decision C3 ratified) — `messages.toml` + structured-arg interpolation through
+(decision C3 ratified) — `lang/messages.toml` + structured-arg interpolation through
 `Diag::with_arg`/`Checker::err_args`, 33 of 36 checker codes localized (pages 6,
 13); no longer a stub. A docs-currency pass refreshed pages 1, 6, 13, the test map
 (page 10), and this stamp. Prior 2026-06-15 (adds: the `config` module — `mimz.toml`

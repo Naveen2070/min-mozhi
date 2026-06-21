@@ -175,12 +175,12 @@ Files in this folder:
 | ------------------- | ------------------------------------------------------------------ |
 | `lexer/mod.rs`      | the character-walking loop itself (`lex()`)                        |
 | `lexer/token.rs`    | the `Token` and `TokKind` types — the full vocabulary, listed once |
-| `lexer/keywords.rs` | loads `keywords.toml` into a lookup table at startup               |
+| `lexer/keywords.rs` | loads `lang/keywords.toml` into a lookup table at startup          |
 | `lexer/tests.rs`    | unit tests for tricky cases (`<-` vs `<=`, Tamil identifiers, …)   |
 
-### The trilingual trick (`keywords.toml`)
+### The trilingual trick (`lang/keywords.toml`)
 
-The repo root has `keywords.toml` — a plain data file:
+The repo root has `lang/keywords.toml` — a plain data file:
 
 ```toml
 [keywords.module]
@@ -455,13 +455,13 @@ per-binary breakdown, and "what a failure means" notes are in
   the docs' structural claims (module lists, file tables) match the
   real `src/` tree — so this very page's neighbours can't silently rot.
 - **Grammar-sync tests** (`tests/grammar_sync.rs`) verify the VS Code
-  extension's grammar lists every spelling in `keywords.toml`.
+  extension's grammar lists every spelling in `lang/keywords.toml`.
 
 ## "Where do I look when…" cheat sheet
 
 | You want to…                                | Look in                                              |
 | ------------------------------------------- | ---------------------------------------------------- |
-| change/add a keyword spelling               | `keywords.toml` (data only — no code)                |
+| change/add a keyword spelling               | `lang/keywords.toml` (data only — no code)           |
 | see why `<-` lexes as one token             | `src/lexer/mod.rs` + `lexer/tests.rs`                |
 | change what a construct LOOKS like (syntax) | `src/parser/items/` or `parser/expr.rs`              |
 | change what the tree STORES                 | `src/ast/` (then fix parser + checker + emitter)     |
