@@ -11,9 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**430 tests** as of 2026-06-22: 288 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 1 wasm_parity integration.
+**432 tests** as of 2026-06-22: 290 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 1 wasm_parity integration.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-22 Fuzz crash fix: `is_word_byte` was missing `?`, so `push_guarded` in `translate::reskin` didn't insert a separating space when a `MaskedInt` ending with `?` (e.g. `0b1?`) abutted a romanized identifier, causing the re-lexer to consume `0b1?rrrram` as a single invalid number. +2 lib unit (`masked_int_q_does_not_glue_onto_romanized_identifier`, `masked_int_q_does_not_glue_onto_english_keyword`). Also: rebuilt `crates/mimz-wasm/pkg/` with `--target nodejs` + fixed `pkg/package.json` `"type": "commonjs"` — `wasm_parity` now passes locally on Node 24 (was a pre-existing ESM/CJS interop failure). Site `npm run build` auto-runs `build:wasm` to regenerate the web glue. Suite 430 → 432.
 
 - 2026-06-22 Reserved `extern` (external-Verilog / black-box-IP module; `docs/Ideas/architectural_ideas.md` idea 3) ahead of the v0.1.0 freeze (R11): added to `lang/keywords.toml` `reserved` + spec/03 v0.2.11 + the grammar invalid pattern + a lexer test. The three separate reserved-word keyword-table tests (`fn_and_function_are_reserved`, `the_v03_backlog_keywords_are_reserved`, `the_section8_keywords_are_reserved`) were merged into one data-driven `future_keywords_are_reserved_not_usable` that also covers `extern`. Net −2 lib unit (3 removed, 1 added). Suite 432 → 430.
 

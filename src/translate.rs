@@ -134,13 +134,13 @@ pub fn restore_with_map(src: &str, target: Flavor, map: &NameMap) -> Result<Stri
     }))
 }
 
-/// An ASCII "word" byte — what the lexer treats as identifier-continue, so two
-/// such bytes meeting with no separator would lex as ONE token. A digit counts
-/// (a number followed by such a byte is also a single, invalid lexeme). Any
-/// UTF-8 lead/continuation byte (>= 0x80) is not a word byte, so a Tamil
-/// neighbor is correctly a token boundary.
+/// An ASCII "word" byte — something the lexer treats as part of the same
+/// identifier/number token, so two such bytes meeting with no separator would
+/// lex as ONE (possibly invalid) token. `?` is included because `0b…?…`
+/// don't-care patterns consume it inside a number. Any UTF-8 lead/continuation
+/// byte (>= 0x80) is not a word byte, so a Tamil neighbor is a token boundary.
 fn is_word_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'?'
 }
 
 /// Append `text` to `out`, inserting a single space on either side if `text`
@@ -338,5 +338,31 @@ mod tests {
         let json = serde_json::to_string(&map).unwrap();
         let back: NameMap = serde_json::from_str(&json).unwrap();
         assert_eq!(map, back);
+    }
+
+    #[test]
+    fn masked_int_q_does_not_glue_onto_romanized_identifier() {
+        // `?` is consumed inside `0b…` as a don't-care bit. If it is the last
+        // character of a MaskedInt token and a Tamil identifier follows with no
+        // whitespace, the romanized output (which starts with an ASCII letter)
+        // must be separated so the re-lexer does not consume it as part of the
+        // number — e.g. `0b1?rrrram` would fail with E1004.
+        let src = "module M {\n  match 0b1? (0b1?ற்றம்)\n}\n";
+        let (romanized, _map) = romanize_with_map(src, Flavor::English).unwrap();
+        assert!(
+            crate::lexer::lex(&romanized).is_ok(),
+            "romanized output must re-lex, got:\n{romanized}"
+        );
+    }
+
+    #[test]
+    fn masked_int_q_does_not_glue_onto_english_keyword() {
+        // Same scenario but with a Tamil keyword (not identifier) after `0b1?`.
+        let src = "module M {\n  if (0b1?மற்றும்) x = 1\n}\n";
+        let plain = translate(src, Flavor::English).unwrap();
+        assert!(
+            crate::lexer::lex(&plain).is_ok(),
+            "keyword reskin output must re-lex, got:\n{plain}"
+        );
     }
 }
