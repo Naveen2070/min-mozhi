@@ -1,0 +1,72 @@
+// Min-Mozhi stdlib: switch/button debouncer.
+//
+// A mechanical switch "bounces" — its raw line flickers for a few
+// milliseconds before settling. This module ignores the flicker: it only
+// changes its output once the synchronized input has held a new value for
+// STABLE consecutive clock samples.
+//
+// Ports:  in raw  — the noisy switch line (one bit)
+//         out stable — the debounced, glitch-free output
+// Params: WIDTH  — bit width of the internal sample counter
+//         STABLE — how many steady samples are required before accepting
+//                  a change (must fit in WIDTH bits)
+//
+// Two flip-flops first synchronize `raw` into the clock domain (no
+// metastability into the logic); then a counter measures how long the
+// synchronized value has disagreed with the current output.
+
+தொகுதி Debouncer(WIDTH: int = 3, STABLE: int = 4) {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  உள்ளீடு  raw: bit
+  வெளியீடு stable: bit
+
+  // Two-stage synchronizer for the asynchronous switch line.
+  பதிவேடு sync0: bit = 0
+  பதிவேடு sync1: bit = 0
+
+  // How many consecutive samples the synchronized input has differed
+  // from the accepted output.
+  பதிவேடு cnt: bits[WIDTH] = 0
+
+  // The accepted, debounced value.
+  பதிவேடு out_q: bit = 0
+
+  போது ஏற்றம்(clk) {
+    sync0 <- raw
+    sync1 <- sync0
+
+    எனில் sync1 == out_q {
+      // No disagreement — restart the stability counter.
+      cnt <- 0
+    } இல்லையெனில் {
+      எனில் cnt == STABLE {
+        // Held the new value long enough — accept it.
+        out_q <- sync1
+        cnt <- 0
+      } இல்லையெனில் {
+        cnt <- cnt +% 1
+      }
+    }
+  }
+
+  stable = out_q
+}
+
+// A clean, sustained press settles to 1 after the synchronizer delay plus
+// STABLE samples.
+சோதனை "debouncer settles after a steady input" க்காக Debouncer(WIDTH: 3, STABLE: 4) {
+  raw = 1
+  கணம்(clk, 8)
+  உறுதிசெய் stable == 1
+}
+
+// A pulse shorter than STABLE samples is rejected — the output never moves.
+சோதனை "debouncer rejects a short glitch" க்காக Debouncer(WIDTH: 3, STABLE: 4) {
+  raw = 1
+  கணம்(clk, 2)
+  raw = 0
+  கணம்(clk, 8)
+  உறுதிசெய் stable == 0
+}
