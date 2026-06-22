@@ -12,7 +12,7 @@ with the edition's codename on top:
 
 ```text
 Wingless Butterfly
-mimz    0.1.0-dev                   (compiler)
+mimz    0.1.0                       (compiler)
 edition wingless-butterfly-2026-1   (language)
 ```
 

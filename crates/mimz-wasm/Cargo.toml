@@ -1,6 +1,6 @@
 [package]
 name = "mimz-wasm"
-version = "0.1.0-dev"
+version = "0.1.0"
 edition = "2024"
 description = "WebAssembly bindings for the Min-Mozhi (மின்மொழி) compiler — compile .mimz to Verilog in the browser."
 license = "MIT OR Apache-2.0"
