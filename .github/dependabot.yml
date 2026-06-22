@@ -1,0 +1,29 @@
+# Reviewed dependency-update PRs (ci_plan.md section 3.3).
+#
+# SHA-pinned actions and the committed Cargo.lock are immutable-safe but go
+# STALE: without Dependabot, no reviewed PR arrives when an action or crate
+# ships a security fix. Each bump lands as a PR the check / bench / audit gates
+# then validate. Weekly cadence keeps the noise low.
+version: 2
+updates:
+  # GitHub Actions used across ci.yml / release.yml / deploy-site.yml. Dependabot
+  # bumps the SHA pin and refreshes the trailing `# vX` comment.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+
+  # Cargo workspace (root + crates/mimz-wasm member). The detached fuzz crate and
+  # the excluded tools/test-summary are dev-only harnesses, not shipped artifacts.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+    labels:
+      - "dependencies"
