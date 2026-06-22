@@ -31,6 +31,11 @@ reserved = [
   # Parked for a future controlled `for`-loop (v1 reserved both spellings so no
   # program can claim them before the feature lands). `repeat`/மீண்டும் stays the unroll.
   "suzhal", "சுழல்",
+  # External-Verilog / black-box-IP module construct (Phase 2+; architectural_ideas.md
+  # idea 3). The feature is additive/edition-safe, but the keyword is reserved pre-v0.1.0
+  # so no program can claim `extern` as an identifier (R11). English-only until the
+  # feature lands and native review supplies the Tamil/Tanglish spellings.
+  "extern",
 ]
 
 [keywords.module]

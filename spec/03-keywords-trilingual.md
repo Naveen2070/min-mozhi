@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.10.**
+> **Spec v0.2.11.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -145,6 +145,7 @@ error (E1005) explaining why. They live in the `reserved` list in
 | `ensures`          | module postcondition contract (section 8)                                |
 | `fn` / `function`  | a future combinational-function construct (Phase 2; unblocks pipe `\|>`) |
 | `suzhal` / `சுழல்` | a future controlled `for`-loop (v1 reserved; `repeat` stays the unroll)  |
+| `extern`           | external-Verilog / black-box-IP module construct (Phase 2+)              |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).
@@ -275,6 +276,14 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.11 (2026-06-22):** Reserved `extern` for a future external-Verilog /
+  black-box-IP module construct (`docs/Ideas/architectural_ideas.md` idea 3;
+  the architecture open question "External Verilog module wrapping construct").
+  The feature is additive/edition-safe and lands Phase 2+, but the keyword is
+  reserved pre-v0.1.0 freeze so no program can claim `extern` as an identifier
+  (R11). English-only until the feature lands and native review supplies the
+  Tamil/Tanglish spellings. Added to the reserved table + `lang/keywords.toml`
+  reserved list + the grammar invalid pattern + lexer test (the R11 pipeline).
 - **v0.2.10 (2026-06-17):** Promoted `async` from **reserved** to an active keyword
   KW_ASYNC for the asynchronous-reset modifier (`async reset rst`; A5, Verilog
   `always @(… or posedge rst)`). Its Tanglish/Tamil spellings — `otthisaivatra` /
