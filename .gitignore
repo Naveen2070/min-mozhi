@@ -55,3 +55,6 @@ site/src/lib/wasm/
 
 # misc
 .venv
+
+# Local-only working docs (plans/notes not part of project history)
+*.local.md

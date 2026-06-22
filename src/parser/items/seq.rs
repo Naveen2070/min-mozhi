@@ -84,10 +84,16 @@ impl Parser {
                     self.error(span, "E1101", "block is missing its closing `}`");
                     break span;
                 }
-                _ => match self.seq_stmt() {
-                    Some(s) => stmts.push(s),
-                    None => self.sync_to_newline(),
-                },
+                _ => {
+                    let start = self.peek().span;
+                    match self.seq_stmt() {
+                        Some(s) => stmts.push(s),
+                        None => {
+                            self.sync_to_newline();
+                            stmts.push(SeqStmt::Error(self.span_since(start)));
+                        }
+                    }
+                }
             }
         };
         Some((stmts, end))

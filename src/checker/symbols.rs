@@ -43,6 +43,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     TopItem::Const(_) | TopItem::Test(_) => {} // consteval.rs / names.rs
+                    TopItem::Error(_) => {}                    // parse-recovery placeholder
                 }
             }
         }

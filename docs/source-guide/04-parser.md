@@ -6,7 +6,9 @@ The parser takes the token stream and builds an **Abstract Syntax Tree (AST)** �
 
 ## `parser/mod.rs` — The Parser Core
 
-**`parse(toks)`** is the entry point. Creates a `Parser`, calls `file()`, and returns either the AST or all collected errors.
+**`parse(toks)`** is the entry point. Creates a `Parser`, calls `file()`, and returns either the AST or all collected errors. **Strict**: any error means no tree (so the compiler never emits Verilog from broken input).
+
+**`parse_recover(toks)`** is the sibling entry for tools (the LSP). It runs the same parse but **never throws the tree away** — it returns `(File, errors)`, and where a statement or item fails it leaves an `Error` placeholder node in the tree (carrying the skipped span) instead of dropping it. That keeps the surrounding good nodes intact so an editor can still offer hover/completion on a half-typed file. Only `parse_recover` ever produces `Error` nodes; the strict `parse` returns an error instead, so code generation never sees one.
 
 **`Profile` enum** — `CodeOrder` (default, English-like word order) or `Thamizh` (SOV/postpositional). Set by the `syntax thamizh` directive. Both produce the same AST — the profile only steers which clause-head syntax the parser accepts.
 
@@ -25,6 +27,7 @@ The `enter()`/`leave()` pair wraps every recursive function. `enter()` returns `
 **Error recovery:**
 
 - `sync_to_newline()` — skip tokens until the next newline, `}`, or EOF. This lets the parser continue checking later statements in the same block.
+- `span_since(start)` — measures from where a broken construct started to the last token consumed, so `parse_recover` can size the `Error` placeholder it leaves behind.
 - `terminator()` — expects a newline or an implicit terminator before `}`/EOF.
 
 ---

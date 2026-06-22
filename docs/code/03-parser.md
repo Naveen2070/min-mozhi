@@ -6,12 +6,12 @@ able to map "the spec says X" to "the function that parses X" in seconds.
 
 ## File layout
 
-| File       | Owns                                                               |
-| ---------- | ------------------------------------------------------------------ |
-| `mod.rs`   | `parse()` entry, `Parser` state, token plumbing, error recovery    |
-| `items/`   | File level, modules, `on`-blocks, `repeat`, `test` blocks          |
-| `expr.rs`  | Expressions: precedence climbing, `if`/`match`, patterns, builtins |
-| `tests.rs` | Unit tests (see [`10-test-map.md`](10-test-map.md))                |
+| File       | Owns                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------- |
+| `mod.rs`   | `parse()` / `parse_recover()` entries, `Parser` state, token plumbing, error recovery |
+| `items/`   | File level, modules, `on`-blocks, `repeat`, `test` blocks                             |
+| `expr.rs`  | Expressions: precedence climbing, `if`/`match`, patterns, builtins                    |
+| `tests.rs` | Unit tests (see [`10-test-map.md`](10-test-map.md))                                   |
 
 The `items/` submodule splits item parsing across files by grammar
 section: `items/mod.rs` (shared `ty`/`lvalue`/`repeat_block` helpers +
@@ -66,6 +66,30 @@ fine-grained enough in practice, simple enough to reason about.
 
 `terminator()` enforces the statement-ends-at-newline rule, accepting an
 implicit terminator before `}` or `Eof`.
+
+### Two entry points: `parse` (strict) vs `parse_recover` (best-effort)
+
+Both run the same recursive descent (a shared `run()`); they differ only
+in what they return:
+
+- **`parse(toks) -> Result<File, Vec<Diag>>`** — the **strict** contract:
+  ANY diagnostic discards the tree (`Err`). The compile/sim/emit pipeline
+  depends on this — no codegen from a broken parse.
+- **`parse_recover(toks) -> (File, Vec<Diag>)`** — never discards the tree.
+  At each recovery boundary it pushes an **`Error` placeholder node**
+  (`TopItem::Error`, `ModuleItem::Error`, `SeqStmt::Error`,
+  `TestStmt::Error`, each carrying the skipped `Span`) instead of dropping
+  the broken construct, so the surrounding good nodes survive. This is the
+  prerequisite for LSP semantics on half-typed files (hover, completion).
+
+`parse_recover` is the **only** source of `Error` nodes — `parse` returns
+`Err` on the same input, so codegen never sees one. `Parser::span_since`
+sizes each placeholder; every consumer (`checker/`, `emit_verilog/`,
+`sim/`, `pretty.rs`) handles the variants (the checker skips them with no
+cascade; the codegen stages treat them as documented unreachable no-ops).
+Expression-level recovery (`ExprKind::Error`) is deferred — an error-expr
+has no width/type, so it would need an "unknown" path through width/type
+inference.
 
 ## Expression parsing (`expr.rs`)
 

@@ -395,6 +395,9 @@ impl Emitter<'_> {
                     }
                     self.out.push_str(&format!("{pad}end\n"));
                 }
+                // Unreachable on the codegen path: `parse` rejects a tree with
+                // any `Error` node, so emission never sees one.
+                SeqStmt::Error(_) => {}
             }
         }
     }
@@ -479,6 +482,7 @@ fn collect_assigned<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a str>) {
                     collect_assigned(els, out);
                 }
             }
+            SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
 }

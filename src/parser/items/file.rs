@@ -46,6 +46,9 @@ impl Parser {
         let mut items = Vec::new();
         loop {
             self.skip_newlines();
+            // Start of this item — sizes an `Error` placeholder if it fails to
+            // parse (for `parse_recover`; `parse` discards the tree anyway).
+            let start = self.peek().span;
             match self.peek_kind() {
                 TokKind::Eof => break,
                 TokKind::Kw(Kw::Import) => {
@@ -53,33 +56,30 @@ impl Parser {
                         imports.push(i);
                     }
                 }
-                TokKind::Kw(Kw::Const) => {
-                    if let Some(c) = self.const_decl() {
-                        items.push(TopItem::Const(c));
-                    }
-                }
-                TokKind::Kw(Kw::Module) => {
-                    if let Some(m) = self.module() {
-                        items.push(TopItem::Module(m));
-                    }
-                }
-                TokKind::Kw(Kw::Enum) => {
-                    if let Some(e) = self.enum_decl() {
-                        items.push(TopItem::Enum(e));
-                    }
-                }
-                TokKind::Kw(Kw::Test) => {
-                    if let Some(t) = self.test_decl() {
-                        items.push(TopItem::Test(t));
-                    }
-                }
+                TokKind::Kw(Kw::Const) => match self.const_decl() {
+                    Some(c) => items.push(TopItem::Const(c)),
+                    None => items.push(TopItem::Error(self.span_since(start))),
+                },
+                TokKind::Kw(Kw::Module) => match self.module() {
+                    Some(m) => items.push(TopItem::Module(m)),
+                    None => items.push(TopItem::Error(self.span_since(start))),
+                },
+                TokKind::Kw(Kw::Enum) => match self.enum_decl() {
+                    Some(e) => items.push(TopItem::Enum(e)),
+                    None => items.push(TopItem::Error(self.span_since(start))),
+                },
+                TokKind::Kw(Kw::Test) => match self.test_decl() {
+                    Some(t) => items.push(TopItem::Test(t)),
+                    None => items.push(TopItem::Error(self.span_since(start))),
+                },
                 // thamizh order: a test header leads with the module under test,
                 // so a bare identifier at file level starts `M(args) kaaga "…"
                 // sodhanai { }`. The leading `ident()` always bumps, so the loop
                 // makes progress even if the rest of the header is malformed.
                 TokKind::Ident(_) if self.profile == Profile::Thamizh => {
-                    if let Some(t) = self.test_decl_thamizh() {
-                        items.push(TopItem::Test(t));
+                    match self.test_decl_thamizh() {
+                        Some(t) => items.push(TopItem::Test(t)),
+                        None => items.push(TopItem::Error(self.span_since(start))),
                     }
                 }
                 _ => {
@@ -100,6 +100,7 @@ impl Parser {
                     } else {
                         self.sync_to_newline();
                     }
+                    items.push(TopItem::Error(self.span_since(start)));
                 }
             }
         }

@@ -33,7 +33,34 @@ use crate::span::Span;
 /// Parse a token stream into a [`File`]. Like the lexer, this collects ALL
 /// errors it can (statement-level recovery via `sync_to_newline`) instead
 /// of stopping at the first one.
+///
+/// Strict contract: ANY error discards the tree (`Err`). The compile/sim/emit
+/// pipeline depends on this — no codegen from a broken parse. For a best-effort
+/// tree that survives errors (the LSP path), use [`parse_recover`].
 pub fn parse(toks: Vec<Token>) -> Result<File, Vec<Diag>> {
+    let (file, diags) = run(toks);
+    if diags.is_empty() {
+        Ok(file)
+    } else {
+        Err(diags)
+    }
+}
+
+/// Parse a token stream into a best-effort [`File`] **plus** every diagnostic,
+/// never discarding the tree. Where a statement or item fails to parse, the
+/// tree carries an `Error` placeholder node (`TopItem::Error`,
+/// `ModuleItem::Error`, `SeqStmt::Error`, `TestStmt::Error`) spanning the
+/// skipped source, so editor features (hover, completion, semantic highlight)
+/// still work on the surrounding good nodes of a half-typed file.
+///
+/// This is the ONLY way an `Error` node is produced; the strict [`parse`]
+/// returns `Err` on the same input, so codegen never sees one.
+pub fn parse_recover(toks: Vec<Token>) -> (File, Vec<Diag>) {
+    run(toks)
+}
+
+/// Shared driver behind [`parse`] and [`parse_recover`].
+fn run(toks: Vec<Token>) -> (File, Vec<Diag>) {
     let mut p = Parser {
         toks,
         pos: 0,
@@ -43,11 +70,7 @@ pub fn parse(toks: Vec<Token>) -> Result<File, Vec<Diag>> {
         too_deep: false,
     };
     let file = p.file();
-    if p.diags.is_empty() {
-        Ok(file)
-    } else {
-        Err(p.diags)
-    }
+    (file, p.diags)
 }
 
 /// Word-order profile (spec/04). Selected once by the optional leading
@@ -233,6 +256,15 @@ impl Parser {
             format!("expected end of line after statement, found {found}"),
         );
         self.sync_to_newline();
+    }
+
+    /// The span from `start` through the last token consumed so far — used to
+    /// size an `Error` placeholder node after `sync_to_newline` has skipped a
+    /// broken statement (`parse_recover`). Falls back to `start` if nothing was
+    /// consumed past it.
+    fn span_since(&self, start: Span) -> Span {
+        let last = self.toks[self.pos.saturating_sub(1)].span;
+        start.join(last)
     }
 
     /// Error recovery: skip to the next newline or `}` so later statements
