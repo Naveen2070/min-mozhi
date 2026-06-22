@@ -44,7 +44,7 @@ The LSP server powers the **VS Code extension** (and potentially other editors).
 
 **`analyze(entry, text)`** — the in-memory pipeline. It parses the entry document's current text (from the editor, not disk), then resolves imports by walking the filesystem. The checker runs across the whole project, and diagnostics are attributed to their source file.
 
-**`to_lsp(d, src, flavor)`** — converts a `Diag` to an LSP `Diagnostic`. The WHAT line is localized if the catalog covers it, and the help line is appended after `\nhelp: `. The span is converted to LSP `Range` with UTF-16 character offsets (because that's what the LSP protocol requires — important for Tamil text, where one character may be 1 or 2 UTF-16 units).
+**`to_lsp(d, src, flavor)`** — converts a `Diag` to an LSP `Diagnostic`. The WHAT line is localized if the catalog covers it, and the help line is appended after a `\nhelp:` prefix (with a trailing space). The span is converted to LSP `Range` with UTF-16 character offsets (because that's what the LSP protocol requires — important for Tamil text, where one character may be 1 or 2 UTF-16 units).
 
 **`position(src, offset)`** — converts a byte offset to an LSP `Position`. LSP measures columns in UTF-16 code units, not bytes and not chars. A Tamil identifier like `மணி` is 9 UTF-8 bytes but only 3 UTF-16 units, so this function counts carefully.
 

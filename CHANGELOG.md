@@ -9,10 +9,10 @@ year + code). This file is the human-readable mirror of `EDITION_HISTORY` in
 The format follows [Keep a Changelog](https://keepachangelog.com); versions
 follow [SemVer](https://semver.org) for the compiler axis.
 
-## [Unreleased] — compiler `0.1.0-dev`
+## [0.1.0] — compiler `0.1.0`
 
-Preparing the first public release. The crate keeps the `-dev` suffix until the
-`v0.1.0` tag is cut (the release step is maintainer-gated).
+The first public release. The crate version is now `0.1.0`; cutting the `v0.1.0`
+git tag and flipping the repo public are the maintainer's final step (R12).
 
 ### Language edition: Wingless Butterfly — `wingless-butterfly-2026-1`
 

@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "mimz"
-version = "0.1.0-dev"
+version = "0.1.0"
 dependencies = [
  "clap",
  "criterion",
@@ -636,7 +636,7 @@ dependencies = [
 
 [[package]]
 name = "mimz-wasm"
-version = "0.1.0-dev"
+version = "0.1.0"
 dependencies = [
  "mimz",
  "wasm-bindgen",

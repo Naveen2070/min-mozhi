@@ -7,7 +7,7 @@
 > full-parity follow-on (C1–C4) have landed; see the 2026-06-16 dev log. The
 > simulator now covers the **entire single-file corpus bit-for-bit vs Icarus**
 > (21 examples). Stabilizes (→ release) when the public-repo step opens (D7).
-> Suite: 432 tests green. Only additive, non-blocking items remain (listed below).
+> Suite: 430 tests green. Only additive, non-blocking items remain (listed below).
 
 ## Goal
 

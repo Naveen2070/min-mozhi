@@ -1,6 +1,6 @@
 [package]
 name = "mimz"
-version = "0.1.0-dev"
+version = "0.1.0"
 edition = "2024"
 description = "Min-Mozhi (மின்மொழி) — a modern, safe-by-default HDL and the first Tamil-rooted one. Reads like Go/TypeScript, safe like Rust, speaks English, Tanglish, and Tamil; built to help students learn digital design."
 license = "MIT OR Apache-2.0"
