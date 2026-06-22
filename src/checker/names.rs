@@ -76,6 +76,7 @@ impl<'a> Checker<'a> {
                     TopItem::Module(m) => self.check_module(file, m),
                     TopItem::Test(t) => self.check_test(file, t),
                     TopItem::Const(_) | TopItem::Enum(_) => {} // earlier passes
+                    TopItem::Error(_) => {}                    // parse-recovery placeholder
                 }
             }
         }
@@ -152,7 +153,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
                 ModuleItem::Repeat(r) => self.collect_decls(file, sc, &r.items),
-                ModuleItem::On(_) | ModuleItem::Drive { .. } => {}
+                ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
             }
         }
     }
@@ -241,7 +242,8 @@ impl<'a> Checker<'a> {
                 ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
-                | ModuleItem::Enum(_) => {}
+                | ModuleItem::Enum(_)
+                | ModuleItem::Error(_) => {}
             }
         }
     }
@@ -260,6 +262,7 @@ impl<'a> Checker<'a> {
                         self.seq_stmts(file, sc, env, els);
                     }
                 }
+                SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
     }
@@ -274,7 +277,10 @@ impl<'a> Checker<'a> {
     fn no_decls_in_repeat(&mut self, file: usize, items: &'a [ModuleItem]) {
         for item in items {
             let (span, what) = match item {
-                ModuleItem::Drive { .. } | ModuleItem::Inst(_) | ModuleItem::Repeat(_) => continue,
+                ModuleItem::Drive { .. }
+                | ModuleItem::Inst(_)
+                | ModuleItem::Repeat(_)
+                | ModuleItem::Error(_) => continue,
                 ModuleItem::Port { name, .. } => (name.span, "an input/output port"),
                 ModuleItem::Wire { name, .. } => (name.span, "a wire"),
                 ModuleItem::Reg { name, .. } => (name.span, "a register"),

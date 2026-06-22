@@ -11,9 +11,15 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**432 tests** as of 2026-06-22: 290 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 1 wasm_parity integration.
+**436 tests** as of 2026-06-22: 294 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 1 wasm_parity integration.
+
+> Note: the +4 from parser AST error recovery (below) lives on the
+> `phase-4-parser-ast-error-recovery` branch, which is independent of the
+> v0.1.0 release branch (`phase-4-web-presence`, suite 432).
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-22 Parser AST error recovery (`phase-4-parser-ast-error-recovery` branch; Phase 4 LSP prerequisite, `architectural_ideas.md` idea 1). New `Error(Span)` variant on `TopItem`/`ModuleItem`/`SeqStmt`/`TestStmt` + a non-discarding `parser::parse_recover` entry point that leaves an `Error` placeholder at each recovery boundary instead of dropping the broken construct (the strict `parse` is unchanged — any error still discards the tree, so codegen never sees an `Error` node). Every consumer handles the variant (checker skips, codegen treats as unreachable). +4 lib unit (`parser`: `parse_recover_keeps_good_items_around_a_bad_one`, `parse_recover_top_level_error_keeps_following_module`, `parse_recover_seq_and_test_blocks_emit_error_nodes`, `strict_parse_still_errs_on_bad_input`). Suite 432 → 436.
 
 - 2026-06-22 Fuzz crash fix: `is_word_byte` was missing `?`, so `push_guarded` in `translate::reskin` didn't insert a separating space when a `MaskedInt` ending with `?` (e.g. `0b1?`) abutted a romanized identifier, causing the re-lexer to consume `0b1?rrrram` as a single invalid number. +2 lib unit (`masked_int_q_does_not_glue_onto_romanized_identifier`, `masked_int_q_does_not_glue_onto_english_keyword`). Also: rebuilt `crates/mimz-wasm/pkg/` with `--target nodejs` + fixed `pkg/package.json` `"type": "commonjs"` — `wasm_parity` now passes locally on Node 24 (was a pre-existing ESM/CJS interop failure). Site `npm run build` auto-runs `build:wasm` to regenerate the web glue. Suite 430 → 432.
 
@@ -92,7 +98,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `async_is_an_active_keyword`                   | `async`/`otthisaivatra`/`ஒத்திசைவற்ற` lex as KW_ASYNC in all three flavors (A5 promoted it from reserved) |
 | `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2)                           |
 
-## Unit: parser (`src/parser/tests.rs`, 33 tests)
+## Unit: parser (`src/parser/tests.rs`, 37 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -129,6 +135,10 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `a_mem_without_an_init_value_is_e1104`                             | a `mem` missing its `= init` is E1104 (no uninitialized state), like a reg (A4)         |
 | `async_reset_parses_with_the_async_flag`                           | `async reset rst` sets `Reset.is_async` (A5)                                            |
 | `a_plain_reset_is_synchronous`                                     | a bare `reset rst` leaves `is_async` false — sync is the default (A5)                   |
+| `parse_recover_keeps_good_items_around_a_bad_one`                  | `parse_recover` leaves one `ModuleItem::Error` for a bad line; both ports survive       |
+| `parse_recover_top_level_error_keeps_following_module`             | file-level garbage becomes `TopItem::Error`; the next module still parses               |
+| `parse_recover_seq_and_test_blocks_emit_error_nodes`               | a bad stmt in `on`/`test` yields `Seq`/`TestStmt::Error`; good stmts survive            |
+| `strict_parse_still_errs_on_bad_input`                             | the strict `parse` contract is unchanged — any error discards the tree                  |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the

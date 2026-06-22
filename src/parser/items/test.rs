@@ -93,6 +93,7 @@ impl Parser {
         let mut stmts = Vec::new();
         let end = loop {
             self.skip_newlines();
+            let start = self.peek().span;
             match self.peek_kind().clone() {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
@@ -124,6 +125,7 @@ impl Parser {
                         stmts.push(s);
                     } else {
                         self.sync_to_newline();
+                        stmts.push(TestStmt::Error(self.span_since(start)));
                     }
                 }
                 TokKind::Ident(_) => {
@@ -138,6 +140,7 @@ impl Parser {
                     let span = self.peek().span;
                     self.error(span, "E1107", format!("expected `tick`, `expect`, an input drive, or `if` in the test body, found {found}"));
                     self.sync_to_newline();
+                    stmts.push(TestStmt::Error(self.span_since(start)));
                 }
             }
         };

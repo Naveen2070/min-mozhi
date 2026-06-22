@@ -229,6 +229,9 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
                 }
                 test_stmts(&mut t.body, visit);
             }
+            // Unreachable on the codegen path: `parse` rejects a tree with any
+            // `Error` node, so transliteration never sees one.
+            TopItem::Error(_) => {}
         }
     }
 }
@@ -303,6 +306,7 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 expr(&mut r.hi, visit);
                 module_items(&mut r.items, visit);
             }
+            ModuleItem::Error(_) => {} // unreachable on the codegen path
         }
     }
 }
@@ -329,6 +333,7 @@ fn seq_stmts(stmts: &mut [SeqStmt], visit: &mut dyn FnMut(&mut String)) {
                     seq_stmts(els, visit);
                 }
             }
+            SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
 }
@@ -354,6 +359,7 @@ fn test_stmts(stmts: &mut [TestStmt], visit: &mut dyn FnMut(&mut String)) {
                     test_stmts(els, visit);
                 }
             }
+            TestStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
 }

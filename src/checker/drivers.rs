@@ -285,7 +285,8 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
-                | ModuleItem::Enum(_) => {}
+                | ModuleItem::Enum(_)
+                | ModuleItem::Error(_) => {}
             }
         }
     }
@@ -397,6 +398,7 @@ impl<'a> Checker<'a> {
                         self.on_block(dcx, block_id, els);
                     }
                 }
+                SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
     }

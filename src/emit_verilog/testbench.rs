@@ -95,6 +95,9 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
                 }
                 em.out.push_str(&format!("{}end\n", indent));
             }
+            // Unreachable on the codegen path: `parse` rejects a tree with any
+            // `Error` node, so testbench emission never sees one.
+            TestStmt::Error(_) => {}
         }
     }
 }

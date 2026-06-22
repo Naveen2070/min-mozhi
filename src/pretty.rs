@@ -112,6 +112,9 @@ impl Pretty {
             TopItem::Module(m) => self.module(m),
             TopItem::Enum(e) => self.enum_decl(e),
             TopItem::Test(t) => self.test_decl(t),
+            // Unreachable: pretty-printing runs on a strict-parsed tree, which
+            // never carries an `Error` placeholder.
+            TopItem::Error(_) => {}
         }
     }
 
@@ -235,6 +238,7 @@ impl Pretty {
                 self.line(&s);
             }
             ModuleItem::Repeat(r) => self.repeat(r),
+            ModuleItem::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }
 
@@ -348,6 +352,7 @@ impl Pretty {
                     }
                 }
             }
+            SeqStmt::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }
 
@@ -432,6 +437,7 @@ impl Pretty {
                     }
                 }
             }
+            TestStmt::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }
 

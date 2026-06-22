@@ -350,6 +350,9 @@ fn elaborate_module(
             }),
             // Consts are folded above; enum decls become the encoding above.
             ModuleItem::Const(_) | ModuleItem::Enum(_) => {}
+            // Unreachable: elaboration runs on a strict-parsed tree, which
+            // carries no `Error` placeholder.
+            ModuleItem::Error(_) => {}
             ModuleItem::Inst(inst) => {
                 let f = flatten_instance(
                     reg,
@@ -977,6 +980,8 @@ impl Rw<'_> {
                     None => None,
                 },
             },
+            // Unreachable on the sim path (strict-parsed tree); pass through.
+            SeqStmt::Error(sp) => SeqStmt::Error(*sp),
         })
     }
 }
@@ -989,6 +994,7 @@ fn assigns(body: &[SeqStmt], name: &str) -> bool {
         SeqStmt::If { then, els, .. } => {
             assigns(then, name) || els.as_deref().is_some_and(|e| assigns(e, name))
         }
+        SeqStmt::Error(_) => false,
     })
 }
 
