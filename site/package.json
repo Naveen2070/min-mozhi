@@ -7,7 +7,9 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && pagefind --site dist",
+    "build": "npm run build:wasm && astro build && pagefind --site dist",
+    "build:wasm": "cargo build -p mimz-wasm --manifest-path ../Cargo.toml --target wasm32-unknown-unknown --release && wasm-bindgen --target web --out-dir src/lib/wasm ../target/wasm32-unknown-unknown/release/mimz_wasm.wasm",
+    "build:site": "astro build && pagefind --site dist",
     "preview": "astro preview",
     "check": "astro check",
     "astro": "astro"

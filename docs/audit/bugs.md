@@ -138,3 +138,38 @@ identifier instead of emitting the second module
 
 **Test.** `colliding_sanitized_test_names_are_rejected`
 (`src/emit_verilog/testbench.rs`).
+
+---
+
+## BUG-5 (LOW) — `translate` romanize glued `0b…?` (MaskedInt) onto a romanized identifier, breaking re-lex
+
+**What.** `mimz translate --romanize-names` could emit source that no longer
+lexes. A `0b…?` don't-care binary literal directly abutting a Tamil identifier —
+e.g. `match 0b1?ற்றம்` written with no space — romanized to `0b1?rrrram (clk)`,
+which the lexer greedily consumed as a single number token: `0b1?rrrram` is not a
+valid don't-care pattern → E1004. The same bug affected plain keyword reskin
+(e.g. `0b1?மற்றும்` → `0b1?and`).
+
+**Cause.** The `push_guarded` boundary guard in `translate::reskin` uses
+`is_word_byte` to decide when to insert a separating space. `is_word_byte`
+covered ASCII alphanumeric and `_`, but NOT `?`, which is the don't-care
+character in `0b…?` patterns (MaskedInt tokens). When the preceding token ended
+with `?` and the replacement identifier started with an ASCII letter, no guard
+space was inserted — and the re-lexer's number loop consumes ASCII letters as
+part of the number.
+
+**How found.** The cargo-fuzz `translate_roundtrip` target (CI fuzz job)
+produced a crash input whose romanized output failed the "must re-lex"
+postcondition. Logged as CI fuzz crash for `crash-365775e3…`.
+
+**Severity.** LOW — only affects non-idiomatic input with no whitespace between a
+`0b…?` literal and an adjacent token; no memory/security impact; all examples
+and real code use spacing. The `translate` round-trip would return `Err` for
+affected files.
+
+**Fix.** Added `|| b == b'?'` to `is_word_byte` in `src/translate.rs`, so the
+guard fires for `?` as it already does for digits, letters, and `_`.
+
+**Test.** `masked_int_q_does_not_glue_onto_romanized_identifier` and
+`masked_int_q_does_not_glue_onto_english_keyword`
+(`src/translate.rs`).

@@ -168,9 +168,12 @@ After an `A`-style `--target web` build, serve the folder over HTTP and open
 ```sh
 cd site
 npm install
-npm run dev          # local dev server
-npm run build        # static build + Pagefind search index -> dist/
-npx astro check      # type-check
+npm run build:wasm      # build Rust → wasm → generate JS glue (one-time, or
+                        # after compiler changes)
+npm run dev             # local dev server
+npm run build           # build:wasm + astro build + Pagefind → dist/
+npm run build:site      # astro build + Pagefind only (skip wasm rebuild)
+npx astro check         # type-check
 ```
 
 Output: `site/dist/` (and `.vercel/output/` for the Vercel adapter). If you
@@ -178,14 +181,9 @@ change a markdown/rehype plugin and a rebuild looks stale, clear the content
 cache: `rm -rf site/.astro site/node_modules/.astro` then rebuild.
 
 **Playground prerequisite.** The `/playground` page imports the wasm glue from
-`site/src/lib/wasm/` (git-ignored — generated, not committed). Generate it before
-`dev`/`build`, from the repo root:
-
-```sh
-cargo build -p mimz-wasm --target wasm32-unknown-unknown --release
-wasm-bindgen --target web --out-dir site/src/lib/wasm \
-  target/wasm32-unknown-unknown/release/mimz_wasm.wasm
-```
+`site/src/lib/wasm/` (git-ignored — generated, not committed). The `build:wasm`
+script handles this: it compiles `crates/mimz-wasm` to wasm32 and runs
+`wasm-bindgen --target web` into `site/src/lib/wasm/`.
 
 (`wasm-pack build crates/mimz-wasm --target web` also works; point the import at
 its `pkg/`.) Wiring this into the Vercel build is Step 6 of the web-presence plan.

@@ -100,9 +100,9 @@ jobs:
         working-directory: site
         run: npm ci
 
-      - name: Build site
+      - name: Build site (astro + pagefind — wasm already built above)
         working-directory: site
-        run: npm run build
+        run: npm run build:site
 
       # --- 3. Hand the prebuilt output to Vercel ---
       - name: Install Vercel CLI
