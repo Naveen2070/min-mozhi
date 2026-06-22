@@ -52,6 +52,20 @@ the parser.
 
 This distinction is load-bearing for the no-latches guarantee; keep it.
 
+## `Error` placeholder nodes (parse recovery)
+
+`TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each carry an
+`Error(Span)` variant. It is a placeholder for a construct that failed to
+parse, produced **only** by `parser::parse_recover` (the LSP path); the
+strict `parser::parse` returns `Err` on the same input, so an `Error` node
+**never reaches codegen**. The span covers the skipped source so tooling can
+locate the hole. Every downstream `match` handles the variant — the checker
+skips it (no cascade diagnostics); the emitter/simulator/pretty-printer treat
+it as a documented unreachable no-op. See
+[`03-parser.md`](03-parser.md#two-entry-points-parse-strict-vs-parse_recover-best-effort).
+There is intentionally no `ExprKind::Error` yet (it would need an
+unknown-width path through type inference).
+
 ## About `#![allow(dead_code)]`
 
 The parser populates the **complete** language contract — including

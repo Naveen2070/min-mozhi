@@ -52,8 +52,10 @@ which language flavor spelled it. Details in [`02-lexer.md`](02-lexer.md).
 ## Step 3 — Parse (`src/parser/`)
 
 Tokens → `ast::File`. Recursive descent with statement-level error
-recovery, so one bad line doesn't hide the next error. Details in
-[`03-parser.md`](03-parser.md).
+recovery, so one bad line doesn't hide the next error. The pipeline uses
+the **strict** `parse` (any error → no tree → no codegen); tools that want
+a best-effort tree from broken input use `parse_recover` (returns the tree
+with `Error` placeholder nodes). Details in [`03-parser.md`](03-parser.md).
 
 ## Step 4 — Check (`src/checker/`)
 

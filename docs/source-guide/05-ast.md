@@ -35,6 +35,7 @@ The AST is the **single intermediate representation** that everything downstream
 - **On** — sequential clocked block
 - **Drive** — combinational assignment (`lhs = rhs`)
 - **Repeat** — compile-time unrolling
+- **Error** — a placeholder for a construct that failed to parse (see below)
 
 **`Repeat`** — `repeat var: lo..hi { body }`. Compile-time, not runtime. Bounds must be constant.
 
@@ -51,6 +52,8 @@ The AST is the **single intermediate representation** that everything downstream
 **`TestDecl`** — `test "name" for Module(args) { body }`.
 
 **`TestStmt`** — inside a test: `Tick`, `Expect`, `Drive`, or `If`.
+
+**Error placeholders** — `TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each also have an `Error(span)` variant. It marks a spot where parsing failed but recovery kept going. These only appear when the tree comes from `parse_recover` (the editor/LSP path); the normal compile path uses the strict `parse`, which refuses a broken tree, so the checker and emitter never have to deal with a real one. There's no `Error` for expressions yet.
 
 ---
 

@@ -137,10 +137,16 @@ impl Parser {
                     self.error(span, "E1101", "`repeat` block is missing its closing `}`");
                     break span;
                 }
-                _ => match self.module_item() {
-                    Some(i) => items.push(i),
-                    None => self.sync_to_newline(),
-                },
+                _ => {
+                    let start = self.peek().span;
+                    match self.module_item() {
+                        Some(i) => items.push(i),
+                        None => {
+                            self.sync_to_newline();
+                            items.push(ModuleItem::Error(self.span_since(start)));
+                        }
+                    }
+                }
             }
         };
         Some(ModuleItem::Repeat(Repeat {
