@@ -4,15 +4,13 @@
 > Status: **Phases 1, 1.8, and 1.5 complete** — lexer, parser (code-order +
 > thamizh-order), full checker (six passes), Verilog emitter (repeat unrolling,
 > transliteration, signed), CLI
-> (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`/`sim`/`test`, `--json`),
-> LSP v0, all Icarus-validated. The **own simulator** is built and shipped
+> (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`/`sim`/`test`/`fmt`,
+> `--json`), LSP v0, all Icarus-validated. The **own simulator** is built and shipped
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
-> tick/expect; three-layer Icarus differential). The IR is still design.
-> Last updated: 2026-06-16 (Phase 0 closed + keyword set v1 locked 2026-06-15;
-> native-authored Tamil/Tanglish error catalog with structured-arg interpolation,
-> `lang/messages.toml`, 33/36 codes — PR #16; behavior-preserving code-split: parser
-> `items/`, `commands/`, bench `metrics/` — PR #17; Phase 1.5 simulator
-> `src/sim/` + `src/commands/{sim,test}` + `src/config.rs`)
+> tick/expect; three-layer Icarus differential). The **formatter** is shipped
+> (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
+> Last updated: 2026-06-22 (source-guide docs split; doc cross-reference audit;
+> architecture.md refreshed against current project state)
 
 ---
 
@@ -59,8 +57,8 @@
    mimz sim        — full simulator ✅ Phase 1.5 (lib `src/sim/`; clocked +
                      combinational, --in/--sweep, --cycles, --trace, -o .vcd)
    mimz test       — tick/expect test runner ✅ Phase 1.5 (lib `sim::harness`)
-   mimz fmt        — formatter
-   mimz lsp        — language server ✅ v0 SHIPPED 2026-06-12
+    mimz fmt        — keyword normalization + strict-mode ✅ 2026-06-15
+    mimz lsp        — language server ✅ v0 SHIPPED 2026-06-12
                      (diagnostics-only; hover/go-to-def in Phase 4)
 ```
 
@@ -108,7 +106,7 @@ mimz/
   Cargo.toml
   lang/keywords.toml          # trilingual table — data, not code
   src/
-    lib.rs               # pub mod × 14 + the crate map         ✅
+    lib.rs               # pub mod × 15 + mod runner + crate map ✅
     main.rs              # thin CLI (clap, dispatch, Output)     ✅
     commands/            #   per-subcommand handlers + helpers   ✅
     lsp.rs               # `mimz lsp` server (BIN-only module,  ✅
@@ -118,6 +116,13 @@ mimz/
     project.rs           # loading, imports; LoadError values   ✅
     span.rs              # byte-offset spans                    ✅
     diag.rs              # teaching diagnostics + JSON format   ✅
+    morph.rs             # error-language + Tamil inflection     ✅
+    config.rs            # mimz.toml project defaults            ✅
+    translate.rs         # keyword reskin between flavors        ✅
+    pretty.rs            # AST → source pretty-printer          ✅
+    explain.rs           # long-form error code explanations    ✅
+    version.rs           # compiler version + language edition   ✅
+    runner.rs            # in-memory command engine (playground) ✅
     ast/                 # the ONE shared AST                   ✅
       mod.rs             #   files, modules, decls, statements
       expr.rs            #   expressions, patterns, operators
@@ -139,6 +144,7 @@ mimz/
       module.rs          #   shells, instances, always-blocks
       expr.rs            #   expression rendering
       translit.rs        #   Tamil → ASCII identifier pre-pass
+      testbench.rs       #   standalone Verilog testbench gen
     checker/             # six passes, E0001–E0701              ✅
       mod.rs             #   entry, Checker state, err plumbing
       symbols.rs         #   project tables + duplicates
@@ -148,12 +154,18 @@ mimz/
       drivers.rs         #   single-driver + comb-DAG (E05xx)
       clocks.rs          #   clock-domain ownership (E0701)
       tests.rs           #   unit tests (one per E-code)
-    sim/                 # (P1.5) comb, kernel, elaborate,       ✅
-                         #   harness, run, value, vcd, trace
-    config.rs            # mimz.toml project defaults            ✅
+    sim/                 # (P1.5)                               ✅
+      comb.rs            #   combinational evaluator
+      kernel.rs          #   event-driven kernel
+      elaborate.rs       #   AST → flat Design
+      harness.rs         #   test block runner
+      run.rs             #   default stimulus
+      value.rs           #   bit-vector value model
+      vcd.rs             #   VCD waveform writer
+      trace.rs           #   console trace renderer
     ir/                  # (P2)
-  tests/
-    examples.rs          # all 68 examples (17 × 4 flavors) + identity + goldens ✅
+  tests/                 # 16 test files
+    examples.rs          # all 92 examples (23 × 4 flavors + 7 tamil-pure) ✅
     errors.rs            # broken fixtures, one code per E-code  ✅
     icarus.rs            # iverilog lint + self-checking TBs +   ✅
                          #   our_simulator_matches_icarus_bit_for_bit (~21 ex)
@@ -162,11 +174,14 @@ mimz/
     lsp.rs               # wire-protocol smoke test             ✅
     docs_sync.rs         # docs ↔ code staleness guard          ✅
     grammar_sync.rs      # VS Code grammar ↔ lang/keywords.toml      ✅
+    compile_string.rs    # library API tests                    ✅
+    wasm_parity.rs       # WASM ↔ CLI output parity             ✅
     golden/              # pinned .v output per base example
     fixtures/errors/     # the broken corpus
   benches/
     compile.rs           # criterion per-phase micro-benchmarks ✅
                          #   (cargo bench; lexer/parser/checker/emit)
+  fuzz/                  # 4 libFuzzer targets (nightly only)   ✅
   editors/vscode/        # extension: grammar + LSP client      ✅
 ```
 
@@ -179,16 +194,21 @@ Planned crate split (when needed): `mimz-syntax` (lexer/parser/AST/printer) ·
 min-mozhi/
   README.md, LICENSE-*, Cargo.toml
   lang/keywords.toml        # language data (embedded at build time)
-  min-mozhi-roadmap.md # roadmap summary
-  spec/                # the LANGUAGE — normative, versioned (v0.2)
-  docs/                # the PROJECT — plan/, log/, archive/, RULES, this file
-  examples/            # .mimz example programs (no .rs files, so cargo's
-                       #   examples/ auto-discovery is unaffected)
-  demo/                # accumulator-CPU showcase (cpu.mimz + alu.mimz +
-                       #   README): check → test → sim → waveform
-  src/                 # the compiler (tree above)
-  tests/               # integration tests
-  .github/workflows/   # CI
+  min-mozhi-roadmap.md      # roadmap summary
+  spec/                     # the LANGUAGE — normative, versioned (v0.2)
+  docs/                     # the PROJECT — plan/, log/, archive/, RULES,
+                            #   guide/, code/, source-guide/, audit/, Ideas/
+  src/                      # the compiler (tree above)
+  tests/                    # integration tests (16 files)
+  benches/                  # Criterion micro-benchmarks
+  fuzz/                     # libFuzzer targets (4)
+  crates/mimz-wasm/         # WASM playground wrapper
+  examples/                 # .mimz programs (23 designs × 5 flavors)
+  demo/                     # alu + cpu hardware demos
+  editors/vscode/           # VS Code extension (grammar + LSP client)
+  site/                     # Astro documentation website (deployed)
+  tools/test-summary/       # cargo test wrapper (dev helper)
+  .github/workflows/        # CI (ci, deploy-site, release)
 ```
 
 Separation rule: `spec/` defines the language and outlives any
@@ -199,9 +219,7 @@ Future directories (created when their trigger fires, not before):
 | Directory  | Arrives with                                   |
 | ---------- | ---------------------------------------------- |
 | `stdlib/`  | `.mimz` standard library modules (Phase 4)     |
-| `crates/`  | the workspace split (see Evolution Triggers)   |
 | `targets/` | board/constraint files (Phase 2 hardware flow) |
-| `site/`    | docs website (Phase 4)                         |
 
 ## 4. Cross-Cutting Invariants
 
@@ -217,6 +235,14 @@ Future directories (created when their trigger fires, not before):
    IR vs AST simulation (2), native flow vs Yosys/nextpnr (3).
 6. **Dumb first, fast later.** Emitters/backends start naive and readable;
    optimization lives in dedicated IR passes, never hidden in emitters.
+7. **Pure core, impure shell.** The compiler stages — `lexer`, `parser`,
+   `checker`, `emit_verilog`, `sim`, `ast` — are string → string/AST pure: no
+   `std::fs`/`env`/`process`, no `tokio`, no globals. All OS coupling lives in
+   the CLI shell (`src/commands/`, `main.rs`, `config.rs`, `project.rs`,
+   `lsp.rs`, `src/bin/`) and the optional `lsp`/`bench` features. This is what
+   lets `crates/mimz-wasm` build the lib with `default-features = false` and run
+   the whole pipeline in the browser (`wasm_parity` guards it). Keep it: a new
+   OS dependency belongs in the shell, never in a core stage.
 
 ## 5. Evolution Triggers (planned inflection points — not emergencies)
 
@@ -239,7 +265,10 @@ move and log it (R3). Letting a trigger pass is how architectures rot.
 - Reset style v2: async-reset option? active-low? (v1: sync, active-high)
 - Memories/arrays (`mem[depth] of bits[w]`) — Phase 2 spec bump (confirmed)
 - CDC `sync` construct design (Phase 2 plan item)
-- External Verilog module wrapping construct (Constitution item — design in Phase 2+)
+- External Verilog module wrapping construct (Constitution item — design in Phase 2+;
+  `extern` keyword to be RESERVED before v0.1.0 so the additive feature stays
+  edition-safe — see `docs/Ideas/architectural_ideas.md` idea 3 + the freeze
+  checklist in `docs/Ideas/language_plan.md` section 9)
 
 Resolved 2026-06-10 (see log + spec v0.2): `import` semantics, `repeat`
 generation, signed rules, Rust precedence, logical-op aliases, `.mimz`/`mimz`

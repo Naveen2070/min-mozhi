@@ -1,5 +1,9 @@
 # 01 — The Pipeline, End to End
 
+> Before diving in: if you want a friendlier, file-by-file introduction,
+> start with [`../source-guide/`](../source-guide/) instead. This page
+> assumes you already know roughly what each module does.
+
 What actually happens when you run:
 
 ```text

@@ -9,14 +9,16 @@ reading one file at a time.
 
 ## How this folder relates to the other docs
 
-| You want…                              | Go to                                        |
-| -------------------------------------- | -------------------------------------------- |
-| What the _language_ means (normative)  | [`spec/`](../../spec/)                       |
-| The architecture contract & invariants | [`docs/architecture.md`](../architecture.md) |
-| **How the code implements it**         | **this folder**                              |
-| Item-level API reference               | `cargo doc --document-private-items --open`  |
-| Why a decision was made, with date     | [`docs/log/`](../log/) (Decision blocks)     |
-| What to build next                     | [`docs/plan/`](../plan/)                     |
+| You want…                                 | Go to                                        |
+| ----------------------------------------- | -------------------------------------------- |
+| A friendly walkthrough of every Rust file | [`docs/source-guide/`](../source-guide/)     |
+| How to **write** Min-Mozhi code           | [`docs/guide/`](../guide/)                   |
+| What the _language_ means (normative)     | [`spec/`](../../spec/)                       |
+| The architecture contract & invariants    | [`docs/architecture.md`](../architecture.md) |
+| **How the code implements it**            | **this folder**                              |
+| Item-level API reference                  | `cargo doc --document-private-items --open`  |
+| Why a decision was made, with date        | [`docs/log/`](../log/) (Decision blocks)     |
+| What to build next                        | [`docs/plan/`](../plan/)                     |
 
 Rule of thumb: `architecture.md` says what must stay true; this folder
 says how the current code makes it true. When they disagree, one of them

@@ -828,6 +828,13 @@ All `..`-spread features gate on interfaces/bundles (2.4); finalize the token wh
    `[hi:lo]`/`{a,b}` are canonical (spec/02 v0.2.6 section 1.8).
 5. Everything else (8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8) is additive / edition-safe →
    can land after v0.1.0 with no breakage; none of it pressures the freeze date.
+6. **Reserve `extern`** (external-Verilog / black-box-IP module — `architectural_ideas.md`
+   idea 3, the architecture open question "External Verilog module wrapping construct").
+   The _feature_ is additive and lands Phase 2+, but the _keyword_ must be reserved
+   now so a v0.1 program can't claim it as an identifier (R11). Full pipeline, same
+   as the other reserved words: `lang/keywords.toml` `reserved` + spec/03 reserved
+   table & changelog + the TextMate invalid pattern + a lexer reserved-word test.
+   English-only until the feature lands and native review supplies the spellings.
 
 ---
 

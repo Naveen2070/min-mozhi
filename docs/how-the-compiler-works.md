@@ -490,3 +490,4 @@ and the design decisions behind them:
 | checker                                       | [`code/11-checker.md`](code/11-checker.md)                         |
 | simulator, `translate`/`fmt`, version/edition | [`code/13-tooling.md`](code/13-tooling.md)                         |
 | one real run, token offsets and all           | [`code/09-walkthrough-counter.md`](code/09-walkthrough-counter.md) |
+| in-depth intro (every Rust file, friendly)    | [`source-guide/README.md`](source-guide/README.md)                 |

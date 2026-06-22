@@ -6,6 +6,10 @@ orientation summary lives in the root
 Read [`docs/RULES.md`](../RULES.md) too — it governs how plans, specs,
 and logs stay in sync; this page covers the code side.
 
+Not familiar with the codebase yet? Start with
+[`../source-guide/`](../source-guide/) for a friendly walkthrough of every
+file, then come back here.
+
 ## The gate (run before every commit)
 
 ```text

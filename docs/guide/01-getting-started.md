@@ -116,7 +116,9 @@ When you run `mimz compile`, your file flows through five stations:
 
 `mimz check` stops after station 3 (no file written); `mimz compile` runs all
 five. For the deep tour of the pipeline on a real example, see
-[`../how-the-compiler-works.md`](../how-the-compiler-works.md).
+[`../how-the-compiler-works.md`](../how-the-compiler-works.md). For a friendly
+walkthrough of every Rust file, see
+[`../source-guide/`](../source-guide/).
 
 ## Where to go next
 

@@ -251,4 +251,8 @@ cargo test
 npx prettier --write "**/*.md" && npx markdownlint-cli2
 ```
 
+Curious how the compiler implements all this under the hood? See
+[`../code/`](../code/) (maintainer docs) or
+[`../source-guide/`](../source-guide/) (friendly code tour).
+
 Next: [the cheat sheet](12-cheatsheet.md).
