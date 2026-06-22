@@ -322,6 +322,60 @@ fn compile_file_tb_tagged(path: &Path, tag: &str) -> Option<String> {
     }
 }
 
+/// `--emit-testbench` on a source with NO `test` blocks must still succeed,
+/// write only the `.v` (no stray `_tb.v`), and print a clear note that the flag
+/// had no effect — not silently produce nothing.
+#[test]
+fn emit_testbench_without_test_blocks_notes_and_writes_only_v() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let uniq = N.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir();
+    let in_path = dir.join(format!("mimz_no_tests_{uniq}.mimz"));
+    let out_v = dir.join(format!("mimz_no_tests_{uniq}.v"));
+    let mut tb_v = out_v.clone();
+    let mut tb_name = tb_v.file_stem().unwrap().to_os_string();
+    tb_name.push("_tb");
+    tb_v.set_file_name(tb_name);
+    tb_v.set_extension("v");
+    // Clear any leftovers so the `_tb.v` existence check below is meaningful.
+    let _ = std::fs::remove_file(&out_v);
+    let _ = std::fs::remove_file(&tb_v);
+    std::fs::write(
+        &in_path,
+        "module Buf {\n  in a: bit\n  out y: bit\n  y = a\n}\n",
+    )
+    .unwrap();
+
+    let out = mimz()
+        .arg("compile")
+        .arg(&in_path)
+        .arg("-o")
+        .arg(&out_v)
+        .arg("--emit-testbench")
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "compile must still succeed with no tests:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out_v.exists(), "the `.v` must be written");
+    assert!(
+        !tb_v.exists(),
+        "no `_tb.v` may be written when there are no tests"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("no `test` blocks"),
+        "expected a no-tests note on stderr, got:\n{stderr}"
+    );
+
+    let _ = std::fs::remove_file(&in_path);
+    let _ = std::fs::remove_file(&out_v);
+}
+
 /// Golden-file comparison for auto-generated testbenches: any base example that
 /// has inline `test` blocks must generate a `_tb.v` that exactly matches the
 /// `tests/golden/<base>_tb.v` golden file.

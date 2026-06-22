@@ -31,7 +31,7 @@ mimz check counter.mimz --tokens    # also dump the token stream (debugging)
 mimz check counter.mimz --json      # machine-readable diagnostics
 ```
 
-A clean file prints `OK:`; a broken one prints `E`-coded diagnostics.
+A clean file prints `OK: <path> — <N> module(s), <M> test(s), <K> file(s).`; a broken one prints `E`-coded diagnostics.
 
 ## `mimz compile` — emit Verilog
 
@@ -41,7 +41,17 @@ Runs the whole pipeline and writes synthesizable Verilog. Resolves imports.
 mimz compile counter.mimz                 # writes counter.v
 mimz compile counter.mimz -o build/c.v    # choose the output path
 mimz compile counter.mimz --emit-testbench # also writes counter_tb.v from inline tests
+mimz compile counter.mimz --json          # machine-readable diagnostics
 ```
+
+The command prints its output paths to `stdout`:
+
+- **Normal:** `compiled <in> -> <out>`
+- **With testbench:** a second line `compiled <in> -> <out> (testbench)`
+
+`--emit-testbench` writes `<output>_tb.v` alongside the Verilog. If the source
+has no `test` blocks it prints a note on `stderr` and writes only the `.v`; the testbench is
+built before either file is written, so an emission error leaves no stray output.
 
 ## `mimz eval` — run combinational logic
 

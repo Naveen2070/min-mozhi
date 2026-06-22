@@ -18,12 +18,12 @@ Welcome, AI Agent! When assisting with tasks in the **min-mozhi** codebase, you 
 
 Please refer to the following rules files before making any modifications or planning any changes:
 
-- **Primary Agent Rules**: [.claude/Rules.md](file:///D:/Study_Works/Code_works/min-mozhi/.claude/Rules.md) — Contains requirements for writing daily dev logs, document synchronization, linting, and spec alignment/impact analysis.
-- **Full Repository Rules**: [docs/RULES.md](file:///D:/Study_Works/Code_works/min-mozhi/docs/RULES.md) — The comprehensive source of truth for repository working guidelines.
+- **Primary Agent Rules**: [.claude/Rules.md](.claude/Rules.md) — Contains requirements for writing daily dev logs, document synchronization, linting, and spec alignment/impact analysis.
+- **Full Repository Rules**: [docs/RULES.md](docs/RULES.md) — The comprehensive source of truth for repository working guidelines.
 
 ## Quick Checklist for Agents
 
-1. **Impact Analysis**: Check requests against [spec/01-goals-and-philosophy.md](file:///D:/Study_Works/Code_works/min-mozhi/spec/01-goals-and-philosophy.md) and [spec/02-syntax-and-grammar.md](file:///D:/Study_Works/Code_works/min-mozhi/spec/02-syntax-and-grammar.md). If a change breaks anything, tell the user and ask how to proceed.
+1. **Impact Analysis**: Check requests against [spec/01-goals-and-philosophy.md](spec/01-goals-and-philosophy.md) and [spec/02-syntax-and-grammar.md](spec/02-syntax-and-grammar.md). If a change breaks anything, tell the user and ask how to proceed.
 2. **Dev Log**: After a change, append to today's log file (`docs/log/YYYY-MM-DD.md`).
 3. **Docs Sync**: Ensure no related documentation is left stale.
 4. **Lint & Format**: Run `cargo clippy`, `cargo fmt`, Prettier, and markdownlint before wrapping up.

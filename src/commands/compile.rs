@@ -60,48 +60,56 @@ pub(crate) fn compile(
         p.set_extension("v");
         p
     });
-    if let Err(e) = std::fs::write(&out_path, &verilog) {
-        eprintln!("error: cannot write `{}`: {e}", out_path.display());
-        return ExitCode::FAILURE;
-    }
 
+    // Build the testbench (if requested) BEFORE writing any file, so a
+    // testbench-emission error or an unusable output path aborts the command
+    // cleanly instead of leaving a stray `.v` with no companion `_tb.v`.
+    let mut testbench: Option<(PathBuf, String)> = None;
+    let mut no_tests = false;
     if emit_testbench {
         let tests: Vec<&ast::TestDecl> = asts
             .iter()
             .flat_map(|f| {
-                f.items.iter().filter_map(|i| {
-                    if let ast::TopItem::Test(t) = i {
-                        Some(t)
-                    } else {
-                        None
-                    }
+                f.items.iter().filter_map(|i| match i {
+                    ast::TopItem::Test(t) => Some(t),
+                    _ => None,
                 })
             })
             .collect();
 
-        if !tests.is_empty() {
+        if tests.is_empty() {
+            no_tests = true;
+        } else {
             let tb_verilog = match emit_verilog::emit_testbench(&project, &tests) {
                 Ok(v) => v,
                 Err(errors) => return report_err(errors),
             };
-
-            let mut tb_path = out_path.clone();
-            let mut name = tb_path.file_stem().unwrap().to_os_string();
+            // `<out>.v` -> `<out>_tb.v`. A path with no file stem (e.g.
+            // `--output ..`) can't yield a testbench name — fail cleanly.
+            let Some(stem) = out_path.file_stem() else {
+                eprintln!(
+                    "error: cannot derive a testbench file name from `{}`",
+                    out_path.display()
+                );
+                return ExitCode::FAILURE;
+            };
+            let mut name = stem.to_os_string();
             name.push("_tb");
+            let mut tb_path = out_path.clone();
             tb_path.set_file_name(name);
             tb_path.set_extension("v");
+            testbench = Some((tb_path, tb_verilog));
+        }
+    }
 
-            if let Err(e) = std::fs::write(&tb_path, &tb_verilog) {
-                eprintln!("error: cannot write `{}`: {e}", tb_path.display());
-                return ExitCode::FAILURE;
-            }
-            if !json {
-                println!(
-                    "compiled {} -> {} (testbench)",
-                    path.display(),
-                    tb_path.display()
-                );
-            }
+    if let Err(e) = std::fs::write(&out_path, &verilog) {
+        eprintln!("error: cannot write `{}`: {e}", out_path.display());
+        return ExitCode::FAILURE;
+    }
+    if let Some((tb_path, tb_verilog)) = &testbench {
+        if let Err(e) = std::fs::write(tb_path, tb_verilog) {
+            eprintln!("error: cannot write `{}`: {e}", tb_path.display());
+            return ExitCode::FAILURE;
         }
     }
 
@@ -113,6 +121,18 @@ pub(crate) fn compile(
             eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
         }
         println!("compiled {} -> {}", path.display(), out_path.display());
+        if let Some((tb_path, _)) = &testbench {
+            println!(
+                "compiled {} -> {} (testbench)",
+                path.display(),
+                tb_path.display()
+            );
+        } else if no_tests {
+            eprintln!(
+                "note: --emit-testbench had no effect — no `test` blocks found in {}",
+                path.display()
+            );
+        }
     }
     ExitCode::SUCCESS
 }
