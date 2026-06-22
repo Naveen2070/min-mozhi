@@ -314,6 +314,9 @@ fn run_seq(
                     run_seq(env, e, next, next_mems, widths)?;
                 }
             }
+            // Unreachable: the kernel runs on a strict-parsed tree, which
+            // carries no `Error` placeholder.
+            SeqStmt::Error(_) => {}
         }
     }
     Ok(())

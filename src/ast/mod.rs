@@ -37,6 +37,11 @@ pub enum TopItem {
     Module(Module),
     Enum(EnumDecl),
     Test(TestDecl),
+    /// A top-level item that failed to parse. Produced ONLY by
+    /// `parser::parse_recover` (the LSP path); the strict `parser::parse`
+    /// pipeline never yields one, so codegen never sees it. The span covers
+    /// the skipped source so tooling can locate the hole.
+    Error(Span),
 }
 
 /// A name with its source location. Used everywhere a user-written name
@@ -155,6 +160,10 @@ pub enum ModuleItem {
     },
     /// Compile-time generation (`repeat i: 0..8 { ... }`).
     Repeat(Repeat),
+    /// A module-body item that failed to parse. Produced ONLY by
+    /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
+    /// skipped source.
+    Error(Span),
 }
 
 /// `repeat i: lo..hi { ... }` — compile-time unrolling, NOT a runtime loop.
@@ -233,6 +242,10 @@ pub enum SeqStmt {
         then: Vec<SeqStmt>,
         els: Option<Vec<SeqStmt>>,
     },
+    /// A sequential statement that failed to parse. Produced ONLY by
+    /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
+    /// skipped source.
+    Error(Span),
 }
 
 /// Assignment target: a signal, one bit of it, or a slice.
@@ -287,4 +300,8 @@ pub enum TestStmt {
         then: Vec<TestStmt>,
         els: Option<Vec<TestStmt>>,
     },
+    /// A test statement that failed to parse. Produced ONLY by
+    /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
+    /// skipped source.
+    Error(Span),
 }

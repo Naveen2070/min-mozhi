@@ -485,7 +485,8 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
-                | ModuleItem::Enum(_) => {}
+                | ModuleItem::Enum(_)
+                | ModuleItem::Error(_) => {}
             }
         }
     }
@@ -504,6 +505,7 @@ impl<'a> Checker<'a> {
                         self.seq_width_stmts(cx, els);
                     }
                 }
+                SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
     }

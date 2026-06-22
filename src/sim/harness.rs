@@ -192,6 +192,9 @@ impl Run<'_> {
                         self.exec(e)?;
                     }
                 }
+                // Unreachable: the sim runs on a strict-parsed tree, which
+                // carries no `Error` placeholder.
+                TestStmt::Error(_) => {}
             }
         }
         Ok(())

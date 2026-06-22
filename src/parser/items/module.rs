@@ -53,9 +53,13 @@ impl Parser {
                 );
                 break span;
             }
+            let start = self.peek().span;
             match self.module_item() {
                 Some(item) => items.push(item),
-                None => self.sync_to_newline(),
+                None => {
+                    self.sync_to_newline();
+                    items.push(ModuleItem::Error(self.span_since(start)));
+                }
             }
         };
         Some(Module {
