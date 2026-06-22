@@ -1,0 +1,69 @@
+// Min-Mozhi stdlib (mixed flavors — English, Tanglish, and Tamil keywords in
+// one file; mixing freely is the migration path): switch/button debouncer.
+//
+// A mechanical switch "bounces" — its raw line flickers for a few
+// milliseconds before settling. This module ignores the flicker: it only
+// changes its output once the synchronized input has held a new value for
+// STABLE consecutive clock samples.
+//
+// Ports:  in raw  — the noisy switch line (one bit)
+//         out stable — the debounced, glitch-free output
+// Params: WIDTH  — bit width of the internal sample counter
+//         STABLE — how many steady samples are required before accepting
+//                  a change (must fit in WIDTH bits)
+
+module Debouncer(WIDTH: int = 3, STABLE: int = 4) {
+  thudippu clk
+  மீட்டமை rst
+
+  ulleedu  raw: bit
+  out stable: bit
+
+  // Two-stage synchronizer for the asynchronous switch line.
+  பதிவேடு sync0: bit = 0
+  பதிவேடு sync1: bit = 0
+
+  // How many consecutive samples the synchronized input has differed
+  // from the accepted output.
+  reg cnt: bits[WIDTH] = 0
+
+  // The accepted, debounced value.
+  reg out_q: bit = 0
+
+  pothu yetram(clk) {
+    sync0 <- raw
+    sync1 <- sync0
+
+    enil sync1 == out_q {
+      // No disagreement — restart the stability counter.
+      cnt <- 0
+    } illaiyenil {
+      if cnt == STABLE {
+        // Held the new value long enough — accept it.
+        out_q <- sync1
+        cnt <- 0
+      } else {
+        cnt <- cnt +% 1
+      }
+    }
+  }
+
+  stable = out_q
+}
+
+// A clean, sustained press settles to 1 after the synchronizer delay plus
+// STABLE samples.
+test "debouncer settles after a steady input" for Debouncer(WIDTH: 3, STABLE: 4) {
+  raw = 1
+  tick(clk, 8)
+  expect stable == 1
+}
+
+// A pulse shorter than STABLE samples is rejected — the output never moves.
+test "debouncer rejects a short glitch" for Debouncer(WIDTH: 3, STABLE: 4) {
+  raw = 1
+  kanam(clk, 2)
+  raw = 0
+  tick(clk, 8)
+  expect stable == 0
+}
