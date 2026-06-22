@@ -58,7 +58,7 @@ matching, which compilers lean on heavily.)
   (`--json` diagnostics + lib/bin split landed with it)
 
 **Milestone:** `mimz compile adder.mimz → adder.v → simulates correctly` ✅
-(430 tests; v0.1.0 tag pending)
+(432 tests; v0.1.0 tag pending)
 
 **Deliverable:** Working compiler — Min-Mozhi → Verilog ✅
 
