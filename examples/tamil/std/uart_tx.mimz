@@ -1,0 +1,120 @@
+// Min-Mozhi stdlib: UART transmitter (8-N-1).
+//
+// Serializes a byte onto a single wire at a fixed baud rate: one low start
+// bit, eight data bits least-significant-first, one high stop bit. The line
+// idles high. Assert `start` for one clock with `data` valid to begin; `busy`
+// stays high until the whole frame has been shifted out.
+//
+// Ports:  in  start — pulse high (one clock) to begin a frame
+//         in  data  — the byte to send (sampled when a frame starts)
+//         out tx    — the serial line (idles high)
+//         out busy  — high while a frame is in flight
+// Params: CLKS_PER_BIT — clock cycles per serial bit = f_clk / baud
+//
+// A four-state Moore FSM (Idle → Start → Data → Stop) clocks a baud divider
+// (`clk_count`) and a shift register; `tx`/`busy` are pure functions of the
+// state, so the line is glitch-free.
+
+தொகுதி UartTx(CLKS_PER_BIT: int = 4) {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  உள்ளீடு  start: bit
+  உள்ளீடு  data: bits[8]
+  வெளியீடு tx: bit
+  வெளியீடு busy: bit
+
+  வகை State { Idle, Start, Data, Stop }
+
+  பதிவேடு state: State      = State.Idle
+  பதிவேடு clk_count: bits[16] = 0   // cycles elapsed within the current bit
+  பதிவேடு bit_index: bits[3]  = 0   // which data bit (0..7) is on the wire
+  பதிவேடு shift: bits[8]      = 0   // the byte being shifted out, LSB first
+
+  போது ஏற்றம்(clk) {
+    எனில் state == State.Idle {
+      clk_count <- 0
+      bit_index <- 0
+      எனில் start {
+        shift <- data
+        state <- State.Start
+      }
+    } இல்லையெனில் {
+      எனில் state == State.Start {
+        // Hold the start bit for one full bit period.
+        எனில் clk_count == (CLKS_PER_BIT - 1) {
+          clk_count <- 0
+          state <- State.Data
+        } இல்லையெனில் {
+          clk_count <- clk_count +% 1
+        }
+      } இல்லையெனில் {
+        எனில் state == State.Data {
+          // One bit period per data bit; shift after each completes.
+          எனில் clk_count == (CLKS_PER_BIT - 1) {
+            clk_count <- 0
+            shift <- shift >> 1
+            எனில் bit_index == 7 {
+              bit_index <- 0
+              state <- State.Stop
+            } இல்லையெனில் {
+              bit_index <- bit_index +% 1
+            }
+          } இல்லையெனில் {
+            clk_count <- clk_count +% 1
+          }
+        } இல்லையெனில் {
+          // Stop bit, then back to idle.
+          எனில் clk_count == (CLKS_PER_BIT - 1) {
+            clk_count <- 0
+            state <- State.Idle
+          } இல்லையெனில் {
+            clk_count <- clk_count +% 1
+          }
+        }
+      }
+    }
+  }
+
+  // Moore outputs — functions of the state alone (the data wire reads the
+  // shift register's LSB during the data phase).
+  tx = தேர்ந்தெடு state {
+    State.Idle  => 1
+    State.Start => 0
+    State.Data  => shift[0]
+    State.Stop  => 1
+  }
+  busy = தேர்ந்தெடு state {
+    State.Idle  => 0
+    State.Start => 1
+    State.Data  => 1
+    State.Stop  => 1
+  }
+}
+
+// The line idles high and not busy out of reset.
+சோதனை "uart idles high" க்காக UartTx(CLKS_PER_BIT: 2) {
+  உறுதிசெய் tx == 1
+  உறுதிசெய் busy == 0
+}
+
+// Asserting start begins a frame: busy rises and the start bit (low) is driven.
+சோதனை "uart begins a frame on start" க்காக UartTx(CLKS_PER_BIT: 2) {
+  start = 1
+  data = 0x55
+  கணம்(clk, 1)
+  உறுதிசெய் busy == 1
+  உறுதிசெய் tx == 0
+}
+
+// After the whole frame (start + 8 data + stop, 2 clocks each) the line is idle
+// again. 1 cycle to leave Idle + 20 bit-period cycles is comfortably covered.
+சோதனை "uart returns to idle after a frame" க்காக UartTx(CLKS_PER_BIT: 2) {
+  start = 1
+  data = 0x55
+  கணம்(clk, 1)
+  start = 0
+  கணம்(clk, 24)
+  உறுதிசெய் busy == 0
+  உறுதிசெய் tx == 1
+}

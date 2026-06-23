@@ -12,8 +12,8 @@ and the Tamil Nadu VLSI ecosystem.
 
 ### Standard library
 
-- [~] Core modules in Min-Mozhi itself: UART, SPI, PWM, debouncer, FIFO, ALU, 7-segment driver — **in progress** on branch `stdlib-modules` (shipped as `examples/.../std/*` content; importable `std.*` path deferred). Focused first set: debouncer, fifo, pwm, seg7, uart_tx (UART-RX, SPI deferred). **Debouncer DONE 2026-06-22** (4 flavors + pure-Tamil twin `nilaippaduthi`, inline tests, goldens, 2 Icarus TBs, doc page).
-- [~] Each stdlib module: trilingual doc page + testbench + waveform screenshot — doc page + ASCII `--trace` waveform per module (PNG screenshots = maintainer step); inline `test` blocks + hand Icarus TBs serve as the testbench.
+- [x] Core modules in Min-Mozhi itself: UART, SPI, PWM, debouncer, FIFO, ALU, 7-segment driver — **focused first set DONE 2026-06-23** on branch `stdlib-modules` (shipped as `examples/.../std/*` content; importable `std.*` path deferred). Set: debouncer, seg7, pwm, fifo, uart_tx — each with 4 flavors + a pure-Tamil twin (`nilaippaduthi`, `ennkaatti`, `minukki`, `varisai`, `anuppi`), inline `test` blocks, module + emitted-TB goldens, and 2 hand Icarus TBs. **UART-RX, SPI master deferred** to a future stdlib branch (with the importable `std.*` library).
+- [x] Each stdlib module: trilingual doc page + testbench + waveform — `docs/guide/stdlib/<module>.md` (+ gallery `README.md`) with a reproducible ASCII `--trace` waveform per module (PNG screenshots remain a maintainer step); inline `test` blocks + hand Icarus TBs serve as the testbench.
 
 ### Tooling
 

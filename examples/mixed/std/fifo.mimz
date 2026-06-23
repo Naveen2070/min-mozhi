@@ -1,0 +1,74 @@
+// Min-Mozhi stdlib (mixed flavors — English, Tanglish, and Tamil keywords in
+// one file; mixing freely is the migration path): synchronous FIFO queue.
+//
+// A first-in-first-out ring buffer built on a `mem`. Writes land on the clock;
+// the head datum reads out combinationally. A push when full and a pop when
+// empty are both ignored, so the queue never over/underflows.
+//
+// Ports:  in  push/pop/din   out full/empty/dout
+// Params: WIDTH — datum width · AW — pointer width · DEPTH — entries (= 2^AW)
+
+module Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
+  thudippu clk
+  மீட்டமை rst
+
+  ulleedu  push: bit
+  ulleedu  pop:  bit
+  in  din:  bits[WIDTH]
+  veliyeedu full:  bit
+  out empty: bit
+  வெளியீடு dout:  bits[WIDTH]
+
+  // DEPTH cells of WIDTH bits.
+  ninaivagam data: bits[WIDTH][DEPTH] = 0
+
+  பதிவேடு head:  bits[AW]     = 0
+  reg tail:  bits[AW]     = 0
+  pathivedu count: bits[AW + 1] = 0
+
+  pothu yetram(clk) {
+    enil push mattrum (count != DEPTH) {
+      // Enqueue: store at the tail and advance it.
+      data[tail] <- din
+      tail <- tail +% 1
+      if pop and (count != 0) {
+        head <- head +% 1
+      } illaiyenil {
+        count <- count +% 1
+      }
+    } else {
+      எனில் pop மற்றும் (count != 0) {
+        head <- head +% 1
+        count <- count -% 1
+      }
+    }
+  }
+
+  dout  = data[head]
+  full  = count == DEPTH
+  empty = count == 0
+}
+
+// A freshly reset queue holds nothing.
+test "fifo starts empty" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+  expect empty == 1
+  uruthisei full == 0
+}
+
+// One pushed byte comes back at the head and clears `empty`.
+சோதனை "fifo round-trips a byte" kaaga Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+  push = 1
+  din = 0xA5
+  kanam(clk, 1)
+  push = 0
+  expect dout == 0xA5
+  expect empty == 0
+}
+
+// Pushing DEPTH (4) entries fills the ring.
+test "fifo fills up" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+  push = 1
+  din = 1
+  tick(clk, 4)
+  expect full == 1
+}
