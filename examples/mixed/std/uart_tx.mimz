@@ -1,0 +1,107 @@
+// Min-Mozhi stdlib (mixed flavors — English, Tanglish, and Tamil keywords in
+// one file; mixing freely is the migration path): UART transmitter (8-N-1).
+//
+// Serializes a byte: one low start bit, eight data bits LSB-first, one high
+// stop bit; the line idles high. Pulse `start` for one clock with `data` valid
+// to begin; `busy` stays high until the frame is fully shifted out.
+//
+// Ports:  in start/data   out tx/busy
+// Params: CLKS_PER_BIT — clock cycles per serial bit = f_clk / baud
+
+module UartTx(CLKS_PER_BIT: int = 4) {
+  thudippu clk
+  மீட்டமை rst
+
+  ulleedu  start: bit
+  in  data: bits[8]
+  veliyeedu tx: bit
+  out busy: bit
+
+  வகை State { Idle, Start, Data, Stop }
+
+  pathivedu state: State      = State.Idle
+  reg clk_count: bits[16] = 0
+  பதிவேடு bit_index: bits[3]  = 0
+  reg shift: bits[8]      = 0
+
+  pothu yetram(clk) {
+    enil state == State.Idle {
+      clk_count <- 0
+      bit_index <- 0
+      enil start {
+        shift <- data
+        state <- State.Start
+      }
+    } illaiyenil {
+      if state == State.Start {
+        if clk_count == (CLKS_PER_BIT - 1) {
+          clk_count <- 0
+          state <- State.Data
+        } else {
+          clk_count <- clk_count +% 1
+        }
+      } else {
+        எனில் state == State.Data {
+          எனில் clk_count == (CLKS_PER_BIT - 1) {
+            clk_count <- 0
+            shift <- shift >> 1
+            if bit_index == 7 {
+              bit_index <- 0
+              state <- State.Stop
+            } illaiyenil {
+              bit_index <- bit_index +% 1
+            }
+          } else {
+            clk_count <- clk_count +% 1
+          }
+        } இல்லையெனில் {
+          if clk_count == (CLKS_PER_BIT - 1) {
+            clk_count <- 0
+            state <- State.Idle
+          } else {
+            clk_count <- clk_count +% 1
+          }
+        }
+      }
+    }
+  }
+
+  tx = thernthedu state {
+    State.Idle  => 1
+    State.Start => 0
+    State.Data  => shift[0]
+    State.Stop  => 1
+  }
+  busy = match state {
+    State.Idle  => 0
+    State.Start => 1
+    State.Data  => 1
+    State.Stop  => 1
+  }
+}
+
+// The line idles high and not busy out of reset.
+test "uart idles high" for UartTx(CLKS_PER_BIT: 2) {
+  expect tx == 1
+  expect busy == 0
+}
+
+// Asserting start begins a frame: busy rises and the start bit (low) is driven.
+சோதனை "uart begins a frame on start" kaaga UartTx(CLKS_PER_BIT: 2) {
+  start = 1
+  data = 0x55
+  kanam(clk, 1)
+  uruthisei busy == 1
+  expect tx == 0
+}
+
+// After the whole frame the line is idle again.
+test "uart returns to idle after a frame" for UartTx(CLKS_PER_BIT: 2) {
+  start = 1
+  data = 0x55
+  tick(clk, 1)
+  start = 0
+  tick(clk, 24)
+  expect busy == 0
+  expect tx == 1
+}

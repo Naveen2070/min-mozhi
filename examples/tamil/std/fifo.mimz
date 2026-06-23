@@ -1,0 +1,88 @@
+// Min-Mozhi stdlib: synchronous FIFO queue (ring buffer).
+//
+// A first-in-first-out buffer built on a `mem`. Bytes pushed in come out in
+// the same order. Writes land on the clock; the read data is the cell at the
+// head, available combinationally. A push when full and a pop when empty are
+// both ignored (no over/underflow), so the queue is always consistent.
+//
+// Ports:  in  push — enqueue `din` this cycle (ignored when full)
+//         in  pop  — dequeue this cycle (ignored when empty)
+//         in  din  — the datum to enqueue
+//         out full  — no room left
+//         out empty — nothing buffered
+//         out dout  — the datum at the head (valid when not empty)
+// Params: WIDTH — datum width in bits
+//         AW    — pointer width; the ring holds 2^AW entries
+//         DEPTH — number of entries; must equal 2^AW
+//
+// DEPTH and AW are separate because the language has no `clog2`: keep the
+// contract DEPTH = 2^AW (the defaults, 4 and 2, satisfy it). `head`/`tail` are
+// AW-bit pointers that wrap around the ring; `count` carries one extra bit so
+// it can represent a completely full ring (DEPTH entries).
+
+தொகுதி Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  உள்ளீடு  push: bit
+  உள்ளீடு  pop:  bit
+  உள்ளீடு  din:  bits[WIDTH]
+  வெளியீடு full:  bit
+  வெளியீடு empty: bit
+  வெளியீடு dout:  bits[WIDTH]
+
+  // DEPTH cells of WIDTH bits.
+  நினைவகம் data: bits[WIDTH][DEPTH] = 0
+
+  பதிவேடு head:  bits[AW]     = 0
+  பதிவேடு tail:  bits[AW]     = 0
+  பதிவேடு count: bits[AW + 1] = 0
+
+  போது ஏற்றம்(clk) {
+    எனில் push மற்றும் (count != DEPTH) {
+      // Enqueue: store at the tail and advance it.
+      data[tail] <- din
+      tail <- tail +% 1
+      எனில் pop மற்றும் (count != 0) {
+        // A simultaneous pop keeps the occupancy steady.
+        head <- head +% 1
+      } இல்லையெனில் {
+        count <- count +% 1
+      }
+    } இல்லையெனில் {
+      எனில் pop மற்றும் (count != 0) {
+        // Dequeue only: advance the head and drop the occupancy.
+        head <- head +% 1
+        count <- count -% 1
+      }
+    }
+  }
+
+  dout  = data[head]
+  full  = count == DEPTH
+  empty = count == 0
+}
+
+// A freshly reset queue holds nothing.
+சோதனை "fifo starts empty" க்காக Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+  உறுதிசெய் empty == 1
+  உறுதிசெய் full == 0
+}
+
+// One pushed byte comes back at the head and clears `empty`.
+சோதனை "fifo round-trips a byte" க்காக Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+  push = 1
+  din = 0xA5
+  கணம்(clk, 1)
+  push = 0
+  உறுதிசெய் dout == 0xA5
+  உறுதிசெய் empty == 0
+}
+
+// Pushing DEPTH (4) entries fills the ring.
+சோதனை "fifo fills up" க்காக Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+  push = 1
+  din = 1
+  கணம்(clk, 4)
+  உறுதிசெய் full == 1
+}
