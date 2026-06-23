@@ -254,7 +254,7 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             let lang = lang.or(cfg.lang);
-            check(&file, tokens, json, lang.as_deref())
+            check(&file, tokens, json, lang.as_deref(), config_path.as_deref())
         }
         Cmd::Compile {
             file,
@@ -269,7 +269,14 @@ fn main() -> ExitCode {
             };
             let lang = lang.or(cfg.lang);
             let emit_testbench = emit_testbench || cfg.compile.emit_testbench.unwrap_or(false);
-            compile(&file, output, emit_testbench, json, lang.as_deref())
+            compile(
+                &file,
+                output,
+                emit_testbench,
+                json,
+                lang.as_deref(),
+                config_path.as_deref(),
+            )
         }
         Cmd::Fmt {
             file,
@@ -379,6 +386,7 @@ fn main() -> ExitCode {
                 verbose,
                 signals,
                 lang.as_deref(),
+                config_path.as_deref(),
             )
         }
         Cmd::Test {
@@ -394,7 +402,15 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             let lang = lang.or(cfg.lang);
-            test_file(&file, filter, trace, verbose, signals, lang.as_deref())
+            test_file(
+                &file,
+                filter,
+                trace,
+                verbose,
+                signals,
+                lang.as_deref(),
+                config_path.as_deref(),
+            )
         }
     }
 }
