@@ -189,3 +189,19 @@ can't serve — e.g. wanting `mimz sim` to _teach_ reset recovery/removal hazard
 or a design whose correctness depends on sub-cycle reset timing. Until then the
 Icarus differential guards the generated hardware and the cycle kernel stays the
 fast functional model.
+
+## Known issues / follow-ups
+
+- **OPEN — left-shift truncates to the left operand's width** (found 2026-06-23
+  during the stdlib FIFO; full writeup: [`docs/audit/bugs.md`](../audit/bugs.md)
+  **BUG-6**). `binary()` in `src/sim/value.rs` gives `BinOp::Shl`/`Shr` the
+  result width `l.width`, so `1 << 2` evaluates to `0` (the `4` is masked off by
+  the 1-bit literal's width) — diverging from both the emitted Verilog and the
+  checker's const-folder, which compute it correctly. Because `mimz test` shares
+  this evaluator, a shift-based assertion can pass _trivially_ (false green).
+  Proposed fix: size the shift result to the surrounding/context width (lossless
+  growth) like Verilog, and add a shift example (literal + parameterized) to the
+  `tests/icarus.rs` layer-3 differential plus a `sim::value` unit test. Severity
+  HIGH (silent miscompute), but non-blocking — no existing example or test relies
+  on `<<` in a runtime expression, and the FIFO works around it with an explicit
+  `DEPTH` parameter.

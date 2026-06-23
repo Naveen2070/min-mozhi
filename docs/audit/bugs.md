@@ -139,6 +139,17 @@ identifier instead of emitting the second module
 **Test.** `colliding_sanitized_test_names_are_rejected`
 (`src/emit_verilog/testbench.rs`).
 
+**Follow-up note (2026-06-23).** Building the pure-Tamil stdlib twins hit this
+guard from the other direction: `sanitize_verilog_ident` replaces every
+**non-ASCII** char with `_`, so an all-Tamil test name collapses to a run of
+underscores — two equal-_length_ Tamil names collide regardless of content
+(seen on `varisai`/`anuppi`; worked around by rewording to distinct lengths).
+The rejection is correct (no broken Verilog), but the failure mode is awkward
+for pure-Tamil authors. **Possible improvement (not done):** romanize test
+names via the emitter's `romanize` (the same scheme used for identifiers)
+instead of underscoring non-ASCII, so a Tamil name yields a readable, content-
+distinct module name (`விரியும்` → `viriyum_tb`) rather than `_______tb`.
+
 ---
 
 ## BUG-5 (LOW) — `translate` romanize glued `0b…?` (MaskedInt) onto a romanized identifier, breaking re-lex
@@ -173,3 +184,71 @@ guard fires for `?` as it already does for digits, letters, and `_`.
 **Test.** `masked_int_q_does_not_glue_onto_romanized_identifier` and
 `masked_int_q_does_not_glue_onto_english_keyword`
 (`src/translate.rs`).
+
+---
+
+## BUG-6 (HIGH, OPEN) — Simulator left-shift truncates the result to the left operand's width, so `1 << n` evaluates to 0
+
+**What.** In the event-driven simulator / interpreter (`mimz sim`, `mimz eval`,
+`mimz test`), a left-shift evaluates to the wrong value — usually `0` — whenever
+the shifted bits move past the **left operand's** bit width. Minimal repro:
+
+```mimz
+module Shl {
+  out a: bits[8]
+  out b: bits[8]
+  a = 1 << 2   // sim says 0; correct is 4
+  b = 8 << 1   // sim says 0; correct is 16
+}
+```
+
+`mimz eval` reports `a = 0`, `b = 0`. The **emitted Verilog** (`assign a =
+(1 << 2)`) computes `4`/`16` correctly, and the **checker's** const-evaluator
+also folds correctly (it rejects `255 << 2` as `1020` overflowing `bits[8]`). So
+the same expression has **three interpretations**, and only the simulator is
+wrong — a kernel/Verilog/checker divergence.
+
+**Cause.** `binary()` in `src/sim/value.rs` lowers `BinOp::Shl` (and `Shr`) with
+the result width set to **`l.width`** — the left operand's width:
+
+```rust
+BinOp::Shl => Val::new(l.bits.checked_shl(r.bits as u32)…, l.width, l.signed),
+```
+
+`Val::new` masks `bits & mask(width)`. An unsized integer literal carries its
+**minimal** width (`1` is 1 bit, `8` is 4 bits), so `1 << 2 = 4` is masked by
+`mask(1) = 1` → `4 & 1 = 0`; `8 << 1 = 16` is masked by `mask(4)` → `16 & 15 =
+0`. The shifted-in high bits are discarded before the value is ever used in a
+wider context (e.g. an 8-bit assignment). This is **distinct** from the
+2026-06-20 fix, which only guarded the shift _amount_ (`r.bits >= 128`); the
+_result-width_ truncation remains.
+
+**How found.** Writing the stdlib FIFO (`examples/.../std/fifo.mimz`, 2026-06-23)
+with `mem data: bits[W][1 << AW]` and `full = count == (1 << AW)`. The guard
+`count != (1 << AW)` was always false (`1 << AW` evaluated to 0), so pushes never
+fired; `mimz test` _passed_ its empty/full assertions only trivially (`full =
+count == 0` with `count` stuck at 0). Reduced to the literal-only repro above,
+which removes the parameter and still fails — so it is not parameter-specific.
+
+**Severity.** HIGH — silent miscompute in the simulator. Any design that
+left-shifts a small/unsized value into a wider result simulates wrong, and
+because `mimz test` shares this evaluator a buggy assertion can pass _trivially_
+(false green). The Icarus differential (`tests/icarus.rs` layer 3) would catch
+it, but only for examples explicitly listed there, and no shift-heavy example is
+in that hardcoded list.
+
+**Workaround in place.** The FIFO avoids `<<` entirely: it takes an explicit
+`DEPTH` parameter with a documented `DEPTH = 2^AW` contract (the language has no
+`clog2`), so no shift appears in a runtime expression.
+
+**Proposed fix (not yet applied).** Size the shift result to the **context**
+(assignment/target) width like Verilog and the checker do, rather than to
+`l.width`. Concretely: give `Shl` the lossless-growth treatment (result width
+wide enough to hold the shifted value, e.g. `l.width + shift` or the surrounding
+context width) so the high bits survive into the mask, then let the normal
+assignment-width check apply. Add a shift example (literal **and**
+parameterized) to the `tests/icarus.rs` differential list and a `sim::value`
+unit test (`shl_does_not_truncate_to_left_operand_width`) to lock it.
+
+**Test.** None yet — OPEN. Track alongside the stdlib follow-ups in
+`docs/plan/phase-4-ecosystem.md`.
