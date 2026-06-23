@@ -26,7 +26,7 @@ use mimz::sim::vcd::to_vcd;
 
 /// Testbench file (under tests/icarus/) -> the example it tests.
 /// Testbench module name = file name minus `.v`.
-const TESTBENCHES: [(&str, &str); 17] = [
+const TESTBENCHES: [(&str, &str); 21] = [
     ("adder_tb.v", "english/adder.mimz"),
     ("alu_tb.v", "english/alu.mimz"),
     ("bitops_tb.v", "english/bitops.mimz"),
@@ -42,6 +42,10 @@ const TESTBENCHES: [(&str, &str); 17] = [
     ("shift_register_tb.v", "english/shift_register.mimz"),
     ("signed_math_tb.v", "english/signed_math.mimz"),
     ("std_debouncer_tb.v", "english/std/debouncer.mimz"),
+    ("std_seg7_tb.v", "english/std/seg7.mimz"),
+    ("std_pwm_tb.v", "english/std/pwm.mimz"),
+    ("std_fifo_tb.v", "english/std/fifo.mimz"),
+    ("std_uart_tx_tb.v", "english/std/uart_tx.mimz"),
     ("traffic_light_tb.v", "english/traffic_light.mimz"),
     ("window_tb.v", "english/window.mimz"),
 ];
@@ -50,7 +54,7 @@ const TESTBENCHES: [(&str, &str); 17] = [
 /// their English counterparts, instantiated through the romanized Tamil port
 /// names (clk=katikai, rst=miill, …). Proves the transliterated Verilog
 /// simulates correctly, not just that it elaborates.
-const PURE_TESTBENCHES: [(&str, &str); 7] = [
+const PURE_TESTBENCHES: [(&str, &str); 11] = [
     ("kanakki_tb.v", "tamil-pure/kanakki.mimz"),
     ("cimitti_tb.v", "tamil-pure/cimitti.mimz"),
     ("oppidi_tb.v", "tamil-pure/oppidi.mimz"),
@@ -58,6 +62,10 @@ const PURE_TESTBENCHES: [(&str, &str); 7] = [
     ("kuutti_tb.v", "tamil-pure/kuutti.mimz"),
     ("nilaippaduthi_tb.v", "tamil-pure/nilaippaduthi.mimz"),
     ("saalaivilakku_tb.v", "tamil-pure/saalaivilakku.mimz"),
+    ("ennkaatti_tb.v", "tamil-pure/ennkaatti.mimz"),
+    ("minukki_tb.v", "tamil-pure/minukki.mimz"),
+    ("varisai_tb.v", "tamil-pure/varisai.mimz"),
+    ("anuppi_tb.v", "tamil-pure/anuppi.mimz"),
 ];
 
 fn repo() -> PathBuf {
