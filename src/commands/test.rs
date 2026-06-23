@@ -8,7 +8,7 @@ use mimz::project;
 use mimz::sim::harness::{TestResult, run_test};
 use mimz::sim::trace;
 
-use super::helpers::{project_warnings, resolve_lang, trace_scope};
+use super::helpers::{lib_std_dir, project_warnings, resolve_lang, trace_scope};
 use crate::Output;
 
 /// `mimz test <file>` — run the file's `test "…" for M(…) { … }` blocks and
@@ -32,7 +32,8 @@ pub(crate) fn test_file(
     let out = Output::Human(flavor);
     // Load imports too, so a module-under-test that instantiates a sub-module
     // from another file can be flattened.
-    let files = match project::load_project(path) {
+    let lib_std = lib_std_dir(path, None);
+    let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
