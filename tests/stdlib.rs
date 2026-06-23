@@ -145,3 +145,32 @@ fn lib_std_override_wins_over_embedded() {
     assert!(overridden.iter().any(|f| f.src.contains("SentinelFifo")));
     assert!(!overridden.iter().any(|f| f.src.contains("module Fifo")));
 }
+
+#[test]
+fn eject_writes_english_modules() {
+    let p = TmpProj::new("eject_en");
+    let dir = p.0.join("out");
+    let written = mimz::stdlib::eject_to(&dir, false, false).expect("eject ok");
+    assert_eq!(written.len(), 5);
+    let fifo = fs::read_to_string(dir.join("fifo.mimz")).unwrap();
+    assert!(fifo.contains("module Fifo"));
+}
+
+#[test]
+fn eject_tamil_writes_twins() {
+    let p = TmpProj::new("eject_ta");
+    let dir = p.0.join("out");
+    mimz::stdlib::eject_to(&dir, true, false).expect("eject ok");
+    let v = fs::read_to_string(dir.join("varisai.mimz")).unwrap();
+    assert!(v.contains("தொகுதி வரிசை"));
+}
+
+#[test]
+fn eject_refuses_overwrite_without_force() {
+    let p = TmpProj::new("eject_force");
+    let dir = p.0.join("out");
+    mimz::stdlib::eject_to(&dir, false, false).expect("first eject ok");
+    let err = mimz::stdlib::eject_to(&dir, false, false);
+    assert!(err.is_err(), "second eject without force must fail");
+    mimz::stdlib::eject_to(&dir, false, true).expect("force overwrite ok");
+}
