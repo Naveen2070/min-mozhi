@@ -187,7 +187,7 @@ guard fires for `?` as it already does for digits, letters, and `_`.
 
 ---
 
-## BUG-6 (HIGH, OPEN) — Simulator left-shift truncates the result to the left operand's width, so `1 << n` evaluates to 0
+## BUG-6 (FIXED) — Simulator left-shift truncates the result to the left operand's width, so `1 << n` evaluates to 0
 
 **What.** In the event-driven simulator / interpreter (`mimz sim`, `mimz eval`,
 `mimz test`), a left-shift evaluates to the wrong value — usually `0` — whenever
@@ -237,18 +237,16 @@ because `mimz test` shares this evaluator a buggy assertion can pass _trivially_
 it, but only for examples explicitly listed there, and no shift-heavy example is
 in that hardcoded list.
 
-**Workaround in place.** The FIFO avoids `<<` entirely: it takes an explicit
-`DEPTH` parameter with a documented `DEPTH = 2^AW` contract (the language has no
-`clog2`), so no shift appears in a runtime expression.
+**Workaround removed.** The FIFO (`examples/.../std/fifo.mimz`) was reverted from
+the 3-param design (`WIDTH` + `AW` + `DEPTH`) back to a clean 2-param design
+(`WIDTH`, `AW`) using `1 << AW` for the mem depth and the full comparison — the
+fix makes the `<<` expression evaluate correctly so the workaround is unnecessary.
 
-**Proposed fix (not yet applied).** Size the shift result to the **context**
-(assignment/target) width like Verilog and the checker do, rather than to
-`l.width`. Concretely: give `Shl` the lossless-growth treatment (result width
-wide enough to hold the shifted value, e.g. `l.width + shift` or the surrounding
-context width) so the high bits survive into the mask, then let the normal
-assignment-width check apply. Add a shift example (literal **and**
-parameterized) to the `tests/icarus.rs` differential list and a `sim::value`
-unit test (`shl_does_not_truncate_to_left_operand_width`) to lock it.
+**Fix.** `Shl` was given the lossless-growth treatment (`(l.width + shift).min(128)`)
+so the high bits survive into the mask, then the normal assignment-width check
+applies (`src/sim/value.rs`).
 
-**Test.** None yet — OPEN. Track alongside the stdlib follow-ups in
-`docs/plan/phase-4-ecosystem.md`.
+**Test.** A new shift example (`examples/english/shift.mimz`) was added to the
+`tests/icarus.rs` differential list (and registered in `BASE_EXAMPLES`/`PURE_TAMIL`
+with its pure-Tamil twin `tamil-pure/nakartthi.mimz`), and a unit test
+(`shl_does_not_truncate_to_left_operand_width`) was added to `src/sim/value.rs`.
