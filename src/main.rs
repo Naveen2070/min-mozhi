@@ -22,8 +22,8 @@ use mimz::project::{LoadError, LoadedFile};
 use mimz::{diag, project};
 
 use commands::{
-    check, compile, eval_file, explain_code, fmt_file, resolve_config, sim_file, test_file,
-    translate_file,
+    EjectFlavor, check, compile, eject_std, eval_file, explain_code, fmt_file, resolve_config,
+    sim_file, test_file, translate_file,
 };
 
 /// Top-level CLI definition. The `///` docs on [`Cmd`] variants and fields
@@ -106,6 +106,22 @@ enum Cmd {
     Explain {
         /// The diagnostic code to explain (case-insensitive, e.g. E0501)
         code: String,
+    },
+    /// Write the embedded standard library to a directory for vendoring
+    /// (then set `mimz.toml [lib] std = "<dir>"`).
+    Eject {
+        /// What to eject (only `std` is supported)
+        #[arg(value_parser = ["std"])]
+        what: String,
+        /// Destination directory (created if missing)
+        #[arg(long, default_value = "std")]
+        to: PathBuf,
+        /// Eject the pure-Tamil twins instead of the English canonical
+        #[arg(long)]
+        flavor: Option<String>,
+        /// Overwrite existing files
+        #[arg(long)]
+        force: bool,
     },
     /// Reskin a file's keywords into another flavor, and/or convert its word
     /// order between `code` and `thamizh` (spec/04). `--to` alone is lossless
@@ -298,6 +314,22 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Cmd::Explain { code } => explain_code(&code),
+        Cmd::Eject {
+            what: _,
+            to,
+            flavor,
+            force,
+        } => {
+            let f = match flavor.as_deref() {
+                None | Some("english") => EjectFlavor::English,
+                Some("tamil") => EjectFlavor::Tamil,
+                Some(other) => {
+                    eprintln!("error: unknown --flavor `{other}` (english | tamil)");
+                    return ExitCode::FAILURE;
+                }
+            };
+            eject_std(&to, f, force)
+        }
         Cmd::Translate {
             file,
             to,
