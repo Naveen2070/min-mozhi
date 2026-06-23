@@ -8,8 +8,8 @@ use mimz::sim::{elaborate, trace, vcd};
 use mimz::{ast, project};
 
 use super::helpers::{
-    parse_bindings, parse_sweep, parse_u128, project_warnings, resolve_lang, sweep_vectors,
-    trace_scope,
+    lib_std_dir, parse_bindings, parse_sweep, parse_u128, project_warnings, resolve_lang,
+    sweep_vectors, trace_scope,
 };
 use crate::Output;
 
@@ -41,7 +41,8 @@ pub(crate) fn sim_file(
     let out = Output::Human(flavor);
     // Load the entry file and all transitive imports, so a module that
     // instantiates a sub-module from another file can be flattened.
-    let files = match project::load_project(path) {
+    let lib_std = lib_std_dir(path, None);
+    let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };

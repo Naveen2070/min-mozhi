@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use mimz::{ast, checker, lexer, project};
 
-use super::helpers::{project_warnings, resolve_lang};
+use super::helpers::{lib_std_dir, project_warnings, resolve_lang};
 use crate::Output;
 
 /// `mimz check` — lex + parse + checker passes over the file AND its
@@ -37,7 +37,8 @@ pub(crate) fn check(path: &Path, tokens: bool, json: bool, lang: Option<&str>) -
         return ExitCode::SUCCESS;
     }
 
-    let files = match project::load_project(path) {
+    let lib_std = lib_std_dir(path, None);
+    let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
