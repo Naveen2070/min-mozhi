@@ -24,6 +24,7 @@ desktop.ini
 # Session/agent scratch (not project history)
 /.remember/
 /.claude/
+/.superpowers/
 
 # Generated knowledge graph (graphify tool output)
 /graphify-out/
