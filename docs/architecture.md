@@ -9,8 +9,8 @@
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
 > (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-06-22 (source-guide docs split; doc cross-reference audit;
-> architecture.md refreshed against current project state)
+> Last updated: 2026-06-23 (stale reference cleanup: test counts, example counts,
+> spec version numbers, fixture counts, file counts across guide/code/source-guide)
 
 ---
 
@@ -165,7 +165,7 @@ mimz/
       trace.rs           #   console trace renderer
     ir/                  # (P2)
   tests/                 # 16 test files
-    examples.rs          # all 92 examples (23 × 4 flavors + 7 tamil-pure) ✅
+    examples.rs          # all 105 examples (23 × 4 flavors + 13 tamil-pure) ✅
     errors.rs            # broken fixtures, one code per E-code  ✅
     icarus.rs            # iverilog lint + self-checking TBs +   ✅
                          #   our_simulator_matches_icarus_bit_for_bit (~21 ex)
@@ -203,7 +203,7 @@ min-mozhi/
   benches/                  # Criterion micro-benchmarks
   fuzz/                     # libFuzzer targets (4)
   crates/mimz-wasm/         # WASM playground wrapper
-  examples/                 # .mimz programs (23 designs × 5 flavors)
+  examples/                 # .mimz programs (23 designs × 4 flavors + stdlib + 13 tamil-pure)
   demo/                     # alu + cpu hardware demos
   editors/vscode/           # VS Code extension (grammar + LSP client)
   site/                     # Astro documentation website (deployed)
