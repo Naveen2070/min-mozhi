@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 28] = [
+const BASE_EXAMPLES: [&str; 29] = [
     "adder",
     "alu",
     "async_reset",
@@ -36,6 +36,7 @@ const BASE_EXAMPLES: [&str; 28] = [
     "replicate",
     "ripple_adder",
     "shift_register",
+    "shift",
     "signed_math",
     "traffic_light",
     "vilakku",
@@ -49,7 +50,7 @@ const BASE_EXAMPLES: [&str; 28] = [
 /// to any other flavor (localized names). Instead they are golden-locked and
 /// proven equivalent to their counterpart by canonical identifier renaming
 /// (see `pure_tamil_examples_are_equivalent_to_their_counterparts`).
-const PURE_TAMIL: [(&str, &str); 12] = [
+const PURE_TAMIL: [(&str, &str); 13] = [
     ("kanakki", "counter"),
     ("cimitti", "blinker"),
     ("oppidi", "comparator"),
@@ -60,6 +61,7 @@ const PURE_TAMIL: [(&str, &str); 12] = [
     ("nilaippaduthi", "std/debouncer"),
     ("ennkaatti", "std/seg7"),
     ("minukki", "std/pwm"),
+    ("nakartthi", "shift"),
     ("varisai", "std/fifo"),
     ("anuppi", "std/uart_tx"),
 ];

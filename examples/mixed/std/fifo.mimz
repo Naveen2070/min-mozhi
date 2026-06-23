@@ -6,9 +6,9 @@
 // empty are both ignored, so the queue never over/underflows.
 //
 // Ports:  in  push/pop/din   out full/empty/dout
-// Params: WIDTH — datum width · AW — pointer width · DEPTH — entries (= 2^AW)
+// Params: WIDTH — datum width · AW — pointer width; ring holds 2^AW entries
 
-module Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
+module Fifo(WIDTH: int = 8, AW: int = 2) {
   thudippu clk
   மீட்டமை rst
 
@@ -19,15 +19,15 @@ module Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
   out empty: bit
   வெளியீடு dout:  bits[WIDTH]
 
-  // DEPTH cells of WIDTH bits.
-  ninaivagam data: bits[WIDTH][DEPTH] = 0
+  // 2^AW cells of WIDTH bits.
+  ninaivagam data: bits[WIDTH][1 << AW] = 0
 
   பதிவேடு head:  bits[AW]     = 0
   reg tail:  bits[AW]     = 0
   pathivedu count: bits[AW + 1] = 0
 
   pothu yetram(clk) {
-    enil push mattrum (count != DEPTH) {
+    enil push mattrum (count != (1 << AW)) {
       // Enqueue: store at the tail and advance it.
       data[tail] <- din
       tail <- tail +% 1
@@ -45,18 +45,18 @@ module Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
   }
 
   dout  = data[head]
-  full  = count == DEPTH
+  full  = count == (1 << AW)
   empty = count == 0
 }
 
 // A freshly reset queue holds nothing.
-test "fifo starts empty" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+test "fifo starts empty" for Fifo(WIDTH: 8, AW: 2) {
   expect empty == 1
   uruthisei full == 0
 }
 
 // One pushed byte comes back at the head and clears `empty`.
-சோதனை "fifo round-trips a byte" kaaga Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+சோதனை "fifo round-trips a byte" kaaga Fifo(WIDTH: 8, AW: 2) {
   push = 1
   din = 0xA5
   kanam(clk, 1)
@@ -65,8 +65,8 @@ test "fifo starts empty" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
   expect empty == 0
 }
 
-// Pushing DEPTH (4) entries fills the ring.
-test "fifo fills up" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+// Pushing 2^AW (4) entries fills the ring.
+test "fifo fills up" for Fifo(WIDTH: 8, AW: 2) {
   push = 1
   din = 1
   tick(clk, 4)

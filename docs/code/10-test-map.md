@@ -11,9 +11,11 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**436 tests** as of 2026-06-23: 294 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 1 wasm_parity integration.
+**437 tests** as of 2026-06-23: 295 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 1 wasm_parity integration.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-23 BUG-6 (left-shift truncation) fixed in `src/sim/value.rs`. +1 lib unit (`shl_does_not_truncate_to_left_operand_width`). The shift example (`examples/english/shift.mimz`) was rewritten to follow the template (header + inline tests), mixed flavor added, and a real pure-Tamil twin `tamil-pure/nakartthi.mimz` created (replacing the old `shift.mimz` which had English identifiers). Both registered: `BASE_EXAMPLES` 28 → 29, `PURE_TAMIL` 12 → 13 (`tests/examples.rs`); `nakartthi` added to the `tests/icarus.rs` differential. The FIFO workaround (explicit `DEPTH` param) was reverted — all 4 flavors + `varisai` now use `1 << AW`. The FIFO doc page was updated accordingly (removed `DEPTH` parameter row). **No new test functions** beyond the shl unit test — the example and the revert ride the existing parametrized loops. Suite count 436 → 437.
 
 - 2026-06-23 stdlib modules `seg7`, `pwm`, `fifo`, `uart_tx` shipped (after `debouncer`), each in all four flavors + a pure-Tamil twin (`ennkaatti`, `minukki`, `varisai`, `anuppi`), with inline `test` blocks, module + emitted-testbench goldens, and a hand-written self-checking Icarus testbench. **No new test functions** — the modules ride the existing parametrized loops, so `BASE_EXAMPLES` 24 → 28, `PURE_TAMIL` 8 → 12 (`tests/examples.rs`) and `TESTBENCHES` 17 → 21, `PURE_TESTBENCHES` 7 → 11 (`tests/icarus.rs`) auto-extend coverage. Suite count unchanged at 436.
 
@@ -233,13 +235,14 @@ deserve a note:
 ## Integration (`tests/examples.rs`, 13 tests — run the real binary)
 
 `examples/` holds four flavor folders — `english/`, `tanglish/`, `tamil/`,
-`mixed/` — each with the SAME 28 base examples (identical identifiers,
+`mixed/` — each with the SAME 29 base examples (identical identifiers,
 only keywords differ; `lib/` and `std/` subfolders hold dotted-import targets
 and the standard-library modules). The base-example list lives in the
 `BASE_EXAMPLES` const in the test file. (`bitops` — the arithmetic / reduction
 built-ins — and `datapath` — `*`/`*%`, `>>`, concat, slice, `trunc` — were added
 2026-06-14; the five `std/` modules — `debouncer`, `seg7`, `pwm`, `fifo`,
-`uart_tx` — over 2026-06-13…23.)
+`uart_tx` — over 2026-06-13…23. The FIFO originally used an explicit `DEPTH`
+parameter to work around BUG-6; after the fix it was reverted to `1 << AW`.)
 
 A fifth folder, `examples/tamil-pure/`, holds the **pure-Tamil showcase** —
 fully-Tamil programs (Tamil keywords AND identifiers; the `PURE_TAMIL` const
