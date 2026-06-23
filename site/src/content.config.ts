@@ -6,7 +6,7 @@ import { glob } from "astro/loaders";
 const guide = defineCollection({
   // The README is the hub index; the sidebar is built from the numbered chapters,
   // so skip it here and render it separately as the /guide landing page.
-  loader: glob({ pattern: ["*.md", "!README.md"], base: "../docs/guide" }),
+  loader: glob({ pattern: ["**/*.md", "!README.md"], base: "../docs/guide" }),
 });
 
 const guideIndex = defineCollection({

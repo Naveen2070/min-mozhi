@@ -3,12 +3,29 @@ import Base from "./Base.astro";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 import Sidebar from "../components/Sidebar.astro";
+import LiveWaveformMount from "../components/LiveWaveformMount.tsx";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 
 interface Props {
   title: string;
   current: string; // e.g. "guide/04-signals"
   description?: string;
 }
+
+// Read stdlib examples for the interactive waveforms
+const stdDir = path.resolve(process.cwd(), "../examples/english/std");
+const stdSources: Record<string, string> = {};
+try {
+  for (const file of readdirSync(stdDir)) {
+    if (file.endsWith(".mimz")) {
+      stdSources[file.replace(".mimz", "")] = readFileSync(path.join(stdDir, file), "utf-8");
+    }
+  }
+} catch (e) {
+  // Graceful fallback during dev if examples aren't found
+}
+
 const { title, current, description } = Astro.props;
 const isSpec = current.startsWith("spec");
 const section = isSpec ? "language spec" : "guide";
@@ -58,4 +75,6 @@ const breadcrumbLd = {
   </div>
 
   <Footer />
+  
+  <LiveWaveformMount client:only="react" sources={stdSources} />
 </Base>
