@@ -90,10 +90,7 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-22 (parser AST error recovery — the
-`Error(Span)` placeholder variants + the `parser::parse_recover` best-effort entry
-point; pages 1, 3, 4, 10 updated. On the independent `phase-4-parser-ast-error-recovery`
-branch, not the v0.1.0 release branch). Prior 2026-06-17 (post–Phase 1.5 RTL-parity batch A1–A5 —
+_Last synced with the code: 2026-06-23 (post-stdlib shipment, BUG-6 fix, Fuzz crash fix, reserved `extern`, parser AST error recovery —
 replication, don't-care patterns, `on fall`, `mem`, `async reset` — plus
 Workstream B: the new `version` module (compiler vs language-edition axes,
 `EDITION_HISTORY`, `mimz --version`, `spec/06-editions.md`, `CHANGELOG.md`).

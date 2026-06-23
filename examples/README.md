@@ -1,6 +1,6 @@
 # Examples
 
-The same 17 examples, four times — one folder per keyword flavor:
+The same 23 designs (plus 5 stdlib modules), four times — one folder per keyword flavor:
 
 | Folder      | Keywords                                                                       |
 | ----------- | ------------------------------------------------------------------------------ |
@@ -31,6 +31,13 @@ keywords differ**. CI asserts that each example compiles to
 | `bitops.mimz`         | `min`/`max`/`abs` + negated reductions `nand`/`nor`/`xnor`     |
 | `datapath.mimz`       | `*`/`*%`, `>>`, concat `{a, b}`, slice `a[3:2]`, `trunc`       |
 | `vilakku.mimz`        | Tamil IDENTIFIERS end to end — transliterated to ASCII Verilog |
+| `tested_adder.mimz`   | inline `test` blocks with `tick`/`expect`                      |
+| `async_reset.mimz`    | `async reset` widens sensitivity list                          |
+| `dual_edge.mimz`      | `on fall(clk)` + mixed-edge registers                          |
+| `priority.mimz`       | don't-care `match` patterns `0b1??`                            |
+| `replicate.mimz`      | `{N{x}}` replication operator                                  |
+| `regfile.mimz`        | `mem` — register file with indexed read/write                  |
+| `shift.mimz`          | shift operations (used by sim shift tests)                     |
 | `lib/full_adder.mimz` | import target — one-bit full adder                             |
 
 Adding an example? It goes into **all four folders** (keyword spellings
@@ -42,12 +49,21 @@ list in `tests/examples.rs`. See `docs/code/10-test-map.md`.
 A fifth folder holds programs written **entirely in Tamil** — both keywords AND
 identifiers:
 
-| Example        | Twin of      | Shows                                   |
-| -------------- | ------------ | --------------------------------------- |
-| `kanakki.mimz` | `counter`    | a counter, names and all, in Tamil      |
-| `cimitti.mimz` | `blinker`    | a blinker in Tamil                      |
-| `oppidi.mimz`  | `comparator` | a comparator (`if`-expression) in Tamil |
-| `thervi.mimz`  | `mux4`       | a 4-way mux (`match`) in Tamil          |
+| Example              | Twin of         | Shows                                    |
+| -------------------- | --------------- | ---------------------------------------- |
+| `kanakki.mimz`       | `counter`       | a counter, names and all, in Tamil       |
+| `cimitti.mimz`       | `blinker`       | a blinker in Tamil                       |
+| `oppidi.mimz`        | `comparator`    | a comparator in Tamil                    |
+| `thervi.mimz`        | `mux4`          | a 4-way mux in Tamil                     |
+| `kuutti.mimz`        | `adder`         | a full adder in Tamil                    |
+| `saalaivilakku.mimz` | `traffic_light` | an FSM (traffic light) in Tamil          |
+| `nakartthi.mimz`     | `shift`         | shift register in Tamil                  |
+| `nilaippaduthi.mimz` | `debouncer`     | debouncer stdlib module in Tamil         |
+| `ennkaatti.mimz`     | `seg7`          | 7-segment decoder stdlib in Tamil        |
+| `minukki.mimz`       | `pwm`           | PWM stdlib module in Tamil               |
+| `varisai.mimz`       | `fifo`          | FIFO stdlib module in Tamil              |
+| `anuppi.mimz`        | `uart_tx`       | UART transmitter stdlib in Tamil         |
+| `tested_kuutti.mimz` | `tested_adder`  | tested adder with inline `test` in Tamil |
 
 Because the identifiers are localized, these do **not** compile to byte-identical
 Verilog — the compiler transliterates the names (`கணக்கி` → `kannakki`,

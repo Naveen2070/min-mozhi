@@ -37,13 +37,13 @@ src/
 ├── explain.rs           # Long-form explanations for error codes
 ├── version.rs           # Compiler version + language edition
 │
-├── lexer/               # The tokenizer (3 files)
-├── parser/              # Tokens → structured tree (7 files)
+├── lexer/               # The tokenizer (4 files)
+├── parser/              # Tokens → structured tree (9 files)
 ├── ast/                 # The tree itself (2 files)
-├── checker/             # Safety checks — 6 passes (9 files)
+├── checker/             # Safety checks — 6 passes (12 files)
 ├── emit_verilog/        # Verilog code generator (5 files)
-├── sim/                 # Event-driven simulator (8 files)
-└── commands/            # CLI command handlers (9 files)
+├── sim/                 # Event-driven simulator (9 files)
+└── commands/            # CLI command handlers (10 files)
 ```
 
 Now let's walk through each piece, one at a time. The rest of this guide is split into chapters — each chapter covers one folder or group of related files.
