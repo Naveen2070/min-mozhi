@@ -130,6 +130,20 @@ pub fn available() -> String {
 /// overwrite an existing file. Returns the paths written.
 pub fn eject_to(dir: &Path, tamil: bool, force: bool) -> std::io::Result<Vec<PathBuf>> {
     std::fs::create_dir_all(dir)?;
+
+    if !force {
+        for m in MODULES {
+            let name = if tamil { m.twin_roman } else { m.stem };
+            let path = dir.join(format!("{name}.mimz"));
+            if path.exists() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("{} exists (use --force to overwrite)", path.display()),
+                ));
+            }
+        }
+    }
+
     let mut written = Vec::new();
     for m in MODULES {
         let (name, src) = if tamil {
@@ -138,12 +152,6 @@ pub fn eject_to(dir: &Path, tamil: bool, force: bool) -> std::io::Result<Vec<Pat
             (m.stem, m.canonical_src)
         };
         let path = dir.join(format!("{name}.mimz"));
-        if path.exists() && !force {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::AlreadyExists,
-                format!("{} exists (use --force to overwrite)", path.display()),
-            ));
-        }
         std::fs::write(&path, src)?;
         written.push(path);
     }
