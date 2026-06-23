@@ -14,6 +14,8 @@ and the Tamil Nadu VLSI ecosystem.
 
 - [x] Core modules in Min-Mozhi itself: UART, SPI, PWM, debouncer, FIFO, ALU, 7-segment driver — **focused first set DONE 2026-06-23** on branch `stdlib-modules` (shipped as `examples/.../std/*` content; importable `std.*` path deferred). Set: debouncer, seg7, pwm, fifo, uart_tx — each with 4 flavors + a pure-Tamil twin (`nilaippaduthi`, `ennkaatti`, `minukki`, `varisai`, `anuppi`), inline `test` blocks, module + emitted-TB goldens, and 2 hand Icarus TBs. **UART-RX, SPI master deferred** to a future stdlib branch (with the importable `std.*` library).
 - [x] Each stdlib module: trilingual doc page + testbench + waveform — `docs/guide/stdlib/<module>.md` (+ gallery `README.md`) with a reproducible ASCII `--trace` waveform per module (PNG screenshots remain a maintainer step); inline `test` blocks + hand Icarus TBs serve as the testbench.
+- **Bug surfaced while building these (OPEN):** the simulator left-shift evaluates `1 << n` as `0` (truncates to the left operand's width) — `docs/audit/bugs.md` **BUG-6**, tracked in `docs/plan/phase-1.5-simulator.md`. Worked around in the FIFO (explicit `DEPTH` param, no `<<`); needs a sim-kernel fix + a shift example in the `tests/icarus.rs` differential.
+- **Language-gap noted (fix later):** there is no user-facing `clog2` (it exists only internally for enum widths), so a parameterized memory must pass both an address width and a depth as separate parameters (the FIFO's `AW` + `DEPTH = 2^AW` contract). A `clog2` const-builtin — or letting a param default reference another (`DEPTH: int = 1 << AW`, once BUG-6 is fixed) — would let `Fifo(WIDTH, DEPTH)` derive its own pointer width. Worth considering for the importable `std.*` library work.
 
 ### Tooling
 
