@@ -63,8 +63,7 @@ cycle | clk | duty | rst | counter | pwm
    15 |   1 |   10 |   0 |      15 |   0
 ```
 
-<!-- waveform screenshot slot: drop a GTKWave/playground PNG here as
-     docs/guide/stdlib/img/pwm.png and link it below. -->
+<div class="live-waveform" data-module="pwm" data-cycles="16" data-inputs="duty=10,rst=0"></div>
 
 ## Tests
 

@@ -15,6 +15,8 @@ interface Flavor {
 interface Props {
   examples: Example[];
   flavors: Flavor[];
+  initialExample?: string;
+  hideEditor?: boolean;
 }
 
 // Pick an example's source in the requested flavor, falling back to the first
@@ -69,12 +71,14 @@ function zeroVec(inputs: Port[]): Vec {
   return v;
 }
 
-export default function Playground({ examples, flavors }: Props) {
+export default function Playground({ examples, flavors, initialExample, hideEditor }: Props) {
   const [flavor, setFlavor] = useState(flavors[0]?.key ?? "english");
+  
+  const startingEx = initialExample ? examples.find(e => e.name === initialExample) || examples[0] : examples[0];
   const [source, setSource] = useState(
-    sourceOf(examples[0], flavors[0]?.key ?? "english"),
+    sourceOf(startingEx, flavors[0]?.key ?? "english"),
   );
-  const [exampleName, setExampleName] = useState(examples[0]?.name ?? "");
+  const [exampleName, setExampleName] = useState(startingEx?.name ?? "");
   const [log, setLog] = useState<Line[]>([
     { kind: "note", text: "Loading the in-browser compiler…" },
   ]);
