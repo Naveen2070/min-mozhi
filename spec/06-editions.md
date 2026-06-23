@@ -51,14 +51,12 @@ carries both in its header banner:
 
 ## 4. `EDITION_HISTORY` — the lineage, surfaced in source
 
-`src/version.rs` holds `EDITION_HISTORY`: one `const` row per edition (variant,
-slug, year, code, date, one-line summary), **oldest first**. The last row is the
-current edition (a unit test asserts this, and that the history is ordered and
-that `code` matches `lang/keywords.toml`'s `version`). The language's lineage thus
-lives next to the compiler that implements it; `CHANGELOG.md` mirrors it for
-humans.
+`src/version.rs` holds `EDITION_HISTORY`:
 
-Additionally, to guarantee backward compatibility across editions, structural configuration files (`lang/case_suffixes.toml`, `lang/keywords.toml`, and `lang/messages.toml`) will be accompanied by a dedicated history tracking mechanism (e.g., a `history.toml` file). This will store all older or changed keywords and messages so the compiler can correctly parse and handle source files pinned to previous editions.
+- **One `const` row per edition** (variant, slug, year, code, date, one-line summary), ordered **oldest first**
+- **Last row** is the current edition (asserted by a unit test: history is ordered, `code` matches `lang/keywords.toml`'s `version`)
+- **Language lineage** lives next to the compiler that implements it; `CHANGELOG.md` mirrors it for humans
+- **Backward compatibility across editions:** structural config files (`lang/case_suffixes.toml`, `lang/keywords.toml`, `lang/messages.toml`) will have a dedicated history tracking mechanism (e.g. `history.toml`) storing all older/changed keywords and messages — so the compiler can parse and handle source files pinned to previous editions
 
 ## 5. Migration — `mimz translate` is the future path
 

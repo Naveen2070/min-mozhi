@@ -118,15 +118,17 @@ jobs:
         # checkout, or created on the first run).
         run: cargo run --release --bin mimz-bench -- --no-cov --iterations 500
 
-      - name: Commit history back to the repo
+      - name: Commit history to develop branch
         # `[skip ci]` so this bot push does NOT re-trigger the workflow.
+        # Pushes to `develop` (unprotected) instead of the protected default branch.
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase --autostash || true
+          git fetch origin develop || git branch develop
+          git checkout develop
           git add bench-history.jsonl
           git diff --staged --quiet || git commit -m "chore(bench): perf history ${GITHUB_SHA::7} [skip ci]"
-          git push
+          git push origin develop
 
       - name: Upload report
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
