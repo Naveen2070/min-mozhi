@@ -63,8 +63,7 @@ cycle | clk | din | pop | push | rst | count | head | tail | dout | empty | full
     5 |   1 | 171 |   0 |    1 |   0 |     4 |    0 |    0 |  171 |     0 |    1
 ```
 
-<!-- waveform screenshot slot: drop a GTKWave/playground PNG here as
-     docs/guide/stdlib/img/fifo.png and link it below. -->
+<div class="live-waveform" data-module="fifo" data-cycles="6" data-inputs="push=1,din=171"></div>
 
 ## Tests
 

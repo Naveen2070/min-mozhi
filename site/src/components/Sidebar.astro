@@ -7,35 +7,47 @@ interface Props {
 }
 const { current } = Astro.props;
 
-const guide = sortDocs(await getCollection("guide"));
+const allGuide = await getCollection("guide");
+const guideMain = sortDocs(allGuide.filter((d: any) => !d.id.startsWith("stdlib/")));
+const stdlibAll = sortDocs(allGuide.filter((d: any) => d.id.startsWith("stdlib/")));
+const stdlibMain = stdlibAll.filter((d: any) => d.id.toLowerCase() !== "stdlib/readme");
+
 const spec = sortDocs(await getCollection("spec"));
 
 const sections = [
-  { title: "Guide", base: "guide", entries: guide },
-  { title: "Spec", base: "spec", entries: spec },
+  { title: "Guide", base: "guide", entries: guideMain, hasOverview: true },
+  { title: "Standard Library", base: "guide", overviewHref: "guide/stdlib/readme", entries: stdlibMain, hasOverview: true },
+  { title: "Spec", base: "spec", entries: spec, hasOverview: true },
 ];
 ---
 
 <nav aria-label="Documentation" class="text-sm">
   {
-    sections.map((section) => (
-      <div class="mb-7">
-        <p class="fg-muted mb-2 text-xs font-semibold uppercase tracking-wider">
+    sections.map((section) => {
+      const overviewPath = section.overviewHref || section.base;
+      return (
+      <details class="group mb-7" open>
+        <summary class="fg-muted mb-2 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none flex items-center justify-between hover:opacity-80 transition-opacity" style="list-style: none;">
           {section.title}
-        </p>
-        <ul class="space-y-0.5">
-          <li>
-            <a
-              href={`/${section.base}`}
-              class:list={[
-                "doc-link block rounded px-2 py-1",
-                { active: current === section.base },
-              ]}
-            >
-              Overview
-            </a>
-          </li>
-          {section.entries.map((e) => {
+          <svg class="w-3 h-3 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
+        <ul class="space-y-0.5 mt-2">
+          {section.hasOverview && (
+            <li>
+              <a
+                href={`/${overviewPath}`}
+                class:list={[
+                  "doc-link block rounded px-2 py-1",
+                  { active: current === overviewPath },
+                ]}
+              >
+                Overview
+              </a>
+            </li>
+          )}
+          {section.entries.map((e: any) => {
             const href = `${section.base}/${e.id}`;
             const active = current === href;
             return (
@@ -44,14 +56,15 @@ const sections = [
                   href={`/${href}`}
                   class:list={["doc-link block rounded px-2 py-1", { active }]}
                 >
-                  {docLabel(e.id)}
+                  {docLabel(e.id.replace("stdlib/", ""))}
                 </a>
               </li>
             );
           })}
         </ul>
-      </div>
-    ))
+      </details>
+      );
+    })
   }
 </nav>
 
@@ -68,5 +81,10 @@ const sections = [
     color: var(--accent);
     background-color: var(--bg-soft);
     font-weight: 600;
+  }
+  
+  /* Hide the default marker for summary elements */
+  summary::-webkit-details-marker {
+    display: none;
   }
 </style>
