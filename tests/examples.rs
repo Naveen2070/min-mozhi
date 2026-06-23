@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 24] = [
+const BASE_EXAMPLES: [&str; 28] = [
     "adder",
     "alu",
     "async_reset",
@@ -27,6 +27,10 @@ const BASE_EXAMPLES: [&str; 24] = [
     "lib/full_adder",
     "mux4",
     "std/debouncer",
+    "std/seg7",
+    "std/pwm",
+    "std/fifo",
+    "std/uart_tx",
     "priority",
     "regfile",
     "replicate",
@@ -45,7 +49,7 @@ const BASE_EXAMPLES: [&str; 24] = [
 /// to any other flavor (localized names). Instead they are golden-locked and
 /// proven equivalent to their counterpart by canonical identifier renaming
 /// (see `pure_tamil_examples_are_equivalent_to_their_counterparts`).
-const PURE_TAMIL: [(&str, &str); 8] = [
+const PURE_TAMIL: [(&str, &str); 12] = [
     ("kanakki", "counter"),
     ("cimitti", "blinker"),
     ("oppidi", "comparator"),
@@ -54,6 +58,10 @@ const PURE_TAMIL: [(&str, &str); 8] = [
     ("saalaivilakku", "traffic_light"),
     ("tested_kuutti", "tested_adder"),
     ("nilaippaduthi", "std/debouncer"),
+    ("ennkaatti", "std/seg7"),
+    ("minukki", "std/pwm"),
+    ("varisai", "std/fifo"),
+    ("anuppi", "std/uart_tx"),
 ];
 
 fn examples_dir() -> PathBuf {

@@ -1,0 +1,44 @@
+// Min-Mozhi stdlib: pulse-width modulator (PWM).
+//
+// A free-running counter sweeps 0 → 2^WIDTH-1 and wraps. The output is high
+// while the counter is below `duty` and low above it, so the fraction of each
+// period spent high is `duty / 2^WIDTH` — a duty cycle you set at runtime.
+// Driving an LED with it dims the LED; driving a motor sets its speed.
+//
+// Ports:  in  duty — the threshold; high time per period is duty / 2^WIDTH
+//         out pwm  — the modulated output (one bit)
+// Params: WIDTH    — counter width; sets the resolution (2^WIDTH steps)
+//
+// `duty = 0` holds the output low forever; the maximum `duty` (2^WIDTH-1)
+// holds it high for all but the last count.
+
+தொகுதி Pwm(WIDTH: int = 8) {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  உள்ளீடு  duty: bits[WIDTH]
+  வெளியீடு pwm: bit
+
+  // Free-running period counter; wraps on overflow (+%).
+  பதிவேடு counter: bits[WIDTH] = 0
+
+  போது ஏற்றம்(clk) {
+    counter <- counter +% 1
+  }
+
+  pwm = counter < duty
+}
+
+// A zero duty cycle never drives the output high, no matter how long it runs.
+சோதனை "pwm holds low at zero duty" க்காக Pwm(WIDTH: 4) {
+  duty = 0
+  கணம்(clk, 6)
+  உறுதிசெய் pwm == 0
+}
+
+// With the counter freshly reset to 0 and a non-zero duty, the output leads
+// the period high (0 < duty).
+சோதனை "pwm leads each period high for non-zero duty" க்காக Pwm(WIDTH: 4) {
+  duty = 8
+  உறுதிசெய் pwm == 1
+}

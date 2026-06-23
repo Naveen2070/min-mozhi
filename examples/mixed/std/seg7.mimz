@@ -1,0 +1,46 @@
+// Min-Mozhi stdlib (mixed flavors — English, Tanglish, and Tamil keywords in
+// one file; mixing freely is the migration path): BCD → 7-segment decoder.
+//
+// Drives a single 7-segment digit. Segment bit order is gfedcba (active
+// high): seg[0] = a (top bar) … seg[6] = g (middle bar). Decimal digits 0–9
+// map to their glyph; any other nibble blanks the display.
+//
+// Ports:  in  digit — the BCD value to show (0–9; other values blank)
+//         out seg   — the seven segment lines, gfedcba, active high
+
+module Seg7 {
+  ulleedu  digit: bits[4]
+  வெளியீடு seg: bits[7]
+
+  seg = thernthedu digit {
+    0 => 0x3F
+    1 => 0x06
+    2 => 0x5B
+    3 => 0x4F
+    4 => 0x66
+    5 => 0x6D
+    6 => 0x7D
+    7 => 0x07
+    8 => 0x7F
+    9 => 0x6F
+    _ => 0x00
+  }
+}
+
+// A representative digit decodes to its glyph.
+test "seg7 decodes 3" kaaga Seg7 {
+  digit = 3
+  expect seg == 0x4F
+}
+
+// 8 lights every segment.
+சோதனை "seg7 lights all segments for 8" for Seg7 {
+  digit = 8
+  uruthisei seg == 0x7F
+}
+
+// A non-decimal nibble blanks the display.
+test "seg7 blanks a non-decimal input" for Seg7 {
+  digit = 0xF
+  expect seg == 0x00
+}

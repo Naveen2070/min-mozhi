@@ -1,0 +1,56 @@
+// Min-Mozhi stdlib: BCD → 7-segment display decoder.
+//
+// Drives a single 7-segment digit. Segment bit order is gfedcba (active
+// high): seg[0] = a (top bar), seg[1] = b, … seg[6] = g (middle bar). The
+// decimal digits 0–9 map to their glyph; any other nibble blanks the display
+// (all segments off).
+//
+// Ports:  in  digit — the BCD value to show (0–9; other values blank)
+//         out seg   — the seven segment lines, gfedcba, active high
+//
+// Pure combinational — a `match` lookup table with a `_` wildcard for the
+// non-decimal inputs, so it is exhaustive without inferring a latch.
+//
+// Glyph table (segment = 1 means lit):
+//   0 abcdef  = 0x3F   5 acdfg   = 0x6D
+//   1 bc      = 0x06   6 acdefg  = 0x7D
+//   2 abdeg   = 0x5B   7 abc     = 0x07
+//   3 abcdg   = 0x4F   8 abcdefg = 0x7F
+//   4 bcfg    = 0x66   9 abcdfg  = 0x6F
+
+module Seg7 {
+  in  digit: bits[4]
+  out seg: bits[7]
+
+  seg = match digit {
+    0 => 0x3F
+    1 => 0x06
+    2 => 0x5B
+    3 => 0x4F
+    4 => 0x66
+    5 => 0x6D
+    6 => 0x7D
+    7 => 0x07
+    8 => 0x7F
+    9 => 0x6F
+    _ => 0x00
+  }
+}
+
+// A representative digit decodes to its glyph.
+test "seg7 decodes 3" for Seg7 {
+  digit = 3
+  expect seg == 0x4F
+}
+
+// 8 lights every segment.
+test "seg7 lights all segments for 8" for Seg7 {
+  digit = 8
+  expect seg == 0x7F
+}
+
+// A non-decimal nibble blanks the display.
+test "seg7 blanks a non-decimal input" for Seg7 {
+  digit = 0xF
+  expect seg == 0x00
+}

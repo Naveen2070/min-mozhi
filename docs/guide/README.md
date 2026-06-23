@@ -30,6 +30,15 @@ chapters — the safety rules are where Min-Mozhi differs most.
 | 11  | [The toolchain](11-toolchain.md)                              | `mimz check`/`compile`/`eval`/`sim`/`test`/`explain`/`translate`/`fmt`, `--lang` |
 | 12  | [Cheat sheet](12-cheatsheet.md)                               | Every keyword (×3 flavors), operator, builtin, and error code                    |
 
+## Standard library
+
+Once you have the basics, the [standard-library gallery](stdlib/README.md)
+collects polished, tested building blocks written in Min-Mozhi itself — a
+[debouncer](stdlib/debouncer.md), a [7-segment decoder](stdlib/seg7.md), a
+[PWM](stdlib/pwm.md), a [FIFO](stdlib/fifo.md), and a
+[UART transmitter](stdlib/uart_tx.md) — each in all four flavors plus a
+pure-Tamil twin, with reproducible waveforms.
+
 ## The ten-second tour
 
 ```mimz
