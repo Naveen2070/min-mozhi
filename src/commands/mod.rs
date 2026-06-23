@@ -5,6 +5,7 @@
 
 mod check;
 mod compile;
+mod eject;
 mod eval;
 mod explain;
 mod fmt;
@@ -15,6 +16,7 @@ mod translate;
 
 pub(crate) use check::check;
 pub(crate) use compile::compile;
+pub(crate) use eject::{EjectFlavor, eject_std};
 pub(crate) use eval::eval_file;
 pub(crate) use explain::explain_code;
 pub(crate) use fmt::fmt_file;

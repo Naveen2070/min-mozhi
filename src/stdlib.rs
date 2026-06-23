@@ -4,6 +4,8 @@
 //! no install path and it works in WASM (no FS). A `mimz.toml [lib] std = <dir>`
 //! setting overrides this with a local copy (see `project::load_project_with_lib`).
 
+use std::path::{Path, PathBuf};
+
 /// Namespace spellings that name the standard library, one per flavor.
 const NS_ALIASES: [&str; 3] = ["std", "nuulagam", "நூலகம்"];
 
@@ -120,6 +122,32 @@ pub fn available() -> String {
         .map(|m| m.stem)
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Write the embedded standard library to `dir` as one `.mimz` per module.
+/// `tamil` selects the pure-Tamil twins (file named after the twin), else the
+/// English canonical (named after the stem). Without `force`, refuses to
+/// overwrite an existing file. Returns the paths written.
+pub fn eject_to(dir: &Path, tamil: bool, force: bool) -> std::io::Result<Vec<PathBuf>> {
+    std::fs::create_dir_all(dir)?;
+    let mut written = Vec::new();
+    for m in MODULES {
+        let (name, src) = if tamil {
+            (m.twin_roman, m.twin_src)
+        } else {
+            (m.stem, m.canonical_src)
+        };
+        let path = dir.join(format!("{name}.mimz"));
+        if path.exists() && !force {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("{} exists (use --force to overwrite)", path.display()),
+            ));
+        }
+        std::fs::write(&path, src)?;
+        written.push(path);
+    }
+    Ok(written)
 }
 
 #[cfg(test)]
