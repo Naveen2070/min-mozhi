@@ -54,8 +54,7 @@ cycle | digit | seg (dec) | seg (hex) | segments lit
    11 |    15 |         0 |      0x00 | (blank)
 ```
 
-<!-- waveform screenshot slot: drop a GTKWave/playground PNG here as
-     docs/guide/stdlib/img/seg7.png and link it below. -->
+<div class="live-waveform" data-module="seg7" data-sweep="digit=0|1|2|3|4|5|6|7|8|9|10|15"></div>
 
 ## Tests
 

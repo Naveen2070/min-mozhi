@@ -70,8 +70,7 @@ cycle | start | data | tx | busy | state | clk_count | bit_index | shift
 (The `state` column shows the enum by name; the raw trace prints its index
 0–3. Every other clock is elided for brevity — each data bit spans two.)
 
-<!-- waveform screenshot slot: drop a GTKWave/playground PNG here as
-     docs/guide/stdlib/img/uart_tx.png and link it below. -->
+<div class="live-waveform" data-module="uart_tx" data-cycles="22" data-inputs="start=1,data=75"></div>
 
 ## Tests
 

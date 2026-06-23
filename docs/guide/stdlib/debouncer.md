@@ -62,8 +62,7 @@ cycle | clk | raw | rst | cnt | out_q | sync0 | sync1 | stable
     7 |   1 |   1 |   0 |   0 |     1 |     1 |     1 |      1
 ```
 
-<!-- waveform screenshot slot: drop a GTKWave/playground PNG here as
-     docs/guide/stdlib/img/debouncer.png and link it below. -->
+<div class="live-waveform" data-module="debouncer" data-cycles="8" data-inputs="raw=1,rst=0"></div>
 
 ## Tests
 
