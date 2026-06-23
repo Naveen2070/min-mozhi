@@ -42,6 +42,9 @@ pub struct Config {
     /// Defaults for `mimz fmt`.
     #[serde(default)]
     pub fmt: FmtConfig,
+    /// Standard-library overrides (`mimz eject std` workflow).
+    #[serde(default)]
+    pub lib: LibConfig,
 }
 
 /// `[compile]` — defaults for the compile subcommand.
@@ -75,6 +78,15 @@ pub struct FmtConfig {
     pub to: Option<String>,
     /// Warn-and-fail on a mixed-flavor file by default (`--strict`).
     pub strict: Option<bool>,
+}
+
+/// `[lib]` — standard-library overrides.
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct LibConfig {
+    /// Directory that overrides the embedded standard library. `import std.<m>`
+    /// then loads `<dir>/<m>.mimz`. Resolved relative to this `mimz.toml`.
+    pub std: Option<String>,
 }
 
 impl Config {
@@ -119,6 +131,22 @@ impl Config {
             },
         }
     }
+
+    /// Like [`Config::resolve`] but also returns the path of the config file
+    /// that was used (so `[lib] std` can be made absolute relative to it).
+    /// `None` config path ⇒ defaults / explicit-only with no on-disk file.
+    pub fn resolve_with_path(
+        input: &Path,
+        explicit: Option<&Path>,
+    ) -> Result<(Config, Option<PathBuf>), String> {
+        match explicit {
+            Some(p) => Ok((Config::load(p)?, Some(p.to_path_buf()))),
+            None => match Config::discover(input) {
+                Some(p) => Ok((Config::load(&p)?, Some(p))),
+                None => Ok((Config::default(), None)),
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -129,7 +157,12 @@ mod tests {
     fn empty_config_is_all_defaults() {
         let c: Config = toml::from_str("").unwrap();
         assert_eq!(c, Config::default());
-        assert!(c.lang.is_none() && c.translate.to.is_none() && c.fmt.strict.is_none());
+        assert!(
+            c.lang.is_none()
+                && c.translate.to.is_none()
+                && c.fmt.strict.is_none()
+                && c.lib.std.is_none()
+        );
     }
 
     #[test]
@@ -187,6 +220,40 @@ mod tests {
             Some("tamil")
         );
 
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn parses_lib_std_section() {
+        let c: Config = toml::from_str("[lib]\nstd = \"./vendor/std\"\n").unwrap();
+        assert_eq!(c.lib.std.as_deref(), Some("./vendor/std"));
+    }
+
+    #[test]
+    fn unknown_lib_key_is_rejected() {
+        assert!(toml::from_str::<Config>("[lib]\nstdd = \"x\"\n").is_err());
+    }
+
+    #[test]
+    fn resolve_with_path_returns_config_location() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let base = std::env::temp_dir().join(format!(
+            "mimz_libcfg_{}_{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("mimz.toml"), "[lib]\nstd = \"std\"\n").unwrap();
+        let input = base.join("top.mimz");
+        std::fs::write(&input, "module M {}\n").unwrap();
+
+        let (cfg, path) = Config::resolve_with_path(&input, None).unwrap();
+        assert_eq!(cfg.lib.std.as_deref(), Some("std"));
+        assert_eq!(
+            path.unwrap(),
+            std::fs::canonicalize(base.join("mimz.toml")).unwrap()
+        );
         std::fs::remove_dir_all(&base).ok();
     }
 }
