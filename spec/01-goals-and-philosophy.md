@@ -50,18 +50,18 @@ file and understand it at a glance.
 
 ## 3. What Min-Mozhi Is
 
-A hardware description language for digital circuits (FPGAs first). It is **not** a
-general-purpose programming language: every line describes hardware — wires,
-registers, modules — and what you write maps obviously to what gets built on
-silicon.
+- **A hardware description language** for digital circuits (FPGAs first)
+- **Not** a general-purpose programming language — every line describes hardware
+  (wires, registers, modules), and what you write maps obviously to silicon
 
 > **Modern and safe by default. Built to teach. Tamil at heart.**
 > Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.
 
-Safety is enforced today (section 5, G2). The trilingual system is the language's
-heart, not a sales line — its presence is constitutional (section 4.3). Security
-(G5) is a compile-time design goal that lands after the first release — named as a
-goal, never claimed as already shipped.
+Key facts:
+
+- **Safety is enforced today** (section 5, G2) — compile-time guarantees, not conventions
+- **Trilingual system** is constitutional (section 4.3) — the language's heart, not a marketing line
+- **Security (G5)** is a compile-time design goal that lands after the first release — named as a goal, never claimed as already shipped
 
 ## 4. The Constitution (non-negotiable, forever)
 
