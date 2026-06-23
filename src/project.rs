@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::lexer::token::Flavor;
-use crate::{ast, diag, lexer, parser};
+use crate::{ast, diag, lexer, parser, stdlib};
 
 /// Why loading failed. Carries everything a caller needs to REPORT the
 /// failure its own way (the CLI renders carets or JSON; the LSP publishes
@@ -121,11 +121,26 @@ pub fn render_diags_lang(diags: &[diag::Diag], files: &[LoadedFile], flavor: Fla
     out
 }
 
-/// Resolve `import` declarations transitively from the entry file.
-/// Dots become path separators (`import lib.adder` → `lib/adder.mimz`,
-/// relative to the importing file); duplicates and cycles are handled by
-/// the canonicalized visited set. The entry file is always `files[0]`.
+/// Resolve `import` declarations transitively from the entry file (embedded
+/// `std.*` resolution active; no on-disk std override). See
+/// [`load_project_with_lib`].
 pub fn load_project(entry: &Path) -> Result<Vec<LoadedFile>, LoadError> {
+    load_project_with_lib(entry, None)
+}
+
+/// Like [`load_project`], but `lib_std` (when `Some`) overrides the embedded
+/// standard library: `import std.<m>` loads `<lib_std>/<m>.mimz` from disk.
+///
+/// Dots become path separators for plain imports (`import lib.adder` →
+/// `lib/adder.mimz`, relative to the importing file); duplicates and cycles
+/// are handled by the canonicalized visited set. The entry file is always
+/// `files[0]`. An import whose first segment is a standard-library namespace
+/// alias (`std` / `nuulagam` / `நூலகம்`) is routed to [`stdlib::resolve`]
+/// instead of the filesystem (see `resolve_std_import`).
+pub fn load_project_with_lib(
+    entry: &Path,
+    lib_std: Option<&Path>,
+) -> Result<Vec<LoadedFile>, LoadError> {
     let mut files: Vec<LoadedFile> = Vec::new();
     let mut visited: HashSet<PathBuf> = HashSet::new();
     let mut queue: Vec<PathBuf> = vec![entry.to_path_buf()];
@@ -138,31 +153,123 @@ pub fn load_project(entry: &Path) -> Result<Vec<LoadedFile>, LoadError> {
         let loaded = parse_file(&path)?;
         let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
         for import in &loaded.ast.imports {
+            // Standard-library import? First segment is a std namespace alias.
+            if let Some(first) = import.path.first()
+                && stdlib::is_std_namespace(&first.name)
+            {
+                resolve_std_import(
+                    import,
+                    lib_std,
+                    &mut files,
+                    &mut visited,
+                    &mut queue,
+                    &loaded,
+                )?;
+                continue;
+            }
+            // Plain file-relative import (unchanged).
             let mut p = dir.clone();
             for seg in &import.path {
                 p.push(&seg.name);
             }
             p.set_extension("mimz");
             if !p.exists() {
-                let diags = vec![
-                    diag::Diag::new(
-                        import.span,
-                        format!("imported file `{}` does not exist", p.display()),
-                    )
-                    .with_code("E1201")
-                    .with_help(
-                        "`import name` loads `name.mimz` relative to the importing file (spec/02 section 1.5)",
-                    ),
-                ];
-                return Err(LoadError::Source {
-                    path: loaded.path,
-                    src: loaded.src,
-                    diags,
-                });
+                return Err(missing_import(&loaded, import, &p));
             }
             queue.push(p);
         }
         files.push(loaded);
     }
     Ok(files)
+}
+
+/// The `import name does not exist` diagnostic, factored out so both the
+/// relative and the `[lib] std` override paths share it.
+fn missing_import(loaded: &LoadedFile, import: &ast::Import, p: &Path) -> LoadError {
+    LoadError::Source {
+        path: loaded.path.clone(),
+        src: loaded.src.clone(),
+        diags: vec![
+            diag::Diag::new(
+                import.span,
+                format!("imported file `{}` does not exist", p.display()),
+            )
+            .with_code("E1201")
+            .with_help(
+                "`import name` loads `name.mimz` relative to the importing file (spec/02 section 1.5)",
+            ),
+        ],
+    }
+}
+
+/// Resolve one `import std.<module>` (namespace already matched). Pushes the
+/// embedded source as a synthetic [`LoadedFile`], or queues the on-disk file
+/// when `lib_std` is set. Std modules are self-contained (no transitive
+/// imports — guarded by a unit test in `stdlib`), so the embedded variant is
+/// parsed and pushed directly.
+fn resolve_std_import(
+    import: &ast::Import,
+    lib_std: Option<&Path>,
+    files: &mut Vec<LoadedFile>,
+    visited: &mut HashSet<PathBuf>,
+    queue: &mut Vec<PathBuf>,
+    loaded: &LoadedFile,
+) -> Result<(), LoadError> {
+    let std_err = |msg: String| LoadError::Source {
+        path: loaded.path.clone(),
+        src: loaded.src.clone(),
+        diags: vec![diag::Diag::new(import.span, msg).with_code("E1202").with_help(
+            "standard-library imports are `import std.<module>` — one namespace, one module",
+        )],
+    };
+
+    if import.path.len() != 2 {
+        return Err(std_err(
+            "a standard-library import must be `std.<module>` (exactly two segments)".into(),
+        ));
+    }
+    let ns = &import.path[0].name;
+    let module = &import.path[1].name;
+
+    let Some((m, variant)) = stdlib::resolve(ns, module) else {
+        return Err(std_err(format!(
+            "no standard-library module `{module}`; available: {}",
+            stdlib::available()
+        )));
+    };
+
+    // On-disk override: load <lib_std>/<module>.mimz with the normal machinery.
+    if let Some(dir) = lib_std {
+        let mut p = dir.to_path_buf();
+        p.push(module);
+        p.set_extension("mimz");
+        if !p.exists() {
+            return Err(missing_import(loaded, import, &p));
+        }
+        queue.push(p);
+        return Ok(());
+    }
+
+    // Embedded: parse the &str into a synthetic in-memory file.
+    let vpath = PathBuf::from(format!("std:{}.mimz", m.stem));
+    if !visited.insert(vpath.clone()) {
+        return Ok(()); // already loaded this std module
+    }
+    let src = m.source(variant).to_string();
+    let toks = lexer::lex(&src).map_err(|diags| LoadError::Source {
+        path: vpath.clone(),
+        src: src.clone(),
+        diags,
+    })?;
+    let ast = parser::parse(toks).map_err(|diags| LoadError::Source {
+        path: vpath.clone(),
+        src: src.clone(),
+        diags,
+    })?;
+    files.push(LoadedFile {
+        path: vpath,
+        src,
+        ast,
+    });
+    Ok(())
 }
