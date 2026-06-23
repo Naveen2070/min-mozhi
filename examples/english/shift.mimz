@@ -1,0 +1,24 @@
+// Min-Mozhi example: left-shift widening (guards BUG-6).
+//
+// Demonstrates that the simulator grows the result width past the left
+// operand's width when shifting left — a regression for the bug where
+// `1 << 3` evaluated to 0 instead of 8. Covers literal, parameterized,
+// and variable shifts.
+
+module Shift(AMOUNT: int = 2) {
+  in din: bits[4]
+  out literal_shift: bits[8]
+  out param_shift: bits[8]
+  out var_shift: bits[8]
+
+  literal_shift = extend(1 << 3, 8)     // 1 has width 1; 1 << 3 = 8.
+  param_shift = extend(3 << AMOUNT, 8)  // 3 has width 2; 3 << 2 = 12.
+  var_shift = extend(din << 2, 8)       // din has width 4; if din=3, 3 << 2 = 12.
+}
+
+test "shift widens past the operand width" for Shift(AMOUNT: 2) {
+  din = 3
+  expect literal_shift == 8
+  expect param_shift == 12
+  expect var_shift == 12
+}

@@ -1,0 +1,22 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in
+// one file; mixing freely is the migration path): left-shift widening.
+// Guards BUG-6 — the simulator must grow the result width past the left
+// operand's width.
+
+module Shift(AMOUNT: int = 2) {
+  உள்ளீடு din: bits[4]
+  veliyeedu literal_shift: bits[8]
+  veliyeedu param_shift: bits[8]
+  veliyeedu var_shift: bits[8]
+
+  literal_shift = extend(1 << 3, 8)
+  param_shift = extend(3 << AMOUNT, 8)
+  var_shift = extend(din << 2, 8)
+}
+
+sodhanai "shift widens past the operand width" kaaga Shift(AMOUNT: 2) {
+  din = 3
+  uruthisei literal_shift == 8
+  uruthisei param_shift == 12
+  expect var_shift == 12
+}

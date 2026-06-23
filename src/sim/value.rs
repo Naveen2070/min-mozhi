@@ -311,15 +311,20 @@ fn binary(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
         BinOp::BitAnd => Val::new(l.bits & r.bits, wmax, signed),
         BinOp::BitOr => Val::new(l.bits | r.bits, wmax, signed),
         BinOp::BitXor => Val::new(l.bits ^ r.bits, wmax, signed),
-        BinOp::Shl => Val::new(
-            if r.bits >= 128 {
+        BinOp::Shl => {
+            let shift = r.bits;
+            let bits = if shift >= 128 {
                 0
             } else {
-                l.bits.checked_shl(r.bits as u32).unwrap_or(0)
-            },
-            l.width,
-            l.signed,
-        ),
+                l.bits.checked_shl(shift as u32).unwrap_or(0)
+            };
+            let w = if shift >= 128 {
+                128
+            } else {
+                (l.width + shift as u32).min(128)
+            };
+            Val::new(bits, w, l.signed)
+        }
         BinOp::Shr => Val::new(
             if r.bits >= 128 {
                 0
@@ -450,5 +455,28 @@ pub(super) fn pick_module<'a>(
                 many.len()
             )),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shl_does_not_truncate_to_left_operand_width() {
+        // BUG-6: 1 << 2 was returning 0 because `1` has width 1, and the shift result
+        // was truncated to width 1 (1 << 2 = 4; 4 & 1 = 0).
+        // It should instead retain a width of at least width + shift.
+        let l = Val::from_int(1); // width 1
+        let r = Val::from_int(2);
+        let res = binary(BinOp::Shl, l, r).unwrap();
+        assert_eq!(res.masked(), 4);
+        assert_eq!(res.width, 3); // 1 + 2
+
+        let l2 = Val::from_int(8); // width 4 (1000)
+        let r2 = Val::from_int(1);
+        let res2 = binary(BinOp::Shl, l2, r2).unwrap();
+        assert_eq!(res2.masked(), 16);
+        assert_eq!(res2.width, 5); // 4 + 1
     }
 }
