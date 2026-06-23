@@ -1,6 +1,6 @@
 # 9 — Tooling, Entry Points & Editor Support
 
-## `src/commands/` — CLI Command Handlers (9 Files)
+## `src/commands/` — CLI Command Handlers (10 Files)
 
 These are thin functions that wire CLI arguments to the library modules. Nothing clever here — just plumbing.
 

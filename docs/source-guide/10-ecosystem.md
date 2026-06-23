@@ -112,7 +112,7 @@ Three workflows keep the repo healthy:
 
 **`release.yml`** — builds the VS Code `.vsix`, the WASM package, and creates a GitHub Release with all artifacts when a tag is pushed.
 
-## `tests/` — Making Sure Everything Works (17 Test Files)
+## `tests/` — Making Sure Everything Works (16 Test Files)
 
 The test suite is thorough:
 
@@ -135,18 +135,18 @@ The test suite is thorough:
 
 **Fixtures:**
 
-- `tests/fixtures/errors/` — 54 `.mimz` files, one per error code
-- `tests/fixtures/grammar/` — 9 grammar conformance examples
-- `tests/golden/` — 33 expected Verilog outputs + 1 VCD trace
-- `tests/icarus/` — 22 Icarus Verilog testbenches
+- `tests/fixtures/errors/` — 72 `.mimz` files, one per error code
+- `tests/fixtures/grammar/` — 8 grammar conformance examples
+- `tests/golden/` — 41 golden Verilog outputs + 14 testbench goldens + 1 VCD trace
+- `tests/icarus/` — 32 Icarus Verilog testbenches
 
 ## `examples/` — Designs in All Five Flavors
 
-The `examples/` directory has the same 23 designs in **five** flavors — English, Tanglish, Tamil, Tamil-pure, and mixed. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
+The `examples/` directory has the same 23 designs (plus 5 stdlib modules) in **four** keyword flavors — English, Tanglish, Tamil, and mixed — plus a **fifth** `tamil-pure/` showcase with Tamil keywords AND identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
 
-Designs include: adders, counters, FSMs (traffic light, blinker), comparators, multiplexers, shift registers, memories, and more. The `examples/tests/` subdirectory holds the example files for `test` block verification.
+Designs include: adders, counters, FSMs (traffic light, blinker), comparators, multiplexers, shift registers, memories, stdlib modules (seg7, PWM, FIFO, UART, debouncer), and more.
 
-Each flavor directory also has `lib/full_adder.mimz` — demonstrating `import` with a shared library module.
+Each flavor directory also has `lib/full_adder.mimz` and `std/` — demonstrating `import` with shared library and stdlib modules.
 
 ## `demo/` — Real Hardware Demos
 
