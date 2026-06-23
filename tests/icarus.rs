@@ -826,6 +826,9 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/signed_math.mimz", &[], &[], 8);
     // Replication `{N{x}}` (combinational).
     differential(&bin, "english/replicate.mimz", &[], &[], 8);
+    // Left-shifts (combinational).
+    differential(&bin, "english/shift.mimz", &[], &[], 8);
+    differential(&bin, "tamil-pure/nakartthi.mimz", &[], &[], 8);
     // Don't-care `match` patterns `0b1??` (combinational priority decoder).
     differential(&bin, "english/priority.mimz", &[], &[], 8);
     // Memory `mem` (A4): a register file — `initial`-seeded cells, a clocked

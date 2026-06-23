@@ -1,7 +1,6 @@
 module varisai #(
     parameter akalam = 8,
-    parameter suttu = 2,
-    parameter aazham = 4
+    parameter suttu = 2
 ) (
     input wire katikai,
     input wire miill,
@@ -12,14 +11,14 @@ module varisai #(
     output wire kaali,
     output wire [(akalam)-1:0] vellitharavu
 );
-    reg [(akalam)-1:0] kallam [0:(aazham)-1];
+    reg [(akalam)-1:0] kallam [0:((1 << suttu))-1];
     reg [(suttu)-1:0] mun;
     reg [(suttu)-1:0] pin;
     reg [((suttu + 1))-1:0] thokai;
     integer __mimz_kallam_i;
-    initial for (__mimz_kallam_i = 0; __mimz_kallam_i < (aazham); __mimz_kallam_i = __mimz_kallam_i + 1) kallam[__mimz_kallam_i] = 0;
+    initial for (__mimz_kallam_i = 0; __mimz_kallam_i < ((1 << suttu)); __mimz_kallam_i = __mimz_kallam_i + 1) kallam[__mimz_kallam_i] = 0;
     assign vellitharavu = kallam[mun];
-    assign nirraivu = (thokai == aazham);
+    assign nirraivu = (thokai == (1 << suttu));
     assign kaali = (thokai == 0);
     always @(posedge katikai) begin
         if (miill) begin
@@ -27,7 +26,7 @@ module varisai #(
             mun <= 0;
             thokai <= 0;
         end else begin
-            if ((nuzhai && (thokai != aazham))) begin
+            if ((nuzhai && (thokai != (1 << suttu)))) begin
                 kallam[pin] <= tharavu;
                 pin <= (pin + 1);
                 if ((niikku && (thokai != 0))) begin

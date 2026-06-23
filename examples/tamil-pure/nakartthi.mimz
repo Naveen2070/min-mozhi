@@ -1,0 +1,25 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a
+// left-shift widening example — the Tamil twin of english/shift.mimz. The
+// compiler transliterates the names to readable ASCII Verilog. Uses
+// `இலக்கணம் தமிழ்` for natural SOV (postpositional) word order.
+// பெயர்: நகர்த்தி = shift.
+
+இலக்கணம் தமிழ்
+
+தொகுதி நகர்த்தி(அளவு: int = 2) {
+  உள்ளீடு தரவு: bits[4]
+  வெளியீடு மாறிலிநகர்வு: bits[8]
+  வெளியீடு அளவுநகர்வு: bits[8]
+  வெளியீடு மாறிநகர்வு: bits[8]
+
+  மாறிலிநகர்வு = extend(1 << 3, 8)
+  அளவுநகர்வு = extend(3 << அளவு, 8)
+  மாறிநகர்வு = extend(தரவு << 2, 8)
+}
+
+நகர்த்தி(அளவு: 2) க்காக "இடப்பெயர்ச்சி அகலத்தை விரிக்கும்" சோதனை {
+  தரவு = 3
+  உறுதிசெய் மாறிலிநகர்வு == 8
+  உறுதிசெய் அளவுநகர்வு == 12
+  உறுதிசெய் மாறிநகர்வு == 12
+}

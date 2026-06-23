@@ -13,14 +13,12 @@
 //         out dout  — the datum at the head (valid when not empty)
 // Params: WIDTH — datum width in bits
 //         AW    — pointer width; the ring holds 2^AW entries
-//         DEPTH — number of entries; must equal 2^AW
 //
-// DEPTH and AW are separate because the language has no `clog2`: keep the
-// contract DEPTH = 2^AW (the defaults, 4 and 2, satisfy it). `head`/`tail` are
-// AW-bit pointers that wrap around the ring; `count` carries one extra bit so
-// it can represent a completely full ring (DEPTH entries).
+// The memory holds `1 << AW` entries, indexed by the head/tail AW-bit
+// pointers that wrap around the ring with `+%`. `count` carries one extra
+// bit so it can represent a completely full ring (2^AW entries).
 
-module Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
+module Fifo(WIDTH: int = 8, AW: int = 2) {
   clock clk
   reset rst
 
@@ -31,15 +29,15 @@ module Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
   out empty: bit
   out dout:  bits[WIDTH]
 
-  // DEPTH cells of WIDTH bits.
-  mem data: bits[WIDTH][DEPTH] = 0
+  // 2^AW cells of WIDTH bits.
+  mem data: bits[WIDTH][1 << AW] = 0
 
   reg head:  bits[AW]     = 0
   reg tail:  bits[AW]     = 0
   reg count: bits[AW + 1] = 0
 
   on rise(clk) {
-    if push and (count != DEPTH) {
+    if push and (count != (1 << AW)) {
       // Enqueue: store at the tail and advance it.
       data[tail] <- din
       tail <- tail +% 1
@@ -59,18 +57,18 @@ module Fifo(WIDTH: int = 8, AW: int = 2, DEPTH: int = 4) {
   }
 
   dout  = data[head]
-  full  = count == DEPTH
+  full  = count == (1 << AW)
   empty = count == 0
 }
 
 // A freshly reset queue holds nothing.
-test "fifo starts empty" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+test "fifo starts empty" for Fifo(WIDTH: 8, AW: 2) {
   expect empty == 1
   expect full == 0
 }
 
 // One pushed byte comes back at the head and clears `empty`.
-test "fifo round-trips a byte" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+test "fifo round-trips a byte" for Fifo(WIDTH: 8, AW: 2) {
   push = 1
   din = 0xA5
   tick(clk, 1)
@@ -79,8 +77,8 @@ test "fifo round-trips a byte" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
   expect empty == 0
 }
 
-// Pushing DEPTH (4) entries fills the ring.
-test "fifo fills up" for Fifo(WIDTH: 8, AW: 2, DEPTH: 4) {
+// Pushing 2^AW (4) entries fills the ring.
+test "fifo fills up" for Fifo(WIDTH: 8, AW: 2) {
   push = 1
   din = 1
   tick(clk, 4)

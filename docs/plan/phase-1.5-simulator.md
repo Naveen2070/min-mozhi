@@ -192,16 +192,10 @@ fast functional model.
 
 ## Known issues / follow-ups
 
-- **OPEN — left-shift truncates to the left operand's width** (found 2026-06-23
-  during the stdlib FIFO; full writeup: [`docs/audit/bugs.md`](../audit/bugs.md)
-  **BUG-6**). `binary()` in `src/sim/value.rs` gives `BinOp::Shl`/`Shr` the
-  result width `l.width`, so `1 << 2` evaluates to `0` (the `4` is masked off by
-  the 1-bit literal's width) — diverging from both the emitted Verilog and the
-  checker's const-folder, which compute it correctly. Because `mimz test` shares
-  this evaluator, a shift-based assertion can pass _trivially_ (false green).
-  Proposed fix: size the shift result to the surrounding/context width (lossless
-  growth) like Verilog, and add a shift example (literal + parameterized) to the
-  `tests/icarus.rs` layer-3 differential plus a `sim::value` unit test. Severity
-  HIGH (silent miscompute), but non-blocking — no existing example or test relies
-  on `<<` in a runtime expression, and the FIFO works around it with an explicit
-  `DEPTH` parameter.
+- **RESOLVED — left-shift truncates to the left operand's width** (BUG-6,
+  [`docs/audit/bugs.md`](../audit/bugs.md)). Fixed: `BinOp::Shl` now uses
+  `(l.width + shift).min(128)` for the result width, matching Verilog semantics.
+  Regression: `shl_does_not_truncate_to_left_operand_width` unit test in
+  `src/sim/value.rs`, shift example in the `tests/icarus.rs` layer-3 differential
+  (english + tamil-pure `nakartthi`). The FIFO workaround (explicit `DEPTH`) has
+  been reverted — the clean `1 << AW` design is restored.
