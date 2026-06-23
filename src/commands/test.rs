@@ -17,6 +17,7 @@ use crate::Output;
 /// `--filter <substr>` runs only tests whose name contains `<substr>`;
 /// `--trace` / `--trace=changes` (with `--verbose` / `--signals`) show a
 /// per-cycle console trace for each test, off by default.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn test_file(
     path: &Path,
     filter: Option<String>,
@@ -24,6 +25,7 @@ pub(crate) fn test_file(
     verbose: bool,
     signals: Option<String>,
     lang: Option<&str>,
+    config_path: Option<&Path>,
 ) -> ExitCode {
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
@@ -32,7 +34,7 @@ pub(crate) fn test_file(
     let out = Output::Human(flavor);
     // Load imports too, so a module-under-test that instantiates a sub-module
     // from another file can be flattened.
-    let lib_std = lib_std_dir(path, None);
+    let lib_std = lib_std_dir(path, config_path);
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),

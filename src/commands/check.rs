@@ -12,7 +12,13 @@ use crate::Output;
 /// imports (cross-file names must resolve), reporting all diagnostics.
 /// With `--tokens` it stops after the lexer and dumps the token stream
 /// instead (the standard way to debug lexer issues).
-pub(crate) fn check(path: &Path, tokens: bool, json: bool, lang: Option<&str>) -> ExitCode {
+pub(crate) fn check(
+    path: &Path,
+    tokens: bool,
+    json: bool,
+    lang: Option<&str>,
+    config_path: Option<&Path>,
+) -> ExitCode {
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
         Err(code) => return code,
@@ -37,7 +43,7 @@ pub(crate) fn check(path: &Path, tokens: bool, json: bool, lang: Option<&str>) -
         return ExitCode::SUCCESS;
     }
 
-    let lib_std = lib_std_dir(path, None);
+    let lib_std = lib_std_dir(path, config_path);
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),

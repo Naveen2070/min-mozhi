@@ -17,13 +17,14 @@ pub(crate) fn compile(
     emit_testbench: bool,
     json: bool,
     lang: Option<&str>,
+    config_path: Option<&Path>,
 ) -> ExitCode {
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
         Err(code) => return code,
     };
     let out = Output::new(json, flavor);
-    let lib_std = lib_std_dir(path, None);
+    let lib_std = lib_std_dir(path, config_path);
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
