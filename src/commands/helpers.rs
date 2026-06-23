@@ -6,7 +6,7 @@
 //! playground share one implementation. They are re-exported here so the command
 //! handlers keep importing them from `super::helpers` unchanged.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use mimz::lexer::token::Flavor;
@@ -46,6 +46,21 @@ pub(crate) fn resolve_lang(path: &Path, lang: Option<&str>) -> Result<Flavor, Ex
         .and_then(|src| lexer::lex(&src).ok())
         .map(|toks| morph::majority_flavor(&toks))
         .unwrap_or(Flavor::English))
+}
+
+/// The on-disk standard-library directory configured by `[lib] std`, made
+/// absolute relative to the governing `mimz.toml`. `None` when unset or no
+/// config file exists. Errors in config resolution fall back to `None` (the
+/// command re-resolves and reports config errors on its own path).
+pub(crate) fn lib_std_dir(input: &Path, explicit_config: Option<&Path>) -> Option<PathBuf> {
+    let (cfg, cfg_path) = mimz::config::Config::resolve_with_path(input, explicit_config).ok()?;
+    let std = cfg.lib.std?;
+    let base = cfg_path
+        .as_deref()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| input.parent().map(Path::to_path_buf).unwrap_or_default());
+    Some(base.join(std))
 }
 
 /// Non-fatal warnings for a loaded project (currently just the mixed-flavor

@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use mimz::{ast, checker, diag, emit_verilog, project};
 
-use super::helpers::{project_warnings, resolve_lang};
+use super::helpers::{lib_std_dir, project_warnings, resolve_lang};
 use crate::Output;
 
 /// `mimz compile` — load the entry file and all transitive imports, build
@@ -23,7 +23,8 @@ pub(crate) fn compile(
         Err(code) => return code,
     };
     let out = Output::new(json, flavor);
-    let files = match project::load_project(path) {
+    let lib_std = lib_std_dir(path, None);
+    let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
