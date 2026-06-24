@@ -63,6 +63,14 @@ fn embedded_std_import_resolves_without_filesystem() {
             .iter()
             .any(|f| f.path.to_string_lossy().contains("std:fifo"))
     );
+    // The entry file must stay files[0] — sim/test elaborate/inspect files[0],
+    // so an embedded std module appended ahead of it would silently run the
+    // wrong module. The std module is appended after every user file.
+    assert_eq!(files[0].path, entry, "entry file must be files[0]");
+    assert!(
+        files.last().unwrap().path.to_string_lossy().contains("std:fifo"),
+        "embedded std module must come after the user files"
+    );
 }
 
 #[test]
@@ -144,6 +152,35 @@ fn lib_std_override_wins_over_embedded() {
     );
     assert!(overridden.iter().any(|f| f.src.contains("SentinelFifo")));
     assert!(!overridden.iter().any(|f| f.src.contains("module Fifo")));
+}
+
+#[test]
+fn lib_std_override_filename_matches_eject_for_twin_spellings() {
+    // The override dir is what `mimz eject std` produced: twins are named by
+    // their romanization (`varisai.mimz`), never the Tamil-script name. An
+    // `import std.வரிசை` (twin Tamil name) and `import std.varisai` (roman)
+    // both resolve to that one ejected file — the filename keys on the
+    // resolved variant, not the raw written alias.
+    let p = TmpProj::new("override_twin");
+    let dir = p.0.join("vendorstd");
+    mimz::stdlib::eject_to(&dir, true, false).expect("eject tamil twins");
+
+    for (tag, import) in [
+        ("tamil-name", "சேர்க்க நூலகம்.வரிசை\nதொகுதி மேல் { }\n"),
+        ("roman", "import std.varisai\nmodule Top { }\n"),
+    ] {
+        let entry = p.file(&format!("top_{tag}.mimz"), import);
+        let files = expect_ok(
+            project::load_project_with_lib(&entry, Some(&dir)),
+            &format!("twin override resolves ({tag})"),
+        );
+        // The ejected twin (`தொகுதி வரிசை`) is loaded, not the embedded canonical.
+        assert!(
+            files.iter().any(|f| f.src.contains("தொகுதி வரிசை")),
+            "ejected twin must resolve for {tag}"
+        );
+        assert!(files.iter().any(|f| f.path.ends_with("varisai.mimz")));
+    }
 }
 
 #[test]
