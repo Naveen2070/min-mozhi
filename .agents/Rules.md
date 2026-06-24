@@ -29,7 +29,7 @@
 - **Rule**: After each change, update all related documentation. No documentation must be left stale.
 - **Sources of Truth** (defined in [docs/RULES.md](../docs/RULES.md)):
   - **Language Design**: `spec/*.md`
-  - **Execution Plan**: `docs/plan/phase-*.md` (summarized in root `min-mozhi-roadmap.md`)
+  - **Execution Plan**: `docs/plan/phase-*.md` (summarized in root `ROADMAP.md`)
   - **History & Decisions**: `docs/log/`
   - **Architecture**: `docs/architecture.md`
   - **How Code Works**: Code itself (`src/` + rustdoc) and `docs/code/`

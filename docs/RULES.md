@@ -11,7 +11,7 @@
 | Topic               | Source of truth                                                              | Everything else                                                                          |
 | ------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Language design     | `spec/*.md`                                                                  | examples follow spec                                                                     |
-| Execution plan      | `docs/plan/phase-*.md`                                                       | root `min-mozhi-roadmap.md` is the summary                                               |
+| Execution plan      | `docs/plan/phase-*.md`                                                       | root `ROADMAP.md` is the summary                                                         |
 | History & decisions | `docs/log/`                                                                  | never reconstructed from memory                                                          |
 | Architecture        | `docs/architecture.md`                                                       | code follows it (or it gets updated)                                                     |
 | How the code works  | the code itself (`src/` + rustdoc)                                           | `docs/code/` explains it — update the matching page in the same session behavior changes |
@@ -24,7 +24,7 @@ If two documents disagree, fix the non-source one **the same day**.
 Any change to phase scope, order, timeline, or deliverables:
 
 1. Update the affected `docs/plan/phase-*.md` file(s).
-2. Update the summary in root `min-mozhi-roadmap.md` to match.
+2. Update the summary in root `ROADMAP.md` to match.
 3. Update the status table in `docs/README.md` if a status changed.
 4. Add a log entry the **same day** (see R4) saying what changed and why.
 

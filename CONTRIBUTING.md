@@ -68,8 +68,3 @@ detailed, recipe-level guide lives in
 Dual MIT / Apache-2.0. By contributing, you agree your contributions are
 licensed the same way (the standard Rust-ecosystem arrangement — see
 [`LICENSE-MIT`](LICENSE-MIT) and [`LICENSE-APACHE`](LICENSE-APACHE)).
-
-> **Status note:** the repo is private until Phase 1 completes (decision
-> D7), so external contributions can't land just yet — but everything
-> above already applies, and this guide is how the project stays
-> contributor-ready for the day it opens.

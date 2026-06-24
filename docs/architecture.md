@@ -194,7 +194,7 @@ Planned crate split (when needed): `mimz-syntax` (lexer/parser/AST/printer) ·
 min-mozhi/
   README.md, LICENSE-*, Cargo.toml
   lang/keywords.toml        # language data (embedded at build time)
-  min-mozhi-roadmap.md      # roadmap summary
+  ROADMAP.md                 # roadmap summary
   spec/                     # the LANGUAGE — normative, versioned (v0.2)
   docs/                     # the PROJECT — plan/, log/, archive/, RULES,
                             #   guide/, code/, source-guide/, audit/, Ideas/
