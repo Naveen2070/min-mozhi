@@ -174,3 +174,29 @@ fn eject_refuses_overwrite_without_force() {
     assert!(err.is_err(), "second eject without force must fail");
     mimz::stdlib::eject_to(&dir, false, true).expect("force overwrite ok");
 }
+
+#[test]
+fn eject_is_all_or_nothing_on_partial_conflict() {
+    // One pre-existing target must abort the whole eject before any other
+    // file is written — no half-vendored directory.
+    let p = TmpProj::new("eject_partial");
+    let dir = p.0.join("out");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("pwm.mimz"), "// sentinel\n").unwrap();
+
+    let err = mimz::stdlib::eject_to(&dir, false, false);
+    assert!(err.is_err(), "partial conflict must fail");
+
+    // The pre-existing file is untouched and none of the others were created.
+    assert_eq!(
+        fs::read_to_string(dir.join("pwm.mimz")).unwrap(),
+        "// sentinel\n",
+        "conflicting file must not be overwritten"
+    );
+    for other in ["debouncer", "fifo", "seg7", "uart_tx"] {
+        assert!(
+            !dir.join(format!("{other}.mimz")).exists(),
+            "{other}.mimz must not be written when eject aborts"
+        );
+    }
+}
