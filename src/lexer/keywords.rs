@@ -82,6 +82,18 @@ impl KeywordTable {
         }
     }
 
+    /// Every keyword's canonical spelling in `flavor` — the completion list.
+    /// One entry per `Kw` (order unspecified). Drives flavor-matched keyword
+    /// completion in the LSP.
+    pub fn canonical_spellings(&self, flavor: Flavor) -> Vec<&str> {
+        let col = match flavor {
+            Flavor::English => 0,
+            Flavor::Tanglish => 1,
+            Flavor::Tamil => 2,
+        };
+        self.by_kw.values().map(|cols| cols[col].as_str()).collect()
+    }
+
     /// Reserved for a future feature (e.g. `sync`, `struct`, `inout`) —
     /// not a keyword yet, but not usable as an identifier either.
     pub fn is_reserved(&self, ident: &str) -> bool {
@@ -285,5 +297,18 @@ mod tests {
                 "`{word}` must not be an active keyword yet"
             );
         }
+    }
+
+    #[test]
+    fn canonical_spellings_lists_every_keyword_in_a_flavor() {
+        let en = TABLE.canonical_spellings(Flavor::English);
+        // One spelling per keyword (REQUIRED_KEYS has 31).
+        assert_eq!(en.len(), 31);
+        assert!(en.contains(&"module"));
+        assert!(en.contains(&"reg"));
+        // Tamil column gives the Tamil spellings, never the English ones.
+        let ta = TABLE.canonical_spellings(Flavor::Tamil);
+        assert!(ta.contains(&"தொகுதி"));
+        assert!(!ta.contains(&"module"));
     }
 }
