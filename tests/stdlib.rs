@@ -68,7 +68,12 @@ fn embedded_std_import_resolves_without_filesystem() {
     // wrong module. The std module is appended after every user file.
     assert_eq!(files[0].path, entry, "entry file must be files[0]");
     assert!(
-        files.last().unwrap().path.to_string_lossy().contains("std:fifo"),
+        files
+            .last()
+            .unwrap()
+            .path
+            .to_string_lossy()
+            .contains("std:fifo"),
         "embedded std module must come after the user files"
     );
 }
