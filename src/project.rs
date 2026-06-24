@@ -142,6 +142,9 @@ pub fn load_project_with_lib(
     lib_std: Option<&Path>,
 ) -> Result<Vec<LoadedFile>, LoadError> {
     let mut files: Vec<LoadedFile> = Vec::new();
+    // Embedded std modules are collected separately and appended after every
+    // user file, so the entry file stays `files[0]` (sim/test rely on this).
+    let mut std_files: Vec<LoadedFile> = Vec::new();
     let mut visited: HashSet<PathBuf> = HashSet::new();
     let mut queue: Vec<PathBuf> = vec![entry.to_path_buf()];
 
@@ -157,14 +160,11 @@ pub fn load_project_with_lib(
             if let Some(first) = import.path.first()
                 && stdlib::is_std_namespace(&first.name)
             {
-                resolve_std_import(
-                    import,
-                    lib_std,
-                    &mut files,
-                    &mut visited,
-                    &mut queue,
-                    &loaded,
-                )?;
+                if let Some(std_file) =
+                    resolve_std_import(import, lib_std, &mut visited, &mut queue, &loaded)?
+                {
+                    std_files.push(std_file);
+                }
                 continue;
             }
             // Plain file-relative import (unchanged).
@@ -180,6 +180,7 @@ pub fn load_project_with_lib(
         }
         files.push(loaded);
     }
+    files.extend(std_files);
     Ok(files)
 }
 
@@ -202,19 +203,19 @@ fn missing_import(loaded: &LoadedFile, import: &ast::Import, p: &Path) -> LoadEr
     }
 }
 
-/// Resolve one `import std.<module>` (namespace already matched). Pushes the
-/// embedded source as a synthetic [`LoadedFile`], or queues the on-disk file
-/// when `lib_std` is set. Std modules are self-contained (no transitive
-/// imports — guarded by a unit test in `stdlib`), so the embedded variant is
-/// parsed and pushed directly.
+/// Resolve one `import std.<module>` (namespace already matched). Returns the
+/// embedded source as a synthetic [`LoadedFile`] for the caller to append after
+/// the user files, or `None` when the on-disk override is used (queued like any
+/// file) or the module was already loaded. Std modules are self-contained (no
+/// transitive imports — guarded by a unit test in `stdlib`), so the embedded
+/// variant is parsed directly.
 fn resolve_std_import(
     import: &ast::Import,
     lib_std: Option<&Path>,
-    files: &mut Vec<LoadedFile>,
     visited: &mut HashSet<PathBuf>,
     queue: &mut Vec<PathBuf>,
     loaded: &LoadedFile,
-) -> Result<(), LoadError> {
+) -> Result<Option<LoadedFile>, LoadError> {
     let std_err = |msg: String| LoadError::Source {
         path: loaded.path.clone(),
         src: loaded.src.clone(),
@@ -238,22 +239,29 @@ fn resolve_std_import(
         )));
     };
 
-    // On-disk override: load <lib_std>/<module>.mimz with the normal machinery.
+    // On-disk override: load <lib_std>/<file>.mimz with the normal machinery.
+    // The filename keys on the resolved variant (matching what `mimz eject std`
+    // writes), not the raw written alias — so `import std.வரிசை` and
+    // `import std.varisai` both find the ejected `varisai.mimz`.
     if let Some(dir) = lib_std {
+        let fname = match variant {
+            stdlib::StdVariant::Twin => m.twin_roman,
+            stdlib::StdVariant::Canonical => m.stem,
+        };
         let mut p = dir.to_path_buf();
-        p.push(module);
+        p.push(fname);
         p.set_extension("mimz");
         if !p.exists() {
             return Err(missing_import(loaded, import, &p));
         }
         queue.push(p);
-        return Ok(());
+        return Ok(None);
     }
 
     // Embedded: parse the &str into a synthetic in-memory file.
     let vpath = PathBuf::from(format!("std:{}.mimz", m.stem));
     if !visited.insert(vpath.clone()) {
-        return Ok(()); // already loaded this std module
+        return Ok(None); // already loaded this std module
     }
     let src = m.source(variant).to_string();
     let toks = lexer::lex(&src).map_err(|diags| LoadError::Source {
@@ -266,10 +274,9 @@ fn resolve_std_import(
         src: src.clone(),
         diags,
     })?;
-    files.push(LoadedFile {
+    Ok(Some(LoadedFile {
         path: vpath,
         src,
         ast,
-    });
-    Ok(())
+    }))
 }
