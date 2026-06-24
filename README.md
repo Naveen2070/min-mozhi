@@ -1,6 +1,10 @@
 <h1 align="center">Min-Mozhi · மின்மொழி</h1>
 
 <p align="center">
+  <img src="site/public/mascot.png" alt="Min-Mozhi Mascot" width="160" />
+</p>
+
+<p align="center">
   <b>A modern, safe-by-default hardware description language — built to teach digital design, and the first Tamil-rooted HDL.</b><br>
   <i>Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.</i>
 </p>
