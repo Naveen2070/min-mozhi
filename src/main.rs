@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+#[cfg(feature = "lsp")]
 mod lsp;
 
 use std::path::PathBuf;
@@ -69,6 +70,9 @@ enum Cmd {
         /// Output path (default: entry file with .v extension)
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// Emit a standalone Verilog testbench (_tb.v) from inline test blocks
+        #[arg(long)]
+        emit_testbench: bool,
         /// Print diagnostics as a JSON array on stdout (tool consumers)
         #[arg(long)]
         json: bool,
@@ -96,6 +100,7 @@ enum Cmd {
     },
     /// Run the language server over stdio (diagnostics-only v0;
     /// editors launch this — not for interactive use)
+    #[cfg(feature = "lsp")]
     Lsp,
     /// Explain a diagnostic code in depth (e.g. `mimz explain E0501`)
     Explain {
@@ -254,6 +259,7 @@ fn main() -> ExitCode {
         Cmd::Compile {
             file,
             output,
+            emit_testbench,
             json,
             lang,
         } => {
@@ -262,7 +268,8 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             let lang = lang.or(cfg.lang);
-            compile(&file, output, json, lang.as_deref())
+            let emit_testbench = emit_testbench || cfg.compile.emit_testbench.unwrap_or(false);
+            compile(&file, output, emit_testbench, json, lang.as_deref())
         }
         Cmd::Fmt {
             file,
@@ -278,6 +285,7 @@ fn main() -> ExitCode {
             let strict = strict || cfg.fmt.strict.unwrap_or(false);
             fmt_file(&file, to.as_deref(), strict, output)
         }
+        #[cfg(feature = "lsp")]
         Cmd::Lsp => {
             lsp::run();
             ExitCode::SUCCESS

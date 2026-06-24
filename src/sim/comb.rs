@@ -368,4 +368,74 @@ mod tests {
         let err = eval_outputs(&f, None, &ins(&[]), &BTreeMap::new()).unwrap_err();
         assert!(err.contains("missing value for input `a`"), "got: {err}");
     }
+
+    #[test]
+    fn shift_left_zero_amt() {
+        let f = parse(
+            "module S {\n  in a: bits[64]\n  in s: bits[8]\n  out y: bits[64]\n  y = a << s\n}\n",
+        );
+        assert_eq!(one(&f, &[("a", 1), ("s", 0)])[0].value, 1);
+    }
+
+    #[test]
+    fn shift_right_zero_amt() {
+        let f = parse(
+            "module S {\n  in a: bits[64]\n  in s: bits[8]\n  out y: bits[64]\n  y = a >> s\n}\n",
+        );
+        assert_eq!(one(&f, &[("a", 2), ("s", 0)])[0].value, 2);
+    }
+
+    #[test]
+    fn shift_left_max_width() {
+        let f = parse(
+            "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
+        );
+        // 127 = valid shift within 128-bit value
+        assert_eq!(one(&f, &[("a", 1), ("s", 127)])[0].value, 1u128 << 127);
+    }
+
+    #[test]
+    fn shift_left_exceeding_width_is_zero() {
+        let f = parse(
+            "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
+        );
+        // Shift by 128, 200, and all-ones must all yield 0 (regression: the bug
+        // where `as u32` truncated `r.bits` when bit≥32 was set, producing a wrong
+        // non-zero result instead of 0).
+        assert_eq!(one(&f, &[("a", 1), ("s", 128)])[0].value, 0);
+        assert_eq!(one(&f, &[("a", 1), ("s", 200)])[0].value, 0);
+        assert_eq!(one(&f, &[("a", 1), ("s", u128::MAX)])[0].value, 0);
+    }
+
+    #[test]
+    fn shift_right_exceeding_width_is_zero() {
+        let f = parse(
+            "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a >> s\n}\n",
+        );
+        assert_eq!(one(&f, &[("a", 2), ("s", 128)])[0].value, 0);
+        assert_eq!(one(&f, &[("a", 2), ("s", 200)])[0].value, 0);
+        assert_eq!(one(&f, &[("a", 2), ("s", u128::MAX)])[0].value, 0);
+    }
+
+    #[test]
+    fn shift_left_bit_32_set_in_amt() {
+        // The bug: when bit ≥ 32 was set in the shift amount, `as u32` silently
+        // truncated, turning what should be a zero-producing oversize shift into
+        // a small shift. Verify that 1 << (1 << 32) correctly yields 0.
+        let f = parse(
+            "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
+        );
+        assert_eq!(one(&f, &[("a", 1), ("s", 1u128 << 32)])[0].value, 0);
+    }
+
+    #[test]
+    fn shift_right_bit_32_set_in_amt() {
+        let f = parse(
+            "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a >> s\n}\n",
+        );
+        assert_eq!(
+            one(&f, &[("a", 1u128 << 63), ("s", 1u128 << 32)])[0].value,
+            0
+        );
+    }
 }

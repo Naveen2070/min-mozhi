@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use super::token::{Flavor, Kw};
 
-const KEYWORDS_TOML: &str = include_str!("../../keywords.toml");
+const KEYWORDS_TOML: &str = include_str!("../../lang/keywords.toml");
 
 /// Shape of `keywords.toml`: one `[keywords.<key>]` table per keyword plus
 /// a root-level `reserved` list (which must sit ABOVE the first table —
@@ -246,23 +246,23 @@ mod tests {
     }
 
     #[test]
-    fn fn_and_function_are_reserved() {
-        // Reserved pre-v0.1.0 freeze for a future combinational-function construct
-        // (docs/log/2026-06-16.md; also unblocks the pipe `|>`). Both spellings
-        // held so v0.1 programs cannot claim either as an identifier; untranslated
-        // until the feature lands.
-        for word in ["fn", "function"] {
-            assert!(TABLE.is_reserved(word), "`{word}` must be reserved");
-            assert!(
-                TABLE.lookup(word).is_none(),
-                "`{word}` must not be a keyword"
-            );
-        }
-    }
-
-    #[test]
-    fn the_v03_backlog_keywords_are_reserved() {
+    fn future_keywords_are_reserved_not_usable() {
+        // Every word reserved pre-v0.1.0 (R11 + the growth-doctrine freeze) must be
+        // rejected as an identifier AND not yet be an active keyword, so no v0.1
+        // program can claim it before its feature lands. The list is grouped by the
+        // batch that reserved each word; spellings stay English-only (no Tamil/
+        // Tanglish) until the feature lands and native review supplies them:
+        //   - fn / function — future combinational-function construct (Phase 2;
+        //     also unblocks the pipe `|>`; docs/log/2026-06-16.md)
+        //   - v0.3 backlog  — secret, declassify, default, pipeline, interface,
+        //     chan, prove, await (G5 security + DX)
+        //   - section 8     — fixed, requires, ensures (fixed-point + contracts;
+        //     docs/Ideas/language_plan.md section 9)
+        //   - extern        — external-Verilog / black-box-IP module (Phase 2+;
+        //     docs/Ideas/architectural_ideas.md idea 3)
         for word in [
+            "fn",
+            "function",
             "secret",
             "declassify",
             "default",
@@ -271,31 +271,18 @@ mod tests {
             "chan",
             "prove",
             "await",
+            "fixed",
+            "requires",
+            "ensures",
+            "extern",
         ] {
             assert!(
                 TABLE.is_reserved(word),
-                "`{word}` is in the v0.3 backlog — it must be reserved before v0.1.0"
+                "`{word}` must be reserved before v0.1.0 (R11) so no program can claim it"
             );
             assert!(
                 TABLE.lookup(word).is_none(),
-                "`{word}` must not be a keyword yet"
-            );
-        }
-    }
-
-    #[test]
-    fn the_section8_keywords_are_reserved() {
-        // section 8 deep-triage (docs/Ideas/language_plan.md section 9): fixed-point and
-        // contracts. Reserved before the v0.1.0 freeze so v0.1 programs cannot
-        // claim them; untranslated until each feature lands.
-        for word in ["fixed", "requires", "ensures"] {
-            assert!(
-                TABLE.is_reserved(word),
-                "`{word}` is a reserved section 8 future keyword — it must stay reserved"
-            );
-            assert!(
-                TABLE.lookup(word).is_none(),
-                "`{word}` must not be a keyword yet"
+                "`{word}` must not be an active keyword yet"
             );
         }
     }

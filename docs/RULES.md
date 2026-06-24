@@ -8,14 +8,14 @@
 
 ## R1 — Sources of truth
 
-| Topic               | Source of truth                                                         | Everything else                                                                          |
-| ------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Language design     | `spec/*.md`                                                             | examples follow spec                                                                     |
-| Execution plan      | `docs/plan/phase-*.md`                                                  | root `min-mozhi-roadmap.md` is the summary                                               |
-| History & decisions | `docs/log/`                                                             | never reconstructed from memory                                                          |
-| Architecture        | `docs/architecture.md`                                                  | code follows it (or it gets updated)                                                     |
-| How the code works  | the code itself (`src/` + rustdoc)                                      | `docs/code/` explains it — update the matching page in the same session behavior changes |
-| Keyword words       | the keyword table in `spec/03` (later: `keywords.toml` in the compiler) |                                                                                          |
+| Topic               | Source of truth                                                              | Everything else                                                                          |
+| ------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Language design     | `spec/*.md`                                                                  | examples follow spec                                                                     |
+| Execution plan      | `docs/plan/phase-*.md`                                                       | root `min-mozhi-roadmap.md` is the summary                                               |
+| History & decisions | `docs/log/`                                                                  | never reconstructed from memory                                                          |
+| Architecture        | `docs/architecture.md`                                                       | code follows it (or it gets updated)                                                     |
+| How the code works  | the code itself (`src/` + rustdoc)                                           | `docs/code/` explains it — update the matching page in the same session behavior changes |
+| Keyword words       | the keyword table in `spec/03` (later: `lang/keywords.toml` in the compiler) |                                                                                          |
 
 If two documents disagree, fix the non-source one **the same day**.
 
@@ -86,7 +86,7 @@ architecture.
 - Examples in `examples/` must always match the current spec — a spec change
   that breaks an example fixes the example in the same session.
 - Once the compiler exists: every example must compile in CI; the keyword
-  table lives in a data file (`keywords.toml`) so word changes are data
+  table lives in a data file (`lang/keywords.toml`) so word changes are data
   changes, not code changes.
 - English column of the keyword table is frozen for Phase 1; Tanglish/Tamil
   columns may change until native-speaker review closes.
@@ -129,7 +129,7 @@ example) over ad-hoc ones.
 - A new example: add it to all four folders, to `BASE_EXAMPLES` in
   `tests/examples.rs`, with a golden in `tests/golden/` and, ideally, an Icarus
   testbench in `tests/icarus/`.
-- Keyword spellings come from `keywords.toml` **only — never invent a Tanglish
+- Keyword spellings come from `lang/keywords.toml` **only — never invent a Tanglish
   or Tamil spelling.** If a word is not in the table, it is not ready to use.
 - **Exception — language-pure showcase examples.** A program written fully in one
   language (keywords AND identifiers, e.g. `examples/tamil-pure/`) cannot be
@@ -141,7 +141,7 @@ example) over ad-hoc ones.
   golden (`tests/golden/tamil_pure_*.v`), and (c) their own self-checking Icarus
   testbench. They are NOT added to `BASE_EXAMPLES` and do NOT take part in the
   byte-identity test. Identifier names are the author's choice; keyword spellings
-  still come from `keywords.toml` only.
+  still come from `lang/keywords.toml` only.
 
 ## R10 — Diagnostics are a stable contract
 
@@ -158,7 +158,7 @@ example) over ad-hoc ones.
 
 - Reserve a future keyword **as soon as a feature is planned**, so v0.1
   programs cannot claim it. Full pipeline, same session: the `reserved` list in
-  `keywords.toml` + the reserved table & changelog in `spec/03` + the TextMate
+  `lang/keywords.toml` + the reserved table & changelog in `spec/03` + the TextMate
   grammar invalid pattern (`editors/vscode/syntaxes/mimz.tmLanguage.json`) + a
   reserved-word test in `src/lexer/keywords.rs`. `tests/grammar_sync.rs`
   enforces the grammar half.

@@ -1,0 +1,20 @@
+[package]
+name = "mimz-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "WebAssembly bindings for the Min-Mozhi (மின்மொழி) compiler — compile .mimz to Verilog in the browser."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Naveen2070/min-mozhi"
+rust-version = "1.85"
+# Not a crates.io artifact — built to wasm for the site playground.
+publish = false
+
+[lib]
+# cdylib -> the .wasm; rlib -> lets native tests link the crate directly.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The compiler, without its CLI-only LSP/bench deps (tokio etc. don't build on
+# wasm32). The pipeline `compile_string` needs has no optional deps.
+mimz = { path = "../..", default-features = false }
+wasm-bindgen = "0.2"

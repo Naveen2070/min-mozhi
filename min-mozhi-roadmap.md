@@ -1,8 +1,8 @@
 # Min-Mozhi (மின்மொழி) — Roadmap & Phases
 
-> **"Language of Electricity"** — a modern, safe-by-default HDL and the first
-> Tamil-rooted Hardware Description Language, built to help students learn
-> digital design.
+> **"Language of Electricity"** — a modern, safe-by-default HDL, built to help
+> students learn digital design, and the first Tamil-rooted Hardware Description
+> Language.
 >
 > ℹ️ This file is the **summary**. Detailed, task-level plans live in
 > [`docs/plan/`](docs/plan/) (source of truth — see [`docs/RULES.md`](docs/RULES.md) R1/R2).
@@ -58,7 +58,7 @@ matching, which compilers lean on heavily.)
   (`--json` diagnostics + lib/bin split landed with it)
 
 **Milestone:** `mimz compile adder.mimz → adder.v → simulates correctly` ✅
-(150 tests; v0.1.0 tag pending)
+(432 tests; v0.1.0 tag pending)
 
 **Deliverable:** Working compiler — Min-Mozhi → Verilog ✅
 
@@ -78,7 +78,7 @@ matching, which compilers lean on heavily.)
 
 ---
 
-## Phase 1.8 — Grammar Engine _(1–2 months, directly after Phase 1 — solo dev runs 1.8 before 1.5; 🟢 complete 2026-06-16)_
+## Phase 1.8 — Grammar Engine _(1–2 months, runs directly after Phase 1, before Phase 1.5)_ ✅ COMPLETE (2026-06-16)
 
 > Natural Tamil word order — இலக்கண இயந்திரம் (see `spec/04-grammar-engine.md`)
 
@@ -109,11 +109,13 @@ order, compiles to the same Verilog as its English twin
 - Integrate or study **Yosys** internals for technology mapping
 - Target: FPGA primitive mapping (LUTs, flip-flops)
 - **Language features** from the ideas triage (`docs/Ideas/language_plan.md`
-  sections 7 and 9; work items in the phase-2 plan): tagged unions, interfaces,
-  channels, `prove` via SymbiYosys, G5 security (`secret` taint +
-  `system_fault` network v1), DX sugar, plus the section-8 additive ideas
-  (`fixed`-point, `requires`/`ensures` contracts, `..` spread/struct-update,
-  pipe `|>`, didactic-error layer)
+  sections 7 and 9; work items in the phase-2 plan):
+  - tagged unions, interfaces, channels;
+  - `prove` via SymbiYosys;
+  - G5 security (`secret` taint + `system_fault` network v1);
+  - DX sugar;
+  - plus the section-8 additive ideas (`fixed`-point, `requires`/`ensures`
+    contracts, `..` spread/struct-update, pipe `|>`, didactic-error layer)
 
 **Milestone:** `.mimz → IR → FPGA bitstream` via open source toolchain (hardware demo once a board is acquired; until then simulation/emulation only)
 
@@ -143,23 +145,26 @@ order, compiles to the same Verilog as its English twin
 - Package manager for Min-Mozhi modules
 - VS Code extension (syntax highlighting, errors)
 - Documentation site
-- Ecosystem drivers: WASM browser playground first, then npm/PyPI
-  wrappers around the one Rust core (thin wrappers, never
-  reimplementations — Decision 2026-06-11); the playground carries the
-  interactive hardware REPL (`mimz repl`, idea 8.5) and the no-IDE
-  vim-like TUI workbench (`mimz tui`, idea 8.11 — output-mode prompt +
-  whole-file edit/run/waveform; tool, not syntax)
+- Ecosystem drivers:
+  - WASM browser playground first, then npm/PyPI wrappers around the one
+    Rust core (thin wrappers, never reimplementations — Decision 2026-06-11);
+  - the playground carries the interactive hardware REPL (`mimz repl`,
+    idea 8.5) and the no-IDE vim-like TUI workbench (`mimz tui`, idea 8.11 —
+    output-mode prompt + whole-file edit/run/waveform)
 - Language-feature backlog triaged from `docs/Ideas/language_plan.md`
-  (Decisions 2026-06-12 and 2026-06-13): tagged unions, interfaces/bundles, and
-  clock-domain checking lead; `prove` rides SymbiYosys; the section-8 additive
-  ideas (fixed-point, contracts, spread/struct-update, pipe, didactic errors)
-  are edition-safe and land in Phase 2/4; rejected items recorded with reasons
-  in the ideas doc
+  (Decisions 2026-06-12 and 2026-06-13):
+  - tagged unions, interfaces/bundles, and clock-domain checking lead;
+  - `prove` rides SymbiYosys;
+  - the section-8 additive ideas (fixed-point, contracts,
+    spread/struct-update, pipe, didactic errors) are edition-safe and land
+    in Phase 2/4;
+  - rejected items recorded with reasons in the ideas doc
 - Constitution v0.3 (Decision 2026-06-12): modern-secure-HDL is now a
-  co-primary goal with education — new spec/01 G5 (explicit-flow
-  `secret` taint, fail-secure `system_fault` network v1); tie-breakers
-  now honesty > safety > security > readability/DX > speed > brevity >
-  Tamil idiom
+  co-primary goal with education —
+  - new spec/01 G5 (explicit-flow `secret` taint, fail-secure
+    `system_fault` network v1);
+  - tie-breakers now honesty > safety > security > readability/DX > speed >
+    brevity > Tamil idiom
 - Community + Tamil Nadu semiconductor outreach
 
 **Deliverable:** Community language with real users
@@ -178,7 +183,7 @@ Year 2–4     Phase 3     Native bitstream generation
 Ongoing      Phase 4     Ecosystem & community
 ```
 
-### Proposed solo-dev deadlines (assumes ~8–10 h/week — correct me and these shift)
+### Proposed deadlines (assume ~8–10 h/week; subject to change)
 
 ```
 Phase 0 wrap-up       → 2026-06-15 ✅  (keyword set v1 finalized; DRAFT removed)

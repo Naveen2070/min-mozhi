@@ -17,7 +17,7 @@ Three rules, enforced by convention everywhere in the codebase:
 
 1. **Diagnostics are values.** Passes collect `Vec<Diag>` and keep
    working. Nothing prints mid-pass, nothing panics on user input.
-   (Panics are reserved for OUR bugs — e.g. a malformed `keywords.toml`.)
+   (Panics are reserved for OUR bugs — e.g. a malformed `lang/keywords.toml`.)
 2. **Multi-error always.** Lexer, parser, and emitter all continue after
    an error. A learner gets the whole list, not one error per compile.
 3. **Render once, at the edge.** Only the CLI calls `diag::render`, which
@@ -30,8 +30,9 @@ bytes, so Tamil identifiers underline correctly).
 
 ## How to write a good Min-Mozhi error
 
-The persona check: would a 20-year-old polytechnic student, not fully
-comfortable in English, know what to DO after reading it?
+The persona check: would a student new to hardware design know what to DO after
+reading it — including the native-Tamil audience this is built for, a Tamil-speaking
+polytechnic student not fully comfortable in English?
 
 - **`msg`** names the construct and the problem, quoting the user's own
   identifier: ``register `value` has no reset value``.
@@ -81,7 +82,7 @@ will key off them — never renumber.
 | E1101 | expected-X-found-Y family (incl. terminators, missing `}`) |
 | E1102 | bad top-level item                                         |
 | E1103 | enum needs at least one variant                            |
-| E1104 | register has no reset value                                |
+| E1104 | register has no reset value, or memory has no init value   |
 | E1105 | `<-` outside an `on` block                                 |
 | E1106 | `=` inside an `on` block                                   |
 | E1107 | `test` block syntax (name, body statements)                |
@@ -140,13 +141,13 @@ the table above and required to have an error-fixture). Current warnings:
 ## Known limitations / planned evolution
 
 - **Native-authored Tamil + Tanglish catalogs shipped** (2026-06-15,
-  decision C3 ratified). The localized messages live in `messages.toml`,
+  decision C3 ratified). The localized messages live in `lang/messages.toml`,
   keyed off the codes above; `morph::localized_msg` looks one up per code and
   flavor and interpolates the offending identifier (Tamil case-inflected) plus
   structured args (`{expected}/{found}/{op}/{lhs}/{rhs}/{first}/{second}/{type}`).
   **33 of 36 checker codes** are localized — E0403/E0404/E0405 stay English-only
   (each emits many distinct shapes; the Tamil drafts are preserved as comments in
-  `messages.toml`). Any code with no template renders the English `msg` verbatim,
+  `lang/messages.toml`). Any code with no template renders the English `msg` verbatim,
   so uncovered codes are byte-identical across flavors. JSON diagnostics stay
   English (the machine contract is unchanged). Details in `13-tooling.md`.
 - Caret rendering clamps to a single line; multi-line spans underline

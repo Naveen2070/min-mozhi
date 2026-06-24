@@ -1,0 +1,287 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { Code } from "astro:components";
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import Hero from "../components/Hero.tsx";
+import SafeByDefault from "../components/features/SafeByDefault.tsx";
+import BuiltToTeach from "../components/features/BuiltToTeach.tsx";
+import Trilingual from "../components/features/Trilingual.tsx";
+
+// repo root is the parent of site/ (cwd during astro build/dev). Plain fs read,
+// not `new URL(..., import.meta.url)` — Vite would treat that as an asset import.
+const repoRoot = path.resolve(process.cwd(), "..");
+const cleanSnippet = (code: string, shortComment: string) => {
+  const lines = code.split('\n');
+  const out = [];
+  let inHeader = true;
+  for (const line of lines) {
+    if (inHeader && (line.trim().startsWith('//') || line.trim() === '')) continue;
+    inHeader = false;
+    out.push(line);
+  }
+  return `// ${shortComment}\n\n${out.join('\n')}`;
+};
+
+const counterEng = cleanSnippet(
+  readFileSync(path.join(repoRoot, "examples/english/counter.mimz"), "utf-8").trim(),
+  "Free-running counter\n// `reg = 0` enforces reset.\n// `+%` allows explicit wrapping."
+);
+const counterTan = cleanSnippet(
+  readFileSync(path.join(repoRoot, "examples/tanglish/counter.mimz"), "utf-8").trim(),
+  "Free-running counter (Tanglish)\n// Keywords change, grammar stays.\n// `+%` allows explicit wrapping."
+);
+const counterTam = cleanSnippet(
+  readFileSync(path.join(repoRoot, "examples/tamil-pure/kanakki.mimz"), "utf-8").trim(),
+  "Free-running counter (Pure Tamil)\n// `இலக்கணம் தமிழ்` enables SOV.\n// Note the trailing `போது`.\n// `+%` allows explicit wrapping."
+);
+
+const mimzGrammar = JSON.parse(
+  readFileSync(
+    path.join(repoRoot, "editors/vscode/syntaxes/mimz.tmLanguage.json"),
+    "utf-8",
+  ),
+);
+const mimzLang = { ...mimzGrammar, name: "mimz" };
+const shikiThemes = { light: "github-light", dark: "github-dark" } as const;
+
+const highlights = [
+  {
+    title: "Modern & safe by default",
+    body: "Familiar Go/TypeScript-style syntax, checked like Rust. The compiler catches the classic hardware footguns — inferred latches, silent width truncation, multiple drivers, uninitialized registers — before they reach Verilog, and reports each as a clear, actionable error.",
+  },
+  {
+    title: "Built to teach",
+    body: "A small, focused language with one obvious way to do things. Its diagnostics don't just flag an error — they explain what is wrong, why it is unsafe in hardware, and how to fix it, so learners build the right mental model as they go.",
+  },
+  {
+    title: "Trilingual, Tamil-first",
+    body: "Write the same module with English, Tanglish, or Tamil keywords — one grammar, one compiler. Switch flavors freely and the emitted Verilog stays byte-identical, so a design reads natively in your language without changing what it builds.",
+  },
+];
+
+// JSON-LD: describe the project as open-source software for richer search results.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  name: "Min-Mozhi",
+  alternateName: "மின்மொழி",
+  description:
+    "A modern, safe-by-default hardware description language — built to teach digital design, and the first Tamil-rooted HDL.",
+  url: "https://mimz.naveenr.in",
+  codeRepository: "https://github.com/Naveen2070/min-mozhi",
+  programmingLanguage: ["Rust", "Verilog"],
+  license: "https://spdx.org/licenses/MIT.html",
+  author: { "@type": "Person", name: "Naveen R" },
+};
+---
+
+<Base>
+  <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+  <Nav />
+
+  <main class="mx-auto max-w-6xl px-4">
+    <!-- Hero -->
+    <section class="grid items-center gap-10 py-16 lg:grid-cols-2 lg:py-24">
+      <div>
+        <p class="fg-muted mb-4 text-sm font-medium tracking-wide uppercase">
+          <span class="ff-tamil" lang="ta">மின்மொழி</span> · The Language of Electricity
+        </p>
+        <h1 class="fg text-4xl font-extrabold leading-tight tracking-tight sm:text-6xl">
+          A modern, <span class="spark-gradient bg-clip-text text-transparent whitespace-nowrap">safe-by-default</span>
+          hardware description language.
+        </h1>
+        <p class="fg-muted mt-6 max-w-xl text-lg sm:text-xl leading-relaxed">
+          Built to teach digital design — and the first Tamil-rooted HDL. Reads
+          like Go/TypeScript, strictly checked like Rust for safety, and natively speaks English, Tanglish, and
+          Tamil.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <a
+            href="/guide/01-getting-started"
+            class="btn-primary rounded-md px-6 py-3 text-sm font-semibold no-underline transition-transform hover:scale-105 active:scale-95"
+          >
+            Get started
+          </a>
+          <a
+            href="https://github.com/Naveen2070/min-mozhi"
+            class="btn-outline rounded-md border px-6 py-3 text-sm font-semibold no-underline flex items-center gap-2 hover:bg-white/5 transition-colors"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z"/></svg>
+            GitHub
+          </a>
+          <a
+            href="/playground"
+            class="btn-outline rounded-md border px-6 py-3 text-sm font-semibold no-underline hover:bg-white/5 transition-colors"
+          >
+            Playground
+          </a>
+        </div>
+        <div class="mt-8 flex items-center gap-3">
+          <code class="bd bg-soft fg-muted rounded-md border px-4 py-2 font-mono text-xs sm:text-sm shadow-sm flex items-center gap-2">
+            <span class="text-zinc-500 select-none">$</span> cargo build
+          </code>
+        </div>
+      </div>
+
+      <!-- Oscilloscope: the clock waveform an HDL describes -->
+      <div class="bd bg-soft overflow-hidden rounded-xl border">
+        <div
+          class="bd fg-muted flex items-center justify-between border-b px-4 py-2 text-xs"
+        >
+          <span class="ff-mono">clk · rising edge</span>
+          <span
+            class="spark-gradient bg-clip-text font-semibold text-transparent"
+            >live</span
+          >
+        </div>
+        <Hero client:visible />
+      </div>
+    </section>
+
+    <!-- Code sample -->
+    <section class="pb-16 max-w-full">
+      <div class="mb-6 text-center">
+        <h2 class="fg text-2xl font-bold tracking-tight mb-2">One language, three dialects</h2>
+        <p class="fg-muted text-sm max-w-2xl mx-auto">
+          A counter in Min-Mozhi — written in English, Tanglish, and Pure Tamil. All three compile
+          to the exact same synthesizable Verilog byte-for-byte.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="flex flex-col">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-xs font-semibold fg-accent tracking-widest uppercase">English</span>
+          </div>
+          <div class="flex-1 [&>pre]:h-full [&>pre]:overflow-hidden">
+            <Code code={counterEng} lang={mimzLang} themes={shikiThemes} />
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-xs font-semibold fg-accent tracking-widest uppercase">Tanglish</span>
+          </div>
+          <div class="flex-1 [&>pre]:h-full [&>pre]:overflow-hidden">
+            <Code code={counterTan} lang={mimzLang} themes={shikiThemes} />
+          </div>
+        </div>
+        <div class="flex flex-col">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="text-xs font-semibold fg-accent tracking-widest uppercase ff-tamil">தமிழ் <span class="fg-muted font-normal capitalize tracking-normal">(Pure Tamil)</span></span>
+          </div>
+          <div class="flex-1 [&>pre]:h-full [&>pre]:overflow-hidden">
+            <Code code={counterTam} lang={mimzLang} themes={shikiThemes} />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Why — three alternating feature rows with reveal-on-scroll art -->
+    <section class="bd border-t py-16 lg:py-24">
+      <div class="flex flex-col gap-20 lg:gap-32">
+        <!-- Row 1 — illustration left, text right -->
+        <div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+          <div class="bd bg-soft order-last rounded-xl border p-6 lg:p-10 lg:order-first shadow-sm">
+            <SafeByDefault client:visible />
+          </div>
+          <div class="lg:order-last">
+            <h2 class="fg mb-5 text-3xl font-bold tracking-tight sm:text-4xl">{highlights[0].title}</h2>
+            <p class="fg-muted text-lg leading-relaxed">{highlights[0].body}</p>
+            <ul class="mt-8 space-y-4">
+              <li class="flex items-start gap-3">
+                <svg class="h-6 w-6 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <span class="fg-muted text-base"><strong>Strict width checks:</strong> No more silent truncation when connecting buses.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="h-6 w-6 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <span class="fg-muted text-base"><strong>Initialization rules:</strong> Registers must be reset; no floating states.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="h-6 w-6 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                <span class="fg-muted text-base"><strong>...and much more:</strong> Compiler guarantees against multiple drivers, signed/unsigned mixing, and inferred latches.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Row 2 — text left, illustration right -->
+        <div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <h2 class="fg mb-5 text-3xl font-bold tracking-tight sm:text-4xl">{highlights[1].title}</h2>
+            <p class="fg-muted text-lg leading-relaxed">{highlights[1].body}</p>
+            <ul class="mt-8 space-y-4">
+              <li class="flex items-start gap-3">
+                <svg class="h-6 w-6 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <span class="fg-muted text-base"><strong>Actionable Diagnostics:</strong> Errors tell you exactly how to fix the issue.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="h-6 w-6 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <span class="fg-muted text-base"><strong>One way to do things:</strong> A constrained grammar avoids historic footguns.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="bd bg-soft rounded-xl border p-6 lg:p-10 shadow-sm">
+            <BuiltToTeach client:visible />
+          </div>
+        </div>
+
+        <!-- Row 3 — illustration left, text right -->
+        <div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+          <div class="bd bg-soft order-last rounded-xl border p-6 lg:p-10 lg:order-first shadow-sm">
+            <Trilingual client:visible />
+          </div>
+          <div class="lg:order-last">
+            <h2 class="fg mb-5 text-3xl font-bold tracking-tight sm:text-4xl">{highlights[2].title}</h2>
+            <p class="fg-muted text-lg leading-relaxed">{highlights[2].body}</p>
+            <ul class="mt-8 space-y-4">
+              <li class="flex items-start gap-3">
+                <svg class="h-6 w-6 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <span class="fg-muted text-base"><strong>Byte-identical output:</strong> Flavors do not change the resulting Verilog.</span>
+              </li>
+              <li class="flex items-start gap-3">
+                <svg class="h-6 w-6 text-green-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <span class="fg-muted text-base"><strong>Lossless translation:</strong> Use <code class="bd bg-soft border px-1.5 py-0.5 rounded text-sm font-mono">mimz translate</code> to switch codebases.</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tooling Grid -->
+    <section class="bd border-t py-16 lg:py-24">
+      <div class="text-center mb-16 max-w-2xl mx-auto">
+        <h2 class="fg text-3xl font-bold tracking-tight">Batteries-included tooling</h2>
+        <p class="fg-muted mt-4 text-lg">Everything you need to write, test, and simulate hardware in one focused binary. Zero complex toolchains required.</p>
+      </div>
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="bd bg-soft rounded-xl border p-6 transition-all hover:-translate-y-1 hover:shadow-lg">
+          <h3 class="fg mb-3 font-semibold flex items-center gap-3 text-lg">
+            <svg class="h-6 w-6 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Built-in Simulator
+          </h3>
+          <p class="fg-muted text-sm leading-relaxed">Simulate clocked and combinational designs directly. Generate deterministic VCD waveforms without ever reaching for external tools.</p>
+        </div>
+        <div class="bd bg-soft rounded-xl border p-6 transition-all hover:-translate-y-1 hover:shadow-lg">
+          <h3 class="fg mb-3 font-semibold flex items-center gap-3 text-lg">
+            <svg class="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            Verilog Emitter
+          </h3>
+          <p class="fg-muted text-sm leading-relaxed">Compiles to clean, human-readable, synthesizable Verilog. Drop your designs into existing FPGA toolchains (like Yosys/NextPNR) with zero lock-in.</p>
+        </div>
+        <div class="bd bg-soft rounded-xl border p-6 transition-all hover:-translate-y-1 hover:shadow-lg">
+          <h3 class="fg mb-3 font-semibold flex items-center gap-3 text-lg">
+            <svg class="h-6 w-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+            Language Server
+          </h3>
+          <p class="fg-muted text-sm leading-relaxed">Get live errors, hover information, and rich diagnostics directly in VS Code as you type, driven by the same exact compiler logic.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Base>

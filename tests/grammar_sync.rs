@@ -53,7 +53,7 @@ fn grammar_has_word(grammar: &str, word: &str) -> bool {
 }
 
 fn table() -> TableFile {
-    toml::from_str(&fs::read_to_string(root().join("keywords.toml")).unwrap())
+    toml::from_str(&fs::read_to_string(root().join("lang/keywords.toml")).unwrap())
         .expect("keywords.toml parses with the loader's schema")
 }
 

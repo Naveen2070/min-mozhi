@@ -1,4 +1,4 @@
-//! Error-language plumbing (Phase 1.8, `spec/04` §5): pick WHICH flavor an
+//! Error-language plumbing (Phase 1.8, `spec/04` section 5): pick WHICH flavor an
 //! error is written in, and inflect interpolated identifiers with Tamil case
 //! suffixes so the sentence reads as Tamil, not transliterated English.
 //!
@@ -11,7 +11,7 @@
 //! 2. **Inflection** — [`inflect`] attaches one of the four case suffixes
 //!    (வேற்றுமை உருபுகள் -ஐ/-க்கு/-இல்/-ஆல், data in `case_suffixes.toml`) to an
 //!    identifier. This is "a suffix lookup table plus sandhi-joining rules …
-//!    not NLP" (spec/04 §5): error TEMPLATES are authored once per language by
+//!    not NLP" (spec/04 section 5): error TEMPLATES are authored once per language by
 //!    humans; the helper only inflects the names dropped into them.
 //!
 //! **Additive, English-fallback.** Today every diagnostic is a hardcoded
@@ -127,7 +127,7 @@ pub fn flavor_mix_warning(tokens: &[Token]) -> Option<Diag> {
 // ---- Morphology (case-suffix inflection) --------------------------------
 
 /// The four Tamil grammatical cases the error catalog inflects names into
-/// (வேற்றுமை, spec/04 §5). Suffix forms live in `case_suffixes.toml`.
+/// (வேற்றுமை, spec/04 section 5). Suffix forms live in `case_suffixes.toml`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Case {
     /// -ஐ — the object of the action (`widen 'sum'` → `'sum'-ஐ அகலமாக்கவும்`).
@@ -140,7 +140,7 @@ pub enum Case {
     Instrumental,
 }
 
-const SUFFIXES_TOML: &str = include_str!("../case_suffixes.toml");
+const SUFFIXES_TOML: &str = include_str!("../lang/case_suffixes.toml");
 
 #[derive(Deserialize)]
 struct SuffixFile {
@@ -208,7 +208,7 @@ impl Case {
 /// Sandhi rule — RATIFIED by the v1 native-speaker review (2026-06-15,
 /// decision C3 closed). Identifiers in Min-Mozhi are Latin (R9: Tamil-script
 /// names are transliterated), so the join is: a Latin-script stem takes a hyphen
-/// before the suffix (`'sum'-ஐ`, matching spec/04 §5); a Tamil-script stem (only
+/// before the suffix (`'sum'-ஐ`, matching spec/04 section 5); a Tamil-script stem (only
 /// reachable via a hand-written template, not an identifier) joins directly;
 /// Tanglish always hyphenates. English returns the bare name.
 pub fn inflect(name: &str, case: Case, flavor: Flavor) -> String {
@@ -243,7 +243,7 @@ pub fn inflect(name: &str, case: Case, flavor: Flavor) -> String {
 /// English unchanged. A covered code defines BOTH localized flavors (enforced
 /// by a sync guard in `tests/morph.rs`). Templates interpolate `{name}` and
 /// `{name.acc|dat|loc|inst}` via [`fill`].
-const MESSAGES_TOML: &str = include_str!("../messages.toml");
+const MESSAGES_TOML: &str = include_str!("../lang/messages.toml");
 
 #[derive(Deserialize)]
 struct MessageFile {
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn inflect_attaches_each_case_suffix() {
-        // Latin stem → hyphen + Tamil suffix (the spec/04 §5 `'sum'-ஐ` shape).
+        // Latin stem → hyphen + Tamil suffix (the spec/04 section 5 `'sum'-ஐ` shape).
         assert_eq!(inflect("sum", Case::Accusative, Flavor::Tamil), "sum-ஐ");
         assert_eq!(inflect("y", Case::Dative, Flavor::Tamil), "y-க்கு");
         // Tamil-script stem → direct join (no hyphen).

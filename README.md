@@ -1,13 +1,13 @@
 <h1 align="center">Min-Mozhi · மின்மொழி</h1>
 
 <p align="center">
-  <b>A modern, safe-by-default hardware description language — and the first Tamil-rooted HDL.</b><br>
+  <b>A modern, safe-by-default hardware description language — built to teach digital design, and the first Tamil-rooted HDL.</b><br>
   <i>Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.</i>
 </p>
 
 <p align="center">
   <a href="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-369%20passing-brightgreen.svg"></a>
+  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-432%20passing-brightgreen.svg"></a>
   <img alt="Status" src="https://img.shields.io/badge/status-compiler%20%2B%20simulator-success.svg">
   <a href="https://rustup.rs"><img alt="Rust" src="https://img.shields.io/badge/rust-%E2%89%A5%201.85-orange.svg"></a>
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-blue.svg">
@@ -63,11 +63,14 @@ thoguthi Counter(WIDTH: int = 8) {
   expression-oriented `if`/`match`. No `begin/end`, no preprocessor.
 - **Safe by default** — no inferred latches, silent truncation, multiple
   drivers, uninitialized registers, or signed/unsigned mixing. Every one is a
-  compile-time error with a stable `E`-code.
-- **Trilingual by design** — English, Tanglish, and Tamil are keyword skins over
-  one grammar; `mimz translate` converts losslessly between them.
+  compile-time error with a stable `E`-code. (Compile-time **security** checks —
+  `secret` information-flow, fail-secure faults — are a first-class design goal
+  on the roadmap, post-v0.1.0.)
 - **Beginner-first** — understand the basics in 1–2 hours; compile a counter
-  within 5 minutes of installing.
+  within 5 minutes of installing, with errors that teach.
+- **Trilingual by design** — English, Tanglish, and Tamil are keyword skins over
+  one grammar; `mimz translate` converts losslessly between them. The first
+  Tamil-rooted HDL.
 
 Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
@@ -79,7 +82,7 @@ Prerequisite: [Rust](https://rustup.rs) stable ≥ 1.85.
 cargo build                                   # binary: target/debug/mimz
 
 mimz check   examples/english/counter.mimz    # lex + parse + safety checks
-mimz compile examples/english/counter.mimz -o counter.v   # emit Verilog
+mimz compile examples/english/counter.mimz -o counter.v --emit-testbench  # emit Verilog & testbench
 mimz sim     demo/cpu.mimz --cycles 8 -o demo/cpu.vcd     # simulate → VCD waveform
 mimz test    demo/cpu.mimz                     # run tick/expect test blocks
 ```
@@ -98,7 +101,7 @@ cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test
 ## Status
 
 **Phases 1, 1.8, and 1.5 complete — a working compiler _and_ simulator**, with
-**369 passing tests**.
+**432 passing tests**.
 
 - **Compiler** — lexer (all three flavors) → parser → checker (every spec safety
   rule, stable `E`-codes) → Verilog emitter (`repeat` unrolling, Tamil→ASCII
@@ -114,12 +117,19 @@ cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test
 
 ## Who it's for (and not for)
 
-Min-Mozhi is an **educational project, honestly framed** — built for students and
-the curious, and equally (`spec/01` v0.3) for developers who want a
-safe-by-default, ergonomic HDL and are drawn by the compile-time checks rather
-than the Tamil roots. It is new and experimental, **not** a production
-replacement: if you need the completeness of Verilog or Chisel, keep using them.
-But it always emits Verilog — so nothing you build here is a dead end.
+Min-Mozhi is an **educational project, honestly framed** — built to teach digital
+design to **students everywhere**, and equally (`spec/01` v0.3) for developers who
+want a safe-by-default, ergonomic HDL drawn by the compile-time checks rather than
+the Tamil roots.
+
+Native Tamil serves a **double purpose**:
+
+- reaching Tamil-speaking learners who hit the English barrier, and
+- growing Tamil as a language you can actually program in.
+
+It is new and experimental, **not** a production replacement: if you need the
+completeness of Verilog or Chisel, keep using them. But it always emits Verilog —
+so nothing you build here is a dead end.
 
 ## Documentation
 
@@ -148,12 +158,15 @@ But it always emits Verilog — so nothing you build here is a dead end.
 ## License
 
 MIT **+** Apache-2.0 dual-licensed (the Rust ecosystem norm). Free and open
-source forever — that's constitutional (`spec/01` § 4).
+source forever — that's constitutional (`spec/01` section 4). © 2026 Naveen R —
+see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).
 
 ---
 
 <div align="center">
 
 _Min-Mozhi — மின்மொழி — Speak in Circuits_
+
+Made with ♥ by [Naveen R](https://github.com/Naveen2070)
 
 </div>

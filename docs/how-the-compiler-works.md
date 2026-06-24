@@ -11,35 +11,44 @@ read this one. The deeper per-module pages live in
 
 ## The one-sentence answer
 
-A compiler is a program that reads text in one language and writes the
-same meaning in another language. `mimz` reads Min-Mozhi text and writes
-Verilog text. It does this in **five stations**, like an assembly line:
+A compiler is a program that reads text in one language and writes the same
+meaning in another. `mimz` reads Min-Mozhi text and produces either **Verilog**
+(to synthesize) or a **waveform** (to simulate). It shares one **front end** —
+load, lex, parse, check — then takes one of two **back ends**:
 
 ```text
  your .mimz file
        |
        v
-  [0] LOAD      src/project.rs        read the file, find its imports
+  [0] LOAD       src/project.rs        read the file, resolve its imports
        |
        v
-  [1] LEX       src/lexer/            characters  ->  tokens (words)
+  [1] LEX        src/lexer/            characters  ->  tokens (words)
        |
        v
-  [2] PARSE     src/parser/           tokens      ->  AST (a tree)
+  [2] PARSE      src/parser/           tokens      ->  AST (a tree)
        |
        v
-  [3] CHECK     src/checker/          is the tree CORRECT and SAFE?
+  [3] CHECK      src/checker/          is the tree CORRECT and SAFE?
        |
-       v
-  [4] EMIT      src/emit_verilog/     tree        ->  Verilog text
-       |
-       v
- your .v file
+       +-----------------------------+
+       v                             v
+  [4a] EMIT                      [4b] SIMULATE
+  src/emit_verilog/              src/sim/
+  tree -> Verilog text           tree -> elaborate -> run -> waveform
+       |                             |
+       v                             v
+ your .v file                   VCD waveform / pass-fail tests
 ```
 
-Each station only talks to its neighbours. The lexer never sees the
-tree. The emitter never sees raw text. This is why the code is split
-into those folders — one folder per station.
+`mimz compile` takes the left branch; `mimz sim` and `mimz test` take the right.
+Each stage only talks to its neighbours — the lexer never sees the tree, the
+emitter never sees raw text — which is why the code is split one folder per
+stage.
+
+> The example below follows the **compile** branch end to end; a short
+> [Station 5 — Simulate](#station-5--simulate-srcsim) section at the end picks up
+> the same checked tree and runs it instead.
 
 ## The example we will follow
 
@@ -63,24 +72,30 @@ module Counter(WIDTH: int = 8) {
 }
 ```
 
-You run:
+Compile it with:
 
 ```text
 mimz compile examples/english/counter.mimz
 ```
 
-Now let's walk through what actually happens, station by station.
+The sections below trace what happens, station by station.
 
 ## Where it all starts: `src/main.rs` (and `src/lib.rs`)
 
 The compiler itself is a **library** — `src/lib.rs` lists its modules
 (the pipeline stages plus shared tools like `translate`, `sim`, and
-`config`). `main.rs` is the thin front door over it: it reads the command
-line (`check`, `compile`, `sim`, `test`, `lsp`, …) and dispatches to a
-per-subcommand handler in `src/commands/`, which calls the stations in
-order and renders whatever comes back (human carets, or one JSON array
-with `--json`). The `compile` handler (`src/commands/compile.rs`) is
-literally the pipeline written out:
+`config`).
+
+`main.rs` is the thin front door over it:
+
+- it reads the command line (`check`, `compile`, `sim`, `test`, `lsp`, …);
+- it dispatches to a per-subcommand handler in `src/commands/`, which calls
+  the stations in order;
+- it renders whatever comes back (human carets, or one JSON array with
+  `--json`).
+
+The `compile` handler (`src/commands/compile.rs`) is literally the pipeline
+written out:
 
 ```text
 load_project(path)            // station 0
@@ -106,16 +121,16 @@ file too.**
   letters can be encoded in more than one byte sequence; NFC makes the
   same-looking text always compare equal. English-only files are
   untouched.)
-- `load_project()` keeps a to-do list of files. It starts with your
-  entry file, parses it (stations 1 and 2 happen here, per file), looks
-  at its `import` lines, turns `import lib.full_adder` into the path
-  `lib/full_adder.mimz` next to the importing file, and adds that file
-  to the to-do list. A "visited" set stops infinite loops if two files
-  import each other.
+- `load_project()` keeps a to-do list of files. Starting with your entry
+  file, for each file it: parses it (stations 1 and 2 happen here, per
+  file), looks at its `import` lines, then turns `import lib.full_adder`
+  into the path `lib/full_adder.mimz` next to the importing file and adds
+  that file to the to-do list. A "visited" set stops infinite loops if two
+  files import each other.
 - The result is a `Vec<LoadedFile>` — every file's path, its source
   text, and its parsed tree, with your entry file first.
 
-Our counter has no imports, so the result is just one `LoadedFile`.
+The counter example has no imports, so the result is a single `LoadedFile`.
 
 ## Station 1 — Lex (`src/lexer/`)
 
@@ -135,7 +150,7 @@ The lexer walks left to right and produces:
 Ident("value")   LArrow   Ident("value")   PlusPct   Int { value: 1, raw: "1" }   Newline
 ```
 
-Five things to notice:
+Five details stand out:
 
 - `<-` became ONE token (`LArrow`), not `<` then `-`. The lexer always
   prefers the longest match — that is also how it tells `<-` from `<=`
@@ -160,12 +175,12 @@ Files in this folder:
 | ------------------- | ------------------------------------------------------------------ |
 | `lexer/mod.rs`      | the character-walking loop itself (`lex()`)                        |
 | `lexer/token.rs`    | the `Token` and `TokKind` types — the full vocabulary, listed once |
-| `lexer/keywords.rs` | loads `keywords.toml` into a lookup table at startup               |
+| `lexer/keywords.rs` | loads `lang/keywords.toml` into a lookup table at startup          |
 | `lexer/tests.rs`    | unit tests for tricky cases (`<-` vs `<=`, Tamil identifiers, …)   |
 
-### The trilingual trick (`keywords.toml`)
+### The trilingual trick (`lang/keywords.toml`)
 
-The repo root has `keywords.toml` — a plain data file:
+The repo root has `lang/keywords.toml` — a plain data file:
 
 ```toml
 [keywords.module]
@@ -183,6 +198,16 @@ spelling is a data edit, not a code edit. (`include` works the same
 way: it is listed as an `en_aliases` entry of `import`, so it lexes to
 `Kw::Import`.)
 
+### Natural Tamil word order (the Grammar Engine)
+
+Trilingual keywords are only half the language story. A file that opens with
+`syntax thamizh` may also be written in **natural Tamil (subject-object-verb)
+word order** — `on rise(clk)` becomes `rise(clk) on`, `if c { }` becomes
+`c if { }`. This is the **Grammar Engine** (`spec/04`, Phase 1.8): a parser
+_profile_, not a second grammar. It rearranges the very same rules, so station 2
+produces the **identical AST** whichever order you wrote — every station after
+the parser is none the wiser. Code-order is the default; no directive needed.
+
 ## Station 2 — Parse (`src/parser/`)
 
 **Job: turn the flat list of tokens into a _tree_ that mirrors the
@@ -192,7 +217,7 @@ Tree.**
 "Abstract" just means "details like spelling, spacing and comments are
 gone — only structure remains."
 
-For our counter, the tree looks like this (sketch, not exact Rust):
+For the counter, the tree looks like this (sketch, not exact Rust):
 
 ```text
 File
@@ -302,10 +327,10 @@ walks each module and writes Verilog line by line:
   plain `+` already does in Verilog at fixed width; the `+%` spelling
   exists so the WRITER says it on purpose
 
-The actual output for our counter:
+The actual output for the counter:
 
 ```text
-// Generated by mimz 0.1.0-dev — Min-Mozhi (மின்மொழி). Do not edit.
+// Generated by mimz 0.1.0 (edition wingless-butterfly-2026-1) — Min-Mozhi (மின்மொழி). Do not edit.
 
 module Counter #(
     parameter WIDTH = 8
@@ -344,11 +369,61 @@ variable folded into every index — there is no loop in the Verilog),
 and `signed[N]` signals are declared `wire signed`, so two's-complement
 math behaves exactly as the spec promises.
 
+This station also lowers the RTL-parity constructs the language has since grown:
+`on fall(clk)` becomes a `negedge` block, `async reset` widens the sensitivity
+list to `@(posedge clk or posedge rst)`, a `mem` becomes a Verilog reg array
+(`reg [W-1:0] m [0:DEPTH-1]`) with a power-on `initial` seed, and `{N{x}}`
+becomes Verilog replication. The full per-construct detail is in
+[`docs/code/05-emit-verilog.md`](code/05-emit-verilog.md).
+
 The same source in `examples/tanglish/counter.mimz` or
 `examples/tamil/counter.mimz` produces **byte-identical** output —
 remember, the flavors stopped existing at station 1. A CI test
 (`all_four_flavors_compile_to_identical_verilog`) asserts this for
 every example in the repo.
+
+## Station 5 — Simulate (`src/sim/`)
+
+`mimz compile` stops at station 4. But the same checked tree can take the OTHER
+back end: `mimz sim` (write a waveform) and `mimz test` (run `tick`/`expect`
+checks) hand the tree to `src/sim/` instead of the Verilog emitter. Three steps:
+
+1. **Elaborate** (`elaborate.rs`) — flatten the design into a plain list of
+   signals and registers a machine can step: module instances are inlined
+   (`inst.port` becomes a real wire), `repeat` is unrolled, enums become integer
+   codes, memories get a cell store. The result is a `Design` that matches, gate
+   for gate, what the emitter would have written.
+2. **Run** (`run.rs` + `kernel.rs`) — drive the design under a default stimulus
+   (reset asserted the first cycle, inputs held, the clock toggled) and step it
+   cycle by cycle. The kernel is **edge-aware**: within one period it samples on
+   the rising edge, then the falling edge — so an `on fall` register updates at
+   the right moment. A clockless design settles one frame per input vector
+   instead (`comb.rs`). Each step records every signal into a `Timeline`.
+3. **Write** (`vcd.rs` / `trace.rs`) — turn the `Timeline` into a standard
+   IEEE-1364 **VCD** waveform (any viewer opens it) or a per-cycle text table
+   (`--trace`).
+
+The expression math (`+`, `match`, slicing, replication, …) is evaluated by
+**one shared file, `value.rs`** — the same evaluator behind `mimz eval` — so the
+simulator and the generated Verilog cannot drift apart in what an expression
+means.
+
+Why trust it? A three-way differential
+(`tests/icarus.rs::our_simulator_matches_icarus_bit_for_bit`) runs every example
+through our kernel, reconstructs the values from the VCD we wrote, AND runs the
+same design through **Icarus Verilog** — all three must agree bit-for-bit, every
+cycle. The moment our simulator disagreed with real Verilog, that test goes red.
+
+| File                      | Does what                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `sim/elaborate.rs`        | flatten the AST into a steppable `Design` (instances, `repeat`, enums, mems) |
+| `sim/kernel.rs`           | the edge-aware cycle engine (rise → sample → fall)                           |
+| `sim/comb.rs`             | settle a clockless (combinational) design, one frame per vector              |
+| `sim/value.rs`            | the shared expression evaluator (also behind `mimz eval`)                    |
+| `sim/vcd.rs` / `trace.rs` | `Timeline` → VCD waveform / per-cycle table                                  |
+
+The simulator's design notes live in
+[`docs/code/13-tooling.md`](code/13-tooling.md) (the `sim` section).
 
 ## The two files every station uses
 
@@ -363,7 +438,8 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test` runs four layers (the full ledger is
+`cargo test` runs several layers (**432 tests** today; the full ledger,
+per-binary breakdown, and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):
 
 - **Unit tests** live next to the code they test (`lexer/tests.rs`,
@@ -372,22 +448,26 @@ whatever comes back and sets the exit code.
 - **Integration tests** (`tests/examples.rs`) run the real pipeline
   over every file in `examples/` — every example must check clean,
   compile, and match its three sibling flavors byte-for-byte.
+- **The Icarus differential** (`tests/icarus.rs`) runs every example through our
+  own simulator AND through Icarus Verilog under the same stimulus and asserts
+  they agree bit-for-bit — the independent judge that keeps station 5 honest.
 - **Docs-sync tests** (`tests/docs_sync.rs`) mechanically verify that
   the docs' structural claims (module lists, file tables) match the
   real `src/` tree — so this very page's neighbours can't silently rot.
 - **Grammar-sync tests** (`tests/grammar_sync.rs`) verify the VS Code
-  extension's grammar lists every spelling in `keywords.toml`.
+  extension's grammar lists every spelling in `lang/keywords.toml`.
 
 ## "Where do I look when…" cheat sheet
 
 | You want to…                                | Look in                                              |
 | ------------------------------------------- | ---------------------------------------------------- |
-| change/add a keyword spelling               | `keywords.toml` (data only — no code)                |
+| change/add a keyword spelling               | `lang/keywords.toml` (data only — no code)           |
 | see why `<-` lexes as one token             | `src/lexer/mod.rs` + `lexer/tests.rs`                |
 | change what a construct LOOKS like (syntax) | `src/parser/items/` or `parser/expr.rs`              |
 | change what the tree STORES                 | `src/ast/` (then fix parser + checker + emitter)     |
 | add a new error / safety rule               | `src/checker/` — recipe in `docs/code/11-checker.md` |
 | change the generated Verilog                | `src/emit_verilog/module.rs` or `expr.rs`            |
+| change how a design is simulated            | `src/sim/` (elaborate / kernel / value)              |
 | change how errors are printed               | `src/diag.rs` (`render`)                             |
 | change import resolution / file loading     | `src/project.rs`                                     |
 | add a CLI flag or subcommand                | `src/main.rs` (clap) + a handler in `src/commands/`  |
@@ -399,13 +479,15 @@ whatever comes back and sets the exit code.
 Each station has a full maintainer page with the real function names
 and the design decisions behind them:
 
-| Station                             | Deep-dive page                                                     |
-| ----------------------------------- | ------------------------------------------------------------------ |
-| overview                            | [`code/01-pipeline.md`](code/01-pipeline.md)                       |
-| lexer                               | [`code/02-lexer.md`](code/02-lexer.md)                             |
-| parser                              | [`code/03-parser.md`](code/03-parser.md)                           |
-| AST                                 | [`code/04-ast.md`](code/04-ast.md)                                 |
-| emitter                             | [`code/05-emit-verilog.md`](code/05-emit-verilog.md)               |
-| diagnostics                         | [`code/06-diagnostics.md`](code/06-diagnostics.md)                 |
-| checker                             | [`code/11-checker.md`](code/11-checker.md)                         |
-| one real run, token offsets and all | [`code/09-walkthrough-counter.md`](code/09-walkthrough-counter.md) |
+| Station                                       | Deep-dive page                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------ |
+| overview                                      | [`code/01-pipeline.md`](code/01-pipeline.md)                       |
+| lexer                                         | [`code/02-lexer.md`](code/02-lexer.md)                             |
+| parser                                        | [`code/03-parser.md`](code/03-parser.md)                           |
+| AST                                           | [`code/04-ast.md`](code/04-ast.md)                                 |
+| emitter                                       | [`code/05-emit-verilog.md`](code/05-emit-verilog.md)               |
+| diagnostics                                   | [`code/06-diagnostics.md`](code/06-diagnostics.md)                 |
+| checker                                       | [`code/11-checker.md`](code/11-checker.md)                         |
+| simulator, `translate`/`fmt`, version/edition | [`code/13-tooling.md`](code/13-tooling.md)                         |
+| one real run, token offsets and all           | [`code/09-walkthrough-counter.md`](code/09-walkthrough-counter.md) |
+| in-depth intro (every Rust file, friendly)    | [`source-guide/README.md`](source-guide/README.md)                 |

@@ -56,6 +56,34 @@ fuzz_target!(|data: &[u8]| {
         }
         if !inputs.is_empty() {
             let _ = mimz::sim::comb::eval_outputs(&file, Some(&m.name.name), &inputs, &params);
+
+            // Edge-case passes: re-evaluate the same module with dangerous input
+            // values that triggered Finding A (Shl `as u32` truncation) and other
+            // truncation-prone boundaries. Safe values mask to width; a clean
+            // Err is fine (e.g. the module may not accept all-ones on every port),
+            // but a panic is not — exactly what the fuzzer catches.
+            let edge_cases: [u128; 8] = [
+                0,
+                1,
+                u128::MAX,
+                1u128 << 32,   // bit 32 — the `as u32` truncation threshold
+                1u128 << 63,   // bit 63 — upper half of u128
+                1u128 << 127,  // bit 127 — max valid bit
+                (1u128 << 126) - 1,  // just below the 127-bit boundary
+                (1u128 << 64) - 1,   // 64-bit all-ones
+            ];
+            for &edge in &edge_cases {
+                let edge_inputs: BTreeMap<String, u128> = inputs
+                    .keys()
+                    .map(|k| (k.clone(), edge))
+                    .collect();
+                let _ = mimz::sim::comb::eval_outputs(
+                    &file,
+                    Some(&m.name.name),
+                    &edge_inputs,
+                    &params,
+                );
+            }
             break;
         }
     }

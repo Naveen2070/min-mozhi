@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.10.**
+> **Spec v0.2.11.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -44,18 +44,19 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
 
 ### Word-selection criteria (in order)
 
-1. A TN polytechnic student recognizes it in a technical context.
+1. A student — or any Tamil-speaking HDL developer — recognizes it in a technical
+   context.
 2. **Aligns with TN SCERT school-textbook technical vocabulary** where a
    textbook term exists.
 3. Short enough to type comfortably.
 
 ### Review & governance
 
-- Reviewers: native-speaker tech/coder friends of the founder (the initial
-  panel), growing to a community panel post-release.
-- Final say: panel majority wins — even over the founder's preference — once
-  a panel exists; until then the founder + available native speakers decide.
-- The table is a **data file** (`keywords.toml` in the compiler), so word
+- Reviewers: native-speaker engineers and developers (the initial panel),
+  growing to a community panel post-release.
+- Final say: panel majority wins — even over the maintainers' preference — once
+  a panel exists; until then the maintainers and available native speakers decide.
+- The table is a **data file** (`lang/keywords.toml` in the compiler), so word
   changes are data changes, reviewable without touching code.
 
 ### Tooling
@@ -70,7 +71,7 @@ There is no standard Tamil romanization, so Min-Mozhi fixes one:
 - Error messages are emitted in the flavor the file predominantly uses
   (`--lang` flag overrides). Implemented 2026-06-14 (`src/morph.rs`,
   `check`/`compile`/`eval`); the localized catalog itself is panel-gated — see
-  `04-grammar-engine.md` §5.
+  `04-grammar-engine.md` section 5.
 
 ### Identifiers
 
@@ -83,7 +84,7 @@ is valid even in an otherwise-English file.
 
 > ✅ **Status: keyword set v1, FINALIZED** by native-speaker review (2026-06-15,
 > Phase 0 closed). English column frozen. Spellings may change in a future v2;
-> `keywords.toml` carries `version = 1`. This table mirrors `keywords.toml`
+> `lang/keywords.toml` carries `version = 1`. This table mirrors `lang/keywords.toml`
 > exactly (`tests/grammar_sync.rs` enforces it).
 
 | Token         | English   | Tanglish        | Tamil         | Notes                                                                                                                                 |
@@ -104,7 +105,7 @@ is valid even in an otherwise-English file.
 | KW_ELSE       | `else`    | `illaiyenil`    | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                                                     |
 | KW_MATCH      | `match`   | `thernthedu`    | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                                                      |
 | KW_ENUM       | `enum`    | `vagai`         | `வகை`         | "kind/category"                                                                                                                       |
-| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 §1.5)                            |
+| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 section 1.5)                     |
 | KW_CONST      | `const`   | `maarili`       | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                                                 |
 | KW_REPEAT     | `repeat`  | `meendum`       | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                                                   |
 | KW_IMPORT     | `import`  | `serkka`        | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                                                 |
@@ -124,7 +125,7 @@ is valid even in an otherwise-English file.
 
 Set aside for future features — using one as an identifier is a compile
 error (E1005) explaining why. They live in the `reserved` list in
-`keywords.toml`, above the keyword tables:
+`lang/keywords.toml`, above the keyword tables:
 
 | Reserved           | Held for                                                                 |
 | ------------------ | ------------------------------------------------------------------------ |
@@ -144,6 +145,7 @@ error (E1005) explaining why. They live in the `reserved` list in
 | `ensures`          | module postcondition contract (section 8)                                |
 | `fn` / `function`  | a future combinational-function construct (Phase 2; unblocks pipe `\|>`) |
 | `suzhal` / `சுழல்` | a future controlled `for`-loop (v1 reserved; `repeat` stays the unroll)  |
+| `extern`           | external-Verilog / black-box-IP module construct (Phase 2+)              |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).
@@ -151,11 +153,14 @@ words before the native-speaker review — same rule as aliases).
 ### Aliases
 
 A column may carry deliberate **synonym aliases** in addition to its
-canonical word — listed per column in `keywords.toml` (e.g. `en_aliases`),
-never invented by the compiler. An alias lexes to the exact same token as
-the canonical word, so nothing after the lexer can tell them apart; tooling
-(`mimz translate`, `mimz fmt`) normalizes aliases to the canonical
-spelling. Aliases are keywords: their words stop being legal identifiers.
+canonical word — listed per column in `lang/keywords.toml` (e.g. `en_aliases`),
+never invented by the compiler.
+
+- An alias lexes to the exact same token as the canonical word, so nothing after
+  the lexer can tell them apart.
+- Tooling (`mimz translate`, `mimz fmt`) normalizes aliases to the canonical
+  spelling.
+- Aliases are keywords: their words stop being legal identifiers.
 
 Current aliases (v0.2.1):
 
@@ -168,11 +173,12 @@ review (section "Review & governance") — no new Tamil words before that.
 
 **Word-order caveat:** this layer keeps one fixed (English-derived) order, so
 `on rise(clk)` becomes `pothu yetram(clk)` — understandable, but not idiomatic
-Tamil syntax (Tamil is SOV: "clk ஏறும்போது"). Natural Tamil word order is
-**Layer 2 — the Grammar Engine** (`04-grammar-engine.md`, Phase 1.8), which
-adds a `thamizh-order` parser profile (`yetram(clk) pothu { }`,
-`<cond> enil { }`) over the same AST. Layer 1 ships first; Layer 2 follows
-once the Phase 1 parser exists.
+Tamil syntax (Tamil is SOV: "clk ஏறும்போது").
+
+Natural Tamil word order is **Layer 2 — the Grammar Engine**
+(`04-grammar-engine.md`, Phase 1.8), which adds a `thamizh-order` parser profile
+(`yetram(clk) pothu { }`, `<cond> enil { }`) over the same AST. Layer 1 ships
+first; Layer 2 follows once the Phase 1 parser exists.
 
 ---
 
@@ -255,7 +261,7 @@ module Counter(WIDTH: int = 8) {
 ## 4. Implementation Notes (for the Rust lexer)
 
 - One `phf`/static map: `spelling → KeywordToken`, populated from all three
-  columns of a single source-of-truth table (`keywords.toml` in the repo, so
+  columns of a single source-of-truth table (`lang/keywords.toml` in the repo, so
   community review of word choices is a data change, not a code change).
 - Tokenizer normalizes nothing — exact-match on the spelling, after standard
   Unicode NFC normalization of the source.
@@ -270,12 +276,20 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.11 (2026-06-22):** Reserved `extern` for a future external-Verilog /
+  black-box-IP module construct (`docs/Ideas/architectural_ideas.md` idea 3;
+  the architecture open question "External Verilog module wrapping construct").
+  The feature is additive/edition-safe and lands Phase 2+, but the keyword is
+  reserved pre-v0.1.0 freeze so no program can claim `extern` as an identifier
+  (R11). English-only until the feature lands and native review supplies the
+  Tamil/Tanglish spellings. Added to the reserved table + `lang/keywords.toml`
+  reserved list + the grammar invalid pattern + lexer test (the R11 pipeline).
 - **v0.2.10 (2026-06-17):** Promoted `async` from **reserved** to an active keyword
   KW_ASYNC for the asynchronous-reset modifier (`async reset rst`; A5, Verilog
   `always @(… or posedge rst)`). Its Tanglish/Tamil spellings — `otthisaivatra` /
   `ஒத்திசைவற்ற` ("non-synchronous", the negation of synchrony `ஒத்திசைவு`) — are
   **PROVISIONAL** dev/testing placeholders pending native-speaker review (R9/R11),
-  founder-authorized so the four-flavor tooling works before the v0.1.0 freeze.
+  used provisionally so the four-flavor tooling works before the v0.1.0 freeze.
   Removed `async` from the reserved table; added the grammar keyword rule + lexer
   test (the R11 pipeline, reversed).
 - **v0.2.9 (2026-06-17):** Promoted `mem` from **reserved** to an active keyword
@@ -283,14 +297,14 @@ module Counter(WIDTH: int = 8) {
   `reg`). Its Tanglish/Tamil spellings — `ninaivagam` / `நினைவகம்` (the established
   Tamil term for computer "memory", pairing with `reg`/`pathivedu` = "ledger") —
   are **PROVISIONAL** dev/testing placeholders pending native-speaker review
-  (R9/R11), founder-authorized so the four-flavor tooling works before the v0.1.0
+  (R9/R11), used provisionally so the four-flavor tooling works before the v0.1.0
   freeze. Removed `mem` from the reserved table; added the grammar keyword rule +
   lexer test (the R11 pipeline, reversed).
 - **v0.2.8 (2026-06-17):** Promoted `fall` from **reserved** to an active keyword
   KW_FALL for falling-edge `on fall(clk)` blocks (A3, Verilog `negedge`). Its
   Tanglish/Tamil spellings — `irakkam` / `இறக்கம்` ("descent", the antonym of
   `yetram`/`ஏற்றம்` = "ascent") — are **PROVISIONAL** dev/testing placeholders
-  pending native-speaker review (R9/R11), founder-authorized so the four-flavor
+  pending native-speaker review (R9/R11), used provisionally so the four-flavor
   tooling works before the v0.1.0 freeze. Removed `fall` from the reserved table;
   added the grammar keyword rule + lexer test (the R11 pipeline, reversed).
 - **v0.2.7 (2026-06-16):** Reserved `async` to pair with the already-reserved
@@ -321,12 +335,12 @@ module Counter(WIDTH: int = 8) {
   (E1005). English-only — untranslated until each feature lands, per the
   reserved-words rule above.
 - **v0.2.2 (2026-06-12):** Reserved-words table added (the eight words
-  the `reserved` list in `keywords.toml` holds, each with the feature it
+  the `reserved` list in `lang/keywords.toml` holds, each with the feature it
   waits for) — completeness audit; no word changes. The loader now also
   panics at startup if a required `[keywords.*]` entry is MISSING (the
   unknown-key panic only guarded the other direction).
 - **v0.2.1 (2026-06-11):** Synonym-alias mechanism (per-column
-  `*_aliases` lists in `keywords.toml`); first alias: en `include` for
+  `*_aliases` lists in `lang/keywords.toml`); first alias: en `include` for
   KW_IMPORT. Clarified that the one-canonical-spelling rule bans spelling
   variants, not deliberate synonyms.
 - **v0.2 (2026-06-10):** CLI/extension → `mimz`/`.mimz`. Romanization policy

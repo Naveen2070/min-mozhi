@@ -1,0 +1,14 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a
+// combinational adder — the Tamil twin of english/adder.mimz. `+` is lossless:
+// bits[W] + bits[W] -> bits[W+1], so the carry is kept. Names transliterate to
+// readable ASCII Verilog (கூட்டி → kootti, கூட்டு → koottu).
+// Abstract operands use Tamil letters (அ, ஆ).
+
+தொகுதி கூட்டி(அகலம்: int = 8) {
+  உள்ளீடு அ: bits[அகலம்]
+  உள்ளீடு ஆ: bits[அகலம்]
+
+  வெளியீடு கூட்டு: bits[அகலம் + 1]
+
+  கூட்டு = அ + ஆ
+}

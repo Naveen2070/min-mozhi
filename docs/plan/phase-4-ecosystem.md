@@ -18,8 +18,10 @@ and the Tamil Nadu VLSI ecosystem.
 ### Tooling
 
 - [ ] VS Code extension: syntax highlighting (all flavors + thamizh-order), inline diagnostics via LSP — **LSP v0 (diagnostics only) pulled into Phase 1** (Decision 2026-06-12); this phase adds hover, go-to-definition, completion, and `translate` integration on top
+- [ ] **Parser AST error recovery** (`architectural_ideas.md` idea 1) — prerequisite for the hover/completion above. Statement-level recovery already exists (`sync_to_newline`, >1 error per run); this extends it to emit `Error` placeholder nodes so hover/semantic-highlight/completion still work on half-typed lines. Additive, edition-safe
 - [ ] `mimz fmt` stabilized; `mimz translate` promoted in docs as the learning tool
 - [ ] Package manager (`mimz add <pkg>`) — design doc first, Decision-logged
+- [ ] **Generative differential testing** (`architectural_ideas.md` idea 2) — two legs already ship: the `fuzz/` cargo-fuzz robustness targets and the fixed-corpus sim-vs-Icarus oracle (`our_simulator_matches_icarus_bit_for_bit`, `wasm_parity`). The third leg is a _valid-by-construction_ Min-Mozhi generator (respects width/driver/clock rules) fed into that oracle, gated in the `fuzz` CI job. Substantial; post-launch
 
 ### Ecosystem drivers (one core, thin wrappers — Decision 2026-06-11)
 

@@ -1,8 +1,8 @@
 # 4 — Signals: Ports, Wires, and Registers
 
-A module is made of **signals**. There are five kinds, and the difference between
-two of them — `wire` and `reg` — is the single most important distinction in
-hardware design.
+A module is made of **signals**. There are a handful of kinds, and the difference
+between two of them — `wire` and `reg` — is the single most important distinction
+in hardware design.
 
 ## Ports: `in` and `out`
 
@@ -57,6 +57,42 @@ Leaving the reset value off is an error (`E0301` / `E1104`). A `reg` is only eve
 updated inside a clocked block, with the `<-` operator (next section, and
 [chapter 8](08-sequential-logic.md)).
 
+## `mem`: memories (register arrays)
+
+A `mem` is an addressable array of registers — a RAM or register file. Declare it
+with an element type, a depth, and a mandatory power-on init value:
+
+```mimz
+mem m: bits[8][4] = 0      // 4 cells of 8 bits, every cell seeded to 0
+```
+
+The type reads `bits[W][DEPTH]`: each cell is `bits[8]` and there are `4` of them.
+Like a `reg`, a memory must declare its init value — leaving it off is an error
+(`E1104`) — because every cell powers up in a known state; a memory needs no
+separate reset line.
+
+Access a `mem` by index. Writes happen on the clock (with `<-`, inside an `on`
+block); reads are combinational (with `=`):
+
+```mimz
+on rise(clk) {
+  if we {
+    m[waddr] <- wdata      // clocked write to one cell
+  }
+}
+
+rdata = m[raddr]           // combinational read
+```
+
+You index into a memory to read or write a cell — you cannot assign the whole
+memory at once. The usual assignment-kind rule applies:
+
+- `<-` to write a cell on the clock;
+- `=` only in a combinational read context;
+- misuse is `E0505`.
+
+A given memory must be written from exactly one `on` block (`E0503`).
+
 ## `clock` and `reset`
 
 Sequential modules declare a clock, and any module with registers needs a reset:
@@ -67,9 +103,12 @@ reset rst
 ```
 
 `clock` is its own type — you cannot read it as data (`E0403`), and `on rise(x)`
-requires `x` to actually be a clock (`E0109`). `reset` in v0.2 is synchronous and
-active-high: on a rising clock edge, if reset is asserted, every register snaps
-back to its declared reset value.
+requires `x` to actually be a clock (`E0109`). `reset` is **synchronous and
+active-high by default**: on a rising clock edge, if reset is asserted, every
+register snaps back to its declared reset value. Prefix `async` —
+`async reset rst` — for an asynchronous reset that clears the registers the
+instant it is asserted, without waiting for the clock (see
+[chapter 8](08-sequential-logic.md)).
 
 ## The two assignment operators: `=` vs `<-`
 
@@ -114,6 +153,7 @@ beginners.
 | output   | `out`        | no           | `=`         | —            |
 | wire     | `wire`       | no           | `=`         | —            |
 | register | `reg`        | **yes**      | `<-`        | **required** |
+| memory   | `mem`        | **yes**      | `<-` (cell) | **required** |
 | clock    | `clock`      | —            | —           | —            |
 | reset    | `reset`      | —            | —           | —            |
 

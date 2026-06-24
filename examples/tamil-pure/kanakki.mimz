@@ -1,8 +1,10 @@
 // Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a
 // free-running counter — the Tamil twin of english/counter.mimz. The compiler
-// transliterates the names to readable ASCII Verilog (கணக்கி → kannakki,
-// மதிப்பு → mathippu). `reg ... = 0` declares the reset value (mandatory — no
-// uninitialized state). `+%` is wrapping add: same width, wraps on overflow.
+// transliterates the names to readable ASCII Verilog (கணக்கி → kannakki).
+// This file uses `இலக்கணம் தமிழ்` to enable natural SOV (postpositional) word
+// order, so it reads as `ஏற்றம்(கடிகை) போது` instead of `போது ஏற்றம்(கடிகை)`.
+
+இலக்கணம் தமிழ்
 
 தொகுதி கணக்கி(அகலம்: int = 8) {
   துடிப்பு கடிகை
@@ -12,7 +14,7 @@
 
   பதிவேடு மதிப்பு: bits[அகலம்] = 0
 
-  போது ஏற்றம்(கடிகை) {
+  ஏற்றம்(கடிகை) போது {
     மதிப்பு <- மதிப்பு +% 1
   }
 

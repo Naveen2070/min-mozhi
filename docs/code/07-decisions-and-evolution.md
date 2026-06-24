@@ -44,7 +44,7 @@ width pass hit 1859 lines) `checker/widths/`:
 
 Follow the pattern when a file outgrows ~600 lines; don't pre-split.
 
-### Keywords are data (`keywords.toml`), loaded once, validated loudly
+### Keywords are data (`lang/keywords.toml`), loaded once, validated loudly
 
 Native-speaker word review must be a data change, never a code change.
 The table panics at startup on any inconsistency — CI catches table bugs
@@ -85,7 +85,7 @@ message. Push enforcement as early as it can correctly live.
 - The trilingual thesis held with **zero** extra code outside the lexer:
   the EN/Tanglish byte-identical-output test passed on first run once the
   table loaded. The "one shared AST" invariant is doing real work.
-- Things that bit us, recorded so they don't bite twice: the TOML
+- Pitfalls hit during implementation, recorded so they don't recur: the TOML
   root-key ordering trap (`02-lexer.md`), `use TokKind::*` glob shadowing
   the `Kw` type in pattern positions (write `Kw(token::Kw::And)`),
   clippy's `manual_strip` pushing us to the cleaner `verilog_literal`

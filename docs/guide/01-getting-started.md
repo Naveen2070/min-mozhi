@@ -17,9 +17,11 @@ Release page. Pick the archive for your OS/arch:
 | macOS (Apple Silicon)      | `mimz-<version>-aarch64-apple-darwin.tar.gz`      |
 
 Unpack it, then put `mimz` on your `PATH`. Each release also ships a `SHA256SUMS`
-file — verify your download first with `shasum -a 256 -c SHA256SUMS --ignore-missing`
-(macOS/Linux) or `Get-FileHash <archive> -Algorithm SHA256` and compare to the
-matching line in `SHA256SUMS` (Windows).
+file — verify your download first:
+
+- **macOS/Linux** — `shasum -a 256 -c SHA256SUMS --ignore-missing`.
+- **Windows** — `Get-FileHash <archive> -Algorithm SHA256`, then compare to the
+  matching line in `SHA256SUMS`.
 
 > **The binaries are UNSIGNED for v0.1.0** (code signing is deferred — see the
 > `UNSIGNED.txt` in each archive). They are safe; the OS just doesn't recognise
@@ -34,7 +36,7 @@ matching line in `SHA256SUMS` (Windows).
 Min-Mozhi is a Rust program. With [Rust](https://rustup.rs) (stable ≥ 1.85):
 
 ```text
-git clone <the-repo>
+git clone https://github.com/Naveen2070/min-mozhi
 cd min-mozhi
 cargo build            # builds the compiler -> target/debug/mimz
 ```
@@ -114,12 +116,18 @@ When you run `mimz compile`, your file flows through five stations:
 
 `mimz check` stops after station 3 (no file written); `mimz compile` runs all
 five. For the deep tour of the pipeline on a real example, see
-[`../how-the-compiler-works.md`](../how-the-compiler-works.md).
+[`../how-the-compiler-works.md`](../how-the-compiler-works.md). For a friendly
+walkthrough of every Rust file, see
+[`../source-guide/`](../source-guide/).
 
 ## Where to go next
 
-You now have the loop: write → `check` → `compile`. Once a design is clocked you
-can also `mimz sim` it to a waveform and `mimz test` it against self-checking
-testbenches ([chapter 11](11-toolchain.md)); the [`../../demo/`](../../demo/)
-folder walks that full loop on a worked example. The next chapters fill in the
-language itself, starting with [the lexical basics](02-lexical-basics.md).
+That completes the core loop: write → `check` → `compile`. Once a design is
+clocked you can do more ([chapter 11](11-toolchain.md)):
+
+- `mimz sim` runs it to a waveform.
+- `mimz test` runs it against self-checking testbenches.
+
+The [`../../demo/`](../../demo/) folder walks that full loop on a worked example.
+The next chapters fill in the language itself, starting with
+[the lexical basics](02-lexical-basics.md).

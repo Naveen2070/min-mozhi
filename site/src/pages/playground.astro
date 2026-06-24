@@ -1,0 +1,83 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import Mascot from "../components/Mascot.astro";
+// Aliased: the Astro language server derives a local `Playground` from this
+// page's filename, which would clash with an import of the same name (TS2440).
+import PlaygroundIsland from "../components/Playground.tsx";
+
+// Seed examples read from the repo at build time (single source — same files the
+// CLI and tests use). repo root is the parent of site/ (cwd during astro build).
+// Each example carries every keyword flavor, so the playground can show the same
+// design in English, Tanglish, Tamil (English names), Mixed, or Pure Tamil — the
+// trilingual identity.
+const repoRoot = path.resolve(process.cwd(), "..");
+// The five keyword flavors (picker label + the examples/ subfolder it reads).
+const FLAVORS = [
+  { key: "english", label: "English" },
+  { key: "tanglish", label: "Tanglish" },
+  { key: "tamil", label: "Tamil (English names)" },
+  { key: "mixed", label: "Mixed" },
+  { key: "tamil-pure", label: "தமிழ் — Pure Tamil" },
+];
+// The six curated examples — present in EVERY flavor (the four-flavor folders all
+// carry them; the pure-Tamil twins, with Tamil identifiers, are mapped below).
+const names = ["counter", "adder", "comparator", "mux4", "blinker", "traffic_light"];
+// Pure-Tamil twins live under examples/tamil-pure/ with localized (Tamil)
+// identifiers, so they have their own file names — mapped from the canonical name.
+const PURE_TWIN: Record<string, string> = {
+  counter: "kanakki",
+  adder: "kuutti",
+  comparator: "oppidi",
+  mux4: "thervi",
+  blinker: "cimitti",
+  traffic_light: "saalaivilakku",
+};
+const readEx = (dir: string, file: string) =>
+  readFileSync(path.join(repoRoot, `examples/${dir}/${file}.mimz`), "utf-8").replace(/\s+$/, "");
+const examples = names.map((name) => ({
+  name,
+  // flavor key → the source actually stored for that flavor (pure Tamil uses its
+  // own twin file; the other four share the canonical name).
+  flavors: Object.fromEntries(
+    FLAVORS.map(({ key }) => [
+      key,
+      key === "tamil-pure" ? readEx("tamil-pure", PURE_TWIN[name]) : readEx(key, name),
+    ]),
+  ),
+}));
+---
+
+<Base
+  title="Playground — Min-Mozhi"
+  description="Write Min-Mozhi and run the compiler in your browser — compile to Verilog and view the waveform, no install. Try it in English, Tanglish, or Tamil."
+>
+  <Nav />
+  <main class="mx-auto max-w-6xl px-4 py-10">
+    <div class="mb-6 flex items-start justify-between gap-6">
+      <div class="max-w-2xl">
+        <h1 class="fg text-2xl font-bold tracking-tight">Playground</h1>
+        <p class="fg-muted mt-2 text-sm leading-relaxed">
+          Write Min-Mozhi on the left and run the compiler in your browser —
+          nothing to install, the whole toolchain is compiled to WebAssembly. Use
+          the console on the right:
+          <code>compile</code>, <code>check</code>, <code>eval --in a=3,b=5</code>,
+          <code>sim --cycles 8 --trace</code>, or
+          <code>sim --sweep a=0|1|2 --trace</code>. Pick a <b>flavor</b> to see
+          the same design in English, Tanglish, pure Tamil, or Mixed.
+        </p>
+      </div>
+      <Mascot
+        class="hidden h-28 w-28 shrink-0 sm:block"
+        alt=""
+        loading="eager"
+      />
+    </div>
+
+    <PlaygroundIsland examples={examples} flavors={FLAVORS} client:only="react" />
+  </main>
+  <Footer />
+</Base>

@@ -4,6 +4,23 @@ The `mimz` CLI is how you check, build, run, and reshape your code. Every comman
 takes a `.mimz` file; run them through `cargo run --` until `mimz` is on your
 `PATH`.
 
+## `mimz --version` — compiler and language edition
+
+`mimz` has **two version axes** (like `rustc 1.x` versus the Rust `2021` edition):
+the compiler's own version and the language edition. `--version` prints both,
+with the edition's codename on top:
+
+```text
+Wingless Butterfly
+mimz    0.1.0                       (compiler)
+edition wingless-butterfly-2026-1   (language)
+```
+
+The compiler version comes from the crate; the edition (`variant-year-code`)
+tracks the language itself. See
+[`../../spec/06-editions.md`](../../spec/06-editions.md) for what the two axes
+mean and how editions evolve.
+
 ## `mimz check` — lex, parse, and verify
 
 The workhorse. Runs the front end and the full safety checker; writes nothing.
@@ -14,7 +31,7 @@ mimz check counter.mimz --tokens    # also dump the token stream (debugging)
 mimz check counter.mimz --json      # machine-readable diagnostics
 ```
 
-A clean file prints `OK:`; a broken one prints `E`-coded diagnostics.
+A clean file prints `OK: <path> — <N> module(s), <M> test(s), <K> file(s).`; a broken one prints `E`-coded diagnostics.
 
 ## `mimz compile` — emit Verilog
 
@@ -23,7 +40,18 @@ Runs the whole pipeline and writes synthesizable Verilog. Resolves imports.
 ```text
 mimz compile counter.mimz                 # writes counter.v
 mimz compile counter.mimz -o build/c.v    # choose the output path
+mimz compile counter.mimz --emit-testbench # also writes counter_tb.v from inline tests
+mimz compile counter.mimz --json          # machine-readable diagnostics
 ```
+
+The command prints its output paths to `stdout`:
+
+- **Normal:** `compiled <in> -> <out>`
+- **With testbench:** a second line `compiled <in> -> <out> (testbench)`
+
+`--emit-testbench` writes `<output>_tb.v` alongside the Verilog. If the source
+has no `test` blocks it prints a note on `stderr` and writes only the `.v`; the testbench is
+built before either file is written, so an emission error leaves no stray output.
 
 ## `mimz eval` — run combinational logic
 
@@ -114,10 +142,12 @@ mimz translate tamil-pure/kanakki.mimz --to tanglish --romanize-names -o k.mimz
 ```
 
 Romanization is **one-way** on its own (the rule can't be inverted). To make it
-reversible, pass `-o`: a sidecar **`<out>.names.json`** (here `k.mimz.names.json`)
-is written next to the output, recording `romanized → original Tamil`. A reverse
-run restores the exact Tamil names — and the sidecar is **found automatically**,
-so no flag is needed:
+reversible, pass `-o`:
+
+- a sidecar **`<out>.names.json`** (here `k.mimz.names.json`) is written next to
+  the output, recording `romanized → original Tamil`;
+- a reverse run restores the exact Tamil names;
+- the sidecar is **found automatically**, so no flag is needed:
 
 ```text
 mimz translate k.mimz --to tamil          # auto-loads k.mimz.names.json
@@ -129,10 +159,13 @@ The map carries a version; a map this `mimz` doesn't understand is rejected with
 a clear error rather than mis-restoring.
 
 One edge to know: Tamil script can be the _only_ separator between a number and a
-following name (e.g. `42கணக்கி`, written with no space). Romanizing to Latin would
-glue them into an unlexable `42kannakki`, so the reskin inserts a single
-separating space there. Such input round-trips **token-equivalent** (it gains
-that space), not byte-for-byte — normal whitespace-separated code is unaffected.
+following name (e.g. `42கணக்கி`, written with no space).
+
+- Romanizing to Latin would glue them into an unlexable `42kannakki`, so the
+  reskin inserts a single separating space there.
+- Such input round-trips **token-equivalent** (it gains that space), not
+  byte-for-byte.
+- Normal whitespace-separated code is unaffected.
 
 ## `mimz fmt` — normalize to one flavor
 
@@ -152,13 +185,20 @@ mimz fmt messy.mimz -o clean.mimz    # write elsewhere, leave the input alone
 ## Project defaults: `mimz.toml`
 
 Tired of retyping the same flags? Drop a `mimz.toml` at your project root and
-`mimz` reads its defaults — discovered by walking **up** from the input file (like
-`Cargo.toml`/`rustfmt.toml`), or pointed at explicitly with a global
-`--config <path>`. Precedence is **command-line flag › `mimz.toml` › built-in
-default**, so a one-off flag always wins.
+`mimz` reads its defaults. The file is found in one of two ways:
+
+- discovered by walking **up** from the input file (like
+  `Cargo.toml`/`rustfmt.toml`);
+- or pointed at explicitly with a global `--config <path>`.
+
+Precedence is **command-line flag › `mimz.toml` › built-in default**, so a
+one-off flag always wins.
 
 ```toml
 lang = "tamil"          # default diagnostics flavor for check/compile/eval/sim/test
+
+[compile]
+emit_testbench = true   # always emit _tb.v on compile
 
 [translate]
 to = "tanglish"         # default --to
@@ -210,5 +250,9 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 npx prettier --write "**/*.md" && npx markdownlint-cli2
 ```
+
+Curious how the compiler implements all this under the hood? See
+[`../code/`](../code/) (maintainer docs) or
+[`../source-guide/`](../source-guide/) (friendly code tour).
 
 Next: [the cheat sheet](12-cheatsheet.md).

@@ -1,0 +1,16 @@
+---
+import Logo from "./Logo.astro";
+interface Props {
+  class?: string;
+}
+const { class: className = "" } = Astro.props;
+---
+
+<span class={`inline-flex items-center gap-2 ${className}`}>
+  <Logo class="h-[1.2em] w-[1.2em]" />
+  <span
+    class="spark-gradient ff-tamil bg-clip-text text-[1.15em] font-semibold text-transparent"
+    lang="ta">மின்மொழி</span
+  >
+  <span class="fg font-semibold">Min-Mozhi</span>
+</span>

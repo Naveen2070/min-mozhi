@@ -5,17 +5,33 @@
   "version": "0.2.0",
   "publisher": "min-mozhi",
   "license": "MIT OR Apache-2.0",
-  "engines": {
-    "vscode": "^1.75.0"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Naveen2070/min-mozhi.git",
+    "directory": "editors/vscode"
   },
-  "categories": ["Programming Languages"],
+  "bugs": {
+    "url": "https://github.com/Naveen2070/min-mozhi/issues"
+  },
+  "homepage": "https://github.com/Naveen2070/min-mozhi#readme",
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
   "main": "./extension.js",
   "contributes": {
     "languages": [
       {
         "id": "mimz",
-        "aliases": ["Min-Mozhi", "mimz"],
-        "extensions": [".mimz"],
+        "aliases": [
+          "Min-Mozhi",
+          "mimz"
+        ],
+        "extensions": [
+          ".mimz"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -38,7 +54,7 @@
     }
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "vscode-languageclient": "^10.0.0"
   },
   "scripts": {
     "package": "vsce package"

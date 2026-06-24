@@ -4,12 +4,13 @@ ASTs + project symbol table → one Verilog-2005 source string.
 
 ## File layout
 
-| File          | Owns                                                                                                        |
-| ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `mod.rs`      | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`) |
-| `module.rs`   | Module shells, ports, declarations, instances, always-blocks                                                |
-| `expr.rs`     | Expression rendering (incl. `match` → ternary chains)                                                       |
-| `translit.rs` | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)          |
+| File           | Owns                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| `mod.rs`       | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`) |
+| `module.rs`    | Module shells, ports, declarations, instances, always-blocks                                                |
+| `expr.rs`      | Expression rendering (incl. `match` → ternary chains)                                                       |
+| `testbench.rs` | Inline `test` blocks → Verilog testbench wrappers (`_tb.v`)                                                 |
+| `translit.rs`  | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)          |
 
 Same module-scoping pattern as the parser: state and shared helpers in
 `mod.rs`, the other files are `impl Emitter` blocks entered via
@@ -68,11 +69,13 @@ into conventional Verilog order:
    clock/reset) appear in the order they were declared in the source.
 2. **Enum localparams**: each variant becomes
    `localparam [w-1:0] STATE_RED = 0;` with `w = clog2(variant count)`.
-3. **Declarations**: `wire`/`reg` with their width strings.
+3. **Declarations**: `wire`/`reg`/`mem` with their width strings (a `mem`
+   becomes a Verilog reg array with a power-on `initial` loop — see below).
 4. **Instances** (see below).
 5. **Combinational drives**: `assign` for every `wire ... = ...` and
    every `lhs = rhs` drive.
-6. **Always-blocks**: one `always @(posedge clk)` per `on` block.
+6. **Always-blocks**: one `always @(...)` per `on` block — `posedge clk`, or
+   `posedge clk or posedge rst` when the reset is `async` (see below).
 
 ### Instances — the auto-wiring contract
 
@@ -117,6 +120,38 @@ reset wrapper.
 
 This works because the parser already guaranteed every `reg` has a reset
 value — safety rules compose.
+
+### Asynchronous reset — sensitivity-list widening
+
+By default the always-block is clock-only (`always @(posedge clk)`) and the reset
+is sampled inside it (synchronous). When the module declares `async reset rst`,
+the emitter widens the sensitivity list so the reset takes effect immediately:
+
+```text
+always @(posedge clk or posedge rst) begin
+    if (rst) begin … end else begin … end
+end
+```
+
+The `if (rst) …` body is unchanged; only the sensitivity list differs. A sync
+reset (the default) keeps the clock-only list. The choice is driven by
+`ModuleItem::Reset { is_async }`.
+
+### Memories (`mem`) — reg arrays with a power-on init
+
+A `mem name: bits[W][DEPTH] = init` lowers to a Verilog reg array plus an
+`initial` loop that seeds every cell to the init value at power-on — a memory's
+equivalent of a reset value (which is why the init is mandatory, E1104):
+
+```text
+reg [W-1:0] name [0:(DEPTH)-1];
+integer __mimz_name_i;
+initial for (__mimz_name_i = 0; __mimz_name_i < (DEPTH); __mimz_name_i = __mimz_name_i + 1)
+    name[__mimz_name_i] = init;
+```
+
+Indexed reads (`m[addr]`) render as `name[addr]`; clocked writes (`m[addr] <- v`)
+become `name[addr] <= v` inside the owning always-block.
 
 ## Expressions (`expr.rs`)
 
@@ -178,17 +213,23 @@ exhaustively under Icarus.
 
 `signed[N]` signals are declared `wire signed`/`reg signed`/
 `input wire signed …` (`width_subst` adds the modifier), so Verilog's
-native two's-complement semantics apply: assignments SIGN-extend
-(`extend` on signed is correct for free) and comparisons are signed.
+native two's-complement semantics apply:
+
+- assignments SIGN-extend (`extend` on signed is correct for free);
+- comparisons are signed.
+
 Sound because the checker forbids signed/unsigned mixing inside one
 expression (E0403) — a Verilog expression here is either all-signed or
-all-unsigned, never the silent-fallback mix. Verified exhaustively by
-`signed_math` (4 flavors) + its 256-pair Icarus TB; the deliberate
-breakage check (drop the `signed` modifier) makes that TB fail with
-"sign lost". Residual edge, documented honestly: `trunc` emits a
-part-select, which Verilog treats as unsigned MID-expression — at
-declared-signal boundaries (the normal case) signedness is restored by
-the declaration; spec/02 already rules "slicing signed yields bits".
+all-unsigned, never the silent-fallback mix.
+
+Verified exhaustively by `signed_math` (4 flavors) + its 256-pair Icarus
+TB; the deliberate breakage check (drop the `signed` modifier) makes that
+TB fail with "sign lost".
+
+Residual edge, documented honestly: `trunc` emits a part-select, which
+Verilog treats as unsigned MID-expression — at declared-signal
+boundaries (the normal case) signedness is restored by the declaration;
+spec/02 already rules "slicing signed yields bits".
 
 ## Known gaps (clean errors, not wrong output)
 

@@ -9,14 +9,16 @@ reading one file at a time.
 
 ## How this folder relates to the other docs
 
-| You want…                              | Go to                                        |
-| -------------------------------------- | -------------------------------------------- |
-| What the _language_ means (normative)  | [`spec/`](../../spec/)                       |
-| The architecture contract & invariants | [`docs/architecture.md`](../architecture.md) |
-| **How the code implements it**         | **this folder**                              |
-| Item-level API reference               | `cargo doc --document-private-items --open`  |
-| Why a decision was made, with date     | [`docs/log/`](../log/) (Decision blocks)     |
-| What to build next                     | [`docs/plan/`](../plan/)                     |
+| You want…                                 | Go to                                        |
+| ----------------------------------------- | -------------------------------------------- |
+| A friendly walkthrough of every Rust file | [`docs/source-guide/`](../source-guide/)     |
+| How to **write** Min-Mozhi code           | [`docs/guide/`](../guide/)                   |
+| What the _language_ means (normative)     | [`spec/`](../../spec/)                       |
+| The architecture contract & invariants    | [`docs/architecture.md`](../architecture.md) |
+| **How the code implements it**            | **this folder**                              |
+| Item-level API reference                  | `cargo doc --document-private-items --open`  |
+| Why a decision was made, with date        | [`docs/log/`](../log/) (Decision blocks)     |
+| What to build next                        | [`docs/plan/`](../plan/)                     |
 
 Rule of thumb: `architecture.md` says what must stay true; this folder
 says how the current code makes it true. When they disagree, one of them
@@ -57,22 +59,27 @@ is a bug — fix it the same day (RULES R1).
   and rendered once, never printed mid-pass and never panicked.
 - Every token and AST node carries a `Span` (byte range into the source), so
   every error can point at real code with a caret.
-- The keyword table is **data** (`keywords.toml`), embedded at build time.
+- The keyword table is **data** (`lang/keywords.toml`), embedded at build time.
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
-Five **tooling** modules consume the pipeline rather than forming a stage in
-it (page 13): `explain` (long-form text per E-code, `mimz explain`),
-`translate` (keyword-flavor reskin, `mimz translate --to`), `pretty` (the
-AST → source pretty-printer behind `mimz translate --order code|thamizh`),
-`morph` (error-language selection + Tamil case-suffix inflection, behind
-`--lang`), and `sim` (the Phase 1.5 simulator — the combinational evaluator
-behind `mimz eval` plus the event-driven kernel, VCD/trace, and `test` runner
-behind `mimz sim` / `mimz test`). A sixth, `config`, reads per-project defaults
-from `mimz.toml` (CLI flags override it) — also page 13. A seventh, `version`,
-holds the two version axes — the compiler (crate) version vs the language edition
-(`EDITION_HISTORY`) — surfaced by `mimz --version` and the Verilog header (see
-`spec/06-editions.md`).
+Seven **tooling** modules consume the pipeline rather than forming a stage in
+it (page 13):
+
+- `explain` — long-form text per E-code, `mimz explain`.
+- `translate` — keyword-flavor reskin, `mimz translate --to`.
+- `pretty` — the AST → source pretty-printer behind
+  `mimz translate --order code|thamizh`.
+- `morph` — error-language selection + Tamil case-suffix inflection,
+  behind `--lang`.
+- `sim` — the Phase 1.5 simulator: the combinational evaluator behind
+  `mimz eval` plus the event-driven kernel, VCD/trace, and `test` runner
+  behind `mimz sim` / `mimz test`.
+- `config` — reads per-project defaults from `mimz.toml` (CLI flags
+  override it).
+- `version` — holds the two version axes, the compiler (crate) version vs
+  the language edition (`EDITION_HISTORY`), surfaced by `mimz --version`
+  and the Verilog header (see `spec/06-editions.md`).
 
 ## Keeping these docs honest
 
@@ -97,7 +104,7 @@ and corrected the test map (page 10) per-section counts to match reality
 integration 6 → 7) and broadened the Layer-3 Icarus differential row to the full
 21-example single-file corpus. The 364 grand total was already correct. Prior:
 Phase 0 closed + **keyword set v1 locked** 2026-06-15; the **native-authored Tamil/Tanglish error catalog** shipped
-(decision C3 ratified) — `messages.toml` + structured-arg interpolation through
+(decision C3 ratified) — `lang/messages.toml` + structured-arg interpolation through
 `Diag::with_arg`/`Checker::err_args`, 33 of 36 checker codes localized (pages 6,
 13); no longer a stub. A docs-currency pass refreshed pages 1, 6, 13, the test map
 (page 10), and this stamp. Prior 2026-06-15 (adds: the `config` module — `mimz.toml`
@@ -111,7 +118,7 @@ A behavior-preserving code-split then broke three oversized files into submodule
 `src/bin/mimz-bench/metrics.rs` → `metrics/` (pages 3, 13, 12).
 Prior 2026-06-14 (adds: the `morph` module — error-language
 selection (file-flavor majority + `--lang`) and the Tamil case-suffix inflection
-mechanism behind localized diagnostics (Phase 1.8, spec/04 §5), an additive
+mechanism behind localized diagnostics (Phase 1.8, spec/04 section 5), an additive
 English-fallback layer documented in page 13; the catalog content + final sandhi
 are panel-gated (C3). Earlier the same day: the `pretty` module — the AST →
 source pretty-printer behind `mimz translate --order code|thamizh` (Phase 1.8),

@@ -29,17 +29,53 @@ Read `on rise(clk) { value <- value +% 1 }` as: "on each rising edge of `clk`,
 the register `value` becomes its old value plus one (wrapping at 255)." The `+%`
 is the wrapping add — a counter is exactly where you _want_ overflow to roll over.
 
-Only rising-edge clocking exists in v0.2 (`rise`). The argument to `rise` must be
-a declared `clock` (`E0109`).
+The argument to `rise` must be a declared `clock` (`E0109`).
 
-## Reset
+## Falling-edge: `on fall`
 
-Any module with registers must declare a `reset`. Reset is synchronous and
-active-high: on a rising edge, if reset is asserted, every register returns to the
-value it declared at definition. You do not write the reset logic by hand — the
-reset value on each `reg` _is_ the reset behavior, and the emitter generates the
-`if (rst) … else …` for you. That is why the reset value is mandatory: it is the
-known power-on state.
+A register can also update on the **falling** edge with `on fall(clk)` (Verilog
+`negedge`). Both edge blocks may appear in the same module on the same clock, and
+their ordering within a cycle is observable — the rising-edge updates settle
+before the falling-edge ones (matching Icarus semantics):
+
+```mimz
+on rise(clk) {
+  a <- d              // capture d on the rising edge
+}
+on fall(clk) {
+  b <- a              // capture a half a period later, on the falling edge
+}
+```
+
+This is the building block for dual-edge (DDR-style) pipelines.
+
+## Reset — synchronous (default) and asynchronous
+
+Any module with registers must declare a `reset`. By default reset is
+**synchronous and active-high**: on a rising edge, if reset is asserted, every
+register returns to the value it declared at definition.
+
+You do not write the reset logic by hand:
+
+- the reset value on each `reg` _is_ the reset behavior;
+- the emitter generates the `if (rst) … else …` for you.
+
+That is why the reset value is mandatory: it is the known power-on state.
+
+```mimz
+reset rst              // synchronous (the default)
+```
+
+For an **asynchronous** reset — the register clears the instant `rst` is asserted,
+without waiting for a clock edge — prefix `async`:
+
+```mimz
+async reset rst        // asynchronous, active-high
+```
+
+An async reset is added to the block's sensitivity list, lowering to Verilog
+`always @(posedge clk or posedge rst)`; the sync default stays clock-only. Reach
+for async reset when a power-on or brown-out reset must not wait for the clock.
 
 ## Registers hold their value
 

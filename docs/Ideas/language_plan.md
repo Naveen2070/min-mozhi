@@ -1,6 +1,13 @@
 # Min-Mozhi: Modernization & Advanced Language Plan
 
-This document outlines the conceptual roadmap for elevating Min-Mozhi into the "Ultimate Modern HDL". By combining the strict mathematical safety of **Rust**, the developer ergonomics of **TypeScript** and **Kotlin**, the concurrency paradigms of **Go**, and the testing architecture of **C#**, Min-Mozhi aims to bridge the gap between software engineering and physical silicon design.
+This document outlines the conceptual roadmap for elevating Min-Mozhi into the "Ultimate Modern HDL". It combines the best of several languages:
+
+- the strict mathematical safety of **Rust**,
+- the developer ergonomics of **TypeScript** and **Kotlin**,
+- the concurrency paradigms of **Go**,
+- and the testing architecture of **C#**.
+
+By doing so, Min-Mozhi aims to bridge the gap between software engineering and physical silicon design.
 
 ---
 
@@ -333,7 +340,9 @@ The core philosophy of Rust is catching bugs at compile time. In hardware, runti
 
 ## 4. The Two-Tiered Hardware Error System
 
-Because hardware has no Operating System, a `try/catch` block cannot "unwind a call stack" (there is no stack, only physical wires). Therefore, Min-Mozhi strictly rejects `try/catch` and Go-style `if err != nil` patterns. Instead, error handling is split into Simulation logic and Physical Silicon logic.
+Because hardware has no Operating System, a `try/catch` block cannot "unwind a call stack" (there is no stack, only physical wires). Therefore, Min-Mozhi strictly rejects `try/catch` and Go-style `if err != nil` patterns.
+
+Instead, error handling is split into Simulation logic and Physical Silicon logic.
 
 ### 4.1 Simulation-Only Errors (SystemVerilog Style)
 
@@ -515,15 +524,23 @@ unchanged by this document.
 
 **Re-triaged same day under the v0.3 constitution** (spec/01: modern-secure-HDL
 now co-primary with education; tie-breakers honesty > safety > **security** >
-readability/DX > speed > brevity > Tamil idiom). The goal shift promoted
-`secret` taint, the `system_fault` fault network v1, and the `?` valid-bundle
-re-targeting out of Tier 4 — see the Decision in `docs/log/2026-06-12.md`.
+readability/DX > speed > brevity > Tamil idiom).
+
+The goal shift promoted three items out of Tier 4 (see the Decision in `docs/log/2026-06-12.md`):
+
+- `secret` taint,
+- the `system_fault` fault network v1,
+- and the `?` valid-bundle re-targeting.
 
 ---
 
 ## 8. Future Expansion & Cross-Language Inspirations (New Additions)(2026-06-12)
 
-To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are newly proposed, feasible ideas adopted from other modern languages. These focus heavily on our educational mission, developer experience (DX), and robustness for digital signal processing (DSP).
+To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are newly proposed, feasible ideas adopted from other modern languages. These focus heavily on three things:
+
+- our educational mission,
+- developer experience (DX),
+- and robustness for digital signal processing (DSP).
 
 ### 8.1 Friendly, Didactic Compiler Errors (Inspired by Elm)
 
@@ -680,6 +697,13 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
   pane shows the `test` results + a `$monitor` trace and writes `counter.vcd`; a
   width error underlines the offending wire with the E0301 teaching message.
 
+### 8.12 Inline Test Modules & Auto-Generated Verilog Testbenches (`--emit-testbench`)
+
+- **Status:** ✅ Implemented in Phase 4.
+- **Explanation:** Modern languages (like Rust via `#[test]`) allow writing tests in the exact same file as the source code. Min-Mozhi already supports this via inline `test` blocks that run instantly in the built-in simulator. The next step is to add a CLI flag (`mimz compile --emit-testbench`) that automatically translates these inline `test` blocks into a standard, standalone Verilog `_tb.v` testbench. This allows engineers to rapidly write tests without leaving their `.mimz` file, while still outputting standard Verilog testbenches for external validation (like Icarus or EDA tools). Test blocks can be written inline or organized in a separate file.
+- **Feasibility:** High. The compiler's differential test suite (`tests/icarus.rs`) already contains internal logic to generate Verilog testbenches from elaborated designs to cross-check against Icarus. Exposing this as a user-facing flag bridges the gap between fast inline iteration and industry-standard validation.
+- **Example Use Case:** A user writes a module and its `test` block in `adder.mimz`. Running `mimz test` runs it natively. Running `mimz compile adder.mimz --emit-testbench` emits both `adder.v` and `adder_tb.v`, ready for external verification.
+
 ---
 
 ### Tier 1 — Already shipped (the idea renames an existing rule)
@@ -732,7 +756,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 ### Cross-cutting costs (price every Tier 3 item with these)
 
 - Every new keyword (`chan`, `prove`, `interface`, `await`, …) needs Tanglish +
-  Tamil spellings through keywords.toml and native-speaker review — the keyword
+  Tamil spellings through lang/keywords.toml and native-speaker review — the keyword
   table is the bottleneck on every idea here.
 - Every feature ships ×4 example folders (byte-identical Verilog rule), roughly
   doubling its apparent size.
@@ -750,12 +774,17 @@ benefits the language's future; use Editions + `mimz translate` as the migration
 path** after the freeze. The repo is private and pre-v0.1.0 (no users), so a
 breaking change is nearly free _now_ and expensive _later_.
 
-**Organizing insight:** an _additive_ change (turns an error into valid code, or
-adds syntax that didn't exist) is edition-safe — it can land any time, even
-post-freeze, without breaking code. A _breaking_ change (re-means or removes
-existing valid syntax) must land **before v0.1.0** or owe an edition + `translate`
-rule. So the freeze deadline pressures **only the section 8 ideas that touch already-shipped
-syntax**: 8.9 and 8.10. The other eight are additive and can come whenever.
+**Organizing insight:** changes fall into two kinds.
+
+- An _additive_ change (turns an error into valid code, or adds syntax that didn't
+  exist) is edition-safe — it can land any time, even post-freeze, without breaking
+  code.
+- A _breaking_ change (re-means or removes existing valid syntax) must land
+  **before v0.1.0** or owe an edition + `translate` rule.
+
+So the freeze deadline pressures **only the section 8 ideas that touch
+already-shipped syntax**: 8.9 and 8.10. The other eight are additive and can come
+whenever.
 
 ### Per-idea verdicts
 
@@ -776,10 +805,16 @@ syntax**: 8.9 and 8.10. The other eight are additive and can come whenever.
 
 Use `..` for the **spread/splat family only** — wiring (8.7), struct-update (8.8),
 concat-spread — because those are genuinely one operation (expand-a-bundle-in-place),
-so one token is honest and learnable. **Do NOT overload `..` for ranges** (keep
-slicing `[hi:lo]`, per 8.10) — that avoids the range/splat semantic collision and the
-ascending-exclusive vs descending-inclusive mental-model clash. All `..`-spread
-features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specced.
+so one token is honest and learnable.
+
+**Do NOT overload `..` for ranges** (keep slicing `[hi:lo]`, per 8.10) — that avoids
+two problems:
+
+- the range/splat semantic collision,
+- and the ascending-exclusive vs descending-inclusive mental-model clash.
+
+All `..`-spread features gate on interfaces/bundles (2.4); finalize the token when
+2.4 is specced.
 
 ### Pre-v0.1.0 freeze checklist (what the doctrine forces now)
 
@@ -793,6 +828,13 @@ features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specce
    `[hi:lo]`/`{a,b}` are canonical (spec/02 v0.2.6 section 1.8).
 5. Everything else (8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8) is additive / edition-safe →
    can land after v0.1.0 with no breakage; none of it pressures the freeze date.
+6. **Reserve `extern`** (external-Verilog / black-box-IP module — `architectural_ideas.md`
+   idea 3, the architecture open question "External Verilog module wrapping construct").
+   The _feature_ is additive and lands Phase 2+, but the _keyword_ must be reserved
+   now so a v0.1 program can't claim it as an identifier (R11). Full pipeline, same
+   as the other reserved words: `lang/keywords.toml` `reserved` + spec/03 reserved
+   table & changelog + the TextMate invalid pattern + a lexer reserved-word test.
+   English-only until the feature lands and native review supplies the spellings.
 
 ---
 
@@ -800,13 +842,17 @@ features gate on interfaces/bundles (2.4); finalize the token when 2.4 is specce
 
 Reviewed Min-Mozhi against the full feature sets of **VHDL, Verilog, and
 SystemVerilog** ("variables/types → operators → control → loops → subprograms →
-concurrency → OOP → verification"). **Decision:** scope = _curated subset +
-broaden RTL parity_ — stay synthesizable, safe-by-default, educational; pull the
-big **synthesizable** RTL gaps forward; do **not** chase SV verification/OOP now
-(but keep that door open, see below). "Full parity" is the wrong target — half
-the SV list is verification/software, which violates tie-breaker #1 (hardware
-honesty). The right target is **complete synthesizable-RTL coverage** + the
-safety/trilingual differentiators.
+concurrency → OOP → verification").
+
+**Decision:** scope = _curated subset + broaden RTL parity_ — stay synthesizable,
+safe-by-default, educational. Concretely:
+
+- pull the big **synthesizable** RTL gaps forward;
+- do **not** chase SV verification/OOP now (but keep that door open, see below).
+
+"Full parity" is the wrong target — half the SV list is verification/software,
+which violates tie-breaker #1 (hardware honesty). The right target is **complete
+synthesizable-RTL coverage** + the safety/trilingual differentiators.
 
 ### Status key
 
@@ -835,10 +881,10 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 | combinational `function`                                                                                                        | 🟡     | **new — not previously tracked**; pure/stateless, inlined at emit; unblocks pipe-op 8.6 |
 | async reset / reset polarity                                                                                                    | 🟡     | small spec+emit widening (sync active-high only today)                                  |
 | packages / namespacing                                                                                                          | 🟡     | **new — not previously tracked**; modest, consider                                      |
-| tagged-union payloads (2.7) · `sync` CDC (1.2) · `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | already in §7/§9 + phase-2 plan, unchanged order                                        |
+| tagged-union payloads (2.7) · `sync` CDC (1.2) · `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | already in sections 7/9 + phase-2 plan, unchanged order                                 |
 | ternary `?:`                                                                                                                    | ⛔     | `if {} else {}` expr is the one way (G1)                                                |
 | division `/` / modulo `%` operators                                                                                             | ⛔     | no cheap operator form; future stdlib divider module                                    |
-| internal tri-state; auto-retiming-with-Fmax                                                                                     | ⛔     | physics / honesty (Tier 4, §7)                                                          |
+| internal tri-state; auto-retiming-with-Fmax                                                                                     | ⛔     | physics / honesty (Tier 4, section 7)                                                   |
 
 ### Loops (explicit — three honest hardware shapes)
 
@@ -856,17 +902,25 @@ bounded or FSM-lowered form, never free-running.
 
 ### Verification / OOP / DV — 🟣 deferred, revisitable (NOT permanent-out)
 
-SV `class`/OOP, `rand`/constraints, covergroup/coverpoint/cross, immediate +
-concurrent (SVA) assertions, `fork/join`, dynamic/associative arrays, queues,
-mailboxes. **User intent (2026-06-15):** _"in future if needed we will include
-verification logic too."_ These form a separate **verification layer** (not RTL):
-they ride the **simulator track** (Phase 1.5+) and the **`prove`** track, fenced
-from synthesis exactly like today's `test` blocks. Pursuing the heavier DV pieces
-later is a deliberate **co-goal amendment to spec/01** when the simulator is
-mature — recorded as a future option, not a rejection. Substitutes to build
-first (cover most needs): `test`/`tick`/`expect` (have) · `sim::fatal`/`sim::warn`
-(Phase 1.5) · `prove` → SymbiYosys (Phase 2, SVA-style) · `requires`/`ensures`
-(Phase 2+).
+The deferred DV features: SV `class`/OOP, `rand`/constraints,
+covergroup/coverpoint/cross, immediate + concurrent (SVA) assertions, `fork/join`,
+dynamic/associative arrays, queues, mailboxes.
+
+**User intent (2026-06-15):** _"in future if needed we will include verification
+logic too."_
+
+These form a separate **verification layer** (not RTL): they ride the **simulator
+track** (Phase 1.5+) and the **`prove`** track, fenced from synthesis exactly like
+today's `test` blocks. Pursuing the heavier DV pieces later is a deliberate
+**co-goal amendment to spec/01** when the simulator is mature — recorded as a
+future option, not a rejection.
+
+Substitutes to build first (cover most needs):
+
+- `test`/`tick`/`expect` (have);
+- `sim::fatal`/`sim::warn` (Phase 1.5);
+- `prove` → SymbiYosys (Phase 2, SVA-style);
+- `requires`/`ensures` (Phase 2+).
 
 ### Recommended pull-forward order (synthesizable RTL)
 

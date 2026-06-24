@@ -36,9 +36,20 @@ pub struct Config {
     /// Defaults for `mimz translate`.
     #[serde(default)]
     pub translate: TranslateConfig,
+    /// Defaults for `mimz compile`.
+    #[serde(default)]
+    pub compile: CompileConfig,
     /// Defaults for `mimz fmt`.
     #[serde(default)]
     pub fmt: FmtConfig,
+}
+
+/// `[compile]` — defaults for the compile subcommand.
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CompileConfig {
+    /// Emit testbench by default (`--emit-testbench`).
+    pub emit_testbench: Option<bool>,
 }
 
 /// `[translate]` — defaults for the reskin / romanize subcommand.

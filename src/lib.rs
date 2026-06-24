@@ -17,7 +17,7 @@
 //! | [`parser`]      | Tokens → AST (recursive descent, multi-error recovery)     |
 //! | [`ast`]         | The one shared AST — flavor- and word-order-blind          |
 //! | [`checker`]     | Names, consts, widths, drivers, exhaustiveness, clocks     |
-//! | [`emit_verilog`]| AST → Verilog-2005 text (+ Tamil→ASCII transliteration)    |
+//! | [`emit_verilog`]| AST → Verilog-2005 text (+ Tamil→ASCII transliteration + testbenches) |
 //! | [`project`]     | File loading, NFC normalization, `import` resolution       |
 //!
 //! Tooling modules consume the pipeline above (they are not stages in it):
@@ -57,3 +57,29 @@ pub mod sim;
 pub mod span;
 pub mod translate;
 pub mod version;
+
+mod runner;
+
+// The in-memory command runner (compile / check / eval / sim / test against a
+// source STRING) powers the browser playground and any embedder; its argument
+// parsers are the single source the CLI command handlers reuse.
+pub use runner::{
+    parse_bindings, parse_sweep, parse_u128, run_command, sweep_vectors, trace_scope,
+};
+
+/// Compile a single Min-Mozhi source string straight to Verilog, entirely in
+/// memory — no filesystem, no `import` resolution. This is the embedding entry
+/// point used by the in-browser playground (`crates/mimz-wasm`) and any tool
+/// that already holds the source as a string.
+///
+/// The full Phase 1 pipeline runs: NFC-normalize → lex → parse → check →
+/// transliterate → emit (the same stages as `mimz compile`, minus file I/O).
+/// `import` is **not** supported here — there is no file to resolve against — so
+/// a source containing one is rejected with a plain message.
+///
+/// Returns the generated Verilog on success. On any failure returns the
+/// rendered, caret-annotated diagnostics (English) as one string — the same
+/// text `mimz compile` prints to stderr — suitable for showing to the user.
+pub fn compile_string(source: &str) -> Result<String, String> {
+    run_command(source, "compile", &[])
+}

@@ -9,7 +9,7 @@
 //! a comparison — each side's actual value). `mimz test` exits non-zero if any
 //! test fails.
 //!
-//! This is the shipped `tick`/`expect` form (spec/02 §1.10, spec/05 §3). The
+//! This is the shipped `tick`/`expect` form (spec/02 section 1.10, spec/05 section 3). The
 //! `await clk.cycles(n)` sugar is a later increment: it needs the `await`
 //! Tamil/Tanglish spelling from native review (R9/R11) before it can be parsed.
 //!

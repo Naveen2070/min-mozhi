@@ -1,5 +1,9 @@
 # 01 — The Pipeline, End to End
 
+> Before diving in: if you want a friendlier, file-by-file introduction,
+> start with [`../source-guide/`](../source-guide/) instead. This page
+> assumes you already know roughly what each module does.
+
 What actually happens when you run:
 
 ```text
@@ -54,18 +58,25 @@ recovery, so one bad line doesn't hide the next error. Details in
 ## Step 4 — Check (`src/checker/`)
 
 Between parse and emit, `checker::check` runs over all loaded files (in
-BOTH `mimz check` and `mimz compile`): project-wide duplicates, name
-resolution (every name points at a declaration — signals, modules,
-enums/variants, instance ports, parameters), const evaluation, the
-reg-requires-reset rule, the **width/type pass** (exact widths,
-lossless growth, signed/bits separation, literal fitting — checked
-under concrete parameter bindings), the **driver pass**
-(single-driver per signal/bit, output coverage, reg-per-`on`-block,
-combinational-cycle DAG incl. through-instance paths, `=` vs `<-`),
-**match exhaustiveness** (every value/variant covered, unreachable arms
-rejected), **instantiation completeness** (every input connected exactly
-once), and the **clock-domain pass** (per-reg clock ownership,
-cross-domain reads rejected until Phase 2's `sync`).
+BOTH `mimz check` and `mimz compile`). It performs:
+
+- project-wide duplicates;
+- name resolution (every name points at a declaration — signals,
+  modules, enums/variants, instance ports, parameters);
+- const evaluation;
+- the reg-requires-reset rule;
+- the **width/type pass** (exact widths, lossless growth, signed/bits
+  separation, literal fitting — checked under concrete parameter
+  bindings);
+- the **driver pass** (single-driver per signal/bit, output coverage,
+  reg-per-`on`-block, combinational-cycle DAG incl. through-instance
+  paths, `=` vs `<-`);
+- **match exhaustiveness** (every value/variant covered, unreachable
+  arms rejected);
+- **instantiation completeness** (every input connected exactly once);
+- the **clock-domain pass** (per-reg clock ownership, cross-domain reads
+  rejected until Phase 2's `sync`).
+
 Every checker error carries a stable code (`E0101`) — catalog and
 details in [`11-checker.md`](11-checker.md).
 
@@ -89,7 +100,8 @@ output path. Details in [`05-emit-verilog.md`](05-emit-verilog.md).
 
 After the checker, `emit_verilog::transliterate` rewrites Tamil
 identifiers to readable ASCII (விளக்கு → `villakku`), and the emitter
-unrolls `repeat` at compile time. **Phase 1 is complete** — every plan
+unrolls `repeat` at compile time. If `--emit-testbench` is passed, it
+also extracts inline `test` blocks and emits a standard Verilog `_tb.v`. **Phase 1 is complete** — every plan
 item in `docs/plan/phase-1-verilog-backend.md` is ticked. The Phase 1.8
 grammar engine (the `thamizh-order` parser profile, all five clause flips)
 and the Phase 1.5 simulator (`mimz sim` / `mimz test`, full parity) have

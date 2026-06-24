@@ -1,0 +1,673 @@
+@import "tailwindcss";
+
+/* Self-hosted fonts (Fontsource) — no render-blocking third-party request, and
+   the CSP needs no Google hosts. Family names match the --font-* tokens below.
+   Only the weights actually used are imported (Inter 400-700, JetBrains Mono
+   400/500, Noto Sans Tamil 400/500/600). */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/noto-sans-tamil/400.css";
+@import "@fontsource/noto-sans-tamil/500.css";
+@import "@fontsource/noto-sans-tamil/600.css";
+
+/* Class-based dark mode (toggled on <html class="dark">). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---- Brand tokens: blue + lightning-yellow ("மின்" = electricity) ----- */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, "Noto Sans Tamil", sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "SFMono-Regular", "Noto Sans Tamil",
+    monospace;
+  --font-tamil: "Noto Sans Tamil", "Inter", sans-serif;
+
+  /* Lightning yellow (primary spark / accent). */
+  --color-bolt-300: #ffe066;
+  --color-bolt-400: #ffd60a;
+  --color-bolt-500: #f5c211;
+  --color-bolt-600: #c79100;
+
+  /* Electric blue (links / secondary). */
+  --color-volt-300: #7cc4ff;
+  --color-volt-400: #3b9eff;
+  --color-volt-500: #1e7fff;
+  --color-volt-600: #0a5fd6;
+}
+
+/* ---- Theme surfaces (dark-first navy; light overrides) ---------------- */
+:root {
+  --bg: #081120;
+  --bg-soft: #0d1a2e;
+  --surface: #122340;
+  --border: #1e3658;
+  --text: #e8eef7;
+  --text-muted: #93a7c4;
+  --accent: var(--color-bolt-400); /* lightning yellow */
+  --accent-blue: var(--color-volt-400);
+  --link: var(--color-volt-300);
+  color-scheme: dark;
+}
+
+:root:not(.dark) {
+  --bg: #ffffff;
+  --bg-soft: #f4f7fb;
+  --surface: #ffffff;
+  --border: #d8e2ef;
+  --text: #0a1424;
+  --text-muted: #4a5b72;
+  --accent: var(--color-bolt-600); /* readable gold on white */
+  --accent-blue: var(--color-volt-600);
+  --link: var(--color-volt-600);
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--link);
+}
+
+/* A blue→yellow "current" used for the wordmark / hero accents. */
+.spark-gradient {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-volt-400),
+    var(--color-bolt-400)
+  );
+}
+
+/* ---- Shiki dual-theme: honour the dark vars under html.dark ----------- */
+.dark .astro-code,
+.dark .astro-code span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+.astro-code {
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 1rem 1.1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+/* ---- Rendered docs (.prose) ------------------------------------------- */
+.prose {
+  line-height: 1.7;
+  color: var(--text);
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 1rem;
+}
+.prose h2 {
+  font-size: 1.4rem;
+  font-weight: 650;
+  margin: 2.2rem 0 0.8rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border);
+}
+.prose h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 1.8rem 0 0.6rem;
+}
+.prose h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.4rem 0 0.5rem;
+}
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote,
+.prose table {
+  margin: 0 0 1rem;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.4rem;
+}
+.prose li {
+  margin: 0.3rem 0;
+}
+.prose a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 0.2rem 0 0.2rem 1rem;
+  color: var(--text-muted);
+}
+/* Inline code (not the Shiki block). */
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background-color: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.35rem;
+}
+.prose pre {
+  margin: 0 0 1rem;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  font-size: 0.9rem;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.7rem;
+  text-align: left;
+}
+.prose th {
+  background-color: var(--bg-soft);
+  font-weight: 600;
+}
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+
+/* ---- Design-token utilities (so markup needs no inline styles) -------- */
+.fg {
+  color: var(--text);
+}
+.fg-muted {
+  color: var(--text-muted);
+}
+.fg-accent {
+  color: var(--accent);
+}
+.ff-tamil {
+  font-family: var(--font-tamil);
+}
+.ff-mono {
+  font-family: var(--font-mono);
+}
+.bd {
+  border-color: var(--border);
+}
+.bg-soft {
+  background-color: var(--bg-soft);
+}
+.btn-primary {
+  background-color: var(--accent);
+  color: #081120;
+}
+.btn-outline {
+  border-color: var(--border);
+  color: var(--text);
+}
+/* Sticky translucent nav bar background. */
+.nav-bar {
+  border-color: var(--border);
+  background-color: color-mix(in srgb, var(--bg) 85%, transparent);
+}
+
+/* ---- Hero oscilloscope (homepage, interactive 2D) -------------------- */
+.hero-scene {
+  display: flex;
+  flex-direction: column;
+}
+.hero-stage {
+  position: relative;
+  height: 14rem;
+}
+.hero-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  border-top: 1px solid var(--border);
+  background-color: var(--bg-soft);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+}
+.hero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.6rem;
+  color: var(--text);
+  background-color: transparent;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hero-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.hero-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+}
+.hero-range {
+  accent-color: var(--accent);
+  max-width: 7rem;
+  cursor: pointer;
+}
+.hero-select {
+  background-color: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.15rem 0.4rem;
+  cursor: pointer;
+}
+
+/* ---- Feature illustrations (homepage, reveal-on-scroll) -------------- */
+.feat-box {
+  width: 100%;
+}
+.feat-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* Entrance: hidden until the wrapper gets .in (set when scrolled into view). */
+.feat-reveal {
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.in .feat-reveal {
+  opacity: 1;
+  transform: translateY(0);
+}
+.feat-d1 {
+  transition-delay: 0.05s;
+}
+.feat-d2 {
+  transition-delay: 0.17s;
+}
+.feat-d3 {
+  transition-delay: 0.3s;
+}
+.feat-d4 {
+  transition-delay: 0.44s;
+}
+.feat-draw {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.25s;
+}
+.in .feat-draw {
+  stroke-dashoffset: 0;
+}
+/* SVG primitives */
+.feat-chip {
+  fill: var(--bg-soft);
+  stroke: var(--color-volt-400);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 2px 4px color-mix(in srgb, var(--bg) 80%, transparent));
+}
+.feat-wire {
+  fill: none;
+  stroke: var(--color-bolt-400);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.feat-arrow {
+  fill: var(--color-bolt-400);
+}
+.feat-dashln {
+  fill: none;
+  stroke: var(--color-bolt-400);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  opacity: 0.4;
+}
+.feat-badge-box {
+  fill: color-mix(in srgb, var(--color-bolt-400) 10%, var(--bg-soft));
+  stroke: var(--color-bolt-400);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--bg) 80%, transparent));
+}
+.feat-ok {
+  fill: none;
+  stroke: var(--color-volt-400);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.feat-label {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  fill: var(--text);
+}
+.feat-badge-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--text);
+}
+.feat-sub {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  fill: var(--text-muted);
+}
+/* Trilingual (HTML) */
+.feat-tri {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.feat-tri-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background-color: var(--bg);
+  padding: 0.7rem 0.9rem;
+}
+.feat-tri-cap {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.feat-tri-word {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+.feat-tri-ta {
+  font-family: var(--font-tamil);
+}
+.feat-tri-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+}
+.feat-tri-list span {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent-blue);
+}
+.feat-tri-code {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.feat-cycle {
+  animation: feat-fade 0.5s ease;
+}
+@keyframes feat-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .feat-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .feat-draw {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .feat-cycle {
+    animation: none;
+  }
+}
+
+/* ---- Playground (the in-browser console island) ---------------------- */
+.pg-label {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.pg-select {
+  background-color: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+}
+.pg-editor {
+  height: 28rem;
+  width: 100%;
+  resize: none;
+  padding: 0.75rem;
+  background-color: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.pg-log {
+  height: 24rem;
+  overflow: auto;
+  padding: 0.75rem;
+  background-color: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.pg-log pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pg-input {
+  min-width: 0;
+  flex: 1;
+  background-color: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.pg-prompt {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.pg-hint {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.pg-btn {
+  background-color: var(--accent);
+  color: #081120;
+  border: none;
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.pg-btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.pg-btn:disabled,
+.pg-btn-ghost:disabled,
+.pg-input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Waveform panel (canvas drawn by WaveformViewer). */
+.pg-wave {
+  overflow-x: auto;
+  background-color: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+}
+.pg-wave canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Console log line colors. */
+.pg-cmd {
+  color: var(--accent);
+}
+.pg-out {
+  color: var(--text);
+}
+.pg-err {
+  color: #ff6b6b;
+}
+.pg-note {
+  color: var(--text-muted);
+}
+
+/* Stimulus panel — input controls that drive the waveform. */
+.pg-stim {
+  background-color: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+.pg-stim-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.pg-steps {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.pg-steps th,
+.pg-steps td {
+  border: 1px solid var(--border);
+  padding: 0.15rem 0.35rem;
+  text-align: center;
+}
+.pg-steps th[scope="row"] {
+  text-align: left;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pg-step-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+}
+.pg-step-x {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0;
+}
+.pg-step-x:hover {
+  color: #ff6b6b;
+}
+.pg-cell {
+  width: 4.5rem;
+  background-color: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  text-align: right;
+}
+.pg-bit {
+  width: 2rem;
+  background-color: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pg-bit[aria-pressed="true"] {
+  background-color: var(--accent);
+  color: #081120;
+  border-color: var(--accent);
+}
+.pg-held {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.pg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.pg-stim-note {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #ff6b6b;
+  font-family: var(--font-mono);
+}

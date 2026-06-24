@@ -20,6 +20,9 @@ detailed, recipe-level guide lives in
 ## The 30-second rules
 
 - **Spec first.** Language behavior changes start in `spec/`, not in code.
+- **Building anything?** [`docs/BUILD.md`](docs/BUILD.md) is the full reference —
+  required tools, every crate/package, and the native + WASM + site + extension
+  build commands.
 - **Quality gate** (CI enforces exactly this):
 
   ```text
@@ -54,7 +57,7 @@ detailed, recipe-level guide lives in
 
 | You want to…                 | See recipe in [`docs/code/08-contributing.md`](docs/code/08-contributing.md) |
 | ---------------------------- | ---------------------------------------------------------------------------- |
-| Change a Tanglish/Tamil word | data-only change in `keywords.toml` + spec table                             |
+| Change a Tanglish/Tamil word | data-only change in `lang/keywords.toml` + spec table                        |
 | Add a keyword                | spec → TOML → `Kw` enum → `kw_for_key` → parser → tests                      |
 | Add a syntax form            | spec → AST node → parse routine → emit (or clean error) → tests              |
 | Extend the Verilog emitter   | symbol table, substitution, auto-wire contract, "errors never guesses"       |

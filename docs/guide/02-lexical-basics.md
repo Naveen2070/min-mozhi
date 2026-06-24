@@ -75,7 +75,7 @@ module M { in a: bit  out y: bit  y = a }
 
 The full table of all 28 keywords in all three flavors is in the
 [cheat sheet](12-cheatsheet.md). The single source of truth is
-[`../../keywords.toml`](../../keywords.toml).
+[`../../lang/keywords.toml`](../../lang/keywords.toml).
 
 > Only **keywords** change across flavors. Types (`bit`, `bits`, `signed`),
 > built-in function names (`extend`, `min`, …), operators, and your own

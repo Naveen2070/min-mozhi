@@ -14,12 +14,12 @@ on:
     # Nightly perf batch is still disabled. Uncomment to schedule it (03:00
     # UTC); `nightly-bench` is gated on exactly this cron so the weekly fuzz
     # schedule above never triggers the perf batch.
-    # - cron: "0 3 * * *"
+    - cron: "0 3 * * *"
 
 env:
   CARGO_TERM_COLOR: always
 
-# Least privilege by default (ci_plan.md §3.4): a read-only token for every job.
+# Least privilege by default (ci_plan.md section 3.4): a read-only token for every job.
 # The only job that needs write — `nightly-bench`, which commits perf history —
 # opts into `contents: write` locally (below).
 permissions:
@@ -118,15 +118,17 @@ jobs:
         # checkout, or created on the first run).
         run: cargo run --release --bin mimz-bench -- --no-cov --iterations 500
 
-      - name: Commit history back to the repo
+      - name: Commit history to develop branch
         # `[skip ci]` so this bot push does NOT re-trigger the workflow.
+        # Pushes to `develop` (unprotected) instead of the protected default branch.
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase --autostash || true
+          git fetch origin develop || git branch develop
+          git checkout develop
           git add bench-history.jsonl
           git diff --staged --quiet || git commit -m "chore(bench): perf history ${GITHUB_SHA::7} [skip ci]"
-          git push
+          git push origin develop
 
       - name: Upload report
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -206,6 +208,27 @@ jobs:
           cargo fuzz run lex_parse_compile -- -max_total_time=600 -rss_limit_mb=2048
           cargo fuzz run pretty_roundtrip -- -max_total_time=600 -rss_limit_mb=2048
           cargo fuzz run translate_roundtrip -- -max_total_time=600 -rss_limit_mb=2048
+
+  audit:
+    name: cargo audit (advisory gate)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies (ci_plan.md section "crate supply-chain audit gate")
+        # Reads the committed Cargo.lock; non-zero exit on a RUSTSEC advisory or a
+        # yanked crate. SHA-pinning + Dependabot cover the supply chain's first
+        # half; this closes the "known-vulnerable crate" gap.
+        run: cargo audit
 
   docs:
     name: markdown lint + format

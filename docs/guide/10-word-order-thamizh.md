@@ -78,9 +78,13 @@ mimz translate counter.mimz --order thamizh --to tamil
 ```
 
 This re-emits the program in natural-order Tamil (it adds the `syntax thamizh`
-directive for you). Note that `--order` re-emits from the AST, so it reformats and
-drops comments; `--to` alone (flavor only) is lossless. If you always want this
-pair, set `[translate] order = "thamizh"` / `to = "tamil"` in a `mimz.toml` so you
-need not retype them. More in [the toolchain](11-toolchain.md).
+directive for you). Two things to note:
+
+- `--order` re-emits from the AST, so it reformats and drops comments; `--to`
+  alone (flavor only) is lossless.
+- If you always want this pair, set `[translate] order = "thamizh"` /
+  `to = "tamil"` in a `mimz.toml` so you need not retype them.
+
+More in [the toolchain](11-toolchain.md).
 
 Next: [the toolchain](11-toolchain.md).

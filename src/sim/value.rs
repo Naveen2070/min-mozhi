@@ -312,11 +312,23 @@ fn binary(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
         BinOp::BitOr => Val::new(l.bits | r.bits, wmax, signed),
         BinOp::BitXor => Val::new(l.bits ^ r.bits, wmax, signed),
         BinOp::Shl => Val::new(
-            l.bits.checked_shl(r.bits as u32).unwrap_or(0),
+            if r.bits >= 128 {
+                0
+            } else {
+                l.bits.checked_shl(r.bits as u32).unwrap_or(0)
+            },
             l.width,
             l.signed,
         ),
-        BinOp::Shr => Val::new(l.bits >> (r.bits.min(127) as u32), l.width, l.signed),
+        BinOp::Shr => Val::new(
+            if r.bits >= 128 {
+                0
+            } else {
+                l.bits >> (r.bits as u32)
+            },
+            l.width,
+            l.signed,
+        ),
         BinOp::Eq => Val::new(
             ((l.bits & mask(wmax)) == (r.bits & mask(wmax))) as u128,
             1,

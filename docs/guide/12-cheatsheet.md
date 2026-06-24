@@ -1,47 +1,52 @@
 # 12 — Cheat Sheet
 
 One-page reference. The authoritative sources are
-[`../../keywords.toml`](../../keywords.toml) (words) and
+[`../../lang/keywords.toml`](../../lang/keywords.toml) (words) and
 [`../../spec/`](../../spec/) (semantics).
 
 ## Keywords — all three flavors
 
-| English   | Tanglish     | Tamil         | Used for                        |
-| --------- | ------------ | ------------- | ------------------------------- |
-| `module`  | `thoguthi`   | `தொகுதி`      | declare a module                |
-| `in`      | `ulleedu`    | `உள்ளீடு`     | input port                      |
-| `out`     | `veliyeedu`  | `வெளியீடு`    | output port                     |
-| `wire`    | `kambi`      | `கம்பி`       | combinational signal            |
-| `reg`     | `pathivedu`  | `பதிவேடு`     | register (memory)               |
-| `clock`   | `thudippu`   | `துடிப்பு`    | clock signal                    |
-| `reset`   | `meettamai`  | `மீட்டமை`     | reset signal                    |
-| `on`      | `pothu`      | `போது`        | clocked block                   |
-| `rise`    | `yetram`     | `ஏற்றம்`      | rising-edge selector            |
-| `if`      | `enil`       | `எனில்`       | conditional                     |
-| `else`    | `illaiyenil` | `இல்லையெனில்` | else branch                     |
-| `match`   | `thernthedu` | `தேர்ந்தெடு`  | pattern match                   |
-| `enum`    | `vagai`      | `வகை`         | enumeration                     |
-| `let`     | `amai`       | `அமை`         | instantiate a module            |
-| `const`   | `maarili`    | `மாறிலி`      | compile-time constant           |
-| `repeat`  | `meendum`    | `மீண்டும்`    | compile-time unroll             |
-| `import`  | `serkka`     | `சேர்க்க`     | import a file (`include` alias) |
-| `true`    | `mei`        | `மெய்`        | boolean literal                 |
-| `false`   | `poi`        | `பொய்`        | boolean literal                 |
-| `test`    | `sodhanai`   | `சோதனை`       | test block                      |
-| `for`     | `kaaga`      | `க்காக`       | test instantiation              |
-| `tick`    | `kanam`      | `கணம்`        | advance a clock in a test       |
-| `expect`  | `uruthisei`  | `உறுதிசெய்`   | assert in a test                |
-| `and`     | `mattrum`    | `மற்றும்`     | logical and (`&&`)              |
-| `or`      | `alladhu`    | `அல்லது`      | logical or (`\|\|`)             |
-| `not`     | `alla`       | `அல்ல`        | logical not (`!`)               |
-| `syntax`  | `ilakkanam`  | `இலக்கணம்`    | grammar directive               |
-| `thamizh` | `thamizh`    | `தமிழ்`       | thamizh word-order profile      |
+| English   | Tanglish        | Tamil         | Used for                        |
+| --------- | --------------- | ------------- | ------------------------------- |
+| `module`  | `thoguthi`      | `தொகுதி`      | declare a module                |
+| `in`      | `ulleedu`       | `உள்ளீடு`     | input port                      |
+| `out`     | `veliyeedu`     | `வெளியீடு`    | output port                     |
+| `wire`    | `kambi`         | `கம்பி`       | combinational signal            |
+| `reg`     | `pathivedu`     | `பதிவேடு`     | register (memory)               |
+| `mem`     | `ninaivagam`    | `நினைவகம்`    | memory / register array         |
+| `clock`   | `thudippu`      | `துடிப்பு`    | clock signal                    |
+| `reset`   | `meettamai`     | `மீட்டமை`     | reset signal                    |
+| `async`   | `otthisaivatra` | `ஒத்திசைவற்ற` | asynchronous-reset modifier     |
+| `on`      | `pothu`         | `போது`        | clocked block                   |
+| `rise`    | `yetram`        | `ஏற்றம்`      | rising-edge selector            |
+| `fall`    | `irakkam`       | `இறக்கம்`     | falling-edge selector           |
+| `if`      | `enil`          | `எனில்`       | conditional                     |
+| `else`    | `illaiyenil`    | `இல்லையெனில்` | else branch                     |
+| `match`   | `thernthedu`    | `தேர்ந்தெடு`  | pattern match                   |
+| `enum`    | `vagai`         | `வகை`         | enumeration                     |
+| `let`     | `amai`          | `அமை`         | instantiate a module            |
+| `const`   | `maarili`       | `மாறிலி`      | compile-time constant           |
+| `repeat`  | `meendum`       | `மீண்டும்`    | compile-time unroll             |
+| `import`  | `serkka`        | `சேர்க்க`     | import a file (`include` alias) |
+| `true`    | `mei`           | `மெய்`        | boolean literal                 |
+| `false`   | `poi`           | `பொய்`        | boolean literal                 |
+| `test`    | `sodhanai`      | `சோதனை`       | test block                      |
+| `for`     | `kaaga`         | `க்காக`       | test instantiation              |
+| `tick`    | `kanam`         | `கணம்`        | advance a clock in a test       |
+| `expect`  | `uruthisei`     | `உறுதிசெய்`   | assert in a test                |
+| `and`     | `mattrum`       | `மற்றும்`     | logical and (`&&`)              |
+| `or`      | `alladhu`       | `அல்லது`      | logical or (`\|\|`)             |
+| `not`     | `alla`          | `அல்ல`        | logical not (`!`)               |
+| `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar directive               |
+| `thamizh` | `thamizh`       | `தமிழ்`       | thamizh word-order profile      |
 
-Reserved for future features (using one is an error): `fall`, `mem`, `sync`,
-`inout`, `struct`, `secret`, `declassify`, `default`, `pipeline`, `interface`,
-`chan`, `prove`, `async`, `await`, `fixed`, `requires`, `ensures`, `fn` /
-`function` (future combinational functions), `suzhal` / `சுழல்` (future
-controlled `for`-loop).
+The Tanglish/Tamil spellings of `mem`, `async`, and `fall` are **provisional**,
+pending native-speaker review before the v0.1.0 release.
+
+Reserved for future features (using one is an error): `sync`, `inout`, `struct`,
+`secret`, `declassify`, `default`, `pipeline`, `interface`, `chan`, `prove`,
+`await`, `fixed`, `requires`, `ensures`, `fn` / `function` (future combinational
+functions), `suzhal` / `சுழல்` (future controlled `for`-loop).
 
 ## Types
 
@@ -55,15 +60,15 @@ controlled `for`-loop).
 
 ## Operators
 
-| Group        | Operators                                                |
-| ------------ | -------------------------------------------------------- |
-| arithmetic   | `+` `-` `*` (lossless, grow) · `+%` `-%` `*%` (wrapping) |
-| shift        | `<<` `>>`                                                |
-| bitwise      | `&` `\|` `^` `~`                                         |
-| reduction    | `&x` `\|x` `^x` (collapse a bus to one bit)              |
-| comparison   | `==` `!=` `<` `<=` `>` `>=` · chained: `lo <= x <= hi`   |
-| logical      | `&&`/`and` `\|\|`/`or` `!`/`not` (on `bit` only)         |
-| build/select | `{a, b}` concat · `x[i]` index · `x[hi:lo]` slice        |
+| Group        | Operators                                                              |
+| ------------ | ---------------------------------------------------------------------- |
+| arithmetic   | `+` `-` `*` (lossless, grow) · `+%` `-%` `*%` (wrapping)               |
+| shift        | `<<` `>>`                                                              |
+| bitwise      | `&` `\|` `^` `~`                                                       |
+| reduction    | `&x` `\|x` `^x` (collapse a bus to one bit)                            |
+| comparison   | `==` `!=` `<` `<=` `>` `>=` · chained: `lo <= x <= hi`                 |
+| logical      | `&&`/`and` `\|\|`/`or` `!`/`not` (on `bit` only)                       |
+| build/select | `{a, b}` concat · `{N{x}}` replicate · `x[i]` index · `x[hi:lo]` slice |
 
 Precedence is Rust-style: `x & 1 == 0` is `(x & 1) == 0`.
 
@@ -109,7 +114,7 @@ Run `mimz explain <CODE>` for the full classroom version of any of these.
 | `E0505` | wrong assignment kind (`=` on reg, `<-` on wire)                 |
 | `E0601` | `match` not exhaustive                                           |
 | `E0701` | cross-clock-domain read                                          |
-| `E1104` | register declared with no reset value                            |
+| `E1104` | register has no reset value, or memory has no init value         |
 | `E1105` | `<-` used outside an `on` block                                  |
 | `E1106` | `=` used inside an `on` block                                    |
 | `E1108` | value-driving `if` without an `else`                             |
@@ -125,7 +130,7 @@ Run `mimz explain <CODE>` for the full classroom version of any of these.
 | Command     | Flags                                                                                                                                                                                               |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `check`     | `--tokens` (dump tokens) · `--json` (machine-readable) · `--lang <flavor>`                                                                                                                          |
-| `compile`   | `-o <path>` · `--lang <flavor>`                                                                                                                                                                     |
+| `compile`   | `-o <path>` · `--lang <flavor>` · `--emit-testbench` · `--json`                                                                                                                                     |
 | `eval`      | `--in a=1,b=2` · `--module <M>` · `--param W=8` · `--lang <flavor>`                                                                                                                                 |
 | `sim`       | `-o <path.vcd>` · `--cycles N` · `--clock <c>` · `--in a=1,b=2` · `--param W=8` · `--sweep a=0\|1,b=2` · `--module <M>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>` |
 | `test`      | `--filter <substr>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>`                                                                                                     |

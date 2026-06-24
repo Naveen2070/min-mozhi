@@ -131,7 +131,7 @@ pub fn render(diags: &[Diag], src: &str, path: &str) -> String {
 /// Like [`render`], but emits each message in `flavor` when the localized
 /// catalog covers its E-code (`morph::localized_msg`); otherwise the English
 /// `msg` is used verbatim. The caret/location/help layout is identical — only
-/// the WHAT line is localized (Phase 1.8, spec/04 §5).
+/// the WHAT line is localized (Phase 1.8, spec/04 section 5).
 pub fn render_lang(diags: &[Diag], src: &str, path: &str, flavor: Flavor) -> String {
     let mut out = String::new();
     for d in diags {

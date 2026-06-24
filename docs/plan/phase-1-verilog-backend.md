@@ -4,7 +4,7 @@
 > Window: months 3–7 · Target: **31 Dec 2026** (solo, ~8–10 h/wk) ·
 > Status: 🟢 **COMPLETE 2026-06-12** — every work item ticked, gating and
 > non-gating (160 tests at completion; the 31 Dec 2026 target beaten by six months).
-> v0.1.0 tag is the founder's call.
+> v0.1.0 tag is the maintainer's call.
 
 ## Goal
 
@@ -19,7 +19,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 - [x] `cargo init` — single crate `mimz` (Rust stable 1.96, edition 2024; build/fmt/clippy green 2026-06-10)
 - [x] **CI (GitHub Actions) from the first commit** (decision D5): fmt, clippy, tests — `.github/workflows/ci.yml`
 - [x] LICENSE-MIT + LICENSE-APACHE files (dual license, decision A5) + `.gitignore`/`.gitattributes`/`.editorconfig`
-- [x] `keywords.toml` — trilingual keyword table as data; loaded into a static map (root keys, disjointness asserted at load)
+- [x] `lang/keywords.toml` — trilingual keyword table as data; loaded into a static map (root keys, disjointness asserted at load)
 - [x] CLI skeleton (`clap`): `mimz compile <file>`, `mimz check <file>` (+ `--tokens` debug dump)
 
 ### 2. Lexer ✅ (2026-06-10)
@@ -84,7 +84,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 ### 6. Visibility (decision D4)
 
-- [x] Minimal VS Code syntax highlighting: TextMate grammar for `.mimz` (all keyword flavors) — ✅ 2026-06-11, `editors/vscode/`, kept in lockstep with keywords.toml by `tests/grammar_sync.rs`
+- [x] Minimal VS Code syntax highlighting: TextMate grammar for `.mimz` (all keyword flavors) — ✅ 2026-06-11, `editors/vscode/`, kept in lockstep with lang/keywords.toml by `tests/grammar_sync.rs`
 - [x] **LSP v0 — diagnostics only** — ✅ 2026-06-12: `mimz lsp` via
       `tower-lsp` (bin-only module `src/lsp.rs`; the lib stays async-free
       for the Phase 4 WASM build). Full pipeline on

@@ -8,7 +8,9 @@
 //! It runs over one self-contained example (no imports), so each phase can be
 //! driven directly through the public library API without project loading.
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{Criterion, criterion_group, criterion_main};
 
 use mimz::lexer::lex;
 use mimz::parser::parse;

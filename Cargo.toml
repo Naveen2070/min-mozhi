@@ -1,6 +1,6 @@
 [package]
 name = "mimz"
-version = "0.1.0-dev"
+version = "0.1.0"
 edition = "2024"
 description = "Min-Mozhi (மின்மொழி) — a modern, safe-by-default HDL and the first Tamil-rooted one. Reads like Go/TypeScript, safe like Rust, speaks English, Tanglish, and Tamil; built to help students learn digital design."
 license = "MIT OR Apache-2.0"
@@ -16,22 +16,57 @@ default-run = "mimz"
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "1"
 unicode-ident = "1"
 unicode-normalization = "0.1"
 # Peak process RSS for the mimz-bench memory metric. Lightweight (no
 # allocator swap), so it coexists with a normal timed run — unlike the
 # opt-in dhat profile. See docs/Ideas/benchmark_plan.md Phase 3.
-memory-stats = "1"
-# LSP server (`mimz lsp`, bin-only module — the lib itself stays
-# async-free so the Phase 4 WASM build never meets tokio).
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
-tower-lsp = "0.20"
+# Optional + behind the `bench` feature (bin-only): it pulls OS RSS APIs that
+# do not build on wasm32, so the WASM crate (default-features = false) excludes it.
+memory-stats = { version = "1", optional = true }
+# LSP server (`mimz lsp`, bin-only module — the lib itself stays async-free).
+# Optional + behind the `lsp` feature so the Phase 4 WASM build (which depends on
+# the lib with default-features = false) never compiles tokio for wasm32.
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "io-std",
+], optional = true }
+tower-lsp = { version = "0.20", optional = true }
+
+# Default features power the full CLI (native). The WASM crate
+# (`crates/mimz-wasm`) depends on this crate with `default-features = false`,
+# dropping the LSP + bench deps that do not build on wasm32; the compiler
+# pipeline the playground needs has no optional deps.
+[features]
+default = ["lsp", "bench"]
+lsp = ["dep:tokio", "dep:tower-lsp"]
+bench = ["dep:memory-stats"]
+
+# The benchmark binary needs the `bench` feature (memory-stats); skipped under
+# --no-default-features so the lib stays buildable for wasm32 in isolation.
+[[bin]]
+name = "mimz-bench"
+path = "src/bin/mimz-bench/main.rs"
+required-features = ["bench"]
+
+# Two crates: this compiler (workspace root) + the wasm-bindgen wrapper that
+# exposes `compile_string` to the browser playground (Phase 4 web presence).
+# The wasm crate is kept OUT of `default-members` so the everyday host gate
+# (`cargo build`/`test`/`clippy`) never compiles it (it targets wasm32 and pulls
+# wasm-bindgen); build it explicitly: `cargo build -p mimz-wasm --target wasm32-...`.
+[workspace]
+members = ["crates/mimz-wasm"]
+default-members = ["."]
+# Standalone dev helper with its own target dir + `cargo test-summary` alias —
+# kept out of the workspace so it stays independent of the release lock/profile.
+exclude = ["tools/test-summary"]
 
 [dev-dependencies]
 # Statistical per-phase micro-benchmarks (a SEPARATE harness from mimz-bench;
 # run with `cargo bench`). See docs/Ideas/benchmark_plan.md Phase 2.
-criterion = "0.5"
+criterion = "0.7"
 
 # Per-phase micro-benchmarks: isolate lexer/parser/checker/emit timings.
 [[bench]]

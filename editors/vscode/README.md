@@ -4,7 +4,7 @@ Language support for `.mimz` files:
 
 - **Syntax highlighting** — all three keyword flavors (English,
   Tanglish, Tamil script) highlight identically, including mixed files,
-  because the grammar lists every spelling from `keywords.toml`
+  because the grammar lists every spelling from `lang/keywords.toml`
   (the repo's `tests/grammar_sync.rs` keeps them in lockstep).
 - **Live compiler diagnostics** (v0.2.0) — squiggles as you type, with
   the stable `E`-code and the teaching help line, straight from the real
@@ -103,6 +103,6 @@ and reopen.
 
 ## Keeping it in sync
 
-The keyword table is data (`keywords.toml`). When a spelling changes
+The keyword table is data (`lang/keywords.toml`). When a spelling changes
 there, `cargo test` fails (`tests/grammar_sync.rs`) until this grammar
 is updated to match.

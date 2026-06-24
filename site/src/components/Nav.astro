@@ -1,0 +1,21 @@
+---
+import Wordmark from "./Wordmark.astro";
+import ThemeToggle from "./ThemeToggle.tsx";
+import Search from "./Search.astro";
+---
+
+<header class="nav-bar sticky top-0 z-30 border-b backdrop-blur">
+  <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+    <a href="/" class="fg no-underline">
+      <Wordmark />
+    </a>
+    <div class="flex items-center gap-4 text-sm">
+      <a href="/guide" class="fg">Docs</a>
+      <a href="/spec" class="fg">Spec</a>
+      <a href="/playground" class="fg">Playground</a>
+      <a href="https://github.com/Naveen2070/min-mozhi" class="fg">GitHub</a>
+      <Search />
+      <ThemeToggle client:idle />
+    </div>
+  </nav>
+</header>
