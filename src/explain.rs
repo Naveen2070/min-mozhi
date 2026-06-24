@@ -497,6 +497,19 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          resolved relative to the importing file.\n\n\
          Fix: correct the path, or create the file.",
     ),
+    (
+        "E1202",
+        "E1202 — bad standard-library import\n\n\
+         An `import std.<module>` names the embedded standard library but does\n\
+         not resolve: either it has the wrong shape (a std import is exactly two\n\
+         segments — one namespace, one module) or `<module>` is not a real std\n\
+         module. The namespace is trilingual — `std` / `nuulagam` / `நூலகம்` —\n\
+         and the module is the English stem (`fifo`) or its pure-Tamil twin name\n\
+         (`வரிசை` / `varisai`).\n\n\
+         Fix: write `import std.<module>` with one of the available modules — the\n\
+         message lists them. To customize a module, `mimz eject std` and point\n\
+         `mimz.toml [lib] std` at the directory (spec/02 section 1.5).",
+    ),
 ];
 
 /// Long-form explanation for a diagnostic `code` (e.g. `"E0501"`), or `None`
