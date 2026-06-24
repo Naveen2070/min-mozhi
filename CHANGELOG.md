@@ -12,7 +12,7 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ---
 
-## [0.1.0] — 2026-06-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
+## [0.1.0] — 2026-07-01 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
 The first public release. Phases 0, 1, 1.8, and 1.5 complete.
 Keyword set v1 frozen 2026-06-15. 432 passing tests.
@@ -271,4 +271,4 @@ Keywords reserved pre-v0.1.0 so no valid v0.1.0 program can claim them:
 
 ---
 
-_Built 2026-06-24 · © 2026 Naveen R · MIT + Apache-2.0_
+_Built 2026-07-01 · © 2026 Naveen R · MIT + Apache-2.0_
