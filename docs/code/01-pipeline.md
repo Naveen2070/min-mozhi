@@ -38,11 +38,42 @@ the terminal.
    `a/b.mimz`. A missing file is an error pointing at the `import` line.
    (`include` is an English alias of `import` — identical token by the
    time it reaches the parser, so this step never sees the difference.)
-4. A `visited` set of canonicalized paths makes duplicate imports and
+4. An `import std.<module>` instead resolves against the **embedded
+   standard library** (`src/stdlib.rs`) — see below — so it works from
+   any directory with no install path.
+5. A `visited` set of canonicalized paths makes duplicate imports and
    cycles harmless — each file is parsed exactly once.
 
 Output: `Vec<LoadedFile>` (path + source text + AST), entry file first.
 The source text is kept because diagnostics render spans against it.
+
+### The embedded standard library (`src/stdlib.rs`)
+
+`load_project` delegates to `load_project_with_lib(entry, lib_std)`; the
+`std.*` branch lives there. When an import's first segment is a
+standard-library namespace alias — `std` / `nuulagam` / `நூலகம்` (one
+per flavor) — it resolves against a compile-time catalog instead of the
+filesystem:
+
+- The catalog (`MODULES` in `src/stdlib.rs`) `include_str!`s the
+  already-tested example files — `examples/english/std/<stem>.mimz`
+  (canonical) and `examples/tamil-pure/<twin>.mimz` (pure-Tamil twin) —
+  so there is **one source of truth** and no install path; it also works
+  in WASM, where there is no filesystem.
+- Routing keys on the **written module alias**, deterministically (no
+  flavor detection): the English stem (`fifo`) selects the canonical
+  module (`Fifo`); the twin name or its romanization (`வரிசை` / `varisai`)
+  selects the pure-Tamil twin (`வரிசை`). The embedded source is parsed into
+  a synthetic in-memory `LoadedFile` with a virtual path `std:<stem>.mimz`.
+- `mimz.toml [lib] std = "<dir>"` overrides the embedded library with a
+  local copy: `import std.<m>` then loads `<dir>/<m>.mimz` through the
+  normal file machinery. Populate that directory with `mimz eject std`
+  (`stdlib::eject_to`, all-or-nothing). The command layer
+  (`commands::helpers::lib_std_dir`) resolves the dir relative to the
+  governing `mimz.toml` and passes it as `lib_std`.
+- A malformed std import — wrong segment count, or an unknown module — is
+  **E1202** (the message lists the available modules). Std modules are
+  self-contained (no transitive imports), an invariant a unit test guards.
 
 ## Step 2 — Lex (`src/lexer/`)
 

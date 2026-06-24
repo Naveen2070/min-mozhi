@@ -191,6 +191,22 @@ module Top {
   error (no shadowing, no aliasing in v0.2).
 - Imports are not transitive and cycles are a compile error.
 
+**Standard library — `import std.<module>`:**
+
+- `import std.<module>` resolves to the **embedded** standard library,
+  independent of the importing file's directory — no install path, offline,
+  WASM-safe. The namespace is trilingual: `std` (English) / `nuulagam`
+  (Tanglish) / `நூலகம்` (Tamil). The module segment is the English stem
+  (`fifo` → `Fifo`) or the pure-Tamil twin name (`வரிசை` / `varisai` → `வரிசை`);
+  the written alias selects which — the stem binds the canonical English module,
+  the twin name binds the Tamil module.
+- `mimz.toml [lib] std = "<dir>"` overrides the embedded library with a local
+  copy (`import std.<m>` then loads `<dir>/<m>.mimz`, resolved relative to that
+  `mimz.toml`). Populate the directory with `mimz eject std`.
+- This is one reserved namespace, not general per-import aliasing (still no
+  aliasing of arbitrary modules in this edition). A malformed std import (wrong
+  segment count, or an unknown module) is **E1202**.
+
 **Instantiation:**
 
 - `let name = Module(params) { port: signal, ... }` connects **inputs** by
