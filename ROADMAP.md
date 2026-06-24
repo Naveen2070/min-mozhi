@@ -18,7 +18,7 @@
 | 1     | Verilog Backend (compiler)        | ✅ Complete | 2026-06-12     |
 | 1.8   | Grammar Engine (Tamil word order) | ✅ Complete | 2026-06-16     |
 | 1.5   | Own Simulator                     | ✅ Complete | 2026-06-22     |
-| **→** | **v0.1.0 public release**         | **🚀 Now**  | **2026-07-01** |
+| **→** | **v0.1.0 public release**         | **🚀 Now**  | **2026-06-24** |
 | 2     | IR + Synthesis (Yosys/nextpnr)    | ⏳ Planned  | —              |
 | 3     | Native FPGA bitstream             | ⏳ Planned  | —              |
 | 4     | Ecosystem, stdlib, community      | ⏳ Ongoing  | —              |
@@ -205,12 +205,11 @@ gantt
     Event engine + VCD + Icarus (6 d):done, p15, 2026-06-16, 6d
 
     section Pre-release
-    Audit + fuzz + version bump (2 d):done, pre, 2026-06-22, 2d
-    Release delay (CI limits) (7 d)  :done, delay, 2026-06-24, 7d
-    v0.1.0 PUBLIC RELEASE           :milestone, crit, v010, 2026-07-01, 0d
+    Audit + fuzz + version bump     :done, pre, 2026-06-22, 2d
+    v0.1.0 PUBLIC RELEASE           :milestone, crit, v010, 2026-06-24, 0d
 
     section Phase 4 · Site + Ecosystem (target)
-    Astro site + WASM playground    :active, p4a, 2026-07-01, 42d
+    Astro site + WASM playground    :active, p4a, 2026-06-24, 42d
     Stdlib + package manager        :p4b, after p4a, 120d
 
     section Phase 2 · IR + Synthesis (target)
@@ -228,7 +227,7 @@ gantt
 | Phase 1 complete          | 2026-06-12 (2 days)            | ~6× faster       |
 | Phase 1.8 complete        | 2026-06-16 (2 days)            | ~3× faster       |
 | Phase 1.5 complete        | 2026-06-22 (6 days)            | ~5× faster       |
-| v0.1.0 public             | **2026-07-01 (21 days total)** | **~4–5× faster** |
+| v0.1.0 public             | **2026-06-24 (14 days total)** | **~4–5× faster** |
 | Phase 4 site + playground | Aug 2026 (target)              | ~3× faster       |
 | Phase 2 IR + synthesis    | End 2027 (target)              | ~2× faster       |
 | Phase 3 native bitstream  | End 2028 (target)              | ~2× faster       |
