@@ -13,9 +13,9 @@ module is:
   emitted Verilog, and a hand-written self-checking Icarus testbench that runs
   the compiled Verilog under `vvp`.
 
-> These ship as **example content**, not yet an importable `std.*` package: copy
-> a module into your project (or point `import` at its path). A global `std.*`
-> search path is planned — see `docs/plan/phase-4-ecosystem.md`.
+> These are **importable** — `import std.fifo` works from any project, with no
+> install path (the modules are embedded in the compiler). See
+> [Importing](#importing) below.
 
 ## The modules
 
@@ -29,6 +29,37 @@ module is:
 
 Each page documents the ports, parameters, how it works, a reproducible ASCII
 waveform from `mimz sim --trace`, and the tests.
+
+## Importing
+
+Standard-library modules are built into the compiler — `import std.fifo` works
+from any project, no install path. The namespace and module are trilingual; the
+written alias picks the canonical English module or its pure-Tamil twin:
+
+| Module    | English                              | Tanglish                        | Tamil                            |
+| --------- | ------------------------------------ | ------------------------------- | -------------------------------- |
+| FIFO      | `import std.fifo` → `Fifo`           | `serkka nuulagam.varisai`       | `சேர்க்க நூலகம்.வரிசை` → `வரிசை` |
+| Debouncer | `import std.debouncer` → `Debouncer` | `serkka nuulagam.nilaippaduthi` | `சேர்க்க நூலகம்.நிலைப்படுத்தி`   |
+| PWM       | `import std.pwm` → `Pwm`             | `serkka nuulagam.minukki`       | `சேர்க்க நூலகம்.மினுக்கி`        |
+| 7-seg     | `import std.seg7` → `Seg7`           | `serkka nuulagam.ennkaatti`     | `சேர்க்க நூலகம்.எண்காட்டி`       |
+| UART TX   | `import std.uart_tx` → `UartTx`      | `serkka nuulagam.anuppi`        | `சேர்க்க நூலகம்.அனுப்பி`         |
+
+### Vendoring (eject)
+
+To customize a module, write the library into your project and point
+`mimz.toml` at it:
+
+```bash
+mimz eject std --to ./std        # English canonical (--flavor tamil for twins)
+```
+
+```toml
+# mimz.toml
+[lib]
+std = "./std"
+```
+
+After this, `import std.fifo` loads `./std/fifo.mimz` — your copy wins.
 
 ## Try one
 
