@@ -4,9 +4,8 @@ name: CI
 
 on:
   push:
-    branches: ["master", "develop"]
+    branches: ["**"]
   pull_request:
-    branches: ["master", "develop"]
   # Manual "run the perf batch" button (Actions tab → CI → Run workflow).
   workflow_dispatch:
   schedule:
