@@ -1,4 +1,6 @@
-// ------------------------------------------------------------- coverage
+//! Coverage metrics: measure what fraction of the language spec and diagnostic
+//! codes are exercised by the test suite (corpus coverage), plus optional
+//! LLVM source-based line coverage via `cargo-llvm-cov`.
 
 use std::process::Command;
 
