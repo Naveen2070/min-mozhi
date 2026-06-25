@@ -157,7 +157,7 @@ fn unknown_to_flavor_is_a_clean_error() {
     let (ok, _, err) = run_fmt(&path, &["--to", "klingon"]);
     assert!(!ok, "an unknown --to value exits non-zero");
     assert!(
-        err.contains("unknown flavor"),
+        err.contains("invalid value 'klingon'"),
         "reports the bad flavor: {err}"
     );
     assert_eq!(

@@ -30,19 +30,64 @@ use commands::{
 ///
 /// Each subcommand has its own `--help` with full details.
 /// Use `mimz <command> --help` for detailed documentation.
+///
+/// EXIT CODES:
+///   0  Success
+///   1  Generic Failure (compilation errors, check failures, I/O errors, etc.)
 #[derive(ClapParser)]
 #[command(
     name = "mimz",
     version,
-    about = "Min-Mozhi (மின்மொழி) — the first Tamil-rooted HDL. Reads like Go/TypeScript, safe like Rust."
+    about = "Min-Mozhi (மின்மொழி) — the first Tamil-rooted HDL. Reads like Go/TypeScript, safe like Rust.",
+    subcommand_required = true,
+    arg_required_else_help = true
 )]
 struct Cli {
-    /// Path to a `mimz.toml` config. Default: discovered by walking up from the
-    /// input file (CLI flags always override config values).
-    #[arg(long, global = true, value_name = "FILE")]
+    /// Path to a `mimz.toml` config (default: walked up from the input file).
+    #[arg(short = 'c', long, global = true, value_name = "FILE")]
     config: Option<PathBuf>,
+
+    /// Control colorized output: always, never, auto (default: auto).
+    #[arg(long, global = true, value_name = "WHEN", default_value = "auto")]
+    color: ColorChoice,
+
+    /// Suppress status banners and non-essential progress output.
+    #[arg(short, long, global = true)]
+    quiet: bool,
+
+    /// Enable verbose progress and debug logging.
+    #[arg(short = 'd', long, global = true)]
+    debug: bool,
+
     #[command(subcommand)]
     command: Cmd,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum ColorChoice {
+    Always,
+    Never,
+    Auto,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum CliLang {
+    #[value(alias = "en")]
+    English,
+    #[value(alias = "tl")]
+    Tanglish,
+    #[value(alias = "ta")]
+    Tamil,
+}
+
+impl CliLang {
+    fn to_str(self) -> &'static str {
+        match self {
+            CliLang::English => "english",
+            CliLang::Tanglish => "tanglish",
+            CliLang::Tamil => "tamil",
+        }
+    }
 }
 
 /// CLI subcommands.
@@ -64,8 +109,8 @@ enum Cmd {
         json: bool,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses). JSON output stays English.
-        #[arg(long)]
-        lang: Option<String>,
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
     },
     /// Compile a .mimz file to Verilog.
     ///
@@ -84,8 +129,8 @@ enum Cmd {
         json: bool,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses). JSON output stays English.
-        #[arg(long)]
-        lang: Option<String>,
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
     },
     /// Normalize a file's keyword flavor in place.
     ///
@@ -93,12 +138,13 @@ enum Cmd {
     /// change. Default target is the flavor the file predominantly uses;
     /// `--to` overrides. (Word-order reformatting is `translate --order`,
     /// which is not lossless.)
+    #[command(alias = "format")]
     Fmt {
         /// The .mimz file to format
         file: PathBuf,
         /// Target flavor: english | tanglish | tamil (default: the file's majority)
         #[arg(long)]
-        to: Option<String>,
+        to: Option<CliLang>,
         /// Warn when the file mixes keyword flavors (mixing stays legal)
         #[arg(long)]
         strict: bool,
@@ -145,7 +191,7 @@ enum Cmd {
         file: PathBuf,
         /// Target keyword flavor: english | tanglish | tamil (default: english)
         #[arg(long)]
-        to: Option<String>,
+        to: Option<CliLang>,
         /// Word order: code | thamizh. Omit to keep the source order
         /// (keyword-only, trivia-preserving reskin).
         #[arg(long)]
@@ -174,11 +220,12 @@ enum Cmd {
     ///
     /// No clocks/regs/instances (that is the Phase 1.5 simulator);
     /// a slice of it, for quick checks and the future REPL.
+    #[command(alias = "evaluate")]
     Eval {
         /// The .mimz file
         file: PathBuf,
-        /// Input values, comma-separated: `--in a=3,b=5` (dec/0x/0b)
-        #[arg(long = "in", value_name = "NAME=VAL,...")]
+        /// Input values, comma-separated: `-i a=3,b=5` (dec/0x/0b)
+        #[arg(short = 'i', long = "in", value_name = "NAME=VAL,...")]
         inputs: String,
         /// Parameter overrides, comma-separated: `--param WIDTH=4`
         #[arg(long, default_value = "")]
@@ -188,8 +235,8 @@ enum Cmd {
         module: Option<String>,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
-        #[arg(long)]
-        lang: Option<String>,
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
     },
     /// (experimental) Simulate a clocked module.
     ///
@@ -197,6 +244,7 @@ enum Cmd {
     /// the clock toggled) and writes a VCD waveform (`-o`) and/or a per-cycle
     /// console trace (`--trace`). Single-module for now; use `mimz eval` for
     /// a combinational module.
+    #[command(alias = "simulate")]
     Sim {
         /// The .mimz file
         file: PathBuf,
@@ -204,13 +252,13 @@ enum Cmd {
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Number of clock cycles to run
-        #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..=mimz::sim::run::MAX_SIM_CYCLES))]
+        #[arg(short = 'n', long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..=mimz::sim::run::MAX_SIM_CYCLES))]
         cycles: u64,
         /// Which clock to drive (default: the module's only clock)
         #[arg(long)]
         clock: Option<String>,
-        /// Input values, comma-separated, held for the run: `--in a=3,b=5`
-        #[arg(long = "in", default_value = "")]
+        /// Input values, comma-separated, held for the run: `-i a=3,b=5`
+        #[arg(short = 'i', long = "in", default_value = "")]
         inputs: String,
         /// Parameter overrides, comma-separated: `--param WIDTH=4`
         #[arg(long, default_value = "")]
@@ -234,8 +282,8 @@ enum Cmd {
         signals: Option<String>,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
-        #[arg(long)]
-        lang: Option<String>,
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
     },
     /// Run the file's test blocks and report pass/fail.
     ///
@@ -246,7 +294,7 @@ enum Cmd {
         /// The .mimz file
         file: PathBuf,
         /// Run only tests whose name contains this substring
-        #[arg(long)]
+        #[arg(short = 'f', long)]
         filter: Option<String>,
         /// Per-cycle console trace: `--trace` (every-cycle table) or
         /// `--trace=changes` (on-change, `$monitor`-style)
@@ -260,8 +308,8 @@ enum Cmd {
         signals: Option<String>,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
-        #[arg(long)]
-        lang: Option<String>,
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
     },
 }
 
@@ -274,7 +322,22 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     let cli = Cli::parse();
+
+    // Check color choice
+    let use_color = match cli.color {
+        ColorChoice::Always => true,
+        ColorChoice::Never => false,
+        ColorChoice::Auto => {
+            use std::io::IsTerminal;
+            std::io::stderr().is_terminal()
+        }
+    };
+    mimz::diag::set_color_enabled(use_color);
+
     let config_path = cli.config;
+    let quiet = cli.quiet;
+    let debug = cli.debug;
+
     match cli.command {
         Cmd::Check {
             file,
@@ -286,8 +349,8 @@ fn main() -> ExitCode {
                 Ok(c) => c,
                 Err(code) => return code,
             };
-            let lang = lang.or(cfg.lang);
-            check(&file, tokens, json, lang.as_deref(), config_path.as_deref())
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            check(&file, tokens, json, lang_str.as_deref(), config_path.as_deref(), quiet, debug)
         }
         Cmd::Compile {
             file,
@@ -300,15 +363,17 @@ fn main() -> ExitCode {
                 Ok(c) => c,
                 Err(code) => return code,
             };
-            let lang = lang.or(cfg.lang);
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
             let emit_testbench = emit_testbench || cfg.compile.emit_testbench.unwrap_or(false);
             compile(
                 &file,
                 output,
                 emit_testbench,
                 json,
-                lang.as_deref(),
+                lang_str.as_deref(),
                 config_path.as_deref(),
+                quiet,
+                debug,
             )
         }
         Cmd::Fmt {
@@ -321,9 +386,9 @@ fn main() -> ExitCode {
                 Ok(c) => c,
                 Err(code) => return code,
             };
-            let to = to.or(cfg.fmt.to);
+            let to_str = to.map(|l| l.to_str().to_string()).or(cfg.fmt.to);
             let strict = strict || cfg.fmt.strict.unwrap_or(false);
-            fmt_file(&file, to.as_deref(), strict, output)
+            fmt_file(&file, to_str.as_deref(), strict, output, quiet, debug)
         }
         #[cfg(feature = "lsp")]
         Cmd::Lsp => {
@@ -360,11 +425,9 @@ fn main() -> ExitCode {
                 Ok(c) => c,
                 Err(code) => return code,
             };
-            let to = to.or(cfg.translate.to);
+            let to_str = to.map(|l| l.to_str().to_string()).or(cfg.translate.to);
             let order = order.or(cfg.translate.order);
             let romanize_names = romanize_names || cfg.translate.romanize_names.unwrap_or(false);
-            // Auto name-map discovery is on unless `--no-names-map` or the config
-            // turns it off (an unrecognized value warns and falls back to auto).
             let auto_names_map = if no_names_map {
                 false
             } else {
@@ -381,12 +444,14 @@ fn main() -> ExitCode {
             };
             translate_file(
                 &file,
-                to.as_deref(),
+                to_str.as_deref(),
                 order.as_deref(),
                 romanize_names,
                 names_map.as_deref(),
                 auto_names_map,
                 output,
+                quiet,
+                debug,
             )
         }
         Cmd::Eval {
@@ -400,8 +465,16 @@ fn main() -> ExitCode {
                 Ok(c) => c,
                 Err(code) => return code,
             };
-            let lang = lang.or(cfg.lang);
-            eval_file(&file, &inputs, &param, module, lang.as_deref())
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            eval_file(
+                &file,
+                &inputs,
+                &param,
+                module,
+                lang_str.as_deref(),
+                quiet,
+                debug,
+            )
         }
         Cmd::Sim {
             file,
@@ -421,7 +494,7 @@ fn main() -> ExitCode {
                 Ok(c) => c,
                 Err(code) => return code,
             };
-            let lang = lang.or(cfg.lang);
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
             sim_file(
                 &file,
                 output,
@@ -434,8 +507,10 @@ fn main() -> ExitCode {
                 trace,
                 verbose,
                 signals,
-                lang.as_deref(),
+                lang_str.as_deref(),
                 config_path.as_deref(),
+                quiet,
+                debug,
             )
         }
         Cmd::Test {
@@ -450,15 +525,17 @@ fn main() -> ExitCode {
                 Ok(c) => c,
                 Err(code) => return code,
             };
-            let lang = lang.or(cfg.lang);
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
             test_file(
                 &file,
                 filter,
                 trace,
                 verbose,
                 signals,
-                lang.as_deref(),
+                lang_str.as_deref(),
                 config_path.as_deref(),
+                quiet,
+                debug,
             )
         }
     }

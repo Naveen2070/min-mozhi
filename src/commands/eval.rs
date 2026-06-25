@@ -18,7 +18,12 @@ pub(crate) fn eval_file(
     param: &str,
     module: Option<String>,
     lang: Option<&str>,
+    _quiet: bool,
+    debug: bool,
 ) -> ExitCode {
+    if debug {
+        eprintln!("debug: evaluating combinational file {}", path.display());
+    }
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
         Err(code) => return code,

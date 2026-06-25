@@ -34,12 +34,20 @@ pub(crate) fn sim_file(
     signals: Option<String>,
     lang: Option<&str>,
     config_path: Option<&Path>,
+    quiet: bool,
+    debug: bool,
 ) -> ExitCode {
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
         Err(code) => return code,
     };
     let out = Output::Human(flavor);
+    if debug {
+        eprintln!(
+            "debug: loading project starting from entry {}",
+            path.display()
+        );
+    }
     // Load the entry file and all transitive imports, so a module that
     // instantiates a sub-module from another file can be flattened.
     let lib_std = lib_std_dir(path, config_path);
@@ -47,6 +55,12 @@ pub(crate) fn sim_file(
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
+    if debug {
+        eprintln!("debug: loaded {} project file(s)", files.len());
+        for f in &files {
+            eprintln!("  - {}", f.path.display());
+        }
+    }
     let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
     let warnings = project_warnings(&files);
     if !warnings.is_empty() {
@@ -130,10 +144,12 @@ pub(crate) fn sim_file(
             return ExitCode::FAILURE;
         }
         let unit = if clocked { "cycles" } else { "input vectors" };
-        println!(
-            "wrote {} ({steps} {unit}) — open in GTKWave",
-            dest.display()
-        );
+        if !quiet {
+            println!(
+                "wrote {} ({steps} {unit}) — open in GTKWave",
+                dest.display()
+            );
+        }
     }
 
     // Console trace — only when `--trace` is given.
@@ -154,7 +170,7 @@ pub(crate) fn sim_file(
         print!("{}", trace::render(&timeline, style, &scope));
     }
 
-    if output.is_none() && trace_style.is_none() {
+    if !quiet && output.is_none() && trace_style.is_none() {
         let what = if clocked {
             format!("{steps} cycle(s)")
         } else {
@@ -166,5 +182,6 @@ pub(crate) fn sim_file(
             timeline.module
         );
     }
+
     ExitCode::SUCCESS
 }
