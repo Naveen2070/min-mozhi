@@ -26,12 +26,22 @@ pub(crate) fn test_file(
     signals: Option<String>,
     lang: Option<&str>,
     config_path: Option<&Path>,
+    quiet: bool,
+    debug: bool,
 ) -> ExitCode {
+    use owo_colors::OwoColorize;
+
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
         Err(code) => return code,
     };
     let out = Output::Human(flavor);
+    if debug {
+        eprintln!(
+            "debug: loading project starting from entry {}",
+            path.display()
+        );
+    }
     // Load imports too, so a module-under-test that instantiates a sub-module
     // from another file can be flattened.
     let lib_std = lib_std_dir(path, config_path);
@@ -39,6 +49,12 @@ pub(crate) fn test_file(
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
+    if debug {
+        eprintln!("debug: loaded {} project file(s)", files.len());
+        for f in &files {
+            eprintln!("  - {}", f.path.display());
+        }
+    }
     let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
     let warnings = project_warnings(&files);
     if !warnings.is_empty() {
@@ -58,27 +74,43 @@ pub(crate) fn test_file(
         .collect();
 
     if tests.is_empty() {
-        match &filter {
-            Some(f) => println!("no `test` blocks match `{f}` in {path_str}"),
-            None => println!("no `test` blocks in {path_str}"),
+        if !quiet {
+            match &filter {
+                Some(f) => println!("no `test` blocks match `{f}` in {path_str}"),
+                None => println!("no `test` blocks in {path_str}"),
+            }
         }
         return ExitCode::SUCCESS;
     }
 
     let mut passed = 0usize;
     let mut failed = 0usize;
+    let use_color = mimz::diag::is_color_enabled();
+
     for t in tests {
         match run_test(&asts, &src, t) {
             Ok(o) => {
                 match &o.result {
                     TestResult::Pass => {
                         passed += 1;
-                        let s = if o.checks == 1 { "check" } else { "checks" };
-                        println!("ok   {} ({} {s})", o.name, o.checks);
+                        if !quiet {
+                            let s = if o.checks == 1 { "check" } else { "checks" };
+                            let ok_str = if use_color {
+                                "ok".green().bold().to_string()
+                            } else {
+                                "ok".to_string()
+                            };
+                            println!("{ok_str}   {} ({} {s})", o.name, o.checks);
+                        }
                     }
                     TestResult::Fail(m) => {
                         failed += 1;
-                        println!("FAIL {}", o.name);
+                        let fail_str = if use_color {
+                            "FAIL".red().bold().to_string()
+                        } else {
+                            "FAIL".to_string()
+                        };
+                        println!("{fail_str} {}", o.name);
                         for line in m.lines() {
                             println!("       {line}");
                         }
@@ -105,12 +137,19 @@ pub(crate) fn test_file(
             }
             Err(e) => {
                 failed += 1;
-                eprintln!("error in test \"{}\": {e}", t.name);
+                let fail_str = if use_color {
+                    "FAIL".red().bold().to_string()
+                } else {
+                    "FAIL".to_string()
+                };
+                eprintln!("{fail_str} error in test \"{}\": {e}", t.name);
             }
         }
     }
 
-    println!("\n{passed} passed, {failed} failed");
+    if !quiet || failed > 0 {
+        println!("\n{passed} passed, {failed} failed");
+    }
     if failed == 0 {
         ExitCode::SUCCESS
     } else {

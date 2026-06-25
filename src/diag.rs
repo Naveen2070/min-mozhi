@@ -128,26 +128,104 @@ pub fn render(diags: &[Diag], src: &str, path: &str) -> String {
     render_lang(diags, src, path, Flavor::English)
 }
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static COLOR_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable colorized diagnostics output globally.
+pub fn set_color_enabled(enabled: bool) {
+    COLOR_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+/// Check if colorized diagnostics output is globally enabled.
+pub fn is_color_enabled() -> bool {
+    COLOR_ENABLED.load(Ordering::Relaxed)
+}
+
 /// Like [`render`], but emits each message in `flavor` when the localized
 /// catalog covers its E-code (`morph::localized_msg`); otherwise the English
 /// `msg` is used verbatim. The caret/location/help layout is identical — only
 /// the WHAT line is localized (Phase 1.8, spec/04 section 5).
 pub fn render_lang(diags: &[Diag], src: &str, path: &str, flavor: Flavor) -> String {
+    use owo_colors::OwoColorize;
     let mut out = String::new();
+    let use_color = is_color_enabled();
     for d in diags {
         let (line_no, col, line_text, line_start) = locate(src, d.span.start);
         let msg = crate::morph::localized_msg(d, src, flavor).unwrap_or_else(|| d.msg.clone());
+
         let label = match d.severity {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
+            Severity::Error => {
+                if use_color {
+                    "error".red().bold().to_string()
+                } else {
+                    "error".to_string()
+                }
+            }
+            Severity::Warning => {
+                if use_color {
+                    "warning".yellow().bold().to_string()
+                } else {
+                    "warning".to_string()
+                }
+            }
         };
+
+        let msg_styled = if use_color {
+            msg.bold().to_string()
+        } else {
+            msg.clone()
+        };
+
         match d.code {
-            Some(c) => out.push_str(&format!("{label}[{c}]: {msg}\n")),
-            None => out.push_str(&format!("{label}: {msg}\n")),
+            Some(c) => {
+                let code_styled = if use_color {
+                    format!("[{c}]").bold().to_string()
+                } else {
+                    format!("[{c}]")
+                };
+                let code_colored = match d.severity {
+                    Severity::Error => {
+                        if use_color {
+                            code_styled.red().to_string()
+                        } else {
+                            code_styled
+                        }
+                    }
+                    Severity::Warning => {
+                        if use_color {
+                            code_styled.yellow().to_string()
+                        } else {
+                            code_styled
+                        }
+                    }
+                };
+                out.push_str(&format!("{label}{code_colored}: {msg_styled}\n"));
+            }
+            None => out.push_str(&format!("{label}: {msg_styled}\n")),
         }
-        out.push_str(&format!("  --> {path}:{line_no}:{col}\n"));
-        out.push_str("   |\n");
-        out.push_str(&format!("{line_no:>3}| {line_text}\n"));
+
+        let arrow = if use_color {
+            "-->".bright_blue().bold().to_string()
+        } else {
+            "-->".to_string()
+        };
+        out.push_str(&format!("  {arrow} {path}:{line_no}:{col}\n"));
+
+        let pipe = if use_color {
+            "|".bright_blue().bold().to_string()
+        } else {
+            "|".to_string()
+        };
+        out.push_str(&format!("   {pipe}\n"));
+
+        let line_no_styled = if use_color {
+            format!("{line_no:>3}").bright_blue().bold().to_string()
+        } else {
+            format!("{line_no:>3}")
+        };
+        out.push_str(&format!("{line_no_styled} {pipe} {line_text}\n"));
+
         // Caret underline: from span start to span end, clamped to the line.
         let in_line_start = d.span.start - line_start;
         let len = (d.span.end.saturating_sub(d.span.start)).max(1);
@@ -155,9 +233,33 @@ pub fn render_lang(diags: &[Diag], src: &str, path: &str, flavor: Flavor) -> Str
         let pad = line_text[..in_line_start.min(line_text.len())]
             .chars()
             .count();
-        out.push_str(&format!("   | {}{}\n", " ".repeat(pad), "^".repeat(len)));
+
+        let carets = "^".repeat(len);
+        let carets_styled = match d.severity {
+            Severity::Error => {
+                if use_color {
+                    carets.red().bold().to_string()
+                } else {
+                    carets
+                }
+            }
+            Severity::Warning => {
+                if use_color {
+                    carets.yellow().bold().to_string()
+                } else {
+                    carets
+                }
+            }
+        };
+        out.push_str(&format!("   {pipe} {}{}\n", " ".repeat(pad), carets_styled));
+
         if let Some(h) = &d.help {
-            out.push_str(&format!("   = help: {h}\n"));
+            let help_label = if use_color {
+                "= help:".bright_blue().bold().to_string()
+            } else {
+                "= help:".to_string()
+            };
+            out.push_str(&format!("   {help_label} {h}\n"));
         }
         out.push('\n');
     }

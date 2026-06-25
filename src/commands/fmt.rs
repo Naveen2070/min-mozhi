@@ -19,7 +19,12 @@ pub(crate) fn fmt_file(
     to: Option<&str>,
     strict: bool,
     output: Option<PathBuf>,
+    quiet: bool,
+    debug: bool,
 ) -> ExitCode {
+    if debug {
+        eprintln!("debug: formatting file {}", path.display());
+    }
     let src = match project::read_source(path) {
         Ok(s) => s,
         Err(e) => {
@@ -83,11 +88,13 @@ pub(crate) fn fmt_file(
         eprintln!("error: cannot write `{}`: {e}", out_path.display());
         return ExitCode::FAILURE;
     }
-    println!(
-        "formatted {} ({})",
-        out_path.display(),
-        mimz::translate::flavor_name(target)
-    );
+    if !quiet {
+        println!(
+            "formatted {} ({})",
+            out_path.display(),
+            mimz::translate::flavor_name(target)
+        );
+    }
     if mixed {
         ExitCode::FAILURE
     } else {
