@@ -11,11 +11,13 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**456 tests** as of 2026-06-24: 303 lib unit + 6 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**469 tests** as of 2026-06-25: 315 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
 Fixture counts (current): 72 error fixtures · 8 grammar fixtures · 41 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-25 LSP DX (branch `phase-4-lsp-dx`). `mimz lsp` serves hover (type + doc-on-type), go-to-definition (cross-file, `test` blocks, `import` targets), and completion (scope identifiers + flavor keywords). `src/analysis.rs`: symbol index, `resolve_at` offset-to-definition resolver, completions — scope idents + flavor keywords. `src/lsp.rs`: LSP server wired through Tower LSP. `KeywordTable::canonical_spellings` for flavor-aware keyword completion. **+12 lib unit** (analysis.rs: symbol index, resolve_at, completions; lsp.rs: handlers; tests for each) **+1 LSP unit (bin)** (`lsp.rs` smoke). Suite 456 → 469.
 
 - 2026-06-24 Importable `std.*` library (branch `stdlib-importable-path`). `import std.fifo` (and `serkka nuulagam.varisai` / `சேர்க்க நூலகம்.வரிசை`) now resolve to an **embedded** standard library — `src/stdlib.rs` `include_str!`s the already-tested `examples/english/std/*.mimz` + `examples/tamil-pure/*.mimz` (zero duplication), so resolution needs no install path and works in WASM. Routing keys on the written alias: English stem → canonical module, twin name/romanization → pure-Tamil twin. `src/project.rs` gained a `std` branch (`load_project_with_lib`) that parses the embedded `&str` into a synthetic in-memory file, or loads `<dir>/<m>.mimz` when `mimz.toml [lib] std` overrides; `src/config.rs` gained the `[lib]` section + `resolve_with_path`; `mimz eject std` (`src/commands/eject.rs`, `stdlib::eject_to`) vendors the library all-or-nothing. New loader code **E1202** (bad std import) added to `src/explain.rs` + `06-diagnostics.md`. **+8 lib unit** (5 in `src/stdlib.rs`: aliases, canonical/twin routing, unknown-module, no-transitive-imports invariant; 3 in `src/config.rs`: `[lib]` parse, unknown-key reject, `resolve_with_path` location) **+11 stdlib integration** (new `tests/stdlib.rs`: embedded resolve + entry-stays-`files[0]` ordering, Tamil twin routing, unknown/arity E1202, relative-import regression, `[lib]` override wins + twin-spelling override matches eject, 3 eject + all-or-nothing partial-conflict). Spec/02 §1.5 gained the `std.*` clause. A post-review fix corrected two bugs the green suite missed: embedded std modules were pushed ahead of the entry (breaking the `files[0] == entry` invariant `sim`/`test` rely on), and the `[lib]` override keyed the filename on the raw written alias instead of the resolved variant (so a Tamil-twin-name import missed the ejected `varisai.mimz`). Suite 455 → 456.
 
@@ -80,6 +82,7 @@ Changelog of test-count changes (newest first):
 | `include_is_an_alias_for_import`            | `include` lexes to the exact same token as `import`                                                                                                                                  | the alias mechanism or table entry broke                   |
 | `fall_is_an_active_keyword`                 | `fall` lexes as KW_FALL in all three flavors (A3 promoted it from reserved)                                                                                                          | someone changed `fall`'s keyword status without a decision |
 | `future_keywords_are_reserved_not_usable`   | every reserved future keyword (`fn`/`function`, the v0.3 backlog `secret`…`await`, section-8 `fixed`/`requires`/`ensures`, and `extern`) stays reserved and is not an active keyword | a future keyword was claimed without a decision (R11)      |
+| `canonical_spellings_lists_every_keyword_in_a_flavor` | `canonical_spellings(flavor)` returns one spelling per `Kw` (31) in the asked column — the LSP's flavor-matched keyword completion list                          | the reverse-lookup table or completion keyword source broke |
 
 Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
@@ -349,11 +352,27 @@ grammar / the spec, don't weaken the test.
 | `keywords_toml_has_no_superseded_spelling`     | a superseded v1 spelling may never return in `lang/keywords.toml` as a canonical spelling or any alias — guards the reintroduction risk at the source |
 | `grammar_and_extension_manifest_agree`         | `package.json` registers `.mimz` and its scope name matches the grammar                                                                               |
 
-## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 7 tests)
+## Editor analysis (`src/analysis.rs`, 7 lib unit tests)
+
+The pure, async-free symbol index and resolution behind the LSP's hover /
+go-to-definition / completion (the `src/lsp.rs` handlers are a thin adapter).
+
+| Test                                                  | Locks in                                                                                                          |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `index_collects_each_definition_kind`                 | `build_index` emits a `Symbol` for every def kind (module, param, port, clock, reg, const, enum + variant, inst) with the right `SymKind` + hover render |
+| `resolve_at_use_returns_definition`                   | a use site resolves to its **declaration** span, not the use                                                      |
+| `resolve_at_works_on_partial_tree`                    | `parse_recover` `Error` node between good ports — names around it still resolve                                    |
+| `resolve_at_inside_test_block`                        | inside `test "…" for M { … }`: the module-under-test name + driven inputs + `expect` signals resolve to M's ports (cross-file via `same_module_any_file`) |
+| `resolve_at_cross_file_instance`                      | an instantiated imported module name resolves into the imported file (`file_idx` differs)                          |
+| `completions_include_scope_idents_and_majority_keywords` | in-scope module members + majority-flavor keywords offered, with the right `CandKind`                           |
+| `completions_exclude_other_flavor_keywords`           | a Tamil-flavored file offers Tamil keywords, never the English spellings (no cross-flavor leak)                    |
+
+## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 8 tests)
 
 | Test                                                        | Locks in                                                                                                                                     |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `positions_are_utf16_lines_and_columns`                     | byte span → LSP Position math (0-based lines)                                                                                                |
+| `offset_inverts_position_utf16`                             | `offset` is the exact inverse of `position` (UTF-16 units, incl. a Tamil line) — the cursor→byte mapping the feature handlers depend on      |
 | `tamil_text_counts_utf16_units_not_bytes`                   | LSP columns are UTF-16 code units — a Tamil identifier before the error must not skew the squiggle                                           |
 | `analyze_reports_checker_errors_with_codes`                 | the in-memory pipeline (didOpen text, never on disk) produces coded checker diagnostics                                                      |
 | `diagnostics_localize_to_the_chosen_flavor`                 | the LSP renders E0501 in Tamil (`y-க்கு` via `morph`) and English verbatim — same plumbing as `check`/`compile`                              |
