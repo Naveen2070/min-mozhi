@@ -1,4 +1,6 @@
-// ------------------------------------------------------------------ test
+//! `mimz test <file>` — run `test "…" for M(…) { … }` blocks and report
+//! pass/fail. Supports `--filter` for selective runs, `--trace` for per-cycle
+//! console output. A failing `expect` prints a teaching-quality diff.
 
 use std::path::Path;
 use std::process::ExitCode;

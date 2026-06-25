@@ -1,4 +1,7 @@
-// ------------------------------------------------------------ translate
+//! `mimz translate <file> [--to <flavor>] [--order code|thamizh]` — re-emit a
+//! file in another keyword flavor and/or word order. With only `--to`, this is
+//! a lossless keyword-only reskin (comments/layout preserved). With `--order`,
+//! it parses to the AST and pretty-prints — canonical layout, comments dropped.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

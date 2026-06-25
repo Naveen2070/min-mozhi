@@ -1,4 +1,6 @@
-// --------------------------------------------------------------- safety
+//! Safety-contract verification: every diagnostic fixture must contain its
+//! declared code with a help line, and every example must compile clean
+//! (no false positives from the checker).
 
 use std::path::Path;
 

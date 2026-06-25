@@ -24,7 +24,8 @@
 //!
 //! | Module          | Role                                                       |
 //! | --------------- | ---------------------------------------------------------- |
-//! | [`explain`]     | Long-form teaching text per E-code (`mimz explain`)        |
+//! | [`explain`]     | Long-form teaching text per E/W-code (`mimz explain`)      |
+//! | [`lint`]        | Style and hygiene warnings (`mimz lint`)                   |
 //! | [`translate`]   | Keyword-flavor reskin (`mimz translate --to`)              |
 //! | [`pretty`]      | AST → source pretty-printer (`mimz translate --order`)     |
 //! | [`morph`]       | Error-language selection + Tamil case-suffix inflection    |
@@ -52,6 +53,7 @@ pub mod diag;
 pub mod emit_verilog;
 pub mod explain;
 pub mod lexer;
+pub mod lint;
 pub mod morph;
 pub mod parser;
 pub mod pretty;

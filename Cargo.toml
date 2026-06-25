@@ -35,15 +35,23 @@ tokio = { version = "1", features = [
     "io-std",
 ], optional = true }
 tower-lsp = { version = "0.20", optional = true }
+# Shell-completion script generation (`mimz completions <shell>`, bin-only).
+# Pure Rust (builds on wasm32), so it needs no feature gate.
+clap_complete = "4.6.5"
+# File-watcher for `mimz check --watch` (bin-only). Optional + behind the
+# `watch` feature: notify pulls OS inotify/fsevent/ReadDirectoryChanges APIs that
+# do not build on wasm32, so the WASM crate (default-features = false) excludes it.
+notify = { version = "8", optional = true }
 
 # Default features power the full CLI (native). The WASM crate
 # (`crates/mimz-wasm`) depends on this crate with `default-features = false`,
-# dropping the LSP + bench deps that do not build on wasm32; the compiler
+# dropping the LSP + bench + watch deps that do not build on wasm32; the compiler
 # pipeline the playground needs has no optional deps.
 [features]
-default = ["lsp", "bench"]
+default = ["lsp", "bench", "watch"]
 lsp = ["dep:tokio", "dep:tower-lsp"]
 bench = ["dep:memory-stats"]
+watch = ["dep:notify"]
 
 # The benchmark binary needs the `bench` feature (memory-stats); skipped under
 # --no-default-features so the lib stays buildable for wasm32 in isolation.
