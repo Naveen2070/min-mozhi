@@ -63,7 +63,7 @@ is a bug — fix it the same day (RULES R1).
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
-Seven **tooling** modules consume the pipeline rather than forming a stage in
+Eight **tooling** modules consume the pipeline rather than forming a stage in
 it (page 13):
 
 - `explain` — long-form text per E-code, `mimz explain`.
@@ -80,6 +80,9 @@ it (page 13):
 - `version` — holds the two version axes, the compiler (crate) version vs
   the language edition (`EDITION_HISTORY`), surfaced by `mimz --version`
   and the Verilog header (see `spec/06-editions.md`).
+- `analysis` — pure, async-free editor analysis: a symbol index over the
+  loaded file set plus offset→definition resolution and completion
+  candidates, consumed by the LSP server (`src/lsp.rs`).
 
 ## Keeping these docs honest
 
