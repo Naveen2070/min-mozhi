@@ -15,6 +15,7 @@ use crate::Output;
 /// keyword-only reskin (comments/layout preserved). With `--order`, it parses
 /// to the AST and pretty-prints in the requested order — canonical layout,
 /// comments dropped (spec/04: trivia-preservation is the `--to` path).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn translate_file(
     path: &Path,
     to: Option<&str>,
@@ -23,7 +24,12 @@ pub(crate) fn translate_file(
     names_map: Option<&Path>,
     auto_names_map: bool,
     output: Option<PathBuf>,
+    quiet: bool,
+    debug: bool,
 ) -> ExitCode {
+    if debug {
+        eprintln!("debug: translating file {}", path.display());
+    }
     let to = to.unwrap_or("english");
     let Some(flavor) = mimz::translate::parse_flavor(to) else {
         eprintln!("error: unknown flavor `{to}` — expected english, tanglish, or tamil");
@@ -103,7 +109,7 @@ pub(crate) fn translate_file(
                 Ok(m) => m,
                 Err(code) => return code,
             };
-            if *auto {
+            if *auto && !quiet {
                 eprintln!(
                     "note: restoring names from {} (auto-discovered; --no-names-map to disable)",
                     map_path.display()
@@ -148,18 +154,22 @@ pub(crate) fn translate_file(
                     eprintln!("error: cannot write name map `{}`: {e}", sidecar.display());
                     return ExitCode::FAILURE;
                 }
-                println!("wrote name map {}", sidecar.display());
+                if !quiet {
+                    println!("wrote name map {}", sidecar.display());
+                }
             }
-            println!(
-                "translated {} -> {} ({})",
-                path.display(),
-                out_path.display(),
-                mimz::translate::flavor_name(flavor)
-            );
+            if !quiet {
+                println!(
+                    "translated {} -> {} ({})",
+                    path.display(),
+                    out_path.display(),
+                    mimz::translate::flavor_name(flavor)
+                );
+            }
             ExitCode::SUCCESS
         }
         None => {
-            if captured_map.is_some_and(|m| !m.names.is_empty()) {
+            if !quiet && captured_map.is_some_and(|m| !m.names.is_empty()) {
                 eprintln!(
                     "note: --romanize-names without -o does not write a name map — the round-trip back to Tamil won't be reversible"
                 );

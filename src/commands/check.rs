@@ -18,6 +18,8 @@ pub(crate) fn check(
     json: bool,
     lang: Option<&str>,
     config_path: Option<&Path>,
+    quiet: bool,
+    debug: bool,
 ) -> ExitCode {
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
@@ -43,11 +45,24 @@ pub(crate) fn check(
         return ExitCode::SUCCESS;
     }
 
+    if debug {
+        eprintln!(
+            "debug: loading project starting from entry {}",
+            path.display()
+        );
+    }
     let lib_std = lib_std_dir(path, config_path);
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
+    if debug {
+        eprintln!("debug: loaded {} project file(s)", files.len());
+        for f in &files {
+            eprintln!("  - {}", f.path.display());
+        }
+    }
+
     let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
     // Non-fatal warnings (W0001 mixed-flavor) ride alongside any checker errors.
     let mut diags = project_warnings(&files);
@@ -76,10 +91,12 @@ pub(crate) fn check(
         .flat_map(|f| &f.items)
         .filter(|i| matches!(i, ast::TopItem::Test(_)))
         .count();
-    println!(
-        "OK: {} — {modules} module(s), {tests} test(s), {} file(s)",
-        path.display(),
-        files.len()
-    );
+    if !quiet {
+        println!(
+            "OK: {} — {modules} module(s), {tests} test(s), {} file(s)",
+            path.display(),
+            files.len()
+        );
+    }
     ExitCode::SUCCESS
 }

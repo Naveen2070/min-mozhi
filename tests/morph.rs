@@ -167,7 +167,7 @@ fn compile_also_localizes_diagnostics() {
 fn unknown_lang_is_a_clean_error() {
     let err = check_stderr(DOUBLE_DRIVE, Some("klingon"));
     assert!(
-        err.contains("unknown language `klingon`"),
+        err.contains("invalid value 'klingon'"),
         "expected a clean unknown-language error, got:\n{err}"
     );
 }
