@@ -75,14 +75,14 @@ Changelog of test-count changes (newest first):
 
 ## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
 
-| Test                                        | Locks in                                                                                                                                                                             | If it fails…                                               |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `all_three_flavors_resolve_to_same_keyword` | EN/Tanglish/Tamil spellings → one `Kw` token                                                                                                                                         | `lang/keywords.toml` edit broke a mapping                  |
-| `flavors_are_recorded`                      | the lexer remembers which column a spelling came from                                                                                                                                | flavor tracking broke (P1.8 depends on it)                 |
-| `include_is_an_alias_for_import`            | `include` lexes to the exact same token as `import`                                                                                                                                  | the alias mechanism or table entry broke                   |
-| `fall_is_an_active_keyword`                 | `fall` lexes as KW_FALL in all three flavors (A3 promoted it from reserved)                                                                                                          | someone changed `fall`'s keyword status without a decision |
-| `future_keywords_are_reserved_not_usable`   | every reserved future keyword (`fn`/`function`, the v0.3 backlog `secret`…`await`, section-8 `fixed`/`requires`/`ensures`, and `extern`) stays reserved and is not an active keyword | a future keyword was claimed without a decision (R11)      |
-| `canonical_spellings_lists_every_keyword_in_a_flavor` | `canonical_spellings(flavor)` returns one spelling per `Kw` (31) in the asked column — the LSP's flavor-matched keyword completion list                          | the reverse-lookup table or completion keyword source broke |
+| Test                                                  | Locks in                                                                                                                                                                             | If it fails…                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `all_three_flavors_resolve_to_same_keyword`           | EN/Tanglish/Tamil spellings → one `Kw` token                                                                                                                                         | `lang/keywords.toml` edit broke a mapping                   |
+| `flavors_are_recorded`                                | the lexer remembers which column a spelling came from                                                                                                                                | flavor tracking broke (P1.8 depends on it)                  |
+| `include_is_an_alias_for_import`                      | `include` lexes to the exact same token as `import`                                                                                                                                  | the alias mechanism or table entry broke                    |
+| `fall_is_an_active_keyword`                           | `fall` lexes as KW_FALL in all three flavors (A3 promoted it from reserved)                                                                                                          | someone changed `fall`'s keyword status without a decision  |
+| `future_keywords_are_reserved_not_usable`             | every reserved future keyword (`fn`/`function`, the v0.3 backlog `secret`…`await`, section-8 `fixed`/`requires`/`ensures`, and `extern`) stays reserved and is not an active keyword | a future keyword was claimed without a decision (R11)       |
+| `canonical_spellings_lists_every_keyword_in_a_flavor` | `canonical_spellings(flavor)` returns one spelling per `Kw` (31) in the asked column — the LSP's flavor-matched keyword completion list                                              | the reverse-lookup table or completion keyword source broke |
 
 Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
@@ -357,15 +357,15 @@ grammar / the spec, don't weaken the test.
 The pure, async-free symbol index and resolution behind the LSP's hover /
 go-to-definition / completion (the `src/lsp.rs` handlers are a thin adapter).
 
-| Test                                                  | Locks in                                                                                                          |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `index_collects_each_definition_kind`                 | `build_index` emits a `Symbol` for every def kind (module, param, port, clock, reg, const, enum + variant, inst) with the right `SymKind` + hover render |
-| `resolve_at_use_returns_definition`                   | a use site resolves to its **declaration** span, not the use                                                      |
-| `resolve_at_works_on_partial_tree`                    | `parse_recover` `Error` node between good ports — names around it still resolve                                    |
-| `resolve_at_inside_test_block`                        | inside `test "…" for M { … }`: the module-under-test name + driven inputs + `expect` signals resolve to M's ports (cross-file via `same_module_any_file`) |
-| `resolve_at_cross_file_instance`                      | an instantiated imported module name resolves into the imported file (`file_idx` differs)                          |
-| `completions_include_scope_idents_and_majority_keywords` | in-scope module members + majority-flavor keywords offered, with the right `CandKind`                           |
-| `completions_exclude_other_flavor_keywords`           | a Tamil-flavored file offers Tamil keywords, never the English spellings (no cross-flavor leak)                    |
+| Test                                                     | Locks in                                                                                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index_collects_each_definition_kind`                    | `build_index` emits a `Symbol` for every def kind (module, param, port, clock, reg, const, enum + variant, inst) with the right `SymKind` + hover render  |
+| `resolve_at_use_returns_definition`                      | a use site resolves to its **declaration** span, not the use                                                                                              |
+| `resolve_at_works_on_partial_tree`                       | `parse_recover` `Error` node between good ports — names around it still resolve                                                                           |
+| `resolve_at_inside_test_block`                           | inside `test "…" for M { … }`: the module-under-test name + driven inputs + `expect` signals resolve to M's ports (cross-file via `same_module_any_file`) |
+| `resolve_at_cross_file_instance`                         | an instantiated imported module name resolves into the imported file (`file_idx` differs)                                                                 |
+| `completions_include_scope_idents_and_majority_keywords` | in-scope module members + majority-flavor keywords offered, with the right `CandKind`                                                                     |
+| `completions_exclude_other_flavor_keywords`              | a Tamil-flavored file offers Tamil keywords, never the English spellings (no cross-flavor leak)                                                           |
 
 ## LSP (`src/lsp.rs` unit + `tests/lsp.rs` smoke, 8 tests)
 
