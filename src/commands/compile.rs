@@ -1,7 +1,10 @@
-// -------------------------------------------------------------- compile
+//! `mimz compile` — load the entry file and all transitive imports, build the
+//! project symbol table, and emit one Verilog file (default: entry path with
+//! `.v` extension). Optionally emits a self-checking testbench (`--testbench`).
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Instant;
 
 use mimz::{ast, checker, diag, emit_verilog, project};
 
@@ -11,6 +14,7 @@ use crate::Output;
 /// `mimz compile` — load the entry file and all transitive imports, build
 /// the project symbol table, and emit one Verilog file (default: entry
 /// path with `.v` extension).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compile(
     path: &Path,
     output: Option<PathBuf>,
@@ -32,11 +36,16 @@ pub(crate) fn compile(
             path.display()
         );
     }
+    // Phase timing (--debug): `load` fuses lex+parse+import-resolution, `check`
+    // is the six checker passes, `emit` is transliterate + lower + Verilog text.
+    // For a finer lex-vs-parse split, see the criterion harness (`cargo bench`).
+    let t_load = Instant::now();
     let lib_std = lib_std_dir(path, config_path);
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
+    let load_ms = ms(t_load);
     if debug {
         eprintln!("debug: loaded {} project file(s)", files.len());
         for f in &files {
@@ -54,13 +63,16 @@ pub(crate) fn compile(
         out.project(&diags, &files)
     };
 
+    let t_check = Instant::now();
     if let Err(errors) = checker::check(&asts) {
         return report_err(errors);
     }
+    let check_ms = ms(t_check);
 
     // Tamil identifiers become readable ASCII (விளக்கு → villakku) —
     // checked against the original spelling above, emitted as Verilog
     // names below.
+    let t_emit = Instant::now();
     emit_verilog::transliterate(&mut asts);
 
     let project = match emit_verilog::Project::from_files(&asts) {
@@ -71,6 +83,13 @@ pub(crate) fn compile(
         Ok(v) => v,
         Err(errors) => return report_err(errors),
     };
+    let emit_ms = ms(t_emit);
+    if debug {
+        eprintln!(
+            "debug: timing — load {load_ms:.3}ms, check {check_ms:.3}ms, emit {emit_ms:.3}ms (total {:.3}ms)",
+            load_ms + check_ms + emit_ms
+        );
+    }
 
     let out_path = output.unwrap_or_else(|| {
         let mut p = path.to_path_buf();
@@ -154,4 +173,9 @@ pub(crate) fn compile(
         }
     }
     ExitCode::SUCCESS
+}
+
+/// Milliseconds elapsed since `start`, as f64 (for the `--debug` timing line).
+fn ms(start: Instant) -> f64 {
+    start.elapsed().as_secs_f64() * 1000.0
 }

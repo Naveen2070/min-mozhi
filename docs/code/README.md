@@ -63,10 +63,14 @@ is a bug — fix it the same day (RULES R1).
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
-Eight **tooling** modules consume the pipeline rather than forming a stage in
+Nine **tooling** modules consume the pipeline rather than forming a stage in
 it (page 13):
 
-- `explain` — long-form text per E-code, `mimz explain`.
+- `explain` — long-form text per E/W-code, `mimz explain`.
+- `lint` — style and hygiene warnings (`mimz lint`): naming conventions,
+  unused-signal detection, additive and always warning-only.
+- `repl` — interactive read-eval-print loop (`mimz repl`): parses a file
+  once, then evaluates input bindings from stdin on every line.
 - `translate` — keyword-flavor reskin, `mimz translate --to`.
 - `pretty` — the AST → source pretty-printer behind
   `mimz translate --order code|thamizh`.

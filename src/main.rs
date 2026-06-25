@@ -22,8 +22,8 @@ use mimz::project::{LoadError, LoadedFile};
 use mimz::{diag, project};
 
 use commands::{
-    EjectFlavor, check, compile, eject_std, eval_file, explain_code, fmt_file, resolve_config,
-    sim_file, test_file, translate_file,
+    EjectFlavor, check, compile, completions, doctor, eject_std, eval_file, explain_code, fmt_file,
+    init, lint_file, repl, resolve_config, sim_file, test_file, translate_file,
 };
 
 /// Compiler for Min-Mozhi (மின்மொழி), a Tamil-rooted HDL.
@@ -42,7 +42,7 @@ use commands::{
     subcommand_required = true,
     arg_required_else_help = true
 )]
-struct Cli {
+pub(crate) struct Cli {
     /// Path to a `mimz.toml` config (default: walked up from the input file).
     #[arg(short = 'c', long, global = true, value_name = "FILE")]
     config: Option<PathBuf>,
@@ -95,6 +95,15 @@ impl CliLang {
 /// Use `mimz <command> --help` for full details, including all flags.
 #[derive(Subcommand)]
 enum Cmd {
+    /// Scaffold a new project in ./<name>/.
+    ///
+    /// Generates a documented `mimz.toml` and a starter `<name>.mimz` (a
+    /// counter module plus a passing inline `test` block), so `mimz test` and
+    /// `mimz compile` work right away. Refuses to overwrite a non-empty dir.
+    Init {
+        /// Project name — becomes the new directory and the `.mimz` file name.
+        name: String,
+    },
     /// Check a .mimz file for errors.
     ///
     /// Lex + parse + check a file and report errors (no output written).
@@ -111,6 +120,9 @@ enum Cmd {
         /// flavor the file predominantly uses). JSON output stays English.
         #[arg(short = 'l', long)]
         lang: Option<CliLang>,
+        /// Re-check on every save until Ctrl-C (watches the file's directory).
+        #[arg(long)]
+        watch: bool,
     },
     /// Compile a .mimz file to Verilog.
     ///
@@ -157,12 +169,38 @@ enum Cmd {
     /// Diagnostics-only v0; editors launch this — not for interactive use.
     #[cfg(feature = "lsp")]
     Lsp,
-    /// Explain a diagnostic code in depth.
+    /// Explain a diagnostic code in depth, or list all codes with `--list`.
     ///
     /// Explain a diagnostic code in depth (e.g. `mimz explain E0501`).
+    /// `mimz explain --list` prints every code with its one-line summary.
     Explain {
         /// The diagnostic code to explain (case-insensitive, e.g. E0501)
-        code: String,
+        code: Option<String>,
+        /// List all diagnostic codes with one-line summaries
+        #[arg(long)]
+        list: bool,
+    },
+    /// Report toolchain & environment health.
+    ///
+    /// Prints mimz version/edition, platform, an in-memory compile smoke test,
+    /// and which optional simulators (iverilog, verilator, gtkwave) are present.
+    /// Exits non-zero only on a real problem (broken pipeline, unwritable temp
+    /// dir, invalid `mimz.toml`) — missing optional tools are warnings.
+    /// `--dev` adds the contributor toolchain (Rust, WASM target, test tools).
+    #[command(alias = "env")]
+    Doctor {
+        /// Also check the compiler-development toolchain (Rust, wasm-pack, …).
+        #[arg(long)]
+        dev: bool,
+    },
+    /// Generate a shell tab-completion script.
+    ///
+    /// Prints the script for the given shell to stdout, e.g.
+    /// `mimz completions bash > /etc/bash_completion.d/mimz` or
+    /// `mimz completions powershell >> $PROFILE`.
+    Completions {
+        /// Target shell: bash | zsh | fish | powershell | elvish
+        shell: clap_complete::Shell,
     },
     /// Write the embedded standard library to a directory for vendoring
     /// (then set `mimz.toml [lib] std = "<dir>"`).
@@ -311,6 +349,45 @@ enum Cmd {
         #[arg(short = 'l', long)]
         lang: Option<CliLang>,
     },
+    /// (experimental) Interactive REPL for a combinational module.
+    ///
+    /// Parses a .mimz file once, then reads input bindings from stdin.
+    /// Each line is evaluated immediately and outputs are printed.
+    ///
+    ///   mimz> a=3, b=5
+    ///   sum = 8  (bits[9])
+    ///
+    /// Commands: `:quit` / `:q` to exit, `:help` for help.
+    Repl {
+        /// The .mimz file
+        file: PathBuf,
+        /// Parameter overrides, comma-separated: `--param WIDTH=4`
+        #[arg(long, default_value = "")]
+        param: String,
+        /// Which module to evaluate (default: the file's only module)
+        #[arg(long)]
+        module: Option<String>,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses)
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
+    },
+    /// Lint a .mimz file for style and hygiene warnings.
+    ///
+    /// Separate from `check` (which is correctness). Lint checks for things
+    /// like unused signals and naming convention violations. All diagnostics
+    /// are warnings — `mimz lint` never fails the build.
+    Lint {
+        /// The .mimz file to lint
+        file: PathBuf,
+        /// Print diagnostics as a JSON array on stdout (tool consumers)
+        #[arg(long)]
+        json: bool,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses). JSON output stays English.
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -339,18 +416,29 @@ fn main() -> ExitCode {
     let debug = cli.debug;
 
     match cli.command {
+        Cmd::Init { name } => init(&name, quiet),
         Cmd::Check {
             file,
             tokens,
             json,
             lang,
+            watch,
         } => {
             let cfg = match resolve_config(&file, config_path.as_deref()) {
                 Ok(c) => c,
                 Err(code) => return code,
             };
             let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
-            check(&file, tokens, json, lang_str.as_deref(), config_path.as_deref(), quiet, debug)
+            check(
+                &file,
+                tokens,
+                json,
+                lang_str.as_deref(),
+                config_path.as_deref(),
+                quiet,
+                debug,
+                watch,
+            )
         }
         Cmd::Compile {
             file,
@@ -395,7 +483,30 @@ fn main() -> ExitCode {
             lsp::run();
             ExitCode::SUCCESS
         }
-        Cmd::Explain { code } => explain_code(&code),
+        Cmd::Explain { code, list } => explain_code(code.as_deref(), list),
+        Cmd::Doctor { dev } => doctor(dev),
+        Cmd::Repl {
+            file,
+            param,
+            module,
+            lang,
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            repl(&file, &param, module, lang_str.as_deref(), debug)
+        }
+        Cmd::Lint { file, json, lang } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            lint_file(&file, json, lang_str.as_deref(), quiet, debug)
+        }
+        Cmd::Completions { shell } => completions(shell),
         Cmd::Eject {
             what: _,
             to,
