@@ -239,6 +239,280 @@ fn simple(
     }
 }
 
+/// A name written somewhere in a file (a definition's name OR a use site),
+/// with its span and the module it sits in (for scope-priority lookup).
+struct Ref {
+    name: String,
+    span: Span,
+    module_idx: Option<usize>,
+}
+
+/// Resolve the cursor at `offset` in file `file_idx` to a definition.
+/// Finds the smallest name span covering the cursor, then looks that name up
+/// in the index: enclosing module first, then file-level, then any module
+/// (cross-file). Returns an index into `index.symbols`.
+pub fn resolve_at(
+    index: &SymbolIndex,
+    files: &[LoadedFile],
+    file_idx: usize,
+    offset: usize,
+) -> Option<usize> {
+    let refs = collect_refs(index, files, file_idx);
+    // Smallest span that covers the offset wins (handles nested names).
+    let hit = refs
+        .iter()
+        .filter(|r| r.span.start <= offset && offset < r.span.end)
+        .min_by_key(|r| r.span.end - r.span.start)?;
+
+    // Scope priority: same module → same module any file (test blocks point
+    // their body refs at a possibly-cross-file module-under-test) → file-level
+    // → any definition.
+    let same_module = index.symbols.iter().position(|s| {
+        s.name == hit.name && s.file_idx == file_idx && s.module_idx == hit.module_idx
+    });
+    let same_module_any_file = || {
+        hit.module_idx.and_then(|_| {
+            index
+                .symbols
+                .iter()
+                .position(|s| s.name == hit.name && s.module_idx == hit.module_idx)
+        })
+    };
+    let file_level = || {
+        index
+            .symbols
+            .iter()
+            .position(|s| s.name == hit.name && s.file_idx == file_idx && s.module_idx.is_none())
+    };
+    let anywhere = || index.symbols.iter().position(|s| s.name == hit.name);
+    same_module
+        .or_else(same_module_any_file)
+        .or_else(file_level)
+        .or_else(anywhere)
+}
+
+/// Every name (definition or use) written in `file_idx`, with its module.
+fn collect_refs(index: &SymbolIndex, files: &[LoadedFile], file_idx: usize) -> Vec<Ref> {
+    let mut refs = Vec::new();
+    for s in &index.symbols {
+        if s.file_idx == file_idx {
+            refs.push(Ref {
+                name: s.name.clone(),
+                span: s.span,
+                module_idx: s.module_idx,
+            });
+        }
+    }
+    let f = &files[file_idx];
+    for item in &f.ast.items {
+        match item {
+            TopItem::Module(m) => {
+                // The module's symbol position == its module_idx for its members.
+                let mod_pos = index.symbols.iter().position(|s| {
+                    s.file_idx == file_idx
+                        && s.kind == SymKind::Module
+                        && s.span.start == m.name.span.start
+                });
+                for mi in &m.items {
+                    collect_item_refs(mi, mod_pos, &mut refs);
+                }
+            }
+            TopItem::Const(c) => collect_expr_refs(&c.value, None, &mut refs),
+            TopItem::Test(t) => collect_test_refs(t, index, &mut refs),
+            TopItem::Enum(_) | TopItem::Error(_) => {}
+        }
+    }
+    refs
+}
+
+/// References inside a `test "..." for M(...) { ... }` block. The
+/// module-under-test name is a use (resolves to its module def). Body names
+/// are scoped to that module via its symbol position, so a driven input or an
+/// `expect`-ed signal resolves to the right port — even cross-file (the
+/// `same_module_any_file` tier in `resolve_at` handles the cross-file case).
+fn collect_test_refs(t: &TestDecl, index: &SymbolIndex, refs: &mut Vec<Ref>) {
+    refs.push(Ref {
+        name: t.module.name.clone(),
+        span: t.module.span,
+        module_idx: None,
+    });
+    let mut_pos = index
+        .symbols
+        .iter()
+        .position(|s| s.kind == SymKind::Module && s.name == t.module.name);
+    for a in &t.args {
+        collect_expr_refs(&a.value, mut_pos, refs);
+    }
+    for s in &t.body {
+        collect_test_stmt_refs(s, mut_pos, refs);
+    }
+}
+
+fn collect_test_stmt_refs(s: &TestStmt, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
+    match s {
+        TestStmt::Tick { clock, count } => {
+            refs.push(Ref {
+                name: clock.name.clone(),
+                span: clock.span,
+                module_idx,
+            });
+            if let Some(c) = count {
+                collect_expr_refs(c, module_idx, refs);
+            }
+        }
+        TestStmt::Expect(e) => collect_expr_refs(e, module_idx, refs),
+        TestStmt::Drive { name, value } => {
+            refs.push(Ref {
+                name: name.name.clone(),
+                span: name.span,
+                module_idx,
+            });
+            collect_expr_refs(value, module_idx, refs);
+        }
+        TestStmt::If { cond, then, els } => {
+            collect_expr_refs(cond, module_idx, refs);
+            for s in then {
+                collect_test_stmt_refs(s, module_idx, refs);
+            }
+            for s in els.iter().flatten() {
+                collect_test_stmt_refs(s, module_idx, refs);
+            }
+        }
+        TestStmt::Error(_) => {}
+    }
+}
+
+fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
+    match item {
+        ModuleItem::Wire { init, .. } => collect_expr_refs(init, module_idx, refs),
+        ModuleItem::Reg { reset, .. } => collect_expr_refs(reset, module_idx, refs),
+        ModuleItem::Mem { depth, init, .. } => {
+            collect_expr_refs(depth, module_idx, refs);
+            collect_expr_refs(init, module_idx, refs);
+        }
+        ModuleItem::Drive { lhs, rhs } => {
+            refs.push(Ref {
+                name: lhs.base.name.clone(),
+                span: lhs.base.span,
+                module_idx,
+            });
+            collect_expr_refs(rhs, module_idx, refs);
+        }
+        ModuleItem::Inst(inst) => {
+            // The instantiated module name is a cross-file reference.
+            refs.push(Ref {
+                name: inst.module.name.clone(),
+                span: inst.module.span,
+                module_idx,
+            });
+            for c in &inst.conns {
+                collect_expr_refs(&c.signal, module_idx, refs);
+            }
+            for a in &inst.args {
+                collect_expr_refs(&a.value, module_idx, refs);
+            }
+        }
+        ModuleItem::On(b) => {
+            for s in &b.body {
+                collect_seq_refs(s, module_idx, refs);
+            }
+        }
+        ModuleItem::Repeat(r) => {
+            for mi in &r.items {
+                collect_item_refs(mi, module_idx, refs);
+            }
+        }
+        ModuleItem::Port { .. }
+        | ModuleItem::Clock(_)
+        | ModuleItem::Reset { .. }
+        | ModuleItem::Const(_)
+        | ModuleItem::Enum(_)
+        | ModuleItem::Error(_) => {}
+    }
+}
+
+fn collect_seq_refs(s: &SeqStmt, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
+    match s {
+        SeqStmt::Assign { lhs, rhs } => {
+            refs.push(Ref {
+                name: lhs.base.name.clone(),
+                span: lhs.base.span,
+                module_idx,
+            });
+            collect_expr_refs(rhs, module_idx, refs);
+        }
+        SeqStmt::If { cond, then, els } => {
+            collect_expr_refs(cond, module_idx, refs);
+            for s in then {
+                collect_seq_refs(s, module_idx, refs);
+            }
+            for s in els.iter().flatten() {
+                collect_seq_refs(s, module_idx, refs);
+            }
+        }
+        SeqStmt::Error(_) => {}
+    }
+}
+
+fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
+    match &e.kind {
+        ExprKind::Ident(name) => {
+            refs.push(Ref {
+                name: name.clone(),
+                span: e.span,
+                module_idx,
+            });
+        }
+        ExprKind::Field { base, field } => {
+            collect_expr_refs(base, module_idx, refs);
+            // `field` (port/variant after `.`) is left unresolved in v1.
+            let _ = field;
+        }
+        ExprKind::Unary { expr, .. } => collect_expr_refs(expr, module_idx, refs),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            collect_expr_refs(lhs, module_idx, refs);
+            collect_expr_refs(rhs, module_idx, refs);
+        }
+        ExprKind::IfExpr { cond, then, els } => {
+            collect_expr_refs(cond, module_idx, refs);
+            collect_expr_refs(then, module_idx, refs);
+            collect_expr_refs(els, module_idx, refs);
+        }
+        ExprKind::Match { scrutinee, arms } => {
+            collect_expr_refs(scrutinee, module_idx, refs);
+            for a in arms {
+                collect_expr_refs(&a.value, module_idx, refs);
+            }
+        }
+        ExprKind::Concat(parts) => {
+            for p in parts {
+                collect_expr_refs(p, module_idx, refs);
+            }
+        }
+        ExprKind::Replicate { count, parts } => {
+            collect_expr_refs(count, module_idx, refs);
+            for p in parts {
+                collect_expr_refs(p, module_idx, refs);
+            }
+        }
+        ExprKind::Index { base, index } => {
+            collect_expr_refs(base, module_idx, refs);
+            collect_expr_refs(index, module_idx, refs);
+        }
+        ExprKind::Slice { base, hi, lo } => {
+            collect_expr_refs(base, module_idx, refs);
+            collect_expr_refs(hi, module_idx, refs);
+            collect_expr_refs(lo, module_idx, refs);
+        }
+        ExprKind::Call { args, .. } => {
+            for a in args {
+                collect_expr_refs(a, module_idx, refs);
+            }
+        }
+        ExprKind::Int { .. } | ExprKind::Bool(_) => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +552,85 @@ mod tests {
         let y = idx.symbols.iter().find(|s| s.name == "y").unwrap();
         assert!(matches!(y.kind, SymKind::Port { .. }));
         assert!(y.render.contains("out y: bit"), "got render {:?}", y.render);
+    }
+
+    fn offset_of(src: &str, needle: &str) -> usize {
+        src.find(needle).expect("needle present")
+    }
+
+    #[test]
+    fn resolve_at_use_returns_definition() {
+        let src = "module M {\n  in a: bit\n  out y: bit\n  y = a\n}\n";
+        let files = loaded(src);
+        let idx = build_index(&files);
+        // Cursor on the USE of `a` in `y = a` resolves to the port `a` decl.
+        let use_off = src.rfind('a').unwrap();
+        let sym = resolve_at(&idx, &files, 0, use_off).expect("resolves");
+        assert_eq!(idx.symbols[sym].name, "a");
+        assert!(matches!(idx.symbols[sym].kind, SymKind::Port { .. }));
+        // And the resolved span is the DECLARATION, not the use site.
+        assert_eq!(idx.symbols[sym].span.start, offset_of(src, "a: bit"));
+    }
+
+    #[test]
+    fn resolve_at_works_on_partial_tree() {
+        // A broken line between two good ports: parse_recover keeps the ports.
+        // (Plan used `@@@`, but the lexer rejects `@`; a bare `let` lexes fine
+        // yet fails to parse, producing the same ModuleItem::Error recovery.)
+        let src = "module M {\n  in a: bit\n  let\n  out y: bit\n  y = a\n}\n";
+        let files = loaded(src);
+        let idx = build_index(&files);
+        let use_off = src.rfind('a').unwrap();
+        let sym = resolve_at(&idx, &files, 0, use_off).expect("resolves around Error node");
+        assert_eq!(idx.symbols[sym].name, "a");
+    }
+
+    #[test]
+    fn resolve_at_inside_test_block() {
+        let src = "module Adder {\n  in a: bit\n  out sum: bit\n  sum = a\n}\n\
+                   test \"works\" for Adder {\n  a = true\n  expect sum\n}\n";
+        let files = loaded(src);
+        let idx = build_index(&files);
+        // go-to-def on the module-under-test name in the `for Adder` header.
+        let m_off = src.find("for Adder").unwrap() + "for ".len();
+        let sym = resolve_at(&idx, &files, 0, m_off).expect("module-under-test resolves");
+        assert_eq!(idx.symbols[sym].name, "Adder");
+        assert!(matches!(idx.symbols[sym].kind, SymKind::Module));
+        // a driven input `a` in the test body resolves to the port `a`.
+        let a_off = src.find("a = true").unwrap();
+        let sym = resolve_at(&idx, &files, 0, a_off).expect("driven input resolves");
+        assert_eq!(idx.symbols[sym].name, "a");
+        assert!(matches!(idx.symbols[sym].kind, SymKind::Port { .. }));
+        // `expect sum` resolves the output port.
+        let y_off = src.find("expect sum").unwrap() + "expect ".len();
+        let sym = resolve_at(&idx, &files, 0, y_off).expect("expected signal resolves");
+        assert_eq!(idx.symbols[sym].name, "sum");
+    }
+
+    #[test]
+    fn resolve_at_cross_file_instance() {
+        use std::path::PathBuf;
+        let lib = "module Adder {\n  in a: bit\n  out s: bit\n  s = a\n}\n";
+        // Plan wrote `Adder { a: x }`, but the grammar requires the param paren
+        // list even when empty: `Adder() { ... }`. Without it the instance is a
+        // parse Error and no module ref is produced.
+        let top =
+            "module Top {\n  in x: bit\n  out z: bit\n  let u = Adder() { a: x }\n  z = u.s\n}\n";
+        let mk = |path: &str, src: &str| {
+            let toks = lexer::lex(src).unwrap();
+            let (ast, _) = parser::parse_recover(toks);
+            LoadedFile {
+                path: PathBuf::from(path),
+                src: src.to_string(),
+                ast,
+            }
+        };
+        let files = vec![mk("top.mimz", top), mk("adder.mimz", lib)];
+        let idx = build_index(&files);
+        // Cursor on `Adder` in the instantiation resolves into adder.mimz.
+        let off = top.find("Adder").unwrap();
+        let sym = resolve_at(&idx, &files, 0, off).expect("module ref resolves");
+        assert_eq!(idx.symbols[sym].name, "Adder");
+        assert_eq!(idx.symbols[sym].file_idx, 1);
     }
 }
