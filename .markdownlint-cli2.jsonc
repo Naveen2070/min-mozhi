@@ -6,6 +6,7 @@
     "docs/archive/**", // append-only history (RULES R4) — never edited to satisfy a linter
     "target/**",
     ".remember/**",
+    ".superpowers/**", // local-only subagent workflow artifacts (git-ignored), never committed
     "**/node_modules/**",
     "site/**", // the website has its own toolchain, not the repo docs gate
     "CLAUDE.md", // tool-generated agent config (graphify), not project docs
