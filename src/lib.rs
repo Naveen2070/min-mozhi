@@ -28,6 +28,7 @@
 //! | [`translate`]   | Keyword-flavor reskin (`mimz translate --to`)              |
 //! | [`pretty`]      | AST → source pretty-printer (`mimz translate --order`)     |
 //! | [`morph`]       | Error-language selection + Tamil case-suffix inflection    |
+//! | [`analysis`]    | Editor symbol index + offset→definition / completion (LSP) |
 //! | [`sim`]         | Combinational evaluator (`mimz eval`) — Phase 1.5 slice    |
 //! | [`config`]      | `mimz.toml` project defaults for CLI flags (CLI overrides)  |
 //! | [`stdlib`]      | Embedded standard library (`import std.*`) — catalog + eject |
@@ -43,6 +44,7 @@
 // overflow / out-of-bounds write is therefore impossible by construction.
 #![forbid(unsafe_code)]
 
+pub mod analysis;
 pub mod ast;
 pub mod checker;
 pub mod config;
