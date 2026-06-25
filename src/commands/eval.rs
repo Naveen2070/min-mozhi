@@ -1,4 +1,7 @@
-// ----------------------------------------------------------------- eval
+//! `mimz eval <file> --in a=3,b=5` — interpret a combinational module and print
+//! each output. Single-file/single-module only (no import resolution); the
+//! interpreter handles the subset that maps to combinational logic. Reports a
+//! clear error on anything out of scope (latches, clocks, multi-module designs).
 
 use std::path::Path;
 use std::process::ExitCode;

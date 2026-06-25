@@ -1,4 +1,6 @@
-// ------------------------------------------------------------------ sim
+//! `mimz sim <file>` — simulate a module and emit a VCD waveform (`-o`) and/or
+//! a console trace (`--trace`). Handles both clocked (multi-cycle with reset)
+//! and combinational (one-shot per input vector) modules. Single-file only.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

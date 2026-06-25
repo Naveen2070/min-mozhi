@@ -1,4 +1,6 @@
-// --------------------------------------------------------------- memory
+//! Memory-usage measurement: compile the full example corpus and track peak
+//! RSS. Every emitted string is retained in a sink to measure the true
+//! high-water mark rather than letting the allocator reclaim between files.
 
 use super::{Memory, all_example_files, compile_to_verilog};
 

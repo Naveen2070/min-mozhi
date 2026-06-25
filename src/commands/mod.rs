@@ -5,22 +5,32 @@
 
 mod check;
 mod compile;
+mod completions;
+mod doctor;
 mod eject;
 mod eval;
 mod explain;
 mod fmt;
 mod helpers;
+mod init;
+mod lint;
+mod repl;
 mod sim;
 mod test;
 mod translate;
 
 pub(crate) use check::check;
 pub(crate) use compile::compile;
+pub(crate) use completions::completions;
+pub(crate) use doctor::doctor;
 pub(crate) use eject::{EjectFlavor, eject_std};
 pub(crate) use eval::eval_file;
 pub(crate) use explain::explain_code;
 pub(crate) use fmt::fmt_file;
 pub(crate) use helpers::resolve_config;
+pub(crate) use init::init;
+pub(crate) use lint::lint_file;
+pub(crate) use repl::repl;
 pub(crate) use sim::sim_file;
 pub(crate) use test::test_file;
 pub(crate) use translate::translate_file;

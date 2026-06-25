@@ -1,4 +1,6 @@
-// ------------------------------------------------------------------ fmt
+//! `mimz fmt <file>` — normalize a file's keyword flavor in place. Token-based
+//! (via `mimz::translate`), so comments, layout, identifiers, and numbers are
+//! preserved byte-for-byte. With `--strict`, warns on mixed-flavor files.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

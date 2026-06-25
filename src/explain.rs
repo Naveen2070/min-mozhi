@@ -510,6 +510,35 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          message lists them. To customize a module, `mimz eject std` and point\n\
          `mimz.toml [lib] std` at the directory (spec/02 section 1.5).",
     ),
+    // ----- Wxxxx: lint warnings -----
+    (
+        "W0002",
+        "W0002 — signal name should be snake_case\n\n\
+         A port, wire, reg, instance, clock, or reset name is not snake_case.\n\
+         The project convention is `snake_case` for signal-level names —\n\
+         lowercase letters, digits, and underscores — which is the de-facto\n\
+         standard in hardware designs and the style the emitter uses for\n\
+         Verilog identifiers.\n\n\
+         Fix: rename to snake_case: `my_signal`, `data_bus_0`, `clk_50mhz`.",
+    ),
+    (
+        "W0003",
+        "W0003 — module name should be PascalCase\n\n\
+         A module name is not PascalCase. Modules are types (roughly), so they\n\
+         follow the type naming convention: uppercase first letter, no underscores.\n\
+         This matches Verilog module conventions and Rust's type naming rule.\n\n\
+         Fix: rename to PascalCase: `MyModule`, `Adder8`, `RiscVCore`.",
+    ),
+    (
+        "W0004",
+        "W0004 — signal declared but never used\n\n\
+         A wire, reg, instance, or constant is declared inside a module but is\n\
+         never read (appears on the RHS of no assignment, is mentioned in no\n\
+         expression). An unused declaration is dead code — it wastes hardware\n\
+         (or is a bug: you meant to use it but forgot).\n\n\
+         Fix: remove the unused declaration, or prefix it with `_`\n\
+         (e.g. `_unused_wire`) to signal the intent explicitly.",
+    ),
 ];
 
 /// Long-form explanation for a diagnostic `code` (e.g. `"E0501"`), or `None`
@@ -527,6 +556,15 @@ pub fn explain(code: &str) -> Option<&'static str> {
 /// "unknown code" CLI message and `mimz explain` with no argument.
 pub fn codes() -> impl Iterator<Item = &'static str> {
     EXPLANATIONS.iter().map(|(k, _)| *k)
+}
+
+/// List every code with its one-line summary — drives `mimz explain --list`.
+/// Each entry is `(code, first_line_of_explanation)`.
+pub fn list_all() -> impl Iterator<Item = (&'static str, &'static str)> {
+    EXPLANATIONS.iter().map(|(code, text)| {
+        let first_line = text.split('\n').next().unwrap_or("");
+        (*code, first_line)
+    })
 }
 
 #[cfg(test)]

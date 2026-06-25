@@ -1,4 +1,6 @@
-// ---------------------------------------------------------------- speed
+//! Pipeline-phase timing: measure lexer, parser, checker, and Verilog emission
+//! latency for every base example. Runs each file multiple iterations and
+//! reports the per-phase MEDIAN for steady-state comparison.
 
 use std::time::Instant;
 
