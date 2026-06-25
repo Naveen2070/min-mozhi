@@ -26,8 +26,10 @@ use commands::{
     sim_file, test_file, translate_file,
 };
 
-/// Top-level CLI definition. The `///` docs on [`Cmd`] variants and fields
-/// double as the `--help` text (clap derive).
+/// Compiler for Min-Mozhi (மின்மொழி), a Tamil-rooted HDL.
+///
+/// Each subcommand has its own `--help` with full details.
+/// Use `mimz <command> --help` for detailed documentation.
 #[derive(ClapParser)]
 #[command(
     name = "mimz",
@@ -43,12 +45,14 @@ struct Cli {
     command: Cmd,
 }
 
-/// The `mimz` subcommands. `test` execution is still ahead (Phase 1.5, B6);
-/// `sim` ships a first cut (default stimulus + VCD + console trace), and `eval`
-/// is its combinational slice.
+/// CLI subcommands.
+///
+/// Use `mimz <command> --help` for full details, including all flags.
 #[derive(Subcommand)]
 enum Cmd {
-    /// Lex + parse + check a file and report errors (no output written)
+    /// Check a .mimz file for errors.
+    ///
+    /// Lex + parse + check a file and report errors (no output written).
     Check {
         /// The .mimz file to check
         file: PathBuf,
@@ -63,7 +67,9 @@ enum Cmd {
         #[arg(long)]
         lang: Option<String>,
     },
-    /// Compile a .mimz file (and its imports) to Verilog
+    /// Compile a .mimz file to Verilog.
+    ///
+    /// Compile a .mimz file (and its imports) to Verilog.
     Compile {
         /// The .mimz entry file
         file: PathBuf,
@@ -81,10 +87,12 @@ enum Cmd {
         #[arg(long)]
         lang: Option<String>,
     },
-    /// Normalize a file's keyword flavor in place (lossless — comments and
-    /// layout are preserved; only keyword spellings change). Default target is
-    /// the flavor the file predominantly uses; `--to` overrides. (Word-order
-    /// reformatting is `translate --order`, which is not lossless.)
+    /// Normalize a file's keyword flavor in place.
+    ///
+    /// Lossless — comments and layout are preserved; only keyword spellings
+    /// change. Default target is the flavor the file predominantly uses;
+    /// `--to` overrides. (Word-order reformatting is `translate --order`,
+    /// which is not lossless.)
     Fmt {
         /// The .mimz file to format
         file: PathBuf,
@@ -98,11 +106,14 @@ enum Cmd {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Run the language server over stdio (diagnostics-only v0;
-    /// editors launch this — not for interactive use)
+    /// Run the language server over stdio.
+    ///
+    /// Diagnostics-only v0; editors launch this — not for interactive use.
     #[cfg(feature = "lsp")]
     Lsp,
-    /// Explain a diagnostic code in depth (e.g. `mimz explain E0501`)
+    /// Explain a diagnostic code in depth.
+    ///
+    /// Explain a diagnostic code in depth (e.g. `mimz explain E0501`).
     Explain {
         /// The diagnostic code to explain (case-insensitive, e.g. E0501)
         code: String,
@@ -123,10 +134,12 @@ enum Cmd {
         #[arg(long)]
         force: bool,
     },
-    /// Reskin a file's keywords into another flavor, and/or convert its word
-    /// order between `code` and `thamizh` (spec/04). `--to` alone is lossless
-    /// (keyword tokens only, comments/layout preserved); `--order` re-emits
-    /// from the AST (canonical layout, comments dropped).
+    /// Reskin a file's keywords into another flavor.
+    ///
+    /// Also converts word order between `code` and `thamizh` (spec/04).
+    /// `--to` alone is lossless (keyword tokens only, comments/layout
+    /// preserved); `--order` re-emits from the AST (canonical layout,
+    /// comments dropped).
     Translate {
         /// The .mimz file to translate
         file: PathBuf,
@@ -157,9 +170,10 @@ enum Cmd {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// (experimental) Evaluate a combinational module's outputs from inputs.
-    /// Combinational only — no clocks/regs/instances (that is the Phase 1.5
-    /// simulator); a slice of it, for quick checks and the future REPL.
+    /// (experimental) Evaluate a combinational module.
+    ///
+    /// No clocks/regs/instances (that is the Phase 1.5 simulator);
+    /// a slice of it, for quick checks and the future REPL.
     Eval {
         /// The .mimz file
         file: PathBuf,
@@ -177,10 +191,12 @@ enum Cmd {
         #[arg(long)]
         lang: Option<String>,
     },
-    /// (experimental) Simulate a clocked module: run a default stimulus (reset
-    /// asserted the first cycle, inputs held, the clock toggled) and write a VCD
-    /// waveform (`-o`) and/or a per-cycle console trace (`--trace`). Single-module
-    /// for now; use `mimz eval` for a combinational module.
+    /// (experimental) Simulate a clocked module.
+    ///
+    /// Runs a default stimulus (reset asserted the first cycle, inputs held,
+    /// the clock toggled) and writes a VCD waveform (`-o`) and/or a per-cycle
+    /// console trace (`--trace`). Single-module for now; use `mimz eval` for
+    /// a combinational module.
     Sim {
         /// The .mimz file
         file: PathBuf,
@@ -221,10 +237,11 @@ enum Cmd {
         #[arg(long)]
         lang: Option<String>,
     },
-    /// Run the file's `test` blocks and report pass/fail. A failing `expect`
-    /// prints a teaching-quality message (the expression, the cycle, each side's
-    /// value); the command exits non-zero if any test fails. Add `--trace` for a
-    /// per-cycle console trace.
+    /// Run the file's test blocks and report pass/fail.
+    ///
+    /// A failing `expect` prints a teaching-quality message (the expression,
+    /// the cycle, each side's value); the command exits non-zero if any test
+    /// fails. Add `--trace` for a per-cycle console trace.
     Test {
         /// The .mimz file
         file: PathBuf,
