@@ -513,6 +513,91 @@ fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
     }
 }
 
+/// A completion suggestion: the text to insert and what it is.
+pub struct Candidate {
+    pub label: String,
+    pub kind: CandKind,
+}
+
+pub enum CandKind {
+    Keyword,
+    Symbol(SymKind),
+}
+
+/// Completion candidates at `offset`: in-scope identifiers (enclosing module's
+/// members + file-level consts/enums + every module name) plus keywords in the
+/// file's majority flavor. Prefix filtering is left to the editor.
+pub fn completions(
+    index: &SymbolIndex,
+    files: &[LoadedFile],
+    file_idx: usize,
+    offset: usize,
+) -> Vec<Candidate> {
+    let mut out = Vec::new();
+
+    // Which module (if any) does the cursor sit inside?
+    let enclosing = enclosing_module(index, files, file_idx, offset);
+
+    for s in &index.symbols {
+        let in_scope = match s.module_idx {
+            // Members of the enclosing module.
+            Some(m) => Some(m) == enclosing && s.file_idx == file_idx,
+            // File-level: consts/enums of this file, or any module name.
+            None => {
+                s.kind == SymKind::Module
+                    || (s.file_idx == file_idx
+                        && matches!(
+                            s.kind,
+                            SymKind::Const | SymKind::Enum | SymKind::EnumVariant
+                        ))
+            }
+        };
+        if in_scope {
+            out.push(Candidate {
+                label: s.name.clone(),
+                kind: CandKind::Symbol(s.kind.clone()),
+            });
+        }
+    }
+
+    // Majority-flavor keywords.
+    let src = &index.files[file_idx].1;
+    let flavor = crate::lexer::lex(src)
+        .ok()
+        .map(|toks| crate::morph::majority_flavor(&toks))
+        .unwrap_or(crate::lexer::token::Flavor::English);
+    for kw in crate::lexer::keywords::TABLE.canonical_spellings(flavor) {
+        out.push(Candidate {
+            label: kw.to_string(),
+            kind: CandKind::Keyword,
+        });
+    }
+
+    out
+}
+
+/// The symbol index of the module whose body span contains `offset`, if any.
+fn enclosing_module(
+    index: &SymbolIndex,
+    files: &[LoadedFile],
+    file_idx: usize,
+    offset: usize,
+) -> Option<usize> {
+    let f = &files[file_idx];
+    for item in &f.ast.items {
+        if let TopItem::Module(m) = item {
+            if m.span.start <= offset && offset < m.span.end {
+                return index.symbols.iter().position(|s| {
+                    s.file_idx == file_idx
+                        && s.kind == SymKind::Module
+                        && s.span.start == m.name.span.start
+                });
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,5 +717,42 @@ mod tests {
         let sym = resolve_at(&idx, &files, 0, off).expect("module ref resolves");
         assert_eq!(idx.symbols[sym].name, "Adder");
         assert_eq!(idx.symbols[sym].file_idx, 1);
+    }
+
+    #[test]
+    fn completions_include_scope_idents_and_majority_keywords() {
+        let src = "module M {\n  in abc: bit\n  out y: bit\n  y = \n}\n";
+        let files = loaded(src);
+        let idx = build_index(&files);
+        let at = src.find("y = ").unwrap() + 4; // just after `y = `
+        let cands = completions(&idx, &files, 0, at);
+        let labels: Vec<&str> = cands.iter().map(|c| c.label.as_str()).collect();
+        assert!(labels.contains(&"abc"), "in-scope port missing: {labels:?}");
+        assert!(labels.contains(&"module"), "English keyword missing");
+        assert!(matches!(
+            cands.iter().find(|c| c.label == "abc").unwrap().kind,
+            CandKind::Symbol(SymKind::Port { .. })
+        ));
+    }
+
+    #[test]
+    fn completions_exclude_other_flavor_keywords() {
+        // A Tamil-flavored file: keyword completion offers Tamil, not English.
+        let src = "தொகுதி M {\n  உள்ளீடு a: bit\n  வெளியீடு y: bit\n  y = \n}\n";
+        let files = loaded(src);
+        let idx = build_index(&files);
+        let at = src.find("y = ").unwrap() + 4;
+        let labels: Vec<String> = completions(&idx, &files, 0, at)
+            .into_iter()
+            .map(|c| c.label)
+            .collect();
+        assert!(
+            labels.iter().any(|l| l == "தொகுதி"),
+            "Tamil keyword missing"
+        );
+        assert!(
+            !labels.iter().any(|l| l == "module"),
+            "English keyword leaked in"
+        );
     }
 }
