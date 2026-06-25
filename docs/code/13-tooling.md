@@ -1,4 +1,4 @@
-# 13 — Tooling modules (`explain`, `translate`, `pretty`, `morph`, `sim`, `config`)
+# 13 — Tooling modules (`explain`, `translate`, `pretty`, `morph`, `sim`, `config`, `analysis`)
 
 Lib modules that **consume** the pipeline rather than forming a stage in
 it. Each is the lib-backed core of one CLI subcommand, kept in the library (not
@@ -268,6 +268,47 @@ edition wingless-butterfly-2026-1   (language)
 `main.rs` intercepts `--version` to print this block (clap's own `--version`
 would prepend the binary name and lose the codename-on-top layout); `-V` keeps
 clap's short form. The edition design rationale lives in `spec/06-editions.md`.
+
+## `analysis` (`src/analysis.rs`) + the LSP editor features
+
+The editor-DX layer added 2026-06-25 (`phase-4-lsp-dx`, on top of the
+diagnostics-only LSP v0). It rides on the parser's `parse_recover` partial
+trees, so it works on half-typed files.
+
+The logic splits cleanly across the lib/bin boundary, the same way `morph`'s
+localization does:
+
+- **`src/analysis.rs` (library, pure, async-free)** — reusable by the future
+  WASM playground, unit-tested without tower-lsp. All offsets are **bytes**.
+  - `build_index(&[LoadedFile]) -> SymbolIndex` — one pass over every file's AST
+    collecting a `Symbol` (name, `SymKind`, `file_idx`, defining span, hover
+    `render`, enclosing `module_idx`) for each definition. `Error` placeholder
+    nodes are skipped at every level (no cascade on broken input).
+  - `resolve_at(&index, &files, file_idx, offset) -> Option<usize>` — smallest
+    name span covering the cursor (definition **or** use), resolved by scope:
+    enclosing module → same module any file → file-level → anywhere. Cross-file,
+    in-tree. `test "…" for M { … }` blocks resolve too: the module-under-test
+    name and the body's driven inputs / `expect` signals scope to M's ports
+    (the cross-file `same_module_any_file` tier carries this).
+  - `completions(&index, &files, file_idx, offset) -> Vec<Candidate>` — in-scope
+    identifiers (the enclosing module's members + file-level consts/enums + every
+    module name) plus keywords in the file's **majority flavor**
+    (`morph::majority_flavor` + `KeywordTable::canonical_spellings`); no
+    cross-flavor keyword leak. Prefix filtering is left to the editor.
+- **`src/lsp.rs` (binary, tower-lsp adapter)** — caches each open document's
+  text (`docs: Mutex<HashMap<Url, String>>`, updated on didOpen/didChange/
+  didSave), registers `hover` / `definition` / `completion` capabilities, and in
+  each handler converts the LSP UTF-16 `Position` to a byte offset (`offset`, the
+  inverse of `position`), runs `load_for_features` (parse_recover + the import
+  walk, skipping `std.*` virtual imports), then calls the lib and maps the result
+  to `Hover` / `Location` / `CompletionItem[]`. A `std:` virtual path yields no
+  go-to-def location (no real file URI). **Diagnostics are untouched** — `analyze`
+  keeps using the strict `parser::parse` (no checker cascade on half-typed input).
+
+Deferred: dot-member completion (`inst.port`, enum variants after `.`),
+flavor-localized hover render (English in v1), `ExprKind::Error` for
+expression-level recovery, and `did_close` cache eviction (the doc cache grows
+for the session).
 
 ## Scope discipline
 
