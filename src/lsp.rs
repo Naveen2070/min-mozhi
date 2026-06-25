@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server, jsonrpc};
 
+use mimz::analysis::{self, CandKind, SymKind};
 use mimz::lexer::token::Flavor;
 use mimz::project::{LoadError, LoadedFile};
 use mimz::{checker, diag, lexer, morph, parser, project};
@@ -27,6 +28,7 @@ pub fn run() {
         let (service, socket) = LspService::new(|client| Backend {
             client,
             published: tokio::sync::Mutex::new(HashSet::new()),
+            docs: tokio::sync::Mutex::new(HashMap::new()),
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket)
             .serve(service)
@@ -39,6 +41,9 @@ struct Backend {
     /// URIs we last published diagnostics for — stale ones get an empty
     /// publish so fixed errors actually disappear from the editor.
     published: tokio::sync::Mutex<HashSet<Url>>,
+    /// Last-seen text per open document — hover/def/completion get only a
+    /// position, so the current buffer must be cached here.
+    docs: tokio::sync::Mutex<HashMap<Url, String>>,
 }
 
 impl Backend {
@@ -90,6 +95,9 @@ impl LanguageServer for Backend {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions::default()),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -110,6 +118,10 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, p: DidOpenTextDocumentParams) {
+        self.docs
+            .lock()
+            .await
+            .insert(p.text_document.uri.clone(), p.text_document.text.clone());
         self.recheck(p.text_document.uri, p.text_document.text)
             .await;
     }
@@ -117,6 +129,10 @@ impl LanguageServer for Backend {
     async fn did_change(&self, mut p: DidChangeTextDocumentParams) {
         // FULL sync: the single change IS the whole document.
         if let Some(change) = p.content_changes.pop() {
+            self.docs
+                .lock()
+                .await
+                .insert(p.text_document.uri.clone(), change.text.clone());
             self.recheck(p.text_document.uri, change.text).await;
         }
     }
@@ -133,7 +149,110 @@ impl LanguageServer for Backend {
                 Err(_) => return,
             },
         };
+        self.docs
+            .lock()
+            .await
+            .insert(p.text_document.uri.clone(), text.clone());
         self.recheck(p.text_document.uri, text).await;
+    }
+
+    async fn hover(&self, p: HoverParams) -> jsonrpc::Result<Option<Hover>> {
+        let tdp = p.text_document_position_params;
+        let Ok(path) = tdp.text_document.uri.to_file_path() else {
+            return Ok(None);
+        };
+        let Some(text) = self.docs.lock().await.get(&tdp.text_document.uri).cloned() else {
+            return Ok(None);
+        };
+        let files = load_for_features(&path, &text);
+        if files.is_empty() {
+            return Ok(None);
+        }
+        let index = analysis::build_index(&files);
+        let off = offset(&text, tdp.position);
+        let Some(sym) = analysis::resolve_at(&index, &files, 0, off) else {
+            return Ok(None);
+        };
+        let render = &index.symbols[sym].render;
+        Ok(Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: format!("```mimz\n{render}\n```"),
+            }),
+            range: None,
+        }))
+    }
+
+    async fn goto_definition(
+        &self,
+        p: GotoDefinitionParams,
+    ) -> jsonrpc::Result<Option<GotoDefinitionResponse>> {
+        let tdp = p.text_document_position_params;
+        let Ok(path) = tdp.text_document.uri.to_file_path() else {
+            return Ok(None);
+        };
+        let Some(text) = self.docs.lock().await.get(&tdp.text_document.uri).cloned() else {
+            return Ok(None);
+        };
+        let files = load_for_features(&path, &text);
+        if files.is_empty() {
+            return Ok(None);
+        }
+        let index = analysis::build_index(&files);
+        let off = offset(&text, tdp.position);
+        let Some(sym) = analysis::resolve_at(&index, &files, 0, off) else {
+            return Ok(None);
+        };
+        let s = &index.symbols[sym];
+        let (def_path, def_src) = &index.files[s.file_idx];
+        // Embedded std (virtual `std:` path) has no real file URI — no jump.
+        let Ok(uri) = Url::from_file_path(def_path) else {
+            return Ok(None);
+        };
+        Ok(Some(GotoDefinitionResponse::Scalar(Location {
+            uri,
+            range: Range {
+                start: position(def_src, s.span.start),
+                end: position(def_src, s.span.end.max(s.span.start + 1)),
+            },
+        })))
+    }
+
+    async fn completion(&self, p: CompletionParams) -> jsonrpc::Result<Option<CompletionResponse>> {
+        let tdp = p.text_document_position;
+        let Ok(path) = tdp.text_document.uri.to_file_path() else {
+            return Ok(None);
+        };
+        let Some(text) = self.docs.lock().await.get(&tdp.text_document.uri).cloned() else {
+            return Ok(None);
+        };
+        let files = load_for_features(&path, &text);
+        if files.is_empty() {
+            return Ok(None);
+        }
+        let index = analysis::build_index(&files);
+        let off = offset(&text, tdp.position);
+        let items: Vec<CompletionItem> = analysis::completions(&index, &files, 0, off)
+            .into_iter()
+            .map(|c| {
+                let kind = match c.kind {
+                    CandKind::Keyword => CompletionItemKind::KEYWORD,
+                    CandKind::Symbol(SymKind::Module) => CompletionItemKind::CLASS,
+                    CandKind::Symbol(SymKind::Const | SymKind::Param) => {
+                        CompletionItemKind::CONSTANT
+                    }
+                    CandKind::Symbol(SymKind::Enum) => CompletionItemKind::ENUM,
+                    CandKind::Symbol(SymKind::EnumVariant) => CompletionItemKind::ENUM_MEMBER,
+                    CandKind::Symbol(_) => CompletionItemKind::VARIABLE,
+                };
+                CompletionItem {
+                    label: c.label,
+                    kind: Some(kind),
+                    ..Default::default()
+                }
+            })
+            .collect();
+        Ok(Some(CompletionResponse::Array(items)))
     }
 }
 
@@ -287,9 +406,106 @@ fn position(src: &str, offset: usize) -> Position {
     Position { line, character }
 }
 
+/// Inverse of [`position`]: an LSP `Position` (UTF-16 line/character) → byte
+/// offset into `src`. Clamps past-the-end positions to `src.len()`.
+fn offset(src: &str, pos: Position) -> usize {
+    let mut line = 0u32;
+    let mut idx = 0usize;
+    // Advance to the start of the target line.
+    if pos.line > 0 {
+        for (i, b) in src.bytes().enumerate() {
+            if b == b'\n' {
+                line += 1;
+                if line == pos.line {
+                    idx = i + 1;
+                    break;
+                }
+            }
+        }
+        if line < pos.line {
+            return src.len();
+        }
+    }
+    // Walk UTF-16 units within the line up to `pos.character`.
+    let mut units = 0u32;
+    for ch in src[idx..].chars() {
+        if ch == '\n' || units >= pos.character {
+            break;
+        }
+        units += ch.len_utf16() as u32;
+        idx += ch.len_utf8();
+    }
+    idx
+}
+
+/// Load the entry (via `parse_recover`, so partial trees work) plus its
+/// on-disk imports, for the editor-feature handlers. Returns the loaded files;
+/// the entry is always index 0. Best-effort: a missing/broken import is simply
+/// not loaded (features degrade, they don't error).
+fn load_for_features(entry: &Path, text: &str) -> Vec<LoadedFile> {
+    let toks = match lexer::lex(text) {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
+    };
+    let (ast, _diags) = parser::parse_recover(toks);
+    let mut files = vec![LoadedFile {
+        path: entry.to_path_buf(),
+        src: text.to_string(),
+        ast,
+    }];
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    visited.insert(entry.canonicalize().unwrap_or_else(|_| entry.to_path_buf()));
+    let mut i = 0;
+    while i < files.len() {
+        let dir = files[i]
+            .path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        let imports = files[i].ast.imports.clone();
+        for import in &imports {
+            // Skip std.* virtual imports — no on-disk file to resolve.
+            if import
+                .path
+                .first()
+                .is_some_and(|s| matches!(s.name.as_str(), "std" | "nuulagam" | "நூலகம்"))
+            {
+                continue;
+            }
+            let mut p = dir.clone();
+            for seg in &import.path {
+                p.push(&seg.name);
+            }
+            p.set_extension("mimz");
+            let canon = p.canonicalize().unwrap_or_else(|_| p.clone());
+            if !visited.insert(canon) {
+                continue;
+            }
+            if let Ok(f) = project::parse_file(&p) {
+                files.push(f);
+            }
+        }
+        i += 1;
+    }
+    files
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offset_inverts_position_utf16() {
+        let src = "abc\ndef";
+        for off in [0usize, 2, 4, 6] {
+            let pos = position(src, off);
+            assert_eq!(offset(src, pos), off, "round-trip at {off}");
+        }
+        // Tamil line: offset of `x` after `மணி `.
+        let src = "மணி x";
+        let off = "மணி ".len();
+        assert_eq!(offset(src, position(src, off)), off);
+    }
 
     #[test]
     fn positions_are_utf16_lines_and_columns() {
