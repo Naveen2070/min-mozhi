@@ -18,17 +18,32 @@ pub(crate) fn compile(
     json: bool,
     lang: Option<&str>,
     config_path: Option<&Path>,
+    quiet: bool,
+    debug: bool,
 ) -> ExitCode {
     let flavor = match resolve_lang(path, lang) {
         Ok(f) => f,
         Err(code) => return code,
     };
     let out = Output::new(json, flavor);
+    if debug {
+        eprintln!(
+            "debug: loading project starting from entry {}",
+            path.display()
+        );
+    }
     let lib_std = lib_std_dir(path, config_path);
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
     };
+    if debug {
+        eprintln!("debug: loaded {} project file(s)", files.len());
+        for f in &files {
+            eprintln!("  - {}", f.path.display());
+        }
+    }
+
     let mut asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
     // Non-fatal warnings (W0001 mixed-flavor) ride alongside any stage errors,
     // and are surfaced on success too.
@@ -122,18 +137,20 @@ pub(crate) fn compile(
         if !warnings.is_empty() {
             eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
         }
-        println!("compiled {} -> {}", path.display(), out_path.display());
-        if let Some((tb_path, _)) = &testbench {
-            println!(
-                "compiled {} -> {} (testbench)",
-                path.display(),
-                tb_path.display()
-            );
-        } else if no_tests {
-            eprintln!(
-                "note: --emit-testbench had no effect — no `test` blocks found in {}",
-                path.display()
-            );
+        if !quiet {
+            println!("compiled {} -> {}", path.display(), out_path.display());
+            if let Some((tb_path, _)) = &testbench {
+                println!(
+                    "compiled {} -> {} (testbench)",
+                    path.display(),
+                    tb_path.display()
+                );
+            } else if no_tests {
+                eprintln!(
+                    "note: --emit-testbench had no effect — no `test` blocks found in {}",
+                    path.display()
+                );
+            }
         }
     }
     ExitCode::SUCCESS
