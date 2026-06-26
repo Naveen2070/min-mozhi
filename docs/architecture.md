@@ -167,8 +167,9 @@ mimz/
       vcd.rs             #   VCD waveform writer
       trace.rs           #   console trace renderer
     ir/                  # (P2)
-  tests/                 # 17 test files
+  tests/                 # 18 test files
     examples.rs          # all 129 examples (29 × 4 complete flavors + 13 tamil-pure) ✅
+    cli.rs               # CLI surface: init / doctor / completions  ✅
     errors.rs            # broken fixtures, one code per E-code  ✅
     icarus.rs            # iverilog lint + self-checking TBs +   ✅
                          #   our_simulator_matches_icarus_bit_for_bit (~21 ex)
