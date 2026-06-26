@@ -93,7 +93,7 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-23 (post-stdlib shipment, BUG-6 fix, Fuzz crash fix, reserved `extern`, parser AST error recovery —
+_Last synced with the code: 2026-06-26 (documentation audit: updated test count 433→465, example count 105→129, fixture count 72→73, module file counts across lexer/parser/checker/sim/commands, added stdlib.rs and analysis.rs to all maps, icarus example count 72→129). Prior: 2026-06-23 (post-stdlib shipment, BUG-6 fix, Fuzz crash fix, reserved `extern`, parser AST error recovery —
 replication, don't-care patterns, `on fall`, `mem`, `async reset` — plus
 Workstream B: the new `version` module (compiler vs language-edition axes,
 `EDITION_HISTORY`, `mimz --version`, `spec/06-editions.md`, `CHANGELOG.md`).
