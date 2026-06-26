@@ -231,6 +231,24 @@ impl Emitter<'_> {
                 Builtin::Nand => format!("(~&({}))", self.expr_subst(&args[0], subst)),
                 Builtin::Nor => format!("(~|({}))", self.expr_subst(&args[0], subst)),
                 Builtin::Xnor => format!("(~^({}))", self.expr_subst(&args[0], subst)),
+                // `clog2(n)` folds to a literal when `n` is a constant (a literal
+                // or `const`). A module PARAMETER stays a symbolic Verilog
+                // `parameter`, and Verilog-2005 has no `clog2`, so it cannot be
+                // emitted — an honest error beats a silently wrong width.
+                Builtin::Clog2 => match consteval::eval(&args[0], &self.env) {
+                    Ok(n) if n >= 1 => consteval::clog2_bits(n as u128).to_string(),
+                    Ok(_) => "1".to_string(), // n < 1: the checker already reported E0202
+                    Err(_) => {
+                        self.err(
+                            args[0].span,
+                            "`clog2` needs a constant argument to emit — a module \
+                             parameter stays symbolic, and Verilog-2005 has no `clog2`",
+                            "pass `clog2` a literal or a `const` (parametric `clog2` \
+                             widths are not yet supported)",
+                        );
+                        "1".to_string()
+                    }
+                },
             },
         }
     }
