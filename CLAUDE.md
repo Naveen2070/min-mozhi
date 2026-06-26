@@ -34,10 +34,10 @@ min-mozhi/
 │   ├── checker/                 # 6 safety passes (12 files)
 │   ├── emit_verilog/            # Verilog-2005 code gen (5 files)
 │   ├── sim/                     # Event-driven simulator (9 files)
-│   ├── commands/                # CLI command handlers (11 files)
+│   ├── commands/                # CLI command handlers (16 files)
 │   └── bin/mimz-bench/          # Benchmark harness
 ├── crates/mimz-wasm/            # WASM playground wrapper (40 lines)
-├── tests/                       # 17 test files + fixtures/golden/icarus
+├── tests/                       # 18 test files + fixtures/golden/icarus
 ├── benches/compile.rs           # Criterion micro-benchmarks
 ├── fuzz/                        # 4 libFuzzer targets
 ├── examples/                    # 23 designs × 4 complete flavors + 6 stdlib each + 13 tamil-pure (129 total)

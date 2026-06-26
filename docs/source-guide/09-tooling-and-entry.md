@@ -1,19 +1,33 @@
 # 9 — Tooling, Entry Points & Editor Support
 
-## `src/commands/` — CLI Command Handlers (11 Files)
+## `src/commands/` — CLI Command Handlers (16 Files)
 
-These are thin functions that wire CLI arguments to the library modules. Nothing clever here — just plumbing.
+These are thin functions that wire CLI arguments to the library modules. Nothing clever here — just plumbing. `mod.rs` declares the set and re-exports each handler; `main.rs` parses the CLI and dispatches into one function here.
 
-- **`check.rs`** — load file, run lex→parse→check, print "OK" or errors
-- **`compile.rs`** — full pipeline to `.v` file
-- **`eval.rs`** — evaluate combinational modules
+**Pipeline & language commands:**
+
+- **`check.rs`** — load file, run lex→parse→check, print "OK" or errors. `--tokens` stops after the lexer and dumps the token stream; `--watch` re-runs on every save (watches the entry file's directory plus each transitive import's directory, reconciled after every run — `watch` feature, on by default)
+- **`compile.rs`** — full pipeline to a `.v` file; `--emit-testbench` also writes a `_tb.v` from inline `test` blocks
+- **`eval.rs`** — evaluate combinational modules (`--in`, `--module`, `--param`)
 - **`sim.rs`** — simulate with sweep, steps, traces, VCD
-- **`test.rs`** — run test blocks
-- **`translate.rs`** — reskin keywords
+- **`test.rs`** — run `tick`/`expect` test blocks
+- **`translate.rs`** — reskin keywords between flavors (`--to`, `--order`, romanization)
 - **`fmt.rs`** — in-place keyword normalization
-- **`explain.rs`** — print long-form error explanations
+- **`explain.rs`** — print long-form error-code explanations
+- **`lint.rs`** — style and hygiene warnings (naming conventions, unused signals; always warning-only)
+- **`repl.rs`** — interactive read-eval-print loop: parse a file once, then evaluate stdin bindings line by line
 - **`eject.rs`** — vendor the embedded standard library to disk (`mimz eject std`)
-- **`helpers.rs`** — shared config resolution
+
+**Project & environment commands:**
+
+- **`init.rs`** — `mimz init <name>` scaffolds `./<name>/`: a documented `mimz.toml` and a starter `<name>.mimz` (a free-running counter plus a passing inline `test` block), so `mimz test`/`mimz compile` work immediately. Refuses to overwrite a non-empty directory; derives the module name from the project name (PascalCase, Tamil-aware)
+- **`doctor.rs`** — `mimz doctor` (alias `mimz env`) prints a toolchain & environment report and runs an in-memory pipeline smoke test. The runtime is fully in-process, so `iverilog`/`verilator`/`gtkwave` are **optional** cross-check/waveform tools (missing ⇒ warn, never fail); `--dev` adds the contributor toolchain (Rust, WASM target, nextest, node)
+- **`completions.rs`** — `mimz completions <shell>` prints a tab-completion script (bash/zsh/fish/powershell/elvish), generated straight from the clap command tree so it always matches the real subcommands and flags
+
+**Shared:**
+
+- **`helpers.rs`** — shared config/flavor resolution and project-warning collection used by every handler
+- **`mod.rs`** — module declarations + handler re-exports
 
 ## `src/main.rs` & `src/lib.rs` — The Front Door
 
@@ -44,7 +58,7 @@ This is the **pure, async-free** analysis layer that powers the LSP's hover, go-
 
 Walks all loaded files' ASTs and emits one `Symbol` per declaration. Everything that has a name and a span ends up here: module names, parameters, ports, clocks, resets, wires, regs, mems, consts, enum types + variants, and instance names. The hover `render` is a one-liner like `out y: bits[8] — output port`.
 
-### `resolve_at(index, file_idx, offset)`
+### `resolve_at(index, files, file_idx, offset)`
 
 Given a cursor position (byte offset into a specific file), finds the identifier under the cursor and returns the `Symbol` it resolves to — i.e. its **declaration** span, not the use site. This powers go-to-definition and hover.
 
@@ -56,26 +70,28 @@ It handles:
 
 **`parse_recover`** `Error` nodes don't crash resolution; good declarations around a broken line still resolve.
 
-### `completions(index, file_idx, offset, majority_flavor)`
+### `completions(index, files, file_idx, offset)`
 
-Returns a list of `Candidate`s for the current cursor position: all in-scope module members (as `CandKind::Ident`), plus the full keyword set for the file's majority flavor (as `CandKind::Keyword`). Keywords from other flavors are excluded — a Tamil-flavored file never offers English spellings.
+Returns a list of `Candidate`s for the current cursor position: all in-scope module members (as `CandKind::Ident`), plus the full keyword set for the file's majority flavor (derived internally via `morph::majority_flavor`, as `CandKind::Keyword`). Keywords from other flavors are excluded — a Tamil-flavored file never offers English spellings. Prefix filtering is left to the editor.
 
 ---
 
 ## `src/lsp.rs` — The Language Server
 
-The LSP server powers the **VS Code extension** (and potentially other editors). It's a diagnostics-only server in v0 — it reports errors and warnings as you type, but hover info and go-to-definition come later.
+The LSP server powers the **VS Code extension** (and potentially other editors). As of 2026-06-25 (`phase-4-lsp-dx`) it provides **live diagnostics plus hover, go-to-definition, and completion** — a thin `tower-lsp` adapter over the pure `src/analysis.rs` layer above. Diagnostics stay on the strict parser; the DX features ride `parse_recover` partial trees, so they work on half-typed files.
 
 **`run()`** — starts the server over stdio. It creates a Tokio runtime and a `tower-lsp` service that listens for LSP messages.
 
-**`Backend::recheck(uri, text)`** — the heart of it. Whenever you open, change, or save a `.mimz` file in VS Code, this runs:
+**`Backend::recheck(uri, text)`** — the diagnostics half. Whenever you open, change, or save a `.mimz` file in VS Code, this runs:
 
 1. Calls `analyze()` to lex, parse, and check the entire project (the file + its imports from disk)
 2. Localizes each diagnostic to the file's predominant keyword flavor
 3. Publishes diagnostics to the editor — each file gets its own `publishDiagnostics` call
 4. Clears stale diagnostics for files that no longer have errors
 
-**`analyze(entry, text)`** — the in-memory pipeline. It parses the entry document's current text (from the editor, not disk), then resolves imports by walking the filesystem. The checker runs across the whole project, and diagnostics are attributed to their source file.
+**`analyze(entry, text)`** — the in-memory pipeline. It parses the entry document's current text (from the editor, not disk) with the strict `parser::parse` (no checker cascade on half-typed input), then resolves imports by walking the filesystem. The checker runs across the whole project, and diagnostics are attributed to their source file.
+
+**Hover / definition / completion** — each handler caches the open document's text (updated on didOpen/didChange/didSave), converts the LSP UTF-16 `Position` to a byte offset, runs `load_for_features` (`parse_recover` + the import walk, skipping `std.*` virtual imports), then calls the matching `analysis` function (`resolve_at` / `build_index` / `completions`) and maps the result back to `Hover` / `Location` / `CompletionItem[]`. A `std:` virtual path yields no go-to-def location (no real file URI). Deferred: dot-member completion, flavor-localized hover render (English in v1), and `did_close` cache eviction.
 
 **`to_lsp(d, src, flavor)`** — converts a `Diag` to an LSP `Diagnostic`. The WHAT line is localized if the catalog covers it, and the help line is appended after a `\nhelp:` prefix (with a trailing space). The span is converted to LSP `Range` with UTF-16 character offsets (because that's what the LSP protocol requires — important for Tamil text, where one character may be 1 or 2 UTF-16 units).
 
