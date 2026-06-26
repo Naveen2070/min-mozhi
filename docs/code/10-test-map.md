@@ -11,11 +11,13 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**465 tests** as of 2026-06-26: 311 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**476 tests** as of 2026-06-26: 316 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
 Fixture counts (current): 72 error fixtures · 8 grammar fixtures · 42 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-26 CLI subcommands and DX (branch `cli-and-code-improvements`). New subcommands: `init`, `doctor`, `completions`, `repl`, `lint`. `check --watch` for continuous rechecking. Colorized diagnostics + test output via `owo-colors`. Global `-q`/`--quiet` and `-d`/`--debug` flags. `--lang` restructured to Clap `ValueEnum` with aliases. `src/lint.rs`: style/hygiene lint passes (W0002 snake_case, W0003 PascalCase). `tests/cli.rs`: 6 smoke + integration tests for doctor, init, watch, completions. **+5 lib unit** (lint: snake_case ×2, PascalCase ×2, empty-file clean) **+6 cli integration** (new `tests/cli.rs`). Suite 465 → 476.
 
 - 2026-06-25 LSP DX (branch `phase-4-lsp-dx`). `mimz lsp` serves hover (type + doc-on-type), go-to-definition (cross-file, `test` blocks, `import` targets), and completion (scope identifiers + flavor keywords). `src/analysis.rs`: symbol index, `resolve_at` offset-to-definition resolver, completions — scope idents + flavor keywords. `src/lsp.rs`: LSP server wired through Tower LSP. `KeywordTable::canonical_spellings` for flavor-aware keyword completion. **+12 lib unit** (analysis.rs: symbol index, resolve_at, completions; lsp.rs: handlers; tests for each) **+1 LSP unit (bin)** (`lsp.rs` smoke). Suite 456 → 469.
 
@@ -379,6 +381,19 @@ go-to-definition / completion (the `src/lsp.rs` handlers are a thin adapter).
 | `uncovered_code_is_not_localized_in_lsp`                    | an uncovered code (E0401) is byte-identical across flavors in the LSP (the English-fallback invariant)                                       |
 | `opening_a_broken_file_publishes_coded_diagnostics` (smoke) | the REAL binary over the real wire protocol: framed JSON-RPC initialize → didOpen → publishDiagnostics with code, source, help, and position |
 
+## Unit: lint (`src/lint.rs`, 5 tests)
+
+Style and hygiene warnings — the `mimz lint` passes (W0002, W0003).
+Additive and always warning-only; no spec or grammar change.
+
+| Test                                   | Locks in                                                  |
+| -------------------------------------- | --------------------------------------------------------- |
+| `snake_case_rejects_bad_names`         | a port/wire/reg named `BadStyle` or `UPPER_CASE` is W0002 |
+| `snake_case_accepts_valid_names`       | `my_signal`, `data_bus_0` pass with no warning            |
+| `pascal_case_rejects_bad_names`        | a module named `bad_style` or `UPPER_MODULE` is W0003     |
+| `pascal_case_accepts_valid_names`      | `MyModule`, `TrafficLight` pass with no warning           |
+| `lint_empty_file_produces_no_warnings` | no lints fire on a file with zero items                   |
+
 ## Benchmark harness (`src/bin/mimz-bench/`, 6 unit tests)
 
 The harness itself (docs in [`12-benchmark.md`](12-benchmark.md))
@@ -579,6 +594,20 @@ token reskin, not the comment-dropping `--order` printer).
 | `output_flag_leaves_the_input_untouched`          | `-o <dest>` writes the result elsewhere; the input is unchanged                          |
 | `output_to_the_input_path_round_trips`            | `-o <input>` writes atomically to a temp file then renames — input is never half-written |
 | `unknown_to_flavor_is_a_clean_error`              | `--to wibble` fails with a clear "unknown flavor" message, never a panic                 |
+
+## Integration: CLI (`tests/cli.rs`, 6 tests — run the real binary)
+
+The new `init`, `doctor`, `completions`, and `check --watch` subcommands.
+See `docs/code/04-cli.md` for the full command reference.
+
+| Test                                                | Locks in                                                                                      |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `init_scaffolds_a_project_that_passes_its_own_test` | `mimz init myproject` creates a documented `mimz.toml` + a counter module with a passing test |
+| `init_refuses_to_clobber_a_non_empty_dir`           | re-running `mimz init myproject` on an existing dir fails with a clean message                |
+| `doctor_reports_sections_and_pipeline_ok`           | `mimz doctor` prints version/edition, platform, and an in-memory compile smoke test           |
+| `doctor_dev_adds_developer_section`                 | `--dev` adds the Rust/WASM/test toolchain section                                             |
+| `env_is_an_alias_for_doctor`                        | `mimz env` produces identical output to `mimz doctor`                                         |
+| `watch_starts_and_enters_watch_mode`                | `mimz check --watch` starts the watcher and shows the "watching N dir(s)" banner              |
 
 ## Unit: combinational evaluator (`src/sim/comb.rs`, 16 tests)
 
