@@ -112,7 +112,7 @@ Three workflows keep the repo healthy:
 
 **`release.yml`** — builds the VS Code `.vsix`, the WASM package, and creates a GitHub Release with all artifacts when a tag is pushed.
 
-## `tests/` — Making Sure Everything Works (17 Test Files)
+## `tests/` — Making Sure Everything Works (18 Test Files)
 
 The test suite is thorough:
 
@@ -131,6 +131,7 @@ The test suite is thorough:
 - **`compile_string.rs`** — library API tests
 - **`test_run.rs`** — test block execution
 - **`stdlib.rs`** — importable `std.*` library: embedded resolution, trilingual alias routing, eject
+- **`cli.rs`** — CLI surface tests: `mimz init` scaffolding, `doctor` environment checks, `completions <shell>` generation
 - **`lsp.rs`** — LSP server tests
 - **`wasm_parity.rs`** — checks that the WASM commands produce the same output as the native CLI
 

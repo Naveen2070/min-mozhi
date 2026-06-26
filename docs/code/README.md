@@ -42,7 +42,7 @@ is a bug — fix it the same day (RULES R1).
 | [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test                 |
 | [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning               |
 | [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report            |
-| [`13-tooling.md`](13-tooling.md)                                 | Tooling modules: `explain`, `translate`/`pretty`, `morph` (error language), `sim` |
+| [`13-tooling.md`](13-tooling.md)                                 | Tooling modules (`explain`, `translate`/`pretty`, `morph`, `sim`, `config`, `version`, `analysis`) + operational commands (`init`/`doctor`/`completions`/`check --watch`) |
 
 ## The 60-second version
 
@@ -63,7 +63,7 @@ is a bug — fix it the same day (RULES R1).
   English, Tanglish, and Tamil spellings all map to the same token, so
   everything after the lexer is flavor-blind.
 
-Nine **tooling** modules consume the pipeline rather than forming a stage in
+Ten **tooling** modules consume the pipeline rather than forming a stage in
 it (page 13):
 
 - `explain` — long-form text per E/W-code, `mimz explain`.
@@ -86,7 +86,14 @@ it (page 13):
   and the Verilog header (see `spec/06-editions.md`).
 - `analysis` — pure, async-free editor analysis: a symbol index over the
   loaded file set plus offset→definition resolution and completion
-  candidates, consumed by the LSP server (`src/lsp.rs`).
+  candidates, consumed by the LSP server (`src/lsp.rs`) for hover /
+  go-to-definition / completion.
+
+Plus a handful of **operational** commands (bin-only, in `src/commands/`, not
+lib modules — they touch the OS, not the pipeline; page 13): `mimz init`
+(scaffold a project), `mimz doctor`/`env` (toolchain & environment report),
+`mimz completions <shell>` (shell tab-completion), and `mimz check --watch`
+(re-check on save).
 
 ## Keeping these docs honest
 
@@ -97,7 +104,7 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-06-26 (documentation audit: updated test count 433→465, example count 105→129, fixture count 72→73, module file counts across lexer/parser/checker/sim/commands, added stdlib.rs and analysis.rs to all maps, icarus example count 72→129). Prior: 2026-06-23 (post-stdlib shipment, BUG-6 fix, Fuzz crash fix, reserved `extern`, parser AST error recovery —
+_Last synced with the code: 2026-06-27 (tooling-currency pass: documented the bin-only operational commands — `mimz init` / `doctor`(`env`) / `completions` / `check --watch` — in page 13 (new section) and `docs/source-guide/09-tooling-and-entry.md`; corrected source-guide/09's command-handler count 11→16 with the missing `init`/`doctor`/`completions`/`lint`/`repl` entries; rewrote its stale "diagnostics-only v0" LSP section now that hover / go-to-definition / completion shipped (2026-06-25) and fixed the `resolve_at`/`completions` signatures; bumped this README's tooling-module count Nine→Ten and added the operational-commands note; CLAUDE.md `commands/` 11→16). Prior: 2026-06-26 (documentation audit: updated test count 433→476 (corrected 465→476 — the earlier 465 omitted the 11 `tests/stdlib.rs` integration tests; runtime `cargo test` reports 476 passing, 0 ignored), example count 105→129, fixture count 72→73, module file counts across lexer/parser/checker/sim/commands, added stdlib.rs and analysis.rs to all maps, added `tests/cli.rs` (init/doctor/completions) to the test-file lists, icarus example count 72→129). Prior: 2026-06-23 (post-stdlib shipment, BUG-6 fix, Fuzz crash fix, reserved `extern`, parser AST error recovery —
 replication, don't-care patterns, `on fall`, `mem`, `async reset` — plus
 Workstream B: the new `version` module (compiler vs language-edition axes,
 `EDITION_HISTORY`, `mimz --version`, `spec/06-editions.md`, `CHANGELOG.md`).

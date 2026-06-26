@@ -1,4 +1,4 @@
-# 13 — Tooling modules (`explain`, `translate`, `pretty`, `morph`, `sim`, `config`, `analysis`)
+# 13 — Tooling modules (`explain`, `translate`, `pretty`, `morph`, `sim`, `config`, `version`, `analysis`) + operational commands
 
 Lib modules that **consume** the pipeline rather than forming a stage in
 it. Each is the lib-backed core of one CLI subcommand, kept in the library (not
@@ -309,6 +309,41 @@ Deferred: dot-member completion (`inst.port`, enum variants after `.`),
 flavor-localized hover render (English in v1), `ExprKind::Error` for
 expression-level recovery, and `did_close` cache eviction (the doc cache grows
 for the session).
+
+## Operational commands (bin-only: `init` / `doctor` / `completions` / `check --watch`)
+
+These are **not** lib modules — they live in `src/commands/` (bin-only) and touch
+the OS, not the pipeline, so they stay out of the library (the WASM build and LSP
+never need them). They are thin by design; documented here so the maintainer map
+is complete (the friendly walkthrough is `docs/source-guide/09-tooling-and-entry.md`).
+
+- **`mimz init <name>` (`commands/init.rs`).** Scaffolds `./<name>/`: a documented
+  `mimz.toml` and a starter `<name>.mimz` (a free-running counter + a passing inline
+  `test` block), so `mimz test`/`mimz compile` work on the new project immediately.
+  `module_name` derives a valid identifier from the project name (PascalCase the
+  alphanumeric runs, Tamil letters kept as-is, `Top` fallback). Refuses a non-empty
+  target directory; a name containing a path separator is an error.
+- **`mimz doctor` (alias `mimz env`, `commands/doctor.rs`).** Prints a toolchain &
+  environment report and runs an in-memory pipeline smoke test (`compile_string` on a
+  4-bit adder). The runtime is fully in-process (sim/test/eval never shell out), so
+  `iverilog`/`verilator`/`gtkwave` are **optional** cross-check/waveform tools —
+  missing ones are `Warn`, only a broken pipeline / unwritable temp dir / malformed
+  `mimz.toml` is a `Fail` (non-zero exit). `--dev` adds the contributor toolchain
+  (rustc, cargo, the `wasm32-unknown-unknown` target, wasm-pack, nextest, node).
+- **`mimz completions <shell>` (`commands/completions.rs`).** Prints a shell
+  tab-completion script (bash/zsh/fish/powershell/elvish) to stdout, generated from
+  the live clap command tree (`crate::Cli::command()`), so it can never drift from
+  the real subcommands/flags.
+- **`mimz check --watch` (`commands/check.rs`, `watch` feature).** Re-runs `run_check`
+  on every save. It watches the **directories** holding the entry file and every
+  transitive import (not the files — so editor atomic-saves still fire), reacting only
+  to `.mimz` changes, debouncing the per-save event burst (100 ms drain). The watch set
+  is reconciled to the project after each run: new import dirs are added; dirs that
+  dropped out of the project are unwatched — but only after a *successful* load, so a
+  parse error never loses the last good watch set and the fix-save is never missed
+  (rationale: `docs/log/2026-06-25.md`). Gated behind the `watch` feature (on by
+  default; the WASM build drops it, since `notify` pulls OS file-watch APIs that don't
+  build on `wasm32`).
 
 ## Scope discipline
 
