@@ -117,11 +117,11 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       width lowers to an injected Verilog-2005 `clog2` constant function so the
       width tracks a parameter override (Icarus-validated: `iverilog -g2005` +
       `DEPTH=5` override sim). Only a `clog2(PARAM)` in a **port** width errors
-      (the body function can't reach the header). **Downstream task — stdlib
-      `Fifo` cleanup:** swap `AW` for `DEPTH` (`bits[clog2(DEPTH)]` pointers).
-      Caveat: today's `Fifo` is a power-of-2 ring (`+% 1` natural wrap), so
-      `DEPTH` must stay a power of two unless the wrap is generalized — a
-      separate stdlib change touching 4 flavors + the P-Tamil twin + goldens
+      (the body function can't reach the header). Stdlib `Fifo` refactored
+      `AW` → `DEPTH` (`bits[clog2(DEPTH)]` pointers) across all four flavors +
+      the pure-Tamil twin, with a **generalized wrap** (`+% 1`, else `DEPTH-1`
+      to 0) so any `DEPTH >= 1` works — not just powers of two; goldens
+      regenerated, Icarus differential green, `DEPTH=5` sim verified
 - [ ] `pipeline(stages = N)` (salvaged from 6.1) — inserts N register stages +
       vendor retiming attribute; never promises Fmax
 - [ ] **`prove` blocks** (6.3) — emit SystemVerilog assertions + drive

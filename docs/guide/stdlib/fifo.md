@@ -27,21 +27,20 @@ reads out combinationally. A push when full and a pop when empty are both
 | `empty` | out | `bit`         | nothing buffered                             |
 | `dout`  | out | `bits[WIDTH]` | the datum at the head (valid when not empty) |
 
-| Param   | Default | Meaning                                      |
-| ------- | ------- | -------------------------------------------- |
-| `WIDTH` | `8`     | datum width in bits                          |
-| `AW`    | `2`     | pointer width; the ring holds `2^AW` entries |
+| Param   | Default | Meaning                                   |
+| ------- | ------- | ----------------------------------------- |
+| `WIDTH` | `8`     | datum width in bits                       |
+| `DEPTH` | `4`     | entries the ring holds (any `DEPTH >= 1`) |
 
 ## How it works
 
-1. `data` is a `mem` of `1 << AW` cells. `head` and `tail` are `AW`-bit pointers
-   that wrap around the ring with `+%`.
+1. `data` is a `mem` of `DEPTH` cells. `head` and `tail` are `clog2(DEPTH)`-bit
+   pointers — the compiler derives that width from `DEPTH`, so you size the queue
+   by capacity, not pointer bits. They wrap at `DEPTH - 1` (not at a power of
+   two), so any depth works.
 2. `count` carries one extra bit so it can represent a completely full ring
-   (`2^AW`). `full = count == (1 << AW)`, `empty = count == 0`.
+   (`DEPTH`). `full = count == DEPTH`, `empty = count == 0`.
 3. On each clock: a valid push writes `din` at `tail` and advances it; a valid
-   pop advances `head`. The occupancy `count` rises on a push-only, falls on a
-   pop-only, and holds steady when a push and pop happen together.
-4. On each clock: a valid push writes `din` at `tail` and advances it; a valid
    pop advances `head`. The occupancy `count` rises on a push-only, falls on a
    pop-only, and holds steady when a push and pop happen together.
 
@@ -49,7 +48,7 @@ reads out combinationally. A push when full and a pop when empty are both
 
 `mimz sim examples/english/std/fifo.mimz --in push=1,din=171 --cycles 6 --trace --verbose`
 (`push` held with `din=171`; the queue fills one entry per clock, `dout` shows
-the head datum, and `full` asserts once `count` reaches `2^AW=4`):
+the head datum, and `full` asserts once `count` reaches `DEPTH=4`):
 
 ```text
 cycle | clk | din | pop | push | rst | count | head | tail | dout | empty | full
@@ -68,7 +67,7 @@ cycle | clk | din | pop | push | rst | count | head | tail | dout | empty | full
 
 The module ships with inline `test` blocks (run `mimz test
 examples/english/std/fifo.mimz`): a freshly reset queue is empty, one pushed
-byte round-trips at the head, and pushing `2^AW` entries fills the ring. A
+byte round-trips at the head, and pushing `DEPTH` entries fills the ring. A
 self-checking Icarus testbench (`tests/icarus/std_fifo_tb.v`) checks FIFO
 ordering across pushes/pops and that an overflow push is ignored, for the
 bit-for-bit differential.

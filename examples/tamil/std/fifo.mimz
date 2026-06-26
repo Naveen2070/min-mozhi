@@ -12,13 +12,15 @@
 //         out empty — nothing buffered
 //         out dout  — the datum at the head (valid when not empty)
 // Params: WIDTH — datum width in bits
-//         AW    — pointer width; the ring holds 2^AW entries
+//         DEPTH — how many entries the ring holds (any DEPTH >= 1)
 //
-// The memory holds `1 << AW` entries, indexed by the head/tail AW-bit
-// pointers that wrap around the ring with `+%`. `count` carries one extra
-// bit so it can represent a completely full ring (2^AW entries).
+// The memory holds `DEPTH` entries, indexed by head/tail pointers that are
+// `clog2(DEPTH)` bits wide — the compiler derives that width from `DEPTH`, so
+// you size the queue by capacity, not by pointer bits. The pointers wrap at
+// `DEPTH - 1` (not at a power of two), so any depth works. `count` carries one
+// extra bit so it can represent a completely full ring (`DEPTH` entries).
 
-தொகுதி Fifo(WIDTH: int = 8, AW: int = 2) {
+தொகுதி Fifo(WIDTH: int = 8, DEPTH: int = 4) {
   துடிப்பு clk
   மீட்டமை rst
 
@@ -29,46 +31,58 @@
   வெளியீடு empty: bit
   வெளியீடு dout:  bits[WIDTH]
 
-  // 2^AW cells of WIDTH bits.
-  நினைவகம் data: bits[WIDTH][1 << AW] = 0
+  // DEPTH cells of WIDTH bits; pointers sized to address them.
+  நினைவகம் data: bits[WIDTH][DEPTH] = 0
 
-  பதிவேடு head:  bits[AW]     = 0
-  பதிவேடு tail:  bits[AW]     = 0
-  பதிவேடு count: bits[AW + 1] = 0
+  பதிவேடு head:  bits[clog2(DEPTH)]     = 0
+  பதிவேடு tail:  bits[clog2(DEPTH)]     = 0
+  பதிவேடு count: bits[clog2(DEPTH) + 1] = 0
 
   போது ஏற்றம்(clk) {
-    எனில் push மற்றும் (count != (1 << AW)) {
-      // Enqueue: store at the tail and advance it.
+    எனில் push மற்றும் (count != DEPTH) {
+      // Enqueue: store at the tail and advance it (wrapping at DEPTH-1).
       data[tail] <- din
-      tail <- tail +% 1
+      எனில் tail == DEPTH - 1 {
+        tail <- 0
+      } இல்லையெனில் {
+        tail <- tail +% 1
+      }
       எனில் pop மற்றும் (count != 0) {
         // A simultaneous pop keeps the occupancy steady.
-        head <- head +% 1
+        எனில் head == DEPTH - 1 {
+          head <- 0
+        } இல்லையெனில் {
+          head <- head +% 1
+        }
       } இல்லையெனில் {
         count <- count +% 1
       }
     } இல்லையெனில் {
       எனில் pop மற்றும் (count != 0) {
         // Dequeue only: advance the head and drop the occupancy.
-        head <- head +% 1
+        எனில் head == DEPTH - 1 {
+          head <- 0
+        } இல்லையெனில் {
+          head <- head +% 1
+        }
         count <- count -% 1
       }
     }
   }
 
   dout  = data[head]
-  full  = count == (1 << AW)
+  full  = count == DEPTH
   empty = count == 0
 }
 
 // A freshly reset queue holds nothing.
-சோதனை "fifo starts empty" க்காக Fifo(WIDTH: 8, AW: 2) {
+சோதனை "fifo starts empty" க்காக Fifo(WIDTH: 8, DEPTH: 4) {
   உறுதிசெய் empty == 1
   உறுதிசெய் full == 0
 }
 
 // One pushed byte comes back at the head and clears `empty`.
-சோதனை "fifo round-trips a byte" க்காக Fifo(WIDTH: 8, AW: 2) {
+சோதனை "fifo round-trips a byte" க்காக Fifo(WIDTH: 8, DEPTH: 4) {
   push = 1
   din = 0xA5
   கணம்(clk, 1)
@@ -77,8 +91,8 @@
   உறுதிசெய் empty == 0
 }
 
-// Pushing 2^AW (4) entries fills the ring.
-சோதனை "fifo fills up" க்காக Fifo(WIDTH: 8, AW: 2) {
+// Pushing DEPTH (4) entries fills the ring.
+சோதனை "fifo fills up" க்காக Fifo(WIDTH: 8, DEPTH: 4) {
   push = 1
   din = 1
   கணம்(clk, 4)
