@@ -1,6 +1,6 @@
 # 9 — Tooling, Entry Points & Editor Support
 
-## `src/commands/` — CLI Command Handlers (10 Files)
+## `src/commands/` — CLI Command Handlers (11 Files)
 
 These are thin functions that wire CLI arguments to the library modules. Nothing clever here — just plumbing.
 
@@ -12,6 +12,7 @@ These are thin functions that wire CLI arguments to the library modules. Nothing
 - **`translate.rs`** — reskin keywords
 - **`fmt.rs`** — in-place keyword normalization
 - **`explain.rs`** — print long-form error explanations
+- **`eject.rs`** — vendor the embedded standard library to disk (`mimz eject std`)
 - **`helpers.rs`** — shared config resolution
 
 ## `src/main.rs` & `src/lib.rs` — The Front Door
@@ -28,6 +29,38 @@ The compiler is a **library** with a thin CLI wrapper. `lib.rs` re-exports every
 - The LSP server
 - Future tools
 - Anyone embedding the compiler
+
+## `src/analysis.rs` — Editor Symbol Index & Resolution
+
+This is the **pure, async-free** analysis layer that powers the LSP's hover, go-to-definition, and completion. `src/lsp.rs` is a thin adapter on top; the WASM playground can reuse these APIs too. All offsets are **byte** offsets — UTF-16 conversion is the LSP adapter's job.
+
+### `SymbolIndex` and `Symbol`
+
+**`SymbolIndex`** is the project-wide definition table for one analysis run: a `Vec<(PathBuf, String)>` of loaded files, and a `Vec<Symbol>`.
+
+**`Symbol`** is one named definition: name, kind (`SymKind` — Module/Param/Port/Clock/Reset/Wire/Reg/Mem/Const/Enum/EnumVariant/Inst), which file it's in (`file_idx`), its defining span (byte offsets), hover text, and the enclosing module's index.
+
+### `build_index(files)`
+
+Walks all loaded files' ASTs and emits one `Symbol` per declaration. Everything that has a name and a span ends up here: module names, parameters, ports, clocks, resets, wires, regs, mems, consts, enum types + variants, and instance names. The hover `render` is a one-liner like `out y: bits[8] — output port`.
+
+### `resolve_at(index, file_idx, offset)`
+
+Given a cursor position (byte offset into a specific file), finds the identifier under the cursor and returns the `Symbol` it resolves to — i.e. its **declaration** span, not the use site. This powers go-to-definition and hover.
+
+It handles:
+
+- Module-local names (port, reg, wire, const, param) — resolved within the enclosing module
+- Module names at instantiation sites — cross-file, pointing into the imported file
+- Names inside `test` blocks — ports of the module under test
+
+**`parse_recover`** `Error` nodes don't crash resolution; good declarations around a broken line still resolve.
+
+### `completions(index, file_idx, offset, majority_flavor)`
+
+Returns a list of `Candidate`s for the current cursor position: all in-scope module members (as `CandKind::Ident`), plus the full keyword set for the file's majority flavor (as `CandKind::Keyword`). Keywords from other flavors are excluded — a Tamil-flavored file never offers English spellings.
+
+---
 
 ## `src/lsp.rs` — The Language Server
 

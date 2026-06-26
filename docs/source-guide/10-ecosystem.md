@@ -112,7 +112,7 @@ Three workflows keep the repo healthy:
 
 **`release.yml`** — builds the VS Code `.vsix`, the WASM package, and creates a GitHub Release with all artifacts when a tag is pushed.
 
-## `tests/` — Making Sure Everything Works (16 Test Files)
+## `tests/` — Making Sure Everything Works (17 Test Files)
 
 The test suite is thorough:
 
@@ -130,14 +130,15 @@ The test suite is thorough:
 - **`config.rs`** — `mimz.toml` discovery and parsing
 - **`compile_string.rs`** — library API tests
 - **`test_run.rs`** — test block execution
+- **`stdlib.rs`** — importable `std.*` library: embedded resolution, trilingual alias routing, eject
 - **`lsp.rs`** — LSP server tests
 - **`wasm_parity.rs`** — checks that the WASM commands produce the same output as the native CLI
 
 **Fixtures:**
 
-- `tests/fixtures/errors/` — 72 `.mimz` files, one per error code
+- `tests/fixtures/errors/` — 73 `.mimz` files, one per error code
 - `tests/fixtures/grammar/` — 8 grammar conformance examples
-- `tests/golden/` — 41 golden Verilog outputs + 14 testbench goldens + 1 VCD trace
+- `tests/golden/` — 42 golden Verilog outputs + 14 testbench goldens + 1 VCD trace
 - `tests/icarus/` — 32 Icarus Verilog testbenches
 
 ## `examples/` — Designs in All Five Flavors

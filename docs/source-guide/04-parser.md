@@ -1,4 +1,4 @@
-# 4 — The Parser: Building the Tree (7 Files)
+# 4 — The Parser: Building the Tree (9 Files)
 
 The parser takes the token stream and builds an **Abstract Syntax Tree (AST)** — a structured representation of your program's grammar. It's a recursive-descent parser with multi-error recovery.
 

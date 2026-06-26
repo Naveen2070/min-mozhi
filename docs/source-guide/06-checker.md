@@ -1,4 +1,4 @@
-# 6 — The Checker: Six Safety Passes (9 Files)
+# 6 — The Checker: Six Safety Passes (12 Files)
 
 The checker runs six passes over the AST to catch hardware bugs **before** they get to silicon. Every error has a stable E-code and a teaching help message.
 

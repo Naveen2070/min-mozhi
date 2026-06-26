@@ -24,8 +24,8 @@
 | 3   | [Lexer](03-lexer.md)                       | `lexer/mod.rs`, `lexer/token.rs`, `lexer/keywords.rs`                                                                             |
 | 4   | [Parser](04-parser.md)                     | `parser/mod.rs`, `parser/expr.rs`, `parser/items/*`                                                                               |
 | 5   | [AST](05-ast.md)                           | `ast/mod.rs`, `ast/expr.rs`                                                                                                       |
-| 6   | [Checker](06-checker.md)                   | `checker/` — all 6 safety passes (9 files)                                                                                        |
+| 6   | [Checker](06-checker.md)                   | `checker/` — all 6 safety passes (12 files)                                                                                       |
 | 7   | [Verilog Emitter](07-verilog-emitter.md)   | `emit_verilog/` — code generation (5 files)                                                                                       |
-| 8   | [Simulator](08-simulator.md)               | `sim/` — event-driven simulation (8 files)                                                                                        |
+| 8   | [Simulator](08-simulator.md)               | `sim/` — event-driven simulation (9 files)                                                                                        |
 | 9   | [Tooling & Entry](09-tooling-and-entry.md) | `commands/`, `main.rs`, `lib.rs`, LSP, WASM, VS Code                                                                              |
 | 10  | [Ecosystem](10-ecosystem.md)               | Benchmarks, fuzzing, tests, CI, examples, demo, lang, spec, site                                                                  |

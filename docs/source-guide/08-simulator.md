@@ -1,4 +1,4 @@
-# 8 — The Simulator (8 Files)
+# 8 — The Simulator (9 Files)
 
 This is a full event-driven simulator that runs Min-Mozhi designs **without** any Verilog tools. It produces VCD waveforms (viewable in GTKWave) and console traces.
 

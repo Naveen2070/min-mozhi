@@ -28,19 +28,19 @@ min-mozhi/
 │   ├── explain.rs               # Long-form error code explanations
 │   ├── version.rs               # Compiler version + language edition
 │   ├── lsp.rs                   # Language server (optional, lsp feature)
-│   ├── lexer/                   # Tokenizer (3 files)
-│   ├── parser/                  # Recursive-descent parser (7 files)
+│   ├── lexer/                   # Tokenizer (4 files)
+│   ├── parser/                  # Recursive-descent parser (9 files)
 │   ├── ast/                     # Shared AST (2 files)
-│   ├── checker/                 # 6 safety passes (9 files)
+│   ├── checker/                 # 6 safety passes (12 files)
 │   ├── emit_verilog/            # Verilog-2005 code gen (5 files)
-│   ├── sim/                     # Event-driven simulator (8 files)
-│   ├── commands/                # CLI command handlers (9 files)
+│   ├── sim/                     # Event-driven simulator (9 files)
+│   ├── commands/                # CLI command handlers (11 files)
 │   └── bin/mimz-bench/          # Benchmark harness
 ├── crates/mimz-wasm/            # WASM playground wrapper (40 lines)
 ├── tests/                       # 17 test files + fixtures/golden/icarus
 ├── benches/compile.rs           # Criterion micro-benchmarks
 ├── fuzz/                        # 4 libFuzzer targets
-├── examples/                    # 23 designs × 5 flavors
+├── examples/                    # 23 designs × 4 complete flavors + 6 stdlib each + 13 tamil-pure (129 total)
 │   └── {english,tanglish,tamil,tamil-pure,mixed}/
 ├── demo/                        # Real hardware demos (alu, cpu)
 ├── editors/vscode/              # VS Code extension (plain JS)

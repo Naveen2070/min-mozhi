@@ -41,7 +41,7 @@ load, lex, parse, check — then takes one of two **back ends**:
  your .v file                   VCD waveform / pass-fail tests
 ```
 
-`mimz compile` takes the left branch; `mimz sim` and `mimz test` take the right.
+`mimz compile` takes the left branch; `mimz sim`, `mimz eval`, and `mimz test` take the right.
 Each stage only talks to its neighbours — the lexer never sees the tree, the
 emitter never sees raw text — which is why the code is split one folder per
 stage.
@@ -88,7 +88,7 @@ The compiler itself is a **library** — `src/lib.rs` lists its modules
 
 `main.rs` is the thin front door over it:
 
-- it reads the command line (`check`, `compile`, `sim`, `test`, `lsp`, …);
+- it reads the command line (`check`, `compile`, `sim`, `test`, `eval`, `translate`, `fmt`, `explain`, `eject`, `lsp`, …);
 - it dispatches to a per-subcommand handler in `src/commands/`, which calls
   the stations in order;
 - it renders whatever comes back (human carets, or one JSON array with
@@ -109,7 +109,7 @@ std::fs::write(out_path, ...) // save the .v file
 true order of the stages?", read the `compile` handler in
 `src/commands/compile.rs` — it cannot lie, it IS the order. (The same
 library also powers `mimz lsp`, the language server behind the VS Code
-squiggles, and the Phase 1.5 simulator `mimz sim`/`mimz test` — same
+squiggles, and the simulator `mimz sim`/`mimz eval`/`mimz test` — same
 front-end stations, then a different back end.)
 
 ## Station 0 — Load (`src/project.rs`)
@@ -127,6 +127,13 @@ file too.**
   into the path `lib/full_adder.mimz` next to the importing file and adds
   that file to the to-do list. A "visited" set stops infinite loops if two
   files import each other.
+- When an import resolves to a **stdlib namespace** (`std`, `nuulagam`, or
+  `நூலகம்`), the project loader calls `stdlib::resolve()` instead of reading
+  from disk — the five stdlib modules (`seg7`, `pwm`, `fifo`, `uart_tx`,
+  `debouncer`) are baked into the binary at compile time via `include_str!`.
+  This is why `mimz` works in WASM and in bare-binary installs with no data
+  files. `mimz eject std` extracts them to disk when you need to vendor or
+  customise them.
 - The result is a `Vec<LoadedFile>` — every file's path, its source
   text, and its parsed tree, with your entry file first.
 
@@ -438,7 +445,7 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test` runs several layers (**433 tests** today; the full ledger,
+`cargo test` runs several layers (**465 tests** today; the full ledger,
 per-binary breakdown, and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):
 
@@ -471,6 +478,7 @@ per-binary breakdown, and "what a failure means" notes are in
 | change how errors are printed               | `src/diag.rs` (`render`)                             |
 | change import resolution / file loading     | `src/project.rs`                                     |
 | add a CLI flag or subcommand                | `src/main.rs` (clap) + a handler in `src/commands/`  |
+| vendor the stdlib modules to disk           | `mimz eject std [--to <dir>] [--flavor tamil]`       |
 | see errors as squiggles in VS Code          | `editors/vscode` (the extension runs `mimz lsp`)     |
 | debug "what tokens does this file produce?" | `mimz check file.mimz --tokens`                      |
 
