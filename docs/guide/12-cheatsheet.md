@@ -127,19 +127,27 @@ Run `mimz explain <CODE>` for the full classroom version of any of these.
 `mimz <command> [file] [flags]`. Per-project defaults can live in a `mimz.toml`
 (CLI flags override it); see [the toolchain](11-toolchain.md).
 
-| Command     | Flags                                                                                                                                                                                               |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check`     | `--tokens` (dump tokens) · `--json` (machine-readable) · `--lang <flavor>`                                                                                                                          |
-| `compile`   | `-o <path>` · `--lang <flavor>` · `--emit-testbench` · `--json`                                                                                                                                     |
-| `eval`      | `--in a=1,b=2` · `--module <M>` · `--param W=8` · `--lang <flavor>`                                                                                                                                 |
-| `sim`       | `-o <path.vcd>` · `--cycles N` · `--clock <c>` · `--in a=1,b=2` · `--param W=8` · `--sweep a=0\|1,b=2` · `--module <M>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>` |
-| `test`      | `--filter <substr>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>`                                                                                                     |
-| `translate` | `--to <flavor>` · `--order code\|thamizh` · `--romanize-names` · `--names-map <f>` · `--no-names-map` · `-o <path>`                                                                                 |
-| `fmt`       | `--to <flavor>` · `--strict` · `-o <path>`                                                                                                                                                          |
-| `explain`   | _(takes an `E`-code, case-insensitive)_                                                                                                                                                             |
+| Command       | Flags                                                                                                                                                                                               |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`        | _(takes a project name, creates `./<name>/`)_                                                                                                                                                       |
+| `check`       | `--tokens` (dump tokens) · `--json` (machine-readable) · `--watch` (re-check on save) · `--lang <flavor>`                                                                                           |
+| `compile`     | `-o <path>` · `--lang <flavor>` · `--emit-testbench` · `--json`                                                                                                                                     |
+| `eval`        | `--in a=1,b=2` · `--module <M>` · `--param W=8` · `--lang <flavor>`                                                                                                                                 |
+| `sim`         | `-o <path.vcd>` · `--cycles N` · `--clock <c>` · `--in a=1,b=2` · `--param W=8` · `--sweep a=0\|1,b=2` · `--module <M>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>` |
+| `test`        | `--filter <substr>` · `--trace[=changes]` · `--verbose` · `--signals <a,b>` · `--lang <flavor>`                                                                                                     |
+| `lint`        | `--json` (machine-readable) · `--lang <flavor>`                                                                                                                                                     |
+| `repl`        | `--param W=8` · `--module <M>` · `--lang <flavor>`                                                                                                                                                  |
+| `explain`     | _(takes an `E`-code, case-insensitive)_                                                                                                                                                             |
+| `translate`   | `--to <flavor>` · `--order code\|thamizh` · `--romanize-names` · `--names-map <f>` · `--no-names-map` · `-o <path>`                                                                                 |
+| `fmt`         | `--to <flavor>` · `--strict` · `-o <path>`                                                                                                                                                          |
+| `doctor`      | `--dev` (contributor toolchain check) · aliased as `env`                                                                                                                                            |
+| `completions` | _(takes a shell name: bash \| zsh \| fish \| powershell \| elvish)_                                                                                                                                 |
+| `eject`       | `--to <dir>` · `--flavor english\|tamil` · `--force`                                                                                                                                                |
 
-Global: `--config <path>` points at a specific `mimz.toml`. Flavors are
-`english` / `tanglish` / `tamil` (or `en` / `tl` / `ta`).
+Global: `-c`/`--config <path>` points at a specific `mimz.toml` · `-q`/`--quiet`
+(suppress status banners) · `-d`/`--debug` (verbose progress) · `--color
+always\|never\|auto`. Flavors are `english` / `tanglish` / `tamil` (or `en` / `tl`
+/ `ta`).
 
 ## The safety rules, in one breath
 

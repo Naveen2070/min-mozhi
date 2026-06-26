@@ -21,17 +21,37 @@ tracks the language itself. See
 [`../../spec/06-editions.md`](../../spec/06-editions.md) for what the two axes
 mean and how editions evolve.
 
+## `mimz init <name>` — scaffold a new project
+
+Generate a ready-to-use project directory with a documented `mimz.toml` and a
+starter counter module (with a passing `test` block), so `mimz test` and
+`mimz compile` work immediately:
+
+```text
+mimz init my_project
+cd my_project
+mimz test my_project.mimz    # passes right away
+mimz compile my_project.mimz # emits my_project.v
+```
+
+The module name is derived from the directory name (`my_project` →
+`MyProject`). The command refuses to overwrite a non-empty directory.
+
 ## `mimz check` — lex, parse, and verify
 
 The workhorse. Runs the front end and the full safety checker; writes nothing.
 
 ```text
-mimz check counter.mimz
-mimz check counter.mimz --tokens    # also dump the token stream (debugging)
-mimz check counter.mimz --json      # machine-readable diagnostics
+mimz check counter.mimz                       # single check
+mimz check counter.mimz --tokens              # also dump the token stream (debugging)
+mimz check counter.mimz --json                # machine-readable diagnostics
+mimz check counter.mimz --watch               # re-check on every save until Ctrl-C
 ```
 
-A clean file prints `OK: <path> — <N> module(s), <M> test(s), <K> file(s).`; a broken one prints `E`-coded diagnostics.
+With `--watch`, the process stays alive and re-runs whenever any file in the
+project changes (entry + transitive imports) — useful for a tight edit–check
+loop. A clean file prints `OK: <path> — <N> module(s), <M> test(s), <K> file(s).`;
+a broken one prints `E`-coded diagnostics.
 
 ## `mimz compile` — emit Verilog
 
@@ -101,6 +121,36 @@ mimz test counter.mimz
 mimz test counter.mimz --filter "counts up"   # only matching tests
 mimz test counter.mimz --trace                # waveform table per test
 ```
+
+## `mimz lint` — style and hygiene warnings
+
+Separate from `check` (which is about correctness). `mimz lint` checks naming
+conventions, unused signals, and other style rules. All diagnostics are
+warnings — the command never fails the build:
+
+```text
+mimz lint counter.mimz
+mimz lint counter.mimz --json    # machine-readable output
+```
+
+`lint` runs import resolution and analyses the whole project; load/lex failures
+are the only things that make it exit non-zero.
+
+## `mimz repl` — interactive combinational evaluator
+
+Parses a `.mimz` file once, then reads input bindings from stdin line by line.
+Each line is evaluated immediately and the module's outputs are printed:
+
+```text
+mimz repl adder.mimz
+Min-Mozhi REPL  —  module `Adder`  (Ctrl-C or :quit to exit)
+
+mimz> a=3, b=5
+sum = 8  (bits[9])
+```
+
+Internal commands: `:quit` / `:q` to exit, `:help` for usage. `--param` and
+`--module` work as in `mimz eval`.
 
 ## `mimz explain` — the long-form error book
 
@@ -182,6 +232,46 @@ mimz fmt messy.mimz -o clean.mimz    # write elsewhere, leave the input alone
 `fmt` only normalizes _flavor_; word-order reformatting stays with
 `translate --order` (because that one is not lossless).
 
+## `mimz doctor` — toolchain health check
+
+Prints the compiler version, platform info, runs an in-memory compile smoke
+test, and probes for optional external tools (iverilog, verilator, gtkwave):
+
+```text
+mimz doctor              # user toolchain
+mimz doctor --dev        # also check Rust, wasm-pack, test tools (contributors)
+```
+
+Missing external tools are warnings, not failures — the runtime CLI is entirely
+in-process. The command exits non-zero only on a real problem (broken pipeline,
+unwritable temp dir, invalid `mimz.toml`). Aliased as `mimz env`.
+
+## `mimz completions <shell>` — shell tab-completion
+
+Prints a shell tab-completion script to stdout, generated straight from the
+clap command tree (always matches the real subcommands and flags):
+
+```text
+mimz completions bash > /etc/bash_completion.d/mimz
+mimz completions powershell >> $PROFILE        # then reload-profile
+mimz completions zsh > /usr/local/share/zsh/site-functions/_mimz
+```
+
+Supports bash, zsh, fish, powershell, and elvish.
+
+## `mimz eject std` — vendor the standard library
+
+Writes the embedded standard library to a local directory so a project can
+vendor and customise it (then point `mimz.toml [lib] std` at the directory):
+
+```text
+mimz eject std --to ./my-std          # English canonical
+mimz eject std --to ./my-std --flavor tamil   # pure-Tamil twins
+mimz eject std --to ./my-std --force  # overwrite existing files
+```
+
+See the [standard-library gallery](stdlib/README.md) for what ships inside.
+
 ## Project defaults: `mimz.toml`
 
 Tired of retyping the same flags? Drop a `mimz.toml` at your project root and
@@ -209,6 +299,9 @@ names_map = "auto"      # "auto" = auto-load the sidecar; "off" = don't
 [fmt]
 to = "tamil"            # default fmt --to
 strict = true           # default fmt --strict
+
+[lib]
+std = "./vendor/std"    # override the embedded standard library (mimz eject std)
 ```
 
 Every key is optional; an unknown key is reported as an error (a typo never
@@ -224,11 +317,12 @@ code order, so mixing those two stays clean.)
 
 ## Diagnostics in your language: `--lang`
 
-`check`, `compile`, `eval`, `sim`, and `test` render diagnostics in the flavor
-your file mostly uses, and `--lang` overrides:
+`check`, `compile`, `eval`, `sim`, `test`, `lint`, and `repl` render
+diagnostics in the flavor your file mostly uses, and `--lang` overrides:
 
 ```text
 mimz check counter_tamil.mimz --lang tamil
+mimz lint counter.mimz --lang tamil
 ```
 
 (Localized error messages are rolling out catalog entry by catalog entry; codes
