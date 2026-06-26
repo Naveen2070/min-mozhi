@@ -63,19 +63,25 @@ RTL-parity pull-forward (added from the HDL gap analysis,
 `docs/Ideas/language_plan.md` section 10, 2026-06-15) — synthesizable gaps vs
 VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
 
-- [ ] **Replication `{N{x}}`** (gap section 10, add-now) — compile-time N; parser +
-      checker width + emitter `{N{x}}`. Smallest single win, no new keyword
-- [ ] **Don't-care `match` patterns** `0b1??` (gap section 10, add-now) — the
-      casex/casez analogue; pattern parsing + exhaustiveness rule
-- [ ] **Falling-edge `on fall(clk)`** (gap section 10, add-now) — `fall` already
-      reserved; negedge sequential block (parser + emitter + checker)
-- [ ] **Memories / arrays / RAM (`mem`)** (gap section 10) — array type + indexed
+- [x] **Replication `{N{x}}`** (gap section 10, add-now) — compile-time N; parser +
+      checker width + emitter `{N{x}}`. Smallest single win, no new keyword.
+      **✅ DONE 2026-06-17 (spec/02 v0.2.8)** — `examples/.../replicate.mimz`
+- [x] **Don't-care `match` patterns** `0b1??` (gap section 10, add-now) — the
+      casex/casez analogue; pattern parsing + exhaustiveness rule.
+      **✅ DONE 2026-06-17 (spec/02 v0.2.9)** — `examples/.../priority.mimz`
+- [x] **Falling-edge `on fall(clk)`** (gap section 10, add-now) — `fall` promoted
+      from reserved to active; negedge sequential block (parser + emitter + checker).
+      **✅ DONE 2026-06-17 (spec/02 v0.2.10)** — `examples/.../dual_edge.mimz`
+- [x] **Memories / arrays / RAM (`mem`)** (gap section 10) — array type + indexed
       clocked read/write + emitter array; highest "every HDL has it" value.
-      New spec section; `mem` reserved
+      **✅ DONE 2026-06-17 (spec/02 v0.2.11, new section 1.11)** —
+      `examples/.../regfile.mimz`
 - [ ] **Combinational `function`** (gap section 10 — NEW, not previously tracked) —
       pure/stateless user functions inlined at emit; unblocks pipe `|>` (8.6)
-- [ ] **Async reset / reset polarity** (gap section 10) — small spec+emitter widening
-      over today's sync active-high only
+- [x] **Async reset / reset polarity** (gap section 10) — small spec+emitter widening
+      over today's sync active-high only. **✅ DONE 2026-06-17 (spec/02 v0.2.12,
+      active-high `async reset`)** — `examples/.../async_reset.mimz`; active-low
+      polarity still open
 - [ ] **Packages / namespacing** (gap section 10 — NEW) — modest module-namespacing
       step beyond bare `import`; consider
 - [ ] **Controlled loop `suzhal`/`சுழல்`** (gap section 10) — bounded/FSM-lowered
@@ -101,6 +107,12 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       conditional elaboration as a **keyword**, not a `$` sigil; the general
       `$comptime` interpreter is rejected (`repeat` + const-`if` cover ~90%)
 - [ ] `count_ones`-style builtins (cheap version of 2.2)
+- [ ] **`clog2` const-builtin** (noted in `phase-4-ecosystem.md` stdlib +
+      `phase-1.5-simulator.md`, never tracked here) — expose the ceil-log2 the
+      compiler already computes internally for enum widths as a user-facing
+      const-builtin (alongside `min`/`max`/`abs`). Compile-time only; unblocks
+      single-parameter parametric memories — `Fifo(WIDTH, DEPTH)` derives its own
+      pointer width instead of passing a redundant `AW`. Additive, no new keyword
 - [ ] `pipeline(stages = N)` (salvaged from 6.1) — inserts N register stages +
       vendor retiming attribute; never promises Fmax
 - [ ] **`prove` blocks** (6.3) — emit SystemVerilog assertions + drive
