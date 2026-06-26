@@ -23,7 +23,8 @@ of all three columns at all times:
 - **Universal vocabulary** — identical in all flavors, never translated:
   - all operators and punctuation (`+%`, `<-`, `=>`, `&&`, `{}`, …)
   - type names: `bit`, `bits`, `signed`, `int`, `bool`
-  - built-ins: `extend`, `trunc`, `signed()`, `unsigned()`
+  - built-ins: `extend`, `trunc`, `signed()`, `unsigned()`, `min`, `max`, `abs`,
+    `nand`, `nor`, `xnor`, `clog2`
   - numbers and literals (ASCII digits only)
   - **exception (G1-x):** the logical keyword aliases `and/or/not` _are_
     translated — they alias the universal symbols `&&`/`||`/`!`

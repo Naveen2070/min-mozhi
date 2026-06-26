@@ -182,4 +182,8 @@ pub enum Builtin {
     Nor,
     /// `xnor(x)` — negated xor-reduction (`~^x`)
     Xnor,
+    /// `clog2(n)` — the one COMPILE-TIME builtin: folds to the bits needed to
+    /// address `n` items. Valid only where a constant is (widths, consts,
+    /// parameter defaults); the checker rejects it in a runtime value position.
+    Clog2,
 }

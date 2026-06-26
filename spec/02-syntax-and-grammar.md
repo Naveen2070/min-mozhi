@@ -325,6 +325,31 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
   operators for nand/nor/xnor) — no SystemVerilog. Like `extend`/`trunc`, they are
   runtime built-ins, not compile-time constant folders.
 
+- **Compile-time built-in** `clog2(n)` (added v0.2.13) — the one **compile-time**
+  built-in, the inverse of the runtime ones above. It takes a single constant
+  argument and folds to the number of bits needed to address `n` items
+  (`⌈log₂(n)⌉`, floored at 1). Because it produces a _constant_, it is valid
+  exactly where a constant is — a width `bits[clog2(DEPTH)]`, a `const`, a
+  `repeat` bound — and is a compile error (E0407) in a runtime value position
+  (assign it to a `const` first).
+
+  - `clog2(1)` = `clog2(2)` = 1, `clog2(3)` = `clog2(4)` = 2, `clog2(8)` = 3,
+    `clog2(9)` = 4. The argument must const-evaluate to `>= 1` (E0202 otherwise).
+  - Min-Mozhi has no zero-width signal (`bits[0]` does not exist), so `clog2`
+    floors at 1 — deliberately one bit more than Verilog `$clog2(1) = 0` at
+    `n = 1`, so `bits[clog2(N)]` is **always** a legal width. It is the SAME
+    function the compiler uses internally to size enum signals
+    (`clog2(variant count)`).
+  - Lowers to nothing — by emit time it has already folded to a literal. Its
+    chief use is constant-derived storage widths:
+    `const DEPTH = 16` then `reg ptr: bits[clog2(DEPTH)]` derives its own pointer
+    width instead of a redundant address-width constant.
+  - **v1 limit (deliberate):** the argument must be a literal or `const`. An
+    overridable module **parameter** stays a symbolic Verilog `parameter`, and
+    Verilog-2005 has no `clog2`, so `clog2(PARAM)` cannot be emitted — it is an
+    honest compile error, never a silently wrong width. Parametric `clog2` widths
+    (via an emitted Verilog-2005 `clog2` function) are a planned follow-up.
+
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
   accepted in literals.
 

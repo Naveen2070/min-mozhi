@@ -791,14 +791,10 @@ fn record_drive(
     Ok(())
 }
 
-/// `clog2` matching the Verilog emitter (`emit_verilog::clog2`): the bit width of
-/// an `n`-variant enum encoding. `n <= 1` ⇒ 1.
+/// `clog2` matching the Verilog emitter and the `clog2` const-builtin: the bit
+/// width of an `n`-variant enum encoding (one source of truth, so they agree).
 fn clog2(n: usize) -> u32 {
-    if n <= 1 {
-        1
-    } else {
-        usize::BITS - (n - 1).leading_zeros()
-    }
+    crate::checker::consteval::clog2_bits(n as u128)
 }
 
 /// Rewrites expressions/statements during elaboration: enum-variant reads
