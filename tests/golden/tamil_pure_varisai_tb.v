@@ -8,7 +8,7 @@ module ____________________tb;
   wire kaali;
   wire [8-1:0] vellitharavu;
 
-  varisai  #(.akalam(8), .suttu(2)) _dut_inst (
+  varisai  #(.akalam(8), .aazham(4)) _dut_inst (
     .katikai(katikai),
     .miill(miill),
     .nuzhai(nuzhai),
@@ -52,7 +52,7 @@ module _____________________________________tb;
   wire kaali;
   wire [8-1:0] vellitharavu;
 
-  varisai  #(.akalam(8), .suttu(2)) _dut_inst (
+  varisai  #(.akalam(8), .aazham(4)) _dut_inst (
     .katikai(katikai),
     .miill(miill),
     .nuzhai(nuzhai),
@@ -90,7 +90,7 @@ module _____________________________________tb;
   end
 endmodule
 
-module ________________________________tb;
+module ______________________________tb;
   reg katikai;
   reg miill;
   reg nuzhai;
@@ -100,7 +100,7 @@ module ________________________________tb;
   wire kaali;
   wire [8-1:0] vellitharavu;
 
-  varisai  #(.akalam(8), .suttu(2)) _dut_inst (
+  varisai  #(.akalam(8), .aazham(4)) _dut_inst (
     .katikai(katikai),
     .miill(miill),
     .nuzhai(nuzhai),
@@ -115,8 +115,8 @@ module ________________________________tb;
   always #5 katikai = ~katikai;
 
   initial begin
-    $dumpfile("________________________________tb.vcd");
-    $dumpvars(0, ________________________________tb);
+    $dumpfile("______________________________tb.vcd");
+    $dumpvars(0, ______________________________tb);
     miill = 0;
     nuzhai = 0;
     niikku = 0;

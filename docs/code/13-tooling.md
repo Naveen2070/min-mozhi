@@ -339,7 +339,7 @@ is complete (the friendly walkthrough is `docs/source-guide/09-tooling-and-entry
   transitive import (not the files — so editor atomic-saves still fire), reacting only
   to `.mimz` changes, debouncing the per-save event burst (100 ms drain). The watch set
   is reconciled to the project after each run: new import dirs are added; dirs that
-  dropped out of the project are unwatched — but only after a *successful* load, so a
+  dropped out of the project are unwatched — but only after a _successful_ load, so a
   parse error never loses the last good watch set and the fix-save is never missed
   (rationale: `docs/log/2026-06-25.md`). Gated behind the `watch` feature (on by
   default; the WASM build drops it, since `notify` pulls OS file-watch APIs that don't

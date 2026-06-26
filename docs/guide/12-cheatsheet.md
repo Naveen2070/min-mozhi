@@ -74,18 +74,18 @@ Precedence is Rust-style: `x & 1 == 0` is `(x & 1) == 0`.
 
 ## Built-in functions
 
-| Call           | Result                               |
-| -------------- | ------------------------------------ |
-| `extend(x, N)` | widen to `N` bits (zero/sign extend) |
-| `trunc(x, N)`  | keep the low `N` bits                |
-| `signed(x)`    | reinterpret as signed                |
-| `unsigned(x)`  | reinterpret as unsigned              |
-| `min(a, b)`    | smaller (same width)                 |
-| `max(a, b)`    | larger (same width)                  |
-| `abs(x)`       | magnitude of signed → `signed[N+1]`  |
-| `nand(x)`      | `~(&x)` → one bit                    |
-| `nor(x)`       | `~(\|x)` → one bit                   |
-| `xnor(x)`      | `~(^x)` → one bit (even parity)      |
+| Call           | Result                                                                     |
+| -------------- | -------------------------------------------------------------------------- |
+| `extend(x, N)` | widen to `N` bits (zero/sign extend)                                       |
+| `trunc(x, N)`  | keep the low `N` bits                                                      |
+| `signed(x)`    | reinterpret as signed                                                      |
+| `unsigned(x)`  | reinterpret as unsigned                                                    |
+| `min(a, b)`    | smaller (same width)                                                       |
+| `max(a, b)`    | larger (same width)                                                        |
+| `abs(x)`       | magnitude of signed → `signed[N+1]`                                        |
+| `nand(x)`      | `~(&x)` → one bit                                                          |
+| `nor(x)`       | `~(\|x)` → one bit                                                         |
+| `xnor(x)`      | `~(^x)` → one bit (even parity)                                            |
 | `clog2(n)`     | bits to address `n` items (compile-time; a body width may use a parameter) |
 
 ## Assignment
