@@ -146,6 +146,13 @@ section + Decision block still required before code, same as above.
 - [ ] Pipe `|>` (8.6, **parked**) — blocked on callables (only builtins exist,
       E1110) and a 2nd way to write calls (G1 one-way); revisit once extension
       functions land
+- [ ] **Port-declaration grouping** `in { a, b, c: bits[8] }` (external review
+      2026-06-26, `language_plan.md` section 11 item 6) — **DECISION-PENDING, not
+      committed.** Mechanically trivial parser sugar (desugars to N separate port
+      decls; additive, edition-safe, zero freeze cost), but it is a second surface
+      for a declaration that already has one → **needs a G1 ruling** (same basis
+      ternary `?:` / range-slice were rejected) before any code (R13). Same gate
+      applies to the expression-level `let … in …` sliver of review item 2
 
 ### G5 security features (constitution goals since spec/01 v0.3)
 
