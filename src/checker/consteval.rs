@@ -134,6 +134,28 @@ pub(crate) fn eval(e: &Expr, env: &Env) -> Result<i128, Diag> {
                 eval(els, env)
             }
         }
+        // The one compile-time builtin: `clog2(n)` folds to a constant, so it is
+        // valid anywhere a constant is. Other builtins stay runtime-only (they
+        // fall through to the catch-all `not_const` below).
+        ExprKind::Call {
+            func: crate::ast::Builtin::Clog2,
+            args,
+        } => {
+            // Parser pins clog2 to one argument (`builtin_call`), like every other
+            // builtin consumer trusts.
+            let n = eval(&args[0], env)?;
+            if n < 1 {
+                return Err(Diag::new(
+                    e.span,
+                    format!("clog2 needs a positive argument (got {n})"),
+                )
+                .with_code("E0202")
+                .with_help(
+                    "clog2(n) is the number of bits to address n items, so n must be >= 1",
+                ));
+            }
+            Ok(clog2_bits(n as u128) as i128)
+        }
         ExprKind::Field { .. } => not_const(
             "an enum variant or instance port",
             "constants are plain `int`/`bool` values (spec/02 section 1.6)",
@@ -150,4 +172,35 @@ fn overflow(e: &Expr) -> Diag {
     Diag::new(e.span, "constant evaluation overflowed")
         .with_code("E0202")
         .with_help("compile-time arithmetic works on signed 128-bit values; this expression left that range")
+}
+
+/// Bits needed to address `n` items — `⌈log₂(n)⌉`, floored at 1 (Min-Mozhi has
+/// no zero-width signal, so `bits[clog2(N)]` is always a legal width). This is
+/// the single source for both the `clog2` const-builtin and the enum-signal
+/// encoding width (`emit_verilog` / `sim::elaborate` delegate here), so the two
+/// can never drift. `n` must be `>= 1` (callers guard with E0202).
+pub(crate) fn clog2_bits(n: u128) -> u32 {
+    if n <= 1 {
+        1
+    } else {
+        u128::BITS - (n - 1).leading_zeros()
+    }
+}
+
+#[cfg(test)]
+mod clog2_tests {
+    use super::clog2_bits;
+
+    #[test]
+    fn clog2_bits_matches_spec_table() {
+        // spec/02 section 1.8: clog2(n) = bits to address n items, floored at 1.
+        assert_eq!(clog2_bits(1), 1);
+        assert_eq!(clog2_bits(2), 1);
+        assert_eq!(clog2_bits(3), 2);
+        assert_eq!(clog2_bits(4), 2);
+        assert_eq!(clog2_bits(5), 3);
+        assert_eq!(clog2_bits(8), 3);
+        assert_eq!(clog2_bits(9), 4);
+        assert_eq!(clog2_bits(1024), 10);
+    }
 }

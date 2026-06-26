@@ -254,6 +254,10 @@ fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, Str
                 false,
             ))
         }
+        // `clog2` is compile-time only — the checker rejects it as a runtime
+        // value (E0407) and folds it in widths, so a checked program never lands
+        // here.
+        Builtin::Clog2 => Err("clog2 is compile-time only".into()),
     }
 }
 

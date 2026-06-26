@@ -598,6 +598,20 @@ impl<'a> Checker<'a> {
                 }
                 other => self.not_numeric(cx, x.span, &other, "`unsigned`"),
             },
+            // `clog2` is compile-time only — reaching the value-typer means it
+            // was used where a runtime value is expected. In a width/const/param
+            // position it folds through `consteval` and never lands here.
+            Builtin::Clog2 => {
+                self.err(
+                    cx.file,
+                    e.span,
+                    "E0407",
+                    "`clog2` is a compile-time built-in and has no value here",
+                    "use it where a constant is expected — a width `bits[clog2(N)]`, \
+                     a `const`, or a parameter default",
+                );
+                Ty::Unknown
+            }
             Builtin::Min | Builtin::Max => {
                 let name = if func == Builtin::Min { "min" } else { "max" };
                 let Some(b) = args.get(1) else {

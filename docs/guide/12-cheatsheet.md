@@ -86,6 +86,7 @@ Precedence is Rust-style: `x & 1 == 0` is `(x & 1) == 0`.
 | `nand(x)`      | `~(&x)` → one bit                    |
 | `nor(x)`       | `~(\|x)` → one bit                   |
 | `xnor(x)`      | `~(^x)` → one bit (even parity)      |
+| `clog2(n)`     | bits to address `n` items (compile-time; literal/`const` only) |
 
 ## Assignment
 

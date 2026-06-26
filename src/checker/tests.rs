@@ -51,6 +51,32 @@ fn clean_module_passes() {
 }
 
 #[test]
+fn clog2_in_a_width_position_is_clean() {
+    // clog2(9) = 4, so `o` is a legal bits[4].
+    check_one("module M {\n  out o: bits[clog2(9)]\n  o = 0\n}\n")
+        .expect("clog2 in a width is clean");
+}
+
+#[test]
+fn clog2_of_a_module_const_is_clean() {
+    // A pointer width derived from a `const` depth — the foldable path that
+    // also emits (unlike an overridable parameter, see the emit tests).
+    check_one("module M {\n  const DEPTH: int = 16\n  out ptr: bits[clog2(DEPTH)]\n  ptr = 0\n}\n")
+        .expect("clog2 of a const is clean");
+}
+
+#[test]
+fn clog2_of_zero_is_e0202() {
+    first_err("module M {\n  out o: bits[clog2(0)]\n  o = 0\n}\n", "E0202");
+}
+
+#[test]
+fn clog2_in_a_runtime_value_position_is_e0407() {
+    // clog2 is compile-time only — it has no value in a drive RHS.
+    first_err("module M {\n  out o: bits[8]\n  o = clog2(8)\n}\n", "E0407");
+}
+
+#[test]
 fn duplicate_module_across_files_is_e0001_in_the_right_file() {
     let files = [parse("module A {\n}\n"), parse("module A {\n}\n")];
     let diags = check(&files).expect_err("duplicate");

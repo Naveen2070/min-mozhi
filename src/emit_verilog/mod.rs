@@ -315,13 +315,10 @@ impl Emitter<'_> {
     }
 }
 
-/// Bits needed to encode `n` variants (≥ 1).
+/// Bits needed to encode `n` variants (≥ 1). Same function as the `clog2`
+/// const-builtin — one source of truth so enum widths and `clog2(n)` agree.
 fn clog2(n: usize) -> u32 {
-    if n <= 1 {
-        1
-    } else {
-        usize::BITS - (n - 1).leading_zeros()
-    }
+    crate::checker::consteval::clog2_bits(n as u128)
 }
 
 /// Verilog localparam name for an enum variant: `State.Red` → `STATE_RED`.
@@ -361,6 +358,45 @@ mod tests {
         let files = [parse(src)];
         let project = Project::from_files(&files).unwrap();
         emit(&project, &files).expect_err("emit should fail")
+    }
+
+    #[test]
+    fn clog2_folds_into_the_port_width() {
+        // clog2(9) = 4 bits → `output [3:0] o`. Proves the const-builtin folds to
+        // the right VALUE in a width position, not just that it is accepted.
+        let v = emit_src("module M {\n  out o: bits[clog2(9)]\n  o = 0\n}\n");
+        // The emitter keeps a derived width in `(value)-1:0` form; the folded
+        // `(4)` is the proof clog2(9) evaluated to 4.
+        assert!(
+            v.contains("[(4)-1:0] o"),
+            "clog2(9) should size `o` to 4 bits ([(4)-1:0]):\n{v}"
+        );
+    }
+
+    #[test]
+    fn clog2_of_a_const_derives_the_width() {
+        // DEPTH a `const` = 16 → clog2 = 4 → `[(4)-1:0] ptr`. Consts fold in the
+        // emitted Verilog, so this is the supported parametric-width path.
+        let v = emit_src(
+            "module M {\n  const DEPTH: int = 16\n  out ptr: bits[clog2(DEPTH)]\n  ptr = 0\n}\n",
+        );
+        assert!(
+            v.contains("[(4)-1:0] ptr"),
+            "clog2(const 16) should size `ptr` to 4 bits ([(4)-1:0]):\n{v}"
+        );
+    }
+
+    #[test]
+    fn clog2_of_a_symbolic_parameter_is_an_emit_error() {
+        // An overridable parameter stays symbolic in Verilog-2005 (no `clog2`),
+        // so this cannot be emitted — an honest error, never a wrong width.
+        let diags = emit_src_err(
+            "module M(DEPTH: int = 16) {\n  out ptr: bits[clog2(DEPTH)]\n  ptr = 0\n}\n",
+        );
+        assert!(
+            diags.iter().any(|d| d.msg.contains("clog2")),
+            "expected a clog2 emit error, got: {diags:?}"
+        );
     }
 
     #[test]

@@ -645,5 +645,6 @@ fn builtin(b: Builtin) -> &'static str {
         Builtin::Nand => "nand",
         Builtin::Nor => "nor",
         Builtin::Xnor => "xnor",
+        Builtin::Clog2 => "clog2",
     }
 }
