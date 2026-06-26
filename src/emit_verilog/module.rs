@@ -11,6 +11,7 @@ impl Emitter<'_> {
     /// declarations → instances → assigns → always-blocks.
     pub(super) fn module(&mut self, m: &Module) {
         self.check_ascii(&m.name);
+        self.clog2_fn_used = false;
 
         // Module-level consts layer onto the file consts for the duration
         // of this module; they fold to literals wherever used (widths,
@@ -38,8 +39,11 @@ impl Emitter<'_> {
             header.push_str(&format!(" #(\n    {}\n)", ps.join(",\n    ")));
         }
 
-        // Ports: clock/reset first, then declared order.
+        // Ports: clock/reset first, then declared order. `emitting_port` makes a
+        // `clog2(<param>)` port width an error — the V-2005 constant function is
+        // in the body and can't reach the header port list.
         let mut ports: Vec<String> = Vec::new();
+        self.emitting_port = true;
         for item in &m.items {
             match item {
                 ModuleItem::Clock(c) => ports.push(format!("input wire {}", c.name)),
@@ -56,8 +60,12 @@ impl Emitter<'_> {
                 _ => {}
             }
         }
+        self.emitting_port = false;
         header.push_str(&format!(" (\n    {}\n);\n", ports.join(",\n    ")));
         self.out.push_str(&header);
+        // Insertion point for the `clog2` constant function, if a body width
+        // turns out to need it (filled in just before `endmodule`).
+        let fn_pos = self.out.len();
 
         // Enum encodings as localparams.
         let enums: Vec<&EnumDecl> = m
@@ -189,6 +197,12 @@ impl Emitter<'_> {
                 }
                 self.out.push_str("    end\n");
             }
+        }
+
+        // If a body width used `clog2(<param>)`, inject the V-2005 constant
+        // function at the top of the body so the width can call it.
+        if self.clog2_fn_used {
+            self.out.insert_str(fn_pos, CLOG2_FN);
         }
 
         self.out.push_str("endmodule\n");

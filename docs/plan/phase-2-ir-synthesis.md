@@ -107,18 +107,21 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       conditional elaboration as a **keyword**, not a `$` sigil; the general
       `$comptime` interpreter is rejected (`repeat` + const-`if` cover ~90%)
 - [ ] `count_ones`-style builtins (cheap version of 2.2)
-- [~] **`clog2` const-builtin** (noted in `phase-4-ecosystem.md` stdlib +
-      `phase-1.5-simulator.md`) — **const/literal path DONE 2026-06-27**
-      (branch `feat/clog2-const-builtin`, spec/02 §1.8 v0.2.13): exposes the
-      ceil-log2 the compiler already computed for enum widths as a user-facing
+- [x] **`clog2` const-builtin** (noted in `phase-4-ecosystem.md` stdlib +
+      `phase-1.5-simulator.md`) — **DONE 2026-06-27** (branch
+      `feat/clog2-const-builtin`, spec/02 §1.8 v0.2.13): exposes the ceil-log2
+      the compiler already computed for enum widths as a user-facing
       **compile-time** builtin (alongside `min`/`max`/`abs`), one shared
       `clog2_bits` so enum + `clog2` widths can't drift. Reused E0202/E0407 (no
-      new codes). **Still to do — the headline use case:** `clog2(PARAM)` of an
-      overridable module parameter (currently an honest emit error — V-2005 has
-      no `clog2` for a symbolic parameter). Needs an emitted V-2005 `clog2`
-      function + localparam (floor-at-1 semantics); that unblocks
-      `Fifo(WIDTH, DEPTH)` dropping its redundant `AW` (stdlib refactor deferred
-      with it)
+      new codes). `clog2(literal/const)` folds; `clog2(PARAM)` in a **body**
+      width lowers to an injected Verilog-2005 `clog2` constant function so the
+      width tracks a parameter override (Icarus-validated: `iverilog -g2005` +
+      `DEPTH=5` override sim). Only a `clog2(PARAM)` in a **port** width errors
+      (the body function can't reach the header). **Downstream task — stdlib
+      `Fifo` cleanup:** swap `AW` for `DEPTH` (`bits[clog2(DEPTH)]` pointers).
+      Caveat: today's `Fifo` is a power-of-2 ring (`+% 1` natural wrap), so
+      `DEPTH` must stay a power of two unless the wrap is generalized — a
+      separate stdlib change touching 4 flavors + the P-Tamil twin + goldens
 - [ ] `pipeline(stages = N)` (salvaged from 6.1) — inserts N register stages +
       vendor retiming attribute; never promises Fmax
 - [ ] **`prove` blocks** (6.3) — emit SystemVerilog assertions + drive
