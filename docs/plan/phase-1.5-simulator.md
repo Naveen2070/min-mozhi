@@ -52,6 +52,13 @@ Icarus or any external tool involved.
 - The `await clk.cycles(n)` test form (needs the native-review `await` spelling).
 - `sim::fatal` / `sim::warn` simulation-only asserts.
 - Step-back debugging.
+- **Kernel performance, when scale demands it** (`docs/Ideas/simulator_ideas.md`
+  section 6, never tracked here): event-queue batching, signal-change
+  coalescing, and a compiled closure-per-process execution path if the
+  AST-walking kernel becomes the bottleneck on larger designs. The ≥1M
+  cycle-events/sec baseline is already met (~2.3M on the counter), so these are
+  trigger-based, not scheduled — the trigger is a real design the current
+  kernel is too slow on.
 
 #### Simulator-on-par-with-compiler — full-parity follow-on (workflow: `full-parity-simulator-workflow.md`)
 

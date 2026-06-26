@@ -259,42 +259,27 @@ mod tests {
 
     #[test]
     fn future_keywords_are_reserved_not_usable() {
-        // Every word reserved pre-v0.1.0 (R11 + the growth-doctrine freeze) must be
-        // rejected as an identifier AND not yet be an active keyword, so no v0.1
-        // program can claim it before its feature lands. The list is grouped by the
-        // batch that reserved each word; spellings stay English-only (no Tamil/
-        // Tanglish) until the feature lands and native review supplies them:
-        //   - fn / function — future combinational-function construct (Phase 2;
-        //     also unblocks the pipe `|>`; docs/log/2026-06-16.md)
-        //   - v0.3 backlog  — secret, declassify, default, pipeline, interface,
-        //     chan, prove, await (G5 security + DX)
-        //   - section 8     — fixed, requires, ensures (fixed-point + contracts;
-        //     docs/Ideas/language_plan.md section 9)
-        //   - extern        — external-Verilog / black-box-IP module (Phase 2+;
-        //     docs/Ideas/architectural_ideas.md idea 3)
-        for word in [
-            "fn",
-            "function",
-            "secret",
-            "declassify",
-            "default",
-            "pipeline",
-            "interface",
-            "chan",
-            "prove",
-            "await",
-            "fixed",
-            "requires",
-            "ensures",
-            "extern",
-        ] {
+        // Every word in the `reserved` list (R11 + the growth-doctrine freeze) must be
+        // rejected as an identifier AND must NOT also be an active keyword, so no v0.1
+        // program can claim it before its feature lands. We iterate the table's own
+        // `reserved` list (single source of truth = lang/keywords.toml) rather than a
+        // hardcoded copy, so a newly reserved word is guarded automatically and this
+        // test can never drift behind the table (it once missed sync/inout/struct/
+        // suzhal). Reserved words stay English-only until native review supplies the
+        // Tamil/Tanglish spellings, except sentinel pairs already in the table.
+        assert!(
+            !TABLE.reserved.is_empty(),
+            "the reserved list (lang/keywords.toml) should not be empty"
+        );
+        for word in &TABLE.reserved {
             assert!(
                 TABLE.is_reserved(word),
                 "`{word}` must be reserved before v0.1.0 (R11) so no program can claim it"
             );
             assert!(
                 TABLE.lookup(word).is_none(),
-                "`{word}` must not be an active keyword yet"
+                "`{word}` is in the reserved list but is also an active keyword — \
+                 promote it out of `reserved` when its feature lands"
             );
         }
     }
