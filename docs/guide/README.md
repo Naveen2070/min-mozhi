@@ -15,20 +15,20 @@ chapters — the safety rules are where Min-Mozhi differs most.
 
 ## Read in order
 
-| #   | Chapter                                                       | You will learn                                                                   |
-| --- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| 1   | [Getting started](01-getting-started.md)                      | Install, write your first module, compile it to Verilog                          |
-| 2   | [Lexical basics](02-lexical-basics.md)                        | Comments, identifiers, keywords, the three flavors, mixing                       |
-| 3   | [Types and values](03-types-and-values.md)                    | `bit`, `bits[N]`, `signed[N]`, enums, number literals                            |
-| 4   | [Signals: ports, wires, registers](04-signals.md)             | `in`/`out`, `wire`, `reg`, `clock`, `reset`, `=` vs `<-`                         |
-| 5   | [Operators](05-operators.md)                                  | Lossless vs wrapping math, shifts, bitwise, comparisons, slicing                 |
-| 6   | [Built-in functions](06-builtins.md)                          | `extend`, `trunc`, `signed`/`unsigned`, `min`/`max`/`abs`, `nand`/`nor`/`xnor`   |
-| 7   | [Expressions and control flow](07-expressions-and-control.md) | `if` expressions, `match`, statement-level `if`/`else`                           |
-| 8   | [Sequential logic](08-sequential-logic.md)                    | Clocks, resets, `on rise`, registers, finite-state machines                      |
-| 9   | [Modules and reuse](09-modules-and-reuse.md)                  | Parameters, instances, imports, `repeat`, instance arrays, `const`               |
-| 10  | [Natural word order (thamizh)](10-word-order-thamizh.md)      | Reading code in Tamil SOV order with `syntax thamizh`                            |
-| 11  | [The toolchain](11-toolchain.md)                              | `mimz check`/`compile`/`eval`/`sim`/`test`/`explain`/`translate`/`fmt`, `--lang` |
-| 12  | [Cheat sheet](12-cheatsheet.md)                               | Every keyword (×3 flavors), operator, builtin, and error code                    |
+| #   | Chapter                                                       | You will learn                                                                                                                             |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | [Getting started](01-getting-started.md)                      | Install, write your first module, compile it to Verilog                                                                                    |
+| 2   | [Lexical basics](02-lexical-basics.md)                        | Comments, identifiers, keywords, the three flavors, mixing                                                                                 |
+| 3   | [Types and values](03-types-and-values.md)                    | `bit`, `bits[N]`, `signed[N]`, enums, number literals                                                                                      |
+| 4   | [Signals: ports, wires, registers](04-signals.md)             | `in`/`out`, `wire`, `reg`, `clock`, `reset`, `=` vs `<-`                                                                                   |
+| 5   | [Operators](05-operators.md)                                  | Lossless vs wrapping math, shifts, bitwise, comparisons, slicing                                                                           |
+| 6   | [Built-in functions](06-builtins.md)                          | `extend`, `trunc`, `signed`/`unsigned`, `min`/`max`/`abs`, `nand`/`nor`/`xnor`                                                             |
+| 7   | [Expressions and control flow](07-expressions-and-control.md) | `if` expressions, `match`, statement-level `if`/`else`                                                                                     |
+| 8   | [Sequential logic](08-sequential-logic.md)                    | Clocks, resets, `on rise`, registers, finite-state machines                                                                                |
+| 9   | [Modules and reuse](09-modules-and-reuse.md)                  | Parameters, instances, imports, `repeat`, instance arrays, `const`                                                                         |
+| 10  | [Natural word order (thamizh)](10-word-order-thamizh.md)      | Reading code in Tamil SOV order with `syntax thamizh`                                                                                      |
+| 11  | [The toolchain](11-toolchain.md)                              | `mimz init`/`check`/`compile`/`eval`/`sim`/`test`/`lint`/`repl`/`explain`/`translate`/`fmt`/`doctor`/`completions`/`eject`/`lsp`, `--lang` |
+| 12  | [Cheat sheet](12-cheatsheet.md)                               | Every keyword (×3 flavors), operator, builtin, and error code                                                                              |
 
 ## Standard library
 
@@ -69,9 +69,11 @@ The compiler rejects, at build time, the classic hardware footguns:
 - no silent truncation (`+` grows a bit; wrapping is the explicit `+%`);
 - no multiple drivers and no combinational loops;
 - no uninitialized registers (every `reg` declares a reset value);
+- no uninitialized memories (every `mem` declares an init value);
 - no `=`/`<-` confusion (combinational vs clocked is a syntax distinction);
 - no signed/unsigned mixing without an explicit cast;
-- no `x & 1 == 0` precedence trap (Rust-style precedence, not C's).
+- no `x & 1 == 0` precedence trap (Rust-style precedence, not C's);
+- `async reset` and `on fall` are explicit keywords, not inferred.
 
 Each rule has a stable `E`-code and a teaching message. See the
 [cheat sheet](12-cheatsheet.md) for the full list, or run `mimz explain E0502`.
