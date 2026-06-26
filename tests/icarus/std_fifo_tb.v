@@ -1,5 +1,5 @@
 // Self-checking TB: Fifo — a synchronous ring-buffer queue (defaults WIDTH=8,
-// AW=2, DEPTH=4). Verifies: empty after reset; FIFO ordering across push/pop;
+// DEPTH=4). Verifies: empty after reset; FIFO ordering across push/pop;
 // full after DEPTH pushes; and that an overflow push is ignored (head datum
 // and full flag unchanged).
 `timescale 1ns/1ps

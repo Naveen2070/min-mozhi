@@ -28,20 +28,20 @@ is a bug — fix it the same day (RULES R1).
 
 (File numbers are stable IDs, not reading order — read top to bottom.)
 
-| Document                                                         | Covers                                                                            |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| [`01-pipeline.md`](01-pipeline.md)                               | End-to-end: what happens when you run `mimz compile`                              |
-| [`09-walkthrough-counter.md`](09-walkthrough-counter.md)         | The same pipeline SHOWN: real tokens, AST, and Verilog for `counter.mimz`         |
-| [`02-lexer.md`](02-lexer.md)                                     | Tokens, the trilingual keyword table, the newline policy                          |
-| [`03-parser.md`](03-parser.md)                                   | Recursive descent, error recovery, operator precedence                            |
-| [`04-ast.md`](04-ast.md)                                         | The one shared AST and its design rules                                           |
-| [`11-checker.md`](11-checker.md)                                 | The checker passes + the stable error-code catalog                                |
-| [`05-emit-verilog.md`](05-emit-verilog.md)                       | How `.mimz` becomes Verilog text                                                  |
-| [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                           |
-| [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow                   |
-| [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test                 |
-| [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning               |
-| [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report            |
+| Document                                                         | Covers                                                                                                                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`01-pipeline.md`](01-pipeline.md)                               | End-to-end: what happens when you run `mimz compile`                                                                                                                      |
+| [`09-walkthrough-counter.md`](09-walkthrough-counter.md)         | The same pipeline SHOWN: real tokens, AST, and Verilog for `counter.mimz`                                                                                                 |
+| [`02-lexer.md`](02-lexer.md)                                     | Tokens, the trilingual keyword table, the newline policy                                                                                                                  |
+| [`03-parser.md`](03-parser.md)                                   | Recursive descent, error recovery, operator precedence                                                                                                                    |
+| [`04-ast.md`](04-ast.md)                                         | The one shared AST and its design rules                                                                                                                                   |
+| [`11-checker.md`](11-checker.md)                                 | The checker passes + the stable error-code catalog                                                                                                                        |
+| [`05-emit-verilog.md`](05-emit-verilog.md)                       | How `.mimz` becomes Verilog text                                                                                                                                          |
+| [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                                                                                                                   |
+| [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow                                                                                                           |
+| [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test                                                                                                         |
+| [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning                                                                                                       |
+| [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report                                                                                                    |
 | [`13-tooling.md`](13-tooling.md)                                 | Tooling modules (`explain`, `translate`/`pretty`, `morph`, `sim`, `config`, `version`, `analysis`) + operational commands (`init`/`doctor`/`completions`/`check --watch`) |
 
 ## The 60-second version

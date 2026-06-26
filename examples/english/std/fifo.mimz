@@ -12,13 +12,15 @@
 //         out empty — nothing buffered
 //         out dout  — the datum at the head (valid when not empty)
 // Params: WIDTH — datum width in bits
-//         AW    — pointer width; the ring holds 2^AW entries
+//         DEPTH — how many entries the ring holds (any DEPTH >= 1)
 //
-// The memory holds `1 << AW` entries, indexed by the head/tail AW-bit
-// pointers that wrap around the ring with `+%`. `count` carries one extra
-// bit so it can represent a completely full ring (2^AW entries).
+// The memory holds `DEPTH` entries, indexed by head/tail pointers that are
+// `clog2(DEPTH)` bits wide — the compiler derives that width from `DEPTH`, so
+// you size the queue by capacity, not by pointer bits. The pointers wrap at
+// `DEPTH - 1` (not at a power of two), so any depth works. `count` carries one
+// extra bit so it can represent a completely full ring (`DEPTH` entries).
 
-module Fifo(WIDTH: int = 8, AW: int = 2) {
+module Fifo(WIDTH: int = 8, DEPTH: int = 4) {
   clock clk
   reset rst
 
@@ -29,46 +31,58 @@ module Fifo(WIDTH: int = 8, AW: int = 2) {
   out empty: bit
   out dout:  bits[WIDTH]
 
-  // 2^AW cells of WIDTH bits.
-  mem data: bits[WIDTH][1 << AW] = 0
+  // DEPTH cells of WIDTH bits; pointers sized to address them.
+  mem data: bits[WIDTH][DEPTH] = 0
 
-  reg head:  bits[AW]     = 0
-  reg tail:  bits[AW]     = 0
-  reg count: bits[AW + 1] = 0
+  reg head:  bits[clog2(DEPTH)]     = 0
+  reg tail:  bits[clog2(DEPTH)]     = 0
+  reg count: bits[clog2(DEPTH) + 1] = 0
 
   on rise(clk) {
-    if push and (count != (1 << AW)) {
-      // Enqueue: store at the tail and advance it.
+    if push and (count != DEPTH) {
+      // Enqueue: store at the tail and advance it (wrapping at DEPTH-1).
       data[tail] <- din
-      tail <- tail +% 1
+      if tail == DEPTH - 1 {
+        tail <- 0
+      } else {
+        tail <- tail +% 1
+      }
       if pop and (count != 0) {
         // A simultaneous pop keeps the occupancy steady.
-        head <- head +% 1
+        if head == DEPTH - 1 {
+          head <- 0
+        } else {
+          head <- head +% 1
+        }
       } else {
         count <- count +% 1
       }
     } else {
       if pop and (count != 0) {
         // Dequeue only: advance the head and drop the occupancy.
-        head <- head +% 1
+        if head == DEPTH - 1 {
+          head <- 0
+        } else {
+          head <- head +% 1
+        }
         count <- count -% 1
       }
     }
   }
 
   dout  = data[head]
-  full  = count == (1 << AW)
+  full  = count == DEPTH
   empty = count == 0
 }
 
 // A freshly reset queue holds nothing.
-test "fifo starts empty" for Fifo(WIDTH: 8, AW: 2) {
+test "fifo starts empty" for Fifo(WIDTH: 8, DEPTH: 4) {
   expect empty == 1
   expect full == 0
 }
 
 // One pushed byte comes back at the head and clears `empty`.
-test "fifo round-trips a byte" for Fifo(WIDTH: 8, AW: 2) {
+test "fifo round-trips a byte" for Fifo(WIDTH: 8, DEPTH: 4) {
   push = 1
   din = 0xA5
   tick(clk, 1)
@@ -77,8 +91,8 @@ test "fifo round-trips a byte" for Fifo(WIDTH: 8, AW: 2) {
   expect empty == 0
 }
 
-// Pushing 2^AW (4) entries fills the ring.
-test "fifo fills up" for Fifo(WIDTH: 8, AW: 2) {
+// Pushing DEPTH (4) entries fills the ring.
+test "fifo fills up" for Fifo(WIDTH: 8, DEPTH: 4) {
   push = 1
   din = 1
   tick(clk, 4)

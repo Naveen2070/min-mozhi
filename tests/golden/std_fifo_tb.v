@@ -8,7 +8,7 @@ module fifo_starts_empty_tb;
   wire empty;
   wire [8-1:0] dout;
 
-  Fifo  #(.WIDTH(8), .AW(2)) _dut_inst (
+  Fifo  #(.WIDTH(8), .DEPTH(4)) _dut_inst (
     .clk(clk),
     .rst(rst),
     .push(push),
@@ -52,7 +52,7 @@ module fifo_round_trips_a_byte_tb;
   wire empty;
   wire [8-1:0] dout;
 
-  Fifo  #(.WIDTH(8), .AW(2)) _dut_inst (
+  Fifo  #(.WIDTH(8), .DEPTH(4)) _dut_inst (
     .clk(clk),
     .rst(rst),
     .push(push),
@@ -100,7 +100,7 @@ module fifo_fills_up_tb;
   wire empty;
   wire [8-1:0] dout;
 
-  Fifo  #(.WIDTH(8), .AW(2)) _dut_inst (
+  Fifo  #(.WIDTH(8), .DEPTH(4)) _dut_inst (
     .clk(clk),
     .rst(rst),
     .push(push),

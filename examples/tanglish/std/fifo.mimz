@@ -12,13 +12,15 @@
 //         out empty — nothing buffered
 //         out dout  — the datum at the head (valid when not empty)
 // Params: WIDTH — datum width in bits
-//         AW    — pointer width; the ring holds 2^AW entries
+//         DEPTH — how many entries the ring holds (any DEPTH >= 1)
 //
-// The memory holds `1 << AW` entries, indexed by the head/tail AW-bit
-// pointers that wrap around the ring with `+%`. `count` carries one extra
-// bit so it can represent a completely full ring (2^AW entries).
+// The memory holds `DEPTH` entries, indexed by head/tail pointers that are
+// `clog2(DEPTH)` bits wide — the compiler derives that width from `DEPTH`, so
+// you size the queue by capacity, not by pointer bits. The pointers wrap at
+// `DEPTH - 1` (not at a power of two), so any depth works. `count` carries one
+// extra bit so it can represent a completely full ring (`DEPTH` entries).
 
-thoguthi Fifo(WIDTH: int = 8, AW: int = 2) {
+thoguthi Fifo(WIDTH: int = 8, DEPTH: int = 4) {
   thudippu clk
   meettamai rst
 
@@ -29,46 +31,58 @@ thoguthi Fifo(WIDTH: int = 8, AW: int = 2) {
   veliyeedu empty: bit
   veliyeedu dout:  bits[WIDTH]
 
-  // 2^AW cells of WIDTH bits.
-  ninaivagam data: bits[WIDTH][1 << AW] = 0
+  // DEPTH cells of WIDTH bits; pointers sized to address them.
+  ninaivagam data: bits[WIDTH][DEPTH] = 0
 
-  pathivedu head:  bits[AW]     = 0
-  pathivedu tail:  bits[AW]     = 0
-  pathivedu count: bits[AW + 1] = 0
+  pathivedu head:  bits[clog2(DEPTH)]     = 0
+  pathivedu tail:  bits[clog2(DEPTH)]     = 0
+  pathivedu count: bits[clog2(DEPTH) + 1] = 0
 
   pothu yetram(clk) {
-    enil push mattrum (count != (1 << AW)) {
-      // Enqueue: store at the tail and advance it.
+    enil push mattrum (count != DEPTH) {
+      // Enqueue: store at the tail and advance it (wrapping at DEPTH-1).
       data[tail] <- din
-      tail <- tail +% 1
+      enil tail == DEPTH - 1 {
+        tail <- 0
+      } illaiyenil {
+        tail <- tail +% 1
+      }
       enil pop mattrum (count != 0) {
         // A simultaneous pop keeps the occupancy steady.
-        head <- head +% 1
+        enil head == DEPTH - 1 {
+          head <- 0
+        } illaiyenil {
+          head <- head +% 1
+        }
       } illaiyenil {
         count <- count +% 1
       }
     } illaiyenil {
       enil pop mattrum (count != 0) {
         // Dequeue only: advance the head and drop the occupancy.
-        head <- head +% 1
+        enil head == DEPTH - 1 {
+          head <- 0
+        } illaiyenil {
+          head <- head +% 1
+        }
         count <- count -% 1
       }
     }
   }
 
   dout  = data[head]
-  full  = count == (1 << AW)
+  full  = count == DEPTH
   empty = count == 0
 }
 
 // A freshly reset queue holds nothing.
-sodhanai "fifo starts empty" kaaga Fifo(WIDTH: 8, AW: 2) {
+sodhanai "fifo starts empty" kaaga Fifo(WIDTH: 8, DEPTH: 4) {
   uruthisei empty == 1
   uruthisei full == 0
 }
 
 // One pushed byte comes back at the head and clears `empty`.
-sodhanai "fifo round-trips a byte" kaaga Fifo(WIDTH: 8, AW: 2) {
+sodhanai "fifo round-trips a byte" kaaga Fifo(WIDTH: 8, DEPTH: 4) {
   push = 1
   din = 0xA5
   kanam(clk, 1)
@@ -77,8 +91,8 @@ sodhanai "fifo round-trips a byte" kaaga Fifo(WIDTH: 8, AW: 2) {
   uruthisei empty == 0
 }
 
-// Pushing 2^AW (4) entries fills the ring.
-sodhanai "fifo fills up" kaaga Fifo(WIDTH: 8, AW: 2) {
+// Pushing DEPTH (4) entries fills the ring.
+sodhanai "fifo fills up" kaaga Fifo(WIDTH: 8, DEPTH: 4) {
   push = 1
   din = 1
   kanam(clk, 4)
