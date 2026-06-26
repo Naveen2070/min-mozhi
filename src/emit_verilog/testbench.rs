@@ -112,6 +112,8 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         env: Env::new(),
         module_envs: HashMap::new(),
         repeat_budget: REPEAT_BUDGET,
+        clog2_fn_used: false,
+        emitting_port: false,
     };
 
     em.out.push_str(&format!(
