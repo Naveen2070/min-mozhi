@@ -246,3 +246,33 @@ It checks the product doesn't exceed `MAX_SWEEP_VECTORS` before allocating, so a
 - `ports` — describe a module's interface as JSON (for the playground UI).
 - `sim` — simulate a clocked or combinational design with stimulus.
 - `test` — run test blocks and report pass/fail.
+
+---
+
+## `src/stdlib.rs` — The Embedded Standard Library
+
+This file bakes the standard library **directly into the compiler binary** using `include_str!`. No install path, no filesystem dependency — it works in WASM and in any bare-binary distribution.
+
+### Why embed it?
+
+The five stdlib modules (`debouncer`, `seg7`, `pwm`, `fifo`, `uart_tx`) are already tested as real example files under `examples/english/std/` and `examples/tamil-pure/`. `stdlib.rs` just `include_str!`s those same files — a single source of truth, no duplication.
+
+### The catalog
+
+`static MODULES: &[StdModule]` — one entry per module. Each entry has:
+
+- `stem` — the import path segment (`"fifo"`, `"uart_tx"`, etc.)
+- `canonical_src` / `canonical_name` — English-identifier source and module name (`Fifo`)
+- `twin_src` / `twin_name` / `twin_roman` — pure-Tamil twin source (`தொகுதி வரிசை`), name, and its romanization (`varisai`)
+
+### Resolution
+
+**`resolve(alias, stem)`** — the routing entry. First checks `alias` against `NS_ALIASES` (`["std", "nuulagam", "நூலகம்"]`) so any of the three namespace spellings work. Then matches `stem` against canonical name, twin name, and twin romanization. Returns `(source, variant)` or an error listing the available stems.
+
+**`is_std_namespace(alias)`** — thin predicate used by the project loader to decide whether to try the embedded library.
+
+**`eject_to(dir, use_twin, force)`** — vendors the stdlib to disk: writes all modules' source files to `dir/`. `use_twin = true` writes the pure-Tamil twin spellings (for a Tamil-first project). `force = false` aborts on any pre-existing file before touching anything else (all-or-nothing invariant). Used by `mimz eject std` (`src/commands/eject.rs`).
+
+### Override path
+
+When `mimz.toml [lib] std = "<dir>"` is set, `project::load_project_with_lib` bypasses this module entirely and loads `<dir>/<stem>.mimz` from disk instead.

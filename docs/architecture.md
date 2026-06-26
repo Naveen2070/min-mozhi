@@ -123,6 +123,8 @@ mimz/
     explain.rs           # long-form error code explanations    ✅
     version.rs           # compiler version + language edition   ✅
     runner.rs            # in-memory command engine (playground) ✅
+    stdlib.rs            # embedded standard library modules    ✅
+    analysis.rs          # editor symbol index + offset→def/completion ✅
     ast/                 # the ONE shared AST                   ✅
       mod.rs             #   files, modules, decls, statements
       expr.rs            #   expressions, patterns, operators
@@ -155,6 +157,7 @@ mimz/
       clocks.rs          #   clock-domain ownership (E0701)
       tests.rs           #   unit tests (one per E-code)
     sim/                 # (P1.5)                               ✅
+      mod.rs             #   module entry + re-exports
       comb.rs            #   combinational evaluator
       kernel.rs          #   event-driven kernel
       elaborate.rs       #   AST → flat Design
@@ -164,8 +167,8 @@ mimz/
       vcd.rs             #   VCD waveform writer
       trace.rs           #   console trace renderer
     ir/                  # (P2)
-  tests/                 # 16 test files
-    examples.rs          # all 105 examples (23 × 4 flavors + 13 tamil-pure) ✅
+  tests/                 # 17 test files
+    examples.rs          # all 129 examples (29 × 4 complete flavors + 13 tamil-pure) ✅
     errors.rs            # broken fixtures, one code per E-code  ✅
     icarus.rs            # iverilog lint + self-checking TBs +   ✅
                          #   our_simulator_matches_icarus_bit_for_bit (~21 ex)
@@ -175,6 +178,7 @@ mimz/
     docs_sync.rs         # docs ↔ code staleness guard          ✅
     grammar_sync.rs      # VS Code grammar ↔ lang/keywords.toml      ✅
     compile_string.rs    # library API tests                    ✅
+    stdlib.rs            # importable std.* library tests       ✅
     wasm_parity.rs       # WASM ↔ CLI output parity             ✅
     golden/              # pinned .v output per base example
     fixtures/errors/     # the broken corpus
@@ -199,11 +203,11 @@ min-mozhi/
   docs/                     # the PROJECT — plan/, log/, archive/, RULES,
                             #   guide/, code/, source-guide/, audit/, Ideas/
   src/                      # the compiler (tree above)
-  tests/                    # integration tests (16 files)
+  tests/                    # integration tests (17 files)
   benches/                  # Criterion micro-benchmarks
   fuzz/                     # libFuzzer targets (4)
   crates/mimz-wasm/         # WASM playground wrapper
-  examples/                 # .mimz programs (23 designs × 4 flavors + stdlib + 13 tamil-pure)
+  examples/                 # .mimz programs (23 designs × 4 complete flavors + 6 stdlib each + 13 tamil-pure = 129)
   demo/                     # alu + cpu hardware demos
   editors/vscode/           # VS Code extension (grammar + LSP client)
   site/                     # Astro documentation website (deployed)

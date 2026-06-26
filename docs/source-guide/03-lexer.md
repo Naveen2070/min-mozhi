@@ -1,4 +1,4 @@
-# 3 — The Lexer: Tokenizing Your Code (3 Files)
+# 3 — The Lexer: Tokenizing Your Code (4 Files)
 
 The lexer is where your source text gets chopped into **tokens** — the smallest meaningful chunks like `module`, `42`, `+`, `<-`, `{`, and so on.
 

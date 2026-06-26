@@ -64,6 +64,7 @@ Run it without installing:
 cargo run -- compile examples/english/counter.mimz   # -> counter.v
 cargo run -- check examples/english/counter.mimz
 cargo run -- sim examples/english/counter.mimz --trace
+cargo run -- eject std --to ./std                   # vendor stdlib to disk
 cargo run -- --version
 ```
 

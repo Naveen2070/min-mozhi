@@ -36,6 +36,8 @@ src/
 ├── pretty.rs            # Turning the AST back into readable source
 ├── explain.rs           # Long-form explanations for error codes
 ├── version.rs           # Compiler version + language edition
+├── stdlib.rs            # Embedded standard library (seg7/pwm/fifo/uart_tx/debouncer)
+├── analysis.rs          # Editor symbol index + offset→definition / completion (LSP)
 │
 ├── lexer/               # The tokenizer (4 files)
 ├── parser/              # Tokens → structured tree (9 files)
@@ -43,22 +45,22 @@ src/
 ├── checker/             # Safety checks — 6 passes (12 files)
 ├── emit_verilog/        # Verilog code generator (5 files)
 ├── sim/                 # Event-driven simulator (9 files)
-└── commands/            # CLI command handlers (10 files)
+└── commands/            # CLI command handlers (11 files)
 ```
 
 Now let's walk through each piece, one at a time. The rest of this guide is split into chapters — each chapter covers one folder or group of related files.
 
-| Chapter                       | What it covers                                                                        |
-| ----------------------------- | ------------------------------------------------------------------------------------- |
-| [02](02-foundations.md)       | span, diag, morph, config, project, runner — the support modules                      |
-| [03](03-lexer.md)             | The lexer (tokenizer) — all 3 files                                                   |
-| [04](04-parser.md)            | The parser — all 7 files                                                              |
-| [05](05-ast.md)               | The Abstract Syntax Tree                                                              |
-| [06](06-checker.md)           | Six safety passes — all 9 files                                                       |
-| [07](07-verilog-emitter.md)   | Verilog code generator — all 5 files                                                  |
-| [08](08-simulator.md)         | Event-driven simulator — all 8 files                                                  |
-| [09](09-tooling-and-entry.md) | CLI commands, main.rs, lib.rs, translate, pretty, explain, version                    |
-| [10](10-ecosystem.md)         | LSP, WASM, VS Code, benchmarks, fuzzing, tests, CI, examples, demos, lang, spec, site |
+| Chapter                       | What it covers                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------- |
+| [02](02-foundations.md)       | span, diag, morph, config, project, runner, stdlib — the support modules                |
+| [03](03-lexer.md)             | The lexer (tokenizer) — all 4 files                                                     |
+| [04](04-parser.md)            | The parser — all 9 files                                                                |
+| [05](05-ast.md)               | The Abstract Syntax Tree                                                                |
+| [06](06-checker.md)           | Six safety passes — all 12 files                                                        |
+| [07](07-verilog-emitter.md)   | Verilog code generator — all 5 files                                                    |
+| [08](08-simulator.md)         | Event-driven simulator — all 9 files                                                    |
+| [09](09-tooling-and-entry.md) | CLI commands, main.rs, lib.rs, translate, pretty, explain, version, analysis.rs, lsp.rs |
+| [10](10-ecosystem.md)         | LSP, WASM, VS Code, benchmarks, fuzzing, tests, CI, examples, demos, lang, spec, site   |
 
 ---
 
