@@ -232,21 +232,26 @@ impl Emitter<'_> {
                 Builtin::Nor => format!("(~|({}))", self.expr_subst(&args[0], subst)),
                 Builtin::Xnor => format!("(~^({}))", self.expr_subst(&args[0], subst)),
                 // `clog2(n)` folds to a literal when `n` is a constant (a literal
-                // or `const`). A module PARAMETER stays a symbolic Verilog
-                // `parameter`, and Verilog-2005 has no `clog2`, so it cannot be
-                // emitted — an honest error beats a silently wrong width.
+                // or `const`). Of a module PARAMETER it stays symbolic, so it
+                // lowers to a call of the injected Verilog-2005 `clog2` constant
+                // function — except in a port width, where that function (body-
+                // scoped) can't be reached, so it is an honest error.
                 Builtin::Clog2 => match consteval::eval(&args[0], &self.env) {
                     Ok(n) if n >= 1 => consteval::clog2_bits(n as u128).to_string(),
                     Ok(_) => "1".to_string(), // n < 1: the checker already reported E0202
-                    Err(_) => {
+                    Err(_) if self.emitting_port => {
                         self.err(
                             args[0].span,
-                            "`clog2` needs a constant argument to emit — a module \
-                             parameter stays symbolic, and Verilog-2005 has no `clog2`",
-                            "pass `clog2` a literal or a `const` (parametric `clog2` \
-                             widths are not yet supported)",
+                            "`clog2` of a parameter cannot size a port — the Verilog-2005 \
+                             constant function lives in the module body, out of the port list's reach",
+                            "size a body `reg`/`wire` with it instead, or pass the width \
+                             as its own parameter",
                         );
                         "1".to_string()
+                    }
+                    Err(_) => {
+                        self.clog2_fn_used = true;
+                        format!("clog2({})", self.expr_subst(&args[0], subst))
                     }
                 },
             },

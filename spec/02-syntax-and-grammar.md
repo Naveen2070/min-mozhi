@@ -340,15 +340,17 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
     `n = 1`, so `bits[clog2(N)]` is **always** a legal width. It is the SAME
     function the compiler uses internally to size enum signals
     (`clog2(variant count)`).
-  - Lowers to nothing — by emit time it has already folded to a literal. Its
-    chief use is constant-derived storage widths:
-    `const DEPTH = 16` then `reg ptr: bits[clog2(DEPTH)]` derives its own pointer
-    width instead of a redundant address-width constant.
-  - **v1 limit (deliberate):** the argument must be a literal or `const`. An
-    overridable module **parameter** stays a symbolic Verilog `parameter`, and
-    Verilog-2005 has no `clog2`, so `clog2(PARAM)` cannot be emitted — it is an
-    honest compile error, never a silently wrong width. Parametric `clog2` widths
-    (via an emitted Verilog-2005 `clog2` function) are a planned follow-up.
+  - Of a literal or `const` it lowers to nothing — by emit time it has folded to
+    a literal: `const DEPTH = 16` then `reg ptr: bits[clog2(DEPTH)]` derives its
+    own pointer width.
+  - Of an overridable module **parameter** it stays symbolic, so a **body**
+    width (`reg`/`wire`/`mem`) lowers to a call of an emitted Verilog-2005
+    `clog2` constant function — the width then tracks an instantiation-time
+    parameter override (`reg [(clog2(DEPTH))-1:0] ptr`). The function matches
+    this floor-at-1 definition.
+  - **One limit:** a `clog2(PARAM)` in a **port** width is a compile error — the
+    constant function lives in the module body and cannot reach the header port
+    list. Size a body signal with it, or pass the width as its own parameter.
 
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
   accepted in literals.
