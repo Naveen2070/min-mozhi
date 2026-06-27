@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use mimz::{ast, checker, lexer, project};
 
-use super::helpers::{lib_std_dir, project_warnings, resolve_lang};
+use super::helpers::{lib_std_dir, ms, project_warnings, resolve_lang};
 use crate::Output;
 
 /// The outcome of one [`run_check`] pass.
@@ -210,11 +210,6 @@ fn run_check(
         dirs,
         loaded: true,
     }
-}
-
-/// Milliseconds elapsed since `start`, as f64 (for the `--debug` timing line).
-fn ms(start: Instant) -> f64 {
-    start.elapsed().as_secs_f64() * 1000.0
 }
 
 /// `--watch`: run once, then re-check on every save until Ctrl-C. Watches the

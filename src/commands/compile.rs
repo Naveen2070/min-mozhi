@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use mimz::{ast, checker, diag, emit_verilog, project};
 
-use super::helpers::{lib_std_dir, project_warnings, resolve_lang};
+use super::helpers::{lib_std_dir, ms, project_warnings, resolve_lang};
 use crate::Output;
 
 /// `mimz compile` — load the entry file and all transitive imports, build
@@ -173,9 +173,4 @@ pub(crate) fn compile(
         }
     }
     ExitCode::SUCCESS
-}
-
-/// Milliseconds elapsed since `start`, as f64 (for the `--debug` timing line).
-fn ms(start: Instant) -> f64 {
-    start.elapsed().as_secs_f64() * 1000.0
 }

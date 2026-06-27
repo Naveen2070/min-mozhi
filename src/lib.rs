@@ -45,6 +45,15 @@
 // overflow / out-of-bounds write is therefore impossible by construction.
 #![forbid(unsafe_code)]
 
+/// Largest number of `repeat` iterations expanded before erroring — shared by
+/// the Verilog emitter (which unrolls at compile time) and the simulator's
+/// elaborator. The two MUST agree: the simulator is the emitter's differential
+/// oracle, so any design that compiles must also elaborate. 4096 is far past any
+/// real datapath while still catching a typo'd bound. (The checker's driver pass
+/// keeps its OWN, independent walk budget — a precision/perf knob that degrades
+/// gracefully rather than erroring, so it is deliberately not this constant.)
+pub const REPEAT_BUDGET: i128 = 4096;
+
 pub mod analysis;
 pub mod ast;
 pub mod checker;
