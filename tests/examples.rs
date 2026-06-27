@@ -52,10 +52,11 @@ const BASE_EXAMPLES: [&str; 31] = [
 /// to any other flavor (localized names). Instead they are golden-locked and
 /// proven equivalent to their counterpart by canonical identifier renaming
 /// (see `pure_tamil_examples_are_equivalent_to_their_counterparts`).
-const PURE_TAMIL: [(&str, &str); 13] = [
+const PURE_TAMIL: [(&str, &str); 14] = [
     ("kanakki", "counter"),
     ("cimitti", "blinker"),
     ("oppidi", "comparator"),
+    ("perukki", "fn_mac"),
     ("thervi", "mux4"),
     ("kuutti", "adder"),
     ("saalaivilakku", "traffic_light"),
