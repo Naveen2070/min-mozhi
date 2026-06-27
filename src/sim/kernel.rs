@@ -15,9 +15,9 @@
 //! [`Sim::snapshot`] returns every signal's current value: the per-cycle seam
 //! the VCD writer and the console tracer (B5) both consume.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-use crate::ast::{Edge, Expr, SeqStmt};
+use crate::ast::{Edge, Expr, FuncDecl, SeqStmt};
 
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
@@ -255,6 +255,7 @@ impl Sim {
             stack: Vec::new(),
             mem_cells: &self.mems,
             mem_meta: &self.mem_meta,
+            funcs: &self.design.funcs,
         }
     }
 }
@@ -333,6 +334,7 @@ struct CombEnv<'a> {
     stack: Vec<String>,
     mem_cells: &'a BTreeMap<(String, u128), Val>,
     mem_meta: &'a BTreeMap<String, MemInfo>,
+    funcs: &'a HashMap<String, FuncDecl>,
 }
 
 impl CombEnv<'_> {
@@ -391,6 +393,9 @@ impl Resolver for CombEnv<'_> {
     }
     fn ints(&self) -> &BTreeMap<String, i128> {
         self.consts
+    }
+    fn funcs(&self) -> Option<&HashMap<String, FuncDecl>> {
+        Some(self.funcs)
     }
 }
 
