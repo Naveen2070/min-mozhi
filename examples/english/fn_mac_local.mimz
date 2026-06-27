@@ -1,0 +1,15 @@
+// Min-Mozhi example: narrow-local inference in function bodies
+// `let p = a *% b` produces bits[8]; the emitter must declare `reg [7:0] p`,
+// not `integer p`, so that wrap-at-8-bits semantics are preserved in synthesis.
+
+fn wrap_mul(a: bits[8], b: bits[8]) -> bits[8] {
+  let p = a *% b
+  p
+}
+
+module WrapMul {
+  in a: bits[8]
+  in b: bits[8]
+  out result: bits[8]
+  result = wrap_mul(a, b)
+}

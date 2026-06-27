@@ -1,0 +1,14 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file):
+// narrow-local inference in function bodies.
+
+fn wrap_mul(a: bits[8], b: bits[8]) -> bits[8] {
+  let p = a *% b
+  p
+}
+
+thoguthi WrapMul {
+  ulleedu a: bits[8]
+  உள்ளீடு b: bits[8]
+  out result: bits[8]
+  result = wrap_mul(a, b)
+}

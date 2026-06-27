@@ -13,6 +13,8 @@
 mod expr;
 pub use expr::*;
 
+use std::cell::Cell;
+
 use crate::span::Span;
 
 /// One parsed `.mimz` source file: imports first, then top-level items.
@@ -98,6 +100,10 @@ pub struct FnParam {
 ///
 /// `value` is an expression evaluated combinationally when the function is
 /// called. The bound name is in scope for subsequent `locals` and the `body`.
+///
+/// `inferred_width` is filled by the checker's width pass so the emitter
+/// can declare a sized `reg [W-1:0]` rather than a 32-bit `integer` (R6).
+/// Initialized to `None` by the parser; always `Some` after the checker runs.
 #[derive(Clone, Debug)]
 pub struct LocalLet {
     /// The bound name.
@@ -106,6 +112,10 @@ pub struct LocalLet {
     pub value: Expr,
     /// Source span of the `let` statement.
     pub span: Span,
+    /// Concrete bit-width inferred by the checker's width pass.
+    /// Set via interior mutability so the checker can annotate through a
+    /// shared `&FuncDecl` reference. `None` until the checker runs.
+    pub inferred_width: Cell<Option<u32>>,
 }
 
 /// A name with its source location. Used everywhere a user-written name

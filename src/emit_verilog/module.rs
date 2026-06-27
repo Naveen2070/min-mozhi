@@ -249,10 +249,11 @@ impl Emitter<'_> {
     }
 
     /// Render one user-defined function as a Verilog-2005
-    /// `function automatic` block. Locals that have no AST type annotation
-    /// are declared as `integer` (32-bit) — sufficient for combinational
-    /// logic; add `LocalLet.ty` to the AST to emit precise widths if a
-    /// synthesis tool requires them.
+    /// `function automatic` block. Local `let` bindings are declared as
+    /// `reg [W-1:0]` using the width inferred by the checker's width pass
+    /// and stored in [`LocalLet::inferred_width`]; emitting `integer` would
+    /// silently widen narrow wrapping values (e.g. an 8-bit `*%` product
+    /// stored in a 32-bit `integer` would not wrap at 8 bits).
     ///
     /// Renders under an EMPTY const env so module-const names cannot
     /// accidentally shadow function parameter names.
@@ -267,9 +268,16 @@ impl Emitter<'_> {
             let pw = self.width(&param.ty);
             s.push_str(&format!("        input {pw}{};\n", param.name.name));
         }
-        // ponytail: locals as `integer`; precise widths need LocalLet.ty in AST
         for local in &decl.locals {
-            s.push_str(&format!("        integer {};\n", local.name.name));
+            let decl_line = match local.inferred_width.get() {
+                Some(1) => format!("        reg {};\n", local.name.name),
+                Some(w) => format!("        reg [{}:0] {};\n", w - 1, local.name.name),
+                None => unreachable!(
+                    "LocalLet `{}` has no inferred_width — checker must run before emitter",
+                    local.name.name
+                ),
+            };
+            s.push_str(&decl_line);
         }
         s.push_str("        begin\n");
         for local in &decl.locals {
