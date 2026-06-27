@@ -1,0 +1,14 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change):
+// narrow-local inference in function bodies.
+
+saarbu wrap_mul(a: bits[8], b: bits[8]) -> bits[8] {
+  let p = a *% b
+  p
+}
+
+thoguthi WrapMul {
+  ulleedu a: bits[8]
+  ulleedu b: bits[8]
+  veliyeedu result: bits[8]
+  result = wrap_mul(a, b)
+}

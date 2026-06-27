@@ -572,6 +572,16 @@ impl<'a> Checker<'a> {
         // locals and the body can reference the name.
         for local in &func.locals {
             let ty = self.infer_ty(&mut cx, &local.value);
+            // Annotate the concrete bit-width for the emitter so it can
+            // declare `reg [W-1:0]` instead of the width-erasing `integer`.
+            let w: Option<u32> = match ty {
+                Ty::Bit => Some(1),
+                Ty::Bits(n) | Ty::Signed(n) => Some(n as u32),
+                _ => None, // enum/memory/unknown — emitter will surface any gap
+            };
+            if let Some(w) = w {
+                local.inferred_width.set(Some(w));
+            }
             cx.sigs.insert(local.name.name.clone(), ty);
         }
         // Resolve the declared return type and check the body against it.
