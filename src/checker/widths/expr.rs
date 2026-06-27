@@ -467,12 +467,28 @@ impl<'a> Checker<'a> {
                 self.slice_ty(cx, hi, lo, n).unwrap_or(Ty::Unknown)
             }
             ExprKind::Call { func, args } => self.call_ty(cx, e, *func, args),
-            // ponytail: temporary arm — FnCall width checker lands in a later task
-            ExprKind::FnCall { args, .. } => {
-                for a in args {
-                    let _ = self.infer_ty(cx, a);
+            ExprKind::FnCall { name, args } => {
+                // Arity was checked in an earlier pass (E0803/E1110); unknown
+                // callee here means a prior pass already reported the error.
+                let (ffile, func) = match self.funcs.get(&name.name).copied() {
+                    Some(x) => x,
+                    None => {
+                        for a in args {
+                            let _ = self.infer_ty(cx, a);
+                        }
+                        return Ty::Unknown;
+                    }
+                };
+                // Check each arg width against the corresponding param type.
+                // Uses check_expr (→ expect_ty), mirroring the connection-width
+                // check in check_inst_widths (widths/insts.rs) which uses
+                // infer_ty + fit + same for the same "got vs expected" logic.
+                for (arg, param) in args.iter().zip(func.params.iter()) {
+                    let param_ty = self.fn_type_for_file(ffile, &param.ty);
+                    self.check_expr(cx, arg, param_ty);
                 }
-                Ty::Unknown
+                // The call's type is the function's declared return type.
+                self.fn_type_for_file(ffile, &func.ret)
             }
         }
     }

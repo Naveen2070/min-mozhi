@@ -37,7 +37,7 @@ mod patterns;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::ast::{BinOp, EnumDecl, Expr, Module, ModuleItem, SeqStmt, TopItem, Type};
+use crate::ast::{BinOp, EnumDecl, Expr, FuncDecl, Module, ModuleItem, SeqStmt, TopItem, Type};
 use crate::span::Span;
 
 use super::Checker;
@@ -169,6 +169,22 @@ impl<'a> Checker<'a> {
     /// every distinct binding discovered at instantiation sites.
     pub(super) fn check_widths(&mut self) {
         let files = self.files;
+
+        // Function bodies are monomorphic: check each canonical fn once.
+        for (file, f) in files.iter().enumerate() {
+            for item in &f.items {
+                if let TopItem::Func(func) = item {
+                    let canonical = self
+                        .funcs
+                        .get(&func.name.name)
+                        .is_some_and(|&(_, c)| std::ptr::eq(c, func));
+                    if canonical {
+                        self.check_func_body_widths(file, func);
+                    }
+                }
+            }
+        }
+
         let mut work: Vec<Config> = Vec::new();
         // Seed in file order (deterministic diagnostics), canonical
         // modules only (E0001 losers are skipped).
@@ -533,6 +549,76 @@ impl<'a> Checker<'a> {
             "this operation works on `bit`/`bits[N]`/`signed[N]` values",
         );
         Ty::Unknown
+    }
+
+    /// Width-check one function body (E0804). Functions are monomorphic —
+    /// param types use file consts only, so each function is checked once.
+    fn check_func_body_widths(&mut self, file: usize, func: &'a FuncDecl) {
+        let env = self.file_consts[file].clone();
+        let mut cx = Wcx {
+            file,
+            sc: Rc::new(super::names::Scope {
+                names: HashMap::new(),
+            }),
+            env,
+            sigs: HashMap::new(),
+        };
+        // Seed the signal environment with concrete param types.
+        for param in &func.params {
+            let ty = self.resolve_ty(&mut cx, &param.ty);
+            cx.sigs.insert(param.name.name.clone(), ty);
+        }
+        // Fold each local let: infer width and add to sigs so subsequent
+        // locals and the body can reference the name.
+        for local in &func.locals {
+            let ty = self.infer_ty(&mut cx, &local.value);
+            cx.sigs.insert(local.name.name.clone(), ty);
+        }
+        // Resolve the declared return type and check the body against it.
+        let ret_ty = self.resolve_ty(&mut cx, &func.ret);
+        let body_ty = self.infer_ty(&mut cx, &func.body);
+        match (body_ty, ret_ty) {
+            (Ty::Unknown, _) | (_, Ty::Unknown) => {}
+            (Ty::CtInt(v), t) => self.fit(&mut cx, func.body.span, v, t),
+            (g, t) if same(&g, &t) => {}
+            (g, t) => {
+                self.err(
+                    cx.file,
+                    func.body.span,
+                    "E0804",
+                    format!(
+                        "function `{}` body is {}, but the declared return type is {}",
+                        func.name.name,
+                        show(&g),
+                        show(&t)
+                    ),
+                    format!(
+                        "the return expression must match the declared return type exactly — \
+                         use `extend`, `trunc`, or a slice to resize (spec/02 section 5); \
+                         the target here is {}",
+                        show(&t)
+                    ),
+                );
+            }
+        }
+    }
+
+    /// Resolve a function parameter or return type under the function's
+    /// file const env. Silent — the function's own body check owns any
+    /// type-resolution errors. Called by the [`ExprKind::FnCall`] width
+    /// handler in `widths/expr.rs` (mirrors the port-type resolution in
+    /// [`Self::check_inst_widths`] / `widths/insts.rs`).
+    fn fn_type_for_file(&mut self, ffile: usize, ty: &'a Type) -> Ty<'a> {
+        let fenv = self.file_consts[ffile].clone();
+        let mut fcx = Wcx {
+            file: ffile,
+            sc: Rc::new(super::names::Scope {
+                names: HashMap::new(),
+            }),
+            env: fenv,
+            sigs: HashMap::new(),
+        };
+        self.resolve_ty_silent(&mut fcx, ty)
     }
 }
 

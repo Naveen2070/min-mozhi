@@ -128,6 +128,7 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0801 | duplicate user-defined function name (project-wide)                                       | rename — function names are project-unique                      |
 | E0802 | function name collides with a builtin (`extend`, `trunc`, `min`, …)                       | choose a different name                                         |
 | E0803 | wrong number of arguments in a `fn` call (expected N, got M)                              | pass exactly the number of arguments the function declares      |
+| E0804 | function body width doesn't match the declared return type                                 | `extend`/`trunc`/slice the body, or fix the `->` type           |
 
 Numbering scheme:
 
