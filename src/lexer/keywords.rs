@@ -116,10 +116,10 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 31] = [
+const REQUIRED_KEYS: [&str; 32] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
-    "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh",
+    "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -215,6 +215,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "not" => Kw::Not,
         "syntax" => Kw::Syntax,
         "thamizh" => Kw::Thamizh,
+        "fn" => Kw::Fn,
         _ => return None,
     })
 }
@@ -287,8 +288,8 @@ mod tests {
     #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 31).
-        assert_eq!(en.len(), 31);
+        // One spelling per keyword (REQUIRED_KEYS has 32).
+        assert_eq!(en.len(), 32);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.

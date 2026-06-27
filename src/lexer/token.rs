@@ -40,6 +40,8 @@ pub enum Kw {
     Not,
     Syntax,
     Thamizh,
+    /// Combinational user-defined function keyword (`fn`/`function`/`saarbu`/`சார்பு`).
+    Fn,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).
@@ -103,6 +105,8 @@ pub enum TokKind {
     Assign,   // =   (wires only)
     LArrow,   // <-  (regs only)
     FatArrow, // =>
+    /// `->` — function return-type arrow.
+    RArrow,
     Colon,
     Comma,
     Dot,
@@ -184,6 +188,7 @@ fn punct_text(kind: &TokKind) -> &'static str {
         Assign => "=",
         LArrow => "<-",
         FatArrow => "=>",
+        RArrow => "->",
         Colon => ":",
         Comma => ",",
         Dot => ".",

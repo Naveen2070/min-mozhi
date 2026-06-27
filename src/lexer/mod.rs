@@ -341,6 +341,7 @@ impl Lexer<'_> {
             '+' if self.peek() == Some('%') => two(self, PlusPct),
             '+' => Plus,
             '-' if self.peek() == Some('%') => two(self, MinusPct),
+            '-' if self.peek() == Some('>') => two(self, RArrow),
             '-' => Minus,
             '*' if self.peek() == Some('%') => two(self, StarPct),
             '*' => Star,
