@@ -1,0 +1,14 @@
+// Min-Mozhi example: user-defined combinational function
+// Declares `mac(a, b) = a * b` as a reusable combinational block.
+// Demonstrates Phase 2 RTL-parity `fn` declarations and `FnCall` emission.
+
+fn mac(a: bits[8], b: bits[8]) -> bits[16] {
+  a * b
+}
+
+module Mac {
+  in a: bits[8]
+  in b: bits[8]
+  out result: bits[16]
+  result = mac(a, b)
+}

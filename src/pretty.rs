@@ -112,8 +112,7 @@ impl Pretty {
             TopItem::Module(m) => self.module(m),
             TopItem::Enum(e) => self.enum_decl(e),
             TopItem::Test(t) => self.test_decl(t),
-            // ponytail: temporary arm — FnCall pretty-printer lands in a later task
-            TopItem::Func(_) => {}
+            TopItem::Func(f) => self.func_decl(f),
             // Unreachable: pretty-printing runs on a strict-parsed tree, which
             // never carries an `Error` placeholder.
             TopItem::Error(_) => {}
@@ -129,6 +128,28 @@ impl Pretty {
             self.expr(&c.value, self.indent)
         );
         self.line(&s);
+    }
+
+    fn func_decl(&mut self, f: &FuncDecl) {
+        let params = f
+            .params
+            .iter()
+            .map(|p| format!("{}: {}", p.name.name, self.ty(&p.ty, self.indent)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let ret = self.ty(&f.ret, self.indent);
+        let head = format!("{} {}({params}) -> {ret} {{", self.kw(Kw::Fn), f.name.name);
+        self.line(&head);
+        self.indent += 1;
+        for local in &f.locals {
+            let v = self.expr(&local.value, self.indent);
+            let s = format!("{} {} = {v}", self.kw(Kw::Let), local.name.name);
+            self.line(&s);
+        }
+        let body = self.expr(&f.body, self.indent);
+        self.line(&body);
+        self.indent -= 1;
+        self.line("}");
     }
 
     fn enum_decl(&mut self, e: &EnumDecl) {
