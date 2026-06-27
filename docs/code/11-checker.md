@@ -11,20 +11,20 @@ table below is the honest status of what remains.
 
 ## File layout
 
-| File                 | Owns                                                            |
-| -------------------- | --------------------------------------------------------------- |
-| `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing      |
-| `symbols.rs`         | Pass 1 — project-wide tables (modules, enums) + E0001/E0002     |
-| `consteval.rs`       | Pass 2 — file consts + the `eval()` engine for const positions  |
-| `names.rs`           | Pass 3 — module scopes, name resolution, structure rules, E0302 |
-| `widths/mod.rs`      | Pass 4 — the `Ty` model, `Wcx`, config worklist, module walk    |
-| `widths/expr.rs`     | Pass 4 — bidirectional typing engine (check/infer, lvalues)     |
-| `widths/ops.rs`      | Pass 4 — operators, shifts, concat, the four builtins           |
-| `widths/insts.rs`    | Pass 4 — instantiation bindings + connection widths             |
-| `widths/patterns.rs` | Pass 4 — `match` patterns + exhaustiveness (E0601/E0602)        |
-| `drivers.rs`         | Pass 5 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-` |
-| `clocks.rs`          | Pass 6 — clock-domain ownership, cross-domain reads (E0701)     |
-| `tests.rs`           | Unit tests — one per error code, plus clean-pass cases          |
+| File                 | Owns                                                                           |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing                     |
+| `symbols.rs`         | Pass 1 — project-wide tables (modules, enums, funcs) + E0001/E0002/E0801/E0802 |
+| `consteval.rs`       | Pass 2 — file consts + the `eval()` engine for const positions                 |
+| `names.rs`           | Pass 3 — module scopes, name resolution, structure rules, E0302                |
+| `widths/mod.rs`      | Pass 4 — the `Ty` model, `Wcx`, config worklist, module walk                   |
+| `widths/expr.rs`     | Pass 4 — bidirectional typing engine (check/infer, lvalues)                    |
+| `widths/ops.rs`      | Pass 4 — operators, shifts, concat, the four builtins                          |
+| `widths/insts.rs`    | Pass 4 — instantiation bindings + connection widths                            |
+| `widths/patterns.rs` | Pass 4 — `match` patterns + exhaustiveness (E0601/E0602)                       |
+| `drivers.rs`         | Pass 5 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                |
+| `clocks.rs`          | Pass 6 — clock-domain ownership, cross-domain reads (E0701)                    |
+| `tests.rs`           | Unit tests — one per error code, plus clean-pass cases                         |
 
 Same module pattern as the parser (03): `mod.rs` owns the struct and the
 diagnostic plumbing; each pass is an `impl` block in its own file behind
@@ -125,6 +125,9 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0601 | `match` not exhaustive (names a missing value/variant)                                    | add the missing arms, or end with `_ =>`                        |
 | E0602 | unreachable `match` arm (after `_`, or a duplicate value)                                 | move `_` last / delete the duplicate                            |
 | E0701 | cross-clock-domain read, or a wire mixing two domains                                     | one domain per signal; `sync` (Phase 2) will allow crossings    |
+| E0801 | duplicate user-defined function name (project-wide)                                       | rename — function names are project-unique                      |
+| E0802 | function name collides with a builtin (`extend`, `trunc`, `min`, …)                       | choose a different name                                         |
+| E0803 | wrong number of arguments in a `fn` call (expected N, got M)                              | pass exactly the number of arguments the function declares      |
 
 Numbering scheme:
 
@@ -135,7 +138,8 @@ Numbering scheme:
 - E04xx — width/type rules;
 - E05xx — drivers/cycles;
 - E06xx — exhaustiveness;
-- E07xx — clock domains.
+- E07xx — clock domains;
+- E08xx — user-defined functions.
 
 (Lexer E10xx, parser E11xx, and loader E12xx codes live in
 docs/code/06 — retrofit completed 2026-06-12.) Claim a block when a new

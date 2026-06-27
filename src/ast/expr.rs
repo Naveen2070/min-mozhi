@@ -197,3 +197,25 @@ pub enum Builtin {
     /// parameter defaults); the checker rejects it in a runtime value position.
     Clog2,
 }
+
+impl Builtin {
+    /// Map a spelling to its variant and arity; `None` if not a builtin.
+    /// This is the single source of truth for all builtin names — the parser
+    /// and checker both call this instead of maintaining separate lists.
+    pub fn from_name(name: &str) -> Option<(Builtin, usize)> {
+        match name {
+            "extend" => Some((Builtin::Extend, 2)),
+            "trunc" => Some((Builtin::Trunc, 2)),
+            "signed" => Some((Builtin::SignedCast, 1)),
+            "unsigned" => Some((Builtin::UnsignedCast, 1)),
+            "min" => Some((Builtin::Min, 2)),
+            "max" => Some((Builtin::Max, 2)),
+            "abs" => Some((Builtin::Abs, 1)),
+            "nand" => Some((Builtin::Nand, 1)),
+            "nor" => Some((Builtin::Nor, 1)),
+            "xnor" => Some((Builtin::Xnor, 1)),
+            "clog2" => Some((Builtin::Clog2, 1)),
+            _ => None,
+        }
+    }
+}

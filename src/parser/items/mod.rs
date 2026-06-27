@@ -11,6 +11,7 @@
 //! `seq.rs` parses sequential (`on`) blocks; `test.rs` parses `test` blocks.
 
 mod file;
+mod func;
 mod inst;
 mod module;
 mod seq;
