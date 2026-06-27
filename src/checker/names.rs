@@ -689,8 +689,31 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, a);
                 }
             }
-            // ponytail: temporary arm — FnCall checker lands in a later task; walk args for name resolution
-            ExprKind::FnCall { args, .. } => {
+            ExprKind::FnCall { name, args } => {
+                if let Some((_, decl)) = self.funcs.get(&name.name) {
+                    let expected = decl.params.len();
+                    let got = args.len();
+                    if expected != got {
+                        self.err(
+                            file,
+                            name.span,
+                            "E0803",
+                            format!(
+                                "`{}` takes {} argument(s), got {}",
+                                name.name, expected, got
+                            ),
+                            format!("pass exactly {} argument(s) to `{}`", expected, name.name),
+                        );
+                    }
+                } else {
+                    self.err(
+                        file,
+                        name.span,
+                        "E1110",
+                        format!("`{}` is not a function or builtin — only declared `fn`s and builtins are callable", name.name),
+                        "declare a `fn` with this name, or use a builtin (`extend`, `trunc`, `signed`, `unsigned`)",
+                    );
+                }
                 for a in args {
                     self.expr(file, sc, env, a);
                 }

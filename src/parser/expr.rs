@@ -640,40 +640,22 @@ impl Parser {
         }
     }
 
-    /// `builtinCall = ("extend" | "trunc" | "signed" | "unsigned") "(" args ")"`
-    /// — arity-checked here; any other `name(...)` gets the "no user
-    /// functions, only modules" teaching error.
+    /// Parse a call expression whose callee is `id` (identifier already consumed,
+    /// `(` is the current token).
+    ///
+    /// - If `name` is a known builtin spelling → arity-checked [`ExprKind::Call`].
+    /// - Otherwise → [`ExprKind::FnCall`]; name resolution and arity are deferred
+    ///   to the checker (Task 6), so an unknown callee parses cleanly here.
     fn builtin_call(&mut self, id: Ident, name: &str) -> Option<Expr> {
-        let (func, arity) = match name {
-            "extend" => (Builtin::Extend, 2),
-            "trunc" => (Builtin::Trunc, 2),
-            "signed" => (Builtin::SignedCast, 1),
-            "unsigned" => (Builtin::UnsignedCast, 1),
-            "min" => (Builtin::Min, 2),
-            "max" => (Builtin::Max, 2),
-            "abs" => (Builtin::Abs, 1),
-            "nand" => (Builtin::Nand, 1),
-            "nor" => (Builtin::Nor, 1),
-            "xnor" => (Builtin::Xnor, 1),
-            "clog2" => (Builtin::Clog2, 1),
-            other => {
-                self.error(
-                    id.span,
-                    "E1110",
-                    format!(
-                        "`{other}` is not a function — Min-Mozhi has no user functions, only modules"
-                    ),
-                );
-                self.help(
-                    "built-ins are `extend(x, N)`, `trunc(x, N)`, `signed(x)`, `unsigned(x)`, `min(a, b)`, `max(a, b)`, `abs(x)`, `nand|nor|xnor(x)`, `clog2(n)`; modules are instantiated with `let` (spec/02 section 1.5)",
-                );
-                return None;
-            }
-        };
+        let builtin = Builtin::from_name(name);
+
         self.bump(); // (
         let mut args = Vec::new();
         loop {
             self.skip_newlines();
+            if self.at(&TokKind::RParen) {
+                break;
+            }
             args.push(self.expr()?);
             self.skip_newlines();
             if !self.eat(&TokKind::Comma) {
@@ -681,17 +663,28 @@ impl Parser {
             }
         }
         let t = self.expect(TokKind::RParen, "`)` to close the call")?;
-        if args.len() != arity {
-            self.error(
-                id.span.join(t.span),
-                "E1110",
-                format!("`{name}` takes {arity} argument(s), got {}", args.len()),
-            );
-            return None;
+
+        if let Some((func, arity)) = builtin {
+            // Builtin: enforce arity at parse time (E1110).
+            if args.len() != arity {
+                self.error(
+                    id.span.join(t.span),
+                    "E1110",
+                    format!("`{name}` takes {arity} argument(s), got {}", args.len()),
+                );
+                return None;
+            }
+            Some(Expr {
+                kind: ExprKind::Call { func, args },
+                span: id.span.join(t.span),
+            })
+        } else {
+            // Non-builtin: emit FnCall; checker resolves name and arity (Task 6).
+            let span = id.span.join(t.span);
+            Some(Expr {
+                kind: ExprKind::FnCall { name: id, args },
+                span,
+            })
         }
-        Some(Expr {
-            kind: ExprKind::Call { func, args },
-            span: id.span.join(t.span),
-        })
     }
 }

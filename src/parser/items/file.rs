@@ -72,6 +72,10 @@ impl Parser {
                     Some(t) => items.push(TopItem::Test(t)),
                     None => items.push(TopItem::Error(self.span_since(start))),
                 },
+                TokKind::Kw(Kw::Fn) => match self.func_decl() {
+                    Some(f) => items.push(f),
+                    None => items.push(TopItem::Error(self.span_since(start))),
+                },
                 // thamizh order: a test header leads with the module under test,
                 // so a bare identifier at file level starts `M(args) kaaga "…"
                 // sodhanai { }`. The leading `ident()` always bumps, so the loop
@@ -88,7 +92,7 @@ impl Parser {
                     self.error(
                         span,
                         "E1102",
-                        format!("expected `module`, `import`, `const`, `enum`, or `test` at file level, found {found}"),
+                        format!("expected `module`, `import`, `const`, `enum`, `fn`, or `test` at file level, found {found}"),
                     );
                     // Always make progress. `sync_to_newline` STOPS at `}`
                     // without consuming it (it is a block terminator inside

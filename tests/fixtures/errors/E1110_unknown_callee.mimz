@@ -1,0 +1,5 @@
+// expect: E1110
+module M {
+  out o: bits[8]
+  o = nope(1)
+}
