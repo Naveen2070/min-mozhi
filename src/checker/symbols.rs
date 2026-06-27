@@ -5,7 +5,7 @@
 //! built later, in `names.rs` — this pass only handles names that must
 //! be unique across the whole project (spec/02 section 1.5).
 
-use crate::ast::TopItem;
+use crate::ast::{Builtin, TopItem};
 
 use super::Checker;
 
@@ -44,8 +44,29 @@ impl<'a> Checker<'a> {
                     }
                     TopItem::Const(_) | TopItem::Test(_) => {} // consteval.rs / names.rs
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
-                    // ponytail: temporary arm — FnCall symbol table landing in a later task
-                    TopItem::Func(_) => {}
+                    TopItem::Func(f) => {
+                        let name = &f.name.name;
+                        if Builtin::from_name(name.as_str()).is_some() {
+                            self.err(
+                                file,
+                                f.name.span,
+                                "E0802",
+                                format!("`{name}` is a builtin — choose another function name"),
+                                "builtin names are reserved by the language and cannot be \
+                                 redefined — pick a different name for your function",
+                            );
+                        } else if self.funcs.contains_key(name) {
+                            self.err(
+                                file,
+                                f.name.span,
+                                "E0801",
+                                format!("function `{name}` is defined more than once"),
+                                "function names are unique across the whole project — rename one",
+                            );
+                        } else {
+                            self.funcs.insert(name.clone(), (file, f));
+                        }
+                    }
                 }
             }
         }

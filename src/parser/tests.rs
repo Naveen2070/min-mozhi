@@ -2,6 +2,7 @@
 //! (precedence trap, latch teaching, `=` vs `<-`).
 
 use super::*;
+use crate::ast::{Builtin, ExprKind, ModuleItem, TopItem};
 use crate::lexer::lex;
 
 fn parse_ok(src: &str) -> File {
@@ -15,11 +16,62 @@ fn parse_err(src: &str) -> Vec<Diag> {
     }
 }
 
+/// Parse `expr_src` as a combinational drive RHS inside a minimal module.
+/// Wraps in `module M { in a: bits[4]; in x: bits[4]; in y: bits[4]; out z: bits[4]; z = <expr> }`.
+fn parse_expr_ok(expr_src: &str) -> crate::ast::Expr {
+    let src = format!(
+        "module M {{\n  in a: bits[4]\n  in x: bits[4]\n  in y: bits[4]\n  out z: bits[4]\n  z = {expr_src}\n}}\n"
+    );
+    let f = parse(lex(&src).expect("lex error")).expect("parse error");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!("expected module")
+    };
+    for item in &m.items {
+        if let ModuleItem::Drive { rhs, .. } = item {
+            return rhs.clone();
+        }
+    }
+    panic!("no Drive item found")
+}
+
 #[test]
 fn builtin_with_wrong_arity_is_e1110() {
     // `min` takes two arguments; calling it with one is a parse-time arity error.
+    // Builtin arity is still checked at parse time (E1110 stays a parser code).
     let d = parse_err("module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = min(a)\n}\n");
     assert_eq!(d[0].code, Some("E1110"));
+}
+
+#[test]
+fn non_builtin_call_parses_as_fncall() {
+    let e = parse_expr_ok("mac(x, y)");
+    let ExprKind::FnCall { name, args } = e.kind else {
+        panic!("not FnCall: {:?}", e.kind)
+    };
+    assert_eq!(name.name, "mac");
+    assert_eq!(args.len(), 2);
+}
+
+#[test]
+fn builtin_call_still_parses_as_builtin() {
+    let e = parse_expr_ok("extend(x, 8)");
+    assert!(matches!(
+        e.kind,
+        ExprKind::Call {
+            func: Builtin::Extend,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn zero_arg_call_parses_as_fncall() {
+    let e = parse_expr_ok("foo()");
+    let ExprKind::FnCall { name, args } = e.kind else {
+        panic!("not FnCall: {:?}", e.kind)
+    };
+    assert_eq!(name.name, "foo");
+    assert_eq!(args.len(), 0);
 }
 
 #[test]
@@ -426,11 +478,12 @@ fn every_parse_error_carries_a_code() {
     // The structural promise behind the E11xx retrofit: no parser
     // diagnostic ships codeless (the `error()` helper makes it
     // impossible; this locks the contract from the outside).
+    // Note: `nope(1)` is no longer a parse error — non-builtin calls parse as
+    // FnCall; name resolution is deferred to the checker (Task 6 / E1110).
     let broken = [
         "module M {\n  out y: bit\n  y = if y { 1 }\n}\n",
         "garbage here\n",
         "module M {\n  out y: bit\n  enum E {\n  }\n  y = 0\n}\n",
-        "module M {\n  out y: bit\n  y = nope(1)\n}\n",
     ];
     for src in broken {
         for d in parse_err(src) {
@@ -542,4 +595,17 @@ fn parse_recover_seq_and_test_blocks_emit_error_nodes() {
 fn strict_parse_still_errs_on_bad_input() {
     // The strict `parse` contract is unchanged: any error discards the tree.
     assert!(parse(lex("module M {\n  1 2 3\n}\n").expect("lex error")).is_err());
+}
+
+#[test]
+fn parses_fn_with_local_let_and_body() {
+    let f =
+        parse_ok("fn mac(a: bits[8], b: bits[8]) -> bits[16] {\n let p = a *% b\n extend(p,16) }");
+    let TopItem::Func(fd) = &f.items[0] else {
+        panic!("not a func")
+    };
+    assert_eq!(fd.name.name, "mac");
+    assert_eq!(fd.params.len(), 2);
+    assert_eq!(fd.locals.len(), 1);
+    assert!(matches!(fd.ret, Type::Bits(_)));
 }

@@ -56,6 +56,9 @@ pub(super) struct Checker<'a> {
     /// file-level enum name -> (declaring file, node). Project-wide —
     /// imports bring a file's enums into scope.
     enums: HashMap<String, (usize, &'a ast::EnumDecl)>,
+    /// file-level function name -> (declaring file, node). Project-wide —
+    /// function names are unique across the whole project (spec/02).
+    funcs: HashMap<String, (usize, &'a ast::FuncDecl)>,
     /// Per file: const name -> evaluated value (consts are file-local;
     /// imports do NOT bring consts into scope).
     file_consts: Vec<HashMap<String, i128>>,
@@ -72,6 +75,7 @@ impl<'a> Checker<'a> {
             files,
             modules: HashMap::new(),
             enums: HashMap::new(),
+            funcs: HashMap::new(),
             file_consts: vec![HashMap::new(); files.len()],
             scopes: HashMap::new(),
             diags: Vec::new(),

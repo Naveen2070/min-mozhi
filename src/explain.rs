@@ -343,6 +343,36 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: keep one clock domain per signal. A proper synchronizer for\n\
          crossing domains arrives with `sync` in Phase 2.",
     ),
+    // ----- E08xx: user-defined functions -----
+    (
+        "E0801",
+        "E0801 — duplicate function name (project-wide)\n\n\
+         Two `fn` declarations share the same name across all the files the\n\
+         compiler loaded. Function names are project-wide — any module can call\n\
+         any function, so the name must resolve to exactly one definition.\n\n\
+         Fix: rename one of them. Only the second declaration triggers this error;\n\
+         the first is kept.",
+    ),
+    (
+        "E0802",
+        "E0802 — function name shadows a builtin\n\n\
+         The chosen name is reserved for a language builtin (`extend`, `trunc`,\n\
+         `signed`, `unsigned`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`,\n\
+         `clog2`). Builtins are wired into the parser and type-checker; a\n\
+         user-defined function with the same name would create an ambiguity that\n\
+         the compiler cannot resolve.\n\n\
+         Fix: choose a different name for your function.",
+    ),
+    (
+        "E0803",
+        "E0803 — wrong number of arguments in function call\n\n\
+         A call to a user-defined `fn` passes a different number of arguments\n\
+         than the function declares parameters. Because `fn` bodies are\n\
+         combinational and purely structural, every parameter must be bound at\n\
+         the call site — the compiler cannot infer or default missing arguments.\n\n\
+         Fix: pass exactly the number of arguments the function declares.\n\
+         The error message names both the expected and received counts.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",
