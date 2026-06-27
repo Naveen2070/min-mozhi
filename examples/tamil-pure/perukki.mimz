@@ -1,19 +1,16 @@
 // Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a
 // combinational multiplier — the Tamil twin of english/fn_mac.mimz. The
 // compiler transliterates the names to readable ASCII Verilog
-// (பெருக்கி → perukki, அ → a, ஆ → aa, விடை → vitai).
+// (பெருக்கி → perukki, பெருக்கு → perukku, அ → a, ஆ → aa, விடை → vitai).
 // பெயர்: பெருக்கி = multiplier (from பெருக்கு, to multiply).
-// Note: the function name and its parameters use ASCII because the
-// `fn`-declaration transliterator is pending; the module name, port
-// names, and `சார்பு` keyword are fully Tamil.
 
-சார்பு mac(a: bits[8], aa: bits[8]) -> bits[16] {
-  a * aa
+சார்பு பெருக்கு(அ: bits[8], ஆ: bits[8]) -> bits[16] {
+  அ * ஆ
 }
 
 தொகுதி பெருக்கி {
   உள்ளீடு அ: bits[8]
   உள்ளீடு ஆ: bits[8]
   வெளியீடு விடை: bits[16]
-  விடை = mac(அ, ஆ)
+  விடை = பெருக்கு(அ, ஆ)
 }

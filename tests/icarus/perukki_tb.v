@@ -1,5 +1,5 @@
 // Self-checking TB: perukki — the pure-Tamil multiplier (examples/tamil-pure),
-// the same circuit as Mac with Tamil names (அ=a, ஆ=aa, விடை=vitai).
+// the same circuit as Mac with Tamil names (பெருக்கு=perukku fn, அ=a, ஆ=aa, விடை=vitai).
 // Lossless `*`: 8×8→16, the full product is never truncated.
 `timescale 1ns/1ps
 module perukki_tb;
@@ -11,7 +11,7 @@ module perukki_tb;
     begin
       a = xa; aa = xb; #1;
       if (vitai !== xresult) begin
-        $display("FAIL: mac(%0d, %0d) -> %0d, expected %0d",
+        $display("FAIL: perukku(%0d, %0d) -> %0d, expected %0d",
                  xa, xb, vitai, xresult);
         $finish;
       end
