@@ -113,3 +113,17 @@ fn async_is_an_active_keyword() {
         assert!(toks[0].is_kw(Kw::Async), "`{src}` should lex to Kw::Async");
     }
 }
+
+#[test]
+fn fn_keyword_lexes_in_all_flavors() {
+    for src in ["fn f", "function f", "saarbu f", "சார்பு f"] {
+        let toks = lex(src).unwrap();
+        assert!(matches!(toks[0].kind, TokKind::Kw(Kw::Fn)), "{src}");
+    }
+}
+
+#[test]
+fn rarrow_token_lexes() {
+    let toks = lex("-> ").unwrap();
+    assert!(matches!(toks[0].kind, TokKind::RArrow));
+}
