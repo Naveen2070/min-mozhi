@@ -114,6 +114,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         repeat_budget: REPEAT_BUDGET,
         clog2_fn_used: false,
         emitting_port: false,
+        funcs_used: Vec::new(),
     };
 
     em.out.push_str(&format!(

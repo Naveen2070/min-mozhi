@@ -1,0 +1,13 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): user-defined combinational function
+// Declares `mac(a, b) = a * b` as a reusable combinational block.
+
+சார்பு mac(a: bits[8], b: bits[8]) -> bits[16] {
+  a * b
+}
+
+தொகுதி Mac {
+  உள்ளீடு a: bits[8]
+  உள்ளீடு b: bits[8]
+  வெளியீடு result: bits[16]
+  result = mac(a, b)
+}

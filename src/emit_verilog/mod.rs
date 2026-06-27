@@ -30,19 +30,95 @@ use crate::ast::*;
 use crate::checker::consteval::{self, Env};
 use crate::diag::Diag;
 
+/// Collect all user-function names directly called inside `expr`
+/// (non-transitively). Mirrors `checker::funcs::collect_calls` —
+/// kept local so the emitter doesn't couple to a private checker fn.
+fn collect_fn_calls(expr: &Expr, out: &mut Vec<String>) {
+    match &expr.kind {
+        ExprKind::FnCall { name, args } => {
+            if !out.contains(&name.name) {
+                out.push(name.name.clone());
+            }
+            for a in args {
+                collect_fn_calls(a, out);
+            }
+        }
+        ExprKind::Unary { expr: e, .. } => collect_fn_calls(e, out),
+        ExprKind::Binary { lhs, rhs, .. } => {
+            collect_fn_calls(lhs, out);
+            collect_fn_calls(rhs, out);
+        }
+        ExprKind::IfExpr { cond, then, els } => {
+            collect_fn_calls(cond, out);
+            collect_fn_calls(then, out);
+            collect_fn_calls(els, out);
+        }
+        ExprKind::Match { scrutinee, arms } => {
+            collect_fn_calls(scrutinee, out);
+            for arm in arms {
+                collect_fn_calls(&arm.value, out);
+            }
+        }
+        ExprKind::Concat(parts) => {
+            for p in parts {
+                collect_fn_calls(p, out);
+            }
+        }
+        ExprKind::Replicate { count, parts } => {
+            collect_fn_calls(count, out);
+            for p in parts {
+                collect_fn_calls(p, out);
+            }
+        }
+        ExprKind::Index { base, index } => {
+            collect_fn_calls(base, out);
+            collect_fn_calls(index, out);
+        }
+        ExprKind::Slice { base, hi, lo } => {
+            collect_fn_calls(base, out);
+            collect_fn_calls(hi, out);
+            collect_fn_calls(lo, out);
+        }
+        ExprKind::Call { args, .. } => {
+            for a in args {
+                collect_fn_calls(a, out);
+            }
+        }
+        ExprKind::Field { base, .. } => collect_fn_calls(base, out),
+        ExprKind::Int { .. } | ExprKind::Bool(_) | ExprKind::Ident(_) => {}
+    }
+}
+
+/// Collect the names of all user functions directly called by `decl`
+/// (locals + body, sorted and deduped for determinism).
+pub(super) fn fn_direct_callees(decl: &FuncDecl) -> Vec<String> {
+    let mut out = Vec::new();
+    for local in &decl.locals {
+        collect_fn_calls(&local.value, &mut out);
+    }
+    collect_fn_calls(&decl.body, &mut out);
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Largest number of `repeat` iterations the emitter unrolls before erroring.
 /// Defined once at the crate root and shared with the simulator's elaborator
 /// (they MUST agree — see [`crate::REPEAT_BUDGET`]).
 pub(crate) use crate::REPEAT_BUDGET;
 
-/// Project-wide symbol table: every module and enum by name, borrowed
-/// from the parsed files. This is what lets `let u = Adder(...)` find
+/// Project-wide symbol table: every module, enum, and function by name,
+/// borrowed from the parsed files. This is what lets `let u = Adder(...)` find
 /// `Adder` regardless of which imported file defines it.
 pub struct Project<'a> {
     /// All modules across the entry file + imports, by name.
     pub modules: HashMap<String, &'a Module>,
     /// All enums (file-level and module-level), by name.
     pub enums: HashMap<String, &'a EnumDecl>,
+    /// All user-defined functions (file-level), by name. Used by the
+    /// emitter to inject `function automatic` blocks into modules that
+    /// call them.
+    pub funcs: HashMap<String, &'a FuncDecl>,
 }
 
 impl<'a> Project<'a> {
@@ -52,6 +128,7 @@ impl<'a> Project<'a> {
     pub fn from_files(files: &'a [File]) -> Result<Self, Vec<Diag>> {
         let mut modules = HashMap::new();
         let mut enums = HashMap::new();
+        let mut funcs = HashMap::new();
         let mut diags = Vec::new();
         for (file_idx, file) in files.iter().enumerate() {
             for item in &file.items {
@@ -73,12 +150,22 @@ impl<'a> Project<'a> {
                     TopItem::Enum(e) => {
                         enums.insert(e.name.name.clone(), e);
                     }
-                    _ => {}
+                    // Function declarations are injected per-using-module; no
+                    // top-level Verilog emitted here (the checker already
+                    // deduplicates them by name across the project).
+                    TopItem::Func(f) => {
+                        funcs.insert(f.name.name.clone(), f);
+                    }
+                    TopItem::Const(_) | TopItem::Test(_) | TopItem::Error(_) => {}
                 }
             }
         }
         if diags.is_empty() {
-            Ok(Project { modules, enums })
+            Ok(Project {
+                modules,
+                enums,
+                funcs,
+            })
         } else {
             Err(diags)
         }
@@ -99,6 +186,7 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
         repeat_budget: REPEAT_BUDGET,
         clog2_fn_used: false,
         emitting_port: false,
+        funcs_used: Vec::new(),
     };
     em.out.push_str(&format!(
         "// Generated by mimz {} (edition {}) — Min-Mozhi (மின்மொழி). Do not edit.\n\n",
@@ -193,6 +281,11 @@ struct Emitter<'a> {
     /// there is an error: the constant function lives in the body and cannot
     /// forward-reference into the port list (reset per module).
     emitting_port: bool,
+    /// User-defined functions used by the current module, in topological order
+    /// (callees before callers). Populated transitively by `mark_fn_used` as
+    /// `FnCall` nodes are rendered; injected at module-body top alongside
+    /// `CLOG2_FN` (reset per module).
+    funcs_used: Vec<String>,
 }
 
 /// Verilog-2005 constant function matching [`consteval::clog2_bits`] (floored at

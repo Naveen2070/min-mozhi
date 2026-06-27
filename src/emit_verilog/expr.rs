@@ -196,14 +196,13 @@ impl Emitter<'_> {
                 let l = self.index_expr(lo, subst);
                 format!("{b}[{h}:{l}]")
             }
-            // ponytail: temporary arm — FnCall emitter lands in a later task; no parser produces this yet
-            ExprKind::FnCall { .. } => {
-                self.err(
-                    e.span,
-                    "user-defined functions are not yet supported by the emitter",
-                    "",
-                );
-                "0".into()
+            ExprKind::FnCall { name, args } => {
+                // Mark this function (and all transitive callees) for injection
+                // at module-body top; then render as a Verilog function call.
+                self.mark_fn_used(&name.name);
+                let args_str: Vec<String> =
+                    args.iter().map(|a| self.expr_subst(a, subst)).collect();
+                format!("{}({})", name.name, args_str.join(", "))
             }
             ExprKind::Call { func, args } => match func {
                 Builtin::SignedCast => format!("$signed({})", self.expr_subst(&args[0], subst)),
