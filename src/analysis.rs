@@ -105,6 +105,8 @@ pub fn build_index(files: &[LoadedFile]) -> SymbolIndex {
                     push_module_items(&mut symbols, &m.items, file_idx, parent);
                 }
                 TopItem::Test(_) | TopItem::Error(_) => {}
+                // ponytail: temporary arm — FnCall parser lands in Task 3, no checker/emitter yet
+                TopItem::Func(_) => {}
             }
         }
     }
@@ -320,6 +322,8 @@ fn collect_refs(index: &SymbolIndex, files: &[LoadedFile], file_idx: usize) -> V
             TopItem::Const(c) => collect_expr_refs(&c.value, None, &mut refs),
             TopItem::Test(t) => collect_test_refs(t, index, &mut refs),
             TopItem::Enum(_) | TopItem::Error(_) => {}
+            // ponytail: temporary arm — FnCall parser lands in Task 3, no checker/emitter yet
+            TopItem::Func(_) => {}
         }
     }
     refs
@@ -510,6 +514,12 @@ fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
             }
         }
         ExprKind::Int { .. } | ExprKind::Bool(_) => {}
+        // ponytail: temporary arm — FnCall parser lands in Task 3; walk args so refs aren't missed
+        ExprKind::FnCall { args, .. } => {
+            for a in args {
+                collect_expr_refs(a, module_idx, refs);
+            }
+        }
     }
 }
 

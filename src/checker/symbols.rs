@@ -44,6 +44,8 @@ impl<'a> Checker<'a> {
                     }
                     TopItem::Const(_) | TopItem::Test(_) => {} // consteval.rs / names.rs
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
+                    // ponytail: temporary arm — FnCall symbol table landing in a later task
+                    TopItem::Func(_) => {}
                 }
             }
         }

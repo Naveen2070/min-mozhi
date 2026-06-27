@@ -517,6 +517,12 @@ impl<'a> Checker<'a> {
                     self.expr_reads(dcx, a, out);
                 }
             }
+            // ponytail: temporary arm — FnCall parser lands in Task 3; walk args for driver edges
+            ExprKind::FnCall { args, .. } => {
+                for a in args {
+                    self.expr_reads(dcx, a, out);
+                }
+            }
         }
     }
 

@@ -37,11 +37,75 @@ pub enum TopItem {
     Module(Module),
     Enum(EnumDecl),
     Test(TestDecl),
+    /// A user-defined combinational function (`fn name(params) -> ret { ... }`).
+    /// Functions are pure and combinational — no registers, no clocks. The parser
+    /// produces this starting in Task 3; no existing checker/emitter/sim path
+    /// generates it yet.
+    Func(FuncDecl),
     /// A top-level item that failed to parse. Produced ONLY by
     /// `parser::parse_recover` (the LSP path); the strict `parser::parse`
     /// pipeline never yields one, so codegen never sees it. The span covers
     /// the skipped source so tooling can locate the hole.
     Error(Span),
+}
+
+/// A user-defined combinational function declaration.
+///
+/// ```text
+/// fn add(a: bits[4], b: bits[4]) -> bits[5] {
+///     let sum = a + b
+///     sum
+/// }
+/// ```
+///
+/// - `params` — the function's input parameters (each a hardware `Type`).
+/// - `ret`    — the return type (a hardware `Type`).
+/// - `locals` — `let` bindings that may appear before the final body expression.
+/// - `body`   — the expression whose value the function returns.
+#[derive(Clone, Debug)]
+pub struct FuncDecl {
+    /// The function name as written in source.
+    pub name: Ident,
+    /// Input parameters in declaration order.
+    pub params: Vec<FnParam>,
+    /// Return type.
+    pub ret: Type,
+    /// Local `let` bindings (`let x = expr`) in the function body, before
+    /// the final return expression.
+    pub locals: Vec<LocalLet>,
+    /// The return expression (the last — and only non-`let` — expression in
+    /// the body).
+    pub body: Expr,
+    /// Source span covering the whole declaration.
+    pub span: Span,
+}
+
+/// One input parameter of a user-defined function.
+///
+/// Distinct from [`Param`] (which is a compile-time `int`/`bool` module
+/// parameter). `FnParam.ty` is a hardware [`Type`] (`bit`, `bits[N]`, …).
+#[derive(Clone, Debug)]
+pub struct FnParam {
+    /// Parameter name as written in source.
+    pub name: Ident,
+    /// Hardware type of this parameter.
+    pub ty: Type,
+    /// Source span of the parameter declaration.
+    pub span: Span,
+}
+
+/// A `let` binding inside a function body: `let name = value`.
+///
+/// `value` is an expression evaluated combinationally when the function is
+/// called. The bound name is in scope for subsequent `locals` and the `body`.
+#[derive(Clone, Debug)]
+pub struct LocalLet {
+    /// The bound name.
+    pub name: Ident,
+    /// The defining expression.
+    pub value: Expr,
+    /// Source span of the `let` statement.
+    pub span: Span,
 }
 
 /// A name with its source location. Used everywhere a user-written name
@@ -304,4 +368,29 @@ pub enum TestStmt {
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.
     Error(Span),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::span::Span;
+
+    #[test]
+    fn func_decl_node_constructs() {
+        let sp = Span::new(0, 0);
+        let _ = TopItem::Func(FuncDecl {
+            name: Ident {
+                name: "f".into(),
+                span: sp,
+            },
+            params: vec![],
+            ret: Type::Bit,
+            locals: vec![],
+            body: Expr {
+                kind: ExprKind::Bool(true),
+                span: sp,
+            },
+            span: sp,
+        });
+    }
 }

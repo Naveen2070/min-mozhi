@@ -187,6 +187,10 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
             Err("enum-variant / instance-port access is not supported by the evaluator yet".into())
         }
         ExprKind::Call { func, args } => call(r, *func, args),
+        // ponytail: temporary arm — FnCall sim evaluator lands in a later task
+        ExprKind::FnCall { .. } => {
+            Err("user-defined functions are not yet supported by the simulator".into())
+        }
     }
 }
 
