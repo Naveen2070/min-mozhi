@@ -8,6 +8,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Instant;
 
 use mimz::lexer::token::Flavor;
 use mimz::project::LoadedFile;
@@ -15,6 +16,12 @@ use mimz::{diag, lexer, morph, project};
 
 // Argument parsers — single source in the library (`mimz::runner`).
 pub(crate) use mimz::{parse_bindings, parse_sweep, parse_u128, sweep_vectors, trace_scope};
+
+/// Milliseconds elapsed since `start`, as f64 (for the `--debug` timing lines
+/// printed by `check` and `compile`).
+pub(crate) fn ms(start: Instant) -> f64 {
+    start.elapsed().as_secs_f64() * 1000.0
+}
 
 /// Resolve the `mimz.toml` governing `input` (explicit `--config` wins, else
 /// walk up from the file), turning a parse error into a printed message + the

@@ -30,12 +30,10 @@ use crate::ast::*;
 use crate::checker::consteval::{self, Env};
 use crate::diag::Diag;
 
-/// Largest number of `repeat` iterations the emitter will unroll in one
-/// expansion before erroring. Compile-time generation is meant for the
-/// width of a datapath, not a runaway loop — 4096 is far past any real
-/// bus while still catching a typo'd bound. (The checker's width/driver
-/// passes have their own, lower, per-pass walk caps.)
-const REPEAT_BUDGET: i128 = 4096;
+/// Largest number of `repeat` iterations the emitter unrolls before erroring.
+/// Defined once at the crate root and shared with the simulator's elaborator
+/// (they MUST agree — see [`crate::REPEAT_BUDGET`]).
+pub(crate) use crate::REPEAT_BUDGET;
 
 /// Project-wide symbol table: every module and enum by name, borrowed
 /// from the parsed files. This is what lets `let u = Adder(...)` find

@@ -25,9 +25,10 @@ use crate::ast::{self, Dir, Edge, Expr, ExprKind, ModuleItem, Pattern, SeqStmt, 
 
 use super::value::{const_eval, pick_module, type_width};
 
-/// Max `repeat` iterations the simulator will unroll — matches the emitter's and
-/// checker's `REPEAT_BUDGET` so a design that compiles also elaborates.
-const REPEAT_BUDGET: i128 = 4096;
+/// Max `repeat` iterations the simulator will unroll — the same crate-root
+/// constant the emitter uses, so a design that compiles also elaborates (the
+/// simulator is the emitter's differential oracle). See [`crate::REPEAT_BUDGET`].
+use crate::REPEAT_BUDGET;
 
 /// Max instance-nesting depth the simulator will flatten. `mimz sim`/`mimz test`
 /// run on the parsed AST WITHOUT the checker (which has its own recursion guard),

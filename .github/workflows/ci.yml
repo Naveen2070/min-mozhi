@@ -11,8 +11,8 @@ on:
   schedule:
     # Weekly extended fuzz run (Mon 04:00 UTC) — drives `fuzz-nightly` only.
     - cron: "0 4 * * 1"
-    # Nightly perf batch is still disabled. Uncomment to schedule it (03:00
-    # UTC); `nightly-bench` is gated on exactly this cron so the weekly fuzz
+    # Nightly perf batch schedule at (03:00 UTC);
+    # `nightly-bench` is gated on exactly this cron so the weekly fuzz
     # schedule above never triggers the perf batch.
     - cron: "0 3 * * *"
 
