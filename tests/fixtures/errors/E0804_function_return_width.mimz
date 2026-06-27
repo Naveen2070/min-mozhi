@@ -1,0 +1,6 @@
+// expect: E0804
+fn f(a: bits[8]) -> bits[4] { a }
+module M {
+  out o: bits[4]
+  o = f(0)
+}

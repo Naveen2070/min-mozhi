@@ -22,9 +22,8 @@ impl Parser {
                 let pname = self.ident("a parameter name")?;
                 self.expect(TokKind::Colon, "`:` then the parameter type")?;
                 let ty = self.ty()?;
-                let pend = self.peek().span;
                 params.push(FnParam {
-                    span: pstart.join(pend),
+                    span: self.span_since(pstart),
                     name: pname,
                     ty,
                 });

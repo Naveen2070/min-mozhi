@@ -917,3 +917,29 @@ fn repeat_with_only_drives_and_nested_repeat_is_clean() {
     let src = "module M {\n  out y: bits[4]\n  repeat i: 0..2 {\n    repeat j: 0..2 {\n      y[i * 2 + j] = 0\n    }\n  }\n}\n";
     check_one(src).expect("a repeat that only generates hardware is clean");
 }
+
+// ---- user-defined functions: width (E0804) -----------------------------------
+
+#[test]
+fn fn_body_width_mismatch_is_e0804() {
+    // Body returns bits[8], declared return is bits[4] — E0804.
+    let d = first_err(
+        "fn f(a: bits[8]) -> bits[4] { a }\nmodule M {\n  out o: bits[4]\n  o = f(0)\n}\n",
+        "E0804",
+    );
+    assert!(
+        d.msg.contains("bits[8]") && d.msg.contains("bits[4]"),
+        "error names both widths: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn mac_function_type_checks_clean() {
+    // mac: multiply-accumulate — body uses *% (same-width wrapping), return is bits[8].
+    // Call site: mac(x, y) where x and y are bits[8]; result drives a bits[8] output.
+    check_one(
+        "fn mac(a: bits[8], b: bits[8]) -> bits[8] {\n  let prod = a *% b\n  prod\n}\nmodule M {\n  in x: bits[8]\n  in y: bits[8]\n  out z: bits[8]\n  z = mac(x, y)\n}\n",
+    )
+    .expect("mac body and call-site widths are clean, return bits[8] propagates");
+}
