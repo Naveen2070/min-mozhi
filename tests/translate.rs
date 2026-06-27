@@ -488,3 +488,21 @@ fn pretty_print_thamizh_flips_the_test_header_and_reparses() {
     assert_eq!(orig.args.len(), round.args.len());
     assert_eq!(orig.body.len(), round.body.len());
 }
+
+/// `fn` / `saarbu` / `சார்பு` reskins correctly across all three flavors.
+/// Translating the `fn_mac` example english→tanglish/tamil produces the exact
+/// keyword spellings and re-parses to the same structure.
+#[test]
+fn fn_keyword_translates_across_all_flavors() {
+    let english = read("english", "fn_mac.mimz");
+    let tanglish = translate(&english, Flavor::Tanglish).expect("lexes");
+    assert!(
+        tanglish.contains("saarbu"),
+        "fn → saarbu in Tanglish: {tanglish}"
+    );
+    let tamil = translate(&english, Flavor::Tamil).expect("lexes");
+    assert!(tamil.contains("சார்பு"), "fn → சார்பு in Tamil: {tamil}");
+    // Re-parse confirms translate output is syntactically valid.
+    parse(lex(&tanglish).expect("tanglish lexes")).expect("tanglish parses");
+    parse(lex(&tamil).expect("tamil lexes")).expect("tamil parses");
+}

@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.12.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.14.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -510,7 +510,7 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 
 ```ebnf
 file        = { topItem } ;
-topItem     = importDecl | constDecl | moduleDecl | enumDecl | testDecl ;
+topItem     = importDecl | constDecl | moduleDecl | enumDecl | testDecl | fnDecl ;
 
 importDecl  = ( "import" | "include" ) IDENT { "." IDENT } NEWLINE ;
 constDecl   = "const" IDENT ":" ( "int" | "bool" ) "=" constExpr NEWLINE ;
@@ -569,7 +569,7 @@ binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&&" | "||" | "and" | "or" ;
 unary       = [ "~" | "-" | "!" | "not" | "&" | "|" | "^" ] postfix ;
 postfix     = primary { "[" expr [ ":" expr ] "]" | "." IDENT } ;
-primary     = literal | IDENT | "(" expr ")" | concat | replication | callExpr ;
+primary     = literal | IDENT | "(" expr ")" | concat | replication | callExpr | fnCall ;
 concat      = "{" expr { "," expr } "}" ;
 replication = "{" expr "{" expr { "," expr } "}" "}" ;
 callExpr    = ( "extend" | "trunc" ) "(" expr "," constExpr ")"
@@ -587,6 +587,13 @@ tickStmt    = "tick" "(" IDENT [ "," constExpr ] ")" NEWLINE ;
 expectStmt  = "expect" expr NEWLINE ;
 testDrive   = IDENT "=" expr NEWLINE ;          (* drive a module input *)
 testIf      = "if" expr testBlock [ "else" ( testIf | testBlock ) ] ;
+
+fnDecl      = "fn" IDENT "(" [ fnParamList ] ")" "->" type
+              "{" { localLet } expr "}" ;       (* combinational; no clocks, no regs *)
+fnParamList = fnParam { "," fnParam } ;
+fnParam     = IDENT ":" type ;
+localLet    = "let" IDENT "=" expr NEWLINE ;    (* named intermediate value *)
+fnCall      = IDENT "(" [ expr { "," expr } ] ")" ;  (* user-defined fn call *)
 ```
 
 Keywords in this grammar are flavor-mapped per `03-keywords-trilingual.md`;
@@ -625,6 +632,22 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.14 (2026-06-28):** **Combinational functions** `fn` added (new section 5
+  productions `fnDecl`, `fnParamList`, `fnParam`, `localLet`, `fnCall`). `fn` declared at
+  file level: `fn f(p: T, …) -> R { [let x = e …] bodyExpr }` — zero or more named
+  intermediates (`localLet`) followed by a single return expression. Called as `f(a, b)`,
+  which parses as `fnCall` in `primary`. Functions are combinational only (no clocks, no
+  registers, no module instantiation). Recursive calls are a compile error (E0805). The
+  keyword `fn` (aliases `function` / `saarbu` / `சார்பு`) was promoted from reserved to
+  active (spec/03 v0.2.12). Checked by E0801–E0805; lowers to Verilog-2005
+  `function automatic`. Additive. Covered by the `fn_mac` four-flavor example
+  (kernel == VCD == Icarus).
+- **v0.2.13 (2026-06-27):** **Compile-time built-in `clog2`** added (section 1.8) —
+  `clog2(n)` folds to the bits needed to address `n` items (`⌈log₂(n)⌉`, floored at 1).
+  Valid only in constant positions (widths, `const`, `repeat` bounds); a runtime value
+  position is E0407. Named `clog2` (a universal vocabulary built-in, untranslated).
+  Parametric form (`clog2(<module param>)` in body widths) lowers to an injected
+  Verilog-2005 constant function; a `clog2(<param>)` in a port width is an error. Additive.
 - **v0.2.12 (2026-06-17):** **Asynchronous reset** added (section 1.2) — prefix a
   reset declaration with `async` (`async reset rst`) to widen every always-block
   that uses it to `@(posedge clk or posedge rst)`; a plain `reset` stays

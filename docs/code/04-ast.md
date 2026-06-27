@@ -52,6 +52,22 @@ the parser.
 
 This distinction is load-bearing for the no-latches guarantee; keep it.
 
+## `TopItem::Func` — combinational function declarations
+
+`TopItem::Func(FuncDecl)` holds a file-level `fn` declaration: name, parameter list
+(`Vec<FnParam>`), return type, zero or more `LocalLet` bindings, and a body `Expr`.
+`FnParam` (name + type) is intentionally named differently from the module-param
+`Param` (name + `ParamTy` + optional default) — they are different constructs.
+
+`LocalLet` carries no `ty` field (the type is inferred). The emitter conservatively
+declares locals as `integer` (32-bit) in the Verilog output; precise width inference
+is a follow-up.
+
+`ExprKind::FnCall { name: Ident, args: Vec<Expr> }` is the call site. It is
+syntactically distinct from `ExprKind::Call { func: Builtin, … }` (built-ins):
+the parser resolves the distinction by name at parse time, so downstream passes see
+typed variants, never string names.
+
 ## `Error` placeholder nodes (parse recovery)
 
 `TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each carry an
