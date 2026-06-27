@@ -373,6 +373,20 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: pass exactly the number of arguments the function declares.\n\
          The error message names both the expected and received counts.",
     ),
+    (
+        "E0804",
+        "E0804 — function body width does not match the declared return type\n\n\
+         The final expression in a `fn` body has a different width or kind than\n\
+         the function's `->` return type. A `fn` is purely combinational — its\n\
+         body is a single expression whose bits flow directly to the caller.\n\
+         There is no silent truncation or zero-extension: the widths must agree\n\
+         exactly, the same rule that governs every wire and port in the language.\n\n\
+         Fix: resize the body expression with `extend`, `trunc`, or a slice to\n\
+         match the declared return type, or change the declared return type to\n\
+         match the expression the body actually produces.\n\n\
+         help: the body width and return type printed in the error are the two\n\
+         values that must agree — pick one to change.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",
