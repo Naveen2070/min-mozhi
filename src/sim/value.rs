@@ -7,9 +7,9 @@
 //! evaluator ([`super::comb`]) and the event-driven kernel ([`super::kernel`])
 //! implement `Resolver`, so the expression semantics live in exactly one place.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-use crate::ast::{self, BinOp, Builtin, Expr, ExprKind, Pattern, Type, UnOp};
+use crate::ast::{self, BinOp, Builtin, Expr, ExprKind, FuncDecl, Pattern, Type, UnOp};
 
 /// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
 pub(super) fn mask(w: u32) -> u128 {
@@ -82,6 +82,11 @@ pub(super) trait Resolver {
     /// the memory's init value for a never-written / out-of-range cell).
     fn mem_read(&mut self, name: &str, _addr: u128) -> Result<Val, String> {
         Err(format!("memory `{name}` is not available in this context"))
+    }
+    /// The user-defined function table — `None` in contexts that have no access
+    /// to the parsed function declarations (e.g. a bare test without elaboration).
+    fn funcs(&self) -> Option<&HashMap<String, FuncDecl>> {
+        None
     }
 }
 
@@ -187,10 +192,85 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
             Err("enum-variant / instance-port access is not supported by the evaluator yet".into())
         }
         ExprKind::Call { func, args } => call(r, *func, args),
-        // ponytail: temporary arm — FnCall sim evaluator lands in a later task
-        ExprKind::FnCall { .. } => {
-            Err("user-defined functions are not yet supported by the simulator".into())
+        ExprKind::FnCall { name, args } => eval_fn_call(r, name, args),
+    }
+}
+
+/// Evaluate a user-defined function call.
+///
+/// Args are evaluated in the CALLER's env, then bound to params in a child
+/// env ([`FnEnv`]). Locals are evaluated in order in the child env. Finally
+/// the body expression is evaluated. Width parity with the Verilog emitter
+/// (which declares `reg [W-1:0]` for each local) is achieved by masking each
+/// local's bound value to its `inferred_width` when the checker has set it.
+fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Result<Val, String> {
+    // Evaluate each argument in the CALLER's environment.
+    let argv: Vec<Val> = args.iter().map(|a| eval(r, a)).collect::<Result<_, _>>()?;
+    // Immutable borrows of *r — no more &mut calls on r after this point.
+    let consts = r.ints();
+    let funcs = r.funcs().ok_or_else(|| {
+        format!(
+            "function `{}` cannot be called in this evaluation context \
+             (function table unavailable)",
+            name.name
+        )
+    })?;
+    let f = funcs
+        .get(&name.name)
+        .ok_or_else(|| format!("undefined function `{}`", name.name))?;
+    // Bind each param to its arg value, masked to the declared param type.
+    let mut locals: BTreeMap<String, Val> = BTreeMap::new();
+    for (param, val) in f.params.iter().zip(argv.iter()) {
+        let (w, s) = type_width(&param.ty, consts)?;
+        locals.insert(param.name.name.clone(), Val::new(val.bits, w, s));
+    }
+    let mut child = FnEnv {
+        locals,
+        consts,
+        funcs,
+    };
+    // Evaluate each local `let` in order, binding its name for subsequent exprs.
+    // Width parity: mask to inferred_width when the checker has set it, matching
+    // the Verilog emitter's `reg [W-1:0]` declaration for each local.
+    for local in &f.locals {
+        let v = eval(&mut child, &local.value)?;
+        let v = match local.inferred_width.get() {
+            Some(w) => Val::new(v.bits, w, v.signed),
+            None => v, // checker not run (e.g. bare sim test); trust the Val width
+        };
+        child.locals.insert(local.name.name.clone(), v);
+    }
+    eval(&mut child, &f.body)
+}
+
+/// Child resolver for evaluating a user-defined function body.
+///
+/// Resolves param / local names from `locals` and const names from `consts`.
+/// Module signals are NOT in scope (purity: functions are combinational and
+/// side-effect-free, spec D8). Nested function calls work via `funcs`.
+struct FnEnv<'a> {
+    locals: BTreeMap<String, Val>,
+    consts: &'a BTreeMap<String, i128>,
+    funcs: &'a HashMap<String, FuncDecl>,
+}
+
+impl Resolver for FnEnv<'_> {
+    fn signal(&mut self, name: &str) -> Result<Val, String> {
+        if let Some(v) = self.locals.get(name) {
+            return Ok(*v);
         }
+        if let Some(c) = self.consts.get(name) {
+            return Ok(Val::from_int(*c));
+        }
+        Err(format!(
+            "unknown name `{name}` in function body (module signals are not in scope)"
+        ))
+    }
+    fn ints(&self) -> &BTreeMap<String, i128> {
+        self.consts
+    }
+    fn funcs(&self) -> Option<&HashMap<String, FuncDecl>> {
+        Some(self.funcs)
     }
 }
 

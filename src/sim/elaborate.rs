@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::ast::{self, Dir, Edge, Expr, ExprKind, ModuleItem, Pattern, SeqStmt, UnOp};
+use crate::ast::{self, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, Pattern, SeqStmt, UnOp};
 
 use super::value::{const_eval, pick_module, type_width};
 
@@ -139,6 +139,9 @@ pub struct Design {
     pub clocks: Vec<String>,
     /// Declared reset signal names (synchronous, active-high).
     pub resets: Vec<String>,
+    /// User-defined combinational functions from the entry file, available to
+    /// the kernel's expression evaluator at runtime (`FnCall` evaluation).
+    pub funcs: HashMap<String, FuncDecl>,
 }
 
 /// Elaborate `module` (or the file's only module when `module` is `None`) into a
@@ -218,6 +221,20 @@ fn elaborate_module(
             consts.insert(c.name.name.clone(), v);
         }
     }
+
+    // User-defined functions from the entry file — collected here so the kernel's
+    // expression evaluator can call them at runtime (`FnCall` evaluation).
+    let funcs: HashMap<String, FuncDecl> = file
+        .items
+        .iter()
+        .filter_map(|it| {
+            if let ast::TopItem::Func(f) = it {
+                Some((f.name.name.clone(), f.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     // Module-level enums: name → ordered variant names. A variant encodes as its
     // index, width `clog2(count)` — exactly the Verilog emitter's encoding.
@@ -491,6 +508,7 @@ fn elaborate_module(
         procs,
         clocks,
         resets,
+        funcs,
     })
 }
 
@@ -880,10 +898,15 @@ impl Rw<'_> {
                     .map(|a| self.expr(a))
                     .collect::<Result<_, _>>()?,
             },
-            // ponytail: temporary arm — FnCall elaborator lands in a later task
-            ExprKind::FnCall { .. } => {
-                return Err("user-defined functions are not yet supported by the simulator".into());
-            }
+            // Pass FnCall through with args rewritten (const-folded, signal-names
+            // substituted). The runtime evaluator handles the call.
+            ExprKind::FnCall { name, args } => ExprKind::FnCall {
+                name: name.clone(),
+                args: args
+                    .iter()
+                    .map(|a| self.expr(a))
+                    .collect::<Result<_, _>>()?,
+            },
         };
         Ok(Expr { kind, span: e.span })
     }

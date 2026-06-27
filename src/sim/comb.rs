@@ -13,9 +13,9 @@
 //! detection — on top, implementing that module's `Resolver` trait. `mimz eval`
 //! is its CLI surface.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-use crate::ast::{self, Dir, Expr, ModuleItem};
+use crate::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 
 use super::value::{self, Resolver, Val};
 
@@ -72,7 +72,20 @@ pub fn eval_outputs(
         }
     }
 
-    // 2. Compile-time integer environment: params (defaults, overridable) then
+    // 2a. User-defined functions from the file (available to `FnCall` expressions).
+    let funcs: HashMap<String, FuncDecl> = file
+        .items
+        .iter()
+        .filter_map(|it| {
+            if let ast::TopItem::Func(f) = it {
+                Some((f.name.name.clone(), f.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // 2b. Compile-time integer environment: params (defaults, overridable) then
     //    consts (file-level + module-level).
     let mut ints: BTreeMap<String, i128> = BTreeMap::new();
     for p in &m.params {
@@ -142,6 +155,7 @@ pub fn eval_outputs(
         drivers: &drivers,
         memo: BTreeMap::new(),
         in_progress: Vec::new(),
+        funcs: &funcs,
     };
     for it in &m.items {
         if let ModuleItem::Port {
@@ -181,6 +195,7 @@ struct Env<'a> {
     drivers: &'a BTreeMap<String, &'a Expr>,
     memo: BTreeMap<String, Val>,
     in_progress: Vec<String>,
+    funcs: &'a HashMap<String, FuncDecl>,
 }
 
 impl Env<'_> {
@@ -225,6 +240,9 @@ impl Resolver for Env<'_> {
     }
     fn ints(&self) -> &BTreeMap<String, i128> {
         self.ints
+    }
+    fn funcs(&self) -> Option<&HashMap<String, FuncDecl>> {
+        Some(self.funcs)
     }
 }
 
@@ -436,6 +454,54 @@ mod tests {
         assert_eq!(
             one(&f, &[("a", 1u128 << 63), ("s", 1u128 << 32)])[0].value,
             0
+        );
+    }
+
+    // --- user function call tests (Task 10) ---
+
+    /// `mac(a, b, c) = let p = a *% b; extend(p, 16) +% extend(c, 16)`
+    /// params bits[8], ret bits[16].
+    const MAC_SRC: &str = "\
+fn mac(a: bits[8], b: bits[8], c: bits[8]) -> bits[16] {\n\
+    let p = a *% b\n\
+    extend(p, 16) +% extend(c, 16)\n\
+}\n\
+module M {\n\
+    in a: bits[8]\n    in b: bits[8]\n    in c: bits[8]\n\
+    out y: bits[16]\n\
+    y = mac(a, b, c)\n\
+}\n";
+
+    #[test]
+    fn sim_fn_call_mac_basic() {
+        // mac(3, 4, 5) = 3*4 + 5 = 17 at bits[16]
+        let f = parse(MAC_SRC);
+        let out = eval_outputs(
+            &f,
+            None,
+            &ins(&[("a", 3), ("b", 4), ("c", 5)]),
+            &BTreeMap::new(),
+        )
+        .expect("mac(3,4,5) evaluates");
+        assert_eq!(out[0].value, 17, "mac(3,4,5) must equal 17");
+        assert_eq!(out[0].width, 16);
+    }
+
+    #[test]
+    fn sim_fn_call_mac_wrap_truncation() {
+        // p = 200 *% 200 at bits[8] = 40000 mod 256 = 64 (NOT 40000)
+        // result = extend(64, 16) +% extend(0, 16) = 64
+        let f = parse(MAC_SRC);
+        let out = eval_outputs(
+            &f,
+            None,
+            &ins(&[("a", 200), ("b", 200), ("c", 0)]),
+            &BTreeMap::new(),
+        )
+        .expect("mac(200,200,0) evaluates");
+        assert_eq!(
+            out[0].value, 64,
+            "wrap-truncation: p must be 8-bit (64), not 40000"
         );
     }
 }
