@@ -229,8 +229,19 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
                 }
                 test_stmts(&mut t.body, visit);
             }
-            // ponytail: temporary arm — FnCall transliteration lands in a later task
-            TopItem::Func(_) => {}
+            TopItem::Func(f) => {
+                visit(&mut f.name.name);
+                for p in &mut f.params {
+                    visit(&mut p.name.name);
+                    type_widths(&mut p.ty, visit);
+                }
+                type_widths(&mut f.ret, visit);
+                for l in &mut f.locals {
+                    visit(&mut l.name.name);
+                    expr(&mut l.value, visit);
+                }
+                expr(&mut f.body, visit);
+            }
             // Unreachable on the codegen path: `parse` rejects a tree with any
             // `Error` node, so transliteration never sees one.
             TopItem::Error(_) => {}
@@ -431,7 +442,6 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
                 expr(a, visit);
             }
         }
-        // ponytail: temporary arm — FnCall transliteration lands in a later task; walk name and args
         ExprKind::FnCall { name, args } => {
             visit(&mut name.name);
             for a in args {
