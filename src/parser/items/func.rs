@@ -53,6 +53,7 @@ impl Parser {
                 name: lname,
                 value,
                 span: lstart.join(lend),
+                inferred_width: std::cell::Cell::new(None),
             });
             self.skip_newlines();
         }
