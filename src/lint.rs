@@ -252,7 +252,6 @@ fn collect_expr_names(expr: &ast::Expr, names: &mut HashSet<String>) {
             }
         }
         ast::ExprKind::Int { .. } | ast::ExprKind::Bool(_) => {}
-        // ponytail: temporary arm — FnCall lint landing in a later task; walk args
         ast::ExprKind::FnCall { args, .. } => {
             for a in args {
                 collect_expr_names(a, names);
