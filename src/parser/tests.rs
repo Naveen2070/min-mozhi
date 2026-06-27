@@ -609,3 +609,23 @@ fn parses_fn_with_local_let_and_body() {
     assert_eq!(fd.locals.len(), 1);
     assert!(matches!(fd.ret, Type::Bits(_)));
 }
+
+#[test]
+fn fn_decl_parses_in_thamizh_order() {
+    // `fn` declarations are code-order-only (no SOV flip needed — they are
+    // prefix-keyword constructs, not clause-inverted). A file with
+    // `syntax thamizh` must still accept a leading `fn` declaration.
+    let f = parse_ok(
+        "syntax thamizh\nfn square(x: bits[8]) -> bits[16] {\n  x * x\n}\nmodule M {\n  ulleedu x: bits[8]\n  veliyeedu y: bits[16]\n  y = square(x)\n}\n",
+    );
+    let func = f
+        .items
+        .iter()
+        .find_map(|i| match i {
+            TopItem::Func(f) => Some(f),
+            _ => None,
+        })
+        .expect("fn declaration must parse under syntax thamizh");
+    assert_eq!(func.name.name, "square");
+    assert_eq!(func.params.len(), 1);
+}

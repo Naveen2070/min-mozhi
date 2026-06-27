@@ -590,7 +590,6 @@ impl Pretty {
                     .join(", ");
                 format!("{}({a})", builtin(*func))
             }
-            // ponytail: temporary arm — FnCall pretty-printer lands in a later task
             ExprKind::FnCall { name, args } => {
                 let a = args
                     .iter()

@@ -69,7 +69,8 @@ Built ✅ as of 2026-06-12 (Phase 1 complete):
 - keyword table, lexer, parser (code-order), AST;
 - checker — ALL spec/02 section 6 safety rules (names/consts/E-codes,
   width/type E04xx, driver/cycle E05xx, instantiation completeness E0302,
-  match exhaustiveness E06xx, clock domains E0701);
+  match exhaustiveness E06xx, clock domains E0701) + combinational functions
+  E0801–E0805 (symbol registration, arity, return width, recursion);
 - Verilog emitter (repeat unrolling, Tamil→ASCII transliteration,
   `wire signed`; validated by Icarus differential tests and golden files);
 - CLI (`check`, `compile`, `lsp`, `--json`);

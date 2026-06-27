@@ -310,7 +310,6 @@ fn expr_reads<'a>(e: &'a Expr, out: &mut Vec<(&'a str, Span)>) {
                 expr_reads(a, out);
             }
         }
-        // ponytail: temporary arm — FnCall parser lands in Task 3; walk args for domain tracking
         ExprKind::FnCall { args, .. } => {
             for a in args {
                 expr_reads(a, out);

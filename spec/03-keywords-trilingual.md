@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.11.**
+> **Spec v0.2.12.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -278,6 +278,15 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.12 (2026-06-27):** Promoted `fn` / `function` from **reserved** to an
+  active keyword KW_FN for combinational user-defined functions
+  (`fn f(params) -> T { body }` — spec/02 v0.2.14). Its Tanglish/Tamil spellings —
+  `saarbu` / `சார்பு` (the Tamil mathematical term for "function") — are
+  **PROVISIONAL** dev/testing placeholders pending native-speaker review (R9/R11).
+  Removed `fn`/`function` from the reserved list; added the alias `function`
+  (`en_aliases`). Covered by the `fn_mac` four-flavor example and E0801–E0805
+  checker suite. Additive to the keyword set (version stays v1 — no canonical
+  spelling changed, only a promotion from reserved to active).
 - **v0.2.11 (2026-06-22):** Reserved `extern` for a future external-Verilog /
   black-box-IP module construct (`docs/Ideas/architectural_ideas.md` idea 3;
   the architecture open question "External Verilog module wrapping construct").

@@ -11,11 +11,19 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**476 tests** as of 2026-06-26: 316 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 14 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**498 tests** as of 2026-06-28: 318 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
 Fixture counts (current): 72 error fixtures · 8 grammar fixtures · 42 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-28 Combinational functions wrap-up (branch `phase-2-comb-function`, Task 12).
+  Removed all stale `// ponytail: temporary arm` comments from 6 src/ files (the arms
+  were already correct; the comments were scaffolding from Task 2). Spec/02 bumped to
+  v0.2.14 (fnDecl + fnCall EBNF, missing v0.2.13 clog2 changelog entry added); spec/03
+  bumped to v0.2.12 (fn promotion from reserved to active). **+1 lib unit**
+  (`fn_decl_parses_in_thamizh_order` — parser/tests.rs) **+1 translate integration**
+  (`fn_keyword_translates_across_all_flavors` — tests/translate.rs). Suite 496 → 498.
 
 - 2026-06-26 CLI subcommands and DX (branch `cli-and-code-improvements`). New subcommands: `init`, `doctor`, `completions`, `repl`, `lint`. `check --watch` for continuous rechecking. Colorized diagnostics + test output via `owo-colors`. Global `-q`/`--quiet` and `-d`/`--debug` flags. `--lang` restructured to Clap `ValueEnum` with aliases. `src/lint.rs`: style/hygiene lint passes (W0002 snake_case, W0003 PascalCase). `tests/cli.rs`: 6 smoke + integration tests for doctor, init, watch, completions. **+5 lib unit** (lint: snake_case ×2, PascalCase ×2, empty-file clean) **+6 cli integration** (new `tests/cli.rs`). Suite 465 → 476.
 

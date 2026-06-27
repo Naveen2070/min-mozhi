@@ -77,8 +77,7 @@ impl<'a> Checker<'a> {
                     TopItem::Test(t) => self.check_test(file, t),
                     TopItem::Const(_) | TopItem::Enum(_) => {} // earlier passes
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
-                    // ponytail: temporary arm — FnCall checker lands in a later task
-                    TopItem::Func(_) => {}
+                    TopItem::Func(_) => {} // checked by symbols/widths/funcs passes
                 }
             }
         }

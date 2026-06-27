@@ -9,8 +9,8 @@ able to map "the spec says X" to "the function that parses X" in seconds.
 | File       | Owns                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------- |
 | `mod.rs`   | `parse()` / `parse_recover()` entries, `Parser` state, token plumbing, error recovery |
-| `items/`   | File level, modules, `on`-blocks, `repeat`, `test` blocks                             |
-| `expr.rs`  | Expressions: precedence climbing, `if`/`match`, patterns, builtins                    |
+| `items/`   | File level, modules, `on`-blocks, `repeat`, `test` blocks, `fn` declarations          |
+| `expr.rs`  | Expressions: precedence climbing, `if`/`match`, patterns, builtins, `FnCall`          |
 | `tests.rs` | Unit tests (see [`10-test-map.md`](10-test-map.md))                                   |
 
 The `items/` submodule splits item parsing across files by grammar
@@ -18,7 +18,8 @@ section: `items/mod.rs` (shared `ty`/`lvalue`/`repeat_block` helpers +
 the `pub(in crate::parser) file()` entry), `items/file.rs` (imports,
 consts, enums), `items/module.rs` (modules and ports), `items/inst.rs`
 (instance declarations), `items/seq.rs` (`on`-blocks + thamizh
-variants), `items/test.rs` (`test` blocks).
+variants), `items/test.rs` (`test` blocks), `items/func.rs` (`fn`
+declarations — `fnDecl` from spec/02 section 5).
 
 `mod.rs` owns the struct and all private plumbing; the `items/` files and
 `expr.rs` are `impl Parser` blocks reached through `pub(super)` entry
@@ -128,10 +129,14 @@ Other notable spots:
 ## What the parser deliberately does NOT do
 
 No name resolution, no width checking, no const evaluation — those are
-the checker's six passes (`docs/code/11-checker.md`). The parser only
+the checker's passes (`docs/code/11-checker.md`). The parser only
 enforces what is syntactically decidable, which includes several safety
 rules: `=` vs `<-` placement, mandatory reg reset values, mandatory
-`else` on if-expressions, no user-defined function calls. Every parse
+`else` on if-expressions. User-defined function calls (`fnCall`) are
+parsed in `expr.rs` alongside built-in calls — the distinction
+(user fn vs. built-in) is resolved at the expression level by name
+recognition; width/arity checking and recursion detection are
+checker passes (E0801–E0805). Every parse
 error carries a stable code (**E1101–E1111** — `self.error(span, code,
 msg)` makes the code mandatory; catalog and the E1101 grouping rule in
 [`06-diagnostics.md`](06-diagnostics.md)).
