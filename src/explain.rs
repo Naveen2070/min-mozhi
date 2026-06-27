@@ -387,6 +387,20 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          help: the body width and return type printed in the error are the two\n\
          values that must agree — pick one to change.",
     ),
+    (
+        "E0805",
+        "E0805 — recursive function call\n\n\
+         A `fn` calls itself, directly or through a chain of other `fn`s. Because\n\
+         `fn` bodies are purely combinational and inlined at every call site, a\n\
+         recursive call would require infinite hardware unrolling — the synthesis\n\
+         tool has no way to stop.\n\n\
+         Fix: replace the recursion with a fixed-size computation. Use a\n\
+         parameterized module with `repeat` for structural replication, or\n\
+         restructure the algorithm so every function produces its result in a\n\
+         bounded number of steps without calling itself.\n\n\
+         help: the error names every function in the cycle — redesign so none of\n\
+         them appears in any other's call chain.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",

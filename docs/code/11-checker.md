@@ -22,6 +22,7 @@ table below is the honest status of what remains.
 | `widths/ops.rs`      | Pass 4 — operators, shifts, concat, the four builtins                          |
 | `widths/insts.rs`    | Pass 4 — instantiation bindings + connection widths                            |
 | `widths/patterns.rs` | Pass 4 — `match` patterns + exhaustiveness (E0601/E0602)                       |
+| `funcs.rs`           | Pass (after 1) — call-graph cycle detection, E0805                             |
 | `drivers.rs`         | Pass 5 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                |
 | `clocks.rs`          | Pass 6 — clock-domain ownership, cross-domain reads (E0701)                    |
 | `tests.rs`           | Unit tests — one per error code, plus clean-pass cases                         |
@@ -129,6 +130,7 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0802 | function name collides with a builtin (`extend`, `trunc`, `min`, …)                       | choose a different name                                         |
 | E0803 | wrong number of arguments in a `fn` call (expected N, got M)                              | pass exactly the number of arguments the function declares      |
 | E0804 | function body width doesn't match the declared return type                                 | `extend`/`trunc`/slice the body, or fix the `->` type           |
+| E0805 | recursive function call (direct or mutual cycle in the call graph)                        | replace recursion with fixed-size repetition or a `repeat` loop |
 
 Numbering scheme:
 
