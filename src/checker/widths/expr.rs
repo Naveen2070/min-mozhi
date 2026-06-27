@@ -467,6 +467,13 @@ impl<'a> Checker<'a> {
                 self.slice_ty(cx, hi, lo, n).unwrap_or(Ty::Unknown)
             }
             ExprKind::Call { func, args } => self.call_ty(cx, e, *func, args),
+            // ponytail: temporary arm — FnCall width checker lands in a later task
+            ExprKind::FnCall { args, .. } => {
+                for a in args {
+                    let _ = self.infer_ty(cx, a);
+                }
+                Ty::Unknown
+            }
         }
     }
 

@@ -70,10 +70,20 @@ pub enum ExprKind {
         hi: Box<Expr>,
         lo: Box<Expr>,
     },
-    /// A builtin call — the ONLY callable things; there are no user
-    /// functions, only modules.
+    /// A builtin call — the ONLY callable things before user functions land.
     Call {
         func: Builtin,
+        args: Vec<Expr>,
+    },
+    /// A call to a user-defined combinational function.
+    ///
+    /// `name` is the function name; `args` are the positional argument
+    /// expressions. The parser produces this starting in Task 3; no existing
+    /// checker/emitter/sim path handles it yet — those are added in later tasks.
+    FnCall {
+        /// The function being called.
+        name: super::Ident,
+        /// Positional arguments, one per [`FnParam`](super::FnParam).
         args: Vec<Expr>,
     },
 }

@@ -880,6 +880,10 @@ impl Rw<'_> {
                     .map(|a| self.expr(a))
                     .collect::<Result<_, _>>()?,
             },
+            // ponytail: temporary arm — FnCall elaborator lands in a later task
+            ExprKind::FnCall { .. } => {
+                return Err("user-defined functions are not yet supported by the simulator".into());
+            }
         };
         Ok(Expr { kind, span: e.span })
     }

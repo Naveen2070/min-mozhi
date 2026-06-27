@@ -112,6 +112,8 @@ impl Pretty {
             TopItem::Module(m) => self.module(m),
             TopItem::Enum(e) => self.enum_decl(e),
             TopItem::Test(t) => self.test_decl(t),
+            // ponytail: temporary arm — FnCall pretty-printer lands in a later task
+            TopItem::Func(_) => {}
             // Unreachable: pretty-printing runs on a strict-parsed tree, which
             // never carries an `Error` placeholder.
             TopItem::Error(_) => {}
@@ -566,6 +568,15 @@ impl Pretty {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{}({a})", builtin(*func))
+            }
+            // ponytail: temporary arm — FnCall pretty-printer lands in a later task
+            ExprKind::FnCall { name, args } => {
+                let a = args
+                    .iter()
+                    .map(|e| self.expr(e, ind))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}({a})", name.name)
             }
         }
     }
