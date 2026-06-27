@@ -12,6 +12,7 @@ impl Emitter<'_> {
     pub(super) fn module(&mut self, m: &Module) {
         self.check_ascii(&m.name);
         self.clog2_fn_used = false;
+        self.funcs_used.clear();
 
         // Module-level consts layer onto the file consts for the duration
         // of this module; they fold to literals wherever used (widths,
@@ -199,10 +200,25 @@ impl Emitter<'_> {
             }
         }
 
-        // If a body width used `clog2(<param>)`, inject the V-2005 constant
-        // function at the top of the body so the width can call it.
+        // Inject the clog2 helper (if any body width needed it) followed by
+        // any user-defined functions used by this module (in topological order:
+        // callees before callers, so each function is declared before use).
+        // Both must live in the module body — clog2 first so user functions
+        // that happen to use clog2() in a width find it already declared.
+        let fns_to_inject = self.funcs_used.clone();
+        let mut user_fn_inject = String::new();
+        for name in &fns_to_inject {
+            if let Some(decl) = self.project.funcs.get(name.as_str()).copied() {
+                user_fn_inject.push_str(&self.render_fn_decl(decl));
+            }
+        }
+        let mut inject = String::new();
         if self.clog2_fn_used {
-            self.out.insert_str(fn_pos, CLOG2_FN);
+            inject.push_str(CLOG2_FN);
+        }
+        inject.push_str(&user_fn_inject);
+        if !inject.is_empty() {
+            self.out.insert_str(fn_pos, &inject);
         }
 
         self.out.push_str("endmodule\n");
@@ -210,6 +226,63 @@ impl Emitter<'_> {
         // Peel this module's consts back off; the next module in the file
         // sees only the file-level env.
         self.env = file_env;
+    }
+
+    /// Mark `name` (and all its transitive callees) as used by the current
+    /// module. Post-order DFS — callees are added before the caller — so
+    /// `funcs_used` ends up in topological order ready for injection.
+    /// Recursion is banned (E0805), so no cycle risk.
+    pub(super) fn mark_fn_used(&mut self, name: &str) {
+        if self.funcs_used.iter().any(|n| n == name) {
+            return; // already enqueued (or enqueuing via a sibling path)
+        }
+        // Recurse into callees first (post-order).
+        if let Some(decl) = self.project.funcs.get(name).copied() {
+            for callee in super::fn_direct_callees(decl) {
+                self.mark_fn_used(&callee);
+            }
+        }
+        // Add self after its dependencies.
+        if !self.funcs_used.iter().any(|n| n == name) {
+            self.funcs_used.push(name.to_string());
+        }
+    }
+
+    /// Render one user-defined function as a Verilog-2005
+    /// `function automatic` block. Locals that have no AST type annotation
+    /// are declared as `integer` (32-bit) — sufficient for combinational
+    /// logic; add `LocalLet.ty` to the AST to emit precise widths if a
+    /// synthesis tool requires them.
+    ///
+    /// Renders under an EMPTY const env so module-const names cannot
+    /// accidentally shadow function parameter names.
+    fn render_fn_decl(&mut self, decl: &FuncDecl) -> String {
+        // Swap out the module env so param names render as plain identifiers,
+        // not as folded module-const values.
+        let saved_env = std::mem::take(&mut self.env);
+
+        let ret_w = self.width(&decl.ret);
+        let mut s = format!("    function automatic {ret_w}{};\n", decl.name.name);
+        for param in &decl.params {
+            let pw = self.width(&param.ty);
+            s.push_str(&format!("        input {pw}{};\n", param.name.name));
+        }
+        // ponytail: locals as `integer`; precise widths need LocalLet.ty in AST
+        for local in &decl.locals {
+            s.push_str(&format!("        integer {};\n", local.name.name));
+        }
+        s.push_str("        begin\n");
+        for local in &decl.locals {
+            let v = self.expr(&local.value);
+            s.push_str(&format!("            {} = {};\n", local.name.name, v));
+        }
+        let body = self.expr(&decl.body);
+        s.push_str(&format!("            {} = {};\n", decl.name.name, body));
+        s.push_str("        end\n");
+        s.push_str("    endfunction\n");
+
+        self.env = saved_env;
+        s
     }
 
     /// Emit every instance in `items`, descending into `repeat` bodies and
