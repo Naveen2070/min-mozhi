@@ -196,6 +196,15 @@ impl Emitter<'_> {
                 let l = self.index_expr(lo, subst);
                 format!("{b}[{h}:{l}]")
             }
+            // ponytail: temporary arm — FnCall emitter lands in a later task; no parser produces this yet
+            ExprKind::FnCall { .. } => {
+                self.err(
+                    e.span,
+                    "user-defined functions are not yet supported by the emitter",
+                    "",
+                );
+                "0".into()
+            }
             ExprKind::Call { func, args } => match func {
                 Builtin::SignedCast => format!("$signed({})", self.expr_subst(&args[0], subst)),
                 Builtin::UnsignedCast => {

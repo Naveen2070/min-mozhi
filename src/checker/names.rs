@@ -77,6 +77,8 @@ impl<'a> Checker<'a> {
                     TopItem::Test(t) => self.check_test(file, t),
                     TopItem::Const(_) | TopItem::Enum(_) => {} // earlier passes
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
+                    // ponytail: temporary arm — FnCall checker lands in a later task
+                    TopItem::Func(_) => {}
                 }
             }
         }
@@ -683,6 +685,12 @@ impl<'a> Checker<'a> {
                 self.expr(file, sc, env, lo);
             }
             ExprKind::Call { args, .. } => {
+                for a in args {
+                    self.expr(file, sc, env, a);
+                }
+            }
+            // ponytail: temporary arm — FnCall checker lands in a later task; walk args for name resolution
+            ExprKind::FnCall { args, .. } => {
                 for a in args {
                     self.expr(file, sc, env, a);
                 }
