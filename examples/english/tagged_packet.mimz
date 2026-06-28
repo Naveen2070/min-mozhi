@@ -1,0 +1,27 @@
+// Min-Mozhi example: tagged-union enum — variants carry typed payload fields.
+// `match` on a tagged variant binds each field into a name for that arm.
+// `Read` carries only an address; `Write` carries address and data.
+
+enum Packet { Read(addr: bits[32]), Write(addr: bits[32], data: bits[32]) }
+
+module PacketDecoder {
+  in  bus:     Packet
+  out is_read: bit
+  out address: bits[32]
+  out wdata:   bits[32]
+
+  is_read = match bus {
+    Packet.Read(a)     => 1
+    Packet.Write(a, d) => 0
+  }
+
+  address = match bus {
+    Packet.Read(a)     => a
+    Packet.Write(a, d) => a
+  }
+
+  wdata = match bus {
+    Packet.Read(a)     => 0
+    Packet.Write(a, d) => d
+  }
+}

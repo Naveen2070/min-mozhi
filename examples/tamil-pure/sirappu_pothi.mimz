@@ -1,0 +1,29 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a tagged-union
+// packet decoder — the Tamil twin of english/tagged_packet.mimz.
+// பொதி = packet · படி = read · எழுது = write · முகவரி = address · மதிப்பு = value/data
+// Compiler transliterates names to readable ASCII Verilog
+// (பொதிவாசி → potivasi, பொதி → poti, படி → pati, எழுது → elutu).
+
+வகை பொதி { படி(முகவரி: bits[32]), எழுது(முகவரி: bits[32], மதிப்பு: bits[32]) }
+
+தொகுதி பொதிவாசி {
+  உள்ளீடு வரி:       பொதி
+  வெளியீடு படிக்கும்: bit
+  வெளியீடு முகவரி:   bits[32]
+  வெளியீடு மதிப்பு:  bits[32]
+
+  படிக்கும் = தேர்ந்தெடு வரி {
+    பொதி.படி(அ)      => 1
+    பொதி.எழுது(அ, ஆ) => 0
+  }
+
+  முகவரி = தேர்ந்தெடு வரி {
+    பொதி.படி(அ)      => அ
+    பொதி.எழுது(அ, ஆ) => அ
+  }
+
+  மதிப்பு = தேர்ந்தெடு வரி {
+    பொதி.படி(அ)      => 0
+    பொதி.எழுது(அ, ஆ) => ஆ
+  }
+}

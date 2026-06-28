@@ -1,0 +1,10 @@
+// expect: E0806
+module M {
+  enum Packet { Read(addr: bits[8]) }
+  in x: Packet
+  out y: bit
+  y = match x {
+    Packet.Read(a, b) => 0
+    _ => 0
+  }
+}

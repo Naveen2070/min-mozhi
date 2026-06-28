@@ -11,11 +11,22 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**499 tests** as of 2026-06-28: 319 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**513 tests** as of 2026-06-28: 349 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
-Fixture counts (current): 72 error fixtures · 8 grammar fixtures · 44 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
+Fixture counts (current): 74 error fixtures · 8 grammar fixtures · 46 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-28 Tagged-union T7 surface (branch `phase-2-comb-function`): pretty-printer
+  (`enum_decl`/`pattern`), critical translit fix (binding names in
+  `Pattern::Variant` were not being walked — silent payload-slice miss in
+  pure-Tamil), spec v0.2.15, 5 new example files (`tagged_packet.mimz` × 4
+  flavors + `sirappu_pothi.mimz` tamil-pure), E0806/E0807 added to
+  `ALL_CHECKER_CODES` (41 → 43) + 2 new error fixtures. Fixed
+  `compile_string.rs` golden path collision (`tagged_packet.v` →
+  `tagged_packet_decoder.v`). **+14 net** over the 499 baseline (T1–T6
+  checker/parser/emitter/sim unit tests + T7 fixture/compile_string additions).
+  Suite 499 → 513.
 
 - 2026-06-28 Five post-review bug fixes (branch `phase-2-comb-function`): (1) CtInt locals
   no longer leave `inferred_width` at None (emitter panic fixed); (2) `render_fn_decl` uses

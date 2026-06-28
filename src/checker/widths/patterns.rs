@@ -245,7 +245,11 @@ impl<'a> Checker<'a> {
                     let mut arm_wild = false;
                     for p in &arm.patterns {
                         match p {
-                            Pattern::Variant { enum_name, variant, bindings: _ } => {
+                            Pattern::Variant {
+                                enum_name,
+                                variant,
+                                bindings: _,
+                            } => {
                                 if enum_name.name != en.name.name {
                                     bad = true;
                                     self.err(

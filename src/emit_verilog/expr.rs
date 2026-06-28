@@ -142,8 +142,7 @@ impl Emitter<'_> {
                     // For tagged enum patterns with payload bindings, build a
                     // substitution map: binding_name → scrutinee[hi:lo] slice expr.
                     // These are merged into `subst` when rendering the arm value.
-                    let binding_exprs: Vec<(String, Expr)> =
-                        self.arm_binding_exprs(arm, scrutinee);
+                    let binding_exprs: Vec<(String, Expr)> = self.arm_binding_exprs(arm, scrutinee);
                     let mut arm_subst: HashMap<&str, &Expr> = subst.clone();
                     for (name, expr) in &binding_exprs {
                         arm_subst.insert(name.as_str(), expr);
@@ -174,9 +173,11 @@ impl Emitter<'_> {
                             Pattern::Bool(b) => {
                                 format!("({s} == {})", if *b { "1'b1" } else { "1'b0" })
                             }
-                            Pattern::Variant { enum_name, variant, bindings: _ } => {
-                                self.variant_cond(&s, &enum_name.name, &variant.name)
-                            }
+                            Pattern::Variant {
+                                enum_name,
+                                variant,
+                                bindings: _,
+                            } => self.variant_cond(&s, &enum_name.name, &variant.name),
                             Pattern::Wildcard => "1'b1".to_string(),
                         })
                         .collect();
@@ -298,7 +299,7 @@ impl Emitter<'_> {
                 .variants
                 .iter()
                 .position(|v| v.name.name == variant_name)
-                .unwrap_or(0);
+                .expect("variant not found — checker must run before emitter");
             let hi = total_w - 1;
             let lo = max_payload_w;
             format!("({s}[{hi}:{lo}] == {tag_w}'d{idx})")
@@ -310,7 +311,12 @@ impl Emitter<'_> {
     /// Returns empty if the arm has no variant pattern with bindings.
     fn arm_binding_exprs(&self, arm: &Arm, scrutinee: &Expr) -> Vec<(String, Expr)> {
         for pat in &arm.patterns {
-            let Pattern::Variant { enum_name, variant, bindings } = pat else {
+            let Pattern::Variant {
+                enum_name,
+                variant,
+                bindings,
+            } = pat
+            else {
                 continue;
             };
             if bindings.is_empty() {
@@ -334,6 +340,11 @@ impl Emitter<'_> {
             // Pack fields MSB-first in the payload region [max_payload_w-1 : 0].
             let mut cursor = max_payload_w;
             let mut out = Vec::new();
+            debug_assert_eq!(
+                bindings.len(),
+                vdecl.fields.len(),
+                "E0806 should have rejected this"
+            );
             for (field, binding) in vdecl.fields.iter().zip(bindings.iter()) {
                 let field_w: u128 = match &field.ty {
                     Type::Bit => 1,
@@ -353,11 +364,17 @@ impl Emitter<'_> {
                     kind: ExprKind::Slice {
                         base: Box::new(scrutinee.clone()),
                         hi: Box::new(Expr {
-                            kind: ExprKind::Int { value: hi, raw: hi.to_string() },
+                            kind: ExprKind::Int {
+                                value: hi,
+                                raw: hi.to_string(),
+                            },
                             span: sp,
                         }),
                         lo: Box::new(Expr {
-                            kind: ExprKind::Int { value: lo, raw: lo.to_string() },
+                            kind: ExprKind::Int {
+                                value: lo,
+                                raw: lo.to_string(),
+                            },
                             span: sp,
                         }),
                     },

@@ -277,11 +277,17 @@ fn elaborate_module(
                 .get(&n.name)
                 .ok_or_else(|| format!("unknown enum type `{}`", n.name))?;
             // ponytail: fallback only correct for tag-only enums (max_payload_w=0)
-            let bits = e
-                .inferred_total_width
-                .get()
-                .unwrap_or_else(|| clog2(e.variants.len()));
-            Ok(Width { bits, signed: false })
+            let bits = e.inferred_total_width.get().unwrap_or_else(|| {
+                debug_assert!(
+                    e.variants.iter().all(|v| v.fields.is_empty()),
+                    "tagged enum without checker run — fallback width is wrong"
+                );
+                clog2(e.variants.len())
+            });
+            Ok(Width {
+                bits,
+                signed: false,
+            })
         } else {
             let (bits, signed) = type_width(ty, ints)?;
             Ok(Width { bits, signed })
@@ -884,8 +890,7 @@ impl<'d, 's> Rw<'d, 's> {
                         // For tagged variant patterns with bindings, extract
                         // each binding as a payload slice of the scrutinee so
                         // the runtime evaluator never sees Pattern::Variant.
-                        let binding_subst =
-                            self.variant_bindings(&a.patterns, &rw_scrutinee)?;
+                        let binding_subst = self.variant_bindings(&a.patterns, &rw_scrutinee)?;
                         let rw_value = if binding_subst.is_empty() {
                             self.expr(&a.value)?
                         } else {
@@ -999,7 +1004,11 @@ impl<'d, 's> Rw<'d, 's> {
 
     fn pattern(&self, p: &Pattern) -> Result<Pattern, String> {
         match p {
-            Pattern::Variant { enum_name, variant, bindings: _ } => {
+            Pattern::Variant {
+                enum_name,
+                variant,
+                bindings: _,
+            } => {
                 let edecl = self
                     .enums
                     .get(&enum_name.name)
@@ -1054,7 +1063,12 @@ impl<'d, 's> Rw<'d, 's> {
         scrutinee: &Expr,
     ) -> Result<HashMap<String, Expr>, String> {
         for p in patterns {
-            let Pattern::Variant { enum_name, variant, bindings } = p else {
+            let Pattern::Variant {
+                enum_name,
+                variant,
+                bindings,
+            } = p
+            else {
                 continue;
             };
             if bindings.is_empty() {
@@ -1066,16 +1080,13 @@ impl<'d, 's> Rw<'d, 's> {
             let total_w = edecl
                 .inferred_total_width
                 .get()
-                .unwrap_or_else(|| clog2(edecl.variants.len()))
-                as u128;
+                .unwrap_or_else(|| clog2(edecl.variants.len())) as u128;
             let tag_w = clog2(edecl.variants.len()) as u128;
             let max_payload_w = total_w - tag_w;
             if max_payload_w == 0 {
                 continue; // tag-only, no payload to extract
             }
-            let Some(vdecl) =
-                edecl.variants.iter().find(|v| v.name.name == variant.name)
-            else {
+            let Some(vdecl) = edecl.variants.iter().find(|v| v.name.name == variant.name) else {
                 continue;
             };
             // Fields are packed MSB-first inside [max_payload_w-1 : 0].
