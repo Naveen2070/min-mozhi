@@ -1,0 +1,13 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file):
+// constant local inference in function bodies.
+
+fn add_offset(a: bits[8]) -> bits[8] {
+  amai n = 5
+  a +% n
+}
+
+thoguthi ConstLocal {
+  ulleedu a: bits[8]
+  வெளியீடு result: bits[8]
+  result = add_offset(a)
+}

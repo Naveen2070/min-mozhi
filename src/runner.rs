@@ -250,7 +250,12 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     let inputs = parse_bindings(inputs_s, parse_u128)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
 
-    let outputs = comb::eval_outputs(&file, module.as_deref(), &inputs, &params)?;
+    let outputs = comb::eval_outputs(
+        std::slice::from_ref(&file),
+        module.as_deref(),
+        &inputs,
+        &params,
+    )?;
     let mut out = String::new();
     for o in outputs {
         let kind = if o.signed { "signed" } else { "bits" };

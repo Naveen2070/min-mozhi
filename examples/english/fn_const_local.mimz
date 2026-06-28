@@ -1,0 +1,14 @@
+// Min-Mozhi example: constant local inference in function bodies
+// `let n = 5` infers as a compile-time integer; the emitter declares
+// `reg [2:0] n` (min_bits(5) = 3) so wrap semantics are preserved.
+
+fn add_offset(a: bits[8]) -> bits[8] {
+  let n = 5
+  a +% n
+}
+
+module ConstLocal {
+  in a: bits[8]
+  out result: bits[8]
+  result = add_offset(a)
+}

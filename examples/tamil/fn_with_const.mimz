@@ -1,0 +1,14 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change):
+// file-level const referenced inside a function body.
+
+மாறிலி SCALE: int = 3
+
+சார்பு scaled(a: bits[8]) -> bits[8] {
+  a >> SCALE
+}
+
+தொகுதி Scaled {
+  உள்ளீடு a: bits[8]
+  வெளியீடு result: bits[8]
+  result = scaled(a)
+}

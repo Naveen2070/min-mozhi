@@ -209,7 +209,7 @@ impl Emitter<'_> {
         let mut user_fn_inject = String::new();
         for name in &fns_to_inject {
             if let Some(decl) = self.project.funcs.get(name.as_str()).copied() {
-                user_fn_inject.push_str(&self.render_fn_decl(decl));
+                user_fn_inject.push_str(&self.render_fn_decl(decl, &file_env));
             }
         }
         let mut inject = String::new();
@@ -255,12 +255,16 @@ impl Emitter<'_> {
     /// silently widen narrow wrapping values (e.g. an 8-bit `*%` product
     /// stored in a 32-bit `integer` would not wrap at 8 bits).
     ///
-    /// Renders under an EMPTY const env so module-const names cannot
-    /// accidentally shadow function parameter names.
-    fn render_fn_decl(&mut self, decl: &FuncDecl) -> String {
-        // Swap out the module env so param names render as plain identifiers,
-        // not as folded module-const values.
-        let saved_env = std::mem::take(&mut self.env);
+    /// Renders under the FILE-LEVEL const env (`file_env`) so file consts
+    /// used in the function body fold to literals (e.g. `a >> SCALE` where
+    /// `SCALE` is a file const folds to `a >> 3`), while module consts —
+    /// which are not visible inside a `function automatic` body — are
+    /// excluded so they cannot accidentally shadow a function parameter.
+    fn render_fn_decl(&mut self, decl: &FuncDecl, file_env: &Env) -> String {
+        // Replace the module env with the file-level env: module consts are
+        // out of scope inside a `function automatic`, but file consts must
+        // fold so uses like `a >> SCALE` emit correct literals.
+        let saved_env = std::mem::replace(&mut self.env, file_env.clone());
 
         let ret_w = self.width(&decl.ret);
         let mut s = format!("    function automatic {ret_w}{};\n", decl.name.name);

@@ -121,8 +121,12 @@ pub(crate) fn repl(
 
         // Evaluate with these input bindings.
         match parse_bindings(&line, parse_u128) {
-            Ok(inputs) => match sim::comb::eval_outputs(&file, module.as_deref(), &inputs, &params)
-            {
+            Ok(inputs) => match sim::comb::eval_outputs(
+                std::slice::from_ref(&file),
+                module.as_deref(),
+                &inputs,
+                &params,
+            ) {
                 Ok(outputs) => {
                     for o in outputs {
                         let kind = if o.signed { "signed" } else { "bits" };
