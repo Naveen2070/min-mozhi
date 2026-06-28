@@ -955,3 +955,36 @@ fn fn_with_const_local_compiles_clean() {
     )
     .expect("fn with a bare-literal local compiles clean");
 }
+
+// ---- tagged-union payload types + arity (E0103/E0806) ---------------------
+
+#[test]
+fn tagged_enum_unknown_payload_type_is_e0103() {
+    // A module-level enum with an unrecognized payload type triggers E0103.
+    let src = "module M {\n  enum Packet { Read(addr: bogustype) }\n  out y: bit\n  y = 0\n}\n";
+    let d = first_err(src, "E0103");
+    assert!(d.msg.contains("bogustype"), "error names the unknown type: {}", d.msg);
+}
+
+#[test]
+fn tagged_pattern_arity_mismatch_is_e0806() {
+    // Read has 1 payload field but the pattern provides 2 bindings.
+    let src = "enum Packet { Read(addr: bits[8]) }\nmodule M {\n  in x: Packet\n  out y: bit\n  y = match x {\n    Packet.Read(a, b) => 0\n    _ => 0\n  }\n}\n";
+    let d = first_err(src, "E0806");
+    assert!(d.msg.contains("Read"), "error names the variant: {}", d.msg);
+}
+
+#[test]
+fn tag_only_pattern_with_bindings_is_e0806() {
+    // Foo.A has no payload fields; providing a binding is E0806 (0 expected, 1 got).
+    let src = "module M {\n  enum Foo { A, B }\n  in s: Foo\n  out y: bit\n  y = match s {\n    Foo.A(x) => 0\n    Foo.B => 1\n  }\n}\n";
+    let d = first_err(src, "E0806");
+    assert!(d.msg.contains("A"), "error names the variant: {}", d.msg);
+}
+
+#[test]
+fn valid_tagged_pattern_compiles_clean() {
+    // Exactly 1 binding for a 1-field variant — should be clean through all passes.
+    let src = "enum Packet { Read(addr: bits[8]) }\nmodule M {\n  in x: Packet\n  out y: bits[8]\n  y = match x {\n    Packet.Read(a) => a\n    _ => 0\n  }\n}\n";
+    check_one(src).expect("valid tagged pattern with correct arity compiles clean");
+}
