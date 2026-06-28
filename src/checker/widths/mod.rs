@@ -587,7 +587,7 @@ impl<'a> Checker<'a> {
     /// Compute `(tag_width, max_payload_width)` for an enum decl, emitting
     /// E0807 for any payload field whose type is not a concrete bit-vector.
     /// D4: tag_w = clog2(variant_count).max(1); D6: tag-only variants contribute 0 payload.
-    pub(super) fn enum_tag_and_payload_widths(
+    fn enum_tag_and_payload_widths(
         &mut self,
         cx: &mut Wcx<'a>,
         decl: &'a EnumDecl,
@@ -630,7 +630,7 @@ impl<'a> Checker<'a> {
     /// Returns the list of injected names so the caller can remove them after
     /// checking the arm body. Silent — E0807 was already emitted at the enum's
     /// declaration site.
-    pub(super) fn inject_arm_bindings(
+    fn inject_arm_bindings(
         &mut self,
         cx: &mut Wcx<'a>,
         en: &'a EnumDecl,
