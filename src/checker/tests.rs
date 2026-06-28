@@ -996,3 +996,65 @@ fn valid_tagged_pattern_compiles_clean() {
     let src = "enum Packet { Read(addr: bits[8]) }\nmodule M {\n  in x: Packet\n  out y: bits[8]\n  y = match x {\n    Packet.Read(a) => a\n    _ => 0\n  }\n}\n";
     check_one(src).expect("valid tagged pattern with correct arity compiles clean");
 }
+
+// ---- tagged-union width checker (T4) ----------------------------------------
+
+#[test]
+fn tagged_enum_total_width_is_tag_plus_max_payload() {
+    // Packet has 2 variants → tag = 1 bit (clog2(2)).
+    // Read payload = bits[32] = 32 bits; Write payload = bits[32] + bits[32] = 64 bits.
+    // max_payload = 64, total = tag(1) + max_payload(64) = 65 bits.
+    // Both payload bindings resolve to their declared widths — clean compilation
+    // proves the helper computed widths without E0807.
+    let src = concat!(
+        "enum Packet { Read(addr: bits[32]), Write(addr: bits[32], data: bits[32]) }\n",
+        "module M {\n",
+        "  in x: Packet\n",
+        "  out addr: bits[32]\n",
+        "  addr = match x {\n",
+        "    Packet.Read(a) => a\n",
+        "    Packet.Write(a, b) => a\n",
+        "  }\n",
+        "}\n",
+    );
+    check_one(src).expect("tagged enum with max_payload=64, tag=1 (total 65 bits) compiles clean");
+}
+
+#[test]
+fn pattern_binding_types_match_payload_fields() {
+    // Packet.Read has addr: bits[32].  After binding injection, `a` is bits[32].
+    // Driving a bits[8] output from `a` must fail with E0401 (32 ≠ 8).
+    // Before this fix `a` resolved to Unknown and silenced the error.
+    let src = concat!(
+        "enum Packet { Read(addr: bits[32]) }\n",
+        "module M {\n",
+        "  in x: Packet\n",
+        "  out y: bits[8]\n",
+        "  y = match x {\n",
+        "    Packet.Read(a) => a\n",
+        "    _ => 0\n",
+        "  }\n",
+        "}\n",
+    );
+    let d = first_err(src, "E0401");
+    assert!(
+        d.msg.contains("bits[32]") && d.msg.contains("bits[8]"),
+        "error must name both widths: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn enum_payload_enum_type_is_e0807() {
+    // A payload field whose type is another enum violates E0807.
+    let src = concat!(
+        "enum Inner { A, B }\n",
+        "enum Outer { Var(x: Inner) }\n",
+        "module M {\n",
+        "  out y: bit\n",
+        "  y = 0\n",
+        "}\n",
+    );
+    let d = first_err(src, "E0807");
+    assert!(d.msg.contains("x"), "error names the payload field: {}", d.msg);
+}
