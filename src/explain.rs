@@ -398,8 +398,9 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          parameterized module with `repeat` for structural replication, or\n\
          restructure the algorithm so every function produces its result in a\n\
          bounded number of steps without calling itself.\n\n\
-         help: the error names every function in the cycle — redesign so none of\n\
-         them appears in any other's call chain.",
+         help: the reported function closes the recursive cycle — starting from it,\n\
+         trace its call chain to find all members. Redesign so no function\n\
+         appears in any other's call chain.",
     ),
     // ----- E10xx: lexer -----
     (

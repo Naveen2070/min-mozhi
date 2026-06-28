@@ -577,6 +577,14 @@ impl<'a> Checker<'a> {
             let w: Option<u32> = match ty {
                 Ty::Bit => Some(1),
                 Ty::Bits(n) | Ty::Signed(n) => Some(n as u32),
+                // A bare-literal local (`let n = 5`) infers as CtInt; give it
+                // the minimum unsigned or signed bit-width so the emitter can
+                // declare `reg [W-1:0]` without hitting the unreachable! path.
+                Ty::CtInt(v) => Some(if v >= 0 {
+                    min_bits(v)
+                } else {
+                    min_signed_bits(v)
+                } as u32),
                 _ => None, // enum/memory/unknown — emitter will surface any gap
             };
             if let Some(w) = w {

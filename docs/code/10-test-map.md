@@ -11,11 +11,20 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**498 tests** as of 2026-06-28: 318 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**499 tests** as of 2026-06-28: 319 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 5 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
-Fixture counts (current): 72 error fixtures · 8 grammar fixtures · 42 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
+Fixture counts (current): 72 error fixtures · 8 grammar fixtures · 44 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-28 Five post-review bug fixes (branch `phase-2-comb-function`): (1) CtInt locals
+  no longer leave `inferred_width` at None (emitter panic fixed); (2) `render_fn_decl` uses
+  `mem::replace` with file-level env instead of `mem::take` (file const folding in fn bodies);
+  (3) sim elaborate + comb now collect functions from ALL project files (D3 cross-file fns);
+  (4) E0805 help text corrected (reports back-edge fn, not every fn in cycle); (5) dev log
+  E-code labels corrected. Two new four-flavor examples (`fn_const_local`, `fn_with_const`)
+  - two new goldens. **+1 lib unit** (`fn_with_const_local_compiles_clean` — checker/tests.rs).
+    Suite 498 → 499.
 
 - 2026-06-28 Combinational functions wrap-up (branch `phase-2-comb-function`, Task 12).
   Removed all stale `// ponytail: temporary arm` comments from 6 src/ files (the arms

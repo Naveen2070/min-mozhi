@@ -29,16 +29,18 @@ pub struct Output {
     pub signed: bool,
 }
 
-/// Evaluate the outputs of `module` (or the file's only module when `module`
-/// is `None`) given `inputs` (name → value) and optional `params` overrides.
-/// Missing inputs, sequential constructs, and out-of-scope expressions all
-/// return a descriptive error.
+/// Evaluate the outputs of `module` (or the entry file's only module when
+/// `module` is `None`) given `inputs` (name → value) and optional `params`
+/// overrides. `files[0]` is the entry file; remaining files supply functions
+/// (D3: functions are project-wide). Missing inputs, sequential constructs,
+/// and out-of-scope expressions all return a descriptive error.
 pub fn eval_outputs(
-    file: &ast::File,
+    files: &[ast::File],
     module: Option<&str>,
     inputs: &BTreeMap<String, u128>,
     params: &BTreeMap<String, i128>,
 ) -> Result<Vec<Output>, String> {
+    let file = files.first().ok_or("eval_outputs: no files")?;
     let m = value::pick_module(file, module)?;
 
     // 1. Reject anything sequential / structural — this is the comb slice.
@@ -72,10 +74,11 @@ pub fn eval_outputs(
         }
     }
 
-    // 2a. User-defined functions from the file (available to `FnCall` expressions).
-    let funcs: HashMap<String, FuncDecl> = file
-        .items
+    // 2a. User-defined functions from ALL files (D3: functions are project-wide),
+    //    available to `FnCall` expressions in this module's combinational logic.
+    let funcs: HashMap<String, FuncDecl> = files
         .iter()
+        .flat_map(|f| f.items.iter())
         .filter_map(|it| {
             if let ast::TopItem::Func(f) = it {
                 Some((f.name.name.clone(), f.clone()))
@@ -259,7 +262,13 @@ mod tests {
     }
 
     fn one(file: &ast::File, inputs: &[(&str, u128)]) -> Vec<Output> {
-        eval_outputs(file, None, &ins(inputs), &BTreeMap::new()).expect("evaluates")
+        eval_outputs(
+            std::slice::from_ref(file),
+            None,
+            &ins(inputs),
+            &BTreeMap::new(),
+        )
+        .expect("evaluates")
     }
 
     #[test]
@@ -373,7 +382,7 @@ mod tests {
         let f = parse(
             "module Seq {\n  clock clk\n  reset rst\n  out y: bits[8]\n  reg r: bits[8] = 0\n  on rise(clk) { r <- r +% 1 }\n  y = r\n}\n",
         );
-        let err = eval_outputs(&f, None, &ins(&[]), &BTreeMap::new()).unwrap_err();
+        let err = eval_outputs(&[f], None, &ins(&[]), &BTreeMap::new()).unwrap_err();
         assert!(
             err.contains("reg"),
             "expected a clear reg rejection, got: {err}"
@@ -383,7 +392,7 @@ mod tests {
     #[test]
     fn reports_missing_input() {
         let f = parse("module A {\n  in a: bits[8]\n  out y: bits[8]\n  y = a\n}\n");
-        let err = eval_outputs(&f, None, &ins(&[]), &BTreeMap::new()).unwrap_err();
+        let err = eval_outputs(&[f], None, &ins(&[]), &BTreeMap::new()).unwrap_err();
         assert!(err.contains("missing value for input `a`"), "got: {err}");
     }
 
@@ -477,7 +486,7 @@ module M {\n\
         // mac(3, 4, 5) = 3*4 + 5 = 17 at bits[16]
         let f = parse(MAC_SRC);
         let out = eval_outputs(
-            &f,
+            std::slice::from_ref(&f),
             None,
             &ins(&[("a", 3), ("b", 4), ("c", 5)]),
             &BTreeMap::new(),
@@ -493,7 +502,7 @@ module M {\n\
         // result = extend(64, 16) +% extend(0, 16) = 64
         let f = parse(MAC_SRC);
         let out = eval_outputs(
-            &f,
+            std::slice::from_ref(&f),
             None,
             &ins(&[("a", 200), ("b", 200), ("c", 0)]),
             &BTreeMap::new(),
