@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.14.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.15.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -529,7 +529,9 @@ resetDecl   = [ "async" ] "reset" IDENT NEWLINE ;
 wireDecl    = "wire" IDENT ":" type "=" expr NEWLINE ;
 regDecl     = "reg"  IDENT ":" type "=" constExpr NEWLINE ;
 memDecl     = "mem"  IDENT ":" type "[" constExpr "]" "=" constExpr NEWLINE ;
-enumDecl    = "enum" IDENT "{" IDENT { "," IDENT } [ "," ] "}" ;
+enumDecl    = "enum" IDENT "{" enumVariant { "," enumVariant } [ "," ] "}" ;
+enumVariant = IDENT [ "(" payloadField { "," payloadField } ")" ] ;
+payloadField = IDENT ":" type ;                (* name is documentation-only; bindings are positional *)
 instDecl    = "let" instName "=" IDENT "(" [ argList ] ")"
               [ "{" [ connList ] "}" ] NEWLINE ;
 instName    = IDENT [ "[" constExpr "]" ] ;        (* indexed inside repeat *)
@@ -559,7 +561,9 @@ expr        = ifExpr | matchExpr | binExpr ;
 ifExpr      = "if" expr "{" expr "}" "else" ( "{" expr "}" | ifExpr ) ;
 matchExpr   = "match" expr "{" { matchArm } "}" ;
 matchArm    = ( pattern { "," pattern } | "_" ) "=>" expr NEWLINE ;
-pattern     = literal | maskLiteral | IDENT "." IDENT ; (* value, don't-care, or Enum.Variant *)
+pattern     = literal | maskLiteral
+            | IDENT "." IDENT [ "(" IDENT { "," IDENT } ")" ] ;
+                                               (* Enum.Variant or Enum.Variant(b1, b2, …) — positional bindings *)
 maskLiteral = "0b" binMaskDigit { binMaskDigit } ;      (* `0b1??` — `?` is don't-care *)
 binMaskDigit = "0" | "1" | "?" | "_" ;
 
@@ -599,6 +603,53 @@ fnCall      = IDENT "(" [ expr { "," expr } ] ")" ;  (* user-defined fn call *)
 Keywords in this grammar are flavor-mapped per `03-keywords-trilingual.md`;
 all punctuation, operators, and built-in type/function names are universal.
 
+## 5a. Tagged-Union Enums — Physical Layout and Match Semantics
+
+An `enum` whose variants carry payload fields is a **tagged union**. The
+compiler packs it into a single bit-vector using the layout below (D3).
+
+### Wire layout
+
+```
+[ tag_w bits | max_payload_w bits ]
+  MSBs         LSBs
+```
+
+- **`tag_w`** = `clog2(variant_count)` — the fewest bits to distinguish all variants.
+- **`max_payload_w`** = width of the widest variant's payload (zero-padded for
+  narrower variants).
+- **Total wire width** = `tag_w + max_payload_w`.
+- Fields within one variant's payload are packed **MSB-first** in the payload
+  region: the first declared field occupies the top bits, the last the bottom.
+
+A tag-only enum (all `fields: []`) has `max_payload_w = 0`; the total wire
+width is just `tag_w` and the layout is identical to the pre-tagged encoding.
+
+### Match extraction semantics
+
+When a `match` arm carries payload bindings — `Packet.Read(a)` — each binding
+name is bound to the corresponding payload slice of the scrutinee at that arm:
+
+```
+Packet.Read(addr)  → addr = scrutinee[max_payload_w - 1 : max_payload_w - field_w(addr)]
+```
+
+Bindings are **positional** (design decision D2): the field _names_ in the
+`enum` declaration are documentation only. Binding names in the `match` arm are
+arbitrary identifiers scoped to that arm's value expression.
+
+### Checker rules for tagged enums
+
+| Code  | Triggered when                                                             |
+| ----- | -------------------------------------------------------------------------- |
+| E0806 | Number of bindings in a `match` pattern ≠ number of payload fields         |
+| E0807 | A payload field type is not a concrete bit-vector (`bit`, `bits`, `signed`) |
+
+Payload field types must be concrete bit-vectors so the compiler can compute
+`max_payload_w` statically. Nested enums as payload types are deferred (E0807
+rejects them for now). The scrutinee of a match over a tagged enum must be a
+simple identifier so the emitter can slice it without duplicating evaluation.
+
 ## 6. Static Safety Rules (enforced after parse)
 
 1. **Single driver:** every `out`, `wire` driven exactly once; every `reg`
@@ -632,6 +683,12 @@ all punctuation, operators, and built-in type/function names are universal.
 
 ## Changelog
 
+- **v0.2.15 (2026-06-28):** **Tagged-union enums** — `enumDecl` now uses
+  `enumVariant` (new) which carries an optional `payloadField` list; `pattern`
+  gains optional positional payload bindings `(b1, b2, …)`. Added section 5a
+  (physical layout, match extraction, E0806/E0807). Additive. Covered by the
+  `tagged_packet` four-flavor example and the `sirappu_pothi` pure-Tamil
+  showcase.
 - **v0.2.14 (2026-06-28):** **Combinational functions** `fn` added (new section 5
   productions `fnDecl`, `fnParamList`, `fnParam`, `localLet`, `fnCall`). `fn` declared at
   file level: `fn f(p: T, …) -> R { [let x = e …] bodyExpr }` — zero or more named

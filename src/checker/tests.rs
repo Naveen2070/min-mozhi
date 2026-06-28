@@ -963,7 +963,11 @@ fn tagged_enum_unknown_payload_type_is_e0103() {
     // A module-level enum with an unrecognized payload type triggers E0103.
     let src = "module M {\n  enum Packet { Read(addr: bogustype) }\n  out y: bit\n  y = 0\n}\n";
     let d = first_err(src, "E0103");
-    assert!(d.msg.contains("bogustype"), "error names the unknown type: {}", d.msg);
+    assert!(
+        d.msg.contains("bogustype"),
+        "error names the unknown type: {}",
+        d.msg
+    );
 }
 
 #[test]
@@ -971,7 +975,11 @@ fn tagged_enum_toplevel_unknown_payload_type_is_e0103() {
     // A top-level enum (TopItem::Enum) with an unrecognized payload type triggers E0103.
     let src = "enum Packet { Read(addr: bogustype) }\nmodule M {\n  out y: bit\n  y = 0\n}\n";
     let d = first_err(src, "E0103");
-    assert!(d.msg.contains("bogustype"), "error names the unknown type: {}", d.msg);
+    assert!(
+        d.msg.contains("bogustype"),
+        "error names the unknown type: {}",
+        d.msg
+    );
 }
 
 #[test]
@@ -1059,5 +1067,9 @@ fn enum_payload_enum_type_is_e0807() {
         "}\n",
     );
     let d = first_err(src, "E0807");
-    assert!(d.msg.contains("x"), "error names the payload field: {}", d.msg);
+    assert!(
+        d.msg.contains("x"),
+        "error names the payload field: {}",
+        d.msg
+    );
 }

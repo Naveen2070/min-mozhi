@@ -300,8 +300,7 @@ module FSM {
 }
 ";
 
-    let file =
-        mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
     let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
     let mut sim = Sim::new(design);
     sim.set("rst", 0).unwrap();
@@ -353,8 +352,7 @@ module Decoder {
 }
 ";
 
-    let file =
-        mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
     // Checker must run to set inferred_total_width on the tagged enum.
     mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
     let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
@@ -362,11 +360,23 @@ module Decoder {
 
     // Packet.Read(addr=10): packed = (0 << 4) | 10 = 10.
     sim.set("pkt", 10).unwrap();
-    assert_eq!(sim.peek("got_read").unwrap(), 1, "Read tag must fire got_read");
-    assert_eq!(sim.peek("addr_out").unwrap(), 10, "addr payload extracted = 10");
+    assert_eq!(
+        sim.peek("got_read").unwrap(),
+        1,
+        "Read tag must fire got_read"
+    );
+    assert_eq!(
+        sim.peek("addr_out").unwrap(),
+        10,
+        "addr payload extracted = 10"
+    );
 
     // Packet.Nop: packed = (1 << 4) | 0 = 16.
     sim.set("pkt", 16).unwrap();
-    assert_eq!(sim.peek("got_read").unwrap(), 0, "Nop tag must not fire got_read");
+    assert_eq!(
+        sim.peek("got_read").unwrap(),
+        0,
+        "Nop tag must not fire got_read"
+    );
     assert_eq!(sim.peek("addr_out").unwrap(), 0, "Nop has no addr payload");
 }

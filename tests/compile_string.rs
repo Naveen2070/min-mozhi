@@ -127,7 +127,7 @@ module Decoder {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("golden")
-        .join("tagged_packet.v");
+        .join("tagged_packet_decoder.v");
 
     if std::env::var("MIMZ_UPDATE_GOLDENS").is_ok() {
         std::fs::write(&golden_path, &got).unwrap();

@@ -131,6 +131,8 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0803 | wrong number of arguments in a `fn` call (expected N, got M)                              | pass exactly the number of arguments the function declares      |
 | E0804 | function body width doesn't match the declared return type                                | `extend`/`trunc`/slice the body, or fix the `->` type           |
 | E0805 | recursive function call (direct or mutual cycle in the call graph)                        | replace recursion with fixed-size repetition or a `repeat` loop |
+| E0806 | wrong number of payload bindings in a match pattern (got M, expected N fields)             | list the exact bindings or use fewer/more names                  |
+| E0807 | payload field has a non-concrete type (enum or named type used as payload)                 | use `bit`, `bits[N]`, or `signed[N]`; nested enums deferred      |
 
 Numbering scheme:
 

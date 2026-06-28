@@ -1,0 +1,26 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): tagged-union enum.
+// Variants carry typed payload fields; `தேர்ந்தெடு` (match) binds them by position.
+
+வகை Packet { Read(addr: bits[32]), Write(addr: bits[32], data: bits[32]) }
+
+தொகுதி PacketDecoder {
+  உள்ளீடு bus:     Packet
+  வெளியீடு is_read: bit
+  வெளியீடு address: bits[32]
+  வெளியீடு wdata:   bits[32]
+
+  is_read = தேர்ந்தெடு bus {
+    Packet.Read(a)     => 1
+    Packet.Write(a, d) => 0
+  }
+
+  address = தேர்ந்தெடு bus {
+    Packet.Read(a)     => a
+    Packet.Write(a, d) => a
+  }
+
+  wdata = தேர்ந்தெடு bus {
+    Packet.Read(a)     => 0
+    Packet.Write(a, d) => d
+  }
+}

@@ -253,6 +253,11 @@ fn enum_decl(e: &mut EnumDecl, visit: &mut dyn FnMut(&mut String)) {
     visit(&mut e.name.name);
     for v in &mut e.variants {
         visit(&mut v.name.name);
+        // PayloadField.name is documentation-only (not emitted), but its
+        // type-width expr may reference a Tamil const/param name.
+        for f in &mut v.fields {
+            type_widths(&mut f.ty, visit);
+        }
     }
 }
 
@@ -409,9 +414,20 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
             expr(scrutinee, visit);
             for arm in arms {
                 for p in &mut arm.patterns {
-                    if let Pattern::Variant { enum_name, variant, bindings: _ } = p {
+                    if let Pattern::Variant {
+                        enum_name,
+                        variant,
+                        bindings,
+                    } = p
+                    {
                         visit(&mut enum_name.name);
                         visit(&mut variant.name);
+                        // Binding names must be transliterated so the emitter's
+                        // substitution map (keyed by binding name) matches the
+                        // identifier it will see in the arm's value expression.
+                        for b in bindings {
+                            visit(&mut b.name);
+                        }
                     }
                 }
                 expr(&mut arm.value, visit);

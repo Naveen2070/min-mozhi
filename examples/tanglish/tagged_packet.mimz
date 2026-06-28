@@ -1,0 +1,26 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change): tagged-union enum.
+// Variants carry typed payload fields; `thernthedu` (match) binds them by position.
+
+vagai Packet { Read(addr: bits[32]), Write(addr: bits[32], data: bits[32]) }
+
+thoguthi PacketDecoder {
+  ulleedu bus:     Packet
+  veliyeedu is_read: bit
+  veliyeedu address: bits[32]
+  veliyeedu wdata:   bits[32]
+
+  is_read = thernthedu bus {
+    Packet.Read(a)     => 1
+    Packet.Write(a, d) => 0
+  }
+
+  address = thernthedu bus {
+    Packet.Read(a)     => a
+    Packet.Write(a, d) => a
+  }
+
+  wdata = thernthedu bus {
+    Packet.Read(a)     => 0
+    Packet.Write(a, d) => d
+  }
+}

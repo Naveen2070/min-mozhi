@@ -153,10 +153,23 @@ impl Pretty {
     }
 
     fn enum_decl(&mut self, e: &EnumDecl) {
+        let ind = self.indent;
         let variants = e
             .variants
             .iter()
-            .map(|v| v.name.name.as_str())
+            .map(|v| {
+                if v.fields.is_empty() {
+                    v.name.name.clone()
+                } else {
+                    let fields = v
+                        .fields
+                        .iter()
+                        .map(|f| format!("{}: {}", f.name.name, self.ty(&f.ty, ind)))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{}({fields})", v.name.name)
+                }
+            })
             .collect::<Vec<_>>()
             .join(", ");
         let s = format!("{} {} {{ {variants} }}", self.kw(Kw::Enum), e.name.name);
@@ -624,7 +637,22 @@ fn pattern(p: &Pattern) -> String {
         Pattern::Int { raw, .. } => raw.clone(),
         Pattern::IntMask { raw, .. } => raw.clone(),
         Pattern::Bool(b) => if *b { "true" } else { "false" }.to_string(),
-        Pattern::Variant { enum_name, variant, bindings: _ } => format!("{}.{}", enum_name.name, variant.name),
+        Pattern::Variant {
+            enum_name,
+            variant,
+            bindings,
+        } => {
+            if bindings.is_empty() {
+                format!("{}.{}", enum_name.name, variant.name)
+            } else {
+                let bs = bindings
+                    .iter()
+                    .map(|b| b.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}.{}({bs})", enum_name.name, variant.name)
+            }
+        }
         Pattern::Wildcard => "_".to_string(),
     }
 }
