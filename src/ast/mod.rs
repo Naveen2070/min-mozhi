@@ -172,6 +172,11 @@ pub struct EnumDecl {
     pub variants: Vec<EnumVariant>,
     /// Span of the whole declaration (from `enum` keyword to closing `}`).
     pub span: Span,
+    /// Total wire width computed by the checker's width pass: `tag_w + max_payload_w`.
+    /// `None` until the checker runs; always `Some` after. Interior mutability
+    /// mirrors [`LocalLet::inferred_width`] so the checker can annotate through
+    /// a shared `&EnumDecl` reference.
+    pub inferred_total_width: Cell<Option<u32>>,
 }
 
 /// One variant inside an `enum` declaration.
