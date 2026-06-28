@@ -402,6 +402,19 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          trace its call chain to find all members. Redesign so no function\n\
          appears in any other's call chain.",
     ),
+    (
+        "E0806",
+        "E0806 — wrong number of bindings in a tagged enum pattern\n\n\
+         A match arm for a tagged enum variant provides a different number of\n\
+         binding names than the variant's declared payload fields. Because\n\
+         bindings are positional (design decision D2), every payload field must\n\
+         be matched exactly once — no more, no fewer.\n\n\
+         Fix: provide exactly as many binding names as the variant has payload\n\
+         fields. If a field's value is not needed in the arm body, use `_` as\n\
+         the binding name to make the intent explicit.\n\n\
+         Tag-only variants (no payload) never take a binding list — omit the\n\
+         `(...)` entirely.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",
