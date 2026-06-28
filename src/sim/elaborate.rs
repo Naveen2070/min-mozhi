@@ -251,16 +251,14 @@ fn elaborate_module(
         .map(|f| (f.name.name.clone(), (*f).clone()))
         .collect();
 
-    // Module-level enums: name → ordered variant names. A variant encodes as its
-    // index, width `clog2(count)` — exactly the Verilog emitter's encoding.
-    let enums: HashMap<String, Vec<String>> = m
+    // Module-level enums: name → full decl. The total wire width
+    // (`inferred_total_width`) is set by the checker; falls back to `clog2(count)`
+    // for tag-only enums when the checker has not run (e.g. bare sim tests).
+    let enums: HashMap<String, &ast::EnumDecl> = m
         .items
         .iter()
         .filter_map(|it| match it {
-            ModuleItem::Enum(e) => Some((
-                e.name.name.clone(),
-                e.variants.iter().map(|v| v.name.name.clone()).collect(),
-            )),
+            ModuleItem::Enum(e) => Some((e.name.name.clone(), e)),
             _ => None,
         })
         .collect();
@@ -270,16 +268,20 @@ fn elaborate_module(
     let mut insts: HashSet<String> = HashSet::new();
     collect_inst_names(&m.items, &mut insts);
 
-    // Folded width of a type — an enum type resolves to `clog2(variants)`.
+    // Folded width of a type — an enum type resolves to its total wire width.
+    // Uses `inferred_total_width` when the checker has run; falls back to
+    // `clog2(variant count)` for tag-only enums without the checker.
     let width_of = |ty: &ast::Type, ints: &BTreeMap<String, i128>| -> Result<Width, String> {
         if let ast::Type::Named(n) = ty {
-            let vs = enums
+            let e = enums
                 .get(&n.name)
                 .ok_or_else(|| format!("unknown enum type `{}`", n.name))?;
-            Ok(Width {
-                bits: clog2(vs.len()),
-                signed: false,
-            })
+            // ponytail: fallback only correct for tag-only enums (max_payload_w=0)
+            let bits = e
+                .inferred_total_width
+                .get()
+                .unwrap_or_else(|| clog2(e.variants.len()));
+            Ok(Width { bits, signed: false })
         } else {
             let (bits, signed) = type_width(ty, ints)?;
             Ok(Width { bits, signed })
@@ -559,7 +561,7 @@ fn flatten_instance(
     func_reg: &FuncRegistry<'_>,
     parent_consts: &BTreeMap<String, i128>,
     parent_insts: &HashSet<String>,
-    parent_enums: &HashMap<String, Vec<String>>,
+    parent_enums: &HashMap<String, &ast::EnumDecl>,
     parent_subst: &HashMap<String, Expr>,
     inst: &ast::Inst,
     iname: &str,
@@ -604,8 +606,8 @@ fn flatten_instance(
     // The child body is already flat (no `Field`/enum nodes survive its own
     // elaboration), so a subst-only rewriter suffices: child const → literal,
     // child signal → prefixed name, child clock/reset → connected parent signal.
-    let no_insts = HashSet::new();
-    let no_enums = HashMap::new();
+    let no_insts: HashSet<String> = HashSet::new();
+    let no_enums: HashMap<String, &ast::EnumDecl> = HashMap::new();
     let mut subst: HashMap<String, Expr> = HashMap::new();
     for (n, &v) in &child.consts {
         subst.insert(n.clone(), int_expr(v, inst.span));
@@ -835,17 +837,21 @@ fn clog2(n: usize) -> u32 {
 
 /// Rewrites expressions/statements during elaboration: enum-variant reads
 /// (`State.Red`) → their index literal, instance-port reads (`add.sum`,
-/// `fa[i].sum`) → the flat wire name, `match` variant patterns → their index,
-/// plus a name substitution map (the `repeat` loop var and inlined child
-/// signals). `consts` folds an array index to its concrete value.
-struct Rw<'a> {
-    insts: &'a HashSet<String>,
-    enums: &'a HashMap<String, Vec<String>>,
-    consts: &'a BTreeMap<String, i128>,
-    subst: &'a HashMap<String, Expr>,
+/// `fa[i].sum`) → the flat wire name, `match` variant patterns → their index
+/// (tag-only) or IntMask (tagged), binding names in arm bodies → payload slice
+/// expressions, plus a name substitution map (the `repeat` loop var and
+/// inlined child signals). `consts` folds an array index to its concrete value.
+///
+/// Two lifetimes: `'d` for the module/file decls (long), `'s` for the
+/// substitution map (may be a local extended map for match arm bindings).
+struct Rw<'d, 's> {
+    insts: &'d HashSet<String>,
+    enums: &'d HashMap<String, &'d ast::EnumDecl>,
+    consts: &'d BTreeMap<String, i128>,
+    subst: &'s HashMap<String, Expr>,
 }
 
-impl Rw<'_> {
+impl<'d, 's> Rw<'d, 's> {
     fn expr(&self, e: &Expr) -> Result<Expr, String> {
         let kind = match &e.kind {
             ExprKind::Int { .. } | ExprKind::Bool(_) => e.kind.clone(),
@@ -870,22 +876,48 @@ impl Rw<'_> {
                 then: Box::new(self.expr(then)?),
                 els: Box::new(self.expr(els)?),
             },
-            ExprKind::Match { scrutinee, arms } => ExprKind::Match {
-                scrutinee: Box::new(self.expr(scrutinee)?),
-                arms: arms
+            ExprKind::Match { scrutinee, arms } => {
+                let rw_scrutinee = self.expr(scrutinee)?;
+                let rw_arms = arms
                     .iter()
                     .map(|a| {
+                        // For tagged variant patterns with bindings, extract
+                        // each binding as a payload slice of the scrutinee so
+                        // the runtime evaluator never sees Pattern::Variant.
+                        let binding_subst =
+                            self.variant_bindings(&a.patterns, &rw_scrutinee)?;
+                        let rw_value = if binding_subst.is_empty() {
+                            self.expr(&a.value)?
+                        } else {
+                            let mut ext_subst: HashMap<String, Expr> = self
+                                .subst
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
+                            ext_subst.extend(binding_subst);
+                            let ext_rw = Rw {
+                                insts: self.insts,
+                                enums: self.enums,
+                                consts: self.consts,
+                                subst: &ext_subst,
+                            };
+                            ext_rw.expr(&a.value)?
+                        };
                         Ok::<_, String>(ast::Arm {
                             patterns: a
                                 .patterns
                                 .iter()
                                 .map(|p| self.pattern(p))
                                 .collect::<Result<_, _>>()?,
-                            value: self.expr(&a.value)?,
+                            value: rw_value,
                         })
                     })
-                    .collect::<Result<_, _>>()?,
-            },
+                    .collect::<Result<_, _>>()?;
+                ExprKind::Match {
+                    scrutinee: Box::new(rw_scrutinee),
+                    arms: rw_arms,
+                }
+            }
             ExprKind::Concat(parts) => ExprKind::Concat(
                 parts
                     .iter()
@@ -931,10 +963,11 @@ impl Rw<'_> {
     fn field(&self, e: &Expr, base: &Expr, field: &ast::Ident) -> Result<Expr, String> {
         if let ExprKind::Ident(b) = &base.kind {
             // `Enum.Variant` → its index literal.
-            if let Some(vs) = self.enums.get(b) {
-                let idx = vs
+            if let Some(edecl) = self.enums.get(b) {
+                let idx = edecl
+                    .variants
                     .iter()
-                    .position(|v| v == &field.name)
+                    .position(|v| v.name.name == field.name)
                     .ok_or_else(|| format!("enum `{b}` has no variant `{}`", field.name))?;
                 return Ok(int_expr(idx as i128, e.span));
             }
@@ -967,23 +1000,118 @@ impl Rw<'_> {
     fn pattern(&self, p: &Pattern) -> Result<Pattern, String> {
         match p {
             Pattern::Variant { enum_name, variant, bindings: _ } => {
-                let vs = self
+                let edecl = self
                     .enums
                     .get(&enum_name.name)
                     .ok_or_else(|| format!("unknown enum `{}`", enum_name.name))?;
-                let idx = vs.iter().position(|v| v == &variant.name).ok_or_else(|| {
-                    format!(
-                        "enum `{}` has no variant `{}`",
-                        enum_name.name, variant.name
-                    )
-                })?;
-                Ok(Pattern::Int {
-                    value: idx as u128,
-                    raw: idx.to_string(),
-                })
+                let idx = edecl
+                    .variants
+                    .iter()
+                    .position(|v| v.name.name == variant.name)
+                    .ok_or_else(|| {
+                        format!(
+                            "enum `{}` has no variant `{}`",
+                            enum_name.name, variant.name
+                        )
+                    })?;
+                // ponytail: fallback only correct for tag-only enums
+                let total_w = edecl
+                    .inferred_total_width
+                    .get()
+                    .unwrap_or_else(|| clog2(edecl.variants.len()))
+                    as u128;
+                let tag_w = clog2(edecl.variants.len()) as u128;
+                let max_payload_w = total_w - tag_w;
+                if max_payload_w == 0 {
+                    // Tag-only: simple integer comparison (existing behaviour).
+                    Ok(Pattern::Int {
+                        value: idx as u128,
+                        raw: idx.to_string(),
+                    })
+                } else {
+                    // Tagged: check only the tag bits (MSBs) via IntMask so
+                    // payload bits are ignored by the pattern comparison.
+                    let tag_val = (idx as u128) << max_payload_w;
+                    let tag_mask = ((1u128 << tag_w) - 1) << max_payload_w;
+                    Ok(Pattern::IntMask {
+                        value: tag_val,
+                        mask: tag_mask,
+                        width: total_w as u32,
+                        raw: idx.to_string(),
+                    })
+                }
             }
             other => Ok(other.clone()),
         }
+    }
+
+    /// Compute payload binding → slice-expression substitutions for the first
+    /// variant pattern with bindings in `patterns`. Returns empty if no such
+    /// pattern exists or the enum is tag-only.
+    fn variant_bindings(
+        &self,
+        patterns: &[Pattern],
+        scrutinee: &Expr,
+    ) -> Result<HashMap<String, Expr>, String> {
+        for p in patterns {
+            let Pattern::Variant { enum_name, variant, bindings } = p else {
+                continue;
+            };
+            if bindings.is_empty() {
+                continue;
+            }
+            let Some(edecl) = self.enums.get(&enum_name.name) else {
+                continue;
+            };
+            let total_w = edecl
+                .inferred_total_width
+                .get()
+                .unwrap_or_else(|| clog2(edecl.variants.len()))
+                as u128;
+            let tag_w = clog2(edecl.variants.len()) as u128;
+            let max_payload_w = total_w - tag_w;
+            if max_payload_w == 0 {
+                continue; // tag-only, no payload to extract
+            }
+            let Some(vdecl) =
+                edecl.variants.iter().find(|v| v.name.name == variant.name)
+            else {
+                continue;
+            };
+            // Fields are packed MSB-first inside [max_payload_w-1 : 0].
+            let mut cursor = max_payload_w;
+            let mut out: HashMap<String, Expr> = HashMap::new();
+            for (field, binding) in vdecl.fields.iter().zip(bindings.iter()) {
+                let field_w: u128 = match &field.ty {
+                    ast::Type::Bit => 1,
+                    ast::Type::Bits(e) | ast::Type::Signed(e) => {
+                        const_eval(e, self.consts).unwrap_or(0) as u128
+                    }
+                    ast::Type::Named(_) => 0, // E0807: already rejected by checker
+                };
+                if field_w == 0 {
+                    continue;
+                }
+                let hi = cursor - 1;
+                let lo = cursor - field_w;
+                cursor -= field_w;
+                let span = binding.span;
+                // binding → scrutinee[hi:lo]
+                out.insert(
+                    binding.name.clone(),
+                    Expr {
+                        kind: ExprKind::Slice {
+                            base: Box::new(scrutinee.clone()),
+                            hi: Box::new(int_expr(hi as i128, span)),
+                            lo: Box::new(int_expr(lo as i128, span)),
+                        },
+                        span,
+                    },
+                );
+            }
+            return Ok(out);
+        }
+        Ok(HashMap::new())
     }
 
     /// Rewrite a sequential statement, renaming each assignment target via
