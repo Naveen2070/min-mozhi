@@ -1003,9 +1003,7 @@ fn valid_tagged_pattern_compiles_clean() {
 fn tagged_enum_total_width_is_tag_plus_max_payload() {
     // Packet has 2 variants → tag = 1 bit (clog2(2)).
     // Read payload = bits[32] = 32 bits; Write payload = bits[32] + bits[32] = 64 bits.
-    // max_payload = 64, total = tag(1) + max_payload(64) = 65 bits.
-    // Both payload bindings resolve to their declared widths — clean compilation
-    // proves the helper computed widths without E0807.
+    // max_payload = 64, total = tag(1) + max_payload(64) = 65 bits → [64:0].
     let src = concat!(
         "enum Packet { Read(addr: bits[32]), Write(addr: bits[32], data: bits[32]) }\n",
         "module M {\n",
@@ -1017,7 +1015,12 @@ fn tagged_enum_total_width_is_tag_plus_max_payload() {
         "  }\n",
         "}\n",
     );
-    check_one(src).expect("tagged enum with max_payload=64, tag=1 (total 65 bits) compiles clean");
+    let verilog = crate::compile_string(src)
+        .expect("tagged enum with max_payload=64, tag=1 (total 65 bits) compiles clean");
+    assert!(
+        verilog.contains("[64:0]"),
+        "expected 65-bit enum port ([64:0]), got:\n{verilog}"
+    );
 }
 
 #[test]

@@ -209,6 +209,11 @@ impl Parser {
             self.error(name.span, "E1103", "an enum needs at least one variant");
             return None;
         }
-        Some(EnumDecl { name, variants, span: start.join(end) })
+        Some(EnumDecl {
+            name,
+            variants,
+            span: start.join(end),
+            inferred_total_width: std::cell::Cell::new(None),
+        })
     }
 }
