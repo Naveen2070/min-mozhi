@@ -75,7 +75,16 @@ impl<'a> Checker<'a> {
                 match item {
                     TopItem::Module(m) => self.check_module(file, m),
                     TopItem::Test(t) => self.check_test(file, t),
-                    TopItem::Const(_) | TopItem::Enum(_) => {} // earlier passes
+                    TopItem::Const(_) => {}  // earlier passes
+                    TopItem::Enum(e) => {
+                        let env = self.file_consts[file].clone();
+                        let sc = Scope { names: HashMap::new() };
+                        for v in &e.variants {
+                            for field in &v.fields {
+                                self.ty(file, &sc, &env, &field.ty);
+                            }
+                        }
+                    }
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
                     TopItem::Func(f) => self.check_func_names(file, f),
                 }
