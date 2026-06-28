@@ -16,8 +16,8 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    Conn, Dir, EnumDecl, Expr, ExprKind, Inst, LValue, Module, ModuleItem, NamedArg, Pattern,
-    SeqStmt, TestDecl, TopItem, Type,
+    Conn, Dir, EnumDecl, Expr, ExprKind, FuncDecl, Inst, LValue, Module, ModuleItem, NamedArg,
+    Pattern, SeqStmt, TestDecl, TopItem, Type,
 };
 
 use super::Checker;
@@ -77,7 +77,7 @@ impl<'a> Checker<'a> {
                     TopItem::Test(t) => self.check_test(file, t),
                     TopItem::Const(_) | TopItem::Enum(_) => {} // earlier passes
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
-                    TopItem::Func(_) => {} // checked by symbols/widths/funcs passes
+                    TopItem::Func(f) => self.check_func_names(file, f),
                 }
             }
         }
@@ -771,6 +771,24 @@ impl<'a> Checker<'a> {
             ),
             help,
         );
+    }
+
+    /// Name-check a function body: params + let-locals form the scope;
+    /// file consts are visible via env. Emits E0101 for any unbound name
+    /// so the checker returns Err before the emitter is reached.
+    fn check_func_names(&mut self, file: usize, func: &'a FuncDecl) {
+        let env = self.file_consts[file].clone();
+        let mut sc = Scope {
+            names: HashMap::new(),
+        };
+        for param in &func.params {
+            sc.names.insert(param.name.name.clone(), Bind::Param);
+        }
+        for local in &func.locals {
+            self.expr(file, &sc, &env, &local.value);
+            sc.names.insert(local.name.name.clone(), Bind::Const);
+        }
+        self.expr(file, &sc, &env, &func.body);
     }
 
     fn unknown(&mut self, file: usize, name: &str, span: crate::span::Span) {
