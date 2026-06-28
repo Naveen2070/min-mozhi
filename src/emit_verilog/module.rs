@@ -78,13 +78,28 @@ impl Emitter<'_> {
             })
             .collect();
         for e in &enums {
-            let w = clog2(e.variants.len());
+            let total_w = e
+                .inferred_total_width
+                .get()
+                .expect("inferred_total_width not set — checker must run before emitter")
+                as u128;
+            let tag_w = clog2(e.variants.len()) as u128;
+            let max_payload_w = total_w - tag_w;
             for (i, v) in e.variants.iter().enumerate() {
+                let i = i as u128;
+                let val_str = if max_payload_w == 0 {
+                    // Tag-only: unchanged (plain decimal index, no width prefix).
+                    format!("{i}")
+                } else {
+                    // Tagged: shift tag index into MSBs, payload bits are zero.
+                    let val = i << max_payload_w;
+                    format!("{total_w}'h{val:x}")
+                };
                 self.out.push_str(&format!(
                     "    localparam [{}:0] {} = {};\n",
-                    w - 1,
+                    total_w - 1,
                     enum_const(&e.name.name, &v.name.name),
-                    i
+                    val_str
                 ));
             }
         }
@@ -545,13 +560,10 @@ impl Emitter<'_> {
             }
             Type::Named(id) => {
                 if let Some(e) = self.project.enums.get(&id.name) {
-                    // ponytail: inferred_total_width set by checker; falls back to
-                    // tag-only width if checker hasn't run (shouldn't happen in practice).
                     let w = e
                         .inferred_total_width
                         .get()
-                        .map(|n| n as u32)
-                        .unwrap_or_else(|| clog2(e.variants.len()));
+                        .expect("inferred_total_width not set — checker must run before emitter");
                     format!("[{}:0] ", w - 1)
                 } else {
                     self.err(
