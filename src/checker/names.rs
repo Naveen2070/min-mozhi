@@ -648,6 +648,10 @@ impl<'a> Checker<'a> {
             ExprKind::Match { scrutinee, arms } => {
                 self.expr(file, sc, env, scrutinee);
                 for arm in arms {
+                    // known-limitation: OR-arms accumulate bindings from all sub-patterns
+                    // (`A(x) | B(y) => expr` puts both x and y in scope). At runtime only
+                    // one branch matches, so the other binding is undefined. Enforcing
+                    // OR-arm binding intersection (Rust semantics) is deferred.
                     let mut arm_sc = Scope { names: sc.names.clone() };
                     for p in &arm.patterns {
                         if let Pattern::Variant { enum_name, variant, bindings } = p {
