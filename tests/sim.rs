@@ -267,3 +267,106 @@ fn the_counter_vcd_matches_the_golden_byte_for_byte() {
         "counter VCD differs from the golden — if intended, MIMZ_UPDATE_GOLDENS=1 and review the diff"
     );
 }
+
+/// Tag-only enum match works end-to-end in the kernel: a 3-state FSM cycles
+/// Idle → Run → Done → Idle, and the combinational `tag` output encodes
+/// the current state as 0/1/2.
+#[test]
+fn sim_enum_tag_only_match_works() {
+    use std::collections::BTreeMap;
+
+    use mimz::sim::elaborate::elaborate;
+    use mimz::sim::kernel::Sim;
+
+    let src = "
+module FSM {
+  clock clk
+  reset rst
+  out tag: bits[2]
+  enum S { Idle, Run, Done }
+  reg st: S = S.Idle
+  on rise(clk) {
+    st <- match st {
+      S.Idle => S.Run
+      S.Run  => S.Done
+      S.Done => S.Idle
+    }
+  }
+  tag = match st {
+    S.Idle => 0
+    S.Run  => 1
+    S.Done => 2
+  }
+}
+";
+
+    let file =
+        mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
+    let mut sim = Sim::new(design);
+    sim.set("rst", 0).unwrap();
+
+    // Initial: Idle → tag = 0.
+    assert_eq!(sim.peek("tag").unwrap(), 0, "Idle → tag=0");
+
+    // After tick 1: Idle → Run, tag = 1.
+    sim.tick("clk").unwrap();
+    assert_eq!(sim.peek("tag").unwrap(), 1, "Run → tag=1");
+
+    // After tick 2: Run → Done, tag = 2.
+    sim.tick("clk").unwrap();
+    assert_eq!(sim.peek("tag").unwrap(), 2, "Done → tag=2");
+
+    // After tick 3: Done → Idle, tag = 0.
+    sim.tick("clk").unwrap();
+    assert_eq!(sim.peek("tag").unwrap(), 0, "Idle again → tag=0");
+}
+
+/// Tagged enum match works end-to-end: a `Packet { Read(addr: bits[4]), Nop }`
+/// enum port is decoded; the correct arm fires and the payload `addr` field
+/// is extracted from the packed value.
+///
+/// Layout (D3): total_w = tag_w + max_payload_w = 1 + 4 = 5 bits.
+///   Packet.Read(addr) packed = (0 << 4) | addr  [tag=0]
+///   Packet.Nop        packed = (1 << 4)           [tag=1, payload=0]
+#[test]
+fn sim_tagged_enum_payload_extracted() {
+    use std::collections::BTreeMap;
+
+    use mimz::sim::elaborate::elaborate;
+    use mimz::sim::kernel::Sim;
+
+    let src = "
+module Decoder {
+  enum Packet { Read(addr: bits[4]), Nop }
+  in pkt: Packet
+  out got_read: bit
+  out addr_out: bits[4]
+  got_read = match pkt {
+    Packet.Read(a) => 1
+    Packet.Nop     => 0
+  }
+  addr_out = match pkt {
+    Packet.Read(a) => a
+    Packet.Nop     => 0
+  }
+}
+";
+
+    let file =
+        mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    // Checker must run to set inferred_total_width on the tagged enum.
+    mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
+    let mut sim = Sim::new(design);
+
+    // Packet.Read(addr=10): packed = (0 << 4) | 10 = 10.
+    sim.set("pkt", 10).unwrap();
+    assert_eq!(sim.peek("got_read").unwrap(), 1, "Read tag must fire got_read");
+    assert_eq!(sim.peek("addr_out").unwrap(), 10, "addr payload extracted = 10");
+
+    // Packet.Nop: packed = (1 << 4) | 0 = 16.
+    sim.set("pkt", 16).unwrap();
+    assert_eq!(sim.peek("got_read").unwrap(), 0, "Nop tag must not fire got_read");
+    assert_eq!(sim.peek("addr_out").unwrap(), 0, "Nop has no addr payload");
+}
