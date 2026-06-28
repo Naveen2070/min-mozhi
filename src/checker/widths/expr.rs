@@ -334,7 +334,7 @@ impl<'a> Checker<'a> {
                     en.name.name,
                     en.variants
                         .first()
-                        .map(|v| v.name.as_str())
+                        .map(|v| v.name.name.as_str())
                         .unwrap_or("...")
                 ),
             ),
@@ -522,7 +522,7 @@ impl<'a> Checker<'a> {
                         "pick a variant: `{name}.{}`",
                         en.variants
                             .first()
-                            .map(|v| v.name.as_str())
+                            .map(|v| v.name.name.as_str())
                             .unwrap_or("...")
                     ),
                 );
@@ -552,7 +552,7 @@ impl<'a> Checker<'a> {
         match cx.sc.names.get(name) {
             Some(Bind::Inst(inst)) => self.inst_output_ty(cx, inst, field),
             _ => match self.lookup_enum(&cx.sc, name) {
-                Some(en) if en.variants.iter().any(|v| v.name == field.name) => Ty::Enum(en),
+                Some(en) if en.variants.iter().any(|v| v.name.name == field.name) => Ty::Enum(en),
                 _ => Ty::Unknown, // E0103 already reported
             },
         }

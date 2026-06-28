@@ -159,10 +159,12 @@ impl Parser {
         }
     }
 
-    /// `enumDecl = "enum" ident "{" ident { "," ident } [","] "}"`
+    /// `enumDecl = "enum" ident "{" enumVariant { "," enumVariant } [","] "}"`
+    /// `enumVariant = ident` (tag-only; payload parsing is added in T2)
     pub(super) fn enum_decl(&mut self) -> Option<EnumDecl> {
         self.bump(); // enum
         let name = self.ident("an enum name")?;
+        let name_span = name.span;
         self.expect(TokKind::LBrace, "`{` to start the variant list")?;
         let mut variants = Vec::new();
         loop {
@@ -170,7 +172,9 @@ impl Parser {
             if self.eat(&TokKind::RBrace) {
                 break;
             }
-            variants.push(self.ident("a variant name")?);
+            let vname = self.ident("a variant name")?;
+            let vspan = vname.span;
+            variants.push(EnumVariant { name: vname, fields: vec![], span: vspan });
             self.skip_newlines();
             if !self.eat(&TokKind::Comma) {
                 self.skip_newlines();
@@ -182,6 +186,6 @@ impl Parser {
             self.error(name.span, "E1103", "an enum needs at least one variant");
             return None;
         }
-        Some(EnumDecl { name, variants })
+        Some(EnumDecl { name, variants, span: name_span })
     }
 }

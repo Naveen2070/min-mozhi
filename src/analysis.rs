@@ -138,11 +138,11 @@ fn push_enum(out: &mut Vec<Symbol>, e: &EnumDecl, file_idx: usize, module_idx: O
     });
     for v in &e.variants {
         out.push(Symbol {
-            name: v.name.clone(),
+            name: v.name.name.clone(),
             kind: SymKind::EnumVariant,
             file_idx,
             span: v.span,
-            render: format!("{}.{} — enum variant", e.name.name, v.name),
+            render: format!("{}.{} — enum variant", e.name.name, v.name.name),
             module_idx,
         });
     }
