@@ -223,8 +223,17 @@ impl<'a> Checker<'a> {
             ExprKind::Match { scrutinee, arms } => {
                 let st = self.infer_ty(cx, scrutinee);
                 self.check_patterns(cx, scrutinee.span, st, arms);
+                let en_decl = if let Ty::Enum(en) = st { Some(en) } else { None };
                 for arm in arms {
+                    let injected = if let Some(en) = en_decl {
+                        self.inject_arm_bindings(cx, en, &arm.patterns)
+                    } else {
+                        Vec::new()
+                    };
                     self.check_expr(cx, &arm.value, expected);
+                    for name in &injected {
+                        cx.sigs.remove(name.as_str());
+                    }
                 }
             }
             _ => {
@@ -403,10 +412,19 @@ impl<'a> Checker<'a> {
             ExprKind::Match { scrutinee, arms } => {
                 let st = self.infer_ty(cx, scrutinee);
                 self.check_patterns(cx, scrutinee.span, st, arms);
-                let arm_tys: Vec<(Span, Ty<'a>)> = arms
-                    .iter()
-                    .map(|a| (a.value.span, self.infer_ty(cx, &a.value)))
-                    .collect();
+                let en_decl = if let Ty::Enum(en) = st { Some(en) } else { None };
+                let mut arm_tys = Vec::with_capacity(arms.len());
+                for arm in arms {
+                    let injected = if let Some(en) = en_decl {
+                        self.inject_arm_bindings(cx, en, &arm.patterns)
+                    } else {
+                        Vec::new()
+                    };
+                    arm_tys.push((arm.value.span, self.infer_ty(cx, &arm.value)));
+                    for name in &injected {
+                        cx.sigs.remove(name.as_str());
+                    }
+                }
                 self.unify_arms(cx, e.span, &arm_tys)
             }
             ExprKind::Concat(parts) => self.concat_ty(cx, parts),

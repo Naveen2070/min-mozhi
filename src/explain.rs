@@ -415,6 +415,19 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Tag-only variants (no payload) never take a binding list — omit the\n\
          `(...)` entirely.",
     ),
+    (
+        "E0807",
+        "E0807 — payload field type is not a concrete bit-vector\n\n\
+         A tagged enum variant declares a payload field whose type is another\n\
+         enum or a memory. Payload fields must be concrete bit-vector types:\n\
+         `bit`, `bits[N]`, or `signed[N]`. Nested enums and memories have no\n\
+         fixed bit-vector encoding that the compiler can place in the union's\n\
+         payload slot.\n\n\
+         Fix: convert the field to its bit-vector encoding manually. For an\n\
+         enum `S`, declare the field as `bits[clog2(N)]` where `N` is the\n\
+         number of variants and encode/decode with match expressions. For a\n\
+         memory, store the address or a serialised snapshot instead.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",
