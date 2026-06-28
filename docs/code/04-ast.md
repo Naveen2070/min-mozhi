@@ -68,6 +68,41 @@ syntactically distinct from `ExprKind::Call { func: Builtin, … }` (built-ins):
 the parser resolves the distinction by name at parse time, so downstream passes see
 typed variants, never string names.
 
+## Tagged-union enums — `EnumVariant` and `PayloadField`
+
+`EnumDecl` (file-level `TopItem::Enum` or module-level `ModuleItem::Enum`) now
+models tagged-union enums. Its structure:
+
+```rust
+EnumDecl {
+    name: Ident,
+    variants: Vec<EnumVariant>,
+    span: Span,
+    inferred_total_width: Cell<Option<u32>>,   // set by checker
+}
+
+EnumVariant {
+    name: Ident,
+    fields: Vec<PayloadField>,   // empty = tag-only variant
+    span: Span,
+}
+
+PayloadField {
+    name: Ident,   // documentation only — bindings in match are positional (D2)
+    ty: Type,      // must be a concrete bit-vector (E0807 if not)
+    span: Span,
+}
+```
+
+A tag-only variant has `fields: vec![]`; a tagged variant lists one
+`PayloadField` per declared field. The field `name` is documentation; match
+arm bindings are positional (`Vec<Ident>` on `Pattern::Variant`).
+
+`inferred_total_width` is set by the checker's width pass (like `LocalLet::inferred_width`).
+It is `None` until the checker runs. Downstream passes (emitter, sim) use it to
+compute tag bits (MSBs) and payload slices (LSBs). See spec/02 section 5a for
+the full wire layout.
+
 ## `Error` placeholder nodes (parse recovery)
 
 `TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each carry an

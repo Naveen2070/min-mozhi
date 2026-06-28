@@ -190,12 +190,13 @@ impl<'a> Checker<'a> {
                         let env = self.file_consts[file].clone();
                         let mut cx = Wcx {
                             file,
-                            sc: Rc::new(Scope { names: HashMap::new() }),
+                            sc: Rc::new(Scope {
+                                names: HashMap::new(),
+                            }),
                             env,
                             sigs: HashMap::new(),
                         };
-                        let (tag_w, max_payload_w) =
-                            self.enum_tag_and_payload_widths(&mut cx, e);
+                        let (tag_w, max_payload_w) = self.enum_tag_and_payload_widths(&mut cx, e);
                         let total_w = if max_payload_w == 0 {
                             tag_w
                         } else {
@@ -638,7 +639,10 @@ impl<'a> Checker<'a> {
     ) -> Vec<String> {
         let mut injected = Vec::new();
         for p in patterns {
-            if let Pattern::Variant { variant, bindings, .. } = p {
+            if let Pattern::Variant {
+                variant, bindings, ..
+            } = p
+            {
                 if let Some(ev) = en.variants.iter().find(|v| v.name.name == variant.name) {
                     for (binding, field) in bindings.iter().zip(ev.fields.iter()) {
                         let ty = self.resolve_ty_silent(cx, &field.ty);

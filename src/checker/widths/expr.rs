@@ -223,7 +223,11 @@ impl<'a> Checker<'a> {
             ExprKind::Match { scrutinee, arms } => {
                 let st = self.infer_ty(cx, scrutinee);
                 self.check_patterns(cx, scrutinee.span, st, arms);
-                let en_decl = if let Ty::Enum(en) = st { Some(en) } else { None };
+                let en_decl = if let Ty::Enum(en) = st {
+                    Some(en)
+                } else {
+                    None
+                };
                 for arm in arms {
                     let injected = if let Some(en) = en_decl {
                         self.inject_arm_bindings(cx, en, &arm.patterns)
@@ -412,7 +416,11 @@ impl<'a> Checker<'a> {
             ExprKind::Match { scrutinee, arms } => {
                 let st = self.infer_ty(cx, scrutinee);
                 self.check_patterns(cx, scrutinee.span, st, arms);
-                let en_decl = if let Ty::Enum(en) = st { Some(en) } else { None };
+                let en_decl = if let Ty::Enum(en) = st {
+                    Some(en)
+                } else {
+                    None
+                };
                 let mut arm_tys = Vec::with_capacity(arms.len());
                 for arm in arms {
                     let injected = if let Some(en) = en_decl {

@@ -1,0 +1,26 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file;
+// mixing freely is the migration path): tagged-union enum with payload fields.
+
+vagai Packet { Read(addr: bits[32]), Write(addr: bits[32], data: bits[32]) }
+
+module PacketDecoder {
+  ulleedu bus:     Packet
+  வெளியீடு is_read: bit
+  out address: bits[32]
+  veliyeedu wdata:   bits[32]
+
+  is_read = thernthedu bus {
+    Packet.Read(a)     => 1
+    Packet.Write(a, d) => 0
+  }
+
+  address = match bus {
+    Packet.Read(a)     => a
+    Packet.Write(a, d) => a
+  }
+
+  wdata = தேர்ந்தெடு bus {
+    Packet.Read(a)     => 0
+    Packet.Write(a, d) => d
+  }
+}

@@ -1,0 +1,10 @@
+// expect: E0807
+enum Inner { A, B }
+module M {
+  enum Outer { Op(x: Inner) }
+  in s: Outer
+  out y: bit
+  y = match s {
+    Outer.Op(v) => 0
+  }
+}

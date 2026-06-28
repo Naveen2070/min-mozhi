@@ -75,17 +75,19 @@ impl<'a> Checker<'a> {
                 match item {
                     TopItem::Module(m) => self.check_module(file, m),
                     TopItem::Test(t) => self.check_test(file, t),
-                    TopItem::Const(_) => {}  // earlier passes
+                    TopItem::Const(_) => {} // earlier passes
                     TopItem::Enum(e) => {
                         let env = self.file_consts[file].clone();
-                        let sc = Scope { names: HashMap::new() };
+                        let sc = Scope {
+                            names: HashMap::new(),
+                        };
                         for v in &e.variants {
                             for field in &v.fields {
                                 self.ty(file, &sc, &env, &field.ty);
                             }
                         }
                     }
-                    TopItem::Error(_) => {}                    // parse-recovery placeholder
+                    TopItem::Error(_) => {} // parse-recovery placeholder
                     TopItem::Func(f) => self.check_func_names(file, f),
                 }
             }
@@ -652,15 +654,20 @@ impl<'a> Checker<'a> {
                     // (`A(x) | B(y) => expr` puts both x and y in scope). At runtime only
                     // one branch matches, so the other binding is undefined. Enforcing
                     // OR-arm binding intersection (Rust semantics) is deferred.
-                    let mut arm_sc = Scope { names: sc.names.clone() };
+                    let mut arm_sc = Scope {
+                        names: sc.names.clone(),
+                    };
                     for p in &arm.patterns {
-                        if let Pattern::Variant { enum_name, variant, bindings } = p {
+                        if let Pattern::Variant {
+                            enum_name,
+                            variant,
+                            bindings,
+                        } = p
+                        {
                             match self.lookup_enum(sc, &enum_name.name) {
                                 Some(en) => {
-                                    if let Some(decl_v) = en
-                                        .variants
-                                        .iter()
-                                        .find(|v| v.name.name == variant.name)
+                                    if let Some(decl_v) =
+                                        en.variants.iter().find(|v| v.name.name == variant.name)
                                     {
                                         let expected = decl_v.fields.len();
                                         let got = bindings.len();
@@ -692,8 +699,11 @@ impl<'a> Checker<'a> {
                                             }
                                         }
                                     } else {
-                                        let list: Vec<&str> =
-                                            en.variants.iter().map(|v| v.name.name.as_str()).collect();
+                                        let list: Vec<&str> = en
+                                            .variants
+                                            .iter()
+                                            .map(|v| v.name.name.as_str())
+                                            .collect();
                                         self.err(
                                             file,
                                             variant.span,

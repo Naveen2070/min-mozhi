@@ -299,7 +299,11 @@ impl Parser {
                     }
                     self.expect(TokKind::RParen, "`)` to close pattern bindings")?;
                 }
-                Some(Pattern::Variant { enum_name, variant, bindings })
+                Some(Pattern::Variant {
+                    enum_name,
+                    variant,
+                    bindings,
+                })
             }
             other => {
                 let found = kind_name(&other);
