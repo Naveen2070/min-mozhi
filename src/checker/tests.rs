@@ -967,6 +967,14 @@ fn tagged_enum_unknown_payload_type_is_e0103() {
 }
 
 #[test]
+fn tagged_enum_toplevel_unknown_payload_type_is_e0103() {
+    // A top-level enum (TopItem::Enum) with an unrecognized payload type triggers E0103.
+    let src = "enum Packet { Read(addr: bogustype) }\nmodule M {\n  out y: bit\n  y = 0\n}\n";
+    let d = first_err(src, "E0103");
+    assert!(d.msg.contains("bogustype"), "error names the unknown type: {}", d.msg);
+}
+
+#[test]
 fn tagged_pattern_arity_mismatch_is_e0806() {
     // Read has 1 payload field but the pattern provides 2 bindings.
     let src = "enum Packet { Read(addr: bits[8]) }\nmodule M {\n  in x: Packet\n  out y: bit\n  y = match x {\n    Packet.Read(a, b) => 0\n    _ => 0\n  }\n}\n";
