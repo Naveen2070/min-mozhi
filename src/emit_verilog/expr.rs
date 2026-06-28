@@ -138,9 +138,19 @@ impl Emitter<'_> {
                 let s = self.expr_subst(scrutinee, subst);
                 let mut out = String::new();
                 let mut closing = 0usize;
-                for (i, arm) in arms.iter().enumerate() {
-                    let v = self.expr_subst(&arm.value, subst);
-                    let is_last = i == arms.len() - 1;
+                for (arm_idx, arm) in arms.iter().enumerate() {
+                    // For tagged enum patterns with payload bindings, build a
+                    // substitution map: binding_name → scrutinee[hi:lo] slice expr.
+                    // These are merged into `subst` when rendering the arm value.
+                    let binding_exprs: Vec<(String, Expr)> =
+                        self.arm_binding_exprs(arm, scrutinee);
+                    let mut arm_subst: HashMap<&str, &Expr> = subst.clone();
+                    for (name, expr) in &binding_exprs {
+                        arm_subst.insert(name.as_str(), expr);
+                    }
+
+                    let v = self.expr_subst(&arm.value, &arm_subst);
+                    let is_last = arm_idx == arms.len() - 1;
                     let is_wild = arm.patterns.iter().any(|p| matches!(p, Pattern::Wildcard));
                     if is_last || is_wild {
                         out.push_str(&v);
@@ -165,7 +175,7 @@ impl Emitter<'_> {
                                 format!("({s} == {})", if *b { "1'b1" } else { "1'b0" })
                             }
                             Pattern::Variant { enum_name, variant, bindings: _ } => {
-                                format!("({s} == {})", enum_const(&enum_name.name, &variant.name))
+                                self.variant_cond(&s, &enum_name.name, &variant.name)
                             }
                             Pattern::Wildcard => "1'b1".to_string(),
                         })
@@ -264,5 +274,99 @@ impl Emitter<'_> {
                 },
             },
         }
+    }
+
+    /// Render the condition for a `Pattern::Variant` match arm:
+    /// - tag-only enum: `(s == ENUM_VARIANT)` (unchanged from before)
+    /// - tagged enum: `(s[total-1:max_payload_w] == tag_w'd<index>)`
+    fn variant_cond(&self, s: &str, enum_name: &str, variant_name: &str) -> String {
+        let Some(edecl) = self.project.enums.get(enum_name) else {
+            return format!("({s} == {})", enum_const(enum_name, variant_name));
+        };
+        let total_w = match edecl.inferred_total_width.get() {
+            Some(w) => w as u128,
+            None => return format!("({s} == {})", enum_const(enum_name, variant_name)),
+        };
+        let tag_w = clog2(edecl.variants.len()) as u128;
+        let max_payload_w = total_w - tag_w;
+        if max_payload_w == 0 {
+            // Tag-only: compare the whole signal to the localparam.
+            format!("({s} == {})", enum_const(enum_name, variant_name))
+        } else {
+            // Tagged: compare tag bits only (MSBs).
+            let idx = edecl
+                .variants
+                .iter()
+                .position(|v| v.name.name == variant_name)
+                .unwrap_or(0);
+            let hi = total_w - 1;
+            let lo = max_payload_w;
+            format!("({s}[{hi}:{lo}] == {tag_w}'d{idx})")
+        }
+    }
+
+    /// For a tagged enum match arm, build a list of `(binding_name, slice_expr)`
+    /// pairs that map each pattern binding to the payload slice of `scrutinee`.
+    /// Returns empty if the arm has no variant pattern with bindings.
+    fn arm_binding_exprs(&self, arm: &Arm, scrutinee: &Expr) -> Vec<(String, Expr)> {
+        for pat in &arm.patterns {
+            let Pattern::Variant { enum_name, variant, bindings } = pat else {
+                continue;
+            };
+            if bindings.is_empty() {
+                continue;
+            }
+            let Some(edecl) = self.project.enums.get(&enum_name.name) else {
+                continue;
+            };
+            let total_w = match edecl.inferred_total_width.get() {
+                Some(w) => w as u128,
+                None => continue,
+            };
+            let tag_w = clog2(edecl.variants.len()) as u128;
+            let max_payload_w = total_w - tag_w;
+            if max_payload_w == 0 {
+                continue;
+            }
+            let Some(vdecl) = edecl.variants.iter().find(|v| v.name.name == variant.name) else {
+                continue;
+            };
+            // Pack fields MSB-first in the payload region [max_payload_w-1 : 0].
+            let mut cursor = max_payload_w;
+            let mut out = Vec::new();
+            for (field, binding) in vdecl.fields.iter().zip(bindings.iter()) {
+                let field_w: u128 = match &field.ty {
+                    Type::Bit => 1,
+                    Type::Bits(e) | Type::Signed(e) => {
+                        consteval::eval(e, &self.env).unwrap_or(0) as u128
+                    }
+                    Type::Named(_) => 0, // E0807: already rejected by checker
+                };
+                if field_w == 0 {
+                    continue;
+                }
+                let hi = cursor - 1;
+                let lo = cursor - field_w;
+                cursor -= field_w;
+                let sp = scrutinee.span;
+                let slice_expr = Expr {
+                    kind: ExprKind::Slice {
+                        base: Box::new(scrutinee.clone()),
+                        hi: Box::new(Expr {
+                            kind: ExprKind::Int { value: hi, raw: hi.to_string() },
+                            span: sp,
+                        }),
+                        lo: Box::new(Expr {
+                            kind: ExprKind::Int { value: lo, raw: lo.to_string() },
+                            span: sp,
+                        }),
+                    },
+                    span: sp,
+                };
+                out.push((binding.name.clone(), slice_expr));
+            }
+            return out;
+        }
+        vec![]
     }
 }
