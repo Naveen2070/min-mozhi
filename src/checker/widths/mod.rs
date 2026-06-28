@@ -37,7 +37,9 @@ mod patterns;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::ast::{BinOp, EnumDecl, Expr, FuncDecl, Module, ModuleItem, SeqStmt, TopItem, Type};
+use crate::ast::{
+    BinOp, EnumDecl, Expr, FuncDecl, Module, ModuleItem, Pattern, SeqStmt, TopItem, Type,
+};
 use crate::span::Span;
 
 use super::Checker;
@@ -171,16 +173,30 @@ impl<'a> Checker<'a> {
         let files = self.files;
 
         // Function bodies are monomorphic: check each canonical fn once.
+        // Also check top-level enum payload field types (E0807).
         for (file, f) in files.iter().enumerate() {
             for item in &f.items {
-                if let TopItem::Func(func) = item {
-                    let canonical = self
-                        .funcs
-                        .get(&func.name.name)
-                        .is_some_and(|&(_, c)| std::ptr::eq(c, func));
-                    if canonical {
-                        self.check_func_body_widths(file, func);
+                match item {
+                    TopItem::Func(func) => {
+                        let canonical = self
+                            .funcs
+                            .get(&func.name.name)
+                            .is_some_and(|&(_, c)| std::ptr::eq(c, func));
+                        if canonical {
+                            self.check_func_body_widths(file, func);
+                        }
                     }
+                    TopItem::Enum(e) => {
+                        let env = self.file_consts[file].clone();
+                        let mut cx = Wcx {
+                            file,
+                            sc: Rc::new(Scope { names: HashMap::new() }),
+                            env,
+                            sigs: HashMap::new(),
+                        };
+                        self.enum_tag_and_payload_widths(&mut cx, e);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -497,11 +513,13 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                ModuleItem::Enum(e) => {
+                    self.enum_tag_and_payload_widths(cx, e);
+                }
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
-                | ModuleItem::Enum(_)
                 | ModuleItem::Error(_) => {}
             }
         }
@@ -553,6 +571,78 @@ impl<'a> Checker<'a> {
 
     /// Width-check one function body (E0804). Functions are monomorphic —
     /// param types use file consts only, so each function is checked once.
+    /// Compute `(tag_width, max_payload_width)` for an enum decl, emitting
+    /// E0807 for any payload field whose type is not a concrete bit-vector.
+    /// D4: tag_w = clog2(variant_count).max(1); D6: tag-only variants contribute 0 payload.
+    pub(super) fn enum_tag_and_payload_widths(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        decl: &'a EnumDecl,
+    ) -> (u128, u128) {
+        let tag_w = consteval::clog2_bits(decl.variants.len() as u128).max(1) as u128;
+        let max_payload = decl
+            .variants
+            .iter()
+            .map(|v| {
+                v.fields
+                    .iter()
+                    .map(|f| match self.resolve_ty(cx, &f.ty) {
+                        Ty::Bit => 1u128,
+                        Ty::Bits(n) | Ty::Signed(n) => n,
+                        Ty::Enum(_) | Ty::Memory { .. } => {
+                            self.err(
+                                cx.file,
+                                f.span,
+                                "E0807",
+                                format!(
+                                    "payload field `{}` must be a bit-vector type \
+                                     (`bit`, `bits[N]`, `signed[N]`)",
+                                    f.name.name
+                                ),
+                                "enum and memory types cannot be payload fields — \
+                                 encode the value as `bits[N]` manually",
+                            );
+                            0
+                        }
+                        _ => 0, // Unknown: E0103 already reported
+                    })
+                    .sum::<u128>()
+            })
+            .max()
+            .unwrap_or(0);
+        (tag_w, max_payload)
+    }
+
+    /// Inject payload binding types into `cx.sigs` for one match arm.
+    /// Returns the list of injected names so the caller can remove them after
+    /// checking the arm body. Silent — E0807 was already emitted at the enum's
+    /// declaration site.
+    pub(super) fn inject_arm_bindings(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        en: &'a EnumDecl,
+        patterns: &[Pattern],
+    ) -> Vec<String> {
+        let mut injected = Vec::new();
+        for p in patterns {
+            if let Pattern::Variant { variant, bindings, .. } = p {
+                if let Some(ev) = en.variants.iter().find(|v| v.name.name == variant.name) {
+                    for (binding, field) in bindings.iter().zip(ev.fields.iter()) {
+                        let ty = self.resolve_ty_silent(cx, &field.ty);
+                        match ty {
+                            Ty::Bit | Ty::Bits(_) | Ty::Signed(_) => {
+                                cx.sigs.insert(binding.name.clone(), ty);
+                                injected.push(binding.name.clone());
+                            }
+                            _ => {} // Enum/Memory/Unknown — leave as Unknown (E0807 already reported)
+                        }
+                    }
+                }
+            }
+        }
+        injected
+    }
+
     fn check_func_body_widths(&mut self, file: usize, func: &'a FuncDecl) {
         let env = self.file_consts[file].clone();
         let mut cx = Wcx {
