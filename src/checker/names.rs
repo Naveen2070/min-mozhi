@@ -604,9 +604,9 @@ impl<'a> Checker<'a> {
                     }
                     _ => match self.lookup_enum(sc, name) {
                         Some(en) => {
-                            if !en.variants.iter().any(|v| v.name == field.name) {
+                            if !en.variants.iter().any(|v| v.name.name == field.name) {
                                 let list: Vec<&str> =
-                                    en.variants.iter().map(|v| v.name.as_str()).collect();
+                                    en.variants.iter().map(|v| v.name.name.as_str()).collect();
                                 self.err(
                                     file,
                                     field.span,
@@ -634,12 +634,12 @@ impl<'a> Checker<'a> {
                 self.expr(file, sc, env, scrutinee);
                 for arm in arms {
                     for p in &arm.patterns {
-                        if let Pattern::Variant { enum_name, variant } = p {
+                        if let Pattern::Variant { enum_name, variant, bindings: _ } = p {
                             match self.lookup_enum(sc, &enum_name.name) {
                                 Some(en) => {
-                                    if !en.variants.iter().any(|v| v.name == variant.name) {
+                                    if !en.variants.iter().any(|v| v.name.name == variant.name) {
                                         let list: Vec<&str> =
-                                            en.variants.iter().map(|v| v.name.as_str()).collect();
+                                            en.variants.iter().map(|v| v.name.name.as_str()).collect();
                                         self.err(
                                             file,
                                             variant.span,

@@ -164,7 +164,7 @@ impl Emitter<'_> {
                             Pattern::Bool(b) => {
                                 format!("({s} == {})", if *b { "1'b1" } else { "1'b0" })
                             }
-                            Pattern::Variant { enum_name, variant } => {
+                            Pattern::Variant { enum_name, variant, bindings: _ } => {
                                 format!("({s} == {})", enum_const(&enum_name.name, &variant.name))
                             }
                             Pattern::Wildcard => "1'b1".to_string(),

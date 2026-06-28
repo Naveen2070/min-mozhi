@@ -259,7 +259,7 @@ fn elaborate_module(
         .filter_map(|it| match it {
             ModuleItem::Enum(e) => Some((
                 e.name.name.clone(),
-                e.variants.iter().map(|v| v.name.clone()).collect(),
+                e.variants.iter().map(|v| v.name.name.clone()).collect(),
             )),
             _ => None,
         })
@@ -966,7 +966,7 @@ impl Rw<'_> {
 
     fn pattern(&self, p: &Pattern) -> Result<Pattern, String> {
         match p {
-            Pattern::Variant { enum_name, variant } => {
+            Pattern::Variant { enum_name, variant, bindings: _ } => {
                 let vs = self
                     .enums
                     .get(&enum_name.name)

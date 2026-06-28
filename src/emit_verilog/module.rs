@@ -83,7 +83,7 @@ impl Emitter<'_> {
                 self.out.push_str(&format!(
                     "    localparam [{}:0] {} = {};\n",
                     w - 1,
-                    enum_const(&e.name.name, &v.name),
+                    enum_const(&e.name.name, &v.name.name),
                     i
                 ));
             }
