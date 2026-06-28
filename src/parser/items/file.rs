@@ -172,8 +172,31 @@ impl Parser {
                 break self.bump().span;
             }
             let vname = self.ident("a variant name")?;
-            let vspan = vname.span;
-            variants.push(EnumVariant { name: vname, fields: vec![], span: vspan });
+            let vstart = vname.span;
+            let mut fields = vec![];
+            let vspan = if self.eat(&TokKind::LParen) {
+                loop {
+                    self.skip_newlines();
+                    if matches!(self.peek_kind(), TokKind::RParen) {
+                        break;
+                    }
+                    let fname = self.ident("a field name")?;
+                    let fstart = fname.span;
+                    self.expect(TokKind::Colon, "`:` after payload field name")?;
+                    let fty = self.ty()?;
+                    let fspan = self.span_since(fstart);
+                    fields.push(PayloadField { name: fname, ty: fty, span: fspan });
+                    self.skip_newlines();
+                    if !self.eat(&TokKind::Comma) {
+                        break;
+                    }
+                }
+                let rparen = self.expect(TokKind::RParen, "`)` to close payload fields")?.span;
+                vstart.join(rparen)
+            } else {
+                vstart
+            };
+            variants.push(EnumVariant { name: vname, fields, span: vspan });
             self.skip_newlines();
             if !self.eat(&TokKind::Comma) {
                 self.skip_newlines();

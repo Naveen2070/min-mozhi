@@ -611,6 +611,44 @@ fn parses_fn_with_local_let_and_body() {
 }
 
 #[test]
+fn tagged_enum_parses() {
+    // ponytail: parser-only test; checker rejects payload types (T3)
+    let f = parse_ok("enum Packet {\n  Read(addr: bits[32]),\n  Write(addr: bits[32], data: bits[32])\n}\n");
+    let TopItem::Enum(e) = &f.items[0] else { panic!("expected enum") };
+    assert_eq!(e.name.name, "Packet");
+    assert_eq!(e.variants.len(), 2);
+    assert_eq!(e.variants[0].name.name, "Read");
+    assert_eq!(e.variants[0].fields.len(), 1);
+    assert_eq!(e.variants[0].fields[0].name.name, "addr");
+    assert_eq!(e.variants[1].name.name, "Write");
+    assert_eq!(e.variants[1].fields.len(), 2);
+}
+
+#[test]
+fn mixed_tag_only_and_tagged_parses() {
+    let f = parse_ok("enum X {\n  Empty,\n  Full(v: bits[8])\n}\n");
+    let TopItem::Enum(e) = &f.items[0] else { panic!("expected enum") };
+    assert_eq!(e.variants[0].name.name, "Empty");
+    assert_eq!(e.variants[0].fields.len(), 0);
+    assert_eq!(e.variants[1].name.name, "Full");
+    assert_eq!(e.variants[1].fields.len(), 1);
+    assert_eq!(e.variants[1].fields[0].name.name, "v");
+}
+
+#[test]
+fn match_with_payload_bindings_parses() {
+    let f = parse_ok(
+        "enum Packet { Read(addr: bits[32]) }\nmodule M {\n  in x: bits[32]\n  out y: bits[32]\n  y = match x {\n    Packet.Read(a) => a\n    _ => 0\n  }\n}\n",
+    );
+    let TopItem::Module(m) = f.items.iter().find(|i| matches!(i, TopItem::Module(_))).unwrap() else { panic!() };
+    let drive = m.items.iter().find_map(|i| match i { ModuleItem::Drive { rhs, .. } => Some(rhs), _ => None }).expect("Drive item");
+    let ExprKind::Match { arms, .. } = &drive.kind else { panic!("expected match") };
+    let Pattern::Variant { bindings, .. } = &arms[0].patterns[0] else { panic!("expected variant pattern") };
+    assert_eq!(bindings.len(), 1, "expected 1 binding");
+    assert_eq!(bindings[0].name, "a");
+}
+
+#[test]
 fn fn_decl_parses_in_thamizh_order() {
     // `fn` declarations are code-order-only (no SOV flip needed — they are
     // prefix-keyword constructs, not clause-inverted). A file with
