@@ -773,17 +773,18 @@ impl<'a> Checker<'a> {
         );
     }
 
-    /// Name-check a function body: params + let-locals form the scope;
-    /// file consts are visible via env. Emits E0101 for any unbound name
-    /// so the checker returns Err before the emitter is reached.
+    /// Name-check a function declaration: validates param/return types (E0103)
+    /// and checks all body expressions for unbound names (E0101).
     fn check_func_names(&mut self, file: usize, func: &'a FuncDecl) {
         let env = self.file_consts[file].clone();
         let mut sc = Scope {
             names: HashMap::new(),
         };
         for param in &func.params {
+            self.ty(file, &sc, &env, &param.ty);
             sc.names.insert(param.name.name.clone(), Bind::Param);
         }
+        self.ty(file, &sc, &env, &func.ret);
         for local in &func.locals {
             self.expr(file, &sc, &env, &local.value);
             sc.names.insert(local.name.name.clone(), Bind::Const);
