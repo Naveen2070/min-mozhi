@@ -60,6 +60,23 @@ fn build_registry(files: &[ast::File]) -> Registry<'_> {
     reg
 }
 
+/// Function registry across all loaded files: name → AST declaration. Functions
+/// are project-wide (D3 — a fn declared in any imported file is callable from
+/// any module in any file), so the simulator collects them from the whole set.
+type FuncRegistry<'a> = HashMap<String, &'a FuncDecl>;
+
+fn build_func_registry(files: &[ast::File]) -> FuncRegistry<'_> {
+    let mut reg = HashMap::new();
+    for f in files {
+        for it in &f.items {
+            if let ast::TopItem::Func(func) = it {
+                reg.insert(func.name.name.clone(), func);
+            }
+        }
+    }
+    reg
+}
+
 /// A signal's concrete type after width folding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Width {
@@ -139,8 +156,8 @@ pub struct Design {
     pub clocks: Vec<String>,
     /// Declared reset signal names (synchronous, active-high).
     pub resets: Vec<String>,
-    /// User-defined combinational functions from the entry file, available to
-    /// the kernel's expression evaluator at runtime (`FnCall` evaluation).
+    /// User-defined combinational functions from ALL project files (D3),
+    /// available to the kernel's expression evaluator at runtime (`FnCall`).
     pub funcs: HashMap<String, FuncDecl>,
 }
 
@@ -168,15 +185,19 @@ pub fn elaborate_project(
     params: &BTreeMap<String, i128>,
 ) -> Result<Design, String> {
     let reg = build_registry(files);
+    let func_reg = build_func_registry(files);
     let entry = files.first().ok_or("no files to elaborate")?;
     let m = pick_module(entry, module)?;
-    elaborate_module(&reg, entry, m, params, 0)
+    elaborate_module(&reg, &func_reg, entry, m, params, 0)
 }
 
 /// Elaborate one module (`m`, defined in `file`) under concrete `params`,
-/// resolving any instantiated children through `reg`.
+/// resolving any instantiated children through `reg`. User-defined functions
+/// from ALL project files are supplied via `func_reg` (D3: functions are
+/// project-wide) so a fn declared in an imported file is available here.
 fn elaborate_module(
     reg: &Registry,
+    func_reg: &FuncRegistry<'_>,
     file: &ast::File,
     m: &ast::Module,
     params: &BTreeMap<String, i128>,
@@ -222,18 +243,12 @@ fn elaborate_module(
         }
     }
 
-    // User-defined functions from the entry file — collected here so the kernel's
-    // expression evaluator can call them at runtime (`FnCall` evaluation).
-    let funcs: HashMap<String, FuncDecl> = file
-        .items
-        .iter()
-        .filter_map(|it| {
-            if let ast::TopItem::Func(f) = it {
-                Some((f.name.name.clone(), f.clone()))
-            } else {
-                None
-            }
-        })
+    // User-defined functions from ALL project files (D3: functions are
+    // project-wide) — collected from `func_reg` so the kernel's expression
+    // evaluator can call any fn regardless of which imported file defines it.
+    let funcs: HashMap<String, FuncDecl> = func_reg
+        .values()
+        .map(|f| (f.name.name.clone(), (*f).clone()))
         .collect();
 
     // Module-level enums: name → ordered variant names. A variant encodes as its
@@ -374,6 +389,7 @@ fn elaborate_module(
             ModuleItem::Inst(inst) => {
                 let f = flatten_instance(
                     reg,
+                    func_reg,
                     &consts,
                     &insts,
                     &enums,
@@ -413,7 +429,7 @@ fn elaborate_module(
                                     None => inst.name.name.clone(),
                                 };
                                 let f = flatten_instance(
-                                    reg, &ci, &insts, &enums, &subst, inst, &iname, depth,
+                                    reg, func_reg, &ci, &insts, &enums, &subst, inst, &iname, depth,
                                 )?;
                                 flat.absorb(f);
                             }
@@ -540,6 +556,7 @@ impl Flat {
 #[allow(clippy::too_many_arguments)]
 fn flatten_instance(
     reg: &Registry,
+    func_reg: &FuncRegistry<'_>,
     parent_consts: &BTreeMap<String, i128>,
     parent_insts: &HashSet<String>,
     parent_enums: &HashMap<String, Vec<String>>,
@@ -572,7 +589,7 @@ fn flatten_instance(
         cp.insert(p.name.name.clone(), v);
     }
 
-    let child = elaborate_module(reg, cfile, cm, &cp, depth + 1)?;
+    let child = elaborate_module(reg, func_reg, cfile, cm, &cp, depth + 1)?;
     let pfx = format!("{iname}_");
 
     // Parent-context rewriter for connection expressions: folds the `repeat`

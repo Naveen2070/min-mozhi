@@ -943,3 +943,15 @@ fn mac_function_type_checks_clean() {
     )
     .expect("mac body and call-site widths are clean, return bits[8] propagates");
 }
+
+#[test]
+fn fn_with_const_local_compiles_clean() {
+    // A bare-literal local (`let n = 5`) infers as CtInt(5).  Before the fix,
+    // the width pass left `inferred_width` at None and the emitter hit an
+    // unreachable!().  After the fix, min_bits(5) = 3 is stored and the
+    // emitter declares `reg [2:0] n`.
+    check_one(
+        "fn add_offset(a: bits[8]) -> bits[8] {\n  let n = 5\n  a +% n\n}\nmodule M {\n  in a: bits[8]\n  out result: bits[8]\n  result = add_offset(a)\n}\n",
+    )
+    .expect("fn with a bare-literal local compiles clean");
+}

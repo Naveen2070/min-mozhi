@@ -1,0 +1,14 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file):
+// file-level const referenced inside a function body.
+
+const SCALE: int = 3
+
+fn scaled(a: bits[8]) -> bits[8] {
+  a >> SCALE
+}
+
+thoguthi Scaled {
+  ulleedu a: bits[8]
+  வெளியீடு result: bits[8]
+  result = scaled(a)
+}

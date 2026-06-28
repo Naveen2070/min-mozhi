@@ -1,0 +1,13 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change):
+// constant local inference in function bodies.
+
+saarbu add_offset(a: bits[8]) -> bits[8] {
+  amai n = 5
+  a +% n
+}
+
+thoguthi ConstLocal {
+  ulleedu a: bits[8]
+  veliyeedu result: bits[8]
+  result = add_offset(a)
+}

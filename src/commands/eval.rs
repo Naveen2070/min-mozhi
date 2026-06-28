@@ -66,7 +66,12 @@ pub(crate) fn eval_file(
             return ExitCode::FAILURE;
         }
     };
-    match sim::comb::eval_outputs(&file, module.as_deref(), &inputs, &params) {
+    match sim::comb::eval_outputs(
+        std::slice::from_ref(&file),
+        module.as_deref(),
+        &inputs,
+        &params,
+    ) {
         Ok(outputs) => {
             for o in outputs {
                 let kind = if o.signed { "signed" } else { "bits" };

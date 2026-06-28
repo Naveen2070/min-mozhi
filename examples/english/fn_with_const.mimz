@@ -1,0 +1,15 @@
+// Min-Mozhi example: file-level const referenced inside a function body
+// `SCALE` is a file-level compile-time constant; the emitter must fold it
+// to its literal value (3) inside the `function automatic` block.
+
+const SCALE: int = 3
+
+fn scaled(a: bits[8]) -> bits[8] {
+  a >> SCALE
+}
+
+module Scaled {
+  in a: bits[8]
+  out result: bits[8]
+  result = scaled(a)
+}
