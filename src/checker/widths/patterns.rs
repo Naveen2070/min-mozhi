@@ -245,7 +245,7 @@ impl<'a> Checker<'a> {
                     let mut arm_wild = false;
                     for p in &arm.patterns {
                         match p {
-                            Pattern::Variant { enum_name, variant } => {
+                            Pattern::Variant { enum_name, variant, bindings: _ } => {
                                 if enum_name.name != en.name.name {
                                     bad = true;
                                     self.err(
@@ -259,7 +259,7 @@ impl<'a> Checker<'a> {
                                         ),
                                         format!("use `{}.<variant>` patterns here", en.name.name),
                                     );
-                                } else if en.variants.iter().any(|v| v.name == variant.name) {
+                                } else if en.variants.iter().any(|v| v.name.name == variant.name) {
                                     if !seen.insert(variant.name.as_str()) {
                                         self.covered_already(
                                             cx,
@@ -317,8 +317,8 @@ impl<'a> Checker<'a> {
                     let missing: Vec<&str> = en
                         .variants
                         .iter()
-                        .filter(|v| !seen.contains(v.name.as_str()))
-                        .map(|v| v.name.as_str())
+                        .filter(|v| !seen.contains(v.name.name.as_str()))
+                        .map(|v| v.name.name.as_str())
                         .collect();
                     if !missing.is_empty() {
                         self.err(

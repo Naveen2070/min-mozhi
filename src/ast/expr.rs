@@ -113,10 +113,13 @@ pub enum Pattern {
         raw: String,
     },
     Bool(bool),
-    /// `Enum.Variant`
+    /// `Enum.Variant` or `Enum.Variant(b1, b2, ...)` — tag-only patterns
+    /// have `bindings: vec![]`; tagged patterns list one binding per field.
     Variant {
         enum_name: Ident,
         variant: Ident,
+        /// Positional binding names (empty for tag-only patterns).
+        bindings: Vec<Ident>,
     },
     /// `_` — catch-all; makes the match exhaustive.
     Wildcard,

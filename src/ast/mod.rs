@@ -163,10 +163,51 @@ pub struct ConstDecl {
 
 /// `enum State { Red, Green }` — variants encode to the smallest binary
 /// width (`clog2(variant count)`); the emitter renders them as localparams.
+/// Tagged variants carry typed payload fields; tag-only variants have
+/// `fields: vec![]`.
 #[derive(Clone, Debug)]
 pub struct EnumDecl {
     pub name: Ident,
-    pub variants: Vec<Ident>,
+    /// Variant list — tag-only variants have `fields: vec![]`.
+    pub variants: Vec<EnumVariant>,
+    /// Span of the whole declaration (from `enum` keyword to closing `}`).
+    pub span: Span,
+}
+
+/// One variant inside an `enum` declaration.
+///
+/// ```text
+/// enum Packet { Read(addr: bits[32]), Nop }
+///               ^^^^^^^^^^^^^^^^^^^^ ^^^^^
+///               tagged variant       tag-only (fields is empty)
+/// ```
+#[derive(Clone, Debug)]
+pub struct EnumVariant {
+    /// The variant name.
+    pub name: Ident,
+    /// Payload fields in declaration order; empty for tag-only variants.
+    pub fields: Vec<PayloadField>,
+    /// Span covering the variant (name + optional field list).
+    pub span: Span,
+}
+
+/// One named payload field inside a tagged variant.
+///
+/// ```text
+/// Read(addr: bits[32])
+///      ^^^^^^^^^^^^^^
+/// ```
+///
+/// The `name` is documentation-only; bindings in match patterns are
+/// positional (design decision D2).
+#[derive(Clone, Debug)]
+pub struct PayloadField {
+    /// Documentation name (not used as a binding in patterns).
+    pub name: Ident,
+    /// Hardware type; must be a concrete bit-vector (E0807 if not).
+    pub ty: Type,
+    /// Span covering `name: type`.
+    pub span: Span,
 }
 
 /// Port direction (`in` / `out`). No `inout` — it is a reserved word.

@@ -156,7 +156,7 @@ impl Pretty {
         let variants = e
             .variants
             .iter()
-            .map(|v| v.name.as_str())
+            .map(|v| v.name.name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
         let s = format!("{} {} {{ {variants} }}", self.kw(Kw::Enum), e.name.name);
@@ -624,7 +624,7 @@ fn pattern(p: &Pattern) -> String {
         Pattern::Int { raw, .. } => raw.clone(),
         Pattern::IntMask { raw, .. } => raw.clone(),
         Pattern::Bool(b) => if *b { "true" } else { "false" }.to_string(),
-        Pattern::Variant { enum_name, variant } => format!("{}.{}", enum_name.name, variant.name),
+        Pattern::Variant { enum_name, variant, bindings: _ } => format!("{}.{}", enum_name.name, variant.name),
         Pattern::Wildcard => "_".to_string(),
     }
 }

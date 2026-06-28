@@ -252,7 +252,7 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
 fn enum_decl(e: &mut EnumDecl, visit: &mut dyn FnMut(&mut String)) {
     visit(&mut e.name.name);
     for v in &mut e.variants {
-        visit(&mut v.name);
+        visit(&mut v.name.name);
     }
 }
 
@@ -409,7 +409,7 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
             expr(scrutinee, visit);
             for arm in arms {
                 for p in &mut arm.patterns {
-                    if let Pattern::Variant { enum_name, variant } = p {
+                    if let Pattern::Variant { enum_name, variant, bindings: _ } = p {
                         visit(&mut enum_name.name);
                         visit(&mut variant.name);
                     }

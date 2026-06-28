@@ -284,7 +284,11 @@ impl Parser {
                 let enum_name = self.ident("a pattern")?;
                 self.expect(TokKind::Dot, "`.` — enum patterns are written `State.Red`")?;
                 let variant = self.ident("a variant name")?;
-                Some(Pattern::Variant { enum_name, variant })
+                Some(Pattern::Variant {
+                    enum_name,
+                    variant,
+                    bindings: vec![],
+                })
             }
             other => {
                 let found = kind_name(&other);
