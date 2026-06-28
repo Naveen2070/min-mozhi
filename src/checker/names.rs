@@ -240,10 +240,16 @@ impl<'a> Checker<'a> {
                         None => env.remove(&r.var.name),
                     };
                 }
+                ModuleItem::Enum(e) => {
+                    for v in &e.variants {
+                        for field in &v.fields {
+                            self.ty(file, sc, env, &field.ty);
+                        }
+                    }
+                }
                 ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
-                | ModuleItem::Enum(_)
                 | ModuleItem::Error(_) => {}
             }
         }
@@ -633,11 +639,46 @@ impl<'a> Checker<'a> {
             ExprKind::Match { scrutinee, arms } => {
                 self.expr(file, sc, env, scrutinee);
                 for arm in arms {
+                    let mut arm_sc = Scope { names: sc.names.clone() };
                     for p in &arm.patterns {
-                        if let Pattern::Variant { enum_name, variant, bindings: _ } = p {
+                        if let Pattern::Variant { enum_name, variant, bindings } = p {
                             match self.lookup_enum(sc, &enum_name.name) {
                                 Some(en) => {
-                                    if !en.variants.iter().any(|v| v.name.name == variant.name) {
+                                    if let Some(decl_v) = en
+                                        .variants
+                                        .iter()
+                                        .find(|v| v.name.name == variant.name)
+                                    {
+                                        let expected = decl_v.fields.len();
+                                        let got = bindings.len();
+                                        if expected != got {
+                                            let help = if expected == 0 {
+                                                format!(
+                                                    "`{}.{}` is tag-only — remove the `(...)` binding list",
+                                                    enum_name.name, variant.name
+                                                )
+                                            } else {
+                                                format!(
+                                                    "provide exactly {} binding(s) — one per payload field",
+                                                    expected
+                                                )
+                                            };
+                                            self.err(
+                                                file,
+                                                variant.span,
+                                                "E0806",
+                                                format!(
+                                                    "pattern for `{}.{}` binds {} name(s) but the variant has {} field(s)",
+                                                    enum_name.name, variant.name, got, expected
+                                                ),
+                                                help,
+                                            );
+                                        } else {
+                                            for b in bindings {
+                                                arm_sc.names.insert(b.name.clone(), Bind::Param);
+                                            }
+                                        }
+                                    } else {
                                         let list: Vec<&str> =
                                             en.variants.iter().map(|v| v.name.name.as_str()).collect();
                                         self.err(
@@ -660,7 +701,7 @@ impl<'a> Checker<'a> {
                             }
                         }
                     }
-                    self.expr(file, sc, env, &arm.value);
+                    self.expr(file, &arm_sc, env, &arm.value);
                 }
             }
             ExprKind::Concat(parts) => {
