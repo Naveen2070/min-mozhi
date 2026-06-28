@@ -545,7 +545,13 @@ impl Emitter<'_> {
             }
             Type::Named(id) => {
                 if let Some(e) = self.project.enums.get(&id.name) {
-                    let w = clog2(e.variants.len());
+                    // ponytail: inferred_total_width set by checker; falls back to
+                    // tag-only width if checker hasn't run (shouldn't happen in practice).
+                    let w = e
+                        .inferred_total_width
+                        .get()
+                        .map(|n| n as u32)
+                        .unwrap_or_else(|| clog2(e.variants.len()));
                     format!("[{}:0] ", w - 1)
                 } else {
                     self.err(

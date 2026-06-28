@@ -194,7 +194,14 @@ impl<'a> Checker<'a> {
                             env,
                             sigs: HashMap::new(),
                         };
-                        self.enum_tag_and_payload_widths(&mut cx, e);
+                        let (tag_w, max_payload_w) =
+                            self.enum_tag_and_payload_widths(&mut cx, e);
+                        let total_w = if max_payload_w == 0 {
+                            tag_w
+                        } else {
+                            tag_w + max_payload_w
+                        };
+                        e.inferred_total_width.set(Some(total_w as u32));
                     }
                     _ => {}
                 }
@@ -514,7 +521,13 @@ impl<'a> Checker<'a> {
                     }
                 }
                 ModuleItem::Enum(e) => {
-                    self.enum_tag_and_payload_widths(cx, e);
+                    let (tag_w, max_payload_w) = self.enum_tag_and_payload_widths(cx, e);
+                    let total_w = if max_payload_w == 0 {
+                        tag_w
+                    } else {
+                        tag_w + max_payload_w
+                    };
+                    e.inferred_total_width.set(Some(total_w as u32));
                 }
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
