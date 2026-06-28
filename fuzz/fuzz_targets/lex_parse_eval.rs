@@ -32,7 +32,7 @@ fuzz_target!(|data: &[u8]| {
     // bounds, and indices — the SEC-2 path. A clean `Err` is fine; a panic is
     // not, which is exactly what the fuzzer is here to catch.
     let params: BTreeMap<String, i128> = BTreeMap::new();
-    let _ = mimz::sim::comb::eval_outputs(&file, None, &BTreeMap::new(), &params);
+    let _ = mimz::sim::comb::eval_outputs(std::slice::from_ref(&file), None, &BTreeMap::new(), &params);
 
     // Runtime path: feed each input port a value derived from the bytes so the
     // evaluator exercises the real datapath. Use the first module with inputs.
@@ -55,7 +55,7 @@ fuzz_target!(|data: &[u8]| {
             }
         }
         if !inputs.is_empty() {
-            let _ = mimz::sim::comb::eval_outputs(&file, Some(&m.name.name), &inputs, &params);
+            let _ = mimz::sim::comb::eval_outputs(std::slice::from_ref(&file), Some(&m.name.name), &inputs, &params);
 
             // Edge-case passes: re-evaluate the same module with dangerous input
             // values that triggered Finding A (Shl `as u32` truncation) and other
@@ -78,7 +78,7 @@ fuzz_target!(|data: &[u8]| {
                     .map(|k| (k.clone(), edge))
                     .collect();
                 let _ = mimz::sim::comb::eval_outputs(
-                    &file,
+                    std::slice::from_ref(&file),
                     Some(&m.name.name),
                     &edge_inputs,
                     &params,
