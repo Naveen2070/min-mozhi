@@ -284,11 +284,22 @@ impl Parser {
                 let enum_name = self.ident("a pattern")?;
                 self.expect(TokKind::Dot, "`.` — enum patterns are written `State.Red`")?;
                 let variant = self.ident("a variant name")?;
-                Some(Pattern::Variant {
-                    enum_name,
-                    variant,
-                    bindings: vec![],
-                })
+                let mut bindings = vec![];
+                if self.eat(&TokKind::LParen) {
+                    loop {
+                        self.skip_newlines();
+                        if matches!(self.peek_kind(), TokKind::RParen) {
+                            break;
+                        }
+                        bindings.push(self.ident("a binding name")?);
+                        self.skip_newlines();
+                        if !self.eat(&TokKind::Comma) {
+                            break;
+                        }
+                    }
+                    self.expect(TokKind::RParen, "`)` to close pattern bindings")?;
+                }
+                Some(Pattern::Variant { enum_name, variant, bindings })
             }
             other => {
                 let found = kind_name(&other);
