@@ -763,6 +763,7 @@ impl<'a> Checker<'a> {
                     for (curr_span, curr_pairs) in &alt_bindings[1..] {
                         let curr_names: Vec<&str> =
                             curr_pairs.iter().map(|(n, _)| n.as_str()).collect();
+                        // note: positional comparison — binding order matches field declaration order; named binding syntax would need set-equality here
                         if ref_names != curr_names {
                             self.err(
                                 file,

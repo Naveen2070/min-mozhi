@@ -1189,3 +1189,21 @@ fn or_arm_width_mismatch_is_e0808() {
         "E0808",
     );
 }
+
+#[test]
+fn or_arm_wildcard_not_binding_e0808() {
+    let src = format!(
+        concat!(
+            "{OP}module M {{\n",
+            "  in cmd: Op\n",
+            "  out o: bits[8]\n",
+            "  o = match cmd {{\n",
+            "    Op.Add(a, b), _ => a\n",
+            "    _ => 0\n",
+            "  }}\n",
+            "}}\n",
+        ),
+        OP = OP
+    );
+    first_err(&src, "E0808");
+}

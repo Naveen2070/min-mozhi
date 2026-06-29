@@ -276,7 +276,7 @@ fn elaborate_module(
             let e = enums
                 .get(&n.name)
                 .ok_or_else(|| format!("unknown enum type `{}`", n.name))?;
-            // ponytail: fallback only correct for tag-only enums (max_payload_w=0)
+            // note: fallback only correct for tag-only enums (max_payload_w=0)
             let bits = e.inferred_total_width.get().unwrap_or_else(|| {
                 debug_assert!(
                     e.variants.iter().all(|v| v.fields.is_empty()),
@@ -1023,7 +1023,7 @@ impl<'d, 's> Rw<'d, 's> {
                             enum_name.name, variant.name
                         )
                     })?;
-                // ponytail: fallback only correct for tag-only enums
+                // note: fallback only correct for tag-only enums
                 let total_w = edecl
                     .inferred_total_width
                     .get()
