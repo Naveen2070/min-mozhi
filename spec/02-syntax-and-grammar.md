@@ -640,9 +640,9 @@ arbitrary identifiers scoped to that arm's value expression.
 
 ### Checker rules for tagged enums
 
-| Code  | Triggered when                                                             |
-| ----- | -------------------------------------------------------------------------- |
-| E0806 | Number of bindings in a `match` pattern ≠ number of payload fields         |
+| Code  | Triggered when                                                              |
+| ----- | --------------------------------------------------------------------------- |
+| E0806 | Number of bindings in a `match` pattern ≠ number of payload fields          |
 | E0807 | A payload field type is not a concrete bit-vector (`bit`, `bits`, `signed`) |
 
 Payload field types must be concrete bit-vectors so the compiler can compute
