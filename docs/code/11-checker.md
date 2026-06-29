@@ -151,6 +151,28 @@ Numbering scheme:
 docs/code/06 — retrofit completed 2026-06-12.) Claim a block when a new
 pass lands, and add the rows in the same commit.
 
+## How the OR-arm binding intersection pass works (pass 3)
+
+When a match arm lists multiple patterns separated by `,` (OR-patterns), each
+sub-pattern may introduce payload bindings. After the individual sub-patterns are
+resolved, `names.rs` runs a five-phase intersection check:
+
+1. **Collect** the binding map for each alternative (name → type).
+2. **Short-circuit** on E0806 — if any alternative already drew a payload-count
+   error, the intersection is skipped (one diagnostic, no cascade).
+3. **Name check** — for each name present in any alternative, verify it appears
+   in every alternative; missing names are E0808.
+4. **Width check** — for names present in all alternatives, verify every
+   alternative has the same type width; mismatches are E0808.
+5. **Inject** — for clean arms, bind the agreed-upon names into the arm's value
+   expression scope.
+
+`_` wildcards contribute an empty binding map; `A(x), _ => x` is E0808 because
+the wildcard alternative satisfies no binding. The pass lives entirely in
+`src/checker/names.rs` and runs during Pass 3 (module scope / name resolution),
+after individual OR-sub-pattern binding but before the width pass sees the arm
+body.
+
 ## How exhaustiveness works (in pass 4)
 
 `check_patterns` already holds the scrutinee's type and every validated
