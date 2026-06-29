@@ -26,7 +26,7 @@ use mimz::sim::vcd::to_vcd;
 
 /// Testbench file (under tests/icarus/) -> the example it tests.
 /// Testbench module name = file name minus `.v`.
-const TESTBENCHES: [(&str, &str); 22] = [
+const TESTBENCHES: [(&str, &str); 23] = [
     ("adder_tb.v", "english/adder.mimz"),
     ("alu_tb.v", "english/alu.mimz"),
     ("bitops_tb.v", "english/bitops.mimz"),
@@ -47,6 +47,7 @@ const TESTBENCHES: [(&str, &str); 22] = [
     ("std_pwm_tb.v", "english/std/pwm.mimz"),
     ("std_fifo_tb.v", "english/std/fifo.mimz"),
     ("std_uart_tx_tb.v", "english/std/uart_tx.mimz"),
+    ("tagged_packet_tb.v", "english/tagged_packet.mimz"),
     ("traffic_light_tb.v", "english/traffic_light.mimz"),
     ("window_tb.v", "english/window.mimz"),
 ];
