@@ -428,6 +428,28 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          number of variants and encode/decode with match expressions. For a\n\
          memory, store the address or a serialised snapshot instead.",
     ),
+    (
+        "E0808",
+        "E0808 — OR-pattern alternatives must expose the same binding interface\n\n\
+         When a match arm uses OR-patterns (`A(x), B(y) => expr`), exactly one\n\
+         alternative matches at runtime — so the body can only safely name variables\n\
+         that EVERY alternative provides. An unmatched binding would be a floating\n\
+         net (undefined hardware).\n\n\
+         Two sub-cases trigger E0808:\n\
+         1. Name mismatch — the set of bound names differs across alternatives.\n\
+         2. Width mismatch — the same name has different types in different alternatives.\n\n\
+         Correct:\n\
+           enum Op { Add(a: bits[8], b: bits[8]), Sub(a: bits[8], b: bits[8]) }\n\
+           Op.Add(a, b), Op.Sub(a, b) => a + b   // same names, same types\n\n\
+         Wrong — different names:\n\
+           Op.Add(a, b), Op.Mul(x) => a + b       // `b` absent in Mul alternative\n\n\
+         Wrong — different widths:\n\
+           Op.Big(x), Op.Small(x) => x            // `x` is bits[16] in Big, bits[8] in Small\n\n\
+         `_` wildcards do not satisfy a binding requirement — `A(x), _ => x` is E0808\n\
+         because the `_` alternative provides no binding for `x`.\n\n\
+         Fix: make every alternative bind the same names with matching types,\n\
+         or split into separate arms.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",

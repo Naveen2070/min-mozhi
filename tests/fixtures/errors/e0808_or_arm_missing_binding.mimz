@@ -1,0 +1,10 @@
+// expect: E0808
+enum Op { Add(a: bits[8], b: bits[8]), Nop }
+module M {
+  in cmd: Op
+  out o: bits[8]
+  o = match cmd {
+    Op.Add(a, b), Op.Nop => a
+    _ => 0
+  }
+}
