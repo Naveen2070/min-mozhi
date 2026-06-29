@@ -650,21 +650,24 @@ impl<'a> Checker<'a> {
             ExprKind::Match { scrutinee, arms } => {
                 self.expr(file, sc, env, scrutinee);
                 for arm in arms {
-                    // known-limitation: OR-arms accumulate bindings from all sub-patterns
-                    // (`A(x) | B(y) => expr` puts both x and y in scope). At runtime only
-                    // one branch matches, so the other binding is undefined. Enforcing
-                    // OR-arm binding intersection (Rust semantics) is deferred.
                     let mut arm_sc = Scope {
                         names: sc.names.clone(),
                     };
+
+                    // Phases 1+2: validate each sub-pattern; collect binding info.
+                    // Each entry: (reporting_span, [(binding_name, type_str)]).
+                    // `skip` = true on any E0806 / E0103 / unknown enum — Phases 3–5 are
+                    // skipped for this arm to avoid cascading errors on bad inputs.
+                    let mut skip = false;
+                    let mut alt_bindings = Vec::new();
+
                     for p in &arm.patterns {
-                        if let Pattern::Variant {
-                            enum_name,
-                            variant,
-                            bindings,
-                        } = p
-                        {
-                            match self.lookup_enum(sc, &enum_name.name) {
+                        match p {
+                            Pattern::Variant {
+                                enum_name,
+                                variant,
+                                bindings,
+                            } => match self.lookup_enum(sc, &enum_name.name) {
                                 Some(en) => {
                                     if let Some(decl_v) =
                                         en.variants.iter().find(|v| v.name.name == variant.name)
@@ -693,10 +696,16 @@ impl<'a> Checker<'a> {
                                                 ),
                                                 help,
                                             );
+                                            skip = true;
                                         } else {
-                                            for b in bindings {
-                                                arm_sc.names.insert(b.name.clone(), Bind::Param);
-                                            }
+                                            let pairs: Vec<(String, String)> = bindings
+                                                .iter()
+                                                .zip(decl_v.fields.iter())
+                                                .map(|(b, f)| {
+                                                    (b.name.clone(), crate::pretty::type_str(&f.ty))
+                                                })
+                                                .collect();
+                                            alt_bindings.push((variant.span, pairs));
                                         }
                                     } else {
                                         let list: Vec<&str> = en
@@ -718,11 +727,99 @@ impl<'a> Checker<'a> {
                                                 list.join(", ")
                                             ),
                                         );
+                                        skip = true;
                                     }
                                 }
-                                None => self.unknown(file, &enum_name.name, enum_name.span),
+                                None => {
+                                    self.unknown(file, &enum_name.name, enum_name.span);
+                                    skip = true;
+                                }
+                            },
+                            _ => {
+                                // Wildcard / Int / Bool: empty binding set.
+                                // Span: arm body (no pattern span available for these variants).
+                                alt_bindings.push((arm.value.span, vec![]));
                             }
                         }
+                    }
+
+                    // Error recovery or single-pattern arm: inject all valid bindings seen
+                    // so far and skip intersection validation.
+                    if skip || alt_bindings.len() <= 1 {
+                        for (_, pairs) in &alt_bindings {
+                            for (name, _) in pairs {
+                                arm_sc.names.insert(name.clone(), Bind::Param);
+                            }
+                        }
+                        self.expr(file, &arm_sc, env, &arm.value);
+                        continue;
+                    }
+
+                    // Phase 3: every alternative must bind the same set of names (positionally).
+                    let ref_pairs = &alt_bindings[0].1;
+                    let ref_names: Vec<&str> = ref_pairs.iter().map(|(n, _)| n.as_str()).collect();
+                    let mut ok = true;
+
+                    for (curr_span, curr_pairs) in &alt_bindings[1..] {
+                        let curr_names: Vec<&str> =
+                            curr_pairs.iter().map(|(n, _)| n.as_str()).collect();
+                        if ref_names != curr_names {
+                            self.err(
+                                file,
+                                *curr_span,
+                                "E0808",
+                                "OR-pattern alternatives must bind the same variables".to_string(),
+                                format!(
+                                    "expected: {{{}}}; this alternative provides: {{{}}}",
+                                    ref_names.join(", "),
+                                    curr_names.join(", ")
+                                ),
+                            );
+                            ok = false;
+                            break;
+                        }
+                    }
+
+                    if !ok {
+                        self.expr(file, &arm_sc, env, &arm.value);
+                        continue;
+                    }
+
+                    // Phase 4: each binding must have the same type in every alternative.
+                    // Iterate names in sorted order (D5 — deterministic diagnostics).
+                    let mut sorted_idx: Vec<usize> = (0..ref_pairs.len()).collect();
+                    sorted_idx.sort_by_key(|&i| &ref_pairs[i].0);
+
+                    'width: for (curr_span, curr_pairs) in &alt_bindings[1..] {
+                        for &i in &sorted_idx {
+                            let (ref_name, ref_ty) = &ref_pairs[i];
+                            let (_, curr_ty) = &curr_pairs[i];
+                            if ref_ty != curr_ty {
+                                self.err(
+                                    file,
+                                    *curr_span,
+                                    "E0808",
+                                    format!(
+                                        "binding `{ref_name}` has incompatible types across OR-pattern alternatives"
+                                    ),
+                                    format!(
+                                        "first alternative: {ref_ty}; this alternative: {curr_ty}"
+                                    ),
+                                );
+                                ok = false;
+                                break 'width;
+                            }
+                        }
+                    }
+
+                    if !ok {
+                        self.expr(file, &arm_sc, env, &arm.value);
+                        continue;
+                    }
+
+                    // Phase 5: identical names and types verified — inject reference bindings.
+                    for (name, _) in ref_pairs {
+                        arm_sc.names.insert(name.clone(), Bind::Param);
                     }
                     self.expr(file, &arm_sc, env, &arm.value);
                 }
