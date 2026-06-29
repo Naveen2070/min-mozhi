@@ -46,6 +46,18 @@ pub fn pretty_print(file: &File, flavor: Flavor, order: Order) -> String {
     p.out
 }
 
+/// Canonical English string for `ty` — used by the names checker's E0808
+/// type comparison (Phase 4 of OR-arm binding intersection).
+pub fn type_str(ty: &Type) -> String {
+    let p = Pretty {
+        out: String::new(),
+        indent: 0,
+        flavor: crate::lexer::token::Flavor::English,
+        order: Order::Code,
+    };
+    p.ty(ty, 0)
+}
+
 struct Pretty {
     out: String,
     indent: usize,
