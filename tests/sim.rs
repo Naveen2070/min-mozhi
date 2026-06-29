@@ -380,3 +380,65 @@ module Decoder {
     );
     assert_eq!(sim.peek("addr_out").unwrap(), 0, "Nop has no addr payload");
 }
+
+/// Write-arm payload extraction: a two-field tagged variant `Write(addr: bits[32], data: bits[32])`
+/// must bind *both* fields independently. Output is `addr XOR data` to prove the two slices
+/// are distinct (if addr and data aliased, XOR would always be 0).
+///
+/// Layout (D3): total_w = tag_w + max_payload_w = 1 + 64 = 65 bits.
+/// Fields are packed MSB-first inside [max_payload_w-1:0].
+///   Packet.Write: addr→[63:32], data→[31:0]  packed = (1<<64)|(addr<<32)|data
+///   Packet.Read:  addr→[63:32]               packed = (0<<64)|(addr<<32)
+///
+/// For Write(addr=0xAA, data=0x55): packed = (1<<64)|(0xAA<<32)|0x55
+/// Expected xor_out = 0xAA ^ 0x55 = 0xFF
+#[test]
+fn sim_tagged_enum_write_arm_payload_extracted() {
+    use std::collections::BTreeMap;
+
+    use mimz::sim::elaborate::elaborate;
+    use mimz::sim::kernel::Sim;
+
+    let src = "
+module BusDecoder {
+  enum Packet {
+    Read(addr: bits[32]),
+    Write(addr: bits[32], data: bits[32])
+  }
+  in pkt: Packet
+  out xor_out: bits[32]
+  xor_out = match pkt {
+    Packet.Read(a)     => a
+    Packet.Write(a, d) => a ^ d
+  }
+}
+";
+
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    // Checker must run to set inferred_total_width on the tagged enum.
+    mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
+    let mut sim = Sim::new(design);
+
+    // Packet.Write(addr=0xAA, data=0x55):
+    // packed = (1u128 << 64) | (0xAAu128 << 32) | 0x55u128
+    let packed: u128 = (1u128 << 64) | (0xAAu128 << 32) | 0x55u128;
+    // Sim::set takes u128 via Into<u128>; the value fits in 65 bits.
+    sim.set("pkt", packed).unwrap();
+    assert_eq!(
+        sim.peek("xor_out").unwrap(),
+        0xAA ^ 0x55,
+        "Write arm: xor_out must equal addr XOR data = 0xFF"
+    );
+
+    // Packet.Read(addr=0xBEEF): fields are packed MSB-first inside [max_payload_w-1:0].
+    // max_payload_w=64; Read.addr is the only field → hi=63, lo=32.
+    // packed = (0 << 64) | (0xBEEF << 32)
+    let packed_read: u128 = 0xBEEFu128 << 32;
+    sim.set("pkt", packed_read).unwrap();
+    assert_eq!(
+        sim.peek("xor_out").unwrap(),
+        0xBEEF,
+        "Read arm: xor_out must equal addr = 0xBEEF"
+    );
+}
