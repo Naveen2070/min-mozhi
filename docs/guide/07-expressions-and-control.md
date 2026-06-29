@@ -80,7 +80,12 @@ Rules the compiler enforces:
 
 - **exhaustive or it fails** — a missing case is `E0601` (add the case or a `_`);
 - **no unreachable arm** — an arm after a `_`, or a duplicate value, is `E0602`;
-- you cannot `match` on a `signed` value (`E0409`).
+- you cannot `match` on a `signed` value (`E0409`);
+- **OR-arm binding intersection** — when one arm lists multiple patterns
+  separated by `,` (e.g. `Op.Add(a, b), Op.Sub(a, b) => a + b`), every
+  alternative must bind the **same names with the same types**. A missing name
+  or a width mismatch across alternatives is `E0808`. A `_` wildcard does not
+  satisfy a binding requirement.
 
 Matching over an `enum` is the idiomatic state machine — see the FSM in
 [chapter 8](08-sequential-logic.md).
