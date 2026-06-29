@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.15.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.16.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -650,6 +650,36 @@ Payload field types must be concrete bit-vectors so the compiler can compute
 rejects them for now). The scrutinee of a match over a tagged enum must be a
 simple identifier so the emitter can slice it without duplicating evaluation.
 
+## 5b. OR-Pattern Binding Intersection (v0.2.16)
+
+When a match arm lists multiple patterns separated by `,` (OR-patterns), all
+alternatives must expose an **identical binding interface**: the same names,
+each with the same type.
+
+**Rule:** For each binding name `n`, if alternative `i` declares `n: T_i`
+then every other alternative must also declare `n` with the same type `T`.
+
+**Correct:**
+
+```mimz
+Op.Add(a, b), Op.Sub(a, b) => a + b   // same names, same types
+```
+
+**Rejected (E0808) — name mismatch:**
+
+```mimz
+Op.Add(a, b), Op.Mul(x) => a          // `b` absent in Mul alternative
+```
+
+**Rejected (E0808) — width mismatch:**
+
+```mimz
+Op.Big(x), Op.Small(x) => x           // `x` is bits[16] vs bits[8]
+```
+
+`_` wildcards do not satisfy a binding requirement. `A(x), _ => x` is E0808
+because the `_` alternative provides no binding for `x`.
+
 ## 6. Static Safety Rules (enforced after parse)
 
 1. **Single driver:** every `out`, `wire` driven exactly once; every `reg`
@@ -683,6 +713,12 @@ simple identifier so the emitter can slice it without duplicating evaluation.
 
 ## Changelog
 
+- **v0.2.16 (2026-06-29):** **OR-pattern binding intersection** — when a match
+  arm lists multiple patterns separated by `,`, every alternative must expose the
+  same binding interface: identical names with identical types. Violations are
+  **E0808** (both name-mismatch and width-mismatch sub-cases). `_` wildcards do
+  not satisfy a binding requirement. Added section 5b. Additive — no grammar
+  change, no new keyword.
 - **v0.2.15 (2026-06-28):** **Tagged-union enums** — `enumDecl` now uses
   `enumVariant` (new) which carries an optional `payloadField` list; `pattern`
   gains optional positional payload bindings `(b1, b2, …)`. Added section 5a

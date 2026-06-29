@@ -11,11 +11,18 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**513 tests** as of 2026-06-28: 349 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 10 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**521 tests** as of 2026-06-29: 356 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 13 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
 Fixture counts (current): 74 error fixtures · 8 grammar fixtures · 46 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-29 OR-arm binding intersection (branch `phase-2-tagged-unions`, Tasks 1–3):
+  E0808 algorithm in `src/checker/names.rs` (5-phase intersection). **+6 lib unit**
+  (checker/tests.rs: 2 positive — 2-way OR-arm clean, 3-way OR-arm clean; 4 negative
+  — name missing, extra name, width mismatch, wildcard-not-binding). Also updated
+  stale pre-existing counts (lib unit 349 → 356, checker 112 → 133, sim integration
+  10 → 13) to match `cargo test-summary` actuals. Suite 513 → 521.
 
 - 2026-06-28 Tagged-union T7 surface (branch `phase-2-comb-function`): pretty-printer
   (`enum_decl`/`pattern`), critical translit fix (binding names in
@@ -180,7 +187,7 @@ The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 112 tests)
+## Unit: checker (`src/checker/tests.rs`, 133 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
