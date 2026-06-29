@@ -1073,3 +1073,119 @@ fn enum_payload_enum_type_is_e0807() {
         d.msg
     );
 }
+
+// -------- E0808: OR-arm binding intersection --------
+
+/// Enum with four variants — used across E0808 tests.
+/// OR-pattern separator in this language is `,` (not `|`).
+const OP: &str = concat!(
+    "enum Op { Add(a: bits[8], b: bits[8]), Sub(a: bits[8], b: bits[8]),",
+    " Big(x: bits[16]), Nop }\n",
+);
+
+#[test]
+fn or_arm_same_names_same_widths_is_clean() {
+    let src = format!(
+        concat!(
+            "{OP}module M {{\n",
+            "  in cmd: Op\n",
+            "  out o: bits[8]\n",
+            "  o = match cmd {{\n",
+            "    Op.Add(a, b), Op.Sub(a, b) => a\n",
+            "    _ => 0\n",
+            "  }}\n",
+            "}}\n",
+        ),
+        OP = OP
+    );
+    check_one(&src).expect("identical OR-arm bindings compile clean");
+}
+
+#[test]
+fn or_arm_three_alts_same_bindings_is_clean() {
+    check_one(concat!(
+        "enum T { A(x: bits[8]), B(x: bits[8]), C(x: bits[8]) }\n",
+        "module M {\n",
+        "  in cmd: T\n",
+        "  out o: bits[8]\n",
+        "  o = match cmd {\n",
+        "    T.A(x), T.B(x), T.C(x) => x\n",
+        "    _ => 0\n",
+        "  }\n",
+        "}\n",
+    ))
+    .expect("3-way OR-arm with identical bindings compiles clean");
+}
+
+#[test]
+fn or_arm_different_names_is_e0808() {
+    let src = format!(
+        concat!(
+            "{OP}module M {{\n",
+            "  in cmd: Op\n",
+            "  out o: bits[8]\n",
+            "  o = match cmd {{\n",
+            "    Op.Add(a, b), Op.Big(x) => a\n",
+            "    _ => 0\n",
+            "  }}\n",
+            "}}\n",
+        ),
+        OP = OP
+    );
+    first_err(&src, "E0808");
+}
+
+#[test]
+fn or_arm_tag_only_alt_is_e0808() {
+    let src = format!(
+        concat!(
+            "{OP}module M {{\n",
+            "  in cmd: Op\n",
+            "  out o: bits[8]\n",
+            "  o = match cmd {{\n",
+            "    Op.Add(a, b), Op.Nop => a\n",
+            "    _ => 0\n",
+            "  }}\n",
+            "}}\n",
+        ),
+        OP = OP
+    );
+    first_err(&src, "E0808");
+}
+
+#[test]
+fn or_arm_subset_binding_is_e0808() {
+    // Full(a,b) has arity 2, Half(a) has arity 1 — name-set mismatch → E0808.
+    first_err(
+        concat!(
+            "enum Op2 { Full(a: bits[8], b: bits[8]), Half(a: bits[8]) }\n",
+            "module M {\n",
+            "  in cmd: Op2\n",
+            "  out o: bits[8]\n",
+            "  o = match cmd {\n",
+            "    Op2.Full(a, b), Op2.Half(a) => a\n",
+            "    _ => 0\n",
+            "  }\n",
+            "}\n",
+        ),
+        "E0808",
+    );
+}
+
+#[test]
+fn or_arm_width_mismatch_is_e0808() {
+    first_err(
+        concat!(
+            "enum Op3 { Big(x: bits[16]), Small(x: bits[8]) }\n",
+            "module M {\n",
+            "  in cmd: Op3\n",
+            "  out o: bits[8]\n",
+            "  o = match cmd {\n",
+            "    Op3.Big(x), Op3.Small(x) => x[7:0]\n",
+            "    _ => 0\n",
+            "  }\n",
+            "}\n",
+        ),
+        "E0808",
+    );
+}
