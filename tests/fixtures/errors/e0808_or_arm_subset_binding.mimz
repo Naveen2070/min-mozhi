@@ -1,0 +1,10 @@
+// expect: E0808
+enum Op { Full(a: bits[8], b: bits[8]), Half(a: bits[8]) }
+module M {
+  in cmd: Op
+  out o: bits[8]
+  o = match cmd {
+    Op.Full(a, b), Op.Half(a) => a
+    _ => 0
+  }
+}
