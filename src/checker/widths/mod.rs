@@ -628,15 +628,15 @@ impl<'a> Checker<'a> {
     }
 
     /// Inject payload binding types into `cx.sigs` for one match arm.
-    /// Returns the list of injected names so the caller can remove them after
-    /// checking the arm body. Silent — E0807 was already emitted at the enum's
-    /// declaration site.
+    /// Returns `(name, prev)` pairs so the caller can restore the prior state
+    /// after checking the arm body. Silent — E0807 was already emitted at the
+    /// enum's declaration site.
     fn inject_arm_bindings(
         &mut self,
         cx: &mut Wcx<'a>,
         en: &'a EnumDecl,
         patterns: &[Pattern],
-    ) -> Vec<String> {
+    ) -> Vec<(String, Option<Ty<'a>>)> {
         let mut injected = Vec::new();
         for p in patterns {
             if let Pattern::Variant {
@@ -648,8 +648,8 @@ impl<'a> Checker<'a> {
                         let ty = self.resolve_ty_silent(cx, &field.ty);
                         match ty {
                             Ty::Bit | Ty::Bits(_) | Ty::Signed(_) => {
-                                cx.sigs.insert(binding.name.clone(), ty);
-                                injected.push(binding.name.clone());
+                                let prev = cx.sigs.insert(binding.name.clone(), ty);
+                                injected.push((binding.name.clone(), prev));
                             }
                             _ => {} // Enum/Memory/Unknown — leave as Unknown (E0807 already reported)
                         }

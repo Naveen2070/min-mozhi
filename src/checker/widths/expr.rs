@@ -235,8 +235,15 @@ impl<'a> Checker<'a> {
                         Vec::new()
                     };
                     self.check_expr(cx, &arm.value, expected);
-                    for name in &injected {
-                        cx.sigs.remove(name.as_str());
+                    for (name, prev) in injected {
+                        match prev {
+                            Some(old_ty) => {
+                                cx.sigs.insert(name, old_ty);
+                            }
+                            None => {
+                                cx.sigs.remove(name.as_str());
+                            }
+                        }
                     }
                 }
             }
@@ -429,8 +436,15 @@ impl<'a> Checker<'a> {
                         Vec::new()
                     };
                     arm_tys.push((arm.value.span, self.infer_ty(cx, &arm.value)));
-                    for name in &injected {
-                        cx.sigs.remove(name.as_str());
+                    for (name, prev) in injected {
+                        match prev {
+                            Some(old_ty) => {
+                                cx.sigs.insert(name, old_ty);
+                            }
+                            None => {
+                                cx.sigs.remove(name.as_str());
+                            }
+                        }
                     }
                 }
                 self.unify_arms(cx, e.span, &arm_tys)

@@ -1027,7 +1027,13 @@ impl<'d, 's> Rw<'d, 's> {
                 let total_w = edecl
                     .inferred_total_width
                     .get()
-                    .unwrap_or_else(|| clog2(edecl.variants.len()))
+                    .unwrap_or_else(|| {
+                        debug_assert!(
+                            edecl.variants.iter().all(|v| v.fields.is_empty()),
+                            "tagged enum reached pattern fallback without inferred_total_width — run checker first"
+                        );
+                        clog2(edecl.variants.len())
+                    })
                     as u128;
                 let tag_w = clog2(edecl.variants.len()) as u128;
                 let max_payload_w = total_w - tag_w;
@@ -1080,7 +1086,13 @@ impl<'d, 's> Rw<'d, 's> {
             let total_w = edecl
                 .inferred_total_width
                 .get()
-                .unwrap_or_else(|| clog2(edecl.variants.len())) as u128;
+                .unwrap_or_else(|| {
+                    debug_assert!(
+                        edecl.variants.iter().all(|v| v.fields.is_empty()),
+                        "tagged enum reached pattern fallback without inferred_total_width — run checker first"
+                    );
+                    clog2(edecl.variants.len())
+                }) as u128;
             let tag_w = clog2(edecl.variants.len()) as u128;
             let max_payload_w = total_w - tag_w;
             if max_payload_w == 0 {
@@ -1100,6 +1112,10 @@ impl<'d, 's> Rw<'d, 's> {
                     }
                     ast::Type::Named(_) => 0, // E0807: already rejected by checker
                 };
+                debug_assert!(
+                    field_w > 0,
+                    "E0807 should have rejected zero-width payload fields before emit/sim"
+                );
                 if field_w == 0 {
                     continue;
                 }

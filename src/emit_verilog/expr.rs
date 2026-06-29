@@ -353,6 +353,10 @@ impl Emitter<'_> {
                     }
                     Type::Named(_) => 0, // E0807: already rejected by checker
                 };
+                debug_assert!(
+                    field_w > 0,
+                    "E0807 should have rejected zero-width payload fields before emit/sim"
+                );
                 if field_w == 0 {
                     continue;
                 }
