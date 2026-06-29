@@ -114,7 +114,7 @@ fn direct_callees(decl: &FuncDecl) -> Vec<String> {
 fn collect_calls(expr: &Expr, out: &mut Vec<String>) {
     match &expr.kind {
         ExprKind::FnCall { name, args } => {
-            // ponytail: Vec::contains is O(n) but fn counts are tiny
+            // note: Vec::contains is O(n) but fn counts are tiny
             if !out.contains(&name.name) {
                 out.push(name.name.clone());
             }

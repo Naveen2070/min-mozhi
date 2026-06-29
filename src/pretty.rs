@@ -48,7 +48,7 @@ pub fn pretty_print(file: &File, flavor: Flavor, order: Order) -> String {
 
 /// Canonical English string for `ty` — used by the names checker's E0808
 /// type comparison (Phase 4 of OR-arm binding intersection).
-pub fn type_str(ty: &Type) -> String {
+pub(crate) fn type_str(ty: &Type) -> String {
     let p = Pretty {
         out: String::new(),
         indent: 0,
