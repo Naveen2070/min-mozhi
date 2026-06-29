@@ -1,0 +1,10 @@
+// expect: E0808
+enum Op { Big(x: bits[16]), Small(x: bits[8]) }
+module M {
+  in cmd: Op
+  out o: bits[8]
+  o = match cmd {
+    Op.Big(x), Op.Small(x) => x[7:0]
+    _ => 0
+  }
+}
