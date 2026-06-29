@@ -623,7 +623,7 @@ fn parses_fn_with_local_let_and_body() {
 
 #[test]
 fn tagged_enum_parses() {
-    // ponytail: parser-only test; checker rejects payload types (T3)
+    // note: parser-only test; checker rejects payload types (T3)
     let f = parse_ok(
         "enum Packet {\n  Read(addr: bits[32]),\n  Write(addr: bits[32], data: bits[32])\n}\n",
     );
