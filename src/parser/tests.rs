@@ -510,6 +510,17 @@ fn parses_test_block() {
     );
 }
 
+#[test]
+fn empty_parens_variant_is_a_parse_error() {
+    // "A()" should be rejected — tag-only variants have no parens (D1)
+    let d = parse_err("enum Foo { A() }\nmodule M { out y: bit\n  y = 0\n}\n");
+    assert_eq!(d[0].code, Some("E1113"));
+    assert!(
+        d[0].msg.contains("tag-only"),
+        "expected tag-only hint in message"
+    );
+}
+
 // ---- error recovery: `parse_recover` yields a best-effort tree with `Error`
 // placeholder nodes so the LSP can offer semantics on half-typed source.
 

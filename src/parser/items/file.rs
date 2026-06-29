@@ -175,6 +175,19 @@ impl Parser {
             let vstart = vname.span;
             let mut fields = vec![];
             let vspan = if self.eat(&TokKind::LParen) {
+                // Reject `A()` — tag-only variants have no parens (D1).
+                if matches!(self.peek_kind(), TokKind::RParen) {
+                    let span = self.peek().span;
+                    self.error(
+                        span,
+                        "E1113",
+                        format!(
+                            "empty payload list — use `{}` not `{}()` for a tag-only variant",
+                            vname.name, vname.name
+                        ),
+                    );
+                    return None;
+                }
                 loop {
                     self.skip_newlines();
                     if matches!(self.peek_kind(), TokKind::RParen) {
