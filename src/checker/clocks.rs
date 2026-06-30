@@ -343,6 +343,10 @@ fn expr_reads<'a>(e: &'a Expr, out: &mut Vec<(&'a str, Span)>) {
                 expr_reads(a, out);
             }
         }
-        ExprKind::BundleLit(_) => todo!(),
+        ExprKind::BundleLit(inits) => {
+            for init in inits {
+                expr_reads(&init.value, out);
+            }
+        }
     }
 }

@@ -38,7 +38,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::{
-    BinOp, EnumDecl, Expr, FuncDecl, Module, ModuleItem, Pattern, SeqStmt, TopItem, Type,
+    BinOp, EnumDecl, Expr, ExprKind, FieldInit, FuncDecl, Module, ModuleItem, NamedArg, Pattern,
+    SeqStmt, TopItem, Type,
 };
 use crate::span::Span;
 
@@ -161,6 +162,9 @@ struct Wcx<'a> {
     env: Env,
     /// signal name -> resolved type (ports, wires, regs, clocks, resets).
     sigs: HashMap<String, Ty<'a>>,
+    /// signal name -> original AST type, for bundle-typed signals only.
+    /// Used to recover bundle name/args after `resolve_ty` returns Unknown.
+    bundle_sigs: HashMap<String, &'a Type>,
 }
 
 /// A (module name, parameter binding) pair waiting to be checked.
@@ -195,6 +199,7 @@ impl<'a> Checker<'a> {
                             }),
                             env,
                             sigs: HashMap::new(),
+                            bundle_sigs: HashMap::new(),
                         };
                         let (tag_w, max_payload_w) = self.enum_tag_and_payload_widths(&mut cx, e);
                         let total_w = if max_payload_w == 0 {
@@ -305,6 +310,7 @@ impl<'a> Checker<'a> {
             sc,
             env,
             sigs: HashMap::new(),
+            bundle_sigs: HashMap::new(),
         };
         self.collect_sigs(&mut cx, &m.items);
         let mut found = Vec::new();
@@ -323,6 +329,9 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reg { name, ty, .. } => {
                     let t = self.resolve_ty(cx, ty);
                     cx.sigs.insert(name.name.clone(), t);
+                    if matches!(t, Ty::Unknown) && self.is_bundle_ty(ty) {
+                        cx.bundle_sigs.insert(name.name.clone(), ty);
+                    }
                 }
                 ModuleItem::Mem {
                     name, ty, depth, ..
@@ -507,8 +516,53 @@ impl<'a> Checker<'a> {
                     self.check_expr(cx, init, expected);
                 }
                 ModuleItem::Drive { lhs, rhs } => {
-                    let expected = self.lvalue_ty(cx, lhs);
-                    self.check_expr(cx, rhs, expected);
+                    let lhs_bundle = cx.bundle_sigs.get(&lhs.base.name).copied();
+                    if let Some(lhs_ty) = lhs_bundle {
+                        // LHS is bundle-typed: dispatch by RHS shape.
+                        match &rhs.kind {
+                            ExprKind::BundleLit(inits) => {
+                                let bname = ast_bundle_name(lhs_ty);
+                                let bargs = ast_bundle_args(lhs_ty);
+                                if let Some(bname) = bname {
+                                    self.check_bundle_lit(cx, bname, bargs, inits, rhs.span);
+                                }
+                            }
+                            ExprKind::Ident(rhs_sig) => {
+                                // Nominal type check (E0907): both sides must name the same bundle.
+                                // note: nominal-only today; structural subtyping adds one
+                                // field-list comparison (2.9); first-class IR bundle
+                                // (post-Phase 2) promotes BundleType to a Type variant in IR
+                                let rhs_bundle = cx.bundle_sigs.get(rhs_sig.as_str()).copied();
+                                if let Some(rhs_ty) = rhs_bundle {
+                                    if let (Some(l), Some(r)) =
+                                        (ast_bundle_name(lhs_ty), ast_bundle_name(rhs_ty))
+                                    {
+                                        if l != r {
+                                            self.err(
+                                                cx.file,
+                                                rhs.span,
+                                                "E0907",
+                                                format!(
+                                                    "bundle type mismatch: cannot assign \
+                                                     `{r}` where `{l}` is expected"
+                                                ),
+                                                "bundle types are matched by name — they \
+                                                 must be the same bundle declaration",
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                // Non-literal, non-ident RHS assigned to a bundle port.
+                                // Recurse for inner errors; no scalar type to check against.
+                                let _ = self.infer_ty(cx, rhs);
+                            }
+                        }
+                    } else {
+                        let expected = self.lvalue_ty(cx, lhs);
+                        self.check_expr(cx, rhs, expected);
+                    }
                 }
                 ModuleItem::On(on) => self.seq_width_stmts(cx, &on.body),
                 ModuleItem::Inst(inst) => self.check_inst_widths(cx, inst, found),
@@ -560,8 +614,25 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
                 | ModuleItem::Error(_) => {}
-                // ponytail: bundle destructure bindings deferred to T6
-                ModuleItem::BundleDestructure { .. } => {}
+                ModuleItem::BundleDestructure { bindings, expr, span } => {
+                    // E0903: duplicate binding names in the destructure pattern.
+                    let mut seen: HashMap<&str, Span> = HashMap::new();
+                    for b in bindings {
+                        if seen.insert(b.name.as_str(), b.span).is_some() {
+                            self.err(
+                                cx.file,
+                                b.span,
+                                "E0903",
+                                format!("duplicate binding `{}` in bundle destructure", b.name),
+                                "each field can only be bound once in a destructure",
+                            );
+                        }
+                    }
+                    // E0907: verify expr is actually bundle-typed (Ty::Unknown for non-bundles
+                    // produces no further diagnostic; pass 3 already reported unknown names).
+                    let _ = self.infer_ty(cx, expr);
+                    let _ = span; // span available for future E0907-on-destructure diagnostics
+                }
             }
         }
     }
@@ -691,6 +762,109 @@ impl<'a> Checker<'a> {
         injected
     }
 
+    /// True if `ty` names a registered bundle (either `Type::Named` or parametric `Type::Bundle`).
+    fn is_bundle_ty(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Named(id) => self.bundles.contains_key(&id.name),
+            Type::Bundle { name, .. } => self.bundles.contains_key(&name.name),
+            _ => false,
+        }
+    }
+
+    /// Resolve a bundle's fields to `(name, Ty)` pairs under the given args.
+    /// Returns `None` and emits E0906 if a required param has no value.
+    fn resolve_bundle_fields(
+        &mut self,
+        cx: &Wcx<'a>,
+        bname: &str,
+        bargs: &[NamedArg],
+        span: Span,
+    ) -> Option<Vec<(String, Ty<'a>)>> {
+        let (bfile, bdecl) = self.bundles.get(bname).copied()?;
+        let mut benv = self.file_consts[bfile].clone();
+        for param in &bdecl.params {
+            let arg = bargs.iter().find(|a| a.name.name == param.name.name);
+            if let Some(a) = arg {
+                if let Ok(v) = consteval::eval(&a.value, &cx.env) {
+                    benv.insert(param.name.name.clone(), v);
+                }
+            } else if let Some(def) = &param.default {
+                match consteval::eval(def, &benv) {
+                    Ok(v) => { benv.insert(param.name.name.clone(), v); }
+                    Err(d) => {
+                        self.diags.push(d.with_file(bfile));
+                        return None;
+                    }
+                }
+            } else {
+                self.err(
+                    bfile, span, "E0906",
+                    format!("bundle `{bname}` param `{}` has no value", param.name.name),
+                    "provide the value: `BundleName(PARAM: value)`",
+                );
+                return None;
+            }
+        }
+        let mut tmp = Wcx {
+            file: bfile,
+            sc: Rc::new(super::names::Scope { names: HashMap::new() }),
+            env: benv,
+            sigs: HashMap::new(),
+            bundle_sigs: HashMap::new(),
+        };
+        let fields = bdecl
+            .fields
+            .iter()
+            .map(|f| (f.name.name.clone(), self.resolve_ty(&mut tmp, &f.ty)))
+            .collect();
+        Some(fields)
+    }
+
+    /// Field-by-field check of a bundle literal against its declared type.
+    /// Emits E0901 (missing field) and E0902 (unknown field), then checks
+    /// each supplied field value's width against the declared field type.
+    fn check_bundle_lit(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        bname: &str,
+        bargs: &[NamedArg],
+        inits: &'a [FieldInit],
+        span: Span,
+    ) {
+        let fields = match self.resolve_bundle_fields(cx, bname, bargs, span) {
+            Some(f) => f,
+            None => {
+                // Bundle lookup failed; recurse anyway to surface inner errors.
+                for init in inits {
+                    let _ = self.infer_ty(cx, &init.value);
+                }
+                return;
+            }
+        };
+        // E0902: literal provides a field that the bundle doesn't declare.
+        for init in inits {
+            if !fields.iter().any(|(n, _)| *n == init.name.name) {
+                self.err(
+                    cx.file, init.name.span, "E0902",
+                    format!("bundle `{bname}` has no field `{}`", init.name.name),
+                    "check the bundle declaration for the correct field names",
+                );
+            }
+        }
+        // E0901: bundle declares a field the literal omits; type-check present fields.
+        for (fname, fty) in &fields {
+            if let Some(init) = inits.iter().find(|i| i.name.name == *fname) {
+                self.check_expr(cx, &init.value, *fty);
+            } else {
+                self.err(
+                    cx.file, span, "E0901",
+                    format!("bundle literal missing field `{fname}`"),
+                    format!("add `{fname}: <expr>` to the literal"),
+                );
+            }
+        }
+    }
+
     fn check_func_body_widths(&mut self, file: usize, func: &'a FuncDecl) {
         let env = self.file_consts[file].clone();
         let mut cx = Wcx {
@@ -700,6 +874,7 @@ impl<'a> Checker<'a> {
             }),
             env,
             sigs: HashMap::new(),
+            bundle_sigs: HashMap::new(),
         };
         // Seed the signal environment with concrete param types.
         for param in &func.params {
@@ -773,6 +948,7 @@ impl<'a> Checker<'a> {
             }),
             env: fenv,
             sigs: HashMap::new(),
+            bundle_sigs: HashMap::new(),
         };
         self.resolve_ty_silent(&mut fcx, ty)
     }
@@ -818,6 +994,23 @@ fn max_signed_v(n: u128) -> String {
         format!("2^{} - 1", n - 1)
     } else {
         ((1i128 << (n - 1)) - 1).to_string()
+    }
+}
+
+/// Extract the bundle name from an AST type (Named or parametric Bundle).
+fn ast_bundle_name(ty: &Type) -> Option<&str> {
+    match ty {
+        Type::Named(id) => Some(&id.name),
+        Type::Bundle { name, .. } => Some(&name.name),
+        _ => None,
+    }
+}
+
+/// Extract the parameter args slice from a parametric bundle type, or `&[]`.
+fn ast_bundle_args(ty: &Type) -> &[NamedArg] {
+    match ty {
+        Type::Bundle { args, .. } => args.as_slice(),
+        _ => &[],
     }
 }
 
