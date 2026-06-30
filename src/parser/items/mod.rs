@@ -10,6 +10,7 @@
 //! `module.rs` parses module bodies; `inst.rs` parses instantiations;
 //! `seq.rs` parses sequential (`on`) blocks; `test.rs` parses `test` blocks.
 
+mod bundle;
 mod file;
 mod func;
 mod inst;
@@ -115,7 +116,30 @@ impl Parser {
                 self.expect(TokKind::RBracket, "`]` after the width")?;
                 Some(Type::Signed(Box::new(n)))
             }
-            _ => Some(Type::Named(id)),
+            _ => {
+                // Plain enum/bundle name OR parametric bundle `Foo(X: N)`.
+                if self.eat(&TokKind::LParen) {
+                    let mut args = Vec::new();
+                    loop {
+                        self.skip_newlines();
+                        if self.eat(&TokKind::RParen) {
+                            break;
+                        }
+                        let aname = self.ident("a parameter name")?;
+                        self.expect(TokKind::Colon, "`:` then the parameter value")?;
+                        let aval = self.expr()?;
+                        args.push(NamedArg { name: aname, value: aval });
+                        self.skip_newlines();
+                        if !self.eat(&TokKind::Comma) {
+                            self.expect(TokKind::RParen, "`,` or `)` after parameter")?;
+                            break;
+                        }
+                    }
+                    Some(Type::Bundle { name: id, args })
+                } else {
+                    Some(Type::Named(id))
+                }
+            }
         }
     }
 

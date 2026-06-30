@@ -2,7 +2,7 @@
 //! (precedence trap, latch teaching, `=` vs `<-`).
 
 use super::*;
-use crate::ast::{Builtin, ExprKind, ModuleItem, TopItem};
+use crate::ast::{Builtin, ExprKind, ModuleItem, TopItem, Type};
 use crate::lexer::lex;
 
 fn parse_ok(src: &str) -> File {
@@ -761,4 +761,39 @@ fn parse_const_if_block() {
     assert_eq!(ci2.0.len(), 1, "then-branch has one item");
     assert!(ci2.1.is_some(), "else branch present");
     assert_eq!(ci2.1.as_ref().unwrap().len(), 1, "else-branch has one item");
+}
+
+#[test]
+fn parse_bundle_decl() {
+    let src = r#"
+bundle MemBus(WIDTH: int = 32) {
+  valid: bit
+  data: bits[WIDTH]
+}
+"#;
+    let file = parse_ok(src);
+    let TopItem::Bundle(b) = &file.items[0] else { panic!("expected Bundle") };
+    assert_eq!(b.name.name, "MemBus");
+    assert_eq!(b.params.len(), 1);
+    assert_eq!(b.params[0].name.name, "WIDTH");
+    assert_eq!(b.fields.len(), 2);
+    assert_eq!(b.fields[0].name.name, "valid");
+    assert!(matches!(b.fields[0].ty, Type::Bit));
+    assert_eq!(b.fields[1].name.name, "data");
+    assert!(matches!(b.fields[1].ty, Type::Bits(_)));
+}
+
+#[test]
+fn parse_bundle_as_port_type() {
+    let src = r#"
+bundle Hs { valid: bit, ready: bit }
+module Top {
+  in req: Hs
+  out rsp: Hs(X: 1)
+}
+"#;
+    let file = parse_ok(src);
+    let TopItem::Module(m) = &file.items[1] else { panic!() };
+    let ModuleItem::Port { ty, .. } = &m.items[0] else { panic!() };
+    assert!(matches!(ty, Type::Named(_) | Type::Bundle { .. }));
 }
