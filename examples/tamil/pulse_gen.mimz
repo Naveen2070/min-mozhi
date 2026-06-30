@@ -1,0 +1,17 @@
+// Demonstrates: default assignment prevents forgetting to deassert done
+தொகுதி PulseGen {
+    துடிப்பு clk
+    மீட்டமை rst
+    உள்ளீடு  start: bit
+    வெளியீடு done:  bit
+    பதிவேடு done_r: bit = 0
+
+    போது ஏற்றம்(clk) {
+        இயல்பு done_r <- 0
+        எனில் start {
+            done_r <- 1
+        }
+    }
+
+    done = done_r
+}

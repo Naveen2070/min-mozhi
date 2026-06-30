@@ -1,0 +1,17 @@
+// Demonstrates: default assignment prevents forgetting to deassert done
+module PulseGen {
+    clock clk
+    reset rst
+    in  start: bit
+    out done:  bit
+    reg done_r: bit = 0
+
+    on rise(clk) {
+        default done_r <- 0
+        if start {
+            done_r <- 1
+        }
+    }
+
+    done = done_r
+}
