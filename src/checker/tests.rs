@@ -1207,6 +1207,14 @@ fn e0810_duplicate_default() {
 }
 
 #[test]
+fn e0811_const_if_condition_not_const() {
+    first_err(
+        "module M {\n  in a: bit\n  out b: bit\n  const if (a) {\n    wire extra: bit = 0\n  }\n  b = 0\n}\n",
+        "E0811",
+    );
+}
+
+#[test]
 fn or_arm_wildcard_not_binding_e0808() {
     let src = format!(
         concat!(

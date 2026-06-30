@@ -468,6 +468,16 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: remove one of the `default` statements, or merge them:\n\
          `default name <- cond ? val_a : val_b`",
     ),
+    (
+        "E0811",
+        "E0811 — `const if` condition is not a compile-time constant\n\n\
+         `const if` conditions must be resolvable before any hardware is generated.\n\
+         Allowed: module parameters (e.g. `WIDTH`), file-level `const` values,\n\
+         literals, and arithmetic/comparison on those.\n\
+         Not allowed: port values, `reg` or `wire` names, or any runtime signal.\n\n\
+         Fix: use only compile-time expressions in the condition, or replace\n\
+         `const if` with a regular `if` inside an `on` block or a combinational drive.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",

@@ -173,6 +173,12 @@ fn count_clocks(items: &[ModuleItem], n: &mut usize) {
         match item {
             ModuleItem::Clock(_) => *n += 1,
             ModuleItem::Repeat(r) => count_clocks(&r.items, n),
+            ModuleItem::ConstIf { then, els, .. } => {
+                count_clocks(then, n);
+                if let Some(el) = els {
+                    count_clocks(el, n);
+                }
+            }
             _ => {}
         }
     }
@@ -210,6 +216,12 @@ fn collect<'a>(items: &'a [ModuleItem], cx: &mut Ccx<'a>) {
                 }
             }
             ModuleItem::Repeat(r) => collect(&r.items, cx),
+            ModuleItem::ConstIf { then, els, .. } => {
+                collect(then, cx);
+                if let Some(el) = els {
+                    collect(el, cx);
+                }
+            }
             _ => {}
         }
     }
