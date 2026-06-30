@@ -1,0 +1,6 @@
+// expect: E0906
+bundle Bad { x: NoSuchBundle(W: 32) }
+module Top {
+  out z: bit
+  z = 0
+}
