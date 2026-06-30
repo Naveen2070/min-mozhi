@@ -150,7 +150,13 @@ impl<'a> Checker<'a> {
     /// Declarations, recursively through `repeat` and `const if` bodies (declaration
     /// order in a module is free; `repeat` instantiates arrays but the
     /// names are declared once; `const if` losing branch is fully discarded).
-    fn collect_decls(&mut self, file: usize, sc: &mut Scope<'a>, env: &Env, items: &'a [ModuleItem]) {
+    fn collect_decls(
+        &mut self,
+        file: usize,
+        sc: &mut Scope<'a>,
+        env: &Env,
+        items: &'a [ModuleItem],
+    ) {
         for item in items {
             match item {
                 ModuleItem::Port { dir, name, .. } => {
@@ -166,9 +172,15 @@ impl<'a> Checker<'a> {
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
                 ModuleItem::Repeat(r) => self.collect_decls(file, sc, env, &r.items),
-                ModuleItem::ConstIf { cond, then, els, .. } => {
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
                     let val = consteval::eval(cond, env).unwrap_or(0);
-                    let branch = if val != 0 { then.as_slice() } else { els.as_deref().unwrap_or(&[]) };
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
                     self.collect_decls(file, sc, env, branch);
                 }
                 ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}

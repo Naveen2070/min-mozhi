@@ -28,7 +28,9 @@ fn flatten_const_if<'a>(
     let mut out = Vec::new();
     for item in items {
         match item {
-            ModuleItem::ConstIf { cond, then, els, .. } => {
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
                 let val = value::const_eval(cond, ints).unwrap_or(0);
                 let branch: &[ModuleItem] = if val != 0 {
                     then
@@ -55,7 +57,9 @@ fn collect_module_consts(
                 let v = value::const_eval(&c.value, ints)?;
                 ints.insert(c.name.name.clone(), v);
             }
-            ModuleItem::ConstIf { cond, then, els, .. } => {
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
                 let val = value::const_eval(cond, ints).unwrap_or(0);
                 let branch: &[ModuleItem] = if val != 0 {
                     then

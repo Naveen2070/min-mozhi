@@ -369,9 +369,15 @@ impl<'a> Checker<'a> {
                     self.collect_sigs(cx, &r.items);
                     self.unshadow(cx, &r.var.name, shadowed);
                 }
-                ModuleItem::ConstIf { cond, then, els, .. } => {
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
                     let val = consteval::eval(cond, &cx.env).unwrap_or(0);
-                    let branch = if val != 0 { then.as_slice() } else { els.as_deref().unwrap_or(&[]) };
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
                     self.collect_sigs(cx, branch);
                 }
                 _ => {}
