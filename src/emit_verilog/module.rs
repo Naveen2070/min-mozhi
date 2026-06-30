@@ -18,13 +18,8 @@ impl Emitter<'_> {
         // of this module; they fold to literals wherever used (widths,
         // `repeat` bounds, indices) and emit no hardware of their own.
         let file_env = self.env.clone();
-        self.env = self.eval_consts(
-            file_env.clone(),
-            m.items.iter().filter_map(|i| match i {
-                ModuleItem::Const(c) => Some(c),
-                _ => None,
-            }),
-        );
+        self.env = self.eval_consts_items(&m.items, file_env.clone());
+        let flat: Vec<&ModuleItem> = self.flatten_items(&m.items);
 
         // Parameters.
         let mut header = format!("module {}", m.name.name);
@@ -45,7 +40,7 @@ impl Emitter<'_> {
         // in the body and can't reach the header port list.
         let mut ports: Vec<String> = Vec::new();
         self.emitting_port = true;
-        for item in &m.items {
+        for item in flat.iter().copied() {
             match item {
                 ModuleItem::Clock(c) => ports.push(format!("input wire {}", c.name)),
                 ModuleItem::Reset { name: r, .. } => ports.push(format!("input wire {}", r.name)),
@@ -69,9 +64,9 @@ impl Emitter<'_> {
         let fn_pos = self.out.len();
 
         // Enum encodings as localparams.
-        let enums: Vec<&EnumDecl> = m
-            .items
+        let enums: Vec<&EnumDecl> = flat
             .iter()
+            .copied()
             .filter_map(|i| match i {
                 ModuleItem::Enum(e) => Some(e),
                 _ => None,
@@ -105,7 +100,7 @@ impl Emitter<'_> {
         }
 
         // Declarations.
-        for item in &m.items {
+        for item in flat.iter().copied() {
             match item {
                 ModuleItem::Wire { name, ty, .. } => {
                     self.check_ascii(name);
@@ -134,7 +129,7 @@ impl Emitter<'_> {
         // (mirrors the simulator, which initializes all cells at construction).
         // Mandatory init value → no uninitialized state, without a per-cycle
         // reset (the `reset` line clears registers only).
-        for item in &m.items {
+        for item in flat.iter().copied() {
             if let ModuleItem::Mem {
                 name, depth, init, ..
             } = item
@@ -162,26 +157,26 @@ impl Emitter<'_> {
 
         // Sequential blocks: one always per `on`, reset generated from
         // the reset values of the regs each block assigns.
-        let reset_name = m.items.iter().find_map(|i| match i {
+        let reset_name = flat.iter().copied().find_map(|i| match i {
             ModuleItem::Reset { name: r, .. } => Some(r.name.clone()),
             _ => None,
         });
         // An async reset is added to every always-block's sensitivity list
         // (`@(… or posedge rst)`); a sync reset only acts on the clock edge.
-        let async_reset = m
-            .items
+        let async_reset = flat
             .iter()
+            .copied()
             .any(|i| matches!(i, ModuleItem::Reset { is_async: true, .. }));
-        let regs: HashMap<&str, &Expr> = m
-            .items
+        let regs: HashMap<&str, &Expr> = flat
             .iter()
+            .copied()
             .filter_map(|i| match i {
                 ModuleItem::Reg { name, reset, .. } => Some((name.name.as_str(), reset)),
                 _ => None,
             })
             .collect();
 
-        for item in &m.items {
+        for item in flat.iter().copied() {
             if let ModuleItem::On(on) = item {
                 let mut assigned: Vec<&str> = Vec::new();
                 collect_assigned(&on.body, &mut assigned);
@@ -310,6 +305,52 @@ impl Emitter<'_> {
 
         self.env = saved_env;
         s
+    }
+
+    /// Flatten `const if` nodes into the items they select, evaluating
+    /// conditions against `self.env`. Items in the losing branch are dropped.
+    /// Nested ConstIf is resolved recursively. Used by `module()` for loops
+    /// that don't recurse.
+    fn flatten_items<'a>(&self, items: &'a [ModuleItem]) -> Vec<&'a ModuleItem> {
+        let mut out = Vec::new();
+        for item in items {
+            match item {
+                ModuleItem::ConstIf { cond, then, els, .. } => {
+                    let val = consteval::eval(cond, &self.env).unwrap_or(0);
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
+                    out.extend(self.flatten_items(branch));
+                }
+                _ => out.push(item),
+            }
+        }
+        out
+    }
+
+    /// Like `eval_consts` but recurses into `const if` winning branches so
+    /// that consts declared inside a `const if` block are folded into the env.
+    fn eval_consts_items(&mut self, items: &[ModuleItem], mut base: Env) -> Env {
+        for item in items {
+            match item {
+                ModuleItem::Const(c) => {
+                    base = self.eval_consts(base, std::iter::once(c));
+                }
+                ModuleItem::ConstIf { cond, then, els, .. } => {
+                    let val = consteval::eval(cond, &base).unwrap_or(0);
+                    let branch: &[ModuleItem] = if val != 0 {
+                        then
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
+                    base = self.eval_consts_items(branch, base);
+                }
+                _ => {}
+            }
+        }
+        base
     }
 
     /// Emit every instance in `items`, descending into `repeat` bodies and
