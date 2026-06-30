@@ -19,6 +19,57 @@ use crate::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 
 use super::value::{self, Resolver, Val};
 
+/// Flatten `const if` nodes in `items`, evaluating conditions against `ints`.
+/// Items from winning branches replace the ConstIf node; losing branches drop.
+fn flatten_const_if<'a>(
+    items: &'a [ModuleItem],
+    ints: &BTreeMap<String, i128>,
+) -> Vec<&'a ModuleItem> {
+    let mut out = Vec::new();
+    for item in items {
+        match item {
+            ModuleItem::ConstIf { cond, then, els, .. } => {
+                let val = value::const_eval(cond, ints).unwrap_or(0);
+                let branch: &[ModuleItem] = if val != 0 {
+                    then
+                } else {
+                    els.as_deref().unwrap_or(&[])
+                };
+                out.extend(flatten_const_if(branch, ints));
+            }
+            _ => out.push(item),
+        }
+    }
+    out
+}
+
+/// Collect module-level `const` declarations (including those inside winning
+/// `const if` branches) into `ints`. Propagates errors from const evaluation.
+fn collect_module_consts(
+    items: &[ModuleItem],
+    ints: &mut BTreeMap<String, i128>,
+) -> Result<(), String> {
+    for it in items {
+        match it {
+            ModuleItem::Const(c) => {
+                let v = value::const_eval(&c.value, ints)?;
+                ints.insert(c.name.name.clone(), v);
+            }
+            ModuleItem::ConstIf { cond, then, els, .. } => {
+                let val = value::const_eval(cond, ints).unwrap_or(0);
+                let branch: &[ModuleItem] = if val != 0 {
+                    then
+                } else {
+                    els.as_deref().unwrap_or(&[])
+                };
+                collect_module_consts(branch, ints)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// One evaluated output port.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
@@ -112,18 +163,14 @@ pub fn eval_outputs(
             ints.insert(c.name.name.clone(), v);
         }
     }
-    for it in &m.items {
-        if let ModuleItem::Const(c) = it {
-            let v = value::const_eval(&c.value, &ints)?;
-            ints.insert(c.name.name.clone(), v);
-        }
-    }
+    collect_module_consts(&m.items, &mut ints)?;
+    let flat_items: Vec<&ModuleItem> = flatten_const_if(&m.items, &ints);
 
     // 3. Signals (in/out/wire) with their declared (width, signed).
     let mut sig_ty: BTreeMap<String, (u32, bool)> = BTreeMap::new();
     let mut drivers: BTreeMap<String, &Expr> = BTreeMap::new();
     let mut out_order: Vec<(String, u32, bool)> = Vec::new();
-    for it in &m.items {
+    for it in flat_items.iter().copied() {
         match it {
             ModuleItem::Port { dir, name, ty } => {
                 let (w, s) = value::type_width(ty, &ints)?;
@@ -160,7 +207,7 @@ pub fn eval_outputs(
         in_progress: Vec::new(),
         funcs: &funcs,
     };
-    for it in &m.items {
+    for it in flat_items.iter().copied() {
         if let ModuleItem::Port {
             dir: Dir::In, name, ..
         } = it
