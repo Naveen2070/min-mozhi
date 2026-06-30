@@ -123,6 +123,7 @@ is valid even in an otherwise-English file.
 | KW_THAMIZH    | `thamizh` | `thamizh`       | `தமிழ்`       | the `thamizh-order` profile name; en==tanglish, Tamil script `தமிழ்`                                                                   |
 | KW_FN         | `fn`      | `saarbu`        | `சார்பு`      | combinational user-defined function (`fn f(…) -> T`); en alias: `function`; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
 | KW_DEFAULT    | `default` | `iyalbu`        | `இயல்பு`      | priority-lowest sequential assignment in `on` blocks (`default NAME <- EXPR`); Tanglish/Tamil PROVISIONAL, pending native review (R11) |
+| KW_BUNDLE     | `bundle`  | `kattai`        | `கட்டை`       | "bundle/block" — named group of signals (`bundle Foo { fields }`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)           |
 
 ### Reserved words
 
