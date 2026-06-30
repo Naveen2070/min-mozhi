@@ -270,6 +270,17 @@ fn run_seq(
     next_mems: &mut BTreeMap<(String, u128), Val>,
     widths: &BTreeMap<String, Width>,
 ) -> Result<(), String> {
+    // D-DEFAULT-3: defaults first so conditional assigns override them
+    for s in body {
+        if let SeqStmt::Default { name, val, .. } = s {
+            let v = value::eval(env, val)?;
+            let w = widths.get(&name.name).copied().unwrap_or(Width {
+                bits: v.width,
+                signed: v.signed,
+            });
+            next.insert(name.name.clone(), Val::new(v.bits, w.bits, w.signed));
+        }
+    }
     for s in body {
         match s {
             SeqStmt::Assign { lhs, rhs } => {
@@ -315,7 +326,7 @@ fn run_seq(
                     run_seq(env, e, next, next_mems, widths)?;
                 }
             }
-            SeqStmt::Default { .. } => todo!("default not yet implemented"),
+            SeqStmt::Default { .. } => {} // already processed above
             // Unreachable: the kernel runs on a strict-parsed tree, which
             // carries no `Error` placeholder.
             SeqStmt::Error(_) => {}
