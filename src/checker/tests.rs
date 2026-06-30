@@ -1191,6 +1191,22 @@ fn or_arm_width_mismatch_is_e0808() {
 }
 
 #[test]
+fn e0809_default_target_not_reg() {
+    first_err(
+        "module M {\n  clock clk\n  wire w: bit = 0\n  on rise(clk) {\n    default w <- 0\n  }\n}\n",
+        "E0809",
+    );
+}
+
+#[test]
+fn e0810_duplicate_default() {
+    first_err(
+        "module M {\n  clock clk\n  reset rst\n  reg r: bit = 0\n  on rise(clk) {\n    default r <- 0\n    default r <- 1\n  }\n}\n",
+        "E0810",
+    );
+}
+
+#[test]
 fn or_arm_wildcard_not_binding_e0808() {
     let src = format!(
         concat!(

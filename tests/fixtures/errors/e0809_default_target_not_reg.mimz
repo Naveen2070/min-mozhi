@@ -1,0 +1,8 @@
+// expect: E0809
+module M {
+    clock clk
+    wire w: bit = 0
+    on rise(clk) {
+        default w <- 0
+    }
+}

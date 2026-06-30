@@ -230,6 +230,24 @@ impl<'a> Checker<'a> {
                         }
                         None => self.unknown(file, &on.clock.name, on.clock.span),
                     }
+                    // E0810: each reg may have at most one `default` per `on` block
+                    let mut seen_defaults: std::collections::HashSet<&str> = Default::default();
+                    for stmt in &on.body {
+                        if let SeqStmt::Default { name, span, .. } = stmt {
+                            if !seen_defaults.insert(name.name.as_str()) {
+                                self.err(
+                                    file,
+                                    *span,
+                                    "E0810",
+                                    format!(
+                                        "duplicate `default` for `{}` in this `on` block",
+                                        name.name
+                                    ),
+                                    "each reg may have at most one `default` per `on` block",
+                                );
+                            }
+                        }
+                    }
                     self.seq_stmts(file, sc, env, &on.body);
                 }
                 ModuleItem::Drive { lhs, rhs } => {
@@ -280,7 +298,21 @@ impl<'a> Checker<'a> {
                         self.seq_stmts(file, sc, env, els);
                     }
                 }
-                SeqStmt::Default { .. } => todo!("default not yet implemented"),
+                SeqStmt::Default { name, val, span } => {
+                    match sc.names.get(&name.name) {
+                        Some(Bind::Reg) => {}
+                        Some(_) => self.err(
+                            file,
+                            *span,
+                            "E0809",
+                            format!("`default` target `{}` is not a reg", name.name),
+                            "only `reg` signals can have default assignments; \
+                             wires are always driven combinationally",
+                        ),
+                        None => self.unknown(file, &name.name, name.span),
+                    }
+                    self.expr(file, sc, env, val);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }

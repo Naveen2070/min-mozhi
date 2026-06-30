@@ -1,0 +1,10 @@
+// expect: E0810
+module M {
+    clock clk
+    reset rst
+    reg r: bit = 0
+    on rise(clk) {
+        default r <- 0
+        default r <- 1
+    }
+}

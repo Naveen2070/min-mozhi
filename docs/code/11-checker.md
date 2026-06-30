@@ -134,6 +134,8 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0806 | wrong number of payload bindings in a match pattern (got M, expected N fields)            | list the exact bindings or use fewer/more names                                                  |
 | E0807 | payload field has a non-concrete type (enum or named type used as payload)                | use `bit`, `bits[N]`, or `signed[N]`; nested enums deferred                                      |
 | E0808 | OR-pattern alternatives must expose the same binding interface                            | ensure every alternative binds identical names with identical types, or split into separate arms |
+| E0809 | `default` assignment target is not a `reg`                                                | only `reg` signals can have sequential default assignments; drive wires combinationally          |
+| E0810 | duplicate `default` for the same reg in one `on` block                                    | each reg may have at most one `default` per `on` block; merge into a conditional expression      |
 
 Numbering scheme:
 
