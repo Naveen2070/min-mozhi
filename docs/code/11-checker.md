@@ -233,19 +233,20 @@ itself to the language's own honesty rule.
 
 ## Deferred to later slices (the honest list)
 
-| Rule                                              | Blocked on / planned with                                                |
-| ------------------------------------------------- | ------------------------------------------------------------------------ |
-| `repeat` unrolling (elaboration)                  | widths/drivers check per-iteration; unrolling is emitter work            |
-| Cross-INSTANCE clock-domain tracking              | pass 7 (`clocks.rs`) is module-local; instance outputs carry no domain   |
-| Cross-clock reads allowed via `sync`              | the Phase 2 multi-clock construct relaxes E0701 explicitly               |
-| Instance-array output widths via the `repeat` var | read outside the loop falls back to param defaults                       |
-| Defaultless-param module never instantiated       | internals skipped silently (passes 1–3 still ran)                        |
-| Driver COVERAGE under non-default bindings        | upgrade path: reuse widths' per-instantiation config set                 |
-| Recursive instantiation                           | comb summary comes back empty (no through-paths seen); no cycle invented |
-| Unevaluable instance-array index in a read        | the comb edge is skipped (under-approximation; elaboration closes it)    |
-| Test BODY checking (drives/`tick`/`expect`)       | ✅ delivered in Phase 1.5 (`src/sim/harness.rs`)                         |
-| E-codes on lexer/parser errors                    | ✅ delivered — E10xx/E11xx/E12xx all retrofitted (2026-06-12)            |
-| Did-you-mean suggestions on E0101                 | nice-to-have; needs edit distance                                        |
+| Rule                                                  | Blocked on / planned with                                                                                                                                                                                                                                    |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `repeat` unrolling (elaboration)                      | widths/drivers check per-iteration; unrolling is emitter work                                                                                                                                                                                                |
+| Cross-INSTANCE clock-domain tracking                  | pass 7 (`clocks.rs`) is module-local; instance outputs carry no domain                                                                                                                                                                                       |
+| Cross-clock reads allowed via `sync`                  | the Phase 2 multi-clock construct relaxes E0701 explicitly                                                                                                                                                                                                   |
+| Instance-array output widths via the `repeat` var     | read outside the loop falls back to param defaults                                                                                                                                                                                                           |
+| Defaultless-param module never instantiated           | internals skipped silently (passes 1–3 still ran)                                                                                                                                                                                                            |
+| Driver COVERAGE under non-default bindings            | upgrade path: reuse widths' per-instantiation config set                                                                                                                                                                                                     |
+| Recursive instantiation                               | comb summary comes back empty (no through-paths seen); no cycle invented                                                                                                                                                                                     |
+| Unevaluable instance-array index in a read            | the comb edge is skipped (under-approximation; elaboration closes it)                                                                                                                                                                                        |
+| Test BODY checking (drives/`tick`/`expect`)           | ✅ delivered in Phase 1.5 (`src/sim/harness.rs`)                                                                                                                                                                                                             |
+| E-codes on lexer/parser errors                        | ✅ delivered — E10xx/E11xx/E12xx all retrofitted (2026-06-12)                                                                                                                                                                                                |
+| Did-you-mean suggestions on E0101                     | nice-to-have; needs edit distance                                                                                                                                                                                                                            |
+| `count_clocks`/`collect` walk both `ConstIf` branches | deferred — no const-eval env plumbed into these free functions; overcounts harmless in practice (over-approximate clocks, extra reg drive registrations). Fix: fold `count_clocks` into the walk that already has env, or thread `&HashMap<…, i128>` through |
 
 ## How to add a checker rule
 

@@ -240,6 +240,12 @@ The emitter's rule for unimplemented features: **error, never guess.**
 | Non-ASCII reaching the emitter | the identifier  | never, normally — `transliterate` runs first; this is the backstop |
 | Field access on complex exprs  | the expression  | checker/IR                                                         |
 
+## Known performance notes
+
+| Location                       | Issue                       | Why it stays                                                                |
+| ------------------------------ | --------------------------- | --------------------------------------------------------------------------- |
+| `module.rs` `collect_assigned` | O(n²) `Vec::contains` dedup | on-blocks are small (<10 stmts typical); not worth the `HashSet` allocation |
+
 ## Testing
 
 `tests/examples.rs` compiles every example and asserts on the output —

@@ -202,6 +202,12 @@ runner. The `src/sim/` directory:
   simulator (engine AND VCD waveform) against Icarus bit-for-bit across the whole
   single-file corpus (21 examples).
 
+### Known deferred
+
+| Location                                                      | Issue                                                                         | Why it stays                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elaborate.rs:465` — `const_eval(cond, &consts).unwrap_or(0)` | If `const_eval` fails (non-const condition), silently takes the `then` branch | Protected by E0811 in practice — the checker rejects non-const `const if` conditions. If the simulator ever runs standalone without the checker, a non-const condition is a latent mis-evaluation. Fix: propagate the error instead of defaulting. |
+
 ## `config` (`src/config.rs`) — `mimz.toml` project defaults
 
 Per-project defaults for CLI flags, so a flag set once for a project need not be
