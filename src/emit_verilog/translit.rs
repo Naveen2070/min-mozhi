@@ -351,7 +351,10 @@ fn seq_stmts(stmts: &mut [SeqStmt], visit: &mut dyn FnMut(&mut String)) {
                     seq_stmts(els, visit);
                 }
             }
-            SeqStmt::Default { .. } => todo!("default not yet implemented"),
+            SeqStmt::Default { name, val, .. } => {
+                visit(&mut name.name);
+                expr(val, visit);
+            }
             SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
