@@ -323,7 +323,7 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
                 | ModuleItem::Error(_) => {}
-                ModuleItem::BundleDestructure { expr, .. } => self.expr(file, sc, env, expr),
+                ModuleItem::BundleDestructure { .. } => todo!(),
             }
         }
     }
