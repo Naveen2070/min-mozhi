@@ -42,6 +42,8 @@ pub enum Kw {
     Thamizh,
     /// Combinational user-defined function keyword (`fn`/`function`/`saarbu`/`சார்பு`).
     Fn,
+    /// `default` / `iyalbu` / `இயல்பு` — priority-lowest assignment in sequential blocks.
+    Default,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).
