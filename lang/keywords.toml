@@ -232,3 +232,12 @@ tamil = "சார்பு"
 en = "default"
 tanglish = "iyalbu"   # PROVISIONAL — pending native review
 tamil = "இயல்பு"     # PROVISIONAL — pending native review
+
+# Named group of signals (`bundle Foo { field: type }`; Phase 2, feature 2.4).
+# Tanglish/Tamil are PROVISIONAL dev/testing placeholders —
+# `kattai`/`கட்டை` ("bundle/block") — pending native-speaker review (R9/R11).
+# Maintainer-authorized 2026-06-30 so four-flavor tooling works now.
+[keywords.bundle]
+en = "bundle"
+tanglish = "kattai"   # PROVISIONAL — pending native review
+tamil = "கட்டை"       # PROVISIONAL — pending native review

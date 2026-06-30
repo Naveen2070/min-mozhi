@@ -116,10 +116,10 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 33] = [
+const REQUIRED_KEYS: [&str; 34] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
-    "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default",
+    "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default", "bundle",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -217,6 +217,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "thamizh" => Kw::Thamizh,
         "fn" => Kw::Fn,
         "default" => Kw::Default,
+        "bundle" => Kw::Bundle,
         _ => return None,
     })
 }
@@ -260,6 +261,14 @@ mod tests {
     }
 
     #[test]
+    fn kw_bundle_is_recognized() {
+        assert!(!TABLE.is_reserved("bundle"));
+        assert_eq!(TABLE.lookup("bundle").unwrap().0, Kw::Bundle);
+        assert_eq!(TABLE.lookup("kattai").unwrap().0, Kw::Bundle);
+        assert_eq!(TABLE.lookup("கட்டை").unwrap().0, Kw::Bundle);
+    }
+
+    #[test]
     fn fall_is_an_active_keyword() {
         // Promoted from reserved to active for `on fall(clk)` (A3, 2026-06-17).
         // Tanglish/Tamil spellings are PROVISIONAL pending native review (R9/R11).
@@ -299,8 +308,8 @@ mod tests {
     #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 33).
-        assert_eq!(en.len(), 33);
+        // One spelling per keyword (REQUIRED_KEYS has 34).
+        assert_eq!(en.len(), 34);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.
