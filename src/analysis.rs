@@ -218,7 +218,12 @@ fn push_module_items(
                 module_idx,
             }),
             ModuleItem::Repeat(r) => push_module_items(out, &r.items, file_idx, module_idx),
-            ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+            ModuleItem::ConstIf { then, els, .. } => {
+                push_module_items(out, then, file_idx, module_idx);
+                if let Some(el) = els {
+                    push_module_items(out, el, file_idx, module_idx);
+                }
+            }
             ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
         }
     }
@@ -425,7 +430,16 @@ fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Ve
                 collect_item_refs(mi, module_idx, refs);
             }
         }
-        ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+        ModuleItem::ConstIf { then, els, .. } => {
+            for mi in then {
+                collect_item_refs(mi, module_idx, refs);
+            }
+            if let Some(el) = els {
+                for mi in el {
+                    collect_item_refs(mi, module_idx, refs);
+                }
+            }
+        }
         ModuleItem::Port { .. }
         | ModuleItem::Clock(_)
         | ModuleItem::Reset { .. }

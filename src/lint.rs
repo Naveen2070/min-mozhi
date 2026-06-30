@@ -195,7 +195,19 @@ fn collect_item(
                 collect_item(inner, spans, referenced);
             }
         }
-        ast::ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+        ast::ModuleItem::ConstIf {
+            cond, then, els, ..
+        } => {
+            collect_expr_names(cond, referenced);
+            for inner in then {
+                collect_item(inner, spans, referenced);
+            }
+            if let Some(el) = els {
+                for inner in el {
+                    collect_item(inner, spans, referenced);
+                }
+            }
+        }
         ast::ModuleItem::Error(_) => {}
     }
 }

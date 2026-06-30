@@ -316,7 +316,8 @@ fn elaborate_module(
     let mut bit_drives: BTreeMap<String, BTreeMap<u32, Expr>> = BTreeMap::new();
     let mut flat = Flat::default();
 
-    for it in &m.items {
+    let mut work: Vec<&ModuleItem> = m.items.iter().rev().collect();
+    while let Some(it) = work.pop() {
         match it {
             ModuleItem::Port { dir, name, ty } => {
                 let sig = Signal {
@@ -458,7 +459,17 @@ fn elaborate_module(
                     }
                 }
             }
-            ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
+                let val = const_eval(cond, &consts).unwrap_or(0);
+                let branch: &[ModuleItem] = if val != 0 {
+                    then
+                } else {
+                    els.as_deref().unwrap_or(&[])
+                };
+                work.extend(branch.iter().rev());
+            }
         }
     }
 
