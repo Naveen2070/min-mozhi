@@ -404,6 +404,7 @@ impl<'a> Checker<'a> {
                 Some(n) => Ty::Signed(n),
                 None => Ty::Unknown,
             },
+            Type::Bundle { .. } => todo!(),
             Type::Named(n) => match self.lookup_enum(&cx.sc, &n.name) {
                 Some(e) => Ty::Enum(e),
                 None => Ty::Unknown, // E0103 already reported
@@ -557,6 +558,7 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
                 | ModuleItem::Error(_) => {}
+                ModuleItem::BundleDestructure { .. } => todo!(),
             }
         }
     }

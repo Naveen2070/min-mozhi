@@ -44,6 +44,7 @@ impl<'a> Checker<'a> {
                     }
                     TopItem::Const(_) | TopItem::Test(_) => {} // consteval.rs / names.rs
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
+                    TopItem::Bundle(_) => {}                   // checker stub (T5)
                     TopItem::Func(f) => {
                         let name = &f.name.name;
                         if Builtin::from_name(name.as_str()).is_some() {

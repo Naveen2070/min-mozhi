@@ -128,6 +128,7 @@ impl Pretty {
             // Unreachable: pretty-printing runs on a strict-parsed tree, which
             // never carries an `Error` placeholder.
             TopItem::Error(_) => {}
+            TopItem::Bundle(_) => todo!(),
         }
     }
 
@@ -313,6 +314,7 @@ impl Pretty {
                 self.line("}");
             }
             ModuleItem::Error(_) => {} // unreachable on a strict-parsed tree
+            ModuleItem::BundleDestructure { .. } => todo!(),
         }
     }
 
@@ -528,6 +530,7 @@ impl Pretty {
             Type::Bits(e) => format!("bits[{}]", self.expr(e, ind)),
             Type::Signed(e) => format!("signed[{}]", self.expr(e, ind)),
             Type::Named(id) => id.name.clone(),
+            Type::Bundle { .. } => todo!(),
         }
     }
 
@@ -654,6 +657,7 @@ impl Pretty {
                     .join(", ");
                 format!("{}({a})", name.name)
             }
+            ExprKind::BundleLit(_) => todo!(),
         }
     }
 

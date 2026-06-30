@@ -229,6 +229,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
                             }
                         }
                         Type::Named(_) => String::new(),
+                        Type::Bundle { .. } => todo!(),
                     };
                     let signed = if matches!(ty, Type::Signed(_)) {
                         "signed "
