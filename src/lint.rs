@@ -195,6 +195,7 @@ fn collect_item(
                 collect_item(inner, spans, referenced);
             }
         }
+        ast::ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
         ast::ModuleItem::Error(_) => {}
     }
 }

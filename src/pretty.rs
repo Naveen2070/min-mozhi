@@ -286,6 +286,7 @@ impl Pretty {
                 self.line(&s);
             }
             ModuleItem::Repeat(r) => self.repeat(r),
+            ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
             ModuleItem::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }

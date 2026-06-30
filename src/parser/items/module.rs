@@ -173,7 +173,17 @@ impl Parser {
                     init,
                 })
             }
-            TokKind::Kw(Kw::Const) => Some(ModuleItem::Const(self.const_decl()?)),
+            TokKind::Kw(Kw::Const) => {
+                // One-token lookahead: `const if` → ConstIf block; else → const decl
+                if matches!(
+                    self.toks.get(self.pos + 1).map(|t| &t.kind),
+                    Some(TokKind::Kw(Kw::If))
+                ) {
+                    self.const_if_block()
+                } else {
+                    Some(ModuleItem::Const(self.const_decl()?))
+                }
+            }
             TokKind::Kw(Kw::Enum) => Some(ModuleItem::Enum(self.enum_decl()?)),
             TokKind::Kw(Kw::Let) => self.inst(),
             TokKind::Kw(Kw::On) => self.on_block(),
@@ -213,6 +223,62 @@ impl Parser {
                 None
             }
         }
+    }
+
+    fn const_if_block(&mut self) -> Option<ModuleItem> {
+        let start = self.bump().span; // const
+        self.bump(); // if
+        self.expect(TokKind::LParen, "`(` after `const if`")?;
+        let cond = self.expr()?;
+        self.expect(TokKind::RParen, "`)`")?;
+        let then = self.const_if_items("`const if`")?;
+        let els = if self.at_kw(Kw::Else) {
+            self.bump();
+            Some(self.const_if_items("`else`")?)
+        } else {
+            None
+        };
+        let span = self.span_since(start);
+        Some(ModuleItem::ConstIf {
+            cond,
+            then,
+            els,
+            span,
+        })
+    }
+
+    fn const_if_items(&mut self, ctx: &str) -> Option<Vec<ModuleItem>> {
+        self.expect(TokKind::LBrace, &format!("`{{` to start {ctx} body"))?;
+        let mut items = Vec::new();
+        loop {
+            self.skip_newlines();
+            match self.peek_kind() {
+                TokKind::RBrace => {
+                    self.bump();
+                    break;
+                }
+                TokKind::Eof => {
+                    let span = self.peek().span;
+                    self.error(
+                        span,
+                        "E1101",
+                        format!("{ctx} block is missing its closing `}}`"),
+                    );
+                    break;
+                }
+                _ => {
+                    let start = self.peek().span;
+                    match self.module_item() {
+                        Some(i) => items.push(i),
+                        None => {
+                            self.sync_to_newline();
+                            items.push(ModuleItem::Error(self.span_since(start)));
+                        }
+                    }
+                }
+            }
+        }
+        Some(items)
     }
 
     /// `port = ("in" | "out") ident ":" type`

@@ -165,6 +165,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
                 ModuleItem::Repeat(r) => self.collect_decls(file, sc, &r.items),
+                ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
                 ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
             }
         }
@@ -276,6 +277,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
                 ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
@@ -331,6 +333,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Drive { .. }
                 | ModuleItem::Inst(_)
                 | ModuleItem::Repeat(_)
+                | ModuleItem::ConstIf { .. }
                 | ModuleItem::Error(_) => continue,
                 ModuleItem::Port { name, .. } => (name.span, "an input/output port"),
                 ModuleItem::Wire { name, .. } => (name.span, "a wire"),
