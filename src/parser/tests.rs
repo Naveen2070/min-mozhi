@@ -797,3 +797,50 @@ module Top {
     let ModuleItem::Port { ty, .. } = &m.items[0] else { panic!() };
     assert!(matches!(ty, Type::Named(_) | Type::Bundle { .. }));
 }
+
+#[test]
+fn parse_bundle_literal() {
+    let src = r#"
+bundle Hs { valid: bit }
+module Top {
+  in src: Hs
+  out dst: Hs
+  dst = { valid: 1 }
+}
+"#;
+    let file = parse_ok(src);
+    let TopItem::Module(m) = &file.items[1] else { panic!() };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else { panic!() };
+    assert!(matches!(rhs.kind, ExprKind::BundleLit(_)));
+}
+
+#[test]
+fn parse_bundle_destructure() {
+    let src = r#"
+bundle Hs { valid: bit }
+module Top {
+  in bus: Hs
+  let { valid } = bus
+}
+"#;
+    let file = parse_ok(src);
+    let TopItem::Module(m) = &file.items[1] else { panic!() };
+    let ModuleItem::BundleDestructure { bindings, .. } = &m.items[1] else { panic!("expected BundleDestructure, got {:?}", m.items[1]) };
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].name, "valid");
+}
+
+#[test]
+fn parse_bundle_field_rename_is_error() {
+    // `let { valid: v } = bus` must give E0904, not silently parse
+    let src = r#"
+bundle Hs { valid: bit }
+module Top {
+  in bus: Hs
+  let { valid: v } = bus
+}
+"#;
+    let errs = parse_err(src);
+    assert!(errs.iter().any(|e| e.code.as_deref() == Some("E0904")),
+        "expected E0904, got: {:?}", errs);
+}
