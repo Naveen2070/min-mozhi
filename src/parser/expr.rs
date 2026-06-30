@@ -567,48 +567,80 @@ impl Parser {
                 Some(e)
             }
             TokKind::LBrace => {
-                // `{ ... }` is either concatenation `{a, b}` or replication
-                // `{N{a, b}}` — disambiguated by what follows the first part:
-                // a `{` means the first part was the replication count.
-                let start = self.bump().span;
+                // `{ ... }` is a bundle literal if the first element is `IDENT ":"`;
+                // otherwise concatenation `{a, b}` or replication `{N{a, b}}`.
+                let start = self.bump().span; // {
                 self.skip_newlines();
-                let first = self.expr()?;
-                self.skip_newlines();
-                if matches!(self.peek_kind(), TokKind::LBrace) {
-                    // Replication: `first` is the count, `{ parts }` the group.
-                    self.bump();
-                    let mut parts = Vec::new();
+                // Peek two tokens: IDENT then Colon → bundle literal.
+                let is_bundle_lit = matches!(self.peek_kind(), TokKind::Ident(_))
+                    && self.toks.get(self.pos + 1).map(|t| &t.kind)
+                        == Some(&TokKind::Colon);
+                if is_bundle_lit {
+                    // Bundle literal: `{ field: expr, ... }`
+                    let mut fields = Vec::new();
                     loop {
                         self.skip_newlines();
-                        parts.push(self.expr()?);
+                        if self.eat(&TokKind::RBrace) {
+                            break;
+                        }
+                        let fname = self.ident("a field name")?;
+                        self.expect(
+                            TokKind::Colon,
+                            "`:` — bundle literals use `{ field: expr }`",
+                        )?;
+                        let fval = self.expr()?;
+                        let fspan = fname.span.join(fval.span);
+                        fields.push(FieldInit { name: fname, value: fval, span: fspan });
                         self.skip_newlines();
                         if !self.eat(&TokKind::Comma) {
+                            self.skip_newlines();
+                            self.expect(TokKind::RBrace, "`}` or `,` in bundle literal")?;
                             break;
                         }
                     }
-                    self.expect(TokKind::RBrace, "`}` to close the replication group")?;
-                    self.skip_newlines();
-                    let t = self.expect(TokKind::RBrace, "`}` to close the replication")?;
-                    Some(Expr {
-                        kind: ExprKind::Replicate {
-                            count: Box::new(first),
-                            parts,
-                        },
-                        span: start.join(t.span),
-                    })
+                    let end = self.toks[self.pos.saturating_sub(1)].span;
+                    Some(Expr { kind: ExprKind::BundleLit(fields), span: start.join(end) })
                 } else {
-                    // Concatenation: `first` is the first part.
-                    let mut parts = vec![first];
-                    while self.eat(&TokKind::Comma) {
+                    // Existing concat/replicate logic (unchanged).
+                    let first = self.expr()?;
+                    self.skip_newlines();
+                    if matches!(self.peek_kind(), TokKind::LBrace) {
+                        // Replication: `first` is the count, `{ parts }` the group.
+                        self.bump();
+                        let mut parts = Vec::new();
+                        loop {
+                            self.skip_newlines();
+                            parts.push(self.expr()?);
+                            self.skip_newlines();
+                            if !self.eat(&TokKind::Comma) {
+                                break;
+                            }
+                        }
+                        self.expect(TokKind::RBrace, "`}` to close the replication group")?;
                         self.skip_newlines();
-                        parts.push(self.expr()?);
-                        self.skip_newlines();
+                        let t = self.expect(TokKind::RBrace, "`}` to close the replication")?;
+                        Some(Expr {
+                            kind: ExprKind::Replicate {
+                                count: Box::new(first),
+                                parts,
+                            },
+                            span: start.join(t.span),
+                        })
+                    } else {
+                        // Concatenation: `first` is the first part.
+                        let mut parts = vec![first];
+                        while self.eat(&TokKind::Comma) {
+                            self.skip_newlines();
+                            parts.push(self.expr()?);
+                            self.skip_newlines();
+                        }
+                        let t =
+                            self.expect(TokKind::RBrace, "`}` to close the concatenation")?;
+                        Some(Expr {
+                            kind: ExprKind::Concat(parts),
+                            span: start.join(t.span),
+                        })
                     }
-                    let t = self.expect(TokKind::RBrace, "`}` to close the concatenation")?;
-                    Some(Expr {
-                        kind: ExprKind::Concat(parts),
-                        span: start.join(t.span),
-                    })
                 }
             }
             // In code order the clause head LEADS, so `if`/`match` start a
