@@ -286,7 +286,32 @@ impl Pretty {
                 self.line(&s);
             }
             ModuleItem::Repeat(r) => self.repeat(r),
-            ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
+                let ind = self.indent;
+                let head = format!(
+                    "{} {} ({}) {{",
+                    self.kw(Kw::Const),
+                    self.kw(Kw::If),
+                    self.expr(cond, ind)
+                );
+                self.line(&head);
+                self.indent += 1;
+                for it in then {
+                    self.module_item(it);
+                }
+                self.indent -= 1;
+                if let Some(el) = els {
+                    self.line(&format!("}} {} {{", self.kw(Kw::Else)));
+                    self.indent += 1;
+                    for it in el {
+                        self.module_item(it);
+                    }
+                    self.indent -= 1;
+                }
+                self.line("}");
+            }
             ModuleItem::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }
