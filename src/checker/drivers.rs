@@ -281,6 +281,7 @@ impl<'a> Checker<'a> {
                         };
                     }
                 }
+                ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }

@@ -324,6 +324,7 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 expr(&mut r.hi, visit);
                 module_items(&mut r.items, visit);
             }
+            ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
             ModuleItem::Error(_) => {} // unreachable on the codegen path
         }
     }

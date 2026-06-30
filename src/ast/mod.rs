@@ -280,6 +280,15 @@ pub enum ModuleItem {
     },
     /// Compile-time generation (`repeat i: 0..8 { ... }`).
     Repeat(Repeat),
+    /// `const if (COND) { items } [else { items }]` — compile-time conditional
+    /// module-body items. The losing branch is completely discarded before
+    /// name resolution, type checking, and codegen (D-CONSTIF-4).
+    ConstIf {
+        cond: Expr,
+        then: Vec<ModuleItem>,
+        els: Option<Vec<ModuleItem>>,
+        span: Span,
+    },
     /// A module-body item that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.

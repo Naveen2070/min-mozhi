@@ -458,6 +458,7 @@ fn elaborate_module(
                     }
                 }
             }
+            ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
         }
     }
 
