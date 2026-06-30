@@ -278,7 +278,10 @@ fn collect_seq_names(stmt: &ast::SeqStmt, names: &mut HashSet<String>) {
                 }
             }
         }
-        ast::SeqStmt::Default { .. } => todo!("default not yet implemented"),
+        ast::SeqStmt::Default { name, val, .. } => {
+            names.insert(name.name.clone());
+            collect_expr_names(val, names);
+        }
         ast::SeqStmt::Error(_) => {}
     }
 }

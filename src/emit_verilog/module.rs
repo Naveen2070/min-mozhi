@@ -492,6 +492,13 @@ impl Emitter<'_> {
     /// indentation only.
     fn seq_stmts(&mut self, stmts: &[SeqStmt], depth: usize) {
         let pad = "    ".repeat(depth + 1);
+        // D-DEFAULT-3: defaults first so conditional assigns override (NB last-wins)
+        for s in stmts {
+            if let SeqStmt::Default { name, val, .. } = s {
+                let v = self.expr(val);
+                self.out.push_str(&format!("{pad}{} <= {v};\n", name.name));
+            }
+        }
         for s in stmts {
             match s {
                 SeqStmt::Assign { lhs, rhs } => {
@@ -509,7 +516,7 @@ impl Emitter<'_> {
                     }
                     self.out.push_str(&format!("{pad}end\n"));
                 }
-                SeqStmt::Default { .. } => todo!("default not yet implemented"),
+                SeqStmt::Default { .. } => {} // already emitted above
                 // Unreachable on the codegen path: `parse` rejects a tree with
                 // any `Error` node, so emission never sees one.
                 SeqStmt::Error(_) => {}

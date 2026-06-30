@@ -1176,7 +1176,14 @@ impl<'d, 's> Rw<'d, 's> {
                     None => None,
                 },
             },
-            SeqStmt::Default { .. } => todo!("default not yet implemented"),
+            SeqStmt::Default { name, val, span } => SeqStmt::Default {
+                name: ast::Ident {
+                    name: rename(&name.name),
+                    span: name.span,
+                },
+                val: self.expr(val)?,
+                span: *span,
+            },
             // Unreachable on the sim path (strict-parsed tree); pass through.
             SeqStmt::Error(sp) => SeqStmt::Error(*sp),
         })

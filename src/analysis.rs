@@ -452,7 +452,14 @@ fn collect_seq_refs(s: &SeqStmt, module_idx: Option<usize>, refs: &mut Vec<Ref>)
                 collect_seq_refs(s, module_idx, refs);
             }
         }
-        SeqStmt::Default { .. } => todo!("default not yet implemented"),
+        SeqStmt::Default { name, val, .. } => {
+            refs.push(Ref {
+                name: name.name.clone(),
+                span: name.span,
+                module_idx,
+            });
+            collect_expr_refs(val, module_idx, refs);
+        }
         SeqStmt::Error(_) => {}
     }
 }

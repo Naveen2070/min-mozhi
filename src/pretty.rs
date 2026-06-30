@@ -400,7 +400,11 @@ impl Pretty {
                     }
                 }
             }
-            SeqStmt::Default { .. } => todo!("default not yet implemented"),
+            SeqStmt::Default { name, val, .. } => {
+                let kw = self.kw(Kw::Default);
+                let v = self.expr(val, ind);
+                self.line(&format!("{kw} {} <- {v}", name.name));
+            }
             SeqStmt::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }
