@@ -553,7 +553,10 @@ impl<'a> Checker<'a> {
                         self.seq_width_stmts(cx, els);
                     }
                 }
-                SeqStmt::Default { .. } => todo!("default not yet implemented"),
+                SeqStmt::Default { name, val, .. } => {
+                    let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
+                    self.check_expr(cx, val, expected);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }

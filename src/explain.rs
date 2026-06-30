@@ -450,6 +450,24 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: make every alternative bind the same names with matching types,\n\
          or split into separate arms.",
     ),
+    (
+        "E0809",
+        "E0809 — `default` assignment target is not a reg\n\n\
+         A `default name <- expr` statement may only target a `reg` signal. Wires\n\
+         are purely combinational — they cannot hold a value between clock cycles,\n\
+         so a sequential default assignment makes no sense for them.\n\n\
+         Fix: change the target to a `reg`, or remove the `default` and drive the\n\
+         wire combinationally with `name = expr` at module level.",
+    ),
+    (
+        "E0810",
+        "E0810 — duplicate `default` for the same reg in one `on` block\n\n\
+         Each register may have at most one `default` assignment per `on` block.\n\
+         Two defaults for the same reg are ambiguous — which value wins when no\n\
+         conditional assignment fires?\n\n\
+         Fix: remove one of the `default` statements, or merge them:\n\
+         `default name <- cond ? val_a : val_b`",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",

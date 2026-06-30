@@ -398,7 +398,14 @@ impl<'a> Checker<'a> {
                         self.on_block(dcx, block_id, els);
                     }
                 }
-                SeqStmt::Default { .. } => todo!("default not yet implemented"),
+                SeqStmt::Default { name, .. } => {
+                    if matches!(dcx.sc.names.get(&name.name), Some(Bind::Reg)) {
+                        dcx.reg_blocks
+                            .entry(name.name.clone())
+                            .or_default()
+                            .insert(block_id);
+                    }
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
