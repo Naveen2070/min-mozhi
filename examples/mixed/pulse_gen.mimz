@@ -1,0 +1,17 @@
+// Demonstrates: default assignment prevents forgetting to deassert done
+module PulseGen {
+    thudippu clk
+    மீட்டமை rst
+    in  start: bit
+    out done:  bit
+    pathivedu done_r: bit = 0
+
+    on yetram(clk) {
+        iyalbu done_r <- 0
+        எனில் start {
+            done_r <- 1
+        }
+    }
+
+    done = done_r
+}
