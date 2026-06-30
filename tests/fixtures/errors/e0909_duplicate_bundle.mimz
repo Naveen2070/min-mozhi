@@ -1,0 +1,7 @@
+// expect: E0909
+bundle Foo { valid: bit }
+bundle Foo { ready: bit }
+module Top {
+  out z: bit
+  z = 0
+}

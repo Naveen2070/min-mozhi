@@ -44,7 +44,19 @@ impl<'a> Checker<'a> {
                     }
                     TopItem::Const(_) | TopItem::Test(_) => {} // consteval.rs / names.rs
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
-                    TopItem::Bundle(_) => {}                   // checker stub (T5)
+                    TopItem::Bundle(b) => {
+                        if self.bundles.contains_key(&b.name.name) {
+                            self.err(
+                                file,
+                                b.name.span,
+                                "E0909",
+                                format!("bundle `{}` is defined more than once", b.name.name),
+                                "bundle names are unique across the project — rename one",
+                            );
+                        } else {
+                            self.bundles.insert(b.name.name.clone(), (file, b));
+                        }
+                    }
                     TopItem::Func(f) => {
                         let name = &f.name.name;
                         if Builtin::from_name(name.as_str()).is_some() {

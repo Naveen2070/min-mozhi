@@ -16,8 +16,8 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    Conn, Dir, EnumDecl, Expr, ExprKind, FuncDecl, Inst, LValue, Module, ModuleItem, NamedArg,
-    Pattern, SeqStmt, TestDecl, TopItem, Type,
+    BundleDecl, Conn, Dir, EnumDecl, Expr, ExprKind, FuncDecl, Inst, LValue, Module, ModuleItem,
+    NamedArg, Pattern, SeqStmt, TestDecl, TopItem, Type,
 };
 
 use super::Checker;
@@ -39,6 +39,7 @@ pub(super) enum Bind<'a> {
     Const,
     Enum(&'a EnumDecl),
     Inst(&'a Inst),
+    Bundle(&'a BundleDecl),
 }
 
 impl Bind<'_> {
@@ -56,6 +57,7 @@ impl Bind<'_> {
             Bind::Const => "a constant",
             Bind::Enum(_) => "an enum",
             Bind::Inst(_) => "an instance",
+            Bind::Bundle(_) => "a bundle",
         }
     }
 }
@@ -76,7 +78,11 @@ impl<'a> Checker<'a> {
                     TopItem::Module(m) => self.check_module(file, m),
                     TopItem::Test(t) => self.check_test(file, t),
                     TopItem::Const(_) => {} // earlier passes
-                    TopItem::Bundle(_) => {} // checker stub (T5)
+                    TopItem::Bundle(b) => {
+                        for field in &b.fields {
+                            self.validate_bundle_field_type(file, &field.ty, field.span);
+                        }
+                    }
                     TopItem::Enum(e) => {
                         let env = self.file_consts[file].clone();
                         let sc = Scope {
@@ -323,7 +329,9 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
                 | ModuleItem::Error(_) => {}
-                ModuleItem::BundleDestructure { .. } => todo!(),
+                ModuleItem::BundleDestructure { expr, .. } => {
+                    self.expr(file, sc, env, expr);
+                }
             }
         }
     }
@@ -386,7 +394,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Const(c) => (c.name.span, "a const"),
                 ModuleItem::Enum(e) => (e.name.span, "an enum"),
                 ModuleItem::On(on) => (on.span, "an `on` block"),
-                ModuleItem::BundleDestructure { .. } => todo!(),
+                ModuleItem::BundleDestructure { span, .. } => (*span, "a bundle destructure"),
             };
             self.err(
                 file,
@@ -417,18 +425,29 @@ impl<'a> Checker<'a> {
         match ty {
             Type::Bit => {}
             Type::Bits(w) | Type::Signed(w) => self.expr(file, sc, env, w),
-            Type::Bundle { .. } => todo!(),
+            Type::Bundle { name, .. } => {
+                if !self.bundles.contains_key(&name.name) {
+                    self.err(
+                        file,
+                        name.span,
+                        "E0906",
+                        format!("unknown bundle type `{}`", name.name),
+                        "declare the bundle at file level before using it as a type",
+                    );
+                }
+            }
             Type::Named(n) => {
-                if self.lookup_enum(sc, &n.name).is_none() {
+                if self.lookup_enum(sc, &n.name).is_none() && !self.bundles.contains_key(&n.name) {
                     self.err(
                         file,
                         n.span,
                         "E0103",
                         format!("unknown type `{}`", n.name),
                         format!(
-                            "the only named types are enums — declare \
-                             `enum {} {{ ... }}` or import the file that does",
-                            n.name
+                            "named types are `enum` or `bundle` declarations — declare \
+                             `enum {} {{ ... }}` or `bundle {} {{ ... }}` at file level, \
+                             or import the file that does",
+                            n.name, n.name
                         ),
                     );
                 }
@@ -959,7 +978,11 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, a);
                 }
             }
-            ExprKind::BundleLit(_) => todo!(),
+            ExprKind::BundleLit(fields) => {
+                for f in fields {
+                    self.expr(file, sc, env, &f.value);
+                }
+            }
         }
     }
 
@@ -1033,6 +1056,52 @@ impl<'a> Checker<'a> {
             sc.names.insert(local.name.name.clone(), Bind::Const);
         }
         self.expr(file, &sc, &env, &func.body);
+    }
+
+    /// Validate a bundle field's type: only `bit`, `bits[N]`, `signed[N]`, and
+    /// enums are allowed. Nested bundles and unknown types emit E0807 (non-concrete
+    /// type); an unknown parametric bundle (`Type::Bundle` with unknown name) emits
+    /// E0906. Clock/reset cannot appear here — they lex as keywords, not types.
+    fn validate_bundle_field_type(&mut self, file: usize, ty: &Type, span: crate::span::Span) {
+        match ty {
+            Type::Bit | Type::Bits(_) | Type::Signed(_) => {}
+            Type::Named(id) => {
+                if self.enums.get(&id.name).is_none() {
+                    let msg = if self.bundles.contains_key(&id.name) {
+                        format!("bundle field cannot be a bundle type (`{}`)", id.name)
+                    } else {
+                        format!("`{}` is not a concrete type for a bundle field", id.name)
+                    };
+                    self.err(
+                        file,
+                        span,
+                        "E0807",
+                        msg,
+                        "bundle fields must be `bit`, `bits[N]`, `signed[N]`, or an enum — \
+                         nested bundles are not supported in v0.2",
+                    );
+                }
+            }
+            Type::Bundle { name, .. } => {
+                if !self.bundles.contains_key(&name.name) {
+                    self.err(
+                        file,
+                        name.span,
+                        "E0906",
+                        format!("unknown bundle type `{}`", name.name),
+                        "declare the bundle at file level before using it as a type",
+                    );
+                } else {
+                    self.err(
+                        file,
+                        span,
+                        "E0807",
+                        format!("bundle field cannot be a bundle type (`{}`)", name.name),
+                        "nested bundles are not supported in v0.2 — use flat field types",
+                    );
+                }
+            }
+        }
     }
 
     fn unknown(&mut self, file: usize, name: &str, span: crate::span::Span) {
