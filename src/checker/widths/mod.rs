@@ -530,6 +530,7 @@ impl<'a> Checker<'a> {
                     };
                     e.inferred_total_width.set(Some(total_w as u32));
                 }
+                ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
