@@ -226,7 +226,7 @@ fn body_targets<'a>(body: &'a [SeqStmt], out: &mut Vec<&'a str>) {
                     body_targets(els, out);
                 }
             }
-            SeqStmt::Default { .. } => todo!("default not yet implemented"),
+            SeqStmt::Default { name, .. } => out.push(&name.name),
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }
@@ -248,7 +248,7 @@ fn body_reads<'a>(body: &'a [SeqStmt], out: &mut Vec<(&'a str, Span)>) {
                     body_reads(els, out);
                 }
             }
-            SeqStmt::Default { .. } => todo!("default not yet implemented"),
+            SeqStmt::Default { val, .. } => expr_reads(val, out),
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }
