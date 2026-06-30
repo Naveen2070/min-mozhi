@@ -168,6 +168,14 @@ impl<'a> Checker<'a> {
 
 /// Count `clock` declarations (recursing into `repeat` for robustness —
 /// declarations there become E0303 in the repeat slice).
+///
+/// NOTE(deferred): walks both `ConstIf` branches unconditionally — no const-eval
+/// environment is plumbed in here (and `count_clocks` is a free function, not on
+/// `Ccx`). If the non-taken branch of a `const if` declares a clock, the count is
+/// an over-approximation. No current example triggers this because `const if`
+/// branches rarely contain clock declarations, and the overcount only makes the
+/// "one-walk" cache slightly less effective. Fix: plumb `env` into `count_clocks`
+/// (and `collect`) or fold `count_clocks` into the walk that already has env.
 fn count_clocks(items: &[ModuleItem], n: &mut usize) {
     for item in items {
         match item {
@@ -185,6 +193,12 @@ fn count_clocks(items: &[ModuleItem], n: &mut usize) {
 }
 
 /// One walk: reg ownership, drive expressions, declaration spans.
+///
+/// NOTE(deferred): walks both `ConstIf` branches (same limitation as
+/// `count_clocks` above) — lacks const-eval env to fold the condition.
+/// Over-approximates reg ownership and drive expressions for the non-taken
+/// branch. Safe because the overcount only makes clock-coloring slightly less
+/// precise (never wrong) and the extra drive registrations are harmless.
 fn collect<'a>(items: &'a [ModuleItem], cx: &mut Ccx<'a>) {
     for item in items {
         match item {

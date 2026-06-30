@@ -660,6 +660,10 @@ impl Emitter<'_> {
 /// branches included), deduplicated in first-seen order. Drives the
 /// generated reset branch: only the regs an `on` block writes are reset
 /// in its always-block.
+///
+/// NOTE(deferred): O(n²) — `Vec::contains` on every push. Acceptable because
+/// on-blocks are small in practice (typically <10 statements). If on-blocks
+/// ever grow large, switch to a `HashSet` or `IndexSet`.
 fn collect_assigned<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a str>) {
     for s in stmts {
         match s {

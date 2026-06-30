@@ -462,6 +462,12 @@ fn elaborate_module(
             ModuleItem::ConstIf {
                 cond, then, els, ..
             } => {
+                // NOTE(deferred): `unwrap_or(0)` here is a safe latent fallback —
+                // the checker rejects non-const `const if` conditions (E0811) before
+                // anything reaches the simulator, so `const_eval` always returns Ok
+                // in practice. If the simulator ever runs without the checker
+                // (e.g. a direct API consumer), a non-const condition silently takes
+                // the `then` branch. Fix: thread the error upward instead of defaulting.
                 let val = const_eval(cond, &consts).unwrap_or(0);
                 let branch: &[ModuleItem] = if val != 0 {
                     then
