@@ -1,0 +1,16 @@
+// Demonstrates: const if for compile-time conditional signal routing
+thoguthi DebugWrapper {
+  maarili DEBUG: int = 0
+
+  ulleedu  data_in: bits[8]
+  veliyeedu data_out: bits[8]
+  veliyeedu dbg_out:  bits[8]
+
+  maarili enil (DEBUG) {
+    dbg_out = data_in
+  } illaiyenil {
+    dbg_out = 0
+  }
+
+  data_out = data_in
+}

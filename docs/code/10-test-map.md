@@ -11,11 +11,18 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**526 tests** as of 2026-06-30: 361 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 13 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**528 tests** as of 2026-06-30: 363 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 13 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
-Fixture counts (current): 76 error fixtures · 8 grammar fixtures · 47 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
+Fixture counts (current): 77 error fixtures · 8 grammar fixtures · 48 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-30 `const if` elaboration (branch `phase-2-default-and-const-if`, Tasks 7–10):
+  `ModuleItem::ConstIf` AST + parser (one-token lookahead), E0811 checker, all-passes
+  winning-branch recursion, 4-flavor `debug_wrapper` example + golden.
+  **+1 parser unit** (`const_if_items_parse_correctly`), **+1 checker unit** (`e0811_const_if_not_const`).
+  +1 error fixture (`e0811_const_if_not_const.mimz`), +1 golden (`debug_wrapper.v`). `BASE_EXAMPLES` 35 → 36.
+  Suite 526 → 528.
 
 - 2026-06-30 `default` assignments — Thamizh-order parser fix (branch `phase-2-default-and-const-if`):
   `seq_stmt_thamizh()` missed `Kw::Default` guard — `default` is word-order neutral, always leads.

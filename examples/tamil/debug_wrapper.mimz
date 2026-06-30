@@ -1,0 +1,16 @@
+// Demonstrates: const if for compile-time conditional signal routing
+தொகுதி DebugWrapper {
+  மாறிலி DEBUG: int = 0
+
+  உள்ளீடு  data_in: bits[8]
+  வெளியீடு data_out: bits[8]
+  வெளியீடு dbg_out:  bits[8]
+
+  மாறிலி எனில் (DEBUG) {
+    dbg_out = data_in
+  } இல்லையெனில் {
+    dbg_out = 0
+  }
+
+  data_out = data_in
+}
