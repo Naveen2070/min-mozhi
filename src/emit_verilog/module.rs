@@ -509,6 +509,7 @@ impl Emitter<'_> {
                     }
                     self.out.push_str(&format!("{pad}end\n"));
                 }
+                SeqStmt::Default { .. } => todo!("default not yet implemented"),
                 // Unreachable on the codegen path: `parse` rejects a tree with
                 // any `Error` node, so emission never sees one.
                 SeqStmt::Error(_) => {}
@@ -597,6 +598,11 @@ fn collect_assigned<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a str>) {
                 collect_assigned(then, out);
                 if let Some(els) = els {
                     collect_assigned(els, out);
+                }
+            }
+            SeqStmt::Default { name, .. } => {
+                if !out.contains(&name.name.as_str()) {
+                    out.push(&name.name);
                 }
             }
             SeqStmt::Error(_) => {} // unreachable on the codegen path

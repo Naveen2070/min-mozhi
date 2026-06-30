@@ -1176,6 +1176,7 @@ impl<'d, 's> Rw<'d, 's> {
                     None => None,
                 },
             },
+            SeqStmt::Default { .. } => todo!("default not yet implemented"),
             // Unreachable on the sim path (strict-parsed tree); pass through.
             SeqStmt::Error(sp) => SeqStmt::Error(*sp),
         })
@@ -1190,6 +1191,7 @@ fn assigns(body: &[SeqStmt], name: &str) -> bool {
         SeqStmt::If { then, els, .. } => {
             assigns(then, name) || els.as_deref().is_some_and(|e| assigns(e, name))
         }
+        SeqStmt::Default { name: n, .. } => n.name == name,
         SeqStmt::Error(_) => false,
     })
 }

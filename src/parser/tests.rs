@@ -702,3 +702,22 @@ fn fn_decl_parses_in_thamizh_order() {
     assert_eq!(func.name.name, "square");
     assert_eq!(func.params.len(), 1);
 }
+
+#[test]
+fn parse_default_stmt() {
+    let f = parse_ok(
+        "module M {\n  clock clk\n  reg done: bit = 0\n  on rise(clk) { default done <- 0 }\n}",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!("expected module")
+    };
+    let on = m
+        .items
+        .iter()
+        .find_map(|i| match i {
+            ModuleItem::On(b) => Some(b),
+            _ => None,
+        })
+        .expect("no on block");
+    assert!(matches!(on.body[0], SeqStmt::Default { .. }));
+}

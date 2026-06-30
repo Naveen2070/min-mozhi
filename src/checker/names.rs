@@ -280,6 +280,7 @@ impl<'a> Checker<'a> {
                         self.seq_stmts(file, sc, env, els);
                     }
                 }
+                SeqStmt::Default { .. } => todo!("default not yet implemented"),
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
