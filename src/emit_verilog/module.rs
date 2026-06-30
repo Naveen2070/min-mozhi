@@ -315,7 +315,9 @@ impl Emitter<'_> {
         let mut out = Vec::new();
         for item in items {
             match item {
-                ModuleItem::ConstIf { cond, then, els, .. } => {
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
                     let val = consteval::eval(cond, &self.env).unwrap_or(0);
                     let branch = if val != 0 {
                         then.as_slice()
@@ -338,7 +340,9 @@ impl Emitter<'_> {
                 ModuleItem::Const(c) => {
                     base = self.eval_consts(base, std::iter::once(c));
                 }
-                ModuleItem::ConstIf { cond, then, els, .. } => {
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
                     let val = consteval::eval(cond, &base).unwrap_or(0);
                     let branch: &[ModuleItem] = if val != 0 {
                         then
