@@ -101,7 +101,21 @@ impl<'a> Checker<'a> {
         for p in &m.params {
             self.declare(file, &mut sc, &p.name, Bind::Param);
         }
-        self.collect_decls(file, &mut sc, &m.items);
+        // Build env BEFORE collect_decls so ConstIf conditions can be evaluated
+        // during declaration scanning (spec D-CONSTIF-4: losing branch is fully discarded).
+        let mut env = self.file_consts[file].clone();
+        for item in &m.items {
+            if let ModuleItem::Const(c) = item {
+                match consteval::eval(&c.value, &env) {
+                    Ok(v) => {
+                        env.insert(c.name.name.clone(), v);
+                    }
+                    Err(d) => self.diags.push(d.with_file(file)),
+                }
+            }
+        }
+
+        self.collect_decls(file, &mut sc, &env, &m.items);
 
         // E0301 — registers load their reset value on reset, so a module
         // with regs and no `reset` line has unreachable initialization.
@@ -116,19 +130,6 @@ impl<'a> Checker<'a> {
                 "every reg declares a reset value, and that value is loaded when \
                  reset is asserted — add a `reset rst` line (spec/02 section 1.2)",
             );
-        }
-
-        // Environment for const positions: file consts + module consts.
-        let mut env = self.file_consts[file].clone();
-        for item in &m.items {
-            if let ModuleItem::Const(c) = item {
-                match consteval::eval(&c.value, &env) {
-                    Ok(v) => {
-                        env.insert(c.name.name.clone(), v);
-                    }
-                    Err(d) => self.diags.push(d.with_file(file)),
-                }
-            }
         }
 
         self.walk_items(file, &sc, &mut env, &m.items);
@@ -146,10 +147,10 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Declarations, recursively through `repeat` bodies (declaration
+    /// Declarations, recursively through `repeat` and `const if` bodies (declaration
     /// order in a module is free; `repeat` instantiates arrays but the
-    /// names are declared once).
-    fn collect_decls(&mut self, file: usize, sc: &mut Scope<'a>, items: &'a [ModuleItem]) {
+    /// names are declared once; `const if` losing branch is fully discarded).
+    fn collect_decls(&mut self, file: usize, sc: &mut Scope<'a>, env: &Env, items: &'a [ModuleItem]) {
         for item in items {
             match item {
                 ModuleItem::Port { dir, name, .. } => {
@@ -164,14 +165,11 @@ impl<'a> Checker<'a> {
                 ModuleItem::Const(c) => self.declare(file, sc, &c.name, Bind::Const),
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
-                ModuleItem::Repeat(r) => self.collect_decls(file, sc, &r.items),
-                ModuleItem::ConstIf { then, els, .. } => {
-                    // No env here; collect decls from both branches conservatively.
-                    // walk_items evaluates the condition and checks only the winning branch.
-                    self.collect_decls(file, sc, then);
-                    if let Some(el) = els {
-                        self.collect_decls(file, sc, el);
-                    }
+                ModuleItem::Repeat(r) => self.collect_decls(file, sc, env, &r.items),
+                ModuleItem::ConstIf { cond, then, els, .. } => {
+                    let val = consteval::eval(cond, env).unwrap_or(0);
+                    let branch = if val != 0 { then.as_slice() } else { els.as_deref().unwrap_or(&[]) };
+                    self.collect_decls(file, sc, env, branch);
                 }
                 ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
             }
