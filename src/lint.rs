@@ -278,6 +278,7 @@ fn collect_seq_names(stmt: &ast::SeqStmt, names: &mut HashSet<String>) {
                 }
             }
         }
+        ast::SeqStmt::Default { .. } => todo!("default not yet implemented"),
         ast::SeqStmt::Error(_) => {}
     }
 }

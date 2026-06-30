@@ -400,6 +400,7 @@ impl Pretty {
                     }
                 }
             }
+            SeqStmt::Default { .. } => todo!("default not yet implemented"),
             SeqStmt::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }

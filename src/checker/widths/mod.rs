@@ -553,6 +553,7 @@ impl<'a> Checker<'a> {
                         self.seq_width_stmts(cx, els);
                     }
                 }
+                SeqStmt::Default { .. } => todo!("default not yet implemented"),
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }

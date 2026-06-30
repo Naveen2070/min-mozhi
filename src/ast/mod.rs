@@ -362,6 +362,10 @@ pub enum SeqStmt {
         then: Vec<SeqStmt>,
         els: Option<Vec<SeqStmt>>,
     },
+    /// `default name <- expr` — priority-lowest register assignment.
+    /// Emitter MUST emit these nodes FIRST within the always-block body
+    /// so conditional `<-` assignments override them (D-DEFAULT-3).
+    Default { name: Ident, val: Expr, span: Span },
     /// A sequential statement that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.
