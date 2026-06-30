@@ -478,6 +478,23 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: use only compile-time expressions in the condition, or replace\n\
          `const if` with a regular `if` inside an `on` block or a combinational drive.",
     ),
+    // ----- E09xx: bundles -----
+    (
+        "E0906",
+        "E0906 — unknown bundle type\n\n\
+         A `Type::Bundle` reference names a bundle that has not been declared anywhere\n\
+         in the project (no `bundle Foo { ... }` at file level or in any imported file).\n\n\
+         Fix: declare the bundle at file level with `bundle Foo { ... }`, or import\n\
+         the file that declares it.",
+    ),
+    (
+        "E0909",
+        "E0909 — duplicate bundle declaration\n\n\
+         Two or more `bundle` declarations in the project share the same name. Bundle\n\
+         names are project-wide (like module and enum names), so every bundle must have\n\
+         a unique name.\n\n\
+         Fix: rename one of the duplicate bundles so all names are distinct.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",

@@ -1231,3 +1231,44 @@ fn or_arm_wildcard_not_binding_e0808() {
     );
     first_err(&src, "E0808");
 }
+
+// ---- bundles: registration and field validation (E0906, E0909) ----------------
+
+#[test]
+fn bundle_duplicate_name_is_e0909() {
+    first_err(
+        "bundle Foo { valid: bit }\nbundle Foo { ready: bit }\nmodule Top { out z: bit\n  z = 0 }\n",
+        "E0909",
+    );
+}
+
+#[test]
+fn bundle_clean_declaration_passes() {
+    check_one("bundle Bus { valid: bit, data: bits[8] }\nmodule Top { out z: bit\n  z = 0 }\n")
+        .expect("a well-formed bundle with concrete field types passes all passes");
+}
+
+#[test]
+fn bundle_named_field_as_module_port_passes() {
+    // Type::Named("Bus") where Bus is a registered bundle — must not emit E0103.
+    check_one("bundle Bus { valid: bit }\nmodule Top { in x: Bus\n  out z: bit\n  z = 0 }\n")
+        .expect("a bundle-typed module port resolves without E0103");
+}
+
+#[test]
+fn bundle_unknown_parametric_type_in_field_is_e0906() {
+    // Type::Bundle { name: "NoSuchBundle" } in a bundle field → E0906 (unknown bundle).
+    first_err(
+        "bundle Bad { x: NoSuchBundle(W: 32) }\nmodule Top { out z: bit\n  z = 0 }\n",
+        "E0906",
+    );
+}
+
+#[test]
+fn bundle_nested_bundle_field_is_e0807() {
+    // A field whose type is a known bundle name → E0807 (nested bundle, non-concrete type).
+    first_err(
+        "bundle Inner { v: bit }\nbundle Outer { x: Inner }\nmodule Top { out z: bit\n  z = 0 }\n",
+        "E0807",
+    );
+}

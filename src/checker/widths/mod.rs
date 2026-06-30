@@ -404,10 +404,12 @@ impl<'a> Checker<'a> {
                 Some(n) => Ty::Signed(n),
                 None => Ty::Unknown,
             },
-            Type::Bundle { .. } => todo!(),
+            // ponytail: bundle type → Unknown until T6 wires full bundle width model
+            Type::Bundle { .. } => Ty::Unknown,
             Type::Named(n) => match self.lookup_enum(&cx.sc, &n.name) {
                 Some(e) => Ty::Enum(e),
-                None => Ty::Unknown, // E0103 already reported
+                // E0103/E0906 already reported, or bundle name (T6 will handle)
+                None => Ty::Unknown,
             },
         }
     }
@@ -558,7 +560,8 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
                 | ModuleItem::Error(_) => {}
-                ModuleItem::BundleDestructure { .. } => todo!(),
+                // ponytail: bundle destructure bindings deferred to T6
+                ModuleItem::BundleDestructure { .. } => {}
             }
         }
     }

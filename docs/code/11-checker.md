@@ -137,6 +137,8 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0809 | `default` assignment target is not a `reg`                                                | only `reg` signals can have sequential default assignments; drive wires combinationally          |
 | E0810 | duplicate `default` for the same reg in one `on` block                                    | each reg may have at most one `default` per `on` block; merge into a conditional expression      |
 | E0811 | `const if` condition is not a compile-time constant                                       | use only module parameters, `const` values, literals, and arithmetic/comparison on those         |
+| E0906 | unknown bundle type (parametric `Name(args)` form names a bundle not declared anywhere)   | declare the bundle at file level or import the file that does                                    |
+| E0909 | bundle declared more than once (project-wide name collision)                              | rename one — bundle names are unique across the whole project                                    |
 
 Numbering scheme:
 
@@ -148,7 +150,8 @@ Numbering scheme:
 - E05xx — drivers/cycles;
 - E06xx — exhaustiveness;
 - E07xx — clock domains;
-- E08xx — user-defined functions.
+- E08xx — user-defined functions;
+- E09xx — bundles (Phase 2).
 
 (Lexer E10xx, parser E11xx, and loader E12xx codes live in
 docs/code/06 — retrofit completed 2026-06-12.) Claim a block when a new
