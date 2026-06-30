@@ -42,7 +42,7 @@ Currently, Min-Mozhi is built as a monolithic binary (`mimz`) for simplicity. Ho
 
 ## 6. Feasibility triage (2026-06-22)
 
-Reviewed each idea against the compiler as it exists today: 432 tests; the
+Reviewed each idea against the compiler as it exists today: 522 tests; the
 lib/bin split; `crates/mimz-wasm` building the lib with `default-features =
 false`; the `fuzz/` cargo-fuzz crate (4 targets); and the
 `our_simulator_matches_icarus_bit_for_bit` + `wasm_parity` differential tests.

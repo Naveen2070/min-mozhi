@@ -137,9 +137,9 @@ The test suite is thorough:
 
 **Fixtures:**
 
-- `tests/fixtures/errors/` — 73 `.mimz` files, one per error code
+- `tests/fixtures/errors/` — 84 `.mimz` files, one per error code (44 checker + additional parser/lexer)
 - `tests/fixtures/grammar/` — 8 grammar conformance examples
-- `tests/golden/` — 42 golden Verilog outputs + 14 testbench goldens + 1 VCD trace
+- `tests/golden/` — 50 golden Verilog outputs + 14 testbench goldens + 1 VCD trace
 - `tests/icarus/` — 32 Icarus Verilog testbenches
 
 ## `examples/` — Designs in All Five Flavors
@@ -164,7 +164,7 @@ These TOML files are the project's **authoritative data**. The native-speaker pa
 
 **`keywords.toml`** — every keyword has three spellings (English, Tanglish, Tamil) plus optional alias lists per column. A `version` field at the root is cross-checked against `version.rs`. Reserved words for future features are listed at the bottom.
 
-**`messages.toml`** — localized error templates for 33 of 36 checker E-codes, in both Tamil and Tanglish. Each template uses `{name}`, `{name.acc}`, `{name.dat}`, etc. for identifier interpolation.
+**`messages.toml`** — localized error templates for 33 of 44 checker E-codes (coverage growing), in both Tamil and Tanglish. Each template uses `{name}`, `{name.acc}`, `{name.dat}`, etc. for identifier interpolation.
 
 **`case_suffixes.toml`** — the four Tamil case suffixes (accusative, dative, locative, instrumental) in both Tamil script and Tanglish romanization.
 

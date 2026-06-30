@@ -1,8 +1,8 @@
 # 6 — Built-in Functions
 
-Built-ins are the only call syntax in the language — there are no user-defined
-functions (a module is the unit of reuse). Their names are **universal**: spelled
-the same in every flavor. There are ten.
+Built-ins (and since v0.2.14, user-defined combinational functions) are the
+call syntax in the language. Their names are **universal**: spelled the same
+in every flavor. There are ten built-ins.
 
 ## Width casts and conversions
 

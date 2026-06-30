@@ -78,6 +78,7 @@ Level 7: *, *%
 - `import lib.adder` → `import_decl()`
 - `const NAME: int = expr` → `const_decl()`
 - `module Name(...)` → `module()`
+- `fn name(...) -> type { body }` → `fn_decl()` (v0.2.14)
 - `enum Name { ... }` → `enum_decl()`
 - `test "..." for M(...) { }` → `test_decl()`
 - In thamizh profile, a bare identifier starts `test_decl_thamizh()`

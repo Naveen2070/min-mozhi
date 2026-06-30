@@ -141,7 +141,7 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
 - **Native-speaker-authored (decision C3 ratified, 2026-06-15).** The localized
   catalog (`MESSAGES`, loaded once via `LazyLock` from `lang/messages.toml`) and the
   sandhi rules in `lang/case_suffixes.toml` came from native-speaker review — no longer
-  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 36 checker codes**;
+  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 44 checker codes**;
   E0403/E0404/E0405 are deferred (each emits many distinct message shapes — English
   kept, the Tamil drafts preserved as comments in `lang/messages.toml`). Templates also
   interpolate **structured args** the checker attaches via `Diag::with_arg`
@@ -351,7 +351,7 @@ Most of these grow incrementally: `explain` grows one code at a time,
 `translate`/`pretty` cover keyword flavor and all five landed word-order flips
 (clocked block, conditional, if-expression, match, test header), and `morph`
 ships the selection + inflection mechanism with the native-authored catalog
-(33 of 36 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
+(33 of 44 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
 feature-complete (the combinational `comb`, the event-driven kernel, VCD/trace,
 and `mimz test`). Each documents its own limits in its module header so the
 honesty rule (spec/01) holds for the tooling too.

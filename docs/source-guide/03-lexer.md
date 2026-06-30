@@ -6,7 +6,7 @@ The lexer is where your source text gets chopped into **tokens** — the smalles
 
 ## `lexer/token.rs` — What a Token Looks Like
 
-**`Kw` enum** — This lists every keyword: `Module`, `In`, `Out`, `Wire`, `Reg`, `Mem`, `Clock`, `Reset`, `Async`, `On`, `Rise`, `Fall`, `If`, `Else`, `Match`, `Enum`, `Let`, `Const`, `Repeat`, `Import`, `True`, `False`, `Test`, `For`, `Tick`, `Expect`, `And`, `Or`, `Not`, `Syntax`, `Thamizh`.
+**`Kw` enum** — This lists every keyword: `Module`, `In`, `Out`, `Wire`, `Reg`, `Mem`, `Clock`, `Reset`, `Async`, `On`, `Rise`, `Fall`, `If`, `Else`, `Match`, `Enum`, `Let`, `Const`, `Repeat`, `Import`, `True`, `False`, `Test`, `For`, `Tick`, `Expect`, `And`, `Or`, `Not`, `Syntax`, `Thamizh`, `Fn`.
 
 The important thing: `தொகுதி` and `thoguthi` and `module` all become `Kw::Module`. The flavor is recorded separately.
 
@@ -91,8 +91,8 @@ This loads `lang/keywords.toml` (embedded at build time) and builds two lookup t
 - A required keyword key is missing (enforced by `REQUIRED_KEYS`)
 - A spelling appears in two different keywords
 
-**`REQUIRED_KEYS`** is a list of 31 keys that MUST be in the TOML. Without this guard, accidentally deleting `[keywords.module]` would silently turn `module` into a plain identifier.
+**`REQUIRED_KEYS`** is a list of 32 keys (32 keywords in the language) that MUST be in the TOML. Without this guard, accidentally deleting `[keywords.module]` would silently turn `module` into a plain identifier.
 
 **`kw_for_key(key)`** maps TOML key strings to `Kw` enum variants. Adding a new keyword means adding it here AND in the TOML.
 
-Reserved words (like `fn`, `function`, `struct`, `sync`, `inout`) are not keywords yet but can't be used as identifiers. They're set aside for future features.
+Reserved words (like `struct`, `sync`, `inout`) are not keywords yet but can't be used as identifiers. They're set aside for future features. (`fn` was formerly reserved but became an active keyword in v0.2.14.)

@@ -76,8 +76,9 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       clocked read/write + emitter array; highest "every HDL has it" value.
       **✅ DONE 2026-06-17 (spec/02 v0.2.11, new section 1.11)** —
       `examples/.../regfile.mimz`
-- [ ] **Combinational `function`** (gap section 10 — NEW, not previously tracked) —
+- [x] **Combinational `function`** (gap section 10 — NEW, not previously tracked) —
       pure/stateless user functions inlined at emit; unblocks pipe `|>` (8.6)
+      **✅ DONE 2026-06-28 (spec/02 v0.2.14)** — `examples/.../fn_*.mimz`
 - [x] **Async reset / reset polarity** (gap section 10) — small spec+emitter widening
       over today's sync active-high only. **✅ DONE 2026-06-17 (spec/02 v0.2.12,
       active-high `async reset`)** — `examples/.../async_reset.mimz`; active-low
@@ -89,9 +90,10 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       load-bearing rule. Both spellings already reserved
 - [ ] **`foreach`** (gap section 10 — NEW) — sugar over `repeat`/`suzhal` once
       array/`mem` types exist
-- [ ] **Tagged unions with payloads** (2.7) — FIRST of the original Tier-3 line:
+- [x] **Tagged unions with payloads** (2.7) — FIRST of the original Tier-3 line:
       enums + match exist; payload = tag bits + max-payload bits; gives `Result`
       (4.2) for free
+      **✅ DONE 2026-06-28 (spec/02 v0.2.15)** — `examples/.../tagged_packet.mimz`
 - [ ] **Interfaces/bundles + destructuring** (2.4) — flatten to nets in the
       emitter; unlocks the next three items
 - [ ] Structural interface matching (2.9) — small checker rule once bundles exist

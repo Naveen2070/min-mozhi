@@ -49,10 +49,14 @@ is a bug — fix it the same day (RULES R1).
 ```text
  .mimz file ──read_source (NFC)──▶ source text
  source text ──lexer::lex──▶ Vec<Token>          (all 3 keyword flavors)
- Vec<Token> ──parser::parse──▶ ast::File         (one shared AST)
- [ast::File] ──checker::check──▶ names/consts/rules verified (E-codes)
+ Vec<Token> ──parser::parse──▶ ast::File         (one shared AST;
+                                                  fn decls + tagged unions)
+ [ast::File] ──checker::check──▶ names/consts/rules verified (E-codes;
+                                 fn safety E0801–E0808)
  [ast::File] ──Project::from_files──▶ symbol table (modules + enums by name)
  symbol table + ASTs ──emit_verilog::emit──▶ Verilog-2005 text
+                                             (fn inlined, tagged unions
+                                              emitted as tag wire + payload)
 ```
 
 - Every stage returns `Result<_, Vec<Diag>>` — errors are **values**, collected

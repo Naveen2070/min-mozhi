@@ -1,19 +1,20 @@
-# 6 — The Checker: Six Safety Passes (12 Files)
+# 6 — The Checker: Seven Safety Passes (13 Files)
 
-The checker runs six passes over the AST to catch hardware bugs **before** they get to silicon. Every error has a stable E-code and a teaching help message.
+The checker runs seven passes over the AST to catch hardware bugs **before** they get to silicon. Every error has a stable E-code and a teaching help message.
 
 ## `checker/mod.rs` — The Entry
 
 **`Checker` struct** holds all the state for all six passes: the diagnostics list, module and enum maps, and the constant-evaluation environment.
 
-**`check(files)`** runs all six passes in order:
+**`check(files)`** runs all seven passes in order:
 
 1. `collect_symbols()` — build module/enum maps
 2. `collect_consts()` — evaluate file-level constants
 3. `check_all()` — per-module name resolution
 4. `widths::check_module()` — type and width checking
 5. `drivers::check_module()` — single-driver and cycle rules
-6. `clocks::check_module()` — clock domain ownership
+6. `funcs::check_functions()` — combinational function checking (E0801–E0808)
+7. `clocks::check_module()` — clock domain ownership
 
 ### Pass 1: `symbols.rs` — Who's Who?
 
@@ -63,7 +64,20 @@ In hardware, if two things try to drive the same wire, you get a short circuit �
 
 The checker uses a three-color DFS (white/gray/black) over the combinational dependency graph. It also builds combinational summaries for instantiated modules — which outputs depend on which inputs — so it can detect cycles through child instances.
 
-### Pass 6: `clocks.rs` — Whose Clock Is It?
+### Pass 6: `funcs.rs` — Function Sanity (1 File)
+
+**`check_functions()`** validates all `fn` declarations before synthesis:
+
+- **E0801** — duplicate function names
+- **E0802** — arity mismatch at call site
+- **E0803** — return width doesn't match declaration
+- **E0804** — recursion or mutual recursion (no combinational loops)
+- **E0805** — constant folding of function calls
+- **E0806** — payload binding count doesn't match variant
+- **E0807** — payload field must be a concrete type (`bit`/`bits`/`signed`)
+- **E0808** — OR-arm bindings have incompatible types across alternatives
+
+### Pass 7: `clocks.rs` — Whose Clock Is It?
 
 - **E0701** — every register is owned by exactly one clock
 - Every combinational signal is "colored" with the clock domain(s) it derives from
