@@ -542,7 +542,11 @@ impl<'a> Checker<'a> {
                     self.expr_reads(dcx, a, out);
                 }
             }
-            ExprKind::BundleLit(_) => todo!(),
+            ExprKind::BundleLit(inits) => {
+                for init in inits {
+                    self.expr_reads(dcx, &init.value, out);
+                }
+            }
         }
     }
 
@@ -632,7 +636,8 @@ impl<'a> Checker<'a> {
                     .ok()
                     .and_then(|v| u128::try_from(v).ok()),
                 Type::Named(_) => None,
-                Type::Bundle { .. } => todo!(),
+                // ponytail: bundle ports have no scalar drive extent in this pass
+                Type::Bundle { .. } => None,
             };
             let Some(width) = width else { continue };
             // A zero-width output is already an E0410 elsewhere; coverage
