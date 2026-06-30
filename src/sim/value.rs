@@ -193,6 +193,7 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
         }
         ExprKind::Call { func, args } => call(r, *func, args),
         ExprKind::FnCall { name, args } => eval_fn_call(r, name, args),
+        ExprKind::BundleLit(_) => todo!(),
     }
 }
 
@@ -482,6 +483,7 @@ pub(super) fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u3
             "signal of enum type `{}` — the simulator does not model enum signals yet",
             n.name
         )),
+        Type::Bundle { .. } => todo!(),
     }
 }
 

@@ -476,6 +476,7 @@ fn elaborate_module(
                 };
                 work.extend(branch.iter().rev());
             }
+            ModuleItem::BundleDestructure { .. } => todo!(),
         }
     }
 
@@ -979,6 +980,7 @@ impl<'d, 's> Rw<'d, 's> {
                     .map(|a| self.expr(a))
                     .collect::<Result<_, _>>()?,
             },
+            ExprKind::BundleLit(_) => todo!(),
         };
         Ok(Expr { kind, span: e.span })
     }
@@ -1129,6 +1131,7 @@ impl<'d, 's> Rw<'d, 's> {
                         const_eval(e, self.consts).unwrap_or(0) as u128
                     }
                     ast::Type::Named(_) => 0, // E0807: already rejected by checker
+                    ast::Type::Bundle { .. } => todo!(),
                 };
                 debug_assert!(
                     field_w > 0,

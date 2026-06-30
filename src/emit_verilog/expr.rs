@@ -274,6 +274,7 @@ impl Emitter<'_> {
                     }
                 },
             },
+            ExprKind::BundleLit(_) => todo!(),
         }
     }
 
@@ -352,6 +353,7 @@ impl Emitter<'_> {
                         consteval::eval(e, &self.env).unwrap_or(0) as u128
                     }
                     Type::Named(_) => 0, // E0807: already rejected by checker
+                    Type::Bundle { .. } => todo!(),
                 };
                 debug_assert!(
                     field_w > 0,

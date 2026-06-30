@@ -245,6 +245,7 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
             // Unreachable on the codegen path: `parse` rejects a tree with any
             // `Error` node, so transliteration never sees one.
             TopItem::Error(_) => {}
+            TopItem::Bundle(_) => todo!(),
         }
     }
 }
@@ -334,6 +335,7 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 }
             }
             ModuleItem::Error(_) => {} // unreachable on the codegen path
+            ModuleItem::BundleDestructure { .. } => todo!(),
         }
     }
 }
@@ -343,6 +345,7 @@ fn type_widths(ty: &mut Type, visit: &mut dyn FnMut(&mut String)) {
         Type::Bit => {}
         Type::Bits(e) | Type::Signed(e) => expr(e, visit),
         Type::Named(id) => visit(&mut id.name),
+        Type::Bundle { .. } => todo!(),
     }
 }
 
@@ -477,6 +480,7 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
                 expr(a, visit);
             }
         }
+        ExprKind::BundleLit(_) => todo!(),
     }
 }
 

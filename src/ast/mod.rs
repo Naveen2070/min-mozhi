@@ -44,6 +44,8 @@ pub enum TopItem {
     /// produces this starting in Task 3; no existing checker/emitter/sim path
     /// generates it yet.
     Func(FuncDecl),
+    /// A file-level bundle declaration (`bundle Foo { ... }`).
+    Bundle(BundleDecl),
     /// A top-level item that failed to parse. Produced ONLY by
     /// `parser::parse_recover` (the LSP path); the strict `parser::parse`
     /// pipeline never yields one, so codegen never sees it. The span covers
@@ -215,6 +217,27 @@ pub struct PayloadField {
     pub span: Span,
 }
 
+/// `bundle Name(params) { fields }` — a named group of signals.
+/// File-level only (like `enum`); flattened to individual Verilog wires at emit.
+#[derive(Clone, Debug)]
+pub struct BundleDecl {
+    pub name: Ident,
+    /// Compile-time parameters (same grammar as module params).
+    pub params: Vec<Param>,
+    /// Field declarations in order.
+    pub fields: Vec<FieldDecl>,
+    pub span: Span,
+}
+
+/// One field in a `bundle` declaration: `valid: bit`.
+#[derive(Clone, Debug)]
+pub struct FieldDecl {
+    pub name: Ident,
+    /// Hardware type — must be concrete bit-vector or enum (E0807/E0905).
+    pub ty: Type,
+    pub span: Span,
+}
+
 /// Port direction (`in` / `out`). No `inout` — it is a reserved word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Dir {
@@ -287,6 +310,15 @@ pub enum ModuleItem {
         cond: Expr,
         then: Vec<ModuleItem>,
         els: Option<Vec<ModuleItem>>,
+        span: Span,
+    },
+    /// `let { field, ... } = expr` — bind bundle fields as local wires.
+    /// Module-body only (not in `on` blocks or `fn` bodies).
+    BundleDestructure {
+        /// Fields to bind; partial destructure allowed.
+        bindings: Vec<Ident>,
+        /// The bundle-typed expression being destructured.
+        expr: Expr,
         span: Span,
     },
     /// A module-body item that failed to parse. Produced ONLY by
@@ -403,6 +435,15 @@ pub enum Type {
     Signed(Box<Expr>),
     /// Enum type by name.
     Named(Ident),
+    /// Parametric bundle type: `MemBus(WIDTH: 32)` or plain `Handshake`.
+    /// `args` is empty for bundles with no params.
+    /// note: nominal-only today; structural subtyping adds one field-list
+    /// comparison (2.9); first-class IR bundle (post-Phase 2) promotes
+    /// BundleType to a Type variant in IR
+    Bundle {
+        name: Ident,
+        args: Vec<NamedArg>,
+    },
 }
 
 /// `test "name" for Module(args) { ... }` — runs on the Phase 1.5
@@ -443,6 +484,36 @@ pub enum TestStmt {
 mod tests {
     use super::*;
     use crate::span::Span;
+
+    #[test]
+    fn bundle_decl_node_constructs() {
+        let span = Span::new(0, 0);
+        let b = BundleDecl {
+            name: Ident { name: "MemBus".into(), span },
+            params: vec![],
+            fields: vec![FieldDecl {
+                name: Ident { name: "valid".into(), span },
+                ty: Type::Bit,
+                span,
+            }],
+            span,
+        };
+        let _item = TopItem::Bundle(b);
+        let _destr = ModuleItem::BundleDestructure {
+            bindings: vec![Ident { name: "valid".into(), span }],
+            expr: Expr { kind: ExprKind::Ident("bus".into()), span },
+            span,
+        };
+        let _ty = Type::Bundle {
+            name: Ident { name: "MemBus".into(), span },
+            args: vec![],
+        };
+        let _lit = ExprKind::BundleLit(vec![FieldInit {
+            name: Ident { name: "valid".into(), span },
+            value: Expr { kind: ExprKind::Bool(true), span },
+            span,
+        }]);
+    }
 
     #[test]
     fn func_decl_node_constructs() {

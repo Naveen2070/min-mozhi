@@ -298,6 +298,7 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Const(_)
                 | ModuleItem::Enum(_)
                 | ModuleItem::Error(_) => {}
+                ModuleItem::BundleDestructure { .. } => {} // checker stub (T5)
             }
         }
     }
@@ -541,6 +542,11 @@ impl<'a> Checker<'a> {
                     self.expr_reads(dcx, a, out);
                 }
             }
+            ExprKind::BundleLit(fields) => {
+                for f in fields {
+                    self.expr_reads(dcx, &f.value, out);
+                }
+            }
         }
     }
 
@@ -630,6 +636,7 @@ impl<'a> Checker<'a> {
                     .ok()
                     .and_then(|v| u128::try_from(v).ok()),
                 Type::Named(_) => None,
+                Type::Bundle { .. } => None, // bundle ports flattened by checker (T5)
             };
             let Some(width) = width else { continue };
             // A zero-width output is already an E0410 elsewhere; coverage
