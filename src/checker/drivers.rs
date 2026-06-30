@@ -398,6 +398,7 @@ impl<'a> Checker<'a> {
                         self.on_block(dcx, block_id, els);
                     }
                 }
+                SeqStmt::Default { .. } => todo!("default not yet implemented"),
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }

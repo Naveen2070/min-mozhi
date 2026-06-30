@@ -452,6 +452,7 @@ fn collect_seq_refs(s: &SeqStmt, module_idx: Option<usize>, refs: &mut Vec<Ref>)
                 collect_seq_refs(s, module_idx, refs);
             }
         }
+        SeqStmt::Default { .. } => todo!("default not yet implemented"),
         SeqStmt::Error(_) => {}
     }
 }

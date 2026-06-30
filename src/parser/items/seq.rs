@@ -110,6 +110,15 @@ impl Parser {
         if self.at_kw(Kw::If) {
             return self.seq_if();
         }
+        if self.at_kw(Kw::Default) {
+            let start = self.bump().span; // default
+            let name = self.ident("a register name")?;
+            self.expect(TokKind::LArrow, "`<-` after the register name")?;
+            let val = self.expr()?;
+            self.terminator();
+            let span = start.join(val.span);
+            return Some(SeqStmt::Default { name, val, span });
+        }
         if let TokKind::Ident(_) = self.peek_kind() {
             let lhs = self.lvalue()?;
             if self.at(&TokKind::Assign) {
