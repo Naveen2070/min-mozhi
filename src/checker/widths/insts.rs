@@ -50,6 +50,7 @@ impl<'a> Checker<'a> {
                     sc: csc,
                     env: child.env,
                     sigs: HashMap::new(),
+                    bundle_sigs: HashMap::new(),
                 };
                 return self.resolve_ty_silent(&mut ccx, ty);
             }
@@ -129,6 +130,7 @@ impl<'a> Checker<'a> {
                                 sc: csc.clone(),
                                 env: child.env.clone(),
                                 sigs: HashMap::new(),
+                                bundle_sigs: HashMap::new(),
                             };
                             expected = self.resolve_ty_silent(&mut ccx, ty);
                         }

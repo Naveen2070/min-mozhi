@@ -1272,3 +1272,63 @@ fn bundle_nested_bundle_field_is_e0807() {
         "E0807",
     );
 }
+
+// ---- bundles: literal / destructure / nominal typing (E0901-E0903, E0907) ------
+
+#[test]
+fn bundle_literal_missing_field() {
+    first_err(
+        r#"
+bundle Hs { valid: bit, data: bits[8] }
+module Top {
+  out dst: Hs
+  dst = { valid: 1 }
+}
+"#,
+        "E0901",
+    );
+}
+
+#[test]
+fn bundle_literal_unknown_field() {
+    first_err(
+        r#"
+bundle Hs { valid: bit }
+module Top {
+  out dst: Hs
+  dst = { valid: 1, extra: 0 }
+}
+"#,
+        "E0902",
+    );
+}
+
+#[test]
+fn bundle_type_mismatch() {
+    first_err(
+        r#"
+bundle A { valid: bit }
+bundle B { valid: bit }
+module Top {
+  in x: A
+  out y: B
+  y = x
+}
+"#,
+        "E0907",
+    );
+}
+
+#[test]
+fn bundle_destructure_duplicate_binding() {
+    first_err(
+        r#"
+bundle Hs { valid: bit, ready: bit }
+module Top {
+  in bus: Hs
+  let { valid, valid } = bus
+}
+"#,
+        "E0903",
+    );
+}
