@@ -185,7 +185,53 @@ impl Parser {
                 }
             }
             TokKind::Kw(Kw::Enum) => Some(ModuleItem::Enum(self.enum_decl()?)),
-            TokKind::Kw(Kw::Let) => self.inst(),
+            TokKind::Kw(Kw::Let) => {
+                let start = self.peek().span;
+                // `let {` → bundle destructure; else → instance.
+                if matches!(
+                    self.toks.get(self.pos + 1).map(|t| &t.kind),
+                    Some(TokKind::LBrace)
+                ) {
+                    self.bump(); // let
+                    self.bump(); // {
+                    let mut bindings = Vec::new();
+                    loop {
+                        self.skip_newlines();
+                        if self.eat(&TokKind::RBrace) {
+                            break;
+                        }
+                        let bname = self.ident("a field name to bind")?;
+                        // E0904: field rename `{ name: alias }` is not supported.
+                        if self.at(&TokKind::Colon) {
+                            let span = self.peek().span;
+                            self.error(
+                                span,
+                                "E0904",
+                                format!(
+                                    "field rename `{{ {}: alias }}` is not supported; \
+                                     use dot access instead: `wire alias = bus.{}`",
+                                    bname.name, bname.name
+                                ),
+                            );
+                            return None;
+                        }
+                        bindings.push(bname);
+                        self.skip_newlines();
+                        if !self.eat(&TokKind::Comma) {
+                            self.skip_newlines();
+                            self.expect(TokKind::RBrace, "`}` or `,` in destructure")?;
+                            break;
+                        }
+                    }
+                    self.expect(TokKind::Assign, "`=` after `}`")?;
+                    let expr = self.expr()?;
+                    let end = expr.span;
+                    self.terminator();
+                    Some(ModuleItem::BundleDestructure { bindings, expr, span: start.join(end) })
+                } else {
+                    self.inst()
+                }
+            }
             TokKind::Kw(Kw::On) => self.on_block(),
             TokKind::Kw(Kw::Rise | Kw::Fall) if self.profile == Profile::Thamizh => {
                 self.on_block_thamizh()
