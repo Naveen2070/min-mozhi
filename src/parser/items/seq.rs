@@ -183,6 +183,16 @@ impl Parser {
     /// assignment (the head is reinterpreted as the lvalue), `=` → the teaching
     /// error.
     fn seq_stmt_thamizh(&mut self) -> Option<SeqStmt> {
+        // `default` is word-order neutral — it always leads the statement.
+        if self.at_kw(Kw::Default) {
+            let start = self.bump().span;
+            let name = self.ident("a register name")?;
+            self.expect(TokKind::LArrow, "`<-` after the register name")?;
+            let val = self.expr()?;
+            self.terminator();
+            let span = start.join(val.span);
+            return Some(SeqStmt::Default { name, val, span });
+        }
         let head = self.binary(0)?;
         if self.at_kw(Kw::If) {
             return self.seq_if_thamizh(head);

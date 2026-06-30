@@ -11,11 +11,22 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**522 tests** as of 2026-06-30: 357 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 13 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**526 tests** as of 2026-06-30: 361 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 13 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
-Fixture counts (current): 74 error fixtures · 8 grammar fixtures · 46 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
+Fixture counts (current): 76 error fixtures · 8 grammar fixtures · 47 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-06-30 `default` assignments — Thamizh-order parser fix (branch `phase-2-default-and-const-if`):
+  `seq_stmt_thamizh()` missed `Kw::Default` guard — `default` is word-order neutral, always leads.
+  Fixed; all translate tests (idempotency + Verilog-preservation) pass. Suite 523 → 526.
+
+- 2026-06-30 `default` assignments (branch `phase-2-default-and-const-if`, Tasks 2–6):
+  Promoted `default` keyword (`Kw::Default`), `SeqStmt::Default` AST + parser, E0809/E0810
+  checker passes, two-pass emitter, sim, and surface wiring. 4-flavor `pulse_gen` example.
+  **+1 lexer unit** (`kw_default_is_recognized`), **+2 checker unit** (`e0809_default_target_not_reg`,
+  `e0810_duplicate_default`). +2 error fixtures, +1 golden (`pulse_gen.v`). `BASE_EXAMPLES` 34 → 35.
+  Suite 522 → 523.
 
 - 2026-06-29 OR-arm binding intersection (branch `phase-2-tagged-unions`, Tasks 1–3):
   E0808 algorithm in `src/checker/names.rs` (5-phase intersection). **+6 lib unit**
