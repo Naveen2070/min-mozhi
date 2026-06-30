@@ -21,7 +21,7 @@ version = 1
 # (spec/03 section "Reserved words").
 reserved = [
   "sync", "inout", "struct",
-  "secret", "declassify", "default", "pipeline", "interface", "chan", "prove", "await",
+  "secret", "declassify", "pipeline", "interface", "chan", "prove", "await",
   "fixed", "requires", "ensures",
   # Parked for a future controlled `for`-loop (v1 reserved both spellings so no
   # program can claim them before the feature lands). `repeat`/மீண்டும் stays the unroll.
@@ -224,3 +224,11 @@ en = "fn"
 en_aliases = ["function"]
 tanglish = "saarbu"
 tamil = "சார்பு"
+
+# Priority-lowest sequential assignment (Phase 2; spec/02 §1.8b). Tanglish/Tamil
+# are PROVISIONAL — `iyalbu`/`இயல்பு` ("natural/inherent") — pending native-speaker
+# review (R9/R11). Maintainer-authorized 2026-06-30.
+[keywords.default]
+en = "default"
+tanglish = "iyalbu"   # PROVISIONAL — pending native review
+tamil = "இயல்பு"     # PROVISIONAL — pending native review
