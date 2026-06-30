@@ -44,6 +44,8 @@ pub enum Kw {
     Fn,
     /// `default` / `iyalbu` / `இயல்பு` — priority-lowest assignment in sequential blocks.
     Default,
+    /// `bundle` / `kattai` / `கட்டை` — named group of signals (feature 2.4).
+    Bundle,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).
