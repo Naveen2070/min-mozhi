@@ -281,7 +281,17 @@ impl<'a> Checker<'a> {
                         };
                     }
                 }
-                ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
+                    let val = consteval::eval(cond, &dcx.env).unwrap_or(0);
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
+                    self.collect_items(dcx, branch, summaries, in_progress);
+                }
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }

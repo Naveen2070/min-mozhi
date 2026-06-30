@@ -136,6 +136,7 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0808 | OR-pattern alternatives must expose the same binding interface                            | ensure every alternative binds identical names with identical types, or split into separate arms |
 | E0809 | `default` assignment target is not a `reg`                                                | only `reg` signals can have sequential default assignments; drive wires combinationally          |
 | E0810 | duplicate `default` for the same reg in one `on` block                                    | each reg may have at most one `default` per `on` block; merge into a conditional expression      |
+| E0811 | `const if` condition is not a compile-time constant                                       | use only module parameters, `const` values, literals, and arithmetic/comparison on those         |
 
 Numbering scheme:
 

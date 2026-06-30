@@ -1,0 +1,9 @@
+// expect: E0811
+module M {
+    in a: bit
+    out b: bit
+    const if (a) {
+        wire extra: bit = 0
+    }
+    b = 0
+}
