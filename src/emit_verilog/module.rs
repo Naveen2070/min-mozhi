@@ -320,6 +320,17 @@ impl Emitter<'_> {
             match item {
                 ModuleItem::Inst(inst) => self.instance(inst),
                 ModuleItem::Repeat(r) => self.unroll(r, Self::emit_instances),
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
+                    let val = consteval::eval(cond, &self.env).unwrap_or(0);
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
+                    self.emit_instances(branch);
+                }
                 _ => {}
             }
         }
@@ -342,6 +353,17 @@ impl Emitter<'_> {
                     self.out.push_str(&format!("    assign {l} = {r};\n"));
                 }
                 ModuleItem::Repeat(r) => self.unroll(r, Self::emit_drives),
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
+                    let val = consteval::eval(cond, &self.env).unwrap_or(0);
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
+                    self.emit_drives(branch);
+                }
                 _ => {}
             }
         }
