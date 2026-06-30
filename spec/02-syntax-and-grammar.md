@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.16.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.17.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -355,6 +355,49 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
   accepted in literals.
 
+### 1.8b — `default` assignments
+
+A `default` assignment sets a priority-lowest non-blocking assignment for a
+register. It prevents forgetting to deassert signals on paths that do not
+explicitly assign them.
+
+**Syntax:**
+
+```text
+default NAME <- EXPR
+```
+
+- `NAME` must refer to a `reg` declared in the same module (E0809 if not).
+- `EXPR` is evaluated and assigned non-blocking at the start of the
+  always-block, before any conditional assignments.
+- Each register may have at most one `default` in a given `on` block (E0810).
+- `default` statements are legal only at the **top level** of an `on` block
+  body. They are not allowed inside nested `if`/`match` arms.
+
+**Example:**
+
+```mimz
+on rise(clk) {
+    default done <- 0
+    if start {
+        done <- 1
+    }
+}
+```
+
+Emits as Verilog:
+
+```verilog
+always @(posedge clk) begin
+    done <= 0;        // default emitted first
+    if (start)
+        done <= 1;    // conditional overrides
+end
+```
+
+**Errors:** E0809 (target not a reg), E0810 (duplicate `default` for the
+same reg in the same `on` block).
+
 ### 1.9 Constants
 
 ```mimz
@@ -369,6 +412,53 @@ module Uart {
 
 `const` declares a named compile-time value (`int` or `bool`) at file or
 module scope — the SystemVerilog `parameter/localparam` role, one keyword.
+
+### 1.9b — Item-level `const if`
+
+`const if` conditionally includes or excludes module-body items at
+elaboration time. The condition must evaluate to a compile-time constant.
+
+**Syntax:**
+
+```text
+const if (COND) {
+    ITEM*
+} [else {
+    ITEM*
+}]
+```
+
+- `COND` is a compile-time expression: may use module parameters,
+  module-level `const`s, literals, and arithmetic/comparison operators.
+- Items in the winning branch are elaborated normally. Items in the losing
+  branch are completely discarded — they are not type-checked,
+  name-resolved, or emitted.
+- Ports, clocks, and resets may appear inside a `const if` branch; they are
+  only registered if their branch wins.
+- `const if` blocks may be nested.
+- `COND` that cannot be resolved at compile time produces E0811.
+- `const if` is **module-body only** — it may not appear at file level
+  (`TopItem`). File-level conditional items are out of scope for v0.2.
+
+**Example:**
+
+```mimz
+module Adder(WIDTH: int = 8) {
+    in a: bits[WIDTH]
+    in b: bits[WIDTH]
+    out sum: bits[WIDTH]
+
+    const if (WIDTH > 8) {
+        wire carry: bit = (a[WIDTH-1] & b[WIDTH-1])
+        out overflow: bit
+        overflow = carry
+    }
+
+    sum = a + b
+}
+```
+
+**Errors:** E0811 (condition not compile-time constant).
 
 ### 1.10 Tests
 
@@ -713,6 +803,15 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.17 (2026-06-30):** **`default` assignments + item-level `const if`.**
+  Added §1.8b: `default NAME <- EXPR` in `on` blocks — priority-lowest
+  non-blocking assignment, emitted before conditional statements so
+  conditional `<-` always overrides (E0809 target-not-reg, E0810
+  duplicate-default). Added §1.9b: `const if (COND) { items } [else { items
+}]` in module bodies — compile-time conditional elaboration, winning branch
+  only (E0811 condition-not-const). `default` promoted from reserved to
+  active keyword (Tanglish `iyalbu` / Tamil `இயல்பு`, PROVISIONAL).
+  Additive — no grammar breakage.
 - **v0.2.16 (2026-06-29):** **OR-pattern binding intersection** — when a match
   arm lists multiple patterns separated by `,`, every alternative must expose the
   same binding interface: identical names with identical types. Violations are
