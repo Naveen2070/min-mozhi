@@ -37,8 +37,10 @@ Expressions are rendered to Verilog:
 - `match` → nested ternary chain
 - `+` (lossless) → Verilog `+` with result growing
 - `+%` (wrapping) → Verilog `+` with width context
+- `fn` calls → **inlined**: the function body is substituted at the call site with arguments replaced
 - Builtins → `$signed()`, `$unsigned()`, `~&`, etc.
 - Enum variants → `localparam` constant names
+- Tagged unions → **tag wire** + **payload extraction**: `{tag_bits, payload_bits}` width, variant tag as `localparam` values, payload extracted by field position in `assign` statements
 
 ## `emit_verilog/translit.rs` — Tamil Names → ASCII
 

@@ -37,6 +37,7 @@ One-page reference. The authoritative sources are
 | `and`     | `mattrum`       | `மற்றும்`     | logical and (`&&`)              |
 | `or`      | `alladhu`       | `அல்லது`      | logical or (`\|\|`)             |
 | `not`     | `alla`          | `அல்ல`        | logical not (`!`)               |
+| `fn`      | `saarbu`        | `சார்பு`      | combinational function          |
 | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar directive               |
 | `thamizh` | `thamizh`       | `தமிழ்`       | thamizh word-order profile      |
 
@@ -45,8 +46,8 @@ pending native-speaker review before the v0.1.0 release.
 
 Reserved for future features (using one is an error): `sync`, `inout`, `struct`,
 `secret`, `declassify`, `default`, `pipeline`, `interface`, `chan`, `prove`,
-`await`, `fixed`, `requires`, `ensures`, `fn` / `function` (future combinational
-functions), `suzhal` / `சுழல்` (future controlled `for`-loop).
+`await`, `fixed`, `requires`, `ensures`,
+`suzhal` / `சுழல்` (future controlled `for`-loop).
 
 ## Types
 
@@ -118,9 +119,13 @@ Run `mimz explain <CODE>` for the full classroom version of any of these.
 | `E1104` | register has no reset value, or memory has no init value         |
 | `E1105` | `<-` used outside an `on` block                                  |
 | `E1106` | `=` used inside an `on` block                                    |
+| `E0806` | wrong number of payload bindings in a tagged-union match pattern |
+| `E0807` | payload field type must be concrete `bit`/`bits`/`signed`        |
+| `E0808` | OR-arm bindings have incompatible types across alternatives      |
 | `E1108` | value-driving `if` without an `else`                             |
 | `E1109` | bad chained comparison (mixed direction / `==`)                  |
 | `E1110` | built-in called with the wrong arity                             |
+| `E1111` | parameter/const type must be `int`/`bool`                        |
 | `W0001` | (warning) file mixes Tamil keywords with English/Tanglish        |
 
 ## Command-line flags

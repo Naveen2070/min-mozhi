@@ -73,7 +73,7 @@ module M { in a: bit  out y: bit  y = a }
 தொகுதி M { உள்ளீடு a: bit  வெளியீடு y: bit  y = a }
 ```
 
-The full table of all 28 keywords in all three flavors is in the
+The full table of all 32 keywords in all three flavors is in the
 [cheat sheet](12-cheatsheet.md). The single source of truth is
 [`../../lang/keywords.toml`](../../lang/keywords.toml).
 

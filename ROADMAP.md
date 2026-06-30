@@ -84,7 +84,7 @@
 - Yosys integration or internals study for technology mapping
 - FPGA primitive mapping (LUTs, flip-flops)
 - Language additions (editions-gated):
-  - Tagged unions, interfaces, channels
+  - Interfaces, channels (tagged unions ✅ shipped v0.2.15)
   - `prove` via SymbiYosys
   - G5 security: `secret` taint + `system_fault` network v1
   - `fixed`-point, `requires`/`ensures` contracts, pipe `|>`

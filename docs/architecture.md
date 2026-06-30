@@ -9,7 +9,7 @@
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
 > (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-06-23 (stale reference cleanup: test counts, example counts,
+> Last updated: 2026-06-30 (doc audit — function & tagged-union currency: E-codes now go to E0808, checker description updated for E08xx, stale references cleaned)
 > spec version numbers, fixture counts, file counts across guide/code/source-guide)
 
 ---
@@ -33,8 +33,8 @@
  └──────┬───────┘
         ▼
  ┌──────────────┐   name resolution · const folding · width rules
- │   CHECKER    │   single-driver · DAG · exhaustiveness · =/<- ·
- └──────┬───────┘   clock-domain typing   (spec/02 section 6)
+   │   CHECKER    │   single-driver · DAG · exhaustiveness · =/<- ·
+   └──────┬───────┘   clock-domain typing · function checking E0801–E0808   (spec/02 section 6)
         ▼
  ┌─────────────────────────────────────────────────┐
  │                  BACKENDS                       │
@@ -70,7 +70,8 @@ Built ✅ as of 2026-06-12 (Phase 1 complete):
 - checker — ALL spec/02 section 6 safety rules (names/consts/E-codes,
   width/type E04xx, driver/cycle E05xx, instantiation completeness E0302,
   match exhaustiveness E06xx, clock domains E0701) + combinational functions
-  E0801–E0805 (symbol registration, arity, return width, recursion);
+  E0801–E0808 (symbol registration, arity, return width, recursion,
+  payload-bindings, OR-arm intersection);
 - Verilog emitter (repeat unrolling, Tamil→ASCII transliteration,
   `wire signed`; validated by Icarus differential tests and golden files);
 - CLI (`check`, `compile`, `lsp`, `--json`);
@@ -88,7 +89,7 @@ The IR and native backend remain planned.
 | **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                 |
 | **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                |
 | **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                  |
-| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; six passes (symbols/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0701                                                            |
+| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; six passes (symbols/consteval/names/widths/drivers/clocks + funcs cycle detection), each with its own tests; stable E-codes E0001–E0808                                    |
 | **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper                                                     |
 | **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                   |
 | **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `src/sim/` (comb, kernel, elaborate, harness, run, value, vcd, trace) |

@@ -97,6 +97,38 @@ reg s: State = State.Red
 `enum` needs at least one variant. Enums shine with `match`, which forces you to
 handle every variant (chapter 7).
 
+### Tagged unions (enums with payloads)
+
+Since v0.2.15, enum variants can carry **payload fields** — data that differs per
+variant:
+
+```mimz
+enum Packet {
+  Data(data: bits[8]),
+  Ctrl(kind: bits[2], seq: bits[4]),
+  Empty
+}
+```
+
+`Data` carries an 8-bit value; `Ctrl` carries two fields (`kind` and `seq`);
+`Empty` carries nothing. The compiler sizes the tag to fit the variant count and
+pads the payload to the widest variant — `Ctrl`'s 6 bits (`kind` + `seq`) in
+this case, so the total width is `tag_bits + 6`.
+
+Match on a tagged union must unpack the payload:
+
+```mimz
+match pkt {
+  Packet.Data(d)      => out <- d
+  Packet.Ctrl(k, _)   => out <- {k, 0b0000}
+  Packet.Empty        => out <- 0b0000_0000
+}
+```
+
+The payload bindings (`d`, `k`) are available inside the arm. Wrong binding
+count or incompatible types across OR-arms are caught at compile time (E0806,
+E0808).
+
 ## Compile-time types: `int` and `bool`
 
 Parameters and `const`s are compile-time values, not hardware. They use the

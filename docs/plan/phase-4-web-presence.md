@@ -197,15 +197,14 @@ translation of docs prose. (The maintainer subdomain on Vercel is now _in_ scope
 section 4.) The playground engine here is what those later ride
 on.
 
-## Build status (2026-06-18)
+## Build status (2026-06-30)
 
-- **Phase 1 (landing + docs): built & verified.** Official `npm create astro@latest`
-  scaffold under `site/` — **Astro 6.4.7**, **npm**, **React** (single island
-  framework; Lit was considered then dropped), **Tailwind v4**, **Shiki** (reusing
-  the TextMate grammar), **Pagefind**, **`@astrojs/vercel`** adapter. Palette: \*\*blue
-  - lightning-yellow\*\*. Landing + `/guide/[slug]` + `/spec/[slug]` (docs sourced via
-    the content-layer glob loader, never copied) + 404. `npm run build` clean (20
-    pages), `astro check` 0/0/0. Details + decisions in `docs/log/2026-06-18.md`.
-- **Open:** wire `mimz.naveenr.in` DNS (CNAME → Vercel); first Vercel preview deploy.
-- **Next:** Phase 2 — `compile_string` lib wrapper + `crates/mimz-wasm` (the
-  playground engine). No commit yet (R12).
+- **Steps 1–5 complete:** `compile_string` lib wrapper + `crates/mimz-wasm` (step 2),
+  Astro scaffold (step 3), Playground page with console (step 4), Waveform viewer +
+  stimulus panel (step 5) — all built and verified. The deploy workflow
+  (`.github/workflows/deploy-site.yml`, approach B prebuilt) was written on
+  2026-06-19.
+- **Open (maintainer-gated, R12):** wire `mimz.naveenr.in` DNS (CNAME → Vercel);
+  add `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` as GitHub secrets; run
+  `vercel link` once in `site/`; then trigger production deploy.
+- **Next:** flip repo public + tag `v0.1.0` (maintainer's call).

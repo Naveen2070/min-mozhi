@@ -21,7 +21,7 @@
 > - **`mimz translate --order code|thamizh`** converts between orders via AST pretty-printer (`src/pretty.rs`)
 > - All flips parse to same AST as code-order, emit byte-identical Verilog (`tests/grammar.rs`, `tests/fixtures/grammar/`)
 > - **Error-language plumbing** (2026-06-14): language selection (file-flavor majority + `--lang` override), case-suffix inflection (`src/morph.rs`), wired into `check`/`compile`/`eval` as additive English-fallback layer
-> - **Human-authored error catalog** (2026-06-15): `lang/messages.toml` localizes **33 of 36 checker E-codes** in Tamil and Tanglish (C3 ratified, sandhi rule in `lang/case_suffixes.toml`)
+> - **Human-authored error catalog** (2026-06-15): `lang/messages.toml` localizes **33 of 44 checker E-codes** in Tamil and Tanglish (C3 ratified, sandhi rule in `lang/case_suffixes.toml`)
 > - **Deferred:** E0403/E0404/E0405 keep English text (too many heterogeneous message shapes for one template; Tamil preserved as comments)
 > - **Test oracle:** `mimz test` runs the blocks — a passing thamizh-order test (re-parsing to same `TestDecl`) is the oracle
 
@@ -228,7 +228,7 @@ Example:
 > English: `'sum' is 8 bits but 'a + b' produces 9 bits — use '+%' for wrapping math, or widen 'sum'.`
 > Tamil: `'sum' 8 பிட்கள்தான், ஆனால் 'a + b' 9 பிட்கள் தரும் — மடக்கு கணிதத்திற்கு '+%' பயன்படுத்தவும், அல்லது 'sum'-ஐ அகலமாக்கவும்.`
 
-### Status (2026-06-14): mechanism implemented, content panel-gated
+### Status (2026-06-30): mechanism implemented, content panel-gated (33/44 codes covered)
 
 The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 `eval`:
@@ -247,7 +247,7 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 > "broken Tamil" this section warns against.
 >
 > **Resolved (2026-06-15, C3 ratified):** the panel authored the catalog. It now
-> ships in `lang/messages.toml` covering **33 of 36 checker E-codes** in Tamil and
+> ships in `lang/messages.toml` covering **33 of 44 checker E-codes** in Tamil and
 > Tanglish; the sandhi rule in `lang/case_suffixes.toml` is finalized (no longer
 > PROVISIONAL). **E0403/E0404/E0405 are deferred** — each emits many
 > heterogeneous message shapes that a single template cannot render faithfully,

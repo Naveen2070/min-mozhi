@@ -20,7 +20,7 @@ The AST is the **single intermediate representation** that everything downstream
 
 **`ConstDecl`** — `const NAME: int = expr`. Compile-time constant.
 
-**`EnumDecl`** — `enum Name { Var1, Var2, ... }`. Variants encode to the smallest binary width (`ceil(log2(count))` bits).
+**`EnumDecl`** — `enum Name { Var1, Var2, ... }`. Variants encode to the smallest binary width (`ceil(log2(count))` bits). Since v0.2.15, variants can carry **payload fields**: `Data(val: bits[8])` — stored as `EnumVariant` with a `Vec<PayloadField>`.
 
 **`ModuleItem`** — everything that can go in a module body:
 
@@ -74,14 +74,16 @@ The AST is the **single intermediate representation** that everything downstream
 - **Replicate** — `{N{...}}` repetition
 - **Index** — `base[i]`
 - **Slice** — `base[hi:lo]`
-- **Call** — builtin function call
+- **Call** — builtin function call (10 built-ins: `extend`, `trunc`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`, `signed`, `unsigned`)
+- **FnCall** — user-defined `fn` call (v0.2.14): inlined at emit time
 
 **`Pattern`** — what a match arm matches against:
 
 - `Int` — exact integer
 - `IntMask` — `0b1??` (binary don't-care)
 - `Bool` — `true`/`false`
-- `Variant` — `State.Red`
+- `Variant` — `State.Red` (with optional `bindings: Vec<Pattern>` for tagged-union payload extraction)
+- `Variant.Multi` — multi-field variant match like `Packet.Ctrl(k, _)`
 - `Wildcard` — `_` (catch-all)
 
 **`BinOp`** has specific width rules:
@@ -90,4 +92,4 @@ The AST is the **single intermediate representation** that everything downstream
 - `AddWrap`/`SubWrap`/`MulWrap` (`+%`/`-%`/`*%`) — **wrapping**: keeps operand width (like real hardware registers)
 - No `/` or `%` — division doesn't exist (it synthesizes to big, slow hardware)
 
-**`Builtin`** — the complete list of built-in functions: `Extend`, `Trunc`, `SignedCast`, `UnsignedCast`, `Min`, `Max`, `Abs`, `Nand`, `Nor`, `Xnor`. Users can't define their own — modules are the unit of reuse.
+**`Builtin`** — the complete list of built-in functions: `Extend`, `Trunc`, `SignedCast`, `UnsignedCast`, `Min`, `Max`, `Abs`, `Nand`, `Nor`, `Xnor`. Since v0.2.14, users can also define their own combinational functions via `fn` (covered by `ExprKind::FnCall`).
