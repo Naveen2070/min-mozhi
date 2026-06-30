@@ -86,6 +86,20 @@ pub enum ExprKind {
         /// Positional arguments, one per [`FnParam`](super::FnParam).
         args: Vec<Expr>,
     },
+    /// `{ field: expr, ... }` — a bundle literal.
+    /// Disambiguated from `Concat` by the parser: if the first element after `{`
+    /// is `IDENT ":"`, it is a bundle literal; otherwise it is a concat.
+    BundleLit(Vec<FieldInit>),
+}
+
+/// One field initializer in a bundle literal: `valid: expr`.
+#[derive(Clone, Debug)]
+pub struct FieldInit {
+    /// Field name as written (checked against bundle declaration by the checker).
+    pub name: super::Ident,
+    /// The expression driving this field.
+    pub value: Expr,
+    pub span: Span,
 }
 
 /// One `match` arm: `pat1, pat2 => value` (multiple patterns OR together).

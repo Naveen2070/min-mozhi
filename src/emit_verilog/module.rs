@@ -652,6 +652,7 @@ impl Emitter<'_> {
                     String::new()
                 }
             }
+            Type::Bundle { .. } => todo!(),
         }
     }
 }
