@@ -46,7 +46,7 @@ There are two types of diagnostics:
 
 ### `ALL_CHECKER_CODES` — The Master List of Error Codes
 
-This is a compile-time array listing all 36 stable error codes: `E0001`, `E0002`, ..., `E0701`. Once a code is assigned, it never changes — no renumbering, ever. This means documentation, `mimz explain`, and any Stack Overflow answers stay valid permanently.
+This is a compile-time array listing all 44 stable error codes: `E0001`, `E0002`, ..., `E0808`. Once a code is assigned, it never changes — no renumbering, ever. This means documentation, `mimz explain`, and any Stack Overflow answers stay valid permanently.
 
 A unit test checks that every code here has a test fixture, and another checks that `mimz explain` covers every one.
 

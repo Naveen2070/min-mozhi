@@ -11,7 +11,7 @@ The compiler itself is written in **Rust** with a strict `#![forbid(unsafe_code)
 Here's the big picture of how source code flows through the system:
 
 ```
-Your Code (.mimz) → Lexer → Parser → AST → Checker (6 safety passes)
+Your Code (.mimz) → Lexer → Parser → AST → Checker (7 safety passes)
                   → Verilog Output   OR   Interactive Simulator
 ```
 
@@ -42,7 +42,7 @@ src/
 ├── lexer/               # The tokenizer (4 files)
 ├── parser/              # Tokens → structured tree (9 files)
 ├── ast/                 # The tree itself (2 files)
-├── checker/             # Safety checks — 6 passes (12 files)
+├── checker/             # Safety checks — 7 passes (13 files)
 ├── emit_verilog/        # Verilog code generator (5 files)
 ├── sim/                 # Event-driven simulator (9 files)
 └── commands/            # CLI command handlers (11 files)
@@ -56,7 +56,7 @@ Now let's walk through each piece, one at a time. The rest of this guide is spli
 | [03](03-lexer.md)             | The lexer (tokenizer) — all 4 files                                                     |
 | [04](04-parser.md)            | The parser — all 9 files                                                                |
 | [05](05-ast.md)               | The Abstract Syntax Tree                                                                |
-| [06](06-checker.md)           | Six safety passes — all 12 files                                                        |
+| [06](06-checker.md)           | Seven safety passes — all 13 files                                                      |
 | [07](07-verilog-emitter.md)   | Verilog code generator — all 5 files                                                    |
 | [08](08-simulator.md)         | Event-driven simulator — all 9 files                                                    |
 | [09](09-tooling-and-entry.md) | CLI commands, main.rs, lib.rs, translate, pretty, explain, version, analysis.rs, lsp.rs |

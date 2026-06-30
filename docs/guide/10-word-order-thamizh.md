@@ -18,7 +18,7 @@ default; there is no `code` directive word.
 
 ## What flips
 
-Only the clause words move. Five constructs are order-sensitive:
+Only the clause words move. Six constructs are order-sensitive:
 
 | Code order                        | Thamizh order                   |
 | --------------------------------- | ------------------------------- |
@@ -27,9 +27,12 @@ Only the clause words move. Five constructs are order-sensitive:
 | `match e { … }`                   | `e match { … }`                 |
 | `test "n" for M(p) { … }`         | `M(p) kaaga "n" sodhanai { … }` |
 | (if-expr) `if c { a } else { b }` | `c if { a } else { b }`         |
+| `fn foo(x: bits[4]) -> bits[4]`   | `fn foo(x: bits[4]) -> bits[4]` |
 
-The if-expression and statement-level `if` share the same flip; the test-header
-flip (Phase 1.5 B7) completes all five word-order flips of the grammar engine.
+The if-expression and statement-level `if` share the same flip. `fn` declarations
+use infix syntax in both orders (unchanged — the `fn` keyword leads always). The
+test-header flip (Phase 1.5 B7) completes all six word-order flips of the grammar
+engine.
 
 The clause word (`on`, `if`, `match`) trails its operand. Everything else — ports,
 declarations, assignments, expressions — is unchanged.

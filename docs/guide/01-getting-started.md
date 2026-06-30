@@ -108,8 +108,8 @@ When you run `mimz compile`, your file flows through five stations:
 1. **Lexer** — text becomes tokens; keywords in any of the three flavors resolve
    to the same token here.
 2. **Parser** — tokens become an AST (the tree shape of your module).
-3. **Checker** — six passes enforce every safety rule (names, widths, drivers,
-   exhaustiveness, clock domains). This is where you get teaching errors.
+3. **Checker** — seven passes enforce every safety rule (names, widths, drivers,
+   exhaustiveness, functions, clock domains). This is where you get teaching errors.
 4. **Emitter** — the AST becomes Verilog; `repeat` loops unroll, Tamil
    identifiers transliterate to ASCII.
 5. **Output** — a `.v` file.

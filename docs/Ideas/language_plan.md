@@ -517,7 +517,7 @@ Hardware engineering is ultimately constrained by clock speed (Fmax), security (
 
 ## 7. Feasibility triage (2026-06-12)
 
-Reviewed against the compiler as it exists today (98 tests, checker passes 1–5),
+Reviewed against the compiler as it exists today (522 tests, checker passes 1–5),
 what comparable HDLs (Chisel, Bluespec, SpinalHDL, Filament, SecVerilog) learned
 building the same features, and the project constitution. Phase 1 scope is
 unchanged by this document.
@@ -950,7 +950,7 @@ co-goal**. These are added to the phase-2 backlog ("Language features").
 ## 11. External-review triage (2026-06-26)
 
 A reviewer proposed six improvements. Triaged against the compiler as it exists
-today (465 tests; spec/02 v0.2.12). **Four of the six already ship or are already
+today (522 tests; spec/02 v0.2.12). **Four of the six already ship or are already
 planned** — recorded here so the review is captured and not re-opened. Only one is
 genuinely new, and it is freeze-safe.
 

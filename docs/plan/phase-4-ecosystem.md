@@ -28,16 +28,16 @@ and the Tamil Nadu VLSI ecosystem.
 
 ### Ecosystem drivers (one core, thin wrappers — Decision 2026-06-11)
 
-- [ ] **WASM build + browser playground** — FIRST bridge to other
+- [x] **WASM build + browser playground** — FIRST bridge to other
       ecosystems: no toolchain, no install rights needed in a college
       lab, just a URL. Highest education-per-hour; serves the spec/01
       persona directly. Needs the simulator (Phase 1.5) to be a real
-      playground, not just a Verilog printer.
-- [ ] **Interactive hardware REPL `mimz repl`** (idea 8.5,
+      playground, not just a Verilog printer. **DONE 2026-06-18** (+ waveform viewer 2026-06-19) — Steps 1–5 of phase-4-web-presence.md.
+- [x] **Interactive hardware REPL `mimz repl`** (idea 8.5,
       `language_plan.md` section 9) — define an expression/gate, flip
       inputs, see combinational logic evaluate live. No new syntax: rides
       the WASM playground above + the Phase 1.5 sim evaluator. Scope to
-      combinational logic.
+      combinational logic. **DONE — shipped as `mimz repl` command.**
 - [ ] **Vim-like TUI workbench `mimz tui`** (idea 8.11,
       `language_plan.md` section 8) — a no-IDE, full-screen terminal driver
       for whole `.mimz` files: on start it asks the output mode (emit
@@ -76,7 +76,7 @@ priorities).
 
 ### Documentation & learning
 
-- [ ] Documentation site — English first; Tamil translation of docs begins **after Phase 1** (decision D9)
+- [x] Documentation site — English first; Tamil translation of docs begins **after Phase 1** (decision D9). **DONE 2026-06-18** (Astro scaffold, Step 3 of phase-4-web-presence.md).
 - [ ] "Day one" tutorial: counter on a real board in under an hour — in Tamil, Tanglish, and English
 - [ ] Example gallery grown from community submissions
 

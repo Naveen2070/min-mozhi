@@ -93,8 +93,8 @@ message. Push enforcement as early as it can correctly live.
 
 ## Where the code goes next (in order)
 
-1. ~~**Checker**~~ — ✅ landed 2026-06-11/12, six passes in
-   `src/checker/` (symbols, consteval, names, widths, drivers, clocks);
+1. ~~**Checker**~~ — ✅ landed 2026-06-11/12, seven passes in
+   `src/checker/` (symbols, consteval, names, widths, drivers, funcs, clocks);
    every spec/02 section 6 rule is now compiler-enforced.
 2. ~~**Stable error codes**~~ — ✅ complete 2026-06-12: every diagnostic
    in the compiler carries one (checker E0xxx, lexer E10xx, parser

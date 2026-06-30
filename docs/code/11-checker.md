@@ -15,16 +15,16 @@ table below is the honest status of what remains.
 | -------------------- | ------------------------------------------------------------------------------ |
 | `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing                     |
 | `symbols.rs`         | Pass 1 — project-wide tables (modules, enums, funcs) + E0001/E0002/E0801/E0802 |
-| `consteval.rs`       | Pass 2 — file consts + the `eval()` engine for const positions                 |
-| `names.rs`           | Pass 3 — module scopes, name resolution, structure rules, E0302                |
-| `widths/mod.rs`      | Pass 4 — the `Ty` model, `Wcx`, config worklist, module walk                   |
-| `widths/expr.rs`     | Pass 4 — bidirectional typing engine (check/infer, lvalues)                    |
-| `widths/ops.rs`      | Pass 4 — operators, shifts, concat, the four builtins                          |
-| `widths/insts.rs`    | Pass 4 — instantiation bindings + connection widths                            |
-| `widths/patterns.rs` | Pass 4 — `match` patterns + exhaustiveness (E0601/E0602)                       |
-| `funcs.rs`           | Pass (after 1) — call-graph cycle detection, E0805                             |
-| `drivers.rs`         | Pass 5 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                |
-| `clocks.rs`          | Pass 6 — clock-domain ownership, cross-domain reads (E0701)                    |
+| `funcs.rs`           | Pass 2 — call-graph cycle detection, E0805                                     |
+| `consteval.rs`       | Pass 3 — file consts + the `eval()` engine for const positions                 |
+| `names.rs`           | Pass 4 — module scopes, name resolution, structure rules, E0302                |
+| `widths/mod.rs`      | Pass 5 — the `Ty` model, `Wcx`, config worklist, module walk                   |
+| `widths/expr.rs`     | Pass 5 — bidirectional typing engine (check/infer, lvalues)                    |
+| `widths/ops.rs`      | Pass 5 — operators, shifts, concat, the four builtins                          |
+| `widths/insts.rs`    | Pass 5 — instantiation bindings + connection widths                            |
+| `widths/patterns.rs` | Pass 5 — `match` patterns + exhaustiveness (E0601/E0602)                       |
+| `drivers.rs`         | Pass 6 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                |
+| `clocks.rs`          | Pass 7 — clock-domain ownership, cross-domain reads (E0701)                    |
 | `tests.rs`           | Unit tests — one per error code, plus clean-pass cases                         |
 
 Same module pattern as the parser (03): `mod.rs` owns the struct and the
@@ -233,15 +233,15 @@ itself to the language's own honesty rule.
 | Rule                                              | Blocked on / planned with                                                |
 | ------------------------------------------------- | ------------------------------------------------------------------------ |
 | `repeat` unrolling (elaboration)                  | widths/drivers check per-iteration; unrolling is emitter work            |
-| Cross-INSTANCE clock-domain tracking              | pass 6 is module-local; instance outputs carry no domain                 |
+| Cross-INSTANCE clock-domain tracking              | pass 7 (`clocks.rs`) is module-local; instance outputs carry no domain   |
 | Cross-clock reads allowed via `sync`              | the Phase 2 multi-clock construct relaxes E0701 explicitly               |
 | Instance-array output widths via the `repeat` var | read outside the loop falls back to param defaults                       |
 | Defaultless-param module never instantiated       | internals skipped silently (passes 1–3 still ran)                        |
 | Driver COVERAGE under non-default bindings        | upgrade path: reuse widths' per-instantiation config set                 |
 | Recursive instantiation                           | comb summary comes back empty (no through-paths seen); no cycle invented |
 | Unevaluable instance-array index in a read        | the comb edge is skipped (under-approximation; elaboration closes it)    |
-| Test BODY checking (drives/`tick`/`expect`)       | simulator, Phase 1.5                                                     |
-| E-codes on lexer/parser errors                    | retrofit pass, Phase 1 (E10xx/E11xx reserved)                            |
+| Test BODY checking (drives/`tick`/`expect`)       | ✅ delivered in Phase 1.5 (`src/sim/harness.rs`)                         |
+| E-codes on lexer/parser errors                    | ✅ delivered — E10xx/E11xx/E12xx all retrofitted (2026-06-12)            |
 | Did-you-mean suggestions on E0101                 | nice-to-have; needs edit distance                                        |
 
 ## How to add a checker rule

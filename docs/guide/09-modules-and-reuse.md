@@ -1,7 +1,8 @@
 # 9 — Modules and Reuse
 
-A module is the unit of reuse — there are no functions, so you build bigger
-circuits by **instantiating** smaller modules. This chapter covers parameters,
+A module is the unit of reuse — you build bigger circuits by **instantiating**
+smaller modules and, since v0.2.14, by writing **combinational functions** (`fn`)
+for pure combinational logic that doesn't need its own module. This chapter covers parameters,
 instances, imports, and the compile-time generation features that let one
 description produce many sizes of hardware.
 

@@ -3,8 +3,9 @@
 //! detection (`symbols.rs`), const evaluation (`consteval.rs`), name
 //! resolution + module-structure rules incl. instantiation completeness
 //! (`names.rs`), width/type rules + match exhaustiveness (`widths/`),
-//! single-driver + combinational-cycle rules (`drivers.rs`), and
-//! clock-domain ownership (`clocks.rs`).
+//! single-driver + combinational-cycle rules (`drivers.rs`),
+//! ban-recursive-functions (`funcs.rs`), and clock-domain ownership
+//! (`clocks.rs`).
 //!
 //! Every checker diagnostic carries a stable error code (`E0101`) and the
 //! index of the file it points into, so multi-file errors render against
