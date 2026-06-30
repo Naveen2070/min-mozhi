@@ -165,7 +165,14 @@ impl<'a> Checker<'a> {
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
                 ModuleItem::Repeat(r) => self.collect_decls(file, sc, &r.items),
-                ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+                ModuleItem::ConstIf { then, els, .. } => {
+                    // No env here; collect decls from both branches conservatively.
+                    // walk_items evaluates the condition and checks only the winning branch.
+                    self.collect_decls(file, sc, then);
+                    if let Some(el) = els {
+                        self.collect_decls(file, sc, el);
+                    }
+                }
                 ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
             }
         }
@@ -277,7 +284,29 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                ModuleItem::ConstIf { .. } => todo!("const if not yet implemented"),
+                ModuleItem::ConstIf { cond, then, els, span } => {
+                    match consteval::eval(cond, env) {
+                        Ok(val) => {
+                            let branch = if val != 0 {
+                                then.as_slice()
+                            } else {
+                                els.as_deref().unwrap_or(&[])
+                            };
+                            self.walk_items(file, sc, env, branch);
+                        }
+                        Err(_) => {
+                            self.err(
+                                file,
+                                *span,
+                                "E0811",
+                                "`const if` condition is not a compile-time constant",
+                                "use only module parameters, consts, literals, and \
+                                 arithmetic/comparison; runtime signals like ports are \
+                                 not allowed",
+                            );
+                        }
+                    }
+                }
                 ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
