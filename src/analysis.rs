@@ -55,7 +55,7 @@ fn type_str(t: &Type) -> String {
         Type::Bits(e) => format!("bits[{}]", expr_str(e)),
         Type::Signed(e) => format!("signed[{}]", expr_str(e)),
         Type::Named(id) => id.name.clone(),
-        Type::Bundle { name, .. } => name.name.clone(),
+        Type::Bundle { .. } => todo!(),
     }
 }
 
@@ -450,7 +450,7 @@ fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Ve
         | ModuleItem::Const(_)
         | ModuleItem::Enum(_)
         | ModuleItem::Error(_) => {}
-        ModuleItem::BundleDestructure { expr, .. } => collect_expr_refs(expr, module_idx, refs),
+        ModuleItem::BundleDestructure { .. } => todo!(),
     }
 }
 
@@ -546,11 +546,7 @@ fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
                 collect_expr_refs(a, module_idx, refs);
             }
         }
-        ExprKind::BundleLit(fields) => {
-            for f in fields {
-                collect_expr_refs(&f.value, module_idx, refs);
-            }
-        }
+        ExprKind::BundleLit(_) => todo!(),
     }
 }
 
