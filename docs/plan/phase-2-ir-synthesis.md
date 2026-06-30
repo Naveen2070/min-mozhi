@@ -104,10 +104,10 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       (the honest salvage of affine tokens, 1.3)
 - [ ] Wire type inference (2.3 other half) — `wire sum = a + b`; widths.rs
       already computes the type, only the parser requires the annotation
-- [ ] `default` assignments (salvaged from 3.2) — value unless assigned this cycle
-- [ ] Item-level const-`if` (salvaged from 2.6; section 9 confirms 8.4) —
+- [x] **`default` assignments** (salvaged from 3.2) — value unless assigned this cycle — **DONE 2026-06-30** (branch `phase-2-default-and-const-if`, spec v0.2.17)
+- [x] **Item-level const-`if`** (salvaged from 2.6; section 9 confirms 8.4) —
       conditional elaboration as a **keyword**, not a `$` sigil; the general
-      `$comptime` interpreter is rejected (`repeat` + const-`if` cover ~90%)
+      `$comptime` interpreter is rejected (`repeat` + const-`if` cover ~90%) — **DONE 2026-06-30** (branch `phase-2-default-and-const-if`, spec v0.2.17)
 - [ ] `count_ones`-style builtins (cheap version of 2.2)
 - [x] **`clog2` const-builtin** (noted in `phase-4-ecosystem.md` stdlib +
       `phase-1.5-simulator.md`) — **DONE 2026-06-27** (branch
