@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.12.**
+> **Spec v0.2.17.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -122,6 +122,7 @@ is valid even in an otherwise-English file.
 | KW_SYNTAX     | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar-engine directive (Layer 2): `syntax thamizh` (section 04)                                                                      |
 | KW_THAMIZH    | `thamizh` | `thamizh`       | `தமிழ்`       | the `thamizh-order` profile name; en==tanglish, Tamil script `தமிழ்`                                                                   |
 | KW_FN         | `fn`      | `saarbu`        | `சார்பு`      | combinational user-defined function (`fn f(…) -> T`); en alias: `function`; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
+| KW_DEFAULT    | `default` | `iyalbu`        | `இயல்பு`      | priority-lowest sequential assignment in `on` blocks (`default NAME <- EXPR`); Tanglish/Tamil PROVISIONAL, pending native review (R11) |
 
 ### Reserved words
 
@@ -136,7 +137,6 @@ error (E1005) explaining why. They live in the `reserved` list in
 | `struct`           | bundles/interfaces (post-Phase 2)                                       |
 | `secret`           | explicit information-flow types (v0.3 G5)                               |
 | `declassify`       | the only `secret`→public escape (v0.3 G5)                               |
-| `default`          | sticky-fault / default values (v0.3)                                    |
 | `pipeline`         | pipeline-stage construct (v0.3 backlog)                                 |
 | `interface`        | named port bundles (v0.3 backlog)                                       |
 | `chan`             | handshake channels (v0.3 backlog)                                       |
@@ -278,6 +278,12 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.17 (2026-06-30):** Promoted `default` from **reserved** to active
+  keyword KW_DEFAULT for priority-lowest sequential assignments
+  (`default NAME <- EXPR` inside `on` blocks — spec/02 v0.2.17 §1.8b).
+  Tanglish `iyalbu` / Tamil `இயல்பு` are **PROVISIONAL** placeholders
+  pending native-speaker review (R11). Removed `default` from the reserved
+  table; covered by E0809–E0810 checker suite. Additive.
 - **v0.2.12 (2026-06-27):** Promoted `fn` / `function` from **reserved** to an
   active keyword KW_FN for combinational user-defined functions
   (`fn f(params) -> T { body }` — spec/02 v0.2.14). Its Tanglish/Tamil spellings —
