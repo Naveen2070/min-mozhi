@@ -55,6 +55,7 @@ fn type_str(t: &Type) -> String {
         Type::Bits(e) => format!("bits[{}]", expr_str(e)),
         Type::Signed(e) => format!("signed[{}]", expr_str(e)),
         Type::Named(id) => id.name.clone(),
+        Type::Bundle { name, .. } => name.name.clone(),
     }
 }
 
@@ -106,6 +107,7 @@ pub fn build_index(files: &[LoadedFile]) -> SymbolIndex {
                 }
                 TopItem::Test(_) | TopItem::Error(_) => {}
                 TopItem::Func(_) => {} // fn declarations not yet indexed for LSP
+                TopItem::Bundle(_) => {} // bundle declarations not yet indexed for LSP
             }
         }
     }
@@ -225,6 +227,7 @@ fn push_module_items(
                 }
             }
             ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
+            ModuleItem::BundleDestructure { .. } => {} // not yet indexed for LSP
         }
     }
 }
@@ -328,6 +331,7 @@ fn collect_refs(index: &SymbolIndex, files: &[LoadedFile], file_idx: usize) -> V
             TopItem::Test(t) => collect_test_refs(t, index, &mut refs),
             TopItem::Enum(_) | TopItem::Error(_) => {}
             TopItem::Func(_) => {} // fn body refs not yet tracked for LSP go-to-def
+            TopItem::Bundle(_) => {} // bundle body refs not yet tracked for LSP go-to-def
         }
     }
     refs
@@ -446,6 +450,7 @@ fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Ve
         | ModuleItem::Const(_)
         | ModuleItem::Enum(_)
         | ModuleItem::Error(_) => {}
+        ModuleItem::BundleDestructure { expr, .. } => collect_expr_refs(expr, module_idx, refs),
     }
 }
 
@@ -539,6 +544,11 @@ fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
         ExprKind::FnCall { args, .. } => {
             for a in args {
                 collect_expr_refs(a, module_idx, refs);
+            }
+        }
+        ExprKind::BundleLit(fields) => {
+            for f in fields {
+                collect_expr_refs(&f.value, module_idx, refs);
             }
         }
     }

@@ -86,6 +86,7 @@ fn collect_fn_calls(expr: &Expr, out: &mut Vec<String>) {
         }
         ExprKind::Field { base, .. } => collect_fn_calls(base, out),
         ExprKind::Int { .. } | ExprKind::Bool(_) | ExprKind::Ident(_) => {}
+        ExprKind::BundleLit(_) => todo!(),
     }
 }
 
@@ -156,7 +157,7 @@ impl<'a> Project<'a> {
                     TopItem::Func(f) => {
                         funcs.insert(f.name.name.clone(), f);
                     }
-                    TopItem::Const(_) | TopItem::Test(_) | TopItem::Error(_) => {}
+                    TopItem::Const(_) | TopItem::Test(_) | TopItem::Error(_) | TopItem::Bundle(_) => {}
                 }
             }
         }

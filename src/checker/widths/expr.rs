@@ -506,6 +506,7 @@ impl<'a> Checker<'a> {
                 // Slicing yields raw bits even from `signed` (decision).
                 self.slice_ty(cx, hi, lo, n).unwrap_or(Ty::Unknown)
             }
+            ExprKind::BundleLit(_) => todo!(),
             ExprKind::Call { func, args } => self.call_ty(cx, e, *func, args),
             ExprKind::FnCall { name, args } => {
                 // Arity was checked in an earlier pass (E0803/E1110); unknown

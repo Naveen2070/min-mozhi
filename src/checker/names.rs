@@ -76,6 +76,7 @@ impl<'a> Checker<'a> {
                     TopItem::Module(m) => self.check_module(file, m),
                     TopItem::Test(t) => self.check_test(file, t),
                     TopItem::Const(_) => {} // earlier passes
+                    TopItem::Bundle(_) => {} // checker stub (T5)
                     TopItem::Enum(e) => {
                         let env = self.file_consts[file].clone();
                         let sc = Scope {
@@ -184,6 +185,7 @@ impl<'a> Checker<'a> {
                     self.collect_decls(file, sc, env, branch);
                 }
                 ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
+                ModuleItem::BundleDestructure { .. } => {} // checker stub (T5)
             }
         }
     }
@@ -321,6 +323,7 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_) // evaluated in check_module
                 | ModuleItem::Error(_) => {}
+                ModuleItem::BundleDestructure { expr, .. } => self.expr(file, sc, env, expr),
             }
         }
     }
@@ -383,6 +386,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Const(c) => (c.name.span, "a const"),
                 ModuleItem::Enum(e) => (e.name.span, "an enum"),
                 ModuleItem::On(on) => (on.span, "an `on` block"),
+                ModuleItem::BundleDestructure { .. } => todo!(),
             };
             self.err(
                 file,
@@ -413,6 +417,7 @@ impl<'a> Checker<'a> {
         match ty {
             Type::Bit => {}
             Type::Bits(w) | Type::Signed(w) => self.expr(file, sc, env, w),
+            Type::Bundle { .. } => todo!(),
             Type::Named(n) => {
                 if self.lookup_enum(sc, &n.name).is_none() {
                     self.err(
@@ -954,6 +959,7 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, a);
                 }
             }
+            ExprKind::BundleLit(_) => todo!(),
         }
     }
 

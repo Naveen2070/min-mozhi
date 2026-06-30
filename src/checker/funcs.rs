@@ -166,5 +166,6 @@ fn collect_calls(expr: &Expr, out: &mut Vec<String>) {
         ExprKind::Field { base, .. } => collect_calls(base, out),
         // Leaves: no sub-expressions, no calls.
         ExprKind::Int { .. } | ExprKind::Bool(_) | ExprKind::Ident(_) => {}
+        ExprKind::BundleLit(_) => todo!(),
     }
 }

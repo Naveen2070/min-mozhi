@@ -343,5 +343,10 @@ fn expr_reads<'a>(e: &'a Expr, out: &mut Vec<(&'a str, Span)>) {
                 expr_reads(a, out);
             }
         }
+        ExprKind::BundleLit(fields) => {
+            for f in fields {
+                expr_reads(&f.value, out);
+            }
+        }
     }
 }
