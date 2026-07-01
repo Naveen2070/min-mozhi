@@ -245,7 +245,19 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
             // Unreachable on the codegen path: `parse` rejects a tree with any
             // `Error` node, so transliteration never sees one.
             TopItem::Error(_) => {}
-            TopItem::Bundle(_) => todo!(),
+            TopItem::Bundle(b) => {
+                visit(&mut b.name.name);
+                for p in &mut b.params {
+                    visit(&mut p.name.name);
+                    if let Some(default) = &mut p.default {
+                        expr(default, visit);
+                    }
+                }
+                for f in &mut b.fields {
+                    visit(&mut f.name.name);
+                    type_widths(&mut f.ty, visit);
+                }
+            }
         }
     }
 }
@@ -335,7 +347,14 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 }
             }
             ModuleItem::Error(_) => {} // unreachable on the codegen path
-            ModuleItem::BundleDestructure { .. } => todo!(),
+            ModuleItem::BundleDestructure {
+                bindings, expr: e, ..
+            } => {
+                for b in bindings {
+                    visit(&mut b.name);
+                }
+                expr(e, visit);
+            }
         }
     }
 }
@@ -345,7 +364,13 @@ fn type_widths(ty: &mut Type, visit: &mut dyn FnMut(&mut String)) {
         Type::Bit => {}
         Type::Bits(e) | Type::Signed(e) => expr(e, visit),
         Type::Named(id) => visit(&mut id.name),
-        Type::Bundle { .. } => todo!(),
+        Type::Bundle { name, args } => {
+            visit(&mut name.name);
+            for a in args {
+                visit(&mut a.name.name);
+                expr(&mut a.value, visit);
+            }
+        }
     }
 }
 
@@ -480,7 +505,12 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
                 expr(a, visit);
             }
         }
-        ExprKind::BundleLit(_) => todo!(),
+        ExprKind::BundleLit(inits) => {
+            for fi in inits {
+                visit(&mut fi.name.name);
+                expr(&mut fi.value, visit);
+            }
+        }
     }
 }
 

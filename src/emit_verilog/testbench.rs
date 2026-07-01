@@ -115,6 +115,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         clog2_fn_used: false,
         emitting_port: false,
         funcs_used: Vec::new(),
+        bundle_sigs: HashMap::new(),
     };
 
     em.out.push_str(&format!(
