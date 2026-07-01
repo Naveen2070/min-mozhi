@@ -520,6 +520,62 @@ It lowers to a Verilog packed-element memory `reg [W-1:0] name [0:DEPTH-1]`.
 - A memory is internal: its cells are not dumped to VCD (only the signals that
   read it are). Enum-element memories and 2-D memories are deferred (section 7).
 
+### 1.12 Bundles
+
+A `bundle` is a named group of signals that flattens to individual Verilog-2005
+wires at compile time. Bundles have no runtime overhead — they are a
+compile-time grouping construct only.
+
+```mimz
+bundle MemBus(WIDTH: int = 32) {
+  valid: bit
+  data:  bits[WIDTH]
+}
+
+module Passthrough {
+  in  req: MemBus(WIDTH: 32)
+  out rsp: MemBus(WIDTH: 32)
+
+  // field access
+  wire v: bit     = req.valid
+  wire d: bits[32] = req.data
+
+  // bundle literal (all fields required)
+  rsp = { valid: v, data: d }
+
+  // destructure (partial ok; module-body only, not in `on` blocks)
+  let { valid } = req
+}
+```
+
+Rules:
+
+- `bundle Name(params) { field: type, ... }` — file scope only. Params are
+  `int`/`bool` with optional defaults (same grammar as module params).
+- Field types must be concrete bit-vectors (`bit`, `bits[N]`, `signed[N]`) or
+  enum types. `clock`, `reset`, and nested bundles are disallowed.
+- At use sites, params are named: `MemBus(WIDTH: 32)`. Positional is a parse error.
+- A bundle literal `{ field: expr, ... }` must name every field (E0901/E0902).
+- `let { f1, f2 } = expr` — partial destructure is allowed. Field rename
+  syntax `{ f: alias }` is a parse error (E0904); use dot access instead.
+- Bundle types are nominally typed: `A` and `B` are different types even if
+  their fields match (structural subtyping is deferred to feature 2.9).
+
+**Verilog emission:** a bundle-typed port `in req: MemBus(WIDTH: 32)` lowers to
+`input wire req_valid; input wire [31:0] req_data;` — one signal per field,
+prefixed `portname_fieldname`. Wires and regs flatten the same way.
+
+### Bundle checker rules
+
+| Code  | Triggered when                                                  |
+| ----- | --------------------------------------------------------------- |
+| E0901 | Bundle literal missing a required field                         |
+| E0902 | Bundle literal references an unknown field name                 |
+| E0903 | Duplicate binding name in `let { }` destructure                 |
+| E0906 | Bundle type reference: unknown bundle name or wrong param count |
+| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)          |
+| E0909 | Bundle declared more than once (project-wide name collision)    |
+
 ---
 
 ## 2. Lexical Rules
@@ -600,10 +656,14 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 
 ```ebnf
 file        = { topItem } ;
-topItem     = importDecl | constDecl | moduleDecl | enumDecl | testDecl | fnDecl ;
+topItem     = importDecl | constDecl | moduleDecl | enumDecl | testDecl | fnDecl
+            | bundleDecl ;
 
 importDecl  = ( "import" | "include" ) IDENT { "." IDENT } NEWLINE ;
 constDecl   = "const" IDENT ":" ( "int" | "bool" ) "=" constExpr NEWLINE ;
+
+bundleDecl  = "bundle" IDENT [ "(" [ paramList ] ")" ] "{" { fieldDecl } "}" ;
+fieldDecl   = IDENT ":" type NEWLINE ;
 
 moduleDecl  = "module" IDENT [ "(" [ paramList ] ")" ] "{" { moduleItem } "}" ;
 paramList   = param { "," param } ;
@@ -611,7 +671,9 @@ param       = IDENT ":" ( "int" | "bool" ) [ "=" constExpr ] ;
 
 moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
             | constDecl | enumDecl | instDecl | onBlock | driveStmt
-            | repeatBlock ;
+            | repeatBlock | bundleDestructure ;
+
+bundleDestructure = "let" "{" IDENT { "," IDENT } "}" "=" expr NEWLINE ;
 
 portDecl    = ( "in" | "out" ) IDENT ":" type NEWLINE ;
 clockDecl   = "clock" IDENT NEWLINE ;
@@ -645,7 +707,8 @@ lvalue      = IDENT [ "[" constExpr [ ":" constExpr ] "]" ] ;
 type        = "bit"
             | "bits"   "[" constExpr "]"
             | "signed" "[" constExpr "]"
-            | IDENT ;                          (* enum type *)
+            | IDENT
+            | IDENT "(" namedArg { "," namedArg } ")" ;
 
 expr        = ifExpr | matchExpr | binExpr ;
 ifExpr      = "if" expr "{" expr "}" "else" ( "{" expr "}" | ifExpr ) ;
@@ -663,8 +726,10 @@ binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&&" | "||" | "and" | "or" ;
 unary       = [ "~" | "-" | "!" | "not" | "&" | "|" | "^" ] postfix ;
 postfix     = primary { "[" expr [ ":" expr ] "]" | "." IDENT } ;
-primary     = literal | IDENT | "(" expr ")" | concat | replication | callExpr | fnCall ;
+primary     = literal | IDENT | "(" expr ")" | concat | replication | bundleLiteral | callExpr | fnCall ;
 concat      = "{" expr { "," expr } "}" ;
+bundleLiteral = "{" fieldInit { "," fieldInit } [ "," ] "}" ;
+fieldInit     = IDENT ":" expr ;
 replication = "{" expr "{" expr { "," expr } "}" "}" ;
 callExpr    = ( "extend" | "trunc" ) "(" expr "," constExpr ")"
             | ( "signed" | "unsigned" | "abs"
@@ -692,6 +757,10 @@ fnCall      = IDENT "(" [ expr { "," expr } ] ")" ;  (* user-defined fn call *)
 
 Keywords in this grammar are flavor-mapped per `03-keywords-trilingual.md`;
 all punctuation, operators, and built-in type/function names are universal.
+
+**Disambiguation note:** `bundleLiteral` vs `concat` — if the first element
+after `{` is `IDENT ":"`, it is a bundle literal; otherwise it is a
+concat/replicate.
 
 ## 5a. Tagged-Union Enums — Physical Layout and Match Semantics
 
@@ -803,11 +872,19 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.18 (2026-07-01):** **Bundles** — `bundle Name(params) { fields }` at
+  file scope (feature 2.4). Parametric; field types must be concrete bit-vectors
+  or enums. Port/wire/reg usage; bundle literals `{ field: expr }` (E0901/E0902);
+  dot access `bus.field` (deferred); `let { f }` destructure (E0903, rename syntax
+  E0904 in parser). Nominal typing (E0906/E0907/E0909). Emitter flattens to
+  `signalname_fieldname` prefixed Verilog-2005 wires. `bundle` promoted from
+  reserved to active keyword (PROVISIONAL Tanglish/Tamil). Additive — no existing
+  grammar breakage.
 - **v0.2.17 (2026-06-30):** **`default` assignments + item-level `const if`.**
-  Added §1.8b: `default NAME <- EXPR` in `on` blocks — priority-lowest
+  Added section 1.8b: `default NAME <- EXPR` in `on` blocks — priority-lowest
   non-blocking assignment, emitted before conditional statements so
   conditional `<-` always overrides (E0809 target-not-reg, E0810
-  duplicate-default). Added §1.9b: `const if (COND) { items } [else { items
+  duplicate-default). Added section 1.9b: `const if (COND) { items } [else { items
 }]` in module bodies — compile-time conditional elaboration, winning branch
   only (E0811 condition-not-const). `default` promoted from reserved to
   active keyword (Tanglish `iyalbu` / Tamil `இயல்பு`, PROVISIONAL).

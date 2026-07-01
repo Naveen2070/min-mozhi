@@ -1,0 +1,6 @@
+// expect: E0903
+bundle Hs { valid: bit, ready: bit }
+module Top {
+  in bus: Hs
+  let { valid, valid } = bus
+}
