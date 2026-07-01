@@ -573,8 +573,7 @@ impl Parser {
                 self.skip_newlines();
                 // Peek two tokens: IDENT then Colon → bundle literal.
                 let is_bundle_lit = matches!(self.peek_kind(), TokKind::Ident(_))
-                    && self.toks.get(self.pos + 1).map(|t| &t.kind)
-                        == Some(&TokKind::Colon);
+                    && self.toks.get(self.pos + 1).map(|t| &t.kind) == Some(&TokKind::Colon);
                 if is_bundle_lit {
                     // Bundle literal: `{ field: expr, ... }`
                     let mut fields = Vec::new();
@@ -590,7 +589,11 @@ impl Parser {
                         )?;
                         let fval = self.expr()?;
                         let fspan = fname.span.join(fval.span);
-                        fields.push(FieldInit { name: fname, value: fval, span: fspan });
+                        fields.push(FieldInit {
+                            name: fname,
+                            value: fval,
+                            span: fspan,
+                        });
                         self.skip_newlines();
                         if !self.eat(&TokKind::Comma) {
                             self.skip_newlines();
@@ -599,7 +602,10 @@ impl Parser {
                         }
                     }
                     let end = self.toks[self.pos.saturating_sub(1)].span;
-                    Some(Expr { kind: ExprKind::BundleLit(fields), span: start.join(end) })
+                    Some(Expr {
+                        kind: ExprKind::BundleLit(fields),
+                        span: start.join(end),
+                    })
                 } else {
                     // Existing concat/replicate logic (unchanged).
                     let first = self.expr()?;
@@ -634,8 +640,7 @@ impl Parser {
                             parts.push(self.expr()?);
                             self.skip_newlines();
                         }
-                        let t =
-                            self.expect(TokKind::RBrace, "`}` to close the concatenation")?;
+                        let t = self.expect(TokKind::RBrace, "`}` to close the concatenation")?;
                         Some(Expr {
                             kind: ExprKind::Concat(parts),
                             span: start.join(t.span),

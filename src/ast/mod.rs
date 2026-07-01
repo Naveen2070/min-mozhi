@@ -440,10 +440,7 @@ pub enum Type {
     /// note: nominal-only today; structural subtyping adds one field-list
     /// comparison (2.9); first-class IR bundle (post-Phase 2) promotes
     /// BundleType to a Type variant in IR
-    Bundle {
-        name: Ident,
-        args: Vec<NamedArg>,
-    },
+    Bundle { name: Ident, args: Vec<NamedArg> },
 }
 
 /// `test "name" for Module(args) { ... }` — runs on the Phase 1.5
@@ -489,10 +486,16 @@ mod tests {
     fn bundle_decl_node_constructs() {
         let span = Span::new(0, 0);
         let b = BundleDecl {
-            name: Ident { name: "MemBus".into(), span },
+            name: Ident {
+                name: "MemBus".into(),
+                span,
+            },
             params: vec![],
             fields: vec![FieldDecl {
-                name: Ident { name: "valid".into(), span },
+                name: Ident {
+                    name: "valid".into(),
+                    span,
+                },
                 ty: Type::Bit,
                 span,
             }],
@@ -500,17 +503,32 @@ mod tests {
         };
         let _item = TopItem::Bundle(b);
         let _destr = ModuleItem::BundleDestructure {
-            bindings: vec![Ident { name: "valid".into(), span }],
-            expr: Expr { kind: ExprKind::Ident("bus".into()), span },
+            bindings: vec![Ident {
+                name: "valid".into(),
+                span,
+            }],
+            expr: Expr {
+                kind: ExprKind::Ident("bus".into()),
+                span,
+            },
             span,
         };
         let _ty = Type::Bundle {
-            name: Ident { name: "MemBus".into(), span },
+            name: Ident {
+                name: "MemBus".into(),
+                span,
+            },
             args: vec![],
         };
         let _lit = ExprKind::BundleLit(vec![FieldInit {
-            name: Ident { name: "valid".into(), span },
-            value: Expr { kind: ExprKind::Bool(true), span },
+            name: Ident {
+                name: "valid".into(),
+                span,
+            },
+            value: Expr {
+                kind: ExprKind::Bool(true),
+                span,
+            },
             span,
         }]);
     }

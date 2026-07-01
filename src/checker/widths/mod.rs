@@ -516,6 +516,7 @@ impl<'a> Checker<'a> {
                     self.check_expr(cx, init, expected);
                 }
                 ModuleItem::Drive { lhs, rhs } => {
+                    // ponytail: lhs.index on a bundle port is invalid (caught elsewhere); bundle_sigs lookup is still safe here.
                     let lhs_bundle = cx.bundle_sigs.get(&lhs.base.name).copied();
                     if let Some(lhs_ty) = lhs_bundle {
                         // LHS is bundle-typed: dispatch by RHS shape.
@@ -614,7 +615,11 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reset { .. }
                 | ModuleItem::Const(_)
                 | ModuleItem::Error(_) => {}
-                ModuleItem::BundleDestructure { bindings, expr, span } => {
+                ModuleItem::BundleDestructure {
+                    bindings,
+                    expr,
+                    span,
+                } => {
                     // E0903: duplicate binding names in the destructure pattern.
                     let mut seen: HashMap<&str, Span> = HashMap::new();
                     for b in bindings {
@@ -790,7 +795,9 @@ impl<'a> Checker<'a> {
                 }
             } else if let Some(def) = &param.default {
                 match consteval::eval(def, &benv) {
-                    Ok(v) => { benv.insert(param.name.name.clone(), v); }
+                    Ok(v) => {
+                        benv.insert(param.name.name.clone(), v);
+                    }
                     Err(d) => {
                         self.diags.push(d.with_file(bfile));
                         return None;
@@ -798,16 +805,21 @@ impl<'a> Checker<'a> {
                 }
             } else {
                 self.err(
-                    bfile, span, "E0906",
+                    bfile,
+                    span,
+                    "E0906",
                     format!("bundle `{bname}` param `{}` has no value", param.name.name),
                     "provide the value: `BundleName(PARAM: value)`",
                 );
                 return None;
             }
         }
+        // ponytail: field types must be self-contained; outer scope excluded by design.
         let mut tmp = Wcx {
             file: bfile,
-            sc: Rc::new(super::names::Scope { names: HashMap::new() }),
+            sc: Rc::new(super::names::Scope {
+                names: HashMap::new(),
+            }),
             env: benv,
             sigs: HashMap::new(),
             bundle_sigs: HashMap::new(),
@@ -845,7 +857,9 @@ impl<'a> Checker<'a> {
         for init in inits {
             if !fields.iter().any(|(n, _)| *n == init.name.name) {
                 self.err(
-                    cx.file, init.name.span, "E0902",
+                    cx.file,
+                    init.name.span,
+                    "E0902",
                     format!("bundle `{bname}` has no field `{}`", init.name.name),
                     "check the bundle declaration for the correct field names",
                 );
@@ -857,7 +871,9 @@ impl<'a> Checker<'a> {
                 self.check_expr(cx, &init.value, *fty);
             } else {
                 self.err(
-                    cx.file, span, "E0901",
+                    cx.file,
+                    span,
+                    "E0901",
                     format!("bundle literal missing field `{fname}`"),
                     format!("add `{fname}: <expr>` to the literal"),
                 );

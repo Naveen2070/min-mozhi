@@ -128,7 +128,10 @@ impl Parser {
                         let aname = self.ident("a parameter name")?;
                         self.expect(TokKind::Colon, "`:` then the parameter value")?;
                         let aval = self.expr()?;
-                        args.push(NamedArg { name: aname, value: aval });
+                        args.push(NamedArg {
+                            name: aname,
+                            value: aval,
+                        });
                         self.skip_newlines();
                         if !self.eat(&TokKind::Comma) {
                             self.expect(TokKind::RParen, "`,` or `)` after parameter")?;
