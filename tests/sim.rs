@@ -442,3 +442,49 @@ module BusDecoder {
         "Read arm: xor_out must equal addr = 0xBEEF"
     );
 }
+
+/// Helper: parse `src`, run all `test` blocks in it, assert every one passes.
+fn run_test_ok(src: &str) {
+    use mimz::ast::TopItem;
+    use mimz::sim::harness::{TestResult, run_test};
+
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    // Run checker so bundle widths are resolved.
+    mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let tests: Vec<_> = file
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            TopItem::Test(t) => Some(t),
+            _ => None,
+        })
+        .collect();
+    assert!(!tests.is_empty(), "no test blocks found in src");
+    for decl in tests {
+        let outcome = run_test(std::slice::from_ref(&file), src, decl)
+            .unwrap_or_else(|e| panic!("test `{}` errored: {e}", decl.name));
+        match &outcome.result {
+            TestResult::Pass => {}
+            TestResult::Fail(msg) => panic!("test `{}` failed:\n{msg}", decl.name),
+        }
+    }
+}
+
+#[test]
+fn sim_bundle_wire() {
+    let src = r#"
+bundle Hs { valid: bit, data: bits[8] }
+module Top {
+  in  req: Hs
+  out rsp: Hs
+  rsp = req
+}
+test "passthrough" for Top {
+  req_valid = 1
+  req_data = 42
+  expect rsp_valid == 1
+  expect rsp_data == 42
+}
+"#;
+    run_test_ok(src);
+}

@@ -21,7 +21,9 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::ast::{self, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, Pattern, SeqStmt, UnOp};
+use crate::ast::{
+    self, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg, Pattern, SeqStmt, UnOp,
+};
 
 use super::value::{const_eval, pick_module, type_width};
 
@@ -58,6 +60,61 @@ fn build_registry(files: &[ast::File]) -> Registry<'_> {
         }
     }
     reg
+}
+
+/// Bundle registry across all loaded files: name → decl. Bundles are
+/// project-wide (same scoping rule as enums). Used by the elaboration pass to
+/// flatten bundle-typed ports/wires to N scalar signals `signame_fieldname`.
+type BundleRegistry<'a> = HashMap<String, &'a ast::BundleDecl>;
+
+fn build_bundle_registry(files: &[ast::File]) -> BundleRegistry<'_> {
+    let mut reg = HashMap::new();
+    for f in files {
+        for it in &f.items {
+            if let ast::TopItem::Bundle(b) = it {
+                reg.insert(b.name.name.clone(), b);
+            }
+        }
+    }
+    reg
+}
+
+/// Resolve a bundle type to `(field_name, Width)` pairs, substituting any
+/// bundle parameters from `args` and folding width expressions against `consts`.
+/// Mirrors the emitter's `resolve_bundle_fields` but returns concrete `Width`s
+/// for the sim rather than AST `Type`s for code generation.
+fn resolve_bundle_fields_sim(
+    bundles: &BundleRegistry<'_>,
+    bname: &str,
+    args: &[NamedArg],
+    consts: &BTreeMap<String, i128>,
+) -> Result<Vec<(String, Width)>, String> {
+    let bdecl = bundles
+        .get(bname)
+        .ok_or_else(|| format!("unknown bundle `{bname}`"))?;
+    // Build a merged const env: module consts + bundle param defaults + call-site overrides.
+    let mut merged = consts.clone();
+    for p in &bdecl.params {
+        if let Some(default) = &p.default {
+            if let Ok(v) = const_eval(default, &merged) {
+                merged.insert(p.name.name.clone(), v);
+            }
+        }
+    }
+    for a in args {
+        if let Ok(v) = const_eval(&a.value, &merged) {
+            merged.insert(a.name.name.clone(), v);
+        }
+    }
+    bdecl
+        .fields
+        .iter()
+        .map(|f| {
+            let (bits, signed) = type_width(&f.ty, &merged)
+                .map_err(|e| format!("bundle `{bname}` field `{}`: {e}", f.name.name))?;
+            Ok((f.name.name.clone(), Width { bits, signed }))
+        })
+        .collect()
 }
 
 /// Function registry across all loaded files: name → AST declaration. Functions
@@ -186,9 +243,10 @@ pub fn elaborate_project(
 ) -> Result<Design, String> {
     let reg = build_registry(files);
     let func_reg = build_func_registry(files);
+    let bundle_reg = build_bundle_registry(files);
     let entry = files.first().ok_or("no files to elaborate")?;
     let m = pick_module(entry, module)?;
-    elaborate_module(&reg, &func_reg, entry, m, params, 0)
+    elaborate_module(&reg, &func_reg, &bundle_reg, entry, m, params, 0)
 }
 
 /// Elaborate one module (`m`, defined in `file`) under concrete `params`,
@@ -198,6 +256,7 @@ pub fn elaborate_project(
 fn elaborate_module(
     reg: &Registry,
     func_reg: &FuncRegistry<'_>,
+    bundle_reg: &BundleRegistry<'_>,
     file: &ast::File,
     m: &ast::Module,
     params: &BTreeMap<String, i128>,
@@ -294,10 +353,27 @@ fn elaborate_module(
         }
     };
 
+    // Bundle-typed signal names at this module level: used by `Rw::field` to
+    // rewrite `req.valid` → `req_valid` (the flat scalar name).
+    // ponytail: HashSet is the right data structure — O(1) lookup, no ordering needed.
+    let mut bundle_sigs: HashSet<String> = HashSet::new();
+    // Pre-scan to collect bundle signal names before building rw0 (which needs them).
+    for it in &m.items {
+        match it {
+            ModuleItem::Port { name, ty, .. } | ModuleItem::Wire { name, ty, .. }
+                if is_bundle_ty(ty, bundle_reg, &enums) =>
+            {
+                bundle_sigs.insert(name.name.clone());
+            }
+            _ => {}
+        }
+    }
+
     let no_subst: HashMap<String, Expr> = HashMap::new();
     let rw0 = Rw {
         insts: &insts,
         enums: &enums,
+        bundle_sigs: &bundle_sigs,
         consts: &consts,
         subst: &no_subst,
     };
@@ -320,13 +396,29 @@ fn elaborate_module(
     while let Some(it) = work.pop() {
         match it {
             ModuleItem::Port { dir, name, ty } => {
-                let sig = Signal {
-                    name: name.name.clone(),
-                    width: width_of(ty, &consts)?,
-                };
-                match dir {
-                    Dir::In => inputs.push(sig),
-                    Dir::Out => outputs.push(sig),
+                // Bundle port → N scalar signals named `portname_fieldname`.
+                if let Some((bname, args)) = bundle_type_info(ty, bundle_reg, &enums) {
+                    let fields = resolve_bundle_fields_sim(bundle_reg, &bname, &args, &consts)?;
+                    for (fname, fwidth) in fields {
+                        let flat_name = format!("{}_{}", name.name, fname);
+                        let sig = Signal {
+                            name: flat_name,
+                            width: fwidth,
+                        };
+                        match dir {
+                            Dir::In => inputs.push(sig),
+                            Dir::Out => outputs.push(sig),
+                        }
+                    }
+                } else {
+                    let sig = Signal {
+                        name: name.name.clone(),
+                        width: width_of(ty, &consts)?,
+                    };
+                    match dir {
+                        Dir::In => inputs.push(sig),
+                        Dir::Out => outputs.push(sig),
+                    }
                 }
             }
             ModuleItem::Clock(n) => clocks.push(n.name.clone()),
@@ -339,11 +431,27 @@ fn elaborate_module(
             // delegate timing-faithful runs to the Verilog/Icarus oracle).
             ModuleItem::Reset { name: n, .. } => resets.push(n.name.clone()),
             ModuleItem::Wire { name, ty, init } => {
-                wires.push(Signal {
-                    name: name.name.clone(),
-                    width: width_of(ty, &consts)?,
-                });
-                comb.insert(name.name.clone(), rw0.expr(init)?);
+                // Bundle wire → N scalar wires, each driven by the corresponding
+                // field of the bundle init expression (must be a BundleLit).
+                if let Some((bname, args)) = bundle_type_info(ty, bundle_reg, &enums) {
+                    let fields = resolve_bundle_fields_sim(bundle_reg, &bname, &args, &consts)?;
+                    for (fname, fwidth) in fields {
+                        let flat_name = format!("{}_{}", name.name, fname);
+                        wires.push(Signal {
+                            name: flat_name.clone(),
+                            width: fwidth,
+                        });
+                        // The driver for each scalar field comes from the BundleLit init.
+                        let field_init = bundle_field_expr(init, &fname, init.span);
+                        comb.insert(flat_name, rw0.expr(&field_init)?);
+                    }
+                } else {
+                    wires.push(Signal {
+                        name: name.name.clone(),
+                        width: width_of(ty, &consts)?,
+                    });
+                    comb.insert(name.name.clone(), rw0.expr(init)?);
+                }
             }
             ModuleItem::Reg { name, ty, reset } => {
                 let width = width_of(ty, &consts)?;
@@ -379,7 +487,36 @@ fn elaborate_module(
                 });
             }
             ModuleItem::Drive { lhs, rhs } => {
-                record_drive(lhs, rhs, &rw0, &consts, &mut comb, &mut bit_drives)?
+                // Bundle drive: `rsp = req` where `rsp` is a bundle signal.
+                // Expand to one scalar drive per field: `rsp_valid = req_valid`, etc.
+                if bundle_sigs.contains(&lhs.base.name) && lhs.index.is_none() {
+                    // Determine the bundle type of the LHS from the module's port/wire decls.
+                    let btype = m.items.iter().find_map(|it| match it {
+                        ModuleItem::Port { name, ty, .. } if name.name == lhs.base.name => {
+                            Some(ty.clone())
+                        }
+                        ModuleItem::Wire { name, ty, .. } if name.name == lhs.base.name => {
+                            Some(ty.clone())
+                        }
+                        _ => None,
+                    });
+                    if let Some(ty) = btype
+                        && let Some((bname, args)) = bundle_type_info(&ty, bundle_reg, &enums)
+                    {
+                        let fields = resolve_bundle_fields_sim(bundle_reg, &bname, &args, &consts)?;
+                        for (fname, _) in &fields {
+                            let flat_lhs = format!("{}_{}", lhs.base.name, fname);
+                            // The RHS field: either `rhs.fname` (if rhs is a bundle ident)
+                            // or a BundleLit field extraction.
+                            let field_rhs = bundle_field_expr(rhs, fname, rhs.span);
+                            comb.insert(flat_lhs, rw0.expr(&field_rhs)?);
+                        }
+                    } else {
+                        record_drive(lhs, rhs, &rw0, &consts, &mut comb, &mut bit_drives)?;
+                    }
+                } else {
+                    record_drive(lhs, rhs, &rw0, &consts, &mut comb, &mut bit_drives)?
+                }
             }
             ModuleItem::On(on) => procs.push(Process {
                 clock: on.clock.name.clone(),
@@ -399,6 +536,7 @@ fn elaborate_module(
                 let f = flatten_instance(
                     reg,
                     func_reg,
+                    bundle_reg,
                     &consts,
                     &insts,
                     &enums,
@@ -427,6 +565,7 @@ fn elaborate_module(
                     let rwi = Rw {
                         insts: &insts,
                         enums: &enums,
+                        bundle_sigs: &bundle_sigs,
                         consts: &ci,
                         subst: &subst,
                     };
@@ -438,7 +577,8 @@ fn elaborate_module(
                                     None => inst.name.name.clone(),
                                 };
                                 let f = flatten_instance(
-                                    reg, func_reg, &ci, &insts, &enums, &subst, inst, &iname, depth,
+                                    reg, func_reg, bundle_reg, &ci, &insts, &enums, &subst, inst,
+                                    &iname, depth,
                                 )?;
                                 flat.absorb(f);
                             }
@@ -584,6 +724,7 @@ impl Flat {
 fn flatten_instance(
     reg: &Registry,
     func_reg: &FuncRegistry<'_>,
+    bundle_reg: &BundleRegistry<'_>,
     parent_consts: &BTreeMap<String, i128>,
     parent_insts: &HashSet<String>,
     parent_enums: &HashMap<String, &ast::EnumDecl>,
@@ -616,14 +757,17 @@ fn flatten_instance(
         cp.insert(p.name.name.clone(), v);
     }
 
-    let child = elaborate_module(reg, func_reg, cfile, cm, &cp, depth + 1)?;
+    let child = elaborate_module(reg, func_reg, bundle_reg, cfile, cm, &cp, depth + 1)?;
     let pfx = format!("{iname}_");
 
     // Parent-context rewriter for connection expressions: folds the `repeat`
     // loop var and resolves nested `arr[i-1].port` reads.
+    // ponytail: empty bundle_sigs — the child's flattened signals have no dot-access.
+    let no_bundle_sigs: HashSet<String> = HashSet::new();
     let prw = Rw {
         insts: parent_insts,
         enums: parent_enums,
+        bundle_sigs: &no_bundle_sigs,
         consts: parent_consts,
         subst: parent_subst,
     };
@@ -678,6 +822,7 @@ fn flatten_instance(
     let crw = Rw {
         insts: &no_insts,
         enums: &no_enums,
+        bundle_sigs: &no_bundle_sigs,
         consts: &child.consts,
         subst: &subst,
     };
@@ -860,6 +1005,61 @@ fn clog2(n: usize) -> u32 {
     crate::checker::consteval::clog2_bits(n as u128)
 }
 
+/// Returns true if `ty` is a bundle type (either `Type::Bundle` or a
+/// `Type::Named` that names a registered bundle — not an enum).
+fn is_bundle_ty(
+    ty: &ast::Type,
+    bundle_reg: &BundleRegistry<'_>,
+    enums: &HashMap<String, &ast::EnumDecl>,
+) -> bool {
+    match ty {
+        ast::Type::Bundle { .. } => true,
+        ast::Type::Named(id) => bundle_reg.contains_key(&id.name) && !enums.contains_key(&id.name),
+        _ => false,
+    }
+}
+
+/// Extract `(bundle_name, args)` from a bundle type, or `None` for non-bundle types.
+fn bundle_type_info(
+    ty: &ast::Type,
+    bundle_reg: &BundleRegistry<'_>,
+    enums: &HashMap<String, &ast::EnumDecl>,
+) -> Option<(String, Vec<NamedArg>)> {
+    match ty {
+        ast::Type::Bundle { name, args } => Some((name.name.clone(), args.clone())),
+        ast::Type::Named(id)
+            if bundle_reg.contains_key(&id.name) && !enums.contains_key(&id.name) =>
+        {
+            Some((id.name.clone(), vec![]))
+        }
+        _ => None,
+    }
+}
+
+/// Extract the expression for a named field from a bundle expression.
+/// - If `expr` is a `BundleLit`, returns the matching field's value.
+/// - If `expr` is an `Ident` (a bundle signal reference), returns `expr.field`
+///   (dot-access, which `Rw::field` will flatten to `ident_fieldname`).
+/// - Otherwise, falls back to a dot-access node.
+fn bundle_field_expr(expr: &Expr, field: &str, span: crate::span::Span) -> Expr {
+    if let ExprKind::BundleLit(inits) = &expr.kind {
+        if let Some(fi) = inits.iter().find(|fi| fi.name.name == field) {
+            return fi.value.clone();
+        }
+    }
+    // RHS is a bundle ident or other expr: emit `expr.field` — Rw::field will flatten it.
+    Expr {
+        kind: ExprKind::Field {
+            base: Box::new(expr.clone()),
+            field: ast::Ident {
+                name: field.to_string(),
+                span,
+            },
+        },
+        span,
+    }
+}
+
 /// Rewrites expressions/statements during elaboration: enum-variant reads
 /// (`State.Red`) → their index literal, instance-port reads (`add.sum`,
 /// `fa[i].sum`) → the flat wire name, `match` variant patterns → their index
@@ -872,6 +1072,8 @@ fn clog2(n: usize) -> u32 {
 struct Rw<'d, 's> {
     insts: &'d HashSet<String>,
     enums: &'d HashMap<String, &'d ast::EnumDecl>,
+    /// Bundle-typed signal names: `req.valid` → `req_valid` via `field()`.
+    bundle_sigs: &'d HashSet<String>,
     consts: &'d BTreeMap<String, i128>,
     subst: &'s HashMap<String, Expr>,
 }
@@ -922,6 +1124,7 @@ impl<'d, 's> Rw<'d, 's> {
                             let ext_rw = Rw {
                                 insts: self.insts,
                                 enums: self.enums,
+                                bundle_sigs: self.bundle_sigs,
                                 consts: self.consts,
                                 subst: &ext_subst,
                             };
@@ -998,6 +1201,10 @@ impl<'d, 's> Rw<'d, 's> {
             }
             // `inst.port` → flat wire `inst_port`.
             if self.insts.contains(b) {
+                return Ok(ident_expr(format!("{b}_{}", field.name), e.span));
+            }
+            // `bundle_signal.field` → flat scalar `bundle_signal_field`.
+            if self.bundle_sigs.contains(b) {
                 return Ok(ident_expr(format!("{b}_{}", field.name), e.span));
             }
         }
