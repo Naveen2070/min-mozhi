@@ -281,7 +281,7 @@ module Counter(WIDTH: int = 8) {
 
 - **v0.2.17 (2026-06-30):** Promoted `default` from **reserved** to active
   keyword KW_DEFAULT for priority-lowest sequential assignments
-  (`default NAME <- EXPR` inside `on` blocks — spec/02 v0.2.17 §1.8b).
+  (`default NAME <- EXPR` inside `on` blocks — spec/02 v0.2.17 section 1.8b).
   Tanglish `iyalbu` / Tamil `இயல்பு` are **PROVISIONAL** placeholders
   pending native-speaker review (R11). Removed `default` from the reserved
   table; covered by E0809–E0810 checker suite. Additive.

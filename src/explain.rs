@@ -480,12 +480,46 @@ const EXPLANATIONS: &[(&str, &str)] = &[
     ),
     // ----- E09xx: bundles -----
     (
+        "E0901",
+        "E0901 — bundle literal missing a required field\n\n\
+         A bundle literal (e.g. `{ valid: 1, data: 0 }`) must name every field declared\n\
+         in the bundle's declaration. The error message names the missing field.\n\n\
+         Fix: add the missing field to the bundle literal, or check that the bundle\n\
+         declaration has the fields you intended.",
+    ),
+    (
+        "E0902",
+        "E0902 — bundle literal references an unknown field name\n\n\
+         A bundle literal tries to initialize a field that is not declared in the\n\
+         bundle type being constructed. This usually means a typo or a mismatch\n\
+         between the literal and the bundle declaration.\n\n\
+         Fix: check the spelling and remove unknown fields, or verify the bundle\n\
+         declaration matches your expectation.",
+    ),
+    (
+        "E0903",
+        "E0903 — duplicate binding name in `let { }` destructure\n\n\
+         A `let { field1, field2 }` destructure statement lists the same name twice.\n\
+         Each binding name (the fields you extract from the bundle) must be unique\n\
+         within the destructure.\n\n\
+         Fix: remove the duplicate binding name.",
+    ),
+    (
         "E0906",
-        "E0906 — unknown bundle type\n\n\
-         A `Type::Bundle` reference names a bundle that has not been declared anywhere\n\
-         in the project (no `bundle Foo { ... }` at file level or in any imported file).\n\n\
-         Fix: declare the bundle at file level with `bundle Foo { ... }`, or import\n\
-         the file that declares it.",
+        "E0906 — bundle type reference: unknown bundle name or wrong param count\n\n\
+         A parametric bundle type (e.g. `MyBundle(W: 32)`) references a bundle name\n\
+         that is not declared in the project, or the parameter count does not match\n\
+         the bundle declaration.\n\n\
+         Fix: declare the bundle at file level with `bundle Foo(W: int) { ... }`, or import\n\
+         the file that declares it. Ensure the parameter count matches.",
+    ),
+    (
+        "E0907",
+        "E0907 — bundle type mismatch (nominal — expected `A`, got `B`)\n\n\
+         Bundles use nominal typing: two bundles with identical fields are still\n\
+         different types and cannot be assigned to each other. The error message\n\
+         names the expected type and the actual type.\n\n\
+         Fix: ensure assignments and connections use the same bundle type on both sides.",
     ),
     (
         "E0909",

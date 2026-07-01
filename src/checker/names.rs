@@ -706,6 +706,10 @@ impl<'a> Checker<'a> {
                 };
                 match sc.names.get(name).copied() {
                     Some(Bind::Inst(inst)) => self.inst_output(file, inst, field),
+                    Some(Bind::In) | Some(Bind::Out) | Some(Bind::Wire) | Some(Bind::Reg) => {
+                        // Possible bundle field access (e.g., req.valid where req is a bundle port/signal).
+                        // Validation deferred to width pass where bundle types are fully resolved.
+                    }
                     Some(b)
                         if self.lookup_enum(sc, name).is_none() && !matches!(b, Bind::Enum(_)) =>
                     {
@@ -715,8 +719,8 @@ impl<'a> Checker<'a> {
                             field.span,
                             "E0105",
                             format!("`{name}` is {what} — it has no fields"),
-                            "`.` reads an enum variant (`State.Red`) or an \
-                             instance output (`add.sum`)",
+                            "`.` reads an enum variant (`State.Red`), an \
+                             instance output (`add.sum`), or a bundle field (`bus.valid`)",
                         );
                     }
                     _ => match self.lookup_enum(sc, name) {

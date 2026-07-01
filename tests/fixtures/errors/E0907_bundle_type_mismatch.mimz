@@ -1,0 +1,8 @@
+// expect: E0907
+bundle A { valid: bit }
+bundle B { valid: bit }
+module Top {
+  in x: A
+  out y: B
+  y = x
+}

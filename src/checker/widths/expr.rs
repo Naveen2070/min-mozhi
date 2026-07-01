@@ -4,7 +4,7 @@
 //! typing lives here too — the same range rules serve both sides of an
 //! assignment.
 
-use crate::ast::{BinOp, Expr, ExprKind, LValue};
+use crate::ast::{BinOp, Expr, ExprKind, LValue, Type};
 use crate::span::Span;
 
 use super::super::Checker;
@@ -583,7 +583,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// `base.field` — enum variant or instance output (mirrors pass 3's
+    /// `base.field` — enum variant, instance output, or bundle field (mirrors pass 3's
     /// resolution; here we only need the TYPE).
     fn field_ty(
         &mut self,
@@ -600,6 +600,43 @@ impl<'a> Checker<'a> {
         };
         match cx.sc.names.get(name) {
             Some(Bind::Inst(inst)) => self.inst_output_ty(cx, inst, field),
+            Some(Bind::In) | Some(Bind::Out) | Some(Bind::Wire) | Some(Bind::Reg) => {
+                // Possible bundle field access — check if this signal is bundle-typed
+                #[allow(clippy::collapsible_match)]
+                if let Some(signal_ty) = cx.bundle_sigs.get(name) {
+                    if let Type::Bundle { name: bname, args } = signal_ty {
+                        // Bundle field access: resolve the bundle and return the field's type
+                        match self.resolve_bundle_fields(cx, &bname.name, args, base.span) {
+                            Some(fields) => {
+                                for (fname, fty) in fields {
+                                    if fname == field.name {
+                                        return fty;
+                                    }
+                                }
+                                // Field not found in bundle — let emit report it, or it was already caught earlier
+                                return Ty::Unknown;
+                            }
+                            None => return Ty::Unknown, // resolve_bundle_fields reported error
+                        }
+                    }
+                }
+                // Signal exists but is not bundle-typed — error
+                let bind_str = match cx.sc.names.get(name) {
+                    Some(Bind::In) => "an input port",
+                    Some(Bind::Out) => "an output port",
+                    Some(Bind::Wire) => "a wire",
+                    Some(Bind::Reg) => "a reg",
+                    _ => "a signal",
+                };
+                self.err(
+                    cx.file,
+                    base.span,
+                    "E0105",
+                    format!("`{name}` is {bind_str} — it has no fields"),
+                    "`.` reads an enum variant (`State.Red`), an instance output (`add.sum`), or a bundle field (`bus.valid`)",
+                );
+                Ty::Unknown
+            }
             _ => match self.lookup_enum(&cx.sc, name) {
                 Some(en) if en.variants.iter().any(|v| v.name.name == field.name) => Ty::Enum(en),
                 _ => Ty::Unknown, // E0103 already reported

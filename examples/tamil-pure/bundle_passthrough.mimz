@@ -1,0 +1,17 @@
+// bundle_passthrough.mimz — pure Tamil version of the bundle passthrough example.
+// Demonstrates bundle declaration, port typing, and bundle literal assignment.
+
+இலக்கணம் தமிழ்
+
+கட்டை கதிர்(W: int = 8) {
+  செல்லு: bit
+  தரவு: bits[W]
+}
+
+தொகுதி கதிர்பரிமாற(W: int = 8) {
+  உள்ளீடு கோரிக்கை: கதிர்(W: W)
+  வெளியீடு பதில்: கதிர்(W: W)
+
+  // Bundle-to-bundle assignment using dot access and bundle literal
+  பதில் = { செல்லு: கோரிக்கை.செல்லு, தரவு: கோரிக்கை.தரவு }
+}

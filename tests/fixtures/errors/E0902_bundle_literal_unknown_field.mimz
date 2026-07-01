@@ -1,0 +1,6 @@
+// expect: E0902
+bundle Hs { valid: bit }
+module Top {
+  out dst: Hs
+  dst = { valid: 1, extra: 0 }
+}
