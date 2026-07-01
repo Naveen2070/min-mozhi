@@ -333,8 +333,8 @@ fn elaborate_module(
     let width_of = |ty: &ast::Type, ints: &BTreeMap<String, i128>| -> Result<Width, String> {
         if let ast::Type::Named(n) = ty {
             let e = enums
-                .get(&n.name)
-                .ok_or_else(|| format!("unknown enum type `{}`", n.name))?;
+                .get(&n.name.name)
+                .ok_or_else(|| format!("unknown enum type `{}`", n.name.name))?;
             // note: fallback only correct for tag-only enums (max_payload_w=0)
             let bits = e.inferred_total_width.get().unwrap_or_else(|| {
                 debug_assert!(
@@ -732,10 +732,10 @@ fn flatten_instance(
     iname: &str,
     depth: u32,
 ) -> Result<Flat, String> {
-    let (cfile, cm) = *reg.get(&inst.module.name).ok_or_else(|| {
+    let (cfile, cm) = *reg.get(&inst.module.name.name).ok_or_else(|| {
         format!(
             "instance `{}` uses unknown module `{}` — is the file that defines it imported?",
-            inst.name.name, inst.module.name
+            inst.name.name, inst.module.name.name
         )
     })?;
 
@@ -1013,7 +1013,9 @@ fn is_bundle_ty(
 ) -> bool {
     match ty {
         ast::Type::Bundle { .. } => true,
-        ast::Type::Named(id) => bundle_reg.contains_key(&id.name) && !enums.contains_key(&id.name),
+        ast::Type::Named(id) => {
+            bundle_reg.contains_key(&id.name.name) && !enums.contains_key(&id.name.name)
+        }
         _ => false,
     }
 }
@@ -1025,11 +1027,11 @@ fn bundle_type_info(
     enums: &HashMap<String, &ast::EnumDecl>,
 ) -> Option<(String, Vec<NamedArg>)> {
     match ty {
-        ast::Type::Bundle { name, args } => Some((name.name.clone(), args.clone())),
+        ast::Type::Bundle { name, args } => Some((name.name.name.clone(), args.clone())),
         ast::Type::Named(id)
-            if bundle_reg.contains_key(&id.name) && !enums.contains_key(&id.name) =>
+            if bundle_reg.contains_key(&id.name.name) && !enums.contains_key(&id.name.name) =>
         {
-            Some((id.name.clone(), vec![]))
+            Some((id.name.name.clone(), vec![]))
         }
         _ => None,
     }

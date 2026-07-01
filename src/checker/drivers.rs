@@ -433,7 +433,7 @@ impl<'a> Checker<'a> {
         summaries: &mut HashMap<String, Summary>,
         in_progress: &mut HashSet<String>,
     ) {
-        let summary = self.comb_summary(&inst.module.name, summaries, in_progress);
+        let summary = self.comb_summary(&inst.module.name.name, summaries, in_progress);
         let index = inst
             .index
             .as_ref()

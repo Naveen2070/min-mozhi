@@ -53,10 +53,10 @@ impl Emitter<'_> {
                     // Bundle ports flatten to one port per field.
                     let bundle_fields = match ty {
                         Type::Bundle { name: bname, args } => {
-                            Some(self.resolve_bundle_fields(&bname.name, args))
+                            Some(self.resolve_bundle_fields(&bname.name.name, args))
                         }
-                        Type::Named(id) if self.project.bundles.contains_key(&id.name) => {
-                            Some(self.resolve_bundle_fields(&id.name, &[]))
+                        Type::Named(id) if self.project.bundles.contains_key(&id.name.name) => {
+                            Some(self.resolve_bundle_fields(&id.name.name, &[]))
                         }
                         _ => None,
                     };
@@ -124,10 +124,10 @@ impl Emitter<'_> {
                     // Bundle wires flatten to one wire per field.
                     let bundle_fields = match ty {
                         Type::Bundle { name: bname, args } => {
-                            Some(self.resolve_bundle_fields(&bname.name, args))
+                            Some(self.resolve_bundle_fields(&bname.name.name, args))
                         }
-                        Type::Named(id) if self.project.bundles.contains_key(&id.name) => {
-                            Some(self.resolve_bundle_fields(&id.name, &[]))
+                        Type::Named(id) if self.project.bundles.contains_key(&id.name.name) => {
+                            Some(self.resolve_bundle_fields(&id.name.name, &[]))
                         }
                         _ => None,
                     };
@@ -203,25 +203,25 @@ impl Emitter<'_> {
                     name,
                     ty: Type::Bundle { name: bn, args },
                     ..
-                } => (name.name.clone(), bn.name.clone(), args.clone()),
+                } => (name.name.clone(), bn.name.name.clone(), args.clone()),
                 ModuleItem::Port {
                     name,
                     ty: Type::Named(id),
                     ..
-                } if self.project.bundles.contains_key(&id.name) => {
-                    (name.name.clone(), id.name.clone(), vec![])
+                } if self.project.bundles.contains_key(&id.name.name) => {
+                    (name.name.clone(), id.name.name.clone(), vec![])
                 }
                 ModuleItem::Wire {
                     name,
                     ty: Type::Bundle { name: bn, args },
                     ..
-                } => (name.name.clone(), bn.name.clone(), args.clone()),
+                } => (name.name.clone(), bn.name.name.clone(), args.clone()),
                 ModuleItem::Wire {
                     name,
                     ty: Type::Named(id),
                     ..
-                } if self.project.bundles.contains_key(&id.name) => {
-                    (name.name.clone(), id.name.clone(), vec![])
+                } if self.project.bundles.contains_key(&id.name.name) => {
+                    (name.name.clone(), id.name.name.clone(), vec![])
                 }
                 _ => continue,
             };
@@ -466,9 +466,11 @@ impl Emitter<'_> {
                 ModuleItem::Wire { name, ty, init } => {
                     // Bundle wires: emit one assign per field.
                     let binfo = match ty {
-                        Type::Bundle { name: bn, args } => Some((bn.name.clone(), args.clone())),
-                        Type::Named(id) if self.project.bundles.contains_key(&id.name) => {
-                            Some((id.name.clone(), vec![]))
+                        Type::Bundle { name: bn, args } => {
+                            Some((bn.name.name.clone(), args.clone()))
+                        }
+                        Type::Named(id) if self.project.bundles.contains_key(&id.name.name) => {
+                            Some((id.name.name.clone(), vec![]))
                         }
                         _ => None,
                     };
@@ -559,10 +561,10 @@ impl Emitter<'_> {
     /// auto-declared wire named `{instance}_{port}` — which is exactly what
     /// `inst.port` field-accesses render to in `expr.rs`.
     fn instance(&mut self, inst: &Inst) {
-        let Some(child) = self.project.modules.get(&inst.module.name).copied() else {
+        let Some(child) = self.project.modules.get(&inst.module.name.name).copied() else {
             self.err(
                 inst.module.span,
-                format!("unknown module `{}`", inst.module.name),
+                format!("unknown module `{}`", inst.module.name.name),
                 "is the file that defines it imported? (`import filename` at the top — spec/02 section 1.5)",
             );
             return;
@@ -802,7 +804,7 @@ impl Emitter<'_> {
                 format!("signed [({we})-1:0] ")
             }
             Type::Named(id) => {
-                if let Some(e) = self.project.enums.get(&id.name) {
+                if let Some(e) = self.project.enums.get(&id.name.name) {
                     let w = e
                         .inferred_total_width
                         .get()
@@ -813,7 +815,7 @@ impl Emitter<'_> {
                         id.span,
                         format!(
                             "unknown type `{}` — not a built-in and not a declared enum",
-                            id.name
+                            id.name.name
                         ),
                         "",
                     );

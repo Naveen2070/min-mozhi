@@ -222,7 +222,7 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
                 module_items(&mut m.items, visit);
             }
             TopItem::Test(t) => {
-                visit(&mut t.module.name);
+                visit(&mut t.module.name.name);
                 for a in &mut t.args {
                     visit(&mut a.name.name);
                     expr(&mut a.value, visit);
@@ -313,7 +313,7 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 if let Some(idx) = &mut i.index {
                     expr(idx, visit);
                 }
-                visit(&mut i.module.name);
+                visit(&mut i.module.name.name);
                 for a in &mut i.args {
                     visit(&mut a.name.name);
                     expr(&mut a.value, visit);
@@ -363,9 +363,9 @@ fn type_widths(ty: &mut Type, visit: &mut dyn FnMut(&mut String)) {
     match ty {
         Type::Bit => {}
         Type::Bits(e) | Type::Signed(e) => expr(e, visit),
-        Type::Named(id) => visit(&mut id.name),
+        Type::Named(id) => visit(&mut id.name.name),
         Type::Bundle { name, args } => {
-            visit(&mut name.name);
+            visit(&mut name.name.name);
             for a in args {
                 visit(&mut a.name.name);
                 expr(&mut a.value, visit);

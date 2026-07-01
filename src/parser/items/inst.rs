@@ -16,7 +16,7 @@ impl Parser {
             None
         };
         self.expect(TokKind::Assign, "`=` then the module to instantiate")?;
-        let module = self.ident("a module name")?;
+        let module = self.qual_ident("a module name")?;
         self.expect(TokKind::LParen, "`(` for the parameter list (may be empty)")?;
         let mut args = Vec::new();
         loop {

@@ -62,7 +62,7 @@ pub enum TestResult {
 /// `expect` failure is `Ok(Outcome { result: Fail(..), .. })`.
 pub fn run_test(files: &[ast::File], src: &str, decl: &TestDecl) -> Result<Outcome, String> {
     let params = params(decl)?;
-    let design = elaborate_project(files, Some(&decl.module.name), &params)?;
+    let design = elaborate_project(files, Some(&decl.module.name.name), &params)?;
 
     let module = design.module.clone();
     let clocks = design.clocks.clone();

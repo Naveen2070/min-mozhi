@@ -415,7 +415,7 @@ impl<'a> Checker<'a> {
             },
             // ponytail: bundle type → Unknown until T6 wires full bundle width model
             Type::Bundle { .. } => Ty::Unknown,
-            Type::Named(n) => match self.lookup_enum(&cx.sc, &n.name) {
+            Type::Named(n) => match self.lookup_enum(&cx.sc, &n.name.name) {
                 Some(e) => Ty::Enum(e),
                 // E0103/E0906 already reported, or bundle name (T6 will handle)
                 None => Ty::Unknown,
@@ -770,8 +770,8 @@ impl<'a> Checker<'a> {
     /// True if `ty` names a registered bundle (either `Type::Named` or parametric `Type::Bundle`).
     fn is_bundle_ty(&self, ty: &Type) -> bool {
         match ty {
-            Type::Named(id) => self.bundles.contains_key(&id.name),
-            Type::Bundle { name, .. } => self.bundles.contains_key(&name.name),
+            Type::Named(id) => self.bundles.contains_key(&id.name.name),
+            Type::Bundle { name, .. } => self.bundles.contains_key(&name.name.name),
             _ => false,
         }
     }
@@ -1016,8 +1016,8 @@ fn max_signed_v(n: u128) -> String {
 /// Extract the bundle name from an AST type (Named or parametric Bundle).
 fn ast_bundle_name(ty: &Type) -> Option<&str> {
     match ty {
-        Type::Named(id) => Some(&id.name),
-        Type::Bundle { name, .. } => Some(&name.name),
+        Type::Named(id) => Some(&id.name.name),
+        Type::Bundle { name, .. } => Some(&name.name.name),
         _ => None,
     }
 }
