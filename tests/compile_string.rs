@@ -103,6 +103,73 @@ module M {
     );
 }
 
+/// Compile source expecting success; panics with the diagnostic on failure.
+fn compile_ok(src: &str) -> String {
+    compile_string(src).unwrap_or_else(|e| panic!("compile_ok failed:\n{e}"))
+}
+
+#[test]
+fn emit_bundle_port_flattens() {
+    let src = r#"
+bundle Hs(W: int = 8) {
+  valid: bit
+  data: bits[W]
+}
+module Top {
+  in  req: Hs(W: 8)
+  out rsp: Hs(W: 8)
+  rsp = req
+}
+"#;
+    let verilog = compile_ok(src);
+    // Ports must be flattened with prefix.
+    assert!(
+        verilog.contains("input wire req_valid"),
+        "missing req_valid in:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("input wire [7:0] req_data"),
+        "missing req_data in:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("output wire rsp_valid"),
+        "missing rsp_valid in:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("output wire [7:0] rsp_data"),
+        "missing rsp_data in:\n{verilog}"
+    );
+    // Assignments also flatten.
+    assert!(
+        verilog.contains("assign rsp_valid = req_valid"),
+        "missing assign in:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("assign rsp_data = req_data"),
+        "missing assign in:\n{verilog}"
+    );
+}
+
+#[test]
+fn emit_bundle_literal() {
+    let src = r#"
+bundle Hs { valid: bit, data: bits[8] }
+module Top {
+  out rsp: Hs
+  rsp = { valid: 1, data: 0 }
+}
+"#;
+    let verilog = compile_ok(src);
+    assert!(
+        verilog.contains("assign rsp_valid = 1'b1"),
+        "missing rsp_valid:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("assign rsp_data = 8'd0"),
+        "missing rsp_data:\n{verilog}"
+    );
+}
+
 /// Golden-lock for the tagged-enum emitter: a `Packet` enum with two tagged
 /// variants (`Read(addr)` and `Write(addr, data)`) must lower to correct
 /// localparam widths, tag-bit comparisons, and payload slice extractions.
