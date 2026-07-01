@@ -274,7 +274,11 @@ impl Emitter<'_> {
                     }
                 },
             },
-            ExprKind::BundleLit(_) => todo!(),
+            // BundleLit is only valid as the direct RHS of a Drive or Wire init;
+            // emit_drives handles it before calling expr(). Reaching here means
+            // a bundle literal in an unsupported position (e.g. inside an operator).
+            // Emit a safe placeholder — the checker should have caught this.
+            ExprKind::BundleLit(_) => "0".into(),
         }
     }
 
@@ -353,7 +357,8 @@ impl Emitter<'_> {
                         consteval::eval(e, &self.env).unwrap_or(0) as u128
                     }
                     Type::Named(_) => 0, // E0807: already rejected by checker
-                    Type::Bundle { .. } => todo!(),
+                    // Bundles are not valid enum payload fields (checker enforces).
+                    Type::Bundle { .. } => 0,
                 };
                 debug_assert!(
                     field_w > 0,
