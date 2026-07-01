@@ -448,7 +448,8 @@ fn run_test_ok(src: &str) {
     use mimz::ast::TopItem;
     use mimz::sim::harness::{TestResult, run_test};
 
-    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes"))
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
     // Run checker so bundle widths are resolved.
     mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
     let tests: Vec<_> = file

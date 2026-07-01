@@ -12,6 +12,7 @@
   உள்ளீடு கோரிக்கை: கதிர்(W: W)
   வெளியீடு பதில்: கதிர்(W: W)
 
-  // Bundle-to-bundle assignment using dot access and bundle literal
+  // Note: let { } destructure is parsed and type-checked but deferred in the emitter.
+  // Using dot-access here instead: கோரிக்கை.செல்லு, கோரிக்கை.தரவு
   பதில் = { செல்லு: கோரிக்கை.செல்லு, தரவு: கோரிக்கை.தரவு }
 }
