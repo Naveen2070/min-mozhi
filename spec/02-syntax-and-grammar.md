@@ -573,8 +573,10 @@ prefixed `portname_fieldname`. Wires and regs flatten the same way.
 | E0902 | Bundle literal references an unknown field name                                      |
 | E0903 | Duplicate binding name in `let { }` destructure                                      |
 | E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (parser error) |
+| E0905 | Bundle field type is `clock` or `reset` (deferred — Phase 2)                         |
 | E0906 | Bundle type reference: unknown bundle name or wrong param count                      |
 | E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                               |
+| E0908 | Duplicate field name in `bundle` declaration (deferred — Phase 2)                    |
 | E0909 | Bundle declared more than once (project-wide name collision)                         |
 
 ---
