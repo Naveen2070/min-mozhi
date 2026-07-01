@@ -224,7 +224,7 @@ impl Emitter<'_> {
             };
             self.bundle_sigs.insert(sig_name, (bname, args));
         }
-        self.repeat_budget = REPEAT_BUDGET;
+        self.repeat_budget = REPEAT_BUDGET; // reset for emit_drives pass
         self.emit_drives(&m.items);
         self.bundle_sigs.clear();
 

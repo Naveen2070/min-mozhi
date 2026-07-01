@@ -10,6 +10,7 @@ thoguthi BundlePassthrough(W: int = 8) {
   ulleedu  req: Handshake(W: W)
   veliyeedu rsp: Handshake(W: W)
 
-  // Bundle-to-bundle assignment using dot access and bundle literal
+  // Note: let { } destructure is parsed and type-checked but deferred in the emitter.
+  // Using dot-access here instead: req.valid, req.data
   rsp = { valid: req.valid, data: req.data }
 }
