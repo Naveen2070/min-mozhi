@@ -209,7 +209,9 @@ fn collect_item(
             }
         }
         ast::ModuleItem::Error(_) => {}
-        ast::ModuleItem::BundleDestructure { .. } => todo!(),
+        ast::ModuleItem::BundleDestructure { expr, .. } => {
+            collect_expr_names(expr, referenced);
+        }
     }
 }
 
@@ -271,7 +273,11 @@ fn collect_expr_names(expr: &ast::Expr, names: &mut HashSet<String>) {
                 collect_expr_names(a, names);
             }
         }
-        ast::ExprKind::BundleLit(_) => todo!(),
+        ast::ExprKind::BundleLit(inits) => {
+            for fi in inits {
+                collect_expr_names(&fi.value, names);
+            }
+        }
     }
 }
 
