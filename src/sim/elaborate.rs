@@ -357,6 +357,8 @@ fn elaborate_module(
     // rewrite `req.valid` → `req_valid` (the flat scalar name).
     // ponytail: HashSet is the right data structure — O(1) lookup, no ordering needed.
     let mut bundle_sigs: HashSet<String> = HashSet::new();
+    // Map each bundle signal name to its AST type (for O(1) lookup in Drive arm).
+    let mut bundle_sig_types: HashMap<String, ast::Type> = HashMap::new();
     // Pre-scan to collect bundle signal names before building rw0 (which needs them).
     for it in &m.items {
         match it {
@@ -364,6 +366,7 @@ fn elaborate_module(
                 if is_bundle_ty(ty, bundle_reg, &enums) =>
             {
                 bundle_sigs.insert(name.name.clone());
+                bundle_sig_types.insert(name.name.clone(), ty.clone());
             }
             _ => {}
         }
@@ -490,18 +493,9 @@ fn elaborate_module(
                 // Bundle drive: `rsp = req` where `rsp` is a bundle signal.
                 // Expand to one scalar drive per field: `rsp_valid = req_valid`, etc.
                 if bundle_sigs.contains(&lhs.base.name) && lhs.index.is_none() {
-                    // Determine the bundle type of the LHS from the module's port/wire decls.
-                    let btype = m.items.iter().find_map(|it| match it {
-                        ModuleItem::Port { name, ty, .. } if name.name == lhs.base.name => {
-                            Some(ty.clone())
-                        }
-                        ModuleItem::Wire { name, ty, .. } if name.name == lhs.base.name => {
-                            Some(ty.clone())
-                        }
-                        _ => None,
-                    });
-                    if let Some(ty) = btype
-                        && let Some((bname, args)) = bundle_type_info(&ty, bundle_reg, &enums)
+                    // O(1) lookup: bundle type from the pre-scan map.
+                    if let Some(ty) = bundle_sig_types.get(&lhs.base.name)
+                        && let Some((bname, args)) = bundle_type_info(ty, bundle_reg, &enums)
                     {
                         let fields = resolve_bundle_fields_sim(bundle_reg, &bname, &args, &consts)?;
                         for (fname, _) in &fields {
@@ -1045,6 +1039,11 @@ fn bundle_field_expr(expr: &Expr, field: &str, span: crate::span::Span) -> Expr 
     if let ExprKind::BundleLit(inits) = &expr.kind {
         if let Some(fi) = inits.iter().find(|fi| fi.name.name == field) {
             return fi.value.clone();
+        } else {
+            unreachable!(
+                "BundleLit missing field `{}` — checker should have rejected this",
+                field
+            )
         }
     }
     // RHS is a bundle ident or other expr: emit `expr.field` — Rw::field will flatten it.
