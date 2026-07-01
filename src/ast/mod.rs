@@ -478,7 +478,10 @@ pub enum Type {
     /// note: nominal-only today; structural subtyping adds one field-list
     /// comparison (2.9); first-class IR bundle (post-Phase 2) promotes
     /// BundleType to a Type variant in IR
-    Bundle { name: QualIdent, args: Vec<NamedArg> },
+    Bundle {
+        name: QualIdent,
+        args: Vec<NamedArg>,
+    },
 }
 
 /// `test "name" for Module(args) { ... }` — runs on the Phase 1.5

@@ -476,7 +476,10 @@ impl<'a> Checker<'a> {
                 file,
                 inst.module.span,
                 "E0102",
-                format!("no module named `{}` in this project", inst.module.name.name),
+                format!(
+                    "no module named `{}` in this project",
+                    inst.module.name.name
+                ),
                 "check the spelling, or add the `import` that brings it in \
                  (spec/02 section 1.5)",
             );
@@ -1077,7 +1080,10 @@ impl<'a> Checker<'a> {
                     let msg = if self.bundles.contains_key(&id.name.name) {
                         format!("bundle field cannot be a bundle type (`{}`)", id.name.name)
                     } else {
-                        format!("`{}` is not a concrete type for a bundle field", id.name.name)
+                        format!(
+                            "`{}` is not a concrete type for a bundle field",
+                            id.name.name
+                        )
                     };
                     self.err(
                         file,
@@ -1103,7 +1109,10 @@ impl<'a> Checker<'a> {
                         file,
                         span,
                         "E0807",
-                        format!("bundle field cannot be a bundle type (`{}`)", name.name.name),
+                        format!(
+                            "bundle field cannot be a bundle type (`{}`)",
+                            name.name.name
+                        ),
                         "nested bundles are not supported in v0.2 — use flat field types",
                     );
                 }
