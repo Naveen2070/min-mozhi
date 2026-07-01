@@ -567,14 +567,15 @@ prefixed `portname_fieldname`. Wires and regs flatten the same way.
 
 ### Bundle checker rules
 
-| Code  | Triggered when                                                  |
-| ----- | --------------------------------------------------------------- |
-| E0901 | Bundle literal missing a required field                         |
-| E0902 | Bundle literal references an unknown field name                 |
-| E0903 | Duplicate binding name in `let { }` destructure                 |
-| E0906 | Bundle type reference: unknown bundle name or wrong param count |
-| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)          |
-| E0909 | Bundle declared more than once (project-wide name collision)    |
+| Code  | Triggered when                                                                       |
+| ----- | ------------------------------------------------------------------------------------ |
+| E0901 | Bundle literal missing a required field                                              |
+| E0902 | Bundle literal references an unknown field name                                      |
+| E0903 | Duplicate binding name in `let { }` destructure                                      |
+| E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (parser error) |
+| E0906 | Bundle type reference: unknown bundle name or wrong param count                      |
+| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                               |
+| E0909 | Bundle declared more than once (project-wide name collision)                         |
 
 ---
 
