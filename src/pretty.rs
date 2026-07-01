@@ -128,7 +128,7 @@ impl Pretty {
             // Unreachable: pretty-printing runs on a strict-parsed tree, which
             // never carries an `Error` placeholder.
             TopItem::Error(_) => {}
-            TopItem::Bundle(_) => todo!(),
+            TopItem::Bundle(b) => self.bundle_decl(b),
         }
     }
 
@@ -187,6 +187,29 @@ impl Pretty {
             .join(", ");
         let s = format!("{} {} {{ {variants} }}", self.kw(Kw::Enum), e.name.name);
         self.line(&s);
+    }
+
+    fn bundle_decl(&mut self, b: &BundleDecl) {
+        let params = if b.params.is_empty() {
+            String::new()
+        } else {
+            let ps = b
+                .params
+                .iter()
+                .map(|p| self.param(p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({ps})")
+        };
+        let head = format!("{} {}{params} {{", self.kw(Kw::Bundle), b.name.name);
+        self.line(&head);
+        self.indent += 1;
+        for f in &b.fields {
+            let s = format!("{}: {}", f.name.name, self.ty(&f.ty, self.indent));
+            self.line(&s);
+        }
+        self.indent -= 1;
+        self.line("}");
     }
 
     fn module(&mut self, m: &Module) {
@@ -314,7 +337,16 @@ impl Pretty {
                 self.line("}");
             }
             ModuleItem::Error(_) => {} // unreachable on a strict-parsed tree
-            ModuleItem::BundleDestructure { .. } => todo!(),
+            ModuleItem::BundleDestructure { bindings, expr, .. } => {
+                let bs = bindings
+                    .iter()
+                    .map(|b| b.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let rhs = self.expr(expr, ind);
+                let s = format!("{} {{ {bs} }} = {rhs}", self.kw(Kw::Let));
+                self.line(&s);
+            }
         }
     }
 
@@ -530,7 +562,18 @@ impl Pretty {
             Type::Bits(e) => format!("bits[{}]", self.expr(e, ind)),
             Type::Signed(e) => format!("signed[{}]", self.expr(e, ind)),
             Type::Named(id) => id.name.clone(),
-            Type::Bundle { .. } => todo!(),
+            Type::Bundle { name, args } => {
+                if args.is_empty() {
+                    name.name.clone()
+                } else {
+                    let a = args
+                        .iter()
+                        .map(|a| format!("{}: {}", a.name.name, self.expr(&a.value, ind)))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!("{}({a})", name.name)
+                }
+            }
         }
     }
 
@@ -657,7 +700,14 @@ impl Pretty {
                     .join(", ");
                 format!("{}({a})", name.name)
             }
-            ExprKind::BundleLit(_) => todo!(),
+            ExprKind::BundleLit(inits) => {
+                let fields = inits
+                    .iter()
+                    .map(|fi| format!("{}: {}", fi.name.name, self.expr(&fi.value, ind)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{{ {fields} }}")
+            }
         }
     }
 
