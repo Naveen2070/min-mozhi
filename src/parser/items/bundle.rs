@@ -25,7 +25,11 @@ impl Parser {
                 } else {
                     None
                 };
-                params.push(Param { name: pname, ty: pty, default });
+                params.push(Param {
+                    name: pname,
+                    ty: pty,
+                    default,
+                });
                 self.skip_newlines();
                 if !self.eat(&TokKind::Comma) {
                     self.expect(TokKind::RParen, "`,` or `)` in the parameter list")?;
@@ -68,6 +72,11 @@ impl Parser {
             }
         };
 
-        Some(TopItem::Bundle(BundleDecl { name, params, fields, span: start.join(end) }))
+        Some(TopItem::Bundle(BundleDecl {
+            name,
+            params,
+            fields,
+            span: start.join(end),
+        }))
     }
 }
