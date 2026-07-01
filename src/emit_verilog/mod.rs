@@ -157,7 +157,10 @@ impl<'a> Project<'a> {
                     TopItem::Func(f) => {
                         funcs.insert(f.name.name.clone(), f);
                     }
-                    TopItem::Const(_) | TopItem::Test(_) | TopItem::Error(_) | TopItem::Bundle(_) => {}
+                    TopItem::Const(_)
+                    | TopItem::Test(_)
+                    | TopItem::Error(_)
+                    | TopItem::Bundle(_) => {}
                 }
             }
         }

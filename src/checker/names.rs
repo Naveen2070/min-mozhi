@@ -39,6 +39,7 @@ pub(super) enum Bind<'a> {
     Const,
     Enum(&'a EnumDecl),
     Inst(&'a Inst),
+    #[expect(dead_code)]
     Bundle(&'a BundleDecl),
 }
 
@@ -1066,7 +1067,7 @@ impl<'a> Checker<'a> {
         match ty {
             Type::Bit | Type::Bits(_) | Type::Signed(_) => {}
             Type::Named(id) => {
-                if self.enums.get(&id.name).is_none() {
+                if !self.enums.contains_key(&id.name) {
                     let msg = if self.bundles.contains_key(&id.name) {
                         format!("bundle field cannot be a bundle type (`{}`)", id.name)
                     } else {

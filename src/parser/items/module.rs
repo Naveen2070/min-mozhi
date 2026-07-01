@@ -227,7 +227,11 @@ impl Parser {
                     let expr = self.expr()?;
                     let end = expr.span;
                     self.terminator();
-                    Some(ModuleItem::BundleDestructure { bindings, expr, span: start.join(end) })
+                    Some(ModuleItem::BundleDestructure {
+                        bindings,
+                        expr,
+                        span: start.join(end),
+                    })
                 } else {
                     self.inst()
                 }
