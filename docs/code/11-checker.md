@@ -88,61 +88,62 @@ tombstone row here. Each code is exercised two ways: in-process by
 `tests/fixtures/errors/` that the real binary must reject with this code
 (`tests/errors.rs` — a completeness guard fails if any code lacks one).
 
-| Code  | Meaning                                                                                   | Typical fix the help teaches                                                                     |
-| ----- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| E0001 | duplicate module name (project-wide)                                                      | rename — module names are project-unique                                                         |
-| E0002 | duplicate file-level enum name (project-wide)                                             | rename — enums travel with `import`                                                              |
-| E0003 | name declared twice inside one module                                                     | rename; the message says what holds the name                                                     |
-| E0004 | duplicate file-level `const`                                                              | rename within the file                                                                           |
-| E0101 | unknown name in an expression                                                             | check spelling / declare it                                                                      |
-| E0102 | unknown module (instantiation or test header)                                             | check spelling / add the missing `import`                                                        |
-| E0103 | unknown enum, variant, or named type                                                      | lists the enum's real variants                                                                   |
-| E0104 | reading a non-output of an instance (`inst.x`)                                            | lists the module's outputs; inputs connect at `let`                                              |
-| E0105 | `.field` on something that has no fields                                                  | `.` is for `Enum.Variant` / `inst.output` only                                                   |
-| E0106 | unknown parameter in instantiation or test header                                         | lists the module's parameters                                                                    |
-| E0107 | bad connection port (unknown, or an output)                                               | outputs are read with `.`, not connected                                                         |
-| E0108 | assigning to a non-signal (input, const, clock, …)                                        | only out ports, wires, regs are assignable                                                       |
-| E0109 | `on rise(x)` where `x` is not a clock                                                     | declare `clock clk`                                                                              |
-| E0201 | expression is not a compile-time constant                                                 | what IS allowed in const positions                                                               |
-| E0202 | constant evaluation overflow (i128 range)                                                 | —                                                                                                |
-| E0301 | module has regs but no `reset` declaration                                                | add `reset rst`                                                                                  |
-| E0302 | instance input unconnected, or connected twice                                            | connect every input exactly once; clock/reset connect by name                                    |
-| E0303 | declaration (port/`wire`/`reg`/`clock`/`reset`/`const`/`enum`/`on`) inside `repeat`       | declare once outside; `repeat` only generates hardware                                           |
-| E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)                             | `extend`/`trunc`/slice; `+` into same width teaches `+%`                                         |
-| E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)                               | `extend` the narrow side                                                                         |
-| E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data                           | the visible casts `signed()`/`unsigned()`                                                        |
-| E0404 | logical op / condition on a non-`bit`                                                     | compare (`x != 0`) or reduce (`\|x`)                                                             |
-| E0405 | compile-time value does not fit, or has no width to adopt                                 | the value, the width, and the max that fits                                                      |
-| E0406 | index/slice out of range, reversed bounds, base not indexable                             | indices `0..=N-1`; slices `[hi:lo]` msb first                                                    |
-| E0407 | builtin/unary misuse (`extend` narrowing, `-` on bits, …)                                 | what the builtin is FOR; `0 -% x` for wrap-negate                                                |
-| E0408 | `if`/`match` arms disagree on type/width                                                  | every arm becomes the same wire                                                                  |
-| E0409 | pattern errors (match on signed, wrong enum, too-wide value)                              | what the scrutinee's type admits                                                                 |
-| E0410 | width expression invalid (zero, negative, absurd)                                         | hardware needs at least one bit                                                                  |
-| E0501 | more than one driver (2nd drive, drive-to-wire, overlapping bit ranges)                   | one `=` per signal; `if`/`match` exprs choose; disjoint bits OK                                  |
-| E0502 | output never driven, or driven on only some bits                                          | drive it; names the first undriven bit                                                           |
-| E0503 | reg assigned from zero or several `on` blocks, or memory written from several `on` blocks | exactly one `on` block owns each reg or memory                                                   |
-| E0504 | combinational cycle (path shown, incl. through instances)                                 | every feedback loop passes through a `reg`                                                       |
-| E0505 | wrong assignment kind: `<-` to wire/out, `=` to reg                                       | `<-` = registers in `on`; `=` = combinational                                                    |
-| E0601 | `match` not exhaustive (names a missing value/variant)                                    | add the missing arms, or end with `_ =>`                                                         |
-| E0602 | unreachable `match` arm (after `_`, or a duplicate value)                                 | move `_` last / delete the duplicate                                                             |
-| E0701 | cross-clock-domain read, or a wire mixing two domains                                     | one domain per signal; `sync` (Phase 2) will allow crossings                                     |
-| E0801 | duplicate user-defined function name (project-wide)                                       | rename — function names are project-unique                                                       |
-| E0802 | function name collides with a builtin (`extend`, `trunc`, `min`, …)                       | choose a different name                                                                          |
-| E0803 | wrong number of arguments in a `fn` call (expected N, got M)                              | pass exactly the number of arguments the function declares                                       |
-| E0804 | function body width doesn't match the declared return type                                | `extend`/`trunc`/slice the body, or fix the `->` type                                            |
-| E0805 | recursive function call (direct or mutual cycle in the call graph)                        | replace recursion with fixed-size repetition or a `repeat` loop                                  |
-| E0806 | wrong number of payload bindings in a match pattern (got M, expected N fields)            | list the exact bindings or use fewer/more names                                                  |
-| E0807 | payload field has a non-concrete type (enum or named type used as payload)                | use `bit`, `bits[N]`, or `signed[N]`; nested enums deferred                                      |
-| E0808 | OR-pattern alternatives must expose the same binding interface                            | ensure every alternative binds identical names with identical types, or split into separate arms |
-| E0809 | `default` assignment target is not a `reg`                                                | only `reg` signals can have sequential default assignments; drive wires combinationally          |
-| E0810 | duplicate `default` for the same reg in one `on` block                                    | each reg may have at most one `default` per `on` block; merge into a conditional expression      |
-| E0811 | `const if` condition is not a compile-time constant                                       | use only module parameters, `const` values, literals, and arithmetic/comparison on those         |
-| E0901 | Bundle literal missing a required field                                                   | list all fields in the bundle literal; the field is named in the error                           |
-| E0902 | Bundle literal references an unknown field name                                           | check spelling against the bundle definition                                                     |
-| E0903 | Duplicate binding name in `let { }` destructure                                           | each name may appear at most once in the binding list                                            |
-| E0906 | Bundle type reference: unknown bundle name or wrong param count                           | declare the bundle at file level or import the file that does; parameter count must match        |
-| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                                    | bundles are nominally typed; ensure the expression produces the correct bundle type              |
-| E0909 | Bundle declared more than once (project-wide name collision)                              | rename one — bundle names are unique across the whole project                                    |
+| Code  | Meaning                                                                                     | Typical fix the help teaches                                                                     |
+| ----- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| E0001 | duplicate module name (project-wide)                                                        | rename — module names are project-unique                                                         |
+| E0002 | duplicate file-level enum name (project-wide)                                               | rename — enums travel with `import`                                                              |
+| E0003 | name declared twice inside one module                                                       | rename; the message says what holds the name                                                     |
+| E0004 | duplicate file-level `const`                                                                | rename within the file                                                                           |
+| E0101 | unknown name in an expression                                                               | check spelling / declare it                                                                      |
+| E0102 | unknown module (instantiation or test header)                                               | check spelling / add the missing `import`                                                        |
+| E0103 | unknown enum, variant, or named type                                                        | lists the enum's real variants                                                                   |
+| E0104 | reading a non-output of an instance (`inst.x`)                                              | lists the module's outputs; inputs connect at `let`                                              |
+| E0105 | `.field` on something that has no fields                                                    | `.` is for `Enum.Variant` / `inst.output` only                                                   |
+| E0106 | unknown parameter in instantiation or test header                                           | lists the module's parameters                                                                    |
+| E0107 | bad connection port (unknown, or an output)                                                 | outputs are read with `.`, not connected                                                         |
+| E0108 | assigning to a non-signal (input, const, clock, …)                                          | only out ports, wires, regs are assignable                                                       |
+| E0109 | `on rise(x)` where `x` is not a clock                                                       | declare `clock clk`                                                                              |
+| E0201 | expression is not a compile-time constant                                                   | what IS allowed in const positions                                                               |
+| E0202 | constant evaluation overflow (i128 range)                                                   | —                                                                                                |
+| E0301 | module has regs but no `reset` declaration                                                  | add `reset rst`                                                                                  |
+| E0302 | instance input unconnected, or connected twice                                              | connect every input exactly once; clock/reset connect by name                                    |
+| E0303 | declaration (port/`wire`/`reg`/`clock`/`reset`/`const`/`enum`/`on`) inside `repeat`         | declare once outside; `repeat` only generates hardware                                           |
+| E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)                               | `extend`/`trunc`/slice; `+` into same width teaches `+%`                                         |
+| E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)                                 | `extend` the narrow side                                                                         |
+| E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data                             | the visible casts `signed()`/`unsigned()`                                                        |
+| E0404 | logical op / condition on a non-`bit`                                                       | compare (`x != 0`) or reduce (`\|x`)                                                             |
+| E0405 | compile-time value does not fit, or has no width to adopt                                   | the value, the width, and the max that fits                                                      |
+| E0406 | index/slice out of range, reversed bounds, base not indexable                               | indices `0..=N-1`; slices `[hi:lo]` msb first                                                    |
+| E0407 | builtin/unary misuse (`extend` narrowing, `-` on bits, …)                                   | what the builtin is FOR; `0 -% x` for wrap-negate                                                |
+| E0408 | `if`/`match` arms disagree on type/width                                                    | every arm becomes the same wire                                                                  |
+| E0409 | pattern errors (match on signed, wrong enum, too-wide value)                                | what the scrutinee's type admits                                                                 |
+| E0410 | width expression invalid (zero, negative, absurd)                                           | hardware needs at least one bit                                                                  |
+| E0501 | more than one driver (2nd drive, drive-to-wire, overlapping bit ranges)                     | one `=` per signal; `if`/`match` exprs choose; disjoint bits OK                                  |
+| E0502 | output never driven, or driven on only some bits                                            | drive it; names the first undriven bit                                                           |
+| E0503 | reg assigned from zero or several `on` blocks, or memory written from several `on` blocks   | exactly one `on` block owns each reg or memory                                                   |
+| E0504 | combinational cycle (path shown, incl. through instances)                                   | every feedback loop passes through a `reg`                                                       |
+| E0505 | wrong assignment kind: `<-` to wire/out, `=` to reg                                         | `<-` = registers in `on`; `=` = combinational                                                    |
+| E0601 | `match` not exhaustive (names a missing value/variant)                                      | add the missing arms, or end with `_ =>`                                                         |
+| E0602 | unreachable `match` arm (after `_`, or a duplicate value)                                   | move `_` last / delete the duplicate                                                             |
+| E0701 | cross-clock-domain read, or a wire mixing two domains                                       | one domain per signal; `sync` (Phase 2) will allow crossings                                     |
+| E0801 | duplicate user-defined function name (project-wide)                                         | rename — function names are project-unique                                                       |
+| E0802 | function name collides with a builtin (`extend`, `trunc`, `min`, …)                         | choose a different name                                                                          |
+| E0803 | wrong number of arguments in a `fn` call (expected N, got M)                                | pass exactly the number of arguments the function declares                                       |
+| E0804 | function body width doesn't match the declared return type                                  | `extend`/`trunc`/slice the body, or fix the `->` type                                            |
+| E0805 | recursive function call (direct or mutual cycle in the call graph)                          | replace recursion with fixed-size repetition or a `repeat` loop                                  |
+| E0806 | wrong number of payload bindings in a match pattern (got M, expected N fields)              | list the exact bindings or use fewer/more names                                                  |
+| E0807 | payload field has a non-concrete type (enum or named type used as payload)                  | use `bit`, `bits[N]`, or `signed[N]`; nested enums deferred                                      |
+| E0808 | OR-pattern alternatives must expose the same binding interface                              | ensure every alternative binds identical names with identical types, or split into separate arms |
+| E0809 | `default` assignment target is not a `reg`                                                  | only `reg` signals can have sequential default assignments; drive wires combinationally          |
+| E0810 | duplicate `default` for the same reg in one `on` block                                      | each reg may have at most one `default` per `on` block; merge into a conditional expression      |
+| E0811 | `const if` condition is not a compile-time constant                                         | use only module parameters, `const` values, literals, and arithmetic/comparison on those         |
+| E0901 | Bundle literal missing a required field                                                     | list all fields in the bundle literal; the field is named in the error                           |
+| E0902 | Bundle literal references an unknown field name                                             | check spelling against the bundle definition                                                     |
+| E0903 | Duplicate binding name in `let { }` destructure                                             | each name may appear at most once in the binding list                                            |
+| E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (reserved for parser) | use dot access `expr.f` instead of renaming in the destructure                                   |
+| E0906 | Bundle type reference: unknown bundle name or wrong param count                             | declare the bundle at file level or import the file that does; parameter count must match        |
+| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                                      | bundles are nominally typed; ensure the expression produces the correct bundle type              |
+| E0909 | Bundle declared more than once (project-wide name collision)                                | rename one — bundle names are unique across the whole project                                    |
 
 Numbering scheme:
 
