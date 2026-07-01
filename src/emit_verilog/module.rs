@@ -156,6 +156,10 @@ impl Emitter<'_> {
                     self.out
                         .push_str(&format!("    reg {w}{} [0:({d})-1];\n", name.name));
                 }
+                ModuleItem::BundleDestructure { .. } => {
+                    // ponytail: T8 will implement bundle destructure; block it here so broken Verilog isn't silently emitted
+                    unimplemented!("BundleDestructure emit — coming in T8")
+                }
                 _ => {}
             }
         }
@@ -188,6 +192,7 @@ impl Emitter<'_> {
 
         // Combinational drives (unrolling `repeat` the same way).
         // Pre-populate bundle_sigs so emit_drives can flatten bundle assignments.
+        // ponytail: repeat-body bundle wires not tracked in bundle_sigs — checker blocks wire-in-repeat today.
         self.bundle_sigs.clear();
         for item in flat.iter().copied() {
             let (sig_name, bname, args) = match item {
