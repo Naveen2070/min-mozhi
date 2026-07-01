@@ -772,7 +772,9 @@ bundle MemBus(WIDTH: int = 32) {
 }
 "#;
     let file = parse_ok(src);
-    let TopItem::Bundle(b) = &file.items[0] else { panic!("expected Bundle") };
+    let TopItem::Bundle(b) = &file.items[0] else {
+        panic!("expected Bundle")
+    };
     assert_eq!(b.name.name, "MemBus");
     assert_eq!(b.params.len(), 1);
     assert_eq!(b.params[0].name.name, "WIDTH");
@@ -793,8 +795,12 @@ module Top {
 }
 "#;
     let file = parse_ok(src);
-    let TopItem::Module(m) = &file.items[1] else { panic!() };
-    let ModuleItem::Port { ty, .. } = &m.items[0] else { panic!() };
+    let TopItem::Module(m) = &file.items[1] else {
+        panic!()
+    };
+    let ModuleItem::Port { ty, .. } = &m.items[0] else {
+        panic!()
+    };
     assert!(matches!(ty, Type::Named(_) | Type::Bundle { .. }));
 }
 
@@ -809,8 +815,12 @@ module Top {
 }
 "#;
     let file = parse_ok(src);
-    let TopItem::Module(m) = &file.items[1] else { panic!() };
-    let ModuleItem::Drive { rhs, .. } = &m.items[2] else { panic!() };
+    let TopItem::Module(m) = &file.items[1] else {
+        panic!()
+    };
+    let ModuleItem::Drive { rhs, .. } = &m.items[2] else {
+        panic!()
+    };
     assert!(matches!(rhs.kind, ExprKind::BundleLit(_)));
 }
 
@@ -824,8 +834,12 @@ module Top {
 }
 "#;
     let file = parse_ok(src);
-    let TopItem::Module(m) = &file.items[1] else { panic!() };
-    let ModuleItem::BundleDestructure { bindings, .. } = &m.items[1] else { panic!("expected BundleDestructure, got {:?}", m.items[1]) };
+    let TopItem::Module(m) = &file.items[1] else {
+        panic!()
+    };
+    let ModuleItem::BundleDestructure { bindings, .. } = &m.items[1] else {
+        panic!("expected BundleDestructure, got {:?}", m.items[1])
+    };
     assert_eq!(bindings.len(), 1);
     assert_eq!(bindings[0].name, "valid");
 }
@@ -841,6 +855,9 @@ module Top {
 }
 "#;
     let errs = parse_err(src);
-    assert!(errs.iter().any(|e| e.code.as_deref() == Some("E0904")),
-        "expected E0904, got: {:?}", errs);
+    assert!(
+        errs.iter().any(|e| e.code == Some("E0904")),
+        "expected E0904, got: {:?}",
+        errs
+    );
 }
