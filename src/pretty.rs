@@ -380,7 +380,7 @@ impl Pretty {
             "{} {}{idx} = {}{args}{conns}",
             self.kw(Kw::Let),
             inst.name.name,
-            inst.module.name
+            inst.module.to_dotted()
         );
         self.line(&s);
     }
@@ -475,7 +475,7 @@ impl Pretty {
     fn test_decl(&mut self, t: &TestDecl) {
         let test_kw = self.kw(Kw::Test);
         let for_kw = self.kw(Kw::For);
-        let module = &t.module.name;
+        let module = &t.module.to_dotted();
         let args = self.named_args(&t.args);
         let head = match self.order {
             // code-order:    test "name" for M(args) {
@@ -561,17 +561,17 @@ impl Pretty {
             Type::Bit => "bit".to_string(),
             Type::Bits(e) => format!("bits[{}]", self.expr(e, ind)),
             Type::Signed(e) => format!("signed[{}]", self.expr(e, ind)),
-            Type::Named(id) => id.name.clone(),
+            Type::Named(id) => id.to_dotted(),
             Type::Bundle { name, args } => {
                 if args.is_empty() {
-                    name.name.clone()
+                    name.to_dotted()
                 } else {
                     let a = args
                         .iter()
                         .map(|a| format!("{}: {}", a.name.name, self.expr(&a.value, ind)))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    format!("{}({a})", name.name)
+                    format!("{}({a})", name.to_dotted())
                 }
             }
         }
@@ -802,5 +802,21 @@ fn builtin(b: Builtin) -> &'static str {
         Builtin::Nor => "nor",
         Builtin::Xnor => "xnor",
         Builtin::Clog2 => "clog2",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn qualified_reference_round_trips_through_pretty_print() {
+        let src = "module M {\n  let x = a.b.Foo() { }\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(printed.contains("a.b.Foo"), "got:\n{printed}");
     }
 }

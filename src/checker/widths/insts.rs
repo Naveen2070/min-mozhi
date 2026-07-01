@@ -68,7 +68,7 @@ impl<'a> Checker<'a> {
         inst: &'a Inst,
         report: bool,
     ) -> Option<ChildBinding<'a>> {
-        let &(cfile, cm) = self.modules.get(&inst.module.name)?;
+        let &(cfile, cm) = self.modules.get(&inst.module.name.name)?;
         let mut cenv = self.file_consts[cfile].clone();
         let mut binding = Vec::new();
         for p in &cm.params {

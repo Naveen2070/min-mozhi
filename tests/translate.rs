@@ -484,7 +484,7 @@ fn pretty_print_thamizh_flips_the_test_header_and_reparses() {
     });
     let (orig, round) = (orig.expect("orig test"), round.expect("round test"));
     assert_eq!(orig.name, round.name);
-    assert_eq!(orig.module.name, round.module.name);
+    assert_eq!(orig.module.name.name, round.module.name.name);
     assert_eq!(orig.args.len(), round.args.len());
     assert_eq!(orig.body.len(), round.body.len());
 }

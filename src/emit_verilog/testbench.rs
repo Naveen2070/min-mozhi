@@ -129,12 +129,12 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
     for test in tests {
         let span = test.span;
 
-        let dut = match project.modules.get(&test.module.name) {
+        let dut = match project.modules.get(&test.module.name.name) {
             Some(m) => m,
             None => {
                 em.diags.push(Diag::new(
                     span,
-                    format!("module `{}` not found for test", test.module.name),
+                    format!("module `{}` not found for test", test.module.name.name),
                 ));
                 continue;
             }

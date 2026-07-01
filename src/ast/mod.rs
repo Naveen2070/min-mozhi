@@ -30,6 +30,11 @@ pub struct File {
 pub struct Import {
     pub path: Vec<Ident>,
     pub span: Span,
+    /// Which loaded file this import resolved to, filled in by
+    /// `project::load_project_with_lib` once the full file list is
+    /// assembled (Task 3). `None` for ASTs built without going through
+    /// `project.rs` (the in-memory playground, the LSP's own import walk).
+    pub resolved_file: Cell<Option<usize>>,
 }
 
 /// Anything that may appear at file level (spec/02 section 1).
@@ -126,6 +131,39 @@ pub struct LocalLet {
 pub struct Ident {
     pub name: String,
     pub span: Span,
+}
+
+/// A possibly-namespaced reference: bare `Name` (`path` empty) or
+/// `a.b.Name` (`path = [a, b]`). The bare case parses identically to a
+/// plain `Ident` — existing single-segment references are unaffected.
+/// `resolved_file` is filled in once by the checker's name-resolution pass
+/// (spec/02 section 1.5b); later passes read it instead of re-running
+/// ambiguity/qualifier resolution — same pattern as `Expr::inferred_width`.
+#[derive(Clone, Debug)]
+pub struct QualIdent {
+    pub path: Vec<Ident>,
+    pub name: Ident,
+    pub span: Span,
+    pub resolved_file: Cell<Option<usize>>,
+}
+
+impl QualIdent {
+    /// `Name` (bare) or `a.b.Name` (qualified), dot-joined — round-trips
+    /// through `pretty.rs`.
+    pub fn to_dotted(&self) -> String {
+        let mut s = String::new();
+        for seg in &self.path {
+            s.push_str(&seg.name);
+            s.push('.');
+        }
+        s.push_str(&self.name.name);
+        s
+    }
+
+    /// True when written with no path segments — the pre-existing form.
+    pub fn is_bare(&self) -> bool {
+        self.path.is_empty()
+    }
 }
 
 /// `module Name(P: int = 8) { ... }` — the unit of hardware design.
@@ -348,7 +386,7 @@ pub struct Inst {
     /// `let name[i] = ...` inside `repeat`.
     pub index: Option<Expr>,
     /// The module being instantiated (resolved by name, project-wide).
-    pub module: Ident,
+    pub module: QualIdent,
     /// Compile-time parameter overrides.
     pub args: Vec<NamedArg>,
     /// Input/clock/reset connections. Same-named clock/reset connect
@@ -434,13 +472,13 @@ pub enum Type {
     /// `bits` without an explicit cast (spec/02 section 1.7).
     Signed(Box<Expr>),
     /// Enum type by name.
-    Named(Ident),
+    Named(QualIdent),
     /// Parametric bundle type: `MemBus(WIDTH: 32)` or plain `Handshake`.
     /// `args` is empty for bundles with no params.
     /// note: nominal-only today; structural subtyping adds one field-list
     /// comparison (2.9); first-class IR bundle (post-Phase 2) promotes
     /// BundleType to a Type variant in IR
-    Bundle { name: Ident, args: Vec<NamedArg> },
+    Bundle { name: QualIdent, args: Vec<NamedArg> },
 }
 
 /// `test "name" for Module(args) { ... }` — runs on the Phase 1.5
@@ -450,7 +488,7 @@ pub struct TestDecl {
     /// The quoted human-readable test name.
     pub name: String,
     /// The module under test.
-    pub module: Ident,
+    pub module: QualIdent,
     /// Parameter values for this test run.
     pub args: Vec<NamedArg>,
     pub body: Vec<TestStmt>,
@@ -514,9 +552,14 @@ mod tests {
             span,
         };
         let _ty = Type::Bundle {
-            name: Ident {
-                name: "MemBus".into(),
+            name: QualIdent {
+                path: vec![],
+                name: Ident {
+                    name: "MemBus".into(),
+                    span,
+                },
                 span,
+                resolved_file: Cell::new(None),
             },
             args: vec![],
         };
