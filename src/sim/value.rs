@@ -194,7 +194,7 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
         ExprKind::Call { func, args } => call(r, *func, args),
         ExprKind::FnCall { name, args } => eval_fn_call(r, name, args),
         ExprKind::BundleLit(_) => {
-            panic!("BundleLit reached value evaluator — should be pre-expanded by elaborate")
+            Err("BundleLit reached value evaluator — should be pre-expanded by elaborate".into())
         }
     }
 }
@@ -486,7 +486,7 @@ pub(super) fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u3
             n.name
         )),
         Type::Bundle { .. } => {
-            panic!("Type::Bundle reached type_width — should be pre-flattened by elaborate")
+            Err("Type::Bundle reached type_width — should be pre-flattened by elaborate".into())
         }
     }
 }
