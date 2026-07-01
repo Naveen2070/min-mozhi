@@ -137,8 +137,12 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0809 | `default` assignment target is not a `reg`                                                | only `reg` signals can have sequential default assignments; drive wires combinationally          |
 | E0810 | duplicate `default` for the same reg in one `on` block                                    | each reg may have at most one `default` per `on` block; merge into a conditional expression      |
 | E0811 | `const if` condition is not a compile-time constant                                       | use only module parameters, `const` values, literals, and arithmetic/comparison on those         |
-| E0906 | unknown bundle type (parametric `Name(args)` form names a bundle not declared anywhere)   | declare the bundle at file level or import the file that does                                    |
-| E0909 | bundle declared more than once (project-wide name collision)                              | rename one — bundle names are unique across the whole project                                    |
+| E0901 | Bundle literal missing a required field                                                   | list all fields in the bundle literal; the field is named in the error                           |
+| E0902 | Bundle literal references an unknown field name                                           | check spelling against the bundle definition                                                     |
+| E0903 | Duplicate binding name in `let { }` destructure                                           | each name may appear at most once in the binding list                                            |
+| E0906 | Bundle type reference: unknown bundle name or wrong param count                           | declare the bundle at file level or import the file that does; parameter count must match        |
+| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                                    | bundles are nominally typed; ensure the expression produces the correct bundle type              |
+| E0909 | Bundle declared more than once (project-wide name collision)                              | rename one — bundle names are unique across the whole project                                    |
 
 Numbering scheme:
 
