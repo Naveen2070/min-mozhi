@@ -46,12 +46,29 @@ impl Emitter<'_> {
                 ModuleItem::Reset { name: r, .. } => ports.push(format!("input wire {}", r.name)),
                 ModuleItem::Port { dir, name, ty } => {
                     self.check_ascii(name);
-                    let w = self.width(ty);
                     let d = match dir {
                         Dir::In => "input wire",
                         Dir::Out => "output wire",
                     };
-                    ports.push(format!("{d} {w}{}", name.name));
+                    // Bundle ports flatten to one port per field.
+                    let bundle_fields = match ty {
+                        Type::Bundle { name: bname, args } => {
+                            Some(self.resolve_bundle_fields(&bname.name, args))
+                        }
+                        Type::Named(id) if self.project.bundles.contains_key(&id.name) => {
+                            Some(self.resolve_bundle_fields(&id.name, &[]))
+                        }
+                        _ => None,
+                    };
+                    if let Some(fields) = bundle_fields {
+                        for (fname, fty) in &fields {
+                            let w = self.width_resolved(fty);
+                            ports.push(format!("{d} {w}{}_{}", name.name, fname));
+                        }
+                    } else {
+                        let w = self.width(ty);
+                        ports.push(format!("{d} {w}{}", name.name));
+                    }
                 }
                 _ => {}
             }
@@ -104,8 +121,26 @@ impl Emitter<'_> {
             match item {
                 ModuleItem::Wire { name, ty, .. } => {
                     self.check_ascii(name);
-                    let w = self.width(ty);
-                    self.out.push_str(&format!("    wire {w}{};\n", name.name));
+                    // Bundle wires flatten to one wire per field.
+                    let bundle_fields = match ty {
+                        Type::Bundle { name: bname, args } => {
+                            Some(self.resolve_bundle_fields(&bname.name, args))
+                        }
+                        Type::Named(id) if self.project.bundles.contains_key(&id.name) => {
+                            Some(self.resolve_bundle_fields(&id.name, &[]))
+                        }
+                        _ => None,
+                    };
+                    if let Some(fields) = bundle_fields {
+                        for (fname, fty) in &fields {
+                            let w = self.width_resolved(fty);
+                            self.out
+                                .push_str(&format!("    wire {w}{}_{};\n", name.name, fname));
+                        }
+                    } else {
+                        let w = self.width(ty);
+                        self.out.push_str(&format!("    wire {w}{};\n", name.name));
+                    }
                 }
                 ModuleItem::Reg { name, ty, .. } => {
                     self.check_ascii(name);
@@ -152,8 +187,41 @@ impl Emitter<'_> {
         self.emit_instances(&m.items);
 
         // Combinational drives (unrolling `repeat` the same way).
+        // Pre-populate bundle_sigs so emit_drives can flatten bundle assignments.
+        self.bundle_sigs.clear();
+        for item in flat.iter().copied() {
+            let (sig_name, bname, args) = match item {
+                ModuleItem::Port {
+                    name,
+                    ty: Type::Bundle { name: bn, args },
+                    ..
+                } => (name.name.clone(), bn.name.clone(), args.clone()),
+                ModuleItem::Port {
+                    name,
+                    ty: Type::Named(id),
+                    ..
+                } if self.project.bundles.contains_key(&id.name) => {
+                    (name.name.clone(), id.name.clone(), vec![])
+                }
+                ModuleItem::Wire {
+                    name,
+                    ty: Type::Bundle { name: bn, args },
+                    ..
+                } => (name.name.clone(), bn.name.clone(), args.clone()),
+                ModuleItem::Wire {
+                    name,
+                    ty: Type::Named(id),
+                    ..
+                } if self.project.bundles.contains_key(&id.name) => {
+                    (name.name.clone(), id.name.clone(), vec![])
+                }
+                _ => continue,
+            };
+            self.bundle_sigs.insert(sig_name, (bname, args));
+        }
         self.repeat_budget = REPEAT_BUDGET;
         self.emit_drives(&m.items);
+        self.bundle_sigs.clear();
 
         // Sequential blocks: one always per `on`, reset generated from
         // the reset values of the regs each block assigns.
@@ -387,15 +455,78 @@ impl Emitter<'_> {
     fn emit_drives(&mut self, items: &[ModuleItem]) {
         for item in items {
             match item {
-                ModuleItem::Wire { name, init, .. } => {
-                    let rhs = self.expr(init);
-                    self.out
-                        .push_str(&format!("    assign {} = {};\n", name.name, rhs));
+                ModuleItem::Wire { name, ty, init } => {
+                    // Bundle wires: emit one assign per field.
+                    let binfo = match ty {
+                        Type::Bundle { name: bn, args } => Some((bn.name.clone(), args.clone())),
+                        Type::Named(id) if self.project.bundles.contains_key(&id.name) => {
+                            Some((id.name.clone(), vec![]))
+                        }
+                        _ => None,
+                    };
+                    if let Some((bname, args)) = binfo {
+                        let fields = self.resolve_bundle_fields(&bname, &args);
+                        if let ExprKind::BundleLit(inits) = &init.kind {
+                            let inits = inits.clone();
+                            for (fname, fty) in &fields {
+                                if let Some(fi) = inits.iter().find(|fi| fi.name.name == *fname) {
+                                    let r = self.sized_field_expr(&fi.value, fty);
+                                    self.out.push_str(&format!(
+                                        "    assign {}_{} = {};\n",
+                                        name.name, fname, r
+                                    ));
+                                }
+                            }
+                        } else {
+                            // RHS is a signal: emit signame_field = rhs_field.
+                            let r = self.expr(init);
+                            for (fname, _) in &fields {
+                                self.out.push_str(&format!(
+                                    "    assign {}_{fname} = {r}_{fname};\n",
+                                    name.name
+                                ));
+                            }
+                        }
+                    } else {
+                        let rhs = self.expr(init);
+                        self.out
+                            .push_str(&format!("    assign {} = {};\n", name.name, rhs));
+                    }
                 }
                 ModuleItem::Drive { lhs, rhs } => {
-                    let l = self.lvalue(lhs);
-                    let r = self.expr(rhs);
-                    self.out.push_str(&format!("    assign {l} = {r};\n"));
+                    // If LHS is a bundle signal, flatten to one assign per field.
+                    let binfo = self.bundle_sigs.get(&lhs.base.name).cloned();
+                    if let Some((bname, args)) = binfo {
+                        let fields = self.resolve_bundle_fields(&bname, &args);
+                        if let ExprKind::BundleLit(inits) = &rhs.kind {
+                            let inits = inits.clone();
+                            for (fname, fty) in &fields {
+                                if let Some(fi) = inits.iter().find(|fi| fi.name.name == *fname) {
+                                    let r = self.sized_field_expr(&fi.value, fty);
+                                    self.out.push_str(&format!(
+                                        "    assign {}_{} = {};\n",
+                                        lhs.base.name, fname, r
+                                    ));
+                                }
+                            }
+                        } else {
+                            // RHS is a bundle signal (e.g. `rsp = req`).
+                            let rhs_name = match &rhs.kind {
+                                ExprKind::Ident(n) => n.clone(),
+                                _ => self.expr(rhs),
+                            };
+                            for (fname, _) in &fields {
+                                self.out.push_str(&format!(
+                                    "    assign {}_{fname} = {rhs_name}_{fname};\n",
+                                    lhs.base.name
+                                ));
+                            }
+                        }
+                    } else {
+                        let l = self.lvalue(lhs);
+                        let r = self.expr(rhs);
+                        self.out.push_str(&format!("    assign {l} = {r};\n"));
+                    }
                 }
                 ModuleItem::Repeat(r) => self.unroll(r, Self::emit_drives),
                 ModuleItem::ConstIf {
@@ -615,6 +746,35 @@ impl Emitter<'_> {
         self.width_subst(ty, &HashMap::new())
     }
 
+    /// Like `width`, but for already-resolved types where the width expression
+    /// is a known integer literal. Emits `[7:0]` instead of `[(8)-1:0]` by
+    /// evaluating the constant at Rust time rather than leaving it symbolic.
+    fn width_resolved(&mut self, ty: &Type) -> String {
+        match ty {
+            Type::Bit => String::new(),
+            Type::Bits(e) => {
+                if let Ok(w) = consteval::eval(e, &self.env) {
+                    if w >= 1 {
+                        return format!("[{}:0] ", w - 1);
+                    }
+                }
+                // Fallback to symbolic form.
+                let we = self.expr(e);
+                format!("[({we})-1:0] ")
+            }
+            Type::Signed(e) => {
+                if let Ok(w) = consteval::eval(e, &self.env) {
+                    if w >= 1 {
+                        return format!("signed [{}:0] ", w - 1);
+                    }
+                }
+                let we = self.expr(e);
+                format!("signed [({we})-1:0] ")
+            }
+            _ => self.width(ty),
+        }
+    }
+
     /// Like [`Self::width`], but with child-module parameter names replaced
     /// by the instantiating module's argument expressions — used when
     /// declaring auto-wires for a child instance's outputs.
@@ -652,8 +812,165 @@ impl Emitter<'_> {
                     String::new()
                 }
             }
-            Type::Bundle { .. } => todo!(),
+            // Bundle types are flattened to individual signals — `width` is
+            // never called on a bundle type directly in the port/wire path.
+            // If it is called (e.g., from an unexpected path), treat as 0-width.
+            Type::Bundle { .. } => String::new(),
         }
+    }
+
+    /// Emit a bundle field value expression, sized to the field's type.
+    /// For integer literals, this produces `1'b1` (bit), `8'd0` (bits[8]), etc.
+    /// For non-literal expressions, falls back to plain `expr()`.
+    fn sized_field_expr(&mut self, e: &Expr, fty: &Type) -> String {
+        if let ExprKind::Int { value, .. } = &e.kind {
+            let v = *value;
+            match fty {
+                Type::Bit => {
+                    // 1-bit field: emit as 1'b0 / 1'b1.
+                    return format!("1'b{}", v & 1);
+                }
+                Type::Bits(w_expr) => {
+                    if let Ok(w) = consteval::eval(w_expr, &self.env) {
+                        let w = w as u128;
+                        return format!("{w}'d{v}");
+                    }
+                }
+                Type::Signed(w_expr) => {
+                    if let Ok(w) = consteval::eval(w_expr, &self.env) {
+                        let w = w as u128;
+                        return format!("{w}'sd{v}");
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.expr(e)
+    }
+
+    /// Resolve a bundle type to its fields with concrete types, substituting
+    /// any bundle parameters. Returns `Vec<(field_name, resolved_type)>`.
+    /// Args in the `Type::Bundle` override bundle defaults; remaining params
+    /// fold using the current env.
+    pub(super) fn resolve_bundle_fields(
+        &self,
+        bname: &str,
+        args: &[NamedArg],
+    ) -> Vec<(String, Type)> {
+        let Some(bdecl) = self.project.bundles.get(bname) else {
+            return vec![];
+        };
+        // Build param env: bundle defaults first, then call-site overrides.
+        let mut param_env: HashMap<String, i128> = HashMap::new();
+        for p in &bdecl.params {
+            if let Some(default) = &p.default {
+                if let Ok(v) = consteval::eval(default, &self.env) {
+                    param_env.insert(p.name.name.clone(), v);
+                }
+            }
+        }
+        for a in args {
+            if let Ok(v) = consteval::eval(&a.value, &self.env) {
+                param_env.insert(a.name.name.clone(), v);
+            }
+        }
+        // Merge param_env into env for field-type expression evaluation.
+        // We do this by building a temporary Env that extends self.env.
+        let mut merged_env = self.env.clone();
+        for (k, v) in &param_env {
+            merged_env.insert(k.clone(), *v);
+        }
+        // Resolve each field's type: evaluate width expressions fully to integer
+        // literals using the merged env (bundle params + module consts).
+        // This produces `[7:0]` rather than `[(8)-1:0]` for clean Verilog output.
+        bdecl
+            .fields
+            .iter()
+            .map(|f| {
+                let resolved_ty = match &f.ty {
+                    Type::Bit => Type::Bit,
+                    Type::Bits(e) => {
+                        let w = consteval::eval(e, &merged_env).unwrap_or_else(|_| {
+                            // Fall back to substitution if eval fails (symbolic param).
+                            consteval::eval(&substitute_expr(e, &merged_env), &merged_env)
+                                .unwrap_or(1)
+                        });
+                        let lit = Expr {
+                            kind: ExprKind::Int {
+                                value: w as u128,
+                                raw: w.to_string(),
+                            },
+                            span: f.span,
+                        };
+                        Type::Bits(Box::new(lit))
+                    }
+                    Type::Signed(e) => {
+                        let w = consteval::eval(e, &merged_env).unwrap_or_else(|_| {
+                            consteval::eval(&substitute_expr(e, &merged_env), &merged_env)
+                                .unwrap_or(1)
+                        });
+                        let lit = Expr {
+                            kind: ExprKind::Int {
+                                value: w as u128,
+                                raw: w.to_string(),
+                            },
+                            span: f.span,
+                        };
+                        Type::Signed(Box::new(lit))
+                    }
+                    // Enums and nested bundles: leave as-is (checker validates).
+                    other => other.clone(),
+                };
+                (f.name.name.clone(), resolved_ty)
+            })
+            .collect()
+    }
+}
+
+/// Substitute constant ident values in a type-width expression. Used by
+/// `resolve_bundle_fields` to fold bundle param names (e.g. `W`) into their
+/// concrete values so `bits[W]` becomes `bits[8]` in the emitted Verilog.
+/// Only replaces `ExprKind::Ident` nodes that appear in `env`; leaves all
+/// other nodes (arithmetic, literals) structurally identical.
+fn substitute_expr(e: &Expr, env: &consteval::Env) -> Expr {
+    match &e.kind {
+        ExprKind::Ident(name) => {
+            if let Some(&v) = env.get(name.as_str()) {
+                Expr {
+                    kind: ExprKind::Int {
+                        value: v as u128,
+                        raw: v.to_string(),
+                    },
+                    span: e.span,
+                }
+            } else {
+                e.clone()
+            }
+        }
+        ExprKind::Binary { op, lhs, rhs } => Expr {
+            kind: ExprKind::Binary {
+                op: *op,
+                lhs: Box::new(substitute_expr(lhs, env)),
+                rhs: Box::new(substitute_expr(rhs, env)),
+            },
+            span: e.span,
+        },
+        ExprKind::Unary { op, expr } => Expr {
+            kind: ExprKind::Unary {
+                op: *op,
+                expr: Box::new(substitute_expr(expr, env)),
+            },
+            span: e.span,
+        },
+        ExprKind::Call { func, args } => Expr {
+            kind: ExprKind::Call {
+                func: *func,
+                args: args.iter().map(|a| substitute_expr(a, env)).collect(),
+            },
+            span: e.span,
+        },
+        // Literals and other forms are already concrete — clone as-is.
+        _ => e.clone(),
     }
 }
 
