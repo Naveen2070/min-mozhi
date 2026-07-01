@@ -186,9 +186,14 @@ module Top {
 - `include` is an accepted English alias of `import` — both lex to the same
   token, identical semantics. Tooling (`mimz translate`, `mimz fmt`)
   normalizes it to the canonical `import`.
-- All modules and enums of the imported file come into scope. Module names
-  must be **unique across the whole project** — a duplicate is a compile
-  error (no shadowing, no aliasing in v0.2).
+- All modules and enums of the imported file come into scope. Module,
+  enum, and bundle names must be **unique within the file that declares
+  them**; two different files MAY declare the same name (v0.2.19+). A bare
+  reference to a name declared in 2+ visible files is ambiguous (`E0110`)
+  and must be qualified with the import path it came in through:
+  `a.b.Name` (see §1.5b). Function names remain project-wide unique
+  (unaffected by this — functions are called in general expression
+  position, where `.` already means field access, not a namespace path).
 - Imports are not transitive and cycles are a compile error.
 
 **Standard library — `import std.<module>`:**
@@ -219,6 +224,36 @@ module Top {
   hazard — flagged for beginner testing.
 - A child's `clock`/`reset` with the same name as the parent's is connected
   implicitly; different clocks must be wired explicitly.
+
+### 1.5b — Packages / namespacing (v0.2.19)
+
+Two files may declare the same module/enum/bundle name. Qualify a reference
+with the exact import path you wrote, dot-joined, to pick one:
+
+```mimz
+import mine.fifo    // declares module Fifo
+import std.fifo      // ALSO declares module Fifo
+
+module Top {
+  let a = mine.fifo.Fifo(DEPTH: 4) { ... }
+  let b = std.fifo.Fifo(DEPTH: 4) { ... }
+}
+```
+
+- The qualifier is exactly the import path as written in THIS file's own
+  `import` statement — not a separate declared package name.
+- Qualification is available at 4 positions: module instantiation
+  (`let x = a.b.Name(...)`), test header (`test "..." for a.b.Name`), an
+  enum type (`reg s: a.b.Name = ...`), and a bundle type
+  (`wire w: a.b.Name(...)`).
+- A bare (unqualified) reference still works exactly as before, as long as
+  it is unambiguous — this is fully additive; no existing file needs to
+  change.
+- `E0110` — the bare name resolves to 2+ declarations across different
+  files; qualify it.
+- `E0111` — the qualifier doesn't match any `import` this file wrote.
+- Function names (`fn`) are NOT covered — they stay project-wide unique
+  (`E0801`), called in plain expression position.
 
 ### 1.6 Repeated hardware — `repeat`
 
@@ -875,6 +910,14 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.19 (2026-07-01):** **Packages / namespacing** (backlog:
+  `docs/plan/phase-2-ir-synthesis.md`). Module/enum/bundle name uniqueness
+  narrows from project-wide to per-file (§1.5). New qualified-reference
+  syntax `a.b.Name` (§1.5b) at 4 reference points, reusing the `import`
+  path already written — no new keyword. `E0110` (ambiguous bare
+  reference), `E0111` (qualifier matches no import). Function names
+  unaffected (stay project-wide unique, `E0801`) — see Decision
+  D-PKG-1. Additive: no existing `.mimz` file changes behavior.
 - **v0.2.18 (2026-07-01):** **Bundles** — `bundle Name(params) { fields }` at
   file scope (feature 2.4). Parametric; field types must be concrete bit-vectors
   or enums. Port/wire/reg usage; bundle literals `{ field: expr }` (E0901/E0902);
