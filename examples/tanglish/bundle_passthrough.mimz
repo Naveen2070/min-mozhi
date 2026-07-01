@@ -1,0 +1,15 @@
+// bundle_passthrough.mimz — demonstrates bundle declaration, port typing,
+// and bundle literal assignment.
+
+kattai Handshake(W: int = 8) {
+  valid: bit
+  data:  bits[W]
+}
+
+thoguthi BundlePassthrough(W: int = 8) {
+  ulleedu  req: Handshake(W: W)
+  veliyeedu rsp: Handshake(W: W)
+
+  // Bundle-to-bundle assignment using dot access and bundle literal
+  rsp = { valid: req.valid, data: req.data }
+}
