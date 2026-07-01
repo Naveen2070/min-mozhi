@@ -230,7 +230,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
                             }
                         }
                         Type::Named(_) => String::new(),
-                        Type::Bundle { .. } => todo!(),
+                        Type::Bundle { .. } => String::new(), // bundle ports are pre-flattened by emit_ports
                     };
                     let signed = if matches!(ty, Type::Signed(_)) {
                         "signed "

@@ -610,7 +610,12 @@ fn elaborate_module(
                 };
                 work.extend(branch.iter().rev());
             }
-            ModuleItem::BundleDestructure { .. } => todo!(),
+            ModuleItem::BundleDestructure { .. } => {
+                return Err(
+                    "bundle destructure in module body is not yet supported by the simulator"
+                        .to_string(),
+                );
+            }
         }
     }
 
@@ -1182,7 +1187,9 @@ impl<'d, 's> Rw<'d, 's> {
                     .map(|a| self.expr(a))
                     .collect::<Result<_, _>>()?,
             },
-            ExprKind::BundleLit(_) => todo!(),
+            ExprKind::BundleLit(_) => {
+                return Err("bundle literal in unsupported expression position".to_string());
+            }
         };
         Ok(Expr { kind, span: e.span })
     }
@@ -1337,7 +1344,7 @@ impl<'d, 's> Rw<'d, 's> {
                         const_eval(e, self.consts).unwrap_or(0) as u128
                     }
                     ast::Type::Named(_) => 0, // E0807: already rejected by checker
-                    ast::Type::Bundle { .. } => todo!(),
+                    ast::Type::Bundle { .. } => 0, // E0807 rejects bundle payload fields in enums
                 };
                 debug_assert!(
                     field_w > 0,
