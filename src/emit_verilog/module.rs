@@ -156,9 +156,12 @@ impl Emitter<'_> {
                     self.out
                         .push_str(&format!("    reg {w}{} [0:({d})-1];\n", name.name));
                 }
-                ModuleItem::BundleDestructure { .. } => {
-                    // ponytail: T8 will implement bundle destructure; block it here so broken Verilog isn't silently emitted
-                    unimplemented!("BundleDestructure emit — coming in T8")
+                ModuleItem::BundleDestructure { span, .. } => {
+                    self.err(
+                        *span,
+                        "bundle destructure in module body is not yet supported by the emitter",
+                        "use wire declarations with dot-access instead: `wire f: bit = bus.field`",
+                    );
                 }
                 _ => {}
             }
