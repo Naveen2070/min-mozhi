@@ -236,6 +236,30 @@ impl Parser {
         }
     }
 
+    /// Expect a possibly-namespaced identifier: bare `Name` or `a.b.Name`.
+    /// The single-segment case is byte-identical to `ident` — zero grammar
+    /// risk for existing single-name references. `what` describes the final
+    /// name in the error message, same as `ident`.
+    fn qual_ident(&mut self, what: &str) -> Option<QualIdent> {
+        let first = self.ident(what)?;
+        let start = first.span;
+        let mut path = Vec::new();
+        let mut name = first;
+        while self.at(&TokKind::Dot) {
+            self.bump();
+            let next = self.ident(what)?;
+            path.push(name);
+            name = next;
+        }
+        let span = start.join(name.span);
+        Some(QualIdent {
+            path,
+            name,
+            span,
+            resolved_file: std::cell::Cell::new(None),
+        })
+    }
+
     fn skip_newlines(&mut self) {
         while self.eat(&TokKind::Newline) {}
     }

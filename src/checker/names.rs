@@ -427,28 +427,30 @@ impl<'a> Checker<'a> {
             Type::Bit => {}
             Type::Bits(w) | Type::Signed(w) => self.expr(file, sc, env, w),
             Type::Bundle { name, .. } => {
-                if !self.bundles.contains_key(&name.name) {
+                if !self.bundles.contains_key(&name.name.name) {
                     self.err(
                         file,
                         name.span,
                         "E0906",
-                        format!("unknown bundle type `{}`", name.name),
+                        format!("unknown bundle type `{}`", name.name.name),
                         "declare the bundle at file level before using it as a type",
                     );
                 }
             }
             Type::Named(n) => {
-                if self.lookup_enum(sc, &n.name).is_none() && !self.bundles.contains_key(&n.name) {
+                if self.lookup_enum(sc, &n.name.name).is_none()
+                    && !self.bundles.contains_key(&n.name.name)
+                {
                     self.err(
                         file,
                         n.span,
                         "E0103",
-                        format!("unknown type `{}`", n.name),
+                        format!("unknown type `{}`", n.name.name),
                         format!(
                             "named types are `enum` or `bundle` declarations — declare \
                              `enum {} {{ ... }}` or `bundle {} {{ ... }}` at file level, \
                              or import the file that does",
-                            n.name, n.name
+                            n.name.name, n.name.name
                         ),
                     );
                 }
@@ -468,13 +470,13 @@ impl<'a> Checker<'a> {
         if let Some(idx) = &inst.index {
             self.expr(file, sc, env, idx);
         }
-        let target = self.modules.get(&inst.module.name).map(|&(_, m)| m);
+        let target = self.modules.get(&inst.module.name.name).map(|&(_, m)| m);
         let Some(target) = target else {
             self.err(
                 file,
                 inst.module.span,
                 "E0102",
-                format!("no module named `{}` in this project", inst.module.name),
+                format!("no module named `{}` in this project", inst.module.name.name),
                 "check the spelling, or add the `import` that brings it in \
                  (spec/02 section 1.5)",
             );
@@ -594,13 +596,13 @@ impl<'a> Checker<'a> {
     }
 
     fn check_test(&mut self, file: usize, t: &'a TestDecl) {
-        let target = self.modules.get(&t.module.name).map(|&(_, m)| m);
+        let target = self.modules.get(&t.module.name.name).map(|&(_, m)| m);
         let Some(target) = target else {
             self.err(
                 file,
                 t.module.span,
                 "E0102",
-                format!("no module named `{}` in this project", t.module.name),
+                format!("no module named `{}` in this project", t.module.name.name),
                 "check the spelling, or add the `import` that brings it in \
                  (spec/02 section 1.5)",
             );
@@ -994,7 +996,7 @@ impl<'a> Checker<'a> {
     /// `inst.field` — the field must be an OUTPUT port of the target
     /// module (inputs are connected at instantiation, not read back).
     fn inst_output(&mut self, file: usize, inst: &'a Inst, field: &crate::ast::Ident) {
-        let Some(target) = self.modules.get(&inst.module.name).map(|&(_, m)| m) else {
+        let Some(target) = self.modules.get(&inst.module.name.name).map(|&(_, m)| m) else {
             return; // unknown module already reported at the `let`
         };
         let mut outputs: Vec<&str> = Vec::new();
@@ -1071,11 +1073,11 @@ impl<'a> Checker<'a> {
         match ty {
             Type::Bit | Type::Bits(_) | Type::Signed(_) => {}
             Type::Named(id) => {
-                if !self.enums.contains_key(&id.name) {
-                    let msg = if self.bundles.contains_key(&id.name) {
-                        format!("bundle field cannot be a bundle type (`{}`)", id.name)
+                if !self.enums.contains_key(&id.name.name) {
+                    let msg = if self.bundles.contains_key(&id.name.name) {
+                        format!("bundle field cannot be a bundle type (`{}`)", id.name.name)
                     } else {
-                        format!("`{}` is not a concrete type for a bundle field", id.name)
+                        format!("`{}` is not a concrete type for a bundle field", id.name.name)
                     };
                     self.err(
                         file,
@@ -1088,12 +1090,12 @@ impl<'a> Checker<'a> {
                 }
             }
             Type::Bundle { name, .. } => {
-                if !self.bundles.contains_key(&name.name) {
+                if !self.bundles.contains_key(&name.name.name) {
                     self.err(
                         file,
                         name.span,
                         "E0906",
-                        format!("unknown bundle type `{}`", name.name),
+                        format!("unknown bundle type `{}`", name.name.name),
                         "declare the bundle at file level before using it as a type",
                     );
                 } else {
@@ -1101,7 +1103,7 @@ impl<'a> Checker<'a> {
                         file,
                         span,
                         "E0807",
-                        format!("bundle field cannot be a bundle type (`{}`)", name.name),
+                        format!("bundle field cannot be a bundle type (`{}`)", name.name.name),
                         "nested bundles are not supported in v0.2 — use flat field types",
                     );
                 }

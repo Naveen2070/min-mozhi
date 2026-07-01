@@ -265,7 +265,7 @@ fn thamizh_order_test_header_parses_to_the_same_shape() {
         panic!("expected a test decl")
     };
     assert_eq!(t.name, "counts up");
-    assert_eq!(t.module.name, "Counter");
+    assert_eq!(t.module.name.name, "Counter");
     assert_eq!(t.args.len(), 1);
     assert_eq!(t.args[0].name.name, "WIDTH");
     assert_eq!(t.body.len(), 3); // drive, tick, expect
@@ -279,7 +279,7 @@ fn thamizh_test_header_with_no_params_parses() {
     let TopItem::Test(t) = &f.items[0] else {
         panic!("expected a test decl")
     };
-    assert_eq!(t.module.name, "Counter");
+    assert_eq!(t.module.name.name, "Counter");
     assert!(t.args.is_empty());
 }
 
@@ -860,4 +860,32 @@ module Top {
         "expected E0904, got: {:?}",
         errs
     );
+}
+
+#[test]
+fn qualified_module_reference_parses() {
+    let file = parse_ok("module M {\n  let x = a.b.Foo() { }\n}\n");
+    let TopItem::Module(m) = &file.items[0] else {
+        panic!("expected a module")
+    };
+    let ModuleItem::Inst(inst) = &m.items[0] else {
+        panic!("expected an inst")
+    };
+    assert_eq!(inst.module.path.len(), 2);
+    assert_eq!(inst.module.path[0].name, "a");
+    assert_eq!(inst.module.path[1].name, "b");
+    assert_eq!(inst.module.name.name, "Foo");
+}
+
+#[test]
+fn bare_module_reference_still_parses_with_empty_path() {
+    let file = parse_ok("module M {\n  let x = Foo() { }\n}\n");
+    let TopItem::Module(m) = &file.items[0] else {
+        panic!("expected a module")
+    };
+    let ModuleItem::Inst(inst) = &m.items[0] else {
+        panic!("expected an inst")
+    };
+    assert!(inst.module.is_bare());
+    assert_eq!(inst.module.name.name, "Foo");
 }

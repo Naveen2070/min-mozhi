@@ -117,7 +117,22 @@ impl Parser {
                 Some(Type::Signed(Box::new(n)))
             }
             _ => {
-                // Plain enum/bundle name OR parametric bundle `Foo(X: N)`.
+                // Plain enum/bundle name, namespaced (`a.b.Foo`), OR parametric
+                // bundle `Foo(X: N)` / `a.b.Foo(X: N)`.
+                let mut path = Vec::new();
+                let mut name = id;
+                while self.at(&TokKind::Dot) {
+                    self.bump();
+                    let next = self.ident("a type name after `.`")?;
+                    path.push(name);
+                    name = next;
+                }
+                let qid = QualIdent {
+                    span: name.span, // widened below if path is non-empty
+                    path,
+                    name,
+                    resolved_file: std::cell::Cell::new(None),
+                };
                 if self.eat(&TokKind::LParen) {
                     let mut args = Vec::new();
                     loop {
@@ -138,9 +153,9 @@ impl Parser {
                             break;
                         }
                     }
-                    Some(Type::Bundle { name: id, args })
+                    Some(Type::Bundle { name: qid, args })
                 } else {
-                    Some(Type::Named(id))
+                    Some(Type::Named(qid))
                 }
             }
         }

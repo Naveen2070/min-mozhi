@@ -483,7 +483,7 @@ pub(super) fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u3
         Type::Signed(e) => Ok((checked_width(const_eval(e, ints)?)?, true)),
         Type::Named(n) => Err(format!(
             "signal of enum type `{}` — the simulator does not model enum signals yet",
-            n.name
+            n.name.name
         )),
         Type::Bundle { .. } => {
             Err("Type::Bundle reached type_width — should be pre-flattened by elaborate".into())

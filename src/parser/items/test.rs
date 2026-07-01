@@ -12,7 +12,7 @@ impl Parser {
         let start = self.bump().span; // test
         let name = self.test_name()?;
         self.expect_kw(Kw::For, "`for` then the module under test")?;
-        let module = self.ident("the module under test")?;
+        let module = self.qual_ident("the module under test")?;
         let args = self.test_args()?;
         let (body, end) = self.test_block()?;
         Some(TestDecl {
@@ -30,7 +30,7 @@ impl Parser {
     /// identical [`TestDecl`] AST as the code-order form, so a thamizh-order test
     /// and its code-order twin run the same way.
     pub(super) fn test_decl_thamizh(&mut self) -> Option<TestDecl> {
-        let module = self.ident("the module under test")?;
+        let module = self.qual_ident("the module under test")?;
         let start = module.span;
         let args = self.test_args()?;
         self.expect_kw(Kw::For, "`kaaga` (for) after the module under test")?;
