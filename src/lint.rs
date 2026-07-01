@@ -169,7 +169,7 @@ fn collect_item(
             spans
                 .entry(inst.name.name.clone())
                 .or_insert(inst.name.span);
-            referenced.insert(inst.module.name.clone());
+            referenced.insert(inst.module.name.name.clone());
             for conn in &inst.conns {
                 collect_expr_names(&conn.signal, referenced);
             }

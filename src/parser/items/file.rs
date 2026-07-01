@@ -128,7 +128,11 @@ impl Parser {
         }
         let span = start.join(path.last().unwrap().span);
         self.terminator();
-        Some(Import { path, span })
+        Some(Import {
+            path,
+            span,
+            resolved_file: std::cell::Cell::new(None),
+        })
     }
 
     /// `constDecl = "const" ident ":" paramTy "=" expr`

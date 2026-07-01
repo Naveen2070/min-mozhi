@@ -54,12 +54,12 @@ fn type_str(t: &Type) -> String {
         Type::Bit => "bit".to_string(),
         Type::Bits(e) => format!("bits[{}]", expr_str(e)),
         Type::Signed(e) => format!("signed[{}]", expr_str(e)),
-        Type::Named(id) => id.name.clone(),
+        Type::Named(id) => id.to_dotted(),
         Type::Bundle { name, args } => {
             if args.is_empty() {
-                name.name.clone()
+                name.to_dotted()
             } else {
-                format!("{}(…)", name.name)
+                format!("{}(…)", name.to_dotted())
             }
         }
     }
@@ -221,7 +221,8 @@ fn push_module_items(
                 span: inst.name.span,
                 render: format!(
                     "let {} = {}(…) — instance",
-                    inst.name.name, inst.module.name
+                    inst.name.name,
+                    inst.module.to_dotted()
                 ),
                 module_idx,
             }),
@@ -350,14 +351,14 @@ fn collect_refs(index: &SymbolIndex, files: &[LoadedFile], file_idx: usize) -> V
 /// `same_module_any_file` tier in `resolve_at` handles the cross-file case).
 fn collect_test_refs(t: &TestDecl, index: &SymbolIndex, refs: &mut Vec<Ref>) {
     refs.push(Ref {
-        name: t.module.name.clone(),
+        name: t.module.name.name.clone(),
         span: t.module.span,
         module_idx: None,
     });
     let mut_pos = index
         .symbols
         .iter()
-        .position(|s| s.kind == SymKind::Module && s.name == t.module.name);
+        .position(|s| s.kind == SymKind::Module && s.name == t.module.name.name);
     for a in &t.args {
         collect_expr_refs(&a.value, mut_pos, refs);
     }
@@ -419,7 +420,7 @@ fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Ve
         ModuleItem::Inst(inst) => {
             // The instantiated module name is a cross-file reference.
             refs.push(Ref {
-                name: inst.module.name.clone(),
+                name: inst.module.name.name.clone(),
                 span: inst.module.span,
                 module_idx,
             });
