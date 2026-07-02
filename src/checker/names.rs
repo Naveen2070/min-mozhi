@@ -428,32 +428,43 @@ impl<'a> Checker<'a> {
             Type::Bit => {}
             Type::Bits(w) | Type::Signed(w) => self.expr(file, sc, env, w),
             Type::Bundle { name, .. } => {
-                if !self.bundles.contains_key(&name.name.name) {
-                    self.err(
+                self.resolve(file, &self.bundles.clone(), name, |ck| {
+                    ck.err(
                         file,
                         name.span,
                         "E0906",
                         format!("unknown bundle type `{}`", name.name.name),
                         "declare the bundle at file level before using it as a type",
                     );
-                }
+                });
             }
             Type::Named(n) => {
-                if self.lookup_enum(sc, &n.name.name).is_none()
-                    && !self.bundles.contains_key(&n.name.name)
-                {
-                    self.err(
-                        file,
-                        n.span,
-                        "E0103",
-                        format!("unknown type `{}`", n.name.name),
-                        format!(
-                            "named types are `enum` or `bundle` declarations — declare \
-                             `enum {} {{ ... }}` or `bundle {} {{ ... }}` at file level, \
-                             or import the file that does",
-                            n.name.name, n.name.name
-                        ),
-                    );
+                // Module-scope enum shadows any project-wide import — unchanged
+                // behavior. Only once that's ruled out do we resolve against
+                // the project tables (enum first, then bundle — same
+                // "enum OR bundle" disjunction as before, now going through
+                // `resolve` so an ambiguous/qualified reference gets its own
+                // E0110/E0111 instead of silently picking the first file).
+                let sc_enum = matches!(sc.names.get(&n.name.name), Some(Bind::Enum(_)));
+                if !sc_enum {
+                    if self.enums.contains_key(&n.name.name) {
+                        self.resolve(file, &self.enums.clone(), n, |_| {});
+                    } else if self.bundles.contains_key(&n.name.name) {
+                        self.resolve(file, &self.bundles.clone(), n, |_| {});
+                    } else {
+                        self.err(
+                            file,
+                            n.span,
+                            "E0103",
+                            format!("unknown type `{}`", n.name.name),
+                            format!(
+                                "named types are `enum` or `bundle` declarations — declare \
+                                 `enum {} {{ ... }}` or `bundle {} {{ ... }}` at file level, \
+                                 or import the file that does",
+                                n.name.name, n.name.name
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -470,17 +481,83 @@ impl<'a> Checker<'a> {
             .map(|&(_, e)| e)
     }
 
+    /// Resolve a possibly-namespaced reference against a project-wide
+    /// multimap. `unknown` is called (and its diagnostic emitted) when there
+    /// are 0 candidates — same behavior/codes as before this feature. Returns
+    /// `None` on 0, ambiguous-bare, or unmatched-qualifier; `Some` on exactly
+    /// 1 candidate or a qualifier that matches exactly one.
+    fn resolve<'b, T>(
+        &mut self,
+        file: usize,
+        table: &HashMap<String, Vec<(usize, &'b T)>>,
+        q: &'b crate::ast::QualIdent,
+        unknown: impl FnOnce(&mut Self),
+    ) -> Option<&'b T> {
+        let Some(candidates) = table.get(&q.name.name) else {
+            unknown(self);
+            return None;
+        };
+        if q.is_bare() {
+            match candidates.as_slice() {
+                [] => unreachable!(
+                    "empty Vec is never inserted — symbols.rs always pushes at least one"
+                ),
+                [(f, only)] => {
+                    q.resolved_file.set(Some(*f));
+                    Some(*only)
+                }
+                _ => {
+                    let files: Vec<String> = candidates
+                        .iter()
+                        .map(|&(f, _)| format!("file {f}"))
+                        .collect();
+                    self.err(
+                        file,
+                        q.span,
+                        "E0110",
+                        format!(
+                            "`{}` is ambiguous — declared in {} different files",
+                            q.name.name,
+                            candidates.len()
+                        ),
+                        format!(
+                            "qualify with the import path to pick one, e.g. `a.b.{}` \
+                             (candidates: {})",
+                            q.name.name,
+                            files.join(", ")
+                        ),
+                    );
+                    None
+                }
+            }
+        } else {
+            let Some(target_file) = q.resolved_file.get() else {
+                self.err(
+                    file,
+                    q.span,
+                    "E0111",
+                    format!(
+                        "the path in `{}` doesn't match any `import` in this file",
+                        q.to_dotted()
+                    ),
+                    "check the import path segments, or drop the qualifier if \
+                     the bare name is unambiguous",
+                );
+                return None;
+            };
+            candidates
+                .iter()
+                .find(|&&(f, _)| f == target_file)
+                .map(|&(_, t)| t)
+        }
+    }
+
     fn check_inst(&mut self, file: usize, sc: &Scope<'a>, env: &Env, inst: &'a Inst) {
         if let Some(idx) = &inst.index {
             self.expr(file, sc, env, idx);
         }
-        let target = self
-            .modules
-            .get(&inst.module.name.name)
-            .and_then(|v| v.first())
-            .map(|&(_, m)| m);
-        let Some(target) = target else {
-            self.err(
+        let target = self.resolve(file, &self.modules.clone(), &inst.module, |ck| {
+            ck.err(
                 file,
                 inst.module.span,
                 "E0102",
@@ -491,6 +568,8 @@ impl<'a> Checker<'a> {
                 "check the spelling, or add the `import` that brings it in \
                  (spec/02 section 1.5)",
             );
+        });
+        let Some(target) = target else {
             // Still resolve the argument/connection expressions.
             for NamedArg { value, .. } in &inst.args {
                 self.expr(file, sc, env, value);
@@ -607,13 +686,8 @@ impl<'a> Checker<'a> {
     }
 
     fn check_test(&mut self, file: usize, t: &'a TestDecl) {
-        let target = self
-            .modules
-            .get(&t.module.name.name)
-            .and_then(|v| v.first())
-            .map(|&(_, m)| m);
-        let Some(target) = target else {
-            self.err(
+        let target = self.resolve(file, &self.modules.clone(), &t.module, |ck| {
+            ck.err(
                 file,
                 t.module.span,
                 "E0102",
@@ -621,6 +695,8 @@ impl<'a> Checker<'a> {
                 "check the spelling, or add the `import` that brings it in \
                  (spec/02 section 1.5)",
             );
+        });
+        let Some(target) = target else {
             return;
         };
         let params: Vec<&str> = target.params.iter().map(|p| p.name.name.as_str()).collect();
@@ -1011,13 +1087,19 @@ impl<'a> Checker<'a> {
     /// `inst.field` — the field must be an OUTPUT port of the target
     /// module (inputs are connected at instantiation, not read back).
     fn inst_output(&mut self, file: usize, inst: &'a Inst, field: &crate::ast::Ident) {
+        // `check_inst` already resolved (and reported E0102/E0110/E0111 for)
+        // this same `inst.module` — read the answer it left behind instead
+        // of re-resolving (which would re-emit those diagnostics).
+        let Some(target_file) = inst.module.resolved_file.get() else {
+            return; // unknown/ambiguous/unmatched module already reported at the `let`
+        };
         let Some(target) = self
             .modules
             .get(&inst.module.name.name)
-            .and_then(|v| v.first())
+            .and_then(|v| v.iter().find(|&&(f, _)| f == target_file))
             .map(|&(_, m)| m)
         else {
-            return; // unknown module already reported at the `let`
+            return;
         };
         let mut outputs: Vec<&str> = Vec::new();
         let mut is_input = false;
@@ -1093,7 +1175,9 @@ impl<'a> Checker<'a> {
         match ty {
             Type::Bit | Type::Bits(_) | Type::Signed(_) => {}
             Type::Named(id) => {
-                if !self.enums.contains_key(&id.name.name) {
+                if self.enums.contains_key(&id.name.name) {
+                    self.resolve(file, &self.enums.clone(), id, |_| {});
+                } else {
                     let msg = if self.bundles.contains_key(&id.name.name) {
                         format!("bundle field cannot be a bundle type (`{}`)", id.name.name)
                     } else {
@@ -1113,15 +1197,8 @@ impl<'a> Checker<'a> {
                 }
             }
             Type::Bundle { name, .. } => {
-                if !self.bundles.contains_key(&name.name.name) {
-                    self.err(
-                        file,
-                        name.span,
-                        "E0906",
-                        format!("unknown bundle type `{}`", name.name.name),
-                        "declare the bundle at file level before using it as a type",
-                    );
-                } else {
+                if self.bundles.contains_key(&name.name.name) {
+                    self.resolve(file, &self.bundles.clone(), name, |_| {});
                     self.err(
                         file,
                         span,
@@ -1131,6 +1208,14 @@ impl<'a> Checker<'a> {
                             name.name.name
                         ),
                         "nested bundles are not supported in v0.2 — use flat field types",
+                    );
+                } else {
+                    self.err(
+                        file,
+                        name.span,
+                        "E0906",
+                        format!("unknown bundle type `{}`", name.name.name),
+                        "declare the bundle at file level before using it as a type",
                     );
                 }
             }
