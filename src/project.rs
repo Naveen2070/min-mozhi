@@ -147,6 +147,12 @@ pub fn load_project_with_lib(
     let mut std_files: Vec<LoadedFile> = Vec::new();
     let mut visited: HashSet<PathBuf> = HashSet::new();
     let mut queue: Vec<PathBuf> = vec![entry.to_path_buf()];
+    // (importing file's eventual index in `files`, that import's index within
+    // `loaded.ast.imports`, target path) — resolved to real indices once
+    // `files` (+ `std_files`, appended after) is final. The importer's index
+    // is `files.len()` at the time it's pushed: files are only ever pushed,
+    // never reordered, so that value is stable as the file's final slot.
+    let mut pending: Vec<(usize, usize, PathBuf)> = Vec::new();
 
     while let Some(path) = queue.pop() {
         let canon = path.canonicalize().unwrap_or_else(|_| path.clone());
@@ -155,16 +161,18 @@ pub fn load_project_with_lib(
         }
         let loaded = parse_file(&path)?;
         let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-        for import in &loaded.ast.imports {
+        let importer_slot = files.len();
+        for (import_idx, import) in loaded.ast.imports.iter().enumerate() {
             // Standard-library import? First segment is a std namespace alias.
             if let Some(first) = import.path.first()
                 && stdlib::is_std_namespace(&first.name)
             {
-                if let Some(std_file) =
-                    resolve_std_import(import, lib_std, &mut visited, &mut queue, &loaded)?
-                {
+                let (std_file, target) =
+                    resolve_std_import(import, lib_std, &mut visited, &mut queue, &loaded)?;
+                if let Some(std_file) = std_file {
                     std_files.push(std_file);
                 }
+                pending.push((importer_slot, import_idx, target));
                 continue;
             }
             // Plain file-relative import (unchanged).
@@ -176,11 +184,27 @@ pub fn load_project_with_lib(
             if !p.exists() {
                 return Err(missing_import(&loaded, import, &p));
             }
-            queue.push(p);
+            queue.push(p.clone());
+            pending.push((importer_slot, import_idx, p));
         }
         files.push(loaded);
     }
     files.extend(std_files);
+
+    let canon_index: std::collections::HashMap<PathBuf, usize> = files
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (f.path.canonicalize().unwrap_or_else(|_| f.path.clone()), i))
+        .collect();
+    for (importer_slot, import_idx, target) in pending {
+        let target_canon = target.canonicalize().unwrap_or(target);
+        if let Some(&idx) = canon_index.get(&target_canon) {
+            files[importer_slot].ast.imports[import_idx]
+                .resolved_file
+                .set(Some(idx));
+        }
+    }
+
     Ok(files)
 }
 
@@ -205,17 +229,20 @@ fn missing_import(loaded: &LoadedFile, import: &ast::Import, p: &Path) -> LoadEr
 
 /// Resolve one `import std.<module>` (namespace already matched). Returns the
 /// embedded source as a synthetic [`LoadedFile`] for the caller to append after
-/// the user files, or `None` when the on-disk override is used (queued like any
-/// file) or the module was already loaded. Std modules are self-contained (no
-/// transitive imports — guarded by a unit test in `stdlib`), so the embedded
-/// variant is parsed directly.
+/// the user files (or `None` when the on-disk override is used — queued like
+/// any file — or the module was already loaded), alongside the target path
+/// this import resolved to (real on-disk path for the override, or the
+/// synthetic `std:<module>.mimz` path used to dedup/tag the embedded
+/// `LoadedFile`) so the caller can later map the import to its file index.
+/// Std modules are self-contained (no transitive imports — guarded by a unit
+/// test in `stdlib`), so the embedded variant is parsed directly.
 fn resolve_std_import(
     import: &ast::Import,
     lib_std: Option<&Path>,
     visited: &mut HashSet<PathBuf>,
     queue: &mut Vec<PathBuf>,
     loaded: &LoadedFile,
-) -> Result<Option<LoadedFile>, LoadError> {
+) -> Result<(Option<LoadedFile>, PathBuf), LoadError> {
     let std_err = |msg: String| LoadError::Source {
         path: loaded.path.clone(),
         src: loaded.src.clone(),
@@ -254,14 +281,14 @@ fn resolve_std_import(
         if !p.exists() {
             return Err(missing_import(loaded, import, &p));
         }
-        queue.push(p);
-        return Ok(None);
+        queue.push(p.clone());
+        return Ok((None, p));
     }
 
     // Embedded: parse the &str into a synthetic in-memory file.
     let vpath = PathBuf::from(format!("std:{}.mimz", m.stem));
     if !visited.insert(vpath.clone()) {
-        return Ok(None); // already loaded this std module
+        return Ok((None, vpath)); // already loaded this std module
     }
     let src = m.source(variant).to_string();
     let toks = lexer::lex(&src).map_err(|diags| LoadError::Source {
@@ -274,9 +301,41 @@ fn resolve_std_import(
         src: src.clone(),
         diags,
     })?;
-    Ok(Some(LoadedFile {
-        path: vpath,
-        src,
-        ast,
-    }))
+    Ok((
+        Some(LoadedFile {
+            path: vpath.clone(),
+            src,
+            ast,
+        }),
+        vpath,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_resolved_file_points_at_the_right_index() {
+        let dir = std::env::temp_dir().join(format!("mimz_import_resolve_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("adder.mimz"),
+            "module Adder {\n  out y: bit\n  y = 0\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("top.mimz"),
+            "import adder\nmodule Top {\n  let x = adder.Adder() { }\n}\n",
+        )
+        .unwrap();
+        let files = match load_project(&dir.join("top.mimz")) {
+            Ok(f) => f,
+            Err(_) => panic!("loads"),
+        };
+        assert_eq!(files[0].ast.imports.len(), 1);
+        let resolved = files[0].ast.imports[0].resolved_file.get();
+        assert_eq!(resolved, Some(1), "adder.mimz should be files[1]");
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }
