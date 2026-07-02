@@ -21,8 +21,14 @@ impl Emitter<'_> {
         self.env = self.eval_consts_items(&m.items, file_env.clone());
         let flat: Vec<&ModuleItem> = self.flatten_items(&m.items);
 
-        // Parameters.
-        let mut header = format!("module {}", m.name.name);
+        // Parameters. The Verilog identifier is the bare name, UNLESS
+        // another file also declares a module of this name — the
+        // packages/namespacing same-name-across-files feature (spec/02
+        // section 1.5b) — in which case it is disambiguated by declaring
+        // file so two same-named modules never both emit as `module Fifo`
+        // (a real Verilog toolchain rejects that outright).
+        let mod_name = self.project.verilog_module_name(self.cur_file, m);
+        let mut header = format!("module {}", mod_name);
         if !m.params.is_empty() {
             let ps: Vec<String> = m
                 .params
@@ -559,7 +565,7 @@ impl Emitter<'_> {
     /// auto-declared wire named `{instance}_{port}` — which is exactly what
     /// `inst.port` field-accesses render to in `expr.rs`.
     fn instance(&mut self, inst: &Inst) {
-        let Some(child) = self.project.resolve_module(&inst.module) else {
+        let Some((child_file, child)) = self.project.resolve_module_with_file(&inst.module) else {
             self.err(
                 inst.module.span,
                 format!("unknown module `{}`", inst.module.name.name),
@@ -581,7 +587,7 @@ impl Emitter<'_> {
         // and a negative width is already checker-rejected (E0410).
         let child_consts: Vec<(String, Expr)> = self
             .module_envs
-            .get(&child.name.name)
+            .get(&(child_file, child.name.name.clone()))
             .map(|env| {
                 env.iter()
                     .filter(|&(_, &v)| v >= 0)
@@ -684,9 +690,12 @@ impl Emitter<'_> {
                 .collect();
             format!(" #({})", ps.join(", "))
         };
+        // Must agree with the SAME `child`/`child_file` pair's declaration
+        // header (`module()`, above) — same target, same emitted identifier.
+        let child_verilog_name = self.project.verilog_module_name(child_file, child);
         self.out.push_str(&format!(
             "    {}{} {} ({});\n",
-            child.name.name,
+            child_verilog_name,
             params,
             iname,
             port_conns.join(", ")
