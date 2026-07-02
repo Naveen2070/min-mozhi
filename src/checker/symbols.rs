@@ -1,9 +1,12 @@
-//! Pass 1 — project symbol tables and project-wide duplicate detection.
+//! Pass 1 — project symbol tables and per-file duplicate detection.
 //!
-//! Builds `Checker::modules` and `Checker::enums` (both project-wide by
-//! name) and reports E0001/E0002 duplicates. The per-module scope is
-//! built later, in `names.rs` — this pass only handles names that must
-//! be unique across the whole project (spec/02 section 1.5).
+//! Builds `Checker::modules`, `Checker::enums`, and `Checker::bundles` as
+//! multimaps (name -> every declaring file/node) and reports E0001/E0002/
+//! E0909 for a name reused within the SAME file. Reusing a name across
+//! different files is legal here — it is resolved (or flagged ambiguous)
+//! at use-site by qualifying the reference (spec/02 section 1.5b), which
+//! is `names.rs`'s job, not this pass's. `funcs` stays project-wide unique
+//! (D-PKG-1) and is unaffected by this pass's per-file relaxation.
 
 use crate::ast::{Builtin, TopItem};
 
@@ -15,46 +18,66 @@ impl<'a> Checker<'a> {
             for item in &f.items {
                 match item {
                     TopItem::Module(m) => {
-                        if self.modules.contains_key(&m.name.name) {
+                        let entry = self.modules.entry(m.name.name.clone()).or_default();
+                        if entry.iter().any(|&(f, _)| f == file) {
                             self.err(
                                 file,
                                 m.name.span,
                                 "E0001",
-                                format!("module `{}` is defined more than once", m.name.name),
-                                "module names are unique across the whole project \
-                                 (spec/02 section 1.5) — rename one of them",
+                                format!(
+                                    "module `{}` is defined more than once in this file",
+                                    m.name.name
+                                ),
+                                "module names are unique within one file — rename one of \
+                                 them (a different file may reuse this name; qualify the \
+                                 reference with the import path if it becomes ambiguous, \
+                                 spec/02 section 1.5b)",
                             );
                         } else {
-                            self.modules.insert(m.name.name.clone(), (file, m));
+                            entry.push((file, m));
                         }
                     }
                     TopItem::Enum(e) => {
-                        if self.enums.contains_key(&e.name.name) {
+                        let entry = self.enums.entry(e.name.name.clone()).or_default();
+                        if entry.iter().any(|&(f, _)| f == file) {
                             self.err(
                                 file,
                                 e.name.span,
                                 "E0002",
-                                format!("enum `{}` is defined more than once", e.name.name),
+                                format!(
+                                    "enum `{}` is defined more than once in this file",
+                                    e.name.name
+                                ),
                                 "file-level enums come into scope with `import`, so their \
-                                 names must be unique across the project — rename one",
+                                 names must be unique within one file — rename one of them \
+                                 (a different file may reuse this name; qualify the \
+                                 reference with the import path if it becomes ambiguous, \
+                                 spec/02 section 1.5b)",
                             );
                         } else {
-                            self.enums.insert(e.name.name.clone(), (file, e));
+                            entry.push((file, e));
                         }
                     }
                     TopItem::Const(_) | TopItem::Test(_) => {} // consteval.rs / names.rs
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
                     TopItem::Bundle(b) => {
-                        if self.bundles.contains_key(&b.name.name) {
+                        let entry = self.bundles.entry(b.name.name.clone()).or_default();
+                        if entry.iter().any(|&(f, _)| f == file) {
                             self.err(
                                 file,
                                 b.name.span,
                                 "E0909",
-                                format!("bundle `{}` is defined more than once", b.name.name),
-                                "bundle names are unique across the project — rename one",
+                                format!(
+                                    "bundle `{}` is defined more than once in this file",
+                                    b.name.name
+                                ),
+                                "bundle names are unique within one file — rename one of \
+                                 them (a different file may reuse this name; qualify the \
+                                 reference with the import path if it becomes ambiguous, \
+                                 spec/02 section 1.5b)",
                             );
                         } else {
-                            self.bundles.insert(b.name.name.clone(), (file, b));
+                            entry.push((file, b));
                         }
                     }
                     TopItem::Func(f) => {

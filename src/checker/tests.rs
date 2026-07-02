@@ -77,11 +77,19 @@ fn clog2_in_a_runtime_value_position_is_e0407() {
 }
 
 #[test]
-fn duplicate_module_across_files_is_e0001_in_the_right_file() {
-    let files = [parse("module A {\n}\n"), parse("module A {\n}\n")];
-    let diags = check(&files).expect_err("duplicate");
-    assert_eq!(diags[0].code, Some("E0001"));
-    assert_eq!(diags[0].file, Some(1), "second definition is the error");
+fn same_name_module_in_different_files_is_not_an_error_until_referenced() {
+    let files = [
+        parse("module A {\n  out y: bit\n  y = 0\n}\n"),
+        parse("module A {\n  out z: bit\n  z = 0\n}\n"),
+    ];
+    check(&files)
+        .expect("two files may each declare `A` — no ambiguity until something references it");
+}
+
+#[test]
+fn same_name_module_in_the_same_file_is_still_e0001() {
+    let d = first_err("module A {\n}\nmodule A {\n}\n", "E0001");
+    assert!(d.msg.contains("more than once") || d.msg.contains("twice"));
 }
 
 #[test]
