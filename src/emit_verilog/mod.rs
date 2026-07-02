@@ -115,49 +115,78 @@ pub(crate) use crate::REPEAT_BUDGET;
 /// Project-wide symbol table: every module, enum, and function by name,
 /// borrowed from the parsed files. This is what lets `let u = Adder(...)` find
 /// `Adder` regardless of which imported file defines it.
+///
+/// `modules`/`enums`/`bundles` are multimaps keyed by name, each entry
+/// carrying every `(file_idx, decl)` that declares that name — reusing a
+/// name across different files is legal (spec/02 section 1.5b); it is only
+/// rejected within the SAME file. Resolve a reference with
+/// [`Project::resolve_module`]/`resolve_enum`/`resolve_bundle`, which read
+/// `QualIdent.resolved_file` (set by the checker/`project.rs`) to pick the
+/// right one when a name is reused. `funcs` stays project-wide unique
+/// (D-PKG-1) and is unaffected.
 pub struct Project<'a> {
     /// All modules across the entry file + imports, by name.
-    pub modules: HashMap<String, &'a Module>,
+    pub modules: HashMap<String, Vec<(usize, &'a Module)>>,
     /// All enums (file-level and module-level), by name.
-    pub enums: HashMap<String, &'a EnumDecl>,
+    pub enums: HashMap<String, Vec<(usize, &'a EnumDecl)>>,
     /// All user-defined functions (file-level), by name. Used by the
     /// emitter to inject `function automatic` blocks into modules that
     /// call them.
     pub funcs: HashMap<String, &'a FuncDecl>,
     /// All file-level bundle declarations, by name. Consulted by the emitter
     /// to flatten bundle-typed ports/wires to individual Verilog signals.
-    pub bundles: HashMap<String, &'a BundleDecl>,
+    pub bundles: HashMap<String, Vec<(usize, &'a BundleDecl)>>,
 }
 
 impl<'a> Project<'a> {
-    /// Build the table, rejecting duplicate module names (module names are
-    /// project-unique — spec/02 section 1.5). Diagnostics carry the index
-    /// of the file holding the offending definition.
+    /// Build the table, rejecting a module/enum/bundle name reused within
+    /// the SAME file (per-file uniqueness — spec/02 section 1.5b). The same
+    /// name may legally appear in different files; resolving a reference
+    /// between them is [`Project::resolve_module`]'s job at use-site.
+    /// Diagnostics carry the index of the file holding the offending
+    /// definition.
     pub fn from_files(files: &'a [File]) -> Result<Self, Vec<Diag>> {
-        let mut modules = HashMap::new();
-        let mut enums = HashMap::new();
+        let mut modules: HashMap<String, Vec<(usize, &Module)>> = HashMap::new();
+        let mut enums: HashMap<String, Vec<(usize, &EnumDecl)>> = HashMap::new();
         let mut funcs = HashMap::new();
-        let mut bundles = HashMap::new();
+        let mut bundles: HashMap<String, Vec<(usize, &BundleDecl)>> = HashMap::new();
         let mut diags = Vec::new();
         for (file_idx, file) in files.iter().enumerate() {
             for item in &file.items {
                 match item {
                     TopItem::Module(m) => {
-                        if modules.insert(m.name.name.clone(), m).is_some() {
+                        let entry = modules.entry(m.name.name.clone()).or_default();
+                        if entry.iter().any(|&(f, _)| f == file_idx) {
                             diags.push(
-                                Diag::new(m.name.span, format!("module `{}` is defined twice", m.name.name))
-                                    .with_help("module names must be unique across the whole project (spec/02 section 1.5)")
-                                    .with_file(file_idx),
+                                Diag::new(
+                                    m.name.span,
+                                    format!(
+                                        "module `{}` is defined twice in this file",
+                                        m.name.name
+                                    ),
+                                )
+                                .with_help(
+                                    "module names are unique within one file (spec/02 section 1.5)",
+                                )
+                                .with_file(file_idx),
                             );
+                        } else {
+                            entry.push((file_idx, m));
                         }
                         for mi in &m.items {
                             if let ModuleItem::Enum(e) = mi {
-                                enums.insert(e.name.name.clone(), e);
+                                enums
+                                    .entry(e.name.name.clone())
+                                    .or_default()
+                                    .push((file_idx, e));
                             }
                         }
                     }
                     TopItem::Enum(e) => {
-                        enums.insert(e.name.name.clone(), e);
+                        enums
+                            .entry(e.name.name.clone())
+                            .or_default()
+                            .push((file_idx, e));
                     }
                     // Function declarations are injected per-using-module; no
                     // top-level Verilog emitted here (the checker already
@@ -166,7 +195,10 @@ impl<'a> Project<'a> {
                         funcs.insert(f.name.name.clone(), f);
                     }
                     TopItem::Bundle(b) => {
-                        bundles.insert(b.name.name.clone(), b);
+                        bundles
+                            .entry(b.name.name.clone())
+                            .or_default()
+                            .push((file_idx, b));
                     }
                     TopItem::Const(_) | TopItem::Test(_) | TopItem::Error(_) => {}
                 }
@@ -182,6 +214,50 @@ impl<'a> Project<'a> {
         } else {
             Err(diags)
         }
+    }
+
+    /// Resolve a possibly-namespaced reference. The program already passed
+    /// the checker by the time emit runs, so a `None` here (0 candidates,
+    /// or a still-ambiguous/unmatched qualifier) means the checker SHOULD
+    /// have already rejected this program — callers treat it exactly like
+    /// today's "unknown" case (an unreachable-in-practice defensive path).
+    pub fn resolve_module(&self, q: &QualIdent) -> Option<&'a Module> {
+        Self::resolve(&self.modules, q)
+    }
+    pub fn resolve_enum(&self, q: &QualIdent) -> Option<&'a EnumDecl> {
+        Self::resolve(&self.enums, q)
+    }
+    pub fn resolve_bundle(&self, q: &QualIdent) -> Option<&'a BundleDecl> {
+        Self::resolve(&self.bundles, q)
+    }
+    fn resolve<T>(table: &HashMap<String, Vec<(usize, &'a T)>>, q: &QualIdent) -> Option<&'a T> {
+        let candidates = table.get(&q.name.name)?;
+        if q.is_bare() {
+            match candidates.as_slice() {
+                [(_, only)] => Some(*only),
+                _ => None, // 0 or ambiguous — checker already rejected this
+            }
+        } else {
+            let target = q.resolved_file.get()?;
+            candidates
+                .iter()
+                .find(|&&(f, _)| f == target)
+                .map(|&(_, t)| t)
+        }
+    }
+
+    /// Look up an enum by bare name only, taking the first declaring file
+    /// when the name is reused across files. Used at the handful of
+    /// value-level sites (`Enum.Variant` field access, match-pattern
+    /// bindings) that carry a plain `&str`/`Ident`, not a `QualIdent` — the
+    /// grammar doesn't support qualifying those positions, so there is no
+    /// ambiguity to detect; this mirrors the checker's own
+    /// `Checker::lookup_enum` (same non-goal, same first-match behavior).
+    pub fn first_enum(&self, name: &str) -> Option<&'a EnumDecl> {
+        self.enums
+            .get(name)
+            .and_then(|v| v.first())
+            .map(|&(_, e)| e)
     }
 }
 
@@ -300,10 +376,13 @@ struct Emitter<'a> {
     /// `FnCall` nodes are rendered; injected at module-body top alongside
     /// `CLOG2_FN` (reset per module).
     funcs_used: Vec<String>,
-    /// Bundle-typed signals in the current module: signal name → (bundle_name, args).
+    /// Bundle-typed signals in the current module: signal name → (bundle type
+    /// reference, args). The bundle reference is the full `QualIdent` (not
+    /// just its bare name) so a same-named bundle reused across files still
+    /// resolves to the right declaration.
     /// Populated from flat items before emit_drives; cleared after.
     /// Lets emit_drives flatten `sigA = sigB` and `sig = { field: val }` drives.
-    bundle_sigs: HashMap<String, (String, Vec<NamedArg>)>,
+    bundle_sigs: HashMap<String, (QualIdent, Vec<NamedArg>)>,
 }
 
 /// Verilog-2005 constant function matching [`consteval::clog2_bits`] (floored at
@@ -776,8 +855,12 @@ mod tests {
     /// `render_diags` uses this to pick the right source excerpt.
     #[test]
     fn diags_carry_the_file_index() {
-        // Duplicate module: file 0 defines `A`, file 1 redefines it.
-        let files = [parse("module A {\n}\n"), parse("module A {\n}\n")];
+        // Duplicate module: file 1 defines `A` twice (same-file uniqueness —
+        // reusing a name ACROSS files is legal, spec/02 section 1.5b).
+        let files = [
+            parse("module Unrelated {\n}\n"),
+            parse("module A {\n}\nmodule A {\n}\n"),
+        ];
         let diags = Project::from_files(&files).err().expect("duplicate");
         assert_eq!(diags[0].file, Some(1), "error is in the second file");
 
@@ -790,5 +873,43 @@ mod tests {
         let project = Project::from_files(&files).unwrap();
         let diags = emit(&project, &files).expect_err("non-ASCII identifier unsupported");
         assert_eq!(diags[0].file, Some(1), "error is in the second file");
+    }
+
+    #[test]
+    fn two_same_named_modules_emit_their_own_bodies() {
+        // Mirrors Task 6's driver-check test, one layer further down the
+        // pipeline: file A's `Fifo` and file B's `Fifo` have DIFFERENT bodies;
+        // both get instantiated (via distinct qualified paths); the emitted
+        // Verilog for each instance must come from the RIGHT one.
+        let a = parse("module Fifo {\n  out y: bit\n  y = 1\n}\n"); // y = 1
+        let b = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n"); // y = 0
+        let mut user = parse("module M {\n  let x = Fifo() { }\n  let z = Fifo() { }\n}\n");
+        if let TopItem::Module(m) = &mut user.items[0] {
+            let mut insts = m.items.iter_mut().filter_map(|it| {
+                if let ModuleItem::Inst(i) = it {
+                    Some(i)
+                } else {
+                    None
+                }
+            });
+            let x = insts.next().unwrap();
+            x.module.resolved_file.set(Some(1));
+            let z = insts.next().unwrap();
+            z.module.resolved_file.set(Some(2));
+        }
+        let files = [user, a, b];
+        let project = Project::from_files(&files).expect("builds");
+        // Assert the emitted module bodies for the two Fifo definitions differ
+        // — i.e. Project correctly holds BOTH under the name "Fifo", keyed
+        // apart by file, not one silently shadowing the other.
+        let fifos = project
+            .modules
+            .get("Fifo")
+            .expect("both Fifo decls present");
+        assert_eq!(
+            fifos.len(),
+            2,
+            "both same-named modules must coexist in the table"
+        );
     }
 }

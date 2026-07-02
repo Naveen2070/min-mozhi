@@ -129,7 +129,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
     for test in tests {
         let span = test.span;
 
-        let dut = match project.modules.get(&test.module.name.name) {
+        let dut = match project.resolve_module(&test.module) {
             Some(m) => m,
             None => {
                 em.diags.push(Diag::new(

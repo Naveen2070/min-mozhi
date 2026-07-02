@@ -53,10 +53,10 @@ impl Emitter<'_> {
                     // Bundle ports flatten to one port per field.
                     let bundle_fields = match ty {
                         Type::Bundle { name: bname, args } => {
-                            Some(self.resolve_bundle_fields(&bname.name.name, args))
+                            Some(self.resolve_bundle_fields(bname, args))
                         }
-                        Type::Named(id) if self.project.bundles.contains_key(&id.name.name) => {
-                            Some(self.resolve_bundle_fields(&id.name.name, &[]))
+                        Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                            Some(self.resolve_bundle_fields(id, &[]))
                         }
                         _ => None,
                     };
@@ -124,10 +124,10 @@ impl Emitter<'_> {
                     // Bundle wires flatten to one wire per field.
                     let bundle_fields = match ty {
                         Type::Bundle { name: bname, args } => {
-                            Some(self.resolve_bundle_fields(&bname.name.name, args))
+                            Some(self.resolve_bundle_fields(bname, args))
                         }
-                        Type::Named(id) if self.project.bundles.contains_key(&id.name.name) => {
-                            Some(self.resolve_bundle_fields(&id.name.name, &[]))
+                        Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                            Some(self.resolve_bundle_fields(id, &[]))
                         }
                         _ => None,
                     };
@@ -203,25 +203,25 @@ impl Emitter<'_> {
                     name,
                     ty: Type::Bundle { name: bn, args },
                     ..
-                } => (name.name.clone(), bn.name.name.clone(), args.clone()),
+                } => (name.name.clone(), bn.clone(), args.clone()),
                 ModuleItem::Port {
                     name,
                     ty: Type::Named(id),
                     ..
-                } if self.project.bundles.contains_key(&id.name.name) => {
-                    (name.name.clone(), id.name.name.clone(), vec![])
+                } if self.project.resolve_bundle(id).is_some() => {
+                    (name.name.clone(), id.clone(), vec![])
                 }
                 ModuleItem::Wire {
                     name,
                     ty: Type::Bundle { name: bn, args },
                     ..
-                } => (name.name.clone(), bn.name.name.clone(), args.clone()),
+                } => (name.name.clone(), bn.clone(), args.clone()),
                 ModuleItem::Wire {
                     name,
                     ty: Type::Named(id),
                     ..
-                } if self.project.bundles.contains_key(&id.name.name) => {
-                    (name.name.clone(), id.name.name.clone(), vec![])
+                } if self.project.resolve_bundle(id).is_some() => {
+                    (name.name.clone(), id.clone(), vec![])
                 }
                 _ => continue,
             };
@@ -466,11 +466,9 @@ impl Emitter<'_> {
                 ModuleItem::Wire { name, ty, init } => {
                     // Bundle wires: emit one assign per field.
                     let binfo = match ty {
-                        Type::Bundle { name: bn, args } => {
-                            Some((bn.name.name.clone(), args.clone()))
-                        }
-                        Type::Named(id) if self.project.bundles.contains_key(&id.name.name) => {
-                            Some((id.name.name.clone(), vec![]))
+                        Type::Bundle { name: bn, args } => Some((bn.clone(), args.clone())),
+                        Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                            Some((id.clone(), vec![]))
                         }
                         _ => None,
                     };
@@ -561,7 +559,7 @@ impl Emitter<'_> {
     /// auto-declared wire named `{instance}_{port}` — which is exactly what
     /// `inst.port` field-accesses render to in `expr.rs`.
     fn instance(&mut self, inst: &Inst) {
-        let Some(child) = self.project.modules.get(&inst.module.name.name).copied() else {
+        let Some(child) = self.project.resolve_module(&inst.module) else {
             self.err(
                 inst.module.span,
                 format!("unknown module `{}`", inst.module.name.name),
@@ -804,7 +802,7 @@ impl Emitter<'_> {
                 format!("signed [({we})-1:0] ")
             }
             Type::Named(id) => {
-                if let Some(e) = self.project.enums.get(&id.name.name) {
+                if let Some(e) = self.project.resolve_enum(id) {
                     let w = e
                         .inferred_total_width
                         .get()
@@ -864,10 +862,10 @@ impl Emitter<'_> {
     /// fold using the current env.
     pub(super) fn resolve_bundle_fields(
         &self,
-        bname: &str,
+        bname: &QualIdent,
         args: &[NamedArg],
     ) -> Vec<(String, Type)> {
-        let Some(bdecl) = self.project.bundles.get(bname) else {
+        let Some(bdecl) = self.project.resolve_bundle(bname) else {
             return vec![];
         };
         // Build param env: bundle defaults first, then call-site overrides.
