@@ -10,13 +10,13 @@ use crate::span::Span;
 /// human catalog and demands an end-to-end fixture per code, and
 /// `mimz-bench` measures fixture coverage against it. Append-only by
 /// the E-code stability contract (codes are never renumbered).
-pub const ALL_CHECKER_CODES: [&str; 53] = [
+pub const ALL_CHECKER_CODES: [&str; 55] = [
     "E0001", "E0002", "E0003", "E0004", "E0101", "E0102", "E0103", "E0104", "E0105", "E0106",
-    "E0107", "E0108", "E0109", "E0201", "E0202", "E0301", "E0302", "E0303", "E0401", "E0402",
-    "E0403", "E0404", "E0405", "E0406", "E0407", "E0408", "E0409", "E0410", "E0501", "E0502",
-    "E0503", "E0504", "E0505", "E0601", "E0602", "E0701", "E0801", "E0802", "E0803", "E0804",
-    "E0805", "E0806", "E0807", "E0808", "E0809", "E0810", "E0811", "E0901", "E0902", "E0903",
-    "E0906", "E0907", "E0909",
+    "E0107", "E0108", "E0109", "E0110", "E0111", "E0201", "E0202", "E0301", "E0302", "E0303",
+    "E0401", "E0402", "E0403", "E0404", "E0405", "E0406", "E0407", "E0408", "E0409", "E0410",
+    "E0501", "E0502", "E0503", "E0504", "E0505", "E0601", "E0602", "E0701", "E0801", "E0802",
+    "E0803", "E0804", "E0805", "E0806", "E0807", "E0808", "E0809", "E0810", "E0811", "E0901",
+    "E0902", "E0903", "E0906", "E0907", "E0909",
 ];
 
 /// How loud a diagnostic is. `Error` fails the build; `Warning` is advisory —
