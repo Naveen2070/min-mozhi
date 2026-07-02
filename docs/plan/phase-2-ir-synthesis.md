@@ -83,8 +83,11 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       over today's sync active-high only. **✅ DONE 2026-06-17 (spec/02 v0.2.12,
       active-high `async reset`)** — `examples/.../async_reset.mimz`; active-low
       polarity still open
-- [ ] **Packages / namespacing** (gap section 10 — NEW) — modest module-namespacing
+- [x] **Packages / namespacing** (gap section 10 — NEW) — modest module-namespacing
       step beyond bare `import`; consider
+      **✅ DONE 2026-07-02 (spec/02 v0.2.19, §1.5b)** — per-file module/enum/bundle
+      uniqueness, qualified `a.b.Name` disambiguation (E0110/E0111) —
+      `tests/fixtures/packages/qual_top.mimz`
 - [ ] **Controlled loop `suzhal`/`சுழல்`** (gap section 10) — bounded/FSM-lowered
       iteration distinct from `repeat`; static/provable trip-count bound is the
       load-bearing rule. Both spellings already reserved
