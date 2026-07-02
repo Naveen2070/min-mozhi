@@ -33,6 +33,21 @@ fn first_err(src: &str, code: &str) -> Diag {
     diags.into_iter().next().unwrap()
 }
 
+/// Like [`first_err`], but takes a pre-built file slice instead of parsing
+/// one string — needed for scenarios that are inherently multi-file (e.g.
+/// cross-file ambiguity).
+fn first_err_multi(files: &[crate::ast::File], code: &str) -> Diag {
+    let diags = check(files).expect_err("expected checker errors");
+    assert_eq!(
+        diags[0].code,
+        Some(code),
+        "expected {code}, got {:?}: {}",
+        diags[0].code,
+        diags[0].msg
+    );
+    diags.into_iter().next().unwrap()
+}
+
 const COUNTER: &str = "module Counter(WIDTH: int = 8) {
   clock clk
   reset rst
@@ -84,6 +99,53 @@ fn same_name_module_in_different_files_is_not_an_error_until_referenced() {
     ];
     check(&files)
         .expect("two files may each declare `A` — no ambiguity until something references it");
+}
+
+#[test]
+fn ambiguous_bare_module_reference_is_e0110() {
+    // Both files declare `Fifo`; the referencing file imports both and
+    // uses the bare name — ambiguous.
+    let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
+    let b = parse("module Fifo {\n  out z: bit\n  z = 0\n}\n");
+    let user = parse("module M {\n  let u = Fifo() { }\n}\n");
+    let d = first_err_multi(&[user, a, b], "E0110");
+    assert!(d.help.unwrap().contains("qualify"));
+}
+
+#[test]
+fn qualified_module_reference_resolves_unambiguously() {
+    // Same setup, but the reference is qualified — must resolve cleanly.
+    // Hand-wire: pretend this file's own import #0 resolved to file 2 (b).
+    // (In the real pipeline, project.rs sets this from `import`.)
+    let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
+    let b = parse("module Fifo {\n  out z: bit\n  z = 0\n}\n");
+    let mut user = parse("module M {\n  let u = Fifo() { }\n}\n");
+    if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
+        if let crate::ast::ModuleItem::Inst(inst) = &mut m.items[0] {
+            inst.module.path.push(crate::ast::Ident {
+                name: "b".into(),
+                span: inst.module.span,
+            });
+            inst.module.resolved_file.set(Some(2));
+        }
+    }
+    check(&[user, a, b]).expect("qualified reference resolves without ambiguity");
+}
+
+#[test]
+fn qualified_reference_with_unmatched_path_is_e0111() {
+    let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
+    let mut user = parse("module M {\n  let u = Fifo() { }\n}\n");
+    if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
+        if let crate::ast::ModuleItem::Inst(inst) = &mut m.items[0] {
+            inst.module.path.push(crate::ast::Ident {
+                name: "nope".into(),
+                span: inst.module.span,
+            });
+            // resolved_file left None — no import matched this path.
+        }
+    }
+    first_err_multi(&[user, a], "E0111");
 }
 
 #[test]
