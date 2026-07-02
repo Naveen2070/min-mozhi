@@ -139,6 +139,28 @@ fn qualified_module_reference_resolves_unambiguously() {
 }
 
 #[test]
+fn qualified_reference_actually_resolves_via_a_real_import_path() {
+    // This is the end-to-end mechanism test the test above never covered —
+    // that one hand-set `QualIdent.resolved_file` directly. This one goes
+    // through the real path: `user` has an actual `import b` statement and a
+    // qualified `b.Fifo()` reference; only `Import.resolved_file` is set
+    // (mimicking what `project::load_project` does at Task 3 — this test file
+    // doesn't go through `project.rs`, so it sets that one Cell by hand, the
+    // same way the parser leaves it `None` and only the loader fills it in).
+    // Nothing here pokes `QualIdent.resolved_file` — the checker itself must
+    // compute the match from `q.path` against `user`'s own `imports`.
+    let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
+    let b = parse("module Fifo {\n  out z: bit\n  z = 0\n}\n");
+    let user = parse("import b\n\nmodule M {\n  let u = b.Fifo() { }\n}\n");
+    assert_eq!(user.imports.len(), 1, "sanity: `import b` parsed");
+    // `Import.resolved_file` is a `Cell` — settable through a shared `&File`.
+    user.imports[0].resolved_file.set(Some(2));
+    check(&[user, a, b]).expect(
+        "qualified reference must resolve via the real import match, not a hand-poked Cell",
+    );
+}
+
+#[test]
 fn qualified_reference_with_unmatched_path_is_e0111() {
     let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
     let mut user = parse("module M {\n  let u = Fifo() { }\n}\n");

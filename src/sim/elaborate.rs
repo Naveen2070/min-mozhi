@@ -76,6 +76,7 @@ fn build_registry(files: &[ast::File]) -> Registry<'_> {
 /// already rejected it" `None`.
 fn resolve_module<'a>(
     reg: &Registry<'a>,
+    imports: &[ast::Import],
     q: &ast::QualIdent,
 ) -> Result<(&'a ast::File, &'a ast::Module), String> {
     let candidates = reg.get(&q.name.name).ok_or_else(|| {
@@ -97,6 +98,12 @@ fn resolve_module<'a>(
             )),
         }
     } else {
+        // `mimz sim`/`mimz test` never run the checker (module doc comment),
+        // so — unlike `emit_verilog`, which can rely on the checker having
+        // already populated `q.resolved_file` — this match against the
+        // referencing file's own `import` statements must be computed here
+        // too. Mirrors `checker::names::resolve`'s identical step.
+        q.resolve_via_imports(imports);
         let target = q.resolved_file.get().ok_or_else(|| {
             format!(
                 "the path in `{}` doesn't match any `import` in this file",
@@ -138,6 +145,7 @@ fn build_bundle_registry(files: &[ast::File]) -> BundleRegistry<'_> {
 /// reasoning applies (the sim has no checker pass gating this).
 fn resolve_bundle<'a>(
     bundles: &BundleRegistry<'a>,
+    imports: &[ast::Import],
     q: &ast::QualIdent,
 ) -> Result<&'a ast::BundleDecl, String> {
     let candidates = bundles
@@ -156,6 +164,8 @@ fn resolve_bundle<'a>(
             )),
         }
     } else {
+        // Same "no checker pass gating this" reasoning as `resolve_module`.
+        q.resolve_via_imports(imports);
         let target = q.resolved_file.get().ok_or_else(|| {
             format!(
                 "the path in `{}` doesn't match any `import` in this file",
@@ -176,11 +186,12 @@ fn resolve_bundle<'a>(
 /// for the sim rather than AST `Type`s for code generation.
 fn resolve_bundle_fields_sim(
     bundles: &BundleRegistry<'_>,
+    imports: &[ast::Import],
     bname: &ast::QualIdent,
     args: &[NamedArg],
     consts: &BTreeMap<String, i128>,
 ) -> Result<Vec<(String, Width)>, String> {
-    let bdecl = resolve_bundle(bundles, bname)?;
+    let bdecl = resolve_bundle(bundles, imports, bname)?;
     // Build a merged const env: module consts + bundle param defaults + call-site overrides.
     let mut merged = consts.clone();
     for p in &bdecl.params {
@@ -491,7 +502,13 @@ fn elaborate_module(
             ModuleItem::Port { dir, name, ty } => {
                 // Bundle port → N scalar signals named `portname_fieldname`.
                 if let Some((bname, args)) = bundle_type_info(ty, bundle_reg, &enums) {
-                    let fields = resolve_bundle_fields_sim(bundle_reg, &bname, &args, &consts)?;
+                    let fields = resolve_bundle_fields_sim(
+                        bundle_reg,
+                        &file.imports,
+                        &bname,
+                        &args,
+                        &consts,
+                    )?;
                     for (fname, fwidth) in fields {
                         let flat_name = format!("{}_{}", name.name, fname);
                         let sig = Signal {
@@ -527,7 +544,13 @@ fn elaborate_module(
                 // Bundle wire → N scalar wires, each driven by the corresponding
                 // field of the bundle init expression (must be a BundleLit).
                 if let Some((bname, args)) = bundle_type_info(ty, bundle_reg, &enums) {
-                    let fields = resolve_bundle_fields_sim(bundle_reg, &bname, &args, &consts)?;
+                    let fields = resolve_bundle_fields_sim(
+                        bundle_reg,
+                        &file.imports,
+                        &bname,
+                        &args,
+                        &consts,
+                    )?;
                     for (fname, fwidth) in fields {
                         let flat_name = format!("{}_{}", name.name, fname);
                         wires.push(Signal {
@@ -587,7 +610,13 @@ fn elaborate_module(
                     if let Some(ty) = bundle_sig_types.get(&lhs.base.name)
                         && let Some((bname, args)) = bundle_type_info(ty, bundle_reg, &enums)
                     {
-                        let fields = resolve_bundle_fields_sim(bundle_reg, &bname, &args, &consts)?;
+                        let fields = resolve_bundle_fields_sim(
+                            bundle_reg,
+                            &file.imports,
+                            &bname,
+                            &args,
+                            &consts,
+                        )?;
                         for (fname, _) in &fields {
                             let flat_lhs = format!("{}_{}", lhs.base.name, fname);
                             // The RHS field: either `rhs.fname` (if rhs is a bundle ident)
@@ -621,6 +650,7 @@ fn elaborate_module(
                     reg,
                     func_reg,
                     bundle_reg,
+                    &file.imports,
                     &consts,
                     &insts,
                     &enums,
@@ -661,8 +691,17 @@ fn elaborate_module(
                                     None => inst.name.name.clone(),
                                 };
                                 let f = flatten_instance(
-                                    reg, func_reg, bundle_reg, &ci, &insts, &enums, &subst, inst,
-                                    &iname, depth,
+                                    reg,
+                                    func_reg,
+                                    bundle_reg,
+                                    &file.imports,
+                                    &ci,
+                                    &insts,
+                                    &enums,
+                                    &subst,
+                                    inst,
+                                    &iname,
+                                    depth,
                                 )?;
                                 flat.absorb(f);
                             }
@@ -814,6 +853,7 @@ fn flatten_instance(
     reg: &Registry,
     func_reg: &FuncRegistry<'_>,
     bundle_reg: &BundleRegistry<'_>,
+    parent_imports: &[ast::Import],
     parent_consts: &BTreeMap<String, i128>,
     parent_insts: &HashSet<String>,
     parent_enums: &HashMap<String, &ast::EnumDecl>,
@@ -822,7 +862,7 @@ fn flatten_instance(
     iname: &str,
     depth: u32,
 ) -> Result<Flat, String> {
-    let (cfile, cm) = resolve_module(reg, &inst.module)
+    let (cfile, cm) = resolve_module(reg, parent_imports, &inst.module)
         .map_err(|e| format!("instance `{}` {e}", inst.name.name))?;
 
     // Child parameter bindings: an explicit `arg` (evaluated in the PARENT's
@@ -1802,6 +1842,38 @@ mod tests {
         let width_of = |name: &str| d.wires.iter().find(|w| w.name == name).unwrap().width.bits;
         assert_eq!(width_of("x_y"), 4, "x must flatten file A's 4-bit Fifo");
         assert_eq!(width_of("z_y"), 8, "z must flatten file B's 8-bit Fifo");
+    }
+
+    #[test]
+    fn qualified_instance_reference_resolves_via_a_real_import_path() {
+        // Sim-side analogue of `checker::tests::
+        // qualified_reference_actually_resolves_via_a_real_import_path`.
+        // Unlike `two_same_named_modules_flatten_their_own_instance` above
+        // (which hand-pokes `Inst.module.resolved_file` directly — the gap
+        // Task 9 closes), this test has a real `import b` statement and a
+        // real qualified `b.Fifo()` instantiation; only `Import.resolved_file`
+        // is set (mimicking `project::load_project`, Task 3). `mimz sim`/
+        // `mimz test` never run the checker, so `resolve_module` itself must
+        // compute the match from `q.path` against `user`'s own `imports`.
+        let a = parse("module Fifo {\n  out y: bits[4]\n  y = 0\n}\n");
+        let b = parse("module Fifo {\n  out y: bits[8]\n  y = 0\n}\n");
+        let user = parse("import b\n\nmodule M {\n  let z = b.Fifo() { }\n}\n");
+        assert_eq!(user.imports.len(), 1, "sanity: `import b` parsed");
+        user.imports[0].resolved_file.set(Some(2));
+        let files = [user, a, b];
+        let d = elaborate_project(&files, Some("M"), &BTreeMap::new())
+            .expect("qualified instance must resolve via the real import match");
+        let width = d
+            .wires
+            .iter()
+            .find(|w| w.name == "z_y")
+            .expect("flattened wire z_y")
+            .width
+            .bits;
+        assert_eq!(
+            width, 8,
+            "z must flatten file B's 8-bit Fifo via the import match"
+        );
     }
 
     #[test]
