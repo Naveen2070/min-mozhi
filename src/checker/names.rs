@@ -422,7 +422,8 @@ impl<'a> Checker<'a> {
             Type::Bit => {}
             Type::Bits(w) | Type::Signed(w) => self.expr(file, sc, env, w),
             Type::Bundle { name, .. } => {
-                self.resolve(file, &self.bundles.clone(), name, |ck| {
+                let candidates = self.bundles.get(&name.name.name).cloned();
+                self.resolve(file, candidates, name, |ck| {
                     ck.err(
                         file,
                         name.span,
@@ -442,9 +443,11 @@ impl<'a> Checker<'a> {
                 let sc_enum = matches!(sc.names.get(&n.name.name), Some(Bind::Enum(_)));
                 if !sc_enum {
                     if self.enums.contains_key(&n.name.name) {
-                        self.resolve(file, &self.enums.clone(), n, |_| {});
+                        let candidates = self.enums.get(&n.name.name).cloned();
+                        self.resolve(file, candidates, n, |_| {});
                     } else if self.bundles.contains_key(&n.name.name) {
-                        self.resolve(file, &self.bundles.clone(), n, |_| {});
+                        let candidates = self.bundles.get(&n.name.name).cloned();
+                        self.resolve(file, candidates, n, |_| {});
                     } else {
                         self.err(
                             file,
@@ -475,19 +478,23 @@ impl<'a> Checker<'a> {
             .map(|&(_, e)| e)
     }
 
-    /// Resolve a possibly-namespaced reference against a project-wide
-    /// multimap. `unknown` is called (and its diagnostic emitted) when there
-    /// are 0 candidates — same behavior/codes as before this feature. Returns
-    /// `None` on 0, ambiguous-bare, or unmatched-qualifier; `Some` on exactly
-    /// 1 candidate or a qualifier that matches exactly one.
+    /// Resolve a possibly-namespaced reference against the caller's
+    /// already-looked-up candidate bucket (`table.get(&q.name.name).cloned()`
+    /// — cloning just the one bucket, not the whole project-wide multimap,
+    /// sidesteps the borrow conflict between holding a `&self.modules`
+    /// borrow and calling `self.err`/`unknown` below, which need `&mut
+    /// self`). `unknown` is called (and its diagnostic emitted) when there
+    /// are 0 candidates — same behavior/codes as before this feature.
+    /// Returns `None` on 0, ambiguous-bare, or unmatched-qualifier; `Some` on
+    /// exactly 1 candidate or a qualifier that matches exactly one.
     fn resolve<'b, T>(
         &mut self,
         file: usize,
-        table: &HashMap<String, Vec<(usize, &'b T)>>,
+        candidates: Option<Vec<(usize, &'b T)>>,
         q: &'b crate::ast::QualIdent,
         unknown: impl FnOnce(&mut Self),
     ) -> Option<&'b T> {
-        let Some(candidates) = table.get(&q.name.name) else {
+        let Some(candidates) = candidates else {
             unknown(self);
             return None;
         };
@@ -578,7 +585,8 @@ impl<'a> Checker<'a> {
         if let Some(idx) = &inst.index {
             self.expr(file, sc, env, idx);
         }
-        let target = self.resolve(file, &self.modules.clone(), &inst.module, |ck| {
+        let candidates = self.modules.get(&inst.module.name.name).cloned();
+        let target = self.resolve(file, candidates, &inst.module, |ck| {
             ck.err(
                 file,
                 inst.module.span,
@@ -708,7 +716,8 @@ impl<'a> Checker<'a> {
     }
 
     fn check_test(&mut self, file: usize, t: &'a TestDecl) {
-        let target = self.resolve(file, &self.modules.clone(), &t.module, |ck| {
+        let candidates = self.modules.get(&t.module.name.name).cloned();
+        let target = self.resolve(file, candidates, &t.module, |ck| {
             ck.err(
                 file,
                 t.module.span,
@@ -1117,7 +1126,8 @@ impl<'a> Checker<'a> {
         // `check_inst` already ran (and already reported E0102/E0110/E0111
         // for this same `inst.module`), we'd otherwise double-report.
         let before = self.diags.len();
-        let target = self.resolve(file, &self.modules.clone(), &inst.module, |_| {});
+        let candidates = self.modules.get(&inst.module.name.name).cloned();
+        let target = self.resolve(file, candidates, &inst.module, |_| {});
         self.diags.truncate(before);
         let Some(target) = target else {
             return; // unknown/ambiguous/unmatched module already reported at the `let`
@@ -1197,7 +1207,8 @@ impl<'a> Checker<'a> {
             Type::Bit | Type::Bits(_) | Type::Signed(_) => {}
             Type::Named(id) => {
                 if self.enums.contains_key(&id.name.name) {
-                    self.resolve(file, &self.enums.clone(), id, |_| {});
+                    let candidates = self.enums.get(&id.name.name).cloned();
+                    self.resolve(file, candidates, id, |_| {});
                 } else {
                     let msg = if self.bundles.contains_key(&id.name.name) {
                         format!("bundle field cannot be a bundle type (`{}`)", id.name.name)
@@ -1219,17 +1230,24 @@ impl<'a> Checker<'a> {
             }
             Type::Bundle { name, .. } => {
                 if self.bundles.contains_key(&name.name.name) {
-                    self.resolve(file, &self.bundles.clone(), name, |_| {});
-                    self.err(
-                        file,
-                        span,
-                        "E0807",
-                        format!(
-                            "bundle field cannot be a bundle type (`{}`)",
-                            name.name.name
-                        ),
-                        "nested bundles are not supported in v0.2 — use flat field types",
-                    );
+                    let candidates = self.bundles.get(&name.name.name).cloned();
+                    // Only report E0807 when `resolve` actually found the
+                    // bundle it names — an ambiguous or unmatched-qualifier
+                    // reference already got its own E0110/E0111 from
+                    // `resolve` below, and adding E0807 on top would
+                    // double-report the same bad reference.
+                    if self.resolve(file, candidates, name, |_| {}).is_some() {
+                        self.err(
+                            file,
+                            span,
+                            "E0807",
+                            format!(
+                                "bundle field cannot be a bundle type (`{}`)",
+                                name.name.name
+                            ),
+                            "nested bundles are not supported in v0.2 — use flat field types",
+                        );
+                    }
                 } else {
                     self.err(
                         file,
