@@ -48,6 +48,12 @@ fn first_err_multi(files: &[crate::ast::File], code: &str) -> Diag {
     diags.into_iter().next().unwrap()
 }
 
+/// Like [`errs`], but takes a pre-built file slice instead of parsing one
+/// string — needed for scenarios that are inherently multi-file.
+fn errs_multi(files: &[crate::ast::File]) -> Vec<Diag> {
+    check(files).expect_err("expected checker errors")
+}
+
 const COUNTER: &str = "module Counter(WIDTH: int = 8) {
   clock clk
   reset rst
@@ -1414,5 +1420,47 @@ module Top {
 }
 "#,
         "E0903",
+    );
+}
+
+#[test]
+fn two_same_named_modules_each_get_their_own_driver_check() {
+    // file A's `Fifo` has a real double-drive bug; file B's `Fifo` (same
+    // name, different file) is clean. Before the (file,name) re-key, the
+    // driver-safety cache keyed by bare name could return file A's — or
+    // file B's — Summary for BOTH instantiations, either missing A's real
+    // bug or (nondeterministically) flagging B's clean one.
+    let a = parse("module Fifo {\n  out y: bit\n  y = 1\n  y = 0\n}\n"); // double-drive
+    let b = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n"); // clean
+    let mut user = parse("module M {\n  let x = Fifo() { }\n  let z = Fifo() { }\n}\n");
+    // Wire the two Insts to different files by hand (mirrors Task 5's
+    // qualified-resolution tests — real end-to-end qualification is
+    // exercised in Task 9's fixtures).
+    if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
+        let mut insts = m.items.iter_mut().filter_map(|it| {
+            if let crate::ast::ModuleItem::Inst(i) = it {
+                Some(i)
+            } else {
+                None
+            }
+        });
+        let x = insts.next().unwrap();
+        x.module.path.push(crate::ast::Ident {
+            name: "a".into(),
+            span: x.module.span,
+        });
+        x.module.resolved_file.set(Some(1)); // -> file A (buggy)
+        let z = insts.next().unwrap();
+        z.module.path.push(crate::ast::Ident {
+            name: "b".into(),
+            span: z.module.span,
+        });
+        z.module.resolved_file.set(Some(2)); // -> file B (clean)
+    }
+    let diags = errs_multi(&[user, a, b]);
+    assert!(
+        diags.iter().any(|d| d.code == Some("E0501")),
+        "file A's real double-drive bug must still be caught even though \
+         file B declares a same-named, clean `Fifo`"
     );
 }

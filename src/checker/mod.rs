@@ -68,10 +68,14 @@ pub(super) struct Checker<'a> {
     /// Per file: const name -> evaluated value (consts are file-local;
     /// imports do NOT bring consts into scope).
     file_consts: Vec<HashMap<String, i128>>,
-    /// module name -> its name table, built by pass 3 (`names.rs`) and
-    /// reused by pass 4 (`widths.rs`). `Rc` so a pass can hold the scope
+    /// (declaring file, module name) -> its name table, built by pass 3
+    /// (`names.rs`) and reused by pass 4 (`widths.rs`) and pass 5
+    /// (`drivers.rs`). Keyed by file so two same-named modules from
+    /// different files each get their own scope — a bare-name key would
+    /// silently return the wrong file's scope once cross-file name reuse
+    /// is legal (spec/02 section 1.5b). `Rc` so a pass can hold the scope
     /// while still reporting through `&mut self`.
-    scopes: HashMap<String, Rc<names::Scope<'a>>>,
+    scopes: HashMap<(usize, String), Rc<names::Scope<'a>>>,
     diags: Vec<Diag>,
 }
 
