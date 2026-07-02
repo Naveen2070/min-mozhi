@@ -164,6 +164,39 @@ impl QualIdent {
     pub fn is_bare(&self) -> bool {
         self.path.is_empty()
     }
+
+    /// The actual qualified-reference disambiguation mechanism (spec/02
+    /// section 1.5b, design doc §4.4): match `self.path` against `imports`
+    /// — the REFERENCING file's own `import` statements, segment-by-segment
+    /// by name — and, on an exact match whose import itself already
+    /// resolved to a real file (`Import.resolved_file`, set once by
+    /// `project::load_project` per Task 3), cache that file index onto
+    /// `self.resolved_file`. No-op when already resolved (idempotent — safe
+    /// to call from multiple passes/call sites) or when `self` is bare (bare
+    /// references resolve a different way, via ambiguity-checked project-wide
+    /// lookup). Shared by both the checker (`checker::names::resolve`) and
+    /// the simulator (`sim::elaborate::resolve_module`/`resolve_bundle`),
+    /// which run this independently since `mimz sim`/`mimz test` do not run
+    /// the checker first.
+    pub fn resolve_via_imports(&self, imports: &[Import]) {
+        if self.is_bare() || self.resolved_file.get().is_some() {
+            return;
+        }
+        if let Some(target) = imports
+            .iter()
+            .find(|imp| {
+                imp.path.len() == self.path.len()
+                    && imp
+                        .path
+                        .iter()
+                        .zip(&self.path)
+                        .all(|(a, b)| a.name == b.name)
+            })
+            .and_then(|imp| imp.resolved_file.get())
+        {
+            self.resolved_file.set(Some(target));
+        }
+    }
 }
 
 /// `module Name(P: int = 8) { ... }` — the unit of hardware design.
