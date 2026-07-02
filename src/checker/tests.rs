@@ -177,6 +177,25 @@ fn qualified_reference_with_unmatched_path_is_e0111() {
 }
 
 #[test]
+fn qualified_reference_to_a_file_that_doesnt_declare_the_name_is_e0111() {
+    // `wrongpkg` really is imported and really resolves to a real file —
+    // but that file declares `NotFifo`, not `Fifo`. `Fifo` does exist
+    // project-wide (in `right`), so this is NOT the "0 candidates anywhere"
+    // case (E0102) and NOT the "path matches no import" case covered by
+    // `qualified_reference_with_unmatched_path_is_e0111` above — the import
+    // resolves cleanly, but the target file's own declarations don't
+    // contain the name.
+    let right = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
+    let wrongpkg = parse("module NotFifo {\n  out z: bit\n  z = 0\n}\n");
+    let user = parse("import wrongpkg\n\nmodule M {\n  let u = wrongpkg.Fifo() { }\n}\n");
+    assert_eq!(user.imports.len(), 1, "sanity: `import wrongpkg` parsed");
+    // files: [user=0, right=1, wrongpkg=2] — the import matches and resolves
+    // to file 2 (`wrongpkg`), which has no `Fifo`.
+    user.imports[0].resolved_file.set(Some(2));
+    first_err_multi(&[user, right, wrongpkg], "E0111");
+}
+
+#[test]
 fn same_name_module_in_the_same_file_is_still_e0001() {
     let d = first_err("module A {\n}\nmodule A {\n}\n", "E0001");
     assert!(d.msg.contains("more than once") || d.msg.contains("twice"));

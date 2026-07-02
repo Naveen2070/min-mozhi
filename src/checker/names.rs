@@ -548,10 +548,29 @@ impl<'a> Checker<'a> {
                 );
                 return None;
             };
-            candidates
-                .iter()
-                .find(|&&(f, _)| f == target_file)
-                .map(|&(_, t)| t)
+            match candidates.iter().find(|&&(f, _)| f == target_file) {
+                Some(&(_, t)) => Some(t),
+                None => {
+                    self.err(
+                        file,
+                        q.span,
+                        "E0111",
+                        format!(
+                            "the file imported as `{}` doesn't declare `{}`",
+                            q.path
+                                .iter()
+                                .map(|s| s.name.as_str())
+                                .collect::<Vec<_>>()
+                                .join("."),
+                            q.name.name
+                        ),
+                        "the import resolves to a real file, but that file has no \
+                         declaration by this name — check the spelling, or declare \
+                         it there",
+                    );
+                    None
+                }
+            }
         }
     }
 
