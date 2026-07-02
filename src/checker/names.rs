@@ -1087,19 +1087,18 @@ impl<'a> Checker<'a> {
     /// `inst.field` — the field must be an OUTPUT port of the target
     /// module (inputs are connected at instantiation, not read back).
     fn inst_output(&mut self, file: usize, inst: &'a Inst, field: &crate::ast::Ident) {
-        // `check_inst` already resolved (and reported E0102/E0110/E0111 for)
-        // this same `inst.module` — read the answer it left behind instead
-        // of re-resolving (which would re-emit those diagnostics).
-        let Some(target_file) = inst.module.resolved_file.get() else {
+        // Item order within a module is free (`collect_decls`), so an
+        // earlier item may reference this instance's output before
+        // `check_inst` has run for it — `resolved_file` may still be
+        // unset. Re-resolve independently rather than depending on that
+        // ordering, but discard any diagnostics the probe pushes: if
+        // `check_inst` already ran (and already reported E0102/E0110/E0111
+        // for this same `inst.module`), we'd otherwise double-report.
+        let before = self.diags.len();
+        let target = self.resolve(file, &self.modules.clone(), &inst.module, |_| {});
+        self.diags.truncate(before);
+        let Some(target) = target else {
             return; // unknown/ambiguous/unmatched module already reported at the `let`
-        };
-        let Some(target) = self
-            .modules
-            .get(&inst.module.name.name)
-            .and_then(|v| v.iter().find(|&&(f, _)| f == target_file))
-            .map(|&(_, m)| m)
-        else {
-            return;
         };
         let mut outputs: Vec<&str> = Vec::new();
         let mut is_input = false;
