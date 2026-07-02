@@ -137,10 +137,14 @@ const EXPLANATIONS: &[(&str, &str)] = &[
         "E0111",
         "E0111 — qualified reference doesn't match any import\n\n\
          A reference was written with a path prefix (`a.b.Name`), but this file\n\
-         never wrote an `import a.b` — so the qualifier doesn't pick anything.\n\n\
+         never wrote an `import a.b` — so the qualifier doesn't pick anything.\n\
+         The same code also covers a second case: the import path DOES match\n\
+         one you wrote, but the file it points to has no declaration by that\n\
+         name at all.\n\n\
          Fix: check the import path segments match one you actually wrote in\n\
          this file, or drop the qualifier entirely if the bare name is\n\
-         unambiguous on its own.",
+         unambiguous on its own. For the second case, check the spelling of\n\
+         the name, or declare it in the imported file.",
     ),
     // ----- E02xx: const evaluation -----
     (
