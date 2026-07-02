@@ -173,7 +173,11 @@ A span is a byte range with no file identity, so `Diag` carries
   diagnostic's own source file (entry file as the fallback).
 
 Regression-guarded by `diags_carry_the_file_index`
-(`src/emit_verilog/mod.rs`) and
-`duplicate_module_across_files_is_e0001_in_the_right_file`
-(`src/checker/tests.rs`). If you write a new project-wide pass: stamp
-the file index on every diagnostic, and render through `render_diags`.
+(`src/emit_verilog/mod.rs`). The checker-side regression test for this
+contract (`duplicate_module_across_files_is_e0001_in_the_right_file`)
+was retired when packages/namespacing (spec/02 §1.5b) made cross-file
+module/enum/bundle name collisions legal — a new multi-file checker
+test (e.g. an E0110/E0111 ambiguity case) should replace it; tracked
+for the packages/namespacing plan's fixture/catalog task. If you write
+a new project-wide pass: stamp the file index on every diagnostic, and
+render through `render_diags`.
