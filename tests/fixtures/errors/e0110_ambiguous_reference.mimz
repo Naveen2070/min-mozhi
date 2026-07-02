@@ -1,0 +1,11 @@
+// expect: E0110
+import e0110_support.other
+
+module Fifo {
+  out y: bit
+  y = 0
+}
+
+module M {
+  let u = Fifo() { }
+}

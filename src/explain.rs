@@ -123,6 +123,25 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          an ordinary wire is not one.\n\n\
          Fix: declare `clock clk` and trigger on it: `on rise(clk) { ... }`.",
     ),
+    (
+        "E0110",
+        "E0110 — ambiguous reference\n\n\
+         Two or more different files declare a module/enum/bundle with the same\n\
+         name, and this reference uses the bare (unqualified) name, which no\n\
+         longer picks one automatically now that same-named declarations across\n\
+         files are allowed (spec/02 section 1.5b).\n\n\
+         Fix: qualify the reference with the import path you wrote for the one\n\
+         you mean, e.g. `a.b.Name(...)` instead of `Name(...)`.",
+    ),
+    (
+        "E0111",
+        "E0111 — qualified reference doesn't match any import\n\n\
+         A reference was written with a path prefix (`a.b.Name`), but this file\n\
+         never wrote an `import a.b` — so the qualifier doesn't pick anything.\n\n\
+         Fix: check the import path segments match one you actually wrote in\n\
+         this file, or drop the qualifier entirely if the bare name is\n\
+         unambiguous on its own.",
+    ),
     // ----- E02xx: const evaluation -----
     (
         "E0201",
