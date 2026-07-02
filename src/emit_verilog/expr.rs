@@ -286,7 +286,7 @@ impl Emitter<'_> {
     /// - tag-only enum: `(s == ENUM_VARIANT)` (unchanged from before)
     /// - tagged enum: `(s[total-1:max_payload_w] == tag_w'd<index>)`
     fn variant_cond(&self, s: &str, enum_name: &str, variant_name: &str) -> String {
-        let Some(edecl) = self.project.enums.get(enum_name) else {
+        let Some(edecl) = self.project.first_enum(enum_name) else {
             return format!("({s} == {})", enum_const(enum_name, variant_name));
         };
         let total_w = match edecl.inferred_total_width.get() {
@@ -327,7 +327,7 @@ impl Emitter<'_> {
             if bindings.is_empty() {
                 continue;
             }
-            let Some(edecl) = self.project.enums.get(&enum_name.name) else {
+            let Some(edecl) = self.project.first_enum(&enum_name.name) else {
                 continue;
             };
             let total_w = match edecl.inferred_total_width.get() {
