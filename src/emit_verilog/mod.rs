@@ -260,7 +260,7 @@ impl<'a> Project<'a> {
     /// examples gets back the bare name, byte-for-byte: this check is a
     /// per-name lookup, so it is a strict no-op whenever `name` has exactly
     /// one declaring file. `__f<file>` mirrors the same accepted-risk
-    /// double-underscore separator [`Emitter::inst_name`] already uses to
+    /// double-underscore separator `Emitter::inst_name` already uses to
     /// flatten `repeat` instance arrays: a user could in principle declare
     /// a module literally named e.g. `Fifo__f1`, but Min-Mozhi's identifier
     /// grammar places no restriction on leading/embedded underscores, so
