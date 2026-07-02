@@ -606,7 +606,14 @@ impl<'a> Checker<'a> {
                 if let Some(signal_ty) = cx.bundle_sigs.get(name) {
                     if let Type::Bundle { name: bname, args } = signal_ty {
                         // Bundle field access: resolve the bundle and return the field's type
-                        match self.resolve_bundle_fields(cx, &bname.name.name, args, base.span) {
+                        let bfile_hint = bname.resolved_file.get();
+                        match self.resolve_bundle_fields(
+                            cx,
+                            &bname.name.name,
+                            bfile_hint,
+                            args,
+                            base.span,
+                        ) {
                             Some(fields) => {
                                 for (fname, fty) in fields {
                                     if fname == field.name {
