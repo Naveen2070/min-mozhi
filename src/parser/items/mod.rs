@@ -128,7 +128,7 @@ impl Parser {
                     name = next;
                 }
                 let qid = QualIdent {
-                    span: name.span, // widened below if path is non-empty
+                    span: name.span,
                     path,
                     name,
                     resolved_file: std::cell::Cell::new(None),

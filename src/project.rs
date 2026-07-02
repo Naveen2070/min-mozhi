@@ -202,6 +202,18 @@ pub fn load_project_with_lib(
             files[importer_slot].ast.imports[import_idx]
                 .resolved_file
                 .set(Some(idx));
+        } else {
+            // Every path in `pending` was either pushed onto `queue` above (so
+            // it's loaded into `files` by the time we get here) or is a std
+            // override's target (loaded via `resolve_std_import`), so this
+            // lookup should never miss. A miss here means an import silently
+            // stays unresolved instead of failing loudly — debug_assert so a
+            // future regression trips a test instead of vanishing.
+            debug_assert!(
+                false,
+                "canon_index has no entry for pending import target {target_canon:?}; \
+                 every pending target should already be a loaded file"
+            );
         }
     }
 
