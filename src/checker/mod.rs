@@ -53,18 +53,18 @@ pub fn check(files: &[ast::File]) -> Result<(), Vec<Diag>> {
 /// `pub(super)` impl (house pattern, see docs/code/03-parser.md).
 pub(super) struct Checker<'a> {
     files: &'a [ast::File],
-    /// module name -> (declaring file, node). Project-wide (spec/02
-    /// section 1.5: module names are unique across the project).
-    modules: HashMap<String, (usize, &'a ast::Module)>,
-    /// file-level enum name -> (declaring file, node). Project-wide —
-    /// imports bring a file's enums into scope.
-    enums: HashMap<String, (usize, &'a ast::EnumDecl)>,
+    /// module name -> every (declaring file, node) sharing that name.
+    /// Uniqueness is enforced per-file (symbols.rs); cross-file duplicates are
+    /// legal and resolved (or flagged ambiguous) at use-site (names.rs).
+    modules: HashMap<String, Vec<(usize, &'a ast::Module)>>,
+    /// file-level enum name -> every (declaring file, node) sharing that name.
+    enums: HashMap<String, Vec<(usize, &'a ast::EnumDecl)>>,
     /// file-level function name -> (declaring file, node). Project-wide —
-    /// function names are unique across the whole project (spec/02).
+    /// function names are unique across the whole project (spec/02) — OUT OF
+    /// SCOPE for packages/namespacing (D-PKG-1); left untouched.
     funcs: HashMap<String, (usize, &'a ast::FuncDecl)>,
-    /// file-level bundle name -> (declaring file, node). Project-wide —
-    /// imports bring a file's bundles into scope.
-    bundles: HashMap<String, (usize, &'a ast::BundleDecl)>,
+    /// file-level bundle name -> every (declaring file, node) sharing that name.
+    bundles: HashMap<String, Vec<(usize, &'a ast::BundleDecl)>>,
     /// Per file: const name -> evaluated value (consts are file-local;
     /// imports do NOT bring consts into scope).
     file_consts: Vec<HashMap<String, i128>>,

@@ -148,6 +148,7 @@ impl<'a> Checker<'a> {
         if self
             .modules
             .get(&m.name.name)
+            .and_then(|v| v.first())
             .is_some_and(|&(_, canon)| std::ptr::eq(canon, m))
         {
             self.scopes
@@ -463,14 +464,21 @@ impl<'a> Checker<'a> {
         if let Some(Bind::Enum(e)) = sc.names.get(name).copied() {
             return Some(e);
         }
-        self.enums.get(name).map(|&(_, e)| e)
+        self.enums
+            .get(name)
+            .and_then(|v| v.first())
+            .map(|&(_, e)| e)
     }
 
     fn check_inst(&mut self, file: usize, sc: &Scope<'a>, env: &Env, inst: &'a Inst) {
         if let Some(idx) = &inst.index {
             self.expr(file, sc, env, idx);
         }
-        let target = self.modules.get(&inst.module.name.name).map(|&(_, m)| m);
+        let target = self
+            .modules
+            .get(&inst.module.name.name)
+            .and_then(|v| v.first())
+            .map(|&(_, m)| m);
         let Some(target) = target else {
             self.err(
                 file,
@@ -599,7 +607,11 @@ impl<'a> Checker<'a> {
     }
 
     fn check_test(&mut self, file: usize, t: &'a TestDecl) {
-        let target = self.modules.get(&t.module.name.name).map(|&(_, m)| m);
+        let target = self
+            .modules
+            .get(&t.module.name.name)
+            .and_then(|v| v.first())
+            .map(|&(_, m)| m);
         let Some(target) = target else {
             self.err(
                 file,
@@ -999,7 +1011,12 @@ impl<'a> Checker<'a> {
     /// `inst.field` — the field must be an OUTPUT port of the target
     /// module (inputs are connected at instantiation, not read back).
     fn inst_output(&mut self, file: usize, inst: &'a Inst, field: &crate::ast::Ident) {
-        let Some(target) = self.modules.get(&inst.module.name.name).map(|&(_, m)| m) else {
+        let Some(target) = self
+            .modules
+            .get(&inst.module.name.name)
+            .and_then(|v| v.first())
+            .map(|&(_, m)| m)
+        else {
             return; // unknown module already reported at the `let`
         };
         let mut outputs: Vec<&str> = Vec::new();
