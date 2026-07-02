@@ -745,6 +745,20 @@ fn a_cycle_through_instances_is_e0504() {
     assert!(d.msg.contains("i1.q") && d.msg.contains("i2.q"));
 }
 
+/// An earlier-declared instance forward-referencing a later-declared
+/// instance's unknown output field must still get E0104, regardless of
+/// declaration order (`collect_decls`: "declaration order in a module is
+/// free"). Same forward-reference shape as `a_cycle_through_instances_is_e0504`,
+/// but `i2` is declared and unambiguous — the only issue is the typo'd
+/// field `i2.zzz`, which `i1` (declared first) reads before `i2`'s own
+/// `check_inst` has run.
+#[test]
+fn forward_reference_to_unknown_output_field_is_e0104() {
+    let src = "module Inv {\n  in d: bit\n  out q: bit\n  q = !d\n}\nmodule M {\n  out y: bit\n  let i1 = Inv() { d: i2.zzz }\n  let i2 = Inv() { d: 0 }\n  y = i1.q\n}\n";
+    let d = first_err(src, "E0104");
+    assert!(d.msg.contains("zzz"));
+}
+
 #[test]
 fn arrow_assignment_to_a_wire_is_e0505() {
     let src = "module M {\n  clock clk\n  in a: bit\n  out y: bit\n  wire w: bit = a\n  on rise(clk) {\n    w <- a\n  }\n  y = w\n}\n";
