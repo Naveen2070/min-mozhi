@@ -525,6 +525,15 @@ impl<'a> Checker<'a> {
                 }
             }
         } else {
+            // The actual disambiguation mechanism (spec/02 section 1.5b,
+            // design doc §4.4): match this reference's `.path` against THIS
+            // file's own `import` statements, caching the target file onto
+            // `q.resolved_file` (a `Cell`) so every later pass that reads
+            // the same Cell — `drivers.rs`, `widths/*.rs`, and
+            // `emit_verilog::Project` (which runs on these SAME `ast::File`/
+            // `QualIdent` instances after the checker, per
+            // `commands/compile.rs`) — gets the answer for free.
+            q.resolve_via_imports(&self.files[file].imports);
             let Some(target_file) = q.resolved_file.get() else {
                 self.err(
                     file,
