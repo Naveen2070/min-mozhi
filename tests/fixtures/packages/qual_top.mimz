@@ -1,0 +1,7 @@
+import qual_a.fifo
+import qual_b.fifo
+
+module Top {
+  let a = qual_a.fifo.Fifo() { }
+  let b = qual_b.fifo.Fifo() { }
+}

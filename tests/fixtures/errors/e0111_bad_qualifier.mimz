@@ -1,0 +1,6 @@
+// expect: E0111
+import e0110_support.other
+
+module M {
+  let u = nope.Fifo() { }
+}

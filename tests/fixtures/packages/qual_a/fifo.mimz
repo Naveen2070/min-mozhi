@@ -1,0 +1,4 @@
+module Fifo {
+  out y: bit
+  y = 1
+}
