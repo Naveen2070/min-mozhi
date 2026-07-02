@@ -147,6 +147,7 @@ impl<'a> Checker<'a> {
                 let canonical = self
                     .modules
                     .get(&m.name.name)
+                    .and_then(|v| v.first())
                     .is_some_and(|&(_, c)| std::ptr::eq(c, m));
                 if !canonical {
                     continue;
@@ -750,7 +751,7 @@ impl<'a> Checker<'a> {
         if in_progress.contains(module) {
             return Rc::new(HashMap::new()); // recursive instantiation
         }
-        let Some(&(file, m)) = self.modules.get(module) else {
+        let Some(&(file, m)) = self.modules.get(module).and_then(|v| v.first()) else {
             return Rc::new(HashMap::new()); // E0102 already reported
         };
         let Some(sc) = self.scopes.get(module).cloned() else {

@@ -223,6 +223,7 @@ impl<'a> Checker<'a> {
                 let canonical = self
                     .modules
                     .get(&m.name.name)
+                    .and_then(|v| v.first())
                     .is_some_and(|&(_, c)| std::ptr::eq(c, m));
                 if !canonical {
                     continue;
@@ -241,7 +242,7 @@ impl<'a> Checker<'a> {
             if !done.insert(cfg.clone()) {
                 continue;
             }
-            let Some(&(file, m)) = self.modules.get(&cfg.0) else {
+            let Some(&(file, m)) = self.modules.get(&cfg.0).and_then(|v| v.first()) else {
                 continue;
             };
             let found = self.check_module_widths(file, m, &cfg.1);
@@ -785,7 +786,7 @@ impl<'a> Checker<'a> {
         bargs: &[NamedArg],
         span: Span,
     ) -> Option<Vec<(String, Ty<'a>)>> {
-        let (bfile, bdecl) = self.bundles.get(bname).copied()?;
+        let &(bfile, bdecl) = self.bundles.get(bname).and_then(|v| v.first())?;
         let mut benv = self.file_consts[bfile].clone();
         for param in &bdecl.params {
             let arg = bargs.iter().find(|a| a.name.name == param.name.name);
