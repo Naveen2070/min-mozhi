@@ -45,38 +45,129 @@ use crate::REPEAT_BUDGET;
 /// levels deep, so 16 is generous for valid designs while staying crash-safe.
 const MAX_INSTANCE_DEPTH: u32 = 16;
 
-/// Module registry across all loaded files: name → (its file, its AST). Module
-/// names are project-unique (checker-enforced), so a child instance resolves by
-/// name regardless of which imported file defines it.
-type Registry<'a> = HashMap<String, (&'a ast::File, &'a ast::Module)>;
+/// Module registry across all loaded files: every `(file_idx, file, module)`
+/// declaring a given name — a multimap, since (spec/02 section 1.5b) a
+/// module name is unique only PER FILE; the same name may legally appear in
+/// different files (Task 4). Mirrors `emit_verilog::Project::modules`;
+/// resolved via [`resolve_module`].
+type Registry<'a> = HashMap<String, Vec<(usize, &'a ast::File, &'a ast::Module)>>;
 
 fn build_registry(files: &[ast::File]) -> Registry<'_> {
-    let mut reg = HashMap::new();
-    for f in files {
+    let mut reg: Registry<'_> = HashMap::new();
+    for (file_idx, f) in files.iter().enumerate() {
         for it in &f.items {
             if let ast::TopItem::Module(m) = it {
-                reg.insert(m.name.name.clone(), (f, m));
+                reg.entry(m.name.name.clone())
+                    .or_default()
+                    .push((file_idx, f, m));
             }
         }
     }
     reg
 }
 
-/// Bundle registry across all loaded files: name → decl. Bundles are
-/// project-wide (same scoping rule as enums). Used by the elaboration pass to
-/// flatten bundle-typed ports/wires to N scalar signals `signame_fieldname`.
-type BundleRegistry<'a> = HashMap<String, &'a ast::BundleDecl>;
+/// Resolve an `Inst`'s target module reference against `reg`. Mirrors
+/// `emit_verilog::Project::resolve_module`'s bare/qualified logic — but,
+/// unlike the emitter (which only ever runs after the checker has already
+/// rejected an ambiguous bare reference as E0110), `mimz sim`/`mimz test`
+/// elaborate the raw parse tree directly (see the module doc comment): an
+/// ambiguous reference is a real, reachable outcome here, so it gets its
+/// own error instead of emit_verilog's "unreachable in practice, checker
+/// already rejected it" `None`.
+fn resolve_module<'a>(
+    reg: &Registry<'a>,
+    q: &ast::QualIdent,
+) -> Result<(&'a ast::File, &'a ast::Module), String> {
+    let candidates = reg.get(&q.name.name).ok_or_else(|| {
+        format!(
+            "uses unknown module `{}` — is the file that defines it imported?",
+            q.name.name
+        )
+    })?;
+    if q.is_bare() {
+        match candidates.as_slice() {
+            [(_, f, m)] => Ok((f, m)),
+            [] => unreachable!("empty Vec is never inserted"),
+            _ => Err(format!(
+                "uses module `{}`, which is ambiguous — declared in {} different \
+                 files; qualify with the import path to pick one (e.g. `a.b.{}`)",
+                q.name.name,
+                candidates.len(),
+                q.name.name
+            )),
+        }
+    } else {
+        let target = q.resolved_file.get().ok_or_else(|| {
+            format!(
+                "the path in `{}` doesn't match any `import` in this file",
+                q.to_dotted()
+            )
+        })?;
+        candidates
+            .iter()
+            .find(|&&(f, _, _)| f == target)
+            .map(|&(_, f, m)| (f, m))
+            .ok_or_else(|| format!("uses unknown module `{}`", q.name.name))
+    }
+}
+
+/// Bundle registry across all loaded files: every `(file_idx, decl)`
+/// declaring a given name — a multimap, mirroring [`Registry`] (bundles
+/// have the same per-file-unique, project-wide-reusable scoping as modules,
+/// unlike enums — see spec/02 section 1.5b). Used by the elaboration pass
+/// to flatten bundle-typed ports/wires to N scalar signals
+/// `signame_fieldname`; resolved via [`resolve_bundle`].
+type BundleRegistry<'a> = HashMap<String, Vec<(usize, &'a ast::BundleDecl)>>;
 
 fn build_bundle_registry(files: &[ast::File]) -> BundleRegistry<'_> {
-    let mut reg = HashMap::new();
-    for f in files {
+    let mut reg: BundleRegistry<'_> = HashMap::new();
+    for (file_idx, f) in files.iter().enumerate() {
         for it in &f.items {
             if let ast::TopItem::Bundle(b) = it {
-                reg.insert(b.name.name.clone(), b);
+                reg.entry(b.name.name.clone())
+                    .or_default()
+                    .push((file_idx, b));
             }
         }
     }
     reg
+}
+
+/// Resolve a bundle-typed reference against `bundles`. Mirrors
+/// [`resolve_module`] — same ambiguous-bare-reference-is-a-real-error
+/// reasoning applies (the sim has no checker pass gating this).
+fn resolve_bundle<'a>(
+    bundles: &BundleRegistry<'a>,
+    q: &ast::QualIdent,
+) -> Result<&'a ast::BundleDecl, String> {
+    let candidates = bundles
+        .get(&q.name.name)
+        .ok_or_else(|| format!("unknown bundle `{}`", q.name.name))?;
+    if q.is_bare() {
+        match candidates.as_slice() {
+            [(_, only)] => Ok(*only),
+            [] => unreachable!("empty Vec is never inserted"),
+            _ => Err(format!(
+                "bundle `{}` is ambiguous — declared in {} different files; \
+                 qualify with the import path to pick one (e.g. `a.b.{}`)",
+                q.name.name,
+                candidates.len(),
+                q.name.name
+            )),
+        }
+    } else {
+        let target = q.resolved_file.get().ok_or_else(|| {
+            format!(
+                "the path in `{}` doesn't match any `import` in this file",
+                q.to_dotted()
+            )
+        })?;
+        candidates
+            .iter()
+            .find(|&&(f, _)| f == target)
+            .map(|&(_, b)| b)
+            .ok_or_else(|| format!("unknown bundle `{}`", q.name.name))
+    }
 }
 
 /// Resolve a bundle type to `(field_name, Width)` pairs, substituting any
@@ -85,13 +176,11 @@ fn build_bundle_registry(files: &[ast::File]) -> BundleRegistry<'_> {
 /// for the sim rather than AST `Type`s for code generation.
 fn resolve_bundle_fields_sim(
     bundles: &BundleRegistry<'_>,
-    bname: &str,
+    bname: &ast::QualIdent,
     args: &[NamedArg],
     consts: &BTreeMap<String, i128>,
 ) -> Result<Vec<(String, Width)>, String> {
-    let bdecl = bundles
-        .get(bname)
-        .ok_or_else(|| format!("unknown bundle `{bname}`"))?;
+    let bdecl = resolve_bundle(bundles, bname)?;
     // Build a merged const env: module consts + bundle param defaults + call-site overrides.
     let mut merged = consts.clone();
     for p in &bdecl.params {
@@ -106,6 +195,7 @@ fn resolve_bundle_fields_sim(
             merged.insert(a.name.name.clone(), v);
         }
     }
+    let bname = &bname.name.name;
     bdecl
         .fields
         .iter()
@@ -732,12 +822,8 @@ fn flatten_instance(
     iname: &str,
     depth: u32,
 ) -> Result<Flat, String> {
-    let (cfile, cm) = *reg.get(&inst.module.name.name).ok_or_else(|| {
-        format!(
-            "instance `{}` uses unknown module `{}` — is the file that defines it imported?",
-            inst.name.name, inst.module.name.name
-        )
-    })?;
+    let (cfile, cm) = resolve_module(reg, &inst.module)
+        .map_err(|e| format!("instance `{}` {e}", inst.name.name))?;
 
     // Child parameter bindings: an explicit `arg` (evaluated in the PARENT's
     // consts) wins; otherwise the child default (in the child's own consts).
@@ -1020,18 +1106,21 @@ fn is_bundle_ty(
     }
 }
 
-/// Extract `(bundle_name, args)` from a bundle type, or `None` for non-bundle types.
+/// Extract `(bundle_qual_ident, args)` from a bundle type, or `None` for
+/// non-bundle types. Returns the full `QualIdent` (not just the bare name)
+/// so the caller can resolve it against a same-named bundle in another
+/// file via [`resolve_bundle`] instead of collapsing to a bare-name lookup.
 fn bundle_type_info(
     ty: &ast::Type,
     bundle_reg: &BundleRegistry<'_>,
     enums: &HashMap<String, &ast::EnumDecl>,
-) -> Option<(String, Vec<NamedArg>)> {
+) -> Option<(ast::QualIdent, Vec<NamedArg>)> {
     match ty {
-        ast::Type::Bundle { name, args } => Some((name.name.name.clone(), args.clone())),
+        ast::Type::Bundle { name, args } => Some((name.clone(), args.clone())),
         ast::Type::Named(id)
             if bundle_reg.contains_key(&id.name.name) && !enums.contains_key(&id.name.name) =>
         {
-            Some((id.name.name.clone(), vec![]))
+            Some((id.clone(), vec![]))
         }
         _ => None,
     }
@@ -1666,6 +1755,68 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("collides"), "got: {err}");
+    }
+
+    #[test]
+    fn two_same_named_modules_flatten_their_own_instance() {
+        // SIM analogue of `emit_verilog::Project`'s Task 7 regression test
+        // (`two_same_named_modules_emit_their_own_bodies`): file A's `Fifo`
+        // and file B's `Fifo` have DIFFERENT bodies (different output
+        // widths, so the assertion doesn't need to inspect expr content);
+        // `M` instantiates each via a distinct qualified path. Before the
+        // fix, `build_registry`'s bare-name `HashMap` let the LAST-inserted
+        // file silently win for EVERY instance regardless of its qualifier
+        // — both instances would flatten with the same (wrong, for one of
+        // them) body. Hand-wires `path`/`resolved_file` the same way
+        // `checker::tests::qualified_module_reference_resolves_unambiguously`
+        // does — nothing in the pipeline computes this from real `import`
+        // statements yet (that pass doesn't exist for `Inst.module` in
+        // production either; only `Import.resolved_file` is set, by
+        // `project.rs` at load time).
+        let a = parse("module Fifo {\n  out y: bits[4]\n  y = 0\n}\n");
+        let b = parse("module Fifo {\n  out y: bits[8]\n  y = 0\n}\n");
+        let mut user = parse("module M {\n  let x = Fifo() { }\n  let z = Fifo() { }\n}\n");
+        if let ast::TopItem::Module(m) = &mut user.items[0] {
+            let mut insts = m.items.iter_mut().filter_map(|it| {
+                if let ModuleItem::Inst(i) = it {
+                    Some(i)
+                } else {
+                    None
+                }
+            });
+            let x = insts.next().unwrap();
+            x.module.path.push(ast::Ident {
+                name: "a".into(),
+                span: x.module.span,
+            });
+            x.module.resolved_file.set(Some(1));
+            let z = insts.next().unwrap();
+            z.module.path.push(ast::Ident {
+                name: "b".into(),
+                span: z.module.span,
+            });
+            z.module.resolved_file.set(Some(2));
+        }
+        let files = [user, a, b];
+        let d = elaborate_project(&files, Some("M"), &BTreeMap::new()).expect("flattens");
+        let width_of = |name: &str| d.wires.iter().find(|w| w.name == name).unwrap().width.bits;
+        assert_eq!(width_of("x_y"), 4, "x must flatten file A's 4-bit Fifo");
+        assert_eq!(width_of("z_y"), 8, "z must flatten file B's 8-bit Fifo");
+    }
+
+    #[test]
+    fn ambiguous_bare_module_reference_errors_instead_of_silently_picking_one() {
+        // Unlike `emit_verilog` (which only ever runs after the checker has
+        // already rejected this as E0110), `mimz sim`/`mimz test` elaborate
+        // the raw parse tree directly (see the module doc comment) — nothing
+        // gates an ambiguous bare reference before it reaches here, so it
+        // must be a real error, not a silent last-file-wins pick.
+        let a = parse("module Fifo {\n  out y: bit\n  y = 1\n}\n");
+        let b = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
+        let user = parse("module M {\n  let u = Fifo() { }\n}\n");
+        let files = [user, a, b];
+        let err = elaborate_project(&files, Some("M"), &BTreeMap::new()).unwrap_err();
+        assert!(err.contains("ambiguous"), "got: {err}");
     }
 
     #[test]
