@@ -129,8 +129,8 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
     for test in tests {
         let span = test.span;
 
-        let dut = match project.resolve_module(&test.module) {
-            Some(m) => m,
+        let (dut_file, dut) = match project.resolve_module_with_file(&test.module) {
+            Some(v) => v,
             None => {
                 em.diags.push(Diag::new(
                     span,
@@ -275,9 +275,14 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         };
 
         let space_before_param = if param_str.is_empty() { "" } else { " " };
+        // Must agree with the DUT's own declaration header in the
+        // companion `.v` file (`module()` in module.rs) — same target
+        // module, same emitted identifier, or the testbench would
+        // instantiate an undeclared module whenever a collision exists.
+        let dut_verilog_name = project.verilog_module_name(dut_file, dut);
         em.out.push_str(&format!(
             "  {}{}{} _dut_inst (\n    {}\n  );\n\n",
-            sanitize_verilog_ident(&dut.name.name),
+            sanitize_verilog_ident(&dut_verilog_name),
             space_before_param,
             param_str,
             dut_connections.join(",\n    ")
