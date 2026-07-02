@@ -40,20 +40,19 @@ struct Ccx<'a> {
 }
 
 impl<'a> Checker<'a> {
-    /// Pass 6 entry: one analysis per canonical module, in file order.
+    /// Pass 6 entry: one analysis per declared module, in file order.
+    /// Same-named modules from different files are legal (spec/02 section
+    /// 1.5b) and each gets its own independent check — no "canonical"
+    /// skip, which would silently leave every module but the
+    /// first-declared one unchecked (the same bug class fixed in
+    /// drivers.rs). `Ccx` is built fresh per `check_module_clocks` call,
+    /// so there is no cache to re-key here.
     pub(super) fn check_clocks(&mut self) {
         let files = self.files;
         for (file, f) in files.iter().enumerate() {
             for item in &f.items {
                 let TopItem::Module(m) = item else { continue };
-                let canonical = self
-                    .modules
-                    .get(&m.name.name)
-                    .and_then(|v| v.first())
-                    .is_some_and(|&(_, c)| std::ptr::eq(c, m));
-                if canonical {
-                    self.check_module_clocks(file, m);
-                }
+                self.check_module_clocks(file, m);
             }
         }
     }

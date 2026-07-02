@@ -1505,3 +1505,90 @@ fn two_same_named_modules_each_get_their_own_driver_check() {
          file B declares a same-named, clean `Fifo`"
     );
 }
+
+#[test]
+fn two_same_named_modules_each_get_their_own_width_check() {
+    // `self.modules["Fifo"]` lists file-registration order: `a` (file 1)
+    // registers before `b` (file 2), so `a` is whatever the OLD
+    // canonical-filter/`.first()` code always resolved to. To get a
+    // GENUINE red (not a pass-by-luck green), the real bug must live in
+    // `b` (the second-registered, non-canonical file) — under the old
+    // widths/mod.rs seeding loop + `.first()` worklist resolution, `b`'s
+    // `Fifo` is never seeded at all, so its internal E0401 is silently
+    // skipped regardless of which Fifo `M` actually instantiates.
+    let a = parse("module Fifo {\n  out y: bits[4]\n  wire w: bits[4] = 0\n  y = w\n}\n"); // clean
+    let b = parse("module Fifo {\n  out y: bits[4]\n  wire w: bits[2] = 0\n  y = w\n}\n"); // width mismatch
+    let mut user = parse("module M {\n  let x = Fifo() { }\n  let z = Fifo() { }\n}\n");
+    if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
+        let mut insts = m.items.iter_mut().filter_map(|it| {
+            if let crate::ast::ModuleItem::Inst(i) = it {
+                Some(i)
+            } else {
+                None
+            }
+        });
+        let x = insts.next().unwrap();
+        x.module.path.push(crate::ast::Ident {
+            name: "a".into(),
+            span: x.module.span,
+        });
+        x.module.resolved_file.set(Some(1)); // -> file A (clean)
+        let z = insts.next().unwrap();
+        z.module.path.push(crate::ast::Ident {
+            name: "b".into(),
+            span: z.module.span,
+        });
+        z.module.resolved_file.set(Some(2)); // -> file B (real E0401)
+    }
+    let diags = errs_multi(&[user, a, b]);
+    assert!(
+        diags.iter().any(|d| d.code == Some("E0401")),
+        "file B's real width mismatch must still be caught even though \
+         file A declares a same-named, clean `Fifo` that registers first"
+    );
+}
+
+#[test]
+fn two_same_named_modules_each_get_their_own_clock_check() {
+    // Same file-registration-order concern as the width-check sibling
+    // above: `check_clocks`'s old canonical filter compared each module
+    // against `self.modules[name].first()`, i.e. always the
+    // FIRST-registered file. The real cross-domain bug must live in the
+    // second-registered file (`b`) to prove the filter's removal, not
+    // just happen to land on whichever file the old filter already let
+    // through.
+    let a = parse(
+        "module Fifo {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out ya: bit\n  out yb: bit\n  reg ra: bit = 0\n  reg rb: bit = 0\n  on rise(cka) {\n    ra <- a\n  }\n  on rise(ckb) {\n    rb <- a\n  }\n  ya = ra\n  yb = rb\n}\n",
+    ); // clean: independent domains
+    let b = parse(
+        "module Fifo {\n  clock cka\n  clock ckb\n  reset rst\n  in a: bit\n  out yb: bit\n  reg ra: bit = 0\n  reg rb: bit = 0\n  on rise(cka) {\n    ra <- a\n  }\n  on rise(ckb) {\n    rb <- ra\n  }\n  yb = rb\n}\n",
+    ); // real E0701: ckb-block reads cka-owned `ra`
+    let mut user = parse("module M {\n  let x = Fifo() { a: 0 }\n  let z = Fifo() { a: 0 }\n}\n");
+    if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
+        let mut insts = m.items.iter_mut().filter_map(|it| {
+            if let crate::ast::ModuleItem::Inst(i) = it {
+                Some(i)
+            } else {
+                None
+            }
+        });
+        let x = insts.next().unwrap();
+        x.module.path.push(crate::ast::Ident {
+            name: "a".into(),
+            span: x.module.span,
+        });
+        x.module.resolved_file.set(Some(1)); // -> file A (clean)
+        let z = insts.next().unwrap();
+        z.module.path.push(crate::ast::Ident {
+            name: "b".into(),
+            span: z.module.span,
+        });
+        z.module.resolved_file.set(Some(2)); // -> file B (real E0701)
+    }
+    let diags = errs_multi(&[user, a, b]);
+    assert!(
+        diags.iter().any(|d| d.code == Some("E0701")),
+        "file B's real cross-domain read must still be caught even though \
+         file A declares a same-named, clean `Fifo` that registers first"
+    );
+}
