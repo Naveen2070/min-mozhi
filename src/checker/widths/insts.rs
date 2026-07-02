@@ -34,7 +34,11 @@ impl<'a> Checker<'a> {
         let Some(child) = self.child_binding(cx, inst, false) else {
             return Ty::Unknown;
         };
-        let Some(csc) = self.scopes.get(&child.module.name.name).cloned() else {
+        let Some(csc) = self
+            .scopes
+            .get(&(child.file, child.module.name.name.clone()))
+            .cloned()
+        else {
             return Ty::Unknown;
         };
         for item in &child.module.items {
@@ -68,10 +72,16 @@ impl<'a> Checker<'a> {
         inst: &'a Inst,
         report: bool,
     ) -> Option<ChildBinding<'a>> {
-        let &(cfile, cm) = self
-            .modules
-            .get(&inst.module.name.name)
-            .and_then(|v| v.first())?;
+        // names.rs (pass 3) already resolved this instantiation —
+        // `resolved_file` is unset only for the already-reported
+        // ambiguous/unknown cases, where the sole candidate (`.first()`) is
+        // the safe fallback (bare-and-unambiguous, or "nothing to find").
+        let target_file = inst.module.resolved_file.get();
+        let candidates = self.modules.get(&inst.module.name.name)?;
+        let &(cfile, cm) = candidates
+            .iter()
+            .find(|&&(f, _)| Some(f) == target_file)
+            .or_else(|| candidates.first())?;
         let mut cenv = self.file_consts[cfile].clone();
         let mut binding = Vec::new();
         for p in &cm.params {
@@ -117,7 +127,10 @@ impl<'a> Checker<'a> {
             return;
         };
         let cm = child.module;
-        let csc = self.scopes.get(&cm.name.name).cloned();
+        let csc = self
+            .scopes
+            .get(&(child.file, cm.name.name.clone()))
+            .cloned();
         for Conn { port, signal } in &inst.conns {
             let mut expected = Ty::Unknown; // unknown/output ports: E0107 owns it
             for item in &cm.items {

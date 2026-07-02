@@ -291,7 +291,7 @@ impl<'a> Checker<'a> {
         m: &'a Module,
         binding: &[(String, i128)],
     ) -> Vec<Config> {
-        let Some(sc) = self.scopes.get(&m.name.name).cloned() else {
+        let Some(sc) = self.scopes.get(&(file, m.name.name.clone())).cloned() else {
             return Vec::new();
         };
         let mut env = self.file_consts[file].clone();
@@ -526,7 +526,10 @@ impl<'a> Checker<'a> {
                                 let bname = ast_bundle_name(lhs_ty);
                                 let bargs = ast_bundle_args(lhs_ty);
                                 if let Some(bname) = bname {
-                                    self.check_bundle_lit(cx, bname, bargs, inits, rhs.span);
+                                    let bfile_hint = ast_bundle_file(lhs_ty);
+                                    self.check_bundle_lit(
+                                        cx, bname, bfile_hint, bargs, inits, rhs.span,
+                                    );
                                 }
                             }
                             ExprKind::Ident(rhs_sig) => {
@@ -778,15 +781,24 @@ impl<'a> Checker<'a> {
     }
 
     /// Resolve a bundle's fields to `(name, Ty)` pairs under the given args.
+    /// `bfile_hint` is the bundle type's own `QualIdent::resolved_file`
+    /// (set by names.rs pass 3) — the exact candidate when it names one,
+    /// else the sole candidate (bare-and-unambiguous; a `None` hint here
+    /// only ever means an already-reported ambiguous/unknown reference).
     /// Returns `None` and emits E0906 if a required param has no value.
     fn resolve_bundle_fields(
         &mut self,
         cx: &Wcx<'a>,
         bname: &str,
+        bfile_hint: Option<usize>,
         bargs: &[NamedArg],
         span: Span,
     ) -> Option<Vec<(String, Ty<'a>)>> {
-        let &(bfile, bdecl) = self.bundles.get(bname).and_then(|v| v.first())?;
+        let candidates = self.bundles.get(bname)?;
+        let &(bfile, bdecl) = candidates
+            .iter()
+            .find(|&&(f, _)| Some(f) == bfile_hint)
+            .or_else(|| candidates.first())?;
         let mut benv = self.file_consts[bfile].clone();
         for param in &bdecl.params {
             let arg = bargs.iter().find(|a| a.name.name == param.name.name);
@@ -840,11 +852,12 @@ impl<'a> Checker<'a> {
         &mut self,
         cx: &mut Wcx<'a>,
         bname: &str,
+        bfile_hint: Option<usize>,
         bargs: &[NamedArg],
         inits: &'a [FieldInit],
         span: Span,
     ) {
-        let fields = match self.resolve_bundle_fields(cx, bname, bargs, span) {
+        let fields = match self.resolve_bundle_fields(cx, bname, bfile_hint, bargs, span) {
             Some(f) => f,
             None => {
                 // Bundle lookup failed; recurse anyway to surface inner errors.
@@ -1019,6 +1032,16 @@ fn ast_bundle_name(ty: &Type) -> Option<&str> {
     match ty {
         Type::Named(id) => Some(&id.name.name),
         Type::Bundle { name, .. } => Some(&name.name.name),
+        _ => None,
+    }
+}
+
+/// The bundle name's `resolved_file` (set by names.rs pass 3), for
+/// disambiguating which same-named bundle's fields to resolve.
+fn ast_bundle_file(ty: &Type) -> Option<usize> {
+    match ty {
+        Type::Named(id) => id.resolved_file.get(),
+        Type::Bundle { name, .. } => name.resolved_file.get(),
         _ => None,
     }
 }
