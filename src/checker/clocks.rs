@@ -49,6 +49,7 @@ impl<'a> Checker<'a> {
                 let canonical = self
                     .modules
                     .get(&m.name.name)
+                    .and_then(|v| v.first())
                     .is_some_and(|&(_, c)| std::ptr::eq(c, m));
                 if canonical {
                     self.check_module_clocks(file, m);
