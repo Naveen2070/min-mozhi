@@ -225,35 +225,35 @@ clock-domain matrix (independent domains clean, direct read,
 through-a-wire, domain-mixing wire, unused-second-clock clean). A few
 deserve a note:
 
-| Test                                                                  | Locks in                                                                               |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `clean_module_passes` / `const_arithmetic_and_repeat_bounds_evaluate` | clean code produces ZERO diagnostics — the checker must never cry wolf                 |
-| `duplicate_module_across_files_is_e0001_in_the_right_file`            | checker diagnostics carry the file index (multi-file rendering contract)               |
-| `plus_into_same_width_target_teaches_wrap_in_e0401`                   | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable    |
-| `defaultless_param_module_is_checked_per_instantiation`               | a module with no param defaults is checked under each instantiation's concrete binding |
-| `replication_width_is_count_times_inner`                              | `{2{bits[4]}}` is `bits[8]`, `{3{bits[4]}}` is `bits[12]` (A1)                         |
-| `replication_width_mismatch_is_e0401`                                 | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                |
-| `a_non_constant_replication_count_is_e0201`                           | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)            |
-| `a_zero_replication_count_is_e0410`                                   | `{0{a}}` has zero width — reuses the "not a valid width" code                          |
-| `dont_care_pattern_must_match_the_scrutinee_width`                    | `0b1??` is fine on `bits[3]`, a width error (E0409) on `bits[4]` (A2)                  |
-| `a_dont_care_match_still_needs_a_wildcard`                            | masked patterns earn no coverage — `0b1??`+`0b0??` without `_` is E0601 (A2)           |
-| `a_dont_care_pattern_on_an_enum_is_e0409`                             | a masked pattern on an enum scrutinee is rejected (match variants by name) (A2)        |
-| `repeat_index_out_of_range_at_the_last_iteration_is_e0406`            | `repeat` bodies are width-checked per iteration value, not just once                   |
-| `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape — explicit `extend` where widths differ                 |
-| `disjoint_per_bit_drives_via_repeat_pass`                             | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal |
-| `repeat_instance_array_ripple_carry_is_not_a_cycle`                   | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop               |
-| `a_cycle_through_instances_is_e0504`                                  | combinational loops THROUGH child modules are caught via the comb summaries            |
-| `feedback_through_a_register_is_not_a_cycle`                          | a reg breaks the loop — the normal shape of hardware never false-positives             |
-| `enum_match_covering_every_variant_needs_no_wildcard`                 | the v0.2.3 ruling, executable: full coverage IS exhaustive, no `_` ceremony            |
-| `wildcard_after_full_enum_coverage_is_allowed`                        | the defensive `_` (bit-flip recovery) is never flagged unreachable                     |
-| `clock_and_reset_ports_may_be_omitted`                                | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract              |
-| `same_domain_logic_under_two_declared_clocks_passes`                  | E0701 colors by USE, not by declaration count — an unused clock changes nothing        |
-| `register_file_passes`                                                | a `mem` with a clocked indexed write + combinational indexed read checks clean (A4)    |
-| `a_non_constant_memory_depth_is_e0201`                                | a memory `DEPTH` that is not a compile-time constant is E0201 (A4)                     |
-| `a_zero_memory_depth_is_e0410`                                        | a memory `DEPTH` of 0 is E0410 — a memory needs at least one cell (A4)                 |
-| `a_memory_init_that_overflows_the_element_is_e0405`                   | a `mem` init value too wide for the element type is E0405 (A4)                         |
-| `a_constant_address_past_the_depth_is_e0406`                          | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                          |
-| `a_memory_inside_repeat_is_e0303`                                     | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                |
+| Test                                                                   | Locks in                                                                                    |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `clean_module_passes` / `const_arithmetic_and_repeat_bounds_evaluate`  | clean code produces ZERO diagnostics — the checker must never cry wolf                      |
+| `same_name_module_in_different_files_is_not_an_error_until_referenced` | packages/namespacing: cross-file name collisions are legal until referenced (spec/02 §1.5b) |
+| `plus_into_same_width_target_teaches_wrap_in_e0401`                    | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable         |
+| `defaultless_param_module_is_checked_per_instantiation`                | a module with no param defaults is checked under each instantiation's concrete binding      |
+| `replication_width_is_count_times_inner`                               | `{2{bits[4]}}` is `bits[8]`, `{3{bits[4]}}` is `bits[12]` (A1)                              |
+| `replication_width_mismatch_is_e0401`                                  | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                     |
+| `a_non_constant_replication_count_is_e0201`                            | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)                 |
+| `a_zero_replication_count_is_e0410`                                    | `{0{a}}` has zero width — reuses the "not a valid width" code                               |
+| `dont_care_pattern_must_match_the_scrutinee_width`                     | `0b1??` is fine on `bits[3]`, a width error (E0409) on `bits[4]` (A2)                       |
+| `a_dont_care_match_still_needs_a_wildcard`                             | masked patterns earn no coverage — `0b1??`+`0b0??` without `_` is E0601 (A2)                |
+| `a_dont_care_pattern_on_an_enum_is_e0409`                              | a masked pattern on an enum scrutinee is rejected (match variants by name) (A2)             |
+| `repeat_index_out_of_range_at_the_last_iteration_is_e0406`             | `repeat` bodies are width-checked per iteration value, not just once                        |
+| `extend_of_a_bit_into_bitwise_passes`                                  | the fixed shift-register shape — explicit `extend` where widths differ                      |
+| `disjoint_per_bit_drives_via_repeat_pass`                              | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal      |
+| `repeat_instance_array_ripple_carry_is_not_a_cycle`                    | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop                    |
+| `a_cycle_through_instances_is_e0504`                                   | combinational loops THROUGH child modules are caught via the comb summaries                 |
+| `feedback_through_a_register_is_not_a_cycle`                           | a reg breaks the loop — the normal shape of hardware never false-positives                  |
+| `enum_match_covering_every_variant_needs_no_wildcard`                  | the v0.2.3 ruling, executable: full coverage IS exhaustive, no `_` ceremony                 |
+| `wildcard_after_full_enum_coverage_is_allowed`                         | the defensive `_` (bit-flip recovery) is never flagged unreachable                          |
+| `clock_and_reset_ports_may_be_omitted`                                 | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract                   |
+| `same_domain_logic_under_two_declared_clocks_passes`                   | E0701 colors by USE, not by declaration count — an unused clock changes nothing             |
+| `register_file_passes`                                                 | a `mem` with a clocked indexed write + combinational indexed read checks clean (A4)         |
+| `a_non_constant_memory_depth_is_e0201`                                 | a memory `DEPTH` that is not a compile-time constant is E0201 (A4)                          |
+| `a_zero_memory_depth_is_e0410`                                         | a memory `DEPTH` of 0 is E0410 — a memory needs at least one cell (A4)                      |
+| `a_memory_init_that_overflows_the_element_is_e0405`                    | a `mem` init value too wide for the element type is E0405 (A4)                              |
+| `a_constant_address_past_the_depth_is_e0406`                           | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                               |
+| `a_memory_inside_repeat_is_e0303`                                      | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                     |
 
 ## Unit: transliteration (`src/emit_verilog/translit.rs`, 5 tests)
 
