@@ -191,6 +191,6 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        found.push((cm.name.name.clone(), child.binding));
+        found.push((child.file, cm.name.name.clone(), child.binding));
     }
 }

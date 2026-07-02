@@ -167,8 +167,11 @@ struct Wcx<'a> {
     bundle_sigs: HashMap<String, &'a Type>,
 }
 
-/// A (module name, parameter binding) pair waiting to be checked.
-type Config = (String, Vec<(String, i128)>);
+/// A (file, module name, parameter binding) triple waiting to be checked.
+/// The file index disambiguates same-named modules from different files
+/// (spec/02 section 1.5b) — a bare-name key would conflate two distinct
+/// modules that happen to share a name and a binding.
+type Config = (usize, String, Vec<(String, i128)>);
 
 impl<'a> Checker<'a> {
     /// Pass 4 entry: check every module under its default binding, then
@@ -215,21 +218,16 @@ impl<'a> Checker<'a> {
         }
 
         let mut work: Vec<Config> = Vec::new();
-        // Seed in file order (deterministic diagnostics), canonical
-        // modules only (E0001 losers are skipped).
+        // Seed in file order (deterministic diagnostics). Same-named
+        // modules from different files are legal (spec/02 section 1.5b)
+        // and each gets its own independent check — no "canonical" skip,
+        // which would silently leave every module but the first-declared
+        // one unchecked (the same bug class fixed in drivers.rs).
         for (file, f) in files.iter().enumerate() {
             for item in &f.items {
                 let TopItem::Module(m) = item else { continue };
-                let canonical = self
-                    .modules
-                    .get(&m.name.name)
-                    .and_then(|v| v.first())
-                    .is_some_and(|&(_, c)| std::ptr::eq(c, m));
-                if !canonical {
-                    continue;
-                }
                 if let Some(binding) = self.default_binding(file, m, true) {
-                    work.push((m.name.name.clone(), binding));
+                    work.push((file, m.name.name.clone(), binding));
                 }
             }
         }
@@ -242,10 +240,14 @@ impl<'a> Checker<'a> {
             if !done.insert(cfg.clone()) {
                 continue;
             }
-            let Some(&(file, m)) = self.modules.get(&cfg.0).and_then(|v| v.first()) else {
+            let Some(&(_, m)) = self
+                .modules
+                .get(&cfg.1)
+                .and_then(|v| v.iter().find(|&&(f, _)| f == cfg.0))
+            else {
                 continue;
             };
-            let found = self.check_module_widths(file, m, &cfg.1);
+            let found = self.check_module_widths(cfg.0, m, &cfg.2);
             if done.len() < MAX_CONFIGS {
                 work.extend(found);
             }
