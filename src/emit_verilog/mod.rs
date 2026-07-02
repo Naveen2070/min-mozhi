@@ -222,27 +222,55 @@ impl<'a> Project<'a> {
     /// have already rejected this program — callers treat it exactly like
     /// today's "unknown" case (an unreachable-in-practice defensive path).
     pub fn resolve_module(&self, q: &QualIdent) -> Option<&'a Module> {
+        Self::resolve(&self.modules, q).map(|(_, m)| m)
+    }
+    /// Like [`Self::resolve_module`], but also returns the declaring file's
+    /// index — needed at instantiation sites to compute the SAME
+    /// disambiguated Verilog identifier [`Self::verilog_module_name`] would
+    /// give the module's own declaration header (see `module.rs::instance`).
+    pub fn resolve_module_with_file(&self, q: &QualIdent) -> Option<(usize, &'a Module)> {
         Self::resolve(&self.modules, q)
     }
     pub fn resolve_enum(&self, q: &QualIdent) -> Option<&'a EnumDecl> {
-        Self::resolve(&self.enums, q)
+        Self::resolve(&self.enums, q).map(|(_, e)| e)
     }
     pub fn resolve_bundle(&self, q: &QualIdent) -> Option<&'a BundleDecl> {
-        Self::resolve(&self.bundles, q)
+        Self::resolve(&self.bundles, q).map(|(_, b)| b)
     }
-    fn resolve<T>(table: &HashMap<String, Vec<(usize, &'a T)>>, q: &QualIdent) -> Option<&'a T> {
+    fn resolve<T>(
+        table: &HashMap<String, Vec<(usize, &'a T)>>,
+        q: &QualIdent,
+    ) -> Option<(usize, &'a T)> {
         let candidates = table.get(&q.name.name)?;
         if q.is_bare() {
             match candidates.as_slice() {
-                [(_, only)] => Some(*only),
+                [only] => Some(*only),
                 _ => None, // 0 or ambiguous — checker already rejected this
             }
         } else {
             let target = q.resolved_file.get()?;
-            candidates
-                .iter()
-                .find(|&&(f, _)| f == target)
-                .map(|&(_, t)| t)
+            candidates.iter().find(|&&(f, _)| f == target).copied()
+        }
+    }
+
+    /// The Verilog identifier for `m`, disambiguated by its declaring
+    /// `file` index ONLY when 2+ files declare the same name — the
+    /// packages/namespacing same-name-across-files feature (spec/02
+    /// section 1.5b). Every one of the pre-existing single-declaration
+    /// examples gets back the bare name, byte-for-byte: this check is a
+    /// per-name lookup, so it is a strict no-op whenever `name` has exactly
+    /// one declaring file. `__f<file>` mirrors the same accepted-risk
+    /// double-underscore separator [`Emitter::inst_name`] already uses to
+    /// flatten `repeat` instance arrays: a user could in principle declare
+    /// a module literally named e.g. `Fifo__f1`, but Min-Mozhi's identifier
+    /// grammar places no restriction on leading/embedded underscores, so
+    /// this is the same pre-existing, accepted risk class as `inst_name`'s
+    /// `__<idx>`, not a new one.
+    pub fn verilog_module_name(&self, file: usize, m: &Module) -> String {
+        if self.modules.get(&m.name.name).is_some_and(|v| v.len() > 1) {
+            format!("{}__f{file}", m.name.name)
+        } else {
+            m.name.name.clone()
         }
     }
 
@@ -284,12 +312,15 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
         crate::version::current().tag()
     ));
     // Pre-pass: every module's compile-time env (its FILE's consts plus
-    // its own), keyed by module name. `instance()` needs this to fold a
-    // CHILD's consts into its port widths — the parent's Verilog knows
-    // nothing about a child's `const WIDTH` (and must never substitute
-    // the parent's same-named const instead). Silent: the main walk
-    // below re-evaluates the same consts and reports any errors once.
-    for file in files {
+    // its own), keyed by (declaring file, module name) — NOT name alone:
+    // two files may legally declare the same module name (spec/02 section
+    // 1.5b), and a name-only key would let the second module's env
+    // silently shadow (or be shadowed by) the first's. `instance()` needs
+    // this to fold a CHILD's consts into its port widths — the parent's
+    // Verilog knows nothing about a child's `const WIDTH` (and must never
+    // substitute the parent's same-named const instead). Silent: the main
+    // walk below re-evaluates the same consts and reports any errors once.
+    for (file_idx, file) in files.iter().enumerate() {
         let file_env = fold_consts(
             Env::new(),
             file.items.iter().filter_map(|i| match i {
@@ -306,7 +337,9 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
                         _ => None,
                     }),
                 );
-                em.module_envs.entry(m.name.name.clone()).or_insert(menv);
+                em.module_envs
+                    .entry((file_idx, m.name.name.clone()))
+                    .or_insert(menv);
             }
         }
     }
@@ -358,8 +391,10 @@ struct Emitter<'a> {
     /// Every module's own compile-time env (its file's consts + its
     /// module consts), built by the pre-pass in [`emit`]. Used when
     /// INSTANTIATING a module: the child's port-width expressions fold
-    /// against the CHILD's constants, never the parent's.
-    module_envs: HashMap<String, Env>,
+    /// against the CHILD's constants, never the parent's. Keyed by
+    /// `(declaring file, name)`, not name alone — two files may legally
+    /// declare the same module name (spec/02 section 1.5b).
+    module_envs: HashMap<(usize, String), Env>,
     /// Iterations of `repeat` left to unroll in the current pass before
     /// `ModuleItem::Repeat` errors — a runaway-bound backstop.
     repeat_budget: i128,
