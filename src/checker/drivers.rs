@@ -136,22 +136,18 @@ struct Dcx<'a> {
 }
 
 impl<'a> Checker<'a> {
-    /// Pass 5 entry: one analysis per canonical module, in file order.
+    /// Pass 5 entry: one analysis per declared module (file, name pair), in
+    /// file order. Same-named modules from different files are legal
+    /// (spec/02 section 1.5b) and each gets its own independent check — no
+    /// "canonical" skip, which would silently leave every module but the
+    /// first-declared one unchecked.
     pub(super) fn check_drivers(&mut self) {
         let files = self.files;
-        let mut summaries: HashMap<String, Summary> = HashMap::new();
-        let mut in_progress: HashSet<String> = HashSet::new();
+        let mut summaries: HashMap<(usize, String), Summary> = HashMap::new();
+        let mut in_progress: HashSet<(usize, String)> = HashSet::new();
         for (file, f) in files.iter().enumerate() {
             for item in &f.items {
                 let TopItem::Module(m) = item else { continue };
-                let canonical = self
-                    .modules
-                    .get(&m.name.name)
-                    .and_then(|v| v.first())
-                    .is_some_and(|&(_, c)| std::ptr::eq(c, m));
-                if !canonical {
-                    continue;
-                }
                 self.check_module_drivers(file, m, &mut summaries, &mut in_progress);
             }
         }
@@ -184,10 +180,10 @@ impl<'a> Checker<'a> {
         &mut self,
         file: usize,
         m: &'a Module,
-        summaries: &mut HashMap<String, Summary>,
-        in_progress: &mut HashSet<String>,
+        summaries: &mut HashMap<(usize, String), Summary>,
+        in_progress: &mut HashSet<(usize, String)>,
     ) {
-        let Some(sc) = self.scopes.get(&m.name.name).cloned() else {
+        let Some(sc) = self.scopes.get(&(file, m.name.name.clone())).cloned() else {
             return;
         };
         let (env, bound) = self.driver_env(file, m);
@@ -221,8 +217,8 @@ impl<'a> Checker<'a> {
         &mut self,
         dcx: &mut Dcx<'a>,
         items: &'a [ModuleItem],
-        summaries: &mut HashMap<String, Summary>,
-        in_progress: &mut HashSet<String>,
+        summaries: &mut HashMap<(usize, String), Summary>,
+        in_progress: &mut HashSet<(usize, String)>,
     ) {
         for item in items {
             match item {
@@ -431,10 +427,17 @@ impl<'a> Checker<'a> {
         &mut self,
         dcx: &mut Dcx<'a>,
         inst: &'a Inst,
-        summaries: &mut HashMap<String, Summary>,
-        in_progress: &mut HashSet<String>,
+        summaries: &mut HashMap<(usize, String), Summary>,
+        in_progress: &mut HashSet<(usize, String)>,
     ) {
-        let summary = self.comb_summary(&inst.module.name.name, summaries, in_progress);
+        // names.rs (pass 3) runs before drivers.rs (pass 5) and resolves
+        // every instantiation it can — `resolved_file` is unset only for
+        // the already-reported ambiguous/unknown cases, in which case the
+        // calling module's own file is a safe fallback (comb_summary falls
+        // back to the sole candidate below).
+        let target_file = inst.module.resolved_file.get().unwrap_or(dcx.file);
+        let summary =
+            self.comb_summary(target_file, &inst.module.name.name, summaries, in_progress);
         let index = inst
             .index
             .as_ref()
@@ -741,26 +744,39 @@ impl<'a> Checker<'a> {
     /// combinational graph. Memoized; recursion yields an empty summary.
     fn comb_summary(
         &mut self,
+        file: usize,
         module: &str,
-        summaries: &mut HashMap<String, Summary>,
-        in_progress: &mut HashSet<String>,
+        summaries: &mut HashMap<(usize, String), Summary>,
+        in_progress: &mut HashSet<(usize, String)>,
     ) -> Summary {
-        if let Some(s) = summaries.get(module) {
-            return s.clone();
-        }
-        if in_progress.contains(module) {
-            return Rc::new(HashMap::new()); // recursive instantiation
-        }
-        let Some(&(file, m)) = self.modules.get(module).and_then(|v| v.first()) else {
+        // Resolve to the actual declaring (file, module) pair: the exact
+        // `file` candidate when there is one (the common case — either a
+        // qualified-and-resolved reference, or a bare-and-unambiguous one
+        // where `file` is the calling module's own file and happens not to
+        // match, see the `.or_else` below), else the sole candidate (the
+        // bare-and-unambiguous case where `resolved_file` was never this
+        // module's file to begin with).
+        let Some(&(mfile, m)) = self
+            .modules
+            .get(module)
+            .and_then(|v| v.iter().find(|&&(f, _)| f == file).or_else(|| v.first()))
+        else {
             return Rc::new(HashMap::new()); // E0102 already reported
         };
-        let Some(sc) = self.scopes.get(module).cloned() else {
+        let key = (mfile, module.to_string());
+        if let Some(s) = summaries.get(&key) {
+            return s.clone();
+        }
+        if in_progress.contains(&key) {
+            return Rc::new(HashMap::new()); // recursive instantiation
+        }
+        let Some(sc) = self.scopes.get(&key).cloned() else {
             return Rc::new(HashMap::new());
         };
-        in_progress.insert(module.to_string());
-        let (env, bound) = self.driver_env(file, m);
+        in_progress.insert(key.clone());
+        let (env, bound) = self.driver_env(mfile, m);
         let mut dcx = Dcx {
-            file,
+            file: mfile,
             sc,
             env,
             bound,
@@ -776,7 +792,7 @@ impl<'a> Checker<'a> {
             repeat_budget: REPEAT_BUDGET,
         };
         self.collect_items(&mut dcx, &m.items, summaries, in_progress);
-        in_progress.remove(module);
+        in_progress.remove(&key);
 
         let ins: HashSet<&str> = dcx
             .sc
@@ -817,7 +833,7 @@ impl<'a> Checker<'a> {
             }
         }
         let summary: Summary = Rc::new(summary);
-        summaries.insert(module.to_string(), summary.clone());
+        summaries.insert(key, summary.clone());
         summary
     }
 

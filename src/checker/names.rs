@@ -142,18 +142,12 @@ impl<'a> Checker<'a> {
 
         self.walk_items(file, &sc, &mut env, &m.items);
 
-        // Hand the scope to the width pass — but only for the module that
-        // OWNS this name project-wide (an E0001 duplicate's scope would
-        // shadow the canonical one).
-        if self
-            .modules
-            .get(&m.name.name)
-            .and_then(|v| v.first())
-            .is_some_and(|&(_, canon)| std::ptr::eq(canon, m))
-        {
-            self.scopes
-                .insert(m.name.name.clone(), std::rc::Rc::new(sc));
-        }
+        // Hand the scope to the width and driver passes, keyed by (file,
+        // name) — same-named modules from different files are legal (spec/02
+        // section 1.5b), so no "canonical owner" disambiguation is needed:
+        // each module gets its own scope under its own file.
+        self.scopes
+            .insert((file, m.name.name.clone()), std::rc::Rc::new(sc));
     }
 
     /// Declarations, recursively through `repeat` and `const if` bodies (declaration
