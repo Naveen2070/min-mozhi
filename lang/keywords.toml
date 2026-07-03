@@ -241,3 +241,12 @@ tamil = "இயல்பு"     # PROVISIONAL — pending native review
 en = "bundle"
 tanglish = "kattai"   # PROVISIONAL — pending native review
 tamil = "கட்டை"       # PROVISIONAL — pending native review
+
+# Function return statement (Phase 2 statement-based fn bodies). Tanglish/Tamil
+# spellings are PROVISIONAL dev/testing placeholders — `thirumbu`/`திரும்பு`
+# — pending native-speaker review (R9/R11). Maintainer-authorized 2026-07-03
+# so four-flavor tooling works now.
+[keywords.return]
+en = "return"
+tanglish = "thirumbu"  # PROVISIONAL — pending native review
+tamil = "திரும்பு"      # PROVISIONAL — pending native review
