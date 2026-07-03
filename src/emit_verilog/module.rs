@@ -352,6 +352,12 @@ impl Emitter<'_> {
     /// `SCALE` is a file const folds to `a >> 3`), while module consts —
     /// which are not visible inside a `function automatic` body — are
     /// excluded so they cannot accidentally shadow a function parameter.
+    ///
+    /// `return` lowers via continuation-passing (see [`Self::emit_fn_stmts`])
+    /// rather than a flat `funcname = expr;` per statement: Verilog function
+    /// bodies execute sequentially with no early exit, so a naive flat
+    /// lowering would let the mandatory tail's assignment silently overwrite
+    /// an earlier `return` fired inside an `if` branch.
     fn render_fn_decl(&mut self, decl: &FuncDecl, file_env: &Env) -> String {
         // Replace the module env with the file-level env: module consts are
         // out of scope inside a `function automatic`, but file consts must
@@ -364,7 +370,7 @@ impl Emitter<'_> {
             let pw = self.width(&param.ty);
             s.push_str(&format!("        input {pw}{};\n", param.name.name));
         }
-        for local in &decl.locals {
+        for local in fn_all_locals(&decl.stmts) {
             let decl_line = match local.inferred_width.get() {
                 Some(1) => format!("        reg {};\n", local.name.name),
                 Some(w) => format!("        reg [{}:0] {};\n", w - 1, local.name.name),
@@ -376,17 +382,65 @@ impl Emitter<'_> {
             s.push_str(&decl_line);
         }
         s.push_str("        begin\n");
-        for local in &decl.locals {
-            let v = self.expr(&local.value);
-            s.push_str(&format!("            {} = {};\n", local.name.name, v));
-        }
-        let body = self.expr(&decl.body);
-        s.push_str(&format!("            {} = {};\n", decl.name.name, body));
+        let tail = self.expr(&decl.tail);
+        let tail_code = format!("            {} = {};\n", decl.name.name, tail);
+        let body_code = self.emit_fn_stmts(&decl.stmts, &tail_code, &decl.name.name, 3);
+        s.push_str(&body_code);
         s.push_str("        end\n");
         s.push_str("    endfunction\n");
 
         self.env = saved_env;
         s
+    }
+
+    /// Lower a `fn`-body statement list to Verilog, threading `rest` — the
+    /// code for whatever comes after this list falls through to — as a
+    /// continuation. A `return` inside an `if` branch must NOT reach
+    /// `rest`: it terminates that branch's generated code outright. A
+    /// branch that falls through (ends without a `return`) embeds `rest`
+    /// as ITS continuation, so the code after the `if` only runs on the
+    /// paths that didn't already return.
+    fn emit_fn_stmts(
+        &mut self,
+        stmts: &[FnStmt],
+        rest: &str,
+        fname: &str,
+        indent: usize,
+    ) -> String {
+        let pad = "    ".repeat(indent);
+        match stmts.split_first() {
+            None => rest.to_string(),
+            Some((FnStmt::Let(l), tail_stmts)) => {
+                let v = self.expr(&l.value);
+                let mut out = format!("{pad}{} = {v};\n", l.name.name);
+                out.push_str(&self.emit_fn_stmts(tail_stmts, rest, fname, indent));
+                out
+            }
+            Some((FnStmt::Return(e), _)) => {
+                // E0812 already rejects any statement after an unconditional
+                // `return` in the same block, so nothing after this one in
+                // `stmts` is reachable for a program that passed the checker
+                // — the continuation for a `return` is simply the return
+                // value itself, never `rest`.
+                let v = self.expr(e);
+                format!("{pad}{fname} = {v};\n")
+            }
+            Some((FnStmt::If { cond, then, els }, tail_stmts)) => {
+                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent);
+                let then_code = self.emit_fn_stmts(then, &cont, fname, indent + 1);
+                let else_code = match els {
+                    Some(els) => self.emit_fn_stmts(els, &cont, fname, indent + 1),
+                    None => cont.clone(),
+                };
+                let c = self.expr(cond);
+                format!(
+                    "{pad}if ({c}) begin\n{then_code}{pad}end else begin\n{else_code}{pad}end\n"
+                )
+            }
+            Some((FnStmt::Error(_), tail_stmts)) => {
+                self.emit_fn_stmts(tail_stmts, rest, fname, indent)
+            }
+        }
     }
 
     /// Flatten `const if` nodes into the items they select, evaluating
@@ -1021,4 +1075,25 @@ fn collect_assigned<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a str>) {
             SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
+}
+
+/// Collect every `Let` binding across a `fn`-body statement list, recursing
+/// into BOTH arms of nested `if`s — Verilog-2005 `function` declarations
+/// must all sit before `begin`, regardless of which branch actually assigns
+/// them at runtime.
+fn fn_all_locals(stmts: &[FnStmt]) -> Vec<&LocalLet> {
+    let mut out = Vec::new();
+    for stmt in stmts {
+        match stmt {
+            FnStmt::Let(l) => out.push(l),
+            FnStmt::If { then, els, .. } => {
+                out.extend(fn_all_locals(then));
+                if let Some(els) = els {
+                    out.extend(fn_all_locals(els));
+                }
+            }
+            FnStmt::Return(_) | FnStmt::Error(_) => {}
+        }
+    }
+    out
 }

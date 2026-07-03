@@ -212,3 +212,41 @@ module Decoder {
 
     assert_eq!(got, want, "tagged enum Verilog differs from golden");
 }
+
+/// Guard-clause `fn` bodies must lower via continuation-passing: a `return`
+/// fired inside an `if` branch must never be overwritten by the mandatory
+/// tail assignment. A naive lowering appends `f = <tail>;` unconditionally
+/// after the if/else, silently discarding the `return 255` path.
+#[test]
+fn guard_clause_return_does_not_get_overwritten_by_tail() {
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return 255 }\n  0\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    let verilog = compile_ok(src);
+    // The `255` assignment must be nested inside the `if`, and the fallback
+    // `0` must be nested inside the corresponding `else` — NOT a bare
+    // trailing `f = 0;` that runs unconditionally after the if.
+    assert!(
+        verilog.contains("if ((a[0] == 1)) begin"),
+        "missing if guard in:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("f = 255"),
+        "missing return value in:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("end else begin"),
+        "missing else branch in:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("f = 0"),
+        "missing tail value in:\n{verilog}"
+    );
+    // The bug this test guards against: a naive lowering emits `f = 0;` a
+    // SECOND time, unconditionally, after the if/else block closes.
+    let f_assign_count = verilog.matches("f = 0").count();
+    assert_eq!(
+        f_assign_count, 1,
+        "the tail value must be assigned exactly once, inside the else branch \
+         — a second, unconditional assignment would silently overwrite the \
+         `return 255` path"
+    );
+}
