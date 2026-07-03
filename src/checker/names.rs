@@ -16,8 +16,8 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    BundleDecl, Conn, Dir, EnumDecl, Expr, ExprKind, FuncDecl, Inst, LValue, Module, ModuleItem,
-    NamedArg, Pattern, SeqStmt, TestDecl, TopItem, Type,
+    BundleDecl, Conn, Dir, EnumDecl, Expr, ExprKind, FnStmt, FuncDecl, Inst, LValue, Module,
+    ModuleItem, NamedArg, Pattern, SeqStmt, TestDecl, TopItem, Type,
 };
 
 use super::Checker;
@@ -1180,7 +1180,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Name-check a function declaration: validates param/return types (E0103)
-    /// and checks all body expressions for unbound names (E0101).
+    /// and checks all statements + the tail for unbound names (E0101).
     fn check_func_names(&mut self, file: usize, func: &'a FuncDecl) {
         let env = self.file_consts[file].clone();
         let mut sc = Scope {
@@ -1191,11 +1191,41 @@ impl<'a> Checker<'a> {
             sc.names.insert(param.name.name.clone(), Bind::Param);
         }
         self.ty(file, &sc, &env, &func.ret);
-        for local in &func.locals {
-            self.expr(file, &sc, &env, &local.value);
-            sc.names.insert(local.name.name.clone(), Bind::Const);
+        self.check_fn_stmt_names(file, &mut sc, &env, &func.stmts);
+        self.expr(file, &sc, &env, &func.tail);
+    }
+
+    /// Name-check one `fn`-body statement list, threading bindings forward
+    /// (a `let` inside an `if` branch stays visible afterward — same flat,
+    /// no-shadowing-scope model `on`-block `SeqStmt::If` already uses; this
+    /// is a deliberate simplification, not an oversight — see the design
+    /// spec's non-goals).
+    fn check_fn_stmt_names(
+        &mut self,
+        file: usize,
+        sc: &mut Scope<'a>,
+        env: &Env,
+        stmts: &'a [FnStmt],
+    ) {
+        for stmt in stmts {
+            match stmt {
+                FnStmt::Let(local) => {
+                    self.expr(file, sc, env, &local.value);
+                    sc.names.insert(local.name.name.clone(), Bind::Const);
+                }
+                FnStmt::If { cond, then, els } => {
+                    self.expr(file, sc, env, cond);
+                    self.check_fn_stmt_names(file, sc, env, then);
+                    if let Some(els) = els {
+                        self.check_fn_stmt_names(file, sc, env, els);
+                    }
+                }
+                FnStmt::Return(expr) => {
+                    self.expr(file, sc, env, expr);
+                }
+                FnStmt::Error(_) => {} // parse-recovery placeholder
+            }
         }
-        self.expr(file, &sc, &env, &func.body);
     }
 
     /// Validate a bundle field's type: only `bit`, `bits[N]`, `signed[N]`, and

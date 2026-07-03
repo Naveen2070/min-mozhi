@@ -1087,6 +1087,25 @@ fn fn_with_const_local_compiles_clean() {
     .expect("fn with a bare-literal local compiles clean");
 }
 
+#[test]
+fn unbound_name_inside_fn_return_is_rejected() {
+    // A `return` expression is a real name-resolution site, not just the tail.
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return unbound_thing }\n  a\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    assert!(
+        any_code(src, "E0101"),
+        "an unbound name inside a `return` expression is E0101"
+    );
+}
+
+#[test]
+fn fn_if_branch_names_are_resolved() {
+    // A `let` bound before the `if` must be visible inside both branches
+    // AND inside a `return` expression — this is the same flat-scope model
+    // `on`-block `SeqStmt::If` already uses (no branch-local shadowing).
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  let x = a\n  if a[0] == 1 { return x }\n  x\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    check_one(src).expect("let-bound name is visible inside the if-branch return and tail");
+}
+
 // ---- tagged-union payload types + arity (E0103/E0806) ---------------------
 
 #[test]
