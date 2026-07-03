@@ -116,10 +116,11 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 34] = [
+const REQUIRED_KEYS: [&str; 35] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
     "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default", "bundle",
+    "return",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -218,6 +219,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "fn" => Kw::Fn,
         "default" => Kw::Default,
         "bundle" => Kw::Bundle,
+        "return" => Kw::Return,
         _ => return None,
     })
 }
@@ -269,6 +271,17 @@ mod tests {
     }
 
     #[test]
+    fn kw_return_is_recognized() {
+        // Added for statement-based fn bodies (2026-07-03). Tanglish/Tamil
+        // spellings are PROVISIONAL pending native review (R9/R11), same
+        // pattern as `default`/`fall`/`bundle`.
+        assert!(!TABLE.is_reserved("return"));
+        assert_eq!(TABLE.lookup("return").unwrap().0, Kw::Return);
+        assert_eq!(TABLE.lookup("thirumbu").unwrap().0, Kw::Return);
+        assert_eq!(TABLE.lookup("திரும்பு").unwrap().0, Kw::Return);
+    }
+
+    #[test]
     fn fall_is_an_active_keyword() {
         // Promoted from reserved to active for `on fall(clk)` (A3, 2026-06-17).
         // Tanglish/Tamil spellings are PROVISIONAL pending native review (R9/R11).
@@ -308,8 +321,8 @@ mod tests {
     #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 34).
-        assert_eq!(en.len(), 34);
+        // One spelling per keyword (REQUIRED_KEYS has 35).
+        assert_eq!(en.len(), 35);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.
