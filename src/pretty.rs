@@ -154,15 +154,59 @@ impl Pretty {
         let head = format!("{} {}({params}) -> {ret} {{", self.kw(Kw::Fn), f.name.name);
         self.line(&head);
         self.indent += 1;
-        for local in &f.locals {
-            let v = self.expr(&local.value, self.indent);
-            let s = format!("{} {} = {v}", self.kw(Kw::Let), local.name.name);
-            self.line(&s);
+        for st in &f.stmts {
+            self.fn_stmt(st);
         }
-        let body = self.expr(&f.body, self.indent);
-        self.line(&body);
+        let tail = self.expr(&f.tail, self.indent);
+        self.line(&tail);
         self.indent -= 1;
         self.line("}");
+    }
+
+    /// Render one `fn`-body statement. Mirrors [`Self::seq_stmt`] — same
+    /// shape, `return` instead of `<-`/`default`.
+    fn fn_stmt(&mut self, st: &FnStmt) {
+        let ind = self.indent;
+        match st {
+            FnStmt::Let(local) => {
+                let v = self.expr(&local.value, ind);
+                let s = format!("{} {} = {v}", self.kw(Kw::Let), local.name.name);
+                self.line(&s);
+            }
+            FnStmt::If { cond, then, els } => {
+                let if_kw = self.kw(Kw::If);
+                let cond = self.operand(cond, ind);
+                let head = match self.order {
+                    Order::Code => format!("{if_kw} {cond} {{"),
+                    Order::Thamizh => format!("{cond} {if_kw} {{"),
+                };
+                self.line(&head);
+                self.indent += 1;
+                for s in then {
+                    self.fn_stmt(s);
+                }
+                self.indent -= 1;
+                match els {
+                    None => self.line("}"),
+                    Some(else_body) => {
+                        let s = format!("}} {} {{", self.kw(Kw::Else));
+                        self.line(&s);
+                        self.indent += 1;
+                        for s in else_body {
+                            self.fn_stmt(s);
+                        }
+                        self.indent -= 1;
+                        self.line("}");
+                    }
+                }
+            }
+            FnStmt::Return(expr) => {
+                let v = self.expr(expr, ind);
+                let s = format!("{} {v}", self.kw(Kw::Return));
+                self.line(&s);
+            }
+            FnStmt::Error(_) => {} // parse-recovery placeholder; never reached on the codegen path
+        }
     }
 
     fn enum_decl(&mut self, e: &EnumDecl) {

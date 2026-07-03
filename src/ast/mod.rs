@@ -69,8 +69,10 @@ pub enum TopItem {
 ///
 /// - `params` — the function's input parameters (each a hardware `Type`).
 /// - `ret`    — the return type (a hardware `Type`).
-/// - `locals` — `let` bindings that may appear before the final body expression.
-/// - `body`   — the expression whose value the function returns.
+/// - `stmts`  — statements (`let`, statement-level `if`, `return`) before the tail.
+/// - `tail`   — the function's fallthrough value: always present, so every
+///              function has a well-defined result on every path even
+///              without a `return` firing.
 #[derive(Clone, Debug)]
 pub struct FuncDecl {
     /// The function name as written in source.
@@ -79,14 +81,38 @@ pub struct FuncDecl {
     pub params: Vec<FnParam>,
     /// Return type.
     pub ret: Type,
-    /// Local `let` bindings (`let x = expr`) in the function body, before
-    /// the final return expression.
-    pub locals: Vec<LocalLet>,
-    /// The return expression (the last — and only non-`let` — expression in
-    /// the body).
-    pub body: Expr,
+    /// Statements in the function body, in order.
+    pub stmts: Vec<FnStmt>,
+    /// The fallthrough return value if no `return` statement fires.
+    pub tail: Expr,
     /// Source span covering the whole declaration.
     pub span: Span,
+}
+
+/// A statement inside a `fn` body. Mirrors [`SeqStmt`]'s shape (`on`-block
+/// statements) — same idea, different terminal node (`Return` instead of
+/// `Assign`/`Default`, since a function produces a value rather than
+/// driving a register).
+#[derive(Clone, Debug)]
+pub enum FnStmt {
+    /// `let name = value` — an immutable local binding.
+    Let(LocalLet),
+    /// Statement-level `if` (distinct from the expression-level `if`, which
+    /// lives in [`ExprKind::IfExpr`] and requires `else`). `else` is
+    /// OPTIONAL here — a branch that doesn't return just falls through to
+    /// the next statement (or ultimately `tail`).
+    If {
+        cond: Expr,
+        then: Vec<FnStmt>,
+        els: Option<Vec<FnStmt>>,
+    },
+    /// `return expr` — immediately yields `expr` as the function's result;
+    /// no later statement or `tail` executes for this control path.
+    Return(Expr),
+    /// A statement that failed to parse. Produced ONLY by
+    /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
+    /// skipped source.
+    Error(Span),
 }
 
 /// One input parameter of a user-defined function.
@@ -622,8 +648,8 @@ mod tests {
             },
             params: vec![],
             ret: Type::Bit,
-            locals: vec![],
-            body: Expr {
+            stmts: vec![],
+            tail: Expr {
                 kind: ExprKind::Bool(true),
                 span: sp,
             },
