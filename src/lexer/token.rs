@@ -46,6 +46,7 @@ pub enum Kw {
     Default,
     /// `bundle` / `kattai` / `கட்டை` — named group of signals (feature 2.4).
     Bundle,
+    Return,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).
