@@ -897,10 +897,14 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 
 1. **Compile-time unroll** — `repeat i: lo..hi` — ✅ have (≈ `generate`,
    SV statically-bounded `for`).
-2. **Controlled `for` (`suzhal`/`சுழல்`, reserved)** — 🟡 pull-forward, distinct
-   from `repeat`: a statically/provably **bounded** count that elaborates to
-   hardware, or a cycle-iterating form lowered to an **FSM + counter**. The bound
-   is the spec's load-bearing rule. `சுழல்` already reserved (both spellings).
+2. **Controlled loop (`loop`/`suzhal`/`சுழல்`, reserved)** — 🟡 pull-forward,
+   distinct from `repeat`: a statically/provably **bounded** count that
+   elaborates to hardware, or a cycle-iterating form lowered to an
+   **FSM + counter**. The bound is the spec's load-bearing rule. Both
+   spellings already reserved. Build order and scope split across three specs
+   in `docs/plan/phase-2-suzhal-loop.local.md` (Spec 1: `return` + statement-based
+   `fn` bodies; Spec 2: the bounded elaborate-time loop in `on` blocks and
+   `fn` bodies; Spec 3: the FSM+counter cycle-iterating form).
 3. **`foreach`** — 🟡 **new — not previously tracked**; sugar over (1)/(2) once
    array/`mem` types exist.
 
