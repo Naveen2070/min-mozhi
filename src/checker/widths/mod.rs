@@ -38,8 +38,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::{
-    BinOp, EnumDecl, Expr, ExprKind, FieldInit, FuncDecl, Module, ModuleItem, NamedArg, Pattern,
-    SeqStmt, TopItem, Type,
+    BinOp, EnumDecl, Expr, ExprKind, FieldInit, FnStmt, FuncDecl, Module, ModuleItem, NamedArg,
+    Pattern, SeqStmt, TopItem, Type,
 };
 use crate::span::Span;
 
@@ -913,45 +913,81 @@ impl<'a> Checker<'a> {
             let ty = self.resolve_ty(&mut cx, &param.ty);
             cx.sigs.insert(param.name.name.clone(), ty);
         }
-        // Fold each local let: infer width and add to sigs so subsequent
-        // locals and the body can reference the name.
-        for local in &func.locals {
-            let ty = self.infer_ty(&mut cx, &local.value);
-            // Annotate the concrete bit-width for the emitter so it can
-            // declare `reg [W-1:0]` instead of the width-erasing `integer`.
-            let w: Option<u32> = match ty {
-                Ty::Bit => Some(1),
-                Ty::Bits(n) | Ty::Signed(n) => Some(n as u32),
-                // A bare-literal local (`let n = 5`) infers as CtInt; give it
-                // the minimum unsigned or signed bit-width so the emitter can
-                // declare `reg [W-1:0]` without hitting the unreachable! path.
-                Ty::CtInt(v) => Some(if v >= 0 {
-                    min_bits(v)
-                } else {
-                    min_signed_bits(v)
-                } as u32),
-                _ => None, // enum/memory/unknown — emitter will surface any gap
-            };
-            if let Some(w) = w {
-                local.inferred_width.set(Some(w));
-            }
-            cx.sigs.insert(local.name.name.clone(), ty);
-        }
-        // Resolve the declared return type and check the body against it.
         let ret_ty = self.resolve_ty(&mut cx, &func.ret);
-        let body_ty = self.infer_ty(&mut cx, &func.body);
-        match (body_ty, ret_ty) {
+        self.check_fn_stmt_widths(&mut cx, &func.stmts, ret_ty, &func.name.name);
+        // The tail is the guaranteed fallthrough — always checked, exactly
+        // like every `return` expression.
+        let tail_ty = self.infer_ty(&mut cx, &func.tail);
+        self.check_return_ty(&mut cx, func.tail.span, tail_ty, ret_ty, &func.name.name);
+    }
+
+    /// Width-check one `fn`-body statement list. Folds `let` bindings into
+    /// `cx.sigs` (same flat scope model as `on`-block `SeqStmt::If` —
+    /// deliberate simplification, see `check_fn_stmt_names`'s doc comment).
+    fn check_fn_stmt_widths(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        stmts: &'a [FnStmt],
+        ret_ty: Ty<'a>,
+        func_name: &str,
+    ) {
+        for stmt in stmts {
+            match stmt {
+                FnStmt::Let(local) => {
+                    let ty = self.infer_ty(cx, &local.value);
+                    let w: Option<u32> = match ty {
+                        Ty::Bit => Some(1),
+                        Ty::Bits(n) | Ty::Signed(n) => Some(n as u32),
+                        Ty::CtInt(v) => Some(if v >= 0 {
+                            min_bits(v)
+                        } else {
+                            min_signed_bits(v)
+                        } as u32),
+                        _ => None,
+                    };
+                    if let Some(w) = w {
+                        local.inferred_width.set(Some(w));
+                    }
+                    cx.sigs.insert(local.name.name.clone(), ty);
+                }
+                FnStmt::If { cond, then, els } => {
+                    self.check_cond(cx, cond);
+                    self.check_fn_stmt_widths(cx, then, ret_ty, func_name);
+                    if let Some(els) = els {
+                        self.check_fn_stmt_widths(cx, els, ret_ty, func_name);
+                    }
+                }
+                FnStmt::Return(expr) => {
+                    let ty = self.infer_ty(cx, expr);
+                    self.check_return_ty(cx, expr.span, ty, ret_ty, func_name);
+                }
+                FnStmt::Error(_) => {} // parse-recovery placeholder
+            }
+        }
+    }
+
+    /// Shared E0804 check: does `ty` (a `return` expression's or the tail's
+    /// inferred type) match the function's declared return type? Extracted
+    /// so both `return` sites and the tail use identical logic.
+    fn check_return_ty(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        span: Span,
+        ty: Ty<'a>,
+        ret_ty: Ty<'a>,
+        func_name: &str,
+    ) {
+        match (ty, ret_ty) {
             (Ty::Unknown, _) | (_, Ty::Unknown) => {}
-            (Ty::CtInt(v), t) => self.fit(&mut cx, func.body.span, v, t),
+            (Ty::CtInt(v), t) => self.fit(cx, span, v, t),
             (g, t) if same(&g, &t) => {}
             (g, t) => {
                 self.err(
                     cx.file,
-                    func.body.span,
+                    span,
                     "E0804",
                     format!(
-                        "function `{}` body is {}, but the declared return type is {}",
-                        func.name.name,
+                        "function `{func_name}` body is {}, but the declared return type is {}",
                         show(&g),
                         show(&t)
                     ),
