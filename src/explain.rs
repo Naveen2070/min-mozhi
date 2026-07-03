@@ -501,6 +501,14 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: use only compile-time expressions in the condition, or replace\n\
          `const if` with a regular `if` inside an `on` block or a combinational drive.",
     ),
+    (
+        "E0812",
+        "E0812 — unreachable code after `return`\n\n\
+         A `return` statement immediately ends the function on that control\n\
+         path — nothing after it, in the SAME statement list, can ever run.\n\n\
+         Fix: remove the statement(s) after the `return`, or move the `return`\n\
+         later if it was only meant to fire conditionally (wrap it in an `if`).",
+    ),
     // ----- E09xx: bundles -----
     (
         "E0901",
