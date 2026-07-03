@@ -36,6 +36,7 @@ pub fn check(files: &[ast::File]) -> Result<(), Vec<Diag>> {
     let mut ck = Checker::new(files);
     ck.build_symbols(); // project tables + project-wide duplicates
     ck.check_func_cycles(); // ban recursive fn call cycles (E0805)
+    ck.check_func_unreachable(); // dead code after `return` (E0812)
     ck.eval_consts(); // file-level consts, top to bottom
     ck.resolve_names(); // every name points at a declaration
     ck.check_widths(); // every expression has the width its context needs

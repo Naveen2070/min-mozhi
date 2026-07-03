@@ -13,6 +13,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::ast::{Expr, ExprKind, FnStmt, FuncDecl};
+use crate::span::Span;
 
 use super::Checker;
 
@@ -61,6 +62,65 @@ impl<'a> Checker<'a> {
                 );
             }
         }
+    }
+
+    /// E0812: an unconditional `return` followed by more statements in the
+    /// SAME block is dead code. Deliberately narrow — an `if`/`else` where
+    /// BOTH branches return, followed by more code, is NOT flagged (that
+    /// would need full control-flow reachability analysis, which this
+    /// check does not attempt; see the design spec's Checker section).
+    pub(super) fn check_func_unreachable(&mut self) {
+        // Sort for deterministic diagnostic order (matches test expectations,
+        // same rationale as `check_func_cycles`'s sorted `starts`).
+        let mut names: Vec<String> = self.funcs.keys().cloned().collect();
+        names.sort();
+        for name in names {
+            let (file, decl) = self.funcs[&name];
+            check_unreachable_after_return(&decl.stmts, file, self);
+        }
+    }
+}
+
+/// Walk one statement list looking for a `return` with more statements
+/// after it in the SAME list. Recurses into `if`/`else` bodies (each is its
+/// own list, checked independently) but does NOT look past an `if` to see
+/// whether both its branches returned — that's the documented narrow scope.
+fn check_unreachable_after_return(stmts: &[FnStmt], file: usize, ck: &mut Checker) {
+    for (i, stmt) in stmts.iter().enumerate() {
+        match stmt {
+            FnStmt::Return(_) => {
+                if let Some(next) = stmts.get(i + 1) {
+                    let span = next_stmt_span(next);
+                    ck.err(
+                        file,
+                        span,
+                        "E0812",
+                        "unreachable code after `return`",
+                        "a `return` immediately ends the function on this path — \
+                         remove the statement(s) after it, or move `return` later \
+                         if it was meant to be conditional",
+                    );
+                }
+                return; // only report once per list — the first return is what matters
+            }
+            FnStmt::If { then, els, .. } => {
+                check_unreachable_after_return(then, file, ck);
+                if let Some(els) = els {
+                    check_unreachable_after_return(els, file, ck);
+                }
+            }
+            FnStmt::Let(_) | FnStmt::Error(_) => {}
+        }
+    }
+}
+
+/// The span to point E0812 at — the first unreachable statement's own span.
+fn next_stmt_span(stmt: &FnStmt) -> Span {
+    match stmt {
+        FnStmt::Let(l) => l.span,
+        FnStmt::If { cond, .. } => cond.span,
+        FnStmt::Return(e) => e.span,
+        FnStmt::Error(s) => *s,
     }
 }
 

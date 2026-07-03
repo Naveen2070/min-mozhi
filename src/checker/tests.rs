@@ -1764,3 +1764,20 @@ fn recursive_call_inside_return_is_e0805() {
     let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return f(a) }\n  a\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
     first_err(src, "E0805");
 }
+
+// ---- unreachable code after `return` (E0812) ------------------------------
+
+#[test]
+fn unreachable_code_after_return_is_e0812() {
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  return a\n  let x = a\n  x\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    assert!(any_code(src, "E0812"));
+}
+
+#[test]
+fn return_as_last_statement_before_tail_is_not_e0812() {
+    // A `return` inside an `if`, with unrelated code after the `if` (not
+    // after the `return` in the SAME block), is fine — this is the normal
+    // guard-clause shape and must not be flagged.
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return a }\n  a\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    check_one(src).expect("return inside an if, followed by unrelated code, is not E0812");
+}
