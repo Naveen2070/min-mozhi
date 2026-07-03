@@ -1755,3 +1755,12 @@ fn two_same_named_modules_each_get_their_own_clock_check_reversed_order() {
          that registers second"
     );
 }
+
+#[test]
+fn recursive_call_inside_return_is_e0805() {
+    // The self-call is nested inside `if { return f(a) }` — only reachable
+    // by walking `FuncDecl.stmts` (Task 1's statement-based fn body), not
+    // the old flat `locals`/`body` fields.
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return f(a) }\n  a\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    first_err(src, "E0805");
+}

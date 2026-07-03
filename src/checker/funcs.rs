@@ -12,7 +12,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Expr, ExprKind, FuncDecl};
+use crate::ast::{Expr, ExprKind, FnStmt, FuncDecl};
 
 use super::Checker;
 
@@ -95,17 +95,35 @@ fn dfs(
 }
 
 /// Collect the names of all user-defined functions called directly by `decl`
-/// (walks `body` + each `local.value` for `FnCall` nodes). Does not recurse
+/// (walks every statement + the tail for `FnCall` nodes). Does not recurse
 /// into callees — the caller builds the full graph first and DFS-traverses it.
 fn direct_callees(decl: &FuncDecl) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for local in &decl.locals {
-        collect_calls(&local.value, &mut out);
-    }
-    collect_calls(&decl.body, &mut out);
+    collect_fn_stmt_calls(&decl.stmts, &mut out);
+    collect_calls(&decl.tail, &mut out);
     out.sort();
     out.dedup();
     out
+}
+
+/// Walk a `fn`-body statement list, pushing every distinct user-function
+/// name called anywhere inside (a `let` value, an `if` condition/branch, or
+/// a `return` expression) into `out`.
+fn collect_fn_stmt_calls(stmts: &[FnStmt], out: &mut Vec<String>) {
+    for stmt in stmts {
+        match stmt {
+            FnStmt::Let(local) => collect_calls(&local.value, out),
+            FnStmt::If { cond, then, els } => {
+                collect_calls(cond, out);
+                collect_fn_stmt_calls(then, out);
+                if let Some(els) = els {
+                    collect_fn_stmt_calls(els, out);
+                }
+            }
+            FnStmt::Return(expr) => collect_calls(expr, out),
+            FnStmt::Error(_) => {}
+        }
+    }
 }
 
 /// Walk an expression, pushing each distinct user-function name found in an
