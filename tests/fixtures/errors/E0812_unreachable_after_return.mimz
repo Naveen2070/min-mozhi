@@ -1,0 +1,11 @@
+// expect: E0812
+fn f(a: bits[8]) -> bits[8] {
+  return a
+  let x = a
+  x
+}
+module M {
+  in a: bits[8]
+  out o: bits[8]
+  o = f(a)
+}
