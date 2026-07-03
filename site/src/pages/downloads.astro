@@ -1,0 +1,141 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+const REPO = "https://github.com/Naveen2070/min-mozhi";
+const RELEASES = `${REPO}/releases`;
+
+// All releases — latest first. Populate manually so builds stay hermetic
+// (no runtime fetch from the GitHub API). Append new entries at the top
+// when a new version ships.
+const releases = [
+  {
+    tag: "v0.1.0",
+    name: "Wingless Butterfly",
+    date: "2026-06-24",
+    assets: [
+      {
+        platform: "Linux (x86_64)",
+        arch: "x86_64-unknown-linux-musl",
+        ext: "tar.gz",
+      },
+      {
+        platform: "macOS (Intel)",
+        arch: "x86_64-apple-darwin",
+        ext: "tar.gz",
+      },
+      {
+        platform: "macOS (Apple Silicon)",
+        arch: "aarch64-apple-darwin",
+        ext: "tar.gz",
+      },
+      {
+        platform: "Windows (x86_64)",
+        arch: "x86_64-pc-windows-msvc",
+        ext: "zip",
+      },
+    ],
+  },
+];
+---
+
+<Base title="Downloads — Min-Mozhi" description="Download the latest Min-Mozhi compiler for Linux, macOS, or Windows.">
+  <Nav />
+  <main class="mx-auto max-w-4xl px-4 py-12">
+    <h1 class="fg text-3xl font-extrabold tracking-tight sm:text-4xl">Downloads</h1>
+    <p class="fg-muted mt-2 text-lg leading-relaxed">
+      Pre-built binaries for every platform. Also available via
+      <a href={`${REPO}#%EF%B8%8F-install`} class="fg">{" "}cargo install</a>
+      {" "}or from the
+      <a href={RELEASES} class="fg">{" "}GitHub releases page</a>.
+    </p>
+
+    <hr class="bd my-10" />
+
+    {
+      releases.map((rel, i) => (
+        <>
+          <section>
+            <div class="flex items-baseline gap-3 mb-1">
+              <h2 class="fg text-2xl font-bold tracking-tight">{rel.tag}</h2>
+              <span class="fg-muted text-sm">— {rel.name}</span>
+              {i === 0 && (
+                <span class="rounded-full bg-bolt-400 px-2.5 py-0.5 text-xs font-bold text-[#081120]">
+                  latest
+                </span>
+              )}
+            </div>
+            <p class="fg-muted text-sm mb-5">{rel.date}</p>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+              {rel.assets.map((a) => {
+                const filename = `mimz-${rel.tag}-${a.arch}.${a.ext}`;
+                const url = `${REPO}/releases/download/${rel.tag}/${filename}`;
+                return (
+                  <a
+                    href={url}
+                    class="bd bg-soft group flex items-center gap-4 rounded-xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg no-underline"
+                  >
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-bolt-400/10 text-bolt-400 shrink-0">
+                      <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                      </svg>
+                    </div>
+                    <div class="min-w-0">
+                      <div class="fg font-semibold group-hover:text-bolt-400 transition-colors">{a.platform}</div>
+                      <div class="fg-muted text-xs truncate">{filename}</div>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+
+            <div class="mt-3">
+              <a
+                href={`${REPO}/releases/download/${rel.tag}/SHA256SUMS`}
+                class="fg-muted inline-flex items-center gap-1.5 text-xs hover:text-bolt-400 transition-colors no-underline"
+              >
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                SHA256 checksums
+              </a>
+            </div>
+          </section>
+
+          {i < releases.length - 1 && <hr class="bd my-10" />}
+        </>
+      ))
+    }
+
+    <hr class="bd my-10" />
+
+    <section>
+      <h2 class="fg text-xl font-bold tracking-tight mb-3">Install from source</h2>
+      <p class="fg-muted text-sm leading-relaxed mb-4">
+        If you have Rust installed, you can build from source:
+      </p>
+      <pre class="bd bg-soft rounded-xl border p-4 text-sm overflow-x-auto"><code>cargo install --git {REPO} mimz</code></pre>
+      <p class="fg-muted text-xs mt-2">
+        Requires Rust 1.85+. The same binary as the pre-built releases.
+      </p>
+    </section>
+  </main>
+  <Footer />
+</Base>
+
+<style is:global>
+  .bg-bolt-400 {
+    background-color: var(--color-bolt-400);
+  }
+  .text-bolt-400 {
+    color: var(--color-bolt-400);
+  }
+  .bg-bolt-400\/10 {
+    background-color: color-mix(in srgb, var(--color-bolt-400) 10%, transparent);
+  }
+  .group:hover .group-hover\:text-bolt-400 {
+    color: var(--color-bolt-400);
+  }
+</style>
