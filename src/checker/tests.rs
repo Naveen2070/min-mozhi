@@ -1066,6 +1066,20 @@ fn fn_body_width_mismatch_is_e0804() {
 }
 
 #[test]
+fn return_width_mismatch_is_e0804() {
+    // `return`ing a widened value must also be caught by E0804, not just
+    // a width mismatch in the tail.
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return extend(a, 16) }\n  a\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    first_err(src, "E0804");
+}
+
+#[test]
+fn return_width_match_is_accepted() {
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return a }\n  a\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    check_one(src).expect("return type matches declared return type");
+}
+
+#[test]
 fn mac_function_type_checks_clean() {
     // mac: multiply-accumulate — body uses *% (same-width wrapping), return is bits[8].
     // Call site: mac(x, y) where x and y are bits[8]; result drives a bits[8] output.
