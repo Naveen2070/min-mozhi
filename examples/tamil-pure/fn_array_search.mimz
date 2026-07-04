@@ -1,0 +1,25 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): the
+// Tamil twin of english/fn_array_search.mimz — searches a fixed-size array
+// parameter for the first element equal to a target value, returning its
+// index or -1 if absent. Demonstrates an array-typed fn parameter: the
+// array is not real Verilog hardware, it is four independent scalar ports
+// under the hood. Names transliterate to readable ASCII Verilog
+// (தேடு → thedu, தேடி → thedi, இலக்கு → ilakku, இடம் → idam).
+
+சார்பு தேடு(அணி: bits[8][4], இலக்கு: bits[8]) -> signed[4] {
+  எனில் அணி[0] == இலக்கு { திரும்பு 0 }
+  எனில் அணி[1] == இலக்கு { திரும்பு 1 }
+  எனில் அணி[2] == இலக்கு { திரும்பு 2 }
+  எனில் அணி[3] == இலக்கு { திரும்பு 3 }
+  -1
+}
+
+தொகுதி தேடி {
+  உள்ளீடு அ: bits[8]
+  உள்ளீடு ஆ: bits[8]
+  உள்ளீடு இ: bits[8]
+  உள்ளீடு ஈ: bits[8]
+  உள்ளீடு இலக்கு: bits[8]
+  வெளியீடு இடம்: signed[4]
+  இடம் = தேடு([அ, ஆ, இ, ஈ], இலக்கு)
+}

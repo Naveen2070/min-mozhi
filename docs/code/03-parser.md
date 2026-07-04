@@ -94,6 +94,27 @@ Expression-level recovery (`ExprKind::Error`) is deferred — an error-expr
 has no width/type, so it would need an "unknown" path through width/type
 inference.
 
+## Types and array literals — `ty()` (`items/mod.rs`), array-lit (`expr.rs`)
+
+`ty()` is `arrayType | scalarType`: it first parses one `scalarType`
+(`bit`, `bits[N]`, `signed[N]`, or an enum/bundle name — unchanged since
+before arrays existed, now split out as `scalar_ty()`), then loops on a
+trailing `[expr]` suffix, wrapping the type so far in `Type::Array { elem,
+len }` on each iteration. This makes `bits[8][4]` parse as `Array { elem:
+Bits(8), len: 4 }` and even `bits[8][4][2]` parse cleanly to a _nested_
+`Array` (the checker, not the grammar, rejects nested-array elements,
+`E0411` — this project's usual "lenient parser, narrowing checker" split,
+the same one `mem`'s element-type restriction uses).
+
+Array **literals** (`[e1, ..., eN]`) are parsed in `expr.rs`'s primary
+dispatch, not as a postfix suffix: a `[` at the **start** of a primary
+expression is unconditionally an array literal (there is no other
+`[`-led primary), while `arr[idx]` indexing is recognized separately by
+`postfix()`, which only matches `[` **after** an already-parsed base
+expression. This is a simpler disambiguation than bundle-literal vs.
+concat/replicate (both spelled with a leading `{` and split by
+lookahead) because array literals have no ambiguous sibling.
+
 ## Expression parsing (`expr.rs`)
 
 Precedence climbing in `binary(min_prec)`, with the table in `bin_op`:

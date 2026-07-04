@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 37] = [
+const BASE_EXAMPLES: [&str; 38] = [
     "adder",
     "alu",
     "async_reset",
@@ -24,6 +24,7 @@ const BASE_EXAMPLES: [&str; 37] = [
     "datapath",
     "dual_edge",
     "edge_detector",
+    "fn_array_search",
     "fn_const_local",
     "fn_mac",
     "fn_mac_local",

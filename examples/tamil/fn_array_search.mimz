@@ -1,0 +1,23 @@
+// Min-Mozhi example: search a fixed-size array parameter for the first
+// element equal to a target value, returning its index or -1 if absent.
+// Demonstrates an array-typed fn parameter (Spec 2 of the suzhal/loop
+// roadmap): the array is not real Verilog hardware, it is four
+// independent scalar ports under the hood.
+
+சார்பு find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
+  எனில் vals[0] == target { திரும்பு 0 }
+  எனில் vals[1] == target { திரும்பு 1 }
+  எனில் vals[2] == target { திரும்பு 2 }
+  எனில் vals[3] == target { திரும்பு 3 }
+  -1
+}
+
+தொகுதி FindIndex {
+  உள்ளீடு a: bits[8]
+  உள்ளீடு b: bits[8]
+  உள்ளீடு c: bits[8]
+  உள்ளீடு d: bits[8]
+  உள்ளீடு target: bits[8]
+  வெளியீடு idx: signed[4]
+  idx = find_index([a, b, c, d], target)
+}

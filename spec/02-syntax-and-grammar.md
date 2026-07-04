@@ -646,6 +646,57 @@ fn find_first(a: bits[8]) -> int {
   idiom SystemVerilog functions already use). No cycles, area, or work are
   skipped by returning "early".
 
+### 1.14 Arrays — fixed-size `fn` parameters
+
+`<scalarType>[N]` — one or more trailing `[N]` suffixes on a scalar type
+declare a fixed-size, immutable array. Today this is supported for `fn`
+**parameters** and `let` locals inside a `fn` body only (module-level
+ports/wires/registers stay scalar — `E0416` if you try):
+
+```mimz
+fn find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
+  if vals[0] == target { return 0 }
+  if vals[1] == target { return 1 }
+  if vals[2] == target { return 2 }
+  if vals[3] == target { return 3 }
+  -1
+}
+
+module FindIndex {
+  in a: bits[8]
+  in b: bits[8]
+  in c: bits[8]
+  in d: bits[8]
+  in target: bits[8]
+  out idx: signed[4]
+  idx = find_index([a, b, c, d], target)
+}
+```
+
+- **Element type:** `bit`, `bits[N]`, or `signed[N]` only — nested arrays
+  and enum/bundle elements are rejected (`E0411`). **Length:** a
+  compile-time constant, at least 1 (`E0412`).
+- **Array literals** `[e1, ..., eN]` construct a value of this type at a
+  call site (or as a `let` local): every element must share the first
+  element's width and signedness (`E0414`), and an array-typed call
+  argument's literal length must exactly match the callee's declared
+  length (`E0413`).
+- **Indexing** `arr[idx]` reuses the existing postfix-index syntax.
+  - A **compile-time-constant** index (`arr[2]`) folds directly to that
+    element — no hardware is generated for the index itself, exactly like
+    a fixed slice bound.
+  - A **runtime** index (`arr[i]` where `i` is a signal) is out of range at
+    compile time only if it can be proven so (`E0415`); otherwise the
+    emitter generates a right-associated priority-mux over every element —
+    `(i == 0) ? vals_0 : (i == 1) ? vals_1 : ... : vals_{N-1}` — so an
+    out-of-range runtime value reads the last element.
+- **Never real Verilog hardware.** An array is elaborated away entirely: a
+  `bits[8][4]` parameter becomes 4 independent scalar input ports/locals
+  named `<param>_0` .. `<param>_3`, matching how `repeat` already
+  elaborates to N copies of hardware rather than a real loop. The
+  simulator lowers arrays to N independent `Val`s the same way, so both
+  backends agree.
+
 ---
 
 ## 2. Lexical Rules
@@ -713,14 +764,15 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 
 ## 4. Types
 
-| Type             | Meaning                                                                    |
-| ---------------- | -------------------------------------------------------------------------- |
-| `bit`            | single wire, values `0`/`1` (also `true`/`false`) — identical to `bits[1]` |
-| `bits[N]`        | N-bit unsigned vector                                                      |
-| `signed[N]`      | N-bit two's-complement vector (section 1.7 — never mixes with `bits`)      |
-| `clock`, `reset` | dedicated domain types — never mix with data                               |
-| `enum` types     | user-defined, compiler-encoded                                             |
-| `int`, `bool`    | **compile-time only** (params, widths, `const`, `repeat`) — never hardware |
+| Type              | Meaning                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `bit`             | single wire, values `0`/`1` (also `true`/`false`) — identical to `bits[1]`                        |
+| `bits[N]`         | N-bit unsigned vector                                                                             |
+| `signed[N]`       | N-bit two's-complement vector (section 1.7 — never mixes with `bits`)                             |
+| `clock`, `reset`  | dedicated domain types — never mix with data                                                      |
+| `enum` types      | user-defined, compiler-encoded                                                                    |
+| `int`, `bool`     | **compile-time only** (params, widths, `const`, `repeat`) — never hardware                        |
+| `<scalarType>[N]` | fixed-size, immutable array (section 1.14) — `fn` params/locals only, never real Verilog hardware |
 
 ## 5. Formal Grammar (EBNF, v0.2)
 
@@ -774,7 +826,8 @@ seqIf       = "if" expr seqBlock [ "else" ( seqIf | seqBlock ) ] ;
 driveStmt   = lvalue "=" expr NEWLINE ;
 lvalue      = IDENT [ "[" constExpr [ ":" constExpr ] "]" ] ;
 
-type        = "bit"
+type        = scalarType { "[" constExpr "]" } ;  (* trailing "[N]" wraps in an array type — fn params/locals only *)
+scalarType  = "bit"
             | "bits"   "[" constExpr "]"
             | "signed" "[" constExpr "]"
             | IDENT
@@ -796,10 +849,12 @@ binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&&" | "||" | "and" | "or" ;
 unary       = [ "~" | "-" | "!" | "not" | "&" | "|" | "^" ] postfix ;
 postfix     = primary { "[" expr [ ":" expr ] "]" | "." IDENT } ;
-primary     = literal | IDENT | "(" expr ")" | concat | replication | bundleLiteral | callExpr | fnCall ;
+primary     = literal | IDENT | "(" expr ")" | concat | replication | bundleLiteral
+            | arrayLiteral | callExpr | fnCall ;
 concat      = "{" expr { "," expr } "}" ;
 bundleLiteral = "{" fieldInit { "," fieldInit } [ "," ] "}" ;
 fieldInit     = IDENT ":" expr ;
+arrayLiteral  = "[" [ expr { "," expr } ] "]" ;   (* fn param/local array value *)
 replication = "{" expr "{" expr { "," expr } "}" "}" ;
 callExpr    = ( "extend" | "trunc" ) "(" expr "," constExpr ")"
             | ( "signed" | "unsigned" | "abs"
@@ -946,6 +1001,24 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.21 (2026-07-04):** **Array-typed `fn` parameters** (section 1.14).
+  `<scalarType>[N]` trailing suffix (grammar: `type = scalarType { "[" N
+"]" }`) declares a fixed-size, immutable array — `fn` parameters and
+  `let` locals only (module-level ports/wires/registers reject it,
+  `E0416`). Array literals `[e1, ..., eN]` (`arrayLiteral` in section 5)
+  construct values at call sites. Element type restricted to
+  `bit`/`bits[N]`/`signed[N]` (`E0411`); length must be a positive
+  compile-time constant (`E0412`); array-literal elements must share one
+  width/signedness (`E0414`) and a call argument's literal length must
+  match the parameter's declared length (`E0413`). Indexing reuses the
+  existing postfix `[expr]` syntax: a compile-time-constant index folds
+  directly to that element (no hardware for the index itself); a runtime
+  index generates a priority-mux over every element (`E0415` for a
+  provably-out-of-range constant index). An array is never real Verilog
+  hardware — it always elaborates to N independent scalar signals
+  (`<name>_0` .. `<name>_{N-1}`), matching how `repeat` already elaborates
+  to N copies of hardware. Additive — no existing `.mimz` file changes
+  behavior.
 - **v0.2.20 (2026-07-04):** **`return` + statement-based `fn` bodies**
   (section 1.13). Added section 5 productions `fnStmt`, `returnStmt`,
   `fnIf` — `fnDecl` bodies are now `{ fnStmt } expr`, replacing the old
