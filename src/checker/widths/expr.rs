@@ -576,17 +576,19 @@ impl<'a> Checker<'a> {
                 // infer_ty + fit + same for the same "got vs expected" logic.
                 for (arg, param) in args.iter().zip(func.params.iter()) {
                     let param_ty = self.fn_type_for_file(ffile, &param.ty);
-                    // `same()` (widths/mod.rs) has no notion of array
-                    // equality, and an array literal's own elements are
-                    // still-polymorphic `CtInt`s until a context fixes them
-                    // (exactly like a bare scalar literal) — so an
-                    // array-typed parameter gets its own check here instead
-                    // of the generic check_expr/expect_ty/same() path used
-                    // for every other kind of argument below: the literal's
+                    // An array literal argument is still-polymorphic (its
+                    // elements are `CtInt`s not yet fixed to a width, exactly
+                    // like a bare scalar literal), so it gets a dedicated
+                    // length check here (E0413) instead of the generic
+                    // check_expr/expect_ty/same() path: the literal's own
                     // internal consistency (E0411/E0412/E0414) is already
                     // covered by its own `infer_ty` (the `ExprKind::ArrayLit`
                     // arm above), so only the length needs comparing against
-                    // this parameter's declared length (E0413).
+                    // this parameter's declared length. Any OTHER kind of
+                    // array-typed argument (e.g. forwarding another
+                    // function's array parameter by name) falls through to
+                    // `check_expr` below, which now compares array shape
+                    // structurally via `same()` (widths/mod.rs).
                     // ponytail: does not also re-check each literal element's
                     // fit against the param's declared elem width/signedness
                     // (e.g. `f([300, 1, 1, 1])` into a `bits[8][4]` param
@@ -594,24 +596,24 @@ impl<'a> Checker<'a> {
                     // E0414/E0415 only); add a per-element `check_expr`
                     // against `bits(elem_width)`/`Signed(elem_width)` if a
                     // fixture ever needs it caught here specifically.
-                    if let Ty::Array { len: expected, .. } = param_ty {
+                    if let (Ty::Array { len: expected, .. }, ExprKind::ArrayLit(elems)) =
+                        (param_ty, &arg.kind)
+                    {
                         self.infer_ty(cx, arg);
-                        if let ExprKind::ArrayLit(elems) = &arg.kind {
-                            let actual = elems.len() as u128;
-                            if actual != expected {
-                                self.err(
-                                    cx.file,
-                                    arg.span,
-                                    "E0413",
-                                    format!(
-                                        "this array has {actual} element(s), but `{}` expects \
-                                         {expected}",
-                                        param.name.name
-                                    ),
-                                    "an array argument's length must exactly match the \
-                                     parameter's declared length",
-                                );
-                            }
+                        let actual = elems.len() as u128;
+                        if actual != expected {
+                            self.err(
+                                cx.file,
+                                arg.span,
+                                "E0413",
+                                format!(
+                                    "this array has {actual} element(s), but `{}` expects \
+                                     {expected}",
+                                    param.name.name
+                                ),
+                                "an array argument's length must exactly match the \
+                                 parameter's declared length",
+                            );
                         }
                         continue;
                     }
