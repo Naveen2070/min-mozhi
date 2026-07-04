@@ -1484,6 +1484,15 @@ fn bundle_nested_bundle_field_is_e0807() {
     );
 }
 
+#[test]
+fn bundle_array_field_is_e0807() {
+    // A field whose type is an array → E0807 (array not a concrete bundle field type).
+    first_err(
+        "bundle Bad { f: bits[8][4] }\nmodule Top { out z: bit\n  z = 0 }\n",
+        "E0807",
+    );
+}
+
 // ---- bundles: literal / destructure / nominal typing (E0901-E0903, E0907) ------
 
 #[test]
