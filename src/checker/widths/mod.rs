@@ -121,8 +121,16 @@ fn same(a: &Ty, b: &Ty) -> bool {
         (Ty::Bit, Ty::Bit) | (Ty::Clock, Ty::Clock) | (Ty::Reset, Ty::Reset) => true,
         (Ty::Bits(x), Ty::Bits(y)) | (Ty::Signed(x), Ty::Signed(y)) => x == y,
         (
-            Ty::Array { elem_width: aw, elem_signed: asig, len: al },
-            Ty::Array { elem_width: bw, elem_signed: bsig, len: bl },
+            Ty::Array {
+                elem_width: aw,
+                elem_signed: asig,
+                len: al,
+            },
+            Ty::Array {
+                elem_width: bw,
+                elem_signed: bsig,
+                len: bl,
+            },
         ) => aw == bw && asig == bsig && al == bl,
         (Ty::Enum(x), Ty::Enum(y)) => x.name.name == y.name.name,
         _ => false,

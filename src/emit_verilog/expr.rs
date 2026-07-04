@@ -206,12 +206,18 @@ impl Emitter<'_> {
                 format!("({out})")
             }
             ExprKind::Concat(parts) => {
-                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst, arrays)).collect();
+                let ps: Vec<String> = parts
+                    .iter()
+                    .map(|p| self.expr_subst(p, subst, arrays))
+                    .collect();
                 format!("{{{}}}", ps.join(", "))
             }
             ExprKind::Replicate { count, parts } => {
                 let c = self.index_expr(count, subst, arrays);
-                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst, arrays)).collect();
+                let ps: Vec<String> = parts
+                    .iter()
+                    .map(|p| self.expr_subst(p, subst, arrays))
+                    .collect();
                 format!("{{{c}{{{}}}}}", ps.join(", "))
             }
             ExprKind::Index { base, index } => {
@@ -274,7 +280,9 @@ impl Emitter<'_> {
                 format!("{}({})", name.name, args_str.join(", "))
             }
             ExprKind::Call { func, args } => match func {
-                Builtin::SignedCast => format!("$signed({})", self.expr_subst(&args[0], subst, arrays)),
+                Builtin::SignedCast => {
+                    format!("$signed({})", self.expr_subst(&args[0], subst, arrays))
+                }
                 Builtin::UnsignedCast => {
                     format!("$unsigned({})", self.expr_subst(&args[0], subst, arrays))
                 }
@@ -418,14 +426,11 @@ impl Emitter<'_> {
                     Type::Named(_) => 0, // E0807: already rejected by checker
                     // Bundles are not valid enum payload fields (checker enforces).
                     Type::Bundle { .. } => 0,
-                    // Same category as sim/elaborate.rs's enum-payload field-width
-                    // fold (owned by Task 10): arrays are fn-param/let-only in this
-                    // plan's scope, never a valid enum payload field, so this is
-                    // likely permanently unreachable — mirror the Bundle arm above
-                    // (0) if that's confirmed, rather than treating it as new logic.
-                    Type::Array { .. } => unreachable!(
-                        "Task 10 confirms reachability (arrays are not valid enum payload fields per this plan's scope) — likely mirrors the Bundle arm above (0)"
-                    ),
+                    // Arrays sit in the SAME category as bundles here: neither is a
+                    // scalar bit-vector payload field. An array field folds to 0
+                    // (skipped below, like a bundle), matching the sibling arm
+                    // exactly rather than inventing new behavior.
+                    Type::Array { .. } => 0,
                 };
                 debug_assert!(
                     field_w > 0,
