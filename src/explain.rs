@@ -322,6 +322,16 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          addressing (E0406).\n\n\
          Fix: use an index within the array's declared length.",
     ),
+    (
+        "E0416",
+        "E0416 — module-level array signal not supported\n\n\
+         A port, wire, or register was declared with an array type. Array types\n\
+         are only supported for `fn` parameters in v0.2 — module-level arrays\n\
+         would need per-element driver-uniqueness checking, which is not yet\n\
+         implemented.\n\n\
+         Fix: declare the signal with a scalar type (`bit`, `bits[N]`,\n\
+         `signed[N]`), or use separate named signals instead of an array.",
+    ),
     // ----- E05xx: drivers & cycles -----
     (
         "E0501",

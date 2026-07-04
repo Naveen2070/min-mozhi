@@ -367,8 +367,25 @@ impl Emitter<'_> {
         let ret_w = self.width(&decl.ret);
         let mut s = format!("    function automatic {ret_w}{};\n", decl.name.name);
         for param in &decl.params {
-            let pw = self.width(&param.ty);
-            s.push_str(&format!("        input {pw}{};\n", param.name.name));
+            match &param.ty {
+                Type::Array { elem, len } => {
+                    // An array parameter is never a real Verilog array port —
+                    // it elaborates to N independent scalar `input` ports,
+                    // named `<param>_<index>`, exactly like `repeat` elaborates
+                    // to N copies of hardware rather than a real loop.
+                    let n = consteval::eval(len, &self.env).expect(
+                        "checker already validated this array's length is a positive compile-time constant",
+                    );
+                    let ew = self.width(elem);
+                    for i in 0..n {
+                        s.push_str(&format!("        input {ew}{}_{i};\n", param.name.name));
+                    }
+                }
+                other => {
+                    let pw = self.width(other);
+                    s.push_str(&format!("        input {pw}{};\n", param.name.name));
+                }
+            }
         }
         for local in fn_all_locals(&decl.stmts) {
             let decl_line = match local.inferred_width.get() {
@@ -887,7 +904,11 @@ impl Emitter<'_> {
             // never called on a bundle type directly in the port/wire path.
             // If it is called (e.g., from an unexpected path), treat as 0-width.
             Type::Bundle { .. } => String::new(),
-            Type::Array { .. } => unreachable!("Task 7 wires this up"),
+            Type::Array { .. } => unreachable!(
+                "array types are rejected by the checker (E0416) before reaching the \
+                 emitter for anything but a `fn` parameter, which render_fn_decl handles \
+                 separately without calling width()/width_subst()"
+            ),
         }
     }
 

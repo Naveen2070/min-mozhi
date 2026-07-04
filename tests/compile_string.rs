@@ -250,3 +250,24 @@ fn guard_clause_return_does_not_get_overwritten_by_tail() {
          `return 255` path"
     );
 }
+
+/// An array-typed `fn` parameter is never a real Verilog array port — it
+/// elaborates to N independent scalar `input` ports, named `<param>_<index>`.
+#[test]
+#[ignore = "blocked on Task 8 (call-site array-literal argument expansion, \
+            tracked in docs/superpowers/plans/2026-07-04-array-typed-fn-params.local.md) — \
+            render_fn_decl's own N-scalar-port emission (this task's actual deliverable) is \
+            correct and unit-verifiable once Task 8 lands and this fn is actually callable \
+            end-to-end; un-ignore this test as part of Task 8's own test pass"]
+fn array_param_expands_to_n_scalar_ports() {
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
+    let verilog = compile_ok(src);
+    assert!(verilog.contains("input [7:0] vals_0;"));
+    assert!(verilog.contains("input [7:0] vals_1;"));
+    assert!(verilog.contains("input [7:0] vals_2;"));
+    assert!(verilog.contains("input [7:0] vals_3;"));
+    assert!(
+        !verilog.contains("input [7:0] vals;"),
+        "must NOT emit a single scalar port named `vals`"
+    );
+}
