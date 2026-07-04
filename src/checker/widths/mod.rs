@@ -851,6 +851,21 @@ impl<'a> Checker<'a> {
                             );
                             0
                         }
+                        Ty::Array { .. } => {
+                            self.err(
+                                cx.file,
+                                f.span,
+                                "E0807",
+                                format!(
+                                    "payload field `{}` must be a bit-vector type \
+                                     (`bit`, `bits[N]`, `signed[N]`)",
+                                    f.name.name
+                                ),
+                                "arrays cannot be payload fields either — \
+                                 encode the value as `bits[N]` manually",
+                            );
+                            0
+                        }
                         _ => 0, // Unknown: E0103 already reported
                     })
                     .sum::<u128>()
