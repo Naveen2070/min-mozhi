@@ -236,11 +236,8 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
                     type_widths(&mut p.ty, visit);
                 }
                 type_widths(&mut f.ret, visit);
-                for l in &mut f.locals {
-                    visit(&mut l.name.name);
-                    expr(&mut l.value, visit);
-                }
-                expr(&mut f.body, visit);
+                fn_stmts(&mut f.stmts, visit);
+                expr(&mut f.tail, visit);
             }
             // Unreachable on the codegen path: `parse` rejects a tree with any
             // `Error` node, so transliteration never sees one.
@@ -393,6 +390,28 @@ fn seq_stmts(stmts: &mut [SeqStmt], visit: &mut dyn FnMut(&mut String)) {
                 expr(val, visit);
             }
             SeqStmt::Error(_) => {} // unreachable on the codegen path
+        }
+    }
+}
+
+/// Transliterate every identifier reachable from a `fn`-body statement
+/// list — mirrors `test_stmts`'s recursive-descent shape for `TestStmt`.
+fn fn_stmts(stmts: &mut [FnStmt], visit: &mut dyn FnMut(&mut String)) {
+    for stmt in stmts {
+        match stmt {
+            FnStmt::Let(local) => {
+                visit(&mut local.name.name);
+                expr(&mut local.value, visit);
+            }
+            FnStmt::If { cond, then, els } => {
+                expr(cond, visit);
+                fn_stmts(then, visit);
+                if let Some(els) = els {
+                    fn_stmts(els, visit);
+                }
+            }
+            FnStmt::Return(e) => expr(e, visit),
+            FnStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
 }
@@ -551,5 +570,21 @@ mod tests {
         // cannot carry) — `transliterate`'s collision counter is what
         // keeps such names distinct in the output.
         assert_eq!(romanize("நீ"), romanize("னீ"));
+    }
+
+    /// Reskinning a fn body with a statement-level `if`/`return` still
+    /// re-parses — the walker must cover `FuncDecl.stmts`/`tail`, not just
+    /// the old flat `locals`/`body` shape. Mirrors this crate's
+    /// `tests/translate.rs` round-trip convention (`translate` + `lex`/`parse`).
+    #[test]
+    fn translate_preserves_fn_return_and_if_semantics() {
+        use crate::lexer::lex;
+        use crate::lexer::token::Flavor;
+        use crate::parser::parse;
+        use crate::translate::translate;
+
+        let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return a }\n  0\n}\n";
+        let translated = translate(src, Flavor::Tanglish).expect("lexes");
+        parse(lex(&translated).expect("tanglish lexes")).expect("tanglish parses");
     }
 }
