@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::ast::{self, BinOp, Builtin, Expr, ExprKind, FuncDecl, Pattern, Type, UnOp};
+use crate::ast::{self, BinOp, Builtin, Expr, ExprKind, FnStmt, FuncDecl, Pattern, Type, UnOp};
 
 /// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
 pub(super) fn mask(w: u32) -> u128 {
@@ -232,18 +232,56 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
         consts,
         funcs,
     };
-    // Evaluate each local `let` in order, binding its name for subsequent exprs.
-    // Width parity: mask to inferred_width when the checker has set it, matching
-    // the Verilog emitter's `reg [W-1:0]` declaration for each local.
-    for local in &f.locals {
-        let v = eval(&mut child, &local.value)?;
-        let v = match local.inferred_width.get() {
-            Some(w) => Val::new(v.bits, w, v.signed),
-            None => v, // checker not run (e.g. bare sim test); trust the Val width
-        };
-        child.locals.insert(local.name.name.clone(), v);
+    match eval_fn_stmts(&mut child, &f.stmts)? {
+        FnFlow::Returned(v) => Ok(v),
+        FnFlow::FellThrough => eval(&mut child, &f.tail),
     }
-    eval(&mut child, &f.body)
+}
+
+/// Whether a `fn`-body statement list produced an early `return` or ran off
+/// the end (in which case the caller evaluates `tail` for the result).
+enum FnFlow {
+    Returned(Val),
+    FellThrough,
+}
+
+/// Interpret one `fn`-body statement list. A `return` anywhere — including
+/// inside a nested `if` — immediately propagates `FnFlow::Returned` up
+/// through the recursion, mirroring the Verilog emitter's continuation-passing
+/// lowering but using Rust's own early-return control flow instead of an
+/// explicit continuation string.
+fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
+    for stmt in stmts {
+        match stmt {
+            FnStmt::Let(local) => {
+                let v = eval(env, &local.value)?;
+                let v = match local.inferred_width.get() {
+                    Some(w) => Val::new(v.bits, w, v.signed),
+                    None => v, // checker not run (e.g. bare sim test); trust the Val width
+                };
+                env.locals.insert(local.name.name.clone(), v);
+            }
+            FnStmt::If { cond, then, els } => {
+                let c = eval(env, cond)?;
+                let branch = if c.bits != 0 {
+                    Some(then.as_slice())
+                } else {
+                    els.as_deref()
+                };
+                if let Some(body) = branch {
+                    if let FnFlow::Returned(v) = eval_fn_stmts(env, body)? {
+                        return Ok(FnFlow::Returned(v));
+                    }
+                }
+            }
+            FnStmt::Return(expr) => {
+                let v = eval(env, expr)?;
+                return Ok(FnFlow::Returned(v));
+            }
+            FnStmt::Error(_) => {} // parse-recovery placeholder; unreachable on the eval path
+        }
+    }
+    Ok(FnFlow::FellThrough)
 }
 
 /// Child resolver for evaluating a user-defined function body.

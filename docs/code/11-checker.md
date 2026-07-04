@@ -15,7 +15,7 @@ table below is the honest status of what remains.
 | -------------------- | ----------------------------------------------------------------------------------------------- |
 | `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing                                      |
 | `symbols.rs`         | Pass 1 — per-file module/enum/bundle tables, project-wide funcs + E0001/E0002/E0801/E0802/E0909 |
-| `funcs.rs`           | Pass 2 — call-graph cycle detection (E0805), unreachable-after-return (E0812)                  |
+| `funcs.rs`           | Pass 2 — call-graph cycle detection (E0805), unreachable-after-return (E0812)                   |
 | `consteval.rs`       | Pass 3 — file consts + the `eval()` engine for const positions                                  |
 | `names.rs`           | Pass 4 — module scopes, name resolution, structure rules, E0302                                 |
 | `widths/mod.rs`      | Pass 5 — the `Ty` model, `Wcx`, config worklist, module walk                                    |
@@ -139,7 +139,7 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0809 | `default` assignment target is not a `reg`                                                  | only `reg` signals can have sequential default assignments; drive wires combinationally                                                                   |
 | E0810 | duplicate `default` for the same reg in one `on` block                                      | each reg may have at most one `default` per `on` block; merge into a conditional expression                                                               |
 | E0811 | `const if` condition is not a compile-time constant                                         | use only module parameters, `const` values, literals, and arithmetic/comparison on those                                                                  |
-| E0812 | unreachable code after `return` in the same statement list                                  | remove the dead statement(s), or move `return` inside an `if` if it was meant to be conditional                                                            |
+| E0812 | unreachable code after `return` in the same statement list                                  | remove the dead statement(s), or move `return` inside an `if` if it was meant to be conditional                                                           |
 | E0901 | Bundle literal missing a required field                                                     | list all fields in the bundle literal; the field is named in the error                                                                                    |
 | E0902 | Bundle literal references an unknown field name                                             | check spelling against the bundle definition                                                                                                              |
 | E0903 | Duplicate binding name in `let { }` destructure                                             | each name may appear at most once in the binding list                                                                                                     |
