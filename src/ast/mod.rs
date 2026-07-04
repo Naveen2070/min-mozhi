@@ -71,8 +71,8 @@ pub enum TopItem {
 /// - `ret`    — the return type (a hardware `Type`).
 /// - `stmts`  — statements (`let`, statement-level `if`, `return`) before the tail.
 /// - `tail`   — the function's fallthrough value: always present, so every
-///              function has a well-defined result on every path even
-///              without a `return` firing.
+///   function has a well-defined result on every path even without a
+///   `return` firing.
 #[derive(Clone, Debug)]
 pub struct FuncDecl {
     /// The function name as written in source.

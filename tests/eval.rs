@@ -164,6 +164,25 @@ fn overflowing_multiply_const_does_not_panic() {
 }
 
 #[test]
+fn fn_call_guard_clause_return_short_circuits() {
+    // `f(a=1)` must return 255 via the `if`'s `return`, NOT fall through to
+    // the tail `0` — the interpreter-level counterpart of the Verilog
+    // emitter's continuation-passing lowering for early `return`.
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a == 1 { return 255 }\n  0\n}\nmodule M {\n  in a: bits[8]\n  out y: bits[8]\n  y = f(a)\n}\n";
+    let (ok, out, err) = eval_src(src, &["--in", "a=1"]);
+    assert!(ok, "stderr: {err}");
+    assert!(out.contains("y = 255"), "got: {out}");
+}
+
+#[test]
+fn fn_call_guard_clause_falls_through_to_tail() {
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a == 1 { return 255 }\n  0\n}\nmodule M {\n  in a: bits[8]\n  out y: bits[8]\n  y = f(a)\n}\n";
+    let (ok, out, err) = eval_src(src, &["--in", "a=0"]);
+    assert!(ok, "stderr: {err}");
+    assert!(out.contains("y = 0"), "got: {out}");
+}
+
+#[test]
 fn out_of_range_index_is_rejected_cleanly() {
     // A literal index past the value's width must be a clean error, not a
     // truncating `as u32` cast or an oversized shift.
