@@ -423,6 +423,7 @@ impl<'a> Checker<'a> {
                 // E0103/E0906 already reported, or bundle name (T6 will handle)
                 None => Ty::Unknown,
             },
+            Type::Array { .. } => unreachable!("Task 5 wires this up"),
         }
     }
 

@@ -539,6 +539,7 @@ impl<'a> Checker<'a> {
                 // The call's type is the function's declared return type.
                 self.fn_type_for_file(ffile, &func.ret)
             }
+            ExprKind::ArrayLit(_) => unreachable!("Task 6 wires this up"),
         }
     }
 

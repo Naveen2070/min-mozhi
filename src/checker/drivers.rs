@@ -551,6 +551,11 @@ impl<'a> Checker<'a> {
                     self.expr_reads(dcx, &init.value, out);
                 }
             }
+            ExprKind::ArrayLit(elems) => {
+                for e in elems {
+                    self.expr_reads(dcx, e, out);
+                }
+            }
         }
     }
 
@@ -642,6 +647,9 @@ impl<'a> Checker<'a> {
                 Type::Named(_) => None,
                 // ponytail: bundle ports have no scalar drive extent in this pass
                 Type::Bundle { .. } => None,
+                Type::Array { .. } => unreachable!(
+                    "Task 6 wires this up (or confirms arrays, fn-param/let-only in this plan, can never reach module-output driver-coverage checking)"
+                ),
             };
             let Some(width) = width else { continue };
             // A zero-width output is already an E0410 elsewhere; coverage

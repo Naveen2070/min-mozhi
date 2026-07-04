@@ -1321,6 +1321,12 @@ impl<'d, 's> Rw<'d, 's> {
             ExprKind::BundleLit(_) => {
                 return Err("bundle literal in unsupported expression position".to_string());
             }
+            ExprKind::ArrayLit(elems) => ExprKind::ArrayLit(
+                elems
+                    .iter()
+                    .map(|e| self.expr(e))
+                    .collect::<Result<_, _>>()?,
+            ),
         };
         Ok(Expr { kind, span: e.span })
     }
@@ -1476,6 +1482,10 @@ impl<'d, 's> Rw<'d, 's> {
                     }
                     ast::Type::Named(_) => 0, // E0807: already rejected by checker
                     ast::Type::Bundle { .. } => 0, // E0807 rejects bundle payload fields in enums
+                    ast::Type::Array { .. } => unreachable!(
+                        "Task 10 wires this up (or confirms arrays, out of scope as enum payload \
+                         fields per this plan, can never reach this fold)"
+                    ),
                 };
                 debug_assert!(
                     field_w > 0,
