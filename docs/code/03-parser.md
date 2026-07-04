@@ -19,7 +19,9 @@ the `pub(in crate::parser) file()` entry), `items/file.rs` (imports,
 consts, enums), `items/module.rs` (modules and ports), `items/inst.rs`
 (instance declarations), `items/seq.rs` (`on`-blocks + thamizh
 variants), `items/test.rs` (`test` blocks), `items/func.rs` (`fn`
-declarations — `fnDecl` from spec/02 section 5).
+declarations — `fnDecl` from spec/02 section 5, including the `fnStmt`
+body: `let` / statement-level `if` / `return`, terminated by the
+mandatory tail expression).
 
 `mod.rs` owns the struct and all private plumbing; the `items/` files and
 `expr.rs` are `impl Parser` blocks reached through `pub(super)` entry
@@ -140,3 +142,13 @@ checker passes (E0801–E0805). Every parse
 error carries a stable code (**E1101–E1111** — `self.error(span, code,
 msg)` makes the code mandatory; catalog and the E1101 grouping rule in
 [`06-diagnostics.md`](06-diagnostics.md)).
+
+A `fn` body (`items/func.rs`) is `{ fnStmt } expr` — zero or more
+statements (`let`, statement-level `if`, `return`) followed by exactly
+one mandatory tail expression. Statement-level `if` (`fn_if`) is parsed
+with `fn_stmt_block`, which unlike the top-level `fn_body` accepts no
+tail expression and makes `else` optional — mirroring `seqIf`'s
+optional-`else` shape rather than the expression-level `ifExpr`'s
+mandatory one. The parser does not decide reachability past a `return`;
+unreachable code after an unconditional `return` in the same block is a
+checker diagnostic (E0812), not a parse error.

@@ -88,43 +88,43 @@ is valid even in an otherwise-English file.
 > `lang/keywords.toml` carries `version = 1`. This table mirrors `lang/keywords.toml`
 > exactly (`tests/grammar_sync.rs` enforces it).
 
-| Token         | English   | Tanglish        | Tamil         | Notes                                                                                                                                  |
-| ------------- | --------- | --------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| KW_MODULE     | `module`  | `thoguthi`      | `தொகுதி`      | standard CS-textbook word for "module"                                                                                                 |
-| KW_IN         | `in`      | `ulleedu`       | `உள்ளீடு`     | "input" — precise port direction (v1: was `உள்`)                                                                                       |
-| KW_OUT        | `out`     | `veliyeedu`     | `வெளியீடு`    | "output" — exact counterpart to உள்ளீடு (v1: was `வெளி`)                                                                               |
-| KW_WIRE       | `wire`    | `kambi`         | `கம்பி`       | literal "wire"                                                                                                                         |
-| KW_REG        | `reg`     | `pathivedu`     | `பதிவேடு`     | "register" — exact CS term (v1: was `நிலை`/"state")                                                                                    |
-| KW_MEM        | `mem`     | `ninaivagam`    | `நினைவகம்`    | "memory" — `mem m: bits[W][DEPTH]` (RAM/array); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                             |
-| KW_CLOCK      | `clock`   | `thudippu`      | `துடிப்பு`    | "pulse/beat" — a clock is a pulse (v1: was `கடிகாரம்`)                                                                                 |
-| KW_RESET      | `reset`   | `meettamai`     | `மீட்டமை`     | "restore/reset" (standard UI/CS term)                                                                                                  |
-| KW_ASYNC      | `async`   | `otthisaivatra` | `ஒத்திசைவற்ற` | "non-synchronous" — `async reset rst` (negation of synchrony `ஒத்திசைவு`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)  |
-| KW_ON         | `on`      | `pothu`         | `போது`        | "when/at the time of" (trails in thamizh order)                                                                                        |
-| KW_RISE       | `rise`    | `yetram`        | `ஏற்றம்`      | "ascent/rise" — `on rise(clk)` (posedge)                                                                                               |
-| KW_FALL       | `fall`    | `irakkam`       | `இறக்கம்`     | "descent/fall" — `on fall(clk)` (negedge); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                  |
-| KW_IF         | `if`      | `enil`          | `எனில்`       | conditional particle — natural trailing "if" in thamizh order (v1: was `என்றால்`)                                                      |
-| KW_ELSE       | `else`    | `illaiyenil`    | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                                                      |
-| KW_MATCH      | `match`   | `thernthedu`    | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                                                       |
-| KW_ENUM       | `enum`    | `vagai`         | `வகை`         | "kind/category"                                                                                                                        |
-| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 section 1.5)                      |
-| KW_CONST      | `const`   | `maarili`       | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                                                  |
-| KW_REPEAT     | `repeat`  | `meendum`       | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                                                    |
-| KW_IMPORT     | `import`  | `serkka`        | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                                                  |
-| KW_TRUE       | `true`    | `mei`           | `மெய்`        | boolean true — standard CS/math term (v1: was `உண்மை`)                                                                                 |
-| KW_FALSE      | `false`   | `poi`           | `பொய்`        | boolean false                                                                                                                          |
-| KW_TEST       | `test`    | `sodhanai`      | `சோதனை`       | "test/experiment"                                                                                                                      |
-| KW_FOR (test) | `for`     | `kaaga`         | `க்காக`       | "for the sake of" — **binds** a module in a test (NOT a loop; `repeat` is the loop)                                                    |
-| KW_TICK       | `tick`    | `kanam`         | `கணம்`        | "moment/instant" — a discrete time step (v1: was `தட்டு`)                                                                              |
-| KW_EXPECT     | `expect`  | `uruthisei`     | `உறுதிசெய்`   | "ensure/assert" — hardware assertion (v1: was `எதிர்பார்`)                                                                             |
-| KW_AND        | `and`     | `mattrum`       | `மற்றும்`     | alias of universal `&&` (G1-x)                                                                                                         |
-| KW_OR         | `or`      | `alladhu`       | `அல்லது`      | alias of universal `\|\|`                                                                                                              |
-| KW_NOT        | `not`     | `alla`          | `அல்ல`        | alias of universal `!` (v1: was `இல்லா`)                                                                                               |
-| KW_SYNTAX     | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar-engine directive (Layer 2): `syntax thamizh` (section 04)                                                                      |
-| KW_THAMIZH    | `thamizh` | `thamizh`       | `தமிழ்`       | the `thamizh-order` profile name; en==tanglish, Tamil script `தமிழ்`                                                                   |
-| KW_FN         | `fn`      | `saarbu`        | `சார்பு`      | combinational user-defined function (`fn f(…) -> T`); en alias: `function`; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
-| KW_DEFAULT    | `default` | `iyalbu`        | `இயல்பு`      | priority-lowest sequential assignment in `on` blocks (`default NAME <- EXPR`); Tanglish/Tamil PROVISIONAL, pending native review (R11) |
-| KW_BUNDLE     | `bundle`  | `kattai`        | `கட்டை`       | "bundle/block" — named group of signals (`bundle Foo { fields }`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)          |
-| KW_RETURN     | `return`  | `thirumbu`      | `திரும்பு`    | function early-return (`return EXPR` in a `fn` body); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                       |
+| Token         | English   | Tanglish        | Tamil         | Notes                                                                                                                                                              |
+| ------------- | --------- | --------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| KW_MODULE     | `module`  | `thoguthi`      | `தொகுதி`      | standard CS-textbook word for "module"                                                                                                                             |
+| KW_IN         | `in`      | `ulleedu`       | `உள்ளீடு`     | "input" — precise port direction (v1: was `உள்`)                                                                                                                   |
+| KW_OUT        | `out`     | `veliyeedu`     | `வெளியீடு`    | "output" — exact counterpart to உள்ளீடு (v1: was `வெளி`)                                                                                                           |
+| KW_WIRE       | `wire`    | `kambi`         | `கம்பி`       | literal "wire"                                                                                                                                                     |
+| KW_REG        | `reg`     | `pathivedu`     | `பதிவேடு`     | "register" — exact CS term (v1: was `நிலை`/"state")                                                                                                                |
+| KW_MEM        | `mem`     | `ninaivagam`    | `நினைவகம்`    | "memory" — `mem m: bits[W][DEPTH]` (RAM/array); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                                         |
+| KW_CLOCK      | `clock`   | `thudippu`      | `துடிப்பு`    | "pulse/beat" — a clock is a pulse (v1: was `கடிகாரம்`)                                                                                                             |
+| KW_RESET      | `reset`   | `meettamai`     | `மீட்டமை`     | "restore/reset" (standard UI/CS term)                                                                                                                              |
+| KW_ASYNC      | `async`   | `otthisaivatra` | `ஒத்திசைவற்ற` | "non-synchronous" — `async reset rst` (negation of synchrony `ஒத்திசைவு`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                              |
+| KW_ON         | `on`      | `pothu`         | `போது`        | "when/at the time of" (trails in thamizh order)                                                                                                                    |
+| KW_RISE       | `rise`    | `yetram`        | `ஏற்றம்`      | "ascent/rise" — `on rise(clk)` (posedge)                                                                                                                           |
+| KW_FALL       | `fall`    | `irakkam`       | `இறக்கம்`     | "descent/fall" — `on fall(clk)` (negedge); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                                              |
+| KW_IF         | `if`      | `enil`          | `எனில்`       | conditional particle — natural trailing "if" in thamizh order (v1: was `என்றால்`)                                                                                  |
+| KW_ELSE       | `else`    | `illaiyenil`    | `இல்லையெனில்` | "otherwise" — mirrors எனில் (v1: was `இல்லையேல்`)                                                                                                                  |
+| KW_MATCH      | `match`   | `thernthedu`    | `தேர்ந்தெடு`  | "select/choose" (verb) — reads as a clause in thamizh order (v1: was `பொருத்து`)                                                                                   |
+| KW_ENUM       | `enum`    | `vagai`         | `வகை`         | "kind/category"                                                                                                                                                    |
+| KW_LET        | `let`     | `amai`          | `அமை`         | "set up" — instantiates a module (v1: was `வை`). EN `let` binds an instance, not a variable (spec/02 section 1.5)                                                  |
+| KW_CONST      | `const`   | `maarili`       | `மாறிலி`      | "constant" — exact math/science term (v1: was `மாறா`)                                                                                                              |
+| KW_REPEAT     | `repeat`  | `meendum`       | `மீண்டும்`    | "again" — compile-time generation (the unroll loop)                                                                                                                |
+| KW_IMPORT     | `import`  | `serkka`        | `சேர்க்க`     | en alias: `include`; "to add/include"                                                                                                                              |
+| KW_TRUE       | `true`    | `mei`           | `மெய்`        | boolean true — standard CS/math term (v1: was `உண்மை`)                                                                                                             |
+| KW_FALSE      | `false`   | `poi`           | `பொய்`        | boolean false                                                                                                                                                      |
+| KW_TEST       | `test`    | `sodhanai`      | `சோதனை`       | "test/experiment"                                                                                                                                                  |
+| KW_FOR (test) | `for`     | `kaaga`         | `க்காக`       | "for the sake of" — **binds** a module in a test (NOT a loop; `repeat` is the loop)                                                                                |
+| KW_TICK       | `tick`    | `kanam`         | `கணம்`        | "moment/instant" — a discrete time step (v1: was `தட்டு`)                                                                                                          |
+| KW_EXPECT     | `expect`  | `uruthisei`     | `உறுதிசெய்`   | "ensure/assert" — hardware assertion (v1: was `எதிர்பார்`)                                                                                                         |
+| KW_AND        | `and`     | `mattrum`       | `மற்றும்`     | alias of universal `&&` (G1-x)                                                                                                                                     |
+| KW_OR         | `or`      | `alladhu`       | `அல்லது`      | alias of universal `\|\|`                                                                                                                                          |
+| KW_NOT        | `not`     | `alla`          | `அல்ல`        | alias of universal `!` (v1: was `இல்லா`)                                                                                                                           |
+| KW_SYNTAX     | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar-engine directive (Layer 2): `syntax thamizh` (section 04)                                                                                                  |
+| KW_THAMIZH    | `thamizh` | `thamizh`       | `தமிழ்`       | the `thamizh-order` profile name; en==tanglish, Tamil script `தமிழ்`                                                                                               |
+| KW_FN         | `fn`      | `saarbu`        | `சார்பு`      | combinational user-defined function (`fn f(…) -> T`); en alias: `function`; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                             |
+| KW_DEFAULT    | `default` | `iyalbu`        | `இயல்பு`      | priority-lowest sequential assignment in `on` blocks (`default NAME <- EXPR`); Tanglish/Tamil PROVISIONAL, pending native review (R11)                             |
+| KW_BUNDLE     | `bundle`  | `kattai`        | `கட்டை`       | "bundle/block" — named group of signals (`bundle Foo { fields }`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                      |
+| KW_RETURN     | `return`  | `thirumbu`      | `திரும்பு`    | "return/turn back" — priority-selected result in a `fn` body, not a silicon early-exit (`return EXPR`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
 
 ### Reserved words
 
@@ -280,6 +280,18 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.20 (2026-07-04):** Documents keyword `return` (`KW_RETURN`) for
+  `return EXPR` in statement-based `fn` bodies (spec/02 v0.2.20). The
+  keyword itself, its grammar wiring, and this table's row landed
+  incrementally over the course of the `return`/statement-`fn`-body
+  migration — the row was already present (added as a doc-sync side-fix
+  partway through that work) but described `return` as an "early-return,"
+  language this entry tightens: `return` is a priority-selected result,
+  not a silicon early-exit — no branch is skipped, only which
+  already-computed result is selected first. Tanglish `thirumbu` / Tamil
+  `திரும்பு` remain **PROVISIONAL** placeholders pending native-speaker
+  review (R9/R11). `return` was never in the `reserved` list — a fresh
+  addition, not a promotion.
 - **v0.2.17 (2026-06-30):** Promoted `default` from **reserved** to active
   keyword KW_DEFAULT for priority-lowest sequential assignments
   (`default NAME <- EXPR` inside `on` blocks — spec/02 v0.2.17 section 1.8b).

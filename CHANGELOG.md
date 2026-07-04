@@ -12,6 +12,17 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `return` statement and statement-based `fn` bodies (`if`/`return`/`let`)
+  for guard-clause / early-exit combinational functions. New keyword
+  `return`/`thirumbu`/`திரும்பு`. New diagnostic E0812 (unreachable code
+  after `return`). Fully backward compatible with existing `fn` bodies.
+
+---
+
 ## [0.1.0] — 2026-06-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
 The first public release. Phases 0, 1, 1.8, and 1.5 complete.
