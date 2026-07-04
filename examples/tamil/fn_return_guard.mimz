@@ -1,0 +1,22 @@
+// Min-Mozhi example: guard-clause combinational function using `return`
+// Finds the index of the lowest set bit in an 8-bit value, or -1 if none
+// are set. Demonstrates the statement-based `fn` body: an `if`/`return`
+// per bit position, falling through to the "not found" tail.
+
+சார்பு find_first_set(a: bits[8]) -> signed[4] {
+  எனில் a[0] == 1 { திரும்பு 0 }
+  எனில் a[1] == 1 { திரும்பு 1 }
+  எனில் a[2] == 1 { திரும்பு 2 }
+  எனில் a[3] == 1 { திரும்பு 3 }
+  எனில் a[4] == 1 { திரும்பு 4 }
+  எனில் a[5] == 1 { திரும்பு 5 }
+  எனில் a[6] == 1 { திரும்பு 6 }
+  எனில் a[7] == 1 { திரும்பு 7 }
+  -1
+}
+
+தொகுதி FindFirstSet {
+  உள்ளீடு a: bits[8]
+  வெளியீடு idx: signed[4]
+  idx = find_first_set(a)
+}
