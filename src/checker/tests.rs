@@ -226,6 +226,12 @@ fn unknown_name_is_e0101_with_teaching_help() {
 }
 
 #[test]
+fn array_param_length_referencing_an_unbound_name_is_e0101() {
+    let src = "fn f(vals: bits[8][unbound_thing]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1])\n}\n";
+    assert!(any_code(src, "E0101"));
+}
+
+#[test]
 fn unknown_module_in_inst_is_e0102_and_mentions_import() {
     let d = first_err(
         "module M {\n  in a: bit\n  let u = Ghost() { a: a }\n}\n",
