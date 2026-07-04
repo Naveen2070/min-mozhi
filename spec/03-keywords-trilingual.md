@@ -124,6 +124,7 @@ is valid even in an otherwise-English file.
 | KW_FN         | `fn`      | `saarbu`        | `சார்பு`      | combinational user-defined function (`fn f(…) -> T`); en alias: `function`; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
 | KW_DEFAULT    | `default` | `iyalbu`        | `இயல்பு`      | priority-lowest sequential assignment in `on` blocks (`default NAME <- EXPR`); Tanglish/Tamil PROVISIONAL, pending native review (R11) |
 | KW_BUNDLE     | `bundle`  | `kattai`        | `கட்டை`       | "bundle/block" — named group of signals (`bundle Foo { fields }`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)          |
+| KW_RETURN     | `return`  | `thirumbu`      | `திரும்பு`    | function early-return (`return EXPR` in a `fn` body); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                       |
 
 ### Reserved words
 
