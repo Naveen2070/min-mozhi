@@ -1312,7 +1312,16 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            Type::Array { .. } => unreachable!("Task 4 wires this up"),
+            Type::Array { .. } => {
+                self.err(
+                    file,
+                    span,
+                    "E0807",
+                    "bundle field cannot be an array type",
+                    "bundle fields must be `bit`, `bits[N]`, `signed[N]`, or an enum — \
+                     arrays are not supported as bundle fields in v0.2",
+                );
+            }
         }
     }
 
