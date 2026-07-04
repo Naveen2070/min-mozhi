@@ -372,6 +372,13 @@ impl<'a> Checker<'a> {
                 format!("a number cannot stand for {}", show(&t)),
                 "address one cell — `m[addr]` — to read or write a value",
             ),
+            Ty::Array { .. } => self.err(
+                cx.file,
+                span,
+                "E0403",
+                format!("a number cannot stand for {}", show(&t)),
+                "index one element — `arr[idx]` — to read or write a value",
+            ),
             Ty::CtInt(_) | Ty::Unknown => {}
         }
     }

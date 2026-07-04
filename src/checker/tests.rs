@@ -1837,3 +1837,23 @@ fn return_as_last_statement_before_tail_is_not_e0812() {
     let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return a }\n  a\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
     check_one(src).expect("return inside an if, followed by unrelated code, is not E0812");
 }
+
+// ---- array-typed fn params: element type + length (E0411/E0412) ----------
+
+#[test]
+fn array_param_with_bundle_element_type_is_e0411() {
+    let src = "bundle B { a: bit }\nfn f(vals: B[4]) -> bit {\n  0\n}\nmodule M {\n  out o: bit\n  o = 0\n}\n";
+    assert!(any_code(src, "E0411"));
+}
+
+#[test]
+fn array_param_with_zero_length_is_e0412() {
+    // No call site: `f`'s param types are resolved unconditionally by
+    // `check_func_body_widths` regardless of whether `f` is ever called, so
+    // E0412 fires from the declaration alone. A call site would need an
+    // array-literal argument, which routes through `ExprKind::ArrayLit`
+    // inference — Task 6's job, not yet wired up.
+    let src =
+        "fn f(vals: bits[8][0]) -> bits[8] {\n  0\n}\nmodule M {\n  out o: bits[8]\n  o = 0\n}\n";
+    assert!(any_code(src, "E0412"));
+}
