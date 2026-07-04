@@ -144,13 +144,39 @@ impl Parser {
                 self.bump();
                 let name = self.ident("a memory name")?;
                 self.expect(TokKind::Colon, "`:` then the memory's element type")?;
-                let ty = self.ty()?;
-                self.expect(
-                    TokKind::LBracket,
-                    "`[` then the depth — memories are written `mem m: type[DEPTH] = 0`",
-                )?;
-                let depth = self.expr()?;
-                self.expect(TokKind::RBracket, "`]` after the depth")?;
+                let full_ty = self.ty()?;
+                // `ty()` now parses the trailing `[DEPTH]` itself as part of the
+                // general array-type grammar (this plan's Task 2) — a `mem`
+                // declaration's element-type-plus-depth is ALWAYS one `Type::Array`
+                // at this point (`mem m: bits[8][4] = 0` parses `bits[8][4]` as
+                // `Array { elem: Bits(8), len: 4 }` in the single `self.ty()` call
+                // above). Unwrap it back into the SAME `ty`/`depth` fields
+                // `ModuleItem::Mem` has always had — this keeps every downstream
+                // consumer (checker, emitter) byte-for-byte unchanged; only this
+                // parsing step is new.
+                let (ty, depth) = match full_ty {
+                    Type::Array { elem, len } => (*elem, *len),
+                    other => {
+                        self.error(
+                            name.span,
+                            "E1104",
+                            format!(
+                                "memory `{}` is missing its depth — memories are written `mem m: type[DEPTH] = 0`",
+                                name.name
+                            ),
+                        );
+                        (
+                            other,
+                            Expr {
+                                kind: ExprKind::Int {
+                                    value: 0,
+                                    raw: "0".into(),
+                                },
+                                span: name.span,
+                            },
+                        )
+                    }
+                };
                 if !self.at(&TokKind::Assign) {
                     let span = self.peek().span;
                     self.error(

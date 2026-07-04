@@ -94,10 +94,36 @@ impl Parser {
         Some(LValue { base, index, span })
     }
 
-    /// `type = "bit" | "bits" "[" expr "]" | "signed" "[" expr "]" | ident`
+    /// `type = arrayType | scalarType`
+    /// `arrayType = scalarType { "[" expr "]" }` — one or more trailing
+    /// `[N]` suffixes wrap the preceding type in `Type::Array`, so
+    /// `bits[8][4]` parses as `Array { elem: Bits(8), len: 4 }` and
+    /// `bits[8][4][2]` as `Array { elem: Array { elem: Bits(8), len: 4 },
+    /// len: 2 }` (nested arrays parse cleanly; the CHECKER rejects them —
+    /// element-type restriction is not this grammar's job, matching this
+    /// project's existing "lenient parser, narrowing checker" pattern).
+    /// `scalarType = "bit" | "bits" "[" expr "]" | "signed" "[" expr "]" | ident`
     /// — type names are contextual (identifiers), not keywords; anything
     /// unrecognized is assumed to be an enum name and resolved later.
     pub(super) fn ty(&mut self) -> Option<Type> {
+        let mut t = self.scalar_ty()?;
+        while self.at(&TokKind::LBracket) {
+            self.bump(); // [
+            let len = self.expr()?;
+            self.expect(TokKind::RBracket, "`]` after the array length")?;
+            t = Type::Array {
+                elem: Box::new(t),
+                len: Box::new(len),
+            };
+        }
+        Some(t)
+    }
+
+    /// The non-array type grammar — everything `ty()` used to do before
+    /// this plan added the trailing-`[N]` array-suffix loop above. This is
+    /// the EXACT prior body of `ty()`, renamed and unchanged in content,
+    /// so every existing scalar/enum/bundle type still parses identically.
+    fn scalar_ty(&mut self) -> Option<Type> {
         let id = self.ident("a type — `bit`, `bits[N]`, `signed[N]`, or an enum name")?;
         match id.name.as_str() {
             "bit" => Some(Type::Bit),
