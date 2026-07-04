@@ -648,6 +648,34 @@ impl Parser {
                     }
                 }
             }
+            TokKind::LBracket => {
+                // `[e1, e2, ..., eN]` — an array literal. Unlike `{ ... }`
+                // (which disambiguates bundle-lit vs. concat/replicate by
+                // lookahead), `[` has exactly one meaning here: indexing
+                // (`arr[idx]`) is handled separately in `postfix()`, which
+                // only recognizes `[` AFTER an existing base expression —
+                // a `[` at the START of a primary expression is always an
+                // array literal.
+                let start = self.bump().span; // [
+                let mut elems = Vec::new();
+                loop {
+                    self.skip_newlines();
+                    if self.at(&TokKind::RBracket) {
+                        break;
+                    }
+                    elems.push(self.expr()?);
+                    self.skip_newlines();
+                    if !self.eat(&TokKind::Comma) {
+                        break;
+                    }
+                }
+                self.skip_newlines();
+                let t = self.expect(TokKind::RBracket, "`]` to close the array literal")?;
+                Some(Expr {
+                    kind: ExprKind::ArrayLit(elems),
+                    span: start.join(t.span),
+                })
+            }
             // In code order the clause head LEADS, so `if`/`match` start a
             // primary. In thamizh order it TRAILS the operand (handled in
             // `expr_thamizh`), so a leading `enil`/`thernthedu` here is the
