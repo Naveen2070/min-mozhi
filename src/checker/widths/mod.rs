@@ -922,8 +922,16 @@ impl<'a> Checker<'a> {
     }
 
     /// Width-check one `fn`-body statement list. Folds `let` bindings into
-    /// `cx.sigs` (same flat scope model as `on`-block `SeqStmt::If` —
-    /// deliberate simplification, see `check_fn_stmt_names`'s doc comment).
+    /// `cx.sigs` sequentially — a `let` bound BEFORE an `if` stays visible
+    /// inside both branches and after, but a `let` bound INSIDE a branch is
+    /// scoped to that branch only: `cx.sigs` is snapshotted before checking
+    /// `then`, restored before checking `els` (so `then`'s bindings don't
+    /// leak into `els`), and restored again after the `if` so nothing
+    /// leaks into later statements or the tail. (An earlier version of this
+    /// comment claimed a "flat scope model" shared with `on`-block
+    /// `SeqStmt::If` as a deliberate simplification — see
+    /// `check_fn_stmt_names`'s doc comment for why that claim was wrong and
+    /// this was a real soundness gap, not a design choice.)
     fn check_fn_stmt_widths(
         &mut self,
         cx: &mut Wcx<'a>,
@@ -952,10 +960,13 @@ impl<'a> Checker<'a> {
                 }
                 FnStmt::If { cond, then, els } => {
                     self.check_cond(cx, cond);
+                    let sigs_before = cx.sigs.clone();
                     self.check_fn_stmt_widths(cx, then, ret_ty, func_name);
                     if let Some(els) = els {
+                        cx.sigs = sigs_before.clone();
                         self.check_fn_stmt_widths(cx, els, ret_ty, func_name);
                     }
+                    cx.sigs = sigs_before;
                 }
                 FnStmt::Return(expr) => {
                     let ty = self.infer_ty(cx, expr);

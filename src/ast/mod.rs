@@ -132,7 +132,7 @@ pub struct FnParam {
 /// A `let` binding inside a function body: `let name = value`.
 ///
 /// `value` is an expression evaluated combinationally when the function is
-/// called. The bound name is in scope for subsequent `locals` and the `body`.
+/// called. The bound name is in scope for subsequent `stmts` and the `tail`.
 ///
 /// `inferred_width` is filled by the checker's width pass so the emitter
 /// can declare a sized `reg [W-1:0]` rather than a 32-bit `integer` (R6).
