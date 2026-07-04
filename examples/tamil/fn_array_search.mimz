@@ -3,6 +3,12 @@
 // Demonstrates an array-typed fn parameter (Spec 2 of the suzhal/loop
 // roadmap): the array is not real Verilog hardware, it is four
 // independent scalar ports under the hood.
+//
+// `pick` demonstrates the runtime-index side of the same feature: `idx` is
+// not a compile-time constant, so the emitter generates a ternary-chain
+// mux over vals_0..vals_3 (spec 02 section 1.14). Since `idx` is bits[3]
+// (0..7) but the array only has 4 elements, an out-of-range value (4..7)
+// falls through the generated chain to the last element, vals_3.
 
 சார்பு find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
   எனில் vals[0] == target { திரும்பு 0 }
@@ -12,12 +18,19 @@
   -1
 }
 
+சார்பு pick(vals: bits[8][4], idx: bits[3]) -> bits[8] {
+  vals[idx]
+}
+
 தொகுதி FindIndex {
   உள்ளீடு a: bits[8]
   உள்ளீடு b: bits[8]
   உள்ளீடு c: bits[8]
   உள்ளீடு d: bits[8]
   உள்ளீடு target: bits[8]
+  உள்ளீடு pick_idx: bits[3]
   வெளியீடு idx: signed[4]
+  வெளியீடு picked: bits[8]
   idx = find_index([a, b, c, d], target)
+  picked = pick([a, b, c, d], pick_idx)
 }

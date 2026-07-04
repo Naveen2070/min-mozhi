@@ -4,7 +4,14 @@
 // index or -1 if absent. Demonstrates an array-typed fn parameter: the
 // array is not real Verilog hardware, it is four independent scalar ports
 // under the hood. Names transliterate to readable ASCII Verilog
-// (தேடு → thedu, தேடி → thedi, இலக்கு → ilakku, இடம் → idam).
+// (தேடு → thedu, தேடி → thedi, இலக்கு → ilakku, இடம் → idam,
+// தேர்வு → thervu, சுட்டி → sutti, விடை → vidai).
+//
+// தேர்வு demonstrates the runtime-index side of the same feature: சுட்டி is
+// not a compile-time constant, so the emitter generates a ternary-chain
+// mux over அணி_0..அணி_3 (spec 02 section 1.14). Since சுட்டி is bits[3]
+// (0..7) but the array only has 4 elements, an out-of-range value (4..7)
+// falls through the generated chain to the last element.
 
 சார்பு தேடு(அணி: bits[8][4], இலக்கு: bits[8]) -> signed[4] {
   எனில் அணி[0] == இலக்கு { திரும்பு 0 }
@@ -14,12 +21,19 @@
   -1
 }
 
+சார்பு தேர்வு(அணி: bits[8][4], சுட்டி: bits[3]) -> bits[8] {
+  அணி[சுட்டி]
+}
+
 தொகுதி தேடி {
   உள்ளீடு அ: bits[8]
   உள்ளீடு ஆ: bits[8]
   உள்ளீடு இ: bits[8]
   உள்ளீடு ஈ: bits[8]
   உள்ளீடு இலக்கு: bits[8]
+  உள்ளீடு சுட்டி: bits[3]
   வெளியீடு இடம்: signed[4]
+  வெளியீடு விடை: bits[8]
   இடம் = தேடு([அ, ஆ, இ, ஈ], இலக்கு)
+  விடை = தேர்வு([அ, ஆ, இ, ஈ], சுட்டி)
 }
