@@ -1,0 +1,23 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): the
+// Tamil twin of english/fn_return_guard.mimz — a guard-clause combinational
+// function using `திரும்பு` (return). Finds the index of the lowest set bit
+// in an 8-bit value, or -1 if none are set: an `எனில்`/`திரும்பு` per bit
+// position, falling through to the "not found" tail.
+
+சார்பு கண்டுபிடி(அ: bits[8]) -> signed[4] {
+  எனில் அ[0] == 1 { திரும்பு 0 }
+  எனில் அ[1] == 1 { திரும்பு 1 }
+  எனில் அ[2] == 1 { திரும்பு 2 }
+  எனில் அ[3] == 1 { திரும்பு 3 }
+  எனில் அ[4] == 1 { திரும்பு 4 }
+  எனில் அ[5] == 1 { திரும்பு 5 }
+  எனில் அ[6] == 1 { திரும்பு 6 }
+  எனில் அ[7] == 1 { திரும்பு 7 }
+  -1
+}
+
+தொகுதி கண்டுபிடிப்பான் {
+  உள்ளீடு அ: bits[8]
+  வெளியீடு இடம்: signed[4]
+  இடம் = கண்டுபிடி(அ)
+}
