@@ -1285,6 +1285,24 @@ fn enum_payload_enum_type_is_e0807() {
     );
 }
 
+#[test]
+fn enum_payload_array_type_is_e0807() {
+    // A payload field whose type is an array violates E0807 (not a bit-vector).
+    let src = concat!(
+        "enum V { A(a: bits[8][4], b: bits[8]) }\n",
+        "module M {\n",
+        "  out o: bit\n",
+        "  o = 0\n",
+        "}\n",
+    );
+    let d = first_err(src, "E0807");
+    assert!(
+        d.msg.contains("a"),
+        "error names the payload field: {}",
+        d.msg
+    );
+}
+
 // -------- E0808: OR-arm binding intersection --------
 
 /// Enum with four variants — used across E0808 tests.
