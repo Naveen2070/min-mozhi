@@ -231,7 +231,10 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
                         }
                         Type::Named(_) => String::new(),
                         Type::Bundle { .. } => String::new(), // bundle ports are pre-flattened by emit_ports
-                        Type::Array { .. } => unreachable!("Task 7 wires this up"),
+                        Type::Array { .. } => unreachable!(
+                            "array types are rejected by the checker (E0416) for module \
+                             ports — a DUT's port list can never legitimately contain one"
+                        ),
                     };
                     let signed = if matches!(ty, Type::Signed(_)) {
                         "signed "
