@@ -1,0 +1,8 @@
+// expect: E0415
+fn f(vals: bits[8][4]) -> bits[8] {
+  vals[9]
+}
+module M {
+  out o: bits[8]
+  o = f([1, 2, 3, 4])
+}

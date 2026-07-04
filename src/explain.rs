@@ -298,6 +298,30 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          An array needs at least one element to be meaningful hardware.\n\n\
          Fix: ensure the length expression is a positive compile-time constant.",
     ),
+    (
+        "E0413",
+        "E0413 — array argument length mismatch\n\n\
+         An array literal passed as a function call argument does not have the\n\
+         same number of elements as the callee's declared array parameter.\n\n\
+         Fix: pass exactly as many elements as the parameter declares.",
+    ),
+    (
+        "E0414",
+        "E0414 — array literal elements disagree\n\n\
+         An array literal's elements are not all the same width and signedness.\n\
+         Every element of `[...]` becomes one lane of the same hardware bus, so\n\
+         they must share one type — the first element fixes it.\n\n\
+         Fix: make every element the same `bit`/`bits[N]`/`signed[N]` (`extend`\n\
+         a narrower one to match).",
+    ),
+    (
+        "E0415",
+        "E0415 — array index out of range\n\n\
+         A compile-time-constant index into an array fell outside `0..=len-1`.\n\
+         A runtime (signal) index is not checked here — mirrors memory\n\
+         addressing (E0406).\n\n\
+         Fix: use an index within the array's declared length.",
+    ),
     // ----- E05xx: drivers & cycles -----
     (
         "E0501",

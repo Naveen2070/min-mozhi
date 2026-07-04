@@ -1,0 +1,9 @@
+// expect: E0411
+bundle B { a: bit }
+fn f(vals: B[4]) -> bit {
+  0
+}
+module M {
+  out o: bit
+  o = 0
+}
