@@ -1196,10 +1196,19 @@ impl<'a> Checker<'a> {
     }
 
     /// Name-check one `fn`-body statement list, threading bindings forward
-    /// (a `let` inside an `if` branch stays visible afterward — same flat,
-    /// no-shadowing-scope model `on`-block `SeqStmt::If` already uses; this
-    /// is a deliberate simplification, not an oversight — see the design
-    /// spec's non-goals).
+    /// sequentially — a `let` bound BEFORE an `if` (in this list or an
+    /// enclosing one) stays visible inside both branches and after the
+    /// `if`, exactly like ordinary sequential local scoping. A `let` bound
+    /// INSIDE a branch is scoped to that branch only: it must not leak into
+    /// the sibling branch's check, nor past the `if` into later statements
+    /// or the tail — each branch gets its own clone of the scope-so-far, so
+    /// whatever it adds is discarded once that branch's check finishes.
+    /// (An earlier version of this comment claimed this mirrored `on`-block
+    /// `SeqStmt::If`'s "flat, no-shadowing" model as a deliberate
+    /// simplification — that claim was inaccurate: `SeqStmt` has no `Let`
+    /// variant, so there was no such precedent, and letting a branch-local
+    /// name leak out was a genuine soundness gap, not a stylistic choice —
+    /// see the final whole-branch review that found it.)
     fn check_fn_stmt_names(
         &mut self,
         file: usize,
@@ -1215,9 +1224,15 @@ impl<'a> Checker<'a> {
                 }
                 FnStmt::If { cond, then, els } => {
                     self.expr(file, sc, env, cond);
-                    self.check_fn_stmt_names(file, sc, env, then);
+                    let mut then_sc = Scope {
+                        names: sc.names.clone(),
+                    };
+                    self.check_fn_stmt_names(file, &mut then_sc, env, then);
                     if let Some(els) = els {
-                        self.check_fn_stmt_names(file, sc, env, els);
+                        let mut els_sc = Scope {
+                            names: sc.names.clone(),
+                        };
+                        self.check_fn_stmt_names(file, &mut els_sc, env, els);
                     }
                 }
                 FnStmt::Return(expr) => {
