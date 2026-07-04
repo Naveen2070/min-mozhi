@@ -5,10 +5,18 @@
 
 use super::*;
 
+/// Array-typed names in scope while rendering ONE `fn` body: maps a param
+/// or `let`-bound name to `(element_width_string, length)`, so an `Ident`,
+/// `ArrayLit`, or `Index` base referring to it can be expanded/resolved to
+/// its `<name>_<i>` scalar ports. Built once per `render_fn_decl` from
+/// `decl.params` and `fn_all_locals(decl.stmts)`; empty for every
+/// non-`fn`-body expression render.
+pub(super) type ArrayScope = HashMap<String, (String, u128)>;
+
 impl Emitter<'_> {
     /// Render an expression with no substitutions (the common case).
     pub(super) fn expr(&mut self, e: &Expr) -> String {
-        self.expr_subst(e, &HashMap::new())
+        self.expr_subst(e, &HashMap::new(), &ArrayScope::new())
     }
 
     /// Render an index or slice bound. A non-literal that folds at compile
@@ -16,20 +24,30 @@ impl Emitter<'_> {
     /// collapses to its decimal value (`sum[i] → sum[2]`); plain literals
     /// keep their written base, and anything symbolic (a parameter, a
     /// dynamic signal index) renders unchanged.
-    pub(super) fn index_expr(&mut self, e: &Expr, subst: &HashMap<&str, &Expr>) -> String {
+    pub(super) fn index_expr(
+        &mut self,
+        e: &Expr,
+        subst: &HashMap<&str, &Expr>,
+        arrays: &ArrayScope,
+    ) -> String {
         if !matches!(e.kind, ExprKind::Int { .. })
             && let Ok(v) = consteval::eval(e, &self.env)
         {
             return v.to_string();
         }
-        self.expr_subst(e, subst)
+        self.expr_subst(e, subst, arrays)
     }
 
     /// Render an expression to Verilog text. Compound results are wrapped
     /// in parentheses unconditionally — correctness over prettiness; a
     /// future emitter can use real precedence (architecture invariant #6).
     /// `subst` maps child-module parameter names to instance arguments.
-    pub(super) fn expr_subst(&mut self, e: &Expr, subst: &HashMap<&str, &Expr>) -> String {
+    pub(super) fn expr_subst(
+        &mut self,
+        e: &Expr,
+        subst: &HashMap<&str, &Expr>,
+        arrays: &ArrayScope,
+    ) -> String {
         match &e.kind {
             ExprKind::Int { value, raw } => verilog_literal(*value, raw),
             ExprKind::Bool(b) => if *b { "1'b1" } else { "1'b0" }.to_string(),
@@ -81,7 +99,7 @@ impl Emitter<'_> {
                 "0".into()
             }
             ExprKind::Unary { op, expr } => {
-                let x = self.expr_subst(expr, subst);
+                let x = self.expr_subst(expr, subst, arrays);
                 let sym = match op {
                     UnOp::Neg => "-",
                     UnOp::BitNot => "~",
@@ -93,8 +111,8 @@ impl Emitter<'_> {
                 format!("({sym}{x})")
             }
             ExprKind::Binary { op, lhs, rhs } => {
-                let l = self.expr_subst(lhs, subst);
-                let r = self.expr_subst(rhs, subst);
+                let l = self.expr_subst(lhs, subst, arrays);
+                let r = self.expr_subst(rhs, subst, arrays);
                 // Wrapping ops: same-width Verilog arithmetic already wraps.
                 let sym = match op {
                     BinOp::Add | BinOp::AddWrap => "+",
@@ -123,19 +141,19 @@ impl Emitter<'_> {
                 // from emitting the dead `fa[-1]` arm at i == 0.
                 if let Ok(c) = consteval::eval(cond, &self.env) {
                     return if c != 0 {
-                        self.expr_subst(then, subst)
+                        self.expr_subst(then, subst, arrays)
                     } else {
-                        self.expr_subst(els, subst)
+                        self.expr_subst(els, subst, arrays)
                     };
                 }
-                let c = self.expr_subst(cond, subst);
-                let t = self.expr_subst(then, subst);
-                let f = self.expr_subst(els, subst);
+                let c = self.expr_subst(cond, subst, arrays);
+                let t = self.expr_subst(then, subst, arrays);
+                let f = self.expr_subst(els, subst, arrays);
                 format!("(({c}) ? ({t}) : ({f}))")
             }
             ExprKind::Match { scrutinee, arms } => {
                 // Nested ternaries; the final arm becomes the default.
-                let s = self.expr_subst(scrutinee, subst);
+                let s = self.expr_subst(scrutinee, subst, arrays);
                 let mut out = String::new();
                 let mut closing = 0usize;
                 for (arm_idx, arm) in arms.iter().enumerate() {
@@ -148,7 +166,7 @@ impl Emitter<'_> {
                         arm_subst.insert(name.as_str(), expr);
                     }
 
-                    let v = self.expr_subst(&arm.value, &arm_subst);
+                    let v = self.expr_subst(&arm.value, &arm_subst, arrays);
                     let is_last = arm_idx == arms.len() - 1;
                     let is_wild = arm.patterns.iter().any(|p| matches!(p, Pattern::Wildcard));
                     if is_last || is_wild {
@@ -188,68 +206,100 @@ impl Emitter<'_> {
                 format!("({out})")
             }
             ExprKind::Concat(parts) => {
-                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst)).collect();
+                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst, arrays)).collect();
                 format!("{{{}}}", ps.join(", "))
             }
             ExprKind::Replicate { count, parts } => {
-                let c = self.index_expr(count, subst);
-                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst)).collect();
+                let c = self.index_expr(count, subst, arrays);
+                let ps: Vec<String> = parts.iter().map(|p| self.expr_subst(p, subst, arrays)).collect();
                 format!("{{{c}{{{}}}}}", ps.join(", "))
             }
             ExprKind::Index { base, index } => {
-                let b = self.expr_subst(base, subst);
-                let i = self.index_expr(index, subst);
+                // Indexing an array-typed param/`let` (elaborated to
+                // `<name>_<i>` scalars, Task 7's convention) with a CONSTANT
+                // index resolves straight to that scalar — there is no real
+                // Verilog array to index. A runtime index would need a
+                // generated mux (out of this task's scope); it falls through
+                // to the plain `base[index]` form below.
+                if let ExprKind::Ident(n) = &base.kind
+                    && arrays.contains_key(n)
+                    && let Ok(idx) = consteval::eval(index, &self.env)
+                {
+                    return format!("{n}_{idx}");
+                }
+                let b = self.expr_subst(base, subst, arrays);
+                let i = self.index_expr(index, subst, arrays);
                 format!("{b}[{i}]")
             }
             ExprKind::Slice { base, hi, lo } => {
-                let b = self.expr_subst(base, subst);
-                let h = self.index_expr(hi, subst);
-                let l = self.index_expr(lo, subst);
+                let b = self.expr_subst(base, subst, arrays);
+                let h = self.index_expr(hi, subst, arrays);
+                let l = self.index_expr(lo, subst, arrays);
                 format!("{b}[{h}:{l}]")
             }
             ExprKind::FnCall { name, args } => {
                 // Mark this function (and all transitive callees) for injection
                 // at module-body top; then render as a Verilog function call.
+                // An array-typed argument expands to the N scalar arguments the
+                // callee's array param elaborated into (Task 7's `<name>_<i>`
+                // port convention): an array LITERAL expands element-by-element,
+                // and a bare array-typed name (param or `let`) expands to its
+                // `<name>_<i>` scalars. Every other argument passes through 1:1.
                 self.mark_fn_used(&name.name);
-                let args_str: Vec<String> =
-                    args.iter().map(|a| self.expr_subst(a, subst)).collect();
+                let mut args_str: Vec<String> = Vec::new();
+                for a in args {
+                    match &a.kind {
+                        ExprKind::ArrayLit(elems) => {
+                            for el in elems {
+                                args_str.push(self.expr_subst(el, subst, arrays));
+                            }
+                        }
+                        ExprKind::Ident(n) if arrays.contains_key(n) => {
+                            let (_, len) = &arrays[n];
+                            for i in 0..*len {
+                                args_str.push(format!("{n}_{i}"));
+                            }
+                        }
+                        _ => args_str.push(self.expr_subst(a, subst, arrays)),
+                    }
+                }
                 format!("{}({})", name.name, args_str.join(", "))
             }
             ExprKind::Call { func, args } => match func {
-                Builtin::SignedCast => format!("$signed({})", self.expr_subst(&args[0], subst)),
+                Builtin::SignedCast => format!("$signed({})", self.expr_subst(&args[0], subst, arrays)),
                 Builtin::UnsignedCast => {
-                    format!("$unsigned({})", self.expr_subst(&args[0], subst))
+                    format!("$unsigned({})", self.expr_subst(&args[0], subst, arrays))
                 }
                 // Extension is context-automatic in Verilog assignments:
                 // unsigned operands zero-extend; `signed`-declared ones
                 // SIGN-extend (declarations carry `signed`, see
                 // `width_subst`). The checker has already verified widths.
-                Builtin::Extend => format!("({})", self.expr_subst(&args[0], subst)),
+                Builtin::Extend => format!("({})", self.expr_subst(&args[0], subst, arrays)),
                 Builtin::Trunc => {
-                    let x = self.expr_subst(&args[0], subst);
-                    let n = self.expr_subst(&args[1], subst);
+                    let x = self.expr_subst(&args[0], subst, arrays);
+                    let n = self.expr_subst(&args[1], subst, arrays);
                     format!("{x}[({n})-1:0]")
                 }
                 Builtin::Min => {
-                    let a = self.expr_subst(&args[0], subst);
-                    let b = self.expr_subst(&args[1], subst);
+                    let a = self.expr_subst(&args[0], subst, arrays);
+                    let b = self.expr_subst(&args[1], subst, arrays);
                     format!("(({a} < {b}) ? ({a}) : ({b}))")
                 }
                 Builtin::Max => {
-                    let a = self.expr_subst(&args[0], subst);
-                    let b = self.expr_subst(&args[1], subst);
+                    let a = self.expr_subst(&args[0], subst, arrays);
+                    let b = self.expr_subst(&args[1], subst, arrays);
                     format!("(({a} < {b}) ? ({b}) : ({a}))")
                 }
                 // Result is `signed[N+1]`; the assignment context sign-extends
                 // both ternary arms (the operand is declared `signed`).
                 Builtin::Abs => {
-                    let x = self.expr_subst(&args[0], subst);
+                    let x = self.expr_subst(&args[0], subst, arrays);
                     format!("(({x} < 0) ? (-{x}) : ({x}))")
                 }
                 // Verilog-2005 negated reduction operators — one bit out.
-                Builtin::Nand => format!("(~&({}))", self.expr_subst(&args[0], subst)),
-                Builtin::Nor => format!("(~|({}))", self.expr_subst(&args[0], subst)),
-                Builtin::Xnor => format!("(~^({}))", self.expr_subst(&args[0], subst)),
+                Builtin::Nand => format!("(~&({}))", self.expr_subst(&args[0], subst, arrays)),
+                Builtin::Nor => format!("(~|({}))", self.expr_subst(&args[0], subst, arrays)),
+                Builtin::Xnor => format!("(~^({}))", self.expr_subst(&args[0], subst, arrays)),
                 // `clog2(n)` folds to a literal when `n` is a constant (a literal
                 // or `const`). Of a module PARAMETER it stays symbolic, so it
                 // lowers to a call of the injected Verilog-2005 `clog2` constant
@@ -270,7 +320,7 @@ impl Emitter<'_> {
                     }
                     Err(_) => {
                         self.clog2_fn_used = true;
-                        format!("clog2({})", self.expr_subst(&args[0], subst))
+                        format!("clog2({})", self.expr_subst(&args[0], subst, arrays))
                     }
                 },
             },
