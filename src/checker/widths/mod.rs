@@ -88,6 +88,17 @@ enum Ty<'a> {
         signed: bool,
         depth: u128,
     },
+    /// `<elem>[N]` — a fixed-size array value. Stores the resolved
+    /// element width/signedness inline (not a nested `Ty`, so `Ty` stays
+    /// `Copy`), plus the length. Indexing it (`arr[idx]`) yields the
+    /// element type — mirrors `Memory`'s own shape exactly (an array is
+    /// conceptually memory-shaped: one addressable value with N elements
+    /// of one scalar type).
+    Array {
+        elem_width: u128,
+        elem_signed: bool,
+        len: u128,
+    },
     /// A compile-time integer: literal, const, parameter, or `repeat`
     /// variable. Polymorphic — adapts to any sized context it fits
     /// (spec/02 section 1.8). Carries the value for the fit check.
@@ -132,6 +143,20 @@ fn show(t: &Ty) -> String {
                 format!("bits[{width}]")
             };
             format!("memory `{elem}[{depth}]`")
+        }
+        Ty::Array {
+            elem_width,
+            elem_signed,
+            len,
+        } => {
+            let elem = if *elem_signed {
+                format!("signed[{elem_width}]")
+            } else if *elem_width == 1 {
+                "bit".to_string()
+            } else {
+                format!("bits[{elem_width}]")
+            };
+            format!("{elem}[{len}]")
         }
         Ty::CtInt(v) => format!("the compile-time value `{v}`"),
         Ty::Clock => "a clock".into(),
@@ -423,7 +448,61 @@ impl<'a> Checker<'a> {
                 // E0103/E0906 already reported, or bundle name (T6 will handle)
                 None => Ty::Unknown,
             },
-            Type::Array { .. } => unreachable!("Task 5 wires this up"),
+            Type::Array { elem, len } => {
+                // A bundle-named element resolves to `Ty::Unknown` SILENTLY
+                // (see `Type::Named`/`Type::Bundle` arms above — bundle width
+                // resolution is deferred to Task 6, so no diagnostic fires
+                // there). Left unchecked, that would make this whole array
+                // type silently `Unknown` with no E0411 ever reported. Catch
+                // it here, before resolving, using the same `is_bundle_ty`
+                // check `collect_sigs` already uses to detect bundle-typed
+                // signals.
+                if self.is_bundle_ty(elem) {
+                    let bname = ast_bundle_name(elem).unwrap_or("?");
+                    self.err(
+                        cx.file,
+                        len.span,
+                        "E0411",
+                        format!("bundle `{bname}` cannot be an array element type"),
+                        "array elements are `bit`, `bits[N]`, or `signed[N]` — \
+                         nested arrays and enum/bundle elements are not supported in v1",
+                    );
+                    return Ty::Unknown;
+                }
+                let elem_ty = self.resolve_ty(cx, elem);
+                let (elem_width, elem_signed) = match elem_ty {
+                    Ty::Bit => (1, false),
+                    Ty::Bits(n) => (n, false),
+                    Ty::Signed(n) => (n, true),
+                    Ty::Unknown => return Ty::Unknown, // element error already reported
+                    other => {
+                        // `Type` (the AST node) has no span of its own — `elem`
+                        // is a bare `Box<Type>` (see ast/mod.rs's `Type::Array`
+                        // doc comment). `len` is the only span-bearing part of
+                        // this `Type::Array` node available at this call site,
+                        // so it is the best available anchor for the diagnostic
+                        // (mirrors E0409's approach of pointing at whatever
+                        // span is actually in scope, there the memory name's).
+                        self.err(
+                            cx.file,
+                            len.span,
+                            "E0411",
+                            format!("{} cannot be an array element type", show(&other)),
+                            "array elements are `bit`, `bits[N]`, or `signed[N]` — \
+                             nested arrays and enum/bundle elements are not supported in v1",
+                        );
+                        return Ty::Unknown;
+                    }
+                };
+                match self.eval_array_len(cx, len) {
+                    Some(n) => Ty::Array {
+                        elem_width,
+                        elem_signed,
+                        len: n,
+                    },
+                    None => Ty::Unknown,
+                }
+            }
         }
     }
 
@@ -477,6 +556,34 @@ impl<'a> Checker<'a> {
                         "a memory needs at least one cell — the depth must be between 1 \
                          and {MAX_DEPTH}"
                     ),
+                );
+                None
+            }
+            Err(d) => {
+                self.diags.push(d.with_file(cx.file));
+                None
+            }
+        }
+    }
+
+    /// Evaluate an array's length expression and validate it (E0412).
+    /// Like a memory depth, a length must be a positive compile-time
+    /// constant. Mirrors `eval_depth` exactly (same shape, different
+    /// error code/wording since an array isn't addressable the way a
+    /// memory is — no MAX_DEPTH-style upper bound is enforced here since
+    /// an array is fully unrolled into scalar hardware at compile time;
+    /// an unreasonably large N will simply produce a lot of Verilog, the
+    /// same honesty story `repeat` already tells for large bounds).
+    fn eval_array_len(&mut self, cx: &Wcx<'a>, e: &'a Expr) -> Option<u128> {
+        match consteval::eval(e, &cx.env) {
+            Ok(v) if v >= 1 => Some(v as u128),
+            Ok(v) => {
+                self.err(
+                    cx.file,
+                    e.span,
+                    "E0412",
+                    format!("`{v}` is not a valid array length"),
+                    "an array needs at least one element — the length must be a positive compile-time constant",
                 );
                 None
             }
