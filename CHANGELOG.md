@@ -17,9 +17,11 @@ Compiler versions follow [SemVer](https://semver.org).
 ### Added
 
 - `return` statement and statement-based `fn` bodies (`if`/`return`/`let`)
-  for guard-clause / early-exit combinational functions. New keyword
-  `return`/`thirumbu`/`திரும்பு`. New diagnostic E0812 (unreachable code
-  after `return`). Fully backward compatible with existing `fn` bodies.
+  for guard-clause-style combinational functions (priority-selected result
+  selection, not a silicon early-exit — every branch is still fully
+  instantiated). New keyword `return`/`thirumbu`/`திரும்பு`. New diagnostic
+  E0812 (unreachable code after `return`). Fully backward compatible with
+  existing `fn` bodies.
 
 ---
 

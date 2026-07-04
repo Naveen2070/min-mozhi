@@ -1120,6 +1120,47 @@ fn fn_if_branch_names_are_resolved() {
     check_one(src).expect("let-bound name is visible inside the if-branch return and tail");
 }
 
+#[test]
+fn let_bound_only_inside_an_if_branch_does_not_leak_outside() {
+    // `y` is bound only on the `a == 1` path — referencing it after the
+    // `if` (a path where it was never bound) must be rejected. This is the
+    // soundness gap found by the final whole-branch review: the checker
+    // used to accept this, but the emitter reads an uninitialized register
+    // on the `else` path and the simulator errors with "unknown name" when
+    // that path is taken — the SAME source disagreeing across backends.
+    let src = "fn f(a: bit) -> bits[8] {\n  if a == 1 { let y = 5 }\n  y\n}\nmodule M {\n  in a: bit\n  out o: bits[8]\n  o = f(a)\n}\n";
+    assert!(
+        any_code(src, "E0101"),
+        "a let bound only inside an if-branch must not be visible after the if"
+    );
+}
+
+#[test]
+fn let_bound_only_inside_one_if_branch_is_not_visible_in_the_sibling_branch() {
+    // `y` bound in `then` must not leak into `els`'s own check either —
+    // the sibling branch is just as much "a path where `y` was never
+    // bound" as the code after the `if`.
+    let src = "fn f(a: bit) -> bits[8] {\n  if a == 1 { let y = 5 } else { return y }\n  0\n}\nmodule M {\n  in a: bit\n  out o: bits[8]\n  o = f(a)\n}\n";
+    assert!(
+        any_code(src, "E0101"),
+        "a let bound in the then-branch must not be visible in the else-branch"
+    );
+}
+
+#[test]
+fn let_bound_only_inside_an_if_branch_is_not_visible_to_width_checking_outside_it() {
+    // Same scope-leak class as the two name-resolution tests above, but
+    // this one targets `check_fn_stmt_widths`'s OWN copy of the (now-fixed)
+    // leaking scope model directly — regardless of which checker pass
+    // catches it first, `y` referenced outside the branch that bound it
+    // must not resolve to a valid, in-scope value.
+    let src = "fn f(a: bit) -> bits[8] {\n  if a == 1 { let y = 5 }\n  y\n}\nmodule M {\n  in a: bit\n  out o: bits[8]\n  o = f(a)\n}\n";
+    assert!(
+        check_one(src).is_err(),
+        "a branch-local let referenced outside its if must not compile clean"
+    );
+}
+
 // ---- tagged-union payload types + arity (E0103/E0806) ---------------------
 
 #[test]
