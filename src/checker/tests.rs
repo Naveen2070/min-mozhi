@@ -1888,6 +1888,18 @@ fn array_literal_argument_length_mismatch_is_e0413() {
 }
 
 #[test]
+fn array_param_forwarded_by_name_with_matching_type_is_accepted() {
+    let src = "fn g(vals: bits[8][4]) -> bit {\n  0\n}\nfn f(vals: bits[8][4]) -> bit {\n  g(vals)\n}\nmodule M {\n  out o: bit\n  o = 0\n}\n";
+    assert!(check_one(src).is_ok(), "{:?}", errs(src));
+}
+
+#[test]
+fn array_param_forwarded_by_name_with_mismatched_length_is_rejected() {
+    let src = "fn g(vals: bits[8][2]) -> bit {\n  0\n}\nfn f(vals: bits[8][4]) -> bit {\n  g(vals)\n}\nmodule M {\n  out o: bit\n  o = 0\n}\n";
+    assert!(!errs(src).is_empty(), "expected a diagnostic for a length-mismatched array forward, got none");
+}
+
+#[test]
 fn constant_array_index_out_of_range_is_e0415() {
     let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[9]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
     assert!(any_code(src, "E0415"));
