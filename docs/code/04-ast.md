@@ -90,6 +90,33 @@ syntactically distinct from `ExprKind::Call { func: Builtin, … }` (built-ins):
 the parser resolves the distinction by name at parse time, so downstream passes see
 typed variants, never string names.
 
+## `Type::Array` and `ExprKind::ArrayLit` — fixed-size `fn`-parameter arrays
+
+```rust
+Type::Array { elem: Box<Type>, len: Box<Expr> }   // `<elem>[N]`
+ExprKind::ArrayLit(Vec<Expr>)                     // `[e1, ..., eN]`
+```
+
+`Type::Array` is produced by `ty()`'s trailing-`[N]`-suffix loop
+(`03-parser.md`) wrapping any scalar type — `elem` is a bare `Box<Type>`
+with no span of its own, so diagnostics anchor on `len`'s span instead
+(the only span-bearing part of the node available). The parser is
+deliberately lenient here: `bits[8][4][2]` parses cleanly to a nested
+`Array { elem: Array { .. }, len: 2 }` even though nested arrays are not
+supported — the checker narrows (`E0411`), matching this project's
+existing "lenient parser, narrowing checker" pattern (see e.g. bundle
+field validation).
+
+`ExprKind::ArrayLit` is a primary expression, not a suffix — unlike `{`
+(which disambiguates bundle-literal vs. concat/replicate by lookahead), a
+`[` at the start of a primary is always an array literal; `arr[idx]`
+indexing is handled separately by `postfix()`, which only recognizes `[`
+**after** an existing base expression. Both nodes exist only where arrays
+are supported today: `fn` parameters, `fn`-body `let` locals, and call
+arguments — module-level ports/wires/registers reject `Type::Array`
+outright (`E0416`), so the emitter never has to lower a real Verilog
+array. See spec/02 section 1.14.
+
 ## Tagged-union enums — `EnumVariant` and `PayloadField`
 
 `EnumDecl` (file-level `TopItem::Enum` or module-level `ModuleItem::Enum`) now
