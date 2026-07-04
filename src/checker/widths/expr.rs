@@ -11,8 +11,8 @@ use super::super::Checker;
 use super::super::consteval;
 use super::super::names::Bind;
 use super::{
-    Ty, Wcx, bits, fits_bits, fits_in_count, fits_signed, max_signed_v, max_unsigned, min_signed,
-    same, show,
+    Ty, Wcx, bits, fits_bits, fits_in_count, fits_signed, max_signed_v, max_unsigned, min_bits,
+    min_signed, min_signed_bits, same, show,
 };
 
 impl<'a> Checker<'a> {
@@ -475,6 +475,41 @@ impl<'a> Checker<'a> {
                         bits(width)
                     };
                 }
+                // `arr[idx]` on an array-typed base yields the element type —
+                // mirrors the `Memory` case exactly (one addressable value,
+                // N elements of one scalar type), but the range check speaks
+                // of array length rather than memory depth (E0415 not E0406).
+                if let Ty::Array {
+                    elem_width,
+                    elem_signed,
+                    len,
+                } = bt
+                {
+                    // A constant index out of range is E0415 (mirrors mem's
+                    // E0406 for an out-of-range compile-time memory address);
+                    // a runtime index is allowed unchecked, same allowance
+                    // mem's own read side already has for a runtime address.
+                    if let Ty::CtInt(v) = self.infer_ty(cx, index) {
+                        if v < 0 || v as u128 >= len {
+                            self.err(
+                                cx.file,
+                                index.span,
+                                "E0415",
+                                format!("index `{v}` is out of range"),
+                                format!(
+                                    "the array has {len} elements, so indices run 0..={}",
+                                    len - 1
+                                ),
+                            );
+                            return Ty::Unknown;
+                        }
+                    }
+                    return if elem_signed {
+                        Ty::Signed(elem_width)
+                    } else {
+                        bits(elem_width)
+                    };
+                }
                 let n = match bt {
                     Ty::Bit => 1,
                     Ty::Bits(n) | Ty::Signed(n) => n,
@@ -541,12 +576,113 @@ impl<'a> Checker<'a> {
                 // infer_ty + fit + same for the same "got vs expected" logic.
                 for (arg, param) in args.iter().zip(func.params.iter()) {
                     let param_ty = self.fn_type_for_file(ffile, &param.ty);
+                    // `same()` (widths/mod.rs) has no notion of array
+                    // equality, and an array literal's own elements are
+                    // still-polymorphic `CtInt`s until a context fixes them
+                    // (exactly like a bare scalar literal) — so an
+                    // array-typed parameter gets its own check here instead
+                    // of the generic check_expr/expect_ty/same() path used
+                    // for every other kind of argument below: the literal's
+                    // internal consistency (E0411/E0412/E0414) is already
+                    // covered by its own `infer_ty` (the `ExprKind::ArrayLit`
+                    // arm above), so only the length needs comparing against
+                    // this parameter's declared length (E0413).
+                    // ponytail: does not also re-check each literal element's
+                    // fit against the param's declared elem width/signedness
+                    // (e.g. `f([300, 1, 1, 1])` into a `bits[8][4]` param
+                    // slips through) — out of this task's scope (E0413/
+                    // E0414/E0415 only); add a per-element `check_expr`
+                    // against `bits(elem_width)`/`Signed(elem_width)` if a
+                    // fixture ever needs it caught here specifically.
+                    if let Ty::Array { len: expected, .. } = param_ty {
+                        self.infer_ty(cx, arg);
+                        if let ExprKind::ArrayLit(elems) = &arg.kind {
+                            let actual = elems.len() as u128;
+                            if actual != expected {
+                                self.err(
+                                    cx.file,
+                                    arg.span,
+                                    "E0413",
+                                    format!(
+                                        "this array has {actual} element(s), but `{}` expects \
+                                         {expected}",
+                                        param.name.name
+                                    ),
+                                    "an array argument's length must exactly match the \
+                                     parameter's declared length",
+                                );
+                            }
+                        }
+                        continue;
+                    }
                     self.check_expr(cx, arg, param_ty);
                 }
                 // The call's type is the function's declared return type.
                 self.fn_type_for_file(ffile, &func.ret)
             }
-            ExprKind::ArrayLit(_) => unreachable!("Task 6 wires this up"),
+            ExprKind::ArrayLit(elems) => {
+                if elems.is_empty() {
+                    self.err(
+                        cx.file,
+                        e.span,
+                        "E0412",
+                        "`0` is not a valid array length".to_string(),
+                        "an array literal needs at least one element",
+                    );
+                    return Ty::Unknown;
+                }
+                let first_ty = self.infer_ty(cx, &elems[0]);
+                let (elem_width, elem_signed) = match first_ty {
+                    Ty::Bit => (1, false),
+                    Ty::Bits(n) => (n, false),
+                    Ty::Signed(n) => (n, true),
+                    Ty::CtInt(v) => {
+                        let w = if v >= 0 { min_bits(v) } else { min_signed_bits(v) };
+                        (w, v < 0)
+                    }
+                    Ty::Unknown => return Ty::Unknown,
+                    other => {
+                        self.err(
+                            cx.file,
+                            elems[0].span,
+                            "E0411",
+                            format!("{} cannot be an array element", show(&other)),
+                            "array elements are `bit`, `bits[N]`, or `signed[N]`",
+                        );
+                        return Ty::Unknown;
+                    }
+                };
+                for el in &elems[1..] {
+                    let t = self.infer_ty(cx, el);
+                    let matches = match t {
+                        Ty::Bit => elem_width == 1 && !elem_signed,
+                        Ty::Bits(n) => n == elem_width && !elem_signed,
+                        Ty::Signed(n) => n == elem_width && elem_signed,
+                        Ty::CtInt(_) | Ty::Unknown => true, // polymorphic / already-reported
+                        _ => false,
+                    };
+                    if !matches {
+                        self.err(
+                            cx.file,
+                            el.span,
+                            "E0414",
+                            format!(
+                                "array literal elements must share one type — this element is \
+                                 {}, but an earlier element fixed the array's element type",
+                                show(&t)
+                            ),
+                            "every element of an array literal must be the same width and \
+                             signedness",
+                        );
+                        return Ty::Unknown;
+                    }
+                }
+                Ty::Array {
+                    elem_width,
+                    elem_signed,
+                    len: elems.len() as u128,
+                }
+            }
         }
     }
 
