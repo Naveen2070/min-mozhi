@@ -5,7 +5,7 @@
 // array is not real Verilog hardware, it is four independent scalar ports
 // under the hood. Names transliterate to readable ASCII Verilog
 // (தேடு → thedu, தேடி → thedi, இலக்கு → ilakku, இடம் → idam,
-// தேர்வு → thervu, சுட்டி → sutti, விடை → vidai).
+// தேர்வு → theervu, சுட்டி → sutti, விடை → vitai).
 //
 // தேர்வு demonstrates the runtime-index side of the same feature: சுட்டி is
 // not a compile-time constant, so the emitter generates a ternary-chain
