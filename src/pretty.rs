@@ -618,6 +618,9 @@ impl Pretty {
                     format!("{}({a})", name.to_dotted())
                 }
             }
+            Type::Array { elem, len } => {
+                format!("{}[{}]", self.ty(elem, ind), self.expr(len, ind))
+            }
         }
     }
 
@@ -751,6 +754,14 @@ impl Pretty {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{{ {fields} }}")
+            }
+            ExprKind::ArrayLit(elems) => {
+                let parts = elems
+                    .iter()
+                    .map(|e| self.expr(e, ind))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("[{parts}]")
             }
         }
     }

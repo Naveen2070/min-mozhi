@@ -541,6 +541,14 @@ pub enum Type {
         name: QualIdent,
         args: Vec<NamedArg>,
     },
+    /// `<elem>[N]` — a fixed-size, immutable array value. `elem` is
+    /// restricted to `Bit`/`Bits`/`Signed` (checker-enforced, E0411,
+    /// matching `mem`'s own element-type restriction). `len` is a
+    /// compile-time constant (checker-enforced, E0412, matching `mem`'s
+    /// `DEPTH` and `repeat`'s bound). An array is never a real Verilog
+    /// array — the emitter and simulator each lower it to N independent
+    /// scalars (see `docs/superpowers/specs/2026-07-04-array-typed-fn-params-design.local.md`).
+    Array { elem: Box<Type>, len: Box<Expr> },
 }
 
 /// `test "name" for Module(args) { ... }` — runs on the Phase 1.5
@@ -655,5 +663,42 @@ mod tests {
             },
             span: sp,
         });
+    }
+
+    #[test]
+    fn array_type_constructs() {
+        let sp = Span::new(0, 0);
+        let _ty = Type::Array {
+            elem: Box::new(Type::Bits(Box::new(Expr {
+                kind: ExprKind::Int {
+                    value: 8,
+                    raw: "8".into(),
+                },
+                span: sp,
+            }))),
+            len: Box::new(Expr {
+                kind: ExprKind::Int {
+                    value: 4,
+                    raw: "4".into(),
+                },
+                span: sp,
+            }),
+        };
+        let _lit = ExprKind::ArrayLit(vec![
+            Expr {
+                kind: ExprKind::Int {
+                    value: 0,
+                    raw: "0".into(),
+                },
+                span: sp,
+            },
+            Expr {
+                kind: ExprKind::Int {
+                    value: 1,
+                    raw: "1".into(),
+                },
+                span: sp,
+            },
+        ]);
     }
 }

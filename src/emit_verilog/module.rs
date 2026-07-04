@@ -887,6 +887,7 @@ impl Emitter<'_> {
             // never called on a bundle type directly in the port/wire path.
             // If it is called (e.g., from an unexpected path), treat as 0-width.
             Type::Bundle { .. } => String::new(),
+            Type::Array { .. } => unreachable!("Task 7 wires this up"),
         }
     }
 

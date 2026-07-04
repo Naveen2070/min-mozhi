@@ -464,6 +464,7 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            Type::Array { .. } => unreachable!("Task 4 wires this up"),
         }
     }
 
@@ -1112,6 +1113,7 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, &f.value);
                 }
             }
+            ExprKind::ArrayLit(_) => unreachable!("Task 4 wires this up"),
         }
     }
 
@@ -1303,6 +1305,7 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+            Type::Array { .. } => unreachable!("Task 4 wires this up"),
         }
     }
 
