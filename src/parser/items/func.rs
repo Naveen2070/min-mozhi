@@ -55,25 +55,45 @@ impl Parser {
     /// expression, then the closing brace. Shared by the top-level `fn`
     /// body (called just above) — kept as its own method so a future
     /// `suzhal`/`loop` unroll (Spec 2) can reuse it for a nested block.
+    ///
+    /// `let`/`return` are prefix-keyword-only in BOTH word orders (checked
+    /// first, unconditionally). Statement-level `if` and the tail
+    /// expression are order-dependent: in `thamizh` order the condition
+    /// precedes `enil` (`Kw::If`), so the head must be parsed as an
+    /// expression FIRST and the trailing keyword decides whether it's a
+    /// statement-`if` (`enil` → `fn_if_thamizh`), a match-expression tail
+    /// (`thernthedu`/`Kw::Match` → `match_expr_thamizh`), or simply the tail
+    /// itself — mirrors `seq_stmt_thamizh`/`expr_thamizh` exactly. Code
+    /// order is unchanged from before this fix.
     fn fn_body(&mut self) -> Option<(Vec<FnStmt>, Expr, Span)> {
         let mut stmts = Vec::new();
-        loop {
+        let tail = loop {
             self.skip_newlines();
             if self.at_kw(Kw::Let) {
                 stmts.push(self.fn_let_stmt()?);
-                continue;
-            }
-            if self.at_kw(Kw::If) {
-                stmts.push(self.fn_if()?);
                 continue;
             }
             if self.at_kw(Kw::Return) {
                 stmts.push(self.fn_return_stmt()?);
                 continue;
             }
-            break;
-        }
-        let tail = self.expr()?;
+            if self.profile == Profile::Thamizh {
+                let head = self.binary(0)?;
+                if self.at_kw(Kw::If) {
+                    stmts.push(self.fn_if_thamizh(head)?);
+                    continue;
+                }
+                if self.at_kw(Kw::Match) {
+                    break self.match_expr_thamizh(head)?;
+                }
+                break head;
+            }
+            if self.at_kw(Kw::If) {
+                stmts.push(self.fn_if()?);
+                continue;
+            }
+            break self.expr()?;
+        };
         self.skip_newlines();
         let end = self
             .expect(TokKind::RBrace, "`}` to close the function body")?
@@ -133,6 +153,44 @@ impl Parser {
         Some(FnStmt::If { cond, then, els })
     }
 
+    /// `thamizh`-order fn statement-`if`: `<cond> "enil" "{" {fnStmt} "}"
+    /// ["illaiyenil" (fnIfThamizh | "{" {fnStmt} "}")]`. The condition is
+    /// already parsed (the `head` from `fn_body`/`fn_stmt_block`); from
+    /// `enil` onward mirrors `fn_if` and builds the SAME `FnStmt::If`.
+    /// `else` (`illaiyenil`) stays OPTIONAL, same as `fn_if`. Depth-guarded
+    /// like `fn_if`/`seq_if_thamizh`: the guard must wrap the whole call
+    /// (including the recursive `illaiyenil <cond> enil …` chain) for a deep
+    /// chain to fail with E1113 instead of overflowing the stack.
+    fn fn_if_thamizh(&mut self, cond: Expr) -> Option<FnStmt> {
+        self.enter()?;
+        let r = self.fn_if_thamizh_inner(cond);
+        self.leave();
+        r
+    }
+
+    fn fn_if_thamizh_inner(&mut self, cond: Expr) -> Option<FnStmt> {
+        self.bump(); // enil (Kw::If)
+        let then = self.fn_stmt_block()?;
+        let save = self.pos;
+        self.skip_newlines();
+        let els = if self.at_kw(Kw::Else) {
+            self.bump(); // illaiyenil
+            // A chained `illaiyenil <cond> enil …` starts with a condition;
+            // a plain alternative starts with `{` (mirrors
+            // `seq_if_thamizh_inner`'s identical disambiguation).
+            if !self.at(&TokKind::LBrace) {
+                let head = self.binary(0)?;
+                Some(vec![self.fn_if_thamizh(head)?])
+            } else {
+                Some(self.fn_stmt_block()?)
+            }
+        } else {
+            self.pos = save;
+            None
+        };
+        Some(FnStmt::If { cond, then, els })
+    }
+
     /// `"{" {fnStmt} "}"` — a statement block with NO tail expression
     /// (unlike the top-level `fn_body`, an `if`/`else` block inside a `fn`
     /// body is statements only; the enclosing function's `tail` is still
@@ -156,10 +214,26 @@ impl Parser {
                     let start = self.peek().span;
                     let stmt = if self.at_kw(Kw::Let) {
                         self.fn_let_stmt()
-                    } else if self.at_kw(Kw::If) {
-                        self.fn_if()
                     } else if self.at_kw(Kw::Return) {
                         self.fn_return_stmt()
+                    } else if self.profile == Profile::Thamizh {
+                        match self.binary(0) {
+                            Some(head) if self.at_kw(Kw::If) => self.fn_if_thamizh(head),
+                            Some(_) => {
+                                let found = kind_name(self.peek_kind());
+                                self.error(
+                                    self.peek().span,
+                                    "E1101",
+                                    format!(
+                                        "expected `let`, `if`, or `return` inside the `fn` block, found {found}"
+                                    ),
+                                );
+                                None
+                            }
+                            None => None, // binary(0) already reported its own error
+                        }
+                    } else if self.at_kw(Kw::If) {
+                        self.fn_if()
                     } else {
                         let found = kind_name(self.peek_kind());
                         self.error(
