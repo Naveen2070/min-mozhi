@@ -1,0 +1,23 @@
+// Min-Mozhi example: search a fixed-size array parameter for the first
+// element equal to a target value, returning its index or -1 if absent.
+// Demonstrates an array-typed fn parameter (Spec 2 of the suzhal/loop
+// roadmap): the array is not real Verilog hardware, it is four
+// independent scalar ports under the hood.
+
+fn find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
+  if vals[0] == target { return 0 }
+  if vals[1] == target { return 1 }
+  if vals[2] == target { return 2 }
+  if vals[3] == target { return 3 }
+  -1
+}
+
+module FindIndex {
+  in a: bits[8]
+  in b: bits[8]
+  in c: bits[8]
+  in d: bits[8]
+  in target: bits[8]
+  out idx: signed[4]
+  idx = find_index([a, b, c, d], target)
+}

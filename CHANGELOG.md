@@ -22,6 +22,12 @@ Compiler versions follow [SemVer](https://semver.org).
   instantiated). New keyword `return`/`thirumbu`/`திரும்பு`. New diagnostic
   E0812 (unreachable code after `return`). Fully backward compatible with
   existing `fn` bodies.
+- Array-typed `fn` parameters (`bits[8][4]`-style fixed-size, immutable
+  arrays) and array literals (`[e1, ..., eN]`). An array is never real
+  Verilog hardware — it elaborates to N independent scalar signals,
+  matching how `repeat` already elaborates to N copies of hardware.
+  Indexing with a compile-time-constant folds directly; a runtime index
+  generates a priority-mux over the elements. New diagnostics E0411-E0415.
 
 ---
 
