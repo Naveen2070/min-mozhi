@@ -1482,10 +1482,10 @@ impl<'d, 's> Rw<'d, 's> {
                     }
                     ast::Type::Named(_) => 0, // E0807: already rejected by checker
                     ast::Type::Bundle { .. } => 0, // E0807 rejects bundle payload fields in enums
-                    ast::Type::Array { .. } => unreachable!(
-                        "Task 10 wires this up (or confirms arrays, out of scope as enum payload \
-                         fields per this plan, can never reach this fold)"
-                    ),
+                    // Arrays are the same category as bundles here (not a scalar
+                    // bit-vector payload field): fold to 0, matching the sibling
+                    // arm exactly rather than inventing new behavior.
+                    ast::Type::Array { .. } => 0,
                 };
                 debug_assert!(
                     field_w > 0,

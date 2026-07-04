@@ -1896,7 +1896,10 @@ fn array_param_forwarded_by_name_with_matching_type_is_accepted() {
 #[test]
 fn array_param_forwarded_by_name_with_mismatched_length_is_rejected() {
     let src = "fn g(vals: bits[8][2]) -> bit {\n  0\n}\nfn f(vals: bits[8][4]) -> bit {\n  g(vals)\n}\nmodule M {\n  out o: bit\n  o = 0\n}\n";
-    assert!(!errs(src).is_empty(), "expected a diagnostic for a length-mismatched array forward, got none");
+    assert!(
+        !errs(src).is_empty(),
+        "expected a diagnostic for a length-mismatched array forward, got none"
+    );
 }
 
 #[test]
@@ -1926,6 +1929,7 @@ fn array_typed_module_port_is_e0416() {
 
 #[test]
 fn array_typed_wire_is_e0416() {
-    let src = "module M {\n  wire vals: bits[8][4] = [1, 2, 3, 4]\n  out o: bit\n  o = vals[0][0]\n}\n";
+    let src =
+        "module M {\n  wire vals: bits[8][4] = [1, 2, 3, 4]\n  out o: bit\n  o = vals[0][0]\n}\n";
     assert!(any_code(src, "E0416"));
 }

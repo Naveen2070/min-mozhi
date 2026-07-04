@@ -270,10 +270,22 @@ fn array_literal_call_argument_expands_to_n_scalar_arguments() {
 fn array_typed_let_binding_expands_to_n_scalar_regs_and_is_usable_as_a_call_argument() {
     let src = "fn helper(vals: bits[8][2]) -> bits[8] {\n  vals[0]\n}\nfn f(a: bits[8], b: bits[8]) -> bits[8] {\n  let t = [a, b]\n  helper(t)\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  out o: bits[8]\n  o = f(a, b)\n}\n";
     let verilog = compile_ok(src);
-    assert!(verilog.contains("reg [7:0] t_0;"), "missing t_0 reg:\n{verilog}");
-    assert!(verilog.contains("reg [7:0] t_1;"), "missing t_1 reg:\n{verilog}");
-    assert!(verilog.contains("t_0 = a;"), "missing t_0 assignment:\n{verilog}");
-    assert!(verilog.contains("t_1 = b;"), "missing t_1 assignment:\n{verilog}");
+    assert!(
+        verilog.contains("reg [7:0] t_0;"),
+        "missing t_0 reg:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("reg [7:0] t_1;"),
+        "missing t_1 reg:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("t_0 = a;"),
+        "missing t_0 assignment:\n{verilog}"
+    );
+    assert!(
+        verilog.contains("t_1 = b;"),
+        "missing t_1 assignment:\n{verilog}"
+    );
     assert!(
         verilog.contains("helper(t_0, t_1)"),
         "array-typed let must forward as 2 scalar arguments:\n{verilog}"
@@ -290,7 +302,10 @@ fn array_param_expands_to_n_scalar_ports() {
     // consistent with every scalar fn param golden (e.g. tests/golden/fn_mac.v)
     // and architecture invariant #6 — NOT the resolved `[7:0]` form, which is
     // reserved for width-inferred `let` regs that carry no declared type.
-    assert!(verilog.contains("input [(8)-1:0] vals_0;"), "GOT:\n{verilog}");
+    assert!(
+        verilog.contains("input [(8)-1:0] vals_0;"),
+        "GOT:\n{verilog}"
+    );
     assert!(verilog.contains("input [(8)-1:0] vals_1;"));
     assert!(verilog.contains("input [(8)-1:0] vals_2;"));
     assert!(verilog.contains("input [(8)-1:0] vals_3;"));
@@ -311,7 +326,10 @@ fn constant_array_index_folds_to_the_scalar_port_directly() {
     let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[2]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
     let verilog = compile_ok(src);
     assert!(verilog.contains("f = vals_2;"), "GOT:\n{verilog}");
-    assert!(!verilog.contains("?"), "a compile-time index must not generate a mux:\n{verilog}");
+    assert!(
+        !verilog.contains("?"),
+        "a compile-time index must not generate a mux:\n{verilog}"
+    );
 }
 
 /// A runtime (non-constant) index on an array-typed name lowers to a
@@ -326,5 +344,8 @@ fn runtime_array_index_generates_a_ternary_mux_over_all_elements() {
     assert!(verilog.contains("vals_1"));
     assert!(verilog.contains("vals_2"));
     assert!(verilog.contains("vals_3"));
-    assert!(verilog.contains("?"), "a runtime index must generate a mux:\n{verilog}");
+    assert!(
+        verilog.contains("?"),
+        "a runtime index must generate a mux:\n{verilog}"
+    );
 }

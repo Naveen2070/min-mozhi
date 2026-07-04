@@ -88,6 +88,12 @@ pub(super) trait Resolver {
     fn funcs(&self) -> Option<&HashMap<String, FuncDecl>> {
         None
     }
+    /// If `name` is an array in scope (a `fn` param or `let` binding), its
+    /// element count — so `name[i]` resolves against the synthesized `name_i`
+    /// scalars. Resolvers with no array scope (module signals) say `None`.
+    fn array_len(&self, _name: &str) -> Option<u32> {
+        None
+    }
 }
 
 /// Evaluate `e` against `r`. The single source of Min-Mozhi's expression
@@ -165,10 +171,27 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
             Ok(Val::new(bits, total64 as u32, false))
         }
         ExprKind::Index { base, index } => {
+            // An array element `vals[i]` (array-typed param or `let`) resolves
+            // to the synthesized scalar `vals_i` — a constant index folds to
+            // the right name, a runtime index picks it out of the element Vec
+            // (plain Rust indexing; no mux needed, unlike the Verilog emitter).
             // A memory read `m[addr]` resolves the address at RUNTIME and
             // returns the whole element; a bit-vector `s[i]` selects one bit
             // at a compile-time index.
             if let ExprKind::Ident(name) = &base.kind {
+                if let Some(len) = r.array_len(name) {
+                    let elems: Vec<Val> = (0..len)
+                        .map(|i| r.signal(&format!("{name}_{i}")))
+                        .collect::<Result<_, _>>()?;
+                    let i = eval(r, index)?.bits as usize;
+                    if i >= elems.len() {
+                        return Err(format!(
+                            "array index {i} out of range (array `{name}` has {} elements)",
+                            elems.len()
+                        ));
+                    }
+                    return Ok(elems[i]);
+                }
                 if r.is_mem(name) {
                     let addr = eval(r, index)?;
                     return r.mem_read(name, addr.bits);
@@ -196,7 +219,11 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
         ExprKind::BundleLit(_) => {
             Err("BundleLit reached value evaluator — should be pre-expanded by elaborate".into())
         }
-        ExprKind::ArrayLit(_) => unreachable!("Task 10 wires this up"),
+        ExprKind::ArrayLit(_) => Err(
+            "array literal is only valid as a `fn` argument or `let` binding \
+             (both pre-expand to scalars before evaluation)"
+                .into(),
+        ),
     }
 }
 
@@ -208,8 +235,22 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
 /// (which declares `reg [W-1:0]` for each local) is achieved by masking each
 /// local's bound value to its `inferred_width` when the checker has set it.
 fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Result<Val, String> {
-    // Evaluate each argument in the CALLER's environment.
-    let argv: Vec<Val> = args.iter().map(|a| eval(r, a)).collect::<Result<_, _>>()?;
+    // Flatten each argument to one-or-more `Val`s: an `ArrayLit` expands to N
+    // values in place (mirroring the emitter's own N-scalar call-argument
+    // expansion, so both backends agree on argument order); every other
+    // expression evaluates to exactly one `Val`, unchanged. Evaluated in the
+    // CALLER's environment.
+    let mut argv: Vec<Val> = Vec::new();
+    for a in args {
+        match &a.kind {
+            ExprKind::ArrayLit(elems) => {
+                for el in elems {
+                    argv.push(eval(r, el)?);
+                }
+            }
+            _ => argv.push(eval(r, a)?),
+        }
+    }
     // Immutable borrows of *r — no more &mut calls on r after this point.
     let consts = r.ints();
     let funcs = r.funcs().ok_or_else(|| {
@@ -222,16 +263,42 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
     let f = funcs
         .get(&name.name)
         .ok_or_else(|| format!("undefined function `{}`", name.name))?;
-    // Bind each param to its arg value, masked to the declared param type.
+    // Bind each param to its arg value(s), masked to the declared param type.
+    // An array param consumes `len` consecutive `argv` slots and binds them
+    // under `<param>_0`..`<param>_{len-1}` — the SAME `<name>_<i>` convention
+    // the emitter uses for its scalar ports (Task 7), so a program's simulated
+    // result and its emitted Verilog agree.
     let mut locals: BTreeMap<String, Val> = BTreeMap::new();
-    for (param, val) in f.params.iter().zip(argv.iter()) {
-        let (w, s) = type_width(&param.ty, consts)?;
-        locals.insert(param.name.name.clone(), Val::new(val.bits, w, s));
+    let mut arrays: BTreeMap<String, u32> = BTreeMap::new();
+    let mut ai = 0usize;
+    for param in &f.params {
+        match &param.ty {
+            Type::Array { elem, len } => {
+                // Length is a positive constant the checker already validated;
+                // `try_from` guards against a corrupt/negative value cleanly.
+                let n = u32::try_from(const_eval(len, consts)?)
+                    .map_err(|_| format!("array `{}` has an invalid length", param.name.name))?;
+                let (w, s) = type_width(elem, consts)?;
+                for i in 0..n {
+                    let val = argv[ai];
+                    ai += 1;
+                    locals.insert(format!("{}_{i}", param.name.name), Val::new(val.bits, w, s));
+                }
+                arrays.insert(param.name.name.clone(), n);
+            }
+            other => {
+                let (w, s) = type_width(other, consts)?;
+                let val = argv[ai];
+                ai += 1;
+                locals.insert(param.name.name.clone(), Val::new(val.bits, w, s));
+            }
+        }
     }
     let mut child = FnEnv {
         locals,
         consts,
         funcs,
+        arrays,
     };
     match eval_fn_stmts(&mut child, &f.stmts)? {
         FnFlow::Returned(v) => Ok(v),
@@ -255,6 +322,24 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
     for stmt in stmts {
         match stmt {
             FnStmt::Let(local) => {
+                // An array-typed `let` expands to N scalar `<name>_<i>` locals,
+                // the same `<name>_<i>` convention as an array param — so a
+                // later `name[i]` resolves the right element (mirrors the
+                // emitter's own array-`let` lowering, Task 8). `inferred_width`
+                // is the ELEMENT width for an array `let` (checker's width pass).
+                if let ExprKind::ArrayLit(elems) = &local.value.kind {
+                    for (i, el) in elems.iter().enumerate() {
+                        let v = eval(env, el)?;
+                        let v = match local.inferred_width.get() {
+                            Some(w) => Val::new(v.bits, w, v.signed),
+                            None => v,
+                        };
+                        env.locals.insert(format!("{}_{i}", local.name.name), v);
+                    }
+                    env.arrays
+                        .insert(local.name.name.clone(), elems.len() as u32);
+                    continue;
+                }
                 let v = eval(env, &local.value)?;
                 let v = match local.inferred_width.get() {
                     Some(w) => Val::new(v.bits, w, v.signed),
@@ -294,6 +379,11 @@ struct FnEnv<'a> {
     locals: BTreeMap<String, Val>,
     consts: &'a BTreeMap<String, i128>,
     funcs: &'a HashMap<String, FuncDecl>,
+    /// Array-typed names in scope (param or `let`), each mapped to its element
+    /// count. Set in `eval_fn_call`'s param-binding and in `eval_fn_stmts`'s
+    /// `FnStmt::Let` handling for an `ArrayLit` value — mirrors the emitter's
+    /// own `ArrayScope` (Task 8). The elements live in `locals` as `<name>_<i>`.
+    arrays: BTreeMap<String, u32>,
 }
 
 impl Resolver for FnEnv<'_> {
@@ -313,6 +403,9 @@ impl Resolver for FnEnv<'_> {
     }
     fn funcs(&self) -> Option<&HashMap<String, FuncDecl>> {
         Some(self.funcs)
+    }
+    fn array_len(&self, name: &str) -> Option<u32> {
+        self.arrays.get(name).copied()
     }
 }
 
@@ -527,7 +620,13 @@ pub(super) fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u3
         Type::Bundle { .. } => {
             Err("Type::Bundle reached type_width — should be pre-flattened by elaborate".into())
         }
-        Type::Array { .. } => unreachable!("Task 10 wires this up"),
+        // An array type never reaches here: an array param/`let` is expanded to
+        // per-element scalars (each queried via its ELEMENT type), array module
+        // signals are rejected (E0416), and array bundle/enum-payload fields are
+        // rejected/flattened. Mirror the Bundle arm rather than panicking.
+        Type::Array { .. } => {
+            Err("Type::Array reached type_width — arrays expand to per-element scalars".into())
+        }
     }
 }
 
