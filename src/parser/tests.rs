@@ -1050,7 +1050,9 @@ fn empty_array_literal_parses() {
 
 #[test]
 fn array_literal_as_fn_call_argument_parses() {
-    let f = parse_ok("fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n");
+    let f = parse_ok(
+        "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n",
+    );
     let TopItem::Module(m) = &f.items[1] else {
         panic!("not a module")
     };

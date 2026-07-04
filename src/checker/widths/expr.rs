@@ -639,7 +639,11 @@ impl<'a> Checker<'a> {
                     Ty::Bits(n) => (n, false),
                     Ty::Signed(n) => (n, true),
                     Ty::CtInt(v) => {
-                        let w = if v >= 0 { min_bits(v) } else { min_signed_bits(v) };
+                        let w = if v >= 0 {
+                            min_bits(v)
+                        } else {
+                            min_signed_bits(v)
+                        };
                         (w, v < 0)
                     }
                     Ty::Unknown => return Ty::Unknown,

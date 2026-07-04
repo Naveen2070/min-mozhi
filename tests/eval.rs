@@ -196,3 +196,19 @@ fn out_of_range_index_is_rejected_cleanly() {
         "expected an out-of-range diagnostic, got: {err}"
     );
 }
+
+#[test]
+fn fn_call_with_array_literal_argument_indexes_by_constant() {
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[2]\n}\nmodule M {\n  out o: bits[8]\n  o = f([10, 20, 30, 40])\n}\n";
+    let (ok, out, err) = eval_src(src, &["--in", ""]);
+    assert!(ok, "stderr: {err}");
+    assert!(out.contains("o = 30"), "got: {out}");
+}
+
+#[test]
+fn fn_call_with_array_argument_indexes_by_runtime_value() {
+    let src = "fn f(vals: bits[8][4], i: bits[2]) -> bits[8] {\n  vals[i]\n}\nmodule M {\n  in i: bits[2]\n  out o: bits[8]\n  o = f([10, 20, 30, 40], i)\n}\n";
+    let (ok, out, err) = eval_src(src, &["--in", "i=3"]);
+    assert!(ok, "stderr: {err}");
+    assert!(out.contains("o = 40"), "got: {out}");
+}

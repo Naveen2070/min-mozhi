@@ -2,8 +2,8 @@
 //! localparams, declarations, instances (auto-wired outputs, implicit
 //! clk/rst), combinational assigns, and always-blocks with generated reset.
 
-use super::*;
 use super::expr::ArrayScope;
+use super::*;
 
 impl Emitter<'_> {
     /// Emit one complete Verilog module. Source order inside the module
@@ -375,7 +375,8 @@ impl Emitter<'_> {
         for param in &decl.params {
             if let Type::Array { elem, len } = &param.ty {
                 let n = consteval::eval(len, &self.env)
-                    .expect("checker already validated this array's length") as u128;
+                    .expect("checker already validated this array's length")
+                    as u128;
                 arrays.insert(param.name.name.clone(), (self.width(elem), n));
             }
         }

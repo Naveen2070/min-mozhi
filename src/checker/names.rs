@@ -1263,7 +1263,13 @@ impl<'a> Checker<'a> {
     /// driver-uniqueness checking). This is a separate, narrowly-scoped check
     /// from `ty()` (which DOES recurse into `Type::Array`, since `fn` params
     /// legitimately use it) — only Port/Wire/Reg call this, never `fn` params.
-    fn reject_array_signal_type(&mut self, file: usize, ty: &Type, span: crate::span::Span, what: &str) {
+    fn reject_array_signal_type(
+        &mut self,
+        file: usize,
+        ty: &Type,
+        span: crate::span::Span,
+        what: &str,
+    ) {
         if matches!(ty, Type::Array { .. }) {
             self.err(
                 file,
