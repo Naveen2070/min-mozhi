@@ -1857,3 +1857,44 @@ fn array_param_with_zero_length_is_e0412() {
         "fn f(vals: bits[8][0]) -> bits[8] {\n  0\n}\nmodule M {\n  out o: bits[8]\n  o = 0\n}\n";
     assert!(any_code(src, "E0412"));
 }
+
+// ---- array literals: type inference, arg-length, indexing (E0413/E0414/E0415) ----
+
+#[test]
+fn array_literal_infers_its_own_type() {
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
+    assert!(check_one(src).is_ok(), "{:?}", errs(src));
+}
+
+#[test]
+fn array_literal_with_mismatched_element_widths_is_e0414() {
+    // This project has no `bits(W, V)` builtin (confirmed: no `Builtin`
+    // variant of that shape in src/ast/expr.rs). Instead use the real
+    // width-mismatch idiom already proven elsewhere in this file:
+    // `extend(x, N)` on a `CtInt` literal fixes it to width `N` (see
+    // `call_ty`'s `Builtin::Extend` arm, src/checker/widths/ops.rs).
+    // `1` stays a bare, still-1-bit-wide `CtInt` here (the OTHER element in
+    // the literal is what pins the array's element width, and any other
+    // bare `CtInt` matches it unconditionally); `extend(1, 16)` is fixed at
+    // `bits[16]` — 16 != 1, so the two elements visibly disagree.
+    let src = "fn f(vals: bits[8][2]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, extend(1, 16)])\n}\n";
+    assert!(any_code(src, "E0414"));
+}
+
+#[test]
+fn array_literal_argument_length_mismatch_is_e0413() {
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3])\n}\n";
+    assert!(any_code(src, "E0413"));
+}
+
+#[test]
+fn constant_array_index_out_of_range_is_e0415() {
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[9]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
+    assert!(any_code(src, "E0415"));
+}
+
+#[test]
+fn runtime_array_index_is_accepted() {
+    let src = "fn f(vals: bits[8][4], i: bits[2]) -> bits[8] {\n  vals[i]\n}\nmodule M {\n  in i: bits[2]\n  out o: bits[8]\n  o = f([1, 2, 3, 4], i)\n}\n";
+    assert!(check_one(src).is_ok(), "{:?}", errs(src));
+}
