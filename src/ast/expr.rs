@@ -90,6 +90,9 @@ pub enum ExprKind {
     /// Disambiguated from `Concat` by the parser: if the first element after `{`
     /// is `IDENT ":"`, it is a bundle literal; otherwise it is a concat.
     BundleLit(Vec<FieldInit>),
+    /// `[e1, e2, ..., eN]` — an array literal. All elements must share one
+    /// element type and width (checker-enforced, E0414).
+    ArrayLit(Vec<Expr>),
 }
 
 /// One field initializer in a bundle literal: `valid: expr`.

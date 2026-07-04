@@ -249,5 +249,10 @@ fn collect_calls(expr: &Expr, out: &mut Vec<String>) {
                 collect_calls(&init.value, out);
             }
         }
+        ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                collect_calls(e, out);
+            }
+        }
     }
 }

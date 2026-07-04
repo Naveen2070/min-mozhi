@@ -62,6 +62,7 @@ fn type_str(t: &Type) -> String {
                 format!("{}(…)", name.to_dotted())
             }
         }
+        Type::Array { elem, len } => format!("{}[{}]", type_str(elem), expr_str(len)),
     }
 }
 
@@ -558,6 +559,11 @@ fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
         ExprKind::BundleLit(inits) => {
             for fi in inits {
                 collect_expr_refs(&fi.value, module_idx, refs);
+            }
+        }
+        ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                collect_expr_refs(e, module_idx, refs);
             }
         }
     }

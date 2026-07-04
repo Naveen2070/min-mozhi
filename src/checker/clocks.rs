@@ -348,5 +348,10 @@ fn expr_reads<'a>(e: &'a Expr, out: &mut Vec<(&'a str, Span)>) {
                 expr_reads(&init.value, out);
             }
         }
+        ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                expr_reads(e, out);
+            }
+        }
     }
 }

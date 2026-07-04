@@ -278,6 +278,11 @@ fn collect_expr_names(expr: &ast::Expr, names: &mut HashSet<String>) {
                 collect_expr_names(&fi.value, names);
             }
         }
+        ast::ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                collect_expr_names(e, names);
+            }
+        }
     }
 }
 

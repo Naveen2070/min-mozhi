@@ -279,6 +279,7 @@ impl Emitter<'_> {
             // a bundle literal in an unsupported position (e.g. inside an operator).
             // Emit a safe placeholder — the checker should have caught this.
             ExprKind::BundleLit(_) => "0".into(),
+            ExprKind::ArrayLit(_) => unreachable!("Tasks 8-9 wire this up"),
         }
     }
 
@@ -359,6 +360,7 @@ impl Emitter<'_> {
                     Type::Named(_) => 0, // E0807: already rejected by checker
                     // Bundles are not valid enum payload fields (checker enforces).
                     Type::Bundle { .. } => 0,
+                    Type::Array { .. } => unreachable!("Tasks 8-9 wire this up"),
                 };
                 debug_assert!(
                     field_w > 0,

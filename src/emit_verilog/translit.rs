@@ -368,6 +368,10 @@ fn type_widths(ty: &mut Type, visit: &mut dyn FnMut(&mut String)) {
                 expr(&mut a.value, visit);
             }
         }
+        Type::Array { elem, len } => {
+            type_widths(elem, visit);
+            expr(len, visit);
+        }
     }
 }
 
@@ -528,6 +532,11 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
             for fi in inits {
                 visit(&mut fi.name.name);
                 expr(&mut fi.value, visit);
+            }
+        }
+        ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                expr(e, visit);
             }
         }
     }

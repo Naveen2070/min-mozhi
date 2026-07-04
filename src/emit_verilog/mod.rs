@@ -91,6 +91,11 @@ fn collect_fn_calls(expr: &Expr, out: &mut Vec<String>) {
                 collect_fn_calls(&fi.value, out);
             }
         }
+        ExprKind::ArrayLit(elems) => {
+            for e in elems {
+                collect_fn_calls(e, out);
+            }
+        }
     }
 }
 
