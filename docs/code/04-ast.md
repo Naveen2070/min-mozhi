@@ -55,9 +55,31 @@ This distinction is load-bearing for the no-latches guarantee; keep it.
 ## `TopItem::Func` — combinational function declarations
 
 `TopItem::Func(FuncDecl)` holds a file-level `fn` declaration: name, parameter list
-(`Vec<FnParam>`), return type, zero or more `LocalLet` bindings, and a body `Expr`.
-`FnParam` (name + type) is intentionally named differently from the module-param
-`Param` (name + `ParamTy` + optional default) — they are different constructs.
+(`Vec<FnParam>`), return type, a `stmts: Vec<FnStmt>` body, and a mandatory
+`tail: Expr` — the fallthrough result if no statement returns. This replaced the
+original `locals: Vec<LocalLet>` + `body: Expr` shape when `return` and
+statement-level `if` were added to `fn` bodies (spec/02 section 1.13); every
+pre-existing `fn` (locals + tail expr only) still parses to the same `stmts`/`tail`
+shape unchanged. `FnParam` (name + type) is intentionally named differently from
+the module-param `Param` (name + `ParamTy` + optional default) — they are
+different constructs.
+
+`FnStmt` mirrors `SeqStmt`'s shape (`on`-block statements) — same idea, a
+different terminal node:
+
+```rust
+enum FnStmt {
+    Let(LocalLet),                                    // immutable local binding
+    If { cond: Expr, then: Vec<FnStmt>, els: Option<Vec<FnStmt>> }, // `else` OPTIONAL
+    Return(Expr),                                      // yields `expr`, ends this path
+    Error(Span),                                        // parse-recovery placeholder
+}
+```
+
+`FnStmt::If`'s `els` is `Option`, unlike `ExprKind::IfExpr` (mandatory `else` —
+see "Statement vs expression `if`" above): a statement-level branch that doesn't
+return just falls through to the next statement, or ultimately `tail`, so there is
+no latch risk to guard against.
 
 `LocalLet` carries no `ty` field (the type is inferred). The emitter conservatively
 declares locals as `integer` (32-bit) in the Verilog output; precise width inference
@@ -105,7 +127,7 @@ the full wire layout.
 
 ## `Error` placeholder nodes (parse recovery)
 
-`TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each carry an
+`TopItem`, `ModuleItem`, `SeqStmt`, `FnStmt`, and `TestStmt` each carry an
 `Error(Span)` variant. It is a placeholder for a construct that failed to
 parse, produced **only** by `parser::parse_recover` (the LSP path); the
 strict `parser::parse` returns `Err` on the same input, so an `Error` node

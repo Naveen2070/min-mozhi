@@ -616,6 +616,38 @@ prefixed `portname_fieldname`. Wires and regs flatten the same way.
 
 ---
 
+### 1.13 `fn` bodies: statements and `return`
+
+`fn` bodies are zero or more statements — `let`, statement-level `if`,
+`return` — followed by exactly one tail expression, the guaranteed
+fallthrough value if no `return` fires:
+
+```mimz
+fn find_first(a: bits[8]) -> int {
+  if a[0] == 1 { return 0 }
+  if a[1] == 1 { return 1 }
+  -1
+}
+```
+
+- `return expr` immediately yields `expr` as the function's result.
+- A statement-level `if` (distinct from the expression-level `if`, which
+  requires `else`) may omit `else` — a branch that doesn't return falls
+  through to the next statement, or ultimately the tail.
+- The tail expression is mandatory, exactly like a `fn` body always was
+  before `return` existed — every function has a well-defined result on
+  every path, so there is no "missing return" diagnostic.
+- Unreachable code after an unconditional `return` in the same block is
+  `E0812`.
+- `return` saves no hardware and exits nothing in silicon — it is
+  priority-selected assignment, not control flow. Every branch's logic is
+  still fully instantiated and evaluates every time; `return` only changes
+  which already-computed branch is selected first (the same synthesizable
+  idiom SystemVerilog functions already use). No cycles, area, or work are
+  skipped by returning "early".
+
+---
+
 ## 2. Lexical Rules
 
 - **Files:** `.mimz`, UTF-8. Identifiers may contain Unicode letters —
@@ -786,10 +818,14 @@ testDrive   = IDENT "=" expr NEWLINE ;          (* drive a module input *)
 testIf      = "if" expr testBlock [ "else" ( testIf | testBlock ) ] ;
 
 fnDecl      = "fn" IDENT "(" [ fnParamList ] ")" "->" type
-              "{" { localLet } expr "}" ;       (* combinational; no clocks, no regs *)
+              "{" { fnStmt } expr "}" ;         (* combinational; no clocks, no regs *)
 fnParamList = fnParam { "," fnParam } ;
 fnParam     = IDENT ":" type ;
+fnStmt      = localLet | fnIf | returnStmt ;
 localLet    = "let" IDENT "=" expr NEWLINE ;    (* named intermediate value *)
+returnStmt  = "return" expr NEWLINE ;           (* priority-selected result, not a silicon exit *)
+fnIf        = "if" expr "{" { fnStmt } "}"
+              [ "else" ( fnIf | "{" { fnStmt } "}" ) ] ; (* else OPTIONAL, unlike ifExpr *)
 fnCall      = IDENT "(" [ expr { "," expr } ] ")" ;  (* user-defined fn call *)
 ```
 
@@ -910,6 +946,18 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.20 (2026-07-04):** **`return` + statement-based `fn` bodies**
+  (section 1.13). Added section 5 productions `fnStmt`, `returnStmt`,
+  `fnIf` — `fnDecl` bodies are now `{ fnStmt } expr`, replacing the old
+  `{ localLet } expr`. `fnStmt` is `let` / statement-level `if` (`else`
+  OPTIONAL, unlike expression-level `if`) / `return`. `return expr`
+  immediately yields the function's result; the tail expression stays
+  mandatory (no "missing return" diagnostic). New E0812 (unreachable code
+  after an unconditional `return` in the same block). `return` is
+  priority-selected assignment, not control flow — every branch is still
+  fully instantiated and evaluated every time; no cycles, area, or work
+  are skipped. New keyword `return` (spec/03 v0.2.20). Additive — every
+  pre-existing `fn` (locals + tail expr only) parses unchanged.
 - **v0.2.19 (2026-07-01):** **Packages / namespacing** (backlog:
   `docs/plan/phase-2-ir-synthesis.md`). Module/enum/bundle name uniqueness
   narrows from project-wide to per-file (§1.5). New qualified-reference
