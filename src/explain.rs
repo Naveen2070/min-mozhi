@@ -282,6 +282,22 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          at least one physical bit.\n\n\
          Fix: ensure the width expression is >= 1.",
     ),
+    (
+        "E0411",
+        "E0411 — invalid array element type\n\n\
+         An array type (`<elem>[N]`) named an element type that isn't a plain\n\
+         bit-vector. Arrays are fully unrolled into scalar hardware, so their\n\
+         elements must be `bit`, `bits[N]`, or `signed[N]` — nested arrays and\n\
+         enum/bundle elements are not supported in v1.\n\n\
+         Fix: use `bit`, `bits[N]`, or `signed[N]` as the array's element type.",
+    ),
+    (
+        "E0412",
+        "E0412 — invalid array length\n\n\
+         An array's length evaluated to zero, negative, or otherwise absurd.\n\
+         An array needs at least one element to be meaningful hardware.\n\n\
+         Fix: ensure the length expression is a positive compile-time constant.",
+    ),
     // ----- E05xx: drivers & cycles -----
     (
         "E0501",

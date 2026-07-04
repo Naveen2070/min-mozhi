@@ -111,6 +111,13 @@ impl<'a> Checker<'a> {
                 format!("cannot `match` on {}", show(&st)),
                 "read one cell first — `match m[addr] { ... }`",
             ),
+            Ty::Array { .. } => self.err(
+                cx.file,
+                scrutinee,
+                "E0409",
+                format!("cannot `match` on {}", show(&st)),
+                "read one element first — `match arr[idx] { ... }`",
+            ),
             Ty::Bit | Ty::Bits(_) => {
                 let n = if let Ty::Bits(n) = st { n } else { 1 };
                 let mut bad = false;
