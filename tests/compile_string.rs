@@ -251,23 +251,54 @@ fn guard_clause_return_does_not_get_overwritten_by_tail() {
     );
 }
 
+/// A call site passing an array LITERAL expands it into N scalar arguments,
+/// matching the N scalar `input` ports the callee's array param elaborated to.
+#[test]
+fn array_literal_call_argument_expands_to_n_scalar_arguments() {
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
+    let verilog = compile_ok(src);
+    assert!(
+        verilog.contains("f(1, 2, 3, 4)"),
+        "array literal argument must expand to 4 scalar arguments:\n{verilog}"
+    );
+}
+
+/// An array-typed `let` binding lowers to N scalar `reg`s and N scalar
+/// assignments (`<name>_<i>`), and forwarding it by name to a call expands
+/// into the same N scalar arguments.
+#[test]
+fn array_typed_let_binding_expands_to_n_scalar_regs_and_is_usable_as_a_call_argument() {
+    let src = "fn helper(vals: bits[8][2]) -> bits[8] {\n  vals[0]\n}\nfn f(a: bits[8], b: bits[8]) -> bits[8] {\n  let t = [a, b]\n  helper(t)\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  out o: bits[8]\n  o = f(a, b)\n}\n";
+    let verilog = compile_ok(src);
+    assert!(verilog.contains("reg [7:0] t_0;"), "missing t_0 reg:\n{verilog}");
+    assert!(verilog.contains("reg [7:0] t_1;"), "missing t_1 reg:\n{verilog}");
+    assert!(verilog.contains("t_0 = a;"), "missing t_0 assignment:\n{verilog}");
+    assert!(verilog.contains("t_1 = b;"), "missing t_1 assignment:\n{verilog}");
+    assert!(
+        verilog.contains("helper(t_0, t_1)"),
+        "array-typed let must forward as 2 scalar arguments:\n{verilog}"
+    );
+}
+
 /// An array-typed `fn` parameter is never a real Verilog array port — it
 /// elaborates to N independent scalar `input` ports, named `<param>_<index>`.
 #[test]
-#[ignore = "blocked on Task 8 (call-site array-literal argument expansion, \
-            tracked in docs/superpowers/plans/2026-07-04-array-typed-fn-params.local.md) — \
-            render_fn_decl's own N-scalar-port emission (this task's actual deliverable) is \
-            correct and unit-verifiable once Task 8 lands and this fn is actually callable \
-            end-to-end; un-ignore this test as part of Task 8's own test pass"]
 fn array_param_expands_to_n_scalar_ports() {
     let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
     let verilog = compile_ok(src);
-    assert!(verilog.contains("input [7:0] vals_0;"));
-    assert!(verilog.contains("input [7:0] vals_1;"));
-    assert!(verilog.contains("input [7:0] vals_2;"));
-    assert!(verilog.contains("input [7:0] vals_3;"));
+    // fn param ports keep the emitter's symbolic width form (`[(8)-1:0]`),
+    // consistent with every scalar fn param golden (e.g. tests/golden/fn_mac.v)
+    // and architecture invariant #6 — NOT the resolved `[7:0]` form, which is
+    // reserved for width-inferred `let` regs that carry no declared type.
+    assert!(verilog.contains("input [(8)-1:0] vals_0;"), "GOT:\n{verilog}");
+    assert!(verilog.contains("input [(8)-1:0] vals_1;"));
+    assert!(verilog.contains("input [(8)-1:0] vals_2;"));
+    assert!(verilog.contains("input [(8)-1:0] vals_3;"));
     assert!(
-        !verilog.contains("input [7:0] vals;"),
+        !verilog.contains("input [(8)-1:0] vals;"),
         "must NOT emit a single scalar port named `vals`"
     );
+    // The body read `vals[0]` must resolve to the elaborated scalar `vals_0`,
+    // not reference the (nonexistent) whole-array name `vals`.
+    assert!(verilog.contains("f = vals_0;"), "GOT:\n{verilog}");
 }

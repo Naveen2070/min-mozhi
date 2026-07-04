@@ -3,6 +3,7 @@
 //! clk/rst), combinational assigns, and always-blocks with generated reset.
 
 use super::*;
+use super::expr::ArrayScope;
 
 impl Emitter<'_> {
     /// Emit one complete Verilog module. Source order inside the module
@@ -364,6 +365,38 @@ impl Emitter<'_> {
         // fold so uses like `a >> SCALE` emit correct literals.
         let saved_env = std::mem::replace(&mut self.env, file_env.clone());
 
+        // Array-typed names in scope for this body: each param or `let`-bound
+        // array maps to `(element_width_string, length)` so a call argument
+        // referring to it by name (or an array literal passed directly) can be
+        // expanded to the `<name>_<i>` scalars the callee's array param
+        // elaborated into (Task 7). Never mutated after construction — an
+        // array is immutable once bound (matching the `fn` purity rule).
+        let mut arrays: ArrayScope = HashMap::new();
+        for param in &decl.params {
+            if let Type::Array { elem, len } = &param.ty {
+                let n = consteval::eval(len, &self.env)
+                    .expect("checker already validated this array's length") as u128;
+                arrays.insert(param.name.name.clone(), (self.width(elem), n));
+            }
+        }
+        for local in fn_all_locals(&decl.stmts) {
+            if let ExprKind::ArrayLit(elems) = &local.value.kind {
+                // Element width comes from the checker's width pass, which sets
+                // `inferred_width` to the array's ELEMENT width for an
+                // array-typed `let` (widths/mod.rs `FnStmt::Let` arm). Mirror
+                // `self.width`'s convention: a 1-bit element has no `[..]` range.
+                let ew = match local.inferred_width.get() {
+                    Some(1) => String::new(),
+                    Some(w) => format!("[{}:0] ", w - 1),
+                    None => unreachable!(
+                        "array-typed let `{}` has no element width — checker must run first",
+                        local.name.name
+                    ),
+                };
+                arrays.insert(local.name.name.clone(), (ew, elems.len() as u128));
+            }
+        }
+
         let ret_w = self.width(&decl.ret);
         let mut s = format!("    function automatic {ret_w}{};\n", decl.name.name);
         for param in &decl.params {
@@ -388,6 +421,16 @@ impl Emitter<'_> {
             }
         }
         for local in fn_all_locals(&decl.stmts) {
+            // An array-typed `let` is not one sized `reg` — it lowers to N
+            // scalar `reg`s named `<name>_<i>`, the same convention an array
+            // param uses (built into `arrays` above).
+            if let ExprKind::ArrayLit(elems) = &local.value.kind {
+                let (ew, _n) = &arrays[&local.name.name];
+                for i in 0..elems.len() {
+                    s.push_str(&format!("        reg {ew}{}_{i};\n", local.name.name));
+                }
+                continue;
+            }
             let decl_line = match local.inferred_width.get() {
                 Some(1) => format!("        reg {};\n", local.name.name),
                 Some(w) => format!("        reg [{}:0] {};\n", w - 1, local.name.name),
@@ -399,9 +442,9 @@ impl Emitter<'_> {
             s.push_str(&decl_line);
         }
         s.push_str("        begin\n");
-        let tail = self.expr(&decl.tail);
+        let tail = self.expr_subst(&decl.tail, &HashMap::new(), &arrays);
         let tail_code = format!("            {} = {};\n", decl.name.name, tail);
-        let body_code = self.emit_fn_stmts(&decl.stmts, &tail_code, &decl.name.name, 3);
+        let body_code = self.emit_fn_stmts(&decl.stmts, &tail_code, &decl.name.name, 3, &arrays);
         s.push_str(&body_code);
         s.push_str("        end\n");
         s.push_str("    endfunction\n");
@@ -423,14 +466,26 @@ impl Emitter<'_> {
         rest: &str,
         fname: &str,
         indent: usize,
+        arrays: &ArrayScope,
     ) -> String {
         let pad = "    ".repeat(indent);
         match stmts.split_first() {
             None => rest.to_string(),
             Some((FnStmt::Let(l), tail_stmts)) => {
-                let v = self.expr(&l.value);
-                let mut out = format!("{pad}{} = {v};\n", l.name.name);
-                out.push_str(&self.emit_fn_stmts(tail_stmts, rest, fname, indent));
+                let mut out = String::new();
+                if let ExprKind::ArrayLit(elems) = &l.value.kind {
+                    // Array-typed `let`: assign each scalar reg `<name>_<i>`
+                    // from its element (mirrors the N-reg declaration above,
+                    // same `<name>_<i>` convention as an array param).
+                    for (i, el) in elems.iter().enumerate() {
+                        let v = self.expr_subst(el, &HashMap::new(), arrays);
+                        out.push_str(&format!("{pad}{}_{i} = {v};\n", l.name.name));
+                    }
+                } else {
+                    let v = self.expr_subst(&l.value, &HashMap::new(), arrays);
+                    out.push_str(&format!("{pad}{} = {v};\n", l.name.name));
+                }
+                out.push_str(&self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays));
                 out
             }
             Some((FnStmt::Return(e), _)) => {
@@ -439,23 +494,23 @@ impl Emitter<'_> {
                 // `stmts` is reachable for a program that passed the checker
                 // — the continuation for a `return` is simply the return
                 // value itself, never `rest`.
-                let v = self.expr(e);
+                let v = self.expr_subst(e, &HashMap::new(), arrays);
                 format!("{pad}{fname} = {v};\n")
             }
             Some((FnStmt::If { cond, then, els }, tail_stmts)) => {
-                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent);
-                let then_code = self.emit_fn_stmts(then, &cont, fname, indent + 1);
+                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays);
+                let then_code = self.emit_fn_stmts(then, &cont, fname, indent + 1, arrays);
                 let else_code = match els {
-                    Some(els) => self.emit_fn_stmts(els, &cont, fname, indent + 1),
+                    Some(els) => self.emit_fn_stmts(els, &cont, fname, indent + 1, arrays),
                     None => cont.clone(),
                 };
-                let c = self.expr(cond);
+                let c = self.expr_subst(cond, &HashMap::new(), arrays);
                 format!(
                     "{pad}if ({c}) begin\n{then_code}{pad}end else begin\n{else_code}{pad}end\n"
                 )
             }
             Some((FnStmt::Error(_), tail_stmts)) => {
-                self.emit_fn_stmts(tail_stmts, rest, fname, indent)
+                self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays)
             }
         }
     }
@@ -817,13 +872,14 @@ impl Emitter<'_> {
         let mut s = lv.base.name.clone();
         if let Some((first, second)) = &lv.index {
             let empty = HashMap::new();
+            let no_arrays = ArrayScope::new();
             match second {
                 Some(lo) => s.push_str(&format!(
                     "[{}:{}]",
-                    self.index_expr(first, &empty),
-                    self.index_expr(lo, &empty)
+                    self.index_expr(first, &empty, &no_arrays),
+                    self.index_expr(lo, &empty, &no_arrays)
                 )),
-                None => s.push_str(&format!("[{}]", self.index_expr(first, &empty))),
+                None => s.push_str(&format!("[{}]", self.index_expr(first, &empty, &no_arrays))),
             }
         }
         s
@@ -870,7 +926,7 @@ impl Emitter<'_> {
         match ty {
             Type::Bit => String::new(),
             Type::Bits(e) => {
-                let we = self.expr_subst(e, subst);
+                let we = self.expr_subst(e, subst, &ArrayScope::new());
                 format!("[({we})-1:0] ")
             }
             Type::Signed(e) => {
@@ -878,7 +934,7 @@ impl Emitter<'_> {
                 // semantics apply: assignments SIGN-extend and comparisons
                 // are signed. Sound because the checker forbids
                 // signed/unsigned mixing inside one expression (E0403).
-                let we = self.expr_subst(e, subst);
+                let we = self.expr_subst(e, subst, &ArrayScope::new());
                 format!("signed [({we})-1:0] ")
             }
             Type::Named(id) => {

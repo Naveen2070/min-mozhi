@@ -1063,6 +1063,11 @@ impl<'a> Checker<'a> {
                         } else {
                             min_signed_bits(v)
                         } as u32),
+                        // An array-typed `let` has no single register width —
+                        // it lowers to N scalar `reg`s of the ELEMENT width.
+                        // Record the element width so the emitter can size each
+                        // `<name>_<i>` reg (emit_verilog `render_fn_decl`).
+                        Ty::Array { elem_width, .. } => Some(elem_width as u32),
                         _ => None,
                     };
                     if let Some(w) = w {
