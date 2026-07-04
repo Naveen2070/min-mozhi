@@ -95,16 +95,35 @@ fn collect_fn_calls(expr: &Expr, out: &mut Vec<String>) {
 }
 
 /// Collect the names of all user functions directly called by `decl`
-/// (locals + body, sorted and deduped for determinism).
+/// (every statement + the tail, sorted and deduped for determinism).
 pub(super) fn fn_direct_callees(decl: &FuncDecl) -> Vec<String> {
     let mut out = Vec::new();
-    for local in &decl.locals {
-        collect_fn_calls(&local.value, &mut out);
-    }
-    collect_fn_calls(&decl.body, &mut out);
+    collect_fn_stmt_calls(&decl.stmts, &mut out);
+    collect_fn_calls(&decl.tail, &mut out);
     out.sort();
     out.dedup();
     out
+}
+
+/// Walk a `fn`-body statement list for `collect_fn_calls` — mirrors
+/// `checker::funcs::collect_fn_stmt_calls` (kept as a separate copy, same
+/// as the pre-existing `direct_callees`/`collect_calls` duplication between
+/// this file and the checker).
+fn collect_fn_stmt_calls(stmts: &[FnStmt], out: &mut Vec<String>) {
+    for stmt in stmts {
+        match stmt {
+            FnStmt::Let(local) => collect_fn_calls(&local.value, out),
+            FnStmt::If { cond, then, els } => {
+                collect_fn_calls(cond, out);
+                collect_fn_stmt_calls(then, out);
+                if let Some(els) = els {
+                    collect_fn_stmt_calls(els, out);
+                }
+            }
+            FnStmt::Return(expr) => collect_fn_calls(expr, out),
+            FnStmt::Error(_) => {}
+        }
+    }
 }
 
 /// Largest number of `repeat` iterations the emitter unrolls before erroring.
@@ -946,5 +965,13 @@ mod tests {
             2,
             "both same-named modules must coexist in the table"
         );
+    }
+
+    #[test]
+    fn emitter_injects_function_called_only_from_a_return() {
+        let src = "fn helper(a: bits[8]) -> bits[8] {\n  a\n}\nfn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return helper(a) }\n  0\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+        let verilog = emit_src(src);
+        assert!(verilog.contains("function automatic"));
+        assert!(verilog.matches("function automatic").count() >= 2); // both helper and f
     }
 }
