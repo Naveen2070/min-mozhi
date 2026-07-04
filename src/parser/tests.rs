@@ -146,6 +146,64 @@ fn a_mem_without_an_init_value_is_e1104() {
 }
 
 #[test]
+fn array_type_parses_in_a_fn_param() {
+    let f = parse_ok("fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}");
+    let TopItem::Func(fd) = &f.items[0] else {
+        panic!("not a func")
+    };
+    let Type::Array { elem, len: _ } = &fd.params[0].ty else {
+        panic!("expected an array type, got {:?}", fd.params[0].ty)
+    };
+    assert!(matches!(**elem, Type::Bits(_)));
+}
+
+#[test]
+fn nested_array_type_parses_two_brackets_deep() {
+    // The grammar doesn't reject this (nested arrays are a NON-goal
+    // rejected by the CHECKER, not the parser — matches this project's
+    // existing house style of "parser is lenient, checker narrows" used
+    // elsewhere, e.g. `repeat` bodies parse generally and the checker
+    // restricts what's inside). This test only proves the grammar itself
+    // is unambiguous for a doubly-bracketed type — it makes no claim
+    // about whether the CHECKER accepts it (it won't, once Task 5 lands
+    // the non-goal rejection — that's a separate checker test).
+    let f = parse_ok("fn f(vals: bits[8][4][2]) -> bits[8] {\n  0\n}");
+    let TopItem::Func(fd) = &f.items[0] else {
+        panic!("not a func")
+    };
+    let Type::Array { elem, .. } = &fd.params[0].ty else {
+        panic!("expected outer array type")
+    };
+    assert!(matches!(**elem, Type::Array { .. }));
+}
+
+#[test]
+fn mem_declaration_still_parses_to_the_same_shape_after_array_type_grammar_lands() {
+    // Regression: mem's OWN declaration grammar (`mem name: elem[DEPTH] =
+    // init`) must parse to the EXACT SAME ModuleItem::Mem shape as before
+    // this plan — `ty` a scalar Bits/Signed/Bit, `depth` a separate Expr.
+    // This is the load-bearing backward-compat test for this task.
+    let f = parse_ok("module M {\n  mem m: bits[8][4] = 0\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let (ty, depth) = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::Mem { ty, depth, .. } => Some((ty, depth)),
+            _ => None,
+        })
+        .expect("a `mem` declaration");
+    assert!(
+        matches!(ty, Type::Bits(_)),
+        "mem's element type must stay a scalar Type::Bits, not become Type::Array — got {ty:?}"
+    );
+    // `depth` is still a plain Expr (the `4`), not folded into `ty`.
+    assert!(matches!(depth.kind, ExprKind::Int { value: 4, .. }));
+}
+
+#[test]
 fn async_reset_parses_with_the_async_flag() {
     let f = parse_ok("module M {\n  clock clk\n  async reset rst\n}\n");
     let TopItem::Module(m) = &f.items[0] else {
