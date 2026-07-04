@@ -1,0 +1,17 @@
+#!/bin/sh
+# Pre-commit hook: fast quality gates
+set -e
+
+echo "=== pre-commit: fmt check ==="
+cargo fmt --all --check
+
+echo "=== pre-commit: clippy ==="
+cargo clippy --all-targets -- -D warnings
+
+echo "=== pre-commit: prettier check ==="
+npx prettier --check "**/*.md"
+
+echo "=== pre-commit: markdownlint ==="
+npx markdownlint-cli2
+
+echo "=== pre-commit: all checks passed ==="
