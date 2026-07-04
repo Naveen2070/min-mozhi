@@ -199,7 +199,7 @@ impl Parser {
     /// is already parsed (the `head` from `expr_thamizh`); from the `thernthedu`
     /// keyword onward it is identical to code order, building the SAME
     /// `ExprKind::Match`.
-    fn match_expr_thamizh(&mut self, scrutinee: Expr) -> Option<Expr> {
+    pub(super) fn match_expr_thamizh(&mut self, scrutinee: Expr) -> Option<Expr> {
         let start = scrutinee.span;
         self.bump(); // thernthedu (Kw::Match)
         self.finish_match(scrutinee, start)
