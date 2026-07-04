@@ -279,7 +279,7 @@ impl Emitter<'_> {
             // a bundle literal in an unsupported position (e.g. inside an operator).
             // Emit a safe placeholder — the checker should have caught this.
             ExprKind::BundleLit(_) => "0".into(),
-            ExprKind::ArrayLit(_) => unreachable!("Tasks 8-9 wire this up"),
+            ExprKind::ArrayLit(_) => unreachable!("Task 8 or Task 9 wires this up"),
         }
     }
 
@@ -360,7 +360,14 @@ impl Emitter<'_> {
                     Type::Named(_) => 0, // E0807: already rejected by checker
                     // Bundles are not valid enum payload fields (checker enforces).
                     Type::Bundle { .. } => 0,
-                    Type::Array { .. } => unreachable!("Tasks 8-9 wire this up"),
+                    // Same category as sim/elaborate.rs's enum-payload field-width
+                    // fold (owned by Task 10): arrays are fn-param/let-only in this
+                    // plan's scope, never a valid enum payload field, so this is
+                    // likely permanently unreachable — mirror the Bundle arm above
+                    // (0) if that's confirmed, rather than treating it as new logic.
+                    Type::Array { .. } => unreachable!(
+                        "Task 10 confirms reachability (arrays are not valid enum payload fields per this plan's scope) — likely mirrors the Bundle arm above (0)"
+                    ),
                 };
                 debug_assert!(
                     field_w > 0,
