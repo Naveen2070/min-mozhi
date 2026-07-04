@@ -219,13 +219,18 @@ impl<'a> Checker<'a> {
     fn walk_items(&mut self, file: usize, sc: &Scope<'a>, env: &mut Env, items: &'a [ModuleItem]) {
         for item in items {
             match item {
-                ModuleItem::Port { ty, .. } => self.ty(file, sc, env, ty),
-                ModuleItem::Wire { ty, init, .. } => {
+                ModuleItem::Port { ty, name, .. } => {
                     self.ty(file, sc, env, ty);
+                    self.reject_array_signal_type(file, ty, name.span, "a port");
+                }
+                ModuleItem::Wire { ty, init, name, .. } => {
+                    self.ty(file, sc, env, ty);
+                    self.reject_array_signal_type(file, ty, name.span, "a wire");
                     self.expr(file, sc, env, init);
                 }
-                ModuleItem::Reg { ty, reset, .. } => {
+                ModuleItem::Reg { ty, reset, name, .. } => {
                     self.ty(file, sc, env, ty);
+                    self.reject_array_signal_type(file, ty, name.span, "a register");
                     self.expr(file, sc, env, reset);
                 }
                 ModuleItem::Mem {
@@ -1249,6 +1254,25 @@ impl<'a> Checker<'a> {
                 }
                 FnStmt::Error(_) => {} // parse-recovery placeholder
             }
+        }
+    }
+
+    /// Reject an array-typed module-level signal declaration (port, wire, or
+    /// register). Array types are only supported for `fn` parameters in v0.2
+    /// — module-level arrays are an explicit non-goal (would need per-element
+    /// driver-uniqueness checking). This is a separate, narrowly-scoped check
+    /// from `ty()` (which DOES recurse into `Type::Array`, since `fn` params
+    /// legitimately use it) — only Port/Wire/Reg call this, never `fn` params.
+    fn reject_array_signal_type(&mut self, file: usize, ty: &Type, span: crate::span::Span, what: &str) {
+        if matches!(ty, Type::Array { .. }) {
+            self.err(
+                file,
+                span,
+                "E0416",
+                format!("{what} cannot be array-typed"),
+                "array types are only supported for `fn` parameters in v0.2 — \
+                 module-level port/wire/register arrays are not yet supported",
+            );
         }
     }
 

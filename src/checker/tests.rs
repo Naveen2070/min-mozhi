@@ -1910,3 +1910,22 @@ fn runtime_array_index_is_accepted() {
     let src = "fn f(vals: bits[8][4], i: bits[2]) -> bits[8] {\n  vals[i]\n}\nmodule M {\n  in i: bits[2]\n  out o: bits[8]\n  o = f([1, 2, 3, 4], i)\n}\n";
     assert!(check_one(src).is_ok(), "{:?}", errs(src));
 }
+
+// ---- module-level array signals are rejected (E0416) ----------------------
+// Module-level port/wire/register arrays are an explicit non-goal (would need
+// per-element driver-uniqueness checking) — array types are only supported
+// for `fn` parameters. `fn`-parameter array tests above are unaffected: this
+// check is wired into Port/Wire/Reg's `walk_items` arms only, never into `fn`
+// param resolution.
+
+#[test]
+fn array_typed_module_port_is_e0416() {
+    let src = "module M {\n  in vals: bits[8][4]\n  out o: bit\n  o = vals[0][0]\n}\n";
+    assert!(any_code(src, "E0416"));
+}
+
+#[test]
+fn array_typed_wire_is_e0416() {
+    let src = "module M {\n  wire vals: bits[8][4] = [1, 2, 3, 4]\n  out o: bit\n  o = vals[0][0]\n}\n";
+    assert!(any_code(src, "E0416"));
+}
