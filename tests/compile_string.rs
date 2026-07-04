@@ -302,3 +302,29 @@ fn array_param_expands_to_n_scalar_ports() {
     // not reference the (nonexistent) whole-array name `vals`.
     assert!(verilog.contains("f = vals_0;"), "GOT:\n{verilog}");
 }
+
+/// A compile-time-constant index on an array-typed name folds straight to
+/// the matching scalar port — no mux, since the element is known at
+/// compile time.
+#[test]
+fn constant_array_index_folds_to_the_scalar_port_directly() {
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[2]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
+    let verilog = compile_ok(src);
+    assert!(verilog.contains("f = vals_2;"), "GOT:\n{verilog}");
+    assert!(!verilog.contains("?"), "a compile-time index must not generate a mux:\n{verilog}");
+}
+
+/// A runtime (non-constant) index on an array-typed name lowers to a
+/// generated ternary-chain mux over every element — there is no real
+/// Verilog array to index at runtime.
+#[test]
+fn runtime_array_index_generates_a_ternary_mux_over_all_elements() {
+    let src = "fn f(vals: bits[8][4], i: bits[2]) -> bits[8] {\n  vals[i]\n}\nmodule M {\n  in i: bits[2]\n  out o: bits[8]\n  o = f([1, 2, 3, 4], i)\n}\n";
+    let verilog = compile_ok(src);
+    // All four scalar copies must appear in the generated selector.
+    assert!(verilog.contains("vals_0"));
+    assert!(verilog.contains("vals_1"));
+    assert!(verilog.contains("vals_2"));
+    assert!(verilog.contains("vals_3"));
+    assert!(verilog.contains("?"), "a runtime index must generate a mux:\n{verilog}");
+}

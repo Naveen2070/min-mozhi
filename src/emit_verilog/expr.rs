@@ -216,16 +216,24 @@ impl Emitter<'_> {
             }
             ExprKind::Index { base, index } => {
                 // Indexing an array-typed param/`let` (elaborated to
-                // `<name>_<i>` scalars, Task 7's convention) with a CONSTANT
-                // index resolves straight to that scalar — there is no real
-                // Verilog array to index. A runtime index would need a
-                // generated mux (out of this task's scope); it falls through
-                // to the plain `base[index]` form below.
+                // `<name>_<i>` scalars, Task 7's convention) never indexes a
+                // real Verilog array. A CONSTANT index resolves straight to
+                // the matching scalar — zero cost. A runtime index generates
+                // a ternary-chain mux over every element: the same shape a
+                // user would hand-write with `if i==0 {...} else if i==1
+                // {...}`, just emitter-synthesized.
                 if let ExprKind::Ident(n) = &base.kind
-                    && arrays.contains_key(n)
-                    && let Ok(idx) = consteval::eval(index, &self.env)
+                    && let Some((_, len)) = arrays.get(n)
                 {
-                    return format!("{n}_{idx}");
+                    if let Ok(idx) = consteval::eval(index, &self.env) {
+                        return format!("{n}_{idx}");
+                    }
+                    let idx = self.expr_subst(index, subst, arrays);
+                    let mut chain = format!("{n}_{}", len - 1); // default: last element
+                    for i in (0..*len - 1).rev() {
+                        chain = format!("(({idx})=={i}) ? {n}_{i} : ({chain})");
+                    }
+                    return chain;
                 }
                 let b = self.expr_subst(base, subst, arrays);
                 let i = self.index_expr(index, subst, arrays);
