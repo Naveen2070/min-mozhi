@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-push hook: heavy quality gates
+set -e
+
+echo "=== pre-push: tests ==="
+cargo test --all-targets
+
+echo "=== pre-push: rustdoc (warnings are errors) ==="
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+
+echo "=== pre-push: all checks passed ==="
