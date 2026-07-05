@@ -109,6 +109,17 @@ pub enum FnStmt {
     /// `return expr` — immediately yields `expr` as the function's result;
     /// no later statement or `tail` executes for this control path.
     Return(Expr),
+    /// `loop i: lo..hi { ... }` — compile-time unrolling inside a `fn`
+    /// body. Unrolls into `hi-lo` copies of `body`, each a fresh scope;
+    /// combined with `return` gives first-match-wins search over an
+    /// array/mem.
+    Loop {
+        var: Ident,
+        lo: Expr,
+        hi: Expr,
+        body: Vec<FnStmt>,
+        span: Span,
+    },
     /// A statement that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.
@@ -504,6 +515,17 @@ pub enum SeqStmt {
     /// Emitter MUST emit these nodes FIRST within the always-block body
     /// so conditional `<-` assignments override them (D-DEFAULT-3).
     Default { name: Ident, val: Expr, span: Span },
+    /// `loop i: lo..hi { ... }` — compile-time unrolling inside an `on`
+    /// block, same model as `repeat` but usable in a clocked context
+    /// (`repeat` itself stays item-level only). NOT a runtime loop —
+    /// unrolls into `hi-lo` copies of `body` at elaboration time.
+    Loop {
+        var: Ident,
+        lo: Expr,
+        hi: Expr,
+        body: Vec<SeqStmt>,
+        span: Span,
+    },
     /// A sequential statement that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.

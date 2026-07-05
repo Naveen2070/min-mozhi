@@ -205,6 +205,24 @@ impl Pretty {
                 let s = format!("{} {v}", self.kw(Kw::Return));
                 self.line(&s);
             }
+            FnStmt::Loop {
+                var, lo, hi, body, ..
+            } => {
+                // ponytail: no `Kw::Loop` yet (the keyword table entry is
+                // Task 2's job — parser support lands with it); hardcode the
+                // English spelling since the parser never produces this node
+                // today, so this text is never actually round-tripped.
+                let lo_s = self.expr(lo, ind);
+                let hi_s = self.expr(hi, ind);
+                let head = format!("loop {}: {lo_s}..{hi_s} {{", var.name);
+                self.line(&head);
+                self.indent += 1;
+                for s in body {
+                    self.fn_stmt(s);
+                }
+                self.indent -= 1;
+                self.line("}");
+            }
             FnStmt::Error(_) => {} // parse-recovery placeholder; never reached on the codegen path
         }
     }
@@ -508,6 +526,22 @@ impl Pretty {
                 let kw = self.kw(Kw::Default);
                 let v = self.expr(val, ind);
                 self.line(&format!("{kw} {} <- {v}", name.name));
+            }
+            SeqStmt::Loop {
+                var, lo, hi, body, ..
+            } => {
+                // ponytail: hardcoded "loop" spelling — see the matching
+                // note on `FnStmt::Loop` above; `Kw::Loop` lands in Task 2.
+                let lo_s = self.expr(lo, ind);
+                let hi_s = self.expr(hi, ind);
+                let head = format!("loop {}: {lo_s}..{hi_s} {{", var.name);
+                self.line(&head);
+                self.indent += 1;
+                for s in body {
+                    self.seq_stmt(s);
+                }
+                self.indent -= 1;
+                self.line("}");
             }
             SeqStmt::Error(_) => {} // unreachable on a strict-parsed tree
         }

@@ -786,6 +786,13 @@ impl<'a> Checker<'a> {
                     let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
                     self.check_expr(cx, val, expected);
                 }
+                SeqStmt::Loop { lo, hi, body, .. } => {
+                    // Recurse for inner errors; bound values are an
+                    // elaboration-slice concern, same as `repeat` above.
+                    let _ = self.infer_ty(cx, lo);
+                    let _ = self.infer_ty(cx, hi);
+                    self.seq_width_stmts(cx, body);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
@@ -1111,6 +1118,13 @@ impl<'a> Checker<'a> {
                 FnStmt::Return(expr) => {
                     let ty = self.infer_ty(cx, expr);
                     self.check_return_ty(cx, expr.span, ty, ret_ty, func_name);
+                }
+                FnStmt::Loop { lo, hi, body, .. } => {
+                    let _ = self.infer_ty(cx, lo);
+                    let _ = self.infer_ty(cx, hi);
+                    let sigs_before = cx.sigs.clone();
+                    self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                    cx.sigs = sigs_before;
                 }
                 FnStmt::Error(_) => {} // parse-recovery placeholder
             }

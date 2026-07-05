@@ -308,6 +308,13 @@ fn collect_seq_names(stmt: &ast::SeqStmt, names: &mut HashSet<String>) {
             names.insert(name.name.clone());
             collect_expr_names(val, names);
         }
+        ast::SeqStmt::Loop { lo, hi, body, .. } => {
+            collect_expr_names(lo, names);
+            collect_expr_names(hi, names);
+            for s in body {
+                collect_seq_names(s, names);
+            }
+        }
         ast::SeqStmt::Error(_) => {}
     }
 }
