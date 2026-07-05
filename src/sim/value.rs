@@ -277,7 +277,19 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
                     .map_err(|_| format!("array `{}` has an invalid length", param.name.name))?;
                 let (w, s) = type_width(elem, consts)?;
                 for i in 0..n {
-                    let val = argv[ai];
+                    // `ai` can run past `argv` when the call site's argument
+                    // count doesn't match this fn's arity — the checker
+                    // (E0413/E0803) rejects that before eval normally, but
+                    // this evaluator is also exercised directly on unchecked
+                    // ASTs (fuzzing), so an out-of-range `ai` must be a clean
+                    // `Err`, not an out-of-bounds panic.
+                    let val = *argv.get(ai).ok_or_else(|| {
+                        format!(
+                            "function `{}` called with too few arguments (missing element \
+                             for array parameter `{}`)",
+                            name.name, param.name.name
+                        )
+                    })?;
                     ai += 1;
                     locals.insert(format!("{}_{i}", param.name.name), Val::new(val.bits, w, s));
                 }
@@ -285,7 +297,13 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
             }
             other => {
                 let (w, s) = type_width(other, consts)?;
-                let val = argv[ai];
+                let val = *argv.get(ai).ok_or_else(|| {
+                    format!(
+                        "function `{}` called with too few arguments (missing value for \
+                         parameter `{}`)",
+                        name.name, param.name.name
+                    )
+                })?;
                 ai += 1;
                 locals.insert(param.name.name.clone(), Val::new(val.bits, w, s));
             }
@@ -710,5 +728,39 @@ mod tests {
         let res2 = binary(BinOp::Shl, l2, r2).unwrap();
         assert_eq!(res2.masked(), 16);
         assert_eq!(res2.width, 5); // 4 + 1
+    }
+
+    #[test]
+    fn fn_call_arity_mismatch_is_err_not_panic() {
+        // Fuzz find: `eval_fn_call` is reachable directly on a parsed-but-
+        // unchecked AST (the checker's E0413 array-length check normally
+        // rejects this first). A short array-literal argument left `argv`
+        // shorter than the callee's param arity, and `argv[ai]` panicked
+        // with an out-of-bounds index instead of returning a clean `Err`.
+        let src = "saarbu pick(vals: bits[8][4], idx: bits[3]) -> bits[8] {\n  \
+                   vals[idx]\n}\n\n\
+                   thoguthi M {\n  \
+                   ulleedu a: bits[8]\n  \
+                   ulleedu b: bits[8]\n  \
+                   ulleedu idx: bits[3]\n  \
+                   veliyeedu picked: bits[8]\n  \
+                   picked = pick([a, b], idx)\n\
+                   }\n";
+        let tokens = crate::lexer::lex(src).expect("lex");
+        let file = crate::parser::parse(tokens).expect("parse");
+        let inputs: BTreeMap<String, u128> = [
+            ("a".to_string(), 1u128),
+            ("b".to_string(), 2u128),
+            ("idx".to_string(), 0u128),
+        ]
+        .into_iter()
+        .collect();
+        let result = super::super::comb::eval_outputs(
+            std::slice::from_ref(&file),
+            Some("M"),
+            &inputs,
+            &BTreeMap::new(),
+        );
+        assert!(result.is_err(), "expected a clean Err, got {result:?}");
     }
 }
