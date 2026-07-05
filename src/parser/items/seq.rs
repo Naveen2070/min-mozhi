@@ -42,7 +42,7 @@ impl Parser {
     }
 
     /// `("rise" | "fall")` — the clock-edge head keyword, returning the [`Edge`].
-    fn clock_edge_kw(&mut self) -> Option<Edge> {
+    pub(super) fn clock_edge_kw(&mut self) -> Option<Edge> {
         if self.at_kw(Kw::Rise) {
             self.bump();
             Some(Edge::Rise)
@@ -63,7 +63,7 @@ impl Parser {
 
     /// `"(" ident ")"` — the clock name inside a `rise(clk)` edge head,
     /// shared by both word-order profiles.
-    fn clock_edge_args(&mut self) -> Option<Ident> {
+    pub(super) fn clock_edge_args(&mut self) -> Option<Ident> {
         self.expect(TokKind::LParen, "`(` then the clock name")?;
         let clock = self.ident("a clock name")?;
         self.expect(TokKind::RParen, "`)` after the clock name")?;
@@ -72,7 +72,7 @@ impl Parser {
 
     /// `seqBlock = "{" { seqStmt } "}"` — returns the statements plus the
     /// closing brace's span (for the parent's span join).
-    fn seq_block(&mut self) -> Option<(Vec<SeqStmt>, Span)> {
+    pub(super) fn seq_block(&mut self) -> Option<(Vec<SeqStmt>, Span)> {
         self.expect(TokKind::LBrace, "`{` to start the block")?;
         let mut stmts = Vec::new();
         let end = loop {
