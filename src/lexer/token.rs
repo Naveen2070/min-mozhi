@@ -51,6 +51,10 @@ pub enum Kw {
     /// inside `on` blocks and `fn` bodies (distinct from `repeat`, which
     /// stays item-level only).
     Loop,
+    /// `sync` / `othisai` / `ஒத்திசை` — modifies `loop` into a cycle-iterating
+    /// FSM loop (`sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { }`),
+    /// distinct from the compile-time-unrolled `loop`.
+    Sync,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).

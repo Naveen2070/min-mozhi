@@ -226,4 +226,52 @@ impl Parser {
             span: start.join(end),
         }))
     }
+
+    /// `syncLoop = "sync" "loop" ident "on" ("rise"|"fall") "(" ident ")"
+    ///   "(" ident ":" expr ".." expr ")" "->" ident ":" type "=" expr seqBlock`
+    /// — the `sync`/`loop` head is consumed by the caller in `module_item`
+    /// (mirroring `async reset` there), which passes their combined span as
+    /// `start`; this function picks up right after `loop`.
+    pub(super) fn sync_loop_block(&mut self, start: Span) -> Option<ModuleItem> {
+        let name = self.ident("a name for this sync loop, e.g. `sync loop find_first`")?;
+        self.expect_kw(
+            Kw::On,
+            "`on` — a sync loop names its clock edge, e.g. `on rise(clk)`",
+        )?;
+        let edge = self.clock_edge_kw()?;
+        let clock = self.clock_edge_args()?;
+        self.expect(TokKind::LParen, "`(` then the loop variable and range")?;
+        let var = self.ident("a loop variable name")?;
+        self.expect(TokKind::Colon, "`:` then the range, e.g. `i: 0..8`")?;
+        let lo = self.expr()?;
+        self.expect(TokKind::DotDot, "`..` between the range bounds")?;
+        let hi = self.expr()?;
+        self.expect(TokKind::RParen, "`)` after the range")?;
+        self.expect(
+            TokKind::RArrow,
+            "`->` then the named accumulator, e.g. `-> result: bits[8] = 0`",
+        )?;
+        let result_name = self.ident("a name for the accumulator")?;
+        self.expect(TokKind::Colon, "`:` then the accumulator's type")?;
+        let result_ty = self.ty()?;
+        self.expect(
+            TokKind::Assign,
+            "`=` then the accumulator's reset value",
+        )?;
+        let result_init = self.expr()?;
+        let (body, end) = self.seq_block()?;
+        Some(ModuleItem::SyncLoop(SyncLoop {
+            name,
+            clock,
+            edge,
+            var,
+            lo,
+            hi,
+            result_name,
+            result_ty,
+            result_init,
+            body,
+            span: start.join(end),
+        }))
+    }
 }

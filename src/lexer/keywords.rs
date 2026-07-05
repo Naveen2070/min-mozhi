@@ -116,11 +116,11 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 36] = [
+const REQUIRED_KEYS: [&str; 37] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
     "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default", "bundle",
-    "return", "loop",
+    "return", "loop", "sync",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -221,6 +221,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "bundle" => Kw::Bundle,
         "return" => Kw::Return,
         "loop" => Kw::Loop,
+        "sync" => Kw::Sync,
         _ => return None,
     })
 }
@@ -293,6 +294,14 @@ mod tests {
     }
 
     #[test]
+    fn kw_sync_is_recognized() {
+        assert!(!TABLE.is_reserved("sync"));
+        assert_eq!(TABLE.lookup("sync").unwrap().0, Kw::Sync);
+        assert_eq!(TABLE.lookup("othisai").unwrap().0, Kw::Sync);
+        assert_eq!(TABLE.lookup("ஒத்திசை").unwrap().0, Kw::Sync);
+    }
+
+    #[test]
     fn fall_is_an_active_keyword() {
         // Promoted from reserved to active for `on fall(clk)` (A3, 2026-06-17).
         // Tanglish/Tamil spellings are PROVISIONAL pending native review (R9/R11).
@@ -332,8 +341,8 @@ mod tests {
     #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 36).
-        assert_eq!(en.len(), 36);
+        // One spelling per keyword (REQUIRED_KEYS has 37).
+        assert_eq!(en.len(), 37);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.

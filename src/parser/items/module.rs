@@ -266,6 +266,14 @@ impl Parser {
             TokKind::Kw(Kw::Rise | Kw::Fall) if self.profile == Profile::Thamizh => {
                 self.on_block_thamizh()
             }
+            TokKind::Kw(Kw::Sync) => {
+                let start = self.bump().span; // sync
+                self.expect(
+                    TokKind::Kw(Kw::Loop),
+                    "`loop` — `sync` modifies a loop declaration (`sync loop <name> on rise(clk) ...`)",
+                )?;
+                self.sync_loop_block(start)
+            }
             TokKind::Kw(Kw::Repeat) => self.repeat_block(),
             TokKind::Ident(_) => {
                 let lhs = self.lvalue()?;

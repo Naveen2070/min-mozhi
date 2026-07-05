@@ -591,6 +591,33 @@ fn parses_loop_inside_on_block() {
 }
 
 #[test]
+fn sync_loop_parses() {
+    let f = parse_ok(
+        "module M {\n  clock clk\n  mem m: bits[8][8] = 0\n  in key: bits[8]\n  sync loop find_first on rise(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {\n    if m[i] == key { result <- i }\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!("expected module")
+    };
+    let sl = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::SyncLoop(sl) => Some(sl),
+            _ => None,
+        })
+        .expect("sync loop item parsed");
+    assert_eq!(sl.name.name, "find_first");
+    assert_eq!(sl.clock.name, "clk");
+    assert!(matches!(sl.edge, Edge::Rise));
+    assert_eq!(sl.var.name, "i");
+    assert!(matches!(sl.lo.kind, ExprKind::Int { value: 0, .. }));
+    assert!(matches!(sl.hi.kind, ExprKind::Int { value: 8, .. }));
+    assert_eq!(sl.result_name.name, "result");
+    assert!(matches!(sl.result_ty, Type::Signed(_)));
+    assert_eq!(sl.body.len(), 1);
+}
+
+#[test]
 fn parses_loop_inside_fn_body() {
     let f = parse_ok(
         "fn find(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\nmodule M {\n  in a: bits[8][4]\n  out o: signed[4]\n  o = find(a)\n}\n",
