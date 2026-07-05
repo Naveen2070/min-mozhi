@@ -1154,8 +1154,12 @@ impl<'a> Checker<'a> {
                     for v in values {
                         let shadowed = cx.env.insert(var.name.clone(), v);
                         cx.sigs = sigs_before.clone();
+                        let before = self.diags.len();
                         self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
                         self.unshadow(cx, &var.name, shadowed);
+                        if self.diags.len() > before {
+                            break; // one iteration's worth of errors is enough
+                        }
                     }
                     cx.sigs = sigs_before;
                 }
