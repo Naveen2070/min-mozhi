@@ -20,7 +20,7 @@ version = 1
 # so v0.1 programs cannot claim them, untranslated until each feature lands
 # (spec/03 section "Reserved words").
 reserved = [
-  "sync", "inout", "struct",
+  "inout", "struct",
   "secret", "declassify", "pipeline", "interface", "chan", "prove", "await",
   "fixed", "requires", "ensures",
   # External-Verilog / black-box-IP module construct (Phase 2+; architectural_ideas.md
@@ -146,6 +146,11 @@ tamil = "மீண்டும்"
 en = "loop"
 tanglish = "suzhal"
 tamil = "சுழல்"
+
+[keywords.sync]
+en = "sync"
+tanglish = "othisai"
+tamil = "ஒத்திசை"
 
 [keywords.import]
 en = "import"
