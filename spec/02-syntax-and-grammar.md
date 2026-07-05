@@ -697,6 +697,67 @@ module FindIndex {
   simulator lowers arrays to N independent `Val`s the same way, so both
   backends agree.
 
+### 1.15 Bounded compile-time loop — `loop`
+
+```mimz
+module BitToggle(WIDTH: int = 8) {
+  clock clk
+  reset rst
+  in  enable: bits[WIDTH]
+  reg flags: bits[WIDTH] = 0
+
+  on rise(clk) {
+    loop i: 0..WIDTH {
+      if enable[i] { flags[i] <- ~flags[i] }
+    }
+  }
+}
+```
+
+```mimz
+fn find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
+  loop i: 0..4 {
+    if vals[i] == target { return i }
+  }
+  -1
+}
+```
+
+- `loop i: lo..hi { ... }` is, like `repeat` (section 1.6), **compile-time
+  unrolling** — `lo..hi` is half-open and must be constant — but unlike
+  `repeat` (item-level only), `loop` is a _statement_: legal anywhere a
+  statement is expected inside an `on` block or a `fn` body. It generates
+  `hi-lo` copies of its body at elaboration time, one per value of `i`. It is
+  **not** a runtime loop and creates no new kind of hardware.
+- **In an `on` block:** each unrolled copy is an ordinary sequential
+  statement in the same always-block. If two iterations happen to target the
+  _same_ register, ordinary last-assignment-wins semantics decide which one
+  sticks — there is no free accumulation. Index a different slice per
+  iteration (`flags[i]`, above) to get N independent updates.
+- **In a `fn` body:** each unrolled copy is a statement in the function's
+  statement-based body (section 1.13), so `return` inside a `loop` gives
+  first-match-wins search — the compiler generates the same priority chain a
+  hand-written `if vals[0] == target { return 0 } if vals[1] == target { ... }`
+  would, and the lowest matching index always wins on a duplicate match
+  (proven end to end against a real Verilog toolchain by the `fn_array_search`
+  example's Icarus differential).
+- **The bound must fold to a compile-time constant** — the same requirement
+  as `repeat`'s `hi`.
+- **Honesty rule — bare `loop`/`suzhal`/`சுழல்` costs area, not time.**
+  Despite reading like a software `for` loop, this is not "iterate over
+  clock cycles": it unrolls at compile time, in full, before any hardware
+  exists. N iterations means **N× the hardware**, evaluated in parallel, with
+  **zero** extra clock cycles. A large bound does not make the circuit
+  slower — it makes the circuit bigger. Reach for `loop` the way you reach
+  for `repeat`: to avoid retyping N copies of a pattern by hand, not to
+  spread work across time.
+- **A future `sync loop`/`sync suzhal`** — a distinct, not-yet-implemented
+  keyword — is reserved for the opposite trade: a cycle-iterating
+  FSM-plus-counter form that spans multiple clock edges and costs cycles
+  instead of area (Deferred Features, section 7). Bare `loop`/`suzhal`/`சுழல்`
+  will never grow that behavior; if what you want is "iterate over time,"
+  that is a different, not-yet-available construct.
+
 ---
 
 ## 2. Lexical Rules
@@ -819,9 +880,11 @@ repeatBlock = "repeat" IDENT ":" constExpr ".." constExpr
 
 onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
-seqStmt     = regAssign | seqIf ;
+seqStmt     = regAssign | seqIf | seqLoop ;
 regAssign   = lvalue "<-" expr NEWLINE ;
 seqIf       = "if" expr seqBlock [ "else" ( seqIf | seqBlock ) ] ;
+seqLoop     = "loop" IDENT ":" constExpr ".." constExpr seqBlock ;
+              (* compile-time unrolled; usable inside on blocks, unlike item-level repeat *)
 
 driveStmt   = lvalue "=" expr NEWLINE ;
 lvalue      = IDENT [ "[" constExpr [ ":" constExpr ] "]" ] ;
@@ -876,11 +939,13 @@ fnDecl      = "fn" IDENT "(" [ fnParamList ] ")" "->" type
               "{" { fnStmt } expr "}" ;         (* combinational; no clocks, no regs *)
 fnParamList = fnParam { "," fnParam } ;
 fnParam     = IDENT ":" type ;
-fnStmt      = localLet | fnIf | returnStmt ;
+fnStmt      = localLet | fnIf | returnStmt | fnLoop ;
 localLet    = "let" IDENT "=" expr NEWLINE ;    (* named intermediate value *)
 returnStmt  = "return" expr NEWLINE ;           (* priority-selected result, not a silicon exit *)
 fnIf        = "if" expr "{" { fnStmt } "}"
               [ "else" ( fnIf | "{" { fnStmt } "}" ) ] ; (* else OPTIONAL, unlike ifExpr *)
+fnLoop      = "loop" IDENT ":" constExpr ".." constExpr "{" { fnStmt } "}" ;
+              (* compile-time unrolled; combine with return for first-match search *)
 fnCall      = IDENT "(" [ expr { "," expr } ] ")" ;  (* user-defined fn call *)
 ```
 
@@ -987,20 +1052,35 @@ because the `_` alternative provides no binding for `x`.
 
 ## 7. Deferred Features (explicitly out of v0.2)
 
-| Feature                                         | Target                                                |
-| ----------------------------------------------- | ----------------------------------------------------- |
-| `inout`/tristate ports                          | Phase 2                                               |
-| Enum-element and 2-D memories (`mem`)           | post-v1 (scalar `bit`/`bits`/`signed` cells ship now) |
-| Clock-domain crossing (`sync`)                  | Phase 2                                               |
-| Structs/bundles/buses                           | post-Phase 2 (stdlib time)                            |
-| `match` ranges (e.g. `0..7`)                    | v0.3+                                                 |
-| Division/modulo                                 | never as operators; stdlib divider module (Phase 4)   |
-| Wrapping/instantiating external Verilog modules | per Constitution — design in Phase 2+                 |
+| Feature                                          | Target                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------ |
+| `inout`/tristate ports                           | Phase 2                                                      |
+| Enum-element and 2-D memories (`mem`)            | post-v1 (scalar `bit`/`bits`/`signed` cells ship now)        |
+| Clock-domain crossing (`sync`)                   | Phase 2                                                      |
+| Structs/bundles/buses                            | post-Phase 2 (stdlib time)                                   |
+| `match` ranges (e.g. `0..7`)                     | v0.3+                                                        |
+| Division/modulo                                  | never as operators; stdlib divider module (Phase 4)          |
+| Wrapping/instantiating external Verilog modules  | per Constitution — design in Phase 2+                        |
+| Cycle-iterating loop (`sync loop`/`sync suzhal`) | Phase 2 (bare `loop`/`suzhal` stays area-only, section 1.15) |
 
 ---
 
 ## Changelog
 
+- **v0.2.22 (2026-07-05):** **Bounded compile-time loop `loop`/`suzhal`/`சுழல்`**
+  (new section 1.15). `loop i: lo..hi { ... }` is `repeat`'s compile-time
+  unrolling made available as a _statement_ — legal inside an `on` block
+  (`seqStmt` gains `seqLoop`) or a `fn` body (`fnStmt` gains `fnLoop`), unlike
+  `repeat`, which stays item-level only. Unrolls into `hi-lo` copies of its
+  body at elaboration time; combined with `return` (section 1.13) gives
+  first-match-wins linear search over an array/`mem`. The bound must fold to
+  a compile-time constant, same rule as `repeat`'s `hi`. **Costs area, not
+  time**: N iterations is N× the hardware, fully unrolled, zero extra clock
+  cycles — a future, differently-spelled `sync loop`/`sync suzhal` is
+  reserved for the cycle-iterating form (Deferred Features table, section 7).
+  Additive — no grammar breakage. Covered by the `fn_array_search` five-flavor
+  example (kernel == VCD == Icarus, including a duplicate-match case proving
+  first-match priority).
 - **v0.2.21 (2026-07-04):** **Array-typed `fn` parameters** (section 1.14).
   `<scalarType>[N]` trailing suffix (grammar: `type = scalarType { "[" N
 "]" }`) declares a fixed-size, immutable array — `fn` parameters and
