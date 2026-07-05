@@ -1181,7 +1181,12 @@ fn fn_loop_variable_resolves_inside_its_own_body() {
 
 #[test]
 fn seq_loop_variable_resolves_inside_on_block() {
-    let src = "module M {\n  clock clk\n  reset rst\n  in vals0: bits[8]\n  reg acc: bits[8] = 0\n  on rise(clk) {\n    loop i: 0..1 {\n      acc <- vals0\n    }\n  }\n}\n";
+    // Load-bearing: `i` is used in an arithmetic position (`vals0 +% i`), not
+    // just referenced-and-discarded — an unbound `i` here is an unavoidable
+    // E0101, so this fails if the `SeqStmt::Loop` arm's env-binding in
+    // `names.rs` ever regresses to a no-op (unlike a body that never reads
+    // `i` at all, which can't tell "bound" from "never bound").
+    let src = "module M {\n  clock clk\n  reset rst\n  in vals0: bits[8]\n  reg acc: bits[8] = 0\n  on rise(clk) {\n    loop i: 0..1 {\n      acc <- vals0 +% i\n    }\n  }\n}\n";
     check_one(src).expect("loop variable must resolve inside an on-block loop body");
 }
 
