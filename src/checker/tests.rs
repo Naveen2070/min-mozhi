@@ -1250,6 +1250,25 @@ fn fn_loop_body_width_mismatch_is_checked() {
     first_err(src, "E0415");
 }
 
+#[test]
+fn fn_loop_width_bug_independent_of_loop_var_reports_once() {
+    // The body's bug (`vals[5]` on a 2-element array) does NOT depend on `i`
+    // at all — it is equally wrong on every sampled iteration. `FnStmt::Loop`
+    // samples all of `0..3` (well under `MAX_REPEAT_CHECKS`), so a checker
+    // that walks every sampled iteration unconditionally would emit THREE
+    // E0415 diagnostics for the same bug. `ModuleItem::Repeat` and
+    // `SeqStmt::Loop` both break out of their sampling loop after the first
+    // iteration that adds a diagnostic; `FnStmt::Loop` must do the same —
+    // this test is red (3 diagnostics) without that guard and green (1) with it.
+    let src = "fn f(vals: bits[8][2]) -> bits[8] {\n  loop i: 0..3 {\n    let x = vals[5]\n  }\n  0\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  out o: bits[8]\n  o = f([a, b])\n}\n";
+    let diags = errs(src);
+    let count = diags.iter().filter(|d| d.code == Some("E0415")).count();
+    assert_eq!(
+        count, 1,
+        "expected exactly one E0415 for a loop-var-independent bug, got {count}: {diags:?}"
+    );
+}
+
 // ---- tagged-union payload types + arity (E0103/E0806) ---------------------
 
 #[test]
