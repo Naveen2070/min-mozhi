@@ -183,13 +183,10 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
                     let elems: Vec<Val> = (0..len)
                         .map(|i| r.signal(&format!("{name}_{i}")))
                         .collect::<Result<_, _>>()?;
-                    let i = eval(r, index)?.bits as usize;
-                    if i >= elems.len() {
-                        return Err(format!(
-                            "array index {i} out of range (array `{name}` has {} elements)",
-                            elems.len()
-                        ));
-                    }
+                    // Out-of-range runtime index clamps to the last element,
+                    // matching the emitter's ternary-chain default fallback and
+                    // spec/02 §1.14 (keeps sim and Verilog in agreement).
+                    let i = (eval(r, index)?.bits as usize).min(elems.len() - 1);
                     return Ok(elems[i]);
                 }
                 if r.is_mem(name) {

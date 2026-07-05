@@ -1951,3 +1951,14 @@ fn array_typed_wire_is_e0416() {
         "module M {\n  wire vals: bits[8][4] = [1, 2, 3, 4]\n  out o: bit\n  o = vals[0][0]\n}\n";
     assert!(any_code(src, "E0416"));
 }
+
+#[test]
+fn array_typed_output_with_constant_indexed_drive_is_e0416_not_a_panic() {
+    // Regression: an array-typed `out` with a single constant-range drive
+    // site used to reach report_coverage's driver-coverage width match (an
+    // `out` is the only site iterated there — `in`/`wire` never hit this
+    // arm), which had no `Type::Array` arm and panicked via `unreachable!`
+    // instead of surfacing E0416 from resolve_names.
+    let src = "module M {\n  out vals: bits[8][4]\n  vals[0] = 1\n}\n";
+    assert!(any_code(src, "E0416"));
+}

@@ -212,3 +212,14 @@ fn fn_call_with_array_argument_indexes_by_runtime_value() {
     assert!(ok, "stderr: {err}");
     assert!(out.contains("o = 40"), "got: {out}");
 }
+
+#[test]
+fn fn_call_with_array_argument_out_of_range_runtime_index_clamps_to_last_element() {
+    // `i` is bits[3] (0..7) but the array only has 4 elements — an
+    // out-of-range value must clamp to the last element, matching the
+    // emitter's ternary-chain fallback (spec/02 section 1.14), not error.
+    let src = "fn f(vals: bits[8][4], i: bits[3]) -> bits[8] {\n  vals[i]\n}\nmodule M {\n  in i: bits[3]\n  out o: bits[8]\n  o = f([10, 20, 30, 40], i)\n}\n";
+    let (ok, out, err) = eval_src(src, &["--in", "i=6"]);
+    assert!(ok, "stderr: {err}");
+    assert!(out.contains("o = 40"), "got: {out}");
+}
