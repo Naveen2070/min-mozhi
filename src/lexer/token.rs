@@ -47,6 +47,10 @@ pub enum Kw {
     /// `bundle` / `kattai` / `கட்டை` — named group of signals (feature 2.4).
     Bundle,
     Return,
+    /// `loop` / `suzhal` / `சுழல்` — bounded compile-time unroll usable
+    /// inside `on` blocks and `fn` bodies (distinct from `repeat`, which
+    /// stays item-level only).
+    Loop,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).

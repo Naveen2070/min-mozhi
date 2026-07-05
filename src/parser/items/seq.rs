@@ -110,6 +110,9 @@ impl Parser {
         if self.at_kw(Kw::If) {
             return self.seq_if();
         }
+        if self.at_kw(Kw::Loop) {
+            return self.seq_loop();
+        }
         if self.at_kw(Kw::Default) {
             let start = self.bump().span; // default
             let name = self.ident("a register name")?;
@@ -176,6 +179,32 @@ impl Parser {
         Some(SeqStmt::If { cond, then, els })
     }
 
+    /// `loopStmt = "loop" ident ":" expr ".." expr seqBlock` — same grammar
+    /// `repeat_block` uses at module-item level, usable here inside `on`.
+    fn seq_loop(&mut self) -> Option<SeqStmt> {
+        self.enter()?;
+        let r = self.seq_loop_inner();
+        self.leave();
+        r
+    }
+
+    fn seq_loop_inner(&mut self) -> Option<SeqStmt> {
+        let start = self.bump().span; // loop
+        let var = self.ident("a loop variable name")?;
+        self.expect(TokKind::Colon, "`:` then the range, e.g. `loop i: 0..8`")?;
+        let lo = self.expr()?;
+        self.expect(TokKind::DotDot, "`..` between the range bounds")?;
+        let hi = self.expr()?;
+        let (body, end) = self.seq_block()?;
+        Some(SeqStmt::Loop {
+            var,
+            lo,
+            hi,
+            body,
+            span: start.join(end),
+        })
+    }
+
     /// `thamizh`-order seq statement: either `<cond> enil seqBlock …` or the
     /// unchanged register update `lvalue <- expr`. Both can begin with an
     /// identifier, so we parse the head as an expression and let the trailing
@@ -183,6 +212,11 @@ impl Parser {
     /// assignment (the head is reinterpreted as the lvalue), `=` → the teaching
     /// error.
     fn seq_stmt_thamizh(&mut self) -> Option<SeqStmt> {
+        // `loop` is keyword-first regardless of word-order profile, same as
+        // `default` just below.
+        if self.at_kw(Kw::Loop) {
+            return self.seq_loop();
+        }
         // `default` is word-order neutral — it always leads the statement.
         if self.at_kw(Kw::Default) {
             let start = self.bump().span;

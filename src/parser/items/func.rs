@@ -77,6 +77,10 @@ impl Parser {
                 stmts.push(self.fn_return_stmt()?);
                 continue;
             }
+            if self.at_kw(Kw::Loop) {
+                stmts.push(self.fn_loop()?);
+                continue;
+            }
             if self.profile == Profile::Thamizh {
                 let head = self.binary(0)?;
                 if self.at_kw(Kw::If) {
@@ -191,6 +195,34 @@ impl Parser {
         Some(FnStmt::If { cond, then, els })
     }
 
+    /// `loopStmt = "loop" ident ":" expr ".." expr "{" {fnStmt} "}"` — same
+    /// grammar `repeat_block` uses at module-item level, usable here inside
+    /// a `fn` body.
+    fn fn_loop(&mut self) -> Option<FnStmt> {
+        self.enter()?;
+        let r = self.fn_loop_inner();
+        self.leave();
+        r
+    }
+
+    fn fn_loop_inner(&mut self) -> Option<FnStmt> {
+        let start = self.bump().span; // loop
+        let var = self.ident("a loop variable name")?;
+        self.expect(TokKind::Colon, "`:` then the range, e.g. `loop i: 0..8`")?;
+        let lo = self.expr()?;
+        self.expect(TokKind::DotDot, "`..` between the range bounds")?;
+        let hi = self.expr()?;
+        let body = self.fn_stmt_block()?;
+        let span = self.span_since(start);
+        Some(FnStmt::Loop {
+            var,
+            lo,
+            hi,
+            body,
+            span,
+        })
+    }
+
     /// `"{" {fnStmt} "}"` — a statement block with NO tail expression
     /// (unlike the top-level `fn_body`, an `if`/`else` block inside a `fn`
     /// body is statements only; the enclosing function's `tail` is still
@@ -216,6 +248,8 @@ impl Parser {
                         self.fn_let_stmt()
                     } else if self.at_kw(Kw::Return) {
                         self.fn_return_stmt()
+                    } else if self.at_kw(Kw::Loop) {
+                        self.fn_loop()
                     } else if self.profile == Profile::Thamizh {
                         match self.binary(0) {
                             Some(head) if self.at_kw(Kw::If) => self.fn_if_thamizh(head),
