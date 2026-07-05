@@ -280,6 +280,16 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.21 (2026-07-05):** Promoted `loop`/`suzhal`/`சுழல்` from **reserved**
+  to active keyword KW_LOOP for the bounded compile-time-unrolled loop usable
+  inside `on` blocks and `fn` bodies (spec/02 v0.2.22, section 1.15) —
+  distinct from `repeat`, which stays item-level only. `suzhal`/`சுழல்` had
+  been reserved since keyword-set v1 for exactly this future "controlled
+  `for`-loop"; the table row and the `reserved` list removal (`lang/keywords.toml`)
+  landed as part of the parser work, this entry documents that promotion.
+  Tanglish `suzhal` / Tamil `சுழல்` remain **PROVISIONAL** placeholders
+  pending native-speaker review (R9/R11), same status as `return`/`bundle`/
+  `default`. Removed `suzhal`/`சுழல்` from the reserved table.
 - **v0.2.20 (2026-07-04):** Documents keyword `return` (`KW_RETURN`) for
   `return EXPR` in statement-based `fn` bodies (spec/02 v0.2.20). The
   keyword itself, its grammar wiring, and this table's row landed
