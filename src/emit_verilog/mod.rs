@@ -796,6 +796,37 @@ mod tests {
     }
 
     #[test]
+    fn on_block_loop_unrolls_to_n_copies() {
+        let v = emit_src(
+            "module M {\n  in clk: bit\n  in v0: bits[8]\n  in v1: bits[8]\n  reg acc: bits[8] = 0\n  on rise(clk) {\n    loop i: 0..2 {\n      acc <- v0\n    }\n  }\n}\n",
+        );
+        // Two unrolled copies of the assignment inside the always block —
+        // both textually present since `loop` is elaboration-time unrolling,
+        // never a runtime loop.
+        assert_eq!(
+            v.matches("acc <= v0;").count(),
+            2,
+            "expected 2 unrolled copies:\n{v}"
+        );
+    }
+
+    #[test]
+    fn on_block_loop_over_budget_is_rejected() {
+        let src = format!(
+            "module M {{\n  in clk: bit\n  in v0: bits[8]\n  reg acc: bits[8] = 0\n  on rise(clk) {{\n    loop i: 0..{} {{\n      acc <- v0\n    }}\n  }}\n}}\n",
+            REPEAT_BUDGET + 1
+        );
+        let diags = emit_src_err(&src);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.msg.contains("`loop` would unroll") && d.msg.contains("limit")),
+            "expected a budget error, got: {:?}",
+            diags.iter().map(|d| &d.msg).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn nested_repeat_folds_both_variables() {
         let v = emit_src(
             "module M {\n  out y: bits[4]\n  repeat i: 0..2 {\n    repeat j: 0..2 {\n      y[i] = j\n    }\n  }\n}\n",
