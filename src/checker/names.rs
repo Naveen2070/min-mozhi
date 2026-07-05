@@ -337,7 +337,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn seq_stmts(&mut self, file: usize, sc: &Scope<'a>, env: &Env, stmts: &'a [SeqStmt]) {
+    fn seq_stmts(&mut self, file: usize, sc: &Scope<'a>, env: &mut Env, stmts: &'a [SeqStmt]) {
         for s in stmts {
             match s {
                 SeqStmt::Assign { lhs, rhs } => {
@@ -366,10 +366,25 @@ impl<'a> Checker<'a> {
                     }
                     self.expr(file, sc, env, val);
                 }
-                SeqStmt::Loop { lo, hi, body, .. } => {
-                    self.expr(file, sc, env, lo);
-                    self.expr(file, sc, env, hi);
+                SeqStmt::Loop {
+                    var, lo, hi, body, ..
+                } => {
+                    // `loop` unrolls at compile time, same as `ModuleItem::Repeat`
+                    // — its bounds must const-evaluate, so reuse `const_pos`
+                    // (which reports E0201, `repeat`'s own bound-checking path)
+                    // instead of silently defaulting a non-const bound to 0.
+                    let lo_val = self.const_pos(file, env, lo);
+                    self.const_pos(file, env, hi);
+                    // The loop variable is a compile-time int inside the body,
+                    // same one-representative-walk model as `ModuleItem::Repeat`
+                    // (per-iteration values matter only to elaboration, not name
+                    // resolution).
+                    let shadowed = env.insert(var.name.clone(), lo_val.unwrap_or(0));
                     self.seq_stmts(file, sc, env, body);
+                    match shadowed {
+                        Some(v) => env.insert(var.name.clone(), v),
+                        None => env.remove(&var.name),
+                    };
                 }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
@@ -1201,7 +1216,7 @@ impl<'a> Checker<'a> {
     /// Name-check a function declaration: validates param/return types (E0103)
     /// and checks all statements + the tail for unbound names (E0101).
     fn check_func_names(&mut self, file: usize, func: &'a FuncDecl) {
-        let env = self.file_consts[file].clone();
+        let mut env = self.file_consts[file].clone();
         let mut sc = Scope {
             names: HashMap::new(),
         };
@@ -1210,7 +1225,7 @@ impl<'a> Checker<'a> {
             sc.names.insert(param.name.name.clone(), Bind::Param);
         }
         self.ty(file, &sc, &env, &func.ret);
-        self.check_fn_stmt_names(file, &mut sc, &env, &func.stmts);
+        self.check_fn_stmt_names(file, &mut sc, &mut env, &func.stmts);
         self.expr(file, &sc, &env, &func.tail);
     }
 
@@ -1232,7 +1247,7 @@ impl<'a> Checker<'a> {
         &mut self,
         file: usize,
         sc: &mut Scope<'a>,
-        env: &Env,
+        env: &mut Env,
         stmts: &'a [FnStmt],
     ) {
         for stmt in stmts {
@@ -1257,13 +1272,26 @@ impl<'a> Checker<'a> {
                 FnStmt::Return(expr) => {
                     self.expr(file, sc, env, expr);
                 }
-                FnStmt::Loop { lo, hi, body, .. } => {
-                    self.expr(file, sc, env, lo);
-                    self.expr(file, sc, env, hi);
-                    let mut body_sc = Scope {
+                FnStmt::Loop {
+                    var, lo, hi, body, ..
+                } => {
+                    // Same const-bound requirement as `repeat`/`SeqStmt::Loop`
+                    // above — reuse `const_pos` (E0201 on a non-const bound)
+                    // rather than silently defaulting to 0.
+                    let lo_val = self.const_pos(file, env, lo);
+                    self.const_pos(file, env, hi);
+                    let shadowed = env.insert(var.name.clone(), lo_val.unwrap_or(0));
+                    // Fresh scope clone: same branch-local-scope discipline as
+                    // the `If` arm above — a `let` inside the loop body must
+                    // not leak past it, same soundness rule as an if-branch.
+                    let mut loop_sc = Scope {
                         names: sc.names.clone(),
                     };
-                    self.check_fn_stmt_names(file, &mut body_sc, env, body);
+                    self.check_fn_stmt_names(file, &mut loop_sc, env, body);
+                    match shadowed {
+                        Some(v) => env.insert(var.name.clone(), v),
+                        None => env.remove(&var.name),
+                    };
                 }
                 FnStmt::Error(_) => {} // parse-recovery placeholder
             }

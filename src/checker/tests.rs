@@ -1167,6 +1167,69 @@ fn let_bound_only_inside_an_if_branch_is_not_visible_to_width_checking_outside_i
     );
 }
 
+// ---- `loop` name resolution ------------------------------------------------
+
+#[test]
+fn fn_loop_variable_resolves_inside_its_own_body() {
+    // Array-typed module ports are E0416 (see `array_typed_module_port_is_e0416`
+    // below) — array types are `fn`-parameter only, so (unlike the brief's
+    // literal draft) the caller assembles the array from scalar ports via an
+    // array literal, exactly like the existing `fn_array_search` example does.
+    let src = "fn find(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  in c: bits[8]\n  in d: bits[8]\n  out o: signed[4]\n  o = find([a, b, c, d])\n}\n";
+    check_one(src).expect("loop variable `i` must resolve inside the loop body");
+}
+
+#[test]
+fn seq_loop_variable_resolves_inside_on_block() {
+    let src = "module M {\n  clock clk\n  reset rst\n  in vals0: bits[8]\n  reg acc: bits[8] = 0\n  on rise(clk) {\n    loop i: 0..1 {\n      acc <- vals0\n    }\n  }\n}\n";
+    check_one(src).expect("loop variable must resolve inside an on-block loop body");
+}
+
+#[test]
+fn fn_loop_variable_does_not_leak_outside_the_loop() {
+    // Mirrors the `let`-leak test below, but for the loop VARIABLE itself
+    // (the env shadow/remove cleanup), not a `let` inside the body.
+    let src = "fn find(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  i\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  in c: bits[8]\n  in d: bits[8]\n  out o: signed[4]\n  o = find([a, b, c, d])\n}\n";
+    assert!(
+        any_code(src, "E0101"),
+        "`i` is only bound inside the loop — it must not leak into the tail"
+    );
+}
+
+#[test]
+fn seq_loop_variable_does_not_leak_outside_the_loop() {
+    let src = "module M {\n  clock clk\n  reset rst\n  in vals0: bits[8]\n  reg acc: bits[8] = 0\n  on rise(clk) {\n    loop i: 0..1 {\n      acc <- vals0\n    }\n    acc <- i\n  }\n}\n";
+    assert!(
+        any_code(src, "E0101"),
+        "`i` is only bound inside the loop — it must not leak past it in the on-block"
+    );
+}
+
+#[test]
+fn fn_loop_local_let_does_not_leak_outside_the_loop() {
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  loop i: 0..1 {\n    let x = a\n  }\n  x\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    assert!(
+        any_code(src, "E0101"),
+        "`x` is only bound inside the loop body — it must not leak past it"
+    );
+}
+
+#[test]
+fn non_constant_seq_loop_bound_is_e0201() {
+    // `loop`, like `repeat`, unrolls at compile time — its bounds must
+    // const-evaluate. Mirrors `non_constant_repeat_bound_is_e0201` above.
+    let src = "module M {\n  clock clk\n  reset rst\n  in x: bits[4]\n  reg acc: bit = 0\n  on rise(clk) {\n    loop i: 0..x {\n      acc <- 0\n    }\n  }\n}\n";
+    let d = first_err(src, "E0201");
+    assert!(d.msg.contains("not a compile-time constant"));
+}
+
+#[test]
+fn non_constant_fn_loop_bound_is_e0201() {
+    let src = "fn f(n: bits[4]) -> bit {\n  loop i: 0..n {\n    let x = i\n  }\n  0\n}\nmodule M {\n  in n: bits[4]\n  out o: bit\n  o = f(n)\n}\n";
+    let d = first_err(src, "E0201");
+    assert!(d.msg.contains("not a compile-time constant"));
+}
+
 // ---- tagged-union payload types + arity (E0103/E0806) ---------------------
 
 #[test]
