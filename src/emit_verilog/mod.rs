@@ -126,6 +126,11 @@ fn collect_fn_stmt_calls(stmts: &[FnStmt], out: &mut Vec<String>) {
                 }
             }
             FnStmt::Return(expr) => collect_fn_calls(expr, out),
+            FnStmt::Loop { lo, hi, body, .. } => {
+                collect_fn_calls(lo, out);
+                collect_fn_calls(hi, out);
+                collect_fn_stmt_calls(body, out);
+            }
             FnStmt::Error(_) => {}
         }
     }

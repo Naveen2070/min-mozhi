@@ -327,6 +327,11 @@ fn run_seq(
                 }
             }
             SeqStmt::Default { .. } => {} // already processed above
+            SeqStmt::Loop { .. } => {
+                // Real unrolling (bounds eval + N `run_seq` passes) is a
+                // later task's job — `loop` isn't parseable until Task 2, so
+                // this arm is unreachable today.
+            }
             // Unreachable: the kernel runs on a strict-parsed tree, which
             // carries no `Error` placeholder.
             SeqStmt::Error(_) => {}
