@@ -208,13 +208,10 @@ impl Pretty {
             FnStmt::Loop {
                 var, lo, hi, body, ..
             } => {
-                // ponytail: no `Kw::Loop` yet (the keyword table entry is
-                // Task 2's job — parser support lands with it); hardcode the
-                // English spelling since the parser never produces this node
-                // today, so this text is never actually round-tripped.
+                let kw = self.kw(Kw::Loop);
                 let lo_s = self.expr(lo, ind);
                 let hi_s = self.expr(hi, ind);
-                let head = format!("loop {}: {lo_s}..{hi_s} {{", var.name);
+                let head = format!("{kw} {}: {lo_s}..{hi_s} {{", var.name);
                 self.line(&head);
                 self.indent += 1;
                 for s in body {
@@ -530,11 +527,10 @@ impl Pretty {
             SeqStmt::Loop {
                 var, lo, hi, body, ..
             } => {
-                // ponytail: hardcoded "loop" spelling — see the matching
-                // note on `FnStmt::Loop` above; `Kw::Loop` lands in Task 2.
+                let kw = self.kw(Kw::Loop);
                 let lo_s = self.expr(lo, ind);
                 let hi_s = self.expr(hi, ind);
-                let head = format!("loop {}: {lo_s}..{hi_s} {{", var.name);
+                let head = format!("{kw} {}: {lo_s}..{hi_s} {{", var.name);
                 self.line(&head);
                 self.indent += 1;
                 for s in body {

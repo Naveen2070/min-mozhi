@@ -562,6 +562,57 @@ fn parses_repeat_and_const() {
 }
 
 #[test]
+fn parses_loop_inside_on_block() {
+    let f = parse_ok(
+        "module M {\n  in clk: bit\n  reg acc: bits[8] = 0\n  on rise(clk) {\n    loop i: 0..4 {\n      acc <- acc\n    }\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!("expected module")
+    };
+    let on = m
+        .items
+        .iter()
+        .find_map(|i| match i {
+            ModuleItem::On(o) => Some(o),
+            _ => None,
+        })
+        .expect("an `on` block");
+    assert_eq!(on.body.len(), 1);
+    let SeqStmt::Loop {
+        var, lo, hi, body, ..
+    } = &on.body[0]
+    else {
+        panic!("expected Loop")
+    };
+    assert_eq!(var.name, "i");
+    assert!(matches!(lo.kind, ExprKind::Int { value: 0, .. }));
+    assert!(matches!(hi.kind, ExprKind::Int { value: 4, .. }));
+    assert_eq!(body.len(), 1);
+}
+
+#[test]
+fn parses_loop_inside_fn_body() {
+    let f = parse_ok(
+        "fn find(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\nmodule M {\n  in a: bits[8][4]\n  out o: signed[4]\n  o = find(a)\n}\n",
+    );
+    let TopItem::Func(fd) = &f.items[0] else {
+        panic!("not a func")
+    };
+    assert_eq!(fd.stmts.len(), 1);
+    let FnStmt::Loop {
+        var, lo, hi, body, ..
+    } = &fd.stmts[0]
+    else {
+        panic!("expected Loop")
+    };
+    assert_eq!(var.name, "i");
+    assert!(matches!(lo.kind, ExprKind::Int { value: 0, .. }));
+    assert!(matches!(hi.kind, ExprKind::Int { value: 4, .. }));
+    assert_eq!(body.len(), 1);
+    assert!(matches!(body[0], FnStmt::If { .. }));
+}
+
+#[test]
 fn parses_test_block() {
     parse_ok(
         "test \"counts\" for Counter(WIDTH: 4) {\n  tick(clk)\n  expect count == 1\n  tick(clk, 3)\n  expect count == 4\n}\n",
