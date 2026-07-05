@@ -866,10 +866,45 @@ impl Emitter<'_> {
                     self.out.push_str(&format!("{pad}end\n"));
                 }
                 SeqStmt::Default { .. } => {} // already emitted above
-                SeqStmt::Loop { .. } => {
-                    // Unrolling into `hi-lo` copies of `body` is a later
-                    // task's job (`loop` isn't parseable until Task 2, so
-                    // this arm is unreachable today).
+                SeqStmt::Loop {
+                    var,
+                    lo,
+                    hi,
+                    body,
+                    span,
+                } => {
+                    let (Some(lo_v), Some(hi_v)) = (self.eval_const(lo), self.eval_const(hi))
+                    else {
+                        continue;
+                    };
+                    let count = (hi_v - lo_v).max(0);
+                    if count > self.repeat_budget {
+                        self.err(
+                            *span,
+                            format!(
+                                "`loop` would unroll {count} times, over the limit of {}",
+                                crate::REPEAT_BUDGET
+                            ),
+                            "this is compile-time hardware generation, not a runtime loop — \
+                             narrow the range (a datapath this wide is almost certainly a typo)",
+                        );
+                        continue;
+                    }
+                    self.repeat_budget -= count;
+                    let mut i = lo_v;
+                    while i < hi_v {
+                        let shadowed = self.env.insert(var.name.clone(), i);
+                        // Same `depth`, not `depth + 1`: unlike `SeqStmt::If`,
+                        // a `loop` introduces no new Verilog block — its body
+                        // is a literal textual duplicate of hand-written code,
+                        // not a nested scope.
+                        self.seq_stmts(body, depth);
+                        match shadowed {
+                            Some(v) => self.env.insert(var.name.clone(), v),
+                            None => self.env.remove(&var.name),
+                        };
+                        i += 1;
+                    }
                 }
                 // Unreachable on the codegen path: `parse` rejects a tree with
                 // any `Error` node, so emission never sees one.
