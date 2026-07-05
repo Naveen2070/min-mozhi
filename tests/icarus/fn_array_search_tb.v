@@ -71,6 +71,17 @@ module fn_array_search_tb;
     check(8'd10, 8'd20, 8'd30, 8'd40, 8'd99, 3'd5, -1, 8'd40);
     check(8'd10, 8'd20, 8'd30, 8'd40, 8'd99, 3'd7, -1, 8'd40);
 
+    // DUPLICATE MATCH: target present at both index 0 (a) and index 2 (c).
+    // find_index now compiles from `loop i: 0..4 { if vals[i] == target {
+    // return i } }` (Task 10) instead of four hand-unrolled ifs — the
+    // LOWER index (0) must still win, proving the loop-unroll's
+    // continuation-threading preserves return's first-match priority
+    // against a REAL compiled Verilog toolchain, not just our own two
+    // backends agreeing with each other.
+    check(8'd77, 8'd20, 8'd77, 8'd40, 8'd77, 3'd0, 0, 8'd77);
+    // Duplicate match at index 1 and 3: lower (1) must win.
+    check(8'd10, 8'd55, 8'd30, 8'd55, 8'd55, 3'd0, 1, 8'd10);
+
     $display("PASS");
     $finish;
   end

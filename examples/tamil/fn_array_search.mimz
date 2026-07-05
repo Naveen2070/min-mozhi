@@ -4,6 +4,13 @@
 // roadmap): the array is not real Verilog hardware, it is four
 // independent scalar ports under the hood.
 //
+// `find_index` also demonstrates `சுழல்` (loop, the feature this whole
+// roadmap motivated): the body unrolls at compile time into the same
+// nested if/return chain a hand-written version would use, so
+// `திரும்பு`'s first-match priority is preserved — on a duplicate match
+// the LOWER index always wins (proven end to end against a real Verilog
+// toolchain by the Icarus differential test).
+//
 // `pick` demonstrates the runtime-index side of the same feature: `idx` is
 // not a compile-time constant, so the emitter generates a ternary-chain
 // mux over vals_0..vals_3 (spec 02 section 1.14). Since `idx` is bits[3]
@@ -11,10 +18,9 @@
 // falls through the generated chain to the last element, vals_3.
 
 சார்பு find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
-  எனில் vals[0] == target { திரும்பு 0 }
-  எனில் vals[1] == target { திரும்பு 1 }
-  எனில் vals[2] == target { திரும்பு 2 }
-  எனில் vals[3] == target { திரும்பு 3 }
+  சுழல் i: 0..4 {
+    எனில் vals[i] == target { திரும்பு i }
+  }
   -1
 }
 
