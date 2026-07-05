@@ -9,6 +9,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use crate::REPEAT_BUDGET;
 use crate::ast::{self, BinOp, Builtin, Expr, ExprKind, FnStmt, FuncDecl, Pattern, Type, UnOp};
 
 /// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
@@ -379,11 +380,43 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                 let v = eval(env, expr)?;
                 return Ok(FnFlow::Returned(v));
             }
-            FnStmt::Loop { .. } => {
-                // Real unrolling (bounds eval + per-iteration `eval_fn_stmts`,
-                // propagating an early `Returned` same as the `If` arm above)
-                // is a later task's job — `loop` isn't parseable until Task 2,
-                // so this arm is unreachable today.
+            FnStmt::Loop {
+                var, lo, hi, body, ..
+            } => {
+                let lo_v = eval(env, lo)?.bits as i128;
+                let hi_v = eval(env, hi)?.bits as i128;
+                let count = (hi_v - lo_v).max(0);
+                if count > REPEAT_BUDGET {
+                    return Err(format!(
+                        "`loop` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                    ));
+                }
+                // Bind the loop variable into `locals` (owned, mutable) for
+                // each iteration, shadowing/restoring same as every other
+                // compile-time loop variable in this codebase (Task 8's
+                // `SeqStmt::Loop` in kernel.rs). `return` inside `body`
+                // propagates via ordinary Rust early-return — the FIRST
+                // iteration that returns stops the `while` immediately, so a
+                // later iteration's match is never even evaluated. That's
+                // first-match-wins for free, no continuation-threading
+                // needed (unlike the emitter's CPS lowering, Task 7).
+                let mut i = lo_v;
+                while i < hi_v {
+                    let shadowed = env.locals.insert(var.name.clone(), Val::from_int(i));
+                    let flow = eval_fn_stmts(env, body)?;
+                    match shadowed {
+                        Some(v) => {
+                            env.locals.insert(var.name.clone(), v);
+                        }
+                        None => {
+                            env.locals.remove(&var.name);
+                        }
+                    }
+                    if let FnFlow::Returned(v) = flow {
+                        return Ok(FnFlow::Returned(v));
+                    }
+                    i += 1;
+                }
             }
             FnStmt::Error(_) => {} // parse-recovery placeholder; unreachable on the eval path
         }
@@ -768,5 +801,90 @@ mod tests {
             &BTreeMap::new(),
         );
         assert!(result.is_err(), "expected a clean Err, got {result:?}");
+    }
+
+    /// Wraps `fn_src` (one or more `fn` decls) in a throwaway module that
+    /// calls `fn_name` with `args` as inline literals (an arg slice of one
+    /// element becomes a scalar literal, a longer slice becomes an array
+    /// literal `[..]` — the `ArrayLit` argument-expansion path `eval_fn_call`
+    /// already exercises), then reads the result back through the
+    /// combinational evaluator. The output port's declared width doesn't
+    /// affect the returned value (comb.rs resolves the driver expression's
+    /// OWN width, see `eval_outputs`'s step 5), so the result is sign-extended
+    /// per its actual width/signed straight from `Val::as_i128`.
+    fn eval_fn_call_one(fn_src: &str, fn_name: &str, args: &[&[u128]]) -> i128 {
+        let call_args: Vec<String> = args
+            .iter()
+            .map(|a| match *a {
+                [one] => one.to_string(),
+                many => format!(
+                    "[{}]",
+                    many.iter()
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            })
+            .collect();
+        let src = format!(
+            "{fn_src}\nmodule M {{\n  out result: bits[8]\n  result = {fn_name}({})\n}}\n",
+            call_args.join(", ")
+        );
+        let tokens = crate::lexer::lex(&src).expect("lex");
+        let file = crate::parser::parse(tokens).expect("parse");
+        let outputs = super::super::comb::eval_outputs(
+            std::slice::from_ref(&file),
+            Some("M"),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect("eval_outputs");
+        let out = outputs
+            .into_iter()
+            .find(|o| o.name == "result")
+            .expect("module declares `result`");
+        Val::new(out.value, out.width, out.signed).as_i128()
+    }
+
+    #[test]
+    fn fn_loop_with_return_finds_first_match_in_sim() {
+        let result = eval_fn_call_one(
+            "fn find_first_set(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\n",
+            "find_first_set",
+            &[&[0x00, 0xFF, 0x00, 0x00]],
+        );
+        assert_eq!(result, 1);
+    }
+
+    #[test]
+    fn fn_loop_with_return_first_match_wins_on_duplicate_in_sim() {
+        let result = eval_fn_call_one(
+            "fn find_first_set(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\n",
+            "find_first_set",
+            &[&[0xFF, 0x00, 0xFF, 0x00]], // matches at BOTH index 0 and index 2
+        );
+        assert_eq!(result, 0, "must return the LOWER index, not 2");
+    }
+
+    #[test]
+    fn fn_loop_over_budget_errors_in_sim() {
+        let src = format!(
+            "fn overflow(x: bits[8]) -> bits[8] {{\n  loop i: 0..{} {{\n    if x == 0xFF {{ return x }}\n  }}\n  x\n}}\n",
+            crate::REPEAT_BUDGET + 1
+        );
+        let full = format!(
+            "{src}\nmodule M {{\n  in x: bits[8]\n  out result: bits[8]\n  result = overflow(x)\n}}\n"
+        );
+        let tokens = crate::lexer::lex(&full).expect("lex");
+        let file = crate::parser::parse(tokens).expect("parse");
+        let inputs: BTreeMap<String, u128> = [("x".to_string(), 1u128)].into_iter().collect();
+        let result = super::super::comb::eval_outputs(
+            std::slice::from_ref(&file),
+            Some("M"),
+            &inputs,
+            &BTreeMap::new(),
+        );
+        let err = result.expect_err("over-budget `loop` must error, not hang or overflow");
+        assert!(err.contains("`loop` would unroll"), "got: {err}");
     }
 }
