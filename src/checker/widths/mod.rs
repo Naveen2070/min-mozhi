@@ -786,12 +786,29 @@ impl<'a> Checker<'a> {
                     let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
                     self.check_expr(cx, val, expected);
                 }
-                SeqStmt::Loop { lo, hi, body, .. } => {
-                    // Recurse for inner errors; bound values are an
-                    // elaboration-slice concern, same as `repeat` above.
-                    let _ = self.infer_ty(cx, lo);
-                    let _ = self.infer_ty(cx, hi);
-                    self.seq_width_stmts(cx, body);
+                SeqStmt::Loop {
+                    var, lo, hi, body, ..
+                } => {
+                    // Bounds that do not const-eval were reported by pass 3.
+                    let (Ok(lo_v), Ok(hi_v)) =
+                        (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
+                    else {
+                        continue;
+                    };
+                    let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
+                        vec![lo_v, lo_v + 1, hi_v - 1]
+                    } else {
+                        (lo_v..hi_v).collect()
+                    };
+                    for v in values {
+                        let shadowed = cx.env.insert(var.name.clone(), v);
+                        let before = self.diags.len();
+                        self.seq_width_stmts(cx, body);
+                        self.unshadow(cx, &var.name, shadowed);
+                        if self.diags.len() > before {
+                            break;
+                        }
+                    }
                 }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
@@ -1119,11 +1136,27 @@ impl<'a> Checker<'a> {
                     let ty = self.infer_ty(cx, expr);
                     self.check_return_ty(cx, expr.span, ty, ret_ty, func_name);
                 }
-                FnStmt::Loop { lo, hi, body, .. } => {
-                    let _ = self.infer_ty(cx, lo);
-                    let _ = self.infer_ty(cx, hi);
+                FnStmt::Loop {
+                    var, lo, hi, body, ..
+                } => {
+                    // Bounds that do not const-eval were reported by pass 3.
+                    let (Ok(lo_v), Ok(hi_v)) =
+                        (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
+                    else {
+                        continue;
+                    };
+                    let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
+                        vec![lo_v, lo_v + 1, hi_v - 1]
+                    } else {
+                        (lo_v..hi_v).collect()
+                    };
                     let sigs_before = cx.sigs.clone();
-                    self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                    for v in values {
+                        let shadowed = cx.env.insert(var.name.clone(), v);
+                        cx.sigs = sigs_before.clone();
+                        self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                        self.unshadow(cx, &var.name, shadowed);
+                    }
                     cx.sigs = sigs_before;
                 }
                 FnStmt::Error(_) => {} // parse-recovery placeholder
