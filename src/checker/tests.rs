@@ -1235,6 +1235,21 @@ fn non_constant_fn_loop_bound_is_e0201() {
     assert!(d.msg.contains("not a compile-time constant"));
 }
 
+#[test]
+fn fn_loop_body_width_mismatch_is_checked() {
+    // `vals` has 2 elements (indices 0..=1), but the loop runs `i: 0..3` —
+    // an out-of-range constant index at `i == 2`. This is caught ONLY if the
+    // width pass actually binds `i` to each sampled compile-time value while
+    // walking the body (as `repeat` does for its own loop var): a bare
+    // recursion that never binds `i` leaves `vals[i]`'s index type `Unknown`
+    // (see `ident_ty`'s `cx.env` lookup), which silently skips the E0415
+    // range check entirely — so this test is red under the old placeholder
+    // arm (bare recursion, no env binding) and green only once sampling with
+    // env insertion is added.
+    let src = "fn f(vals: bits[8][2]) -> bits[8] {\n  loop i: 0..3 {\n    if i == 2 { return vals[i] }\n  }\n  0\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  out o: bits[8]\n  o = f([a, b])\n}\n";
+    first_err(src, "E0415");
+}
+
 // ---- tagged-union payload types + arity (E0103/E0806) ---------------------
 
 #[test]
