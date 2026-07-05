@@ -647,9 +647,10 @@ impl<'a> Checker<'a> {
                 Type::Named(_) => None,
                 // ponytail: bundle ports have no scalar drive extent in this pass
                 Type::Bundle { .. } => None,
-                Type::Array { .. } => unreachable!(
-                    "Task 6 wires this up (or confirms arrays, fn-param/let-only in this plan, can never reach module-output driver-coverage checking)"
-                ),
+                // ponytail: array-typed module signals are rejected earlier by
+                // resolve_names (E0416); skip coverage like bundles do so that
+                // diagnostic surfaces instead of a panic.
+                Type::Array { .. } => None,
             };
             let Some(width) = width else { continue };
             // A zero-width output is already an E0410 elsewhere; coverage
