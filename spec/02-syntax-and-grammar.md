@@ -700,7 +700,9 @@ module FindIndex {
 ### 1.15 Bounded compile-time loop — `loop`
 
 ```mimz
-module BitToggle(WIDTH: int = 8) {
+module BitToggle {
+  const WIDTH: int = 8
+
   clock clk
   reset rst
   in  enable: bits[WIDTH]
