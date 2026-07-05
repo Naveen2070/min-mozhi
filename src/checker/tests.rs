@@ -1958,6 +1958,25 @@ fn return_as_last_statement_before_tail_is_not_e0812() {
     check_one(src).expect("return inside an if, followed by unrelated code, is not E0812");
 }
 
+#[test]
+fn fn_loop_body_return_followed_by_more_code_is_unreachable() {
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  loop i: 0..1 {\n    return a\n    let x = a\n  }\n  0\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    let err =
+        check_one(src).expect_err("`let x` after `return` inside the loop body is unreachable");
+    assert!(err.iter().any(|d| d.code == Some("E0812")));
+}
+
+#[test]
+fn fn_loop_after_return_in_sibling_branch_is_not_flagged() {
+    // Deliberately narrow scope (matches E0812's documented "no full
+    // reachability analysis" rule): a `return` inside an `if`'s branch does
+    // NOT make a `loop` that follows the `if` (at the outer level)
+    // unreachable, since neither branch of the `if` is unconditional here.
+    let src = "fn f(a: bits[8]) -> bits[8] {\n  if a[0] == 1 { return a }\n  loop i: 0..1 {\n    let x = a\n  }\n  0\n}\nmodule M {\n  in a: bits[8]\n  out o: bits[8]\n  o = f(a)\n}\n";
+    check_one(src)
+        .expect("a `loop` after a conditional (non-exhaustive) return is not unreachable");
+}
+
 // ---- array-typed fn params: element type + length (E0411/E0412) ----------
 
 #[test]
