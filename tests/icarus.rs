@@ -332,6 +332,77 @@ fn self_checking_pure_tamil_testbenches_pass() {
     run_self_checking(&bin, &PURE_TESTBENCHES);
 }
 
+/// Targeted differential: `find_index`'s duplicate-match case is, per the
+/// loop-feature design, the single highest-value test in the whole feature —
+/// the only one exercising the REAL, compiled Verilog toolchain end to end.
+/// Task 7 (emitter) and Task 9 (our own simulator) already proved
+/// first-match-wins on a duplicate in isolation via Rust unit tests; this
+/// builds one explicit input vector with the search key at TWO positions
+/// (index 0 and index 2) and asserts our own simulator kernel AND real
+/// `iverilog`/`vvp`, run against the ACTUAL compiled example, both return the
+/// LOWER index — proving the loop-unroll's continuation-threading in the
+/// emitter didn't regress relative to the kernel.
+#[test]
+fn fn_array_search_duplicate_match_lower_index_wins_via_icarus() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    let example = "english/fn_array_search.mimz";
+    let path = repo().join("examples").join(example);
+    let files = match mimz::project::load_project(&path) {
+        Ok(f) => f,
+        Err(_) => panic!("load_project failed for {example}"),
+    };
+    let asts: Vec<File> = files.iter().map(|f| f.ast.clone()).collect();
+    let design = elaborate_project(&asts, Some("FindIndex"), &BTreeMap::new()).expect("elaborates");
+
+    let inputs: Vec<(String, u32)> = design
+        .inputs
+        .iter()
+        .map(|s| (s.name.clone(), s.width.bits))
+        .collect();
+    let outputs: Vec<(String, u32)> = design
+        .outputs
+        .iter()
+        .map(|s| (s.name.clone(), s.width.bits))
+        .collect();
+
+    // target = 0xFF, present at BOTH index 0 (a) and index 2 (c).
+    let vector: BTreeMap<String, u128> = [
+        ("a".to_string(), 0xFFu128),
+        ("b".to_string(), 0x10),
+        ("c".to_string(), 0xFF),
+        ("d".to_string(), 0x20),
+        ("target".to_string(), 0xFF),
+        ("pick_idx".to_string(), 0),
+    ]
+    .into_iter()
+    .collect();
+
+    let tl = comb_run(design, std::slice::from_ref(&vector)).expect("our comb sim runs");
+    let kernel_idx = tl.frames[0].values["idx"];
+    assert_eq!(
+        kernel_idx, 0,
+        "our own simulator must return the LOWER duplicate index (0), got {kernel_idx}"
+    );
+
+    let tb = comb_testbench(
+        "FindIndex",
+        &[],
+        &inputs,
+        &outputs,
+        std::slice::from_ref(&vector),
+    );
+    let design_v = compile_example(&path);
+    let stdout = run_vvp(&bin, example, &design_v, &tb);
+    let icarus = parse_icarus(&stdout);
+    let icarus_idx = icarus[&0]["idx"];
+    assert_eq!(
+        icarus_idx, 0,
+        "real iverilog/vvp must return the LOWER duplicate index (0), got {icarus_idx}"
+    );
+}
+
 // ---- Layer 3 (Phase 1.5 B8 + C1): OUR simulator vs Icarus, bit-for-bit ----
 //
 // Layer 2 compares Icarus against hand-written semantic asserts. Layer 3 compares
