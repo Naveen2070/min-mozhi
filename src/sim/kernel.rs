@@ -17,6 +17,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use crate::REPEAT_BUDGET;
 use crate::ast::{Edge, Expr, FuncDecl, SeqStmt};
 
 use super::elaborate::{Design, Width};
@@ -327,10 +328,36 @@ fn run_seq(
                 }
             }
             SeqStmt::Default { .. } => {} // already processed above
-            SeqStmt::Loop { .. } => {
-                // Real unrolling (bounds eval + N `run_seq` passes) is a
-                // later task's job — `loop` isn't parseable until Task 2, so
-                // this arm is unreachable today.
+            SeqStmt::Loop {
+                var, lo, hi, body, ..
+            } => {
+                let lo_v = value::eval(env, lo)?.bits as i128;
+                let hi_v = value::eval(env, hi)?.bits as i128;
+                let count = (hi_v - lo_v).max(0);
+                if count > REPEAT_BUDGET {
+                    return Err(format!(
+                        "`loop` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                    ));
+                }
+                // Bind the loop variable into `known` (owned, mutable leaf
+                // storage) for each iteration — `consts` is an immutable
+                // borrow and can't host a per-iteration value. Shadow the
+                // previous binding (if any) and restore it after, same
+                // discipline as every other compile-time loop variable here.
+                let mut i = lo_v;
+                while i < hi_v {
+                    let shadowed = env.known.insert(var.name.clone(), Val::from_int(i));
+                    run_seq(env, body, next, next_mems, widths)?;
+                    match shadowed {
+                        Some(v) => {
+                            env.known.insert(var.name.clone(), v);
+                        }
+                        None => {
+                            env.known.remove(&var.name);
+                        }
+                    }
+                    i += 1;
+                }
             }
             // Unreachable: the kernel runs on a strict-parsed tree, which
             // carries no `Error` placeholder.
@@ -575,6 +602,36 @@ mod tests {
         assert_eq!(s.peek("y").unwrap(), 13); // r = 1
         s.tick("clk").unwrap();
         assert_eq!(s.peek("y").unwrap(), 14); // r = 2
+    }
+
+    #[test]
+    fn on_block_loop_unrolls_at_runtime() {
+        // Last unrolled copy wins (ordinary on-block last-write-wins
+        // semantics, no early exit): i runs 0,1,2,3 and `acc <- i` on the
+        // final iteration (i = 3) is what survives.
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  reg acc: bits[8] = 0\n  \
+             on rise(clk) {\n    loop i: 0..4 {\n      acc <- i\n    }\n  }\n}\n",
+        );
+        s.set("rst", 0).unwrap();
+        s.tick("clk").unwrap();
+        assert_eq!(s.peek("acc").unwrap(), 3);
+    }
+
+    #[test]
+    fn on_block_loop_over_budget_errors_at_runtime() {
+        let src = format!(
+            "module M {{\n  clock clk\n  reset rst\n  in v0: bits[8]\n  reg acc: bits[8] = 0\n  \
+             on rise(clk) {{\n    loop i: 0..{} {{\n      acc <- v0\n    }}\n  }}\n}}\n",
+            crate::REPEAT_BUDGET + 1
+        );
+        let mut s = sim(&src);
+        s.set("rst", 0).unwrap();
+        s.set("v0", 1).unwrap();
+        let err = s
+            .tick("clk")
+            .expect_err("over-budget loop must error, not hang or overflow");
+        assert!(err.contains("`loop` would unroll"), "got: {err}");
     }
 
     #[test]
