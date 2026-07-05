@@ -116,11 +116,11 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 35] = [
+const REQUIRED_KEYS: [&str; 36] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
     "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default", "bundle",
-    "return",
+    "return", "loop",
 ];
 
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
@@ -220,6 +220,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "default" => Kw::Default,
         "bundle" => Kw::Bundle,
         "return" => Kw::Return,
+        "loop" => Kw::Loop,
         _ => return None,
     })
 }
@@ -282,6 +283,16 @@ mod tests {
     }
 
     #[test]
+    fn kw_loop_is_recognized() {
+        assert!(!TABLE.is_reserved("loop"));
+        assert!(!TABLE.is_reserved("suzhal"));
+        assert!(!TABLE.is_reserved("சுழல்"));
+        assert_eq!(TABLE.lookup("loop").unwrap().0, Kw::Loop);
+        assert_eq!(TABLE.lookup("suzhal").unwrap().0, Kw::Loop);
+        assert_eq!(TABLE.lookup("சுழல்").unwrap().0, Kw::Loop);
+    }
+
+    #[test]
     fn fall_is_an_active_keyword() {
         // Promoted from reserved to active for `on fall(clk)` (A3, 2026-06-17).
         // Tanglish/Tamil spellings are PROVISIONAL pending native review (R9/R11).
@@ -321,8 +332,8 @@ mod tests {
     #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 35).
-        assert_eq!(en.len(), 35);
+        // One spelling per keyword (REQUIRED_KEYS has 36).
+        assert_eq!(en.len(), 36);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.
