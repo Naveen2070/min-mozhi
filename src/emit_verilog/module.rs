@@ -510,6 +510,13 @@ impl Emitter<'_> {
                     "{pad}if ({c}) begin\n{then_code}{pad}end else begin\n{else_code}{pad}end\n"
                 )
             }
+            Some((FnStmt::Loop { .. }, tail_stmts)) => {
+                // Unrolling into `hi-lo` copies of `body` is a later task's
+                // job (`loop` isn't parseable until Task 2, so this arm is
+                // unreachable today) — fall through to the continuation for
+                // now, same placeholder shape as the `Error` arm below.
+                self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays)
+            }
             Some((FnStmt::Error(_), tail_stmts)) => {
                 self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays)
             }
@@ -859,6 +866,11 @@ impl Emitter<'_> {
                     self.out.push_str(&format!("{pad}end\n"));
                 }
                 SeqStmt::Default { .. } => {} // already emitted above
+                SeqStmt::Loop { .. } => {
+                    // Unrolling into `hi-lo` copies of `body` is a later
+                    // task's job (`loop` isn't parseable until Task 2, so
+                    // this arm is unreachable today).
+                }
                 // Unreachable on the codegen path: `parse` rejects a tree with
                 // any `Error` node, so emission never sees one.
                 SeqStmt::Error(_) => {}
@@ -1151,6 +1163,9 @@ fn collect_assigned<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a str>) {
                     out.push(&name.name);
                 }
             }
+            SeqStmt::Loop { body, .. } => {
+                collect_assigned(body, out);
+            }
             SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
@@ -1170,6 +1185,9 @@ fn fn_all_locals(stmts: &[FnStmt]) -> Vec<&LocalLet> {
                 if let Some(els) = els {
                     out.extend(fn_all_locals(els));
                 }
+            }
+            FnStmt::Loop { body, .. } => {
+                out.extend(fn_all_locals(body));
             }
             FnStmt::Return(_) | FnStmt::Error(_) => {}
         }

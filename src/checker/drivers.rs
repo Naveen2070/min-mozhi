@@ -415,6 +415,9 @@ impl<'a> Checker<'a> {
                             .insert(block_id);
                     }
                 }
+                SeqStmt::Loop { body, .. } => {
+                    self.on_block(dcx, block_id, body);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }

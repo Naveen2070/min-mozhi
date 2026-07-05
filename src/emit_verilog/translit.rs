@@ -393,6 +393,14 @@ fn seq_stmts(stmts: &mut [SeqStmt], visit: &mut dyn FnMut(&mut String)) {
                 visit(&mut name.name);
                 expr(val, visit);
             }
+            SeqStmt::Loop {
+                var, lo, hi, body, ..
+            } => {
+                visit(&mut var.name);
+                expr(lo, visit);
+                expr(hi, visit);
+                seq_stmts(body, visit);
+            }
             SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
@@ -415,6 +423,14 @@ fn fn_stmts(stmts: &mut [FnStmt], visit: &mut dyn FnMut(&mut String)) {
                 }
             }
             FnStmt::Return(e) => expr(e, visit),
+            FnStmt::Loop {
+                var, lo, hi, body, ..
+            } => {
+                visit(&mut var.name);
+                expr(lo, visit);
+                expr(hi, visit);
+                fn_stmts(body, visit);
+            }
             FnStmt::Error(_) => {} // unreachable on the codegen path
         }
     }

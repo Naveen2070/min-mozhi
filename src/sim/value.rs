@@ -379,6 +379,12 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                 let v = eval(env, expr)?;
                 return Ok(FnFlow::Returned(v));
             }
+            FnStmt::Loop { .. } => {
+                // Real unrolling (bounds eval + per-iteration `eval_fn_stmts`,
+                // propagating an early `Returned` same as the `If` arm above)
+                // is a later task's job — `loop` isn't parseable until Task 2,
+                // so this arm is unreachable today.
+            }
             FnStmt::Error(_) => {} // parse-recovery placeholder; unreachable on the eval path
         }
     }

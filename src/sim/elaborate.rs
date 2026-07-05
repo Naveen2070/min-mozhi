@@ -1559,6 +1559,22 @@ impl<'d, 's> Rw<'d, 's> {
                 val: self.expr(val)?,
                 span: *span,
             },
+            SeqStmt::Loop {
+                var,
+                lo,
+                hi,
+                body,
+                span,
+            } => SeqStmt::Loop {
+                var: var.clone(),
+                lo: self.expr(lo)?,
+                hi: self.expr(hi)?,
+                body: body
+                    .iter()
+                    .map(|x| self.seq(x, rename))
+                    .collect::<Result<_, _>>()?,
+                span: *span,
+            },
             // Unreachable on the sim path (strict-parsed tree); pass through.
             SeqStmt::Error(sp) => SeqStmt::Error(*sp),
         })
@@ -1574,6 +1590,7 @@ fn assigns(body: &[SeqStmt], name: &str) -> bool {
             assigns(then, name) || els.as_deref().is_some_and(|e| assigns(e, name))
         }
         SeqStmt::Default { name: n, .. } => n.name == name,
+        SeqStmt::Loop { body, .. } => assigns(body, name),
         SeqStmt::Error(_) => false,
     })
 }

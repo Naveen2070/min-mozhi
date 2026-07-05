@@ -491,6 +491,13 @@ fn collect_seq_refs(s: &SeqStmt, module_idx: Option<usize>, refs: &mut Vec<Ref>)
             });
             collect_expr_refs(val, module_idx, refs);
         }
+        SeqStmt::Loop { lo, hi, body, .. } => {
+            collect_expr_refs(lo, module_idx, refs);
+            collect_expr_refs(hi, module_idx, refs);
+            for s in body {
+                collect_seq_refs(s, module_idx, refs);
+            }
+        }
         SeqStmt::Error(_) => {}
     }
 }

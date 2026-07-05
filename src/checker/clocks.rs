@@ -253,6 +253,7 @@ fn body_targets<'a>(body: &'a [SeqStmt], out: &mut Vec<&'a str>) {
                 }
             }
             SeqStmt::Default { name, .. } => out.push(&name.name),
+            SeqStmt::Loop { body, .. } => body_targets(body, out),
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }
@@ -275,6 +276,11 @@ fn body_reads<'a>(body: &'a [SeqStmt], out: &mut Vec<(&'a str, Span)>) {
                 }
             }
             SeqStmt::Default { val, .. } => expr_reads(val, out),
+            SeqStmt::Loop { lo, hi, body, .. } => {
+                expr_reads(lo, out);
+                expr_reads(hi, out);
+                body_reads(body, out);
+            }
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }

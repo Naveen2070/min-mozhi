@@ -109,6 +109,9 @@ fn check_unreachable_after_return(stmts: &[FnStmt], file: usize, ck: &mut Checke
                     check_unreachable_after_return(els, file, ck);
                 }
             }
+            FnStmt::Loop { body, .. } => {
+                check_unreachable_after_return(body, file, ck);
+            }
             FnStmt::Let(_) | FnStmt::Error(_) => {}
         }
     }
@@ -120,6 +123,7 @@ fn next_stmt_span(stmt: &FnStmt) -> Span {
         FnStmt::Let(l) => l.span,
         FnStmt::If { cond, .. } => cond.span,
         FnStmt::Return(e) => e.span,
+        FnStmt::Loop { span, .. } => *span,
         FnStmt::Error(s) => *s,
     }
 }
@@ -181,6 +185,11 @@ fn collect_fn_stmt_calls(stmts: &[FnStmt], out: &mut Vec<String>) {
                 }
             }
             FnStmt::Return(expr) => collect_calls(expr, out),
+            FnStmt::Loop { lo, hi, body, .. } => {
+                collect_calls(lo, out);
+                collect_calls(hi, out);
+                collect_fn_stmt_calls(body, out);
+            }
             FnStmt::Error(_) => {}
         }
     }

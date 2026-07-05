@@ -366,6 +366,11 @@ impl<'a> Checker<'a> {
                     }
                     self.expr(file, sc, env, val);
                 }
+                SeqStmt::Loop { lo, hi, body, .. } => {
+                    self.expr(file, sc, env, lo);
+                    self.expr(file, sc, env, hi);
+                    self.seq_stmts(file, sc, env, body);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
@@ -1251,6 +1256,14 @@ impl<'a> Checker<'a> {
                 }
                 FnStmt::Return(expr) => {
                     self.expr(file, sc, env, expr);
+                }
+                FnStmt::Loop { lo, hi, body, .. } => {
+                    self.expr(file, sc, env, lo);
+                    self.expr(file, sc, env, hi);
+                    let mut body_sc = Scope {
+                        names: sc.names.clone(),
+                    };
+                    self.check_fn_stmt_names(file, &mut body_sc, env, body);
                 }
                 FnStmt::Error(_) => {} // parse-recovery placeholder
             }
