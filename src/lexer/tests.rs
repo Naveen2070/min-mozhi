@@ -86,10 +86,10 @@ fn division_is_rejected_with_teaching_error() {
 
 #[test]
 fn a_reserved_word_is_an_error() {
-    // A reserved-but-not-yet-active word (e.g. `sync`) is a clean E1005, not a
-    // silent identifier. (`fall` was promoted in A3 and `mem` in A4, so `sync`
-    // now carries this check.)
-    let errs = lex("sync").unwrap_err();
+    // A reserved-but-not-yet-active word (e.g. `inout`) is a clean E1005, not a
+    // silent identifier. (`fall` was promoted in A3, `mem` in A4, `sync` in A6, so
+    // other reserved words carry this check.)
+    let errs = lex("inout").unwrap_err();
     assert_eq!(errs[0].code, Some("E1005"));
     assert!(errs[0].msg.contains("reserved"));
 }
