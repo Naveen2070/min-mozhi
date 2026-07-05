@@ -1015,4 +1015,47 @@ mod tests {
         assert!(verilog.contains("function automatic"));
         assert!(verilog.matches("function automatic").count() >= 2); // both helper and f
     }
+
+    #[test]
+    fn fn_loop_with_return_finds_first_match() {
+        let src = "fn find_first_set(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  in c: bits[8]\n  in d: bits[8]\n  out o: signed[4]\n  o = find_first_set([a, b, c, d])\n}\n";
+        let verilog = emit_src(src);
+        // Nested (not a flat sequence of independent assignments): iteration
+        // 0's check must be the OUTERMOST `if`, so it structurally takes
+        // priority over later iterations, matching return's existing CPS
+        // lowering (see emit_fn_stmts's doc comment).
+        assert_eq!(
+            verilog.matches("if (").count(),
+            4,
+            "expected one nested if per iteration:\n{verilog}"
+        ); // one nested if per iteration
+    }
+
+    #[test]
+    fn fn_loop_with_return_first_match_wins_on_duplicate() {
+        // vals has 0xFF at BOTH index 0 and index 2 — must return 0, the LOWER
+        // index, not 2. This is the one test that actually distinguishes true
+        // first-match-wins from "returns some match": a bug in the
+        // continuation-threading (e.g. iterating in the wrong order, or
+        // flattening to independent assignments instead of nesting) would
+        // silently return the HIGHER index here while the simulator (Task 9)
+        // still returns the lower one.
+        let src = "fn find_first_set(vals: bits[8][4]) -> signed[4] {\n  loop i: 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  in c: bits[8]\n  in d: bits[8]\n  out o: signed[4]\n  o = find_first_set([a, b, c, d])\n}\n";
+        let verilog = emit_src(src);
+        // Structural proof: iteration 0's generated `if` must be the outermost
+        // one (appears first in the string, at the function's base indent),
+        // so a real Verilog simulator (Icarus, Task 10) evaluating this
+        // procedurally will select index 0 whenever vals[0] == 0xFF,
+        // regardless of vals[2]'s value. Match on the condition text itself
+        // (`vals_N ==`), not the bare `vals_N` name — the function's `input`
+        // port list also declares `vals_0`..`vals_3` ahead of the body, and
+        // a bare-name search would match those declaration lines instead of
+        // the `if` conditions they're unrelated to.
+        let vals_0_cond_pos = verilog.find("vals_0 ==").unwrap();
+        let vals_2_cond_pos = verilog.find("vals_2 ==").unwrap();
+        assert!(
+            vals_0_cond_pos < vals_2_cond_pos,
+            "iteration 0's check must be structurally outermost:\n{verilog}"
+        );
+    }
 }
