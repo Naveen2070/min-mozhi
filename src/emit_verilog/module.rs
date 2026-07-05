@@ -510,17 +510,74 @@ impl Emitter<'_> {
                     "{pad}if ({c}) begin\n{then_code}{pad}end else begin\n{else_code}{pad}end\n"
                 )
             }
-            Some((FnStmt::Loop { .. }, tail_stmts)) => {
-                // Unrolling into `hi-lo` copies of `body` is a later task's
-                // job (`loop` isn't parseable until Task 2, so this arm is
-                // unreachable today) — fall through to the continuation for
-                // now, same placeholder shape as the `Error` arm below.
-                self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays)
+            Some((
+                FnStmt::Loop {
+                    var,
+                    lo,
+                    hi,
+                    body,
+                    span,
+                },
+                tail_stmts,
+            )) => {
+                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays);
+                let (Some(lo_v), Some(hi_v)) = (self.eval_const(lo), self.eval_const(hi)) else {
+                    return cont;
+                };
+                let count = (hi_v - lo_v).max(0);
+                if count > self.repeat_budget {
+                    self.err(
+                        *span,
+                        format!(
+                            "`loop` would unroll {count} times, over the limit of {}",
+                            crate::REPEAT_BUDGET
+                        ),
+                        "this is compile-time hardware generation, not a runtime loop — \
+                         narrow the range (a datapath this wide is almost certainly a typo)",
+                    );
+                    return cont;
+                }
+                self.repeat_budget -= count;
+                self.emit_fn_loop_unroll(&var.name, lo_v, hi_v, body, &cont, fname, indent, arrays)
             }
             Some((FnStmt::Error(_), tail_stmts)) => {
                 self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays)
             }
         }
+    }
+
+    /// Unroll a `FnStmt::Loop`'s body `hi - lo` times, threading each
+    /// iteration's continuation to the NEXT iteration (or, for the last
+    /// iteration, to the loop's own `rest`) — mirrors `emit_fn_stmts`'s own
+    /// continuation-passing shape so `return`'s first-match priority holds
+    /// across iterations: iteration 0's `if` only falls through to
+    /// iteration 1's check when iteration 0's own condition was false,
+    /// never the other way around (see the design spec's "duplicate match"
+    /// requirement — this is what makes that case correct).
+    #[allow(clippy::too_many_arguments)]
+    fn emit_fn_loop_unroll(
+        &mut self,
+        var: &str,
+        i: i128,
+        hi: i128,
+        body: &[FnStmt],
+        rest: &str,
+        fname: &str,
+        indent: usize,
+        arrays: &ArrayScope,
+    ) -> String {
+        if i >= hi {
+            return rest.to_string();
+        }
+        let shadowed = self.env.insert(var.to_string(), i);
+        let inner_rest =
+            self.emit_fn_loop_unroll(var, i + 1, hi, body, rest, fname, indent, arrays);
+        let out = self.emit_fn_stmts(body, &inner_rest, fname, indent, arrays);
+        match shadowed {
+            Some(v) => self.env.insert(var.to_string(), v),
+            None => self.env.remove(var),
+        };
+        out
     }
 
     /// Flatten `const if` nodes into the items they select, evaluating
