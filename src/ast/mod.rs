@@ -411,6 +411,9 @@ pub enum ModuleItem {
     },
     /// Compile-time generation (`repeat i: 0..8 { ... }`).
     Repeat(Repeat),
+    /// `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { ... }`
+    /// — cycle-iterating loop; see `SyncLoop` doc comment.
+    SyncLoop(SyncLoop),
     /// `const if (COND) { items } [else { items }]` — compile-time conditional
     /// module-body items. The losing branch is completely discarded before
     /// name resolution, type checking, and codegen (D-CONSTIF-4).
@@ -445,6 +448,34 @@ pub struct Repeat {
     pub lo: Expr,
     pub hi: Expr,
     pub items: Vec<ModuleItem>,
+    pub span: Span,
+}
+
+/// `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { body }`
+/// — a module-item-level cycle-iterating loop. Lowers (see
+/// `ast::sync_loop_lower::lower_sync_loop`) to synthesized `Port`/`Reg`/`On`/
+/// `Drive` items: a counter + running/done state machine spanning
+/// `hi - lo` clock cycles, NOT elaboration-time unrolling (contrast
+/// `Repeat`/`SeqStmt::Loop`). Bounds must const-evaluate, same requirement
+/// as `Repeat`'s `lo`/`hi`.
+#[derive(Clone, Debug)]
+pub struct SyncLoop {
+    /// Instance name — namespaces the four generated signals
+    /// (`<name>_start`/`_done`/`_result`/`_running`).
+    pub name: Ident,
+    pub clock: Ident,
+    pub edge: Edge,
+    /// The loop variable, bound to the live counter value each cycle
+    /// inside `body` (a runtime signal, unlike `Repeat`'s compile-time var).
+    pub var: Ident,
+    pub lo: Expr,
+    pub hi: Expr,
+    /// The accumulator's name as written (e.g. `result` in
+    /// `-> result: bits[8] = 0`) — used inside `body` via `<-`.
+    pub result_name: Ident,
+    pub result_ty: Type,
+    pub result_init: Expr,
+    pub body: Vec<SeqStmt>,
     pub span: Span,
 }
 
@@ -722,5 +753,34 @@ mod tests {
                 span: sp,
             },
         ]);
+    }
+
+    #[test]
+    fn sync_loop_node_constructs() {
+        let sp = Span::new(0, 0);
+        let id = |n: &str| Ident {
+            name: n.into(),
+            span: sp,
+        };
+        let int = |v: u128| Expr {
+            kind: ExprKind::Int {
+                value: v,
+                raw: v.to_string(),
+            },
+            span: sp,
+        };
+        let _item = ModuleItem::SyncLoop(SyncLoop {
+            name: id("find_first"),
+            clock: id("clk"),
+            edge: Edge::Rise,
+            var: id("i"),
+            lo: int(0),
+            hi: int(8),
+            result_name: id("result"),
+            result_ty: Type::Bit,
+            result_init: int(0),
+            body: vec![],
+            span: sp,
+        });
     }
 }
