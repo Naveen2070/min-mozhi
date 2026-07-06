@@ -20,7 +20,7 @@ impl Emitter<'_> {
         // `repeat` bounds, indices) and emit no hardware of their own.
         let file_env = self.env.clone();
         self.env = self.eval_consts_items(&m.items, file_env.clone());
-        let flat: Vec<&ModuleItem> = self.flatten_items(&m.items);
+        let flat: Vec<ModuleItem> = self.flatten_items(&m.items);
 
         // Parameters. The Verilog identifier is the bare name, UNLESS
         // another file also declares a module of this name — the
@@ -47,7 +47,7 @@ impl Emitter<'_> {
         // in the body and can't reach the header port list.
         let mut ports: Vec<String> = Vec::new();
         self.emitting_port = true;
-        for item in flat.iter().copied() {
+        for item in flat.iter() {
             match item {
                 ModuleItem::Clock(c) => ports.push(format!("input wire {}", c.name)),
                 ModuleItem::Reset { name: r, .. } => ports.push(format!("input wire {}", r.name)),
@@ -90,7 +90,6 @@ impl Emitter<'_> {
         // Enum encodings as localparams.
         let enums: Vec<&EnumDecl> = flat
             .iter()
-            .copied()
             .filter_map(|i| match i {
                 ModuleItem::Enum(e) => Some(e),
                 _ => None,
@@ -124,7 +123,7 @@ impl Emitter<'_> {
         }
 
         // Declarations.
-        for item in flat.iter().copied() {
+        for item in flat.iter() {
             match item {
                 ModuleItem::Wire { name, ty, .. } => {
                     self.check_ascii(name);
@@ -178,7 +177,7 @@ impl Emitter<'_> {
         // (mirrors the simulator, which initializes all cells at construction).
         // Mandatory init value → no uninitialized state, without a per-cycle
         // reset (the `reset` line clears registers only).
-        for item in flat.iter().copied() {
+        for item in flat.iter() {
             if let ModuleItem::Mem {
                 name, depth, init, ..
             } = item
@@ -204,7 +203,7 @@ impl Emitter<'_> {
         // Pre-populate bundle_sigs so emit_drives can flatten bundle assignments.
         // ponytail: repeat-body bundle wires not tracked in bundle_sigs — checker blocks wire-in-repeat today.
         self.bundle_sigs.clear();
-        for item in flat.iter().copied() {
+        for item in flat.iter() {
             let (sig_name, bname, args) = match item {
                 ModuleItem::Port {
                     name,
@@ -240,7 +239,7 @@ impl Emitter<'_> {
 
         // Sequential blocks: one always per `on`, reset generated from
         // the reset values of the regs each block assigns.
-        let reset_name = flat.iter().copied().find_map(|i| match i {
+        let reset_name = flat.iter().find_map(|i| match i {
             ModuleItem::Reset { name: r, .. } => Some(r.name.clone()),
             _ => None,
         });
@@ -248,18 +247,16 @@ impl Emitter<'_> {
         // (`@(… or posedge rst)`); a sync reset only acts on the clock edge.
         let async_reset = flat
             .iter()
-            .copied()
             .any(|i| matches!(i, ModuleItem::Reset { is_async: true, .. }));
         let regs: HashMap<&str, &Expr> = flat
             .iter()
-            .copied()
             .filter_map(|i| match i {
                 ModuleItem::Reg { name, reset, .. } => Some((name.name.as_str(), reset)),
                 _ => None,
             })
             .collect();
 
-        for item in flat.iter().copied() {
+        for item in flat.iter() {
             if let ModuleItem::On(on) = item {
                 let mut assigned: Vec<&str> = Vec::new();
                 collect_assigned(&on.body, &mut assigned);
@@ -584,7 +581,7 @@ impl Emitter<'_> {
     /// conditions against `self.env`. Items in the losing branch are dropped.
     /// Nested ConstIf is resolved recursively. Used by `module()` for loops
     /// that don't recurse.
-    fn flatten_items<'a>(&self, items: &'a [ModuleItem]) -> Vec<&'a ModuleItem> {
+    fn flatten_items(&self, items: &[ModuleItem]) -> Vec<ModuleItem> {
         let mut out = Vec::new();
         for item in items {
             match item {
@@ -599,7 +596,8 @@ impl Emitter<'_> {
                     };
                     out.extend(self.flatten_items(branch));
                 }
-                _ => out.push(item),
+                ModuleItem::SyncLoop(sl) => out.extend(crate::ast::lower_sync_loop(sl)),
+                _ => out.push(item.clone()),
             }
         }
         out
@@ -649,6 +647,11 @@ impl Emitter<'_> {
                     };
                     self.emit_instances(branch);
                 }
+                // Lowered `sync loop` items never include an `Inst` — an
+                // explicit no-op arm, not a stub, so a future item added to
+                // the lowering that DOES need instance emission fails loudly
+                // here instead of silently falling into the wildcard below.
+                ModuleItem::SyncLoop(_) => {}
                 _ => {}
             }
         }
@@ -734,6 +737,14 @@ impl Emitter<'_> {
                     }
                 }
                 ModuleItem::Repeat(r) => self.unroll(r, Self::emit_drives),
+                // `emit_drives` (unlike the `flat`-driven loops above) walks
+                // the RAW module item list, not `flatten_items`'s output, so
+                // a `sync loop` here must be lowered on the spot — lowering
+                // happens once (no per-iteration substitution like `unroll`).
+                ModuleItem::SyncLoop(sl) => {
+                    let lowered = crate::ast::lower_sync_loop(sl);
+                    self.emit_drives(&lowered);
+                }
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
@@ -1285,4 +1296,56 @@ fn fn_all_locals(stmts: &[FnStmt]) -> Vec<&LocalLet> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{lexer, parser};
+
+    /// Parse + emit one self-contained source (no imports) to Verilog text.
+    /// Mirrors `emit_verilog::mod::tests::emit_src` — duplicated locally so
+    /// this test stays inside `module.rs` per Task 9's scoping.
+    fn emit_src(src: &str) -> String {
+        let files = [parser::parse(lexer::lex(src).unwrap()).unwrap()];
+        let project = Project::from_files(&files).unwrap();
+        emit(&project, &files).expect("emit should succeed")
+    }
+
+    /// Proves `sync loop` actually desugars in the emitter: its 4 ports, 4
+    /// regs, `on`-block FSM, and 3 output drives all reach real Verilog
+    /// through the existing Port/Reg/On/Drive codegen — not silently
+    /// dropped, which was the bug before `flatten_items` called
+    /// `lower_sync_loop`.
+    #[test]
+    fn sync_loop_emits_fsm_and_ports() {
+        let src = "module Search {\n  clock clk\n  reset rst\n  mem m: bits[8][8] = 0\n  in key: bits[8]\n  sync loop find_first on rise(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {\n    if m[i] == key { result <- i }\n  }\n}\n";
+        let v = emit_src(src);
+        // Ports (4): _start in, _done/_result/_running out.
+        assert!(v.contains("input wire find_first_start"), "start port missing:\n{v}");
+        assert!(v.contains("output wire find_first_done"), "done port missing:\n{v}");
+        assert!(
+            v.contains("output wire signed [(4)-1:0] find_first_result"),
+            "signed result port missing or wrongly formatted:\n{v}"
+        );
+        assert!(v.contains("output wire find_first_running"), "running port missing:\n{v}");
+        // Counter reg: bits[clog2(8)] = bits[3] -> "[(3)-1:0]" (same folded-
+        // literal-in-parens convention as the existing clog2-port-width test).
+        assert!(v.contains("reg [(3)-1:0] find_first_cnt;"), "counter reg missing:\n{v}");
+        // FSM always-block, clocked on `clk`.
+        assert!(v.contains("always @(posedge clk"), "always block missing:\n{v}");
+        // The 3 generated output drives.
+        assert!(
+            v.contains("assign find_first_done = find_first_done_r;"),
+            "done drive missing:\n{v}"
+        );
+        assert!(
+            v.contains("assign find_first_result = find_first_acc;"),
+            "result drive missing:\n{v}"
+        );
+        assert!(
+            v.contains("assign find_first_running = find_first_running_r;"),
+            "running drive missing:\n{v}"
+        );
+    }
 }
