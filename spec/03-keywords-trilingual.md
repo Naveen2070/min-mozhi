@@ -126,6 +126,7 @@ is valid even in an otherwise-English file.
 | KW_BUNDLE     | `bundle`  | `kattai`        | `கட்டை`       | "bundle/block" — named group of signals (`bundle Foo { fields }`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                                                          |
 | KW_RETURN     | `return`  | `thirumbu`      | `திரும்பு`    | "return/turn back" — priority-selected result in a `fn` body, not a silicon early-exit (`return EXPR`); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                     |
 | KW_LOOP       | `loop`    | `suzhal`        | `சுழல்`       | "cycle/loop" — bounded compile-time unroll usable inside `on` blocks and `fn` bodies (distinct from `repeat`, which stays item-level only); Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
+| KW_SYNC       | `sync`    | `othisai`       | `ஒத்திசை`     | "synchronized" (positive form of `async`'s `ஒத்திசைவற்ற`) — module-item-level `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { body }`, a cycle-iterating FSM+counter loop (`hi - lo + 1` clock cycles, constant hardware); **dual-purpose token** — also held for the still-unimplemented CDC synchronizer builtin-namespace calls (`sync.double_flop(...)`, `docs/Ideas/language_plan.md`); disambiguated by the token following `sync` (`loop`/`suzhal`/`சுழல்` vs `.`), so no grammar conflict, see Changelog v0.2.22; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11) |
 
 ### Reserved words
 
@@ -135,7 +136,6 @@ error (E1005) explaining why. They live in the `reserved` list in
 
 | Reserved     | Held for                                                    |
 | ------------ | ----------------------------------------------------------- |
-| `sync`       | clock-domain crossing (Phase 2)                             |
 | `inout`      | top-level bidirectional pads (Phase 2)                      |
 | `struct`     | bundles/interfaces (post-Phase 2)                           |
 | `secret`     | explicit information-flow types (v0.3 G5)                   |
@@ -280,6 +280,23 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.22 (2026-07-06):** Promoted `sync` from **reserved** to active
+  keyword KW_SYNC for the module-item `sync loop`/`sync suzhal`/`sync
+  சுழல்` cycle-iterating FSM+counter loop (spec/02 `sync loop` section,
+  Spec 4 design). This table's reserved row (added pre-v0.1.0 freeze) held
+  `sync` for a single documented purpose — CDC (clock-domain-crossing)
+  synchronizer primitives, planned as `sync.<method>(...)` builtin-namespace
+  calls (`docs/Ideas/language_plan.md`, still unimplemented). `sync loop`
+  claims the same token for an unrelated feature (iteration, not domain
+  crossing). Resolution: **`sync` is dual-purpose, not conflicting** — the
+  parser disambiguates by the token immediately after `sync` (`loop`/
+  `suzhal`/`சுழல்` → sync-loop construct, `.` → future CDC call), so no
+  grammar collision exists. This row documents that decision so the
+  reservation isn't silently double-booked; when CDC synchronizers are
+  designed, cross-reference this entry rather than re-reserving `sync`.
+  Tanglish `othisai` / Tamil `ஒத்திசை` are **PROVISIONAL** placeholders
+  pending native-speaker review (R9/R11). Removed `sync` from the reserved
+  table.
 - **v0.2.21 (2026-07-05):** Promoted `loop`/`suzhal`/`சுழல்` from **reserved**
   to active keyword KW_LOOP for the bounded compile-time-unrolled loop usable
   inside `on` blocks and `fn` bodies (spec/02 v0.2.22, section 1.15) —
