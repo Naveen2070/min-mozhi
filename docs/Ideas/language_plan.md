@@ -61,6 +61,12 @@ The core philosophy of Rust is catching bugs at compile time. In hardware, runti
   }
   ```
 
+  > `sync` is now an active keyword for the unrelated `sync loop` construct
+  > (spec/03-keywords-trilingual.md v0.2.22) — the two are dual-purposed,
+  > not conflicting, since the parser disambiguates by the token after
+  > `sync` (`loop`/`suzhal`/`சுழல்` vs `.`). See that changelog entry before
+  > designing this CDC construct's real grammar.
+
 ### 1.3 Affine Types (Preventing Dropped Data)
 
 - **Explanation:** In an AXI-Stream or pipeline, dropping valid data causes deadlocks. If a stream returns `valid`, it is an "Affine Type" (it must be consumed or explicitly dropped).
