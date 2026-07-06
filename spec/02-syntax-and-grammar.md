@@ -798,9 +798,9 @@ module FindFirst {
     the cycle after `NAME_start` is sampled and drops on the same edge
     `NAME_done` pulses (`NAME_running` and `NAME_done` are never both
     high at once).
-  Inside `BODY`, `VAR` reads the live loop index and `RESULT <- expr`
-  writes the accumulator, exactly like ordinary `<-` assignments inside an
-  `on` block.
+    Inside `BODY`, `VAR` reads the live loop index and `RESULT <- expr`
+    writes the accumulator, exactly like ordinary `<-` assignments inside an
+    `on` block.
 - **Timing — costs `hi - lo + 1` clock cycles, not zero.** One edge to
   leave idle and load `VAR = lo`; then one edge per value of `VAR` in the
   range (`hi - lo` of them), each running `BODY` once, the last of which
@@ -1130,15 +1130,15 @@ because the `_` alternative provides no binding for `x`.
 
 ## 7. Deferred Features (explicitly out of v0.2)
 
-| Feature                                          | Target                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------ |
-| `inout`/tristate ports                           | Phase 2                                                      |
-| Enum-element and 2-D memories (`mem`)            | post-v1 (scalar `bit`/`bits`/`signed` cells ship now)        |
-| Clock-domain crossing (`sync`)                   | Phase 2                                                      |
-| Structs/bundles/buses                            | post-Phase 2 (stdlib time)                                   |
-| `match` ranges (e.g. `0..7`)                     | v0.3+                                                        |
-| Division/modulo                                  | never as operators; stdlib divider module (Phase 4)          |
-| Wrapping/instantiating external Verilog modules  | per Constitution — design in Phase 2+                        |
+| Feature                                         | Target                                                |
+| ----------------------------------------------- | ----------------------------------------------------- |
+| `inout`/tristate ports                          | Phase 2                                               |
+| Enum-element and 2-D memories (`mem`)           | post-v1 (scalar `bit`/`bits`/`signed` cells ship now) |
+| Clock-domain crossing (`sync`)                  | Phase 2                                               |
+| Structs/bundles/buses                           | post-Phase 2 (stdlib time)                            |
+| `match` ranges (e.g. `0..7`)                    | v0.3+                                                 |
+| Division/modulo                                 | never as operators; stdlib divider module (Phase 4)   |
+| Wrapping/instantiating external Verilog modules | per Constitution — design in Phase 2+                 |
 
 ---
 
