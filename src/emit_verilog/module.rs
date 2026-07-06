@@ -1322,18 +1322,33 @@ mod tests {
         let src = "module Search {\n  clock clk\n  reset rst\n  mem m: bits[8][8] = 0\n  in key: bits[8]\n  sync loop find_first on rise(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {\n    if m[i] == key { result <- i }\n  }\n}\n";
         let v = emit_src(src);
         // Ports (4): _start in, _done/_result/_running out.
-        assert!(v.contains("input wire find_first_start"), "start port missing:\n{v}");
-        assert!(v.contains("output wire find_first_done"), "done port missing:\n{v}");
+        assert!(
+            v.contains("input wire find_first_start"),
+            "start port missing:\n{v}"
+        );
+        assert!(
+            v.contains("output wire find_first_done"),
+            "done port missing:\n{v}"
+        );
         assert!(
             v.contains("output wire signed [(4)-1:0] find_first_result"),
             "signed result port missing or wrongly formatted:\n{v}"
         );
-        assert!(v.contains("output wire find_first_running"), "running port missing:\n{v}");
+        assert!(
+            v.contains("output wire find_first_running"),
+            "running port missing:\n{v}"
+        );
         // Counter reg: bits[clog2(8)] = bits[3] -> "[(3)-1:0]" (same folded-
         // literal-in-parens convention as the existing clog2-port-width test).
-        assert!(v.contains("reg [(3)-1:0] find_first_cnt;"), "counter reg missing:\n{v}");
+        assert!(
+            v.contains("reg [(3)-1:0] find_first_cnt;"),
+            "counter reg missing:\n{v}"
+        );
         // FSM always-block, clocked on `clk`.
-        assert!(v.contains("always @(posedge clk"), "always block missing:\n{v}");
+        assert!(
+            v.contains("always @(posedge clk"),
+            "always block missing:\n{v}"
+        );
         // The 3 generated output drives.
         assert!(
             v.contains("assign find_first_done = find_first_done_r;"),

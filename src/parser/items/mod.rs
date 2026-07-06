@@ -254,13 +254,10 @@ impl Parser {
         let result_name = self.ident("a name for the accumulator")?;
         self.expect(TokKind::Colon, "`:` then the accumulator's type")?;
         let result_ty = self.ty()?;
-        self.expect(
-            TokKind::Assign,
-            "`=` then the accumulator's reset value",
-        )?;
+        self.expect(TokKind::Assign, "`=` then the accumulator's reset value")?;
         let result_init = self.expr()?;
         let (body, end) = self.seq_block()?;
-        Some(ModuleItem::SyncLoop(SyncLoop {
+        Some(ModuleItem::SyncLoop(Box::new(SyncLoop {
             name,
             clock,
             edge,
@@ -272,6 +269,6 @@ impl Parser {
             result_init,
             body,
             span: start.join(end),
-        }))
+        })))
     }
 }
