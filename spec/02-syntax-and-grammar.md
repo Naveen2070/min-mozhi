@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.17.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.23.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -753,12 +753,83 @@ fn find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
   slower — it makes the circuit bigger. Reach for `loop` the way you reach
   for `repeat`: to avoid retyping N copies of a pattern by hand, not to
   spread work across time.
-- **A future `sync loop`/`sync suzhal`** — a distinct, not-yet-implemented
-  keyword — is reserved for the opposite trade: a cycle-iterating
-  FSM-plus-counter form that spans multiple clock edges and costs cycles
-  instead of area (Deferred Features, section 7). Bare `loop`/`suzhal`/`சுழல்`
-  will never grow that behavior; if what you want is "iterate over time,"
-  that is a different, not-yet-available construct.
+- **`sync loop`/`sync suzhal`** — a distinct keyword pair (section 1.15b) —
+  is the opposite trade: a cycle-iterating FSM-plus-counter form that spans
+  multiple clock edges and costs cycles instead of area. Bare
+  `loop`/`suzhal`/`சுழல்` never grows that behavior; if what you want is
+  "iterate over time," reach for `sync loop` instead.
+
+### 1.15b — Cycle-iterating loop — `sync loop`
+
+```mimz
+module FindFirst {
+  clock clk
+  reset rst
+
+  in  key: bits[4]
+  mem m:   bits[4][8] = 0
+
+  sync loop find_first on rise(clk) (i: 0..8) -> result: bits[4] = 0 {
+    if m[i] == key {
+      result <- i
+    }
+  }
+}
+```
+
+- `sync loop NAME on (rise|fall)(CLOCK) (VAR: LO..HI) -> RESULT: TYPE = INIT { BODY }`
+  is the cycle-iterating sibling of `loop` (section 1.15): the same `lo..hi`
+  range and body shape, but instead of unrolling to `hi-lo` copies of
+  hardware, it elaborates to **one** small FSM that walks the range one
+  value of `VAR` per clock edge. `LO..HI` must still fold to a compile-time
+  constant, the same rule `loop`/`repeat` already follow.
+- `sync loop` is a **module-body item** (like an `on` block), not a
+  statement — unlike bare `loop`, it cannot nest inside an `on` block or a
+  `fn` body.
+- **Generated interface.** Declaring `sync loop NAME ...` implicitly adds
+  four signals, named off `NAME`:
+  - `in NAME_start: bit` — pulse high for one cycle to begin a run.
+  - `out NAME_done: bit` — pulses high for exactly one cycle when the run
+    finishes.
+  - `out NAME_result: TYPE` — the accumulator's value; holds the final
+    result from the cycle `NAME_done` pulses until the next run overwrites
+    it.
+  - `out NAME_running: bit` — high for the duration of the run; it rises
+    the cycle after `NAME_start` is sampled and drops on the same edge
+    `NAME_done` pulses (`NAME_running` and `NAME_done` are never both
+    high at once).
+  Inside `BODY`, `VAR` reads the live loop index and `RESULT <- expr`
+  writes the accumulator, exactly like ordinary `<-` assignments inside an
+  `on` block.
+- **Timing — costs `hi - lo + 1` clock cycles, not zero.** One edge to
+  leave idle and load `VAR = lo`; then one edge per value of `VAR` in the
+  range (`hi - lo` of them), each running `BODY` once, the last of which
+  also raises `NAME_done`. A `NAME_start` pulse sampled on one edge
+  therefore produces `NAME_done` exactly `hi - lo + 1` edges later. Holding
+  `NAME_start` high through a run does not re-trigger it — the FSM only
+  samples `NAME_start` while idle.
+
+**Honesty rule — `loop` and `sync loop` are opposite trades, on purpose:**
+
+> `loop`/`suzhal`/`சுழல்` costs **area, not time** — N iterations means N×
+> the hardware, evaluated in parallel, zero extra clock cycles.
+>
+> `sync loop`/`sync suzhal`/`sync சுழல்` costs **time, not area** — hardware
+> is small and constant regardless of N; the cost is `hi - lo + 1` clock
+> cycles per run.
+
+**A genuine semantic difference, not a bug.** `loop` combined with `return`
+(section 1.15) gets first-match-wins for free from its if/else priority-mux
+structure — each candidate value is chosen combinationally by priority,
+never overwritten in time. `sync loop` has no priority structure and no
+early-exit primitive: an unguarded body like `if m[i] == key { result <- i }`
+overwrites the accumulator on every matching cycle, so `NAME_result` reflects
+the LAST matching value of `VAR`, not the first — exactly like an unguarded
+imperative `for i in 0..8 { if a[i] == k { result = i } }` would in software,
+since the writes happen sequentially in time rather than through priority
+selection. To get first-match-wins inside a `sync loop`, guard the write
+yourself with an "already found" latch, e.g.
+`if m[i] == key && !found { result <- i; found <- 1 }`.
 
 ---
 
@@ -856,7 +927,7 @@ param       = IDENT ":" ( "int" | "bool" ) [ "=" constExpr ] ;
 
 moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
             | constDecl | enumDecl | instDecl | onBlock | driveStmt
-            | repeatBlock | bundleDestructure ;
+            | repeatBlock | bundleDestructure | syncLoopBlock ;
 
 bundleDestructure = "let" "{" IDENT { "," IDENT } "}" "=" expr NEWLINE ;
 
@@ -879,6 +950,11 @@ conn        = IDENT ":" expr ;
 
 repeatBlock = "repeat" IDENT ":" constExpr ".." constExpr
               "{" { moduleItem } "}" ;             (* compile-time unrolled *)
+
+syncLoopBlock = "sync" "loop" IDENT "on" ( "rise" | "fall" ) "(" IDENT ")"
+                "(" IDENT ":" constExpr ".." constExpr ")"
+                "->" IDENT ":" type "=" constExpr seqBlock ;
+                (* cycle-iterating FSM form, section 1.15b — NOT unrolled *)
 
 onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
@@ -1063,12 +1139,32 @@ because the `_` alternative provides no binding for `x`.
 | `match` ranges (e.g. `0..7`)                     | v0.3+                                                        |
 | Division/modulo                                  | never as operators; stdlib divider module (Phase 4)          |
 | Wrapping/instantiating external Verilog modules  | per Constitution — design in Phase 2+                        |
-| Cycle-iterating loop (`sync loop`/`sync suzhal`) | Phase 2 (bare `loop`/`suzhal` stays area-only, section 1.15) |
 
 ---
 
 ## Changelog
 
+- **v0.2.23 (2026-07-06):** **Cycle-iterating loop `sync loop`/`sync suzhal`**
+  (new section 1.15b, placed directly after `loop`'s section 1.15). New
+  section 5 production `syncLoopBlock` (`moduleItem` gains it): a module-body
+  item, distinct from statement-level `loop`, that elaborates to one small
+  FSM instead of unrolled hardware. Generates four signals off its name
+  (`<name>_start` in; `<name>_done`/`<name>_result`/`<name>_running` out); a
+  `<name>_start` pulse produces `<name>_done` exactly `hi - lo + 1` clock
+  edges later, and a held-high `<name>_start` does not re-trigger mid-run.
+  Costs **time, not area** — the direct opposite trade of bare `loop`'s
+  **area, not time** (both honesty callouts now stated side by side).
+  Documented a genuine semantic difference from `loop`+`return`: an
+  unguarded `sync loop` body is LAST-match-wins, not first-match-wins,
+  since it has no early-exit primitive and simply overwrites the
+  accumulator on every matching cycle — a user-written "already found"
+  latch is required for first-match-wins. Removed the stale "future
+  `sync loop`" forward-reference in section 1.15 and the corresponding
+  Deferred Features row (section 7) now that the construct has shipped.
+  Header version note corrected from a stale v0.2.17 to track the
+  changelog (last corrected at v0.2.6; drifted again since). Covered by the
+  `sync_loop_search` five-flavor example and its Icarus differential
+  (`tests/icarus.rs`).
 - **v0.2.22 (2026-07-05):** **Bounded compile-time loop `loop`/`suzhal`/`சுழல்`**
   (new section 1.15). `loop i: lo..hi { ... }` is `repeat`'s compile-time
   unrolling made available as a _statement_ — legal inside an `on` block
