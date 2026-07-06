@@ -409,6 +409,13 @@ impl<'a> Checker<'a> {
                 ModuleItem::Reset { name: n, .. } => {
                     cx.sigs.insert(n.name.clone(), Ty::Reset);
                 }
+                ModuleItem::SyncLoop(sl) => {
+                    let result_t = self.resolve_ty(cx, &sl.result_ty);
+                    cx.sigs.insert(format!("{}_start", sl.name.name), Ty::Bit);
+                    cx.sigs.insert(format!("{}_done", sl.name.name), Ty::Bit);
+                    cx.sigs.insert(format!("{}_result", sl.name.name), result_t);
+                    cx.sigs.insert(format!("{}_running", sl.name.name), Ty::Bit);
+                }
                 ModuleItem::Repeat(r) => {
                     // Types inside `repeat` resolve under a representative
                     // value (`lo`); per-iteration width EXPRESSIONS in
@@ -622,6 +629,49 @@ impl<'a> Checker<'a> {
                 ModuleItem::Reg { name, reset, .. } => {
                     let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
                     self.check_expr(cx, reset, expected);
+                }
+                ModuleItem::SyncLoop(sl) => {
+                    let result_t = cx
+                        .sigs
+                        .get(&format!("{}_result", sl.name.name))
+                        .copied()
+                        .unwrap_or(Ty::Unknown);
+                    self.check_expr(cx, &sl.result_init, result_t);
+                    // Bounds that do not const-eval were already reported by
+                    // pass 3 (names.rs) — nothing more to check here.
+                    let (Ok(lo), Ok(hi)) = (
+                        consteval::eval(&sl.lo, &cx.env),
+                        consteval::eval(&sl.hi, &cx.env),
+                    ) else {
+                        continue;
+                    };
+                    // Counter width: same `clog2(count)` rule as an ordinary
+                    // (compile-time) `repeat`/`loop` var, but this one is a
+                    // real runtime signal — shadow it (and the accumulator
+                    // name) in `cx.sigs` for the body walk, unrolled exactly
+                    // once (the body is emitted/simulated once, never
+                    // per-iteration, unlike `Repeat`/`Loop`).
+                    let count = hi.saturating_sub(lo).max(0);
+                    let var_t = bits(consteval::clog2_bits(count.max(1) as u128) as u128);
+                    let shadowed_var = cx.sigs.insert(sl.var.name.clone(), var_t);
+                    let shadowed_result = cx.sigs.insert(sl.result_name.name.clone(), result_t);
+                    self.seq_width_stmts(cx, &sl.body);
+                    match shadowed_var {
+                        Some(t) => {
+                            cx.sigs.insert(sl.var.name.clone(), t);
+                        }
+                        None => {
+                            cx.sigs.remove(&sl.var.name);
+                        }
+                    }
+                    match shadowed_result {
+                        Some(t) => {
+                            cx.sigs.insert(sl.result_name.name.clone(), t);
+                        }
+                        None => {
+                            cx.sigs.remove(&sl.result_name.name);
+                        }
+                    }
                 }
                 ModuleItem::Mem { name, init, .. } => {
                     // The init value seeds every cell, so it is checked against
@@ -1317,5 +1367,34 @@ fn op_text(op: BinOp) -> &'static str {
         Ge => ">=",
         LogicAnd => "&&",
         LogicOr => "||",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{checker::check, diag::Diag, lexer, parser};
+
+    /// Parse + run the full checker; panics if it doesn't parse (this file's
+    /// other checker tests live in `checker::tests`, which does the same via
+    /// its own private `parse`/`errs` helpers — this test lives here instead,
+    /// self-contained, so this commit touches only `widths/mod.rs`).
+    fn diags_for(src: &str) -> Vec<Diag> {
+        let toks = lexer::lex(src).expect("lexes");
+        let file = parser::parse(toks).expect("parses");
+        check(&[file]).expect_err("expected checker errors")
+    }
+
+    #[test]
+    fn sync_loop_result_init_width_checked() {
+        // Body re-assigns `result` to itself (same width, no body-induced
+        // error) so the ONLY possible diagnostic is the init-width check.
+        let src = "module M {\n  clock clk\n  sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 999 {\n    result <- result\n  }\n}\n";
+        let diags = diags_for(src);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code.is_some_and(|c| c.starts_with("E04"))),
+            "expected an E04xx width diagnostic, got: {diags:?}"
+        );
     }
 }
