@@ -769,7 +769,7 @@ module FindFirst {
   in  key: bits[4]
   mem m:   bits[4][8] = 0
 
-  sync loop find_first on rise(clk) (i: 0..8) -> result: bits[4] = 0 {
+  sync loop find_first on rise(clk) (i: 0..8) -> result: bits[3] = 0 {
     if m[i] == key {
       result <- i
     }
