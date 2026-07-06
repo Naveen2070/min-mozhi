@@ -369,6 +369,7 @@ impl Pretty {
                 self.line(&s);
             }
             ModuleItem::Repeat(r) => self.repeat(r),
+            ModuleItem::SyncLoop(sl) => self.sync_loop(sl),
             ModuleItem::ConstIf {
                 cond, then, els, ..
             } => {
@@ -457,6 +458,39 @@ impl Pretty {
         self.indent += 1;
         for it in &r.items {
             self.module_item(it);
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { body }`.
+    /// Grammar fixes this word order regardless of `self.order` (unlike the
+    /// standalone `on` block, which reverses for Thamizh) — see
+    /// `parser::items::sync_loop_block`'s doc comment.
+    fn sync_loop(&mut self, sl: &SyncLoop) {
+        let ind = self.indent;
+        let edge = self.kw(match sl.edge {
+            Edge::Rise => Kw::Rise,
+            Edge::Fall => Kw::Fall,
+        });
+        let head = format!(
+            "{} {} {} {} {edge}({}) ({}: {}..{}) -> {}: {} = {} {{",
+            self.kw(Kw::Sync),
+            self.kw(Kw::Loop),
+            sl.name.name,
+            self.kw(Kw::On),
+            sl.clock.name,
+            sl.var.name,
+            self.expr(&sl.lo, ind),
+            self.expr(&sl.hi, ind),
+            sl.result_name.name,
+            self.ty(&sl.result_ty, ind),
+            self.expr(&sl.result_init, ind),
+        );
+        self.line(&head);
+        self.indent += 1;
+        for st in &sl.body {
+            self.seq_stmt(st);
         }
         self.indent -= 1;
         self.line("}");
@@ -903,5 +937,34 @@ mod tests {
             crate::pretty::Order::Code,
         );
         assert!(printed.contains("a.b.Foo"), "got:\n{printed}");
+    }
+
+    #[test]
+    fn sync_loop_round_trips_through_pretty_print() {
+        let src = "module M {\n  clock clk\n  mem m: bits[8][8] = 0\n  in key: bits[8]\n  sync loop find_first on rise(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {\n    if m[i] == key { result <- i }\n  }\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(printed.contains("sync loop find_first"), "got:\n{printed}");
+        // Confirm it re-parses to the same shape, not just that the text appears.
+        let toks2 = crate::lexer::lex(&printed).unwrap();
+        let file2 = crate::parser::parse(toks2).expect("pretty-printed sync loop re-parses");
+        let crate::ast::TopItem::Module(m) = &file2.items[0] else {
+            panic!("expected module")
+        };
+        let sl = m
+            .items
+            .iter()
+            .find_map(|it| match it {
+                crate::ast::ModuleItem::SyncLoop(sl) => Some(sl),
+                _ => None,
+            })
+            .expect("sync loop item round-trips");
+        assert_eq!(sl.name.name, "find_first");
+        assert_eq!(sl.body.len(), 1);
     }
 }

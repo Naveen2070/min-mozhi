@@ -195,6 +195,16 @@ fn collect_item(
                 collect_item(inner, spans, referenced);
             }
         }
+        ast::ModuleItem::SyncLoop(sl) => {
+            referenced.insert(sl.var.name.clone());
+            referenced.insert(sl.result_name.name.clone());
+            collect_expr_names(&sl.lo, referenced);
+            collect_expr_names(&sl.hi, referenced);
+            collect_expr_names(&sl.result_init, referenced);
+            for stmt in &sl.body {
+                collect_seq_names(stmt, referenced);
+            }
+        }
         ast::ModuleItem::ConstIf {
             cond, then, els, ..
         } => {
