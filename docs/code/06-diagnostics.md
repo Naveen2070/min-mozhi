@@ -64,7 +64,7 @@ will key off them — never renumber.
 
 | Block       | Stage   | Catalog                          |
 | ----------- | ------- | -------------------------------- |
-| E0001–E0808 | checker | [`11-checker.md`](11-checker.md) |
+| E0001–E0909 | checker | [`11-checker.md`](11-checker.md) |
 | E10xx       | lexer   | below                            |
 | E11xx       | parser  | below                            |
 | E12xx       | loader  | below                            |

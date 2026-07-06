@@ -11,11 +11,17 @@ this page is the human ledger).
 > all `cargo test` args (`--release`, `--test sim`, …) and honors
 > `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
 
-**528 tests** as of 2026-06-30: 363 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 5 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 6 compile_string integration + 13 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**663 tests** as of 2026-07-06: 480 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 7 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 14 compile_string integration + 14 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
 
-Fixture counts (current): 77 error fixtures · 8 grammar fixtures · 48 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 32 Icarus self-checking testbenches.
+Fixture counts (current): 102 error fixtures · 8 grammar fixtures · 68 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 38 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
+
+- 2026-07-06 `loop` and `sync loop` features + bundles (branch `phase-2-sync-loop` and `phase-2-interfaces-bundles`):
+  Added `loop` unrolling in combinational `fn` bodies and `on` blocks.
+  Added `sync loop` grammar, lowering to primitive states, and checker verification.
+  Added `bundle` types, parsing, checker validation, and emitter flattening.
+  Suite 528 → 663.
 
 - 2026-06-30 `const if` elaboration (branch `phase-2-default-and-const-if`, Tasks 7–10):
   `ModuleItem::ConstIf` AST + parser (one-token lookahead), E0811 checker, all-passes
@@ -128,7 +134,7 @@ Changelog of test-count changes (newest first):
 - The error-fixture tests are data-driven over ~70 broken`.mimz`fixtures; one locks`ALL_CHECKER_CODES`— now`pub`in`src/diag.rs`— to the 11-checker.md catalog, one locks the`--json`wire format.
 - The 2026-06-13 quick-wins block added the tooling tests below:`explain`(+3),`translate`(+3 unit, +3 integration),`sim::comb`(+7 unit, +6`eval` integration).
 
-## Unit: keyword table (`src/lexer/keywords.rs`, 5 tests)
+## Unit: keyword table (`src/lexer/keywords.rs`, 11 tests)
 
 | Test                                                  | Locks in                                                                                                                                                                             | If it fails…                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
@@ -143,7 +149,7 @@ Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
 **every** test fails if the table is broken. That's by design.
 
-## Unit: lexer (`src/lexer/tests.rs`, 11 tests)
+## Unit: lexer (`src/lexer/tests.rs`, 13 tests)
 
 | Test                                           | Locks in                                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -158,8 +164,10 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `mem_is_an_active_keyword`                     | `mem`/`ninaivagam`/`நினைவகம்` lex as KW_MEM in all three flavors (A4 promoted it from reserved)           |
 | `async_is_an_active_keyword`                   | `async`/`otthisaivatra`/`ஒத்திசைவற்ற` lex as KW_ASYNC in all three flavors (A5 promoted it from reserved) |
 | `dont_care_binary_literal_lexes_to_masked_int` | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2)                           |
+| `fn_keyword_lexes_in_all_flavors`              | `fn`/`function`/`saarbu`/`சார்பு` lex as KW_FN (Phase 2)                                                  |
+| `rarrow_token_lexes`                           | `->` lexes as RArrow (for fn returns and sync loops)                                                      |
 
-## Unit: parser (`src/parser/tests.rs`, 37 tests)
+## Unit: parser (`src/parser/tests.rs`, 68 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -200,12 +208,24 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `parse_recover_top_level_error_keeps_following_module`             | file-level garbage becomes `TopItem::Error`; the next module still parses               |
 | `parse_recover_seq_and_test_blocks_emit_error_nodes`               | a bad stmt in `on`/`test` yields `Seq`/`TestStmt::Error`; good stmts survive            |
 | `strict_parse_still_errs_on_bad_input`                             | the strict `parse` contract is unchanged — any error discards the tree                  |
+| `parses_fn_with_local_let_and_body`                                | Phase 2 `fn` with `let` locals and a final block return parses                          |
+| `parses_fn_with_guard_clause_return`                               | `fn` with `return` statement guard clause parses                                        |
+| `tagged_enum_parses`                                               | enum with payload fields parses correctly (Phase 2)                                     |
+| `match_with_payload_bindings_parses`                               | `match` arms with payload bindings `Variant(x, y)` parse                                |
+| `parse_default_stmt`                                               | `default` assignment statements parse inside `on`                                       |
+| `parse_const_if_block`                                             | `const if` elaboration blocks parse                                                     |
+| `parse_bundle_decl`                                                | `bundle` struct declarations parse with fields                                          |
+| `parse_bundle_literal`                                             | bundle literals `Bundle { f: x }` parse                                                 |
+| `parse_bundle_destructure`                                         | bundle destructuring `let { f } = b` parses                                             |
+| `sync_loop_parses`                                                 | `sync loop` constructs parse with variables, boundaries, and result types               |
+| `parses_loop_inside_on_block`                                      | `loop i in 0..4` inside `on` block parses                                               |
+| `parses_loop_inside_fn_body`                                       | `loop` inside combinational `fn` block parses                                           |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 133 tests)
+## Unit: checker (`src/checker/tests.rs`, 195 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -242,6 +262,15 @@ deserve a note:
 | `extend_of_a_bit_into_bitwise_passes`                                  | the fixed shift-register shape — explicit `extend` where widths differ                      |
 | `disjoint_per_bit_drives_via_repeat_pass`                              | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal      |
 | `repeat_instance_array_ripple_carry_is_not_a_cycle`                    | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop                    |
+| `fn_body_width_mismatch_is_e0804`                                      | `fn` return values must match the declared return width                                     |
+| `e0809_default_target_not_reg`                                         | `default` keyword must target a `reg`                                                       |
+| `e0811_const_if_condition_not_const`                                   | `const if` conditions must be compile-time constants                                        |
+| `bundle_duplicate_name_is_e0909`                                       | duplicate bundle declarations error out                                                     |
+| `bundle_nested_bundle_field_is_e0807`                                  | nested bundles (bundles inside bundles) are caught as an error                              |
+| `bundle_literal_missing_field`                                         | bundle literal missing a declared field is an error                                         |
+| `bundle_type_mismatch`                                                 | bundle type mismatch is caught correctly                                                    |
+| `fn_loop_variable_does_not_leak_outside_the_loop`                      | `loop` variables are scoped strictly to the loop body                                       |
+| `non_constant_seq_loop_bound_is_e0201`                                 | loop boundary conditions must be compile-time constants                                     |
 | `a_cycle_through_instances_is_e0504`                                   | combinational loops THROUGH child modules are caught via the comb summaries                 |
 | `feedback_through_a_register_is_not_a_cycle`                           | a reg breaks the loop — the normal shape of hardware never false-positives                  |
 | `enum_match_covering_every_variant_needs_no_wildcard`                  | the v0.2.3 ruling, executable: full coverage IS exhaustive, no `_` ceremony                 |
@@ -255,7 +284,7 @@ deserve a note:
 | `a_constant_address_past_the_depth_is_e0406`                           | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                               |
 | `a_memory_inside_repeat_is_e0303`                                      | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                     |
 
-## Unit: transliteration (`src/emit_verilog/translit.rs`, 5 tests)
+## Unit: transliteration (`src/emit_verilog/translit.rs`, 6 tests)
 
 | Test                                      | Locks in                                                              |
 | ----------------------------------------- | --------------------------------------------------------------------- |
@@ -265,7 +294,7 @@ deserve a note:
 | `results_always_start_like_an_identifier` | output is always a valid Verilog identifier start                     |
 | `the_two_n_letters_romanize_identically`  | ந/ன → `n` is a DOCUMENTED collision; the suffix counter disambiguates |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 16 tests)
+## Unit: emitter (`src/emit_verilog/mod.rs`, 27 tests)
 
 | Test                                                            | Locks in                                                                                                                                    |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -342,7 +371,7 @@ never skip silently. Local install: the Windows installer
 
 | Test                                        | Locks in                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog`     | all 129 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated Tamil-identifier `vilakku`, the pure-Tamil showcase, and `wire signed` `signed_math`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `every_emitted_verilog_passes_iverilog`     | all 178 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated Tamil-identifier `vilakku`, the pure-Tamil showcase, and `wire signed` `signed_math`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `every_emitted_testbench_passes_iverilog`   | every base example's auto-generated `_tb.v` (from `--emit-testbench`) passes `iverilog -t null` — the generated testbenches are themselves valid, elaborable Verilog by Icarus's judgment, not just our goldens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `self_checking_testbenches_pass`            | one hand-written TB per base example (`tests/icarus/*_tb.v`, counts vary — grew from 16 with stdlib and tamil-pure additions) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `self_checking_pure_tamil_testbenches_pass` | the four pure-Tamil showcase circuits (`kanakki`/`cimitti`/`oppidi`/`thervi`), driven through their **romanized** ports (clk=`katikai`, rst=`miill`, …) — proves the transliterated Verilog SIMULATES, not just elaborates. Shares the `run_self_checking` helper with the English layer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -477,7 +506,7 @@ The 8.1 long-form diagnostic catalog behind `mimz explain <CODE>`.
 | `table_is_sorted_unique_and_self_labelled` | the `EXPLANATIONS` table is ordered, duplicate-free, and each entry opens with its own code    |
 | `lookup_is_case_insensitive_and_trims`     | `explain("e0501")` / `" E0501 "` resolve; unknown codes return `None`                          |
 
-## Unit: translate (`src/translate.rs`, 8 tests)
+## Unit: translate (`src/translate.rs`, 10 tests)
 
 The keyword-flavor reskin behind `mimz translate --to`, plus the opt-in
 `--romanize-names` identifier rewrite (reuses the emitter's `romanize`) and the
@@ -519,7 +548,7 @@ opt-in and one-way; the default stays lossless).
 | `cli_romanize_then_restore_round_trips`                            | end-to-end through the binary: `--romanize-names -o` writes a parseable `<out>.names.json`; a reverse run with `--names-map` restores the exact Tamil source                   |
 | `number_abutting_tamil_keeps_a_separator_when_reskinned`           | fuzz-audit regression: `42தொகுதி`/`42கணக்கி` (number + Tamil token, script change as the only separator) stays lexable + token-equivalent after reskin (guard inserts a space) |
 
-## Unit: config (`src/config.rs`, 4 tests)
+## Unit: config (`src/config.rs`, 7 tests)
 
 `mimz.toml` parsing + discovery (the precedence merge lives in `main.rs` and is
 exercised by the integration tests below).
@@ -662,7 +691,7 @@ See `docs/code/04-cli.md` for the full command reference.
 | `env_is_an_alias_for_doctor`                        | `mimz env` produces identical output to `mimz doctor`                                         |
 | `watch_starts_and_enters_watch_mode`                | `mimz check --watch` starts the watcher and shows the "watching N dir(s)" banner              |
 
-## Unit: combinational evaluator (`src/sim/comb.rs`, 16 tests)
+## Unit: combinational evaluator (`src/sim/comb.rs`, 18 tests)
 
 The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 
@@ -685,7 +714,7 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `shift_left_bit_32_set_in_amt`         | `1 << (1 << 32)` → 0 (the specific `as u32` truncation trigger)                   |
 | `shift_right_bit_32_set_in_amt`        | `(1 << 63) >> (1 << 32)` → 0                                                      |
 
-## Unit: elaboration (`src/sim/elaborate.rs`, 13 tests)
+## Unit: elaboration (`src/sim/elaborate.rs`, 19 tests)
 
 Phase 1.5 steps B1 + C2–C4: flatten an AST module (and its instances) into a
 `Design` (signals with folded widths, regs with folded reset + clock, comb
@@ -710,7 +739,7 @@ array instances, bit-indexed drives). The event-driven kernel interprets a
 | `a_flatten_name_collision_errors`                   | SEC-6: a parent signal colliding with a flattened `inst_port` wire errors instead of silently overwriting                                           |
 | `an_i128_min_const_elaborates_without_overflow`     | SEC-6 (SIM-5): a flattened child const evaluating to `i128::MIN` lowers via `unsigned_abs` instead of overflow-panicking the negation in `int_expr` |
 
-## Unit: kernel (`src/sim/kernel.rs`, 11 tests)
+## Unit: kernel (`src/sim/kernel.rs`, 13 tests)
 
 Phase 1.5 step B2: the event-driven, two-phase simulation kernel that interprets
 a `Design` over clock cycles (regs init to reset; each rising edge settles

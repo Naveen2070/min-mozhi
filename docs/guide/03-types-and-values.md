@@ -129,6 +129,25 @@ The payload bindings (`d`, `k`) are available inside the arm. Wrong binding
 count or incompatible types across OR-arms are caught at compile time (E0806,
 E0808).
 
+## Bundles (Structs / Interfaces)
+
+A `bundle` is a named group of signals, used to cleanly pass multiple related wires or registers together. This eliminates boilerplate when connecting modules.
+
+```mimz
+bundle AxiStream {
+  valid: bit
+  ready: bit
+  data:  bits[8]
+}
+
+module Node {
+  in  bus_in:  AxiStream
+  out bus_out: AxiStream
+}
+```
+
+The compiler automatically flattens a bundle into individual signals (`bus_in_valid`, `bus_in_ready`, etc.) during Verilog emission, meaning bundles have zero runtime overhead and generate clean, synthesis-safe hardware.
+
 ## Compile-time types: `int` and `bool`
 
 Parameters and `const`s are compile-time values, not hardware. They use the

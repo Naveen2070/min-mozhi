@@ -143,6 +143,25 @@ Why this is safe by construction:
   compiler proves there is no forgotten transition;
 - the outputs are plain combinational decodes of the current state.
 
+## Synchronous Loops (`sync loop`)
+
+Sometimes you need a hardware block to process data iteratively over multiple clock cycles. Writing manual state machines and counters for this is tedious and error-prone. The `sync loop` construct is a lightweight high-level synthesis (HLS) feature that automatically generates a finite state machine, an internal counter, and a busy flag for you.
+
+```mimz
+module SerialScanner {
+  clock clk
+  reset rst
+
+  // The sync loop automatically tracks iteration state
+  sync loop scan(clk, rst) i in 0..12 -> result: bits[8] = 0 {
+    // This executes once per clock cycle
+    result <- result +% 1
+  }
+}
+```
+
+Behind the scenes, Min-Mozhi lowers the `sync loop` directly into primitive `reg` and `on` blocks. It safely manages the counter widths (using `clog2(hi)` to save logic elements) and handles all the state-transition condition checks for you, ensuring that the hardware generated is both efficient and completely safe.
+
 ## Clock domains
 
 If a design has more than one clock, Min-Mozhi tracks which clock owns each

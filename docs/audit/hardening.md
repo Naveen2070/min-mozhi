@@ -124,6 +124,6 @@ verification against the code**. Recording them so they are not re-investigated:
 
 This audit hardens the compiler against **malicious input** (crashes, overflow,
 exhaustion). The **correctness** of emitted hardware — that _valid_ input
-produces correct, safe Verilog — is the job of the checker's six passes (E0xxx)
+produces correct, safe Verilog — is the job of the checker's seven passes (E0xxx)
 and the golden / Icarus differential tests, which already exist and are
 unchanged by this work.

@@ -4,7 +4,7 @@ The checker runs seven passes over the AST to catch hardware bugs **before** the
 
 ## `checker/mod.rs` — The Entry
 
-**`Checker` struct** holds all the state for all six passes: the diagnostics list, module and enum maps, and the constant-evaluation environment.
+**`Checker` struct** holds all the state for all seven passes: the diagnostics list, module and enum maps, and the constant-evaluation environment.
 
 **`check(files)`** runs all seven passes in order:
 

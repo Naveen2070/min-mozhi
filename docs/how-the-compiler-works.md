@@ -268,7 +268,7 @@ every mistake, explain each one, never stop at the first.**
 
 The parser would happily accept `count = valu` — it is a perfectly
 shaped assignment. Only the checker knows there is nothing named
-`valu`. It runs six passes, in order, each in its own file (or folder):
+`valu`. It runs seven passes, in order, each in its own file (or folder):
 
 1. **`symbols.rs`** — walk every file, collect all module names and
    enum names into project-wide tables. Two modules with one name?
@@ -445,7 +445,7 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test` runs several layers (**522 tests** today; the full ledger,
+`cargo test` runs several layers (**663 tests** today; the full ledger,
 per-binary breakdown, and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):
 
