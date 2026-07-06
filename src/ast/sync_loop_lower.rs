@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use super::{
     Arm, BinOp, Builtin, Dir, Expr, ExprKind, FieldInit, Ident, LValue, ModuleItem, OnBlock,
-    SeqStmt, SyncLoop, Type,
+    Pattern, SeqStmt, SyncLoop, Type,
 };
 
 /// Lower one `sync loop` instance into 12 synthesized items, in this order:
@@ -36,22 +36,15 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
     let acc_name = format!("{base}_acc");
     let done_r_name = format!("{base}_done_r");
 
-    // Counter width: `bits[clog2(hi - lo)]`, reusing the existing `clog2`
-    // builtin so this stays a pure AST-to-AST transform with no const-eval
-    // dependency (keeps `ast` free of a dependency on `checker`).
+    // Counter width: `bits[clog2(hi)]`. The counter holds the *live index
+    // value* (it's `lo` at start, increments up to `hi - 1`), not just the
+    // iteration count — so it must be sized to represent `hi - 1`, the
+    // largest value it ever holds, regardless of `lo`. Reuses the existing
+    // `clog2` builtin so this stays a pure AST-to-AST transform with no
+    // const-eval dependency (keeps `ast` free of a dependency on `checker`).
     let range_span = sl.lo.span.join(sl.hi.span);
     let cnt_ty = Type::Bits(Box::new(Expr {
-        kind: ExprKind::Call {
-            func: Builtin::Clog2,
-            args: vec![Expr {
-                kind: ExprKind::Binary {
-                    op: BinOp::Sub,
-                    lhs: Box::new(sl.hi.clone()),
-                    rhs: Box::new(sl.lo.clone()),
-                },
-                span: range_span,
-            }],
-        },
+        kind: ExprKind::Call { func: Builtin::Clog2, args: vec![sl.hi.clone()] },
         span: range_span,
     }));
 
@@ -235,7 +228,22 @@ fn rename_expr(e: &Expr, rename: &HashMap<String, String>) -> Expr {
             scrutinee: Box::new(rename_expr(scrutinee, rename)),
             arms: arms
                 .iter()
-                .map(|a| Arm { patterns: a.patterns.clone(), value: rename_expr(&a.value, rename) })
+                .map(|a| {
+                    // Each `Pattern::Variant`'s `bindings` are names scoped
+                    // to this arm's `value` only (see `checker/names.rs`,
+                    // which treats them as real per-arm bindings) — they
+                    // shadow an outer name of the same spelling, same rule
+                    // already applied to `SeqStmt::Loop` above.
+                    let mut inner = rename.clone();
+                    for p in &a.patterns {
+                        if let Pattern::Variant { bindings, .. } = p {
+                            for b in bindings {
+                                inner.remove(&b.name);
+                            }
+                        }
+                    }
+                    Arm { patterns: a.patterns.clone(), value: rename_expr(&a.value, &inner) }
+                })
                 .collect(),
         },
         ExprKind::Concat(parts) => ExprKind::Concat(parts.iter().map(|p| rename_expr(p, rename)).collect()),
@@ -316,5 +324,112 @@ mod tests {
         assert_eq!(lhs.base.name, "find_first_acc");
         let ExprKind::Ident(rhs_name) = &rhs.kind else { panic!() };
         assert_eq!(rhs_name, "find_first_cnt");
+    }
+
+    /// Regression for the counter-width bug: with `lo != 0`, `clog2(hi - lo)`
+    /// (the iteration *count*) is too narrow for the live index *value* the
+    /// `_cnt` register actually holds (`lo` up to `hi - 1`). `lo=4, hi=12`
+    /// pins the tight formula — `clog2(hi-lo)=clog2(8)=3` bits would be
+    /// wrong (can't hold 11), `clog2(hi)=clog2(12)=4` bits is correct. The
+    /// `lo=0` case in `lower_produces_twelve_items_in_order` can't catch
+    /// this: `hi - 0 == hi`, so the buggy and fixed formulas coincide there.
+    #[test]
+    fn counter_width_is_clog2_hi_not_clog2_range_when_lo_nonzero() {
+        let sp = Span::new(0, 0);
+        let id = |n: &str| Ident { name: n.into(), span: sp };
+        let int = |v: u128| Expr { kind: ExprKind::Int { value: v, raw: v.to_string() }, span: sp };
+        let sl = SyncLoop {
+            name: id("scan"),
+            clock: id("clk"),
+            edge: Edge::Rise,
+            var: id("i"),
+            lo: int(4),
+            hi: int(12),
+            result_name: id("result"),
+            result_ty: Type::Bit,
+            result_init: int(0),
+            body: vec![],
+            span: sp,
+        };
+        let items = lower_sync_loop(&sl);
+        let ModuleItem::Reg { ty, .. } = &items[4] else { panic!("item 4 must be the _cnt reg") };
+        let Type::Bits(width) = ty else { panic!("cnt reg must be Type::Bits") };
+        let ExprKind::Call { func: Builtin::Clog2, args } = &width.kind else {
+            panic!("cnt width must be a clog2(...) call")
+        };
+        assert_eq!(args.len(), 1, "clog2 must take exactly one argument");
+        let ExprKind::Int { value, .. } = &args[0].kind else { panic!("expected an int literal arg") };
+        assert_eq!(*value, 12, "counter width must be clog2(hi) = clog2(12), got clog2({value})");
+    }
+
+    /// Regression for the match-arm shadowing bug: a `Pattern::Variant`
+    /// binding introduces a name scoped to that arm's `value` only
+    /// (`checker/names.rs` treats it as a real per-arm binding) — it must
+    /// shadow an outer name of the same spelling, exactly like the
+    /// `SeqStmt::Loop` case already handles. Here the pattern binds `result`
+    /// (same spelling as the accumulator) in arm 0; arm 1's wildcard binds
+    /// nothing, so its reference to the real loop var `i` must still be
+    /// rewritten to the physical counter register name.
+    #[test]
+    fn rename_expr_match_arm_binding_shadows_accumulator_name() {
+        let sp = Span::new(0, 0);
+        let id = |n: &str| Ident { name: n.into(), span: sp };
+        let int = |v: u128| Expr { kind: ExprKind::Int { value: v, raw: v.to_string() }, span: sp };
+        let sl = SyncLoop {
+            name: id("scan"),
+            clock: id("clk"),
+            edge: Edge::Rise,
+            var: id("i"),
+            lo: int(0),
+            hi: int(8),
+            result_name: id("result"),
+            result_ty: Type::Bit,
+            result_init: int(0),
+            body: vec![SeqStmt::Assign {
+                lhs: LValue { base: id("result"), index: None, span: sp },
+                rhs: Expr {
+                    kind: ExprKind::Match {
+                        scrutinee: Box::new(Expr { kind: ExprKind::Ident("i".into()), span: sp }),
+                        arms: vec![
+                            Arm {
+                                // `Enum.Tag(result)` — binds a fresh local `result`,
+                                // shadowing the outer accumulator name within this
+                                // arm's value only.
+                                patterns: vec![Pattern::Variant {
+                                    enum_name: id("E"),
+                                    variant: id("Tag"),
+                                    bindings: vec![id("result")],
+                                }],
+                                value: Expr { kind: ExprKind::Ident("result".into()), span: sp },
+                            },
+                            Arm {
+                                patterns: vec![Pattern::Wildcard],
+                                value: Expr { kind: ExprKind::Ident("i".into()), span: sp },
+                            },
+                        ],
+                    },
+                    span: sp,
+                },
+            }],
+            span: sp,
+        };
+        let items = lower_sync_loop(&sl);
+        let ModuleItem::On(on) = &items[8] else { panic!("item 8 must be the on-block") };
+        let SeqStmt::If { then: running_then, .. } = &on.body[0] else { panic!() };
+        let SeqStmt::Assign { rhs, .. } = &running_then[1] else { panic!("expected the renamed body assign") };
+        let ExprKind::Match { scrutinee, arms } = &rhs.kind else { panic!("expected the match expr") };
+
+        // The scrutinee references the real loop var `i` -> must be renamed.
+        let ExprKind::Ident(scrutinee_name) = &scrutinee.kind else { panic!() };
+        assert_eq!(scrutinee_name, "scan_cnt");
+
+        // Arm 0's `value` refers to the pattern-bound `result`, NOT the
+        // accumulator -> must stay `result`, unrewritten.
+        let ExprKind::Ident(arm0_name) = &arms[0].value.kind else { panic!() };
+        assert_eq!(arm0_name, "result", "pattern-bound name must not be renamed to the accumulator register");
+
+        // Arm 1's `value` refers to the real loop var `i` -> must be renamed.
+        let ExprKind::Ident(arm1_name) = &arms[1].value.kind else { panic!() };
+        assert_eq!(arm1_name, "scan_cnt");
     }
 }
