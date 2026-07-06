@@ -180,6 +180,9 @@ fn count_clocks(items: &[ModuleItem], n: &mut usize) {
     for item in items {
         match item {
             ModuleItem::Clock(_) => *n += 1,
+            // A sync loop references an existing clock, it doesn't declare
+            // a new one.
+            ModuleItem::SyncLoop(_) => {}
             ModuleItem::Repeat(r) => count_clocks(&r.items, n),
             ModuleItem::ConstIf { then, els, .. } => {
                 count_clocks(then, n);
@@ -228,6 +231,11 @@ fn collect<'a>(items: &'a [ModuleItem], cx: &mut Ccx<'a>) {
                 for t in targets {
                     cx.reg_clock.entry(t).or_insert(&on.clock.name);
                 }
+            }
+            ModuleItem::SyncLoop(sl) => {
+                cx.reg_clock
+                    .entry(&sl.result_name.name)
+                    .or_insert(&sl.clock.name);
             }
             ModuleItem::Repeat(r) => collect(&r.items, cx),
             ModuleItem::ConstIf { then, els, .. } => {
