@@ -84,7 +84,7 @@ help)` and emit nothing. Errors, never guesses.
 ## Recipe: add a checker pass
 
 One safety rule = one pass = one file with its own tests (architecture
-principle 4; six passes exist — the full how-to lives in
+principle 4; seven passes exist — the full how-to lives in
 [`11-checker.md`](11-checker.md)). Passes take the AST + symbol table,
 return diagnostics through `Checker::err`, which makes the stable
 `E####` code, the file index, and the teaching help text structurally

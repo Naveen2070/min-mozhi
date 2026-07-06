@@ -38,16 +38,20 @@ One-page reference. The authoritative sources are
 | `or`      | `alladhu`       | `அல்லது`      | logical or (`\|\|`)             |
 | `not`     | `alla`          | `அல்ல`        | logical not (`!`)               |
 | `fn`      | `saarbu`        | `சார்பு`      | combinational function          |
+| `return`  | `thirumbu`      | `திரும்பு`    | function return statement       |
+| `default` | `iyalbu`        | `இயல்பு`      | fallback register assignment    |
+| `bundle`  | `kattai`        | `கட்டை`       | named group of signals          |
+| `loop`    | `suzhal`        | `சுழல்`       | combinational or `on` loop      |
+| `sync`    | `othisai`       | `ஒத்திசை`     | modifier for `sync loop`        |
 | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar directive               |
 | `thamizh` | `thamizh`       | `தமிழ்`       | thamizh word-order profile      |
 
-The Tanglish/Tamil spellings of `mem`, `async`, and `fall` are **provisional**,
+The Tanglish/Tamil spellings of `mem`, `async`, `fall`, `fn`, `return`, `default`, `bundle`, `loop`, and `sync` are **provisional**,
 pending native-speaker review before the v0.1.0 release.
 
-Reserved for future features (using one is an error): `sync`, `inout`, `struct`,
-`secret`, `declassify`, `default`, `pipeline`, `interface`, `chan`, `prove`,
-`await`, `fixed`, `requires`, `ensures`,
-`suzhal` / `சுழல்` (future controlled `for`-loop).
+Reserved for future features (using one is an error): `inout`, `struct`,
+`secret`, `declassify`, `pipeline`, `interface`, `chan`, `prove`,
+`await`, `fixed`, `requires`, `ensures`.
 
 ## Types
 

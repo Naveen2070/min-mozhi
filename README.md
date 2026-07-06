@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-476%20passing-brightgreen.svg"></a>
+  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-663%20passing-brightgreen.svg"></a>
   <img alt="Status" src="https://img.shields.io/badge/status-compiler%20%2B%20simulator-success.svg">
   <a href="https://rustup.rs"><img alt="Rust" src="https://img.shields.io/badge/rust-%E2%89%A5%201.85-orange.svg"></a>
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-blue.svg">
@@ -105,7 +105,7 @@ cargo fmt --all && cargo clippy --all-targets -- -D warnings && cargo test
 ## Status
 
 **Phases 1, 1.8, and 1.5 complete — a working compiler _and_ simulator**, with
-**476 passing tests**.
+**663 passing tests**.
 
 - **Compiler** — lexer (all three flavors) → parser → checker (every spec safety
   rule, stable `E`-codes) → Verilog emitter (`repeat` unrolling, Tamil→ASCII
@@ -138,16 +138,16 @@ so nothing you build here is a dead end.
 
 ## Documentation
 
-| Where                                      | What                                                  |
-| ------------------------------------------ | ----------------------------------------------------- |
-| [`docs/guide/`](docs/guide/README.md)      | **Learn the language** — from-scratch tutorial book   |
-| [`spec/`](spec/01-goals-and-philosophy.md) | Language spec — goals, grammar, keywords, simulator   |
-| [`examples/`](examples/)                   | 23 designs × 4 flavor folders + 6 stdlib + tamil-pure |
-| [`demo/`](demo/)                           | Accumulator-CPU showcase: check → test → sim → wave   |
-| [`docs/`](docs/README.md)                  | Docs hub — phase plans, architecture, dev log         |
-| [`docs/code/`](docs/code/)                 | How the code works (maintainers & contributors)       |
-| [`editors/vscode/`](editors/vscode/)       | VS Code syntax highlighting for `.mimz`               |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | How to contribute                                     |
+| Where                                      | What                                                             |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| [`docs/guide/`](docs/guide/README.md)      | **Learn the language** — from-scratch tutorial book              |
+| [`spec/`](spec/01-goals-and-philosophy.md) | Language spec — goals, grammar, keywords, simulator              |
+| [`examples/`](examples/)                   | 34 designs × 4 flavor folders + 5 stdlib + 1 lib + 19 tamil-pure |
+| [`demo/`](demo/)                           | Accumulator-CPU showcase: check → test → sim → wave              |
+| [`docs/`](docs/README.md)                  | Docs hub — phase plans, architecture, dev log                    |
+| [`docs/code/`](docs/code/)                 | How the code works (maintainers & contributors)                  |
+| [`editors/vscode/`](editors/vscode/)       | VS Code syntax highlighting for `.mimz`                          |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | How to contribute                                                |
 
 ## Roadmap
 

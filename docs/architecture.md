@@ -2,14 +2,14 @@
 
 > Living document (RULES.md R3: update whenever components or data flow change).
 > Status: **Phases 1, 1.8, and 1.5 complete** — lexer, parser (code-order +
-> thamizh-order), full checker (six passes), Verilog emitter (repeat unrolling,
+> thamizh-order), full checker (seven passes), Verilog emitter (repeat unrolling,
 > transliteration, signed), CLI
 > (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`/`sim`/`test`/`fmt`,
 > `--json`), LSP v0, all Icarus-validated. The **own simulator** is built and shipped
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
 > (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-06-30 (doc audit — function & tagged-union currency: E-codes now go to E0808, checker description updated for E08xx, stale references cleaned)
+> Last updated: 2026-07-06 (comprehensive doc audit — error codes E0001–E0909, example count 178, error fixtures 102, golden .v 68, lib.rs pub mod 18, accurate per-flavor breakdowns)
 > spec version numbers, fixture counts, file counts across guide/code/source-guide)
 
 ---
@@ -34,7 +34,7 @@
         ▼
  ┌──────────────┐   name resolution · const folding · width rules
    │   CHECKER    │   single-driver · DAG · exhaustiveness · =/<- ·
-   └──────┬───────┘   clock-domain typing · function checking E0801–E0808   (spec/02 section 6)
+   └──────┬───────┘   clock-domain typing · function checking E0801–E0812   (spec/02 section 6)
         ▼
  ┌─────────────────────────────────────────────────┐
  │                  BACKENDS                       │
@@ -84,12 +84,12 @@ The IR and native backend remain planned.
 
 | Component           | Phase   | Key design points                                                                                                                                                                                                 |
 | ------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test` (handlers in `src/commands/`)                                                                                |
+| **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test`, `init`, `doctor`, `completions`, `lint`, `repl`, `eject` (handlers in `src/commands/`)                      |
 | **Keyword table**   | 1       | `lang/keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                              |
 | **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                 |
 | **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                |
 | **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                  |
-| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; six passes (symbols/consteval/names/widths/drivers/clocks + funcs cycle detection), each with its own tests; stable E-codes E0001–E0808                                    |
+| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; seven passes (symbols/consteval/names/widths/drivers/clocks + funcs cycle detection + funcs unreachable), each with its own tests; stable E-codes E0001–E0909              |
 | **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper                                                     |
 | **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                   |
 | **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `src/sim/` (comb, kernel, elaborate, harness, run, value, vcd, trace) |
@@ -108,7 +108,7 @@ mimz/
   Cargo.toml
   lang/keywords.toml          # trilingual table — data, not code
   src/
-    lib.rs               # pub mod × 15 + mod runner + crate map ✅
+    lib.rs               # pub mod × 18 + mod runner + crate map ✅
     main.rs              # thin CLI (clap, dispatch, Output)     ✅
     commands/            #   per-subcommand handlers + helpers   ✅
     lsp.rs               # `mimz lsp` server (BIN-only module,  ✅
@@ -149,7 +149,7 @@ mimz/
       expr.rs            #   expression rendering
       translit.rs        #   Tamil → ASCII identifier pre-pass
       testbench.rs       #   standalone Verilog testbench gen
-    checker/             # six passes, E0001–E0701              ✅
+    checker/             # seven passes, E0001–E0909              ✅
       mod.rs             #   entry, Checker state, err plumbing
       symbols.rs         #   project tables + duplicates
       consteval.rs       #   compile-time evaluation
@@ -170,7 +170,7 @@ mimz/
       trace.rs           #   console trace renderer
     ir/                  # (P2)
   tests/                 # 18 test files
-    examples.rs          # all 129 examples (29 × 4 complete flavors + 13 tamil-pure) ✅
+    examples.rs          # all 178 examples (34 × 4 complete flavors + 5 stdlib + 1 lib each + 19 tamil-pure) ✅
     cli.rs               # CLI surface: init / doctor / completions  ✅
     errors.rs            # broken fixtures, one code per E-code  ✅
     icarus.rs            # iverilog lint + self-checking TBs +   ✅
@@ -183,8 +183,8 @@ mimz/
     compile_string.rs    # library API tests                    ✅
     stdlib.rs            # importable std.* library tests       ✅
     wasm_parity.rs       # WASM ↔ CLI output parity             ✅
-    golden/              # pinned .v output per base example
-    fixtures/errors/     # the broken corpus
+    golden/              # pinned .v output per base example (68 .v + 14 _tb.v + 1 .vcd)
+    fixtures/errors/     # the broken corpus (102 .mimz files)
   benches/
     compile.rs           # criterion per-phase micro-benchmarks ✅
                          #   (cargo bench; lexer/parser/checker/emit)
@@ -206,11 +206,11 @@ min-mozhi/
   docs/                     # the PROJECT — plan/, log/, archive/, RULES,
                             #   guide/, code/, source-guide/, audit/, Ideas/
   src/                      # the compiler (tree above)
-  tests/                    # integration tests (17 files)
+  tests/                    # integration tests (18 files)
   benches/                  # Criterion micro-benchmarks
   fuzz/                     # libFuzzer targets (4)
   crates/mimz-wasm/         # WASM playground wrapper
-  examples/                 # .mimz programs (23 designs × 4 complete flavors + 6 stdlib each + 13 tamil-pure = 129)
+  examples/                 # .mimz programs (34 designs × 4 complete flavors + 5 stdlib + 1 lib each + 19 tamil-pure = 178)
   demo/                     # alu + cpu hardware demos
   editors/vscode/           # VS Code extension (grammar + LSP client)
   site/                     # Astro documentation website (deployed)

@@ -140,11 +140,11 @@ The test suite is thorough:
 - `tests/fixtures/errors/` — 84 `.mimz` files, one per error code (44 checker + additional parser/lexer)
 - `tests/fixtures/grammar/` — 8 grammar conformance examples
 - `tests/golden/` — 50 golden Verilog outputs + 14 testbench goldens + 1 VCD trace
-- `tests/icarus/` — 32 Icarus Verilog testbenches
+- `tests/icarus/` — 38 Icarus Verilog testbenches
 
 ## `examples/` — Designs in All Five Flavors
 
-The `examples/` directory has the same 23 designs (plus 5 stdlib modules) in **four** keyword flavors — English, Tanglish, Tamil, and mixed — plus a **fifth** `tamil-pure/` showcase with Tamil keywords AND identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
+The `examples/` directory has the same 34 designs (plus 5 stdlib modules and 1 lib module) in **four** keyword flavors — English, Tanglish, Tamil, and mixed — plus a **fifth** `tamil-pure/` showcase with Tamil keywords AND identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
 
 Designs include: adders, counters, FSMs (traffic light, blinker), comparators, multiplexers, shift registers, memories, stdlib modules (seg7, PWM, FIFO, UART, debouncer), and more.
 

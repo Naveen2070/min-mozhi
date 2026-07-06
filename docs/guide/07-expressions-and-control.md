@@ -90,6 +90,23 @@ Rules the compiler enforces:
 Matching over an `enum` is the idiomatic state machine — see the FSM in
 [chapter 8](08-sequential-logic.md).
 
+## Iteration: `loop`
+
+Min-Mozhi supports a simple `loop` construct that evaluates iteratively. Since hardware does not have a "while loop" instruction, the compiler statically unrolls this loop at build time.
+
+- Inside a combinational `fn`, the loop unrolls into parallel combinational logic.
+- Inside a clocked `on` block, the loop's register updates unroll into a single cycle's next-state logic.
+
+```mimz
+on rise(clk) {
+  loop i in 0..4 {
+    regs[i] <- data[i]
+  }
+}
+```
+
+_(Note: For loops that take multiple actual clock cycles to execute, use a `sync loop`. See [chapter 8](08-sequential-logic.md).)_
+
 ## Statement-level `if` / `else`
 
 Inside a clocked `on` block you also write `if`/`else` as **statements** that
