@@ -4,10 +4,11 @@ The data structure every other stage agrees on.
 
 ## File layout
 
-| File      | Owns                                                         |
-| --------- | ------------------------------------------------------------ |
-| `mod.rs`  | Files, modules, declarations, sequential/test statements     |
-| `expr.rs` | Expressions, patterns, operators — re-exported via `pub use` |
+| File                 | Owns                                                                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`             | Files, modules, declarations, sequential/test statements                                                                                |
+| `expr.rs`            | Expressions, patterns, operators — re-exported via `pub use`                                                                            |
+| `sync_loop_lower.rs` | Desugars `ModuleItem::SyncLoop` into `Port`/`Reg`/`On`/`Drive` primitives — the one shared function `emit_verilog` and `sim` both call    |
 
 The split is purely for file size; `pub use expr::*` means consumers
 write `ast::ExprKind` and never see it.
