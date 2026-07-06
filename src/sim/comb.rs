@@ -125,6 +125,14 @@ pub fn eval_outputs(
                     "module uses `repeat` — unrolling is not supported by the evaluator yet".into(),
                 );
             }
+            ModuleItem::SyncLoop(_) => {
+                return Err(
+                    "module uses `sync loop` — clocked, multi-cycle evaluation is not \
+                     supported by the combinational-only evaluator; use the real simulator \
+                     (`mimz sim`/`mimz test`) instead"
+                        .into(),
+                );
+            }
             _ => {}
         }
     }
