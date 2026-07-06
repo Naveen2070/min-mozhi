@@ -638,21 +638,32 @@ impl<'a> Checker<'a> {
                         .unwrap_or(Ty::Unknown);
                     self.check_expr(cx, &sl.result_init, result_t);
                     // Bounds that do not const-eval were already reported by
-                    // pass 3 (names.rs) — nothing more to check here.
-                    let (Ok(lo), Ok(hi)) = (
+                    // pass 3 (names.rs) — nothing more to check here. `lo`
+                    // isn't used in the width formula below (see the comment
+                    // there), but must still const-eval — same skip-if-either-
+                    // fails behavior as before Finding 2's fix.
+                    let (Ok(_lo), Ok(hi)) = (
                         consteval::eval(&sl.lo, &cx.env),
                         consteval::eval(&sl.hi, &cx.env),
                     ) else {
                         continue;
                     };
-                    // Counter width: same `clog2(count)` rule as an ordinary
-                    // (compile-time) `repeat`/`loop` var, but this one is a
-                    // real runtime signal — shadow it (and the accumulator
-                    // name) in `cx.sigs` for the body walk, unrolled exactly
-                    // once (the body is emitted/simulated once, never
-                    // per-iteration, unlike `Repeat`/`Loop`).
-                    let count = hi.saturating_sub(lo).max(0);
-                    let var_t = bits(consteval::clog2_bits(count.max(1) as u128) as u128);
+                    // Counter width: `clog2(hi)`, NOT `clog2(hi - lo)` — the
+                    // physical `_cnt` register (`ast::lower_sync_loop`) holds
+                    // the LIVE INDEX VALUE (`lo..hi-1`), not the iteration
+                    // count, so it must be wide enough for `hi - 1`, the
+                    // largest value it ever holds, regardless of `lo`. Using
+                    // `hi - lo` here under-sizes the body's view of the loop
+                    // variable whenever `lo != 0` (final whole-branch review
+                    // Finding 2 — mirrors the lowering fix already applied in
+                    // `ast::sync_loop_lower`, see
+                    // `counter_width_is_clog2_hi_not_clog2_range_when_lo_nonzero`).
+                    // This one is a real runtime signal (unlike an ordinary
+                    // compile-time `repeat`/`loop` var) — shadow it (and the
+                    // accumulator name) in `cx.sigs` for the body walk,
+                    // unrolled exactly once (the body is emitted/simulated
+                    // once, never per-iteration, unlike `Repeat`/`Loop`).
+                    let var_t = bits(consteval::clog2_bits(hi.max(1) as u128) as u128);
                     let shadowed_var = cx.sigs.insert(sl.var.name.clone(), var_t);
                     let shadowed_result = cx.sigs.insert(sl.result_name.name.clone(), result_t);
                     self.seq_width_stmts(cx, &sl.body);
@@ -1395,6 +1406,30 @@ mod tests {
                 .iter()
                 .any(|d| d.code.is_some_and(|c| c.starts_with("E04"))),
             "expected an E04xx width diagnostic, got: {diags:?}"
+        );
+    }
+
+    /// Final whole-branch review, Finding 2: with `lo != 0`, the loop
+    /// variable's checker-recorded width must be `clog2(hi)` (the value-range
+    /// formula the lowering already uses for the physical `_cnt` register —
+    /// see `ast::sync_loop_lower`'s `counter_width_is_clog2_hi_not_clog2_range_when_lo_nonzero`),
+    /// NOT `clog2(hi - lo)` (the iteration-count formula this file used to
+    /// use). `lo=4, hi=12`: `clog2(hi)=4` bits, `clog2(hi-lo)=clog2(8)=3`
+    /// bits — the two formulas disagree, so this case pins the bug. The body
+    /// assigns the loop var `i` straight into the 4-bit accumulator: under
+    /// the old (buggy) 3-bit typing this is a real width mismatch and the
+    /// checker would reject it; under the fixed 4-bit typing it's an exact
+    /// match, so the checker must accept the module with zero diagnostics.
+    #[test]
+    fn sync_loop_var_width_is_clog2_hi_not_clog2_range_when_lo_nonzero() {
+        let src = "module M {\n  clock clk\n  sync loop s on rise(clk) (i: 4..12) -> result: bits[4] = 0 {\n    result <- i\n  }\n}\n";
+        let toks = lexer::lex(src).expect("lexes");
+        let file = parser::parse(toks).expect("parses");
+        let res = check(&[file]);
+        assert!(
+            res.is_ok(),
+            "expected no diagnostics (loop var must be typed bits[4] = clog2(12)), got: {:?}",
+            res.err()
         );
     }
 }

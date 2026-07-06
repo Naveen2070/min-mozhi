@@ -500,22 +500,19 @@ fn elaborate_module(
     // desugaring the Verilog emitter uses, `ast::lower_sync_loop` — Task 4)
     // BEFORE the worklist starts, so the loop below never sees a `SyncLoop`
     // node: `lowered_sync_loops` must outlive the whole function since `work`
-    // holds `&ModuleItem` borrows into it. The original `SyncLoop` entries
-    // are filtered out of `m.items` here so they aren't ALSO pushed onto the
-    // worklist un-lowered (the main match's fallback would otherwise
-    // silently no-op them — the same class of gap Task 9 fixed in the
-    // emitter). MVP scope: only direct `m.items` children are found — a
-    // `SyncLoop` nested inside a `const if` branch is not, per the spec's
-    // module-item-level scoping (no stated `const if`-nesting support).
-    let lowered_sync_loops: Vec<ModuleItem> = m
-        .items
-        .iter()
-        .filter_map(|it| match it {
-            ModuleItem::SyncLoop(sl) => Some(ast::lower_sync_loop(sl)),
-            _ => None,
-        })
-        .flatten()
-        .collect();
+    // holds `&ModuleItem` borrows into it. `collect_lowered_sync_loops`
+    // recurses into `const if` winning branches (at any nesting depth) to
+    // find every `SyncLoop`, mirroring `emit_verilog::module::flatten_items`'s
+    // recursive ConstIf/SyncLoop handling — a `SyncLoop` nested inside a
+    // `const if` is checker-accepted and emitter-supported, so the simulator
+    // must lower it too (see the final whole-branch review). The main
+    // worklist loop's own `ConstIf` arm below filters raw `SyncLoop` items out
+    // of whichever branch it pushes, so none of them reach the worklist
+    // un-lowered (the main match's fallback would otherwise panic via the
+    // `unreachable!()` arm — the same class of gap Task 9 fixed in the
+    // emitter).
+    let mut lowered_sync_loops: Vec<ModuleItem> = Vec::new();
+    collect_lowered_sync_loops(&m.items, &consts, &mut lowered_sync_loops);
 
     let mut work: Vec<&ModuleItem> = m
         .items
@@ -774,7 +771,17 @@ fn elaborate_module(
                 } else {
                     els.as_deref().unwrap_or(&[])
                 };
-                work.extend(branch.iter().rev());
+                // Any `SyncLoop` in this branch was already lowered (into
+                // `lowered_sync_loops`) by `collect_lowered_sync_loops` above,
+                // before the worklist started — filter the raw node back out
+                // here so it isn't pushed a second time un-lowered (which
+                // would hit the `unreachable!()` arm below).
+                work.extend(
+                    branch
+                        .iter()
+                        .filter(|it| !matches!(it, ModuleItem::SyncLoop(_)))
+                        .rev(),
+                );
             }
             ModuleItem::BundleDestructure { .. } => {
                 return Err(
@@ -1116,6 +1123,41 @@ fn collect_inst_names(items: &[ModuleItem], out: &mut HashSet<String>) {
                 out.insert(i.name.name.clone());
             }
             ModuleItem::Repeat(r) => collect_inst_names(&r.items, out),
+            _ => {}
+        }
+    }
+}
+
+/// Recursively find every `SyncLoop` reachable from `items` — including one
+/// nested inside a `const if`'s winning branch, at any nesting depth — and
+/// push its lowering (`ast::lower_sync_loop`) onto `out`. Mirrors
+/// `emit_verilog::module::flatten_items`'s recursive `ConstIf`/`SyncLoop`
+/// handling: same `const_eval(cond, consts)` resolution the main worklist
+/// loop's own `ConstIf` arm uses, so a branch that resolves one way here
+/// resolves the same way there. Called once, before the worklist starts —
+/// see `elaborate_module`'s `lowered_sync_loops`.
+fn collect_lowered_sync_loops(
+    items: &[ModuleItem],
+    consts: &BTreeMap<String, i128>,
+    out: &mut Vec<ModuleItem>,
+) {
+    for it in items {
+        match it {
+            ModuleItem::SyncLoop(sl) => out.extend(ast::lower_sync_loop(sl)),
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
+                // Same fallback as the main worklist loop's ConstIf arm — the
+                // checker rejects a non-const condition (E0811) before this
+                // ever runs in practice.
+                let val = const_eval(cond, consts).unwrap_or(0);
+                let branch: &[ModuleItem] = if val != 0 {
+                    then
+                } else {
+                    els.as_deref().unwrap_or(&[])
+                };
+                collect_lowered_sync_loops(branch, consts, out);
+            }
             _ => {}
         }
     }
@@ -2023,5 +2065,46 @@ mod tests {
             "done must pulse exactly hi - lo + 1 cycles after start was sampled"
         );
         assert_eq!(s.peek("s_result").unwrap(), 4);
+    }
+
+    /// Final whole-branch review, Finding 1: a `SyncLoop` nested inside a
+    /// `const if` winning branch is checker-accepted (`checker::names`
+    /// recurses into `ConstIf` branches when declaring names) and
+    /// emitter-supported (`emit_verilog::module::flatten_items` recurses the
+    /// same way) — the simulator must lower it too, instead of pushing the
+    /// raw `SyncLoop` node onto the worklist where it hits the `unreachable!()`
+    /// arm. Regression for the pre-fix panic (`elaborate_module`'s
+    /// `lowered_sync_loops` only scanned direct `m.items` children).
+    #[test]
+    fn sync_loop_nested_in_const_if_elaborates_and_ticks() {
+        let mut s = sim("module M {\n  clock clk\n  reset rst\n  \
+             const if (1) {\n    \
+             sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 0 {\n      result <- result + 1\n    }\n  \
+             }\n}\n");
+        s.set("rst", 1).unwrap();
+        s.tick("clk").unwrap();
+        s.set("rst", 0).unwrap();
+        s.set("s_start", 1).unwrap();
+        s.tick("clk").unwrap();
+        for _ in 0..4 {
+            s.tick("clk").unwrap();
+        }
+        assert_eq!(s.peek("s_done").unwrap(), 1);
+        assert_eq!(s.peek("s_result").unwrap(), 4);
+    }
+
+    /// Same as above, but the `SyncLoop` sits in the `const if`'s losing
+    /// branch — the winning (`else`) branch has no `SyncLoop` at all, so
+    /// elaboration must succeed with no lowered items and no panic.
+    #[test]
+    fn sync_loop_in_const_if_losing_branch_is_not_lowered() {
+        let d = design(
+            "module M {\n  clock clk\n  reset rst\n  \
+             const if (0) {\n    \
+             sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 0 {\n      result <- result + 1\n    }\n  \
+             } else {\n    wire w: bit = 0\n  }\n}\n",
+        );
+        assert!(d.wires.iter().any(|w| w.name == "w"));
+        assert!(d.regs.iter().all(|r| r.name != "s_cnt"));
     }
 }
