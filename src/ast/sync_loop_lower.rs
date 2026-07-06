@@ -21,9 +21,15 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
     let sp = sl.span;
     let base = &sl.name.name;
     let ident = |n: String| Ident { name: n, span: sp };
-    let ident_expr = |n: String| Expr { kind: ExprKind::Ident(n), span: sp };
+    let ident_expr = |n: String| Expr {
+        kind: ExprKind::Ident(n),
+        span: sp,
+    };
     let int_expr = |v: u128| Expr {
-        kind: ExprKind::Int { value: v, raw: v.to_string() },
+        kind: ExprKind::Int {
+            value: v,
+            raw: v.to_string(),
+        },
         span: sp,
     };
 
@@ -44,7 +50,10 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
     // const-eval dependency (keeps `ast` free of a dependency on `checker`).
     let range_span = sl.lo.span.join(sl.hi.span);
     let cnt_ty = Type::Bits(Box::new(Expr {
-        kind: ExprKind::Call { func: Builtin::Clog2, args: vec![sl.hi.clone()] },
+        kind: ExprKind::Call {
+            func: Builtin::Clog2,
+            args: vec![sl.hi.clone()],
+        },
         span: range_span,
     }));
 
@@ -55,10 +64,18 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
     let mut rename = HashMap::new();
     rename.insert(sl.var.name.clone(), cnt_name.clone());
     rename.insert(sl.result_name.name.clone(), acc_name.clone());
-    let body: Vec<SeqStmt> = sl.body.iter().map(|s| rename_seq_stmt(s, &rename)).collect();
+    let body: Vec<SeqStmt> = sl
+        .body
+        .iter()
+        .map(|s| rename_seq_stmt(s, &rename))
+        .collect();
 
     let assign = |name: &str, rhs: Expr| SeqStmt::Assign {
-        lhs: LValue { base: ident(name.to_string()), index: None, span: sp },
+        lhs: LValue {
+            base: ident(name.to_string()),
+            index: None,
+            span: sp,
+        },
         rhs,
     };
 
@@ -80,7 +97,10 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
             },
             span: sp,
         },
-        then: vec![assign(&running_r_name, int_expr(0)), assign(&done_r_name, int_expr(1))],
+        then: vec![
+            assign(&running_r_name, int_expr(0)),
+            assign(&done_r_name, int_expr(1)),
+        ],
         els: Some(vec![
             assign(
                 &cnt_name,
@@ -119,33 +139,74 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
     };
 
     vec![
-        ModuleItem::Port { dir: Dir::In, name: ident(start_name.clone()), ty: Type::Bit },
-        ModuleItem::Port { dir: Dir::Out, name: ident(done_name.clone()), ty: Type::Bit },
+        ModuleItem::Port {
+            dir: Dir::In,
+            name: ident(start_name.clone()),
+            ty: Type::Bit,
+        },
+        ModuleItem::Port {
+            dir: Dir::Out,
+            name: ident(done_name.clone()),
+            ty: Type::Bit,
+        },
         ModuleItem::Port {
             dir: Dir::Out,
             name: ident(result_name.clone()),
             ty: sl.result_ty.clone(),
         },
-        ModuleItem::Port { dir: Dir::Out, name: ident(running_name.clone()), ty: Type::Bit },
-        ModuleItem::Reg { name: ident(cnt_name), ty: cnt_ty, reset: int_expr(0) },
-        ModuleItem::Reg { name: ident(running_r_name.clone()), ty: Type::Bit, reset: int_expr(0) },
+        ModuleItem::Port {
+            dir: Dir::Out,
+            name: ident(running_name.clone()),
+            ty: Type::Bit,
+        },
+        ModuleItem::Reg {
+            name: ident(cnt_name),
+            ty: cnt_ty,
+            reset: int_expr(0),
+        },
+        ModuleItem::Reg {
+            name: ident(running_r_name.clone()),
+            ty: Type::Bit,
+            reset: int_expr(0),
+        },
         ModuleItem::Reg {
             name: ident(acc_name.clone()),
             ty: sl.result_ty.clone(),
             reset: sl.result_init.clone(),
         },
-        ModuleItem::Reg { name: ident(done_r_name.clone()), ty: Type::Bit, reset: int_expr(0) },
-        ModuleItem::On(OnBlock { clock: sl.clock.clone(), edge: sl.edge, body: vec![fsm], span: sp }),
+        ModuleItem::Reg {
+            name: ident(done_r_name.clone()),
+            ty: Type::Bit,
+            reset: int_expr(0),
+        },
+        ModuleItem::On(OnBlock {
+            clock: sl.clock.clone(),
+            edge: sl.edge,
+            body: vec![fsm],
+            span: sp,
+        }),
         ModuleItem::Drive {
-            lhs: LValue { base: ident(done_name), index: None, span: sp },
+            lhs: LValue {
+                base: ident(done_name),
+                index: None,
+                span: sp,
+            },
             rhs: ident_expr(done_r_name),
         },
         ModuleItem::Drive {
-            lhs: LValue { base: ident(result_name), index: None, span: sp },
+            lhs: LValue {
+                base: ident(result_name),
+                index: None,
+                span: sp,
+            },
             rhs: ident_expr(acc_name),
         },
         ModuleItem::Drive {
-            lhs: LValue { base: ident(running_name), index: None, span: sp },
+            lhs: LValue {
+                base: ident(running_name),
+                index: None,
+                span: sp,
+            },
             rhs: ident_expr(running_r_name),
         },
     ]
@@ -169,7 +230,13 @@ fn rename_seq_stmt(s: &SeqStmt, rename: &HashMap<String, String>) -> SeqStmt {
             val: rename_expr(val, rename),
             span: *span,
         },
-        SeqStmt::Loop { var, lo, hi, body, span } => {
+        SeqStmt::Loop {
+            var,
+            lo,
+            hi,
+            body,
+            span,
+        } => {
             // A nested bare `loop`'s own variable shadows an outer name of
             // the same spelling within its own body — same shadowing rule
             // `checker/names.rs` already applies to `repeat`/`loop` bodies.
@@ -190,17 +257,22 @@ fn rename_seq_stmt(s: &SeqStmt, rename: &HashMap<String, String>) -> SeqStmt {
 fn rename_lvalue(l: &LValue, rename: &HashMap<String, String>) -> LValue {
     LValue {
         base: rename_ident(&l.base, rename),
-        index: l
-            .index
-            .as_ref()
-            .map(|(i, s)| (rename_expr(i, rename), s.as_ref().map(|s| rename_expr(s, rename)))),
+        index: l.index.as_ref().map(|(i, s)| {
+            (
+                rename_expr(i, rename),
+                s.as_ref().map(|s| rename_expr(s, rename)),
+            )
+        }),
         span: l.span,
     }
 }
 
 fn rename_ident(id: &Ident, rename: &HashMap<String, String>) -> Ident {
     match rename.get(&id.name) {
-        Some(new_name) => Ident { name: new_name.clone(), span: id.span },
+        Some(new_name) => Ident {
+            name: new_name.clone(),
+            span: id.span,
+        },
         None => id.clone(),
     }
 }
@@ -213,7 +285,10 @@ fn rename_expr(e: &Expr, rename: &HashMap<String, String>) -> Expr {
             base: Box::new(rename_expr(base, rename)),
             field: field.clone(),
         },
-        ExprKind::Unary { op, expr } => ExprKind::Unary { op: *op, expr: Box::new(rename_expr(expr, rename)) },
+        ExprKind::Unary { op, expr } => ExprKind::Unary {
+            op: *op,
+            expr: Box::new(rename_expr(expr, rename)),
+        },
         ExprKind::Binary { op, lhs, rhs } => ExprKind::Binary {
             op: *op,
             lhs: Box::new(rename_expr(lhs, rename)),
@@ -242,11 +317,16 @@ fn rename_expr(e: &Expr, rename: &HashMap<String, String>) -> Expr {
                             }
                         }
                     }
-                    Arm { patterns: a.patterns.clone(), value: rename_expr(&a.value, &inner) }
+                    Arm {
+                        patterns: a.patterns.clone(),
+                        value: rename_expr(&a.value, &inner),
+                    }
                 })
                 .collect(),
         },
-        ExprKind::Concat(parts) => ExprKind::Concat(parts.iter().map(|p| rename_expr(p, rename)).collect()),
+        ExprKind::Concat(parts) => {
+            ExprKind::Concat(parts.iter().map(|p| rename_expr(p, rename)).collect())
+        }
         ExprKind::Replicate { count, parts } => ExprKind::Replicate {
             count: Box::new(rename_expr(count, rename)),
             parts: parts.iter().map(|p| rename_expr(p, rename)).collect(),
@@ -271,10 +351,16 @@ fn rename_expr(e: &Expr, rename: &HashMap<String, String>) -> Expr {
         ExprKind::BundleLit(fields) => ExprKind::BundleLit(
             fields
                 .iter()
-                .map(|f| FieldInit { name: f.name.clone(), value: rename_expr(&f.value, rename), span: f.span })
+                .map(|f| FieldInit {
+                    name: f.name.clone(),
+                    value: rename_expr(&f.value, rename),
+                    span: f.span,
+                })
                 .collect(),
         ),
-        ExprKind::ArrayLit(items) => ExprKind::ArrayLit(items.iter().map(|i| rename_expr(i, rename)).collect()),
+        ExprKind::ArrayLit(items) => {
+            ExprKind::ArrayLit(items.iter().map(|i| rename_expr(i, rename)).collect())
+        }
     };
     Expr { kind, span: e.span }
 }
@@ -288,8 +374,17 @@ mod tests {
     #[test]
     fn lower_produces_twelve_items_in_order() {
         let sp = Span::new(0, 0);
-        let id = |n: &str| Ident { name: n.into(), span: sp };
-        let int = |v: u128| Expr { kind: ExprKind::Int { value: v, raw: v.to_string() }, span: sp };
+        let id = |n: &str| Ident {
+            name: n.into(),
+            span: sp,
+        };
+        let int = |v: u128| Expr {
+            kind: ExprKind::Int {
+                value: v,
+                raw: v.to_string(),
+            },
+            span: sp,
+        };
         let sl = SyncLoop {
             name: id("find_first"),
             clock: id("clk"),
@@ -301,28 +396,50 @@ mod tests {
             result_ty: Type::Bit,
             result_init: int(0),
             body: vec![SeqStmt::Assign {
-                lhs: LValue { base: id("result"), index: None, span: sp },
-                rhs: Expr { kind: ExprKind::Ident("i".into()), span: sp },
+                lhs: LValue {
+                    base: id("result"),
+                    index: None,
+                    span: sp,
+                },
+                rhs: Expr {
+                    kind: ExprKind::Ident("i".into()),
+                    span: sp,
+                },
             }],
             span: sp,
         };
         let items = lower_sync_loop(&sl);
         assert_eq!(items.len(), 12);
         assert!(matches!(items[0], ModuleItem::Port { dir: Dir::In, .. }));
-        let ModuleItem::On(on) = &items[8] else { panic!("item 8 must be the on-block") };
+        let ModuleItem::On(on) = &items[8] else {
+            panic!("item 8 must be the on-block")
+        };
         assert_eq!(on.clock.name, "clk");
         // Confirm the body's `result <- i` was rewritten to `find_first_acc <- find_first_cnt`.
-        let SeqStmt::If { els: Some(els), .. } = &on.body[0] else { panic!() };
-        let SeqStmt::If { then, .. } = &els[1] else { panic!("expected the start branch") };
+        let SeqStmt::If { els: Some(els), .. } = &on.body[0] else {
+            panic!()
+        };
+        let SeqStmt::If { then, .. } = &els[1] else {
+            panic!("expected the start branch")
+        };
         // `then` here is the start_branch's own body; the running-branch's
         // spliced-in loop body (with the rename applied) is checked below.
         let _ = then;
 
-        let SeqStmt::If { then: running_then, .. } = &on.body[0] else { panic!() };
+        let SeqStmt::If {
+            then: running_then, ..
+        } = &on.body[0]
+        else {
+            panic!()
+        };
         // running_then[0] is last_iter, running_then[1] is the spliced body.
-        let SeqStmt::Assign { lhs, rhs } = &running_then[1] else { panic!("expected the renamed body assign") };
+        let SeqStmt::Assign { lhs, rhs } = &running_then[1] else {
+            panic!("expected the renamed body assign")
+        };
         assert_eq!(lhs.base.name, "find_first_acc");
-        let ExprKind::Ident(rhs_name) = &rhs.kind else { panic!() };
+        let ExprKind::Ident(rhs_name) = &rhs.kind else {
+            panic!()
+        };
         assert_eq!(rhs_name, "find_first_cnt");
     }
 
@@ -336,8 +453,17 @@ mod tests {
     #[test]
     fn counter_width_is_clog2_hi_not_clog2_range_when_lo_nonzero() {
         let sp = Span::new(0, 0);
-        let id = |n: &str| Ident { name: n.into(), span: sp };
-        let int = |v: u128| Expr { kind: ExprKind::Int { value: v, raw: v.to_string() }, span: sp };
+        let id = |n: &str| Ident {
+            name: n.into(),
+            span: sp,
+        };
+        let int = |v: u128| Expr {
+            kind: ExprKind::Int {
+                value: v,
+                raw: v.to_string(),
+            },
+            span: sp,
+        };
         let sl = SyncLoop {
             name: id("scan"),
             clock: id("clk"),
@@ -352,14 +478,27 @@ mod tests {
             span: sp,
         };
         let items = lower_sync_loop(&sl);
-        let ModuleItem::Reg { ty, .. } = &items[4] else { panic!("item 4 must be the _cnt reg") };
-        let Type::Bits(width) = ty else { panic!("cnt reg must be Type::Bits") };
-        let ExprKind::Call { func: Builtin::Clog2, args } = &width.kind else {
+        let ModuleItem::Reg { ty, .. } = &items[4] else {
+            panic!("item 4 must be the _cnt reg")
+        };
+        let Type::Bits(width) = ty else {
+            panic!("cnt reg must be Type::Bits")
+        };
+        let ExprKind::Call {
+            func: Builtin::Clog2,
+            args,
+        } = &width.kind
+        else {
             panic!("cnt width must be a clog2(...) call")
         };
         assert_eq!(args.len(), 1, "clog2 must take exactly one argument");
-        let ExprKind::Int { value, .. } = &args[0].kind else { panic!("expected an int literal arg") };
-        assert_eq!(*value, 12, "counter width must be clog2(hi) = clog2(12), got clog2({value})");
+        let ExprKind::Int { value, .. } = &args[0].kind else {
+            panic!("expected an int literal arg")
+        };
+        assert_eq!(
+            *value, 12,
+            "counter width must be clog2(hi) = clog2(12), got clog2({value})"
+        );
     }
 
     /// Regression for the match-arm shadowing bug: a `Pattern::Variant`
@@ -373,8 +512,17 @@ mod tests {
     #[test]
     fn rename_expr_match_arm_binding_shadows_accumulator_name() {
         let sp = Span::new(0, 0);
-        let id = |n: &str| Ident { name: n.into(), span: sp };
-        let int = |v: u128| Expr { kind: ExprKind::Int { value: v, raw: v.to_string() }, span: sp };
+        let id = |n: &str| Ident {
+            name: n.into(),
+            span: sp,
+        };
+        let int = |v: u128| Expr {
+            kind: ExprKind::Int {
+                value: v,
+                raw: v.to_string(),
+            },
+            span: sp,
+        };
         let sl = SyncLoop {
             name: id("scan"),
             clock: id("clk"),
@@ -386,10 +534,17 @@ mod tests {
             result_ty: Type::Bit,
             result_init: int(0),
             body: vec![SeqStmt::Assign {
-                lhs: LValue { base: id("result"), index: None, span: sp },
+                lhs: LValue {
+                    base: id("result"),
+                    index: None,
+                    span: sp,
+                },
                 rhs: Expr {
                     kind: ExprKind::Match {
-                        scrutinee: Box::new(Expr { kind: ExprKind::Ident("i".into()), span: sp }),
+                        scrutinee: Box::new(Expr {
+                            kind: ExprKind::Ident("i".into()),
+                            span: sp,
+                        }),
                         arms: vec![
                             Arm {
                                 // `Enum.Tag(result)` — binds a fresh local `result`,
@@ -400,11 +555,17 @@ mod tests {
                                     variant: id("Tag"),
                                     bindings: vec![id("result")],
                                 }],
-                                value: Expr { kind: ExprKind::Ident("result".into()), span: sp },
+                                value: Expr {
+                                    kind: ExprKind::Ident("result".into()),
+                                    span: sp,
+                                },
                             },
                             Arm {
                                 patterns: vec![Pattern::Wildcard],
-                                value: Expr { kind: ExprKind::Ident("i".into()), span: sp },
+                                value: Expr {
+                                    kind: ExprKind::Ident("i".into()),
+                                    span: sp,
+                                },
                             },
                         ],
                     },
@@ -414,22 +575,42 @@ mod tests {
             span: sp,
         };
         let items = lower_sync_loop(&sl);
-        let ModuleItem::On(on) = &items[8] else { panic!("item 8 must be the on-block") };
-        let SeqStmt::If { then: running_then, .. } = &on.body[0] else { panic!() };
-        let SeqStmt::Assign { rhs, .. } = &running_then[1] else { panic!("expected the renamed body assign") };
-        let ExprKind::Match { scrutinee, arms } = &rhs.kind else { panic!("expected the match expr") };
+        let ModuleItem::On(on) = &items[8] else {
+            panic!("item 8 must be the on-block")
+        };
+        let SeqStmt::If {
+            then: running_then, ..
+        } = &on.body[0]
+        else {
+            panic!()
+        };
+        let SeqStmt::Assign { rhs, .. } = &running_then[1] else {
+            panic!("expected the renamed body assign")
+        };
+        let ExprKind::Match { scrutinee, arms } = &rhs.kind else {
+            panic!("expected the match expr")
+        };
 
         // The scrutinee references the real loop var `i` -> must be renamed.
-        let ExprKind::Ident(scrutinee_name) = &scrutinee.kind else { panic!() };
+        let ExprKind::Ident(scrutinee_name) = &scrutinee.kind else {
+            panic!()
+        };
         assert_eq!(scrutinee_name, "scan_cnt");
 
         // Arm 0's `value` refers to the pattern-bound `result`, NOT the
         // accumulator -> must stay `result`, unrewritten.
-        let ExprKind::Ident(arm0_name) = &arms[0].value.kind else { panic!() };
-        assert_eq!(arm0_name, "result", "pattern-bound name must not be renamed to the accumulator register");
+        let ExprKind::Ident(arm0_name) = &arms[0].value.kind else {
+            panic!()
+        };
+        assert_eq!(
+            arm0_name, "result",
+            "pattern-bound name must not be renamed to the accumulator register"
+        );
 
         // Arm 1's `value` refers to the real loop var `i` -> must be renamed.
-        let ExprKind::Ident(arm1_name) = &arms[1].value.kind else { panic!() };
+        let ExprKind::Ident(arm1_name) = &arms[1].value.kind else {
+            panic!()
+        };
         assert_eq!(arm1_name, "scan_cnt");
     }
 }

@@ -415,7 +415,7 @@ pub enum ModuleItem {
     Repeat(Repeat),
     /// `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { ... }`
     /// — cycle-iterating loop; see `SyncLoop` doc comment.
-    SyncLoop(SyncLoop),
+    SyncLoop(Box<SyncLoop>),
     /// `const if (COND) { items } [else { items }]` — compile-time conditional
     /// module-body items. The losing branch is completely discarded before
     /// name resolution, type checking, and codegen (D-CONSTIF-4).
@@ -771,7 +771,7 @@ mod tests {
             },
             span: sp,
         };
-        let _item = ModuleItem::SyncLoop(SyncLoop {
+        let _item = ModuleItem::SyncLoop(Box::new(SyncLoop {
             name: id("find_first"),
             clock: id("clk"),
             edge: Edge::Rise,
@@ -783,6 +783,6 @@ mod tests {
             result_init: int(0),
             body: vec![],
             span: sp,
-        });
+        }));
     }
 }
