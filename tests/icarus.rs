@@ -403,6 +403,35 @@ fn fn_array_search_duplicate_match_lower_index_wins_via_icarus() {
     );
 }
 
+/// `sync loop` differential: proves the FSM's `start` -> `done` timing and
+/// result-latching against real `iverilog`/`vvp` (Task 11). Hand-written,
+/// self-checking testbench (Layer 2 style, not the generated-`diff_tb`
+/// Layer 3 style below — `run_vvp` always names its module `diff_tb`, which
+/// doesn't fit a static testbench file with its own module name).
+///
+/// Note: `examples/english/sync_loop_search.mimz`'s `mem m` is left
+/// zero-initialized (writing it is out of this construct's scope per the
+/// plan), so this differential can only exercise `key=0` (matches EVERY
+/// index, 0..7) and `key=0xFF` (matches none). It does NOT exercise a
+/// genuine duplicate-match "lowest index wins" scenario for `sync loop`
+/// specifically — that would need memory-write plumbing this task
+/// deliberately doesn't add. See the testbench's own header/comments for
+/// what `key=0` proves instead (this loop body has no "already found"
+/// guard, so the LAST matching index wins, not the first).
+/// `fn_array_search_duplicate_match_lower_index_wins_via_icarus` above
+/// already proves lowest-index-wins for the (different, combinational)
+/// `loop`/`return` construct.
+#[test]
+fn sync_loop_search_timing_matches_icarus() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    run_self_checking(
+        &bin,
+        &[("sync_loop_search_tb.v", "english/sync_loop_search.mimz")],
+    );
+}
+
 // ---- Layer 3 (Phase 1.5 B8 + C1): OUR simulator vs Icarus, bit-for-bit ----
 //
 // Layer 2 compares Icarus against hand-written semantic asserts. Layer 3 compares

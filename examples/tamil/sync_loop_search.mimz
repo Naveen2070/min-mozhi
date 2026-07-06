@@ -1,0 +1,26 @@
+// Min-Mozhi example: `ஒத்திசை சுழல்` (sync loop) — a hardware FSM that
+// walks a `நினைவகம்` (mem) over several clock cycles (rather than
+// unrolling combinationally like `சுழல்`/loop), searching for the first
+// index where `m[i] == key`. `find_first_start` kicks it off;
+// `find_first_done`/`find_first_result`/`find_first_running` are the
+// compiler-generated status/result signals wired to `found`/`busy`.
+// `i` is an unsigned counter (`bits[3]`); widening it into the signed[4]
+// result needs `{பொய், i}` (concat a known-0 top bit) before `signed(...)`
+// reinterprets it — `signed(extend(i, 4))` would sign-extend `i`'s own
+// top bit instead and corrupt indices 4..7 into negative numbers.
+
+தொகுதி SyncLoopSearch {
+  துடிப்பு clk
+  மீட்டமை rst
+  நினைவகம் m: bits[8][8] = 0
+  உள்ளீடு key: bits[8]
+  வெளியீடு found: signed[4]
+  வெளியீடு busy: bit
+
+  ஒத்திசை சுழல் find_first போது ஏற்றம்(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {
+    எனில் m[i] == key { result <- signed({பொய், i}) }
+  }
+
+  found = find_first_result
+  busy = find_first_running
+}

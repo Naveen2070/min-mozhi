@@ -1,0 +1,34 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): the
+// Tamil twin of english/sync_loop_search.mimz — a hardware FSM (`ஒத்திசை
+// சுழல்`, sync loop) that walks a mem array over several clock cycles,
+// searching for the first index where the array matches a key. Unlike
+// tamil-pure/kanakki.mimz this file has no clock/reset behavior that
+// benefits from `இலக்கணம் தமிழ்` (SOV order), so it keeps fn_array_search's
+// plain code-order convention. Names transliterate to readable ASCII
+// Verilog (கடிகை → kadigai, மீள் → meel, அணி → ani, விசை → visai,
+// முதல்தேடு → mudhalthedu, இடம் → idam, இயங்கும் → iyangum, விடை → vitai).
+//
+// `முதல்தேடு` (find_first) demonstrates `ஒத்திசை சுழல்` (sync loop, the
+// FSM-loop feature): the body runs one array element per real clock cycle
+// across `இ` (i) = 0..8, so `முதல்தேடு_start`/`_done`/`_result`/`_running`
+// are the compiler-generated status/result ports wired to `இடம்`/`இயங்கும்`.
+// `இ` is an unsigned counter (`bits[3]`); widening it into the signed[4]
+// result needs `{பொய், இ}` (concat a known-0 top bit) before `signed(...)`
+// reinterprets it — `signed(extend(இ, 4))` would sign-extend `இ`'s own
+// top bit instead and corrupt indices 4..7 into negative numbers.
+
+தொகுதி ஒத்திசைதேடி {
+  துடிப்பு கடிகை
+  மீட்டமை மீள்
+  நினைவகம் அணி: bits[8][8] = 0
+  உள்ளீடு விசை: bits[8]
+  வெளியீடு இடம்: signed[4]
+  வெளியீடு இயங்கும்: bit
+
+  ஒத்திசை சுழல் முதல்தேடு போது ஏற்றம்(கடிகை) (இ: 0..8) -> விடை: signed[4] = 0 - 1 {
+    எனில் அணி[இ] == விசை { விடை <- signed({பொய், இ}) }
+  }
+
+  இடம் = முதல்தேடு_result
+  இயங்கும் = முதல்தேடு_running
+}

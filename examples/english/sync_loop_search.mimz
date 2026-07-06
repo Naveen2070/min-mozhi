@@ -1,0 +1,26 @@
+// Min-Mozhi example: `sync loop` — a hardware FSM that walks a `mem` over
+// several clock cycles (rather than unrolling combinationally like `loop`),
+// searching for the first index where `m[i] == key`. `find_first_start`
+// kicks it off; `find_first_done`/`find_first_result`/`find_first_running`
+// are the compiler-generated status/result signals wired to `found`/`busy`.
+// `i` is an unsigned counter (`bits[3]`, sized to hold 0..7); widening it
+// into the signed[4] result needs `{false, i}` (concat a known-0 top bit,
+// so the value stays 0..7) before `signed(...)` reinterprets it — casting
+// via `signed(extend(i, 4))` would sign-extend `i`'s own top bit instead
+// and corrupt indices 4..7 into negative numbers.
+
+module SyncLoopSearch {
+  clock clk
+  reset rst
+  mem m: bits[8][8] = 0
+  in key: bits[8]
+  out found: signed[4]
+  out busy: bit
+
+  sync loop find_first on rise(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {
+    if m[i] == key { result <- signed({false, i}) }
+  }
+
+  found = find_first_result
+  busy = find_first_running
+}
