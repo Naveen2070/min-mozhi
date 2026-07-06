@@ -496,7 +496,34 @@ fn elaborate_module(
     let mut bit_drives: BTreeMap<String, BTreeMap<u32, Expr>> = BTreeMap::new();
     let mut flat = Flat::default();
 
-    let mut work: Vec<&ModuleItem> = m.items.iter().rev().collect();
+    // `sync loop` is lowered to plain Port/Reg/On/Drive items (the same
+    // desugaring the Verilog emitter uses, `ast::lower_sync_loop` — Task 4)
+    // BEFORE the worklist starts, so the loop below never sees a `SyncLoop`
+    // node: `lowered_sync_loops` must outlive the whole function since `work`
+    // holds `&ModuleItem` borrows into it. The original `SyncLoop` entries
+    // are filtered out of `m.items` here so they aren't ALSO pushed onto the
+    // worklist un-lowered (the main match's fallback would otherwise
+    // silently no-op them — the same class of gap Task 9 fixed in the
+    // emitter). MVP scope: only direct `m.items` children are found — a
+    // `SyncLoop` nested inside a `const if` branch is not, per the spec's
+    // module-item-level scoping (no stated `const if`-nesting support).
+    let lowered_sync_loops: Vec<ModuleItem> = m
+        .items
+        .iter()
+        .filter_map(|it| match it {
+            ModuleItem::SyncLoop(sl) => Some(ast::lower_sync_loop(sl)),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+
+    let mut work: Vec<&ModuleItem> = m
+        .items
+        .iter()
+        .filter(|it| !matches!(it, ModuleItem::SyncLoop(_)))
+        .rev()
+        .chain(lowered_sync_loops.iter().rev())
+        .collect();
     while let Some(it) = work.pop() {
         match it {
             ModuleItem::Port { dir, name, ty } => {
@@ -645,6 +672,16 @@ fn elaborate_module(
             // Unreachable: elaboration runs on a strict-parsed tree, which
             // carries no `Error` placeholder.
             ModuleItem::Error(_) => {}
+            // Unreachable: every `SyncLoop` is lowered and filtered out of
+            // `m.items` before the worklist runs (see this function's Step 1,
+            // just above `let mut work: Vec<&ModuleItem> = ...`) — the match
+            // arm exists only so a future refactor that breaks that filter
+            // fails loudly instead of silently dropping the construct.
+            ModuleItem::SyncLoop(_) => {
+                unreachable!(
+                    "SyncLoop is lowered before the worklist runs — see elaborate_module's Step 1"
+                )
+            }
             ModuleItem::Inst(inst) => {
                 let f = flatten_instance(
                     reg,
@@ -1938,5 +1975,53 @@ mod tests {
             res.is_ok(),
             "i128::MIN const should elaborate, got: {res:?}"
         );
+    }
+
+    // --- `sync loop` elaboration timing (Task 10) ---
+
+    fn sim(src: &str) -> super::super::kernel::Sim {
+        super::super::kernel::Sim::new(design(src))
+    }
+
+    /// `start` pulsed for one cycle → `done` pulses exactly `hi - lo + 1`
+    /// cycles later (counting the cycle `start` was sampled as cycle 1); a
+    /// held-high `start` does not re-trigger the run mid-flight, because the
+    /// lowered FSM only samples `start` from its idle branch (see
+    /// `ast::sync_loop_lower::lower_sync_loop`'s `running_r` gate) — while
+    /// `running_r` is set, the running branch never re-reads `start` at all.
+    /// This exercises the lowered `Reg`/`On` items flowing through the real
+    /// `kernel::Sim`, i.e. `kernel.rs`'s existing `tick_edge` dispatch with
+    /// zero changes to that file.
+    #[test]
+    fn sync_loop_timing_and_no_mid_run_retrigger() {
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 0 {\n    result <- result + 1\n  }\n}\n",
+        );
+        s.set("rst", 1).unwrap();
+        s.tick("clk").unwrap();
+        s.set("rst", 0).unwrap();
+        s.set("s_start", 1).unwrap();
+        s.tick("clk").unwrap(); // idle -> running, cnt = lo = 0
+        s.set("s_start", 1).unwrap(); // held high through the run — must not re-trigger
+        for _ in 0..3 {
+            assert_eq!(
+                s.peek("s_done").unwrap(),
+                0,
+                "must not pulse done before hi - lo cycles elapse"
+            );
+            s.tick("clk").unwrap();
+        }
+        assert_eq!(
+            s.peek("s_done").unwrap(),
+            0,
+            "still one cycle short of hi - lo + 1"
+        );
+        s.tick("clk").unwrap();
+        assert_eq!(
+            s.peek("s_done").unwrap(),
+            1,
+            "done must pulse exactly hi - lo + 1 cycles after start was sampled"
+        );
+        assert_eq!(s.peek("s_result").unwrap(), 4);
     }
 }
