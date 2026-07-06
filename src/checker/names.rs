@@ -175,6 +175,21 @@ impl<'a> Checker<'a> {
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
                 ModuleItem::Repeat(r) => self.collect_decls(file, sc, env, &r.items),
+                ModuleItem::SyncLoop(sl) => {
+                    // A sync loop namespaces 4 generated signals off its own
+                    // name — declare them here so the existing E0003 check
+                    // (in `declare`, below) catches a collision with a
+                    // user-declared signal or another sync loop's generated
+                    // names, same as any other declaration.
+                    let mk = |suffix: &str| crate::ast::Ident {
+                        name: format!("{}_{suffix}", sl.name.name),
+                        span: sl.name.span,
+                    };
+                    self.declare(file, sc, &mk("start"), Bind::In);
+                    self.declare(file, sc, &mk("done"), Bind::Out);
+                    self.declare(file, sc, &mk("result"), Bind::Out);
+                    self.declare(file, sc, &mk("running"), Bind::Out);
+                }
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
@@ -296,6 +311,54 @@ impl<'a> Checker<'a> {
                         None => env.remove(&r.var.name),
                     };
                 }
+                ModuleItem::SyncLoop(sl) => {
+                    match sc.names.get(&sl.clock.name) {
+                        Some(Bind::Clock) => {}
+                        Some(b) => {
+                            let what = b.what();
+                            self.err(
+                                file,
+                                sl.clock.span,
+                                "E0109",
+                                format!("`{}` is {what}, not a clock", sl.clock.name),
+                                "a sync loop's `on rise(...)`/`on fall(...)` clause takes a \
+                                 clock — declare one with `clock clk` (spec/02 section 1.2)",
+                            );
+                        }
+                        None => self.unknown(file, &sl.clock.name, sl.clock.span),
+                    }
+                    self.ty(file, sc, env, &sl.result_ty);
+                    self.expr(file, sc, env, &sl.result_init);
+                    let lo_val = self.const_pos(file, env, &sl.lo);
+                    self.const_pos(file, env, &sl.hi);
+                    // `var` is a runtime counter, read-only inside the body —
+                    // the generated FSM owns incrementing it (see
+                    // `ast::sync_loop_lower`) — so, same as `Repeat`'s
+                    // compile-time loop var above, one representative `env`
+                    // entry is enough for `expr()`'s name lookup to resolve
+                    // it; per-iteration values don't matter to name
+                    // resolution.
+                    //
+                    // `result_name` differs: the body legitimately assigns to
+                    // it (`result <- ...` accumulates every cycle — it lowers
+                    // to a real reg, `<name>_acc`). `lvalue()` only allows
+                    // Out/Wire/Reg targets found in `sc.names`, so an
+                    // `env`-only entry would make every real sync-loop body
+                    // fail with a spurious "cannot assign to constant"
+                    // (E0108). Give it a real (body-local) `Bind::Reg` entry
+                    // instead, via the same clone-and-extend scope idiom
+                    // `ExprKind::Match`'s per-arm bindings already use above.
+                    let shadowed_var = env.insert(sl.var.name.clone(), lo_val.unwrap_or(0));
+                    let mut body_sc = Scope {
+                        names: sc.names.clone(),
+                    };
+                    body_sc.names.insert(sl.result_name.name.clone(), Bind::Reg);
+                    self.seq_stmts(file, &body_sc, env, &sl.body);
+                    match shadowed_var {
+                        Some(v) => env.insert(sl.var.name.clone(), v),
+                        None => env.remove(&sl.var.name),
+                    };
+                }
                 ModuleItem::Enum(e) => {
                     for v in &e.variants {
                         for field in &v.fields {
@@ -404,6 +467,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Drive { .. }
                 | ModuleItem::Inst(_)
                 | ModuleItem::Repeat(_)
+                | ModuleItem::SyncLoop(_)
                 | ModuleItem::ConstIf { .. }
                 | ModuleItem::Error(_) => continue,
                 ModuleItem::Port { name, .. } => (name.span, "an input/output port"),
@@ -1405,5 +1469,27 @@ impl<'a> Checker<'a> {
             "nothing with this name is declared in this module — check the \
              spelling, or declare it as a port, wire, reg, or const",
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{checker::check, diag::Diag, lexer, parser};
+
+    /// Parse + run the full checker; panics if it doesn't parse (this file's
+    /// other checker tests live in `checker::tests`, which does the same
+    /// via its own private `parse`/`errs` helpers — this test lives here
+    /// instead, self-contained, so this commit touches only `names.rs`).
+    fn diags_for(src: &str) -> Vec<Diag> {
+        let toks = lexer::lex(src).expect("lexes");
+        let file = parser::parse(toks).expect("parses");
+        check(&[file]).expect_err("expected checker errors")
+    }
+
+    #[test]
+    fn sync_loop_generated_name_collision_is_e0003() {
+        let src = "module M {\n  clock clk\n  in find_first_start: bit\n  sync loop find_first on rise(clk) (i: 0..4) -> result: bit = 0 {\n    result <- 1\n  }\n}\n";
+        let diags = diags_for(src);
+        assert!(diags.iter().any(|d| d.code == Some("E0003")));
     }
 }
