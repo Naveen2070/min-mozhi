@@ -12,6 +12,8 @@
 
 mod expr;
 pub use expr::*;
+mod sync_loop_lower;
+pub use sync_loop_lower::lower_sync_loop;
 
 use std::cell::Cell;
 
