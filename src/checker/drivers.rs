@@ -251,6 +251,7 @@ impl<'a> Checker<'a> {
                 }
                 ModuleItem::Drive { lhs, rhs } => self.drive(dcx, lhs, rhs),
                 ModuleItem::On(on) => self.on_block(dcx, on.span.start, &on.body),
+                ModuleItem::SyncLoop(sl) => self.on_block(dcx, sl.span.start, &sl.body),
                 ModuleItem::Inst(inst) => self.inst_edges(dcx, inst, summaries, in_progress),
                 ModuleItem::Repeat(r) => {
                     let (Ok(lo), Ok(hi)) = (
@@ -915,5 +916,54 @@ impl<'a> Checker<'a> {
                  section 6)",
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::checker::check;
+    use crate::diag::Diag;
+    use crate::{lexer, parser};
+
+    /// Parse + run the full checker; panics if it doesn't parse (this file's
+    /// other checker tests live in `checker::tests`, which does the same via
+    /// its own private `parse`/`errs` helpers — this test lives here instead,
+    /// self-contained, so this commit touches only `drivers.rs`).
+    fn diags_for(src: &str) -> Vec<Diag> {
+        let toks = lexer::lex(src).expect("lexes");
+        let file = parser::parse(toks).expect("parses");
+        check(&[file]).expect_err("expected checker errors")
+    }
+
+    /// A sync loop's accumulator is written from two branches of an `if`
+    /// inside its body. `result` is ALSO declared as a real module-level
+    /// `reg` (which its name matches) so that this is a real driver check,
+    /// not a vacuous one: had the sync loop's body been walked as two
+    /// independent driver blocks (one per branch) instead of one, this
+    /// would have reported E0503. It doesn't — the whole module compiles
+    /// clean.
+    #[test]
+    fn sync_loop_body_is_one_driver_block() {
+        let src = "module M {\n  clock clk\n  reset rst\n  reg result: bit = 0\n  sync loop s on rise(clk) (i: 0..4) -> result: bit = 0 {\n    if i == 0 { result <- 1 } else { result <- 0 }\n  }\n}\n";
+        let toks = lexer::lex(src).expect("lexes");
+        let file = parser::parse(toks).expect("parses");
+        assert!(
+            check(&[file]).is_ok(),
+            "a single sync loop body must not be flagged as multi-driver"
+        );
+    }
+
+    /// Same accumulator name, but now ALSO written by a separate
+    /// hand-written `on` block — a genuine multi-driver conflict. Proves
+    /// the sync-loop-is-one-block treatment above didn't accidentally make
+    /// `result` immune to the real multi-driver check.
+    #[test]
+    fn separate_on_block_writing_the_same_name_is_still_multi_driver() {
+        let src = "module M {\n  clock clk\n  reset rst\n  reg result: bit = 0\n  sync loop s on rise(clk) (i: 0..4) -> result: bit = 0 {\n    if i == 0 { result <- 1 } else { result <- 0 }\n  }\n  on rise(clk) {\n    result <- 0\n  }\n}\n";
+        let diags = diags_for(src);
+        assert!(
+            diags.iter().any(|d| d.code == Some("E0503")),
+            "a separate on block writing the same reg must still be caught as multi-driver: {diags:?}"
+        );
     }
 }
