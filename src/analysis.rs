@@ -234,7 +234,10 @@ fn push_module_items(
                     push_module_items(out, el, file_idx, module_idx);
                 }
             }
-            ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
+            ModuleItem::On(_)
+            | ModuleItem::Drive { .. }
+            | ModuleItem::Error(_)
+            | ModuleItem::SyncLoop(_) => {} // body is Vec<SeqStmt>, not more ModuleItems
             ModuleItem::BundleDestructure { .. } => {} // not yet indexed for LSP
         }
     }
@@ -440,6 +443,11 @@ fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Ve
         ModuleItem::Repeat(r) => {
             for mi in &r.items {
                 collect_item_refs(mi, module_idx, refs);
+            }
+        }
+        ModuleItem::SyncLoop(sl) => {
+            for s in &sl.body {
+                collect_seq_refs(s, module_idx, refs);
             }
         }
         ModuleItem::ConstIf { then, els, .. } => {

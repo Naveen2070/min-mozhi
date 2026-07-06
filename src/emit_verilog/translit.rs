@@ -334,6 +334,17 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 expr(&mut r.hi, visit);
                 module_items(&mut r.items, visit);
             }
+            ModuleItem::SyncLoop(sl) => {
+                visit(&mut sl.name.name);
+                visit(&mut sl.clock.name);
+                visit(&mut sl.var.name);
+                expr(&mut sl.lo, visit);
+                expr(&mut sl.hi, visit);
+                visit(&mut sl.result_name.name);
+                type_widths(&mut sl.result_ty, visit);
+                expr(&mut sl.result_init, visit);
+                seq_stmts(&mut sl.body, visit);
+            }
             ModuleItem::ConstIf {
                 cond, then, els, ..
             } => {
