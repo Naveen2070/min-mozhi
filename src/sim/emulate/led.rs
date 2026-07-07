@@ -21,9 +21,14 @@ pub(super) fn construct(width: Width, args: &[BindArg]) -> Result<Box<dyn Periph
         ));
     }
     let mut color = Color::Green;
+    let mut color_seen = false;
     for a in args {
         match a.name.name.as_str() {
             "color" => {
+                if color_seen {
+                    return Err("`led` has a duplicate `color` config".to_string());
+                }
+                color_seen = true;
                 let name = match &a.value {
                     BindArgValue::Ident(s) | BindArgValue::Str(s) => s.as_str(),
                 };
@@ -119,6 +124,19 @@ mod tests {
             signed: false,
         };
         let args = [arg("color", BindArgValue::Ident("mauve".into()))];
+        assert!(construct(w, &args).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_color() {
+        let w = Width {
+            bits: 1,
+            signed: false,
+        };
+        let args = [
+            arg("color", BindArgValue::Ident("red".into())),
+            arg("color", BindArgValue::Ident("green".into())),
+        ];
         assert!(construct(w, &args).is_err());
     }
 
