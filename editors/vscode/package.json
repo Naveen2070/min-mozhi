@@ -2,7 +2,7 @@
   "name": "mimz",
   "displayName": "Min-Mozhi (மின்மொழி)",
   "description": "Min-Mozhi .mimz language support — trilingual syntax highlighting plus live compiler diagnostics via `mimz lsp`.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "min-mozhi",
   "license": "MIT OR Apache-2.0",
   "repository": {
@@ -21,6 +21,9 @@
     "Programming Languages"
   ],
   "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:mimz"
+  ],
   "contributes": {
     "languages": [
       {

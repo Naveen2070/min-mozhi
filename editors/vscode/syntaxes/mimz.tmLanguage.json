@@ -77,7 +77,7 @@
     "reserved-words": {
       "comment": "reserved for future features — using them is a compile error",
       "name": "invalid.illegal.reserved.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(sync|inout|struct|secret|declassify|pipeline|interface|chan|prove|await|fixed|requires|ensures|extern)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(inout|struct|secret|declassify|pipeline|interface|chan|prove|await|fixed|requires|ensures|extern)(?![\\p{L}\\p{N}_])"
     },
     "types": {
       "comment": "universal vocabulary — never translated",
@@ -87,7 +87,7 @@
     "builtins": {
       "comment": "the complete builtin list; only callables in the language",
       "name": "support.function.builtin.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(extend|trunc|signed|unsigned)(?=\\()"
+      "match": "(?<![\\p{L}\\p{N}_])(extend|trunc|signed|unsigned|min|max|abs)(?=\\()"
     },
     "numbers": {
       "name": "constant.numeric.mimz",
