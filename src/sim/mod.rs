@@ -25,6 +25,8 @@ mod value;
 
 pub mod comb;
 pub mod elaborate;
+#[cfg(feature = "hw-emulation")]
+pub mod emulate;
 pub mod harness;
 pub mod kernel;
 pub mod run;
