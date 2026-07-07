@@ -1,0 +1,122 @@
+// Real-world showcase: CAN bus frame filter.
+// Processes CAN 2.0B frame types using conditional updates
+// and match expressions for signal routing — the pattern
+// used in real automotive gateway firmware.
+//
+// Demonstrates:
+//   - match-expression on wire RHS (integer patterns)
+//   - conditional `on rise(clk)` updates with `default`
+//   - bundle construction (simulator SK-0004: no . access)
+//   - multiple counters tracked per frame type
+//
+// Not yet supported by simulator (SK-0004):
+//   - bundle destructure via `let { f1, f2 } = bundle`
+//   - enum variant destructuring: only tag-only enum in
+//     expression position, and simulator doesn't support
+//     enum types at runtime
+
+module CanFrameFilter {
+  clock clk
+  reset rst
+
+  in  kind: bits[2]
+  in  valid: bit
+
+  out filter_out: bit
+  out frame_type: bits[2]
+  out match_count: bits[4]
+
+  reg data_cnt: bits[4] = 0
+  reg remote_cnt: bits[4] = 0
+  reg err_cnt: bits[4] = 0
+  reg filter_out_reg: bit = 0
+  reg frame_type_reg: bits[2] = 0
+  reg match_count_reg: bits[4] = 0
+
+  wire accept: bit = match kind {
+    0 => 1
+    1 => 1
+    _ => 0
+  }
+
+  filter_out = filter_out_reg
+  frame_type = frame_type_reg
+  match_count = match_count_reg
+
+  on rise(clk) {
+    default filter_out_reg <- 0
+    default frame_type_reg <- 0
+
+    if valid {
+      frame_type_reg <- kind
+
+      if accept {
+        filter_out_reg <- 1
+        match_count_reg <- match_count_reg +% 1
+      }
+
+      if kind == 0 {
+        data_cnt <- data_cnt +% 1
+      }
+
+      if kind == 1 {
+        remote_cnt <- remote_cnt +% 1
+      }
+
+      if kind == 2 {
+        err_cnt <- err_cnt +% 1
+      }
+    }
+  }
+}
+
+test "data frame is accepted" for CanFrameFilter {
+  kind = 0
+  valid = 1
+  tick(clk, 1)
+  expect filter_out == 1
+  expect match_count == 1
+}
+
+test "remote frame is accepted" for CanFrameFilter {
+  kind = 1
+  valid = 1
+  tick(clk, 1)
+  expect filter_out == 1
+}
+
+test "error frame is rejected" for CanFrameFilter {
+  kind = 2
+  valid = 1
+  tick(clk, 1)
+  expect filter_out == 0
+}
+
+test "overload frame is rejected" for CanFrameFilter {
+  kind = 3
+  valid = 1
+  tick(clk, 1)
+  expect filter_out == 0
+}
+
+test "counter accumulation" for CanFrameFilter {
+  kind = 0
+  valid = 1
+  tick(clk, 1)
+  valid = 0
+  tick(clk, 1)
+  kind = 1
+  valid = 1
+  tick(clk, 1)
+  valid = 0
+  tick(clk, 1)
+  kind = 0
+  valid = 1
+  tick(clk, 1)
+  valid = 0
+  tick(clk, 1)
+  kind = 2
+  valid = 1
+  tick(clk, 1)
+  expect match_count == 3
+}

@@ -1,0 +1,113 @@
+// Real-world showcase: VGA test pattern generator (640x480 @ 60 Hz).
+// Generates hsync, vsync, and a color-bar test pattern with a sync loop
+// frame counter for animation timing.
+// Demonstrates: sync loop (cycle-iterating FSM), repeat (unrolling),
+// clog2 (compile-time ceil(log2)), const எனில் (conditional inclusion),
+// bundle (signal grouping), test.
+
+bundle VgaBus {
+  hsync: bit
+  vsync: bit
+  red:   bits[2]
+  green: bits[2]
+  blue:  bits[2]
+}
+
+module VgaPattern {
+  clock clk
+  meettamai rst
+
+  out vga: VgaBus
+  out frame_count: bits[4]
+
+  const H_TOTAL: int = 800
+  const H_SYNC: int = 96
+  const H_BACK: int = 48
+  const H_VISIBLE: int = 640
+  const H_FRONT: int = 16
+
+  const V_TOTAL: int = 525
+  const V_SYNC: int = 2
+  const V_BACK: int = 33
+  const V_VISIBLE: int = 480
+  const V_FRONT: int = 10
+
+  const DEBUG: int = 0
+
+  பதிவேடு h_cnt: bits[clog2(H_TOTAL)] = 0
+  பதிவேடு v_cnt: bits[clog2(V_TOTAL)] = 0
+
+  pothu yetram(clk) {
+    எனில் h_cnt == H_TOTAL - 1 {
+      h_cnt <- 0
+      எனில் v_cnt == V_TOTAL - 1 {
+        v_cnt <- 0
+      } இல்லையெனில் {
+        v_cnt <- v_cnt +% 1
+      }
+    } இல்லையெனில் {
+      h_cnt <- h_cnt +% 1
+    }
+  }
+
+  wire hsync: bit = எனில் h_cnt >= H_VISIBLE + H_FRONT &&
+    h_cnt < H_VISIBLE + H_FRONT + H_SYNC {
+    0
+  } இல்லையெனில் {
+    1
+  }
+
+  wire vsync: bit = எனில் v_cnt >= V_VISIBLE + V_FRONT &&
+    v_cnt < V_VISIBLE + V_FRONT + V_SYNC {
+    1
+  } இல்லையெனில் {
+    0
+  }
+
+  const எனில் (DEBUG) {
+    wire debug_active: bit = h_cnt < 16 && v_cnt < 16
+  }
+
+  wire h_active: bit = h_cnt < H_VISIBLE
+  wire v_active: bit = v_cnt < V_VISIBLE
+  wire blank: bit = !h_active || !v_active
+
+  wire bar_sel: bits[2] = trunc(h_cnt >> 7, 2)
+  wire invert: bit = v_cnt[4]
+
+  vga = {
+    hsync: hsync,
+    vsync: vsync,
+    red: எனில் blank {
+      0
+    } இல்லையெனில் {
+      எனில் invert { ~bar_sel } இல்லையெனில் { bar_sel }
+    },
+    green: எனில் blank {
+      0
+    } இல்லையெனில் {
+      எனில் invert { bar_sel } இல்லையெனில் { ~bar_sel }
+    },
+    blue: எனில் blank {
+      0
+    } இல்லையெனில் {
+      { bar_sel[0], bar_sel[1] }
+    },
+  }
+
+  sync loop frame_cnt pothu yetram(clk) (i: 0..16) -> result: bits[4] = 0 {
+    எனில் h_cnt == H_TOTAL - 1 && v_cnt == V_TOTAL - 1 {
+      result <- i
+    }
+  }
+
+  frame_count = frame_cnt_result
+}
+
+test "vga produces hsync pulses" for VgaPattern {
+  உறுதிசெய் vga_hsync == 1
+  kanam(clk, H_VISIBLE + H_FRONT)
+  உறுதிசெய் vga_hsync == 0
+  kanam(clk, H_SYNC)
+  உறுதிசெய் vga_hsync == 1
+}

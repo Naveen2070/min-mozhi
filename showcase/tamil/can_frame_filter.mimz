@@ -1,0 +1,122 @@
+// Real-world showcase: CAN bus frame filter.
+// Processes CAN 2.0B frame types using conditional updates
+// and match expressions for signal routing — the pattern
+// used in real automotive gateway firmware.
+//
+// Demonstrates:
+//   - match-expression on wire RHS (integer patterns)
+//   - conditional `on rise(clk)` updates with `default`
+//   - bundle construction (simulator SK-0004: no . access)
+//   - multiple counters tracked per frame type
+//
+// Not yet supported by simulator (SK-0004):
+//   - bundle destructure via `let { f1, f2 } = bundle`
+//   - enum variant destructuring: only tag-only enum in
+//     expression position, and simulator doesn't support
+//     enum types at runtime
+
+தொகுதி CanFrameFilter {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  உள்ளீடு  kind: bits[2]
+  உள்ளீடு  valid: bit
+
+  வெளியீடு filter_out: bit
+  வெளியீடு frame_type: bits[2]
+  வெளியீடு match_count: bits[4]
+
+  பதிவேடு data_cnt: bits[4] = 0
+  பதிவேடு remote_cnt: bits[4] = 0
+  பதிவேடு err_cnt: bits[4] = 0
+  பதிவேடு filter_out_reg: bit = 0
+  பதிவேடு frame_type_reg: bits[2] = 0
+  பதிவேடு match_count_reg: bits[4] = 0
+
+  கம்பி accept: bit = தேர்ந்தெடு kind {
+    0 => 1
+    1 => 1
+    _ => 0
+  }
+
+  filter_out = filter_out_reg
+  frame_type = frame_type_reg
+  match_count = match_count_reg
+
+  போது ஏற்றம்(clk) {
+    இயல்பு filter_out_reg <- 0
+    இயல்பு frame_type_reg <- 0
+
+    எனில் valid {
+      frame_type_reg <- kind
+
+      எனில் accept {
+        filter_out_reg <- 1
+        match_count_reg <- match_count_reg +% 1
+      }
+
+      எனில் kind == 0 {
+        data_cnt <- data_cnt +% 1
+      }
+
+      எனில் kind == 1 {
+        remote_cnt <- remote_cnt +% 1
+      }
+
+      எனில் kind == 2 {
+        err_cnt <- err_cnt +% 1
+      }
+    }
+  }
+}
+
+சோதனை "data frame is accepted" க்காக CanFrameFilter {
+  kind = 0
+  valid = 1
+  கணம்(clk, 1)
+  உறுதிசெய் filter_out == 1
+  உறுதிசெய் match_count == 1
+}
+
+சோதனை "remote frame is accepted" க்காக CanFrameFilter {
+  kind = 1
+  valid = 1
+  கணம்(clk, 1)
+  உறுதிசெய் filter_out == 1
+}
+
+சோதனை "error frame is rejected" க்காக CanFrameFilter {
+  kind = 2
+  valid = 1
+  கணம்(clk, 1)
+  உறுதிசெய் filter_out == 0
+}
+
+சோதனை "overload frame is rejected" க்காக CanFrameFilter {
+  kind = 3
+  valid = 1
+  கணம்(clk, 1)
+  உறுதிசெய் filter_out == 0
+}
+
+சோதனை "counter accumulation" க்காக CanFrameFilter {
+  kind = 0
+  valid = 1
+  கணம்(clk, 1)
+  valid = 0
+  கணம்(clk, 1)
+  kind = 1
+  valid = 1
+  கணம்(clk, 1)
+  valid = 0
+  கணம்(clk, 1)
+  kind = 0
+  valid = 1
+  கணம்(clk, 1)
+  valid = 0
+  கணம்(clk, 1)
+  kind = 2
+  valid = 1
+  கணம்(clk, 1)
+  உறுதிசெய் match_count == 3
+}

@@ -1,0 +1,117 @@
+// Real-world showcase: programmable notification tone generator.
+// Plays a sequence of notes through a piezo buzzer using parallel
+// match-as-ROM selectors for pitch and duration data.
+// Demonstrates: tagged-union enum declaration, match extraction,
+// const for note frequency dividers, on rise(clk), test block.
+
+maarili C4:  int = 95420
+maarili D4:  int = 85034
+maarili E4:  int = 75758
+maarili F4:  int = 71633
+maarili G4:  int = 63776
+maarili A4:  int = 56818
+maarili B4:  int = 50607
+maarili C5:  int = 47801
+
+maarili TICK: int = 50000
+
+vagai Cmd { Tone(pitch: bits[20], duration: bits[8]), Rest(duration: bits[8]) }
+
+thoguthi MelodyPlayer {
+  thudippu clk
+  meettamai rst
+
+  ulleedu  start: bit
+  veliyeedu audio: bit
+  veliyeedu playing: bit
+
+  pathivedu addr: bits[4] = 0
+  pathivedu tone_cnt: bits[20] = 0
+  pathivedu dur_cnt: bits[24] = 0
+  pathivedu toggle: bit = 0
+  pathivedu active: bit = 0
+  pathivedu target: bits[20] = 0
+
+  kambi pitch: bits[20] = thernthedu addr {
+    0 => E4
+    1 => E4
+    2 => F4
+    3 => G4
+    4 => G4
+    5 => F4
+    6 => E4
+    7 => D4
+    8 => C4
+    9 => C4
+    10 => D4
+    11 => E4
+    12 => D4
+    13 => D4
+    14 => C4
+    _ => 0
+  }
+
+  kambi dur: bits[8] = thernthedu addr {
+    0 => 10
+    1 => 10
+    2 => 10
+    3 => 15
+    4 => 10
+    5 => 10
+    6 => 15
+    7 => 10
+    8 => 15
+    9 => 10
+    10 => 10
+    11 => 10
+    12 => 5
+    13 => 5
+    14 => 20
+    _ => 1
+  }
+
+  pothu yetram(clk) {
+    enil start && !active {
+      active <- 1
+      addr <- 0
+      dur_cnt <- 0
+      tone_cnt <- 0
+      toggle <- 0
+      target <- 0
+    }
+
+    enil active {
+      enil dur_cnt == 0 {
+        target <- pitch
+        dur_cnt <- trunc(extend(dur, 16) * TICK, 24)
+        addr <- addr +% 1
+        enil addr == 15 {
+          active <- 0
+        }
+        tone_cnt <- 0
+        toggle <- 0
+      } illaiyenil {
+        dur_cnt <- dur_cnt -% 1
+        enil target != 0 {
+          tone_cnt <- tone_cnt +% 1
+          enil tone_cnt == target {
+            tone_cnt <- 0
+            toggle <- ~toggle
+          }
+        }
+      }
+    }
+  }
+
+  audio = toggle
+  playing = active
+}
+
+sodhanai "melody starts and stops" kaaga MelodyPlayer {
+  start = 1
+  kanam(clk)
+  start = 0
+  uruthisei playing == 1
+  kanam(clk, TICK * 5)
+  uruthisei playing == 1
+}

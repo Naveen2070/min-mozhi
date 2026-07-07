@@ -88,17 +88,22 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       **✅ DONE 2026-07-02 (spec/02 v0.2.19, §1.5b)** — per-file module/enum/bundle
       uniqueness, qualified `a.b.Name` disambiguation (E0110/E0111) —
       `tests/fixtures/packages/qual_top.mimz`
-- [ ] **Controlled loop `suzhal`/`சுழல்`** (gap section 10) — bounded/FSM-lowered
+- [x] **Controlled loop `suzhal`/`சுழல்`** (gap section 10) — bounded/FSM-lowered
       iteration distinct from `repeat`; static/provable trip-count bound is the
-      load-bearing rule. Both spellings already reserved
+      load-bearing rule. Both spellings already reserved — **✅ DONE 2026-07-05 (spec v0.2.22)**
 - [ ] **`foreach`** (gap section 10 — NEW) — sugar over `repeat`/`suzhal` once
       array/`mem` types exist
 - [x] **Tagged unions with payloads** (2.7) — FIRST of the original Tier-3 line:
       enums + match exist; payload = tag bits + max-payload bits; gives `Result`
       (4.2) for free
       **✅ DONE 2026-06-28 (spec/02 v0.2.15)** — `examples/.../tagged_packet.mimz`
-- [ ] **Interfaces/bundles + destructuring** (2.4) — flatten to nets in the
-      emitter; unlocks the next three items
+- [ ] **Enum Variant Construction (Payload)** — follow-up to Tagged Unions (2.7):
+      `Enum.Variant(expr1, expr2)` construction syntax is missing. Requires new
+      `ExprKind::EnumConstruct`, parser update in `postfix()` to consume `(` after
+      enum field access, checker validation of arguments, emitter concatenation
+      `{ tag_bits, arg0, arg1, padding }`, and simulator `Val` packing.
+- [x] **Interfaces/bundles + destructuring** (2.4) — flatten to nets in the
+      emitter; unlocks the next three items — **✅ DONE 2026-07-01 (spec v0.2.18)**
 - [ ] Structural interface matching (2.9) — small checker rule once bundles exist
 - [ ] `?` valid-bundle sugar (2.1 re-targeted): `bits[N]?` =
       `{valid, data}`, `??` = mux on valid — never tri-state

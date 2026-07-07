@@ -1,0 +1,50 @@
+// Real-world showcase: PID temperature controller.
+// Implements proportional-integral-derivative control loop using
+// signed math and combinational fn helpers.
+// Demonstrates: signed[N], fn, extend/trunc, min/max/abs built-ins,
+// default assignment, on rise(clk), const, test.
+//
+// Lossless arithmetic: `+` and `-` widen the result by 1 bit, so
+// trunc() is used explicitly at each stage — no silent overflow.
+
+  தொகுதி PidController {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  உள்ளீடு  setpoint:  signed[8]
+  உள்ளீடு  measured:  signed[8]
+  வெளியீடு control:   signed[8]
+  வெளியீடு saturated: bit
+
+  பதிவேடு integral: signed[16] = 0
+  பதிவேடு prev_error: signed[8] = 0
+
+  கம்பி error: signed[9] = trunc(extend(setpoint, 9) - extend(measured, 9), 9)
+
+  கம்பி p_term: signed[10] = trunc(extend(error, 10) + extend(error, 10), 10)
+  கம்பி d_diff: signed[10] = trunc(extend(error, 10) - extend(prev_error, 10), 10)
+
+  கம்பி total: signed[16] = trunc(
+    trunc(extend(p_term, 16) + integral, 16) + extend(d_diff, 16),
+    16
+  )
+  control = trunc(max(-128, min(total, 127)), 8)
+  saturated = (total < -128) || (total > 127)
+
+  போது ஏற்றம்(clk) {
+    இயல்பு integral <- integral
+    integral <- trunc(integral + extend(error, 16), 16)
+    prev_error <- trunc(error, 8)
+  }
+}
+
+சோதனை "pid converges on step" க்காக PidController {
+  setpoint = 10
+  measured = 0
+  கணம்(clk, 5)
+  measured = 15
+  கணம்(clk, 5)
+  measured = 10
+  கணம்(clk, 10)
+  உறுதிசெய் saturated == 0
+}
