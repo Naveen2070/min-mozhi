@@ -62,7 +62,12 @@ pub enum TestResult {
 /// from another file flattens; `src` is the entry source (for rendering
 /// expressions in failure messages). `Err` is a setup/semantic error; a normal
 /// `expect` failure is `Ok(Outcome { result: Fail(..), .. })`.
-pub fn run_test(files: &[ast::File], src: &str, decl: &TestDecl) -> Result<Outcome, String> {
+pub fn run_test(
+    files: &[ast::File],
+    src: &str,
+    decl: &TestDecl,
+    emulate: bool,
+) -> Result<Outcome, String> {
     let params = params(decl)?;
     let design = elaborate_project(files, Some(&decl.module.name.name), &params)?;
 
@@ -78,12 +83,30 @@ pub fn run_test(files: &[ast::File], src: &str, decl: &TestDecl) -> Result<Outco
 
     #[cfg(feature = "hw-emulation")]
     let outputs = design.outputs.clone();
+    // Not read on this build: `emulate` only feeds `live` below, which is
+    // itself feature-gated.
+    #[cfg(not(feature = "hw-emulation"))]
+    let _ = emulate;
     let sim = Sim::new(design);
     let signals: Vec<Signal> = sim
         .snapshot()?
         .into_iter()
         .map(|(name, _, width)| Signal { name, width })
         .collect();
+
+    // Emulation is only ever "live" (throttled ticks + dashboard, wired up in
+    // Task 7) when the caller asked for it AND a real terminal is attached —
+    // this keeps `--emulate` a CI-safe no-op when stdout is piped/redirected.
+    #[cfg(feature = "hw-emulation")]
+    let live = {
+        use std::io::IsTerminal;
+        if emulate && !std::io::stdout().is_terminal() {
+            eprintln!(
+                "note: sim block emulation skipped (no terminal attached) — run with a TTY to see it"
+            );
+        }
+        emulate && std::io::stdout().is_terminal()
+    };
 
     let mut run = Run {
         sim,
@@ -97,6 +120,8 @@ pub fn run_test(files: &[ast::File], src: &str, decl: &TestDecl) -> Result<Outco
         outputs,
         #[cfg(feature = "hw-emulation")]
         active_sim: None,
+        #[cfg(feature = "hw-emulation")]
+        live,
     };
     run.capture()?; // the initial (pre-tick) state
 
@@ -153,6 +178,12 @@ struct Run<'a> {
     outputs: Vec<Signal>,
     #[cfg(feature = "hw-emulation")]
     active_sim: Option<ActiveSim>,
+    /// `emulate` requested AND stdout is a real terminal. Not yet read
+    /// anywhere — Task 7 gates `TestStmt::Tick`'s pacing on this; until then
+    /// ticks always run unthrottled regardless of its value.
+    #[cfg(feature = "hw-emulation")]
+    #[allow(dead_code)]
+    live: bool,
 }
 
 /// The registered peripherals + real-world clock rate for the test's `sim`
@@ -354,7 +385,7 @@ mod tests {
             .iter()
             .filter_map(|i| match i {
                 ast::TopItem::Test(t) => {
-                    Some(run_test(std::slice::from_ref(&f), src, t).expect("runs"))
+                    Some(run_test(std::slice::from_ref(&f), src, t, false).expect("runs"))
                 }
                 _ => None,
             })
@@ -438,7 +469,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), &src, decl).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), &src, decl, false).unwrap_err();
         assert!(err.contains("not a clock"), "got: {err}");
     }
 
@@ -468,7 +499,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
         assert!(err.contains("unknown peripheral"), "got: {err}");
     }
 
@@ -483,5 +514,31 @@ mod tests {
         let outs = run(&src);
         assert!(passes(&outs[0]));
         assert_eq!(outs[0].checks, 1);
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
+    fn emulate_true_without_tty_still_passes() {
+        // Can't fake `IsTerminal` in-process without a real terminal, so this
+        // test only proves the emulating-but-headless path (this test process
+        // itself is never a TTY under `cargo test`) still produces a normal
+        // Pass — i.e. passing `emulate: true` never breaks a test run even
+        // when no terminal is attached, which is exactly the CI-safety
+        // property `run_test` is supposed to guarantee.
+        let src = format!(
+            "{COUNTER}\ntest \"counts\" for Counter(WIDTH: 4) {{\n  \
+             rst = 0\n  tick(clk, 3)\n  expect count == 3\n}}\n"
+        );
+        let f = crate::parser::parse(crate::lexer::lex(&src).expect("lexes")).expect("parses");
+        let decl = f
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ast::TopItem::Test(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        let outcome = run_test(std::slice::from_ref(&f), &src, decl, true).expect("runs");
+        assert!(passes(&outcome));
     }
 }
