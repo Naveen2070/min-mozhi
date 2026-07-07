@@ -401,6 +401,18 @@ fn collect_test_stmt_refs(s: &TestStmt, module_idx: Option<usize>, refs: &mut Ve
                 collect_test_stmt_refs(s, module_idx, refs);
             }
         }
+        TestStmt::Sim(sim) => {
+            if let Some(speed) = &sim.speed {
+                collect_expr_refs(speed, module_idx, refs);
+            }
+            for b in &sim.binds {
+                refs.push(Ref {
+                    name: b.port.name.clone(),
+                    span: b.port.span,
+                    module_idx,
+                });
+            }
+        }
         TestStmt::Error(_) => {}
     }
 }
