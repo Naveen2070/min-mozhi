@@ -42,16 +42,24 @@ clap_complete = "4.6.5"
 # `watch` feature: notify pulls OS inotify/fsevent/ReadDirectoryChanges APIs that
 # do not build on wasm32, so the WASM crate (default-features = false) excludes it.
 notify = { version = "8", optional = true }
+# Terminal dashboard for hardware-emulation `sim` blocks (`mimz test --emulate`).
+# Optional + behind the `hw-emulation` feature: ratatui/crossterm pull terminal
+# APIs that do not build on wasm32, so the WASM crate (default-features = false)
+# excludes them, same as lsp/bench/watch. See
+# docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md.
+ratatui = { version = "0.29", optional = true }
+crossterm = { version = "0.29", optional = true }
 
 # Default features power the full CLI (native). The WASM crate
 # (`crates/mimz-wasm`) depends on this crate with `default-features = false`,
 # dropping the LSP + bench + watch deps that do not build on wasm32; the compiler
 # pipeline the playground needs has no optional deps.
 [features]
-default = ["lsp", "bench", "watch"]
+default = ["lsp", "bench", "watch", "hw-emulation"]
 lsp = ["dep:tokio", "dep:tower-lsp"]
 bench = ["dep:memory-stats"]
 watch = ["dep:notify"]
+hw-emulation = ["dep:ratatui", "dep:crossterm"]
 
 # The benchmark binary needs the `bench` feature (memory-stats); skipped under
 # --no-default-features so the lib stays buildable for wasm32 in isolation.
