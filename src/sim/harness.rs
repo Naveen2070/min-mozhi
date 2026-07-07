@@ -129,15 +129,19 @@ pub fn run_test(
     // Emulation is only ever "live" (throttled ticks + dashboard, wired up in
     // Task 7) when the caller asked for it AND a real terminal is attached —
     // this keeps `--emulate` a CI-safe no-op when stdout is piped/redirected.
+    // The degrade note only makes sense for a test that actually has a `sim`
+    // block to skip — printing it for every other test in the file would be
+    // noise, not the "clean, accurate" CI-safety message this is meant to be.
     #[cfg(feature = "hw-emulation")]
     let live = {
         use std::io::IsTerminal;
-        if emulate && !std::io::stdout().is_terminal() {
+        let is_tty = std::io::stdout().is_terminal();
+        if emulate && !is_tty && has_sim_block(&decl.body) {
             eprintln!(
                 "note: sim block emulation skipped (no terminal attached) — run with a TTY to see it"
             );
         }
-        emulate && std::io::stdout().is_terminal()
+        emulate && is_tty
     };
 
     let mut run = Run {
@@ -177,6 +181,20 @@ pub fn run_test(
             frames: run.frames,
         },
         default_scope,
+    })
+}
+
+/// Whether a test body has a `sim` block anywhere — including nested inside
+/// an `if`/`else`, which the grammar allows since both branches reuse the
+/// same `test_block` parser. Drives whether the no-TTY degrade note fires.
+#[cfg(feature = "hw-emulation")]
+fn has_sim_block(body: &[TestStmt]) -> bool {
+    body.iter().any(|s| match s {
+        TestStmt::Sim(_) => true,
+        TestStmt::If { then, els, .. } => {
+            has_sim_block(then) || els.as_deref().is_some_and(has_sim_block)
+        }
+        _ => false,
     })
 }
 
@@ -656,6 +674,44 @@ mod tests {
         let outs = run(&src);
         assert!(passes(&outs[0]));
         assert_eq!(outs[0].checks, 1);
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
+    fn has_sim_block_only_true_when_a_sim_block_is_present() {
+        // A body with no `sim` block (the common case — most tests never
+        // touch emulation) must not trigger the degrade note.
+        let no_sim = format!(
+            "{COUNTER}\ntest \"t\" for Counter(WIDTH: 4) {{\n  \
+             rst = 0\n  tick(clk)\n  expect count == 1\n}}\n"
+        );
+        assert!(!has_sim_block(&test_body(&no_sim)));
+
+        // A top-level `sim` block is detected.
+        let with_sim = "module M {\n  clock clk\n  out playing: bit\n  playing = 1\n}\n\
+                         test \"t\" for M {\n  sim {\n    bind playing -> led()\n  }\n  tick(clk)\n}\n";
+        assert!(has_sim_block(&test_body(with_sim)));
+
+        // A `sim` block nested inside an `if`/`else` branch is also detected
+        // (the grammar allows it — `if`'s then/else reuse `test_block`).
+        let nested = format!(
+            "{COUNTER}\ntest \"t\" for Counter(WIDTH: 4) {{\n  \
+             rst = 0\n  tick(clk)\n  \
+             if count == 1 {{ expect count == 1 }} else {{ sim {{ bind count -> led() }} }}\n}}\n"
+        );
+        assert!(has_sim_block(&test_body(&nested)));
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    fn test_body(src: &str) -> Vec<TestStmt> {
+        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        f.items
+            .iter()
+            .find_map(|i| match i {
+                ast::TopItem::Test(t) => Some(t.body.clone()),
+                _ => None,
+            })
+            .unwrap()
     }
 
     #[cfg(feature = "hw-emulation")]
