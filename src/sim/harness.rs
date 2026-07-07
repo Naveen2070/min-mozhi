@@ -376,9 +376,12 @@ impl Run<'_> {
                     let mut peripherals = Vec::new();
                     for b in &block.binds {
                         let ctor = registry.get(b.peripheral.name.as_str()).ok_or_else(|| {
+                            let mut known: Vec<&str> = registry.keys().copied().collect();
+                            known.sort_unstable();
                             Stop::Err(format!(
-                                "unknown peripheral `{}` — known: led",
-                                b.peripheral.name
+                                "unknown peripheral `{}` — known: {}",
+                                b.peripheral.name,
+                                known.join(", ")
                             ))
                         })?;
                         let width = self.port_width(&b.port.name).ok_or_else(|| {
@@ -646,6 +649,24 @@ mod tests {
             .unwrap();
         let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
         assert!(err.contains("unknown peripheral"), "got: {err}");
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
+    fn sim_block_with_unknown_port_errors() {
+        let src = "module M {\n  clock clk\n  out playing: bit\n  playing = 1\n}\n\
+                    test \"t\" for M {\n  sim {\n    bind nope -> led()\n  }\n  tick(clk)\n}\n";
+        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let decl = f
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ast::TopItem::Test(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
+        assert!(err.contains("nope"), "got: {err}");
     }
 
     #[cfg(feature = "hw-emulation")]
