@@ -30,6 +30,7 @@ pub(crate) fn test_file(
     config_path: Option<&Path>,
     quiet: bool,
     debug: bool,
+    emulate: bool,
 ) -> ExitCode {
     use owo_colors::OwoColorize;
 
@@ -90,7 +91,7 @@ pub(crate) fn test_file(
     let use_color = mimz::diag::is_color_enabled();
 
     for t in tests {
-        match run_test(&asts, &src, t) {
+        match run_test(&asts, &src, t, emulate) {
             Ok(o) => {
                 match &o.result {
                     TestResult::Pass => {

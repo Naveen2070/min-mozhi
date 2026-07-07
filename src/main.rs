@@ -348,6 +348,11 @@ enum Cmd {
         /// flavor the file predominantly uses)
         #[arg(short = 'l', long)]
         lang: Option<CliLang>,
+        /// Enable hardware emulation for `sim` blocks (throttling +
+        /// peripherals like `led`). No-op if stdout isn't a real
+        /// terminal (CI-safe by default even with this flag set).
+        #[arg(long)]
+        emulate: bool,
     },
     /// (experimental) Interactive REPL for a combinational module.
     ///
@@ -631,6 +636,7 @@ fn main() -> ExitCode {
             verbose,
             signals,
             lang,
+            emulate,
         } => {
             let cfg = match resolve_config(&file, config_path.as_deref()) {
                 Ok(c) => c,
@@ -647,6 +653,7 @@ fn main() -> ExitCode {
                 config_path.as_deref(),
                 quiet,
                 debug,
+                emulate,
             )
         }
     }

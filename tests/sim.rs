@@ -462,7 +462,7 @@ fn run_test_ok(src: &str) {
         .collect();
     assert!(!tests.is_empty(), "no test blocks found in src");
     for decl in tests {
-        let outcome = run_test(std::slice::from_ref(&file), src, decl)
+        let outcome = run_test(std::slice::from_ref(&file), src, decl, false)
             .unwrap_or_else(|e| panic!("test `{}` errored: {e}", decl.name));
         match &outcome.result {
             TestResult::Pass => {}
