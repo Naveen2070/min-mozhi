@@ -142,6 +142,17 @@ This is a CLI/observation feature only — no language surface, no synthesizable
 output. (`sim::fatal` / `sim::warn`, deferred below, are a separate user-log
 feature, not this uniform engine-driven trace.)
 
+## 5.5. Hardware emulation (`sim` blocks, opt-in)
+
+A `sim { speed ... bind ... }` block inside a `test` block binds ports to
+virtual peripherals (`led` today) and throttles execution to a declared
+real-world clock rate, opt-in via `mimz test --emulate` (default off;
+auto-degrades to a no-op with a logged note when stdout isn't a real
+terminal). Simulation-only — `mimz compile` never sees it. Full design:
+[`docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md`](../docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md)
+(this file is gitignored/local — if it's not present, see
+`docs/Ideas/hardware_emulation.md` for the original proposal).
+
 ## 6. Out of scope (v1)
 
 - 4-state (X/Z) simulation; `real`/`time` value types.
