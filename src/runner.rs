@@ -184,10 +184,64 @@ pub fn run_command(source: &str, command: &str, argv: &[&str]) -> Result<String,
 
 /// Lex + parse an already-NFC-normalized source into one file, rendering any
 /// lexer/parser diagnostics to text on failure.
-fn parse_source(src: &str) -> Result<ast::File, String> {
+fn parse_source(src: &str) -> Result<Vec<crate::project::LoadedFile>, String> {
     let render = |d: Vec<diag::Diag>| diag::render(&d, src, NAME);
     let toks = lexer::lex(src).map_err(render)?;
-    parser::parse(toks).map_err(render)
+    let root_ast = parser::parse(toks).map_err(render)?;
+
+    let mut files = vec![crate::project::LoadedFile {
+        path: std::path::PathBuf::from(NAME),
+        src: src.to_string(),
+        ast: root_ast,
+    }];
+    let mut loaded_stems = std::collections::HashMap::new();
+
+    let mut i = 0;
+    while i < files.len() {
+        let imports = files[i].ast.imports.clone();
+        let mut target_indices = Vec::new();
+
+        for imp in &imports {
+            if imp.path.len() == 2 && crate::stdlib::is_std_namespace(&imp.path[0].name) {
+                let ns = &imp.path[0].name;
+                let mod_name = &imp.path[1].name;
+                if let Some((m, v)) = crate::stdlib::resolve(ns, mod_name) {
+                    let target_idx = if let Some(&idx) = loaded_stems.get(m.stem) {
+                        idx
+                    } else {
+                        let std_src = m.source(v);
+                        let std_toks =
+                            lexer::lex(std_src).map_err(|d| diag::render(&d, std_src, mod_name))?;
+                        let std_ast = parser::parse(std_toks)
+                            .map_err(|d| diag::render(&d, std_src, mod_name))?;
+                        let idx = files.len();
+                        loaded_stems.insert(m.stem, idx);
+                        files.push(crate::project::LoadedFile {
+                            path: std::path::PathBuf::from(format!("<std::{mod_name}>")),
+                            src: std_src.to_string(),
+                            ast: std_ast,
+                        });
+                        idx
+                    };
+                    target_indices.push(target_idx);
+                } else {
+                    return Err(format!("unknown standard library module `{ns}.{mod_name}`"));
+                }
+            } else {
+                return Err(
+                    "`import` is not supported when compiling a single in-memory source — \
+                     the in-browser compiler resolves no files. Paste the imported modules \
+                     into this source (only standard library imports like `std.uart_tx` are supported)."
+                        .to_string(),
+                );
+            }
+        }
+        for (imp, &idx) in files[i].ast.imports.iter().zip(&target_indices) {
+            imp.resolved_file.set(Some(idx));
+        }
+        i += 1;
+    }
+    Ok(files)
 }
 
 /// Pull the value following a `--flag`, advancing the cursor past both.
@@ -202,9 +256,10 @@ fn flag_value<'a>(argv: &'a [&'a str], i: &mut usize, flag: &str) -> Result<&'a 
 
 /// `check` — lex, parse, and run the full safety checker; no output written.
 fn check(src: &str, _argv: &[&str]) -> Result<String, String> {
-    let ast = parse_source(src)?;
-    if let Err(d) = checker::check(std::slice::from_ref(&ast)) {
-        return Err(diag::render(&d, src, NAME));
+    let files = parse_source(src)?;
+    let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
+    if let Err(d) = checker::check(&asts) {
+        return Err(crate::project::render_diags(&d, &files));
     }
     Ok("OK — no errors.".to_string())
 }
@@ -213,17 +268,9 @@ fn check(src: &str, _argv: &[&str]) -> Result<String, String> {
 /// in-memory). This is the one compile implementation; [`crate::compile_string`]
 /// is a thin wrapper over it.
 fn compile(src: &str, _argv: &[&str]) -> Result<String, String> {
-    let ast = parse_source(src)?;
-    if !ast.imports.is_empty() {
-        return Err(
-            "`import` is not supported when compiling a single in-memory source — \
-             the in-browser compiler resolves no files. Paste the imported modules \
-             into this source."
-                .to_string(),
-        );
-    }
-    let render = |d: Vec<diag::Diag>| diag::render(&d, src, NAME);
-    let mut asts = vec![ast];
+    let files = parse_source(src)?;
+    let render = |d: Vec<diag::Diag>| crate::project::render_diags(&d, &files);
+    let mut asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     checker::check(&asts).map_err(render)?;
     emit_verilog::transliterate(&mut asts);
     let project = emit_verilog::Project::from_files(&asts).map_err(render)?;
@@ -246,16 +293,12 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
         }
     }
 
-    let file = parse_source(src)?;
+    let files = parse_source(src)?;
     let inputs = parse_bindings(inputs_s, parse_u128)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
 
-    let outputs = comb::eval_outputs(
-        std::slice::from_ref(&file),
-        module.as_deref(),
-        &inputs,
-        &params,
-    )?;
+    let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
+    let outputs = comb::eval_outputs(&asts, module.as_deref(), &inputs, &params)?;
     let mut out = String::new();
     for o in outputs {
         let kind = if o.signed { "signed" } else { "bits" };
@@ -293,10 +336,10 @@ fn ports(src: &str, argv: &[&str]) -> Result<String, String> {
         }
     }
 
-    let file = parse_source(src)?;
+    let files = parse_source(src)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
-    let design =
-        elaborate::elaborate_project(std::slice::from_ref(&file), module.as_deref(), &params)?;
+    let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
+    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
 
     let join =
         |sigs: &[elaborate::Signal]| sigs.iter().map(signal_json).collect::<Vec<_>>().join(",");
@@ -369,7 +412,7 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
         return Err(format!("--cycles must be between 1 and {MAX_SIM_CYCLES}"));
     }
 
-    let file = parse_source(src)?;
+    let files = parse_source(src)?;
     let inputs = parse_bindings(inputs_s, parse_u128)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
     let sweep = parse_sweep(sweep_s)?;
@@ -381,8 +424,8 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
         return Err("--steps and --sweep cannot be combined".to_string());
     }
 
-    let design =
-        elaborate::elaborate_project(std::slice::from_ref(&file), module.as_deref(), &params)?;
+    let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
+    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
     // Capture the scope groups + clocked-ness before the run consumes the design.
     let in_names: Vec<String> = design.inputs.iter().map(|s| s.name.clone()).collect();
     let out_names: Vec<String> = design.outputs.iter().map(|s| s.name.clone()).collect();
@@ -453,7 +496,8 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
         }
     }
 
-    let file = parse_source(src)?;
+    let files = parse_source(src)?;
+    let file = &files[0].ast;
     let decls: Vec<&ast::TestDecl> = file
         .items
         .iter()
@@ -468,11 +512,11 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
         return Ok("no tests found.\n".to_string());
     }
 
-    let files = [file.clone()];
+    let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     let mut out = String::new();
     let (mut passed, mut failed) = (0u32, 0u32);
     for decl in decls {
-        match crate::sim::harness::run_test(&files, src, decl) {
+        match crate::sim::harness::run_test(&asts, src, decl) {
             Ok(o) => match o.result {
                 crate::sim::harness::TestResult::Pass => {
                     passed += 1;
