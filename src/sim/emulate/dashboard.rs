@@ -43,7 +43,12 @@ impl Dashboard {
     /// on stdout.
     pub(in crate::sim) fn open() -> io::Result<Dashboard> {
         enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen)?;
+        if let Err(e) = execute!(io::stdout(), EnterAlternateScreen) {
+            // No `Dashboard` (and thus no `Drop`) exists yet to restore the
+            // terminal — undo the raw-mode switch ourselves before erroring.
+            let _ = disable_raw_mode();
+            return Err(e);
+        }
         let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
         Ok(Dashboard { terminal })
     }
