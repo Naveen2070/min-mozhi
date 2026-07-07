@@ -9,7 +9,7 @@ echo "=== pre-commit: clippy ==="
 cargo clippy --all-targets -- -D warnings
 
 echo "=== pre-commit: prettier check ==="
-npx prettier --check "**/*.md"
+npx prettier --check "**/*.md" "!.opencode/**"
 
 echo "=== pre-commit: markdownlint ==="
 npx markdownlint-cli2

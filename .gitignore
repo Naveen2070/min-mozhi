@@ -25,6 +25,7 @@ desktop.ini
 /.remember/
 /.claude/
 /.superpowers/
+/.opencode/
 
 # Generated knowledge graph (graphify tool output)
 /graphify-out/

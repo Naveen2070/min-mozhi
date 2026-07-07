@@ -1,0 +1,157 @@
+// Real-world showcase: UART serial loopback (echo).
+// Receives a byte over 8-N-1 UART via an enum-based RX state machine,
+// then echoes it back using the standard library UartTx transmitter.
+// Demonstrates: import from stdlib, enum + match FSM, on rise(clk),
+// registers with sync reset, and self-checking test blocks.
+
+import std.uart_tx
+
+module UartEcho(CLKS_PER_BIT: int = 4) {
+  clock clk
+  reset rst
+
+  in  rx: bit
+  out tx: bit
+  out busy: bit
+  out received: bits[8]
+
+  enum RxState { Idle, Start, Data, Stop }
+
+  reg rx_state: RxState      = RxState.Idle
+  reg baud_cnt: bits[16]     = 0
+  reg bit_idx: bits[3]       = 0
+  reg shift: bits[8]         = 0
+  reg rx_byte: bits[8]       = 0
+
+  reg echo_byte: bits[8]     = 0
+  reg echo_pending: bit      = 0
+  reg tx_start: bit          = 0
+
+  on rise(clk) {
+    default tx_start <- 0
+
+    if rx_state == RxState.Idle {
+      baud_cnt <- 0
+      bit_idx <- 0
+      if rx == 0 {
+        rx_state <- RxState.Start
+      } else {
+        rx_state <- RxState.Idle
+      }
+    } else {
+      if rx_state == RxState.Start {
+        bit_idx <- 0
+        baud_cnt <- baud_cnt +% 1
+        if baud_cnt == (CLKS_PER_BIT - 1) {
+          baud_cnt <- 0
+          if rx == 0 {
+            rx_state <- RxState.Data
+          } else {
+            rx_state <- RxState.Idle
+          }
+        } else {
+          rx_state <- RxState.Start
+        }
+      } else {
+        if rx_state == RxState.Data {
+          baud_cnt <- baud_cnt +% 1
+          if baud_cnt == (CLKS_PER_BIT - 1) {
+            baud_cnt <- 0
+            shift <- (shift >> 1) | (extend(rx, 8) << 7)
+            bit_idx <- bit_idx +% 1
+            if bit_idx == 7 {
+              rx_state <- RxState.Stop
+            } else {
+              rx_state <- RxState.Data
+            }
+          } else {
+            rx_state <- RxState.Data
+          }
+        } else {
+          bit_idx <- 0
+          baud_cnt <- baud_cnt +% 1
+          if baud_cnt == (CLKS_PER_BIT - 1) {
+            baud_cnt <- 0
+            if rx == 1 {
+              rx_byte <- shift
+              echo_byte <- shift
+              echo_pending <- 1
+            }
+            rx_state <- RxState.Idle
+          } else {
+            rx_state <- RxState.Stop
+          }
+        }
+      }
+    }
+
+    if echo_pending {
+      tx_start <- 1
+      echo_pending <- 0
+    }
+  }
+
+  let tx_inst = UartTx(CLKS_PER_BIT: CLKS_PER_BIT) { start: tx_start, data: echo_byte }
+
+  tx = tx_inst.tx
+  busy = if rx_state == RxState.Idle {
+    tx_inst.busy
+  } else {
+    1
+  }
+  received = rx_byte
+}
+
+test "uart echoes 0xA5" for UartEcho(CLKS_PER_BIT: 4) {
+  rx = 1
+  tick(clk, 2)
+  rx = 0
+  tick(clk, CLKS_PER_BIT + 1)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  tick(clk, CLKS_PER_BIT * 6)
+  expect received == 0xA5
+}
+
+test "uart echoes 0x33" for UartEcho(CLKS_PER_BIT: 4) {
+  rx = 1
+  tick(clk, 2)
+  rx = 0
+  tick(clk, CLKS_PER_BIT + 1)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 0
+  tick(clk, CLKS_PER_BIT)
+  rx = 1
+  tick(clk, CLKS_PER_BIT)
+  tick(clk, CLKS_PER_BIT * 6)
+  expect received == 0x33
+}

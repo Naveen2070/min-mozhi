@@ -1,0 +1,122 @@
+// Real-world showcase: CAN bus frame filter.
+// Processes CAN 2.0B frame types using conditional updates
+// and match expressions for signal routing — the pattern
+// used in real automotive gateway firmware.
+//
+// Demonstrates:
+//   - match-expression on wire RHS (integer patterns)
+//   - conditional `on rise(clk)` updates with `default`
+//   - bundle construction (simulator SK-0004: no . access)
+//   - multiple counters tracked per frame type
+//
+// Not yet supported by simulator (SK-0004):
+//   - bundle destructure via `let { f1, f2 } = bundle`
+//   - enum variant destructuring: only tag-only enum in
+//     expression position, and simulator doesn't support
+//     enum types at runtime
+
+thoguthi CanFrameFilter {
+  thudippu clk
+  meettamai rst
+
+  ulleedu  kind: bits[2]
+  ulleedu  valid: bit
+
+  veliyeedu filter_out: bit
+  veliyeedu frame_type: bits[2]
+  veliyeedu match_count: bits[4]
+
+  pathivedu data_cnt: bits[4] = 0
+  pathivedu remote_cnt: bits[4] = 0
+  pathivedu err_cnt: bits[4] = 0
+  pathivedu filter_out_reg: bit = 0
+  pathivedu frame_type_reg: bits[2] = 0
+  pathivedu match_count_reg: bits[4] = 0
+
+  kambi accept: bit = thernthedu kind {
+    0 => 1
+    1 => 1
+    _ => 0
+  }
+
+  filter_out = filter_out_reg
+  frame_type = frame_type_reg
+  match_count = match_count_reg
+
+  pothu yetram(clk) {
+    iyalbu filter_out_reg <- 0
+    iyalbu frame_type_reg <- 0
+
+    enil valid {
+      frame_type_reg <- kind
+
+      enil accept {
+        filter_out_reg <- 1
+        match_count_reg <- match_count_reg +% 1
+      }
+
+      enil kind == 0 {
+        data_cnt <- data_cnt +% 1
+      }
+
+      enil kind == 1 {
+        remote_cnt <- remote_cnt +% 1
+      }
+
+      enil kind == 2 {
+        err_cnt <- err_cnt +% 1
+      }
+    }
+  }
+}
+
+sodhanai "data frame is accepted" kaaga CanFrameFilter {
+  kind = 0
+  valid = 1
+  kanam(clk, 1)
+  uruthisei filter_out == 1
+  uruthisei match_count == 1
+}
+
+sodhanai "remote frame is accepted" kaaga CanFrameFilter {
+  kind = 1
+  valid = 1
+  kanam(clk, 1)
+  uruthisei filter_out == 1
+}
+
+sodhanai "error frame is rejected" kaaga CanFrameFilter {
+  kind = 2
+  valid = 1
+  kanam(clk, 1)
+  uruthisei filter_out == 0
+}
+
+sodhanai "overload frame is rejected" kaaga CanFrameFilter {
+  kind = 3
+  valid = 1
+  kanam(clk, 1)
+  uruthisei filter_out == 0
+}
+
+sodhanai "counter accumulation" kaaga CanFrameFilter {
+  kind = 0
+  valid = 1
+  kanam(clk, 1)
+  valid = 0
+  kanam(clk, 1)
+  kind = 1
+  valid = 1
+  kanam(clk, 1)
+  valid = 0
+  kanam(clk, 1)
+  kind = 0
+  valid = 1
+  kanam(clk, 1)
+  valid = 0
+  kanam(clk, 1)
+  kind = 2
+  valid = 1
+  kanam(clk, 1)
+  uruthisei match_count == 3
+}

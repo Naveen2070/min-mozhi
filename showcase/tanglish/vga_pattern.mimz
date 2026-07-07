@@ -1,0 +1,113 @@
+// Real-world showcase: VGA test pattern generator (640x480 @ 60 Hz).
+// Generates hsync, vsync, and a color-bar test pattern with a sync loop
+// frame counter for animation timing.
+// Demonstrates: sync loop (cycle-iterating FSM), repeat (unrolling),
+// clog2 (compile-time ceil(log2)), const if (conditional inclusion),
+// bundle (signal grouping), test.
+
+kattai VgaBus {
+  hsync: bit
+  vsync: bit
+  red:   bits[2]
+  green: bits[2]
+  blue:  bits[2]
+}
+
+thoguthi VgaPattern {
+  thudippu clk
+  meettamai rst
+
+  veliyeedu vga: VgaBus
+  veliyeedu frame_count: bits[4]
+
+  maarili H_TOTAL: int = 800
+  maarili H_SYNC: int = 96
+  maarili H_BACK: int = 48
+  maarili H_VISIBLE: int = 640
+  maarili H_FRONT: int = 16
+
+  maarili V_TOTAL: int = 525
+  maarili V_SYNC: int = 2
+  maarili V_BACK: int = 33
+  maarili V_VISIBLE: int = 480
+  maarili V_FRONT: int = 10
+
+  maarili DEBUG: int = 0
+
+  pathivedu h_cnt: bits[clog2(H_TOTAL)] = 0
+  pathivedu v_cnt: bits[clog2(V_TOTAL)] = 0
+
+  pothu yetram(clk) {
+    enil h_cnt == H_TOTAL - 1 {
+      h_cnt <- 0
+      enil v_cnt == V_TOTAL - 1 {
+        v_cnt <- 0
+      } illaiyenil {
+        v_cnt <- v_cnt +% 1
+      }
+    } illaiyenil {
+      h_cnt <- h_cnt +% 1
+    }
+  }
+
+  kambi hsync: bit = enil h_cnt >= H_VISIBLE + H_FRONT &&
+    h_cnt < H_VISIBLE + H_FRONT + H_SYNC {
+    0
+  } illaiyenil {
+    1
+  }
+
+  kambi vsync: bit = enil v_cnt >= V_VISIBLE + V_FRONT &&
+    v_cnt < V_VISIBLE + V_FRONT + V_SYNC {
+    1
+  } illaiyenil {
+    0
+  }
+
+  maarili enil (DEBUG) {
+    kambi debug_active: bit = h_cnt < 16 && v_cnt < 16
+  }
+
+  kambi h_active: bit = h_cnt < H_VISIBLE
+  kambi v_active: bit = v_cnt < V_VISIBLE
+  kambi blank: bit = !h_active || !v_active
+
+  kambi bar_sel: bits[2] = trunc(h_cnt >> 7, 2)
+  kambi invert: bit = v_cnt[4]
+
+  vga = {
+    hsync: hsync,
+    vsync: vsync,
+    red: enil blank {
+      0
+    } illaiyenil {
+      enil invert { ~bar_sel } illaiyenil { bar_sel }
+    },
+    green: enil blank {
+      0
+    } illaiyenil {
+      enil invert { bar_sel } illaiyenil { ~bar_sel }
+    },
+    blue: enil blank {
+      0
+    } illaiyenil {
+      { bar_sel[0], bar_sel[1] }
+    },
+  }
+
+  othisai suzhal frame_cnt pothu yetram(clk) (i: 0..16) -> result: bits[4] = 0 {
+    enil h_cnt == H_TOTAL - 1 && v_cnt == V_TOTAL - 1 {
+      result <- i
+    }
+  }
+
+  frame_count = frame_cnt_result
+}
+
+sodhanai "vga produces hsync pulses" kaaga VgaPattern {
+  uruthisei vga_hsync == 1
+  kanam(clk, H_VISIBLE + H_FRONT)
+  uruthisei vga_hsync == 0
+  kanam(clk, H_SYNC)
+  uruthisei vga_hsync == 1
+}

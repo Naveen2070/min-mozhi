@@ -250,3 +250,31 @@ applies (`src/sim/value.rs`).
 `tests/icarus.rs` differential list (and registered in `BASE_EXAMPLES`/`PURE_TAMIL`
 with its pure-Tamil twin `tamil-pure/nakartthi.mimz`), and a unit test
 (`shl_does_not_truncate_to_left_operand_width`) was added to `src/sim/value.rs`.
+
+---
+
+## BUG-7 (OPEN) — Simulator `eval_fn_call` masks arguments without sign-extending
+
+**What.** When passing a negative signed value to a function, the simulator loses the sign extension if the parameter width is wider. For example, passing `-128` (as `signed[8]`) to a function expecting `signed[16]` evaluates to `+128` rather than `-128`.
+
+**Cause.** In `src/sim/value.rs`, `eval_fn_call` binds arguments using `Val::new(val.bits, w, s)`. This function applies the bit-mask of the parameter's width, but it fails to sign-extend the caller's value first based on its original signedness and width.
+
+**How found.** User encountered it while implementing PID saturation where a `fn clamp` evaluated incorrectly for negative numbers.
+
+**Severity.** HIGH — Silent miscompute in the simulator for negative numbers passed to functions.
+
+**Workaround.** Inline the `min`/`max` logic or use built-ins (which handle sign-extension correctly) instead of using a user-defined function.
+
+---
+
+## BUG-8 (OPEN) — Simulator errors on bit-indexed register assignment
+
+**What.** The parser and AST support bit-indexed register assignment (e.g., `shift[bit_idx] <- rx`), but the simulator rejects it.
+
+**Cause.** In `src/sim/kernel.rs`, the `SeqStmt::Assign` evaluation explicitly returns an error: `"assigning a slice/bit of <name> is not supported by the simulator yet"`.
+
+**How found.** User tried to implement a UART receiver echo shift register and encountered the simulator error.
+
+**Severity.** MEDIUM — Missing simulator feature.
+
+**Workaround.** Use a full-register assignment with bitwise shifts and masks, e.g., `shift <- (shift >> 1) | (rx << 7)`.

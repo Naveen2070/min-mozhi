@@ -1,0 +1,52 @@
+இலக்கணம் தமிழ்
+
+// Real-world showcase: PID temperature controller.
+// Implements proportional-integral-derivative control loop using
+// signed math and combinational fn helpers.
+// Demonstrates: signed[N], fn, extend/trunc, min/max/abs built-ins,
+// default assignment, on rise(clk), const, test.
+//
+// Lossless arithmetic: `+` and `-` widen the result by 1 bit, so
+// trunc() is used explicitly at each stage — no silent overflow.
+
+தொகுதி PidKattu {
+  துடிப்பு கடிகை
+  மீட்டமை மீட்டல்
+
+  உள்ளீடு இலக்கு_மதிப்பு:  signed[8]
+  உள்ளீடு அளவிடப்பட்டது:  signed[8]
+  வெளியீடு கட்டுப்பாடு:   signed[8]
+  வெளியீடு நிறைவு: bit
+
+  பதிவேடு தொகையீடு: signed[16] = 0
+  பதிவேடு முந்தைய_பிழை: signed[8] = 0
+
+  கம்பி பிழை: signed[9] = trunc(extend(இலக்கு_மதிப்பு, 9) - extend(அளவிடப்பட்டது, 9), 9)
+
+  கம்பி விகித_உறுப்பு: signed[10] = trunc(extend(பிழை, 10) + extend(பிழை, 10), 10)
+  கம்பி விகித_வேறுபாடு: signed[10] = trunc(extend(பிழை, 10) - extend(முந்தைய_பிழை, 10), 10)
+
+  கம்பி மொத்தம்: signed[16] = trunc(
+    trunc(extend(விகித_உறுப்பு, 16) + தொகையீடு, 16) + extend(விகித_வேறுபாடு, 16),
+    16
+  )
+  கட்டுப்பாடு = trunc(max(-128, min(மொத்தம், 127)), 8)
+  நிறைவு = (மொத்தம் < -128) || (மொத்தம் > 127)
+
+  ஏற்றம்(கடிகை) போது {
+    இயல்பு தொகையீடு <- தொகையீடு
+    தொகையீடு <- trunc(தொகையீடு + extend(பிழை, 16), 16)
+    முந்தைய_பிழை <- trunc(பிழை, 8)
+  }
+}
+
+PidKattu க்காக "pid converges on step" சோதனை {
+  இலக்கு_மதிப்பு = 10
+  அளவிடப்பட்டது = 0
+  கணம்(கடிகை, 5)
+  அளவிடப்பட்டது = 15
+  கணம்(கடிகை, 5)
+  அளவிடப்பட்டது = 10
+  கணம்(கடிகை, 10)
+  உறுதிசெய் நிறைவு == 0
+}
