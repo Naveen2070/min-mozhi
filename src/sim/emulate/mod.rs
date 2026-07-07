@@ -2,10 +2,6 @@
 //! docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md).
 //! Behind the `hw-emulation` Cargo feature — never compiled for wasm32.
 
-// This skeleton isn't wired into the harness/dashboard yet (Task 5) — drop
-// this allow once `sim::harness` calls `registry()`.
-#![allow(dead_code)]
-
 pub(crate) mod dashboard;
 mod led;
 
