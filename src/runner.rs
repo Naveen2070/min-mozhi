@@ -202,7 +202,16 @@ fn parse_source(src: &str) -> Result<Vec<crate::project::LoadedFile>, String> {
         let mut target_indices = Vec::new();
 
         for imp in &imports {
-            if imp.path.len() == 2 && crate::stdlib::is_std_namespace(&imp.path[0].name) {
+            let is_std = imp
+                .path
+                .first()
+                .is_some_and(|seg| crate::stdlib::is_std_namespace(&seg.name));
+            if is_std && imp.path.len() != 2 {
+                return Err(
+                    "a standard-library import must be `std.<module>` (exactly two segments)"
+                        .to_string(),
+                );
+            } else if is_std {
                 let ns = &imp.path[0].name;
                 let mod_name = &imp.path[1].name;
                 if let Some((m, v)) = crate::stdlib::resolve(ns, mod_name) {

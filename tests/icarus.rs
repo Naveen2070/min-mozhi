@@ -200,17 +200,7 @@ fn every_emitted_verilog_passes_iverilog() {
         }
     }
     files.sort();
-    let icarus_v13_plus = icarus_major_version(&bin).unwrap_or(13) >= 13;
     for path in files {
-        if !icarus_v13_plus {
-            let name = path.display().to_string();
-            if name.contains("pid_controller")
-                || name.contains("vga_pattern")
-                || name.contains("melody_player")
-            {
-                continue;
-            }
-        }
         let v = compile_example(&path);
         let out = tool(&bin, "iverilog")
             .args(["-t", "null"])
@@ -225,9 +215,7 @@ fn every_emitted_verilog_passes_iverilog() {
         );
         checked += 1;
     }
-    if icarus_v13_plus {
-        assert!(checked >= 48, "expected the whole corpus, found {checked}");
-    }
+    assert!(checked >= 48, "expected the whole corpus, found {checked}");
 }
 
 /// Compile one example with `--emit-testbench`; return `(out.v, out_tb.v)` if a testbench was generated.
@@ -282,17 +270,7 @@ fn every_emitted_testbench_passes_iverilog() {
         }
     }
     files.sort();
-    let icarus_v13_plus = icarus_major_version(&bin).unwrap_or(13) >= 13;
     for path in files {
-        if !icarus_v13_plus {
-            let name = path.display().to_string();
-            if name.contains("pid_controller")
-                || name.contains("vga_pattern")
-                || name.contains("melody_player")
-            {
-                continue;
-            }
-        }
         if let Some((v, tb)) = compile_example_tb(&path) {
             let out = tool(&bin, "iverilog")
                 .args(["-t", "null"])
