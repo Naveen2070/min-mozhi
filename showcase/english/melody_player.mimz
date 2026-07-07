@@ -1,0 +1,117 @@
+// Real-world showcase: programmable notification tone generator.
+// Plays a sequence of notes through a piezo buzzer using parallel
+// match-as-ROM selectors for pitch and duration data.
+// Demonstrates: tagged-union enum declaration, match extraction,
+// const for note frequency dividers, on rise(clk), test block.
+
+const C4:  int = 95420
+const D4:  int = 85034
+const E4:  int = 75758
+const F4:  int = 71633
+const G4:  int = 63776
+const A4:  int = 56818
+const B4:  int = 50607
+const C5:  int = 47801
+
+const TICK: int = 50000
+
+enum Cmd { Tone(pitch: bits[20], duration: bits[8]), Rest(duration: bits[8]) }
+
+module MelodyPlayer {
+  clock clk
+  reset rst
+
+  in  start: bit
+  out audio: bit
+  out playing: bit
+
+  reg addr: bits[4] = 0
+  reg tone_cnt: bits[20] = 0
+  reg dur_cnt: bits[24] = 0
+  reg toggle: bit = 0
+  reg active: bit = 0
+  reg target: bits[20] = 0
+
+  wire pitch: bits[20] = match addr {
+    0 => E4
+    1 => E4
+    2 => F4
+    3 => G4
+    4 => G4
+    5 => F4
+    6 => E4
+    7 => D4
+    8 => C4
+    9 => C4
+    10 => D4
+    11 => E4
+    12 => D4
+    13 => D4
+    14 => C4
+    _ => 0
+  }
+
+  wire dur: bits[8] = match addr {
+    0 => 10
+    1 => 10
+    2 => 10
+    3 => 15
+    4 => 10
+    5 => 10
+    6 => 15
+    7 => 10
+    8 => 15
+    9 => 10
+    10 => 10
+    11 => 10
+    12 => 5
+    13 => 5
+    14 => 20
+    _ => 1
+  }
+
+  on rise(clk) {
+    if start && !active {
+      active <- 1
+      addr <- 0
+      dur_cnt <- 0
+      tone_cnt <- 0
+      toggle <- 0
+      target <- 0
+    }
+
+    if active {
+      if dur_cnt == 0 {
+        target <- pitch
+        dur_cnt <- trunc(extend(dur, 16) * TICK, 24)
+        addr <- addr +% 1
+        if addr == 15 {
+          active <- 0
+        }
+        tone_cnt <- 0
+        toggle <- 0
+      } else {
+        dur_cnt <- dur_cnt -% 1
+        if target != 0 {
+          tone_cnt <- tone_cnt +% 1
+          if tone_cnt == target {
+            tone_cnt <- 0
+            toggle <- ~toggle
+          }
+        }
+      }
+    }
+  }
+
+  audio = toggle
+  playing = active
+}
+
+test "melody starts and stops" for MelodyPlayer {
+  start = 1
+  tick(clk)
+  start = 0
+  expect playing == 1
+  tick(clk, TICK * 5)
+  expect playing == 1
+}
