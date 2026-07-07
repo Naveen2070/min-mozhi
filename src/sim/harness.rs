@@ -149,11 +149,15 @@ pub fn run_test(
         frames: Vec::new(),
         checks: 0,
         #[cfg(feature = "hw-emulation")]
+        name: decl.name.clone(),
+        #[cfg(feature = "hw-emulation")]
         outputs,
         #[cfg(feature = "hw-emulation")]
         active_sim: None,
         #[cfg(feature = "hw-emulation")]
         live,
+        #[cfg(feature = "hw-emulation")]
+        dashboard: None,
     };
     run.capture()?; // the initial (pre-tick) state
 
@@ -203,6 +207,11 @@ struct Run<'a> {
     cycle: u64,
     frames: Vec<Frame>,
     checks: usize,
+    /// The quoted test name — only needed for the dashboard's title row
+    /// today (`Outcome.name` is assembled separately at the end of
+    /// `run_test`), so it's feature-gated along with the dashboard.
+    #[cfg(feature = "hw-emulation")]
+    name: String,
     /// The module's output ports (name + folded width), captured before
     /// `design` moved into `Sim::new` — used to validate `bind` targets are
     /// outputs (`led`/`speaker` observe, they don't drive).
@@ -216,6 +225,12 @@ struct Run<'a> {
     /// between batches instead of unthrottled.
     #[cfg(feature = "hw-emulation")]
     live: bool,
+    /// Opened lazily on the first batch that needs it (once a `sim` block
+    /// is active and pacing kicks in), held for the rest of the test, and
+    /// restored via `Drop` when `Run` itself drops at the end of
+    /// `run_test` — one dashboard per test, closed before the next starts.
+    #[cfg(feature = "hw-emulation")]
+    dashboard: Option<emulate::dashboard::Dashboard>,
 }
 
 /// The registered peripherals + real-world clock rate for the test's `sim`
@@ -267,19 +282,39 @@ impl Run<'_> {
                     let batched = false;
                     if batched {
                         #[cfg(feature = "hw-emulation")]
-                        for batch in batch_sizes(n, self.batch_cycles()) {
-                            let started = std::time::Instant::now();
-                            for _ in 0..batch {
-                                self.sim.tick(&clock.name).map_err(Stop::Err)?;
-                                self.cycle += 1;
-                                self.capture().map_err(Stop::Err)?;
+                        {
+                            if self.dashboard.is_none() {
+                                self.dashboard =
+                                    Some(emulate::dashboard::Dashboard::open().map_err(|e| {
+                                        Stop::Err(format!(
+                                            "could not open the emulation dashboard: {e}"
+                                        ))
+                                    })?);
                             }
-                            self.notify_peripherals().map_err(Stop::Err)?;
-                            if let Some(remaining) =
-                                Self::frame_budget().checked_sub(started.elapsed())
-                            {
-                                if self.active_sim.as_ref().and_then(|a| a.speed_hz).is_some() {
-                                    std::thread::sleep(remaining);
+                            for batch in batch_sizes(n, self.batch_cycles()) {
+                                let started = std::time::Instant::now();
+                                for _ in 0..batch {
+                                    self.sim.tick(&clock.name).map_err(Stop::Err)?;
+                                    self.cycle += 1;
+                                    self.capture().map_err(Stop::Err)?;
+                                }
+                                self.notify_peripherals().map_err(Stop::Err)?;
+                                if let Some(dash) = &mut self.dashboard {
+                                    dash.draw(
+                                        &self.name,
+                                        self.cycle,
+                                        &self.active_sim.as_ref().unwrap().peripherals,
+                                    )
+                                    .map_err(|e| {
+                                        Stop::Err(format!("dashboard draw failed: {e}"))
+                                    })?;
+                                }
+                                if let Some(remaining) =
+                                    Self::frame_budget().checked_sub(started.elapsed())
+                                {
+                                    if self.active_sim.as_ref().and_then(|a| a.speed_hz).is_some() {
+                                        std::thread::sleep(remaining);
+                                    }
                                 }
                             }
                         }
