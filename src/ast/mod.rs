@@ -634,10 +634,50 @@ pub enum TestStmt {
         then: Vec<TestStmt>,
         els: Option<Vec<TestStmt>>,
     },
+    /// `sim { ... }` — see [`SimBlock`].
+    Sim(SimBlock),
     /// A test statement that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.
     Error(Span),
+}
+
+/// `sim { speed mhz(50)  bind audio -> speaker(...) }` inside a `test`
+/// block. Simulation-only (docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md).
+#[derive(Clone, Debug)]
+pub struct SimBlock {
+    /// The declared real-world clock rate in Hz, already desugared from
+    /// `hz(n)`/`khz(n)`/`mhz(n)` to a plain multiplication expr. `None` if
+    /// the `speed` clause was omitted (run as fast as possible).
+    pub speed: Option<Expr>,
+    pub binds: Vec<Bind>,
+    pub span: Span,
+}
+
+/// `bind <port> -> <peripheral>(args)`.
+#[derive(Clone, Debug)]
+pub struct Bind {
+    pub port: Ident,
+    pub peripheral: Ident,
+    pub args: Vec<BindArg>,
+    pub span: Span,
+}
+
+/// One `name: value` inside a `bind(...)` peripheral config. Not
+/// `NamedArg`/`Expr` — the language has no string-literal expression, so
+/// `led(color: "green")` needs its own tiny value shape, not a detour
+/// through `self.expr()`.
+#[derive(Clone, Debug)]
+pub struct BindArg {
+    pub name: Ident,
+    pub value: BindArgValue,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum BindArgValue {
+    Ident(String),
+    Str(String),
 }
 
 #[cfg(test)]

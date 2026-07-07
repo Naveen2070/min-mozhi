@@ -756,6 +756,15 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          hardware types.\n\n\
          Fix: give the parameter an `int`/`bool` type (or none and let it infer).",
     ),
+    (
+        "E1114",
+        "E1114 — `sim` block syntax\n\n\
+         A `sim` block's `speed`/`bind` clause is malformed. `speed` takes\n\
+         one `hz(n)`/`khz(n)`/`mhz(n)` call; `bind` takes `<port> -> \n\
+         <peripheral>(name: value, ...)`.\n\n\
+         Fix: `sim { speed mhz(50)  bind led -> led(color: green) }`; see\n\
+         docs/Ideas/hardware_emulation.md.",
+    ),
     // ----- E12xx: loader -----
     (
         "E1201",

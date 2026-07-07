@@ -468,6 +468,21 @@ fn test_stmts(stmts: &mut [TestStmt], visit: &mut dyn FnMut(&mut String)) {
                     test_stmts(els, visit);
                 }
             }
+            TestStmt::Sim(sim) => {
+                if let Some(speed) = &mut sim.speed {
+                    expr(speed, visit);
+                }
+                for b in &mut sim.binds {
+                    visit(&mut b.port.name);
+                    visit(&mut b.peripheral.name);
+                    for a in &mut b.args {
+                        visit(&mut a.name.name);
+                        if let BindArgValue::Ident(s) = &mut a.value {
+                            visit(s);
+                        }
+                    }
+                }
+            }
             TestStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
