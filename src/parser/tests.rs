@@ -739,6 +739,44 @@ fn parse_recover_seq_and_test_blocks_emit_error_nodes() {
 }
 
 #[test]
+fn sim_block_parses() {
+    let src = "test \"play\" for M {\n  start = 1\n  sim {\n    speed mhz(50)\n    bind playing -> led(color: green)\n  }\n  tick(clk)\n}\n";
+    let f = parse_ok(src);
+    let TopItem::Test(t) = &f.items[0] else {
+        panic!("expected a TestDecl")
+    };
+    let sim = t
+        .body
+        .iter()
+        .find_map(|s| match s {
+            TestStmt::Sim(s) => Some(s),
+            _ => None,
+        })
+        .expect("a sim block");
+    assert!(sim.speed.is_some(), "speed clause must parse");
+    assert_eq!(sim.binds.len(), 1);
+    assert_eq!(sim.binds[0].port.name, "playing");
+    assert_eq!(sim.binds[0].peripheral.name, "led");
+    assert_eq!(sim.binds[0].args.len(), 1);
+    assert_eq!(sim.binds[0].args[0].name.name, "color");
+    assert!(matches!(
+        &sim.binds[0].args[0].value,
+        BindArgValue::Ident(s) if s == "green"
+    ));
+}
+
+#[test]
+fn sim_block_bad_syntax_recovers() {
+    let (f, _) =
+        parse_recover_str("test \"t\" for M {\n  sim {\n    nonsense\n  }\n  tick(clk)\n}\n");
+    let TopItem::Test(t) = &f.items[0] else {
+        panic!()
+    };
+    assert!(t.body.iter().any(|s| matches!(s, TestStmt::Error(_))));
+    assert!(t.body.iter().any(|s| matches!(s, TestStmt::Tick { .. })));
+}
+
+#[test]
 fn strict_parse_still_errs_on_bad_input() {
     // The strict `parse` contract is unchanged: any error discards the tree.
     assert!(parse(lex("module M {\n  1 2 3\n}\n").expect("lex error")).is_err());

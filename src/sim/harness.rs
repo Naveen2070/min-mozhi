@@ -192,6 +192,10 @@ impl Run<'_> {
                         self.exec(e)?;
                     }
                 }
+                // ponytail: peripheral emulation (Task 5) reads `SimBlock`
+                // separately from the harness's own driver loop; nothing to
+                // execute here yet.
+                TestStmt::Sim(_) => {}
                 // Unreachable: the sim runs on a strict-parsed tree, which
                 // carries no `Error` placeholder.
                 TestStmt::Error(_) => {}

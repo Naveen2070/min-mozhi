@@ -658,6 +658,39 @@ impl Pretty {
                     }
                 }
             }
+            TestStmt::Sim(sim) => {
+                let s = format!("{} {{", self.kw(Kw::Sim));
+                self.line(&s);
+                self.indent += 1;
+                if let Some(speed) = &sim.speed {
+                    let s = format!("{} {}", self.kw(Kw::Speed), self.expr(speed, self.indent));
+                    self.line(&s);
+                }
+                for b in &sim.binds {
+                    let args = b
+                        .args
+                        .iter()
+                        .map(|a| {
+                            let v = match &a.value {
+                                BindArgValue::Ident(s) => s.clone(),
+                                BindArgValue::Str(s) => format!("{s:?}"),
+                            };
+                            format!("{}: {}", a.name.name, v)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let s = format!(
+                        "{} {} -> {}({})",
+                        self.kw(Kw::Bind),
+                        b.port.name,
+                        b.peripheral.name,
+                        args
+                    );
+                    self.line(&s);
+                }
+                self.indent -= 1;
+                self.line("}");
+            }
             TestStmt::Error(_) => {} // unreachable on a strict-parsed tree
         }
     }
