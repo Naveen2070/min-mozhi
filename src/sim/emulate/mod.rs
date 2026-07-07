@@ -6,6 +6,7 @@
 // this allow once `sim::harness` calls `registry()`.
 #![allow(dead_code)]
 
+pub(crate) mod dashboard;
 mod led;
 
 use std::collections::HashMap;
