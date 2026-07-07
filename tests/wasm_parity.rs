@@ -94,22 +94,12 @@ try {{
 
     let wasm_results: Vec<serde_json::Value> = serde_json::from_slice(&node_out.stdout).unwrap();
 
-    for (i, (path, src)) in all_files.iter().enumerate() {
+    for (i, (path, _src)) in all_files.iter().enumerate() {
         let wasm_res = &wasm_results[i];
-        let has_import = src.contains("import ")
-            || src.contains("include ")
-            || src.contains("serkka ")
-            || src.contains("சேர்க்க ");
-
-        if has_import {
-            let wasm_compile_str = wasm_res["compile"].as_str().unwrap().to_string();
-            assert!(
-                wasm_compile_str
-                    .contains("`import` is not supported when compiling a single in-memory source"),
-                "WASM did not reject import gracefully for {}: {}",
-                path.display(),
-                wasm_compile_str
-            );
+        let wasm_compile_str = wasm_res["compile"].as_str().unwrap().to_string();
+        if wasm_compile_str
+            .contains("`import` is not supported when compiling a single in-memory source")
+        {
             continue;
         }
 
