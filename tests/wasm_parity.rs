@@ -1,57 +1,27 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const BASE_EXAMPLES: [&str; 38] = [
-    "adder",
-    "alu",
-    "async_reset",
-    "bitops",
-    "blinker",
-    "chained",
-    "comparator",
-    "counter",
-    "datapath",
-    "dual_edge",
-    "edge_detector",
-    "fn_array_search",
-    "fn_const_local",
-    "fn_mac",
-    "fn_mac_local",
-    "fn_return_guard",
-    "fn_with_const",
-    "lib/full_adder",
-    "mux4",
-    "std/debouncer",
-    "std/seg7",
-    "std/pwm",
-    "std/fifo",
-    "std/uart_tx",
-    "priority",
-    "pulse_gen",
-    "regfile",
-    "replicate",
-    "ripple_adder",
-    "shift_register",
-    "shift",
-    "signed_math",
-    "traffic_light",
-    "vilakku",
-    "window",
-    "tested_adder",
-    "tagged_packet",
-    "debug_wrapper",
-];
+fn all_mimz_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "mimz") {
+                    files.push(path);
+                }
+            }
+        }
+    }
+    files.sort();
+    files
+}
 
-const SHOWCASE_EXAMPLES: [&str; 5] = [
-    "can_frame_filter",
-    "melody_player",
-    "pid_controller",
-    "uart_echo",
-    "vga_pattern",
-];
-
-fn run_parity(dir: &str, names: &[&str]) {
+fn run_parity(dir: &str) {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pkg_dir = manifest_dir.join("crates").join("mimz-wasm").join("pkg");
     if !pkg_dir.exists() {
@@ -59,9 +29,9 @@ fn run_parity(dir: &str, names: &[&str]) {
         return;
     }
 
+    let search_dir = manifest_dir.join(dir);
     let mut all_files = Vec::new();
-    for name in names {
-        let path = manifest_dir.join(dir).join(format!("{}.mimz", name));
+    for path in all_mimz_files(&search_dir) {
         let src = fs::read_to_string(&path).unwrap();
         all_files.push((path, src));
     }
@@ -216,11 +186,11 @@ try {{
 }
 
 #[test]
-fn all_base_examples_work_in_wasm() {
-    run_parity("examples/english", &BASE_EXAMPLES);
+fn all_examples_work_in_wasm() {
+    run_parity("examples");
 }
 
 #[test]
-fn all_showcase_examples_work_in_wasm() {
-    run_parity("showcase/english", &SHOWCASE_EXAMPLES);
+fn all_showcase_work_in_wasm() {
+    run_parity("showcase");
 }
