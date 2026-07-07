@@ -55,6 +55,16 @@ pub enum Kw {
     /// FSM loop (`sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { }`),
     /// distinct from the compile-time-unrolled `loop`.
     Sync,
+    /// `sim` / `paavnai` / `பாவனை` — a hardware-emulation block inside a
+    /// `test` block (throttling + peripheral binds). Simulation-only,
+    /// never reaches the emitter.
+    Sim,
+    /// `bind` / `inai` / `இணை` — `bind <port> -> <peripheral>(args)` inside
+    /// a `sim` block.
+    Bind,
+    /// `speed` / `vegam` / `வேகம்` — `speed <n>hz|khz|mhz(...)` inside a
+    /// `sim` block; sets real-time throttling.
+    Speed,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).

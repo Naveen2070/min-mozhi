@@ -257,3 +257,18 @@ tamil = "கட்டை"       # PROVISIONAL — pending native review
 en = "return"
 tanglish = "thirumbu"  # PROVISIONAL — pending native review
 tamil = "திரும்பு"      # PROVISIONAL — pending native review
+
+[keywords.sim]
+en = "sim"
+tanglish = "paavnai"
+tamil = "பாவனை"
+
+[keywords.bind]
+en = "bind"
+tanglish = "inai"
+tamil = "இணை"
+
+[keywords.speed]
+en = "speed"
+tanglish = "vegam"
+tamil = "வேகம்"
