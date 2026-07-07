@@ -33,6 +33,38 @@ use super::value::{self, Val};
 /// `mimz sim` clock period so a test trace lines up with a `sim` trace).
 const PERIOD: u64 = 10;
 
+/// Target dashboard refresh rate for frame-batched real-time pacing.
+#[cfg(feature = "hw-emulation")]
+const DASHBOARD_FPS: u64 = 30;
+
+/// Split `total` ticks into batches of at most `cycles_per_frame`, so a
+/// `sim` block with `speed mhz(50)` doesn't try to sleep on every
+/// individual 20ns cycle (physically impossible — OS sleep resolution is
+/// ~1ms). Each batch runs instantly; the caller sleeps between batches to
+/// match wall-clock time. Pure and terminal-free, so it's unit-testable
+/// without a TTY.
+#[cfg(feature = "hw-emulation")]
+fn batch_sizes(total: u64, cycles_per_frame: u64) -> Vec<u64> {
+    if total == 0 {
+        return Vec::new();
+    }
+    let cycles_per_frame = cycles_per_frame.max(1);
+    let mut out = Vec::new();
+    let mut remaining = total;
+    while remaining > 0 {
+        let n = remaining.min(cycles_per_frame);
+        out.push(n);
+        remaining -= n;
+    }
+    out
+}
+
+/// `cycles_per_frame = speed_hz / DASHBOARD_FPS`, floored to 1.
+#[cfg(feature = "hw-emulation")]
+fn cycles_per_frame(speed_hz: u64) -> u64 {
+    (speed_hz / DASHBOARD_FPS).max(1)
+}
+
 /// The result of running one `test` block.
 #[derive(Debug)]
 pub struct Outcome {
@@ -178,22 +210,18 @@ struct Run<'a> {
     outputs: Vec<Signal>,
     #[cfg(feature = "hw-emulation")]
     active_sim: Option<ActiveSim>,
-    /// `emulate` requested AND stdout is a real terminal. Not yet read
-    /// anywhere — Task 7 gates `TestStmt::Tick`'s pacing on this; until then
-    /// ticks always run unthrottled regardless of its value.
+    /// `emulate` requested AND stdout is a real terminal. Gates
+    /// `TestStmt::Tick`'s batched pacing: when true and a `sim` block is
+    /// active, ticks run in speed-sized batches with a wall-clock sleep
+    /// between batches instead of unthrottled.
     #[cfg(feature = "hw-emulation")]
-    #[allow(dead_code)]
     live: bool,
 }
 
 /// The registered peripherals + real-world clock rate for the test's `sim`
-/// block, if it has one.
-///
-/// Fields are written here but not yet read anywhere — Task 6/7 (the
-/// `--emulate` flag and the batched pacing hook into `TestStmt::Tick`) is
-/// what consumes them. Drop this `allow` once that lands.
+/// block, if it has one. `speed_hz` sizes each batch (`batch_cycles`);
+/// `peripherals` are notified once per batch (`notify_peripherals`).
 #[cfg(feature = "hw-emulation")]
-#[allow(dead_code)]
 struct ActiveSim {
     /// Real-world clock rate in Hz, if a `speed` clause was given.
     speed_hz: Option<u64>,
@@ -233,10 +261,34 @@ impl Run<'_> {
                             "test exceeds the {MAX_SIM_CYCLES}-cycle simulation limit"
                         )));
                     }
-                    for _ in 0..n {
-                        self.sim.tick(&clock.name).map_err(Stop::Err)?;
-                        self.cycle += 1;
-                        self.capture().map_err(Stop::Err)?;
+                    #[cfg(feature = "hw-emulation")]
+                    let batched = self.live && self.active_sim.is_some();
+                    #[cfg(not(feature = "hw-emulation"))]
+                    let batched = false;
+                    if batched {
+                        #[cfg(feature = "hw-emulation")]
+                        for batch in batch_sizes(n, self.batch_cycles()) {
+                            let started = std::time::Instant::now();
+                            for _ in 0..batch {
+                                self.sim.tick(&clock.name).map_err(Stop::Err)?;
+                                self.cycle += 1;
+                                self.capture().map_err(Stop::Err)?;
+                            }
+                            self.notify_peripherals().map_err(Stop::Err)?;
+                            if let Some(remaining) =
+                                Self::frame_budget().checked_sub(started.elapsed())
+                            {
+                                if self.active_sim.as_ref().and_then(|a| a.speed_hz).is_some() {
+                                    std::thread::sleep(remaining);
+                                }
+                            }
+                        }
+                    } else {
+                        for _ in 0..n {
+                            self.sim.tick(&clock.name).map_err(Stop::Err)?;
+                            self.cycle += 1;
+                            self.capture().map_err(Stop::Err)?;
+                        }
                     }
                 }
                 TestStmt::Expect(e) => {
@@ -311,6 +363,46 @@ impl Run<'_> {
             .iter()
             .find(|s| s.name == name)
             .map(|s| s.width)
+    }
+
+    /// How many ticks make up one batch: the declared `speed`'s
+    /// cycles-per-frame, or `u64::MAX` (one batch, no pacing) if the `sim`
+    /// block gave no `speed`.
+    #[cfg(feature = "hw-emulation")]
+    fn batch_cycles(&self) -> u64 {
+        self.active_sim
+            .as_ref()
+            .and_then(|a| a.speed_hz)
+            .map(cycles_per_frame)
+            .unwrap_or(u64::MAX)
+    }
+
+    /// Call `on_change` for every bound peripheral whose port appears in the
+    /// latest captured frame. Reads the frame already pushed by the tick
+    /// loop above rather than re-evaluating signals.
+    #[cfg(feature = "hw-emulation")]
+    fn notify_peripherals(&mut self) -> Result<(), String> {
+        let latest = self.frames.last().ok_or("no captured frame yet")?;
+        let outputs = &self.outputs;
+        let Some(active) = &mut self.active_sim else {
+            return Ok(());
+        };
+        for (port, peripheral) in &mut active.peripherals {
+            let (Some(&raw), Some(width)) = (
+                latest.values.get(port),
+                outputs.iter().find(|s| &s.name == port).map(|s| s.width),
+            ) else {
+                continue;
+            };
+            peripheral.on_change(&Val::new(raw, width.bits, width.signed));
+        }
+        Ok(())
+    }
+
+    /// One dashboard frame's wall-clock budget.
+    #[cfg(feature = "hw-emulation")]
+    fn frame_budget() -> std::time::Duration {
+        std::time::Duration::from_millis(1000 / DASHBOARD_FPS)
     }
 
     /// Capture the current state as a timeline frame (for `--trace`).
@@ -501,6 +593,21 @@ mod tests {
             .unwrap();
         let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
         assert!(err.contains("unknown peripheral"), "got: {err}");
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
+    fn batch_sizes_splits_evenly() {
+        assert_eq!(batch_sizes(100, 30), vec![30, 30, 30, 10]);
+        assert_eq!(batch_sizes(0, 30), Vec::<u64>::new());
+        assert_eq!(batch_sizes(5, 30), vec![5]);
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
+    fn cycles_per_frame_floors_to_one() {
+        assert_eq!(cycles_per_frame(50_000_000), 50_000_000 / 30);
+        assert_eq!(cycles_per_frame(10), 1); // sub-fps speed never batches to 0
     }
 
     #[test]
