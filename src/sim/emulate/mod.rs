@@ -29,17 +29,13 @@ pub(super) trait Peripheral: Send {
     /// Called after every individual simulated cycle (not just at
     /// batch-end), with the bound **output** port's current value.
     /// Default no-op — only peripherals needing bit-exact timing
-    /// (`uart_tx`) override this.
-    // ponytail: unused until Task 3 overrides + Task 7 wires the per-cycle
-    // caller; allow(dead_code) is cheaper than adding a caller early.
-    #[allow(dead_code)]
+    /// (`uart_tx`) override this. Wired by the harness's `notify_on_tick`.
     fn on_tick(&mut self, _val: &Val) {}
     /// Called before every individual simulated cycle, for peripherals
     /// bound to an **input** port. Returning `Some(bit)` drives that value
     /// onto the port before the cycle's tick; `None` leaves it unchanged.
-    /// Default: drives nothing (only `uart_rx` overrides this).
-    // ponytail: unused until Task 4 overrides + Task 7 wires the caller.
-    #[allow(dead_code)]
+    /// Default: drives nothing (only `uart_rx` overrides this). Wired by
+    /// the harness's `drive_peripherals`.
     fn drive(&mut self) -> Option<u64> {
         None
     }
