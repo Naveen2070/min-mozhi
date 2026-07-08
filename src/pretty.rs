@@ -674,6 +674,7 @@ impl Pretty {
                             let v = match &a.value {
                                 BindArgValue::Ident(s) => s.clone(),
                                 BindArgValue::Str(s) => format!("{s:?}"),
+                                BindArgValue::Int(n) => n.to_string(),
                             };
                             format!("{}: {}", a.name.name, v)
                         })

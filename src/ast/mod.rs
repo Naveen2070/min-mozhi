@@ -678,6 +678,7 @@ pub struct BindArg {
 pub enum BindArgValue {
     Ident(String),
     Str(String),
+    Int(u128),
 }
 
 #[cfg(test)]

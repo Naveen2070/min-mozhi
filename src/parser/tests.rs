@@ -766,6 +766,28 @@ fn sim_block_parses() {
 }
 
 #[test]
+fn sim_block_bind_arg_accepts_a_bare_integer() {
+    let src = "test \"tx\" for M {\n  start = 1\n  sim {\n    speed mhz(1)\n    bind tx -> uart_tx(baud: 9600)\n  }\n  tick(clk)\n}\n";
+    let f = parse_ok(src);
+    let TopItem::Test(t) = &f.items[0] else {
+        panic!("expected a TestDecl")
+    };
+    let sim = t
+        .body
+        .iter()
+        .find_map(|s| match s {
+            TestStmt::Sim(s) => Some(s),
+            _ => None,
+        })
+        .expect("a sim block");
+    assert_eq!(sim.binds[0].args[0].name.name, "baud");
+    assert!(matches!(
+        &sim.binds[0].args[0].value,
+        BindArgValue::Int(9600)
+    ));
+}
+
+#[test]
 fn sim_block_bad_syntax_recovers() {
     let (f, _) =
         parse_recover_str("test \"t\" for M {\n  sim {\n    nonsense\n  }\n  tick(clk)\n}\n");
