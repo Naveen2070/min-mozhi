@@ -36,3 +36,16 @@ module TrafficLight {
   yellow = state == State.Yellow
   green  = state == State.Green
 }
+
+test "traffic light emulation" for TrafficLight {
+  sim {
+    speed hz(10)
+    bind red -> led(color: red)
+    bind yellow -> led(color: yellow)
+    bind green -> led(color: green)
+  }
+  rst = 1
+  tick(clk)
+  rst = 0
+  tick(clk, 200)
+}
