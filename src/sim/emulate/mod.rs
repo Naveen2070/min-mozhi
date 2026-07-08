@@ -5,6 +5,7 @@
 
 pub(crate) mod dashboard;
 mod led;
+mod speaker;
 mod uart_rx;
 mod uart_tx;
 
@@ -70,8 +71,7 @@ pub(super) struct Entry {
     pub(super) construct: Constructor,
 }
 
-/// Every known peripheral name. `speaker` (Spec 3) is added here later —
-/// the dashboard/batching code never changes to accommodate it.
+/// Every known peripheral name.
 pub(super) fn registry() -> HashMap<&'static str, Entry> {
     let mut m: HashMap<&'static str, Entry> = HashMap::new();
     m.insert(
@@ -79,6 +79,13 @@ pub(super) fn registry() -> HashMap<&'static str, Entry> {
         Entry {
             direction: Direction::Output,
             construct: led::construct,
+        },
+    );
+    m.insert(
+        "speaker",
+        Entry {
+            direction: Direction::Output,
+            construct: speaker::construct,
         },
     );
     m.insert(
@@ -103,8 +110,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unknown_peripheral_name_is_not_registered() {
-        assert!(!registry().contains_key("speaker"));
+    fn speaker_is_registered_as_output() {
+        assert!(registry().get("speaker").unwrap().direction == Direction::Output);
+    }
+
+    #[test]
+    fn totally_unknown_peripheral_name_is_not_registered() {
+        assert!(!registry().contains_key("microphone"));
     }
 
     #[test]
