@@ -43,6 +43,11 @@ jobs:
       - name: Install Icarus Verilog
         run: sudo apt-get update && sudo apt-get install -y iverilog
 
+      - name: Install ALSA dev headers
+        # cpal (hw-emulation feature, speaker peripheral) links against ALSA
+        # on Linux; alsa-sys's build script needs alsa.pc via pkg-config.
+        run: sudo apt-get install -y libasound2-dev
+
       - name: Format check
         run: cargo fmt --all --check
 
@@ -81,6 +86,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
+      - name: Install ALSA dev headers
+        # cpal (hw-emulation feature, speaker peripheral) links against ALSA
+        # on Linux; alsa-sys's build script needs alsa.pc via pkg-config.
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
       - name: Run mimz-bench (exit code is the gate)
         # Non-zero on any accuracy/safety failure: goldens, 4-flavor
         # byte-identity, error fixtures, no-false-positives. --no-cov skips the
@@ -114,6 +124,11 @@ jobs:
 
       - name: Install Icarus Verilog
         run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      - name: Install ALSA dev headers
+        # cpal (hw-emulation feature, speaker peripheral) links against ALSA
+        # on Linux; alsa-sys's build script needs alsa.pc via pkg-config.
+        run: sudo apt-get install -y libasound2-dev
 
       - name: Run mimz-bench batch (500 iterations)
         # Appends one line to the tracked bench-history.jsonl (present from the
