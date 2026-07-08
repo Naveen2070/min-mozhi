@@ -115,6 +115,8 @@ pub fn run_test(
 
     #[cfg(feature = "hw-emulation")]
     let outputs = design.outputs.clone();
+    #[cfg(feature = "hw-emulation")]
+    let inputs = design.inputs.clone();
     // Not read on this build: `emulate` only feeds `live` below, which is
     // itself feature-gated.
     #[cfg(not(feature = "hw-emulation"))]
@@ -156,6 +158,8 @@ pub fn run_test(
         name: decl.name.clone(),
         #[cfg(feature = "hw-emulation")]
         outputs,
+        #[cfg(feature = "hw-emulation")]
+        inputs,
         #[cfg(feature = "hw-emulation")]
         active_sim: None,
         #[cfg(feature = "hw-emulation")]
@@ -231,10 +235,14 @@ struct Run<'a> {
     #[cfg(feature = "hw-emulation")]
     name: String,
     /// The module's output ports (name + folded width), captured before
-    /// `design` moved into `Sim::new` — used to validate `bind` targets are
-    /// outputs (`led`/`speaker` observe, they don't drive).
+    /// `design` moved into `Sim::new` — used to validate `bind` targets
+    /// against `Direction::Output` peripherals (`led`, `uart_tx`).
     #[cfg(feature = "hw-emulation")]
     outputs: Vec<Signal>,
+    /// The module's input ports, same reasoning — used for
+    /// `Direction::Input` peripherals (`uart_rx`).
+    #[cfg(feature = "hw-emulation")]
+    inputs: Vec<Signal>,
     #[cfg(feature = "hw-emulation")]
     active_sim: Option<ActiveSim>,
     /// `emulate` requested AND stdout is a real terminal. Gates
@@ -375,7 +383,7 @@ impl Run<'_> {
                     let registry = emulate::registry();
                     let mut peripherals = Vec::new();
                     for b in &block.binds {
-                        let ctor = registry.get(b.peripheral.name.as_str()).ok_or_else(|| {
+                        let entry = registry.get(b.peripheral.name.as_str()).ok_or_else(|| {
                             let mut known: Vec<&str> = registry.keys().copied().collect();
                             known.sort_unstable();
                             Stop::Err(format!(
@@ -384,13 +392,43 @@ impl Run<'_> {
                                 known.join(", ")
                             ))
                         })?;
-                        let width = self.port_width(&b.port.name).ok_or_else(|| {
-                            Stop::Err(format!(
-                                "`{}` has no output port `{}` to bind",
-                                self.module, b.port.name
-                            ))
-                        })?;
-                        let p = ctor(width, &b.args).map_err(Stop::Err)?;
+                        let width = match entry.direction {
+                            emulate::Direction::Output => match self.port_width(&b.port.name) {
+                                Some(w) => w,
+                                None => {
+                                    let msg = if self.input_width(&b.port.name).is_some() {
+                                        format!(
+                                            "`{}` binds to an output port, but `{}` is an input",
+                                            b.peripheral.name, b.port.name
+                                        )
+                                    } else {
+                                        format!(
+                                            "`{}` has no output port `{}` to bind",
+                                            self.module, b.port.name
+                                        )
+                                    };
+                                    return Err(Stop::Err(msg));
+                                }
+                            },
+                            emulate::Direction::Input => match self.input_width(&b.port.name) {
+                                Some(w) => w,
+                                None => {
+                                    let msg = if self.port_width(&b.port.name).is_some() {
+                                        format!(
+                                            "`{}` binds to an input port, but `{}` is an output",
+                                            b.peripheral.name, b.port.name
+                                        )
+                                    } else {
+                                        format!(
+                                            "`{}` has no input port `{}` to bind",
+                                            self.module, b.port.name
+                                        )
+                                    };
+                                    return Err(Stop::Err(msg));
+                                }
+                            },
+                        };
+                        let p = (entry.construct)(width, &b.args, speed_hz).map_err(Stop::Err)?;
                         peripherals.push((b.port.name.clone(), p));
                     }
                     self.active_sim = Some(ActiveSim {
@@ -410,15 +448,23 @@ impl Run<'_> {
         Ok(())
     }
 
-    /// The folded `Width` of an output port, or `None` if `name` isn't one
-    /// (bind targets are always outputs for `led`/`speaker`; `uart_rx`
-    /// binding an INPUT is Spec 2's concern, not this one's).
+    /// The folded `Width` of an output port, or `None` if `name` isn't
+    /// one — used to validate `Direction::Output` binds (`led`,
+    /// `uart_tx`). See `input_width` for `Direction::Input` binds.
     #[cfg(feature = "hw-emulation")]
     fn port_width(&self, name: &str) -> Option<super::elaborate::Width> {
         self.outputs
             .iter()
             .find(|s| s.name == name)
             .map(|s| s.width)
+    }
+
+    /// The folded `Width` of an input port, or `None` if `name` isn't one
+    /// — used to validate `uart_rx`-style binds, which drive an INPUT
+    /// rather than observe an OUTPUT (`port_width`'s job).
+    #[cfg(feature = "hw-emulation")]
+    fn input_width(&self, name: &str) -> Option<super::elaborate::Width> {
+        self.inputs.iter().find(|s| s.name == name).map(|s| s.width)
     }
 
     /// How many ticks make up one batch: the declared `speed`'s
@@ -667,6 +713,29 @@ mod tests {
             .unwrap();
         let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
         assert!(err.contains("nope"), "got: {err}");
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
+    fn sim_block_binding_an_input_to_an_output_peripheral_errors() {
+        let src = "module M {\n  clock clk\n  in start: bit\n  out playing: bit\n  playing = start\n}\n\
+                    test \"t\" for M {\n  sim {\n    bind start -> led()\n  }\n  tick(clk)\n}\n";
+        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let decl = f
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ast::TopItem::Test(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
+        // `start` genuinely exists as an input — this must produce the
+        // direction-aware message, not the generic "no such port" one
+        // (which would also happen to contain "output port" and "start",
+        // so asserting on the specific phrase is what proves the
+        // mismatch was actually detected, not coincidental).
+        assert!(err.contains("binds to an output port, but"), "got: {err}");
     }
 
     #[cfg(feature = "hw-emulation")]

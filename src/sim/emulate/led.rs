@@ -13,7 +13,11 @@ use super::super::elaborate::Width;
 use super::super::value::Val;
 use super::Peripheral;
 
-pub(super) fn construct(width: Width, args: &[BindArg]) -> Result<Box<dyn Peripheral>, String> {
+pub(super) fn construct(
+    width: Width,
+    args: &[BindArg],
+    _speed_hz: Option<u64>,
+) -> Result<Box<dyn Peripheral>, String> {
     if width.bits == 0 || width.bits > 64 {
         return Err(format!(
             "`led` binds to a `bit` or `bits[N]` (N <= 64) output, found a {}-bit signal",
@@ -98,7 +102,7 @@ mod tests {
             bits: 65,
             signed: false,
         };
-        assert!(construct(w, &[]).is_err());
+        assert!(construct(w, &[], None).is_err());
     }
 
     #[test]
@@ -107,7 +111,7 @@ mod tests {
             bits: 1,
             signed: false,
         };
-        assert!(construct(w, &[]).is_ok());
+        assert!(construct(w, &[], None).is_ok());
     }
 
     #[test]
@@ -117,7 +121,7 @@ mod tests {
             signed: false,
         };
         let args = [arg("color", BindArgValue::Ident("red".into()))];
-        assert!(construct(w, &args).is_ok());
+        assert!(construct(w, &args, None).is_ok());
     }
 
     #[test]
@@ -127,7 +131,7 @@ mod tests {
             signed: false,
         };
         let args = [arg("color", BindArgValue::Ident("mauve".into()))];
-        assert!(construct(w, &args).is_err());
+        assert!(construct(w, &args, None).is_err());
     }
 
     #[test]
@@ -140,7 +144,7 @@ mod tests {
             arg("color", BindArgValue::Ident("red".into())),
             arg("color", BindArgValue::Ident("green".into())),
         ];
-        assert!(construct(w, &args).is_err());
+        assert!(construct(w, &args, None).is_err());
     }
 
     #[test]
@@ -150,7 +154,7 @@ mod tests {
             signed: false,
         };
         let args = [arg("brightness", BindArgValue::Ident("high".into()))];
-        assert!(construct(w, &args).is_err());
+        assert!(construct(w, &args, None).is_err());
     }
 
     #[test]
@@ -159,7 +163,7 @@ mod tests {
             bits: 1,
             signed: false,
         };
-        let mut p = construct(w, &[]).unwrap();
+        let mut p = construct(w, &[], None).unwrap();
         p.on_change(&Val::new(1, 1, false));
     }
 }
