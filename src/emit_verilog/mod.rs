@@ -638,6 +638,25 @@ mod tests {
     }
 
     #[test]
+    fn zero_length_array_param_runtime_index_is_a_clean_diag_not_a_panic() {
+        // Regression: the same root cause as sim's `src/sim/comb.rs`
+        // `zero_length_array_param_index_is_a_clean_err_not_a_panic` — a
+        // zero-length array param is rejected by the checker's E0412 in
+        // the normal `mimz compile` pipeline, but this emitter is also
+        // exercised directly on unchecked ASTs (fuzzing). A RUNTIME index
+        // (not const-foldable, so it reaches the ternary-chain builder)
+        // used to underflow `len - 1` when computing the chain's default
+        // (last-element) arm.
+        let diags = emit_src_err(
+            "fn first(vals: bits[8][0], i: bits[8]) -> bits[8] {\n  vals[i]\n}\n\nmodule M {\n  in a: bits[8]\n  out y: bits[8]\n  y = first(a, a)\n}\n",
+        );
+        assert!(
+            diags.iter().any(|d| d.msg.contains("no elements to index")),
+            "got: {diags:?}"
+        );
+    }
+
+    #[test]
     fn clog2_folds_into_the_port_width() {
         // clog2(9) = 4 bits → `output [3:0] o`. Proves the const-builtin folds to
         // the right VALUE in a width position, not just that it is accepted.
