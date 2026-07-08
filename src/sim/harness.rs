@@ -323,6 +323,7 @@ impl Run<'_> {
                                     self.sim.tick(&clock.name).map_err(Stop::Err)?;
                                     self.cycle += 1;
                                     self.capture().map_err(Stop::Err)?;
+                                    self.notify_on_tick().map_err(Stop::Err)?;
                                 }
                                 self.notify_peripherals().map_err(Stop::Err)?;
                                 if let Some(dash) = &mut self.dashboard {
@@ -497,6 +498,34 @@ impl Run<'_> {
                 continue;
             };
             peripheral.on_change(&Val::new(raw, width.bits, width.signed));
+        }
+        Ok(())
+    }
+
+    /// Call `on_tick` for every bound peripheral, every individual cycle
+    /// (not just batch-end) — the hook `uart_tx`'s decoder needs; a cheap
+    /// no-op for peripherals that don't override it (`led`). Searches
+    /// both `outputs` and `inputs` for the port's width since a peripheral
+    /// may be bound to either.
+    #[cfg(feature = "hw-emulation")]
+    fn notify_on_tick(&mut self) -> Result<(), String> {
+        let latest = self.frames.last().ok_or("no captured frame yet")?;
+        let outputs = &self.outputs;
+        let inputs = &self.inputs;
+        let Some(active) = &mut self.active_sim else {
+            return Ok(());
+        };
+        for (port, peripheral) in &mut active.peripherals {
+            let Some(&raw) = latest.values.get(port) else {
+                continue;
+            };
+            let width = outputs
+                .iter()
+                .chain(inputs.iter())
+                .find(|s| &s.name == port)
+                .map(|s| s.width);
+            let Some(width) = width else { continue };
+            peripheral.on_tick(&Val::new(raw, width.bits, width.signed));
         }
         Ok(())
     }
