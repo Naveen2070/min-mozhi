@@ -235,8 +235,17 @@ impl Emitter<'_> {
                         return format!("{n}_{idx}");
                     }
                     let idx = self.expr_subst(index, subst, arrays);
-                    let mut chain = format!("{n}_{}", len - 1); // default: last element
-                    for i in (0..*len - 1).rev() {
+                    // A zero-length array is rejected by the checker (E0412)
+                    // in the normal `mimz compile` pipeline, but this emitter
+                    // is also exercised directly on unchecked ASTs (fuzzing)
+                    // — `len - 1` below would underflow, so this must be a
+                    // clean diagnostic, not a panic.
+                    let Some(last) = len.checked_sub(1) else {
+                        self.err(e.span, "array has no elements to index", "");
+                        return "0".into();
+                    };
+                    let mut chain = format!("{n}_{last}"); // default: last element
+                    for i in (0..last).rev() {
                         chain = format!("(({idx})=={i}) ? {n}_{i} : ({chain})");
                     }
                     return chain;
