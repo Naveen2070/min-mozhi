@@ -44,14 +44,25 @@ struct Speaker {
     bit: Arc<AtomicBool>,
     /// `true` once the background audio thread has been spawned. The
     /// `cpal::Stream` itself never appears on this struct — `cpal::Stream`
-    /// is `!Send` on every platform (see the Amendment above), so it must
-    /// be created AND held on the same thread that plays it, never moved.
+    /// is `!Send` on every platform, so it must be created AND held on the
+    /// same thread that plays it, never moved.
     stream_started: bool,
 }
 
 impl Speaker {
     fn set_bit(&self, val: &Val) {
         self.bit.store(val.bits & 1 != 0, Ordering::Relaxed);
+    }
+}
+
+impl Drop for Speaker {
+    fn drop(&mut self) {
+        // Silence the tone the moment this peripheral is torn down. The
+        // background audio thread still parks forever holding the open
+        // `cpal::Stream` (accepted debt, see on_tick below) — this only
+        // stops it from playing a frozen `1` bit for the rest of the
+        // process.
+        self.bit.store(false, Ordering::Relaxed);
     }
 }
 
@@ -139,6 +150,11 @@ impl Peripheral for Speaker {
             // the original hard-error contract.
             match rx.recv() {
                 Ok(Ok(())) => {}
+                // `stream_started` stays `false` on both error arms below,
+                // so a later `on_tick` would spawn a fresh thread and
+                // retry from scratch. In practice there is no later call:
+                // an `Err` here becomes `Stop::Err` in the harness and
+                // halts the simulation loop before another tick fires.
                 Ok(Err(e)) => return Err(e),
                 Err(_) => {
                     return Err(
@@ -216,5 +232,18 @@ mod tests {
         assert!(s.bit.load(Ordering::Relaxed));
         s.set_bit(&Val::new(0, 1, false));
         assert!(!s.bit.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn drop_silences_a_held_high_bit() {
+        let bit = Arc::new(AtomicBool::new(false));
+        let s = Speaker {
+            bit: Arc::clone(&bit),
+            stream_started: false,
+        };
+        s.set_bit(&Val::new(1, 1, false));
+        assert!(bit.load(Ordering::Relaxed));
+        drop(s);
+        assert!(!bit.load(Ordering::Relaxed));
     }
 }
