@@ -320,6 +320,7 @@ impl Run<'_> {
                             for batch in batch_sizes(n, self.batch_cycles()) {
                                 let started = std::time::Instant::now();
                                 for _ in 0..batch {
+                                    self.drive_peripherals().map_err(Stop::Err)?;
                                     self.sim.tick(&clock.name).map_err(Stop::Err)?;
                                     self.cycle += 1;
                                     self.capture().map_err(Stop::Err)?;
@@ -526,6 +527,28 @@ impl Run<'_> {
                 .map(|s| s.width);
             let Some(width) = width else { continue };
             peripheral.on_tick(&Val::new(raw, width.bits, width.signed));
+        }
+        Ok(())
+    }
+
+    /// Call `drive` on every bound peripheral before the cycle's tick,
+    /// applying any returned bit to that peripheral's port. Collects all
+    /// (port, bit) pairs before applying them so the loop never holds a
+    /// mutable borrow of `self.active_sim` at the same time as
+    /// `self.sim.set` needs one of `self.sim`.
+    #[cfg(feature = "hw-emulation")]
+    fn drive_peripherals(&mut self) -> Result<(), String> {
+        let Some(active) = &mut self.active_sim else {
+            return Ok(());
+        };
+        let mut sets = Vec::new();
+        for (port, peripheral) in &mut active.peripherals {
+            if let Some(bit) = peripheral.drive() {
+                sets.push((port.clone(), bit));
+            }
+        }
+        for (port, bit) in sets {
+            self.sim.set(&port, bit as u128)?;
         }
         Ok(())
     }
@@ -765,6 +788,27 @@ mod tests {
         // so asserting on the specific phrase is what proves the
         // mismatch was actually detected, not coincidental).
         assert!(err.contains("binds to an output port, but"), "got: {err}");
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
+    fn sim_block_binding_an_output_to_an_input_peripheral_errors() {
+        let src = "module M {\n  clock clk\n  in start: bit\n  out playing: bit\n  playing = start\n}\n\
+                    test \"t\" for M {\n  sim {\n    bind playing -> uart_rx()\n  }\n  tick(clk)\n}\n";
+        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let decl = f
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ast::TopItem::Test(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
+        // Mirror of the test above: `playing` genuinely exists as an output
+        // — this must produce the direction-aware message, not the generic
+        // "no such port" one.
+        assert!(err.contains("binds to an input port, but"), "got: {err}");
     }
 
     #[cfg(feature = "hw-emulation")]
