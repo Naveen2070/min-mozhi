@@ -151,7 +151,7 @@ execution to a declared real-world clock rate, opt-in via `mimz test
 stdout isn't a real terminal). `uart_tx`/`uart_rx` decode/encode 8-N-1
 serial at an independent `baud` rate (derived against the sim block's
 `speed`) to a dashboard log and/or a local TCP socket. `speaker` plays the
-bound bit as a full-scale square-wave tone on the host's default audio
+bound bit as a square-wave tone on the host's default audio
 output. Simulation-only — `mimz compile` never sees any of it. Full
 design:
 [`docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md`](../docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md)
