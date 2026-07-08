@@ -36,3 +36,16 @@
   yellow = state == State.Yellow
   green  = state == State.Green
 }
+
+சோதனை "traffic light emulation" க்காக TrafficLight {
+  பாவனை {
+    வேகம் hz(10)
+    இணை red -> led(color: red)
+    இணை yellow -> led(color: yellow)
+    இணை green -> led(color: green)
+  }
+  rst = 1
+  கணம்(clk)
+  rst = 0
+  கணம்(clk, 200)
+}
