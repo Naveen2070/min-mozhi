@@ -3,6 +3,7 @@
 //! (docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md).
 
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -73,7 +74,7 @@ pub(super) fn construct(
     let source = source
         .ok_or_else(|| "`uart_rx` needs a `source` config (e.g. `source: \"hi\"`)".to_string())?;
     if source == "socket" {
-        return Err("`uart_rx`'s `source: \"socket\"` isn't supported yet".to_string());
+        return Ok(Box::new(UartRx::new_socket(speed_hz / baud).0));
     }
     Ok(Box::new(UartRx::new(speed_hz / baud, source.into_bytes())))
 }
@@ -97,17 +98,84 @@ enum State {
 
 pub(super) struct UartRx {
     cycles_per_bit: u64,
-    queue: VecDeque<u8>,
+    queue: QueueSource,
     state: State,
+}
+
+/// Where `UartRx` pulls its byte stream from. `Shared` is fed by a
+/// background thread (see `new_socket`) — `drive()` only ever takes a
+/// brief, uncontended lock to peek/pop it, so a peer that never connects
+/// leaves the queue permanently empty (idle-high) rather than blocking
+/// anything.
+enum QueueSource {
+    Local(VecDeque<u8>),
+    Shared(Arc<Mutex<VecDeque<u8>>>),
+}
+
+impl QueueSource {
+    fn front(&self) -> Option<u8> {
+        match self {
+            QueueSource::Local(q) => q.front().copied(),
+            QueueSource::Shared(q) => q.lock().unwrap().front().copied(),
+        }
+    }
+    fn pop_front(&mut self) {
+        match self {
+            QueueSource::Local(q) => {
+                q.pop_front();
+            }
+            QueueSource::Shared(q) => {
+                q.lock().unwrap().pop_front();
+            }
+        }
+    }
+    fn len(&self) -> usize {
+        match self {
+            QueueSource::Local(q) => q.len(),
+            QueueSource::Shared(q) => q.lock().unwrap().len(),
+        }
+    }
 }
 
 impl UartRx {
     fn new(cycles_per_bit: u64, bytes: Vec<u8>) -> UartRx {
         UartRx {
             cycles_per_bit: cycles_per_bit.max(1),
-            queue: bytes.into(),
+            queue: QueueSource::Local(bytes.into()),
             state: State::Idle,
         }
+    }
+
+    /// Opens a local TCP listener and returns the peripheral plus the
+    /// port it's listening on (for tests to connect to directly; the
+    /// real `sim`-block author never sees the port — it's printed via
+    /// `eprintln!` the same way `uart_tx`'s socket target is).
+    pub(super) fn new_socket(cycles_per_bit: u64) -> (UartRx, u16) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        eprintln!("uart_rx: listening on 127.0.0.1:{port}");
+        let shared = Arc::new(Mutex::new(VecDeque::new()));
+        let shared_for_thread = Arc::clone(&shared);
+        std::thread::spawn(move || {
+            use std::io::Read;
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 256];
+                while let Ok(n) = stream.read(&mut buf) {
+                    if n == 0 {
+                        break; // peer disconnected
+                    }
+                    shared_for_thread.lock().unwrap().extend(&buf[..n]);
+                }
+            }
+        });
+        (
+            UartRx {
+                cycles_per_bit: cycles_per_bit.max(1),
+                queue: QueueSource::Shared(shared),
+                state: State::Idle,
+            },
+            port,
+        )
     }
 }
 
@@ -117,7 +185,7 @@ impl Peripheral for UartRx {
     fn drive(&mut self) -> Option<u64> {
         if matches!(self.state, State::Idle) {
             match self.queue.front() {
-                Some(&byte) => {
+                Some(byte) => {
                     self.state = State::Framing {
                         phase: Phase::Start,
                         cycle_in_phase: 0,
@@ -219,7 +287,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_socket_source_for_now() {
+    fn accepts_socket_source_via_construct() {
         use crate::ast::Ident;
         use crate::span::Span;
         let w = Width {
@@ -244,6 +312,51 @@ mod tests {
                 span: Span::new(0, 0),
             },
         ];
-        assert!(construct(w, &args, Some(115_200)).is_err());
+        assert!(construct(w, &args, Some(115_200)).is_ok());
+    }
+
+    #[test]
+    fn socket_source_feeds_the_queue() {
+        use std::io::Write;
+        use std::net::TcpStream;
+
+        let (mut rx, port) = UartRx::new_socket(4);
+        let sent = std::thread::spawn(move || {
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream.write_all(b"A").unwrap();
+        });
+        sent.join().unwrap();
+        // Poll drive() until the byte has arrived and been queued — the
+        // accept + read happen on a background thread, so the first few
+        // drive() calls may still see an empty queue (idle-high).
+        let mut bits = Vec::new();
+        for _ in 0..200 {
+            let bit = rx.drive().unwrap();
+            bits.push(bit);
+            if bits.len() >= 4 + 4 * 8 + 4 && bits.contains(&0) {
+                break;
+            }
+        }
+        assert!(bits.contains(&0), "never saw a start bit: {bits:?}");
+    }
+
+    #[test]
+    fn socket_source_with_no_client_idles_high_without_blocking() {
+        // Regression check for a Task-5-style unbounded wait: this source
+        // never blocks drive() on a connection at all (front()/pop_front()
+        // only take a brief, uncontended lock on the shared queue), so a
+        // peer that never connects should behave exactly like an empty
+        // literal source — idle-high, immediately, every call.
+        let (mut rx, _port) = UartRx::new_socket(4);
+        let started = std::time::Instant::now();
+        for _ in 0..1000 {
+            assert_eq!(rx.drive(), Some(1));
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(500),
+            "1000 drive() calls with no client took {:?} — drive() may be blocking \
+             on the connection somewhere",
+            started.elapsed()
+        );
     }
 }
