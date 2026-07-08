@@ -80,7 +80,7 @@ pub(super) fn construct(
         ));
     }
     if target_socket {
-        let (tx, port) = UartTx::new_socket_target(speed_hz / baud);
+        let (tx, port) = UartTx::new_socket_target(speed_hz / baud)?;
         eprintln!("uart_tx: listening on 127.0.0.1:{port}");
         Ok(Box::new(tx))
     } else {
@@ -148,19 +148,23 @@ impl UartTx {
     /// port it's listening on (tests connect to this port directly; a
     /// real `sim`-block author never sees it — `construct` prints it via
     /// `eprintln!`, same as `uart_rx`'s socket source).
-    pub(super) fn new_socket_target(cycles_per_bit: u64) -> (UartTx, u16) {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
+    pub(super) fn new_socket_target(cycles_per_bit: u64) -> Result<(UartTx, u16), String> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| format!("`uart_tx` couldn't open a local socket: {e}"))?;
+        let port = listener
+            .local_addr()
+            .map_err(|e| format!("`uart_tx` couldn't open a local socket: {e}"))?
+            .port();
         let (send, recv) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             if let Ok((stream, _)) = listener.accept() {
                 let _ = send.send(stream);
             }
         });
-        (
+        Ok((
             UartTx::new_with_target(cycles_per_bit, Target::Socket(recv)),
             port,
-        )
+        ))
     }
 
     fn push_char(&mut self, c: char) {
@@ -185,7 +189,15 @@ impl UartTx {
                 // this peripheral falls back to log-only for the rest of
                 // the run, matching the "accept one connection" scope.
                 match rx.recv_timeout(std::time::Duration::from_secs(1)) {
-                    Ok(s) => self.stream = Some(s),
+                    Ok(s) => {
+                        // Non-blocking so a peer that connects and then
+                        // stops reading can't stall this per-cycle tick
+                        // loop when the OS send buffer fills — write_all
+                        // below just sees WouldBlock and drops the byte,
+                        // same as the "dropped peer" best-effort case.
+                        let _ = s.set_nonblocking(true);
+                        self.stream = Some(s);
+                    }
                     Err(_) => self.gave_up_on_socket = true,
                 }
             }
@@ -375,11 +387,36 @@ mod tests {
     }
 
     #[test]
+    fn socket_write_does_not_block_when_peer_stops_reading() {
+        // Regression test for the nonblocking-socket fix: a peer that
+        // connects and then never reads must not be able to stall
+        // `push_char` (the per-cycle tick loop) once the OS send buffer
+        // fills. Calls `push_char` directly (bypassing the bit-level
+        // decode) so filling the buffer doesn't require millions of
+        // `on_tick` calls.
+        use std::net::TcpStream;
+
+        let (mut tx, port) = UartTx::new_socket_target(1).unwrap();
+        let _peer = TcpStream::connect(("127.0.0.1", port)).unwrap(); // never reads
+        tx.push_char('A'); // adopts the stream (bounded wait for accept)
+        let started = std::time::Instant::now();
+        // Comfortably more bytes than any realistic OS send buffer holds.
+        for _ in 0..200_000 {
+            tx.push_char('x');
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "push_char took {:?} with an unread peer — the socket may not be non-blocking",
+            started.elapsed()
+        );
+    }
+
+    #[test]
     fn socket_target_streams_decoded_bytes() {
         use std::io::Read;
         use std::net::TcpStream;
 
-        let (mut tx, port) = UartTx::new_socket_target(4);
+        let (mut tx, port) = UartTx::new_socket_target(4).unwrap();
         let accepted = std::thread::spawn(move || {
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             let mut buf = [0u8; 1];
@@ -406,7 +443,7 @@ mod tests {
         // two bytes here would take >=2s if that guard regressed; it
         // should take a small fraction of a second once the first wait
         // gives up and every later byte skips straight to the log.
-        let (mut tx, _port) = UartTx::new_socket_target(4);
+        let (mut tx, _port) = UartTx::new_socket_target(4).unwrap();
         let started = std::time::Instant::now();
         for byte in [0x41u8, 0x42u8] {
             // 'A' then 'B', LSB-first
