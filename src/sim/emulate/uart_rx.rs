@@ -74,7 +74,7 @@ pub(super) fn construct(
     let source = source
         .ok_or_else(|| "`uart_rx` needs a `source` config (e.g. `source: \"hi\"`)".to_string())?;
     if source == "socket" {
-        return Ok(Box::new(UartRx::new_socket(speed_hz / baud).0));
+        return Ok(Box::new(UartRx::new_socket(speed_hz / baud)?.0));
     }
     Ok(Box::new(UartRx::new(speed_hz / baud, source.into_bytes())))
 }
@@ -150,9 +150,13 @@ impl UartRx {
     /// port it's listening on (for tests to connect to directly; the
     /// real `sim`-block author never sees the port — it's printed via
     /// `eprintln!` the same way `uart_tx`'s socket target is).
-    pub(super) fn new_socket(cycles_per_bit: u64) -> (UartRx, u16) {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
+    pub(super) fn new_socket(cycles_per_bit: u64) -> Result<(UartRx, u16), String> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| format!("`uart_rx` couldn't open a local socket: {e}"))?;
+        let port = listener
+            .local_addr()
+            .map_err(|e| format!("`uart_rx` couldn't open a local socket: {e}"))?
+            .port();
         eprintln!("uart_rx: listening on 127.0.0.1:{port}");
         let shared = Arc::new(Mutex::new(VecDeque::new()));
         let shared_for_thread = Arc::clone(&shared);
@@ -168,14 +172,14 @@ impl UartRx {
                 }
             }
         });
-        (
+        Ok((
             UartRx {
                 cycles_per_bit: cycles_per_bit.max(1),
                 queue: QueueSource::Shared(shared),
                 state: State::Idle,
             },
             port,
-        )
+        ))
     }
 }
 
@@ -320,7 +324,7 @@ mod tests {
         use std::io::Write;
         use std::net::TcpStream;
 
-        let (mut rx, port) = UartRx::new_socket(4);
+        let (mut rx, port) = UartRx::new_socket(4).unwrap();
         let sent = std::thread::spawn(move || {
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.write_all(b"A").unwrap();
@@ -347,7 +351,7 @@ mod tests {
         // only take a brief, uncontended lock on the shared queue), so a
         // peer that never connects should behave exactly like an empty
         // literal source — idle-high, immediately, every call.
-        let (mut rx, _port) = UartRx::new_socket(4);
+        let (mut rx, _port) = UartRx::new_socket(4).unwrap();
         let started = std::time::Instant::now();
         for _ in 0..1000 {
             assert_eq!(rx.drive(), Some(1));
