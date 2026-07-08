@@ -108,8 +108,9 @@ enum State {
 pub(super) enum Target {
     Terminal,
     /// Receives the accepted `TcpStream` once a peer connects (accept
-    /// runs on a background thread so the sim loop never blocks on it).
-    /// Polled non-blockingly from `push_char`.
+    /// runs on a background thread so the sim loop never blocks on it
+    /// waiting for a connection to even arrive). `push_char` waits on this
+    /// at most once per `UartTx` instance — see `gave_up_on_socket`.
     Socket(std::sync::mpsc::Receiver<std::net::TcpStream>),
 }
 
@@ -119,6 +120,12 @@ pub(super) struct UartTx {
     log: VecDeque<char>,
     target: Target,
     stream: Option<std::net::TcpStream>,
+    /// Set after one failed wait for a socket connection, so a `target:
+    /// "socket"` peripheral whose peer never connects pays the bounded
+    /// wait exactly once (on the first decoded byte) rather than once per
+    /// byte forever — without this, every subsequent byte would re-block
+    /// the shared per-cycle tick loop for the full timeout.
+    gave_up_on_socket: bool,
 }
 
 impl UartTx {
@@ -133,6 +140,7 @@ impl UartTx {
             log: VecDeque::new(),
             target,
             stream: None,
+            gave_up_on_socket: false,
         }
     }
 
@@ -160,19 +168,25 @@ impl UartTx {
         if self.log.len() > LOG_CAP {
             self.log.pop_front();
         }
-        if self.stream.is_none() {
+        if self.stream.is_none() && !self.gave_up_on_socket {
             if let Target::Socket(rx) = &self.target {
-                // Bounded wait, paid at most once (only until `self.stream`
-                // becomes `Some`): a `try_recv()` here can race ahead of the
-                // background accept thread, which needs an OS scheduling
-                // tick to complete the handshake and forward the stream —
-                // on a freshly-opened listener that tick may not have
-                // happened yet by the time the very first byte is ready to
-                // send. A short `recv_timeout` absorbs that race without
-                // ever blocking the sim loop for more than one second, and
-                // costs nothing once a stream has been picked up.
-                if let Ok(s) = rx.recv_timeout(std::time::Duration::from_secs(1)) {
-                    self.stream = Some(s);
+                // Bounded wait, attempted EXACTLY ONCE ever (guarded by
+                // `gave_up_on_socket`, not just `stream.is_none()`): a
+                // `try_recv()` here can race ahead of the background accept
+                // thread, which needs an OS scheduling tick to complete the
+                // handshake and forward the stream — on a freshly-opened
+                // listener that tick may not have happened yet by the time
+                // the first byte is ready to send. A short `recv_timeout`
+                // absorbs that race. Without the one-shot guard, a `target:
+                // "socket"` peripheral whose peer never connects would
+                // retry this wait on every single decoded byte, stalling
+                // the shared per-cycle tick loop for a full second each
+                // time — indefinitely. One missed connection window means
+                // this peripheral falls back to log-only for the rest of
+                // the run, matching the "accept one connection" scope.
+                match rx.recv_timeout(std::time::Duration::from_secs(1)) {
+                    Ok(s) => self.stream = Some(s),
+                    Err(_) => self.gave_up_on_socket = true,
                 }
             }
         }
@@ -381,5 +395,34 @@ mod tests {
         feed(&mut tx, 1, 4); // stop
         let byte = accepted.join().unwrap();
         assert_eq!(byte, b'A');
+    }
+
+    #[test]
+    fn socket_target_with_no_client_falls_back_to_log_without_repeated_stalls() {
+        // Regression test: without the `gave_up_on_socket` one-shot guard,
+        // a socket target whose peer never connects would re-attempt the
+        // bounded `recv_timeout` wait on every decoded byte, stalling the
+        // shared per-cycle tick loop for a full second each time. Decoding
+        // two bytes here would take >=2s if that guard regressed; it
+        // should take a small fraction of a second once the first wait
+        // gives up and every later byte skips straight to the log.
+        let (mut tx, _port) = UartTx::new_socket_target(4);
+        let started = std::time::Instant::now();
+        for byte in [0x41u8, 0x42u8] {
+            // 'A' then 'B', LSB-first
+            feed(&mut tx, 1, 4); // idle
+            feed(&mut tx, 0, 4); // start
+            for i in 0..8 {
+                feed(&mut tx, (byte >> i) & 1, 4);
+            }
+            feed(&mut tx, 1, 4); // stop
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(1500),
+            "decoding two bytes took {:?} — the one-shot guard likely regressed \
+             into re-waiting on every byte",
+            started.elapsed()
+        );
+        assert_eq!(tx.log_text(), "AB");
     }
 }
