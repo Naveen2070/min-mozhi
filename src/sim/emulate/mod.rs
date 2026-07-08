@@ -29,8 +29,11 @@ pub(super) trait Peripheral: Send {
     /// Called after every individual simulated cycle (not just at
     /// batch-end), with the bound **output** port's current value.
     /// Default no-op — only peripherals needing bit-exact timing
-    /// (`uart_tx`) override this. Wired by the harness's `notify_on_tick`.
-    fn on_tick(&mut self, _val: &Val) {}
+    /// (`uart_tx`) or real hardware that can fail to open (`speaker`)
+    /// override this. Wired by the harness's `notify_on_tick`.
+    fn on_tick(&mut self, _val: &Val) -> Result<(), String> {
+        Ok(())
+    }
     /// Called before every individual simulated cycle, for peripherals
     /// bound to an **input** port. Returning `Some(bit)` drives that value
     /// onto the port before the cycle's tick; `None` leaves it unchanged.
