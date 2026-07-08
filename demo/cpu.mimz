@@ -71,6 +71,10 @@ module Cpu {
 
 // Self-checking test: reset, run the program, assert the final accumulator.
 test "program computes 0x86" for Cpu {
+  sim {
+    speed hz(2)
+    bind leds -> led(color: red)
+  }
   rst = 1
   tick(clk)            // synchronous reset: acc=0, pc=0, phase=Run
   rst = 0

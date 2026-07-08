@@ -18,3 +18,14 @@ module விளக்கு {
 
   ஒளி = சுடர்
 }
+
+test "vilakku emulation" for விளக்கு {
+  sim {
+    speed hz(2)
+    bind ஒளி -> led(color: yellow)
+  }
+  மீள் = 1
+  tick(மணி)
+  மீள் = 0
+  tick(மணி, 10)
+}
