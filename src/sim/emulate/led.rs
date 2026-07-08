@@ -31,6 +31,9 @@ pub(super) fn construct(width: Width, args: &[BindArg]) -> Result<Box<dyn Periph
                 color_seen = true;
                 let name = match &a.value {
                     BindArgValue::Ident(s) | BindArgValue::Str(s) => s.as_str(),
+                    BindArgValue::Int(_) => {
+                        return Err("`led`'s `color` must be a name, not a number".to_string());
+                    }
                 };
                 color = parse_color(name)
                     .ok_or_else(|| format!("`led` doesn't know the color `{name}`"))?;
