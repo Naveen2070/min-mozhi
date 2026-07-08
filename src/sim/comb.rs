@@ -331,6 +331,27 @@ mod tests {
     }
 
     #[test]
+    fn zero_length_array_param_index_is_a_clean_err_not_a_panic() {
+        // Regression (fuzz: lex_parse_eval, crash-3de69b943336db288b4aaab6a2d210dc7d83555d):
+        // `bits[8][0]` is rejected by the checker's E0412 in the normal
+        // `mimz compile`/`mimz test` pipeline, but this evaluator is also
+        // exercised directly on unchecked ASTs (fuzzing), where a
+        // zero-length array param used to underflow `elems.len() - 1` in
+        // the array-index eval (`src/sim/value.rs`).
+        let f = parse(
+            "fn first(vals: bits[8][0]) -> bits[8] {\n  vals[0]\n}\n\nmodule M {\n  in a: bits[8]\n  out y: bits[8]\n  y = first(a)\n}\n",
+        );
+        let err = eval_outputs(
+            std::slice::from_ref(&f),
+            None,
+            &ins(&[("a", 1)]),
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(err.contains("no elements to index"), "got: {err}");
+    }
+
+    #[test]
     fn adder_grows_losslessly() {
         let f = parse(
             "module Adder(W: int = 8) {\n  in a: bits[W]\n  in b: bits[W]\n  out sum: bits[W+1]\n  sum = a + b\n}\n",
