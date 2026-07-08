@@ -18,3 +18,14 @@ thoguthi விளக்கு {
 
   ஒளி = சுடர்
 }
+
+sodhanai "vilakku emulation" kaaga விளக்கு {
+  paavnai {
+    vegam hz(2)
+    inai ஒளி -> led(color: yellow)
+  }
+  மீள் = 1
+  kanam(மணி)
+  மீள் = 0
+  kanam(மணி, 10)
+}
