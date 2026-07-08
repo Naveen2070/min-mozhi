@@ -184,10 +184,18 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
                     let elems: Vec<Val> = (0..len)
                         .map(|i| r.signal(&format!("{name}_{i}")))
                         .collect::<Result<_, _>>()?;
+                    // A zero-length array is rejected by the checker (E0412)
+                    // in the normal compiler pipeline, but this evaluator is
+                    // also exercised directly on unchecked ASTs (fuzzing) —
+                    // `elems.len() - 1` below would underflow, so this must
+                    // be a clean `Err`, not a panic.
+                    let Some(last) = elems.len().checked_sub(1) else {
+                        return Err(format!("array `{name}` has no elements to index"));
+                    };
                     // Out-of-range runtime index clamps to the last element,
                     // matching the emitter's ternary-chain default fallback and
                     // spec/02 §1.14 (keeps sim and Verilog in agreement).
-                    let i = (eval(r, index)?.bits as usize).min(elems.len() - 1);
+                    let i = (eval(r, index)?.bits as usize).min(last);
                     return Ok(elems[i]);
                 }
                 if r.is_mem(name) {
