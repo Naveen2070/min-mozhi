@@ -735,7 +735,7 @@ mod tests {
     #[test]
     fn sim_block_with_unknown_peripheral_errors() {
         let src = "module M {\n  clock clk\n  out playing: bit\n  playing = 1\n}\n\
-                    test \"t\" for M {\n  sim {\n    bind playing -> speaker(waveform: square)\n  }\n  tick(clk)\n}\n";
+                    test \"t\" for M {\n  sim {\n    bind playing -> microphone()\n  }\n  tick(clk)\n}\n";
         let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
         let decl = f
             .items
