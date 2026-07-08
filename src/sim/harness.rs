@@ -813,6 +813,27 @@ mod tests {
 
     #[cfg(feature = "hw-emulation")]
     #[test]
+    fn sim_block_with_speaker_bound_runs_fine_without_emulate() {
+        let src = "module M {\n  clock clk\n  in start: bit\n  out tone: bit\n  tone = start\n}\n\
+                    test \"t\" for M {\n  start = 1\n  sim {\n    speed mhz(1)\n    bind tone -> speaker()\n  }\n  tick(clk, 4)\n}\n";
+        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let decl = f
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ast::TopItem::Test(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        // `emulate: false` (last arg) — `on_tick` never runs in this mode,
+        // so `speaker`'s real audio device is never touched even though
+        // it's bound. This is the proof that a headless/CI run is safe.
+        run_test(std::slice::from_ref(&f), src, decl, false)
+            .expect("test passes without touching audio hardware");
+    }
+
+    #[cfg(feature = "hw-emulation")]
+    #[test]
     fn batch_sizes_splits_evenly() {
         assert_eq!(batch_sizes(100, 30), vec![30, 30, 30, 10]);
         assert_eq!(batch_sizes(0, 30), Vec::<u64>::new());
