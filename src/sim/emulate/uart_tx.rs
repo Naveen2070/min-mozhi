@@ -223,11 +223,11 @@ impl UartTx {
 impl Peripheral for UartTx {
     fn on_change(&mut self, _val: &Val) {}
 
-    fn on_tick(&mut self, val: &Val) {
+    fn on_tick(&mut self, val: &Val) -> Result<(), String> {
         let bit = (val.bits & 1) as u8;
         if matches!(self.state, State::Idle) {
             if bit != 0 {
-                return; // still idle-high
+                return Ok(()); // still idle-high
             }
             self.state = State::Framing {
                 phase: Phase::Start,
@@ -250,7 +250,7 @@ impl Peripheral for UartTx {
                 Phase::Start => {
                     if bit != 0 {
                         self.state = State::Idle; // false start / glitch
-                        return;
+                        return Ok(());
                     }
                 }
                 Phase::Data(i) => byte |= bit << i,
@@ -290,6 +290,7 @@ impl Peripheral for UartTx {
                 byte,
             }
         };
+        Ok(())
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -317,7 +318,7 @@ mod tests {
 
     fn feed(tx: &mut UartTx, bit: u8, cycles: u64) {
         for _ in 0..cycles {
-            tx.on_tick(&Val::new(bit as u128, 1, false));
+            tx.on_tick(&Val::new(bit as u128, 1, false)).unwrap();
         }
     }
 
