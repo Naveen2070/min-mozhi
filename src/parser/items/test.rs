@@ -313,6 +313,10 @@ impl Parser {
                     BindArgValue::Str(s)
                 }
                 TokKind::Ident(_) => BindArgValue::Ident(self.ident("a config value")?.name),
+                TokKind::Int { value, .. } => {
+                    self.bump();
+                    BindArgValue::Int(value)
+                }
                 other => {
                     let found = kind_name(&other);
                     self.error(
