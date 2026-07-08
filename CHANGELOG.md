@@ -17,8 +17,10 @@ Compiler versions follow [SemVer](https://semver.org).
 ### Added
 
 - `mimz test --emulate`: `sim` blocks inside `test` blocks bind ports to
-  virtual peripherals (`led`) with real-time throttling. Opt-in, off by
-  default, auto-degrades outside a real terminal.
+  virtual peripherals (`led`, `uart_tx`, `uart_rx`) with real-time
+  throttling. `uart_tx`/`uart_rx` decode/encode 8-N-1 serial to a
+  dashboard log and/or a local TCP socket. Opt-in, off by default,
+  auto-degrades outside a real terminal.
 - `return` statement and statement-based `fn` bodies (`if`/`return`/`let`)
   for guard-clause-style combinational functions (priority-selected result
   selection, not a silicon early-exit — every branch is still fully

@@ -145,13 +145,19 @@ feature, not this uniform engine-driven trace.)
 ## 5.5. Hardware emulation (`sim` blocks, opt-in)
 
 A `sim { speed ... bind ... }` block inside a `test` block binds ports to
-virtual peripherals (`led` today) and throttles execution to a declared
-real-world clock rate, opt-in via `mimz test --emulate` (default off;
-auto-degrades to a no-op with a logged note when stdout isn't a real
-terminal). Simulation-only — `mimz compile` never sees it. Full design:
+virtual peripherals (`led`, `uart_tx`, `uart_rx`) and throttles execution
+to a declared real-world clock rate, opt-in via `mimz test --emulate`
+(default off; auto-degrades to a no-op with a logged note when stdout
+isn't a real terminal). `uart_tx`/`uart_rx` decode/encode 8-N-1 serial at
+an independent `baud` rate (derived against the sim block's `speed`) to a
+dashboard log and/or a local TCP socket. Simulation-only — `mimz compile`
+never sees any of it. Full design:
 [`docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md`](../docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md)
-(this file is gitignored/local — if it's not present, see
-`docs/Ideas/hardware_emulation.md` for the original proposal).
+(Spec 1, `led`) and
+[`docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md`](../docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md)
+(Spec 2, `uart_tx`/`uart_rx`) (both files are gitignored/local — if
+they're not present, see `docs/Ideas/hardware_emulation.md` for the
+original proposal).
 
 ## 6. Out of scope (v1)
 
