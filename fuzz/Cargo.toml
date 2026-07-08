@@ -21,7 +21,11 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-mimz = { path = ".." }
+# default-features = false: targets only exercise lexer/parser/checker/
+# emit_verilog/sim::comb/translate/pretty, none of which need lsp/bench/watch/
+# hw-emulation. Skips tokio/notify/ratatui/crossterm/cpal — cpal's alsa-sys
+# needs libasound2-dev, which the CI fuzz runner does not install.
+mimz = { path = "..", default-features = false }
 # Same crate the lib uses; the harness NFC-normalizes input like the CLI does.
 unicode-normalization = "0.1"
 
