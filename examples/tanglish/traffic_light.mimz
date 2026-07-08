@@ -36,3 +36,16 @@ thoguthi TrafficLight {
   yellow = state == State.Yellow
   green  = state == State.Green
 }
+
+sodhanai "traffic light emulation" kaaga TrafficLight {
+  paavnai {
+    vegam hz(10)
+    inai red -> led(color: red)
+    inai yellow -> led(color: yellow)
+    inai green -> led(color: green)
+  }
+  rst = 1
+  kanam(clk)
+  rst = 0
+  kanam(clk, 200)
+}
