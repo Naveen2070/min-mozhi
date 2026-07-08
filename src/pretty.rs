@@ -663,7 +663,7 @@ impl Pretty {
                 self.line(&s);
                 self.indent += 1;
                 if let Some(speed) = &sim.speed {
-                    let s = format!("{} {}", self.kw(Kw::Speed), self.expr(speed, self.indent));
+                    let s = format!("{} {}", self.kw(Kw::Speed), self.speed_expr(speed));
                     self.line(&s);
                 }
                 for b in &sim.binds {
@@ -694,6 +694,37 @@ impl Pretty {
             }
             TestStmt::Error(_) => {} // unreachable on a strict-parsed tree
         }
+    }
+
+    /// Re-sugars a `sim` block's `speed` field back into `hz(..)` /
+    /// `khz(..)` / `mhz(..)` source. `speed_expr()` in
+    /// `parser/items/test.rs` always desugars the `speed` clause to
+    /// `Binary { op: Mul, lhs, rhs: Int { value: 1 | 1_000 | 1_000_000 } }`
+    /// — this is the exact inverse. Printing the generic binary expr
+    /// instead (`50 * 1000000`) doesn't match the `speed` clause's own
+    /// grammar and fails to re-parse.
+    fn speed_expr(&self, speed: &Expr) -> String {
+        if let ExprKind::Binary {
+            op: BinOp::Mul,
+            lhs,
+            rhs,
+        } = &speed.kind
+        {
+            if let ExprKind::Int { value, .. } = &rhs.kind {
+                let unit = match *value {
+                    1 => Some("hz"),
+                    1_000 => Some("khz"),
+                    1_000_000 => Some("mhz"),
+                    _ => None,
+                };
+                if let Some(unit) = unit {
+                    return format!("{unit}({})", self.expr(lhs, self.indent));
+                }
+            }
+        }
+        // Shouldn't happen given speed_expr()'s invariant above, but don't
+        // panic — fall back to the plain expression printer.
+        self.expr(speed, self.indent)
     }
 
     // ---------- types / lvalues ----------
@@ -1000,5 +1031,22 @@ mod tests {
             .expect("sync loop item round-trips");
         assert_eq!(sl.name.name, "find_first");
         assert_eq!(sl.body.len(), 1);
+    }
+
+    #[test]
+    fn sim_speed_clause_round_trips_through_pretty_print() {
+        let src = "module M {\n  clock clk\n}\ntest \"m sim\" for M {\n  sim {\n    speed mhz(50)\n  }\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(printed.contains("mhz(50)"), "got:\n{printed}");
+        // Confirm it re-parses cleanly (this is the actual bug: the old
+        // printer emitted `speed 50 * 1000000`, which fails to re-parse).
+        let toks2 = crate::lexer::lex(&printed).unwrap();
+        crate::parser::parse(toks2).expect("pretty-printed speed clause re-parses");
     }
 }
