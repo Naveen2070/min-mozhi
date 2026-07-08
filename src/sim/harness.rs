@@ -526,7 +526,7 @@ impl Run<'_> {
                 .find(|s| &s.name == port)
                 .map(|s| s.width);
             let Some(width) = width else { continue };
-            peripheral.on_tick(&Val::new(raw, width.bits, width.signed));
+            peripheral.on_tick(&Val::new(raw, width.bits, width.signed))?;
         }
         Ok(())
     }
