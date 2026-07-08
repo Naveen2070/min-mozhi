@@ -30,6 +30,7 @@ pub(super) fn construct(
         ));
     }
     let mut baud = None;
+    let mut target_socket = false;
     for a in args {
         match a.name.name.as_str() {
             "baud" => {
@@ -45,6 +46,25 @@ pub(super) fn construct(
                     }
                 });
             }
+            "target" => {
+                let name = match &a.value {
+                    BindArgValue::Ident(s) | BindArgValue::Str(s) => s.as_str(),
+                    BindArgValue::Int(_) => {
+                        return Err(
+                            "`uart_tx`'s `target` must be `terminal` or `socket`".to_string()
+                        );
+                    }
+                };
+                target_socket = match name {
+                    "terminal" => false,
+                    "socket" => true,
+                    other => {
+                        return Err(format!(
+                            "`uart_tx` doesn't know the target `{other}` (expected `terminal` or `socket`)"
+                        ));
+                    }
+                };
+            }
             other => return Err(format!("`uart_tx` has no config option `{other}`")),
         }
     }
@@ -59,7 +79,13 @@ pub(super) fn construct(
             "`uart_tx`'s baud ({baud}) is faster than the sim speed ({speed_hz} Hz) — no cycles left per bit"
         ));
     }
-    Ok(Box::new(UartTx::new(speed_hz / baud)))
+    if target_socket {
+        let (tx, port) = UartTx::new_socket_target(speed_hz / baud);
+        eprintln!("uart_tx: listening on 127.0.0.1:{port}");
+        Ok(Box::new(tx))
+    } else {
+        Ok(Box::new(UartTx::new(speed_hz / baud)))
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -79,25 +105,80 @@ enum State {
     },
 }
 
+pub(super) enum Target {
+    Terminal,
+    /// Receives the accepted `TcpStream` once a peer connects (accept
+    /// runs on a background thread so the sim loop never blocks on it).
+    /// Polled non-blockingly from `push_char`.
+    Socket(std::sync::mpsc::Receiver<std::net::TcpStream>),
+}
+
 pub(super) struct UartTx {
     cycles_per_bit: u64,
     state: State,
     log: VecDeque<char>,
+    target: Target,
+    stream: Option<std::net::TcpStream>,
 }
 
 impl UartTx {
     fn new(cycles_per_bit: u64) -> UartTx {
+        UartTx::new_with_target(cycles_per_bit, Target::Terminal)
+    }
+
+    fn new_with_target(cycles_per_bit: u64, target: Target) -> UartTx {
         UartTx {
             cycles_per_bit: cycles_per_bit.max(1),
             state: State::Idle,
             log: VecDeque::new(),
+            target,
+            stream: None,
         }
+    }
+
+    /// Opens a local TCP listener and returns the peripheral plus the
+    /// port it's listening on (tests connect to this port directly; a
+    /// real `sim`-block author never sees it — `construct` prints it via
+    /// `eprintln!`, same as `uart_rx`'s socket source).
+    pub(super) fn new_socket_target(cycles_per_bit: u64) -> (UartTx, u16) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (send, recv) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if let Ok((stream, _)) = listener.accept() {
+                let _ = send.send(stream);
+            }
+        });
+        (
+            UartTx::new_with_target(cycles_per_bit, Target::Socket(recv)),
+            port,
+        )
     }
 
     fn push_char(&mut self, c: char) {
         self.log.push_back(c);
         if self.log.len() > LOG_CAP {
             self.log.pop_front();
+        }
+        if self.stream.is_none() {
+            if let Target::Socket(rx) = &self.target {
+                // Bounded wait, paid at most once (only until `self.stream`
+                // becomes `Some`): a `try_recv()` here can race ahead of the
+                // background accept thread, which needs an OS scheduling
+                // tick to complete the handshake and forward the stream —
+                // on a freshly-opened listener that tick may not have
+                // happened yet by the time the very first byte is ready to
+                // send. A short `recv_timeout` absorbs that race without
+                // ever blocking the sim loop for more than one second, and
+                // costs nothing once a stream has been picked up.
+                if let Ok(s) = rx.recv_timeout(std::time::Duration::from_secs(1)) {
+                    self.stream = Some(s);
+                }
+            }
+        }
+        if let Some(stream) = &mut self.stream {
+            use std::io::Write;
+            let _ = stream.write_all(&[c as u8]); // best-effort: a dropped peer just misses bytes
         }
     }
 
@@ -277,5 +358,28 @@ mod tests {
             signed: false,
         };
         assert!(construct(w, &[arg("baud", BindArgValue::Int(9600))], Some(1000)).is_err());
+    }
+
+    #[test]
+    fn socket_target_streams_decoded_bytes() {
+        use std::io::Read;
+        use std::net::TcpStream;
+
+        let (mut tx, port) = UartTx::new_socket_target(4);
+        let accepted = std::thread::spawn(move || {
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            let mut buf = [0u8; 1];
+            stream.read_exact(&mut buf).unwrap();
+            buf[0]
+        });
+        feed(&mut tx, 1, 4); // idle
+        feed(&mut tx, 0, 4); // start
+        for bit in [1u8, 0, 0, 0, 0, 0, 1, 0] {
+            // 'A'
+            feed(&mut tx, bit, 4);
+        }
+        feed(&mut tx, 1, 4); // stop
+        let byte = accepted.join().unwrap();
+        assert_eq!(byte, b'A');
     }
 }
