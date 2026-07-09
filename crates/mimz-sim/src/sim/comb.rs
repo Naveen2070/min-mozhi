@@ -15,7 +15,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
+use mimz_core::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 
 use super::value::{self, Resolver, Val};
 
@@ -313,7 +313,7 @@ mod tests {
     use super::*;
 
     fn parse(src: &str) -> ast::File {
-        crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses")
+        mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses")
     }
 
     fn ins(pairs: &[(&str, u128)]) -> BTreeMap<String, u128> {

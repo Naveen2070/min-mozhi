@@ -17,8 +17,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::REPEAT_BUDGET;
-use crate::ast::{Edge, Expr, FuncDecl, SeqStmt};
+use mimz_core::REPEAT_BUDGET;
+use mimz_core::ast::{Edge, Expr, FuncDecl, SeqStmt};
 
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
@@ -449,7 +449,8 @@ mod tests {
     use crate::sim::elaborate::elaborate;
 
     fn sim(src: &str) -> Sim {
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         Sim::new(elaborate(&f, None, &BTreeMap::new()).expect("elaborates"))
     }
 
@@ -623,7 +624,7 @@ mod tests {
         let src = format!(
             "module M {{\n  clock clk\n  reset rst\n  in v0: bits[8]\n  reg acc: bits[8] = 0\n  \
              on rise(clk) {{\n    loop i: 0..{} {{\n      acc <- v0\n    }}\n  }}\n}}\n",
-            crate::REPEAT_BUDGET + 1
+            mimz_core::REPEAT_BUDGET + 1
         );
         let mut s = sim(&src);
         s.set("rst", 0).unwrap();
