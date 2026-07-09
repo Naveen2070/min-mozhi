@@ -80,9 +80,11 @@ pub struct Outcome {
     /// Default trace scope: the module's interface + state (inputs, outputs,
     /// registers), in that order.
     pub default_scope: Vec<String>,
-    /// Reserved for a future interactive-quit signal (e.g. pressing `q`
-    /// mid-`--step`). `EmulationHost` has no channel back for this today —
-    /// always `false` from this crate; a live host may grow one later.
+    /// The user requested quit during this test — either by pressing `q`
+    /// while paused mid-`--step` (surfaced by `EmulationHost::frame`), or at
+    /// the final dismiss screen after a live run (surfaced by
+    /// `EmulationHost::finish`). `false` for a headless/CI run. `mimz test`
+    /// stops running further tests once this is `true`.
     pub quit: bool,
 }
 
@@ -171,18 +173,22 @@ pub fn run_test(
     };
     run.capture()?; // the initial (pre-tick) state
 
-    let (result, quit) = match run.exec(&decl.body) {
+    let (result, quit_from_exec) = match run.exec(&decl.body) {
         Ok(()) => (TestResult::Pass, false),
         Err(Stop::Fail(m)) => (TestResult::Fail(m), false),
         Err(Stop::Skip(m)) => (TestResult::Skipped(m), false),
+        Err(Stop::Quit) => (TestResult::Skipped("aborted by user (q)".to_string()), true),
         Err(Stop::Err(e)) => return Err(e),
     };
 
     // Flush any peripheral that defers work to the end (`speaker`'s
     // offline-rendered playback) — a no-op host impl for everything else,
     // and for `speaker` itself when it never ticked (skipped, or no `sim`
-    // block).
-    run.host.finish()?;
+    // block). For a live host this also runs the final "press Enter to
+    // continue, q to quit" dismiss screen (unless the run already quit
+    // mid-step), returning whether the user quit there.
+    let quit_from_finish = run.host.finish()?;
+    let quit = quit_from_exec || quit_from_finish;
 
     Ok(Outcome {
         name: decl.name.clone(),
@@ -224,12 +230,14 @@ fn params(decl: &TestDecl) -> Result<BTreeMap<String, i128>, String> {
 }
 
 /// How a test body stops early: a real `expect` failure (the test fails), a
-/// setup/semantic error (the whole command errors), or a `sim`-block tick
-/// that isn't live and so isn't run (the test is skipped).
+/// setup/semantic error (the whole command errors), a `sim`-block tick that
+/// isn't live and so isn't run (the test is skipped), or the user pressing
+/// `q` mid-`--step` (the whole run is aborted).
 enum Stop {
     Fail(String),
     Err(String),
     Skip(String),
+    Quit,
 }
 
 /// The registered peripherals' real-world clock rate for the test's `sim`
@@ -343,7 +351,12 @@ impl Run<'_> {
                                 self.notify_on_tick().map_err(Stop::Err)?;
                             }
                             self.notify_peripherals().map_err(Stop::Err)?;
-                            self.host.frame().map_err(Stop::Err)?;
+                            // `frame` returns `true` only when the user quit
+                            // at a `--step` pause — abort the whole run, as
+                            // the pre-refactor `wait_for_step` path did.
+                            if self.host.frame().map_err(Stop::Err)? {
+                                return Err(Stop::Quit);
+                            }
                             if !self.stepping
                                 && let Some(remaining) =
                                     Self::frame_budget().checked_sub(started.elapsed())
@@ -649,11 +662,11 @@ mod tests {
         fn drive(&mut self, _name: &str) -> Option<u64> {
             None
         }
-        fn frame(&mut self) -> Result<(), String> {
-            Ok(())
+        fn frame(&mut self) -> Result<bool, String> {
+            Ok(false)
         }
-        fn finish(&mut self) -> Result<(), String> {
-            Ok(())
+        fn finish(&mut self) -> Result<bool, String> {
+            Ok(false)
         }
     }
 
