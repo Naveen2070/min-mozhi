@@ -1,0 +1,11 @@
+[package]
+name = "mimz-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+unicode-ident = "1"
+unicode-normalization = "0.1"
+owo-colors = "4"
+serde = { version = "1", features = ["derive"] }
+toml = "1"
