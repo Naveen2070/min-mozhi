@@ -1,4 +1,6 @@
-module MelodyPlayer (
+module MelodyPlayer #(
+    parameter TICK = 50000
+) (
     input wire clk,
     input wire rst,
     input wire start,
@@ -7,7 +9,7 @@ module MelodyPlayer (
 );
     reg [(4)-1:0] addr;
     reg [(20)-1:0] tone_cnt;
-    reg [(24)-1:0] dur_cnt;
+    reg [(32)-1:0] dur_cnt;
     reg toggle;
     reg active;
     reg [(20)-1:0] target;
@@ -37,7 +39,7 @@ module MelodyPlayer (
             if (active) begin
                 if ((dur_cnt == 0)) begin
                     target <= pitch;
-                    dur_cnt <= ((dur) * 50000)[(24)-1:0];
+                    dur_cnt <= ((dur) * TICK)[(32)-1:0];
                     addr <= (addr + 1);
                     if ((addr == 15)) begin
                         active <= 0;

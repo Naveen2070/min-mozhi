@@ -13,7 +13,7 @@ use crate::ast::{BindArg, BindArgValue};
 
 use super::super::elaborate::Width;
 use super::super::value::Val;
-use super::Peripheral;
+use super::{Peripheral, parse_port};
 
 /// How many trailing decoded characters `render` shows.
 const LOG_CAP: usize = 32;
@@ -30,7 +30,8 @@ pub(super) fn construct(
         ));
     }
     let mut baud = None;
-    let mut target_socket = false;
+    let mut target = None;
+    let mut port = None;
     for a in args {
         match a.name.name.as_str() {
             "baud" => {
@@ -47,23 +48,29 @@ pub(super) fn construct(
                 });
             }
             "target" => {
+                if target.is_some() {
+                    return Err("`uart_tx` has a duplicate `target` config".to_string());
+                }
                 let name = match &a.value {
-                    BindArgValue::Ident(s) | BindArgValue::Str(s) => s.as_str(),
+                    BindArgValue::Ident(s) | BindArgValue::Str(s) => s.clone(),
                     BindArgValue::Int(_) => {
                         return Err(
                             "`uart_tx`'s `target` must be `terminal` or `socket`".to_string()
                         );
                     }
                 };
-                target_socket = match name {
-                    "terminal" => false,
-                    "socket" => true,
-                    other => {
-                        return Err(format!(
-                            "`uart_tx` doesn't know the target `{other}` (expected `terminal` or `socket`)"
-                        ));
-                    }
-                };
+                if name != "terminal" && name != "socket" {
+                    return Err(format!(
+                        "`uart_tx` doesn't know the target `{name}` (expected `terminal` or `socket`)"
+                    ));
+                }
+                target = Some(name);
+            }
+            "port" => {
+                if port.is_some() {
+                    return Err("`uart_tx` has a duplicate `port` config".to_string());
+                }
+                port = Some(parse_port(&a.value, "uart_tx")?);
             }
             other => return Err(format!("`uart_tx` has no config option `{other}`")),
         }
@@ -79,9 +86,16 @@ pub(super) fn construct(
             "`uart_tx`'s baud ({baud}) is faster than the sim speed ({speed_hz} Hz) — no cycles left per bit"
         ));
     }
-    if target_socket {
-        let (tx, port) = UartTx::new_socket_target(speed_hz / baud)?;
-        eprintln!("uart_tx: listening on 127.0.0.1:{port}");
+    // `port` picks a fixed socket port; `target: "socket"` alone still
+    // works, with an OS-assigned ephemeral one. The two can't disagree.
+    if let Some(t) = &target {
+        if port.is_some() && t != "socket" {
+            return Err("`uart_tx`'s `port` only makes sense with a socket target".to_string());
+        }
+    }
+    if port.is_some() || target.as_deref() == Some("socket") {
+        let (tx, bound_port) = UartTx::new_socket_target(speed_hz / baud, port)?;
+        eprintln!("uart_tx: listening on 127.0.0.1:{bound_port}");
         Ok(Box::new(tx))
     } else {
         Ok(Box::new(UartTx::new(speed_hz / baud)))
@@ -144,13 +158,18 @@ impl UartTx {
         }
     }
 
-    /// Opens a local TCP listener and returns the peripheral plus the
-    /// port it's listening on (tests connect to this port directly; a
-    /// real `sim`-block author never sees it — `construct` prints it via
-    /// `eprintln!`, same as `uart_rx`'s socket source).
-    pub(super) fn new_socket_target(cycles_per_bit: u64) -> Result<(UartTx, u16), String> {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| format!("`uart_tx` couldn't open a local socket: {e}"))?;
+    /// Opens a local TCP listener and returns the peripheral plus the port
+    /// it's listening on — `port`'s caller-chosen port if given, otherwise
+    /// an OS-assigned ephemeral one (tests connect to this port directly;
+    /// `construct` prints it via `eprintln!`, same as `uart_rx`'s socket
+    /// source).
+    pub(super) fn new_socket_target(
+        cycles_per_bit: u64,
+        port: Option<u16>,
+    ) -> Result<(UartTx, u16), String> {
+        let addr = format!("127.0.0.1:{}", port.unwrap_or(0));
+        let listener = std::net::TcpListener::bind(&addr)
+            .map_err(|e| format!("`uart_tx` couldn't open a local socket on {addr}: {e}"))?;
         let port = listener
             .local_addr()
             .map_err(|e| format!("`uart_tx` couldn't open a local socket: {e}"))?
@@ -388,6 +407,61 @@ mod tests {
     }
 
     #[test]
+    fn port_alone_implies_socket_transport() {
+        let w = Width {
+            bits: 1,
+            signed: false,
+        };
+        // Probe the OS for a free port rather than hardcoding one, to avoid
+        // both a privileged-port bind failure (<1024) and a CI collision.
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let free_port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let args = [
+            arg("baud", BindArgValue::Int(9600)),
+            arg("port", BindArgValue::Int(free_port as u128)),
+        ];
+        assert!(construct(w, &args, Some(115_200)).is_ok());
+    }
+
+    #[test]
+    fn port_conflicts_with_a_non_socket_target() {
+        let w = Width {
+            bits: 1,
+            signed: false,
+        };
+        let args = [
+            arg("baud", BindArgValue::Int(9600)),
+            arg("target", BindArgValue::Str("terminal".into())),
+            arg("port", BindArgValue::Int(8081)),
+        ];
+        assert!(construct(w, &args, Some(115_200)).is_err());
+    }
+
+    #[test]
+    fn rejects_port_out_of_range() {
+        let w = Width {
+            bits: 1,
+            signed: false,
+        };
+        let args = [
+            arg("baud", BindArgValue::Int(9600)),
+            arg("port", BindArgValue::Int(70_000)),
+        ];
+        assert!(construct(w, &args, Some(115_200)).is_err());
+    }
+
+    #[test]
+    fn new_socket_target_binds_the_requested_port() {
+        // Same OS-round-trip pattern as `uart_rx`'s equivalent test.
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let want = probe.local_addr().unwrap().port();
+        drop(probe);
+        let (_tx, got) = UartTx::new_socket_target(4, Some(want)).unwrap();
+        assert_eq!(got, want);
+    }
+
+    #[test]
     fn socket_write_does_not_block_when_peer_stops_reading() {
         // Regression test for the nonblocking-socket fix: a peer that
         // connects and then never reads must not be able to stall
@@ -397,7 +471,7 @@ mod tests {
         // `on_tick` calls.
         use std::net::TcpStream;
 
-        let (mut tx, port) = UartTx::new_socket_target(1).unwrap();
+        let (mut tx, port) = UartTx::new_socket_target(1, None).unwrap();
         let _peer = TcpStream::connect(("127.0.0.1", port)).unwrap(); // never reads
         tx.push_char('A'); // adopts the stream (bounded wait for accept)
         let started = std::time::Instant::now();
@@ -417,7 +491,7 @@ mod tests {
         use std::io::Read;
         use std::net::TcpStream;
 
-        let (mut tx, port) = UartTx::new_socket_target(4).unwrap();
+        let (mut tx, port) = UartTx::new_socket_target(4, None).unwrap();
         let accepted = std::thread::spawn(move || {
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             let mut buf = [0u8; 1];
@@ -444,7 +518,7 @@ mod tests {
         // two bytes here would take >=2s if that guard regressed; it
         // should take a small fraction of a second once the first wait
         // gives up and every later byte skips straight to the log.
-        let (mut tx, _port) = UartTx::new_socket_target(4).unwrap();
+        let (mut tx, _port) = UartTx::new_socket_target(4, None).unwrap();
         let started = std::time::Instant::now();
         for byte in [0x41u8, 0x42u8] {
             // 'A' then 'B', LSB-first

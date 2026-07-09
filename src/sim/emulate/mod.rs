@@ -16,7 +16,21 @@ use ratatui::layout::Rect;
 
 use super::elaborate::Width;
 use super::value::Val;
-use crate::ast::BindArg;
+use crate::ast::{BindArg, BindArgValue};
+
+/// Parses a `port: N` bind-config value (`uart_rx`/`uart_tx`'s socket
+/// transport) into a valid TCP port number.
+pub(super) fn parse_port(value: &BindArgValue, peripheral: &str) -> Result<u16, String> {
+    match value {
+        BindArgValue::Int(v) if *v > 0 && *v <= u16::MAX as u128 => Ok(*v as u16),
+        BindArgValue::Int(v) => Err(format!(
+            "`{peripheral}`'s `port` must be between 1 and 65535, got {v}"
+        )),
+        _ => Err(format!(
+            "`{peripheral}`'s `port` must be a number, e.g. `port: 8080`"
+        )),
+    }
+}
 
 /// One bound virtual peripheral. Constructed once per `bind`, then driven
 /// (`drive`) and/or observed (`on_tick`, `on_change`) once per cycle or
@@ -42,6 +56,13 @@ pub(super) trait Peripheral: Send {
     /// the harness's `drive_peripherals`.
     fn drive(&mut self) -> Option<u64> {
         None
+    }
+    /// Called once after the test body finishes ticking (pass, fail, or
+    /// skip alike) — for finalizing work that can't happen incrementally,
+    /// like `speaker`'s offline-rendered playback. Default no-op; only
+    /// `speaker` overrides it. Wired at the end of `run_test`.
+    fn finish(&mut self) -> Result<(), String> {
+        Ok(())
     }
     /// Draw this peripheral's row in the dashboard.
     fn render(&self, area: Rect, buf: &mut Buffer);
