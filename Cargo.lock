@@ -1102,6 +1102,8 @@ dependencies = [
  "criterion",
  "crossterm",
  "memory-stats",
+ "mimz-core",
+ "mimz-sim",
  "notify",
  "owo-colors",
  "ratatui",
