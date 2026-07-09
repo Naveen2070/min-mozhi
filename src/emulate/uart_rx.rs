@@ -12,8 +12,8 @@ use ratatui::widgets::{Paragraph, Widget};
 
 use crate::ast::{BindArg, BindArgValue};
 
-use super::super::elaborate::Width;
-use super::super::value::Val;
+use mimz_sim::sim::elaborate::Width;
+use mimz_sim::sim::Val;
 use super::{Peripheral, parse_port};
 
 pub(super) fn construct(

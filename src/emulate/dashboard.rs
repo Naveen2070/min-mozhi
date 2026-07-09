@@ -31,18 +31,17 @@ use super::Peripheral;
 /// the first batch that needs it, restored via `Drop` when the `Run` it
 /// lives on is dropped at the end of `run_test`.
 ///
-/// Visibility matches `Peripheral`'s (`pub(in crate::sim)`, i.e. `harness.rs`
-/// and below) rather than `pub(crate)` — `draw`'s signature carries a
-/// `Peripheral` trait object, and a wider visibility here than that type's
-/// own would trip `private_interfaces`.
-pub(in crate::sim) struct Dashboard {
+/// `pub(crate)` — visible across the shell crate (`crate::emulate::host`
+/// drives it), which replaces the pre-split `pub(in crate::sim)` scope now
+/// that the harness lives in `mimz-sim` and the dashboard here.
+pub(crate) struct Dashboard {
     terminal: Terminal<CrosstermBackend<Stdout>>,
 }
 
 impl Dashboard {
     /// Enter raw mode + the alternate screen and open a `ratatui` terminal
     /// on stdout.
-    pub(in crate::sim) fn open() -> io::Result<Dashboard> {
+    pub(crate) fn open() -> io::Result<Dashboard> {
         enable_raw_mode()?;
         if let Err(e) = execute!(io::stdout(), EnterAlternateScreen) {
             // No `Dashboard` (and thus no `Drop`) exists yet to restore the
@@ -67,7 +66,7 @@ impl Dashboard {
     /// given — e.g. `--step`'s "Enter to advance, q to quit") followed by
     /// one row per bound peripheral (port name, then the peripheral's own
     /// widget).
-    pub(in crate::sim) fn draw(
+    pub(crate) fn draw(
         &mut self,
         test_name: &str,
         cycle: u64,
@@ -103,7 +102,7 @@ impl Dashboard {
     /// (quit the whole run) — called after each single-cycle `draw` while
     /// stepping. Ignores every other key so a stray keypress can't
     /// accidentally advance or quit.
-    pub(in crate::sim) fn wait_for_step(&mut self) -> io::Result<bool> {
+    pub(crate) fn wait_for_step(&mut self) -> io::Result<bool> {
         read_continue_or_quit()
     }
 
@@ -111,7 +110,7 @@ impl Dashboard {
     /// (move on to the next test) or `q`/Esc (quit the whole run) — so the
     /// dashboard doesn't vanish the instant a live test's last cycle ticks,
     /// before anyone watching gets to see the final state.
-    pub(in crate::sim) fn wait_for_dismiss(
+    pub(crate) fn wait_for_dismiss(
         &mut self,
         test_name: &str,
         cycle: u64,
