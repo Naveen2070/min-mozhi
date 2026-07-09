@@ -20,6 +20,9 @@ serde_json = "1"
 toml = "1"
 unicode-ident = "1"
 unicode-normalization = "0.1"
+# Workspace members: factored-out pure compiler pipeline and simulator.
+mimz-core = { path = "crates/mimz-core" }
+mimz-sim = { path = "crates/mimz-sim" }
 # Peak process RSS for the mimz-bench memory metric. Lightweight (no
 # allocator swap), so it coexists with a normal timed run — unlike the
 # opt-in dhat profile. See docs/Ideas/benchmark_plan.md Phase 3.
