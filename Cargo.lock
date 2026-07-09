@@ -1131,6 +1131,7 @@ name = "mimz-sim"
 version = "0.1.0"
 dependencies = [
  "mimz-core",
+ "unicode-normalization",
 ]
 
 [[package]]

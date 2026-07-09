@@ -12,9 +12,11 @@ use std::collections::BTreeMap;
 
 use unicode_normalization::UnicodeNormalization;
 
+use mimz_core::{ast, checker, diag, emit_verilog, lexer, parser};
+
+use crate::sim::host::{Direction, EmulationHost};
 use crate::sim::run::{MAX_SIM_CYCLES, MAX_SWEEP_VECTORS, SimOpts, comb_run, run};
-use crate::sim::{comb, elaborate, trace, vcd};
-use crate::{ast, checker, diag, emit_verilog, lexer, parser};
+use crate::sim::{Val, comb, elaborate, trace, vcd};
 
 /// The cosmetic file name shown in caret headers for in-memory sources.
 const NAME: &str = "input.mimz";
@@ -184,12 +186,12 @@ pub fn run_command(source: &str, command: &str, argv: &[&str]) -> Result<String,
 
 /// Lex + parse an already-NFC-normalized source into one file, rendering any
 /// lexer/parser diagnostics to text on failure.
-fn parse_source(src: &str) -> Result<Vec<crate::project::LoadedFile>, String> {
+fn parse_source(src: &str) -> Result<Vec<mimz_core::project::LoadedFile>, String> {
     let render = |d: Vec<diag::Diag>| diag::render(&d, src, NAME);
     let toks = lexer::lex(src).map_err(render)?;
     let root_ast = parser::parse(toks).map_err(render)?;
 
-    let mut files = vec![crate::project::LoadedFile {
+    let mut files = vec![mimz_core::project::LoadedFile {
         path: std::path::PathBuf::from(NAME),
         src: src.to_string(),
         ast: root_ast,
@@ -205,7 +207,7 @@ fn parse_source(src: &str) -> Result<Vec<crate::project::LoadedFile>, String> {
             let is_std = imp
                 .path
                 .first()
-                .is_some_and(|seg| crate::stdlib::is_std_namespace(&seg.name));
+                .is_some_and(|seg| mimz_core::stdlib::is_std_namespace(&seg.name));
             if is_std && imp.path.len() != 2 {
                 return Err(
                     "a standard-library import must be `std.<module>` (exactly two segments)"
@@ -214,7 +216,7 @@ fn parse_source(src: &str) -> Result<Vec<crate::project::LoadedFile>, String> {
             } else if is_std {
                 let ns = &imp.path[0].name;
                 let mod_name = &imp.path[1].name;
-                if let Some((m, v)) = crate::stdlib::resolve(ns, mod_name) {
+                if let Some((m, v)) = mimz_core::stdlib::resolve(ns, mod_name) {
                     let target_idx = if let Some(&idx) = loaded_stems.get(m.stem) {
                         idx
                     } else {
@@ -225,7 +227,7 @@ fn parse_source(src: &str) -> Result<Vec<crate::project::LoadedFile>, String> {
                             .map_err(|d| diag::render(&d, std_src, mod_name))?;
                         let idx = files.len();
                         loaded_stems.insert(m.stem, idx);
-                        files.push(crate::project::LoadedFile {
+                        files.push(mimz_core::project::LoadedFile {
                             path: std::path::PathBuf::from(format!("<std::{mod_name}>")),
                             src: std_src.to_string(),
                             ast: std_ast,
@@ -268,7 +270,7 @@ fn check(src: &str, _argv: &[&str]) -> Result<String, String> {
     let files = parse_source(src)?;
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     if let Err(d) = checker::check(&asts) {
-        return Err(crate::project::render_diags(&d, &files));
+        return Err(mimz_core::project::render_diags(&d, &files));
     }
     Ok("OK — no errors.".to_string())
 }
@@ -278,7 +280,7 @@ fn check(src: &str, _argv: &[&str]) -> Result<String, String> {
 /// is a thin wrapper over it.
 fn compile(src: &str, _argv: &[&str]) -> Result<String, String> {
     let files = parse_source(src)?;
-    let render = |d: Vec<diag::Diag>| crate::project::render_diags(&d, &files);
+    let render = |d: Vec<diag::Diag>| mimz_core::project::render_diags(&d, &files);
     let mut asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     checker::check(&asts).map_err(render)?;
     emit_verilog::transliterate(&mut asts);
@@ -493,6 +495,44 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     }
 }
 
+/// No hardware-emulation peripherals are reachable from this in-memory,
+/// filesystem-free runner — there is no shell process (ratatui/cpal) for a
+/// `sim { bind ... }` block to attach to here, so every peripheral name is
+/// unknown. A `sim` block's binds still get validated (a bad bind is still a
+/// clean error, matching every other embedding), they just have nothing to
+/// bind to.
+struct NoOpHost;
+
+impl EmulationHost for NoOpHost {
+    fn bind(
+        &mut self,
+        name: &str,
+        _width: elaborate::Width,
+        _args: &[ast::BindArg],
+        _speed_hz: Option<u64>,
+    ) -> Result<(), String> {
+        Err(format!(
+            "unknown peripheral `{name}` — hardware emulation is not available here"
+        ))
+    }
+    fn direction_of(&self, _name: &str) -> Option<Direction> {
+        None
+    }
+    fn on_change(&mut self, _name: &str, _val: &Val) {}
+    fn on_tick(&mut self, _name: &str, _val: &Val) -> Result<(), String> {
+        Ok(())
+    }
+    fn drive(&mut self, _name: &str) -> Option<u64> {
+        None
+    }
+    fn frame(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+    fn finish(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 /// `test [--filter substr]` — run the source's `test` blocks and report
 /// pass/fail. Errs (non-zero, conceptually) if any test fails.
 fn test(src: &str, argv: &[&str]) -> Result<String, String> {
@@ -525,7 +565,7 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
     let mut out = String::new();
     let (mut passed, mut failed) = (0u32, 0u32);
     for decl in decls {
-        match crate::sim::harness::run_test(&asts, src, decl, false, false) {
+        match crate::sim::harness::run_test(&asts, src, decl, Box::new(NoOpHost), false, false) {
             Ok(o) => match o.result {
                 crate::sim::harness::TestResult::Pass => {
                     passed += 1;
