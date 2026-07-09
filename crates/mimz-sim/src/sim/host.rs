@@ -49,8 +49,14 @@ pub trait EmulationHost {
     fn drive(&mut self, name: &str) -> Option<u64>;
 
     /// Dashboard redraw, batched to ~30fps. No-op if `live` is false.
-    fn frame(&mut self) -> Result<(), String>;
+    /// Returns `true` if the user requested quit (e.g. pressed `q` while
+    /// paused mid-`--step`) — the harness aborts the test when it sees this.
+    /// A non-interactive/headless host always returns `Ok(false)`.
+    fn frame(&mut self) -> Result<bool, String>;
 
-    /// End-of-test cleanup (e.g. flush speaker playback).
-    fn finish(&mut self) -> Result<(), String>;
+    /// End-of-test cleanup (e.g. flush speaker playback), plus — for a live
+    /// host — the final "press Enter to continue, q to quit" dismiss screen.
+    /// Returns `true` if the user quit at that dismiss prompt. A
+    /// headless host does its cleanup and returns `Ok(false)`.
+    fn finish(&mut self) -> Result<bool, String>;
 }
