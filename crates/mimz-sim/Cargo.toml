@@ -5,4 +5,3 @@ edition.workspace = true
 
 [dependencies]
 mimz-core = { path = "../mimz-core" }
-unicode-normalization = "0.1"

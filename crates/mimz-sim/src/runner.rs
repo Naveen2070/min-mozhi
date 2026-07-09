@@ -10,8 +10,6 @@
 
 use std::collections::BTreeMap;
 
-use unicode_normalization::UnicodeNormalization;
-
 use mimz_core::{ast, checker, diag, emit_verilog, lexer, parser};
 
 use crate::sim::host::{Direction, EmulationHost};
@@ -170,7 +168,7 @@ pub fn trace_scope(
 /// `Ok` carries the command's normal output; `Err` carries an error message or
 /// rendered diagnostics — both are display-ready for a console/log.
 pub fn run_command(source: &str, command: &str, argv: &[&str]) -> Result<String, String> {
-    let src: String = source.nfc().collect();
+    let src: String = mimz_core::nfc_normalize(source);
     match command {
         "check" => check(&src, argv),
         "compile" => compile(&src, argv),
