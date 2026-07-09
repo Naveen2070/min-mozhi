@@ -19,9 +19,10 @@ use super::Checker;
 
 /// Environment for one evaluation: name -> value. Built from file consts
 /// plus (in `names.rs`) module consts and enclosing `repeat` variables.
-/// `pub(crate)` so the Verilog emitter can fold the same constants when it
-/// unrolls `repeat` (it shares this evaluator rather than reimplementing it).
-pub(crate) type Env = HashMap<String, i128>;
+/// `pub` so the Verilog emitter and `mimz-sim`'s simulator can fold the same
+/// constants when they unroll `repeat` (both share this evaluator rather
+/// than reimplementing it).
+pub type Env = HashMap<String, i128>;
 
 impl<'a> Checker<'a> {
     /// Evaluate every file-level `const`, in source order, into
@@ -63,7 +64,7 @@ impl<'a> Checker<'a> {
 // is a cold compile-error path, not a hot return, so the large-Err move cost the
 // lint warns about is irrelevant here.
 #[allow(clippy::result_large_err)]
-pub(crate) fn eval(e: &Expr, env: &Env) -> Result<i128, Diag> {
+pub fn eval(e: &Expr, env: &Env) -> Result<i128, Diag> {
     let not_const = |what: &str, why: &str| {
         Err(
             Diag::new(e.span, format!("{what} is not a compile-time constant"))
@@ -179,7 +180,7 @@ fn overflow(e: &Expr) -> Diag {
 /// the single source for both the `clog2` const-builtin and the enum-signal
 /// encoding width (`emit_verilog` / `sim::elaborate` delegate here), so the two
 /// can never drift. `n` must be `>= 1` (callers guard with E0202).
-pub(crate) fn clog2_bits(n: u128) -> u32 {
+pub fn clog2_bits(n: u128) -> u32 {
     if n <= 1 {
         1
     } else {

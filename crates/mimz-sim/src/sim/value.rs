@@ -9,8 +9,8 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::REPEAT_BUDGET;
-use crate::ast::{self, BinOp, Builtin, Expr, ExprKind, FnStmt, FuncDecl, Pattern, Type, UnOp};
+use mimz_core::REPEAT_BUDGET;
+use mimz_core::ast::{self, BinOp, Builtin, Expr, ExprKind, FnStmt, FuncDecl, Pattern, Type, UnOp};
 
 /// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
 pub(super) fn mask(w: u32) -> u128 {
@@ -21,12 +21,14 @@ pub(super) fn mask(w: u32) -> u128 {
     }
 }
 
-/// A bit-vector value: the low `width` bits of `bits` are meaningful.
+/// A bit-vector value: the low `width` bits of `bits` are meaningful. `pub`
+/// (re-exported at `mimz_sim::sim::Val`) since `EmulationHost::on_change`/
+/// `on_tick` hand this to the shell crate's peripheral implementations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) struct Val {
-    pub(super) bits: u128,
-    pub(super) width: u32,
-    pub(super) signed: bool,
+pub struct Val {
+    pub bits: u128,
+    pub width: u32,
+    pub signed: bool,
 }
 
 impl Val {
@@ -49,7 +51,7 @@ impl Val {
         }
     }
     /// Sign-aware value, sign-extended to i128 for signed comparisons.
-    pub(super) fn as_i128(&self) -> i128 {
+    pub fn as_i128(&self) -> i128 {
         let m = mask(self.width);
         let b = self.bits & m;
         if self.signed && self.width >= 1 && (b >> (self.width - 1)) & 1 == 1 {
@@ -59,7 +61,7 @@ impl Val {
         }
     }
     /// The meaningful bits (masked to `width`) — what a consumer stores/prints.
-    pub(super) fn masked(&self) -> u128 {
+    pub fn masked(&self) -> u128 {
         self.bits & mask(self.width)
     }
 }
@@ -708,8 +710,9 @@ pub(super) fn checked_width(n: i128) -> Result<u32, String> {
 /// `checked_*` arithmetic and guarded shifts, so an oversized const such as
 /// `1 << 200` is a clean error, never a debug panic or a silent release wrap.
 pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, String> {
-    let env: crate::checker::consteval::Env = ints.iter().map(|(k, v)| (k.clone(), *v)).collect();
-    crate::checker::consteval::eval(e, &env).map_err(|d| d.msg)
+    let env: mimz_core::checker::consteval::Env =
+        ints.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    mimz_core::checker::consteval::eval(e, &env).map_err(|d| d.msg)
 }
 
 /// A bit index or slice bound must be a non-negative integer inside the value's
@@ -793,8 +796,8 @@ mod tests {
                    veliyeedu picked: bits[8]\n  \
                    picked = pick([a, b], idx)\n\
                    }\n";
-        let tokens = crate::lexer::lex(src).expect("lex");
-        let file = crate::parser::parse(tokens).expect("parse");
+        let tokens = mimz_core::lexer::lex(src).expect("lex");
+        let file = mimz_core::parser::parse(tokens).expect("parse");
         let inputs: BTreeMap<String, u128> = [
             ("a".to_string(), 1u128),
             ("b".to_string(), 2u128),
@@ -838,8 +841,8 @@ mod tests {
             "{fn_src}\nmodule M {{\n  out result: bits[8]\n  result = {fn_name}({})\n}}\n",
             call_args.join(", ")
         );
-        let tokens = crate::lexer::lex(&src).expect("lex");
-        let file = crate::parser::parse(tokens).expect("parse");
+        let tokens = mimz_core::lexer::lex(&src).expect("lex");
+        let file = mimz_core::parser::parse(tokens).expect("parse");
         let outputs = super::super::comb::eval_outputs(
             std::slice::from_ref(&file),
             Some("M"),
@@ -878,13 +881,13 @@ mod tests {
     fn fn_loop_over_budget_errors_in_sim() {
         let src = format!(
             "fn overflow(x: bits[8]) -> bits[8] {{\n  loop i: 0..{} {{\n    if x == 0xFF {{ return x }}\n  }}\n  x\n}}\n",
-            crate::REPEAT_BUDGET + 1
+            mimz_core::REPEAT_BUDGET + 1
         );
         let full = format!(
             "{src}\nmodule M {{\n  in x: bits[8]\n  out result: bits[8]\n  result = overflow(x)\n}}\n"
         );
-        let tokens = crate::lexer::lex(&full).expect("lex");
-        let file = crate::parser::parse(tokens).expect("parse");
+        let tokens = mimz_core::lexer::lex(&full).expect("lex");
+        let file = mimz_core::parser::parse(tokens).expect("parse");
         let inputs: BTreeMap<String, u128> = [("x".to_string(), 1u128)].into_iter().collect();
         let result = super::super::comb::eval_outputs(
             std::slice::from_ref(&file),

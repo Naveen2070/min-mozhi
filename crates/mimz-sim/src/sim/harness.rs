@@ -17,14 +17,18 @@
 //! checker — semantic problems surface as runtime errors. Every run also
 //! captures a [`Timeline`] (one frame per tick) so `--trace` works here too,
 //! riding the same per-cycle snapshot the VCD writer consumes.
+//!
+//! A `sim { … }` block's peripheral binds talk only to [`EmulationHost`] — this
+//! module has zero knowledge of ratatui/cpal. The caller (`mimz::emulate`, the
+//! shell crate) implements the trait and decides `live`/`step` from real
+//! terminal state; a headless/CI host just no-ops.
 
 use std::collections::BTreeMap;
 
-use crate::ast::{self, BinOp, Expr, ExprKind, TestDecl, TestStmt};
+use mimz_core::ast::{self, BinOp, Expr, ExprKind, TestDecl, TestStmt};
 
-use super::elaborate::{Signal, elaborate_project};
-#[cfg(feature = "hw-emulation")]
-use super::emulate::{self, Peripheral};
+use super::elaborate::{Signal, Width, elaborate_project};
+use super::host::{Direction, EmulationHost};
 use super::kernel::Sim;
 use super::run::{Frame, MAX_SIM_CYCLES, Timeline};
 use super::value::{self, Val};
@@ -34,7 +38,6 @@ use super::value::{self, Val};
 const PERIOD: u64 = 10;
 
 /// Target dashboard refresh rate for frame-batched real-time pacing.
-#[cfg(feature = "hw-emulation")]
 const DASHBOARD_FPS: u64 = 30;
 
 /// Split `total` ticks into batches of at most `cycles_per_frame`, so a
@@ -43,7 +46,6 @@ const DASHBOARD_FPS: u64 = 30;
 /// ~1ms). Each batch runs instantly; the caller sleeps between batches to
 /// match wall-clock time. Pure and terminal-free, so it's unit-testable
 /// without a TTY.
-#[cfg(feature = "hw-emulation")]
 fn batch_sizes(total: u64, cycles_per_frame: u64) -> Vec<u64> {
     if total == 0 {
         return Vec::new();
@@ -60,7 +62,6 @@ fn batch_sizes(total: u64, cycles_per_frame: u64) -> Vec<u64> {
 }
 
 /// `cycles_per_frame = speed_hz / DASHBOARD_FPS`, floored to 1.
-#[cfg(feature = "hw-emulation")]
 fn cycles_per_frame(speed_hz: u64) -> u64 {
     (speed_hz / DASHBOARD_FPS).max(1)
 }
@@ -79,9 +80,9 @@ pub struct Outcome {
     /// Default trace scope: the module's interface + state (inputs, outputs,
     /// registers), in that order.
     pub default_scope: Vec<String>,
-    /// Set when the user pressed `q` during `--step`ping or at the
-    /// end-of-test dismiss screen — the caller should stop running any
-    /// further tests in this file rather than opening another dashboard.
+    /// Reserved for a future interactive-quit signal (e.g. pressing `q`
+    /// mid-`--step`). `EmulationHost` has no channel back for this today —
+    /// always `false` from this crate; a live host may grow one later.
     pub quit: bool,
 }
 
@@ -101,13 +102,19 @@ pub enum TestResult {
 /// Run one `test` block. `files` is the loaded project (`files[0]` the entry,
 /// the rest its imports) so a module-under-test that instantiates a sub-module
 /// from another file flattens; `src` is the entry source (for rendering
-/// expressions in failure messages). `Err` is a setup/semantic error; a normal
-/// `expect` failure is `Ok(Outcome { result: Fail(..), .. })`.
+/// expressions in failure messages). `host` is the caller's view of
+/// hardware-emulation peripherals (a headless/CI caller passes a no-op impl).
+/// `live` is whether ticks should pace/redraw in real time (the caller has
+/// already decided this from `--emulate` + a real terminal being attached);
+/// `step` additionally forces single-cycle batches for interactive stepping.
+/// `Err` is a setup/semantic error; a normal `expect` failure is
+/// `Ok(Outcome { result: Fail(..), .. })`.
 pub fn run_test(
     files: &[ast::File],
     src: &str,
     decl: &TestDecl,
-    emulate: bool,
+    host: Box<dyn EmulationHost>,
+    live: bool,
     step: bool,
 ) -> Result<Outcome, String> {
     let params = params(decl)?;
@@ -123,14 +130,8 @@ pub fn run_test(
         .chain(design.regs.iter().map(|r| r.name.clone()))
         .collect();
 
-    #[cfg(feature = "hw-emulation")]
     let outputs = design.outputs.clone();
-    #[cfg(feature = "hw-emulation")]
     let inputs = design.inputs.clone();
-    // Not read on this build: `emulate`/`step` only feed `live`/`stepping`
-    // below, which are themselves feature-gated.
-    #[cfg(not(feature = "hw-emulation"))]
-    let _ = (emulate, step);
     let sim = Sim::new(design);
     let signals: Vec<Signal> = sim
         .snapshot()?
@@ -138,30 +139,18 @@ pub fn run_test(
         .map(|(name, _, width)| Signal { name, width })
         .collect();
 
-    // Emulation is only ever "live" (throttled ticks + dashboard, wired up in
-    // Task 7) when the caller asked for it AND a real terminal is attached —
-    // this keeps `--emulate` a CI-safe no-op when stdout is piped/redirected.
-    // A `sim` block's binds still get constructed/validated either way (so a
-    // bad bind still errors), but once a non-live run reaches a `tick` with
-    // that `sim` block active, `TestStmt::Tick` bails out with `Stop::Skip`
-    // instead of falling through to the unbatched path: that path has no
-    // real-time pacing, so a `sim` block's `tick(clk, <large N>)` — sized for
-    // real-time audio/UART, not a quick sanity check — would just
-    // unbatched-tick N cycles for no reason.
-    #[cfg(feature = "hw-emulation")]
-    let (live, stepping, skip_reason) = {
-        use std::io::IsTerminal;
-        let is_tty = std::io::stdout().is_terminal();
-        let live = (emulate || step) && is_tty;
-        let stepping = step && live;
-        let skip_reason = if live || !has_sim_block(&decl.body) {
-            None
-        } else if !emulate && !step {
-            Some("needs --emulate to run its `sim` block".to_string())
-        } else {
-            Some("no terminal attached — run with --emulate in a real terminal".to_string())
-        };
-        (live, stepping, skip_reason)
+    // A `sim` block's binds still get constructed/validated regardless of
+    // `live` (so a bad bind still errors), but once a non-live run reaches a
+    // `tick` with that `sim` block active, `TestStmt::Tick` bails out with
+    // `Stop::Skip` instead of falling through to the unbatched path: that
+    // path has no real-time pacing, so a `sim` block's `tick(clk, <large
+    // N>)` — sized for real-time audio/UART, not a quick sanity check —
+    // would just unbatched-tick N cycles for no reason.
+    let stepping = step && live;
+    let skip_reason = if live || !has_sim_block(&decl.body) {
+        None
+    } else {
+        Some("needs --emulate to run its `sim` block".to_string())
     };
 
     let mut run = Run {
@@ -172,54 +161,28 @@ pub fn run_test(
         cycle: 0,
         frames: Vec::new(),
         checks: 0,
-        #[cfg(feature = "hw-emulation")]
-        name: decl.name.clone(),
-        #[cfg(feature = "hw-emulation")]
         outputs,
-        #[cfg(feature = "hw-emulation")]
         inputs,
-        #[cfg(feature = "hw-emulation")]
         active_sim: None,
-        #[cfg(feature = "hw-emulation")]
+        host,
         live,
-        #[cfg(feature = "hw-emulation")]
         stepping,
-        #[cfg(feature = "hw-emulation")]
         skip_reason,
-        #[cfg(feature = "hw-emulation")]
-        dashboard: None,
     };
     run.capture()?; // the initial (pre-tick) state
 
-    let (result, mut quit) = match run.exec(&decl.body) {
+    let (result, quit) = match run.exec(&decl.body) {
         Ok(()) => (TestResult::Pass, false),
         Err(Stop::Fail(m)) => (TestResult::Fail(m), false),
         Err(Stop::Skip(m)) => (TestResult::Skipped(m), false),
-        Err(Stop::Quit) => (TestResult::Skipped("aborted by user (q)".to_string()), true),
         Err(Stop::Err(e)) => return Err(e),
     };
 
     // Flush any peripheral that defers work to the end (`speaker`'s
-    // offline-rendered playback) — a no-op for everything else, and for
-    // `speaker` itself when it never ticked (skipped, or no `sim` block).
-    #[cfg(feature = "hw-emulation")]
-    if let Some(active) = &mut run.active_sim {
-        for (_, peripheral) in &mut active.peripherals {
-            peripheral.finish()?;
-        }
-    }
-
-    // A dashboard only ever opened for a live run — wait for the user to
-    // dismiss it (Enter) or quit (q) rather than yanking it away the
-    // instant the last cycle ticks.
-    #[cfg(feature = "hw-emulation")]
-    if !quit {
-        if let Some(dash) = &mut run.dashboard {
-            quit = dash
-                .wait_for_dismiss(&decl.name, run.cycle)
-                .map_err(|e| format!("dashboard input failed: {e}"))?;
-        }
-    }
+    // offline-rendered playback) — a no-op host impl for everything else,
+    // and for `speaker` itself when it never ticked (skipped, or no `sim`
+    // block).
+    run.host.finish()?;
 
     Ok(Outcome {
         name: decl.name.clone(),
@@ -237,8 +200,8 @@ pub fn run_test(
 
 /// Whether a test body has a `sim` block anywhere — including nested inside
 /// an `if`/`else`, which the grammar allows since both branches reuse the
-/// same `test_block` parser. Drives whether the no-TTY degrade note fires.
-#[cfg(feature = "hw-emulation")]
+/// same `test_block` parser. Drives whether the `--emulate` degrade note
+/// fires.
 fn has_sim_block(body: &[TestStmt]) -> bool {
     body.iter().any(|s| match s {
         TestStmt::Sim(_) => true,
@@ -261,14 +224,24 @@ fn params(decl: &TestDecl) -> Result<BTreeMap<String, i128>, String> {
 }
 
 /// How a test body stops early: a real `expect` failure (the test fails), a
-/// setup/semantic error (the whole command errors), a `sim`-block tick that
-/// isn't live and so isn't run (the test is skipped), or the user pressing
-/// `q` mid-`--step` (the whole run is aborted).
+/// setup/semantic error (the whole command errors), or a `sim`-block tick
+/// that isn't live and so isn't run (the test is skipped).
 enum Stop {
     Fail(String),
     Err(String),
     Skip(String),
-    Quit,
+}
+
+/// The registered peripherals' real-world clock rate for the test's `sim`
+/// block, if it has one, plus the bound port names — direction and dispatch
+/// for each is looked up from `host` on demand
+/// (`EmulationHost::direction_of`), so this crate never needs its own
+/// peripheral registry.
+struct ActiveSim {
+    /// Real-world clock rate in Hz, if a `speed` clause was given.
+    speed_hz: Option<u64>,
+    /// Port names bound in this `sim` block, in bind order.
+    bound: Vec<String>,
 }
 
 /// One test in flight.
@@ -280,55 +253,33 @@ struct Run<'a> {
     cycle: u64,
     frames: Vec<Frame>,
     checks: usize,
-    /// The quoted test name — only needed for the dashboard's title row
-    /// today (`Outcome.name` is assembled separately at the end of
-    /// `run_test`), so it's feature-gated along with the dashboard.
-    #[cfg(feature = "hw-emulation")]
-    name: String,
     /// The module's output ports (name + folded width), captured before
     /// `design` moved into `Sim::new` — used to validate `bind` targets
     /// against `Direction::Output` peripherals (`led`, `uart_tx`).
-    #[cfg(feature = "hw-emulation")]
     outputs: Vec<Signal>,
     /// The module's input ports, same reasoning — used for
     /// `Direction::Input` peripherals (`uart_rx`).
-    #[cfg(feature = "hw-emulation")]
     inputs: Vec<Signal>,
-    #[cfg(feature = "hw-emulation")]
     active_sim: Option<ActiveSim>,
-    /// `emulate` requested AND stdout is a real terminal. Gates
-    /// `TestStmt::Tick`'s batched pacing: when true and a `sim` block is
-    /// active, ticks run in speed-sized batches with a wall-clock sleep
-    /// between batches instead of unthrottled.
-    #[cfg(feature = "hw-emulation")]
+    /// The caller's view of hardware-emulation peripherals — a headless/CI
+    /// caller passes a no-op impl; the shell passes one backed by
+    /// ratatui/cpal.
+    host: Box<dyn EmulationHost>,
+    /// `--emulate` requested AND (decided by the caller) a real terminal is
+    /// attached. Gates `TestStmt::Tick`'s batched pacing: when true and a
+    /// `sim` block is active, ticks run in speed-sized batches, calling
+    /// `host.frame()` once per batch instead of unthrottled.
     live: bool,
-    /// `--step` requested AND live. Overrides batching to advance exactly
-    /// one cycle at a time, blocking after each for a keypress instead of
-    /// a wall-clock sleep.
-    #[cfg(feature = "hw-emulation")]
+    /// `--step` requested AND live. Forces single-cycle batches — one
+    /// `host.frame()` call per cycle — instead of speed-sized batches, for
+    /// interactive stepping. Any actual pause-for-keypress lives entirely
+    /// inside the host's `frame()` impl; this crate just drives it one
+    /// cycle at a time.
     stepping: bool,
     /// Why this test would be skipped if a `tick` runs while a `sim` block
     /// is active and the run isn't live — `None` iff `live` (or the test
     /// has no `sim` block at all).
-    #[cfg(feature = "hw-emulation")]
     skip_reason: Option<String>,
-    /// Opened lazily on the first batch that needs it (once a `sim` block
-    /// is active and pacing kicks in), held for the rest of the test, and
-    /// restored via `Drop` when `Run` itself drops at the end of
-    /// `run_test` — one dashboard per test, closed before the next starts.
-    #[cfg(feature = "hw-emulation")]
-    dashboard: Option<emulate::dashboard::Dashboard>,
-}
-
-/// The registered peripherals + real-world clock rate for the test's `sim`
-/// block, if it has one. `speed_hz` sizes each batch (`batch_cycles`);
-/// `peripherals` are notified once per batch (`notify_peripherals`).
-#[cfg(feature = "hw-emulation")]
-struct ActiveSim {
-    /// Real-world clock rate in Hz, if a `speed` clause was given.
-    speed_hz: Option<u64>,
-    /// `(port name, peripheral)` — updated once per batched frame.
-    peripherals: Vec<(String, Box<dyn Peripheral>)>,
 }
 
 impl Run<'_> {
@@ -350,7 +301,6 @@ impl Run<'_> {
                     // above regardless of `live` — only the tick itself,
                     // sized for real-time pacing, is skipped when there's no
                     // real time to pace against.
-                    #[cfg(feature = "hw-emulation")]
                     if self.active_sim.is_some() && !self.live {
                         return Err(Stop::Skip(self.skip_reason.clone().unwrap_or_default()));
                     }
@@ -366,10 +316,7 @@ impl Run<'_> {
                     };
                     // Bound total simulated cycles so a `tick(clk, <huge>)` in an
                     // untrusted test can't hang the tool or exhaust memory.
-                    #[cfg(feature = "hw-emulation")]
                     let limit = if self.live { u64::MAX } else { MAX_SIM_CYCLES };
-                    #[cfg(not(feature = "hw-emulation"))]
-                    let limit = MAX_SIM_CYCLES;
 
                     if self.cycle.saturating_add(n) > limit {
                         let limit_str = if limit == u64::MAX {
@@ -381,66 +328,28 @@ impl Run<'_> {
                             "test exceeds the {limit_str}-cycle simulation limit"
                         )));
                     }
-                    #[cfg(feature = "hw-emulation")]
                     let batched = self.live && self.active_sim.is_some();
-                    #[cfg(not(feature = "hw-emulation"))]
-                    let batched = false;
                     if batched {
-                        #[cfg(feature = "hw-emulation")]
-                        {
-                            if self.dashboard.is_none() {
-                                self.dashboard =
-                                    Some(emulate::dashboard::Dashboard::open().map_err(|e| {
-                                        Stop::Err(format!(
-                                            "could not open the emulation dashboard: {e}"
-                                        ))
-                                    })?);
+                        let batch_size = if self.stepping { 1 } else { self.batch_cycles() };
+                        for batch in batch_sizes(n, batch_size) {
+                            let started = std::time::Instant::now();
+                            for _ in 0..batch {
+                                self.drive_peripherals().map_err(Stop::Err)?;
+                                self.sim.tick(&clock.name).map_err(Stop::Err)?;
+                                self.cycle += 1;
+                                if self.cycle <= 1_000_000 {
+                                    self.capture().map_err(Stop::Err)?;
+                                }
+                                self.notify_on_tick().map_err(Stop::Err)?;
                             }
-                            let batch_size = if self.stepping {
-                                1
-                            } else {
-                                self.batch_cycles()
-                            };
-                            for batch in batch_sizes(n, batch_size) {
-                                let started = std::time::Instant::now();
-                                for _ in 0..batch {
-                                    self.drive_peripherals().map_err(Stop::Err)?;
-                                    self.sim.tick(&clock.name).map_err(Stop::Err)?;
-                                    self.cycle += 1;
-                                    if self.cycle <= 1_000_000 {
-                                        self.capture().map_err(Stop::Err)?;
-                                    }
-                                    self.notify_on_tick().map_err(Stop::Err)?;
-                                }
-                                self.notify_peripherals().map_err(Stop::Err)?;
-                                let hint =
-                                    self.stepping.then_some("step: Enter to advance, q to quit");
-                                if let Some(dash) = &mut self.dashboard {
-                                    dash.draw(
-                                        &self.name,
-                                        self.cycle,
-                                        &self.active_sim.as_ref().unwrap().peripherals,
-                                        hint,
-                                    )
-                                    .map_err(|e| {
-                                        Stop::Err(format!("dashboard draw failed: {e}"))
-                                    })?;
-                                }
-                                if self.stepping {
-                                    let quit =
-                                        self.dashboard.as_mut().unwrap().wait_for_step().map_err(
-                                            |e| Stop::Err(format!("dashboard input failed: {e}")),
-                                        )?;
-                                    if quit {
-                                        return Err(Stop::Quit);
-                                    }
-                                } else if let Some(remaining) =
+                            self.notify_peripherals().map_err(Stop::Err)?;
+                            self.host.frame().map_err(Stop::Err)?;
+                            if !self.stepping
+                                && let Some(remaining) =
                                     Self::frame_budget().checked_sub(started.elapsed())
-                                {
-                                    if self.active_sim.as_ref().and_then(|a| a.speed_hz).is_some() {
-                                        std::thread::sleep(remaining);
-                                    }
-                                }
+                                && self.active_sim.as_ref().and_then(|a| a.speed_hz).is_some()
+                            {
+                                std::thread::sleep(remaining);
                             }
                         }
                     } else {
@@ -467,7 +376,6 @@ impl Run<'_> {
                         self.exec(e)?;
                     }
                 }
-                #[cfg(feature = "hw-emulation")]
                 TestStmt::Sim(block) => {
                     let speed_hz = match &block.speed {
                         Some(e) => {
@@ -481,20 +389,10 @@ impl Run<'_> {
                         }
                         None => None,
                     };
-                    let registry = emulate::registry();
-                    let mut peripherals = Vec::new();
+                    let mut bound = Vec::new();
                     for b in &block.binds {
-                        let entry = registry.get(b.peripheral.name.as_str()).ok_or_else(|| {
-                            let mut known: Vec<&str> = registry.keys().copied().collect();
-                            known.sort_unstable();
-                            Stop::Err(format!(
-                                "unknown peripheral `{}` — known: {}",
-                                b.peripheral.name,
-                                known.join(", ")
-                            ))
-                        })?;
-                        let width = match entry.direction {
-                            emulate::Direction::Output => match self.port_width(&b.port.name) {
+                        let width = match self.host.direction_of(b.peripheral.name.as_str()) {
+                            Some(Direction::Output) => match self.port_width(&b.port.name) {
                                 Some(w) => w,
                                 None => {
                                     let msg = if self.input_width(&b.port.name).is_some() {
@@ -511,7 +409,7 @@ impl Run<'_> {
                                     return Err(Stop::Err(msg));
                                 }
                             },
-                            emulate::Direction::Input => match self.input_width(&b.port.name) {
+                            Some(Direction::Input) => match self.input_width(&b.port.name) {
                                 Some(w) => w,
                                 None => {
                                     let msg = if self.port_width(&b.port.name).is_some() {
@@ -528,19 +426,20 @@ impl Run<'_> {
                                     return Err(Stop::Err(msg));
                                 }
                             },
+                            None => {
+                                return Err(Stop::Err(format!(
+                                    "unknown peripheral `{}`",
+                                    b.peripheral.name
+                                )));
+                            }
                         };
-                        let p = (entry.construct)(width, &b.args, speed_hz).map_err(Stop::Err)?;
-                        peripherals.push((b.port.name.clone(), p));
+                        self.host
+                            .bind(b.peripheral.name.as_str(), width, &b.args, speed_hz)
+                            .map_err(Stop::Err)?;
+                        bound.push(b.port.name.clone());
                     }
-                    self.active_sim = Some(ActiveSim {
-                        speed_hz,
-                        peripherals,
-                    });
+                    self.active_sim = Some(ActiveSim { speed_hz, bound });
                 }
-                // Without `hw-emulation`, a `sim` block parses but has no
-                // dashboard/peripherals to run against — nothing to execute.
-                #[cfg(not(feature = "hw-emulation"))]
-                TestStmt::Sim(_) => {}
                 // Unreachable: the sim runs on a strict-parsed tree, which
                 // carries no `Error` placeholder.
                 TestStmt::Error(_) => {}
@@ -552,8 +451,7 @@ impl Run<'_> {
     /// The folded `Width` of an output port, or `None` if `name` isn't
     /// one — used to validate `Direction::Output` binds (`led`,
     /// `uart_tx`). See `input_width` for `Direction::Input` binds.
-    #[cfg(feature = "hw-emulation")]
-    fn port_width(&self, name: &str) -> Option<super::elaborate::Width> {
+    fn port_width(&self, name: &str) -> Option<Width> {
         self.outputs
             .iter()
             .find(|s| s.name == name)
@@ -563,15 +461,13 @@ impl Run<'_> {
     /// The folded `Width` of an input port, or `None` if `name` isn't one
     /// — used to validate `uart_rx`-style binds, which drive an INPUT
     /// rather than observe an OUTPUT (`port_width`'s job).
-    #[cfg(feature = "hw-emulation")]
-    fn input_width(&self, name: &str) -> Option<super::elaborate::Width> {
+    fn input_width(&self, name: &str) -> Option<Width> {
         self.inputs.iter().find(|s| s.name == name).map(|s| s.width)
     }
 
     /// How many ticks make up one batch: the declared `speed`'s
     /// cycles-per-frame, or `u64::MAX` (one batch, no pacing) if the `sim`
     /// block gave no `speed`.
-    #[cfg(feature = "hw-emulation")]
     fn batch_cycles(&self) -> u64 {
         self.active_sim
             .as_ref()
@@ -580,68 +476,67 @@ impl Run<'_> {
             .unwrap_or(u64::MAX)
     }
 
-    /// Call `on_change` for every bound peripheral whose port has a width —
-    /// reads the signal's live value straight from `self.sim`, NOT from a
-    /// captured frame: capture stops past `MAX_SIM_CYCLES`'s 1M-frame cap
-    /// (see `capture`), so a frame is stale forever after that point while
-    /// the sim keeps ticking underneath it.
-    #[cfg(feature = "hw-emulation")]
+    /// Call `on_change` on the host for every bound OUTPUT port — reads the
+    /// signal's live value straight from `self.sim`, NOT from a captured
+    /// frame: capture stops past `MAX_SIM_CYCLES`'s 1M-frame cap (see
+    /// `capture`), so a frame is stale forever after that point while the
+    /// sim keeps ticking underneath it.
     fn notify_peripherals(&mut self) -> Result<(), String> {
-        let outputs = &self.outputs;
-        let sim = &self.sim;
-        let Some(active) = &mut self.active_sim else {
+        let Some(active) = &self.active_sim else {
             return Ok(());
         };
-        for (port, peripheral) in &mut active.peripherals {
-            let Some(width) = outputs.iter().find(|s| &s.name == port).map(|s| s.width) else {
+        let bound = active.bound.clone();
+        for port in &bound {
+            let Some(width) = self.outputs.iter().find(|s| &s.name == port).map(|s| s.width)
+            else {
                 continue;
             };
-            let raw = sim.peek(port)?;
-            peripheral.on_change(&Val::new(raw, width.bits, width.signed));
+            let raw = self.sim.peek(port)?;
+            self.host
+                .on_change(port, &Val::new(raw, width.bits, width.signed));
         }
         Ok(())
     }
 
-    /// Call `on_tick` for every bound peripheral, every individual cycle
-    /// (not just batch-end) — the hook `uart_tx`'s decoder needs; a cheap
-    /// no-op for peripherals that don't override it (`led`). Searches both
-    /// `outputs` and `inputs` for the port's width since a peripheral may be
-    /// bound to either. Reads the live value via `self.sim.peek`, same
-    /// staleness reasoning as `notify_peripherals`.
-    #[cfg(feature = "hw-emulation")]
+    /// Call `on_tick` on the host for every bound peripheral, every
+    /// individual cycle (not just batch-end) — the hook `uart_tx`'s decoder
+    /// needs; a cheap no-op host-side for peripherals that don't care
+    /// (`led`). Searches both `outputs` and `inputs` for the port's width
+    /// since a peripheral may be bound to either. Reads the live value via
+    /// `self.sim.peek`, same staleness reasoning as `notify_peripherals`.
     fn notify_on_tick(&mut self) -> Result<(), String> {
-        let outputs = &self.outputs;
-        let inputs = &self.inputs;
-        let sim = &self.sim;
-        let Some(active) = &mut self.active_sim else {
+        let Some(active) = &self.active_sim else {
             return Ok(());
         };
-        for (port, peripheral) in &mut active.peripherals {
-            let width = outputs
+        let bound = active.bound.clone();
+        for port in &bound {
+            let width = self
+                .outputs
                 .iter()
-                .chain(inputs.iter())
+                .chain(self.inputs.iter())
                 .find(|s| &s.name == port)
                 .map(|s| s.width);
             let Some(width) = width else { continue };
-            let raw = sim.peek(port)?;
-            peripheral.on_tick(&Val::new(raw, width.bits, width.signed))?;
+            let raw = self.sim.peek(port)?;
+            self.host
+                .on_tick(port, &Val::new(raw, width.bits, width.signed))?;
         }
         Ok(())
     }
 
-    /// Call `drive` on every bound peripheral before the cycle's tick,
-    /// applying any returned bit to that peripheral's port. Collects all
-    /// (port, bit) pairs before applying them so the loop never holds a
-    /// mutable borrow of `self.active_sim` at the same time as
-    /// `self.sim.set` needs one of `self.sim`.
-    #[cfg(feature = "hw-emulation")]
+    /// Call `drive` on the host for every bound peripheral before the
+    /// cycle's tick, applying any returned bit to that peripheral's port.
+    /// Collects all (port, bit) pairs before applying them so the loop
+    /// never holds a borrow of `self.active_sim`/`self.host` at the same
+    /// time `self.sim.set` needs one of `self.sim`.
     fn drive_peripherals(&mut self) -> Result<(), String> {
-        let Some(active) = &mut self.active_sim else {
+        let Some(active) = &self.active_sim else {
             return Ok(());
         };
+        let bound = active.bound.clone();
         let mut sets = Vec::new();
-        for (port, peripheral) in &mut active.peripherals {
-            if let Some(bit) = peripheral.drive() {
+        for port in &bound {
+            if let Some(bit) = self.host.drive(port) {
                 sets.push((port.clone(), bit));
             }
         }
@@ -652,7 +547,6 @@ impl Run<'_> {
     }
 
     /// One dashboard frame's wall-clock budget.
-    #[cfg(feature = "hw-emulation")]
     fn frame_budget() -> std::time::Duration {
         std::time::Duration::from_millis(1000 / DASHBOARD_FPS)
     }
@@ -723,13 +617,62 @@ fn show(v: Val) -> String {
 mod tests {
     use super::*;
 
+    /// Minimal `EmulationHost` test double — only `led`/`speaker`/`uart_tx`
+    /// (Output) and `uart_rx` (Input) are known peripherals, mirroring the
+    /// real registry closely enough that the bind-validation tests below
+    /// exercise the same "unknown peripheral" / direction-mismatch paths.
+    struct NullHost;
+    impl EmulationHost for NullHost {
+        fn bind(
+            &mut self,
+            name: &str,
+            _width: Width,
+            _args: &[ast::BindArg],
+            _speed_hz: Option<u64>,
+        ) -> Result<(), String> {
+            match name {
+                "led" | "speaker" | "uart_tx" | "uart_rx" => Ok(()),
+                other => Err(format!("unknown peripheral `{other}`")),
+            }
+        }
+        fn direction_of(&self, name: &str) -> Option<Direction> {
+            match name {
+                "led" | "speaker" | "uart_tx" => Some(Direction::Output),
+                "uart_rx" => Some(Direction::Input),
+                _ => None,
+            }
+        }
+        fn on_change(&mut self, _name: &str, _val: &Val) {}
+        fn on_tick(&mut self, _name: &str, _val: &Val) -> Result<(), String> {
+            Ok(())
+        }
+        fn drive(&mut self, _name: &str) -> Option<u64> {
+            None
+        }
+        fn frame(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    fn run_test_headless(
+        files: &[ast::File],
+        src: &str,
+        decl: &TestDecl,
+    ) -> Result<Outcome, String> {
+        run_test(files, src, decl, Box::new(NullHost), false, false)
+    }
+
     fn run(src: &str) -> Vec<Outcome> {
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
+            .expect("parses");
         f.items
             .iter()
             .filter_map(|i| match i {
                 ast::TopItem::Test(t) => {
-                    Some(run_test(std::slice::from_ref(&f), src, t, false, false).expect("runs"))
+                    Some(run_test_headless(std::slice::from_ref(&f), src, t).expect("runs"))
                 }
                 _ => None,
             })
@@ -805,7 +748,8 @@ mod tests {
     fn an_unknown_clock_is_an_error() {
         let src =
             format!("{COUNTER}\ntest \"bad clock\" for Counter(WIDTH: 4) {{\n  tick(nope)\n}}\n");
-        let f = crate::parser::parse(crate::lexer::lex(&src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(&src).expect("lexes"))
+            .expect("parses");
         let decl = f
             .items
             .iter()
@@ -814,7 +758,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), &src, decl, false, false).unwrap_err();
+        let err = run_test_headless(std::slice::from_ref(&f), &src, decl).unwrap_err();
         assert!(err.contains("not a clock"), "got: {err}");
     }
 
@@ -830,12 +774,12 @@ mod tests {
         assert_eq!(outs[0].default_scope, vec!["count", "value"]);
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn sim_block_with_unknown_peripheral_errors() {
         let src = "module M {\n  clock clk\n  out playing: bit\n  playing = 1\n}\n\
                     test \"t\" for M {\n  sim {\n    bind playing -> microphone()\n  }\n  tick(clk)\n}\n";
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
+            .expect("parses");
         let decl = f
             .items
             .iter()
@@ -844,16 +788,16 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
+        let err = run_test_headless(std::slice::from_ref(&f), src, decl).unwrap_err();
         assert!(err.contains("unknown peripheral"), "got: {err}");
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn sim_block_with_unknown_port_errors() {
         let src = "module M {\n  clock clk\n  out playing: bit\n  playing = 1\n}\n\
                     test \"t\" for M {\n  sim {\n    bind nope -> led()\n  }\n  tick(clk)\n}\n";
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
+            .expect("parses");
         let decl = f
             .items
             .iter()
@@ -862,16 +806,16 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
+        let err = run_test_headless(std::slice::from_ref(&f), src, decl).unwrap_err();
         assert!(err.contains("nope"), "got: {err}");
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn sim_block_binding_an_input_to_an_output_peripheral_errors() {
         let src = "module M {\n  clock clk\n  in start: bit\n  out playing: bit\n  playing = start\n}\n\
                     test \"t\" for M {\n  sim {\n    bind start -> led()\n  }\n  tick(clk)\n}\n";
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
+            .expect("parses");
         let decl = f
             .items
             .iter()
@@ -880,7 +824,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
+        let err = run_test_headless(std::slice::from_ref(&f), src, decl).unwrap_err();
         // `start` genuinely exists as an input — this must produce the
         // direction-aware message, not the generic "no such port" one
         // (which would also happen to contain "output port" and "start",
@@ -889,12 +833,12 @@ mod tests {
         assert!(err.contains("binds to an output port, but"), "got: {err}");
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn sim_block_binding_an_output_to_an_input_peripheral_errors() {
         let src = "module M {\n  clock clk\n  in start: bit\n  out playing: bit\n  playing = start\n}\n\
                     test \"t\" for M {\n  sim {\n    bind playing -> uart_rx()\n  }\n  tick(clk)\n}\n";
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
+            .expect("parses");
         let decl = f
             .items
             .iter()
@@ -903,19 +847,19 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
+        let err = run_test_headless(std::slice::from_ref(&f), src, decl).unwrap_err();
         // Mirror of the test above: `playing` genuinely exists as an output
         // — this must produce the direction-aware message, not the generic
         // "no such port" one.
         assert!(err.contains("binds to an input port, but"), "got: {err}");
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn sim_block_with_speaker_bound_runs_fine_without_emulate() {
         let src = "module M {\n  clock clk\n  in start: bit\n  out tone: bit\n  tone = start\n}\n\
                     test \"t\" for M {\n  start = 1\n  sim {\n    speed mhz(1)\n    bind tone -> speaker()\n  }\n  tick(clk, 4)\n}\n";
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
+            .expect("parses");
         let decl = f
             .items
             .iter()
@@ -924,15 +868,14 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        // `emulate: false` (second-to-last arg) — `on_tick` never runs in
-        // this mode, so `speaker`'s real audio device is never touched
-        // even though it's bound. This is the proof that a headless/CI
-        // run is safe.
-        run_test(std::slice::from_ref(&f), src, decl, false, false)
+        // `live: false` (second-to-last arg) — `on_tick` never runs in this
+        // mode, so `speaker`'s real audio device is never touched even
+        // though it's bound. This is the proof that a headless/CI run is
+        // safe.
+        run_test_headless(std::slice::from_ref(&f), src, decl)
             .expect("test passes without touching audio hardware");
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn batch_sizes_splits_evenly() {
         assert_eq!(batch_sizes(100, 30), vec![30, 30, 30, 10]);
@@ -940,7 +883,6 @@ mod tests {
         assert_eq!(batch_sizes(5, 30), vec![5]);
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn cycles_per_frame_floors_to_one() {
         assert_eq!(cycles_per_frame(50_000_000), 50_000_000 / 30);
@@ -960,7 +902,6 @@ mod tests {
         assert_eq!(outs[0].checks, 1);
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
     fn has_sim_block_only_true_when_a_sim_block_is_present() {
         // A body with no `sim` block (the common case — most tests never
@@ -986,9 +927,9 @@ mod tests {
         assert!(has_sim_block(&test_body(&nested)));
     }
 
-    #[cfg(feature = "hw-emulation")]
     fn test_body(src: &str) -> Vec<TestStmt> {
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
+            .expect("parses");
         f.items
             .iter()
             .find_map(|i| match i {
@@ -998,20 +939,18 @@ mod tests {
             .unwrap()
     }
 
-    #[cfg(feature = "hw-emulation")]
     #[test]
-    fn emulate_true_without_tty_still_passes() {
-        // Can't fake `IsTerminal` in-process without a real terminal, so this
-        // test only proves the emulating-but-headless path (this test process
-        // itself is never a TTY under `cargo test`) still produces a normal
-        // Pass — i.e. passing `emulate: true` never breaks a test run even
-        // when no terminal is attached, which is exactly the CI-safety
-        // property `run_test` is supposed to guarantee.
+    fn live_true_without_a_dashboard_still_passes() {
+        // Proves passing `live: true` never breaks a headless test run even
+        // with a no-op host — the CI-safety property `run_test` is supposed
+        // to guarantee now that dashboard interactivity lives entirely in
+        // the caller's `EmulationHost` impl.
         let src = format!(
             "{COUNTER}\ntest \"counts\" for Counter(WIDTH: 4) {{\n  \
              rst = 0\n  tick(clk, 3)\n  expect count == 3\n}}\n"
         );
-        let f = crate::parser::parse(crate::lexer::lex(&src).expect("lexes")).expect("parses");
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(&src).expect("lexes"))
+            .expect("parses");
         let decl = f
             .items
             .iter()
@@ -1020,7 +959,8 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let outcome = run_test(std::slice::from_ref(&f), &src, decl, true, false).expect("runs");
+        let outcome = run_test(std::slice::from_ref(&f), &src, decl, Box::new(NullHost), true, false)
+            .expect("runs");
         assert!(passes(&outcome));
     }
 }
