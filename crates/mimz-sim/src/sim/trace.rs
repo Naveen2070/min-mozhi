@@ -105,7 +105,8 @@ mod tests {
         let src = "module Counter(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  \
                    out count: bits[WIDTH]\n  reg value: bits[WIDTH] = 0\n  \
                    on rise(clk) { value <- value +% 1 }\n  count = value\n}\n";
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         let d = elaborate(&f, None, &BTreeMap::new()).expect("elaborates");
         run(
             d,

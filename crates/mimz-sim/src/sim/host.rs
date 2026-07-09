@@ -5,11 +5,8 @@
 //! zero knowledge of ratatui/cpal. The shell crate (`mimz::emulate`, Task 7)
 //! implements this trait; the harness (Task 4) is rewritten to call it.
 
-// TODO(task-4): `elaborate.rs`/`value.rs` haven't moved into `mimz-sim` yet
-// (that's Task 4), so `Width`/`Val` don't exist here. Restore these once
-// they land, and un-comment the `width`/`val` parameter types below.
-// use super::elaborate::Width;
-// use super::value::Val;
+use super::elaborate::Width;
+use super::value::Val;
 
 /// A `sim{}` block bind argument, e.g. `color: "red"` or `baud: 9600`.
 pub use mimz_core::ast::BindArg;
@@ -34,8 +31,7 @@ pub trait EmulationHost {
     fn bind(
         &mut self,
         name: &str,
-        // TODO(task-4): restore `width: Width` once `elaborate::Width`
-        // moves into mimz-sim.
+        width: Width,
         args: &[BindArg],
         speed_hz: Option<u64>,
     ) -> Result<(), String>;
@@ -44,14 +40,10 @@ pub trait EmulationHost {
     fn direction_of(&self, name: &str) -> Option<Direction>;
 
     /// Called on every value change for a bound port.
-    // TODO(task-4): restore `val: &super::value::Val` once `value::Val`
-    // moves into mimz-sim.
-    fn on_change(&mut self, name: &str);
+    fn on_change(&mut self, name: &str, val: &Val);
 
     /// Called once per simulated cycle (drives `uart_tx`/`speaker` playback).
-    // TODO(task-4): restore `val: &super::value::Val` once `value::Val`
-    // moves into mimz-sim.
-    fn on_tick(&mut self, name: &str) -> Result<(), String>;
+    fn on_tick(&mut self, name: &str, val: &Val) -> Result<(), String>;
 
     /// Called for input peripherals (e.g. `uart_rx`) to pull a driven value.
     fn drive(&mut self, name: &str) -> Option<u64>;

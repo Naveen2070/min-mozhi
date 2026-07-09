@@ -12,7 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::ast::Edge;
+use mimz_core::ast::Edge;
 
 use super::elaborate::{Design, Signal};
 use super::kernel::Sim;
@@ -216,7 +216,8 @@ mod tests {
         count = value\n}\n";
 
     fn design(src: &str) -> Design {
-        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         elaborate(&f, None, &BTreeMap::new()).expect("elaborates")
     }
 

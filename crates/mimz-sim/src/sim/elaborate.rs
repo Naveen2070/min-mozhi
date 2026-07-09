@@ -21,7 +21,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::ast::{
+use mimz_core::ast::{
     self, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg, Pattern, SeqStmt, UnOp,
 };
 
@@ -29,8 +29,8 @@ use super::value::{const_eval, pick_module, type_width};
 
 /// Max `repeat` iterations the simulator will unroll — the same crate-root
 /// constant the emitter uses, so a design that compiles also elaborates (the
-/// simulator is the emitter's differential oracle). See [`crate::REPEAT_BUDGET`].
-use crate::REPEAT_BUDGET;
+/// simulator is the emitter's differential oracle). See [`mimz_core::REPEAT_BUDGET`].
+use mimz_core::REPEAT_BUDGET;
 
 /// Max instance-nesting depth the simulator will flatten. `mimz sim`/`mimz test`
 /// run on the parsed AST WITHOUT the checker (which has its own recursion guard),
@@ -332,7 +332,7 @@ pub fn elaborate(
 }
 
 /// Elaborate the entry module across a loaded project (`files[0]` is the entry,
-/// the rest are its imports — the order [`crate::project::load_project`] returns).
+/// the rest are its imports — the order [`mimz_core::project::load_project`] returns).
 /// Instances are **flattened**: each child is elaborated and inlined into the
 /// parent with its signals name-prefixed (`inst.port` → wire `inst_port`,
 /// matching the Verilog emitter), so the flat [`Design`] the kernel runs is
@@ -1075,14 +1075,14 @@ fn conn_signal_name(e: &Expr) -> Result<String, String> {
     }
 }
 
-fn ident_expr(name: String, span: crate::span::Span) -> Expr {
+fn ident_expr(name: String, span: mimz_core::span::Span) -> Expr {
     Expr {
         kind: ExprKind::Ident(name),
         span,
     }
 }
 
-fn int_expr(v: i128, span: crate::span::Span) -> Expr {
+fn int_expr(v: i128, span: mimz_core::span::Span) -> Expr {
     if v >= 0 {
         return Expr {
             kind: ExprKind::Int {
@@ -1206,7 +1206,7 @@ fn record_drive(
 /// `clog2` matching the Verilog emitter and the `clog2` const-builtin: the bit
 /// width of an `n`-variant enum encoding (one source of truth, so they agree).
 fn clog2(n: usize) -> u32 {
-    crate::checker::consteval::clog2_bits(n as u128)
+    mimz_core::checker::consteval::clog2_bits(n as u128)
 }
 
 /// Returns true if `ty` is a bundle type (either `Type::Bundle` or a
@@ -1250,7 +1250,7 @@ fn bundle_type_info(
 /// - If `expr` is an `Ident` (a bundle signal reference), returns `expr.field`
 ///   (dot-access, which `Rw::field` will flatten to `ident_fieldname`).
 /// - Otherwise, falls back to a dot-access node.
-fn bundle_field_expr(expr: &Expr, field: &str, span: crate::span::Span) -> Expr {
+fn bundle_field_expr(expr: &Expr, field: &str, span: mimz_core::span::Span) -> Expr {
     if let ExprKind::BundleLit(inits) = &expr.kind {
         if let Some(fi) = inits.iter().find(|fi| fi.name.name == field) {
             return fi.value.clone();
@@ -1679,7 +1679,7 @@ mod tests {
     use super::*;
 
     fn parse(src: &str) -> ast::File {
-        crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses")
+        mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses")
     }
 
     fn design(src: &str) -> Design {

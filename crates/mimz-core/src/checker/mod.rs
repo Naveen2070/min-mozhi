@@ -13,7 +13,7 @@
 //! docs/code/11-checker.md — new codes are added there in the same commit.
 
 mod clocks;
-pub(crate) mod consteval;
+pub mod consteval;
 mod drivers;
 mod funcs;
 mod names;
