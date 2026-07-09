@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use mimz::sim::run::MAX_SIM_CYCLES;
+
 fn mimz() -> Command {
     Command::new(env!("CARGO_BIN_EXE_mimz"))
 }
@@ -44,13 +46,14 @@ fn trace_table_shows_a_row_per_cycle() {
 
 #[test]
 fn cycles_over_the_limit_is_rejected_by_the_cli() {
-    // SEC: --cycles past MAX_SIM_CYCLES (1_000_000) is rejected at parse time, so
-    // a huge value can't drive an unbounded frame-allocation loop.
+    // SEC: --cycles past MAX_SIM_CYCLES is rejected at parse time, so a huge
+    // value can't drive an unbounded frame-allocation loop.
+    let over = (MAX_SIM_CYCLES + 1).to_string();
     let p = temp_mimz(COUNTER);
     let out = mimz()
         .args(["sim"])
         .arg(&p)
-        .args(["--cycles", "2000000"])
+        .args(["--cycles", &over])
         .output()
         .unwrap();
     assert!(
@@ -462,11 +465,14 @@ fn run_test_ok(src: &str) {
         .collect();
     assert!(!tests.is_empty(), "no test blocks found in src");
     for decl in tests {
-        let outcome = run_test(std::slice::from_ref(&file), src, decl, false)
+        let outcome = run_test(std::slice::from_ref(&file), src, decl, false, false)
             .unwrap_or_else(|e| panic!("test `{}` errored: {e}", decl.name));
         match &outcome.result {
             TestResult::Pass => {}
             TestResult::Fail(msg) => panic!("test `{}` failed:\n{msg}", decl.name),
+            TestResult::Skipped(reason) => {
+                panic!("test `{}` unexpectedly skipped: {reason}", decl.name)
+            }
         }
     }
 }

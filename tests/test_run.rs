@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use mimz::sim::run::MAX_SIM_CYCLES;
+
 fn mimz() -> Command {
     Command::new(env!("CARGO_BIN_EXE_mimz"))
 }
@@ -42,12 +44,12 @@ fn a_passing_test_exits_zero() {
 
 #[test]
 fn a_tick_count_over_the_cycle_limit_errors_fast_not_hangs() {
-    // SEC: `tick(clk, n)` with n past MAX_SIM_CYCLES (1_000_000) must fail fast
-    // with a clean error, NEVER loop n times pushing frames (untrusted-input DoS).
-    // 2_000_000 > the cap; if the guard regressed this test would hang, not fail.
+    // SEC: `tick(clk, n)` with n past MAX_SIM_CYCLES must fail fast with a
+    // clean error, NEVER loop n times pushing frames (untrusted-input DoS).
+    let over = MAX_SIM_CYCLES + 1;
     let src = format!(
         "{COUNTER}\ntest \"huge\" for Counter(WIDTH: 4) {{\n  \
-         rst = 0\n  tick(clk, 2000000)\n  expect count == 0\n}}\n"
+         rst = 0\n  tick(clk, {over})\n  expect count == 0\n}}\n"
     );
     let p = temp_mimz(&src);
     let out = mimz().args(["test"]).arg(&p).output().unwrap();

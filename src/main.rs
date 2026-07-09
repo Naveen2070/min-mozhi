@@ -353,6 +353,10 @@ enum Cmd {
         /// terminal (CI-safe by default even with this flag set).
         #[arg(long)]
         emulate: bool,
+        /// Single-step a `sim` block one cycle at a time: press Enter to
+        /// advance, `q` to quit. Implies `--emulate`.
+        #[arg(long)]
+        step: bool,
     },
     /// (experimental) Interactive REPL for a combinational module.
     ///
@@ -637,6 +641,7 @@ fn main() -> ExitCode {
             signals,
             lang,
             emulate,
+            step,
         } => {
             let cfg = match resolve_config(&file, config_path.as_deref()) {
                 Ok(c) => c,
@@ -654,6 +659,7 @@ fn main() -> ExitCode {
                 quiet,
                 debug,
                 emulate,
+                step,
             )
         }
     }

@@ -1,4 +1,6 @@
-module isai (
+module isai #(
+    parameter TICK = 50000
+) (
     input wire katikai,
     input wire miittal,
     input wire thotakkam,
@@ -7,7 +9,7 @@ module isai (
 );
     reg [(4)-1:0] mukavari;
     reg [(20)-1:0] suram_ennnnikkai;
-    reg [(24)-1:0] kaala_ennnnikkai;
+    reg [(32)-1:0] kaala_ennnnikkai;
     reg maarrrru;
     reg seyalil;
     reg [(20)-1:0] ilakku;
@@ -37,7 +39,7 @@ module isai (
             if (seyalil) begin
                 if ((kaala_ennnnikkai == 0)) begin
                     ilakku <= suruthi;
-                    kaala_ennnnikkai <= ((kaalam) * 50000)[(24)-1:0];
+                    kaala_ennnnikkai <= ((kaalam) * TICK)[(32)-1:0];
                     mukavari <= (mukavari + 1);
                     if ((mukavari == 15)) begin
                         seyalil <= 0;

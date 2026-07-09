@@ -79,6 +79,10 @@ pub struct Outcome {
     /// Default trace scope: the module's interface + state (inputs, outputs,
     /// registers), in that order.
     pub default_scope: Vec<String>,
+    /// Set when the user pressed `q` during `--step`ping or at the
+    /// end-of-test dismiss screen — the caller should stop running any
+    /// further tests in this file rather than opening another dashboard.
+    pub quit: bool,
 }
 
 /// Whether a `test` block passed.
@@ -87,6 +91,11 @@ pub enum TestResult {
     Pass,
     /// Failed with a teaching-quality message (already formatted, multi-line).
     Fail(String),
+    /// Not run: the test has a `sim` block (only meaningful paced to
+    /// real time under `--emulate`) but this run isn't live — running its
+    /// body would just unbatched-tick the full simulated cycle count for
+    /// no reason. Carries why it was skipped.
+    Skipped(String),
 }
 
 /// Run one `test` block. `files` is the loaded project (`files[0]` the entry,
@@ -99,6 +108,7 @@ pub fn run_test(
     src: &str,
     decl: &TestDecl,
     emulate: bool,
+    step: bool,
 ) -> Result<Outcome, String> {
     let params = params(decl)?;
     let design = elaborate_project(files, Some(&decl.module.name.name), &params)?;
@@ -117,10 +127,10 @@ pub fn run_test(
     let outputs = design.outputs.clone();
     #[cfg(feature = "hw-emulation")]
     let inputs = design.inputs.clone();
-    // Not read on this build: `emulate` only feeds `live` below, which is
-    // itself feature-gated.
+    // Not read on this build: `emulate`/`step` only feed `live`/`stepping`
+    // below, which are themselves feature-gated.
     #[cfg(not(feature = "hw-emulation"))]
-    let _ = emulate;
+    let _ = (emulate, step);
     let sim = Sim::new(design);
     let signals: Vec<Signal> = sim
         .snapshot()?
@@ -131,19 +141,27 @@ pub fn run_test(
     // Emulation is only ever "live" (throttled ticks + dashboard, wired up in
     // Task 7) when the caller asked for it AND a real terminal is attached —
     // this keeps `--emulate` a CI-safe no-op when stdout is piped/redirected.
-    // The degrade note only makes sense for a test that actually has a `sim`
-    // block to skip — printing it for every other test in the file would be
-    // noise, not the "clean, accurate" CI-safety message this is meant to be.
+    // A `sim` block's binds still get constructed/validated either way (so a
+    // bad bind still errors), but once a non-live run reaches a `tick` with
+    // that `sim` block active, `TestStmt::Tick` bails out with `Stop::Skip`
+    // instead of falling through to the unbatched path: that path has no
+    // real-time pacing, so a `sim` block's `tick(clk, <large N>)` — sized for
+    // real-time audio/UART, not a quick sanity check — would just
+    // unbatched-tick N cycles for no reason.
     #[cfg(feature = "hw-emulation")]
-    let live = {
+    let (live, stepping, skip_reason) = {
         use std::io::IsTerminal;
         let is_tty = std::io::stdout().is_terminal();
-        if emulate && !is_tty && has_sim_block(&decl.body) {
-            eprintln!(
-                "note: sim block emulation skipped (no terminal attached) — run with a TTY to see it"
-            );
-        }
-        emulate && is_tty
+        let live = (emulate || step) && is_tty;
+        let stepping = step && live;
+        let skip_reason = if live || !has_sim_block(&decl.body) {
+            None
+        } else if !emulate && !step {
+            Some("needs --emulate to run its `sim` block".to_string())
+        } else {
+            Some("no terminal attached — run with --emulate in a real terminal".to_string())
+        };
+        (live, stepping, skip_reason)
     };
 
     let mut run = Run {
@@ -165,20 +183,49 @@ pub fn run_test(
         #[cfg(feature = "hw-emulation")]
         live,
         #[cfg(feature = "hw-emulation")]
+        stepping,
+        #[cfg(feature = "hw-emulation")]
+        skip_reason,
+        #[cfg(feature = "hw-emulation")]
         dashboard: None,
     };
     run.capture()?; // the initial (pre-tick) state
 
-    let result = match run.exec(&decl.body) {
-        Ok(()) => TestResult::Pass,
-        Err(Stop::Fail(m)) => TestResult::Fail(m),
+    let (result, mut quit) = match run.exec(&decl.body) {
+        Ok(()) => (TestResult::Pass, false),
+        Err(Stop::Fail(m)) => (TestResult::Fail(m), false),
+        Err(Stop::Skip(m)) => (TestResult::Skipped(m), false),
+        Err(Stop::Quit) => (TestResult::Skipped("aborted by user (q)".to_string()), true),
         Err(Stop::Err(e)) => return Err(e),
     };
+
+    // Flush any peripheral that defers work to the end (`speaker`'s
+    // offline-rendered playback) — a no-op for everything else, and for
+    // `speaker` itself when it never ticked (skipped, or no `sim` block).
+    #[cfg(feature = "hw-emulation")]
+    if let Some(active) = &mut run.active_sim {
+        for (_, peripheral) in &mut active.peripherals {
+            peripheral.finish()?;
+        }
+    }
+
+    // A dashboard only ever opened for a live run — wait for the user to
+    // dismiss it (Enter) or quit (q) rather than yanking it away the
+    // instant the last cycle ticks.
+    #[cfg(feature = "hw-emulation")]
+    if !quit {
+        if let Some(dash) = &mut run.dashboard {
+            quit = dash
+                .wait_for_dismiss(&decl.name, run.cycle)
+                .map_err(|e| format!("dashboard input failed: {e}"))?;
+        }
+    }
 
     Ok(Outcome {
         name: decl.name.clone(),
         checks: run.checks,
         result,
+        quit,
         timeline: Timeline {
             module,
             signals,
@@ -213,11 +260,15 @@ fn params(decl: &TestDecl) -> Result<BTreeMap<String, i128>, String> {
     Ok(m)
 }
 
-/// How a test body stops early: a real `expect` failure (the test fails) vs. a
-/// setup/semantic error (the whole command errors).
+/// How a test body stops early: a real `expect` failure (the test fails), a
+/// setup/semantic error (the whole command errors), a `sim`-block tick that
+/// isn't live and so isn't run (the test is skipped), or the user pressing
+/// `q` mid-`--step` (the whole run is aborted).
 enum Stop {
     Fail(String),
     Err(String),
+    Skip(String),
+    Quit,
 }
 
 /// One test in flight.
@@ -251,6 +302,16 @@ struct Run<'a> {
     /// between batches instead of unthrottled.
     #[cfg(feature = "hw-emulation")]
     live: bool,
+    /// `--step` requested AND live. Overrides batching to advance exactly
+    /// one cycle at a time, blocking after each for a keypress instead of
+    /// a wall-clock sleep.
+    #[cfg(feature = "hw-emulation")]
+    stepping: bool,
+    /// Why this test would be skipped if a `tick` runs while a `sim` block
+    /// is active and the run isn't live — `None` iff `live` (or the test
+    /// has no `sim` block at all).
+    #[cfg(feature = "hw-emulation")]
+    skip_reason: Option<String>,
     /// Opened lazily on the first batch that needs it (once a `sim` block
     /// is active and pacing kicks in), held for the rest of the test, and
     /// restored via `Drop` when `Run` itself drops at the end of
@@ -285,6 +346,14 @@ impl Run<'_> {
                             clock.name, self.module
                         )));
                     }
+                    // A `sim` block's binds are still constructed/validated
+                    // above regardless of `live` — only the tick itself,
+                    // sized for real-time pacing, is skipped when there's no
+                    // real time to pace against.
+                    #[cfg(feature = "hw-emulation")]
+                    if self.active_sim.is_some() && !self.live {
+                        return Err(Stop::Skip(self.skip_reason.clone().unwrap_or_default()));
+                    }
                     let n = match count {
                         Some(e) => {
                             let v = self.sim.eval(e).map_err(Stop::Err)?.as_i128();
@@ -297,9 +366,19 @@ impl Run<'_> {
                     };
                     // Bound total simulated cycles so a `tick(clk, <huge>)` in an
                     // untrusted test can't hang the tool or exhaust memory.
-                    if self.cycle.saturating_add(n) > MAX_SIM_CYCLES {
+                    #[cfg(feature = "hw-emulation")]
+                    let limit = if self.live { u64::MAX } else { MAX_SIM_CYCLES };
+                    #[cfg(not(feature = "hw-emulation"))]
+                    let limit = MAX_SIM_CYCLES;
+
+                    if self.cycle.saturating_add(n) > limit {
+                        let limit_str = if limit == u64::MAX {
+                            "unlimited".to_string()
+                        } else {
+                            limit.to_string()
+                        };
                         return Err(Stop::Err(format!(
-                            "test exceeds the {MAX_SIM_CYCLES}-cycle simulation limit"
+                            "test exceeds the {limit_str}-cycle simulation limit"
                         )));
                     }
                     #[cfg(feature = "hw-emulation")]
@@ -317,27 +396,45 @@ impl Run<'_> {
                                         ))
                                     })?);
                             }
-                            for batch in batch_sizes(n, self.batch_cycles()) {
+                            let batch_size = if self.stepping {
+                                1
+                            } else {
+                                self.batch_cycles()
+                            };
+                            for batch in batch_sizes(n, batch_size) {
                                 let started = std::time::Instant::now();
                                 for _ in 0..batch {
                                     self.drive_peripherals().map_err(Stop::Err)?;
                                     self.sim.tick(&clock.name).map_err(Stop::Err)?;
                                     self.cycle += 1;
-                                    self.capture().map_err(Stop::Err)?;
+                                    if self.cycle <= 1_000_000 {
+                                        self.capture().map_err(Stop::Err)?;
+                                    }
                                     self.notify_on_tick().map_err(Stop::Err)?;
                                 }
                                 self.notify_peripherals().map_err(Stop::Err)?;
+                                let hint =
+                                    self.stepping.then_some("step: Enter to advance, q to quit");
                                 if let Some(dash) = &mut self.dashboard {
                                     dash.draw(
                                         &self.name,
                                         self.cycle,
                                         &self.active_sim.as_ref().unwrap().peripherals,
+                                        hint,
                                     )
                                     .map_err(|e| {
                                         Stop::Err(format!("dashboard draw failed: {e}"))
                                     })?;
                                 }
-                                if let Some(remaining) =
+                                if self.stepping {
+                                    let quit =
+                                        self.dashboard.as_mut().unwrap().wait_for_step().map_err(
+                                            |e| Stop::Err(format!("dashboard input failed: {e}")),
+                                        )?;
+                                    if quit {
+                                        return Err(Stop::Quit);
+                                    }
+                                } else if let Some(remaining) =
                                     Self::frame_budget().checked_sub(started.elapsed())
                                 {
                                     if self.active_sim.as_ref().and_then(|a| a.speed_hz).is_some() {
@@ -350,7 +447,9 @@ impl Run<'_> {
                         for _ in 0..n {
                             self.sim.tick(&clock.name).map_err(Stop::Err)?;
                             self.cycle += 1;
-                            self.capture().map_err(Stop::Err)?;
+                            if self.cycle <= 1_000_000 {
+                                self.capture().map_err(Stop::Err)?;
+                            }
                         }
                     }
                 }
@@ -481,23 +580,23 @@ impl Run<'_> {
             .unwrap_or(u64::MAX)
     }
 
-    /// Call `on_change` for every bound peripheral whose port appears in the
-    /// latest captured frame. Reads the frame already pushed by the tick
-    /// loop above rather than re-evaluating signals.
+    /// Call `on_change` for every bound peripheral whose port has a width —
+    /// reads the signal's live value straight from `self.sim`, NOT from a
+    /// captured frame: capture stops past `MAX_SIM_CYCLES`'s 1M-frame cap
+    /// (see `capture`), so a frame is stale forever after that point while
+    /// the sim keeps ticking underneath it.
     #[cfg(feature = "hw-emulation")]
     fn notify_peripherals(&mut self) -> Result<(), String> {
-        let latest = self.frames.last().ok_or("no captured frame yet")?;
         let outputs = &self.outputs;
+        let sim = &self.sim;
         let Some(active) = &mut self.active_sim else {
             return Ok(());
         };
         for (port, peripheral) in &mut active.peripherals {
-            let (Some(&raw), Some(width)) = (
-                latest.values.get(port),
-                outputs.iter().find(|s| &s.name == port).map(|s| s.width),
-            ) else {
+            let Some(width) = outputs.iter().find(|s| &s.name == port).map(|s| s.width) else {
                 continue;
             };
+            let raw = sim.peek(port)?;
             peripheral.on_change(&Val::new(raw, width.bits, width.signed));
         }
         Ok(())
@@ -505,27 +604,26 @@ impl Run<'_> {
 
     /// Call `on_tick` for every bound peripheral, every individual cycle
     /// (not just batch-end) — the hook `uart_tx`'s decoder needs; a cheap
-    /// no-op for peripherals that don't override it (`led`). Searches
-    /// both `outputs` and `inputs` for the port's width since a peripheral
-    /// may be bound to either.
+    /// no-op for peripherals that don't override it (`led`). Searches both
+    /// `outputs` and `inputs` for the port's width since a peripheral may be
+    /// bound to either. Reads the live value via `self.sim.peek`, same
+    /// staleness reasoning as `notify_peripherals`.
     #[cfg(feature = "hw-emulation")]
     fn notify_on_tick(&mut self) -> Result<(), String> {
-        let latest = self.frames.last().ok_or("no captured frame yet")?;
         let outputs = &self.outputs;
         let inputs = &self.inputs;
+        let sim = &self.sim;
         let Some(active) = &mut self.active_sim else {
             return Ok(());
         };
         for (port, peripheral) in &mut active.peripherals {
-            let Some(&raw) = latest.values.get(port) else {
-                continue;
-            };
             let width = outputs
                 .iter()
                 .chain(inputs.iter())
                 .find(|s| &s.name == port)
                 .map(|s| s.width);
             let Some(width) = width else { continue };
+            let raw = sim.peek(port)?;
             peripheral.on_tick(&Val::new(raw, width.bits, width.signed))?;
         }
         Ok(())
@@ -631,7 +729,7 @@ mod tests {
             .iter()
             .filter_map(|i| match i {
                 ast::TopItem::Test(t) => {
-                    Some(run_test(std::slice::from_ref(&f), src, t, false).expect("runs"))
+                    Some(run_test(std::slice::from_ref(&f), src, t, false, false).expect("runs"))
                 }
                 _ => None,
             })
@@ -674,6 +772,7 @@ mod tests {
                 assert!(m.contains("= 1"), "expected actual count=1 in: {m}");
             }
             TestResult::Pass => panic!("should have failed"),
+            TestResult::Skipped(reason) => panic!("should have failed, was skipped: {reason}"),
         }
         // The check that failed is still counted.
         assert_eq!(outs[0].checks, 1);
@@ -715,7 +814,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), &src, decl, false).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), &src, decl, false, false).unwrap_err();
         assert!(err.contains("not a clock"), "got: {err}");
     }
 
@@ -745,7 +844,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
         assert!(err.contains("unknown peripheral"), "got: {err}");
     }
 
@@ -763,7 +862,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
         assert!(err.contains("nope"), "got: {err}");
     }
 
@@ -781,7 +880,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
         // `start` genuinely exists as an input — this must produce the
         // direction-aware message, not the generic "no such port" one
         // (which would also happen to contain "output port" and "start",
@@ -804,7 +903,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let err = run_test(std::slice::from_ref(&f), src, decl, false).unwrap_err();
+        let err = run_test(std::slice::from_ref(&f), src, decl, false, false).unwrap_err();
         // Mirror of the test above: `playing` genuinely exists as an output
         // — this must produce the direction-aware message, not the generic
         // "no such port" one.
@@ -825,10 +924,11 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        // `emulate: false` (last arg) — `on_tick` never runs in this mode,
-        // so `speaker`'s real audio device is never touched even though
-        // it's bound. This is the proof that a headless/CI run is safe.
-        run_test(std::slice::from_ref(&f), src, decl, false)
+        // `emulate: false` (second-to-last arg) — `on_tick` never runs in
+        // this mode, so `speaker`'s real audio device is never touched
+        // even though it's bound. This is the proof that a headless/CI
+        // run is safe.
+        run_test(std::slice::from_ref(&f), src, decl, false, false)
             .expect("test passes without touching audio hardware");
     }
 
@@ -920,7 +1020,7 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let outcome = run_test(std::slice::from_ref(&f), &src, decl, true).expect("runs");
+        let outcome = run_test(std::slice::from_ref(&f), &src, decl, true, false).expect("runs");
         assert!(passes(&outcome));
     }
 }
