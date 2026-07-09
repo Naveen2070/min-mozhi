@@ -16,6 +16,18 @@ fn check_one(src: &str) -> Result<(), Vec<Diag>> {
     check(&[parse(src)])
 }
 
+/// Lex, parse, check and emit a single (import-free) source string to
+/// Verilog. A local, single-file stand-in for `crate::compile_string`
+/// (which lives in the root crate's command runner, out of reach for
+/// mimz-core's own tests) — same pipeline, minus `import` resolution.
+fn compile_one(src: &str) -> Result<String, Vec<Diag>> {
+    let mut asts = vec![parse(src)];
+    check(&asts)?;
+    crate::emit_verilog::transliterate(&mut asts);
+    let project = crate::emit_verilog::Project::from_files(&asts)?;
+    crate::emit_verilog::emit(&project, &asts)
+}
+
 fn errs(src: &str) -> Vec<Diag> {
     check_one(src).expect_err("expected checker errors")
 }
@@ -1336,7 +1348,7 @@ fn tagged_enum_total_width_is_tag_plus_max_payload() {
         "  }\n",
         "}\n",
     );
-    let verilog = crate::compile_string(src)
+    let verilog = compile_one(src)
         .expect("tagged enum with max_payload=64, tag=1 (total 65 bits) compiles clean");
     assert!(
         verilog.contains("[64:0]"),
