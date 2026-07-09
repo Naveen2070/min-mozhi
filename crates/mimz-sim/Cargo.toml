@@ -1,0 +1,7 @@
+[package]
+name = "mimz-sim"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+mimz-core = { path = "../mimz-core" }

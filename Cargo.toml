@@ -78,11 +78,15 @@ required-features = ["bench"]
 # (`cargo build`/`test`/`clippy`) never compiles it (it targets wasm32 and pulls
 # wasm-bindgen); build it explicitly: `cargo build -p mimz-wasm --target wasm32-...`.
 [workspace]
-members = ["crates/mimz-wasm"]
+members = ["crates/mimz-core", "crates/mimz-sim", "crates/mimz-wasm"]
 default-members = ["."]
 # Standalone dev helper with its own target dir + `cargo test-summary` alias —
 # kept out of the workspace so it stays independent of the release lock/profile.
 exclude = ["tools/test-summary"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
 
 [dev-dependencies]
 # Statistical per-phase micro-benchmarks (a SEPARATE harness from mimz-bench;
