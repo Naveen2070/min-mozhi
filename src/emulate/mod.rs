@@ -4,6 +4,7 @@
 //! Behind the `hw-emulation` Cargo feature — never compiled for wasm32.
 
 pub(crate) mod dashboard;
+pub mod host;
 mod led;
 mod speaker;
 mod uart_rx;
@@ -14,8 +15,10 @@ use std::collections::HashMap;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use super::elaborate::Width;
-use super::value::Val;
+use mimz_sim::sim::Direction;
+use mimz_sim::sim::Val;
+use mimz_sim::sim::elaborate::Width;
+
 use crate::ast::{BindArg, BindArgValue};
 
 /// Parses a `port: N` bind-config value (`uart_rx`/`uart_tx`'s socket
@@ -36,7 +39,7 @@ pub(super) fn parse_port(value: &BindArgValue, peripheral: &str) -> Result<u16, 
 /// (`drive`) and/or observed (`on_tick`, `on_change`) once per cycle or
 /// batch — see the design docs' Execution model sections. Object-safe:
 /// `render` is the only widget the dashboard needs to draw.
-pub(super) trait Peripheral: Send {
+pub trait Peripheral: Send {
     /// Called once per batched frame (~30fps) when the bound port's value
     /// changed. Coarse — fine for a visual indicator (`led`), too coarse
     /// for bit-exact serial decode.
@@ -73,27 +76,19 @@ pub(super) trait Peripheral: Send {
 /// `speed_hz` is the sim block's declared real-world clock rate, if any —
 /// `uart_tx`/`uart_rx` need it to derive `cycles_per_bit` from `baud`;
 /// `led` ignores it.
-pub(super) type Constructor =
+pub type Constructor =
     fn(Width, &[BindArg], Option<u64>) -> Result<Box<dyn Peripheral>, String>;
 
-/// Which kind of port a peripheral binds to — decides whether the harness
-/// resolves the bind against `self.outputs` or `self.inputs`, and which
-/// teaching-quality error to produce on a mismatch.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Direction {
-    Input,
-    Output,
-}
-
-/// A registered peripheral: which port kind it expects, plus how to build
-/// one.
-pub(super) struct Entry {
-    pub(super) direction: Direction,
-    pub(super) construct: Constructor,
+/// A registered peripheral: which port kind it expects (`Direction` comes
+/// from `mimz_sim::sim`, shared with the harness's bind validation), plus
+/// how to build one.
+pub struct Entry {
+    pub direction: Direction,
+    pub construct: Constructor,
 }
 
 /// Every known peripheral name.
-pub(super) fn registry() -> HashMap<&'static str, Entry> {
+pub fn registry() -> HashMap<&'static str, Entry> {
     let mut m: HashMap<&'static str, Entry> = HashMap::new();
     m.insert(
         "led",
