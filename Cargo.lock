@@ -1115,6 +1115,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mimz-core"
+version = "0.1.0"
+dependencies = [
+ "owo-colors",
+ "serde",
+ "toml",
+ "unicode-ident",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "mimz-sim"
+version = "0.1.0"
+dependencies = [
+ "mimz-core",
+]
+
+[[package]]
 name = "mimz-wasm"
 version = "0.1.0"
 dependencies = [
