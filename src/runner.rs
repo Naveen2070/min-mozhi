@@ -525,7 +525,7 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
     let mut out = String::new();
     let (mut passed, mut failed) = (0u32, 0u32);
     for decl in decls {
-        match crate::sim::harness::run_test(&asts, src, decl, false) {
+        match crate::sim::harness::run_test(&asts, src, decl, false, false) {
             Ok(o) => match o.result {
                 crate::sim::harness::TestResult::Pass => {
                     passed += 1;
@@ -538,6 +538,9 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
                     for line in msg.lines() {
                         out.push_str(&format!("       {line}\n"));
                     }
+                }
+                crate::sim::harness::TestResult::Skipped(reason) => {
+                    out.push_str(&format!("SKIP {} — {reason}\n", o.name));
                 }
             },
             Err(e) => {

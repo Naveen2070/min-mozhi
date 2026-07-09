@@ -14,7 +14,7 @@ use crate::ast::{BindArg, BindArgValue};
 
 use super::super::elaborate::Width;
 use super::super::value::Val;
-use super::Peripheral;
+use super::{Peripheral, parse_port};
 
 pub(super) fn construct(
     width: Width,
@@ -29,6 +29,7 @@ pub(super) fn construct(
     }
     let mut baud = None;
     let mut source = None;
+    let mut port = None;
     for a in args {
         match a.name.name.as_str() {
             "baud" => {
@@ -57,6 +58,12 @@ pub(super) fn construct(
                     }
                 });
             }
+            "port" => {
+                if port.is_some() {
+                    return Err("`uart_rx` has a duplicate `port` config".to_string());
+                }
+                port = Some(parse_port(&a.value, "uart_rx")?);
+            }
             other => return Err(format!("`uart_rx` has no config option `{other}`")),
         }
     }
@@ -71,11 +78,18 @@ pub(super) fn construct(
             "`uart_rx`'s baud ({baud}) is faster than the sim speed ({speed_hz} Hz) — no cycles left per bit"
         ));
     }
+    // `port` picks a fixed socket port; `source: "socket"` alone still works,
+    // with an OS-assigned ephemeral one. The two can't disagree.
+    if let Some(s) = &source {
+        if port.is_some() && s != "socket" {
+            return Err("`uart_rx`'s `port` only makes sense with a socket source".to_string());
+        }
+    }
+    if port.is_some() || source.as_deref() == Some("socket") {
+        return Ok(Box::new(UartRx::new_socket(speed_hz / baud, port)?.0));
+    }
     let source = source
         .ok_or_else(|| "`uart_rx` needs a `source` config (e.g. `source: \"hi\"`)".to_string())?;
-    if source == "socket" {
-        return Ok(Box::new(UartRx::new_socket(speed_hz / baud)?.0));
-    }
     Ok(Box::new(UartRx::new(speed_hz / baud, source.into_bytes())))
 }
 
@@ -146,13 +160,18 @@ impl UartRx {
         }
     }
 
-    /// Opens a local TCP listener and returns the peripheral plus the
-    /// port it's listening on (for tests to connect to directly; the
-    /// real `sim`-block author never sees the port — it's printed via
-    /// `eprintln!` the same way `uart_tx`'s socket target is).
-    pub(super) fn new_socket(cycles_per_bit: u64) -> Result<(UartRx, u16), String> {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| format!("`uart_rx` couldn't open a local socket: {e}"))?;
+    /// Opens a local TCP listener and returns the peripheral plus the port
+    /// it's listening on — `port`'s caller-chosen port if given, otherwise
+    /// an OS-assigned ephemeral one (printed via `eprintln!` since a
+    /// `sim`-block author with no explicit `port` has no other way to
+    /// learn it, same as `uart_tx`'s socket target).
+    pub(super) fn new_socket(
+        cycles_per_bit: u64,
+        port: Option<u16>,
+    ) -> Result<(UartRx, u16), String> {
+        let addr = format!("127.0.0.1:{}", port.unwrap_or(0));
+        let listener = std::net::TcpListener::bind(&addr)
+            .map_err(|e| format!("`uart_rx` couldn't open a local socket on {addr}: {e}"))?;
         let port = listener
             .local_addr()
             .map_err(|e| format!("`uart_rx` couldn't open a local socket: {e}"))?
@@ -212,8 +231,22 @@ impl Peripheral for UartRx {
             Phase::Data(i) => (byte >> i) & 1,
             Phase::Stop => 1,
         };
+        // The start bit holds one cycle longer than every other phase: a
+        // receiver's `Idle` state detects it (`rx == 0`) on a cycle that
+        // doesn't itself count toward the bit timer — only the *next*
+        // cycle starts that countdown — so the total time `rx` must stay
+        // low for a valid start bit is `cycles_per_bit + 1`, not
+        // `cycles_per_bit`. Every other phase transitions within the same
+        // counted rhythm and needs no such adjustment. Matches this
+        // codebase's own literal-drive convention (see
+        // showcase/*/uart_echo.mimz's `tick(clk, CLKS_PER_BIT + 1)` after
+        // setting the start bit).
+        let phase_len = match phase {
+            Phase::Start => self.cycles_per_bit + 1,
+            Phase::Data(_) | Phase::Stop => self.cycles_per_bit,
+        };
         let next_cycle = cycle_in_phase + 1;
-        self.state = if next_cycle >= self.cycles_per_bit {
+        self.state = if next_cycle >= phase_len {
             match phase {
                 Phase::Start => State::Framing {
                     phase: Phase::Data(0),
@@ -264,8 +297,10 @@ mod tests {
         let mut rx = UartRx::new(4, "A".as_bytes().to_vec()); // cycles_per_bit = 4
         // idle-high while queue is non-empty is only true before drive() is
         // ever called; the very first drive() call starts the start bit.
-        let bits = drain(&mut rx, 4 + 4 * 8 + 4); // start + 8 data + stop
-        let mut expected = vec![0u64; 4]; // start bit, held 4 cycles
+        // The start bit holds 5 cycles (cycles_per_bit + 1), one longer
+        // than every other phase — see the comment in `drive` for why.
+        let bits = drain(&mut rx, 5 + 4 * 8 + 4); // start + 8 data + stop
+        let mut expected = vec![0u64; 5]; // start bit, held 5 cycles
         // 0x41 ('A') LSB-first: 1,0,0,0,0,0,1,0
         for bit in [1u64, 0, 0, 0, 0, 0, 1, 0] {
             expected.extend(std::iter::repeat_n(bit, 4));
@@ -319,12 +354,82 @@ mod tests {
         assert!(construct(w, &args, Some(115_200)).is_ok());
     }
 
+    fn cfg_arg(name: &str, value: BindArgValue) -> BindArg {
+        use crate::ast::Ident;
+        use crate::span::Span;
+        BindArg {
+            name: Ident {
+                name: name.into(),
+                span: Span::new(0, 0),
+            },
+            value,
+            span: Span::new(0, 0),
+        }
+    }
+
+    #[test]
+    fn port_alone_implies_socket_transport() {
+        let w = Width {
+            bits: 1,
+            signed: false,
+        };
+        // Probe the OS for a free port rather than hardcoding one, to avoid
+        // both a privileged-port bind failure (<1024) and a CI collision.
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let free_port = probe.local_addr().unwrap().port();
+        drop(probe);
+        let args = [
+            cfg_arg("baud", BindArgValue::Int(9600)),
+            cfg_arg("port", BindArgValue::Int(free_port as u128)),
+        ];
+        assert!(construct(w, &args, Some(115_200)).is_ok());
+    }
+
+    #[test]
+    fn port_conflicts_with_a_non_socket_source() {
+        let w = Width {
+            bits: 1,
+            signed: false,
+        };
+        let args = [
+            cfg_arg("baud", BindArgValue::Int(9600)),
+            cfg_arg("source", BindArgValue::Str("hi".into())),
+            cfg_arg("port", BindArgValue::Int(8080)),
+        ];
+        assert!(construct(w, &args, Some(115_200)).is_err());
+    }
+
+    #[test]
+    fn rejects_port_out_of_range() {
+        let w = Width {
+            bits: 1,
+            signed: false,
+        };
+        let args = [
+            cfg_arg("baud", BindArgValue::Int(9600)),
+            cfg_arg("port", BindArgValue::Int(70_000)),
+        ];
+        assert!(construct(w, &args, Some(115_200)).is_err());
+    }
+
+    #[test]
+    fn new_socket_binds_the_requested_port() {
+        // Ask the OS for a free port, release it, then request that exact
+        // port from `new_socket` — the same tiny "will it still be free"
+        // race any fixed-port test accepts.
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let want = probe.local_addr().unwrap().port();
+        drop(probe);
+        let (_rx, got) = UartRx::new_socket(4, Some(want)).unwrap();
+        assert_eq!(got, want);
+    }
+
     #[test]
     fn socket_source_feeds_the_queue() {
         use std::io::Write;
         use std::net::TcpStream;
 
-        let (mut rx, port) = UartRx::new_socket(4).unwrap();
+        let (mut rx, port) = UartRx::new_socket(4, None).unwrap();
         let sent = std::thread::spawn(move || {
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.write_all(b"A").unwrap();
@@ -351,7 +456,7 @@ mod tests {
         // only take a brief, uncontended lock on the shared queue), so a
         // peer that never connects should behave exactly like an empty
         // literal source — idle-high, immediately, every call.
-        let (mut rx, _port) = UartRx::new_socket(4).unwrap();
+        let (mut rx, _port) = UartRx::new_socket(4, None).unwrap();
         let started = std::time::Instant::now();
         for _ in 0..1000 {
             assert_eq!(rx.drive(), Some(1));

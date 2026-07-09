@@ -13,11 +13,11 @@
 மாறிலி B4:  int = 50607
 மாறிலி C5:  int = 47801
 
-மாறிலி TICK: int = 50000
+
 
 வகை Cmd { Tone(pitch: bits[20], duration: bits[8]), Rest(duration: bits[8]) }
 
-தொகுதி MelodyPlayer {
+தொகுதி MelodyPlayer(TICK: int = 50000) {
   துடிப்பு clk
   மீட்டமை rst
 
@@ -27,7 +27,7 @@
 
   பதிவேடு addr: bits[4] = 0
   பதிவேடு tone_cnt: bits[20] = 0
-  பதிவேடு dur_cnt: bits[24] = 0
+  பதிவேடு dur_cnt: bits[32] = 0
   பதிவேடு toggle: bit = 0
   பதிவேடு active: bit = 0
   பதிவேடு target: bits[20] = 0
@@ -83,7 +83,7 @@
     எனில் active {
       எனில் dur_cnt == 0 {
         target <- pitch
-        dur_cnt <- trunc(extend(dur, 16) * TICK, 24)
+        dur_cnt <- trunc(extend(dur, 32) * TICK, 32)
         addr <- addr +% 1
         எனில் addr == 15 {
           active <- 0
@@ -114,4 +114,16 @@
   உறுதிசெய் playing == 1
   கணம்(clk, TICK * 5)
   உறுதிசெய் playing == 1
+}
+
+சோதனை "quick beep (emulated)" க்காக MelodyPlayer(TICK: 500000) {
+  பாவனை {
+    வேகம் mhz(50)
+    இணை audio -> speaker()
+    இணை playing -> led(color: "green")
+  }
+  start = 1
+  கணம்(clk)
+  start = 0
+  கணம்(clk, 6000000)
 }

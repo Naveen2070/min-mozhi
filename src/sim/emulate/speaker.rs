@@ -1,11 +1,18 @@
 //! The `speaker` peripheral: plays a bound `bit` output as a tone on the
 //! host's default audio output
 //! (docs/superpowers/specs/2026-07-08-hw-emulation-speaker-design.local.md).
+//!
+//! Renders offline: `on_tick` only downsamples and buffers bits in memory
+//! (no device I/O, no pacing), and `finish` plays the whole clip back once
+//! the sim has finished ticking. A tree-walking interpreter can't sustain
+//! a real design's declared clock rate (measured ~1M cycles/sec in release
+//! vs. a 50MHz `speed` clause — a ~50x shortfall), so pacing playback to
+//! the sim instead of the other way around starves/overruns the audio
+//! buffer. Buffering first decouples correct audio from interpreter speed,
+//! at the cost of no live sound during a long run.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::thread;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use ratatui::buffer::Buffer;
@@ -23,7 +30,7 @@ use super::Peripheral;
 pub(super) fn construct(
     width: Width,
     args: &[BindArg],
-    _speed_hz: Option<u64>,
+    speed_hz: Option<u64>,
 ) -> Result<Box<dyn Peripheral>, String> {
     if width.bits != 1 {
         return Err(format!(
@@ -36,17 +43,33 @@ pub(super) fn construct(
     }
     Ok(Box::new(Speaker {
         bit: Arc::new(AtomicBool::new(false)),
-        stream_started: false,
+        initialized: false,
+        samples: Vec::new(),
+        cycle_counter: 0,
+        speed_hz: speed_hz.unwrap_or(50_000_000),
+        cycles_per_sample: 1000,
+        current_bit: false,
+        sample_rate: 0,
     }))
 }
 
 struct Speaker {
+    /// Live indicator for the dashboard's glyph — set every `on_tick`,
+    /// independent of the downsampled `samples` buffer.
     bit: Arc<AtomicBool>,
-    /// `true` once the background audio thread has been spawned. The
-    /// `cpal::Stream` itself never appears on this struct — `cpal::Stream`
-    /// is `!Send` on every platform, so it must be created AND held on the
-    /// same thread that plays it, never moved.
-    stream_started: bool,
+    /// Whether the device's sample rate has been queried yet (lazily, on
+    /// the first `on_tick` — never in a non-live run, which never ticks).
+    initialized: bool,
+    /// Downsampled bits, one per audio sample, recorded as the sim ticks.
+    /// Played back in one shot by `finish`.
+    samples: Vec<bool>,
+    cycle_counter: u64,
+    speed_hz: u64,
+    cycles_per_sample: u64,
+    current_bit: bool,
+    /// The output device's real sample rate, filled in on the first
+    /// `on_tick` alongside `cycles_per_sample`.
+    sample_rate: u32,
 }
 
 impl Speaker {
@@ -57,114 +80,119 @@ impl Speaker {
 
 impl Drop for Speaker {
     fn drop(&mut self) {
-        // Silence the tone the moment this peripheral is torn down. The
-        // background audio thread still parks forever holding the open
-        // `cpal::Stream` (accepted debt, see on_tick below) — this only
-        // stops it from playing a frozen `1` bit for the rest of the
-        // process.
         self.bit.store(false, Ordering::Relaxed);
     }
 }
 
-/// Fixed output amplitude — full-scale (`1.0`) clips/distorts on most
-/// devices; this is a moderate, always-audible level. No `volume` config
-/// this spec (see the design doc's non-goals).
 const AMPLITUDE: f32 = 0.2;
 
-/// Opens the host's default audio output device and starts a stream whose
-/// callback zero-order-holds `bit`'s current value as a square wave. Only
-/// f32 output is supported — anything else is a named error, not a panic.
-/// MUST be called on the thread that will hold the returned `Stream` for
-/// its lifetime — `cpal::Stream` is `!Send`.
-fn open_stream(bit: Arc<AtomicBool>) -> Result<cpal::Stream, String> {
-    let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or_else(|| "speaker: no default audio output device".to_string())?;
-    let supported = device
-        .default_output_config()
-        .map_err(|e| format!("speaker: could not read the default output config: {e}"))?;
-    let sample_format = supported.sample_format();
-    let config: cpal::StreamConfig = supported.into();
-    let channels = config.channels.max(1) as usize;
-    let stream = match sample_format {
-        cpal::SampleFormat::F32 => device.build_output_stream(
-            &config,
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                let sample = if bit.load(Ordering::Relaxed) {
-                    AMPLITUDE
-                } else {
-                    0.0
-                };
-                for frame in data.chunks_mut(channels) {
-                    for s in frame {
-                        *s = sample;
+/// The output device's sample rate. Runs on a dedicated thread, NOT the
+/// caller's (the sim thread, which also drives the terminal dashboard) —
+/// cpal's Windows/WASAPI backend wants its own thread-local COM state, and
+/// querying it directly from the sim thread has been observed to hang
+/// indefinitely (no error, no progress — just stuck).
+fn query_sample_rate() -> Result<u32, String> {
+    std::thread::spawn(|| -> Result<u32, String> {
+        let host = cpal::default_host();
+        let device = host
+            .default_output_device()
+            .ok_or_else(|| "speaker: no default audio output device".to_string())?;
+        let supported = device
+            .default_output_config()
+            .map_err(|e| format!("speaker: could not read the default output config: {e}"))?;
+        Ok(supported.sample_rate().0)
+    })
+    .join()
+    .map_err(|_| "speaker: audio setup thread panicked".to_string())?
+}
+
+/// Play `samples` once at `sample_rate`, blocking until the clip finishes.
+/// Same reasoning as `query_sample_rate` for running on a dedicated thread.
+fn play_samples(samples: &[bool], sample_rate: u32) -> Result<(), String> {
+    let buf = samples.to_vec();
+    std::thread::spawn(move || -> Result<(), String> {
+        let host = cpal::default_host();
+        let device = host
+            .default_output_device()
+            .ok_or_else(|| "speaker: no default audio output device".to_string())?;
+        let supported = device
+            .default_output_config()
+            .map_err(|e| format!("speaker: could not read the default output config: {e}"))?;
+        let sample_format = supported.sample_format();
+        let config: cpal::StreamConfig = supported.into();
+        let channels = config.channels.max(1) as usize;
+        let n = buf.len();
+        let pos = Arc::new(AtomicUsize::new(0));
+        let stream = match sample_format {
+            cpal::SampleFormat::F32 => device.build_output_stream(
+                &config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    for frame in data.chunks_mut(channels) {
+                        let i = pos.fetch_add(1, Ordering::Relaxed);
+                        let sample = if buf.get(i).copied().unwrap_or(false) {
+                            AMPLITUDE
+                        } else {
+                            0.0
+                        };
+                        for s in frame {
+                            *s = sample;
+                        }
                     }
-                }
-            },
-            |e| eprintln!("speaker: stream error: {e}"),
-            None,
-        ),
-        other => {
-            return Err(format!(
-                "speaker: unsupported audio sample format {other:?} (only f32 is supported)"
-            ));
+                },
+                |e| eprintln!("speaker: stream error: {e}"),
+                None,
+            ),
+            other => {
+                return Err(format!(
+                    "speaker: unsupported audio sample format {other:?} (only f32 is supported)"
+                ));
+            }
         }
-    }
-    .map_err(|e| format!("speaker: could not build the audio stream: {e}"))?;
-    stream
-        .play()
-        .map_err(|e| format!("speaker: could not start the audio stream: {e}"))?;
-    Ok(stream)
+        .map_err(|e| format!("speaker: could not build the audio stream: {e}"))?;
+        stream
+            .play()
+            .map_err(|e| format!("speaker: could not start the audio stream: {e}"))?;
+
+        // No completion signal from cpal's callback — block for the clip's
+        // exact nominal duration instead, which is close enough for a
+        // melody clip (a few tens of ms of device buffering at most).
+        let duration = std::time::Duration::from_secs_f64(n as f64 / sample_rate.max(1) as f64);
+        std::thread::sleep(duration);
+        Ok(())
+    })
+    .join()
+    .map_err(|_| "speaker: playback thread panicked".to_string())?
 }
 
 impl Peripheral for Speaker {
     fn on_change(&mut self, _val: &Val) {}
 
     fn on_tick(&mut self, val: &Val) -> Result<(), String> {
+        self.current_bit = val.bits & 1 != 0;
         self.set_bit(val);
-        if !self.stream_started {
-            let bit = Arc::clone(&self.bit);
-            let (tx, rx) = mpsc::channel::<Result<(), String>>();
-            thread::spawn(move || match open_stream(bit) {
-                Ok(_stream) => {
-                    // Report success, then park forever so `_stream`
-                    // (this thread's local, never returned) stays alive
-                    // for the process's remaining lifetime — cpal's
-                    // callback keeps running as long as it isn't dropped.
-                    // Accepted debt, same shape as uart_tx/uart_rx's
-                    // parked accept threads (Spec 2): never joined or
-                    // signaled to stop, harmless for a CLI-lifetime
-                    // peripheral (.superpowers/sdd/spec2-summary.md).
-                    let _ = tx.send(Ok(()));
-                    loop {
-                        thread::park();
-                    }
-                }
-                Err(e) => {
-                    let _ = tx.send(Err(e));
-                }
-            });
-            // Block for the open-or-fail result so a bad device still
-            // surfaces as a synchronous `Err` from THIS call, matching
-            // the original hard-error contract.
-            match rx.recv() {
-                Ok(Ok(())) => {}
-                // `stream_started` stays `false` on both error arms below,
-                // so a later `on_tick` would spawn a fresh thread and
-                // retry from scratch. In practice there is no later call:
-                // an `Err` here becomes `Stop::Err` in the harness and
-                // halts the simulation loop before another tick fires.
-                Ok(Err(e)) => return Err(e),
-                Err(_) => {
-                    return Err(
-                        "speaker: audio thread exited before opening the device".to_string()
-                    );
-                }
-            }
-            self.stream_started = true;
+
+        if !self.initialized {
+            let sample_rate = query_sample_rate()?;
+            // How many simulated cycles elapse per audio sample.
+            self.cycles_per_sample = (self.speed_hz / (sample_rate as u64).max(1)).max(1);
+            self.sample_rate = sample_rate;
+            self.initialized = true;
         }
+
+        self.cycle_counter += 1;
+        if self.cycle_counter >= self.cycles_per_sample {
+            self.cycle_counter = 0;
+            self.samples.push(self.current_bit);
+        }
+
         Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), String> {
+        if self.samples.is_empty() {
+            return Ok(());
+        }
+        play_samples(&self.samples, self.sample_rate)
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -191,6 +219,19 @@ mod tests {
             },
             value,
             span: Span::new(0, 0),
+        }
+    }
+
+    fn new_speaker(bit: Arc<AtomicBool>) -> Speaker {
+        Speaker {
+            bit,
+            initialized: false,
+            samples: Vec::new(),
+            cycle_counter: 0,
+            speed_hz: 50_000_000,
+            cycles_per_sample: 1000,
+            current_bit: false,
+            sample_rate: 0,
         }
     }
 
@@ -224,10 +265,7 @@ mod tests {
 
     #[test]
     fn set_bit_tracks_the_value() {
-        let s = Speaker {
-            bit: Arc::new(AtomicBool::new(false)),
-            stream_started: false,
-        };
+        let s = new_speaker(Arc::new(AtomicBool::new(false)));
         s.set_bit(&Val::new(1, 1, false));
         assert!(s.bit.load(Ordering::Relaxed));
         s.set_bit(&Val::new(0, 1, false));
@@ -237,13 +275,18 @@ mod tests {
     #[test]
     fn drop_silences_a_held_high_bit() {
         let bit = Arc::new(AtomicBool::new(false));
-        let s = Speaker {
-            bit: Arc::clone(&bit),
-            stream_started: false,
-        };
+        let s = new_speaker(Arc::clone(&bit));
         s.set_bit(&Val::new(1, 1, false));
         assert!(bit.load(Ordering::Relaxed));
         drop(s);
         assert!(!bit.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn finish_is_a_no_op_with_no_recorded_samples() {
+        // Never touches the audio device when nothing was ever recorded
+        // (e.g. a non-live run, where `on_tick` never fires).
+        let mut s = new_speaker(Arc::new(AtomicBool::new(false)));
+        assert!(s.finish().is_ok());
     }
 }

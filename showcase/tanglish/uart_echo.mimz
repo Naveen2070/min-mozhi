@@ -103,6 +103,13 @@ thoguthi UartEcho(CLKS_PER_BIT: int = 4) {
 }
 
 sodhanai "uart echoes 0xA5" kaaga UartEcho(CLKS_PER_BIT: 4) {
+  // No `inai rx -> uart_rx(...)` here: rx is driven literally below to
+  // self-check the echo, and a socket-bound uart_rx would idle-high over
+  // that (nothing ever connects to feed it), losing the bit pattern.
+  paavnai {
+    vegam mhz(50)
+    inai tx -> uart_tx(baud: 12500000, port: 8081)
+  }
   rx = 1
   kanam(clk, 2)
   rx = 0
@@ -154,4 +161,18 @@ sodhanai "uart echoes 0x33" kaaga UartEcho(CLKS_PER_BIT: 4) {
   kanam(clk, CLKS_PER_BIT)
   kanam(clk, CLKS_PER_BIT * 6)
   uruthisei received == 0x33
+}
+
+sodhanai "uart_rx literal source (emulated)" kaaga UartEcho(CLKS_PER_BIT: 4) {
+  // A `source` string (not `"socket"`) needs no external client to feed
+  // it: uart_rx frames the byte itself over rx, on its own, at construct
+  // time — a self-checking sim-block demo, unlike the two socket-bound
+  // tests above.
+  paavnai {
+    vegam mhz(50)
+    inai rx -> uart_rx(baud: 12500000, source: "Z")
+    inai tx -> uart_tx(baud: 12500000, port: 8082)
+  }
+  kanam(clk, CLKS_PER_BIT * 15)
+  uruthisei received == 0x5A
 }

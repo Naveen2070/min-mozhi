@@ -14,6 +14,7 @@
 
 use std::io::{self, Stdout};
 
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -49,18 +50,29 @@ impl Dashboard {
             let _ = disable_raw_mode();
             return Err(e);
         }
+        // Discard any input already queued at this point — typically the
+        // Enter keystroke that launched `mimz` itself, still sitting in the
+        // console's input buffer. Without this, the very first
+        // `event::read()` in `wait_for_step`/`wait_for_dismiss` sees that
+        // leftover Enter and returns instantly, before the user ever gets
+        // a chance to look at the screen.
+        while event::poll(std::time::Duration::ZERO)? {
+            event::read()?;
+        }
         let terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
         Ok(Dashboard { terminal })
     }
 
-    /// Draw one frame: a title row (`test_name — cycle N`) followed by one
-    /// row per bound peripheral (port name, then the peripheral's own
+    /// Draw one frame: a title row (`test_name — cycle N`, plus `hint` if
+    /// given — e.g. `--step`'s "Enter to advance, q to quit") followed by
+    /// one row per bound peripheral (port name, then the peripheral's own
     /// widget).
     pub(in crate::sim) fn draw(
         &mut self,
         test_name: &str,
         cycle: u64,
         peripherals: &[(String, Box<dyn Peripheral>)],
+        hint: Option<&str>,
     ) -> io::Result<()> {
         self.terminal.draw(|frame| {
             let area = frame.area();
@@ -70,10 +82,11 @@ impl Dashboard {
                     .collect::<Vec<_>>(),
             )
             .split(area);
-            frame.render_widget(
-                Paragraph::new(Line::from(format!("{test_name} — cycle {cycle}"))),
-                rows[0],
-            );
+            let title = match hint {
+                Some(h) => format!("{test_name} — cycle {cycle}  [{h}]"),
+                None => format!("{test_name} — cycle {cycle}"),
+            };
+            frame.render_widget(Paragraph::new(Line::from(title)), rows[0]);
             for (i, (port, peripheral)) in peripherals.iter().enumerate() {
                 let row = rows[i + 1];
                 let cols =
@@ -84,6 +97,59 @@ impl Dashboard {
             }
         })?;
         Ok(())
+    }
+
+    /// Block until the user presses Enter (advance one `--step`) or `q`/Esc
+    /// (quit the whole run) — called after each single-cycle `draw` while
+    /// stepping. Ignores every other key so a stray keypress can't
+    /// accidentally advance or quit.
+    pub(in crate::sim) fn wait_for_step(&mut self) -> io::Result<bool> {
+        read_continue_or_quit()
+    }
+
+    /// Draw a "finished" screen and block until the user presses Enter
+    /// (move on to the next test) or `q`/Esc (quit the whole run) — so the
+    /// dashboard doesn't vanish the instant a live test's last cycle ticks,
+    /// before anyone watching gets to see the final state.
+    pub(in crate::sim) fn wait_for_dismiss(
+        &mut self,
+        test_name: &str,
+        cycle: u64,
+    ) -> io::Result<bool> {
+        self.terminal.draw(|frame| {
+            let area = frame.area();
+            let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(area);
+            frame.render_widget(
+                Paragraph::new(Line::from(format!(
+                    "{test_name} — finished at cycle {cycle}"
+                ))),
+                rows[0],
+            );
+            frame.render_widget(
+                Paragraph::new(Line::from("press Enter to continue, q to quit")),
+                rows[1],
+            );
+        })?;
+        read_continue_or_quit()
+    }
+}
+
+/// Blocks for Enter (`Ok(false)`, continue) or `q`/Esc (`Ok(true)`, quit),
+/// ignoring every other key/event. Only reacts to `Press` — some terminals
+/// report `Release`/`Repeat` too, which would otherwise double-fire on one
+/// physical keystroke.
+fn read_continue_or_quit() -> io::Result<bool> {
+    loop {
+        if let Event::Key(key) = event::read()? {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            match key.code {
+                KeyCode::Enter => return Ok(false),
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
+                _ => {}
+            }
+        }
     }
 }
 

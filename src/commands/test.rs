@@ -31,6 +31,7 @@ pub(crate) fn test_file(
     quiet: bool,
     debug: bool,
     emulate: bool,
+    step: bool,
 ) -> ExitCode {
     use owo_colors::OwoColorize;
 
@@ -88,11 +89,13 @@ pub(crate) fn test_file(
 
     let mut passed = 0usize;
     let mut failed = 0usize;
+    let mut skipped = 0usize;
     let use_color = mimz::diag::is_color_enabled();
 
     for t in tests {
-        match run_test(&asts, &src, t, emulate) {
+        match run_test(&asts, &src, t, emulate, step) {
             Ok(o) => {
+                let quit = o.quit;
                 match &o.result {
                     TestResult::Pass => {
                         passed += 1;
@@ -118,6 +121,17 @@ pub(crate) fn test_file(
                             println!("       {line}");
                         }
                     }
+                    TestResult::Skipped(reason) => {
+                        skipped += 1;
+                        if !quiet {
+                            let skip_str = if use_color {
+                                "SKIP".yellow().bold().to_string()
+                            } else {
+                                "SKIP".to_string()
+                            };
+                            println!("{skip_str} {} — {reason}", o.name);
+                        }
+                    }
                 }
                 // Per-test console trace (opt-in).
                 if let Some(style) = &trace_style {
@@ -137,6 +151,12 @@ pub(crate) fn test_file(
                         }
                     }
                 }
+                if quit {
+                    if !quiet {
+                        println!("(stepping aborted — remaining tests in this file skipped)");
+                    }
+                    break;
+                }
             }
             Err(e) => {
                 failed += 1;
@@ -151,7 +171,12 @@ pub(crate) fn test_file(
     }
 
     if !quiet || failed > 0 {
-        println!("\n{passed} passed, {failed} failed");
+        let skip_suffix = if skipped > 0 {
+            format!(", {skipped} skipped")
+        } else {
+            String::new()
+        };
+        println!("\n{passed} passed, {failed} failed{skip_suffix}");
     }
     if failed == 0 {
         ExitCode::SUCCESS

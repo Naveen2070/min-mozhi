@@ -13,11 +13,11 @@ const A4:  int = 56818
 const B4:  int = 50607
 const C5:  int = 47801
 
-const TICK: int = 50000
+
 
 enum Cmd { Tone(pitch: bits[20], duration: bits[8]), Rest(duration: bits[8]) }
 
-module MelodyPlayer {
+module MelodyPlayer(TICK: int = 50000) {
   clock clk
   reset rst
 
@@ -27,7 +27,7 @@ module MelodyPlayer {
 
   reg addr: bits[4] = 0
   reg tone_cnt: bits[20] = 0
-  reg dur_cnt: bits[24] = 0
+  reg dur_cnt: bits[32] = 0
   reg toggle: bit = 0
   reg active: bit = 0
   reg target: bits[20] = 0
@@ -83,7 +83,7 @@ module MelodyPlayer {
     if active {
       if dur_cnt == 0 {
         target <- pitch
-        dur_cnt <- trunc(extend(dur, 16) * TICK, 24)
+        dur_cnt <- trunc(extend(dur, 32) * TICK, 32)
         addr <- addr +% 1
         if addr == 15 {
           active <- 0
@@ -114,4 +114,16 @@ test "melody starts and stops" for MelodyPlayer {
   expect playing == 1
   tick(clk, TICK * 5)
   expect playing == 1
+}
+
+test "quick beep (emulated)" for MelodyPlayer(TICK: 500000) {
+  sim {
+    speed mhz(50)
+    bind audio -> speaker()
+    bind playing -> led(color: "green")
+  }
+  start = 1
+  tick(clk)
+  start = 0
+  tick(clk, 6000000)
 }

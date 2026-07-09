@@ -53,9 +53,10 @@ const PERIOD: u64 = 2 * HALF;
 /// Upper bound on simulated cycles/ticks in a single run. Bounds frame memory
 /// and wall time so a huge `--cycles`, or a `tick(clk, <huge>)` in an untrusted
 /// `.mimz` test, cannot hang the tool or exhaust memory — the simulator's
-/// analogue of the parser's `MAX_DEPTH` and the emitter's `REPEAT_BUDGET`. Far
-/// above any real waveform; 1M cycles already produces a multi-MB VCD.
-pub const MAX_SIM_CYCLES: u64 = 1_000_000;
+/// analogue of the parser's `MAX_DEPTH` and the emitter's `REPEAT_BUDGET`.
+/// Sized to cover the `melody_player` emulated showcase test (8s at 50MHz =
+/// 400M cycles), with headroom for slightly longer real-time hardware runs.
+pub const MAX_SIM_CYCLES: u64 = 500_000_000;
 
 /// Upper bound on the number of input vectors a `--sweep` cartesian product may
 /// expand to, so a large sweep cannot OOM/hang the tool.
