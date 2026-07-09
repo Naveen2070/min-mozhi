@@ -140,7 +140,7 @@ pub enum Case {
     Instrumental,
 }
 
-const SUFFIXES_TOML: &str = include_str!("../lang/case_suffixes.toml");
+const SUFFIXES_TOML: &str = include_str!("../../../lang/case_suffixes.toml");
 
 #[derive(Deserialize)]
 struct SuffixFile {
@@ -243,7 +243,7 @@ pub fn inflect(name: &str, case: Case, flavor: Flavor) -> String {
 /// English unchanged. A covered code defines BOTH localized flavors (enforced
 /// by a sync guard in `tests/morph.rs`). Templates interpolate `{name}` and
 /// `{name.acc|dat|loc|inst}` via [`fill`].
-const MESSAGES_TOML: &str = include_str!("../lang/messages.toml");
+const MESSAGES_TOML: &str = include_str!("../../../lang/messages.toml");
 
 #[derive(Deserialize)]
 struct MessageFile {
