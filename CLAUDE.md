@@ -29,7 +29,7 @@ min-mozhi/
 │   │   ├── span.rs                  # Source positions
 │   │   ├── diag.rs                  # Error diagnostics with pretty underlines
 │   │   ├── morph.rs                 # Error language detection + Tamil inflection
-│   │   ├── project.rs               # Pure subset: NFC normalization + import resolution
+│   │   ├── project.rs               # LoadedFile struct + render_diags(_lang) only (no fs I/O)
 │   │   ├── translate.rs             # Keyword reskin between flavors
 │   │   ├── pretty.rs                # AST → source pretty-printer
 │   │   ├── explain.rs               # Long-form error code explanations
