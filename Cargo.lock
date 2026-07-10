@@ -1139,7 +1139,7 @@ dependencies = [
 name = "mimz-wasm"
 version = "0.1.0"
 dependencies = [
- "mimz",
+ "mimz-sim",
  "wasm-bindgen",
 ]
 
