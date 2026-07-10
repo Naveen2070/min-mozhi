@@ -115,6 +115,11 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN is empty. Skipping deployment."
+            echo "### ⏭️ Preview deployment skipped (no token)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")
           echo "Preview: $url"
           echo "### 🔎 Preview deploy" >> "$GITHUB_STEP_SUMMARY"
@@ -127,6 +132,11 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN is empty. Skipping deployment."
+            echo "### ⏭️ Production deployment skipped (no token)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
           echo "Production: $url"
           echo "### 🚀 Production deploy" >> "$GITHUB_STEP_SUMMARY"
