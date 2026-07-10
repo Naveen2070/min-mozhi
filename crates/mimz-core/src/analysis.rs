@@ -668,14 +668,15 @@ fn enclosing_module(
 ) -> Option<usize> {
     let f = &files[file_idx];
     for item in &f.ast.items {
-        if let TopItem::Module(m) = item {
-            if m.span.start <= offset && offset < m.span.end {
-                return index.symbols.iter().position(|s| {
-                    s.file_idx == file_idx
-                        && s.kind == SymKind::Module
-                        && s.span.start == m.name.span.start
-                });
-            }
+        if let TopItem::Module(m) = item
+            && m.span.start <= offset
+            && offset < m.span.end
+        {
+            return index.symbols.iter().position(|s| {
+                s.file_idx == file_idx
+                    && s.kind == SymKind::Module
+                    && s.span.start == m.name.span.start
+            });
         }
     }
     None

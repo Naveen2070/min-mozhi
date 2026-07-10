@@ -484,25 +484,25 @@ impl<'a> Checker<'a> {
                     }
                     _ => (base, None),
                 };
-                if let ExprKind::Ident(name) = &core.kind {
-                    if let Some(Bind::Inst(_)) = dcx.sc.names.get(name) {
-                        let idx = match index {
-                            // Unevaluable array index: skip the edge
-                            // (under-approximate — documented).
-                            Some(e) => match consteval::eval(e, &dcx.env) {
-                                Ok(v) => Some(v),
-                                Err(_) => return,
-                            },
-                            None => None,
-                        };
-                        out.push(Node::InstOut {
-                            inst: name.clone(),
-                            index: idx,
-                            out: field.name.clone(),
-                        });
-                    }
-                    // Enum variants are constants — no edge.
+                if let ExprKind::Ident(name) = &core.kind
+                    && let Some(Bind::Inst(_)) = dcx.sc.names.get(name)
+                {
+                    let idx = match index {
+                        // Unevaluable array index: skip the edge
+                        // (under-approximate — documented).
+                        Some(e) => match consteval::eval(e, &dcx.env) {
+                            Ok(v) => Some(v),
+                            Err(_) => return,
+                        },
+                        None => None,
+                    };
+                    out.push(Node::InstOut {
+                        inst: name.clone(),
+                        index: idx,
+                        out: field.name.clone(),
+                    });
                 }
+                // Enum variants are constants — no edge.
             }
             ExprKind::Unary { expr, .. } => self.expr_reads(dcx, expr, out),
             ExprKind::Binary { lhs, rhs, .. } => {

@@ -1013,20 +1013,20 @@ impl Emitter<'_> {
         match ty {
             Type::Bit => String::new(),
             Type::Bits(e) => {
-                if let Ok(w) = consteval::eval(e, &self.env) {
-                    if w >= 1 {
-                        return format!("[{}:0] ", w - 1);
-                    }
+                if let Ok(w) = consteval::eval(e, &self.env)
+                    && w >= 1
+                {
+                    return format!("[{}:0] ", w - 1);
                 }
                 // Fallback to symbolic form.
                 let we = self.expr(e);
                 format!("[({we})-1:0] ")
             }
             Type::Signed(e) => {
-                if let Ok(w) = consteval::eval(e, &self.env) {
-                    if w >= 1 {
-                        return format!("signed [{}:0] ", w - 1);
-                    }
+                if let Ok(w) = consteval::eval(e, &self.env)
+                    && w >= 1
+                {
+                    return format!("signed [{}:0] ", w - 1);
                 }
                 let we = self.expr(e);
                 format!("signed [({we})-1:0] ")
@@ -1128,10 +1128,10 @@ impl Emitter<'_> {
         // Build param env: bundle defaults first, then call-site overrides.
         let mut param_env: HashMap<String, i128> = HashMap::new();
         for p in &bdecl.params {
-            if let Some(default) = &p.default {
-                if let Ok(v) = consteval::eval(default, &self.env) {
-                    param_env.insert(p.name.name.clone(), v);
-                }
+            if let Some(default) = &p.default
+                && let Ok(v) = consteval::eval(default, &self.env)
+            {
+                param_env.insert(p.name.name.clone(), v);
             }
         }
         for a in args {

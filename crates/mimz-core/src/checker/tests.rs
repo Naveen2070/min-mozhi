@@ -138,14 +138,14 @@ fn qualified_module_reference_resolves_unambiguously() {
     let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
     let b = parse("module Fifo {\n  out z: bit\n  z = 0\n}\n");
     let mut user = parse("module M {\n  let u = Fifo() { }\n}\n");
-    if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
-        if let crate::ast::ModuleItem::Inst(inst) = &mut m.items[0] {
-            inst.module.path.push(crate::ast::Ident {
-                name: "b".into(),
-                span: inst.module.span,
-            });
-            inst.module.resolved_file.set(Some(2));
-        }
+    if let crate::ast::TopItem::Module(m) = &mut user.items[0]
+        && let crate::ast::ModuleItem::Inst(inst) = &mut m.items[0]
+    {
+        inst.module.path.push(crate::ast::Ident {
+            name: "b".into(),
+            span: inst.module.span,
+        });
+        inst.module.resolved_file.set(Some(2));
     }
     check(&[user, a, b]).expect("qualified reference resolves without ambiguity");
 }
@@ -176,14 +176,14 @@ fn qualified_reference_actually_resolves_via_a_real_import_path() {
 fn qualified_reference_with_unmatched_path_is_e0111() {
     let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");
     let mut user = parse("module M {\n  let u = Fifo() { }\n}\n");
-    if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
-        if let crate::ast::ModuleItem::Inst(inst) = &mut m.items[0] {
-            inst.module.path.push(crate::ast::Ident {
-                name: "nope".into(),
-                span: inst.module.span,
-            });
-            // resolved_file left None — no import matched this path.
-        }
+    if let crate::ast::TopItem::Module(m) = &mut user.items[0]
+        && let crate::ast::ModuleItem::Inst(inst) = &mut m.items[0]
+    {
+        inst.module.path.push(crate::ast::Ident {
+            name: "nope".into(),
+            span: inst.module.span,
+        });
+        // resolved_file left None — no import matched this path.
     }
     first_err_multi(&[user, a], "E0111");
 }
