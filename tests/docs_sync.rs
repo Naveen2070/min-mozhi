@@ -41,6 +41,8 @@ fn brace_use_names(text: &str, krate: &str) -> Vec<String> {
         let pos = from + rel;
         let after = &text[pos + prefix.len()..];
         if let Some(body) = after.trim_start().strip_prefix('{') {
+            // Assumes no nested braces inside the pub use list (e.g., no `pub use mimz_core::{ast::{Node}, ...}`).
+            // If a re-export ever nests braces here, this finds the first `}` and silently truncates names instead of erroring.
             if let Some(end) = body.find('}') {
                 names.extend(
                     body[..end]
