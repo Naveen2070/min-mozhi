@@ -2,6 +2,7 @@
 //! pass/fail. Supports `--filter` for selective runs, `--trace` for per-cycle
 //! console output. A failing `expect` prints a teaching-quality diff.
 
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -92,8 +93,18 @@ pub(crate) fn test_file(
     let mut skipped = 0usize;
     let use_color = mimz::diag::is_color_enabled();
 
+    // `live` gates real-time pacing/redraw: only when the caller asked for it
+    // (`--emulate` or `--step`) AND stdout is an actual terminal (never in
+    // CI/piped output). Computed once for the whole file, not per test.
+    let is_tty = std::io::stdout().is_terminal();
+    let live = (emulate || step) && is_tty;
+
     for t in tests {
-        match run_test(&asts, &src, t, emulate, step) {
+        // Constructed unconditionally (even headless) so bind validation
+        // always runs; a non-live host just no-ops every draw/pause.
+        let host: Box<dyn mimz_sim::sim::EmulationHost> =
+            Box::new(crate::emulate::host::EmulateHost::new(t.name.clone(), live, step));
+        match run_test(&asts, &src, t, host, live, step) {
             Ok(o) => {
                 let quit = o.quit;
                 match &o.result {
