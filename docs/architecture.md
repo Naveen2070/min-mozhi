@@ -113,8 +113,12 @@ playground) needed the pure pipeline + simulator without dragging in
 - **`mimz-core`** — the pure pipeline (lexer → parser → AST → checker →
   Verilog emitter) plus the tooling modules that never touch a filesystem
   or terminal (`explain`, `lint`, `translate`, `pretty`, `morph`,
-  `analysis`, `stdlib`, `version`), plus a pure subset of `project`
-  (NFC normalization + import-graph resolution, no fs I/O).
+  `analysis`, `stdlib`, `version`), plus the pure remainder of `project`
+  (the `LoadedFile` struct and `render_diags`/`render_diags_lang`
+  diagnostic rendering — no fs I/O, no NFC normalization, no import
+  resolution; the shell's `project.rs` does those and re-exports these
+  types via `pub use mimz_core::project::{LoadedFile, render_diags,
+render_diags_lang};`).
 - **`mimz-sim`** — the event-driven simulator (`sim/`) and the in-memory
   command runner (`runner.rs`), depending only on `mimz-core`. Defines the
   `EmulationHost` trait + `Direction` enum (`sim/host.rs`) so the simulator
@@ -146,7 +150,7 @@ mimz/ (workspace root)
         version.rs            # compiler version + language edition      ✅
         stdlib.rs             # embedded standard library modules        ✅
         analysis.rs           # editor symbol index + offset→def/completion ✅
-        project.rs            # pure subset: NFC + import-graph resolution (no fs I/O) ✅
+        project.rs            # LoadedFile + render_diags(_lang) only (no fs I/O)   ✅
         ast/                  # the ONE shared AST                       ✅
           mod.rs                 #   files, modules, decls, statements
           expr.rs                #   expressions, patterns, operators
