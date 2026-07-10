@@ -504,13 +504,14 @@ struct NoOpHost;
 impl EmulationHost for NoOpHost {
     fn bind(
         &mut self,
-        name: &str,
+        _port: &str,
+        peripheral: &str,
         _width: elaborate::Width,
         _args: &[ast::BindArg],
         _speed_hz: Option<u64>,
     ) -> Result<(), String> {
         Err(format!(
-            "unknown peripheral `{name}` — hardware emulation is not available here"
+            "unknown peripheral `{peripheral}` — hardware emulation is not available here"
         ))
     }
     fn direction_of(&self, _name: &str) -> Option<Direction> {
