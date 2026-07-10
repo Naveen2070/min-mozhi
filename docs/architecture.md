@@ -9,7 +9,11 @@
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
 > (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-07-06 (comprehensive doc audit — error codes E0001–E0909, example count 178, error fixtures 102, golden .v 68, lib.rs pub mod 18, accurate per-flavor breakdowns)
+> Last updated: 2026-07-10 (workspace-split: the compiler is now a 3-crate
+> Cargo workspace — `mimz-core` (pure pipeline), `mimz-sim` (simulator +
+> runner), `mimz` (root shell crate: fs I/O, the new `emulate` hardware
+> peripherals, CLI facade); §3 and Repository layout rewritten). Prior:
+> 2026-07-06 (comprehensive doc audit — error codes E0001–E0909, example count 178, error fixtures 102, golden .v 68, lib.rs pub mod 18, accurate per-flavor breakdowns)
 > spec version numbers, fixture counts, file counts across guide/code/source-guide)
 
 ---
@@ -99,75 +103,112 @@ The IR and native backend remain planned.
 
 ## 3. Code Layout (Rust)
 
-One **library crate** with two thin binaries — the `mimz` CLI and the
-`mimz-bench` harness (the lib/bin split happened 2026-06-12 when the LSP
-arrived); a WORKSPACE split stays trigger-based:
+A Cargo **workspace** of three crates plus two thin binaries — the `mimz`
+CLI and the `mimz-bench` harness. The lib/bin split happened 2026-06-12 when
+the LSP arrived; the crate-per-boundary split into `mimz-core`/`mimz-sim`
+happened later, once a second non-CLI, non-terminal consumer (the WASM
+playground) needed the pure pipeline + simulator without dragging in
+`ratatui`/filesystem/terminal code:
+
+- **`mimz-core`** — the pure pipeline (lexer → parser → AST → checker →
+  Verilog emitter) plus the tooling modules that never touch a filesystem
+  or terminal (`explain`, `lint`, `translate`, `pretty`, `morph`,
+  `analysis`, `stdlib`, `version`), plus a pure subset of `project`
+  (NFC normalization + import-graph resolution, no fs I/O).
+- **`mimz-sim`** — the event-driven simulator (`sim/`) and the in-memory
+  command runner (`runner.rs`), depending only on `mimz-core`. Defines the
+  `EmulationHost` trait + `Direction` enum (`sim/host.rs`) so the simulator
+  can drive hardware peripherals without depending on them.
+- **`mimz`** (root `src/`, this crate) — the thin shell: filesystem I/O
+  (`project.rs`, `config.rs`), the native hardware-emulation peripherals
+  (`emulate/`, feature-gated behind `hw-emulation`, implementing
+  `EmulationHost`), the CLI binary, the LSP server, `mimz-bench`, and a
+  facade re-exporting `mimz-core`/`mimz-sim` under the same `mimz::…` paths
+  that existed before the split (`src/lib.rs`'s crate-map table is the
+  authoritative per-module list).
 
 ```
-mimz/
+mimz/ (workspace root)
   Cargo.toml
   lang/keywords.toml          # trilingual table — data, not code
-  src/
-    lib.rs               # pub mod × 18 + mod runner + crate map ✅
+  crates/
+    mimz-core/
+      Cargo.toml
+      src/
+        lib.rs             # pub mod × 11 + REPEAT_BUDGET const         ✅
+        span.rs              # byte-offset spans                        ✅
+        diag.rs               # teaching diagnostics + JSON format       ✅
+        morph.rs              # error-language + Tamil inflection        ✅
+        translate.rs          # keyword reskin between flavors           ✅
+        pretty.rs             # AST → source pretty-printer              ✅
+        explain.rs            # long-form error code explanations        ✅
+        lint.rs               # style/hygiene warnings                   ✅
+        version.rs            # compiler version + language edition      ✅
+        stdlib.rs             # embedded standard library modules        ✅
+        analysis.rs           # editor symbol index + offset→def/completion ✅
+        project.rs            # pure subset: NFC + import-graph resolution (no fs I/O) ✅
+        ast/                  # the ONE shared AST                       ✅
+          mod.rs                 #   files, modules, decls, statements
+          expr.rs                #   expressions, patterns, operators
+          sync_loop_lower.rs     #   sync-loop desugaring
+        lexer/                # E10xx                                   ✅
+          mod.rs                 #   scanner + newline policy
+          token.rs               #   token kinds, keyword enum, flavors
+          keywords.rs            #   lang/keywords.toml loader (REQUIRED_KEYS)
+          tests.rs               #   unit tests
+        parser/               # E11xx                                   ✅
+          mod.rs                 #   entry, Parser state + Profile, plumbing
+          items/                 #   file/module/inst/seq/test/func/bundle items
+          expr.rs                #   precedence climbing, patterns
+          tests.rs               #   unit tests
+        emit_verilog/         #                                         ✅
+          mod.rs                 #   Project symtab, entry, helpers
+          module.rs              #   shells, instances, always-blocks
+          expr.rs                #   expression rendering
+          translit.rs            #   Tamil → ASCII identifier pre-pass
+          testbench.rs           #   standalone Verilog testbench gen
+        checker/              # seven passes, E0001–E0909              ✅
+          mod.rs                 #   entry, Checker state, err plumbing
+          symbols.rs             #   project tables + duplicates
+          consteval.rs           #   compile-time evaluation
+          names.rs               #   names, structure, E0302/E0303
+          widths/                #   width/type + exhaustiveness (E04xx, E06xx)
+          drivers.rs             #   single-driver + comb-DAG (E05xx)
+          clocks.rs              #   clock-domain ownership (E0701)
+          funcs.rs               #   fn safety (E0801–E0812)
+          tests.rs               #   unit tests (one per E-code)
+    mimz-sim/
+      Cargo.toml
+      src/
+        lib.rs             # pub mod sim/runner; compile_string entry    ✅
+        runner.rs            # in-memory command engine (playground)     ✅
+        sim/                 # (P1.5)                                    ✅
+          mod.rs                 #   module entry + re-exports
+          comb.rs                #   combinational evaluator
+          kernel.rs              #   event-driven kernel
+          elaborate.rs           #   AST → flat Design
+          harness.rs             #   test block runner (Box<dyn EmulationHost>)
+          host.rs                #   EmulationHost trait + Direction enum
+          run.rs                 #   default stimulus
+          value.rs               #   bit-vector value model
+          vcd.rs                 #   VCD waveform writer
+          trace.rs               #   console trace renderer
+    mimz-wasm/            # WASM playground wrapper, depends on mimz-sim  ✅
+  src/                    # the `mimz` shell crate
+    lib.rs               # facade: pub mod project/config/emulate + pub use mimz-core/mimz-sim ✅
     main.rs              # thin CLI (clap, dispatch, Output)     ✅
     commands/            #   per-subcommand handlers + helpers   ✅
     lsp.rs               # `mimz lsp` server (BIN-only module,  ✅
                          #   keeps tokio out of the lib)
     bin/mimz-bench/      # benchmark harness (docs/code/12)     ✅
                          #   main.rs / metrics/ / html.rs
-    project.rs           # loading, imports; LoadError values   ✅
-    span.rs              # byte-offset spans                    ✅
-    diag.rs              # teaching diagnostics + JSON format   ✅
-    morph.rs             # error-language + Tamil inflection     ✅
+    project.rs           # fs-touching remainder: file loading, LoadError ✅
     config.rs            # mimz.toml project defaults            ✅
-    translate.rs         # keyword reskin between flavors        ✅
-    pretty.rs            # AST → source pretty-printer          ✅
-    explain.rs           # long-form error code explanations    ✅
-    version.rs           # compiler version + language edition   ✅
-    runner.rs            # in-memory command engine (playground) ✅
-    stdlib.rs            # embedded standard library modules    ✅
-    analysis.rs          # editor symbol index + offset→def/completion ✅
-    ast/                 # the ONE shared AST                   ✅
-      mod.rs             #   files, modules, decls, statements
-      expr.rs            #   expressions, patterns, operators
-    lexer/               # E10xx                                ✅
-      mod.rs             #   scanner + newline policy
-      token.rs           #   token kinds, keyword enum, flavors
-      keywords.rs        #   lang/keywords.toml loader (REQUIRED_KEYS)
-      tests.rs           #   unit tests
-    parser/              # E11xx                                ✅
-      mod.rs             #   entry, Parser state + Profile, plumbing
-      items/             #   file/module/inst/seq/test items;
-                         #     syntax directive + clocked-block & seq
-                         #     conditional flips (P1.8, in seq.rs)
-      expr.rs            #   precedence climbing, patterns;
-                         #     if-expr & match flips (P1.8)
-      tests.rs           #   unit tests
-    emit_verilog/        #                                      ✅
-      mod.rs             #   Project symtab, entry, helpers
-      module.rs          #   shells, instances, always-blocks
-      expr.rs            #   expression rendering
-      translit.rs        #   Tamil → ASCII identifier pre-pass
-      testbench.rs       #   standalone Verilog testbench gen
-    checker/             # seven passes, E0001–E0909              ✅
-      mod.rs             #   entry, Checker state, err plumbing
-      symbols.rs         #   project tables + duplicates
-      consteval.rs       #   compile-time evaluation
-      names.rs           #   names, structure, E0302/E0303
-      widths/            #   width/type + exhaustiveness (E04xx, E06xx)
-      drivers.rs         #   single-driver + comb-DAG (E05xx)
-      clocks.rs          #   clock-domain ownership (E0701)
-      tests.rs           #   unit tests (one per E-code)
-    sim/                 # (P1.5)                               ✅
-      mod.rs             #   module entry + re-exports
-      comb.rs            #   combinational evaluator
-      kernel.rs          #   event-driven kernel
-      elaborate.rs       #   AST → flat Design
-      harness.rs         #   test block runner
-      run.rs             #   default stimulus
-      value.rs           #   bit-vector value model
-      vcd.rs             #   VCD waveform writer
-      trace.rs           #   console trace renderer
+    emulate/             # native hw-emulation peripherals (feature-gated: hw-emulation) ✅
+      mod.rs               #   peripheral registry
+      host.rs              #   shell's EmulationHost impl
+      dashboard.rs         #   ratatui live dashboard
+      led.rs, speaker.rs, uart_rx.rs, uart_tx.rs   # peripherals
     ir/                  # (P2)
   tests/                 # 18 test files
     examples.rs          # all 178 examples (34 × 4 complete flavors + 5 stdlib + 1 lib each + 19 tamil-pure) ✅
@@ -192,8 +233,8 @@ mimz/
   editors/vscode/        # extension: grammar + LSP client      ✅
 ```
 
-Planned crate split (when needed): `mimz-syntax` (lexer/parser/AST/printer) ·
-`mimz-check` · `mimz-backends` · `mimz` (CLI).
+The `mimz-core`/`mimz-sim`/`mimz` workspace split above is the crate split;
+no further split is planned unless a new trigger fires (section 5).
 
 ### Repository layout
 
@@ -205,11 +246,13 @@ min-mozhi/
   spec/                     # the LANGUAGE — normative, versioned (v0.2)
   docs/                     # the PROJECT — plan/, log/, archive/, RULES,
                             #   guide/, code/, source-guide/, audit/, Ideas/
-  src/                      # the compiler (tree above)
+  src/                      # the shell crate: fs I/O, emulate/, CLI, LSP (tree above)
+  crates/mimz-core/         # pure pipeline + most tooling (tree above)
+  crates/mimz-sim/          # event-driven simulator + runner (tree above)
+  crates/mimz-wasm/         # WASM playground wrapper (depends on mimz-sim)
   tests/                    # integration tests (18 files)
   benches/                  # Criterion micro-benchmarks
   fuzz/                     # libFuzzer targets (4)
-  crates/mimz-wasm/         # WASM playground wrapper
   examples/                 # .mimz programs (34 designs × 4 complete flavors + 5 stdlib + 1 lib each + 19 tamil-pure = 178)
   demo/                     # alu + cpu hardware demos
   editors/vscode/           # VS Code extension (grammar + LSP client)
