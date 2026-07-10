@@ -66,17 +66,18 @@ impl EmulateHost {
 impl EmulationHost for EmulateHost {
     fn bind(
         &mut self,
-        name: &str,
+        port: &str,
+        peripheral: &str,
         width: Width,
         args: &[mimz_core::ast::BindArg],
         speed_hz: Option<u64>,
     ) -> Result<(), String> {
         let entry = self
             .registry
-            .get(name)
-            .ok_or_else(|| format!("unknown peripheral `{name}`"))?;
-        let peripheral = (entry.construct)(width, args, speed_hz)?;
-        self.peripherals.push((name.to_string(), peripheral));
+            .get(peripheral)
+            .ok_or_else(|| format!("unknown peripheral `{peripheral}`"))?;
+        let instance = (entry.construct)(width, args, speed_hz)?;
+        self.peripherals.push((port.to_string(), instance));
         Ok(())
     }
 
@@ -147,5 +148,63 @@ impl EmulationHost for EmulateHost {
             }
         }
         Ok(self.quit)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mimz_core::ast::{BindArg, BindArgValue, Ident};
+    use mimz_core::span::Span;
+
+    fn arg(name: &str, value: BindArgValue) -> BindArg {
+        BindArg {
+            name: Ident {
+                name: name.to_string(),
+                span: Span::default(),
+            },
+            value,
+            span: Span::default(),
+        }
+    }
+
+    /// `bind rx -> uart_rx(...)` gives the peripheral instance a different
+    /// name (`rx`, the port) than the registry key used to construct it
+    /// (`uart_rx`, the peripheral type) — but every later call
+    /// (`on_change`/`on_tick`/`drive`) identifies it by the PORT name only.
+    /// Storage keyed by peripheral name instead of port name means those
+    /// calls silently find nothing whenever port != peripheral name (this
+    /// is exactly the `showcase/english/uart_echo.mimz` failure: `rx` never
+    /// gets driven, stays 0 forever).
+    #[test]
+    fn drive_dispatches_by_port_name_not_peripheral_name() {
+        let mut host = EmulateHost::new("t".to_string(), false, false);
+        let width = Width {
+            bits: 1,
+            signed: false,
+        };
+        let args = [
+            arg("baud", BindArgValue::Int(1)),
+            arg("source", BindArgValue::Str("Z".to_string())),
+        ];
+        host.bind("custom_rx_port", "uart_rx", width, &args, Some(4))
+            .expect("binds");
+
+        // uart_rx's drive() always returns Some(_) (idle-high or a framed
+        // bit) — it never legitimately returns None — so if every call
+        // returns None, the peripheral was never actually reached.
+        let saw_a_value = (0..8).any(|_| host.drive("custom_rx_port").is_some());
+        assert!(
+            saw_a_value,
+            "drive() by port name returned None every time — peripheral \
+             storage must be keyed by port, not peripheral, name"
+        );
+
+        // Guard against silently reverting to peripheral-name keying.
+        assert!(
+            host.drive("uart_rx").is_none(),
+            "peripheral-name key should not resolve anything — port name \
+             is the only valid key"
+        );
     }
 }

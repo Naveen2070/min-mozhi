@@ -451,7 +451,13 @@ impl Run<'_> {
                             }
                         };
                         self.host
-                            .bind(b.peripheral.name.as_str(), width, &b.args, speed_hz)
+                            .bind(
+                                b.port.name.as_str(),
+                                b.peripheral.name.as_str(),
+                                width,
+                                &b.args,
+                                speed_hz,
+                            )
                             .map_err(Stop::Err)?;
                         bound.push(b.port.name.clone());
                     }
@@ -646,12 +652,13 @@ mod tests {
     impl EmulationHost for NullHost {
         fn bind(
             &mut self,
-            name: &str,
+            _port: &str,
+            peripheral: &str,
             _width: Width,
             _args: &[ast::BindArg],
             _speed_hz: Option<u64>,
         ) -> Result<(), String> {
-            match name {
+            match peripheral {
                 "led" | "speaker" | "uart_tx" | "uart_rx" => Ok(()),
                 other => Err(format!("unknown peripheral `{other}`")),
             }

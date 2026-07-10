@@ -23,14 +23,24 @@ pub enum Direction {
 /// Implemented by the shell crate (`mimz::emulate`), which owns ratatui/cpal.
 /// No type in this trait's signature may come from ratatui or cpal.
 pub trait EmulationHost {
-    /// Validate + construct a peripheral for a `sim{}` block bind. Errors
-    /// are the same teaching-quality strings the old `emulate::registry`
-    /// constructors returned (e.g. "unknown peripheral 'foo'", direction
-    /// mismatch messages) — preserve their exact text so existing harness
-    /// tests (`sim_block_with_unknown_peripheral_errors`, etc.) still pass.
+    /// Validate + construct a peripheral for a `sim{}` block bind. `port` is
+    /// the signal being bound (e.g. `rx`); `peripheral` is the peripheral
+    /// type name (e.g. `uart_rx`) — implementations MUST key their internal
+    /// peripheral storage by `port`, since every later call (`on_change`,
+    /// `on_tick`, `drive`) identifies the peripheral by its bound port, not
+    /// its type name (a design/port pair like `bind rx -> uart_rx(...)` has
+    /// two different names for the same instance; storing by the wrong one
+    /// makes every later dispatch silently find nothing).
+    ///
+    /// Errors are the same teaching-quality strings the old
+    /// `emulate::registry` constructors returned (e.g. "unknown peripheral
+    /// 'foo'", direction mismatch messages) — preserve their exact text so
+    /// existing harness tests (`sim_block_with_unknown_peripheral_errors`,
+    /// etc.) still pass.
     fn bind(
         &mut self,
-        name: &str,
+        port: &str,
+        peripheral: &str,
         width: Width,
         args: &[BindArg],
         speed_hz: Option<u64>,
