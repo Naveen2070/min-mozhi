@@ -489,20 +489,20 @@ impl<'a> Checker<'a> {
                     // E0406 for an out-of-range compile-time memory address);
                     // a runtime index is allowed unchecked, same allowance
                     // mem's own read side already has for a runtime address.
-                    if let Ty::CtInt(v) = self.infer_ty(cx, index) {
-                        if v < 0 || v as u128 >= len {
-                            self.err(
-                                cx.file,
-                                index.span,
-                                "E0415",
-                                format!("index `{v}` is out of range"),
-                                format!(
-                                    "the array has {len} elements, so indices run 0..={}",
-                                    len - 1
-                                ),
-                            );
-                            return Ty::Unknown;
-                        }
+                    if let Ty::CtInt(v) = self.infer_ty(cx, index)
+                        && (v < 0 || v as u128 >= len)
+                    {
+                        self.err(
+                            cx.file,
+                            index.span,
+                            "E0415",
+                            format!("index `{v}` is out of range"),
+                            format!(
+                                "the array has {len} elements, so indices run 0..={}",
+                                len - 1
+                            ),
+                        );
+                        return Ty::Unknown;
                     }
                     return if elem_signed {
                         Ty::Signed(elem_width)
@@ -753,28 +753,28 @@ impl<'a> Checker<'a> {
             Some(Bind::In) | Some(Bind::Out) | Some(Bind::Wire) | Some(Bind::Reg) => {
                 // Possible bundle field access — check if this signal is bundle-typed
                 #[allow(clippy::collapsible_match)]
-                if let Some(signal_ty) = cx.bundle_sigs.get(name) {
-                    if let Type::Bundle { name: bname, args } = signal_ty {
-                        // Bundle field access: resolve the bundle and return the field's type
-                        let bfile_hint = bname.resolved_file.get();
-                        match self.resolve_bundle_fields(
-                            cx,
-                            &bname.name.name,
-                            bfile_hint,
-                            args,
-                            base.span,
-                        ) {
-                            Some(fields) => {
-                                for (fname, fty) in fields {
-                                    if fname == field.name {
-                                        return fty;
-                                    }
+                if let Some(signal_ty) = cx.bundle_sigs.get(name)
+                    && let Type::Bundle { name: bname, args } = signal_ty
+                {
+                    // Bundle field access: resolve the bundle and return the field's type
+                    let bfile_hint = bname.resolved_file.get();
+                    match self.resolve_bundle_fields(
+                        cx,
+                        &bname.name.name,
+                        bfile_hint,
+                        args,
+                        base.span,
+                    ) {
+                        Some(fields) => {
+                            for (fname, fty) in fields {
+                                if fname == field.name {
+                                    return fty;
                                 }
-                                // Field not found in bundle — let emit report it, or it was already caught earlier
-                                return Ty::Unknown;
                             }
-                            None => return Ty::Unknown, // resolve_bundle_fields reported error
+                            // Field not found in bundle — let emit report it, or it was already caught earlier
+                            return Ty::Unknown;
                         }
+                        None => return Ty::Unknown, // resolve_bundle_fields reported error
                     }
                 }
                 // Signal exists but is not bundle-typed — error

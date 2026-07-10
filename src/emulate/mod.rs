@@ -76,8 +76,7 @@ pub trait Peripheral: Send {
 /// `speed_hz` is the sim block's declared real-world clock rate, if any —
 /// `uart_tx`/`uart_rx` need it to derive `cycles_per_bit` from `baud`;
 /// `led` ignores it.
-pub type Constructor =
-    fn(Width, &[BindArg], Option<u64>) -> Result<Box<dyn Peripheral>, String>;
+pub type Constructor = fn(Width, &[BindArg], Option<u64>) -> Result<Box<dyn Peripheral>, String>;
 
 /// A registered peripheral: which port kind it expects (`Direction` comes
 /// from `mimz_sim::sim`, shared with the harness's bind validation), plus

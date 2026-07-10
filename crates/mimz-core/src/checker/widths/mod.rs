@@ -721,24 +721,22 @@ impl<'a> Checker<'a> {
                                 // field-list comparison (2.9); first-class IR bundle
                                 // (post-Phase 2) promotes BundleType to a Type variant in IR
                                 let rhs_bundle = cx.bundle_sigs.get(rhs_sig.as_str()).copied();
-                                if let Some(rhs_ty) = rhs_bundle {
-                                    if let (Some(l), Some(r)) =
+                                if let Some(rhs_ty) = rhs_bundle
+                                    && let (Some(l), Some(r)) =
                                         (ast_bundle_name(lhs_ty), ast_bundle_name(rhs_ty))
-                                    {
-                                        if l != r {
-                                            self.err(
-                                                cx.file,
-                                                rhs.span,
-                                                "E0907",
-                                                format!(
-                                                    "bundle type mismatch: cannot assign \
+                                    && l != r
+                                {
+                                    self.err(
+                                        cx.file,
+                                        rhs.span,
+                                        "E0907",
+                                        format!(
+                                            "bundle type mismatch: cannot assign \
                                                      `{r}` where `{l}` is expected"
-                                                ),
-                                                "bundle types are matched by name — they \
+                                        ),
+                                        "bundle types are matched by name — they \
                                                  must be the same bundle declaration",
-                                            );
-                                        }
-                                    }
+                                    );
                                 }
                             }
                             _ => {
@@ -975,17 +973,16 @@ impl<'a> Checker<'a> {
             if let Pattern::Variant {
                 variant, bindings, ..
             } = p
+                && let Some(ev) = en.variants.iter().find(|v| v.name.name == variant.name)
             {
-                if let Some(ev) = en.variants.iter().find(|v| v.name.name == variant.name) {
-                    for (binding, field) in bindings.iter().zip(ev.fields.iter()) {
-                        let ty = self.resolve_ty_silent(cx, &field.ty);
-                        match ty {
-                            Ty::Bit | Ty::Bits(_) | Ty::Signed(_) => {
-                                let prev = cx.sigs.insert(binding.name.clone(), ty);
-                                injected.push((binding.name.clone(), prev));
-                            }
-                            _ => {} // Enum/Memory/Unknown — leave as Unknown (E0807 already reported)
+                for (binding, field) in bindings.iter().zip(ev.fields.iter()) {
+                    let ty = self.resolve_ty_silent(cx, &field.ty);
+                    match ty {
+                        Ty::Bit | Ty::Bits(_) | Ty::Signed(_) => {
+                            let prev = cx.sigs.insert(binding.name.clone(), ty);
+                            injected.push((binding.name.clone(), prev));
                         }
+                        _ => {} // Enum/Memory/Unknown — leave as Unknown (E0807 already reported)
                     }
                 }
             }

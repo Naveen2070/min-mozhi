@@ -102,8 +102,9 @@ pub(crate) fn test_file(
     for t in tests {
         // Constructed unconditionally (even headless) so bind validation
         // always runs; a non-live host just no-ops every draw/pause.
-        let host: Box<dyn mimz_sim::sim::EmulationHost> =
-            Box::new(mimz::emulate::host::EmulateHost::new(t.name.clone(), live, step));
+        let host: Box<dyn mimz_sim::sim::EmulationHost> = Box::new(
+            mimz::emulate::host::EmulateHost::new(t.name.clone(), live, step),
+        );
         match run_test(&asts, &src, t, host, live, step) {
             Ok(o) => {
                 let quit = o.quit;

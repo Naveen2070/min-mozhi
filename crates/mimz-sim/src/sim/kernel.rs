@@ -303,13 +303,13 @@ fn run_seq(
                         let addr = value::eval(env, addr_expr)?.bits;
                         let v = value::eval(env, rhs)?;
                         // A write past the end is dropped (matches Verilog).
-                        if let Some(info) = info {
-                            if addr < info.depth {
-                                next_mems.insert(
-                                    (lhs.base.name.clone(), addr),
-                                    Val::new(v.bits, info.width.bits, info.width.signed),
-                                );
-                            }
+                        if let Some(info) = info
+                            && addr < info.depth
+                        {
+                            next_mems.insert(
+                                (lhs.base.name.clone(), addr),
+                                Val::new(v.bits, info.width.bits, info.width.signed),
+                            );
                         }
                     }
                     Some(_) => {

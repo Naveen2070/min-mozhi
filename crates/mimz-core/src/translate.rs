@@ -149,16 +149,18 @@ fn is_word_byte(b: u8) -> bool {
 /// script-changing re-emit (Tamil keyword/name -> ASCII) lexing as it did before.
 fn push_guarded(out: &mut String, text: &str, next: Option<u8>) {
     let bytes = text.as_bytes();
-    if let (Some(&prev), Some(&first)) = (out.as_bytes().last(), bytes.first()) {
-        if is_word_byte(prev) && is_word_byte(first) {
-            out.push(' ');
-        }
+    if let (Some(&prev), Some(&first)) = (out.as_bytes().last(), bytes.first())
+        && is_word_byte(prev)
+        && is_word_byte(first)
+    {
+        out.push(' ');
     }
     out.push_str(text);
-    if let (Some(&last), Some(n)) = (bytes.last(), next) {
-        if is_word_byte(last) && is_word_byte(n) {
-            out.push(' ');
-        }
+    if let (Some(&last), Some(n)) = (bytes.last(), next)
+        && is_word_byte(last)
+        && is_word_byte(n)
+    {
+        out.push(' ');
     }
 }
 
@@ -210,10 +212,10 @@ fn reskin(
 fn build_rename_map(tokens: &[Token]) -> HashMap<String, String> {
     let mut used: HashSet<String> = HashSet::new();
     for t in tokens {
-        if let TokKind::Ident(n) = &t.kind {
-            if n.is_ascii() {
-                used.insert(n.clone());
-            }
+        if let TokKind::Ident(n) = &t.kind
+            && n.is_ascii()
+        {
+            used.insert(n.clone());
         }
     }
     let mut map: HashMap<String, String> = HashMap::new();
