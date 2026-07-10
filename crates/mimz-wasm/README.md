@@ -1,7 +1,7 @@
 # mimz-wasm
 
 WebAssembly bindings for the Min-Mozhi (மின்மொழி) compiler — compile `.mimz` to
-Verilog in the browser, no server. Wraps [`mimz::compile_string`] (single-file,
+Verilog in the browser, no server. Wraps [`mimz_sim::compile_string`] (single-file,
 in-memory: no filesystem, no `import` resolution).
 
 ## API
@@ -37,4 +37,4 @@ node crates/mimz-wasm/smoke-test.cjs
 
 After a `--target web` build, serve this folder over HTTP and open `test.html`.
 
-[`mimz::compile_string`]: https://github.com/Naveen2070/min-mozhi/blob/master/src/lib.rs
+[`mimz_sim::compile_string`]: https://github.com/Naveen2070/min-mozhi/blob/master/crates/mimz-sim/src/lib.rs
