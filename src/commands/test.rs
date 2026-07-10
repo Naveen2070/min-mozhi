@@ -105,7 +105,7 @@ pub(crate) fn test_file(
         let host: Box<dyn mimz_sim::sim::EmulationHost> = Box::new(
             mimz::emulate::host::EmulateHost::new(t.name.clone(), live, step),
         );
-        match run_test(&asts, &src, t, host, live, step) {
+        match run_test(&asts, &src, t, host, live, step, trace_style.is_some()) {
             Ok(o) => {
                 let quit = o.quit;
                 match &o.result {

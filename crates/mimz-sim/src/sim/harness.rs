@@ -75,7 +75,8 @@ pub struct Outcome {
     pub checks: usize,
     /// Pass, or fail with a teaching-quality message.
     pub result: TestResult,
-    /// Per-tick capture, for `--trace` / `--trace=changes`.
+    /// Per-tick capture, for `--trace` / `--trace=changes`. Empty (no
+    /// frames) unless `run_test`'s `trace` parameter was `true`.
     pub timeline: Timeline,
     /// Default trace scope: the module's interface + state (inputs, outputs,
     /// registers), in that order.
@@ -109,6 +110,10 @@ pub enum TestResult {
 /// `live` is whether ticks should pace/redraw in real time (the caller has
 /// already decided this from `--emulate` + a real terminal being attached);
 /// `step` additionally forces single-cycle batches for interactive stepping.
+/// `trace` is whether the caller will actually use `Outcome.timeline` (e.g.
+/// `--trace` was passed) — skip it and every per-cycle full-signal snapshot
+/// is skipped too, since capturing is real per-cycle overhead paid whether
+/// or not anything ever reads the result.
 /// `Err` is a setup/semantic error; a normal `expect` failure is
 /// `Ok(Outcome { result: Fail(..), .. })`.
 pub fn run_test(
@@ -118,6 +123,7 @@ pub fn run_test(
     host: Box<dyn EmulationHost>,
     live: bool,
     step: bool,
+    trace: bool,
 ) -> Result<Outcome, String> {
     let params = params(decl)?;
     let design = elaborate_project(files, Some(&decl.module.name.name), &params)?;
@@ -170,8 +176,11 @@ pub fn run_test(
         live,
         stepping,
         skip_reason,
+        trace,
     };
-    run.capture()?; // the initial (pre-tick) state
+    if run.trace {
+        run.capture()?; // the initial (pre-tick) state
+    }
 
     let (result, quit_from_exec) = match run.exec(&decl.body) {
         Ok(()) => (TestResult::Pass, false),
@@ -288,6 +297,11 @@ struct Run<'a> {
     /// is active and the run isn't live — `None` iff `live` (or the test
     /// has no `sim` block at all).
     skip_reason: Option<String>,
+    /// Whether the caller will use `Outcome.timeline` at all (`--trace` was
+    /// requested). `false` skips every per-cycle `capture()` — real
+    /// overhead (a full-signal snapshot) paid on every simulated cycle
+    /// whether or not anything ever reads the result.
+    trace: bool,
 }
 
 impl Run<'_> {
@@ -349,7 +363,7 @@ impl Run<'_> {
                                 self.drive_peripherals().map_err(Stop::Err)?;
                                 self.sim.tick(&clock.name).map_err(Stop::Err)?;
                                 self.cycle += 1;
-                                if self.cycle <= 1_000_000 {
+                                if self.trace && self.cycle <= 1_000_000 {
                                     self.capture().map_err(Stop::Err)?;
                                 }
                                 self.notify_on_tick().map_err(Stop::Err)?;
@@ -373,7 +387,7 @@ impl Run<'_> {
                         for _ in 0..n {
                             self.sim.tick(&clock.name).map_err(Stop::Err)?;
                             self.cycle += 1;
-                            if self.cycle <= 1_000_000 {
+                            if self.trace && self.cycle <= 1_000_000 {
                                 self.capture().map_err(Stop::Err)?;
                             }
                         }
@@ -690,7 +704,7 @@ mod tests {
         src: &str,
         decl: &TestDecl,
     ) -> Result<Outcome, String> {
-        run_test(files, src, decl, Box::new(NullHost), false, false)
+        run_test(files, src, decl, Box::new(NullHost), false, false, true)
     }
 
     fn run(src: &str) -> Vec<Outcome> {
@@ -800,6 +814,43 @@ mod tests {
         // 1 initial frame + 3 ticks.
         assert_eq!(outs[0].timeline.frames.len(), 4);
         assert_eq!(outs[0].default_scope, vec!["count", "value"]);
+    }
+
+    #[test]
+    fn trace_false_skips_every_capture() {
+        // A caller that never reads `Outcome.timeline` (e.g. `mimz test`
+        // without `--trace`) shouldn't pay for a full-signal snapshot on
+        // every simulated cycle.
+        let src = format!(
+            "{COUNTER}\ntest \"notrace\" for Counter(WIDTH: 4) {{\n  \
+             rst = 0\n  tick(clk, 3)\n  expect count == 3\n}}\n"
+        );
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(&src).expect("lexes")).expect("parses");
+        let decl = f
+            .items
+            .iter()
+            .find_map(|i| match i {
+                ast::TopItem::Test(t) => Some(t),
+                _ => None,
+            })
+            .unwrap();
+        let outcome = run_test(
+            std::slice::from_ref(&f),
+            &src,
+            decl,
+            Box::new(NullHost),
+            false,
+            false,
+            false,
+        )
+        .expect("runs");
+        assert!(passes(&outcome));
+        assert_eq!(
+            outcome.timeline.frames.len(),
+            0,
+            "trace: false must skip every capture(), including the initial one"
+        );
     }
 
     #[test]
@@ -994,6 +1045,7 @@ mod tests {
             Box::new(NullHost),
             true,
             false,
+            true,
         )
         .expect("runs");
         assert!(passes(&outcome));
