@@ -32,7 +32,7 @@ pub struct Val {
 }
 
 impl Val {
-    pub(super) fn new(bits: u128, width: u32, signed: bool) -> Val {
+    pub fn new(bits: u128, width: u32, signed: bool) -> Val {
         Val {
             bits: bits & mask(width),
             width: width.max(1),
@@ -40,7 +40,7 @@ impl Val {
         }
     }
     /// A compile-time integer used as a value: minimal width that holds it.
-    pub(super) fn from_int(v: i128) -> Val {
+    pub fn from_int(v: i128) -> Val {
         if v >= 0 {
             let w = (128 - (v as u128).leading_zeros()).max(1);
             Val::new(v as u128, w, false)
@@ -380,10 +380,10 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                 } else {
                     els.as_deref()
                 };
-                if let Some(body) = branch {
-                    if let FnFlow::Returned(v) = eval_fn_stmts(env, body)? {
-                        return Ok(FnFlow::Returned(v));
-                    }
+                if let Some(body) = branch
+                    && let FnFlow::Returned(v) = eval_fn_stmts(env, body)?
+                {
+                    return Ok(FnFlow::Returned(v));
                 }
             }
             FnStmt::Return(expr) => {

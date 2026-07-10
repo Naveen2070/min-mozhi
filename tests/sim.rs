@@ -446,6 +446,47 @@ module BusDecoder {
     );
 }
 
+/// Headless no-op `EmulationHost` for `run_test_ok` below — this test file
+/// never exercises `sim{}` emulation peripherals, it only needs something to
+/// satisfy `run_test`'s `host` parameter (mirrors `NullHost` in
+/// `mimz-sim`'s own harness unit tests, which are crate-internal and not
+/// reachable from here).
+struct NoOpTestHost;
+impl mimz::sim::EmulationHost for NoOpTestHost {
+    fn bind(
+        &mut self,
+        name: &str,
+        _width: mimz::sim::elaborate::Width,
+        _args: &[mimz::ast::BindArg],
+        _speed_hz: Option<u64>,
+    ) -> Result<(), String> {
+        match name {
+            "led" | "speaker" | "uart_tx" | "uart_rx" => Ok(()),
+            other => Err(format!("unknown peripheral `{other}`")),
+        }
+    }
+    fn direction_of(&self, name: &str) -> Option<mimz::sim::Direction> {
+        match name {
+            "led" | "speaker" | "uart_tx" => Some(mimz::sim::Direction::Output),
+            "uart_rx" => Some(mimz::sim::Direction::Input),
+            _ => None,
+        }
+    }
+    fn on_change(&mut self, _name: &str, _val: &mimz::sim::Val) {}
+    fn on_tick(&mut self, _name: &str, _val: &mimz::sim::Val) -> Result<(), String> {
+        Ok(())
+    }
+    fn drive(&mut self, _name: &str) -> Option<u64> {
+        None
+    }
+    fn frame(&mut self) -> Result<bool, String> {
+        Ok(false)
+    }
+    fn finish(&mut self) -> Result<bool, String> {
+        Ok(false)
+    }
+}
+
 /// Helper: parse `src`, run all `test` blocks in it, assert every one passes.
 fn run_test_ok(src: &str) {
     use mimz::ast::TopItem;
@@ -465,8 +506,15 @@ fn run_test_ok(src: &str) {
         .collect();
     assert!(!tests.is_empty(), "no test blocks found in src");
     for decl in tests {
-        let outcome = run_test(std::slice::from_ref(&file), src, decl, false, false)
-            .unwrap_or_else(|e| panic!("test `{}` errored: {e}", decl.name));
+        let outcome = run_test(
+            std::slice::from_ref(&file),
+            src,
+            decl,
+            Box::new(NoOpTestHost),
+            false,
+            false,
+        )
+        .unwrap_or_else(|e| panic!("test `{}` errored: {e}", decl.name));
         match &outcome.result {
             TestResult::Pass => {}
             TestResult::Fail(msg) => panic!("test `{}` failed:\n{msg}", decl.name),
