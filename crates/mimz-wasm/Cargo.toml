@@ -16,5 +16,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # The compiler, without its CLI-only LSP/bench deps (tokio etc. don't build on
 # wasm32). The pipeline `compile_string` needs has no optional deps.
-mimz = { path = "../..", default-features = false }
+mimz-sim = { path = "../mimz-sim" }
 wasm-bindgen = "0.2"
