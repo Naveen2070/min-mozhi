@@ -1,6 +1,6 @@
 //! WebAssembly bindings for the Min-Mozhi (மின்மொழி) compiler.
 //!
-//! Exposes the in-memory [`mimz::compile_string`] pipeline to JavaScript so the
+//! Exposes the in-memory [`mimz_sim::compile_string`] pipeline to JavaScript so the
 //! browser playground compiles `.mimz` to Verilog with no server and no
 //! filesystem — Phase 4 web presence, build step 2
 //! (`docs/plan/phase-4-web-presence.md`).
