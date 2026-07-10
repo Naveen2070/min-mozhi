@@ -564,7 +564,15 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
     let mut out = String::new();
     let (mut passed, mut failed) = (0u32, 0u32);
     for decl in decls {
-        match crate::sim::harness::run_test(&asts, src, decl, Box::new(NoOpHost), false, false) {
+        match crate::sim::harness::run_test(
+            &asts,
+            src,
+            decl,
+            Box::new(NoOpHost),
+            false,
+            false,
+            false,
+        ) {
             Ok(o) => match o.result {
                 crate::sim::harness::TestResult::Pass => {
                     passed += 1;
