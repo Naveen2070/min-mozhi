@@ -455,12 +455,13 @@ struct NoOpTestHost;
 impl mimz::sim::EmulationHost for NoOpTestHost {
     fn bind(
         &mut self,
-        name: &str,
+        _port: &str,
+        peripheral: &str,
         _width: mimz::sim::elaborate::Width,
         _args: &[mimz::ast::BindArg],
         _speed_hz: Option<u64>,
     ) -> Result<(), String> {
-        match name {
+        match peripheral {
             "led" | "speaker" | "uart_tx" | "uart_rx" => Ok(()),
             other => Err(format!("unknown peripheral `{other}`")),
         }
