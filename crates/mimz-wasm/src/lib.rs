@@ -20,7 +20,7 @@ use wasm_bindgen::prelude::*;
 /// `mimz compile` prints).
 #[wasm_bindgen(js_name = compileToVerilog)]
 pub fn compile_to_verilog(source: &str) -> Result<String, JsError> {
-    mimz::compile_string(source).map_err(|diagnostics| JsError::new(&diagnostics))
+    mimz_sim::compile_string(source).map_err(|diagnostics| JsError::new(&diagnostics))
 }
 
 /// Run any `mimz` subcommand against the source in memory — the engine behind the
@@ -36,5 +36,5 @@ pub fn compile_to_verilog(source: &str) -> Result<String, JsError> {
 #[wasm_bindgen(js_name = runCommand)]
 pub fn run_command(source: &str, command: &str, args: Vec<String>) -> Result<String, JsError> {
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    mimz::run_command(source, command, &argv).map_err(|e| JsError::new(&e))
+    mimz_sim::run_command(source, command, &argv).map_err(|e| JsError::new(&e))
 }
