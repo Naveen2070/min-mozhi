@@ -709,17 +709,16 @@ impl Pretty {
             lhs,
             rhs,
         } = &speed.kind
+            && let ExprKind::Int { value, .. } = &rhs.kind
         {
-            if let ExprKind::Int { value, .. } = &rhs.kind {
-                let unit = match *value {
-                    1 => Some("hz"),
-                    1_000 => Some("khz"),
-                    1_000_000 => Some("mhz"),
-                    _ => None,
-                };
-                if let Some(unit) = unit {
-                    return format!("{unit}({})", self.expr(lhs, self.indent));
-                }
+            let unit = match *value {
+                1 => Some("hz"),
+                1_000 => Some("khz"),
+                1_000_000 => Some("mhz"),
+                _ => None,
+            };
+            if let Some(unit) = unit {
+                return format!("{unit}({})", self.expr(lhs, self.indent));
             }
         }
         // Shouldn't happen given speed_expr()'s invariant above, but don't

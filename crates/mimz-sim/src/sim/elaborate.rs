@@ -195,10 +195,10 @@ fn resolve_bundle_fields_sim(
     // Build a merged const env: module consts + bundle param defaults + call-site overrides.
     let mut merged = consts.clone();
     for p in &bdecl.params {
-        if let Some(default) = &p.default {
-            if let Ok(v) = const_eval(default, &merged) {
-                merged.insert(p.name.name.clone(), v);
-            }
+        if let Some(default) = &p.default
+            && let Ok(v) = const_eval(default, &merged)
+        {
+            merged.insert(p.name.name.clone(), v);
         }
     }
     for a in args {

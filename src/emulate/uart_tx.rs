@@ -11,9 +11,9 @@ use ratatui::widgets::{Paragraph, Widget};
 
 use crate::ast::{BindArg, BindArgValue};
 
-use mimz_sim::sim::elaborate::Width;
-use mimz_sim::sim::Val;
 use super::{Peripheral, parse_port};
+use mimz_sim::sim::Val;
+use mimz_sim::sim::elaborate::Width;
 
 /// How many trailing decoded characters `render` shows.
 const LOG_CAP: usize = 32;
