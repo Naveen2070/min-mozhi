@@ -514,6 +514,7 @@ fn run_test_ok(src: &str) {
             Box::new(NoOpTestHost),
             false,
             false,
+            false,
         )
         .unwrap_or_else(|e| panic!("test `{}` errored: {e}", decl.name));
         match &outcome.result {
