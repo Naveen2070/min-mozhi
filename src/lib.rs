@@ -39,6 +39,7 @@
 //! | [`config`]      | mimz (shell) | `mimz.toml` project defaults for CLI flags (CLI overrides) |
 //! | [`stdlib`]      | mimz-core  | Embedded standard library (`import std.*`) — catalog + eject |
 //! | [`version`]     | mimz-core  | The compiler-version vs language-edition axes + history    |
+//! | [`emulate`]     | mimz (shell) | Native hardware-emulation peripherals (LED/speaker/UART) bound in `sim{}` blocks (`mimz test --emulate`), feature-gated behind `hw-emulation` |
 //!
 //! This table is mechanically checked against the `mod` list by
 //! `tests/docs_sync.rs` — add a module, add a row (and a docs/code/ page).

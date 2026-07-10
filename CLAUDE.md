@@ -14,29 +14,36 @@ Rules:
 
 ```
 min-mozhi/
-├── src/                         # Compiler source (Rust)
+├── src/                         # Shell crate: fs I/O, CLI, LSP, hw emulation
 │   ├── main.rs                  # CLI entry (clap)
-│   ├── lib.rs                   # Library root, re-exports everything
-│   ├── span.rs                  # Source positions
-│   ├── diag.rs                  # Error diagnostics with pretty underlines
-│   ├── morph.rs                 # Error language detection + Tamil inflection
+│   ├── lib.rs                   # Facade: project/config/emulate + re-exports mimz-core/mimz-sim
+│   ├── project.rs               # File loading + import resolution (fs-touching remainder)
 │   ├── config.rs                # mimz.toml project config
-│   ├── project.rs               # File loading + import resolution
-│   ├── runner.rs                # In-memory command engine (playground)
-│   ├── translate.rs             # Keyword reskin between flavors
-│   ├── pretty.rs                # AST → source pretty-printer
-│   ├── explain.rs               # Long-form error code explanations
-│   ├── version.rs               # Compiler version + language edition
+│   ├── emulate/                 # Native hw-emulation peripherals (7 files, `hw-emulation` feature)
 │   ├── lsp.rs                   # Language server (optional, lsp feature)
-│   ├── lexer/                   # Tokenizer (4 files)
-│   ├── parser/                  # Recursive-descent parser (9 files)
-│   ├── ast/                     # Shared AST (2 files)
-│   ├── checker/                 # 6 safety passes (12 files)
-│   ├── emit_verilog/            # Verilog-2005 code gen (5 files)
-│   ├── sim/                     # Event-driven simulator (9 files)
 │   ├── commands/                # CLI command handlers (16 files)
 │   └── bin/mimz-bench/          # Benchmark harness
-├── crates/mimz-wasm/            # WASM playground wrapper (40 lines)
+├── crates/
+│   ├── mimz-core/src/           # Pure pipeline + most tooling
+│   │   ├── lib.rs                   # Library root, re-exports everything
+│   │   ├── span.rs                  # Source positions
+│   │   ├── diag.rs                  # Error diagnostics with pretty underlines
+│   │   ├── morph.rs                 # Error language detection + Tamil inflection
+│   │   ├── project.rs               # Pure subset: NFC normalization + import resolution
+│   │   ├── translate.rs             # Keyword reskin between flavors
+│   │   ├── pretty.rs                # AST → source pretty-printer
+│   │   ├── explain.rs               # Long-form error code explanations
+│   │   ├── version.rs               # Compiler version + language edition
+│   │   ├── lexer/                   # Tokenizer (4 files)
+│   │   ├── parser/                  # Recursive-descent parser (11 files)
+│   │   ├── ast/                     # Shared AST (3 files)
+│   │   ├── checker/                 # 7 safety passes (13 files)
+│   │   └── emit_verilog/            # Verilog-2005 code gen (5 files)
+│   ├── mimz-sim/src/            # Event-driven simulator + runner
+│   │   ├── lib.rs                   # compile_string entry, re-exports sim/runner
+│   │   ├── runner.rs                # In-memory command engine (playground)
+│   │   └── sim/                     # Event-driven simulator (10 files, incl. EmulationHost trait)
+│   └── mimz-wasm/               # WASM playground wrapper (depends on mimz-sim)
 ├── tests/                       # 18 test files + fixtures/golden/icarus
 ├── benches/compile.rs           # Criterion micro-benchmarks
 ├── fuzz/                        # 4 libFuzzer targets
