@@ -2,7 +2,7 @@
 //! `mimz-sim` defines abstractly (`mimz_sim::sim::EmulationHost`). This is
 //! the only place ratatui/cpal-backed peripherals meet the simulator: it
 //! owns the peripheral registry, the bound peripheral instances, and (when
-//! `live`) the `ratatui` [`Dashboard`].
+//! `live`) the `ratatui` `Dashboard` (crate-private — no public link target).
 //!
 //! Constructed unconditionally by `commands/test.rs` (Task 8) on every
 //! `mimz test` run — bind validation must fire even without `--emulate`, so
