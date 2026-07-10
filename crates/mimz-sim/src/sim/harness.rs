@@ -592,18 +592,18 @@ impl Run<'_> {
     /// expression, the cycle, and — when it is a comparison — each side's value.
     fn fail_message(&self, e: &Expr) -> Result<String, Stop> {
         let mut msg = format!("expect {} — false at cycle {}", self.snippet(e), self.cycle);
-        if let ExprKind::Binary { op, lhs, rhs } = &e.kind {
-            if is_cmp(*op) {
-                let l = self.sim.eval(lhs).map_err(Stop::Err)?;
-                let r = self.sim.eval(rhs).map_err(Stop::Err)?;
-                msg.push_str(&format!(
-                    "\n  left  {} = {}\n  right {} = {}",
-                    self.snippet(lhs),
-                    show(l),
-                    self.snippet(rhs),
-                    show(r),
-                ));
-            }
+        if let ExprKind::Binary { op, lhs, rhs } = &e.kind
+            && is_cmp(*op)
+        {
+            let l = self.sim.eval(lhs).map_err(Stop::Err)?;
+            let r = self.sim.eval(rhs).map_err(Stop::Err)?;
+            msg.push_str(&format!(
+                "\n  left  {} = {}\n  right {} = {}",
+                self.snippet(lhs),
+                show(l),
+                self.snippet(rhs),
+                show(r),
+            ));
         }
         Ok(msg)
     }

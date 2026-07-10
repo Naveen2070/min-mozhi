@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 use unicode_normalization::UnicodeNormalization;
 
-use crate::lexer::token::Flavor;
 use crate::{ast, diag, lexer, parser, stdlib};
 
 pub use mimz_core::project::{LoadedFile, render_diags, render_diags_lang};
