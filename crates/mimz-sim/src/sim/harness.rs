@@ -338,7 +338,11 @@ impl Run<'_> {
                     }
                     let batched = self.live && self.active_sim.is_some();
                     if batched {
-                        let batch_size = if self.stepping { 1 } else { self.batch_cycles() };
+                        let batch_size = if self.stepping {
+                            1
+                        } else {
+                            self.batch_cycles()
+                        };
                         for batch in batch_sizes(n, batch_size) {
                             let started = std::time::Instant::now();
                             for _ in 0..batch {
@@ -500,7 +504,11 @@ impl Run<'_> {
         };
         let bound = active.bound.clone();
         for port in &bound {
-            let Some(width) = self.outputs.iter().find(|s| &s.name == port).map(|s| s.width)
+            let Some(width) = self
+                .outputs
+                .iter()
+                .find(|s| &s.name == port)
+                .map(|s| s.width)
             else {
                 continue;
             };
@@ -679,8 +687,8 @@ mod tests {
     }
 
     fn run(src: &str) -> Vec<Outcome> {
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         f.items
             .iter()
             .filter_map(|i| match i {
@@ -761,8 +769,8 @@ mod tests {
     fn an_unknown_clock_is_an_error() {
         let src =
             format!("{COUNTER}\ntest \"bad clock\" for Counter(WIDTH: 4) {{\n  tick(nope)\n}}\n");
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(&src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(&src).expect("lexes")).expect("parses");
         let decl = f
             .items
             .iter()
@@ -791,8 +799,8 @@ mod tests {
     fn sim_block_with_unknown_peripheral_errors() {
         let src = "module M {\n  clock clk\n  out playing: bit\n  playing = 1\n}\n\
                     test \"t\" for M {\n  sim {\n    bind playing -> microphone()\n  }\n  tick(clk)\n}\n";
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         let decl = f
             .items
             .iter()
@@ -809,8 +817,8 @@ mod tests {
     fn sim_block_with_unknown_port_errors() {
         let src = "module M {\n  clock clk\n  out playing: bit\n  playing = 1\n}\n\
                     test \"t\" for M {\n  sim {\n    bind nope -> led()\n  }\n  tick(clk)\n}\n";
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         let decl = f
             .items
             .iter()
@@ -827,8 +835,8 @@ mod tests {
     fn sim_block_binding_an_input_to_an_output_peripheral_errors() {
         let src = "module M {\n  clock clk\n  in start: bit\n  out playing: bit\n  playing = start\n}\n\
                     test \"t\" for M {\n  sim {\n    bind start -> led()\n  }\n  tick(clk)\n}\n";
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         let decl = f
             .items
             .iter()
@@ -850,8 +858,8 @@ mod tests {
     fn sim_block_binding_an_output_to_an_input_peripheral_errors() {
         let src = "module M {\n  clock clk\n  in start: bit\n  out playing: bit\n  playing = start\n}\n\
                     test \"t\" for M {\n  sim {\n    bind playing -> uart_rx()\n  }\n  tick(clk)\n}\n";
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         let decl = f
             .items
             .iter()
@@ -871,8 +879,8 @@ mod tests {
     fn sim_block_with_speaker_bound_runs_fine_without_emulate() {
         let src = "module M {\n  clock clk\n  in start: bit\n  out tone: bit\n  tone = start\n}\n\
                     test \"t\" for M {\n  start = 1\n  sim {\n    speed mhz(1)\n    bind tone -> speaker()\n  }\n  tick(clk, 4)\n}\n";
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         let decl = f
             .items
             .iter()
@@ -941,8 +949,8 @@ mod tests {
     }
 
     fn test_body(src: &str) -> Vec<TestStmt> {
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         f.items
             .iter()
             .find_map(|i| match i {
@@ -962,8 +970,8 @@ mod tests {
             "{COUNTER}\ntest \"counts\" for Counter(WIDTH: 4) {{\n  \
              rst = 0\n  tick(clk, 3)\n  expect count == 3\n}}\n"
         );
-        let f = mimz_core::parser::parse(mimz_core::lexer::lex(&src).expect("lexes"))
-            .expect("parses");
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(&src).expect("lexes")).expect("parses");
         let decl = f
             .items
             .iter()
@@ -972,8 +980,15 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let outcome = run_test(std::slice::from_ref(&f), &src, decl, Box::new(NullHost), true, false)
-            .expect("runs");
+        let outcome = run_test(
+            std::slice::from_ref(&f),
+            &src,
+            decl,
+            Box::new(NullHost),
+            true,
+            false,
+        )
+        .expect("runs");
         assert!(passes(&outcome));
     }
 }

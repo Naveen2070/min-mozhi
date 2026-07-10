@@ -275,8 +275,8 @@ impl<'a> Checker<'a> {
                     // E0810: each reg may have at most one `default` per `on` block
                     let mut seen_defaults: std::collections::HashSet<&str> = Default::default();
                     for stmt in &on.body {
-                        if let SeqStmt::Default { name, span, .. } = stmt {
-                            if !seen_defaults.insert(name.name.as_str()) {
+                        if let SeqStmt::Default { name, span, .. } = stmt
+                            && !seen_defaults.insert(name.name.as_str()) {
                                 self.err(
                                     file,
                                     *span,
@@ -288,7 +288,6 @@ impl<'a> Checker<'a> {
                                     "each reg may have at most one `default` per `on` block",
                                 );
                             }
-                        }
                     }
                     self.seq_stmts(file, sc, env, &on.body);
                 }

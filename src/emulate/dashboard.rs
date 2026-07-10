@@ -110,11 +110,7 @@ impl Dashboard {
     /// (move on to the next test) or `q`/Esc (quit the whole run) — so the
     /// dashboard doesn't vanish the instant a live test's last cycle ticks,
     /// before anyone watching gets to see the final state.
-    pub(crate) fn wait_for_dismiss(
-        &mut self,
-        test_name: &str,
-        cycle: u64,
-    ) -> io::Result<bool> {
+    pub(crate) fn wait_for_dismiss(&mut self, test_name: &str, cycle: u64) -> io::Result<bool> {
         self.terminal.draw(|frame| {
             let area = frame.area();
             let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(area);

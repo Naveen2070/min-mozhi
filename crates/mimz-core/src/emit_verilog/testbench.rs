@@ -313,13 +313,13 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
             .push_str(&format!("    $dumpvars(0, {});\n", tb_name));
 
         for item in &dut.items {
-            if let ModuleItem::Port { dir, name, .. } = item {
-                if *dir == Dir::In {
-                    em.out.push_str(&format!(
-                        "    {} = 0;\n",
-                        sanitize_verilog_ident(&name.name)
-                    ));
-                }
+            if let ModuleItem::Port { dir, name, .. } = item
+                && *dir == Dir::In
+            {
+                em.out.push_str(&format!(
+                    "    {} = 0;\n",
+                    sanitize_verilog_ident(&name.name)
+                ));
             }
             if let ModuleItem::Reset { name, .. } = item {
                 em.out.push_str(&format!(
