@@ -1380,31 +1380,6 @@ fn ast_bundle_name(ty: &Type) -> Option<&str> {
     }
 }
 
-/// The bundle name's `resolved_file` (set by names.rs pass 3), for
-/// disambiguating which same-named bundle's fields to resolve.
-// ponytail: no callers left now that the `Drive` arm reads `cx.sigs`
-// (`Ty::Bundle`) directly instead of re-deriving this from the AST — left
-// in place per plan (T6 Task 1) rather than deleted speculatively; Task 4
-// deletes it after confirming no other caller across the crate.
-#[expect(dead_code)]
-fn ast_bundle_file(ty: &Type) -> Option<usize> {
-    match ty {
-        Type::Named(id) => id.resolved_file.get(),
-        Type::Bundle { name, .. } => name.resolved_file.get(),
-        _ => None,
-    }
-}
-
-/// Extract the parameter args slice from a parametric bundle type, or `&[]`.
-// ponytail: see `ast_bundle_file` above — same story, same deferred cleanup.
-#[expect(dead_code)]
-fn ast_bundle_args(ty: &Type) -> &[NamedArg] {
-    match ty {
-        Type::Bundle { args, .. } => args.as_slice(),
-        _ => &[],
-    }
-}
-
 /// Source spelling of a binary operator (for error messages).
 fn op_text(op: BinOp) -> &'static str {
     use BinOp::*;
