@@ -649,11 +649,14 @@ impl<'a> Checker<'a> {
                     .ok()
                     .and_then(|v| u128::try_from(v).ok()),
                 Type::Named(_) => None,
-                // ponytail: bundle ports have no scalar drive extent in this pass
+                // No scalar drive extent for a bundle port until the width
+                // pass models bundle widths (tracked under T6, see
+                // widths/mod.rs's `Type::Bundle` arm).
                 Type::Bundle { .. } => None,
-                // ponytail: array-typed module signals are rejected earlier by
-                // resolve_names (E0416); skip coverage like bundles do so that
-                // diagnostic surfaces instead of a panic.
+                // Array-typed module signals are rejected earlier by
+                // resolve_names (E0416) — this arm is unreachable in
+                // practice, kept so the match stays exhaustive instead of
+                // panicking if that invariant ever slips.
                 Type::Array { .. } => None,
             };
             let Some(width) = width else { continue };

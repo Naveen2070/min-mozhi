@@ -589,15 +589,14 @@ impl<'a> Checker<'a> {
                     // function's array parameter by name) falls through to
                     // `check_expr` below, which now compares array shape
                     // structurally via `same()` (widths/mod.rs).
-                    // ponytail: does not also re-check each literal element's
-                    // fit against the param's declared elem width/signedness
-                    // (e.g. `f([300, 1, 1, 1])` into a `bits[8][4]` param
-                    // slips through) — out of this task's scope (E0413/
-                    // E0414/E0415 only); add a per-element `check_expr`
-                    // against `bits(elem_width)`/`Signed(elem_width)` if a
-                    // fixture ever needs it caught here specifically.
-                    if let (Ty::Array { len: expected, .. }, ExprKind::ArrayLit(elems)) =
-                        (param_ty, &arg.kind)
+                    if let (
+                        Ty::Array {
+                            elem_width,
+                            elem_signed,
+                            len: expected,
+                        },
+                        ExprKind::ArrayLit(elems),
+                    ) = (param_ty, &arg.kind)
                     {
                         self.infer_ty(cx, arg);
                         let actual = elems.len() as u128;
@@ -614,6 +613,29 @@ impl<'a> Checker<'a> {
                                 "an array argument's length must exactly match the \
                                  parameter's declared length",
                             );
+                        }
+                        // Each literal element's own fit against the param's
+                        // declared elem type (e.g. `f([300, 1, 1, 1])` into a
+                        // `bits[8][4]` param) — the length check above only
+                        // compares element *count*. `self.infer_ty(cx, arg)`
+                        // above already walked every element once for the
+                        // array literal's OWN internal consistency (E0411/
+                        // E0412/E0414), so this matches on the raw `Int`
+                        // literal directly (via `fit`) instead of re-running
+                        // `infer_ty`/`check_expr` on each element, which would
+                        // double-report any inner error a non-literal element
+                        // has.
+                        let elem_ty = if elem_signed {
+                            Ty::Signed(elem_width)
+                        } else {
+                            bits(elem_width)
+                        };
+                        for el in elems {
+                            if let ExprKind::Int { value, .. } = &el.kind
+                                && let Ok(v) = i128::try_from(*value)
+                            {
+                                self.fit(cx, el.span, v, elem_ty);
+                            }
                         }
                         continue;
                     }

@@ -456,7 +456,7 @@ fn elaborate_module(
 
     // Bundle-typed signal names at this module level: used by `Rw::field` to
     // rewrite `req.valid` → `req_valid` (the flat scalar name).
-    // ponytail: HashSet is the right data structure — O(1) lookup, no ordering needed.
+    // HashSet: O(1) lookup, no ordering needed.
     let mut bundle_sigs: HashSet<String> = HashSet::new();
     // Map each bundle signal name to its AST type (for O(1) lookup in Drive arm).
     let mut bundle_sig_types: HashMap<String, ast::Type> = HashMap::new();
@@ -931,7 +931,8 @@ fn flatten_instance(
 
     // Parent-context rewriter for connection expressions: folds the `repeat`
     // loop var and resolves nested `arr[i-1].port` reads.
-    // ponytail: empty bundle_sigs — the child's flattened signals have no dot-access.
+    // Empty bundle_sigs: the child's own signals are already flattened to
+    // scalars by this point, so there's no dot-access left to rewrite.
     let no_bundle_sigs: HashSet<String> = HashSet::new();
     let prw = Rw {
         insts: parent_insts,
