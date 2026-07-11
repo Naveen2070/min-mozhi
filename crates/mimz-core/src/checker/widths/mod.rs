@@ -1518,4 +1518,25 @@ mod tests {
             e0105s[0].msg
         );
     }
+
+    #[test]
+    fn enum_variant_from_wrong_enum_is_rejected() {
+        // Regression test: `field_ty`'s `Bind::Enum` case used to fall into
+        // the wildcard arm and return `Ty::Unknown` for every `State.Red`
+        // expression, which made assigning a DIFFERENT enum's variant into a
+        // `State`-typed reg silently type-check (both `expect_ty` and the
+        // enum-vs-enum equality check no-op on `Ty::Unknown`). `Other.X`
+        // assigned into a `State`-typed reg must be a real type mismatch.
+        let src = "module M {\n  clock clk\n  enum State { Red, Green }\n  \
+                   enum Other { X, Y }\n  reg state: State = State.Red\n  \
+                   on rise(clk) {\n    state <- Other.X\n  }\n}\n";
+        let diags = diags_for(src);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code.is_some_and(|c| c.starts_with("E0"))),
+            "expected a type-mismatch diagnostic for assigning `Other.X` into a \
+             `State`-typed reg, got: {diags:?}"
+        );
+    }
 }
