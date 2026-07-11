@@ -1,3 +1,9 @@
+//! Event-driven simulator + in-memory command runner. Depends only on
+//! `mimz-core` — no optional dependencies, no filesystem/OS access, no
+//! knowledge of hardware-emulation peripherals (that's the shell crate's
+//! `EmulationHost` implementation, plugged in through `sim::host`). The
+//! pure/impure boundary from the workspace split
+//! (`docs/plan/workspace-split.local.md`).
 #![forbid(unsafe_code)]
 
 pub mod runner;

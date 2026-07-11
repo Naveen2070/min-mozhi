@@ -26,12 +26,17 @@ pub(super) fn mask(w: u32) -> u128 {
 /// `on_tick` hand this to the shell crate's peripheral implementations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Val {
+    /// The value's bit pattern; only the low `width` bits are meaningful.
     pub bits: u128,
+    /// Bit width, `1..=128`.
     pub width: u32,
+    /// Whether `bits` is interpreted as two's-complement `signed`.
     pub signed: bool,
 }
 
 impl Val {
+    /// Builds a `Val`, masking `bits` to `width` (`width` floors at 1 — no
+    /// zero-width signal exists in Min-Mozhi).
     pub fn new(bits: u128, width: u32, signed: bool) -> Val {
         Val {
             bits: bits & mask(width),

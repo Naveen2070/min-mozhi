@@ -13,6 +13,7 @@ pub struct Span {
 }
 
 impl Span {
+    /// Builds a span from an explicit `start..end` byte range.
     pub fn new(start: usize, end: usize) -> Self {
         Span { start, end }
     }

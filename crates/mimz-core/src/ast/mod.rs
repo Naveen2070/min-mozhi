@@ -22,7 +22,9 @@ use crate::span::Span;
 /// One parsed `.mimz` source file: imports first, then top-level items.
 #[derive(Clone, Debug)]
 pub struct File {
+    /// `import` statements, in source order.
     pub imports: Vec<Import>,
+    /// Top-level items (modules, enums, tests, ...), in source order.
     pub items: Vec<TopItem>,
 }
 
@@ -30,7 +32,9 @@ pub struct File {
 /// `project::load_project`'s job, not the AST's.
 #[derive(Clone, Debug)]
 pub struct Import {
+    /// Dotted path segments (`lib.adder` → `[lib, adder]`).
     pub path: Vec<Ident>,
+    /// Source span of the `import` statement.
     pub span: Span,
     /// Which loaded file this import resolved to, filled in by
     /// `project::load_project_with_lib` once the full file list is
@@ -42,9 +46,13 @@ pub struct Import {
 /// Anything that may appear at file level (spec/02 section 1).
 #[derive(Clone, Debug)]
 pub enum TopItem {
+    /// A file-level `const` declaration.
     Const(ConstDecl),
+    /// A `module` declaration.
     Module(Module),
+    /// A file-level `enum` declaration.
     Enum(EnumDecl),
+    /// A `test` block.
     Test(TestDecl),
     /// A user-defined combinational function (`fn name(params) -> ret { ... }`).
     /// Functions are pure and combinational — no registers, no clocks. The parser
@@ -104,8 +112,11 @@ pub enum FnStmt {
     /// OPTIONAL here — a branch that doesn't return just falls through to
     /// the next statement (or ultimately `tail`).
     If {
+        /// The condition; must be 1-bit.
         cond: Expr,
+        /// Statements to run when `cond` is true.
         then: Vec<FnStmt>,
+        /// Statements to run when `cond` is false, if an `else` was written.
         els: Option<Vec<FnStmt>>,
     },
     /// `return expr` — immediately yields `expr` as the function's result;
@@ -116,10 +127,15 @@ pub enum FnStmt {
     /// combined with `return` gives first-match-wins search over an
     /// array/mem.
     Loop {
+        /// The loop variable, bound to each value in `lo..hi` in turn.
         var: Ident,
+        /// Range lower bound (inclusive); must const-evaluate.
         lo: Expr,
+        /// Range upper bound (exclusive); must const-evaluate.
         hi: Expr,
+        /// Statements unrolled once per iteration.
         body: Vec<FnStmt>,
+        /// Source span of the `loop` statement.
         span: Span,
     },
     /// A statement that failed to parse. Produced ONLY by
@@ -168,7 +184,9 @@ pub struct LocalLet {
 /// appears so errors can always point at it.
 #[derive(Clone, Debug)]
 pub struct Ident {
+    /// The name text as written.
     pub name: String,
+    /// Source span of the name.
     pub span: Span,
 }
 
@@ -180,9 +198,14 @@ pub struct Ident {
 /// ambiguity/qualifier resolution — same pattern as `Expr::inferred_width`.
 #[derive(Clone, Debug)]
 pub struct QualIdent {
+    /// Leading path segments (`[a, b]` in `a.b.Name`); empty for a bare name.
     pub path: Vec<Ident>,
+    /// The final, referenced name.
     pub name: Ident,
+    /// Source span covering the whole (possibly dotted) reference.
     pub span: Span,
+    /// The file this reference resolved to, filled in once by the checker's
+    /// or simulator's name-resolution pass. `None` until resolved.
     pub resolved_file: Cell<Option<usize>>,
 }
 
@@ -241,10 +264,14 @@ impl QualIdent {
 /// `module Name(P: int = 8) { ... }` — the unit of hardware design.
 #[derive(Clone, Debug)]
 pub struct Module {
+    /// The module name.
     pub name: Ident,
     /// Compile-time parameters (`WIDTH: int = 8`).
     pub params: Vec<Param>,
+    /// Body items (ports, declarations, instances, `on` blocks, ...), in
+    /// source order.
     pub items: Vec<ModuleItem>,
+    /// Source span of the whole `module` declaration.
     pub span: Span,
 }
 
@@ -252,7 +279,9 @@ pub struct Module {
 /// hardware types (`bits[N]` etc.) are not compile-time values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParamTy {
+    /// A compile-time integer parameter or constant.
     Int,
+    /// A compile-time boolean parameter or constant.
     Bool,
 }
 
@@ -260,16 +289,23 @@ pub enum ParamTy {
 /// instantiation must provide a value.
 #[derive(Clone, Debug)]
 pub struct Param {
+    /// The parameter name.
     pub name: Ident,
+    /// Compile-time type (`int` or `bool`).
     pub ty: ParamTy,
+    /// Default value, if one was written; `None` means instantiation must
+    /// supply it.
     pub default: Option<Expr>,
 }
 
 /// `const NAME: int = expr` — file-level or module-level compile-time value.
 #[derive(Clone, Debug)]
 pub struct ConstDecl {
+    /// The constant's name.
     pub name: Ident,
+    /// Compile-time type (`int` or `bool`).
     pub ty: ParamTy,
+    /// The constant's defining expression.
     pub value: Expr,
 }
 
@@ -279,6 +315,7 @@ pub struct ConstDecl {
 /// `fields: vec![]`.
 #[derive(Clone, Debug)]
 pub struct EnumDecl {
+    /// The enum type's name.
     pub name: Ident,
     /// Variant list — tag-only variants have `fields: vec![]`.
     pub variants: Vec<EnumVariant>,
@@ -331,27 +368,33 @@ pub struct PayloadField {
 /// File-level only (like `enum`); flattened to individual Verilog wires at emit.
 #[derive(Clone, Debug)]
 pub struct BundleDecl {
+    /// The bundle type's name.
     pub name: Ident,
     /// Compile-time parameters (same grammar as module params).
     pub params: Vec<Param>,
     /// Field declarations in order.
     pub fields: Vec<FieldDecl>,
+    /// Source span of the whole `bundle` declaration.
     pub span: Span,
 }
 
 /// One field in a `bundle` declaration: `valid: bit`.
 #[derive(Clone, Debug)]
 pub struct FieldDecl {
+    /// The field's name.
     pub name: Ident,
     /// Hardware type — must be concrete bit-vector or enum (E0807/E0905).
     pub ty: Type,
+    /// Source span of `name: type`.
     pub span: Span,
 }
 
 /// Port direction (`in` / `out`). No `inout` — it is a reserved word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Dir {
+    /// `in name: type` — a module input.
     In,
+    /// `out name: type` — a module output.
     Out,
 }
 
@@ -361,8 +404,11 @@ pub enum Dir {
 pub enum ModuleItem {
     /// `in name: type` / `out name: type`.
     Port {
+        /// Input or output.
         dir: Dir,
+        /// The port name.
         name: Ident,
+        /// Hardware type of the port.
         ty: Type,
     },
     /// `clock clk` — clocks are a dedicated type, never plain bits (safety
@@ -372,21 +418,29 @@ pub enum ModuleItem {
     /// (asynchronous). `is_async` widens every always-block that uses this
     /// reset to `@(… or posedge rst)`; polarity stays active-high (v0.2).
     Reset {
+        /// The reset signal's name.
         name: Ident,
+        /// `true` for `async reset`, `false` for a synchronous reset.
         is_async: bool,
     },
     /// `wire name: type = expr` — declared and driven in one statement;
     /// an undriven wire cannot be written.
     Wire {
+        /// The wire's name.
         name: Ident,
+        /// Hardware type of the wire.
         ty: Type,
+        /// The driving expression.
         init: Expr,
     },
     /// `reg name: type = reset_value` — the reset value is mandatory
     /// (safety rule: no uninitialized state).
     Reg {
+        /// The register's name.
         name: Ident,
+        /// Hardware type of the register.
         ty: Type,
+        /// Value the register takes on reset.
         reset: Expr,
     },
     /// `mem name: element_type[DEPTH] = init` — an addressable memory of
@@ -395,12 +449,18 @@ pub enum ModuleItem {
     /// every cell at power-on (safety rule: no uninitialized state); `depth`
     /// must const-evaluate to a positive width.
     Mem {
+        /// The memory's name.
         name: Ident,
+        /// Element type of each cell.
         ty: Type,
+        /// Number of elements; must const-evaluate to a positive width.
         depth: Expr,
+        /// Value every cell is seeded with at power-on.
         init: Expr,
     },
+    /// A module-level `const` declaration.
     Const(ConstDecl),
+    /// A module-level `enum` declaration.
     Enum(EnumDecl),
     /// Child-module instantiation (`let u = Adder(...) { ... }`).
     Inst(Inst),
@@ -408,7 +468,9 @@ pub enum ModuleItem {
     On(OnBlock),
     /// Combinational drive of an output port or a slice: `count = value`.
     Drive {
+        /// The signal, bit, or slice being driven.
         lhs: LValue,
+        /// The driving expression.
         rhs: Expr,
     },
     /// Compile-time generation (`repeat i: 0..8 { ... }`).
@@ -420,9 +482,13 @@ pub enum ModuleItem {
     /// module-body items. The losing branch is completely discarded before
     /// name resolution, type checking, and codegen (D-CONSTIF-4).
     ConstIf {
+        /// The compile-time condition; must const-evaluate to a bool.
         cond: Expr,
+        /// Items kept when `cond` is true.
         then: Vec<ModuleItem>,
+        /// Items kept when `cond` is false, if an `else` was written.
         els: Option<Vec<ModuleItem>>,
+        /// Source span of the whole `const if`.
         span: Span,
     },
     /// `let { field, ... } = expr` — bind bundle fields as local wires.
@@ -432,6 +498,7 @@ pub enum ModuleItem {
         bindings: Vec<Ident>,
         /// The bundle-typed expression being destructured.
         expr: Expr,
+        /// Source span of the whole destructuring statement.
         span: Span,
     },
     /// A module-body item that failed to parse. Produced ONLY by
@@ -445,11 +512,15 @@ pub enum ModuleItem {
 /// (Phase 1 work item 4), so the emitter currently rejects it cleanly.
 #[derive(Clone, Debug)]
 pub struct Repeat {
+    /// The compile-time loop variable, bound in `items` for each iteration.
     pub var: Ident,
     /// Range is half-open: `lo..hi` runs `lo, lo+1, …, hi-1`.
     pub lo: Expr,
+    /// Range upper bound (exclusive); must const-evaluate.
     pub hi: Expr,
+    /// Module items unrolled once per iteration.
     pub items: Vec<ModuleItem>,
+    /// Source span of the whole `repeat` block.
     pub span: Span,
 }
 
@@ -465,19 +536,27 @@ pub struct SyncLoop {
     /// Instance name — namespaces the four generated signals
     /// (`<name>_start`/`_done`/`_result`/`_running`).
     pub name: Ident,
+    /// The clock driving the underlying counter/state machine.
     pub clock: Ident,
+    /// Which edge of `clock` advances the loop.
     pub edge: Edge,
     /// The loop variable, bound to the live counter value each cycle
     /// inside `body` (a runtime signal, unlike `Repeat`'s compile-time var).
     pub var: Ident,
+    /// Range lower bound (inclusive); must const-evaluate.
     pub lo: Expr,
+    /// Range upper bound (exclusive); must const-evaluate.
     pub hi: Expr,
     /// The accumulator's name as written (e.g. `result` in
     /// `-> result: bits[8] = 0`) — used inside `body` via `<-`.
     pub result_name: Ident,
+    /// Hardware type of the accumulator.
     pub result_ty: Type,
+    /// The accumulator's value before the loop starts.
     pub result_init: Expr,
+    /// Statements run each cycle while the loop is active.
     pub body: Vec<SeqStmt>,
+    /// Source span of the whole `sync loop` declaration.
     pub span: Span,
 }
 
@@ -485,6 +564,7 @@ pub struct SyncLoop {
 /// Child outputs are read as `name.port`; the emitter auto-wires them.
 #[derive(Clone, Debug)]
 pub struct Inst {
+    /// The instance name (`let name = ...`).
     pub name: Ident,
     /// `let name[i] = ...` inside `repeat`.
     pub index: Option<Expr>,
@@ -495,20 +575,25 @@ pub struct Inst {
     /// Input/clock/reset connections. Same-named clock/reset connect
     /// implicitly when omitted; inputs never do.
     pub conns: Vec<Conn>,
+    /// Source span of the whole instantiation.
     pub span: Span,
 }
 
 /// `name: value` — one parameter binding in an instantiation or test header.
 #[derive(Clone, Debug)]
 pub struct NamedArg {
+    /// The parameter name.
     pub name: Ident,
+    /// The bound value.
     pub value: Expr,
 }
 
 /// `port: signal` — one port connection in an instantiation.
 #[derive(Clone, Debug)]
 pub struct Conn {
+    /// The port being connected on the child module.
     pub port: Ident,
+    /// The signal (in the parent module) driving/read from it.
     pub signal: Expr,
 }
 
@@ -525,9 +610,13 @@ pub enum Edge {
 /// registers with `<-` on the chosen `edge` of `clock`.
 #[derive(Clone, Debug)]
 pub struct OnBlock {
+    /// The triggering clock signal.
     pub clock: Ident,
+    /// Which edge of `clock` triggers this block.
     pub edge: Edge,
+    /// Statements run on each trigger.
     pub body: Vec<SeqStmt>,
+    /// Source span of the whole `on` block.
     pub span: Span,
 }
 
@@ -536,27 +625,47 @@ pub struct OnBlock {
 #[derive(Clone, Debug)]
 pub enum SeqStmt {
     /// `lhs <- rhs` — the only register assignment.
-    Assign { lhs: LValue, rhs: Expr },
+    Assign {
+        /// The register, bit, or slice being assigned.
+        lhs: LValue,
+        /// The value assigned on the triggering edge.
+        rhs: Expr,
+    },
     /// Statement-level `if` (distinct from the expression-level `if`,
     /// which lives in [`ExprKind::IfExpr`] and requires `else`).
     If {
+        /// The condition; must be 1-bit.
         cond: Expr,
+        /// Statements to run when `cond` is true.
         then: Vec<SeqStmt>,
+        /// Statements to run when `cond` is false, if an `else` was written.
         els: Option<Vec<SeqStmt>>,
     },
     /// `default name <- expr` — priority-lowest register assignment.
     /// Emitter MUST emit these nodes FIRST within the always-block body
     /// so conditional `<-` assignments override them (D-DEFAULT-3).
-    Default { name: Ident, val: Expr, span: Span },
+    Default {
+        /// The register being defaulted.
+        name: Ident,
+        /// The default value.
+        val: Expr,
+        /// Source span of the `default` statement.
+        span: Span,
+    },
     /// `loop i: lo..hi { ... }` — compile-time unrolling inside an `on`
     /// block, same model as `repeat` but usable in a clocked context
     /// (`repeat` itself stays item-level only). NOT a runtime loop —
     /// unrolls into `hi-lo` copies of `body` at elaboration time.
     Loop {
+        /// The compile-time loop variable, bound in `body` for each iteration.
         var: Ident,
+        /// Range lower bound (inclusive); must const-evaluate.
         lo: Expr,
+        /// Range upper bound (exclusive); must const-evaluate.
         hi: Expr,
+        /// Statements unrolled once per iteration.
         body: Vec<SeqStmt>,
+        /// Source span of the whole `loop` statement.
         span: Span,
     },
     /// A sequential statement that failed to parse. Produced ONLY by
@@ -568,9 +677,11 @@ pub enum SeqStmt {
 /// Assignment target: a signal, one bit of it, or a slice.
 #[derive(Clone, Debug)]
 pub struct LValue {
+    /// The signal being assigned.
     pub base: Ident,
     /// `[i]` or `[hi:lo]`.
     pub index: Option<(Expr, Option<Expr>)>,
+    /// Source span of the whole assignment target.
     pub span: Span,
 }
 
@@ -593,7 +704,9 @@ pub enum Type {
     /// comparison (2.9); first-class IR bundle (post-Phase 2) promotes
     /// BundleType to a Type variant in IR
     Bundle {
+        /// The bundle type's name.
         name: QualIdent,
+        /// Compile-time parameter overrides (empty for parameterless bundles).
         args: Vec<NamedArg>,
     },
     /// `<elem>[N]` — a fixed-size, immutable array value. `elem` is
@@ -603,7 +716,12 @@ pub enum Type {
     /// `DEPTH` and `repeat`'s bound). An array is never a real Verilog
     /// array — the emitter and simulator each lower it to N independent
     /// scalars (see `docs/superpowers/specs/2026-07-04-array-typed-fn-params-design.local.md`).
-    Array { elem: Box<Type>, len: Box<Expr> },
+    Array {
+        /// Element type; restricted to `Bit`/`Bits`/`Signed`.
+        elem: Box<Type>,
+        /// Number of elements; must const-evaluate.
+        len: Box<Expr>,
+    },
 }
 
 /// `test "name" for Module(args) { ... }` — runs on the Phase 1.5
@@ -616,7 +734,9 @@ pub struct TestDecl {
     pub module: QualIdent,
     /// Parameter values for this test run.
     pub args: Vec<NamedArg>,
+    /// Statements run in order (drives, ticks, expects, ...).
     pub body: Vec<TestStmt>,
+    /// Source span of the whole `test` block.
     pub span: Span,
 }
 
@@ -624,14 +744,28 @@ pub struct TestDecl {
 #[derive(Clone, Debug)]
 pub enum TestStmt {
     /// `tick(clk)` / `tick(clk, n)` — advance n clock cycles (default 1).
-    Tick { clock: Ident, count: Option<Expr> },
+    Tick {
+        /// The clock signal to advance.
+        clock: Ident,
+        /// Number of cycles to advance; defaults to 1 when omitted.
+        count: Option<Expr>,
+    },
     /// `expect expr` — assert the expression is true now.
     Expect(Expr),
     /// `name = value` — drive an input of the module under test.
-    Drive { name: Ident, value: Expr },
+    Drive {
+        /// The input port being driven.
+        name: Ident,
+        /// The value to drive it with.
+        value: Expr,
+    },
+    /// Statement-level `if` inside a `test` block.
     If {
+        /// The condition; must be 1-bit.
         cond: Expr,
+        /// Statements to run when `cond` is true.
         then: Vec<TestStmt>,
+        /// Statements to run when `cond` is false, if an `else` was written.
         els: Option<Vec<TestStmt>>,
     },
     /// `sim { ... }` — see [`SimBlock`].
@@ -650,16 +784,22 @@ pub struct SimBlock {
     /// `hz(n)`/`khz(n)`/`mhz(n)` to a plain multiplication expr. `None` if
     /// the `speed` clause was omitted (run as fast as possible).
     pub speed: Option<Expr>,
+    /// Peripheral bindings, in source order.
     pub binds: Vec<Bind>,
+    /// Source span of the whole `sim` block.
     pub span: Span,
 }
 
 /// `bind <port> -> <peripheral>(args)`.
 #[derive(Clone, Debug)]
 pub struct Bind {
+    /// The module port being bound.
     pub port: Ident,
+    /// The peripheral kind (e.g. `led`, `speaker`).
     pub peripheral: Ident,
+    /// Peripheral configuration values.
     pub args: Vec<BindArg>,
+    /// Source span of the whole `bind` statement.
     pub span: Span,
 }
 
@@ -669,15 +809,23 @@ pub struct Bind {
 /// through `self.expr()`.
 #[derive(Clone, Debug)]
 pub struct BindArg {
+    /// The config key.
     pub name: Ident,
+    /// The config value.
     pub value: BindArgValue,
+    /// Source span of the `name: value` pair.
     pub span: Span,
 }
 
+/// The value shape for a [`BindArg`] — a bare identifier, string, or integer,
+/// since peripheral config has no room for full [`Expr`]s.
 #[derive(Clone, Debug)]
 pub enum BindArgValue {
+    /// A bare word (e.g. `color: green`).
     Ident(String),
+    /// A quoted string (e.g. `color: "green"`).
     Str(String),
+    /// An integer literal.
     Int(u128),
 }
 

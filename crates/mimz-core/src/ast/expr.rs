@@ -7,7 +7,9 @@ use crate::span::Span;
 /// An expression: the kind plus where it was written.
 #[derive(Clone, Debug)]
 pub struct Expr {
+    /// The expression's shape and operands.
     pub kind: ExprKind,
+    /// Source span of the expression.
     pub span: Span,
 }
 
@@ -18,7 +20,9 @@ pub enum ExprKind {
     /// Integer literal. `raw` keeps the spelling (`0b1010`, `0xFF`, `42`)
     /// so the emitter can preserve the writer's chosen base.
     Int {
+        /// The literal's numeric value.
         value: u128,
+        /// The literal exactly as written (`0b1010`, `0xFF`, `42`, …).
         raw: String,
     },
     /// `true` / `false` (a 1-bit value).
@@ -27,28 +31,43 @@ pub enum ExprKind {
     Ident(String),
     /// `base.field` — enum variant (`State.Red`) or instance port (`add.sum`).
     Field {
+        /// The expression being projected from.
         base: Box<Expr>,
+        /// The field, variant, or port name after the dot.
         field: Ident,
     },
+    /// `-x`, `~x`, `!x`, or a reduction (`&x`/`|x`/`^x`) — see [`UnOp`].
     Unary {
+        /// Which unary operator.
         op: UnOp,
+        /// The operand.
         expr: Box<Expr>,
     },
+    /// A two-operand arithmetic, comparison, bitwise, or logical expression
+    /// — see [`BinOp`].
     Binary {
+        /// Which binary operator.
         op: BinOp,
+        /// Left operand.
         lhs: Box<Expr>,
+        /// Right operand.
         rhs: Box<Expr>,
     },
     /// `if c { a } else { b }` — an expression, so `else` is mandatory
     /// (safety rule: no inferred latches).
     IfExpr {
+        /// The condition; must be 1-bit.
         cond: Box<Expr>,
+        /// Value when `cond` is true.
         then: Box<Expr>,
+        /// Value when `cond` is false.
         els: Box<Expr>,
     },
     /// `match x { pat => val, ... }` — must be exhaustive (checker-enforced).
     Match {
+        /// The value being matched.
         scrutinee: Box<Expr>,
+        /// Arms tried in order; the first matching pattern wins.
         arms: Vec<Arm>,
     },
     /// `{a, b, c}` — bit concatenation, widest part first (Verilog order).
@@ -56,23 +75,32 @@ pub enum ExprKind {
     /// `{N{a, b}}` — replication: the inner concatenation `{a, b}` repeated
     /// `count` times (Verilog `{N{...}}`). `count` is a compile-time constant.
     Replicate {
+        /// How many times to repeat `parts`; must const-evaluate.
         count: Box<Expr>,
+        /// The concatenation being repeated.
         parts: Vec<Expr>,
     },
     /// `base[i]` — single-bit select.
     Index {
+        /// The vector being indexed.
         base: Box<Expr>,
+        /// The bit position.
         index: Box<Expr>,
     },
     /// `base[hi:lo]` — bit slice, both bounds inclusive.
     Slice {
+        /// The vector being sliced.
         base: Box<Expr>,
+        /// Upper bound (inclusive).
         hi: Box<Expr>,
+        /// Lower bound (inclusive).
         lo: Box<Expr>,
     },
     /// A builtin call — the ONLY callable things before user functions land.
     Call {
+        /// Which builtin.
         func: Builtin,
+        /// Argument expressions, positional per [`Builtin::from_name`]'s arity.
         args: Vec<Expr>,
     },
     /// A call to a user-defined combinational function.
@@ -102,13 +130,16 @@ pub struct FieldInit {
     pub name: super::Ident,
     /// The expression driving this field.
     pub value: Expr,
+    /// Source span of the `name: expr` pair.
     pub span: Span,
 }
 
 /// One `match` arm: `pat1, pat2 => value` (multiple patterns OR together).
 #[derive(Clone, Debug)]
 pub struct Arm {
+    /// Patterns for this arm, OR'd together.
     pub patterns: Vec<Pattern>,
+    /// The value produced when any pattern matches.
     pub value: Expr,
 }
 
@@ -116,24 +147,34 @@ pub struct Arm {
 /// spec/02 section 7).
 #[derive(Clone, Debug)]
 pub enum Pattern {
+    /// An exact integer literal — matches `s` iff `s == value`.
     Int {
+        /// The literal's numeric value.
         value: u128,
+        /// The literal exactly as written.
         raw: String,
     },
     /// `0b1??` — a binary literal with don't-care bits. `mask` is 1 where the
     /// bit must equal `value` (don't-care bits are 0 in both); `width` is the
     /// digit count. Matches `s` iff `s & mask == value`.
     IntMask {
+        /// The bits that must match (don't-care bits are 0 here).
         value: u128,
+        /// 1 where the bit is checked, 0 where it's a don't-care (`?`).
         mask: u128,
+        /// Digit count as written.
         width: u32,
+        /// The literal exactly as written, including `?` don't-cares.
         raw: String,
     },
+    /// `true` / `false` — matches a 1-bit value.
     Bool(bool),
     /// `Enum.Variant` or `Enum.Variant(b1, b2, ...)` — tag-only patterns
     /// have `bindings: vec![]`; tagged patterns list one binding per field.
     Variant {
+        /// The enum type name.
         enum_name: Ident,
+        /// The variant name.
         variant: Ident,
         /// Positional binding names (empty for tag-only patterns).
         bindings: Vec<Ident>,
@@ -153,7 +194,9 @@ pub enum UnOp {
     LogicNot,
     /// prefix `&x` `|x` `^x` reductions
     RedAnd,
+    /// `|x` — OR-reduction to a single bit.
     RedOr,
+    /// `^x` — XOR-reduction to a single bit (parity).
     RedXor,
 }
 
@@ -166,22 +209,39 @@ pub enum UnOp {
 /// There is no `/` or `%` (no division hardware by surprise).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinOp {
+    /// `+` — lossless add; result is `N+1` bits wide.
     Add,
+    /// `-` — lossless subtract; result is `N+1` bits wide.
     Sub,
+    /// `*` — lossless multiply; result is `N+M` bits wide.
     Mul,
+    /// `+%` — wrapping add; keeps the operand width.
     AddWrap,
+    /// `-%` — wrapping subtract; keeps the operand width.
     SubWrap,
+    /// `*%` — wrapping multiply; keeps the operand width.
     MulWrap,
+    /// `<<` — logical left shift.
     Shl,
+    /// `>>` — logical right shift.
     Shr,
+    /// `&` — bitwise AND.
     BitAnd,
+    /// `|` — bitwise OR.
     BitOr,
+    /// `^` — bitwise XOR.
     BitXor,
+    /// `==`
     Eq,
+    /// `!=`
     Ne,
+    /// `<`
     Lt,
+    /// `<=`
     Le,
+    /// `>`
     Gt,
+    /// `>=`
     Ge,
     /// `&&` / `and` — operands must be 1-bit (no C-style truthiness).
     LogicAnd,

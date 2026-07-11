@@ -21,21 +21,31 @@ pub enum StdVariant {
 /// One standard-library module: both source variants and the names that select
 /// each. `*_src` are the verbatim example files (single source of truth).
 pub struct StdModule {
+    /// The module's English identifier stem (e.g. `"fifo"`), used for both
+    /// the canonical import name and the ejected file's base name.
     pub stem: &'static str,
+    /// The English-identifier canonical source text.
     pub canonical_src: &'static str,
+    /// The canonical source's module name (e.g. `"Fifo"`).
     pub canonical_name: &'static str,
+    /// The pure-Tamil twin's source text.
     pub twin_src: &'static str,
+    /// The twin's module name, in Tamil script (e.g. `"வரிசை"`).
     pub twin_name: &'static str,
+    /// The twin's module name, romanized (used for ejected file names and
+    /// as an alternate import spelling).
     pub twin_roman: &'static str,
 }
 
 impl StdModule {
+    /// The source text for the requested variant.
     pub fn source(&self, v: StdVariant) -> &'static str {
         match v {
             StdVariant::Canonical => self.canonical_src,
             StdVariant::Twin => self.twin_src,
         }
     }
+    /// The declared module name for the requested variant.
     pub fn module_name(&self, v: StdVariant) -> &'static str {
         match v {
             StdVariant::Canonical => self.canonical_name,

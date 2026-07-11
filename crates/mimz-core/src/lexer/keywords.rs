@@ -123,6 +123,10 @@ const REQUIRED_KEYS: [&str; 40] = [
     "return", "loop", "sync", "sim", "bind", "speed",
 ];
 
+/// The parsed, validated `keywords.toml` table — loaded once, lazily, on
+/// first use. Panics at that point (not at binary startup) if the TOML is
+/// malformed or missing a `REQUIRED_KEYS` entry, so drift between the data
+/// file and the compiler can't ship silently.
 pub static TABLE: LazyLock<KeywordTable> = LazyLock::new(|| {
     let file: TableFile =
         toml::from_str(KEYWORDS_TOML).expect("keywords.toml is malformed — fix the table");

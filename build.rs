@@ -1,3 +1,7 @@
+//! Dev-environment setup: points git at the tracked `.githooks/` directory
+//! so hooks apply without a manual `git config` step. No-op in CI or outside
+//! a git checkout (e.g. a crates.io source tarball).
+
 use std::path::Path;
 use std::process::Command;
 

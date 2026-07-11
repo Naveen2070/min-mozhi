@@ -82,7 +82,10 @@ pub type Constructor = fn(Width, &[BindArg], Option<u64>) -> Result<Box<dyn Peri
 /// from `mimz_sim::sim`, shared with the harness's bind validation), plus
 /// how to build one.
 pub struct Entry {
+    /// Whether a `sim{}` bind to this peripheral must drive an input or
+    /// consume an output.
     pub direction: Direction,
+    /// Builds a concrete peripheral instance for a bind.
     pub construct: Constructor,
 }
 

@@ -92,6 +92,7 @@ pub struct Outcome {
 /// Whether a `test` block passed.
 #[derive(Debug)]
 pub enum TestResult {
+    /// Every `expect` in the test block held.
     Pass,
     /// Failed with a teaching-quality message (already formatted, multi-line).
     Fail(String),

@@ -26,7 +26,9 @@ pub const ALL_CHECKER_CODES: [&str; 62] = [
 /// [`Diag::as_warning`] (e.g. the mixed-flavor lint, W0001).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Severity {
+    /// Fails the build; exit code reflects it.
     Error,
+    /// Advisory only — printed, but the command still exits 0.
     Warning,
 }
 
@@ -64,6 +66,8 @@ pub struct Diag {
 }
 
 impl Diag {
+    /// A plain `Error`-severity diagnostic with no help text, code, or file
+    /// index yet — attach those with the builder methods below.
     pub fn new(span: Span, msg: impl Into<String>) -> Self {
         Diag {
             span,
