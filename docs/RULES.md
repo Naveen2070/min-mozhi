@@ -110,9 +110,11 @@ Run the gate CI runs **before declaring any session done** — all clean, no
 exceptions:
 
 - `cargo fmt --all`
-- `cargo clippy --all-targets -- -D warnings`
-- `cargo test` (all green — record the new total in `docs/code/10-test-map.md`)
-- `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` (docs build warning-free)
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace` (all green — record the new total in `docs/code/10-test-map.md`;
+  `--workspace` is required — root `Cargo.toml`'s `default-members = ["."]`
+  means a bare `cargo test` silently skips `mimz-core`/`mimz-sim`)
+- `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace` (docs build warning-free)
 - `npx prettier --check "**/*.md"` + `npx markdownlint-cli2` (R6)
 
 New behavior ships **with its test in the same session**. Prefer the existing
