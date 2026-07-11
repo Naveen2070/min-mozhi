@@ -445,8 +445,8 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test` runs several layers (**663 tests** today; the full ledger,
-per-binary breakdown, and "what a failure means" notes are in
+`cargo test --workspace` runs several layers (**737 tests** today; the full
+ledger, per-binary breakdown, and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):
 
 - **Unit tests** live next to the code they test (`lexer/tests.rs`,

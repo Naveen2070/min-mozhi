@@ -44,7 +44,7 @@ min-mozhi/
 │   │   ├── runner.rs                # In-memory command engine (playground)
 │   │   └── sim/                     # Event-driven simulator (10 files, incl. EmulationHost trait)
 │   └── mimz-wasm/               # WASM playground wrapper (depends on mimz-sim)
-├── tests/                       # 18 test files + fixtures/golden/icarus
+├── tests/                       # 20 test files + fixtures/golden/icarus
 ├── benches/compile.rs           # Criterion micro-benchmarks
 ├── fuzz/                        # 4 libFuzzer targets
 ├── examples/                    # 23 designs × 4 complete flavors + 6 stdlib each + 13 tamil-pure (129 total)
