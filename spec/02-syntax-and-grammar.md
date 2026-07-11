@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.23.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.24.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -602,17 +602,17 @@ prefixed `portname_fieldname`. Wires and regs flatten the same way.
 
 ### Bundle checker rules
 
-| Code  | Triggered when                                                                       |
-| ----- | ------------------------------------------------------------------------------------ |
-| E0901 | Bundle literal missing a required field                                              |
-| E0902 | Bundle literal references an unknown field name                                      |
-| E0903 | Duplicate binding name in `let { }` destructure                                      |
-| E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (parser error) |
-| E0905 | Bundle field type is `clock` or `reset` (deferred — Phase 2)                         |
-| E0906 | Bundle type reference: unknown bundle name or wrong param count                      |
-| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                               |
-| E0908 | Duplicate field name in `bundle` declaration (deferred — Phase 2)                    |
-| E0909 | Bundle declared more than once (project-wide name collision)                         |
+| Code  | Triggered when                                                                                                                            |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| E0901 | Bundle literal missing a required field; or (v0.2.24, 2026-07-11) a bundle-typed `fn` call argument or `return` value has the wrong shape |
+| E0902 | Bundle literal references an unknown field name                                                                                           |
+| E0903 | Duplicate binding name in `let { }` destructure                                                                                           |
+| E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (parser error)                                                      |
+| E0905 | Bundle field type is `clock` or `reset` (deferred — Phase 2)                                                                              |
+| E0906 | Bundle type reference: unknown bundle name or wrong param count                                                                           |
+| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                                                                                    |
+| E0908 | Duplicate field name in `bundle` declaration (deferred — Phase 2)                                                                         |
+| E0909 | Bundle declared more than once (project-wide name collision)                                                                              |
 
 ---
 
@@ -1144,6 +1144,14 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.24 (2026-07-11):** **Bundle-typed `fn` argument/return shape
+  checking.** E0901 (section "Bundle checker rules") widened from
+  bundle-literal-only to also cover a bundle-typed function call argument or
+  `return` value whose shape doesn't match the parameter/return type —
+  closing the gap where a bundle passed through a `fn` boundary skipped
+  shape checking entirely. Backed by a new `Ty::Bundle` variant in the
+  checker's width pass (consolidating the prior `Wcx::bundle_sigs`
+  side-table). No grammar change — checker-only. `docs/log/2026-07-11.md`.
 - **v0.2.23 (2026-07-06):** **Cycle-iterating loop `sync loop`/`sync suzhal`**
   (new section 1.15b, placed directly after `loop`'s section 1.15). New
   section 5 production `syncLoopBlock` (`moduleItem` gains it): a module-body

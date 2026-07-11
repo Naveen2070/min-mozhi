@@ -21,6 +21,32 @@ module Reg(WIDTH: int = 8) {
 Parameters are `int`/`bool` compile-time values (chapter 3). They fold into
 widths and disappear; they are not wires.
 
+## Conditional elaboration: `const if`
+
+`const if` includes or excludes whole module-body items — ports, wires, regs,
+instances, anything — at elaboration time, based on a compile-time condition
+(usually a parameter):
+
+```mimz
+module Adder(WIDTH: int = 8) {
+  in a: bits[WIDTH]
+  in b: bits[WIDTH]
+  out sum: bits[WIDTH]
+
+  const if (WIDTH > 8) {
+    out overflow: bit
+    overflow = a[WIDTH-1] & b[WIDTH-1]
+  }
+}
+```
+
+The losing branch is discarded completely — not type-checked, not
+name-resolved, not emitted, so it can reference ports/wires that only exist
+in that branch. `COND` may use parameters, module-level `const`s, and
+arithmetic/comparison operators; if it can't be resolved at compile time,
+that's `E0811`. `const if` blocks may nest, and an `else { ... }` is
+optional. It's module-body only — no file-level conditional items.
+
 ## Instances: `let`
 
 You place a child module with `let name = Child(params) { connections }`:
@@ -55,6 +81,30 @@ include lib.full_adder    // lib/full_adder.mimz -> module FullAdder
 
 `include` and `import` are the exact same keyword. A path that does not resolve to
 a file is `E1201`.
+
+## Packages: disambiguating same-named modules
+
+Two files can declare a module (or enum, or bundle) with the same name — this
+is legal as long as you never reference the name ambiguously. If you do
+import two files that both declare `Fifo`, qualify the reference with the
+exact import path you wrote, dot-joined:
+
+```mimz
+import mine.fifo    // declares module Fifo
+import std.fifo      // ALSO declares module Fifo
+
+module Top {
+  let a = mine.fifo.Fifo(DEPTH: 4) { ... }
+  let b = std.fifo.Fifo(DEPTH: 4) { ... }
+}
+```
+
+The qualifier is exactly the import path as written in this file's own
+`import` — there's no separate "package name" declaration. A bare,
+unqualified name still works as long as it's unambiguous, so this is fully
+additive. `E0110` fires if a bare name resolves to two or more declarations;
+`E0111` fires if the qualifier doesn't match any import in the file.
+Functions (`fn`) stay project-wide unique and are never qualified.
 
 ## Compile-time loops: `repeat`
 

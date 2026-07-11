@@ -4,7 +4,7 @@ The lexer is where your source text gets chopped into **tokens** — the smalles
 
 ---
 
-## `lexer/token.rs` — What a Token Looks Like
+## `crates/mimz-core/src/lexer/token.rs` — What a Token Looks Like
 
 **`Kw` enum** — This lists every keyword: `Module`, `In`, `Out`, `Wire`, `Reg`, `Mem`, `Clock`, `Reset`, `Async`, `On`, `Rise`, `Fall`, `If`, `Else`, `Match`, `Enum`, `Let`, `Const`, `Repeat`, `Import`, `True`, `False`, `Test`, `For`, `Tick`, `Expect`, `And`, `Or`, `Not`, `Syntax`, `Thamizh`, `Fn`.
 
@@ -20,7 +20,7 @@ Numbers carry their `raw` spelling (like `"0xFF"` not just `255`) so the Verilog
 
 ---
 
-## `lexer/mod.rs` — The Scanner Itself
+## `crates/mimz-core/src/lexer/mod.rs` — The Scanner Itself
 
 **`lex(src)`** is the main entry. It:
 
@@ -78,7 +78,7 @@ So `postprocess_newlines` drops newlines when the previous token can't end a sta
 
 ---
 
-## `lexer/keywords.rs` — The Keyword Table
+## `crates/mimz-core/src/lexer/keywords.rs` — The Keyword Table
 
 This loads `lang/keywords.toml` (embedded at build time) and builds two lookup tables:
 

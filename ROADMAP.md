@@ -12,16 +12,16 @@
 
 ## Phase Status
 
-| Phase | Name                              | Status      | Completed      |
-| ----- | --------------------------------- | ----------- | -------------- |
-| 0     | Foundation & Spec                 | ✅ Complete | 2026-06-15     |
-| 1     | Verilog Backend (compiler)        | ✅ Complete | 2026-06-12     |
-| 1.8   | Grammar Engine (Tamil word order) | ✅ Complete | 2026-06-16     |
-| 1.5   | Own Simulator                     | ✅ Complete | 2026-06-22     |
-| **→** | **v0.1.0 public release**         | **🚀 Now**  | **2026-06-24** |
-| 2     | IR + Synthesis (Yosys/nextpnr)    | ⏳ Planned  | —              |
-| 3     | Native FPGA bitstream             | ⏳ Planned  | —              |
-| 4     | Ecosystem, stdlib, community      | ⏳ Ongoing  | —              |
+| Phase | Name                              | Status                                   | Completed  |
+| ----- | --------------------------------- | ---------------------------------------- | ---------- |
+| 0     | Foundation & Spec                 | ✅ Complete                              | 2026-06-15 |
+| 1     | Verilog Backend (compiler)        | ✅ Complete                              | 2026-06-12 |
+| 1.8   | Grammar Engine (Tamil word order) | ✅ Complete                              | 2026-06-16 |
+| 1.5   | Own Simulator                     | ✅ Complete                              | 2026-06-22 |
+| **→** | **v0.1.0 public release**         | ✅ Complete                              | 2026-06-24 |
+| 2     | IR + Synthesis (Yosys/nextpnr)    | 🟡 In progress (language-features track) | —          |
+| 3     | Native FPGA bitstream             | ⏳ Planned                               | —          |
+| 4     | Ecosystem, stdlib, community      | ⏳ Ongoing                               | —          |
 
 ---
 
@@ -74,20 +74,34 @@
 - Icarus differential: byte-for-byte match on all examples (`REQUIRE_IVERILOG=1`)
 - VCD waveform output, viewable in GTKWave
 
-### Phase 2 — IR + Synthesis _(target: 2028)_
+### Phase 2 — IR + Synthesis 🟡 (2026-06-24 → ongoing) _(IR/synthesis target: 2028)_
 
 > Own your middle layer.
+
+Two tracks, running in parallel; see `docs/plan/phase-2-ir-synthesis.md` for
+the full triaged backlog (source of truth).
+
+**Language-features track — in progress:**
+
+- ✅ Packages/namespacing (2026-07-02)
+- ✅ `suzhal`/சுழல் bounded loop (2026-07-05)
+- ✅ Tagged unions with payloads (2026-06-28)
+- ✅ Interfaces/bundles + destructuring (2026-07-01)
+- ✅ `default` assignments + item-level const-`if` (2026-06-30)
+- ✅ `clog2` const-builtin (2026-06-27)
+- ✅ Bundle-typed fn arg/return shape-checking (2026-07-11)
+- Still open: enum variant construction syntax, `foreach`, structural
+  interface matching, `?`/`??` valid-bundle sugar, channels tier (a), wire
+  type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/
+  `system_fault`
+
+**IR/synthesis track — not started:**
 
 - Min-Mozhi IR — own netlist-like intermediate format
 - IR emitter from AST
 - Logic synthesizer — map IR to gates (AND/OR/NOT/FF)
 - Yosys integration or internals study for technology mapping
 - FPGA primitive mapping (LUTs, flip-flops)
-- Language additions (editions-gated):
-  - Interfaces, channels (tagged unions ✅ shipped v0.2.15)
-  - `prove` via SymbiYosys
-  - G5 security: `secret` taint + `system_fault` network v1
-  - `fixed`-point, `requires`/`ensures` contracts, pipe `|>`
 
 ### Phase 3 — Native FPGA Backend _(target: 2029–2030)_
 

@@ -2,7 +2,7 @@
 
 This takes the checked AST and turns it into synthesizable Verilog-2005 text.
 
-## `emit_verilog/mod.rs` — The Big Picture
+## `crates/mimz-core/src/emit_verilog/mod.rs` — The Big Picture
 
 **`Project` struct** — project-wide tables of modules and enums.
 
@@ -12,7 +12,7 @@ This takes the checked AST and turns it into synthesizable Verilog-2005 text.
 
 **`REPEAT_BUDGET = 4096`** — maximum unroll iterations. Prevents a malicious file from producing gigabytes of Verilog.
 
-## `emit_verilog/module.rs` — Module Shell
+## `crates/mimz-core/src/emit_verilog/module.rs` — Module Shell
 
 Generates:
 
@@ -29,7 +29,7 @@ Plus:
 - Always-blocks with reset synthesis (`if (rst) ... else ...`)
 - Combinational drive assignments
 
-## `emit_verilog/expr.rs` — Expression Rendering
+## `crates/mimz-core/src/emit_verilog/expr.rs` — Expression Rendering
 
 Expressions are rendered to Verilog:
 
@@ -42,12 +42,12 @@ Expressions are rendered to Verilog:
 - Enum variants → `localparam` constant names
 - Tagged unions → **tag wire** + **payload extraction**: `{tag_bits, payload_bits}` width, variant tag as `localparam` values, payload extracted by field position in `assign` statements
 
-## `emit_verilog/translit.rs` — Tamil Names → ASCII
+## `crates/mimz-core/src/emit_verilog/translit.rs` — Tamil Names → ASCII
 
 This pre-pass runs after the checker (which sees original names) and before emission (which needs ASCII). It converts Tamil-script identifiers to an ISO-15919-flavored romanization: `விளக்கு` → `villakku`.
 
 If two different Tamil names romanize the same way, the second gets `_2`. ASCII names and Verilog reserved words are never touched.
 
-## `emit_verilog/testbench.rs` — Testbenches
+## `crates/mimz-core/src/emit_verilog/testbench.rs` — Testbenches
 
 Generates standalone Verilog testbench modules from inline `test` blocks. The testbench instantiates the DUT, drives inputs and clocks, and evaluates `expect` expressions using `$display("FAIL: ...")` and `$finish`.

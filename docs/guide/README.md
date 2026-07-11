@@ -29,6 +29,7 @@ chapters — the safety rules are where Min-Mozhi differs most.
 | 10  | [Natural word order (thamizh)](10-word-order-thamizh.md)      | Reading code in Tamil SOV order with `syntax thamizh`                                                                                      |
 | 11  | [The toolchain](11-toolchain.md)                              | `mimz init`/`check`/`compile`/`eval`/`sim`/`test`/`lint`/`repl`/`explain`/`translate`/`fmt`/`doctor`/`completions`/`eject`/`lsp`, `--lang` |
 | 12  | [Cheat sheet](12-cheatsheet.md)                               | Every keyword (×3 flavors), operator, builtin, and error code                                                                              |
+| 13  | [Hardware emulation](13-hardware-emulation.md)                | `sim` blocks: `--emulate`, the LED/speaker/UART peripherals, watching a design run live                                                    |
 
 ## Standard library
 

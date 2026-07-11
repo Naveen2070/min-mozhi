@@ -142,7 +142,11 @@ This is a CLI/observation feature only — no language surface, no synthesizable
 output. (`sim::fatal` / `sim::warn`, deferred below, are a separate user-log
 feature, not this uniform engine-driven trace.)
 
-## 5.5. Hardware emulation (`sim` blocks, opt-in)
+## 5.5. Hardware emulation (`sim` blocks, opt-in) — **beta**
+
+Shipped 2026-07-07 through 2026-07-09; grammar and peripheral config keys
+are not yet frozen the way the rest of this spec is — expect churn here
+sooner than elsewhere before it settles.
 
 A `sim { speed ... bind ... }` block inside a `test` block binds ports to
 virtual peripherals (`led`, `uart_tx`, `uart_rx`, `speaker`) and throttles

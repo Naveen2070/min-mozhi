@@ -1,4 +1,4 @@
-# 02 — The Lexer (`src/lexer/`)
+# 02 — The Lexer (`crates/mimz-core/src/lexer/`)
 
 Source text (NFC-normalized by the caller) → `Vec<Token>`.
 

@@ -2,7 +2,7 @@
 
 The checker runs seven passes over the AST to catch hardware bugs **before** they get to silicon. Every error has a stable E-code and a teaching help message.
 
-## `checker/mod.rs` — The Entry
+## `crates/mimz-core/src/checker/mod.rs` — The Entry
 
 **`Checker` struct** holds all the state for all seven passes: the diagnostics list, module and enum maps, and the constant-evaluation environment.
 

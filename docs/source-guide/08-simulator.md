@@ -2,7 +2,7 @@
 
 This is a full event-driven simulator that runs Min-Mozhi designs **without** any Verilog tools. It produces VCD waveforms (viewable in GTKWave) and console traces.
 
-## `sim/value.rs` — The Value Model
+## `crates/mimz-sim/src/sim/value.rs` — The Value Model
 
 **`Val`** — a bit-vector value: `bits: u128`, `width: u32`, `signed: bool`. Two-state model only (no `X` or `Z` — Min-Mozhi doesn't have them in v0.1).
 
@@ -14,13 +14,13 @@ This is a full event-driven simulator that runs Min-Mozhi designs **without** an
 - `extend`/`trunc` → resize
 - `match` with don't-care patterns
 
-## `sim/comb.rs` — Combinational Evaluation
+## `crates/mimz-sim/src/sim/comb.rs` — Combinational Evaluation
 
 **`eval_outputs(file, module, inputs, params)`** — evaluates a clockless module: set inputs, resolve combinational drivers in dependency order, return all output values.
 
 Rejects designs with registers, `on` blocks, instances, or repeat (with clear messages).
 
-## `sim/elaborate.rs` — Flattening the Design
+## `crates/mimz-sim/src/sim/elaborate.rs` — Flattening the Design
 
 **`elaborate_project(files, module, params)`** — turns an AST module with concrete parameter values into a flat `Design`:
 
@@ -33,7 +33,7 @@ Rejects designs with registers, `on` blocks, instances, or repeat (with clear me
 
 **`Design` struct** — the flat representation: inputs, outputs, registers, wires, clocks, resets, combinational drivers (signal → expression), and clocked processes.
 
-## `sim/kernel.rs` — The Simulation Engine
+## `crates/mimz-sim/src/sim/kernel.rs` — The Simulation Engine
 
 **`simulate(design, opts)`** — the event-driven, two-phase commit engine:
 
@@ -46,7 +46,7 @@ Rejects designs with registers, `on` blocks, instances, or repeat (with clear me
 
 **Memory**: sparse cell storage (only written cells are tracked), init value for unwritten cells, reads during a cycle see the OLD value (non-blocking write behavior).
 
-## `sim/run.rs` — Default Stimulus
+## `crates/mimz-sim/src/sim/run.rs` — Default Stimulus
 
 **`run(design, opts)`** — drives a clocked design: toggle the clock, assert reset for initial cycles, hold specified inputs.
 
@@ -54,7 +54,7 @@ Rejects designs with registers, `on` blocks, instances, or repeat (with clear me
 
 **`MAX_SIM_CYCLES = 1_000_000`** — prevents OOM on adversarial input.
 
-## `sim/harness.rs` — Test Block Runner
+## `crates/mimz-sim/src/sim/harness.rs` — Test Block Runner
 
 **`run_test(files, src, decl)`** — runs one `test "name" for M(args) { body }`:
 
@@ -65,13 +65,13 @@ Rejects designs with registers, `on` blocks, instances, or repeat (with clear me
    - `expect expr` → assert true; on failure, prints a teaching message showing the expression, cycle, and each operand's actual value
    - `if cond { }` → branch on state
 
-## `sim/trace.rs` — Console Traces
+## `crates/mimz-sim/src/sim/trace.rs` — Console Traces
 
 **`render(timeline, style, scope)`** — two styles:
 
 - `"table"` — every cycle, column-aligned
 - `"changes"` — only when signals change (like `$monitor`)
 
-## `sim/vcd.rs` — VCD Waveform Output
+## `crates/mimz-sim/src/sim/vcd.rs` — VCD Waveform Output
 
 **`to_vcd(timeline)`** — hand-written 2-state VCD writer (no external crate). Assigns short ASCII codes to signals, dumps initial state, then outputs change-only updates at each timestamp. Opens in GTKWave.

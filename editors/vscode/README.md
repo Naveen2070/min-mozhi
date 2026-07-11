@@ -6,14 +6,18 @@ Language support for `.mimz` files:
   Tanglish, Tamil script) highlight identically, including mixed files,
   because the grammar lists every spelling from `lang/keywords.toml`
   (the repo's `tests/grammar_sync.rs` keeps them in lockstep).
-- **Live compiler diagnostics** (v0.2.0) — squiggles as you type, with
-  the stable `E`-code and the teaching help line, straight from the real
-  compiler via `mimz lsp`.
+- **Live compiler diagnostics** — squiggles as you type, with the stable
+  `E`-code and the teaching help line, straight from the real compiler via
+  `mimz lsp`.
+- **Hover, go-to-definition, and completion** (since 2026-06-25) — hover a
+  signal for its declared type, jump to where a name is defined (even
+  across files), and get in-scope identifiers plus your file's
+  majority-flavor keywords as you type.
 
-## Diagnostics need the compiler
+## These features need the compiler
 
-The extension launches `mimz lsp` (diagnostics-only language server,
-Phase 1 v0), so it must be able to find the `mimz` binary. Two options:
+The extension launches `mimz lsp`, so it must be able to find the `mimz`
+binary. Two options:
 
 - **Option A — put `mimz` on PATH (recommended).** From the repo root run
   `cargo install --path .`; that places `mimz` in `~/.cargo/bin`, which a
@@ -27,9 +31,8 @@ Phase 1 v0), so it must be able to find the `mimz` binary. Two options:
 Without the binary, syntax highlighting still works — the extension
 shows one warning and carries on.
 
-Known v0 limitation: `import`ed files are read from disk, so an edited
-but UNSAVED import is seen as last saved. Hover, go-to-definition, and
-completion land in Phase 4.
+Known limitation: `import`ed files are read from disk, so an edited but
+UNSAVED import is seen as last saved.
 
 ## Install (from this folder, no marketplace yet)
 

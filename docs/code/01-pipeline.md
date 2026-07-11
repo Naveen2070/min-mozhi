@@ -39,7 +39,7 @@ the terminal.
    (`include` is an English alias of `import` — identical token by the
    time it reaches the parser, so this step never sees the difference.)
 4. An `import std.<module>` instead resolves against the **embedded
-   standard library** (`src/stdlib.rs`) — see below — so it works from
+   standard library** (`crates/mimz-core/src/stdlib.rs`) — see below — so it works from
    any directory with no install path.
 5. A `visited` set of canonicalized paths makes duplicate imports and
    cycles harmless — each file is parsed exactly once.
@@ -47,7 +47,7 @@ the terminal.
 Output: `Vec<LoadedFile>` (path + source text + AST), entry file first.
 The source text is kept because diagnostics render spans against it.
 
-### The embedded standard library (`src/stdlib.rs`)
+### The embedded standard library (`crates/mimz-core/src/stdlib.rs`)
 
 `load_project` delegates to `load_project_with_lib(entry, lib_std)`; the
 `std.*` branch lives there. When an import's first segment is a
@@ -55,7 +55,7 @@ standard-library namespace alias — `std` / `nuulagam` / `நூலகம்` (
 per flavor) — it resolves against a compile-time catalog instead of the
 filesystem:
 
-- The catalog (`MODULES` in `src/stdlib.rs`) `include_str!`s the
+- The catalog (`MODULES` in `crates/mimz-core/src/stdlib.rs`) `include_str!`s the
   already-tested example files — `examples/english/std/<stem>.mimz`
   (canonical) and `examples/tamil-pure/<twin>.mimz` (pure-Tamil twin) —
   so there is **one source of truth** and no install path; it also works
@@ -75,12 +75,12 @@ filesystem:
   **E1202** (the message lists the available modules). Std modules are
   self-contained (no transitive imports), an invariant a unit test guards.
 
-## Step 2 — Lex (`src/lexer/`)
+## Step 2 — Lex (`crates/mimz-core/src/lexer/`)
 
 Source text → `Vec<Token>`. Each token = kind + span + (for keywords)
 which language flavor spelled it. Details in [`02-lexer.md`](02-lexer.md).
 
-## Step 3 — Parse (`src/parser/`)
+## Step 3 — Parse (`crates/mimz-core/src/parser/`)
 
 Tokens → `ast::File`. Recursive descent with statement-level error
 recovery, so one bad line doesn't hide the next error. The pipeline uses
@@ -88,7 +88,7 @@ the **strict** `parse` (any error → no tree → no codegen); tools that want
 a best-effort tree from broken input use `parse_recover` (returns the tree
 with `Error` placeholder nodes). Details in [`03-parser.md`](03-parser.md).
 
-## Step 4 — Check (`src/checker/`)
+## Step 4 — Check (`crates/mimz-core/src/checker/`)
 
 Between parse and emit, `checker::check` runs over all loaded files (in
 BOTH `mimz check` and `mimz compile`). It performs:
@@ -113,7 +113,7 @@ BOTH `mimz check` and `mimz compile`). It performs:
 Every checker error carries a stable code (`E0101`) — catalog and
 details in [`11-checker.md`](11-checker.md).
 
-## Step 5 — Build the project symbol table (`src/emit_verilog/mod.rs`)
+## Step 5 — Build the project symbol table (`crates/mimz-core/src/emit_verilog/mod.rs`)
 
 `Project::from_files` collects **every module and enum across all files**
 into name → node maps. This is what lets `let u = Adder(...)` find
@@ -122,11 +122,11 @@ are rejected here (module names are project-unique, spec/02 section 1.5).
 
 > This table lives in `emit_verilog` because the emitter is its only
 > consumer; the checker (which landed 2026-06-11/12) does its own
-> project-wide name resolution in `src/checker/symbols.rs` rather than
+> project-wide name resolution in `crates/mimz-core/src/checker/symbols.rs` rather than
 > sharing this one. See
 > [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md).
 
-## Step 6 — Emit Verilog (`src/emit_verilog/`)
+## Step 6 — Emit Verilog (`crates/mimz-core/src/emit_verilog/`)
 
 ASTs + symbol table → one Verilog-2005 source string, written to the
 output path. Details in [`05-emit-verilog.md`](05-emit-verilog.md).

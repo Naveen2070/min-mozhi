@@ -1,6 +1,9 @@
-// Min-Mozhi VS Code extension: starts `mimz lsp` (diagnostics-only v0)
-// for .mimz documents. Plain JavaScript on purpose — no build step, the
-// file in the repo IS the file in the .vsix.
+// Min-Mozhi VS Code extension: starts `mimz lsp` for .mimz documents
+// (diagnostics, hover, go-to-definition, completion). Plain JavaScript on
+// purpose — no build step, the file in the repo IS the file in the .vsix.
+// `vscode-languageclient`'s generic client wires hover/definition/completion
+// automatically from the server's declared capabilities — nothing extra
+// needed here.
 
 const vscode = require("vscode");
 const { LanguageClient } = require("vscode-languageclient/node");

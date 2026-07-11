@@ -4,19 +4,63 @@ Every test, what it locks in, and what a failure means. Update this page
 when tests are added or removed (the count below is asserted nowhere —
 this page is the human ledger).
 
-> **Live breakdown:** run **`cargo test-summary`** instead of `cargo test` — it
-> runs the suite, then prints a per-binary table (lib unit, each bin, every
-> integration suite, doctests) and a grand total. Cross-platform (a standalone
-> dev crate at `tools/test-summary/`, aliased in `.cargo/config.toml`); forwards
-> all `cargo test` args (`--release`, `--test sim`, …) and honors
-> `REQUIRE_IVERILOG`. Use it to keep the hand-maintained counts above honest.
+> **Live breakdown:** run **`cargo test-summary --workspace`** instead of
+> `cargo test` — it runs the suite, then prints a per-binary table (lib unit,
+> each bin, every integration suite, doctests) and a grand total.
+> Cross-platform (a standalone dev crate at `tools/test-summary/`, aliased in
+> `.cargo/config.toml`); forwards all `cargo test` args (`--release`,
+> `--test sim`, …) and honors `REQUIRE_IVERILOG`. Use it to keep the
+> hand-maintained counts above honest.
+>
+> **`--workspace` is required**, not optional: root `Cargo.toml` sets
+> `default-members = ["."]` (fast local iteration on the shell crate,
+> `docs/plan/workspace-split.local.md`), so a bare `cargo test-summary` /
+> `cargo test` only runs the root crate's 50 lib-unit tests and silently
+> skips `mimz-core` (399) and `mimz-sim` (97) — 496 tests invisible without
+> the flag. CI (`.github/workflows/ci.yml`) had this exact gap for one day
+> (2026-07-10 → 2026-07-11) after the workspace split landed; fixed by
+> adding `--workspace` to its clippy/test/doc/build steps.
 
-**663 tests** as of 2026-07-06: 480 lib unit + 7 LSP unit (bin) + 6 benchmark unit (bin) + 6 cli integration + 13 example integration + 16 grammar integration + 10 eval integration + 15 translate integration + 20 morph integration + 9 fmt integration + 7 Icarus differential + 4 error-fixture + 1 LSP smoke + 4 docs-sync + 6 grammar-sync + 5 config integration + 14 compile_string integration + 14 sim integration + 7 test integration + 11 stdlib integration + 1 wasm_parity integration.
+**737 tests** as of 2026-07-11 (`cargo test-summary --workspace`): 399 mimz-core
+lib unit + 97 mimz-sim lib unit + 50 mimz (root) lib unit + 0 mimz-wasm lib
+unit + 7 mimz bin unit + 6 mimz-bench bin unit + 6 cli integration + 14
+compile_string integration + 5 config integration + 4 docs-sync + 4
+error-fixture + 15 eval integration + 13 example integration + 9 fmt
+integration + 16 grammar integration + 6 grammar-sync + 8 Icarus differential
 
-Fixture counts (current): 102 error fixtures · 8 grammar fixtures · 68 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 38 Icarus self-checking testbenches.
+- 1 LSP smoke + 20 morph integration + 2 packages integration + 6 showcase
+  integration + 14 sim integration + 11 stdlib integration + 7 test integration
+- 15 translate integration + 2 wasm_parity integration.
+
+Fixture counts (current): 106 error fixtures · 8 grammar fixtures · 68 golden `.v` outputs + 14 `_tb.v` testbench goldens + 1 `.vcd` · 38 Icarus self-checking testbenches.
 
 Changelog of test-count changes (newest first):
 
+- 2026-07-11 bundle-typed fn arg/return width shape-checking (checker,
+  `Ty::Bundle` consolidation) + workspace-split test-visibility fix: true
+  count was already 737 post-split (mimz-core 399 + mimz-sim 97 absorbed the
+  old single-crate 480 lib-unit figure, plus new tests), but `cargo test` /
+  CI only saw 241 without `--workspace` — see the callout above. 663 → 737
+  (net of both the new tests and the crate-count reconciliation).
+  **+5 unit tests** in `checker::widths::tests` (a pocket inside
+  `crates/mimz-core/src/checker/widths/mod.rs`, distinct from the sibling
+  `checker::tests` module below):
+  `bundle_typed_fn_param_supports_field_access` (a bundle-typed fn param's
+  field access resolves via `cx.sigs` instead of false-E0105ing),
+  `module_param_field_access_is_rejected` (`W.foo` on an int/bool module
+  param now errors instead of silently passing),
+  `mem_field_access_reports_exactly_one_diagnostic` (mem/clock/reset field
+  access reports pass-3's diagnostic once, not doubled with `field_ty`'s),
+  `enum_variant_from_wrong_enum_is_rejected` (assigning a variant from the
+  wrong enum into an enum-typed reg/wire is caught — was a silent
+  zero-diagnostic regression), `bundle_literal_tail_return_is_shape_checked`
+  (a bundle-literal fn-tail return goes through `check_return_expr`, not the
+  old `infer_ty`+`check_return_ty` path). **+4 error fixtures**: 102 → 106 —
+  `E0901_bundle_fn_arg_missing_field.mimz`,
+  `E0907_bundle_fn_arg_type_mismatch.mimz`,
+  `E0804_bundle_return_type_mismatch.mimz`,
+  `E0901_bundle_return_missing_field.mimz` (all under
+  `tests/fixtures/errors/`).
 - 2026-07-06 `loop` and `sync loop` features + bundles (branch `phase-2-sync-loop` and `phase-2-interfaces-bundles`):
   Added `loop` unrolling in combinational `fn` bodies and `on` blocks.
   Added `sync loop` grammar, lowering to primitive states, and checker verification.
@@ -42,7 +86,7 @@ Changelog of test-count changes (newest first):
   Suite 522 → 523.
 
 - 2026-06-29 OR-arm binding intersection (branch `phase-2-tagged-unions`, Tasks 1–3):
-  E0808 algorithm in `src/checker/names.rs` (5-phase intersection). **+6 lib unit**
+  E0808 algorithm in `crates/mimz-core/src/checker/names.rs` (5-phase intersection). **+6 lib unit**
   (checker/tests.rs: 2 positive — 2-way OR-arm clean, 3-way OR-arm clean; 4 negative
   — name missing, extra name, width mismatch, wildcard-not-binding). Also updated
   stale pre-existing counts (lib unit 349 → 356, checker 112 → 133, sim integration
@@ -76,13 +120,13 @@ Changelog of test-count changes (newest first):
   (`fn_decl_parses_in_thamizh_order` — parser/tests.rs) **+1 translate integration**
   (`fn_keyword_translates_across_all_flavors` — tests/translate.rs). Suite 496 → 498.
 
-- 2026-06-26 CLI subcommands and DX (branch `cli-and-code-improvements`). New subcommands: `init`, `doctor`, `completions`, `repl`, `lint`. `check --watch` for continuous rechecking. Colorized diagnostics + test output via `owo-colors`. Global `-q`/`--quiet` and `-d`/`--debug` flags. `--lang` restructured to Clap `ValueEnum` with aliases. `src/lint.rs`: style/hygiene lint passes (W0002 snake_case, W0003 PascalCase). `tests/cli.rs`: 6 smoke + integration tests for doctor, init, watch, completions. **+5 lib unit** (lint: snake_case ×2, PascalCase ×2, empty-file clean) **+6 cli integration** (new `tests/cli.rs`). Suite 465 → 476.
+- 2026-06-26 CLI subcommands and DX (branch `cli-and-code-improvements`). New subcommands: `init`, `doctor`, `completions`, `repl`, `lint`. `check --watch` for continuous rechecking. Colorized diagnostics + test output via `owo-colors`. Global `-q`/`--quiet` and `-d`/`--debug` flags. `--lang` restructured to Clap `ValueEnum` with aliases. `crates/mimz-core/src/lint.rs`: style/hygiene lint passes (W0002 snake_case, W0003 PascalCase). `tests/cli.rs`: 6 smoke + integration tests for doctor, init, watch, completions. **+5 lib unit** (lint: snake_case ×2, PascalCase ×2, empty-file clean) **+6 cli integration** (new `tests/cli.rs`). Suite 465 → 476.
 
-- 2026-06-25 LSP DX (branch `phase-4-lsp-dx`). `mimz lsp` serves hover (type + doc-on-type), go-to-definition (cross-file, `test` blocks, `import` targets), and completion (scope identifiers + flavor keywords). `src/analysis.rs`: symbol index, `resolve_at` offset-to-definition resolver, completions — scope idents + flavor keywords. `src/lsp.rs`: LSP server wired through Tower LSP. `KeywordTable::canonical_spellings` for flavor-aware keyword completion. **+12 lib unit** (analysis.rs: symbol index, resolve_at, completions; lsp.rs: handlers; tests for each) **+1 LSP unit (bin)** (`lsp.rs` smoke). Suite 456 → 469.
+- 2026-06-25 LSP DX (branch `phase-4-lsp-dx`). `mimz lsp` serves hover (type + doc-on-type), go-to-definition (cross-file, `test` blocks, `import` targets), and completion (scope identifiers + flavor keywords). `crates/mimz-core/src/analysis.rs`: symbol index, `resolve_at` offset-to-definition resolver, completions — scope idents + flavor keywords. `src/lsp.rs`: LSP server wired through Tower LSP. `KeywordTable::canonical_spellings` for flavor-aware keyword completion. **+12 lib unit** (analysis.rs: symbol index, resolve_at, completions; lsp.rs: handlers; tests for each) **+1 LSP unit (bin)** (`lsp.rs` smoke). Suite 456 → 469.
 
-- 2026-06-24 Importable `std.*` library (branch `stdlib-importable-path`). `import std.fifo` (and `serkka nuulagam.varisai` / `சேர்க்க நூலகம்.வரிசை`) now resolve to an **embedded** standard library — `src/stdlib.rs` `include_str!`s the already-tested `examples/english/std/*.mimz` + `examples/tamil-pure/*.mimz` (zero duplication), so resolution needs no install path and works in WASM. Routing keys on the written alias: English stem → canonical module, twin name/romanization → pure-Tamil twin. `src/project.rs` gained a `std` branch (`load_project_with_lib`) that parses the embedded `&str` into a synthetic in-memory file, or loads `<dir>/<m>.mimz` when `mimz.toml [lib] std` overrides; `src/config.rs` gained the `[lib]` section + `resolve_with_path`; `mimz eject std` (`src/commands/eject.rs`, `stdlib::eject_to`) vendors the library all-or-nothing. New loader code **E1202** (bad std import) added to `src/explain.rs` + `06-diagnostics.md`. **+8 lib unit** (5 in `src/stdlib.rs`: aliases, canonical/twin routing, unknown-module, no-transitive-imports invariant; 3 in `src/config.rs`: `[lib]` parse, unknown-key reject, `resolve_with_path` location) **+11 stdlib integration** (new `tests/stdlib.rs`: embedded resolve + entry-stays-`files[0]` ordering, Tamil twin routing, unknown/arity E1202, relative-import regression, `[lib]` override wins + twin-spelling override matches eject, 3 eject + all-or-nothing partial-conflict). Spec/02 §1.5 gained the `std.*` clause. A post-review fix corrected two bugs the green suite missed: embedded std modules were pushed ahead of the entry (breaking the `files[0] == entry` invariant `sim`/`test` rely on), and the `[lib]` override keyed the filename on the raw written alias instead of the resolved variant (so a Tamil-twin-name import missed the ejected `varisai.mimz`). Suite 455 → 456.
+- 2026-06-24 Importable `std.*` library (branch `stdlib-importable-path`). `import std.fifo` (and `serkka nuulagam.varisai` / `சேர்க்க நூலகம்.வரிசை`) now resolve to an **embedded** standard library — `crates/mimz-core/src/stdlib.rs` `include_str!`s the already-tested `examples/english/std/*.mimz` + `examples/tamil-pure/*.mimz` (zero duplication), so resolution needs no install path and works in WASM. Routing keys on the written alias: English stem → canonical module, twin name/romanization → pure-Tamil twin. `src/project.rs` gained a `std` branch (`load_project_with_lib`) that parses the embedded `&str` into a synthetic in-memory file, or loads `<dir>/<m>.mimz` when `mimz.toml [lib] std` overrides; `src/config.rs` gained the `[lib]` section + `resolve_with_path`; `mimz eject std` (`src/commands/eject.rs`, `stdlib::eject_to`) vendors the library all-or-nothing. New loader code **E1202** (bad std import) added to `crates/mimz-core/src/explain.rs` + `06-diagnostics.md`. **+8 lib unit** (5 in `crates/mimz-core/src/stdlib.rs`: aliases, canonical/twin routing, unknown-module, no-transitive-imports invariant; 3 in `src/config.rs`: `[lib]` parse, unknown-key reject, `resolve_with_path` location) **+11 stdlib integration** (new `tests/stdlib.rs`: embedded resolve + entry-stays-`files[0]` ordering, Tamil twin routing, unknown/arity E1202, relative-import regression, `[lib]` override wins + twin-spelling override matches eject, 3 eject + all-or-nothing partial-conflict). Spec/02 §1.5 gained the `std.*` clause. A post-review fix corrected two bugs the green suite missed: embedded std modules were pushed ahead of the entry (breaking the `files[0] == entry` invariant `sim`/`test` rely on), and the `[lib]` override keyed the filename on the raw written alias instead of the resolved variant (so a Tamil-twin-name import missed the ejected `varisai.mimz`). Suite 455 → 456.
 
-- 2026-06-23 BUG-6 (left-shift truncation) fixed in `src/sim/value.rs`. +1 lib unit (`shl_does_not_truncate_to_left_operand_width`). The shift example (`examples/english/shift.mimz`) was rewritten to follow the template (header + inline tests), mixed flavor added, and a real pure-Tamil twin `tamil-pure/nakartthi.mimz` created (replacing the old `shift.mimz` which had English identifiers). Both registered: `BASE_EXAMPLES` 28 → 29, `PURE_TAMIL` 12 → 13 (`tests/examples.rs`); `nakartthi` added to the `tests/icarus.rs` differential. The FIFO workaround (explicit `DEPTH` param) was reverted — all 4 flavors + `varisai` now use `1 << AW`. The FIFO doc page was updated accordingly (removed `DEPTH` parameter row). **No new test functions** beyond the shl unit test — the example and the revert ride the existing parametrized loops. Suite count 436 → 437.
+- 2026-06-23 BUG-6 (left-shift truncation) fixed in `crates/mimz-sim/src/sim/value.rs`. +1 lib unit (`shl_does_not_truncate_to_left_operand_width`). The shift example (`examples/english/shift.mimz`) was rewritten to follow the template (header + inline tests), mixed flavor added, and a real pure-Tamil twin `tamil-pure/nakartthi.mimz` created (replacing the old `shift.mimz` which had English identifiers). Both registered: `BASE_EXAMPLES` 28 → 29, `PURE_TAMIL` 12 → 13 (`tests/examples.rs`); `nakartthi` added to the `tests/icarus.rs` differential. The FIFO workaround (explicit `DEPTH` param) was reverted — all 4 flavors + `varisai` now use `1 << AW`. The FIFO doc page was updated accordingly (removed `DEPTH` parameter row). **No new test functions** beyond the shl unit test — the example and the revert ride the existing parametrized loops. Suite count 436 → 437.
 
 - 2026-06-23 stdlib modules `seg7`, `pwm`, `fifo`, `uart_tx` shipped (after `debouncer`), each in all four flavors + a pure-Tamil twin (`ennkaatti`, `minukki`, `varisai`, `anuppi`), with inline `test` blocks, module + emitted-testbench goldens, and a hand-written self-checking Icarus testbench. **No new test functions** — the modules ride the existing parametrized loops, so `BASE_EXAMPLES` 24 → 28, `PURE_TAMIL` 8 → 12 (`tests/examples.rs`) and `TESTBENCHES` 17 → 21, `PURE_TESTBENCHES` 7 → 11 (`tests/icarus.rs`) auto-extend coverage. Suite count unchanged at 436.
 
@@ -92,32 +136,32 @@ Changelog of test-count changes (newest first):
 - 2026-06-22 Reserved `extern` (external-Verilog / black-box-IP module; `docs/Ideas/architectural_ideas.md` idea 3) ahead of the v0.1.0 freeze (R11): added to `lang/keywords.toml` `reserved` + spec/03 v0.2.11 + the grammar invalid pattern + a lexer test. The three separate reserved-word keyword-table tests (`fn_and_function_are_reserved`, `the_v03_backlog_keywords_are_reserved`, `the_section8_keywords_are_reserved`) were merged into one data-driven `future_keywords_are_reserved_not_usable` that also covers `extern`. Net −2 lib unit (3 removed, 1 added). Suite 432 → 430.
 
 - 2026-06-22 WASM↔CLI Verilog parity + testbench golden/Icarus coverage. New `tests/wasm_parity.rs` asserts the `mimz-wasm` `compileToVerilog` binding emits byte-identical Verilog to the CLI's `compile` — the CLI writes to a temp `-o` path the test reads then deletes (cleaned up even if the assertion fails), so the comparison is file-content vs binding output, not status-line vs Verilog; skips with a note when `crates/mimz-wasm/pkg/` isn't built. The `--emit-testbench` work also landed `emitted_testbench_matches_the_goldens` + `emit_testbench_without_test_blocks_notes_and_writes_only_v` (`tests/examples.rs`) and `every_emitted_testbench_passes_iverilog` (`tests/icarus.rs`). +2 example integration, +1 Icarus differential, +1 wasm_parity integration. Suite 428 → 432.
-- 2026-06-21 Testbench emitter (`src/emit_verilog/testbench.rs`) `--emit-testbench` fixes: `test_env` now merges the DUT's module-parameter defaults for any arg a test doesn't override (mirrors `sim::elaborate::elaborate_module`'s override-or-default order), and args chain left-to-right so a later arg can reference an earlier one (mirrors `sim::harness::params`) — without this, a defaulted param omitted by a test, or `M(W: 8, DEPTH: W * 2)`-style chaining, failed to resolve width expressions. Also: two tests whose names sanitize to the same Verilog module identifier (e.g. `"edge case"` and `"edge_case"` both → `edge_case_tb`) are now rejected with a diagnostic instead of silently emitting two same-named modules. +3 lib unit (`test_env_falls_back_to_module_param_defaults`, `test_env_chains_earlier_args`, `colliding_sanitized_test_names_are_rejected`). Suite 425 → 428.
-- 2026-06-21 Testbench emitter (`src/emit_verilog/testbench.rs`) security and logic hardening — added `sanitize_verilog_ident` helper, bounded loop iteration counts, properly recursed into nested conditionals within inline tests, and pushed `consteval` errors gracefully. +1 lib unit (`sanitize_verilog_ident_replaces_invalid_chars`). Suite 424 → 425.
-- 2026-06-20 Re-audit `src/sim/value.rs`: Finding A — `BinOp::Shl` used bare `r.bits as u32` to cast the shift amount, silently truncating when bit ≥ 32 was set (e.g. `1 << (1 << 32)` became `1 << 0` = 1 instead of 0). Also corrected `BinOp::Shr`'s `.min(127)` guard which avoided the truncation panic but produced wrong results (shift-by-128 became shift-by-127 instead of 0). Both fixed with `if r.bits >= 128 { 0 } else { … as u32 }`. +7 lib unit in `sim::comb::tests` (all new, section below). Suite 417 → 424.
+- 2026-06-21 Testbench emitter (`crates/mimz-core/src/emit_verilog/testbench.rs`) `--emit-testbench` fixes: `test_env` now merges the DUT's module-parameter defaults for any arg a test doesn't override (mirrors `sim::elaborate::elaborate_module`'s override-or-default order), and args chain left-to-right so a later arg can reference an earlier one (mirrors `sim::harness::params`) — without this, a defaulted param omitted by a test, or `M(W: 8, DEPTH: W * 2)`-style chaining, failed to resolve width expressions. Also: two tests whose names sanitize to the same Verilog module identifier (e.g. `"edge case"` and `"edge_case"` both → `edge_case_tb`) are now rejected with a diagnostic instead of silently emitting two same-named modules. +3 lib unit (`test_env_falls_back_to_module_param_defaults`, `test_env_chains_earlier_args`, `colliding_sanitized_test_names_are_rejected`). Suite 425 → 428.
+- 2026-06-21 Testbench emitter (`crates/mimz-core/src/emit_verilog/testbench.rs`) security and logic hardening — added `sanitize_verilog_ident` helper, bounded loop iteration counts, properly recursed into nested conditionals within inline tests, and pushed `consteval` errors gracefully. +1 lib unit (`sanitize_verilog_ident_replaces_invalid_chars`). Suite 424 → 425.
+- 2026-06-20 Re-audit `crates/mimz-sim/src/sim/value.rs`: Finding A — `BinOp::Shl` used bare `r.bits as u32` to cast the shift amount, silently truncating when bit ≥ 32 was set (e.g. `1 << (1 << 32)` became `1 << 0` = 1 instead of 0). Also corrected `BinOp::Shr`'s `.min(127)` guard which avoided the truncation panic but produced wrong results (shift-by-128 became shift-by-127 instead of 0). Both fixed with `if r.bits >= 128 { 0 } else { … as u32 }`. +7 lib unit in `sim::comb::tests` (all new, section below). Suite 417 → 424.
 - 2026-06-19 Two new pure-Tamil showcase examples so the playground's six curated examples (counter, adder, comparator, mux4, blinker, traffic*light) exist in **every** flavor — `examples/tamil-pure/kuutti.mimz` (adder twin) and `saalaivilakku.mimz` (traffic-light FSM twin), both Tamil keywords AND identifiers. `PURE_TAMIL` (in `tests/examples.rs` and `tests/translate.rs`) grew 4 → 6, so the equivalence, golden, and round-trip checks now cover them (new goldens `tests/golden/tamil_pure*{kuutti,saalaivilakku}.v`); the Icarus suite gained matching self-checking testbenches (`tests/icarus/{kuutti,saalaivilakku}\_tb.v`) + bit-for-bit differentials. **No new `#[test]` functions\*\* (these ride existing loop-driven tests), so the count is unchanged at 417.
-- 2026-06-19 Website Phase 4 — the interactive playground waveform. The runner (`src/runner.rs`) gained a `ports` command (emits the module interface as JSON — `{module, clocked, inputs[], outputs[]}` — so the browser can build input controls without re-parsing) and a `sim --steps "a=3,b=5;a=7,b=1"` flag (explicit per-step input vectors, fed straight into the existing `comb_run`; rejected for clocked designs). The `/playground` got a stimulus panel — an editable step table for combinational designs (the fix for "an adder with a fixed input draws flat") and held-inputs + cycles for clocked ones — that re-simulates live, plus a hover cursor on the canvas reading each signal's value at a time point. +4 lib unit (`runner`: ports×2, sim_steps×2). Suite 413 → 417.
+- 2026-06-19 Website Phase 4 — the interactive playground waveform. The runner (`crates/mimz-sim/src/runner.rs`) gained a `ports` command (emits the module interface as JSON — `{module, clocked, inputs[], outputs[]}` — so the browser can build input controls without re-parsing) and a `sim --steps "a=3,b=5;a=7,b=1"` flag (explicit per-step input vectors, fed straight into the existing `comb_run`; rejected for clocked designs). The `/playground` got a stimulus panel — an editable step table for combinational designs (the fix for "an adder with a fixed input draws flat") and held-inputs + cycles for clocked ones — that re-simulates live, plus a hover cursor on the canvas reading each signal's value at a time point. +4 lib unit (`runner`: ports×2, sim_steps×2). Suite 413 → 417.
 - 2026-06-18 Website Phase 4 step 5 — the playground waveform viewer. The runner's `sim` gained a `--vcd` flag (returns the 2-state VCD from `sim::vcd::to_vcd` instead of a console trace), so the in-browser **Simulate** button gets a waveform via the existing `runCommand` (no new wasm binding). New `site/src/components/WaveformViewer.tsx` — a self-contained canvas renderer behind the stable `vcd` prop (parses the VCD; square waves for 1-bit, value-labelled buses for wider signals; Surfer is the documented future drop-in). +1 lib unit (`runner::sim_vcd_emits_a_vcd_document`). Suite 412 → 413.
-- 2026-06-18 Website Phase 4 step 4 — the in-browser playground console. New `src/runner.rs` (private lib module, re-exported): a filesystem-free `run_command(source, command, argv)` that runs `check`/`compile`/`eval`/`sim`/`test` against a source string and returns the text a user would see, composing the existing lib pipeline (`comb::eval_outputs`, `elaborate`, `run`/`comb_run`, `trace::render`). The `--in`/`--param`/`--sweep`/trace-scope parsers were **lifted from the CLI's `commands/helpers.rs` into the lib** (single source; the CLI now re-exports them), and `compile_string` is now a thin wrapper over `run_command`. The wasm crate gained `runCommand`; the site got a `/playground` page (textarea editor + console, a `client:only` React island over the web wasm). +5 lib unit (`runner`: sweep×2, check, eval, sim), −2 command unit (the moved `sweep_vectors` tests). Suite 409 → 412.
+- 2026-06-18 Website Phase 4 step 4 — the in-browser playground console. New `crates/mimz-sim/src/runner.rs` (private lib module, re-exported): a filesystem-free `run_command(source, command, argv)` that runs `check`/`compile`/`eval`/`sim`/`test` against a source string and returns the text a user would see, composing the existing lib pipeline (`comb::eval_outputs`, `elaborate`, `run`/`comb_run`, `trace::render`). The `--in`/`--param`/`--sweep`/trace-scope parsers were **lifted from the CLI's `commands/helpers.rs` into the lib** (single source; the CLI now re-exports them), and `compile_string` is now a thin wrapper over `run_command`. The wasm crate gained `runCommand`; the site got a `/playground` page (textarea editor + console, a `client:only` React island over the web wasm). +5 lib unit (`runner`: sweep×2, check, eval, sim), −2 command unit (the moved `sweep_vectors` tests). Suite 409 → 412.
 - 2026-06-18 Website Phase 2 (WASM groundwork) — `mimz::compile_string` (`src/lib.rs`): the filesystem-free `lex→parse→check→transliterate→emit` entry point behind the browser playground (single-file; `import` rejected with a plain message). New `crates/mimz-wasm` (wasm-bindgen `compileToVerilog`) + a Cargo workspace; the CLI-only deps (`tokio`/`tower-lsp`/`memory-stats`) were made optional and feature-gated (`default = ["lsp", "bench"]`) so the lib builds for `wasm32` under `default-features = false`. +5 compile_string integration (`tests/compile_string.rs`: valid compile names the module, trilingual byte-identical output, E0401 width mismatch, syntax error reported, `import` rejected). Verified: full native gate green, `cargo build -p mimz-wasm --target wasm32-unknown-unknown`, and a headless Node smoke test (`crates/mimz-wasm/smoke-test.cjs`) compiling the counter through wasm. Suite 404 → 409.
-- 2026-06-17 Workstream B versioning + language edition — new `src/version.rs`: the compiler-version vs language-edition axes, `EDITION_HISTORY` (first edition **Wingless Butterfly** `wingless-butterfly-2026-1`), `version_block()` (uname-style `mimz --version`), and `KEYWORD_SET_VERSION` cross-checked against `lang/keywords.toml`'s `version` (now parsed + exposed via `KeywordTable::version`). The Verilog header carries both axes. +3 lib unit (`version`: `current_is_the_last_history_row`, `keyword_set_version_matches_keywords_toml`, `version_block_shows_both_axes`). Crate stays `0.1.0-dev` (drops `-dev` at the v0.1.0 tag, Workstream D). Suite 401 → 404.
+- 2026-06-17 Workstream B versioning + language edition — new `crates/mimz-core/src/version.rs`: the compiler-version vs language-edition axes, `EDITION_HISTORY` (first edition **Wingless Butterfly** `wingless-butterfly-2026-1`), `version_block()` (uname-style `mimz --version`), and `KEYWORD_SET_VERSION` cross-checked against `lang/keywords.toml`'s `version` (now parsed + exposed via `KeywordTable::version`). The Verilog header carries both axes. +3 lib unit (`version`: `current_is_the_last_history_row`, `keyword_set_version_matches_keywords_toml`, `version_block_shows_both_axes`). Crate stays `0.1.0-dev` (drops `-dev` at the v0.1.0 tag, Workstream D). Suite 401 → 404.
 - 2026-06-17 A5 asynchronous reset `async reset` (pre-v0.1.0 RTL-parity batch) — `async` promoted from reserved to an active keyword KW_ASYNC (Tanglish/Tamil `otthisaivatra`/`ஒத்திசைவற்ற` PROVISIONAL, pending native review). `ModuleItem::Reset` became `{ name, is_async }`; the emitter widens the sensitivity list to `@(posedge clk or posedge rst)` for an async reset. Active-high only (active-low polarity deferred). The cycle-based kernel is unchanged — async and sync reset are observationally identical at per-cycle sample points, so it's an emitter-only distinction. +5 lib unit (lexer `async_is_an_active_keyword`; parser `async_reset_parses_with_the_async_flag`, `a_plain_reset_is_synchronous`; emitter `async_reset_widens_the_sensitivity_list`, `a_sync_reset_stays_clock_only`). New four-flavor `async_reset` example (`BASE_EXAMPLES` 21 → 22, golden + the Icarus three-way differential). Spec `02` → v0.2.12, `03` → v0.2.10. Suite 396 → 401.
 - 2026-06-17 A4 memories `mem` (pre-v0.1.0 RTL-parity batch) — `mem` promoted from reserved to an active keyword KW_MEM (Tanglish/Tamil `ninaivagam`/`நினைவகம்` PROVISIONAL, pending native review). New `ModuleItem::Mem`; checker `Ty::Memory` (indexed read/write yields the element type, address range-checked against `depth`); emitter `reg [W-1:0] m [0:DEPTH-1]` + an `initial` power-on seed; the sim kernel gained a sparse cell store (`is_mem`/`mem_read` on the `Resolver`, indexed write into `next_mems`). +10 lib unit (lexer `mem_is_an_active_keyword`; parser `mem_declaration_parses_to_a_mem_item`, `a_mem_without_an_init_value_is_e1104`; checker `register_file_passes`, `a_non_constant_memory_depth_is_e0201`, `a_zero_memory_depth_is_e0410`, `a_memory_init_that_overflows_the_element_is_e0405`, `a_constant_address_past_the_depth_is_e0406`, `a_memory_inside_repeat_is_e0303`; kernel `memory_write_then_read_round_trips_a_cell`). New four-flavor `regfile` example (`BASE_EXAMPLES` 20 → 21, golden + the Icarus three-way differential; the `regfile` cells are internal-only — not dumped to VCD, like the tamil-pure exemption note). Spec `02` → v0.2.11, `03` → v0.2.9. Suite 386 → 396.
 - 2026-06-17 A3 falling-edge `on fall(clk)` (pre-v0.1.0 RTL-parity batch) — `fall` promoted from reserved to an active keyword KW_FALL (Tanglish/Tamil `irakkam`/`இறக்கம்` PROVISIONAL, pending native review); `OnBlock`/`Reg`/`Process` gained an `edge`; emitter lowers `posedge`/`negedge`; the sim kernel is now edge-aware (rise → sample → fall per period) so mixed-edge designs match Icarus bit-for-bit. +4 lib unit (parser `on_fall_parses_with_the_fall_edge`, `thamizh_order_on_fall_parses_to_the_fall_edge`; emitter `on_fall_emits_negedge`; kernel `dual_edge_negedge_reg_captures_posedge_within_a_period`); 2 lexer tests renamed (`fall_is_an_active_keyword`, `a_reserved_word_is_an_error`). New four-flavor `dual_edge` example (`BASE_EXAMPLES` 19 → 20, golden + the Icarus three-way differential). Spec `02` → v0.2.10, `03` → v0.2.8. Suite 382 → 386.
 - 2026-06-17 A2 don't-care `match` patterns `0b1??` (pre-v0.1.0 RTL-parity batch) — new `TokKind::MaskedInt` / `Pattern::IntMask` (binary `?` don't-care), mirroring the literal-pattern path; additive, no new keyword. +6 lib unit (lexer `dont_care_binary_literal_lexes_to_masked_int`; parser `dont_care_pattern_parses_to_intmask`; checker `dont_care_pattern_must_match_the_scrutinee_width`, `a_dont_care_match_still_needs_a_wildcard`, `a_dont_care_pattern_on_an_enum_is_e0409`; sim `dont_care_match_picks_the_masked_arm`). New four-flavor example `priority` (`BASE_EXAMPLES` 18 → 19, golden + the Icarus three-way differential) — no new test functions. Exact-width reuses E0409, still-needs-`_` is E0601 (no new code). Spec `02` → v0.2.9. Suite 376 → 382.
 - 2026-06-17 A1 replication `{N{x}}` (pre-v0.1.0 RTL-parity batch) — new `ExprKind::Replicate` mirroring concat through the whole pipeline; purely additive, no new keyword. +7 lib unit (parser `replication_parses_to_replicate`, `braces_without_an_inner_group_stay_concat`; checker `replication_width_is_count_times_inner`, `replication_width_mismatch_is_e0401`, `a_non_constant_replication_count_is_e0201`, `a_zero_replication_count_is_e0410`; sim `replication_repeats_the_group`). New four-flavor example `replicate` (`BASE_EXAMPLES` 17 → 18, golden + the Icarus three-way differential) — no new test functions (existing parametrized iterators). Width reuses E0410, non-const count reuses E0201 (no new code). Spec `02` → v0.2.8. Suite 369 → 376.
-- 2026-06-17 SEC-6 hardening audit — C2–C4 elaboration-time DoS bounds: `mimz sim`/`mimz test` skip the checker, so the structural elaborator (`src/sim/elaborate.rs`) gained `MAX_INSTANCE_DEPTH = 16` (recursive/cyclic instantiation → clean error, not a stack-overflow abort), `checked_sub` on the `repeat` span (extreme `hi - lo` → over-budget error, not an overflow panic), a `0..128` bound on bit-index drives (no silent `as u32` truncation), and a flatten name-collision error (no silent overwrite). A same-day follow-up pass added a 5th finding (SIM-5): `int_expr`, which lowers each flattened child const to a literal, built a negative value via a raw `i128` negation that overflow-panicked on `i128::MIN` (reachable via `(-i128::MAX) - 1`) — now non-recursive and `unsigned_abs`-based. +5 lib unit (`recursive_instantiation_errors_not_overflows`, `extreme_repeat_bounds_error_not_overflow`, `an_out_of_range_bit_index_errors`, `a_flatten_name_collision_errors`, `an_i128_min_const_elaborates_without_overflow` — `src/sim/elaborate.rs`). See SEC-6/HARD-6 in `docs/audit/`.
-- 2026-06-16 Phase 1.5 C3 + C4 — full simulator parity: the sim elaborator now unrolls `repeat` (array instances `fa__i`, bit-indexed drives assembled into a Concat — ripple\*adder) and encodes enum-typed signals by variant index with width `clog2(variants)` (variant reads/patterns → index — traffic_light), via a unified `Rw` elaborate-time rewriter (`src/sim/elaborate.rs`). The Layer-3 differential now covers the **entire single-file corpus, 18 → 21 examples** (added ripple_adder, traffic_light, vilakku) — every example the emitter compiles also simulates bit-for-bit vs Icarus. +2 lib unit (`unrolls_repeat_with_instance_array_and_bit_drives`, `elaborates_an_enum_signal_and_match`). Phase 1.5 full-parity simulator complete (C1–C4).
-- 2026-06-16 Phase 1.5 C2 — module-instance flattening in the sim elaborator: `elaborate_project` (`src/sim/elaborate.rs`) flattens `let` instances (incl. across `import`s) by inlining each child with signals name-prefixed `{inst}*{name}`, so `inst.port`reads resolve to the wire`inst*port`the emitter auto-declares — the flattened`Design`matches the emitted Verilog bit-for-bit.`mimz sim`/`mimz test`now`load_project`; the Layer-3 differential gained **alu** (`Top`instantiating the imported`Adder`) and **chained** (two chained `FullAdder`s), 16 → **18 examples**. +2 lib unit (`flattens_a_same_file_instance`, `rejects_unknown_instance_module`, replacing `rejects_instances_for_now`); the differential is one `#[test]`so the new examples add no separate count. Remaining sim parity: C3`repeat`(ripple_adder), C4 enum FSM (traffic_light).
-- 2026-06-16 security/bug audit (SEC-5) — bound the simulator's unbounded count inputs: a critical→medium audit (core pipeline clean) found the new sim skipped the "bound every count" doctrine. Caps`MAX_SIM_CYCLES`/`MAX_SWEEP_VECTORS` (`src/sim/run.rs`) now bound `tick(clk, n)`(untrusted-input hang/OOM via`mimz test`), the `--sweep`cartesian product (unchecked`usize`mul), and`--cycles`; plus a `translate`no-panic fix and a`mimz.toml` walk-up cap. +2 command unit (`sweep_vectors`cap —`src/commands/helpers.rs`), +1 sim integration (`cycles_over_the_limit_is_rejected_by_the_cli`), +1 test integration (`a_tick_count_over_the_cycle_limit_errors_fast_not_hangs`). The auditor's `cycle * PERIOD`overflow "highs" are unreachable once the loops are bounded — recorded checked-safe, see`docs/audit/`.
+- 2026-06-17 SEC-6 hardening audit — C2–C4 elaboration-time DoS bounds: `mimz sim`/`mimz test` skip the checker, so the structural elaborator (`crates/mimz-sim/src/sim/elaborate.rs`) gained `MAX_INSTANCE_DEPTH = 16` (recursive/cyclic instantiation → clean error, not a stack-overflow abort), `checked_sub` on the `repeat` span (extreme `hi - lo` → over-budget error, not an overflow panic), a `0..128` bound on bit-index drives (no silent `as u32` truncation), and a flatten name-collision error (no silent overwrite). A same-day follow-up pass added a 5th finding (SIM-5): `int_expr`, which lowers each flattened child const to a literal, built a negative value via a raw `i128` negation that overflow-panicked on `i128::MIN` (reachable via `(-i128::MAX) - 1`) — now non-recursive and `unsigned_abs`-based. +5 lib unit (`recursive_instantiation_errors_not_overflows`, `extreme_repeat_bounds_error_not_overflow`, `an_out_of_range_bit_index_errors`, `a_flatten_name_collision_errors`, `an_i128_min_const_elaborates_without_overflow` — `crates/mimz-sim/src/sim/elaborate.rs`). See SEC-6/HARD-6 in `docs/audit/`.
+- 2026-06-16 Phase 1.5 C3 + C4 — full simulator parity: the sim elaborator now unrolls `repeat` (array instances `fa__i`, bit-indexed drives assembled into a Concat — ripple\*adder) and encodes enum-typed signals by variant index with width `clog2(variants)` (variant reads/patterns → index — traffic_light), via a unified `Rw` elaborate-time rewriter (`crates/mimz-sim/src/sim/elaborate.rs`). The Layer-3 differential now covers the **entire single-file corpus, 18 → 21 examples** (added ripple_adder, traffic_light, vilakku) — every example the emitter compiles also simulates bit-for-bit vs Icarus. +2 lib unit (`unrolls_repeat_with_instance_array_and_bit_drives`, `elaborates_an_enum_signal_and_match`). Phase 1.5 full-parity simulator complete (C1–C4).
+- 2026-06-16 Phase 1.5 C2 — module-instance flattening in the sim elaborator: `elaborate_project` (`crates/mimz-sim/src/sim/elaborate.rs`) flattens `let` instances (incl. across `import`s) by inlining each child with signals name-prefixed `{inst}*{name}`, so `inst.port`reads resolve to the wire`inst*port`the emitter auto-declares — the flattened`Design`matches the emitted Verilog bit-for-bit.`mimz sim`/`mimz test`now`load_project`; the Layer-3 differential gained **alu** (`Top`instantiating the imported`Adder`) and **chained** (two chained `FullAdder`s), 16 → **18 examples**. +2 lib unit (`flattens_a_same_file_instance`, `rejects_unknown_instance_module`, replacing `rejects_instances_for_now`); the differential is one `#[test]`so the new examples add no separate count. Remaining sim parity: C3`repeat`(ripple_adder), C4 enum FSM (traffic_light).
+- 2026-06-16 security/bug audit (SEC-5) — bound the simulator's unbounded count inputs: a critical→medium audit (core pipeline clean) found the new sim skipped the "bound every count" doctrine. Caps`MAX_SIM_CYCLES`/`MAX_SWEEP_VECTORS` (`crates/mimz-sim/src/sim/run.rs`) now bound `tick(clk, n)`(untrusted-input hang/OOM via`mimz test`), the `--sweep`cartesian product (unchecked`usize`mul), and`--cycles`; plus a `translate`no-panic fix and a`mimz.toml` walk-up cap. +2 command unit (`sweep_vectors`cap —`src/commands/helpers.rs`), +1 sim integration (`cycles_over_the_limit_is_rejected_by_the_cli`), +1 test integration (`a_tick_count_over_the_cycle_limit_errors_fast_not_hangs`). The auditor's `cycle * PERIOD`overflow "highs" are unreachable once the loops are bounded — recorded checked-safe, see`docs/audit/`.
 - 2026-06-16 C1 carry-forward closed — the Layer-3 Icarus differential (`our*simulator_matches_icarus_bit_for_bit`) now also covers the four pure-Tamil examples (kanakki/cimitti/oppidi/thervi), so its list equals the emitter's single-module list, **12 english + 4 tamil-pure = 16**. The testbench romanizes interface names via the emitter's own `transliterate` (`interface_name_map`in`tests/icarus.rs`) to match the compiled Verilog while the kernel keeps source names; no new test function, so the count is unchanged.
-- 2026-06-16 Phase 1.5 C1 — combinational `mimz sim`+ signed-aware differential:`comb_run` (`src/sim/run.rs`) settles a clockless design one frame per input vector, so `mimz sim`now runs combinational modules too —`--in`is one settled frame,`--sweep a=0|1|2` a frame each — emitting the same VCD/trace. The Layer-3 Icarus differential (`tests/icarus.rs::our_simulator_matches_icarus_bit_for_bit`) was broadened to **12 ASCII-named english examples** (clocked AND combinational, incl. SIGNED `bitops`/`signed_math`), auto-routing on whether the design is clocked, comparing via Verilog `%b`(binary ⇒ signedness-agnostic) with per-example param overrides. It caught a real bug: the shared evaluator's lossless signed`+`/`*` (`src/sim/value.rs`) added raw bits without sign-extending a negative operand — fixed to use `as_i128`(matching Verilog), which also corrects`mimz eval`. +5 lib unit (4 `comb_run` + 1 signed regression) + 2 net sim integration (−1 clockless-reject removed, +3 combinational). Romanized tamil-pure + instance/`repeat`/enum designs are deferred (C2–C4).
+- 2026-06-16 Phase 1.5 C1 — combinational `mimz sim`+ signed-aware differential:`comb_run` (`crates/mimz-sim/src/sim/run.rs`) settles a clockless design one frame per input vector, so `mimz sim`now runs combinational modules too —`--in`is one settled frame,`--sweep a=0|1|2` a frame each — emitting the same VCD/trace. The Layer-3 Icarus differential (`tests/icarus.rs::our_simulator_matches_icarus_bit_for_bit`) was broadened to **12 ASCII-named english examples** (clocked AND combinational, incl. SIGNED `bitops`/`signed_math`), auto-routing on whether the design is clocked, comparing via Verilog `%b`(binary ⇒ signedness-agnostic) with per-example param overrides. It caught a real bug: the shared evaluator's lossless signed`+`/`*` (`crates/mimz-sim/src/sim/value.rs`) added raw bits without sign-extending a negative operand — fixed to use `as_i128`(matching Verilog), which also corrects`mimz eval`. +5 lib unit (4 `comb_run` + 1 signed regression) + 2 net sim integration (−1 clockless-reject removed, +3 combinational). Romanized tamil-pure + instance/`repeat`/enum designs are deferred (C2–C4).
 - 2026-06-16 Phase 1.5 B8 — differential vs Icarus + perf baseline + golden VCD: a Layer-3 Icarus test (`tests/icarus.rs::our_simulator_matches_icarus_bit_for_bit`) runs each design through OUR event-driven kernel in-process AND reconstructs the values from the VCD our writer emits, comparing both against `iverilog`/`vvp` under the SAME stimulus — three views (kernel == VCD waveform == Icarus) must agree bit-for-bit per cycle (counter + shift register + edge detector). A byte-for-byte golden lock (`tests/sim.rs::the_counter_vcd_matches_the_golden_byte_for_byte`vs`tests/golden/counter.vcd`, `MIMZ_UPDATE_GOLDENS=1` to regenerate) pins the writer's exact output format. A perf test (`tests/sim.rs::the_counter_kernel_clears_the_perf_baseline`) gates the kernel at ≥1M cycle-events/sec on the counter in release (best of 5 to reject load-induced dips; measured ~2.3M; debug uses a low sanity floor). +1 Icarus differential + 2 sim integration. Phase 1.5 (simulator) is now feature-complete: B1 elaborate, B2 kernel, B3 comb propagation, B4 stimulus, B5 VCD+trace+`mimz sim`, B6 `mimz test`, B7 test-header flip, B8 differential+perf+golden.
-- 2026-06-16 Phase 1.5 B7 — test-header thamizh-order flip: `M(args) kaaga "…" sodhanai { }`parses to the SAME`TestDecl`as the code-order`test "…" for M(args) { }` (`src/parser/items/test.rs::test_decl_thamizh`, dispatched from the file loop when `syntax thamizh`is active and a bare identifier leads), and`src/pretty.rs`flips it for`mimz translate --order thamizh`— completing all five clause flips of the word-order engine. Execution is the oracle: a passing thamizh-order test re-parsing to the same tree replaces the same-Verilog check`test` blocks can't provide. +3 parser lib unit + 1 test integration (`a_thamizh_order_test_header_runs_like_its_code_order_twin`) + 1 translate integration (`pretty_print_thamizh_flips_the_test_header_and_reparses`).
-- 2026-06-16 Phase 1.5 B6 — `mimz test`: the `test`-block runner in `src/sim/harness.rs` runs each block (`drive`/`tick`/`expect`/`if`) on the kernel, halts a failing `expect`with a teaching message (expression source + cycle + each comparison side's value), and exits non-zero on any failure;`--filter`/`--trace`/`--verbose`/`--signals`supported, the trace-scope logic shared with`mimz sim`via`commands/helpers.rs::trace_scope`. `async`was reserved alongside`await` (spec/03 v0.2.7, R11/R13) so the v0.3 backlog list is now 9 words. +6 lib unit (`src/sim/harness.rs`) + 5 test integration (`tests/test_run.rs`).
-- 2026-06-16 Phase 1.5 B4+B5 — `mimz sim`: default stimulus + a hand-written 2-state VCD writer + the `--trace`/`--trace=changes`console table (scope via`--verbose`/`--signals`), all riding one per-cycle snapshot from the kernel. +9 lib unit (`src/sim/{run,vcd,trace}.rs`) + 5 sim integration (`tests/sim.rs`).
-- 2026-06-16 Phase 1.5 B1 — simulator elaboration: +5 lib unit in `src/sim/elaborate.rs`, the `Design`flattener (signals/regs/comb/processes, widths + reset folded) the event-driven kernel will interpret.
-- 2026-06-16 Phase 1.5 B2 — event-driven two-phase kernel: +7 lib unit in`src/sim/kernel.rs` (counting/reset, width-wrap, the two-phase register swap, statement-`if`, the per-cycle snapshot seam, leaf validation). The shared 2-state value model + expression evaluator were extracted to `src/sim/value.rs`behind a`Resolver`trait that both`comb`and`kernel`implement —`comb`'s 7 tests are unchanged and verify the extraction.
+- 2026-06-16 Phase 1.5 B7 — test-header thamizh-order flip: `M(args) kaaga "…" sodhanai { }`parses to the SAME`TestDecl`as the code-order`test "…" for M(args) { }` (`crates/mimz-core/src/parser/items/test.rs::test_decl_thamizh`, dispatched from the file loop when `syntax thamizh`is active and a bare identifier leads), and`crates/mimz-core/src/pretty.rs`flips it for`mimz translate --order thamizh`— completing all five clause flips of the word-order engine. Execution is the oracle: a passing thamizh-order test re-parsing to the same tree replaces the same-Verilog check`test` blocks can't provide. +3 parser lib unit + 1 test integration (`a_thamizh_order_test_header_runs_like_its_code_order_twin`) + 1 translate integration (`pretty_print_thamizh_flips_the_test_header_and_reparses`).
+- 2026-06-16 Phase 1.5 B6 — `mimz test`: the `test`-block runner in `crates/mimz-sim/src/sim/harness.rs` runs each block (`drive`/`tick`/`expect`/`if`) on the kernel, halts a failing `expect`with a teaching message (expression source + cycle + each comparison side's value), and exits non-zero on any failure;`--filter`/`--trace`/`--verbose`/`--signals`supported, the trace-scope logic shared with`mimz sim`via`commands/helpers.rs::trace_scope`. `async`was reserved alongside`await` (spec/03 v0.2.7, R11/R13) so the v0.3 backlog list is now 9 words. +6 lib unit (`crates/mimz-sim/src/sim/harness.rs`) + 5 test integration (`tests/test_run.rs`).
+- 2026-06-16 Phase 1.5 B4+B5 — `mimz sim`: default stimulus + a hand-written 2-state VCD writer + the `--trace`/`--trace=changes`console table (scope via`--verbose`/`--signals`), all riding one per-cycle snapshot from the kernel. +9 lib unit (`crates/mimz-sim/src/sim/{run,vcd,trace}.rs`) + 5 sim integration (`tests/sim.rs`).
+- 2026-06-16 Phase 1.5 B1 — simulator elaboration: +5 lib unit in `crates/mimz-sim/src/sim/elaborate.rs`, the `Design`flattener (signals/regs/comb/processes, widths + reset folded) the event-driven kernel will interpret.
+- 2026-06-16 Phase 1.5 B2 — event-driven two-phase kernel: +7 lib unit in`crates/mimz-sim/src/sim/kernel.rs` (counting/reset, width-wrap, the two-phase register swap, statement-`if`, the per-cycle snapshot seam, leaf validation). The shared 2-state value model + expression evaluator were extracted to `crates/mimz-sim/src/sim/value.rs`behind a`Resolver`trait that both`comb`and`kernel`implement —`comb`'s 7 tests are unchanged and verify the extraction.
 - 2026-06-16 Phase 1.5 B3 — combinational propagation: +2 kernel lib unit locking multi-level `wire → wire → output`settling order and the kernel's comb-cycle guard; B3 needed no new code — the kernel's memoized resolver already settles drivers in dependency order.
 - 2026-06-16 close Phase 1.8 + pre-freeze keyword reservation: Phase 1.8 closed by bumping`spec/04`DRAFT → stable (docs only, no test change); and`fn`/`function`reserved for a future combinational-function construct ahead of the v0.1.0 freeze (R11/R13) — +1 keyword-table lib unit`fn_and_function_are_reserved`. Also listed `the_section8_keywords_are_reserved` in the keyword-table section below, present since 2026-06-13 but previously unlisted.
 - 2026-06-16 native-authored error catalog + audit/coverage follow-up: the Tamil/Tanglish catalog (`lang/messages.toml`, decision C3 ratified) grew from a one-shape stub to **33 of 36** localized codes with structured-arg interpolation; an audit of PRs #14–#17 found no bug/overflow/security/perf issue, so the work was test-coverage + prevention guards only. +2 morph lib unit (`arg_code_without_args_falls_back_to_english`, `fill_with_empty_name_leaves_no_stray_fragment`), +4 morph integration (`e0402`/`e0408`/`e0601`interpolation tests +`message_catalog_placeholders_are_known_tokens`— a guard that every active`{token}`in`lang/messages.toml`is one`morph::fill` fills, so a typo'd placeholder can't silently fall back to English forever), +1 grammar-sync (`keywords_toml_has_no_superseded_spelling` — a superseded v1 spelling may not return as a keyword/alias). The remaining +9 morph integration vs. the prior count are #16's newly-localized codes (`e0502`/`e0505`/`e0202`/`e0401`), the `message_catalog_keys_are_real_checker_codes` guard, and the W0001 mixed-flavor lint tests.
@@ -131,10 +175,10 @@ Changelog of test-count changes (newest first):
 - Arithmetic built-ins`min`/`max`/`abs`/`nand`/`nor`/`xnor`added 6 checker unit tests + 1`eval`integration test.
 - Phase 1.8 error-language plumbing added 8`morph`lib unit tests + 7`tests/morph.rs`integration tests for selection, inflection, and the additive English-fallback path.
 - 2026-06-14, after merging the security-hardening and Phase 1.8 grammar branches: the security audit added 2 parser unit tests + 3`eval`integration tests for overflow/recursion guards; the Phase 1.8 thamizh-order flips — conditional / if-expression / match — added 10 grammar integration tests incl. the profile-boundary and depth-guard regressions. Then`mimz translate --order`(the`pretty`AST printer) added 4 translate integration tests + 1 grammar test for the Tamil thamizh-order traffic light.
-- The error-fixture tests are data-driven over ~70 broken`.mimz`fixtures; one locks`ALL_CHECKER_CODES`— now`pub`in`src/diag.rs`— to the 11-checker.md catalog, one locks the`--json`wire format.
+- The error-fixture tests are data-driven over ~70 broken`.mimz`fixtures; one locks`ALL_CHECKER_CODES`— now`pub`in`crates/mimz-core/src/diag.rs`— to the 11-checker.md catalog, one locks the`--json`wire format.
 - The 2026-06-13 quick-wins block added the tooling tests below:`explain`(+3),`translate`(+3 unit, +3 integration),`sim::comb`(+7 unit, +6`eval` integration).
 
-## Unit: keyword table (`src/lexer/keywords.rs`, 11 tests)
+## Unit: keyword table (`crates/mimz-core/src/lexer/keywords.rs`, 11 tests)
 
 | Test                                                  | Locks in                                                                                                                                                                             | If it fails…                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
@@ -149,7 +193,7 @@ Note: the table's structural rules (disjoint columns, known keys, valid
 TOML) need no dedicated test — the `LazyLock` panics at startup, so
 **every** test fails if the table is broken. That's by design.
 
-## Unit: lexer (`src/lexer/tests.rs`, 13 tests)
+## Unit: lexer (`crates/mimz-core/src/lexer/tests.rs`, 13 tests)
 
 | Test                                           | Locks in                                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -167,7 +211,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `fn_keyword_lexes_in_all_flavors`              | `fn`/`function`/`saarbu`/`சார்பு` lex as KW_FN (Phase 2)                                                  |
 | `rarrow_token_lexes`                           | `->` lexes as RArrow (for fn returns and sync loops)                                                      |
 
-## Unit: parser (`src/parser/tests.rs`, 68 tests)
+## Unit: parser (`crates/mimz-core/src/parser/tests.rs`, 68 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -225,7 +269,7 @@ The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`src/checker/tests.rs`, 195 tests)
+## Unit: checker (`crates/mimz-core/src/checker/tests.rs`, 195 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -284,7 +328,25 @@ deserve a note:
 | `a_constant_address_past_the_depth_is_e0406`                           | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                               |
 | `a_memory_inside_repeat_is_e0303`                                      | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                     |
 
-## Unit: transliteration (`src/emit_verilog/translit.rs`, 6 tests)
+## Unit: widths pass internals (`crates/mimz-core/src/checker/widths/mod.rs`, `checker::widths::tests`, 7 tests)
+
+A second, smaller unit-test pocket living inside the width pass itself
+(distinct from the sibling `checker::tests` module above) — these pin
+`Ty`/`Wcx` internals and dispatch paths too fine-grained for the
+one-test-per-error-code table, added 2026-07-11 alongside the `Ty::Bundle`
+model (see this file's changelog entry for that date).
+
+| Test                                                              | Locks in                                                                                                        |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `sync_loop_result_init_width_checked`                             | a `sync loop`'s `-> result: ty = init` initializer is width-checked against `ty`                                |
+| `sync_loop_var_width_is_clog2_hi_not_clog2_range_when_lo_nonzero` | the loop variable's width is `clog2(hi)`, not `clog2(hi - lo)`, when `lo != 0`                                  |
+| `bundle_typed_fn_param_supports_field_access`                     | a bundle-typed fn parameter's field access resolves via `cx.sigs`, not a false E0105                            |
+| `module_param_field_access_is_rejected`                           | `W.foo` on an int/bool module parameter errors instead of silently passing                                      |
+| `mem_field_access_reports_exactly_one_diagnostic`                 | mem/clock/reset field access reports pass-3's diagnostic once, not doubled with `field_ty`'s                    |
+| `enum_variant_from_wrong_enum_is_rejected`                        | assigning a variant from the wrong enum into an enum-typed reg/wire is caught (was a silent miss)               |
+| `bundle_literal_tail_return_is_shape_checked`                     | a bundle-literal fn-tail return goes through `check_return_expr`, not the old `infer_ty`+`check_return_ty` path |
+
+## Unit: transliteration (`crates/mimz-core/src/emit_verilog/translit.rs`, 6 tests)
 
 | Test                                      | Locks in                                                              |
 | ----------------------------------------- | --------------------------------------------------------------------- |
@@ -294,7 +356,7 @@ deserve a note:
 | `results_always_start_like_an_identifier` | output is always a valid Verilog identifier start                     |
 | `the_two_n_letters_romanize_identically`  | ந/ன → `n` is a DOCUMENTED collision; the suffix counter disambiguates |
 
-## Unit: emitter (`src/emit_verilog/mod.rs`, 27 tests)
+## Unit: emitter (`crates/mimz-core/src/emit_verilog/mod.rs`, 27 tests)
 
 | Test                                                            | Locks in                                                                                                                                    |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -314,7 +376,7 @@ deserve a note:
 | `tamil_identifiers_emit_as_romanized_verilog`                   | the transliterated pipeline end to end: module/ports/regs/always all use the SAME romanization; no non-ASCII outside the banner comment     |
 | `colliding_romanizations_get_suffixes_and_ascii_names_are_safe` | ந/ன clash + an existing ASCII `nii`: user names are never stolen; clashes get `_2`, `_3` deterministically                                  |
 
-## Unit: testbench emitter (`src/emit_verilog/testbench.rs`, 4 tests)
+## Unit: testbench emitter (`crates/mimz-core/src/emit_verilog/testbench.rs`, 4 tests)
 
 | Test                                            | Locks in                                                                                                                                                         |
 | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -388,7 +450,7 @@ End-to-end **failure** validation, the mirror of the checker unit tests: those
 prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it.
 `tests/fixtures/errors/*.mimz` holds ~72 intentionally-broken files (kept OUT of
 `examples/`, which is asserted valid), each declaring its expected code in a
-`// expect: Exxxx` header. Source bodies are lifted from `src/checker/tests.rs`.
+`// expect: Exxxx` header. Source bodies are lifted from `crates/mimz-core/src/checker/tests.rs`.
 
 | Test                                           | Locks in                                                                                                                                                             |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -416,7 +478,7 @@ structural facts the docs state, so doc drift fails CI. When one fails,
 | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `crate_map_lists_every_module`                      | both crate-map copies (`src/main.rs` `//!` table, `docs/code/README.md`) name every top-level module |
 | `module_pages_list_every_source_file`               | each module page's file-layout table lists every `.rs` file actually in that `src/` directory        |
-| `every_module_is_documented_somewhere_in_docs_code` | a new pipeline stage (e.g. `src/checker/`) cannot land without a docs mention                        |
+| `every_module_is_documented_somewhere_in_docs_code` | a new pipeline stage (e.g. `crates/mimz-core/src/checker/`) cannot land without a docs mention       |
 | `code_docs_have_a_sync_stamp`                       | the "Last synced" tripwire line survives                                                             |
 
 ## Grammar-sync (`tests/grammar_sync.rs`, 6 tests)
@@ -436,7 +498,7 @@ grammar / the spec, don't weaken the test.
 | `keywords_toml_has_no_superseded_spelling`     | a superseded v1 spelling may never return in `lang/keywords.toml` as a canonical spelling or any alias — guards the reintroduction risk at the source |
 | `grammar_and_extension_manifest_agree`         | `package.json` registers `.mimz` and its scope name matches the grammar                                                                               |
 
-## Editor analysis (`src/analysis.rs`, 7 lib unit tests)
+## Editor analysis (`crates/mimz-core/src/analysis.rs`, 7 lib unit tests)
 
 The pure, async-free symbol index and resolution behind the LSP's hover /
 go-to-definition / completion (the `src/lsp.rs` handlers are a thin adapter).
@@ -463,7 +525,7 @@ go-to-definition / completion (the `src/lsp.rs` handlers are a thin adapter).
 | `uncovered_code_is_not_localized_in_lsp`                    | an uncovered code (E0401) is byte-identical across flavors in the LSP (the English-fallback invariant)                                       |
 | `opening_a_broken_file_publishes_coded_diagnostics` (smoke) | the REAL binary over the real wire protocol: framed JSON-RPC initialize → didOpen → publishDiagnostics with code, source, help, and position |
 
-## Unit: lint (`src/lint.rs`, 5 tests)
+## Unit: lint (`crates/mimz-core/src/lint.rs`, 5 tests)
 
 Style and hygiene warnings — the `mimz lint` passes (W0002, W0003).
 Additive and always warning-only; no spec or grammar change.
@@ -496,7 +558,7 @@ The `criterion` micro-benchmark harness (`benches/compile.rs`, run with
 test functions, so it doesn't affect the count above. It's a separate
 performance tool, not part of the assertion suite.
 
-## Unit: explain (`src/explain.rs`, 3 tests)
+## Unit: explain (`crates/mimz-core/src/explain.rs`, 3 tests)
 
 The 8.1 long-form diagnostic catalog behind `mimz explain <CODE>`.
 
@@ -506,7 +568,7 @@ The 8.1 long-form diagnostic catalog behind `mimz explain <CODE>`.
 | `table_is_sorted_unique_and_self_labelled` | the `EXPLANATIONS` table is ordered, duplicate-free, and each entry opens with its own code    |
 | `lookup_is_case_insensitive_and_trims`     | `explain("e0501")` / `" E0501 "` resolve; unknown codes return `None`                          |
 
-## Unit: translate (`src/translate.rs`, 10 tests)
+## Unit: translate (`crates/mimz-core/src/translate.rs`, 10 tests)
 
 The keyword-flavor reskin behind `mimz translate --to`, plus the opt-in
 `--romanize-names` identifier rewrite (reuses the emitter's `romanize`) and the
@@ -560,7 +622,7 @@ exercised by the integration tests below).
 | `unknown_key_is_rejected`                 | a typo'd key (`too`, `flavour`) errors via `deny_unknown_fields`, never silently dropped |
 | `discover_walks_up_to_the_nearest_config` | discovery climbs from a nested file to the ancestor `mimz.toml`                          |
 
-## Unit: version (`src/version.rs`, 3 tests)
+## Unit: version (`crates/mimz-core/src/version.rs`, 3 tests)
 
 The two version axes — compiler (crate) vs language edition — and the
 `EDITION_HISTORY` source of truth (Workstream B).
@@ -588,7 +650,7 @@ The CLI merge (CLI › config › default) and name-map auto-discovery, end to e
 The importable `std.*` library: embedded resolution, trilingual alias routing,
 the `[lib]` override, the `mimz eject std` core, and the regression that plain
 file-relative imports still work. The 5 catalog-level unit tests
-(`src/stdlib.rs`: namespace aliases, canonical-vs-twin routing, unknown-module,
+(`crates/mimz-core/src/stdlib.rs`: namespace aliases, canonical-vs-twin routing, unknown-module,
 the no-transitive-imports invariant) and the 3 config-level unit tests
 (`src/config.rs`: `[lib]` parse, unknown-key reject, `resolve_with_path`) back
 these.
@@ -607,7 +669,7 @@ these.
 | `eject_refuses_overwrite_without_force`                      | a second eject over existing files fails; `force = true` overwrites                                                                                                           |
 | `eject_is_all_or_nothing_on_partial_conflict`                | one pre-existing target aborts the whole eject before any other file is written — no half-vendored directory                                                                  |
 
-## Unit: morph (`src/morph.rs`, 14 tests)
+## Unit: morph (`crates/mimz-core/src/morph.rs`, 14 tests)
 
 Error-language selection + Tamil case-suffix inflection (Phase 1.8, spec/04 section 5),
 the W0001 mixed-flavor lint, and the structured-arg / English-fallback guards.
@@ -691,7 +753,7 @@ See `docs/code/04-cli.md` for the full command reference.
 | `env_is_an_alias_for_doctor`                        | `mimz env` produces identical output to `mimz doctor`                                         |
 | `watch_starts_and_enters_watch_mode`                | `mimz check --watch` starts the watcher and shows the "watching N dir(s)" banner              |
 
-## Unit: combinational evaluator (`src/sim/comb.rs`, 18 tests)
+## Unit: combinational evaluator (`crates/mimz-sim/src/sim/comb.rs`, 18 tests)
 
 The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 
@@ -714,7 +776,7 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `shift_left_bit_32_set_in_amt`         | `1 << (1 << 32)` → 0 (the specific `as u32` truncation trigger)                   |
 | `shift_right_bit_32_set_in_amt`        | `(1 << 63) >> (1 << 32)` → 0                                                      |
 
-## Unit: elaboration (`src/sim/elaborate.rs`, 19 tests)
+## Unit: elaboration (`crates/mimz-sim/src/sim/elaborate.rs`, 19 tests)
 
 Phase 1.5 steps B1 + C2–C4: flatten an AST module (and its instances) into a
 `Design` (signals with folded widths, regs with folded reset + clock, comb
@@ -739,12 +801,12 @@ array instances, bit-indexed drives). The event-driven kernel interprets a
 | `a_flatten_name_collision_errors`                   | SEC-6: a parent signal colliding with a flattened `inst_port` wire errors instead of silently overwriting                                           |
 | `an_i128_min_const_elaborates_without_overflow`     | SEC-6 (SIM-5): a flattened child const evaluating to `i128::MIN` lowers via `unsigned_abs` instead of overflow-panicking the negation in `int_expr` |
 
-## Unit: kernel (`src/sim/kernel.rs`, 13 tests)
+## Unit: kernel (`crates/mimz-sim/src/sim/kernel.rs`, 13 tests)
 
 Phase 1.5 step B2: the event-driven, two-phase simulation kernel that interprets
 a `Design` over clock cycles (regs init to reset; each rising edge settles
 combinational signals, computes next reg values, then commits all at once).
-Shares the value model + expression evaluator with `comb` via `src/sim/value.rs`.
+Shares the value model + expression evaluator with `comb` via `crates/mimz-sim/src/sim/value.rs`.
 
 | Test                                                     | Locks in                                                                                                  |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -760,7 +822,7 @@ Shares the value model + expression evaluator with `comb` via `src/sim/value.rs`
 | `combinational_chain_propagates_in_order`                | a multi-level `wire → wire → output` chain (plus a reg input) settles in dependency order each cycle (B3) |
 | `combinational_cycle_is_reported`                        | a pure comb loop (`a = b; b = a`) is caught at settle time, not spun on (the kernel's cycle guard, B3)    |
 
-## Unit: sim runner / VCD / console trace (`src/sim/{run,vcd,trace}.rs`, 14 tests)
+## Unit: sim runner / VCD / console trace (`crates/mimz-sim/src/sim/{run,vcd,trace}.rs`, 14 tests)
 
 Phase 1.5 step B4/B5 (+ C1): the default stimulus + clocked timeline capture
 (`run.rs::run`), the combinational `comb_run` (one settled frame per input
@@ -803,7 +865,7 @@ baseline and the golden VCD byte-lock (both run the lib in-process).
 | `the_counter_kernel_clears_the_perf_baseline`      | the kernel sustains ≥1M cycle-events/sec on the counter in release (B8; debug uses a low sanity floor)  |
 | `the_counter_vcd_matches_the_golden_byte_for_byte` | the VCD writer's exact bytes match `tests/golden/counter.vcd` (B8; `MIMZ_UPDATE_GOLDENS=1` regenerates) |
 
-## Unit: test harness (`src/sim/harness.rs`, 6 tests)
+## Unit: test harness (`crates/mimz-sim/src/sim/harness.rs`, 6 tests)
 
 Phase 1.5 step B6: the `test`-block runner behind `mimz test`. Runs each block
 (`drive`/`tick`/`expect`/`if`) on the kernel and reports pass/fail; `tick`/`expect`
