@@ -247,6 +247,22 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            ExprKind::BundleLit(inits) => {
+                if let Ty::Bundle {
+                    name,
+                    bfile_hint,
+                    args,
+                } = expected
+                {
+                    self.check_bundle_lit(cx, name, bfile_hint, args, inits, e.span);
+                } else {
+                    // Bundle literal where a bundle wasn't expected — recurse
+                    // for inner errors, same as infer_ty's own BundleLit arm.
+                    for init in inits {
+                        let _ = self.infer_ty(cx, &init.value);
+                    }
+                }
+            }
             _ => {
                 let got = self.infer_ty(cx, e);
                 self.expect_ty(cx, e, got, expected);
@@ -260,6 +276,15 @@ impl<'a> Checker<'a> {
             (Ty::Unknown, _) | (_, Ty::Unknown) => {}
             (Ty::CtInt(v), t) => self.fit(cx, e.span, v, t),
             (g, t) if same(&g, &t) => {}
+            (Ty::Bundle { name: g, .. }, Ty::Bundle { name: t, .. }) => {
+                self.err(
+                    cx.file,
+                    e.span,
+                    "E0907",
+                    format!("bundle type mismatch: cannot assign `{g}` where `{t}` is expected"),
+                    "bundle types are matched by name — they must be the same bundle declaration",
+                );
+            }
             (g, t) => {
                 // The classic dropped-carry moment: `value + 1` into a
                 // same-width target. Teach `+%` (spec/02 section 1.2).
