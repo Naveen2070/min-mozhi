@@ -1565,4 +1565,23 @@ mod tests {
              `State`-typed reg, got: {diags:?}"
         );
     }
+
+    #[test]
+    fn bundle_literal_tail_return_is_shape_checked() {
+        // Pins check_func_body_widths's specific use of check_return_expr —
+        // a bundle-literal TAIL (not a `return` statement) missing a
+        // declared field must be rejected. Complements
+        // E0901_bundle_return_missing_field.mimz (tests/fixtures/errors/),
+        // which exercises the same check_return_expr function but through
+        // the FnStmt::Return call site instead.
+        let src = "bundle Handshake(W: int = 8) {\n  valid: bit\n  data: bits[W]\n}\n\
+                   fn make_handshake(v: bit) -> Handshake(W: 8) {\n  { valid: v }\n}\n\
+                   module M {\n  in a: bit\n  wire req: Handshake(W: 8) = make_handshake(a)\n  \
+                   out y: bit\n  y = req.valid\n}\n";
+        let diags = diags_for(src);
+        assert!(
+            diags.iter().any(|d| d.code == Some("E0901")),
+            "expected E0901 (bundle literal missing field `data`), got: {diags:?}"
+        );
+    }
 }
