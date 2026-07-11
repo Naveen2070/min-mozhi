@@ -700,7 +700,10 @@ impl<'a> Checker<'a> {
                     self.check_expr(cx, init, expected);
                 }
                 ModuleItem::Drive { lhs, rhs } => {
-                    // ponytail: lhs.index on a bundle port is invalid (caught elsewhere); bundle_sigs lookup is still safe here.
+                    // `lhs.index` on a bundle port is invalid and caught by
+                    // an earlier pass; the `bundle_sigs` lookup by base name
+                    // below is safe regardless, since it only looks at
+                    // `lhs.base`, never `lhs.index`.
                     let lhs_bundle = cx.bundle_sigs.get(&lhs.base.name).copied();
                     if let Some(lhs_ty) = lhs_bundle {
                         // LHS is bundle-typed: dispatch by RHS shape.
@@ -1046,7 +1049,8 @@ impl<'a> Checker<'a> {
                 return None;
             }
         }
-        // ponytail: field types must be self-contained; outer scope excluded by design.
+        // Field types must be self-contained, so the outer scope is
+        // deliberately excluded here, not carried over by omission.
         let mut tmp = Wcx {
             file: bfile,
             sc: Rc::new(super::names::Scope {

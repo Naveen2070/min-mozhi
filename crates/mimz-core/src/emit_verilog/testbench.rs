@@ -95,9 +95,9 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
                 }
                 em.out.push_str(&format!("{}end\n", indent));
             }
-            // ponytail: `sim` blocks are simulation-only (peripheral
-            // emulation, Task 5) — they have no Verilog testbench
-            // equivalent, so real hardware codegen just skips them.
+            // `sim` blocks are simulation-only (peripheral emulation) — they
+            // have no Verilog testbench equivalent, so real hardware codegen
+            // just skips them. Permanent: not a gap to fill later.
             TestStmt::Sim(_) => {}
             // Unreachable on the codegen path: `parse` rejects a tree with any
             // `Error` node, so testbench emission never sees one.

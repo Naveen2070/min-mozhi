@@ -32,13 +32,10 @@ pub struct EmulateHost {
     stepping: bool,
     /// The quoted test name, for the dashboard title / dismiss screen.
     test_name: String,
-    /// Frames drawn so far — the dashboard title's cycle counter.
-    ///
-    /// ponytail: this counts `frame()` calls, which equals the sim cycle in
-    /// `--step` mode (batch size 1) but not in free-running batched mode,
-    /// where `frame()` fires once per ~30fps batch of many cycles. The trait
-    /// carries no cycle today; thread the real cycle through `frame(cycle)`
-    /// if the exact free-run number ever matters.
+    /// The real simulated cycle count as of the last `frame()` call — the
+    /// dashboard title's cycle counter. Set from `frame`'s `cycle` argument,
+    /// so it's accurate in free-running batched mode too (where `frame()`
+    /// fires once per ~30fps batch of many cycles, not once per cycle).
     cycle: u64,
     /// Set once the user pressed `q` at a `--step` pause, so `finish` skips
     /// the redundant final dismiss screen.
@@ -105,7 +102,7 @@ impl EmulationHost for EmulateHost {
             .and_then(|(_, p)| p.drive())
     }
 
-    fn frame(&mut self) -> Result<bool, String> {
+    fn frame(&mut self, cycle: u64) -> Result<bool, String> {
         if !self.live {
             return Ok(false);
         }
@@ -115,7 +112,7 @@ impl EmulationHost for EmulateHost {
                     .map_err(|e| format!("could not open the emulation dashboard: {e}"))?,
             );
         }
-        self.cycle += 1;
+        self.cycle = cycle;
         let hint = self.stepping.then_some("step: Enter to advance, q to quit");
         let dashboard = self.dashboard.as_mut().expect("just opened above");
         dashboard
