@@ -777,17 +777,80 @@ impl<'a> Checker<'a> {
         let ExprKind::Ident(name) = &core.kind else {
             return Ty::Unknown; // E0105 already reported
         };
-        if let Some(Bind::Inst(inst)) = cx.sc.names.get(name) {
-            return self.inst_output_ty(cx, inst, field);
-        }
-        // `cx.sigs` (not `cx.sc.names`) is the authoritative source here: it
-        // covers module ports/wires/regs AND `fn` parameters alike, whereas
         // `cx.sc.names` is only ever populated for module bodies —
         // `check_func_body_widths` gives each `fn` an empty `Scope` and
-        // seeds `cx.sigs` directly, so a bundle-typed `fn` param (`h.valid`)
-        // has no `Bind` to match on and must be found here instead.
+        // seeds `cx.sigs` directly instead. So an entry here means `name`
+        // is a module port/wire/reg/param/mem/clock/reset; its absence
+        // means we're in a fn body and `name` is a genuine fn parameter.
+        if let Some(bind) = cx.sc.names.get(name) {
+            match bind {
+                Bind::Inst(inst) => return self.inst_output_ty(cx, inst, field),
+                Bind::In | Bind::Out | Bind::Wire | Bind::Reg => {
+                    // Possible bundle field access — check if this signal is
+                    // bundle-typed (unchanged from before this task's Param
+                    // change: this arm only ever covered In/Out/Wire/Reg).
+                    if let Some(Ty::Bundle {
+                        name: bname,
+                        bfile_hint,
+                        args,
+                    }) = cx.sigs.get(name).copied()
+                    {
+                        return match self
+                            .resolve_bundle_fields(cx, bname, bfile_hint, args, base.span)
+                        {
+                            Some(fields) => fields
+                                .into_iter()
+                                .find(|(fname, _)| fname == &field.name)
+                                .map(|(_, fty)| fty)
+                                // Field not found in bundle — already caught earlier
+                                .unwrap_or(Ty::Unknown),
+                            None => Ty::Unknown, // resolve_bundle_fields reported error
+                        };
+                    }
+                    let bind_str = match bind {
+                        Bind::In => "an input port",
+                        Bind::Out => "an output port",
+                        Bind::Wire => "a wire",
+                        Bind::Reg => "a reg",
+                        _ => unreachable!("guarded by the outer match arm"),
+                    };
+                    self.err(
+                        cx.file,
+                        base.span,
+                        "E0105",
+                        format!("`{name}` is {bind_str} — it has no fields"),
+                        "`.` reads an enum variant (`State.Red`), an instance output (`add.sum`), or a bundle field (`bus.valid`)",
+                    );
+                    return Ty::Unknown;
+                }
+                Bind::Param => {
+                    // A module-level int/bool parameter (`m.params`) — fn
+                    // parameters never reach this branch (fn bodies get an
+                    // empty `Scope`, handled below instead). A module param
+                    // can never be bundle-typed (`ParamTy` is `Int`/`Bool`
+                    // only), so this always errors — mirroring pass 3's
+                    // wording from before names.rs started deferring `Param`
+                    // field access generically to support bundle-typed fn
+                    // params (see names.rs's `expr` field-access match).
+                    self.err(
+                        cx.file,
+                        base.span,
+                        "E0105",
+                        format!("`{name}` is a parameter — it has no fields"),
+                        "`.` reads an enum variant (`State.Red`), an instance output (`add.sum`), or a bundle field (`bus.valid`)",
+                    );
+                    return Ty::Unknown;
+                }
+                // Mem/Clock/Reset/Enum/etc: names.rs never defers these —
+                // pass 3 already reported the correctly-worded diagnostic
+                // (`self.err` in `names::expr`'s generic `Some(b) if ...`
+                // arm), so don't report a second, wrongly-worded one here.
+                _ => return Ty::Unknown,
+            }
+        }
+        // No `cx.sc.names` entry at all: a genuine fn parameter, found via
+        // `cx.sigs` instead (seeded directly by `check_func_body_widths`).
         if let Some(sig_ty) = cx.sigs.get(name).copied() {
-            // Possible bundle field access — check if this signal is bundle-typed
             if let Ty::Bundle {
                 name: bname,
                 bfile_hint,
@@ -805,21 +868,14 @@ impl<'a> Checker<'a> {
                     None => Ty::Unknown, // resolve_bundle_fields reported error
                 };
             }
-            // Signal/param exists but is not bundle-typed — error
-            let bind_str = match cx.sc.names.get(name) {
-                Some(Bind::In) => "an input port",
-                Some(Bind::Out) => "an output port",
-                Some(Bind::Wire) => "a wire",
-                Some(Bind::Reg) => "a reg",
-                // Not in `cx.sc.names` at all but present in `cx.sigs`: only
-                // `fn` parameters take this path (see comment above).
-                _ => "a parameter",
-            };
+            // A non-bundle fn param accessing a field — no other pass ever
+            // catches this (fn param field access is deferred wholesale to
+            // this width pass), so it must be diagnosed here.
             self.err(
                 cx.file,
                 base.span,
                 "E0105",
-                format!("`{name}` is {bind_str} — it has no fields"),
+                format!("`{name}` is a parameter — it has no fields"),
                 "`.` reads an enum variant (`State.Red`), an instance output (`add.sum`), or a bundle field (`bus.valid`)",
             );
             return Ty::Unknown;
