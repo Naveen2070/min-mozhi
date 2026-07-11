@@ -1155,8 +1155,7 @@ impl<'a> Checker<'a> {
         self.check_fn_stmt_widths(&mut cx, &func.stmts, ret_ty, &func.name.name);
         // The tail is the guaranteed fallthrough — always checked, exactly
         // like every `return` expression.
-        let tail_ty = self.infer_ty(&mut cx, &func.tail);
-        self.check_return_ty(&mut cx, func.tail.span, tail_ty, ret_ty, &func.name.name);
+        self.check_return_expr(&mut cx, &func.tail, ret_ty, &func.name.name);
     }
 
     /// Width-check one `fn`-body statement list. Folds `let` bindings into
@@ -1212,8 +1211,7 @@ impl<'a> Checker<'a> {
                     cx.sigs = sigs_before;
                 }
                 FnStmt::Return(expr) => {
-                    let ty = self.infer_ty(cx, expr);
-                    self.check_return_ty(cx, expr.span, ty, ret_ty, func_name);
+                    self.check_return_expr(cx, expr, ret_ty, func_name);
                 }
                 FnStmt::Loop {
                     var, lo, hi, body, ..
@@ -1245,6 +1243,34 @@ impl<'a> Checker<'a> {
                 FnStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
+    }
+
+    /// Like `check_return_ty`, but takes the raw expression (not a
+    /// pre-inferred `Ty`) so a bundle-literal return/tail can be
+    /// field-checked against `ret_ty` — `infer_ty` alone always returns
+    /// `Ty::Unknown` for a `BundleLit` (it has no fixed shape without
+    /// top-down context), so `check_return_ty` never got a chance today.
+    fn check_return_expr(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        expr: &'a Expr,
+        ret_ty: Ty<'a>,
+        func_name: &str,
+    ) {
+        if let (
+            Ty::Bundle {
+                name,
+                bfile_hint,
+                args,
+            },
+            ExprKind::BundleLit(inits),
+        ) = (ret_ty, &expr.kind)
+        {
+            self.check_bundle_lit(cx, name, bfile_hint, args, inits, expr.span);
+            return;
+        }
+        let ty = self.infer_ty(cx, expr);
+        self.check_return_ty(cx, expr.span, ty, ret_ty, func_name);
     }
 
     /// Shared E0804 check: does `ty` (a `return` expression's or the tail's

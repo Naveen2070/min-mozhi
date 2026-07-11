@@ -1,0 +1,16 @@
+// expect: E0901
+bundle Handshake(W: int = 8) {
+  valid: bit
+  data: bits[W]
+}
+
+fn make_handshake(v: bit) -> Handshake(W: 8) {
+  { valid: v }
+}
+
+module M {
+  in a: bit
+  wire req: Handshake(W: 8) = make_handshake(a)
+  out y: bit
+  y = req.valid
+}

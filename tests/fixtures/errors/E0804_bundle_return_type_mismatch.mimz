@@ -1,0 +1,21 @@
+// expect: E0804
+bundle Handshake(W: int = 8) {
+  valid: bit
+  data: bits[W]
+}
+
+bundle OtherBundle {
+  flag: bit
+}
+
+fn make_handshake(o: OtherBundle) -> Handshake(W: 8) {
+  o
+}
+
+module M {
+  in flag: bit
+  wire other: OtherBundle = { flag: flag }
+  wire req: Handshake(W: 8) = make_handshake(other)
+  out y: bit
+  y = req.valid
+}
