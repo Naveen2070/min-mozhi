@@ -1475,4 +1475,47 @@ mod tests {
             res.err()
         );
     }
+
+    #[test]
+    fn module_param_field_access_is_rejected() {
+        // `W` is a module-level `Bind::Param` (`m.params`), never a fn
+        // param — it can never be bundle-typed (`ParamTy` is `Int`/`Bool`
+        // only). Regression test: `field_ty`'s bundle-lookup fallback used
+        // to key ONLY on `cx.sigs` presence, which never held module
+        // params at all, so this silently type-checked with no diagnostic.
+        let src = "module M(W: int = 8) {\n  in a: bit\n  out y: bit\n  y = a & W.foo\n}\n";
+        let diags = diags_for(src);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.code == Some("E0105") && d.msg.contains("is a parameter")),
+            "expected E0105 'is a parameter' for module-param field access, got: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn mem_field_access_reports_exactly_one_diagnostic() {
+        // `my_mem` is `Bind::Mem`, present in both `cx.sc.names` (pass 3
+        // diagnoses it there, correctly worded "is a memory") AND
+        // `cx.sigs` (populated by `collect_sigs`). Regression test:
+        // `field_ty`'s bundle-lookup fallback used to key on `cx.sigs`
+        // presence alone, so it ALSO fired for mem/clock/reset — which
+        // don't match its `In`/`Out`/`Wire`/`Reg` arms, so it produced a
+        // second, wrongly-worded ("is a parameter") E0105 alongside pass
+        // 3's correct one.
+        let src = "module M {\n  in a: bit\n  out y: bit\n  mem my_mem: bits[8][16] = 0\n  \
+                   y = a & my_mem.foo\n}\n";
+        let diags = diags_for(src);
+        let e0105s: Vec<&Diag> = diags.iter().filter(|d| d.code == Some("E0105")).collect();
+        assert_eq!(
+            e0105s.len(),
+            1,
+            "expected exactly one E0105 for mem field access, got: {diags:?}"
+        );
+        assert!(
+            e0105s[0].msg.contains("is a memory"),
+            "expected the correctly-worded 'is a memory' diagnostic, got: {:?}",
+            e0105s[0].msg
+        );
+    }
 }
