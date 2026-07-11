@@ -494,14 +494,12 @@ impl<'a> Checker<'a> {
                 None => Ty::Unknown, // E0103/E0906 already reported
             },
             Type::Array { elem, len } => {
-                // A bundle-named element resolves to `Ty::Unknown` SILENTLY
-                // (see `Type::Named`/`Type::Bundle` arms above — bundle width
-                // resolution is deferred to Task 6, so no diagnostic fires
-                // there). Left unchecked, that would make this whole array
-                // type silently `Unknown` with no E0411 ever reported. Catch
-                // it here, before resolving, using the same `is_bundle_ty`
-                // check `collect_sigs` already uses to detect bundle-typed
-                // signals.
+                // A bundle-named element resolves to a real `Ty::Bundle` via
+                // the `Type::Named`/`Type::Bundle` arms above, which on its
+                // own reports no diagnostic — bundles-in-arrays are out of
+                // scope (spec: "not supported in v1"), so catch it here,
+                // before resolving, using the same `is_bundle_ty` check
+                // `collect_sigs` already uses to detect bundle-typed signals.
                 if self.is_bundle_ty(elem) {
                     let bname = ast_bundle_name(elem).unwrap_or("?");
                     self.err(
