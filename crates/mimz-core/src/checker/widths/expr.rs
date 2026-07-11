@@ -841,7 +841,23 @@ impl<'a> Checker<'a> {
                     );
                     return Ty::Unknown;
                 }
-                // Mem/Clock/Reset/Enum/etc: names.rs never defers these —
+                Bind::Enum(en) => {
+                    // `State.Red` — legitimate enum-variant read. Pass 3
+                    // (`names.rs`'s `!matches!(b, Bind::Enum(_))` guard)
+                    // explicitly exempts `Bind::Enum` from its "no fields"
+                    // error and only checks the variant name exists
+                    // (E0103). It never resolves a real `Ty`, so this arm
+                    // must — otherwise `field_ty` returns `Ty::Unknown` for
+                    // every enum-variant expression, which silently no-ops
+                    // both `expect_ty`'s mismatch check and the enum-vs-enum
+                    // equality check in `ops.rs`.
+                    return if en.variants.iter().any(|v| v.name.name == field.name) {
+                        Ty::Enum(en)
+                    } else {
+                        Ty::Unknown // E0103 already reported
+                    };
+                }
+                // Mem/Clock/Reset/Const/Bundle: names.rs never defers these —
                 // pass 3 already reported the correctly-worded diagnostic
                 // (`self.err` in `names::expr`'s generic `Some(b) if ...`
                 // arm), so don't report a second, wrongly-worded one here.
