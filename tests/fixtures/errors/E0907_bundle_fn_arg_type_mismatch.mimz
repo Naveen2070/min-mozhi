@@ -1,0 +1,20 @@
+// expect: E0907
+bundle Handshake(W: int = 8) {
+  valid: bit
+  data: bits[W]
+}
+
+bundle OtherBundle {
+  flag: bit
+}
+
+fn get_valid(h: Handshake(W: 8)) -> bit {
+  h.valid
+}
+
+module M {
+  in flag: bit
+  wire other: OtherBundle = { flag: flag }
+  out y: bit
+  y = get_valid(other)
+}
