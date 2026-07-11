@@ -58,11 +58,15 @@ pub trait EmulationHost {
     /// Called for input peripherals (e.g. `uart_rx`) to pull a driven value.
     fn drive(&mut self, name: &str) -> Option<u64>;
 
-    /// Dashboard redraw, batched to ~30fps. No-op if `live` is false.
-    /// Returns `true` if the user requested quit (e.g. pressed `q` while
-    /// paused mid-`--step`) — the harness aborts the test when it sees this.
-    /// A non-interactive/headless host always returns `Ok(false)`.
-    fn frame(&mut self) -> Result<bool, String>;
+    /// Dashboard redraw, batched to ~30fps. No-op if `live` is false. `cycle`
+    /// is the real simulated cycle count reached so far (not a frame
+    /// count) — a free-running batch may cover many cycles per call, so
+    /// this is the only way a host can show the true cycle number rather
+    /// than its own count of `frame()` calls. Returns `true` if the user
+    /// requested quit (e.g. pressed `q` while paused mid-`--step`) — the
+    /// harness aborts the test when it sees this. A non-interactive/headless
+    /// host always returns `Ok(false)`.
+    fn frame(&mut self, cycle: u64) -> Result<bool, String>;
 
     /// End-of-test cleanup (e.g. flush speaker playback), plus — for a live
     /// host — the final "press Enter to continue, q to quit" dismiss screen.

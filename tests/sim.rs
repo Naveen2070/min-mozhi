@@ -480,7 +480,7 @@ impl mimz::sim::EmulationHost for NoOpTestHost {
     fn drive(&mut self, _name: &str) -> Option<u64> {
         None
     }
-    fn frame(&mut self) -> Result<bool, String> {
+    fn frame(&mut self, _cycle: u64) -> Result<bool, String> {
         Ok(false)
     }
     fn finish(&mut self) -> Result<bool, String> {

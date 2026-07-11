@@ -372,7 +372,7 @@ impl Run<'_> {
                             // `frame` returns `true` only when the user quit
                             // at a `--step` pause — abort the whole run, as
                             // the pre-refactor `wait_for_step` path did.
-                            if self.host.frame().map_err(Stop::Err)? {
+                            if self.host.frame(self.cycle).map_err(Stop::Err)? {
                                 return Err(Stop::Quit);
                             }
                             if !self.stepping
@@ -691,7 +691,7 @@ mod tests {
         fn drive(&mut self, _name: &str) -> Option<u64> {
             None
         }
-        fn frame(&mut self) -> Result<bool, String> {
+        fn frame(&mut self, _cycle: u64) -> Result<bool, String> {
             Ok(false)
         }
         fn finish(&mut self) -> Result<bool, String> {

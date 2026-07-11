@@ -22,7 +22,7 @@ module Blinker(LIMIT: int = 50000000) {
   led = state
 }
 
-test "blinker emulation" for Blinker {
+test "blinker emulation" for Blinker(LIMIT: 1000000) {
   sim {
     speed mhz(50)
     bind led -> led(color: red)
@@ -30,6 +30,7 @@ test "blinker emulation" for Blinker {
   rst = 1
   tick(clk)
   rst = 0
-  // Run for 100,000,000 ticks (2 seconds at 50MHz, max allowed sim cycles)
-  tick(clk, 100000000)
+  // 3,000,000 ticks = 3 LED toggles at a smaller LIMIT — a fast dashboard demo,
+  // not a real 50MHz-accurate run (the interpreter can't hit 50M ticks/sec).
+  tick(clk, 3000000)
 }
