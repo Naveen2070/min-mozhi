@@ -350,7 +350,8 @@ pub fn elaborate(
 }
 
 /// Elaborate the entry module across a loaded project (`files[0]` is the entry,
-/// the rest are its imports — the order [`mimz_core::project::load_project`] returns).
+/// the rest are its imports — the order the shell crate's `load_project`
+/// returns; not linkable here since mimz-sim doesn't depend on it).
 /// Instances are **flattened**: each child is elaborated and inlined into the
 /// parent with its signals name-prefixed (`inst.port` → wire `inst_port`,
 /// matching the Verilog emitter), so the flat [`Design`] the kernel runs is
