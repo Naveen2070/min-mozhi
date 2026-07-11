@@ -3,9 +3,9 @@
 set -e
 
 echo "=== pre-push: tests ==="
-cargo test --all-targets
+cargo test --workspace --all-targets
 
 echo "=== pre-push: rustdoc (warnings are errors) ==="
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
 
 echo "=== pre-push: all checks passed ==="
