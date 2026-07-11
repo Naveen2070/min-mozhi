@@ -99,6 +99,20 @@ enum Ty<'a> {
         elem_signed: bool,
         len: u128,
     },
+    /// A bundle-typed value — nominal identity only (bundles are matched
+    /// by name, never structurally; see `same()`). Field widths are
+    /// resolved on demand via `resolve_bundle_fields` rather than stored
+    /// inline (a bundle's field list is dynamically sized, so storing it
+    /// directly would break `Ty`'s `Copy` bound the way `Array`/`Memory`
+    /// avoid by storing only scalar element info).
+    Bundle {
+        name: &'a str,
+        /// `QualIdent::resolved_file` — disambiguates same-named bundles
+        /// declared in different files. Threaded straight into
+        /// `resolve_bundle_fields`'s `bfile_hint` param.
+        bfile_hint: Option<usize>,
+        args: &'a [NamedArg],
+    },
     /// A compile-time integer: literal, const, parameter, or `repeat`
     /// variable. Polymorphic — adapts to any sized context it fits
     /// (spec/02 section 1.8). Carries the value for the fit check.
@@ -133,6 +147,7 @@ fn same(a: &Ty, b: &Ty) -> bool {
             },
         ) => aw == bw && asig == bsig && al == bl,
         (Ty::Enum(x), Ty::Enum(y)) => x.name.name == y.name.name,
+        (Ty::Bundle { name: a, .. }, Ty::Bundle { name: b, .. }) => a == b,
         _ => false,
     }
 }
@@ -170,6 +185,7 @@ fn show(t: &Ty) -> String {
             };
             format!("{elem}[{len}]")
         }
+        Ty::Bundle { name, .. } => format!("bundle `{name}`"),
         Ty::CtInt(v) => format!("the compile-time value `{v}`"),
         Ty::Clock => "a clock".into(),
         Ty::Reset => "a reset".into(),
@@ -199,9 +215,6 @@ struct Wcx<'a> {
     env: Env,
     /// signal name -> resolved type (ports, wires, regs, clocks, resets).
     sigs: HashMap<String, Ty<'a>>,
-    /// signal name -> original AST type, for bundle-typed signals only.
-    /// Used to recover bundle name/args after `resolve_ty` returns Unknown.
-    bundle_sigs: HashMap<String, &'a Type>,
 }
 
 /// A (file, module name, parameter binding) triple waiting to be checked.
@@ -239,7 +252,6 @@ impl<'a> Checker<'a> {
                             }),
                             env,
                             sigs: HashMap::new(),
-                            bundle_sigs: HashMap::new(),
                         };
                         let (tag_w, max_payload_w) = self.enum_tag_and_payload_widths(&mut cx, e);
                         let total_w = if max_payload_w == 0 {
@@ -350,7 +362,6 @@ impl<'a> Checker<'a> {
             sc,
             env,
             sigs: HashMap::new(),
-            bundle_sigs: HashMap::new(),
         };
         self.collect_sigs(&mut cx, &m.items);
         let mut found = Vec::new();
@@ -369,9 +380,6 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Reg { name, ty, .. } => {
                     let t = self.resolve_ty(cx, ty);
                     cx.sigs.insert(name.name.clone(), t);
-                    if matches!(t, Ty::Unknown) && self.is_bundle_ty(ty) {
-                        cx.bundle_sigs.insert(name.name.clone(), ty);
-                    }
                 }
                 ModuleItem::Mem {
                     name, ty, depth, ..
@@ -460,12 +468,30 @@ impl<'a> Checker<'a> {
                 Some(n) => Ty::Signed(n),
                 None => Ty::Unknown,
             },
-            // ponytail: bundle type → Unknown until T6 wires full bundle width model
-            Type::Bundle { .. } => Ty::Unknown,
+            Type::Bundle { name, args } => {
+                if self.bundles.contains_key(&name.name.name) {
+                    Ty::Bundle {
+                        name: &name.name.name,
+                        bfile_hint: name.resolved_file.get(),
+                        args,
+                    }
+                } else {
+                    Ty::Unknown // E0906 already reported by an earlier pass
+                }
+            }
             Type::Named(n) => match self.lookup_enum(&cx.sc, &n.name.name) {
                 Some(e) => Ty::Enum(e),
-                // E0103/E0906 already reported, or bundle name (T6 will handle)
-                None => Ty::Unknown,
+                // Not an enum — a bare (unparametrized) bundle name parses as
+                // `Type::Named` too (only `Foo(X: N)` parses as `Type::Bundle`;
+                // see `parser::items::type_`), so check `self.bundles` before
+                // giving up. `args` is `&[]`: a bare name has none by
+                // definition (mirrors `is_bundle_ty`'s `Type::Named` arm).
+                None if self.bundles.contains_key(&n.name.name) => Ty::Bundle {
+                    name: &n.name.name,
+                    bfile_hint: n.resolved_file.get(),
+                    args: &[],
+                },
+                None => Ty::Unknown, // E0103/E0906 already reported
             },
             Type::Array { elem, len } => {
                 // A bundle-named element resolves to `Ty::Unknown` SILENTLY
@@ -701,33 +727,26 @@ impl<'a> Checker<'a> {
                 }
                 ModuleItem::Drive { lhs, rhs } => {
                     // `lhs.index` on a bundle port is invalid and caught by
-                    // an earlier pass; the `bundle_sigs` lookup by base name
+                    // an earlier pass; the `cx.sigs` lookup by base name
                     // below is safe regardless, since it only looks at
                     // `lhs.base`, never `lhs.index`.
-                    let lhs_bundle = cx.bundle_sigs.get(&lhs.base.name).copied();
-                    if let Some(lhs_ty) = lhs_bundle {
+                    let lhs_bundle = cx.sigs.get(&lhs.base.name).copied();
+                    if let Some(Ty::Bundle {
+                        name: l,
+                        bfile_hint,
+                        args,
+                    }) = lhs_bundle
+                    {
                         // LHS is bundle-typed: dispatch by RHS shape.
                         match &rhs.kind {
                             ExprKind::BundleLit(inits) => {
-                                let bname = ast_bundle_name(lhs_ty);
-                                let bargs = ast_bundle_args(lhs_ty);
-                                if let Some(bname) = bname {
-                                    let bfile_hint = ast_bundle_file(lhs_ty);
-                                    self.check_bundle_lit(
-                                        cx, bname, bfile_hint, bargs, inits, rhs.span,
-                                    );
-                                }
+                                self.check_bundle_lit(cx, l, bfile_hint, args, inits, rhs.span);
                             }
                             ExprKind::Ident(rhs_sig) => {
                                 // Nominal type check (E0907): both sides must name the same bundle.
-                                // note: nominal-only today; structural subtyping adds one
-                                // field-list comparison (2.9); first-class IR bundle
-                                // (post-Phase 2) promotes BundleType to a Type variant in IR
-                                let rhs_bundle = cx.bundle_sigs.get(rhs_sig.as_str()).copied();
-                                if let Some(rhs_ty) = rhs_bundle
-                                    && let (Some(l), Some(r)) =
-                                        (ast_bundle_name(lhs_ty), ast_bundle_name(rhs_ty))
-                                    && l != r
+                                if let Some(Ty::Bundle { name: r, .. }) =
+                                    cx.sigs.get(rhs_sig.as_str()).copied()
+                                    && r != l
                                 {
                                     self.err(
                                         cx.file,
@@ -1058,7 +1077,6 @@ impl<'a> Checker<'a> {
             }),
             env: benv,
             sigs: HashMap::new(),
-            bundle_sigs: HashMap::new(),
         };
         let fields = bdecl
             .fields
@@ -1127,7 +1145,6 @@ impl<'a> Checker<'a> {
             }),
             env,
             sigs: HashMap::new(),
-            bundle_sigs: HashMap::new(),
         };
         // Seed the signal environment with concrete param types.
         for param in &func.params {
@@ -1280,7 +1297,6 @@ impl<'a> Checker<'a> {
             }),
             env: fenv,
             sigs: HashMap::new(),
-            bundle_sigs: HashMap::new(),
         };
         self.resolve_ty_silent(&mut fcx, ty)
     }
@@ -1340,6 +1356,11 @@ fn ast_bundle_name(ty: &Type) -> Option<&str> {
 
 /// The bundle name's `resolved_file` (set by names.rs pass 3), for
 /// disambiguating which same-named bundle's fields to resolve.
+// ponytail: no callers left now that the `Drive` arm reads `cx.sigs`
+// (`Ty::Bundle`) directly instead of re-deriving this from the AST — left
+// in place per plan (T6 Task 1) rather than deleted speculatively; Task 4
+// deletes it after confirming no other caller across the crate.
+#[expect(dead_code)]
 fn ast_bundle_file(ty: &Type) -> Option<usize> {
     match ty {
         Type::Named(id) => id.resolved_file.get(),
@@ -1349,6 +1370,8 @@ fn ast_bundle_file(ty: &Type) -> Option<usize> {
 }
 
 /// Extract the parameter args slice from a parametric bundle type, or `&[]`.
+// ponytail: see `ast_bundle_file` above — same story, same deferred cleanup.
+#[expect(dead_code)]
 fn ast_bundle_args(ty: &Type) -> &[NamedArg] {
     match ty {
         Type::Bundle { args, .. } => args.as_slice(),
@@ -1430,6 +1453,25 @@ mod tests {
         assert!(
             res.is_ok(),
             "expected no diagnostics (loop var must be typed bits[4] = clog2(12)), got: {:?}",
+            res.err()
+        );
+    }
+
+    #[test]
+    fn bundle_typed_fn_param_supports_field_access() {
+        // Today this falsely fails with E0105 ("h has no fields") because
+        // `check_func_body_widths` never populates `bundle_sigs` for `fn`
+        // params — the bug this task fixes by deleting `bundle_sigs`
+        // entirely and reading real bundle info from `cx.sigs` instead.
+        let src = "bundle Handshake(W: int = 8) {\n  valid: bit\n  data: bits[W]\n}\n\
+               fn get_valid(h: Handshake(W: 8)) -> bit {\n  h.valid\n}\n\
+               module M {\n  in a: bit\n  out y: bit\n  y = get_valid({ valid: a, data: 0 })\n}\n";
+        let toks = lexer::lex(src).expect("lexes");
+        let file = parser::parse(toks).expect("parses");
+        let res = check(&[file]);
+        assert!(
+            res.is_ok(),
+            "bundle-typed fn param field access should be legal, got: {:?}",
             res.err()
         );
     }

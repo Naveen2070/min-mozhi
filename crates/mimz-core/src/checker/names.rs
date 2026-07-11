@@ -922,9 +922,15 @@ impl<'a> Checker<'a> {
                 };
                 match sc.names.get(name).copied() {
                     Some(Bind::Inst(inst)) => self.inst_output(file, inst, field),
-                    Some(Bind::In) | Some(Bind::Out) | Some(Bind::Wire) | Some(Bind::Reg) => {
-                        // Possible bundle field access (e.g., req.valid where req is a bundle port/signal).
-                        // Validation deferred to width pass where bundle types are fully resolved.
+                    Some(Bind::In) | Some(Bind::Out) | Some(Bind::Wire) | Some(Bind::Reg)
+                    | Some(Bind::Param) => {
+                        // Possible bundle field access (e.g., req.valid where req is a bundle
+                        // port/signal/param). Validation deferred to the width pass where
+                        // bundle types are fully resolved. `Param` included alongside the
+                        // signal kinds so a bundle-typed `fn` parameter's field access
+                        // (`h.valid`) isn't rejected here before the width pass — which
+                        // resolves `cx.sigs` from the real bundle type — gets a chance to
+                        // check it (see checker::widths::Ty::Bundle).
                     }
                     Some(b)
                         if self.lookup_enum(sc, name).is_none() && !matches!(b, Bind::Enum(_)) =>
