@@ -909,14 +909,16 @@ impl<'a> Checker<'a> {
                     None => Ty::Unknown, // resolve_bundle_fields reported error
                 };
             }
-            // A non-bundle fn param accessing a field — no other pass ever
-            // catches this (fn param field access is deferred wholesale to
-            // this width pass), so it must be diagnosed here.
+            // A non-bundle name accessing a field — `cx.sigs` here holds
+            // either a fn parameter or a fn-body `let` local (both land in
+            // `cx.sigs` with no `cx.sc.names` entry); no other pass ever
+            // catches either case (field access on them is deferred
+            // wholesale to this width pass), so it must be diagnosed here.
             self.err(
                 cx.file,
                 base.span,
                 "E0105",
-                format!("`{name}` is a parameter — it has no fields"),
+                format!("`{name}` has no fields"),
                 "`.` reads an enum variant (`State.Red`), an instance output (`add.sum`), or a bundle field (`bus.valid`)",
             );
             return Ty::Unknown;
