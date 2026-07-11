@@ -4,7 +4,7 @@
 //! typing lives here too — the same range rules serve both sides of an
 //! assignment.
 
-use crate::ast::{BinOp, Expr, ExprKind, LValue, Type};
+use crate::ast::{BinOp, Expr, ExprKind, LValue};
 use crate::span::Span;
 
 use super::super::Checker;
@@ -378,6 +378,13 @@ impl<'a> Checker<'a> {
                 "E0403",
                 format!("a number cannot stand for {}", show(&t)),
                 "index one element — `arr[idx]` — to read or write a value",
+            ),
+            Ty::Bundle { .. } => self.err(
+                cx.file,
+                span,
+                "E0403",
+                format!("a number cannot stand for {}", show(&t)),
+                "write a bundle literal — `{ field: value, ... }` — to build a value",
             ),
             Ty::CtInt(_) | Ty::Unknown => {}
         }
@@ -770,56 +777,56 @@ impl<'a> Checker<'a> {
         let ExprKind::Ident(name) = &core.kind else {
             return Ty::Unknown; // E0105 already reported
         };
-        match cx.sc.names.get(name) {
-            Some(Bind::Inst(inst)) => self.inst_output_ty(cx, inst, field),
-            Some(Bind::In) | Some(Bind::Out) | Some(Bind::Wire) | Some(Bind::Reg) => {
-                // Possible bundle field access — check if this signal is bundle-typed
-                #[allow(clippy::collapsible_match)]
-                if let Some(signal_ty) = cx.bundle_sigs.get(name)
-                    && let Type::Bundle { name: bname, args } = signal_ty
-                {
-                    // Bundle field access: resolve the bundle and return the field's type
-                    let bfile_hint = bname.resolved_file.get();
-                    match self.resolve_bundle_fields(
-                        cx,
-                        &bname.name.name,
-                        bfile_hint,
-                        args,
-                        base.span,
-                    ) {
-                        Some(fields) => {
-                            for (fname, fty) in fields {
-                                if fname == field.name {
-                                    return fty;
-                                }
-                            }
-                            // Field not found in bundle — let emit report it, or it was already caught earlier
-                            return Ty::Unknown;
-                        }
-                        None => return Ty::Unknown, // resolve_bundle_fields reported error
-                    }
-                }
-                // Signal exists but is not bundle-typed — error
-                let bind_str = match cx.sc.names.get(name) {
-                    Some(Bind::In) => "an input port",
-                    Some(Bind::Out) => "an output port",
-                    Some(Bind::Wire) => "a wire",
-                    Some(Bind::Reg) => "a reg",
-                    _ => "a signal",
+        if let Some(Bind::Inst(inst)) = cx.sc.names.get(name) {
+            return self.inst_output_ty(cx, inst, field);
+        }
+        // `cx.sigs` (not `cx.sc.names`) is the authoritative source here: it
+        // covers module ports/wires/regs AND `fn` parameters alike, whereas
+        // `cx.sc.names` is only ever populated for module bodies —
+        // `check_func_body_widths` gives each `fn` an empty `Scope` and
+        // seeds `cx.sigs` directly, so a bundle-typed `fn` param (`h.valid`)
+        // has no `Bind` to match on and must be found here instead.
+        if let Some(sig_ty) = cx.sigs.get(name).copied() {
+            // Possible bundle field access — check if this signal is bundle-typed
+            if let Ty::Bundle {
+                name: bname,
+                bfile_hint,
+                args,
+            } = sig_ty
+            {
+                // Bundle field access: resolve the bundle and return the field's type
+                return match self.resolve_bundle_fields(cx, bname, bfile_hint, args, base.span) {
+                    Some(fields) => fields
+                        .into_iter()
+                        .find(|(fname, _)| fname == &field.name)
+                        .map(|(_, fty)| fty)
+                        // Field not found in bundle — let emit report it, or it was already caught earlier
+                        .unwrap_or(Ty::Unknown),
+                    None => Ty::Unknown, // resolve_bundle_fields reported error
                 };
-                self.err(
-                    cx.file,
-                    base.span,
-                    "E0105",
-                    format!("`{name}` is {bind_str} — it has no fields"),
-                    "`.` reads an enum variant (`State.Red`), an instance output (`add.sum`), or a bundle field (`bus.valid`)",
-                );
-                Ty::Unknown
             }
-            _ => match self.lookup_enum(&cx.sc, name) {
-                Some(en) if en.variants.iter().any(|v| v.name.name == field.name) => Ty::Enum(en),
-                _ => Ty::Unknown, // E0103 already reported
-            },
+            // Signal/param exists but is not bundle-typed — error
+            let bind_str = match cx.sc.names.get(name) {
+                Some(Bind::In) => "an input port",
+                Some(Bind::Out) => "an output port",
+                Some(Bind::Wire) => "a wire",
+                Some(Bind::Reg) => "a reg",
+                // Not in `cx.sc.names` at all but present in `cx.sigs`: only
+                // `fn` parameters take this path (see comment above).
+                _ => "a parameter",
+            };
+            self.err(
+                cx.file,
+                base.span,
+                "E0105",
+                format!("`{name}` is {bind_str} — it has no fields"),
+                "`.` reads an enum variant (`State.Red`), an instance output (`add.sum`), or a bundle field (`bus.valid`)",
+            );
+            return Ty::Unknown;
+        }
+        match self.lookup_enum(&cx.sc, name) {
+            Some(en) if en.variants.iter().any(|v| v.name.name == field.name) => Ty::Enum(en),
+            _ => Ty::Unknown, // E0103 already reported
         }
     }
 }
