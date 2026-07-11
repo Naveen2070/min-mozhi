@@ -3,7 +3,7 @@ module blinker_emulation_tb;
   reg rst;
   wire led;
 
-  Blinker _dut_inst (
+  Blinker  #(.LIMIT(1000000)) _dut_inst (
     .clk(clk),
     .rst(rst),
     .led(led)

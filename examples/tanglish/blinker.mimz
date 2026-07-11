@@ -22,7 +22,7 @@ thoguthi Blinker(LIMIT: int = 50000000) {
   led = state
 }
 
-sodhanai "blinker emulation" kaaga Blinker {
+sodhanai "blinker emulation" kaaga Blinker(LIMIT: 1000000) {
   paavnai {
     vegam mhz(50)
     inai led -> led(color: red)
@@ -30,6 +30,7 @@ sodhanai "blinker emulation" kaaga Blinker {
   rst = 1
   kanam(clk)
   rst = 0
-  // Run for 100,000,000 ticks (2 seconds at 50MHz, max allowed sim cycles)
-  kanam(clk, 100000000)
+  // 3,000,000 ticks = 3 LED toggles at a smaller LIMIT — a fast dashboard demo,
+  // not a real 50MHz-accurate run (the interpreter can't hit 50M ticks/sec).
+  kanam(clk, 3000000)
 }

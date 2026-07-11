@@ -201,7 +201,9 @@ impl Emitter<'_> {
 
         // Combinational drives (unrolling `repeat` the same way).
         // Pre-populate bundle_sigs so emit_drives can flatten bundle assignments.
-        // ponytail: repeat-body bundle wires not tracked in bundle_sigs — checker blocks wire-in-repeat today.
+        // Repeat-body bundle wires aren't tracked in bundle_sigs — moot for
+        // now since the checker blocks wire-in-repeat outright; revisit if
+        // that restriction is ever lifted.
         self.bundle_sigs.clear();
         for item in flat.iter() {
             let (sig_name, bname, args) = match item {

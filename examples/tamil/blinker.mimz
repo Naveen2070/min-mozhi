@@ -22,7 +22,7 @@
   led = state
 }
 
-சோதனை "blinker emulation" க்காக Blinker {
+சோதனை "blinker emulation" க்காக Blinker(LIMIT: 1000000) {
   பாவனை {
     வேகம் mhz(50)
     இணை led -> led(color: red)
@@ -30,6 +30,7 @@
   rst = 1
   கணம்(clk)
   rst = 0
-  // Run for 100,000,000 ticks (2 seconds at 50MHz, max allowed sim cycles)
-  கணம்(clk, 100000000)
+  // 3,000,000 ticks = 3 LED toggles at a smaller LIMIT — a fast dashboard demo,
+  // not a real 50MHz-accurate run (the interpreter can't hit 50M ticks/sec).
+  கணம்(clk, 3000000)
 }
