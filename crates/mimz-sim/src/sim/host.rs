@@ -15,7 +15,9 @@ pub use mimz_core::ast::BindArg;
 /// e.g. `uart_rx`) or is driven by it (`Output`, e.g. `led`/`speaker`/`uart_tx`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
+    /// The peripheral drives values into the simulation (e.g. `uart_rx`).
     Input,
+    /// The simulation drives the peripheral (e.g. `led`/`speaker`/`uart_tx`).
     Output,
 }
 

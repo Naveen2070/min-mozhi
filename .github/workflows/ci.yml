@@ -52,22 +52,27 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        # --workspace: default-members is intentionally just "." (fast local
+        # iteration, docs/plan/workspace-split.local.md) but CI must still
+        # lint mimz-core/mimz-sim — they silently dropped out of this gate
+        # for a day after the workspace split until this fix.
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Rustdoc (warnings are errors)
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --workspace
         env:
           RUSTDOCFLAGS: "-D warnings"
 
       - name: Tests
         # REQUIRE_IVERILOG turns a missing Icarus install into a hard
         # failure — CI must never silently skip the differential tests.
-        run: cargo test --all-targets
+        # --workspace: see Clippy step above.
+        run: cargo test --workspace --all-targets
         env:
           REQUIRE_IVERILOG: "1"
 
       - name: Build
-        run: cargo build
+        run: cargo build --workspace
 
       - name: Compile benches (criterion harness must not bit-rot)
         # --no-run type-checks benches/compile.rs without timing anything —

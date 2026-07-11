@@ -33,16 +33,22 @@ pub struct SimOpts {
 /// (`None` for the falling half), and every signal's value.
 #[derive(Clone, Debug)]
 pub struct Frame {
+    /// Timestamp in `$timescale` units.
     pub time: u64,
+    /// The cycle number for a rising-edge frame; `None` for the falling half.
     pub cycle: Option<u64>,
+    /// Every signal's value at this instant, keyed by name.
     pub values: BTreeMap<String, u128>,
 }
 
 /// A captured run: the (stable) signal list with widths, plus the frames.
 #[derive(Clone, Debug)]
 pub struct Timeline {
+    /// The module this timeline was captured from.
     pub module: String,
+    /// The stable signal list (name, width, signedness) for the whole run.
     pub signals: Vec<Signal>,
+    /// The per-instant snapshots, in time order.
     pub frames: Vec<Frame>,
 }
 

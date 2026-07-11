@@ -260,9 +260,11 @@ impl<'a> Project<'a> {
     pub fn resolve_module_with_file(&self, q: &QualIdent) -> Option<(usize, &'a Module)> {
         Self::resolve(&self.modules, q)
     }
+    /// Resolves a (possibly package-qualified) name to its `enum` declaration.
     pub fn resolve_enum(&self, q: &QualIdent) -> Option<&'a EnumDecl> {
         Self::resolve(&self.enums, q).map(|(_, e)| e)
     }
+    /// Resolves a (possibly package-qualified) name to its `bundle` declaration.
     pub fn resolve_bundle(&self, q: &QualIdent) -> Option<&'a BundleDecl> {
         Self::resolve(&self.bundles, q).map(|(_, b)| b)
     }

@@ -9,36 +9,67 @@ use crate::span::Span;
 /// at startup on a mismatch, so drift cannot ship).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kw {
+    /// `module` keyword — declares a hardware module.
     Module,
+    /// `in` keyword — declares an input port.
     In,
+    /// `out` keyword — declares an output port.
     Out,
+    /// `wire` keyword — declares a combinational signal.
     Wire,
+    /// `reg` keyword — declares a clocked (stateful) signal.
     Reg,
+    /// `mem` keyword — declares a memory array.
     Mem,
+    /// `clock` keyword — declares/refers to a clock signal.
     Clock,
+    /// `reset` keyword — declares/refers to a reset signal.
     Reset,
+    /// `async` keyword — marks a reset as asynchronous.
     Async,
+    /// `on` keyword — introduces a clocked/edge-triggered block.
     On,
+    /// `rise` keyword — rising-edge trigger inside an `on` clause.
     Rise,
+    /// `fall` keyword — falling-edge trigger inside an `on` clause.
     Fall,
+    /// `if` keyword — conditional expression/statement.
     If,
+    /// `else` keyword — alternate branch of an `if`.
     Else,
+    /// `match` keyword — pattern-matching expression.
     Match,
+    /// `enum` keyword — declares an enumerated type.
     Enum,
+    /// `let` keyword — declares a local binding.
     Let,
+    /// `const` keyword — declares a compile-time constant.
     Const,
+    /// `repeat` keyword — item-level compile-time unroll.
     Repeat,
+    /// `import` keyword — brings another file's items into scope.
     Import,
+    /// `true` keyword — boolean literal.
     True,
+    /// `false` keyword — boolean literal.
     False,
+    /// `test` keyword — declares a testbench block.
     Test,
+    /// `for` keyword — loop-variable binder in `repeat`/`loop` headers.
     For,
+    /// `tick` keyword — advances the simulated clock by one cycle in a `test` block.
     Tick,
+    /// `expect` keyword — asserts an expected value in a `test` block.
     Expect,
+    /// `and` keyword — logical AND operator spelling.
     And,
+    /// `or` keyword — logical OR operator spelling.
     Or,
+    /// `not` keyword — logical NOT operator spelling.
     Not,
+    /// `syntax` keyword — file-level directive selecting the keyword flavor.
     Syntax,
+    /// `thamizh` / `தமிழ்` — flavor name used with `syntax` to select Tamil spellings.
     Thamizh,
     /// Combinational user-defined function keyword (`fn`/`function`/`saarbu`/`சார்பு`).
     Fn,
@@ -46,6 +77,7 @@ pub enum Kw {
     Default,
     /// `bundle` / `kattai` / `கட்டை` — named group of signals (feature 2.4).
     Bundle,
+    /// `return` keyword — returns a value from a `fn` body.
     Return,
     /// `loop` / `suzhal` / `சுழல்` — bounded compile-time unroll usable
     /// inside `on` blocks and `fn` bodies (distinct from `repeat`, which
@@ -70,8 +102,11 @@ pub enum Kw {
 /// Which keyword skin a spelling came from (spec/03 Layer 1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flavor {
+    /// Plain English keyword spellings (e.g. `module`).
     English,
+    /// Romanized Tamil keyword spellings (e.g. `thoguthi`).
     Tanglish,
+    /// Tamil-script keyword spellings (e.g. `தொகுதி`).
     Tamil,
 }
 
@@ -79,66 +114,108 @@ pub enum Flavor {
 /// no payload; their spelling lives in `punct_text`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TokKind {
+    /// Identifier — the name text.
     Ident(String),
     /// Integer literal; `raw` preserves the written form (`0b1010`, `0xFF`).
     Int {
+        /// The parsed numeric value.
         value: u128,
+        /// The original written form, as it appeared in source.
         raw: String,
     },
     /// Binary don't-care literal — `0b1??`, valid only in a `match` pattern.
     /// `mask` has a 1 where the bit must match `value` (don't-care bits are 0
     /// in both), `width` is the digit count; `raw` keeps the spelling.
     MaskedInt {
+        /// The known bits' value (don't-care bits are 0).
         value: u128,
+        /// Bitmask marking which bits are known (1) vs. don't-care (0).
         mask: u128,
+        /// Digit count of the literal.
         width: u32,
+        /// The original written form, as it appeared in source.
         raw: String,
     },
     /// String literal — currently only used for test names.
     Str(String),
+    /// A keyword, spelling-independent (see `Kw`).
     Kw(Kw),
 
     // arithmetic
-    Plus,     // +
-    Minus,    // -
-    Star,     // *
-    PlusPct,  // +%  wrapping
+    /// `+` — addition.
+    Plus, // +
+    /// `-` — subtraction.
+    Minus, // -
+    /// `*` — multiplication.
+    Star, // *
+    /// `+%` — wrapping addition.
+    PlusPct, // +%  wrapping
+    /// `-%` — wrapping subtraction.
     MinusPct, // -%
-    StarPct,  // *%
+    /// `*%` — wrapping multiplication.
+    StarPct, // *%
     // shifts
+    /// `<<` — left shift.
     Shl, // <<
+    /// `>>` — right shift.
     Shr, // >>
     // bitwise
-    Amp,   // &
-    Pipe,  // |
+    /// `&` — bitwise AND.
+    Amp, // &
+    /// `|` — bitwise OR.
+    Pipe, // |
+    /// `^` — bitwise XOR.
     Caret, // ^
+    /// `~` — bitwise NOT.
     Tilde, // ~
     // logical symbols
-    AmpAmp,   // &&
+    /// `&&` — logical AND.
+    AmpAmp, // &&
+    /// `||` — logical OR.
     PipePipe, // ||
-    Bang,     // !
+    /// `!` — logical NOT.
+    Bang, // !
     // comparison
+    /// `==` — equality.
     EqEq, // ==
-    Ne,   // !=
-    Lt,   // <
-    Le,   // <=
-    Gt,   // >
-    Ge,   // >=
+    /// `!=` — inequality.
+    Ne, // !=
+    /// `<` — less than.
+    Lt, // <
+    /// `<=` — less than or equal.
+    Le, // <=
+    /// `>` — greater than.
+    Gt, // >
+    /// `>=` — greater than or equal.
+    Ge, // >=
     // structure
-    Assign,   // =   (wires only)
-    LArrow,   // <-  (regs only)
+    /// `=` — assignment (wires only).
+    Assign, // =   (wires only)
+    /// `<-` — clocked assignment (regs only).
+    LArrow, // <-  (regs only)
+    /// `=>` — match-arm separator.
     FatArrow, // =>
     /// `->` — function return-type arrow.
     RArrow,
+    /// `:` — type/label separator.
     Colon,
+    /// `,` — item separator.
     Comma,
+    /// `.` — field/member access.
     Dot,
+    /// `..` — range separator.
     DotDot,
+    /// `(` — opening parenthesis.
     LParen,
+    /// `)` — closing parenthesis.
     RParen,
+    /// `[` — opening bracket.
     LBracket,
+    /// `]` — closing bracket.
     RBracket,
+    /// `{` — opening brace.
     LBrace,
+    /// `}` — closing brace.
     RBrace,
 
     /// Statement terminator (Go-style; see `lexer::postprocess_newlines`).
@@ -152,7 +229,9 @@ pub enum TokKind {
 /// flavor spelled it.
 #[derive(Clone, Debug)]
 pub struct Token {
+    /// What kind of token this is.
     pub kind: TokKind,
+    /// Where in the source this token appears.
     pub span: Span,
     /// Set only for keyword tokens. Consumed by `mimz fmt`/`translate` and
     /// error-language detection (Phase 1.8) — recorded from day one so the

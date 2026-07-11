@@ -12,24 +12,41 @@ use std::path::PathBuf;
 /// What a [`Symbol`] is. Drives the hover label and completion item kind.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SymKind {
+    /// A `module Name { ... }` declaration.
     Module,
+    /// A module parameter (compile-time `int`/`bool`).
     Param,
-    Port { dir: Dir },
+    /// A port; `dir` says input or output.
+    Port {
+        /// Input or output.
+        dir: Dir,
+    },
+    /// A `clock` declaration.
     Clock,
+    /// A `reset` declaration.
     Reset,
+    /// A `wire` declaration.
     Wire,
+    /// A `reg` declaration.
     Reg,
+    /// A `mem` declaration.
     Mem,
+    /// A file- or module-level `const`.
     Const,
+    /// An `enum` type declaration.
     Enum,
+    /// One variant of an `enum`.
     EnumVariant,
+    /// A `let name = Module(...) { ... }` instance.
     Inst,
 }
 
 /// One named definition, with where it lives and its hover render.
 #[derive(Clone, Debug)]
 pub struct Symbol {
+    /// The symbol's name, as written in source.
     pub name: String,
+    /// What kind of definition this is.
     pub kind: SymKind,
     /// Index into [`SymbolIndex::files`].
     pub file_idx: usize,
@@ -45,6 +62,7 @@ pub struct Symbol {
 pub struct SymbolIndex {
     /// `(path, src)` per `file_idx`, for URIs and offset math.
     pub files: Vec<(PathBuf, String)>,
+    /// Every definition found across all `files`, in discovery order.
     pub symbols: Vec<Symbol>,
 }
 
@@ -598,12 +616,17 @@ fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
 
 /// A completion suggestion: the text to insert and what it is.
 pub struct Candidate {
+    /// The text to insert.
     pub label: String,
+    /// What kind of completion this is (drives the editor's icon/sort).
     pub kind: CandKind,
 }
 
+/// What a [`Candidate`] completes to.
 pub enum CandKind {
+    /// A language keyword, in the file's majority flavor.
     Keyword,
+    /// An in-scope identifier, carrying its definition kind.
     Symbol(SymKind),
 }
 

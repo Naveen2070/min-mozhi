@@ -1,5 +1,13 @@
+//! Pure compiler pipeline: lexer, parser, AST, checker, Verilog emitter, and
+//! supporting tooling (translate/pretty/explain/analysis/stdlib/morph). Zero
+//! optional dependencies and no filesystem/OS access — the pure half of the
+//! workspace split (`docs/plan/workspace-split.local.md`); `mimz-sim` and the
+//! root shell crate build on top of this.
 #![forbid(unsafe_code)]
 
+/// Compile-time unroll cap for `repeat` — the ceiling on how many iterations
+/// a single `repeat` may generate, guarding against runaway hardware
+/// generation from a pathological or malicious bound.
 pub const REPEAT_BUDGET: i128 = 4096;
 
 /// NFC-normalize source text so combining-mark sequences (e.g. decomposed

@@ -31,7 +31,9 @@ pub struct Edition {
     pub variant: &'static str,
     /// Kebab-case slug for the edition string, e.g. `"wingless-butterfly"`.
     pub slug: &'static str,
+    /// The calendar year this edition was set.
     pub year: u16,
+    /// Per-year edition code (monotonic within a year; tracks `KEYWORD_SET_VERSION`).
     pub code: u8,
     /// The date this edition was set (`YYYY-MM-DD`).
     pub date: &'static str,

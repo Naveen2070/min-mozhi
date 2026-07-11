@@ -238,14 +238,18 @@ fn build_func_registry(files: &[ast::File]) -> FuncRegistry<'_> {
 /// A signal's concrete type after width folding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Width {
+    /// Bit width, `1..=128`.
     pub bits: u32,
+    /// Whether the signal is `signed`.
     pub signed: bool,
 }
 
 /// An input, output, or wire with its folded width.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signal {
+    /// The signal's name.
     pub name: String,
+    /// The signal's folded width and signedness.
     pub width: Width,
 }
 
@@ -253,8 +257,11 @@ pub struct Signal {
 /// masks it to `width`), and the clock whose rising edge updates it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reg {
+    /// The register's name.
     pub name: String,
+    /// The register's folded width and signedness.
     pub width: Width,
+    /// The folded compile-time reset value (masked to `width` by the kernel).
     pub reset: i128,
     /// The clock of the `on` block that assigns this reg (empty if none does,
     /// in which case the reg simply holds its reset value forever).
@@ -270,9 +277,13 @@ pub struct Reg {
 /// no writing `on` block is a read-only ROM holding `init`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mem {
+    /// The memory's name.
     pub name: String,
+    /// Width and signedness of one cell.
     pub width: Width,
+    /// Number of addressable cells.
     pub depth: u128,
+    /// The folded compile-time value every cell is seeded to at power-on.
     pub init: i128,
     /// The clock of the `on` block that writes this memory (empty if none does).
     pub clock: String,
@@ -285,9 +296,11 @@ pub struct Mem {
 /// branch). Registers left unassigned on a path hold their current value.
 #[derive(Clone, Debug)]
 pub struct Process {
+    /// The clock signal whose edge drives this block.
     pub clock: String,
     /// The edge this block triggers on (`on rise`/`on fall`).
     pub edge: Edge,
+    /// The block's statements, interpreted in order each triggering edge.
     pub body: Vec<SeqStmt>,
 }
 
@@ -295,13 +308,18 @@ pub struct Process {
 /// parameters and widths folded to concrete values.
 #[derive(Clone, Debug)]
 pub struct Design {
+    /// The module this design was elaborated from.
     pub module: String,
     /// Folded compile-time integers (params + consts) — for the const
     /// expressions (indices, slice bounds) the kernel still evaluates.
     pub consts: BTreeMap<String, i128>,
+    /// Input ports, with folded widths.
     pub inputs: Vec<Signal>,
+    /// Output ports, with folded widths.
     pub outputs: Vec<Signal>,
+    /// Internal wires, with folded widths.
     pub wires: Vec<Signal>,
+    /// Registers, with folded widths and reset values.
     pub regs: Vec<Reg>,
     /// Memories (RAM/register arrays), seeded at construction.
     pub mems: Vec<Mem>,

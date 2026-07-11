@@ -77,10 +77,13 @@ fn collect_module_consts(
 /// One evaluated output port.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
+    /// The output port's name.
     pub name: String,
     /// The output value, in the low `width` bits.
     pub value: u128,
+    /// Bit width of the output port.
     pub width: u32,
+    /// Whether the output port is `signed`.
     pub signed: bool,
 }
 
