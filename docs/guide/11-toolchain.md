@@ -331,8 +331,13 @@ without a localized template fall back to clear English. The machine-readable
 
 ## In your editor: `mimz lsp`
 
-`mimz lsp` is a Language Server (diagnostics-only v0) — live red squiggles as you
-type, in the same flavor as the CLI. The VS Code client lives in
+`mimz lsp` is a Language Server: live red squiggles as you type (in the same
+flavor as the CLI), plus hover, go-to-definition, and completion — hover a
+signal to see its declared type, jump straight to where a name is defined
+(even across files, for a cross-file module instantiation), and get
+in-scope identifiers plus your file's majority-flavor keywords as you type.
+Completion never mixes flavors: a Tamil-flavored file offers Tamil
+keywords, never English ones. The VS Code client lives in
 [`../../editors/vscode/`](../../editors/vscode/), which also provides syntax
 highlighting for all three flavors.
 

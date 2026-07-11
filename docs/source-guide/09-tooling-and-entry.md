@@ -44,7 +44,7 @@ The compiler is a **library** with a thin CLI wrapper. `lib.rs` re-exports every
 - Future tools
 - Anyone embedding the compiler
 
-## `src/analysis.rs` — Editor Symbol Index & Resolution
+## `crates/mimz-core/src/analysis.rs` — Editor Symbol Index & Resolution
 
 This is the **pure, async-free** analysis layer that powers the LSP's hover, go-to-definition, and completion. `src/lsp.rs` is a thin adapter on top; the WASM playground can reuse these APIs too. All offsets are **byte** offsets — UTF-16 conversion is the LSP adapter's job.
 
@@ -78,7 +78,7 @@ Returns a list of `Candidate`s for the current cursor position: all in-scope mod
 
 ## `src/lsp.rs` — The Language Server
 
-The LSP server powers the **VS Code extension** (and potentially other editors). As of 2026-06-25 (`phase-4-lsp-dx`) it provides **live diagnostics plus hover, go-to-definition, and completion** — a thin `tower-lsp` adapter over the pure `src/analysis.rs` layer above. Diagnostics stay on the strict parser; the DX features ride `parse_recover` partial trees, so they work on half-typed files.
+The LSP server powers the **VS Code extension** (and potentially other editors). As of 2026-06-25 (`phase-4-lsp-dx`) it provides **live diagnostics plus hover, go-to-definition, and completion** — a thin `tower-lsp` adapter over the pure `crates/mimz-core/src/analysis.rs` layer above. Diagnostics stay on the strict parser; the DX features ride `parse_recover` partial trees, so they work on half-typed files.
 
 **`run()`** — starts the server over stdio. It creates a Tokio runtime and a `tower-lsp` service that listens for LSP messages.
 
@@ -101,11 +101,11 @@ The LSP feature depends on `tokio` and `tower-lsp`, which are **optional** behin
 
 ## `crates/mimz-wasm/` — The Browser Playground
 
-This is a separate crate in the workspace (`crates/mimz-wasm/`) that wraps the compiler for the browser. It's only 40 lines of Rust — all the heavy lifting is in the core library.
+This is a separate crate in the workspace (`crates/mimz-wasm/`) that wraps the compiler for the browser. It's only 40 lines of Rust — all the heavy lifting is in `mimz-sim` (and, transitively, `mimz-core`); `mimz-wasm` depends on `mimz-sim` directly, not on the root `mimz` shell crate, so no `default-features = false` juggling is needed.
 
-**`compile_to_verilog(source)`** — compiled to WASM, exposed to JavaScript as `compileToVerilog(source)`. It calls `mimz::compile_string()` and either returns Verilog text or throws a JS `Error` with the rendered diagnostics.
+**`compile_to_verilog(source)`** — compiled to WASM, exposed to JavaScript as `compileToVerilog(source)`. It calls `mimz_sim::compile_string()` and either returns Verilog text or throws a JS `Error` with the rendered diagnostics.
 
-**`run_command(source, command, args)`** — exposed as `runCommand(source, command, args)`. It calls `mimz::run_command()` — the same in-memory runner that powers the CLI's WASM-adjacent paths.
+**`run_command(source, command, args)`** — exposed as `runCommand(source, command, args)`. It calls `mimz_sim::run_command()` — the same in-memory runner that powers the CLI's WASM-adjacent paths.
 
 The WASM crate is **not** in the workspace's `default-members`, so everyday `cargo build`/`cargo test` at the root doesn't try to compile it (it targets `wasm32` and pulls in `wasm-bindgen`). You build it explicitly:
 

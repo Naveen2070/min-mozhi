@@ -34,20 +34,27 @@ the VS Code extension. All commands run from the **repo root** unless noted.
 
 This is a Cargo **workspace** (root = the compiler) plus two npm projects:
 
-| Path                  | What it is                                                           | Built with                     |
-| --------------------- | -------------------------------------------------------------------- | ------------------------------ |
-| `.` (root, `src/`)    | **`mimz`** — the compiler lib + the `mimz` and `mimz-bench` binaries | cargo                          |
-| `crates/mimz-wasm/`   | **`mimz-wasm`** — wasm-bindgen wrapper (`compileToVerilog`)          | cargo + wasm-pack/wasm-bindgen |
-| `tools/test-summary/` | dev helper behind the `cargo test-summary` alias                     | cargo                          |
-| `benches/compile.rs`  | per-phase `criterion` micro-benchmarks                               | `cargo bench`                  |
-| `site/`               | the Astro website (landing + docs + playground)                      | npm                            |
-| `editors/vscode/`     | the VS Code extension (`.vsix`)                                      | npm + `@vscode/vsce`           |
+| Path                  | What it is                                                                                                                          | Built with                     |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `.` (root, `src/`)    | **`mimz`** — shell crate (CLI, fs I/O, LSP, hw-emulation) + `mimz`/`mimz-bench` binaries; re-exports mimz-core/mimz-sim as a facade | cargo                          |
+| `crates/mimz-core/`   | **`mimz-core`** — pure lexer/parser/ast/checker/emit_verilog/etc, zero optional deps                                                | cargo                          |
+| `crates/mimz-sim/`    | **`mimz-sim`** — event-driven simulator + `runner.rs`, depends only on mimz-core                                                    | cargo                          |
+| `crates/mimz-wasm/`   | **`mimz-wasm`** — wasm-bindgen wrapper (`compileToVerilog`), depends on `mimz-sim` directly                                         | cargo + wasm-pack/wasm-bindgen |
+| `tools/test-summary/` | dev helper behind the `cargo test-summary` alias                                                                                    | cargo                          |
+| `benches/compile.rs`  | per-phase `criterion` micro-benchmarks                                                                                              | `cargo bench`                  |
+| `site/`               | the Astro website (landing + docs + playground)                                                                                     | npm                            |
+| `editors/vscode/`     | the VS Code extension (`.vsix`)                                                                                                     | npm + `@vscode/vsce`           |
 
-**Cargo features** (root `Cargo.toml`): `default = ["lsp", "bench"]`. The
-CLI-only deps that don't build on wasm32 (`tokio`, `tower-lsp`, `memory-stats`)
-are optional behind those features. `mimz-wasm` depends on `mimz` with
-`default-features = false`, and is kept out of `default-members`, so the everyday
-host build/gate never compiles it.
+**Cargo features** (root `Cargo.toml`): `default = ["lsp", "bench", "watch",
+"hw-emulation"]`. The CLI-only deps that don't build on wasm32 (`tokio`,
+`tower-lsp`, `memory-stats`, `ratatui`/`crossterm`/`cpal`) are optional behind
+those features, and live only in the root shell crate — `mimz-core` and
+`mimz-sim` have zero optional deps. `mimz-wasm` depends on `mimz-sim`
+directly (not on root `mimz`), so no `default-features = false` dance is
+needed there. Root `Cargo.toml` sets `default-members = ["."]`, so the
+everyday `cargo build`/`cargo test` only targets the shell crate — pass
+`--workspace` to also build/test `mimz-core`/`mimz-sim` directly (CI does;
+see `docs/code/10-test-map.md`).
 
 ---
 

@@ -1,7 +1,8 @@
 # Phase 2 — IR + Synthesis
 
 > **Own your middle layer.**
-> Window: months 11–22 · Status: ⚪ not started
+> Window: months 11–22 · Status: 🟡 in progress — language-features track
+> underway (see checked items below); IR/synthesis track not started
 
 ## Goal
 

@@ -40,8 +40,8 @@ disjoint.
 1. Spec first: `spec/02` (grammar) and `spec/03` (all three spellings) —
    bump versions, changelogs.
 2. `lang/keywords.toml`: add the `[keywords.<key>]` entry.
-3. `src/lexer/token.rs`: add the `Kw` variant.
-4. `src/lexer/keywords.rs`: add the `kw_for_key` arm. (Miss this and
+3. `crates/mimz-core/src/lexer/token.rs`: add the `Kw` variant.
+4. `crates/mimz-core/src/lexer/keywords.rs`: add the `kw_for_key` arm. (Miss this and
    every test fails at startup with "unknown keyword key" — by design.)
 5. Use it in the parser; add lexer + parser tests.
 6. Log entry.
@@ -50,13 +50,13 @@ disjoint.
 
 1. Spec first: grammar production in `spec/02` section 5 + a syntax-tour
    example. Bump the spec version.
-2. AST node in `src/ast/` — with a `Span`, with rustdoc explaining the
+2. AST node in `crates/mimz-core/src/ast/` — with a `Span`, with rustdoc explaining the
    form and any safety-rule angle.
-3. Parse routine in `src/parser/items/` or `expr.rs`:
+3. Parse routine in `crates/mimz-core/src/parser/items/` or `expr.rs`:
    - doc comment = the EBNF production (house rule);
    - return `Option<T>`, record errors before returning `None`;
    - `expect(..., "learner-phrased what")` for every required token.
-4. Emit it in `src/emit_verilog/` — or emit a clean
+4. Emit it in `crates/mimz-core/src/emit_verilog/` — or emit a clean
    "not yet supported" error (never wrong output).
 5. Tests: parser unit test (including the error path — assert the help
    text teaches), plus an example/integration test if user-visible.

@@ -201,9 +201,13 @@ A few important ones at the project root:
 
 **`Cargo.toml`** — the workspace root. Three interesting details:
 
-- Feature flags: `default = ["lsp", "bench"]`. The WASM crate depends on `mimz` with `default-features = false` to exclude tokio/tower-lsp/memory-stats
+- Feature flags: `default = ["lsp", "bench", "watch", "hw-emulation"]`. These
+  CLI-only deps (tokio/tower-lsp/memory-stats/ratatui/crossterm/cpal) live
+  only in the root shell crate — `mimz-core`/`mimz-sim` have no optional
+  deps at all, so `mimz-wasm` depends on `mimz-sim` directly with no
+  `default-features = false` needed
 - `overflow-checks = true` in release — defense in depth, so any missed overflow aborts loudly instead of silently producing wrong hardware
-- Workspace members: `["crates/mimz-wasm"]`, excludes `["tools/test-summary"]`
+- Workspace members: `["crates/mimz-core", "crates/mimz-sim", "crates/mimz-wasm"]`; `default-members = ["."]` (just the shell crate, for fast local iteration — CI passes `--workspace` explicitly), excludes `["tools/test-summary"]`
 
 **`.github/workflows/`** — CI/CD as described above.
 

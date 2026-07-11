@@ -21,31 +21,44 @@ Think of it like a factory assembly line: raw text comes in one end, and either 
 
 ## A Quick Map of the Codebase
 
+The compiler is a 3-crate Cargo workspace, split along a pure/impure line
+(the "workspace split", 2026-07-10): everything with zero optional
+dependencies lives in `mimz-core`/`mimz-sim`, and everything that touches a
+filesystem, terminal, or OS peripheral stays in the root shell crate. Root
+`mimz` re-exports `mimz-core`/`mimz-sim` so every `mimz::…` path you'll see
+elsewhere in this guide still resolves — only the physical file location
+changed.
+
 ```
-src/
-├── main.rs              # The front door — CLI that reads your commands
-├── lib.rs               # Library root — everything re-exported from here
-│
-├── span.rs              # Source positions (every error knows WHERE)
-├── diag.rs              # Error messages with pretty underlines
-├── morph.rs             # Picking error language + Tamil grammar helpers
-├── config.rs            # Reading mimz.toml project settings
-├── project.rs           # Loading files and resolving imports
-├── runner.rs            # Running commands in memory (powers the web playground)
-├── translate.rs         # Switching keywords between English/Tanglish/Tamil
-├── pretty.rs            # Turning the AST back into readable source
-├── explain.rs           # Long-form explanations for error codes
-├── version.rs           # Compiler version + language edition
-├── stdlib.rs            # Embedded standard library (seg7/pwm/fifo/uart_tx/debouncer)
-├── analysis.rs          # Editor symbol index + offset→definition / completion (LSP)
-│
-├── lexer/               # The tokenizer (4 files)
-├── parser/              # Tokens → structured tree (9 files)
-├── ast/                 # The tree itself (2 files)
-├── checker/             # Safety checks — 7 passes (13 files)
-├── emit_verilog/        # Verilog code generator (5 files)
-├── sim/                 # Event-driven simulator (9 files)
-└── commands/            # CLI command handlers (11 files)
+crates/mimz-core/src/     # pure frontend + middle + emit — no optional deps
+├── span.rs                   # Source positions (every error knows WHERE)
+├── diag.rs                   # Error messages with pretty underlines
+├── morph.rs                  # Picking error language + Tamil grammar helpers
+├── project.rs                # LoadedFile + render_diags (the pure half; fs I/O stays in root project.rs)
+├── translate.rs              # Switching keywords between English/Tanglish/Tamil
+├── pretty.rs                 # Turning the AST back into readable source
+├── explain.rs                # Long-form explanations for error codes
+├── version.rs                # Compiler version + language edition
+├── stdlib.rs                 # Embedded standard library (seg7/pwm/fifo/uart_tx/debouncer)
+├── analysis.rs               # Editor symbol index + offset→definition / completion (LSP)
+├── lexer/                    # The tokenizer (4 files)
+├── parser/                   # Tokens → structured tree (11 files)
+├── ast/                      # The tree itself (3 files)
+├── checker/                  # Safety checks — 7 passes (13 files)
+└── emit_verilog/             # Verilog code generator (5 files)
+
+crates/mimz-sim/src/      # event-driven simulator — depends only on mimz-core
+├── runner.rs                 # Running commands in memory (powers the web playground)
+└── sim/                      # Event-driven simulator + EmulationHost trait (10 files)
+
+src/                       # shell crate — CLI, fs I/O, LSP, hw-emulation
+├── main.rs                   # The front door — CLI that reads your commands
+├── lib.rs                    # Library root — facade re-exporting mimz-core + mimz-sim
+├── config.rs                 # Reading mimz.toml project settings
+├── project.rs                # Loading files and resolving imports (fs-touching half)
+├── emulate/                  # Native hw-emulation peripherals, `hw-emulation` feature (7 files)
+├── lsp.rs                    # Language server (optional, `lsp` feature)
+└── commands/                 # CLI command handlers (16 files)
 ```
 
 Now let's walk through each piece, one at a time. The rest of this guide is split into chapters — each chapter covers one folder or group of related files.

@@ -4,7 +4,7 @@ The AST is the **single intermediate representation** that everything downstream
 
 ---
 
-## `ast/mod.rs` — The Core Types
+## `crates/mimz-core/src/ast/mod.rs` — The Core Types
 
 **`File`** — one parsed source: `imports` followed by `items` (modules, enums, constants, tests).
 
@@ -57,7 +57,7 @@ The AST is the **single intermediate representation** that everything downstream
 
 ---
 
-## `ast/expr.rs` — Expressions and Patterns
+## `crates/mimz-core/src/ast/expr.rs` — Expressions and Patterns
 
 **`Expr`** — an expression: a `kind` (what it is) plus a `span` (where it was written).
 

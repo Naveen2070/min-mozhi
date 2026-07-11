@@ -1,4 +1,4 @@
-# 04 — The AST (`src/ast/`)
+# 04 — The AST (`crates/mimz-core/src/ast/`)
 
 The data structure every other stage agrees on.
 

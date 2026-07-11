@@ -4,7 +4,7 @@ The parser takes the token stream and builds an **Abstract Syntax Tree (AST)** �
 
 ---
 
-## `parser/mod.rs` — The Parser Core
+## `crates/mimz-core/src/parser/mod.rs` — The Parser Core
 
 **`parse(toks)`** is the entry point. Creates a `Parser`, calls `file()`, and returns either the AST or all collected errors. **Strict**: any error means no tree (so the compiler never emits Verilog from broken input).
 
@@ -32,7 +32,7 @@ The `enter()`/`leave()` pair wraps every recursive function. `enter()` returns `
 
 ---
 
-## `parser/expr.rs` — Parsing Expressions
+## `crates/mimz-core/src/parser/expr.rs` — Parsing Expressions
 
 Expression parsing uses **precedence climbing**. There's a table of operator precedences:
 
@@ -69,7 +69,7 @@ Level 7: *, *%
 
 ---
 
-## `parser/items/file.rs` — Top-Level Items
+## `crates/mimz-core/src/parser/items/file.rs` — Top-Level Items
 
 **`syntax_directive()`** — checks for an optional leading `syntax thamizh`. Sets `self.profile = Profile::Thamizh`. The directive never enters the AST, so a thamizh-order file and its code-order twin parse into the same tree.
 
@@ -87,7 +87,7 @@ This function never fails — a bad item records an error, skips to the next lin
 
 ---
 
-## `parser/items/mod.rs` — Shared Helpers
+## `crates/mimz-core/src/parser/items/mod.rs` — Shared Helpers
 
 **`lvalue()`** — parses an assignment target: `ident` optionally followed by `[i]` or `[hi:lo]`.
 
@@ -99,7 +99,7 @@ This function never fails — a bad item records an error, skips to the next lin
 
 ---
 
-## `parser/items/module.rs` — Module Body Items
+## `crates/mimz-core/src/parser/items/module.rs` — Module Body Items
 
 **`module()`** — parses the whole module: name, optional parameter list with defaults, brace-delimited body.
 
@@ -120,7 +120,7 @@ This function never fails — a bad item records an error, skips to the next lin
 
 ---
 
-## `parser/items/inst.rs` — Instantiations
+## `crates/mimz-core/src/parser/items/inst.rs` — Instantiations
 
 **`inst()`** — parses `let name = Module(params) { connections }`. Supports:
 
@@ -130,7 +130,7 @@ This function never fails — a bad item records an error, skips to the next lin
 
 ---
 
-## `parser/items/seq.rs` — Sequential (`on`) Blocks
+## `crates/mimz-core/src/parser/items/seq.rs` — Sequential (`on`) Blocks
 
 **`on_block()`** — code order: `on rise(clk) { body }` / `on fall(clk) { body }`.
 
@@ -145,7 +145,7 @@ This function never fails — a bad item records an error, skips to the next lin
 
 ---
 
-## `parser/items/test.rs` — Test Blocks
+## `crates/mimz-core/src/parser/items/test.rs` — Test Blocks
 
 **`test_decl()`** — code order: `test "name" for Module(args) { body }`.
 

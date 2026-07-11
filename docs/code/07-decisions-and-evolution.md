@@ -18,17 +18,25 @@ format), `unicode-ident`, `unicode-normalization`, and — for the LSP
 only, used by the bin-only `lsp.rs` module so the lib stays async-free —
 `tower-lsp`+`tokio`.
 
-### Lib + thin binary, modules per stage — no workspace yet
+### Lib + thin binary, modules per stage — then a 3-crate workspace
 
 The trigger named in architecture section 5 FIRED on 2026-06-12: the LSP
-(plus `--json` consumers) is the second consumer, so the module tree now
-lives in `src/lib.rs` (`pub mod` × 8) with `main.rs` as a thin CLI shell
-(arg parsing + human/JSON rendering only). `project.rs` returns
-`LoadError` values instead of printing and exiting — the lib never
-touches stdout/stderr. A WORKSPACE split (`mimz-syntax`/`mimz-check`/…)
-remains trigger-based and has not fired. Same for an IR, a query system,
-and incremental compilation — named triggers, not speculative
-scaffolding.
+(plus `--json` consumers) is the second consumer, so the module tree
+moved into a `lib.rs` with `main.rs` as a thin CLI shell (arg parsing +
+human/JSON rendering only). `project.rs` returns `LoadError` values
+instead of printing and exiting — the lib never touches stdout/stderr.
+
+A second trigger fired on 2026-07-09/10: the WASM playground needed a
+dependency-optional-free build without feature-flag gymnastics, so the
+lib split into a 3-crate workspace along the pure/impure axis —
+`mimz-core` (lexer/parser/ast/checker/emit_verilog/etc, zero optional
+deps), `mimz-sim` (event-driven simulator, depends only on mimz-core),
+and the root shell crate (CLI, fs I/O, LSP, hw-emulation), which
+re-exports both as a facade so every `mimz::…` path a caller already used
+keeps compiling. Full rationale in
+`docs/plan/workspace-split.local.md`. An IR, a query system, and
+incremental compilation remain trigger-based and have not fired — named
+triggers, not speculative scaffolding.
 
 ### The module-scoping pattern (refactor of 2026-06-10)
 
@@ -94,7 +102,7 @@ message. Push enforcement as early as it can correctly live.
 ## Where the code goes next (in order)
 
 1. ~~**Checker**~~ — ✅ landed 2026-06-11/12, seven passes in
-   `src/checker/` (symbols, consteval, names, widths, drivers, funcs, clocks);
+   `crates/mimz-core/src/checker/` (symbols, consteval, names, widths, drivers, funcs, clocks);
    every spec/02 section 6 rule is now compiler-enforced.
 2. ~~**Stable error codes**~~ — ✅ complete 2026-06-12: every diagnostic
    in the compiler carries one (checker E0xxx, lexer E10xx, parser

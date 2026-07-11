@@ -1,4 +1,4 @@
-# 03 — The Parser (`src/parser/`)
+# 03 — The Parser (`crates/mimz-core/src/parser/`)
 
 `Vec<Token>` → `ast::File`. Plain recursive descent — no parser
 generator, no combinators. Boring on purpose: a contributor should be

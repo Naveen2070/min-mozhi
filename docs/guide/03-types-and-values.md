@@ -148,6 +148,20 @@ module Node {
 
 The compiler automatically flattens a bundle into individual signals (`bus_in_valid`, `bus_in_ready`, etc.) during Verilog emission, meaning bundles have zero runtime overhead and generate clean, synthesis-safe hardware.
 
+You can also **destructure** a bundle-typed value into individual bindings
+with `let { field, ... } = expr`:
+
+```mimz
+let { valid, data } = bus_in
+out y: bits[8]
+y = valid ? data : 0
+```
+
+A partial destructure (naming only some fields) is fine — you don't have to
+bind every field. Duplicate binding names and field-rename syntax
+(`{ f: alias }`) are both rejected at parse time; a destructured field keeps
+its own name.
+
 ## Compile-time types: `int` and `bool`
 
 Parameters and `const`s are compile-time values, not hardware. They use the

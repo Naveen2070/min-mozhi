@@ -1,4 +1,4 @@
-# 06 — Diagnostics (`src/diag.rs`, `src/span.rs`)
+# 06 — Diagnostics (`crates/mimz-core/src/diag.rs`, `crates/mimz-core/src/span.rs`)
 
 Error quality is a core goal (spec/01 G1), not a feature. This is the
 smallest subsystem and the most important one to keep healthy.
@@ -173,7 +173,7 @@ A span is a byte range with no file identity, so `Diag` carries
   diagnostic's own source file (entry file as the fallback).
 
 Regression-guarded by `diags_carry_the_file_index`
-(`src/emit_verilog/mod.rs`). The checker-side regression test for this
+(`crates/mimz-core/src/emit_verilog/mod.rs`). The checker-side regression test for this
 contract (`duplicate_module_across_files_is_e0001_in_the_right_file`)
 was retired when packages/namespacing (spec/02 §1.5b) made cross-file
 module/enum/bundle name collisions legal — a new multi-file checker

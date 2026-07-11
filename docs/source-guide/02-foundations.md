@@ -4,7 +4,7 @@ These are the support modules that everything else depends on. They don't know a
 
 ---
 
-## `src/span.rs` — Remembering Where Things Are (27 lines)
+## `crates/mimz-core/src/span.rs` — Remembering Where Things Are (27 lines)
 
 This tiny file defines one thing: a **Span**. A span is a half-open range of byte offsets — `[start, end)` — into the source text. Every single token and every single AST node carries one.
 
@@ -33,7 +33,7 @@ That underlined `^^^^^` comes from the span. It tells the diagnostic renderer ex
 
 ---
 
-## `src/diag.rs` — Making Error Messages Pretty
+## `crates/mimz-core/src/diag.rs` — Making Error Messages Pretty
 
 This is the compiler's error and warning system. Every pass in the compiler reports problems by pushing a `Diag` value into a list — they never print directly, never panic, and never stop at the first error. They just collect all the problems and keep going.
 
@@ -92,7 +92,7 @@ Same information, but in JSON format. When you pass `--json`, diagnostics come o
 
 ---
 
-## `src/morph.rs` — Speaking Your Language
+## `crates/mimz-core/src/morph.rs` — Speaking Your Language
 
 This file does two things that go together: it figures out **which language to show errors in**, and it attaches **Tamil case suffixes** to names so error messages read naturally.
 
@@ -169,6 +169,13 @@ strict = true
 
 ## `src/project.rs` — Loading Files and Following Imports
 
+`project.rs` is split across the workspace split: the fs-touching functions
+below (`read_source`, `parse_file`, `load_project`) stay in the root shell
+crate at `src/project.rs`, since they do real disk I/O. The pure
+`LoadedFile` struct and `render_diags`/`render_diags_lang` (no fs I/O, just
+rendering) moved to `crates/mimz-core/src/project.rs` — mimz-core has no I/O
+of its own.
+
 This is how the compiler reads your `.mimz` files, normalizes them, runs the lexer/parser, and follows `import` declarations.
 
 ### Safety First: 32 MB Limit
@@ -204,13 +211,13 @@ This is the multi-file version. It uses a queue and a visited set (based on cano
 
 The visited set handles cycles — if file A imports B and B imports A, the second one is silently skipped.
 
-### `render_diags(diags, files)` — Project-Wide Error Rendering
+### `render_diags(diags, files)` — Project-Wide Error Rendering (`crates/mimz-core/src/project.rs`)
 
 For single-file passes, `diag::render` works fine. But the checker and emitter see the whole project, and their spans may point into any loaded file. This function routes each diagnostic to the right file's source text for rendering.
 
 ---
 
-## `src/runner.rs` — The In-Memory Command Engine
+## `crates/mimz-sim/src/runner.rs` — The In-Memory Command Engine
 
 This is what powers the **browser playground** — it runs any `mimz` command against a source _string_ instead of a file. No filesystem, no I/O, no process exits.
 
@@ -249,7 +256,7 @@ It checks the product doesn't exceed `MAX_SWEEP_VECTORS` before allocating, so a
 
 ---
 
-## `src/stdlib.rs` — The Embedded Standard Library
+## `crates/mimz-core/src/stdlib.rs` — The Embedded Standard Library
 
 This file bakes the standard library **directly into the compiler binary** using `include_str!`. No install path, no filesystem dependency — it works in WASM and in any bare-binary distribution.
 

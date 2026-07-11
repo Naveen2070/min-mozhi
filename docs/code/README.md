@@ -1,7 +1,7 @@
 # Code Documentation — How the Compiler Works
 
-> Maintainer docs for `src/`. If you are going to read or change the
-> compiler's code, start here.
+> Maintainer docs for `src/` and `crates/` (mimz-core/mimz-sim/mimz-wasm). If
+> you are going to read or change the compiler's code, start here.
 
 These documents explain **how the code works today** and **why it is
 shaped the way it is** — the things a future contributor cannot get from
@@ -43,6 +43,7 @@ is a bug — fix it the same day (RULES R1).
 | [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning                                                                                                       |
 | [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report                                                                                                    |
 | [`13-tooling.md`](13-tooling.md)                                 | Tooling modules (`explain`, `translate`/`pretty`, `morph`, `sim`, `config`, `version`, `analysis`) + operational commands (`init`/`doctor`/`completions`/`check --watch`) |
+| [`14-hardware-emulation.md`](14-hardware-emulation.md)           | `sim` blocks: `EmulationHost` seam, the LED/speaker/UART peripherals, `--emulate`/`--step`                                                                                |
 
 ## The 60-second version
 
@@ -101,7 +102,8 @@ both under the same `mimz::…` paths as before the split (see
   `sim{}` blocks and driven through `mimz-sim`'s `EmulationHost` trait,
   behind `mimz test --emulate`; feature-gated behind `hw-emulation` and
   never compiled for `wasm32` (lives in the root shell crate, not
-  `mimz-core`/`mimz-sim`, since it touches a terminal/TCP sockets).
+  `mimz-core`/`mimz-sim`, since it touches a terminal/TCP sockets); full
+  writeup in page 14.
 
 Plus a handful of **operational** commands (bin-only, in `src/commands/`, not
 lib modules — they touch the OS, not the pipeline; page 13): `mimz init`

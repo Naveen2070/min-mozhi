@@ -1,4 +1,4 @@
-# 05 — The Verilog Emitter (`src/emit_verilog/`)
+# 05 — The Verilog Emitter (`crates/mimz-core/src/emit_verilog/`)
 
 ASTs + project symbol table → one Verilog-2005 source string.
 
