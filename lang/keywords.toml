@@ -147,6 +147,17 @@ en = "loop"
 tanglish = "suzhal"
 tamil = "சுழல்"
 
+# Element/range loop sugar over repeat/bare loop (Phase 2 gap-analysis
+# item, docs/Ideas/language_plan.md sec 10; design doc
+# docs/superpowers/specs/2026-07-12-foreach-design.local.md). Tanglish/Tamil
+# are PROVISIONAL dev/testing placeholders — ovvondraga/ஒவ்வொன்றாக ("one by
+# one, each") — pending native-speaker review (R9/R11). Maintainer-
+# authorized 2026-07-12 so the four-flavor tooling works now.
+[keywords.foreach]
+en = "foreach"
+tanglish = "ovvondraga"   # PROVISIONAL — pending native review
+tamil = "ஒவ்வொன்றாக"       # PROVISIONAL — pending native review
+
 [keywords.sync]
 en = "sync"
 tanglish = "othisai"
