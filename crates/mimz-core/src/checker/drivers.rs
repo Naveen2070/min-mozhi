@@ -126,12 +126,19 @@ struct Dcx<'a> {
     edges: HashMap<Node, HashSet<Node>>,
     /// Where each driven node was driven (for placing cycle errors).
     node_spans: HashMap<Node, Span>,
-    /// Out ports and regs seen (declaration order), for E0502/E0503.
-    outs: Vec<(&'a Ident, &'a Type)>,
-    regs: Vec<&'a Ident>,
+    /// Out ports and regs seen (declaration order), for E0502/E0503. Owned
+    /// (not `&'a`) — a `ForEach` body reaches these fields through a
+    /// LOWERED (freshly cloned, never `'a`) item list once substitution
+    /// happens (`ast::lower_foreach_item`/`lower_foreach_seq`), so
+    /// `collect_items`/`drive`/`on_block`/etc. below are deliberately NOT
+    /// `'a`-bound either — the same "unnecessarily tied lifetime" fix
+    /// `checker/names.rs`'s `ForEach` arms already applied, made necessary
+    /// here (unlike there) by these two owning fields.
+    outs: Vec<(Ident, Type)>,
+    regs: Vec<Ident>,
     /// Memories seen (declaration order), for the multi-writer check (E0503).
     /// Unlike regs, a memory with zero writers is a valid power-on-init ROM.
-    mems: Vec<&'a Ident>,
+    mems: Vec<Ident>,
     repeat_budget: i128,
 }
 
@@ -216,7 +223,7 @@ impl<'a> Checker<'a> {
     fn collect_items(
         &mut self,
         dcx: &mut Dcx<'a>,
-        items: &'a [ModuleItem],
+        items: &[ModuleItem],
         summaries: &mut HashMap<(usize, String), Summary>,
         in_progress: &mut HashSet<(usize, String)>,
     ) {
@@ -228,17 +235,17 @@ impl<'a> Checker<'a> {
                     ty,
                 } => {
                     if dcx.report && !dcx.outs.iter().any(|(n, _)| n.name == name.name) {
-                        dcx.outs.push((name, ty));
+                        dcx.outs.push((name.clone(), ty.clone()));
                     }
                 }
                 ModuleItem::Reg { name, .. } => {
                     if dcx.report && !dcx.regs.iter().any(|n| n.name == name.name) {
-                        dcx.regs.push(name);
+                        dcx.regs.push(name.clone());
                     }
                 }
                 ModuleItem::Mem { name, .. } => {
                     if dcx.report && !dcx.mems.iter().any(|n| n.name == name.name) {
-                        dcx.mems.push(name);
+                        dcx.mems.push(name.clone());
                     }
                 }
                 ModuleItem::Wire { name, init, .. } => {
@@ -290,6 +297,26 @@ impl<'a> Checker<'a> {
                     };
                     self.collect_items(dcx, branch, summaries, in_progress);
                 }
+                // `foreach` is pure sugar over `repeat`/`loop` (see
+                // `ast::foreach_lower`'s module doc comment) — lower and
+                // recurse into this SAME function. The Range form lowers to
+                // a `ModuleItem::Repeat`, so recursing here re-enters the
+                // `ModuleItem::Repeat` arm above and inherits its budget
+                // check and per-iteration `env` shadow for free; the
+                // Elements form substitutes `var` with `arr[__idx]`
+                // throughout, so `expr_reads` correctly attributes reads of
+                // the bound element to the array signal itself, unlike a
+                // raw (unsubstituted) walk would. (`items` is `Dcx`'s NOT
+                // needing `'a` — see its own doc comment — is what makes
+                // recursing with a freshly lowered, locally-owned `Vec`
+                // legal here, unlike `widths/mod.rs`'s equivalent arms,
+                // which stay `'a`-bound because of `check_expr`/`infer_ty`
+                // in the separate `widths/expr.rs` file.)
+                ModuleItem::ForEach(fe) => {
+                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                        self.collect_items(dcx, &lowered, summaries, in_progress);
+                    }
+                }
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
@@ -304,7 +331,7 @@ impl<'a> Checker<'a> {
     /// A module-level `=` drive: site bookkeeping + E0501-on-wire +
     /// E0505-on-reg + combinational edges (the rhs AND the lhs indices —
     /// a demux select is a real input of the target).
-    fn drive(&mut self, dcx: &mut Dcx<'a>, lhs: &'a LValue, rhs: &'a Expr) {
+    fn drive(&mut self, dcx: &mut Dcx<'a>, lhs: &LValue, rhs: &Expr) {
         let name = &lhs.base.name;
         match dcx.sc.names.get(name) {
             Some(Bind::Out) => {
@@ -373,7 +400,7 @@ impl<'a> Checker<'a> {
     /// `on` body: reg ownership (E0503 bookkeeping) and the `<-`-to-
     /// combinational-signal kind error (E0505). Sequential assignments
     /// create NO combinational edges.
-    fn on_block(&mut self, dcx: &mut Dcx<'a>, block_id: usize, body: &'a [SeqStmt]) {
+    fn on_block(&mut self, dcx: &mut Dcx<'a>, block_id: usize, body: &[SeqStmt]) {
         for s in body {
             match s {
                 SeqStmt::Assign { lhs, .. } => {
@@ -419,6 +446,23 @@ impl<'a> Checker<'a> {
                 SeqStmt::Loop { body, .. } => {
                     self.on_block(dcx, block_id, body);
                 }
+                // Same "raw body" treatment as `SeqStmt::Loop` just above —
+                // `on_block` only inspects ASSIGNMENT-TARGET names
+                // (`lhs.base.name`) for block-ownership bookkeeping; it never
+                // looks at an RHS expression at all (see `SeqStmt::Assign`'s
+                // `{ lhs, .. }` pattern above, which drops `rhs` entirely).
+                // `subst_seq_stmt` (the Elements form's `var` substitution,
+                // see `ast::lower_foreach_seq`) only ever rewrites an RHS —
+                // it always keeps `lhs: lhs.clone()` — so walking the RAW,
+                // unsubstituted `body` here produces identical bookkeeping
+                // to walking a lowered one. This also sidesteps needing a
+                // `module_items` list to resolve the Elements form's array
+                // (`on_block` doesn't have one to hand — see this fn's own
+                // signature), matching `collect_decls`'s identical "declared
+                // once, raw body" ForEach arm in `checker/names.rs`.
+                SeqStmt::ForEach { body, .. } => {
+                    self.on_block(dcx, block_id, body);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
@@ -430,7 +474,7 @@ impl<'a> Checker<'a> {
     fn inst_edges(
         &mut self,
         dcx: &mut Dcx<'a>,
-        inst: &'a Inst,
+        inst: &Inst,
         summaries: &mut HashMap<(usize, String), Summary>,
         in_progress: &mut HashSet<(usize, String)>,
     ) {
@@ -468,7 +512,7 @@ impl<'a> Checker<'a> {
     /// Every combinational read in `e`: wires, outs, INPUTS (terminal
     /// nodes — needed for the summaries), and instance outputs. Regs,
     /// clocks, resets, consts, params break combinational paths.
-    fn expr_reads(&mut self, dcx: &mut Dcx<'a>, e: &'a Expr, out: &mut Vec<Node>) {
+    fn expr_reads(&mut self, dcx: &mut Dcx<'a>, e: &Expr, out: &mut Vec<Node>) {
         match &e.kind {
             ExprKind::Int { .. } | ExprKind::Bool(_) => {}
             ExprKind::Ident(name) => {
@@ -564,7 +608,7 @@ impl<'a> Checker<'a> {
     }
 
     /// The bits a drive's lvalue claims, as precisely as the env allows.
-    fn lvalue_extent(&mut self, dcx: &Dcx<'a>, lv: &'a LValue) -> Extent {
+    fn lvalue_extent(&mut self, dcx: &Dcx<'a>, lv: &LValue) -> Extent {
         let Some((first, second)) = &lv.index else {
             return Extent::Whole;
         };

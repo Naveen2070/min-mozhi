@@ -220,6 +220,24 @@ impl Pretty {
                 self.indent -= 1;
                 self.line("}");
             }
+            FnStmt::ForEach {
+                var, source, body, ..
+            } => {
+                let head = format!(
+                    "{} {} {} {} {{",
+                    self.kw(Kw::Foreach),
+                    var.name,
+                    self.kw(Kw::In),
+                    self.foreach_source(source, ind)
+                );
+                self.line(&head);
+                self.indent += 1;
+                for s in body {
+                    self.fn_stmt(s);
+                }
+                self.indent -= 1;
+                self.line("}");
+            }
             FnStmt::Error(_) => {} // parse-recovery placeholder; never reached on the codegen path
         }
     }
@@ -369,6 +387,7 @@ impl Pretty {
                 self.line(&s);
             }
             ModuleItem::Repeat(r) => self.repeat(r),
+            ModuleItem::ForEach(fe) => self.foreach(fe),
             ModuleItem::SyncLoop(sl) => self.sync_loop(sl),
             ModuleItem::ConstIf {
                 cond, then, els, ..
@@ -457,6 +476,37 @@ impl Pretty {
         self.line(&head);
         self.indent += 1;
         for it in &r.items {
+            self.module_item(it);
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// Renders a `foreach` source clause: `lo..hi` for `Range`, or the bare
+    /// element identifier for `Elements`. Shared by the module-item,
+    /// seq-stmt, and fn-stmt `foreach` printers so the match isn't
+    /// duplicated three times.
+    fn foreach_source(&self, source: &ForEachSource, ind: usize) -> String {
+        match source {
+            ForEachSource::Range { lo, hi } => {
+                format!("{}..{}", self.expr(lo, ind), self.expr(hi, ind))
+            }
+            ForEachSource::Elements(id) => id.name.clone(),
+        }
+    }
+
+    fn foreach(&mut self, fe: &ForEach) {
+        let ind = self.indent;
+        let head = format!(
+            "{} {} {} {} {{",
+            self.kw(Kw::Foreach),
+            fe.var.name,
+            self.kw(Kw::In),
+            self.foreach_source(&fe.source, ind)
+        );
+        self.line(&head);
+        self.indent += 1;
+        for it in &fe.items {
             self.module_item(it);
         }
         self.indent -= 1;
@@ -565,6 +615,24 @@ impl Pretty {
                 let lo_s = self.expr(lo, ind);
                 let hi_s = self.expr(hi, ind);
                 let head = format!("{kw} {}: {lo_s}..{hi_s} {{", var.name);
+                self.line(&head);
+                self.indent += 1;
+                for s in body {
+                    self.seq_stmt(s);
+                }
+                self.indent -= 1;
+                self.line("}");
+            }
+            SeqStmt::ForEach {
+                var, source, body, ..
+            } => {
+                let head = format!(
+                    "{} {} {} {} {{",
+                    self.kw(Kw::Foreach),
+                    var.name,
+                    self.kw(Kw::In),
+                    self.foreach_source(source, ind)
+                );
                 self.line(&head);
                 self.indent += 1;
                 for s in body {
@@ -1030,6 +1098,35 @@ mod tests {
             .expect("sync loop item round-trips");
         assert_eq!(sl.name.name, "find_first");
         assert_eq!(sl.body.len(), 1);
+    }
+
+    #[test]
+    fn foreach_round_trips_through_pretty_print() {
+        let src = "module M {\n  in e: bits[8]\n  out led: bits[8]\n  foreach i in 0..4 {\n    led[i] = e[i]\n  }\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(printed.contains("foreach"), "got:\n{printed}");
+        assert!(!printed.contains("repeat"), "got:\n{printed}");
+        // Confirm it re-parses as `ForEach`, not its lowered `Repeat` form.
+        let toks2 = crate::lexer::lex(&printed).unwrap();
+        let file2 = crate::parser::parse(toks2).expect("pretty-printed foreach re-parses");
+        let crate::ast::TopItem::Module(m) = &file2.items[0] else {
+            panic!("expected module")
+        };
+        let fe = m
+            .items
+            .iter()
+            .find_map(|it| match it {
+                crate::ast::ModuleItem::ForEach(fe) => Some(fe),
+                _ => None,
+            })
+            .expect("foreach item round-trips as ForEach, not Repeat");
+        assert_eq!(fe.var.name, "i");
     }
 
     #[test]

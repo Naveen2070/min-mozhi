@@ -227,6 +227,70 @@ impl Parser {
         }))
     }
 
+    /// `foreachBlock = "foreach" ident "in" foreachSource "{" { moduleItem } "}"`
+    /// `foreachSource = expr [".." expr]` — `expr ".." expr` is the Range
+    /// form (identical shape to `repeat_block`'s bound clause); a lone `expr`
+    /// is the Elements form and MUST be a bare identifier (checker-enforced
+    /// E0417 if it isn't an array/mem-typed declaration — the parser itself
+    /// only enforces "must be `ExprKind::Ident`", a fast parse-time reject
+    /// for the common case of writing e.g. `foreach x in a + b {}`).
+    pub(super) fn foreach_block(&mut self) -> Option<ModuleItem> {
+        let start = self.bump().span; // foreach
+        let var = self.ident("a foreach loop variable name")?;
+        self.expect_kw(
+            Kw::In,
+            "`in` after the foreach variable, e.g. `foreach i in 0..8`",
+        )?;
+        let first = self.expr()?;
+        let source = if self.at(&TokKind::DotDot) {
+            self.bump(); // ..
+            let hi = self.expr()?;
+            ForEachSource::Range { lo: first, hi }
+        } else {
+            let ExprKind::Ident(name) = first.kind else {
+                self.error(
+                    first.span,
+                    "E1101",
+                    "foreach's element-form source must be a plain name (e.g. `foreach x in my_array`), not an expression",
+                );
+                return None;
+            };
+            ForEachSource::Elements(Ident {
+                name,
+                span: first.span,
+            })
+        };
+        self.expect(TokKind::LBrace, "`{` to start the foreach body")?;
+        let mut items = Vec::new();
+        let end = loop {
+            self.skip_newlines();
+            match self.peek_kind() {
+                TokKind::RBrace => break self.bump().span,
+                TokKind::Eof => {
+                    let span = self.peek().span;
+                    self.error(span, "E1101", "`foreach` block is missing its closing `}`");
+                    break span;
+                }
+                _ => {
+                    let start = self.peek().span;
+                    match self.module_item() {
+                        Some(i) => items.push(i),
+                        None => {
+                            self.sync_to_newline();
+                            items.push(ModuleItem::Error(self.span_since(start)));
+                        }
+                    }
+                }
+            }
+        };
+        Some(ModuleItem::ForEach(ForEach {
+            var,
+            source,
+            items,
+            span: start.join(end),
+        }))
+    }
+
     /// `syncLoop = "sync" "loop" ident "on" ("rise"|"fall") "(" ident ")"
     ///   "(" ident ":" expr ".." expr ")" "->" ident ":" type "=" expr seqBlock`
     /// — the `sync`/`loop` head is consumed by the caller in `module_item`

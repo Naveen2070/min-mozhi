@@ -260,8 +260,8 @@ impl Emitter<'_> {
 
         for item in flat.iter() {
             if let ModuleItem::On(on) = item {
-                let mut assigned: Vec<&str> = Vec::new();
-                collect_assigned(&on.body, &mut assigned);
+                let mut assigned: Vec<String> = Vec::new();
+                collect_assigned(&on.body, &mut assigned, &flat);
 
                 let edge = if matches!(on.edge, crate::ast::Edge::Fall) {
                     "negedge"
@@ -277,16 +277,16 @@ impl Emitter<'_> {
                 if let Some(rst) = &reset_name {
                     self.out.push_str(&format!("        if ({rst}) begin\n"));
                     for r in &assigned {
-                        if let Some(reset_val) = regs.get(r) {
+                        if let Some(reset_val) = regs.get(r.as_str()) {
                             let v = self.expr(reset_val);
                             self.out.push_str(&format!("            {r} <= {v};\n"));
                         }
                     }
                     self.out.push_str("        end else begin\n");
-                    self.seq_stmts(&on.body, 2);
+                    self.seq_stmts(&on.body, 2, &flat);
                     self.out.push_str("        end\n");
                 } else {
-                    self.seq_stmts(&on.body, 1);
+                    self.seq_stmts(&on.body, 1, &flat);
                 }
                 self.out.push_str("    end\n");
             }
@@ -379,7 +379,7 @@ impl Emitter<'_> {
                 arrays.insert(param.name.name.clone(), (self.width(elem), n));
             }
         }
-        for local in fn_all_locals(&decl.stmts) {
+        for local in fn_all_locals(&decl.stmts, &decl.params, &self.env) {
             if let ExprKind::ArrayLit(elems) = &local.value.kind {
                 // Element width comes from the checker's width pass, which sets
                 // `inferred_width` to the array's ELEMENT width for an
@@ -420,7 +420,7 @@ impl Emitter<'_> {
                 }
             }
         }
-        for local in fn_all_locals(&decl.stmts) {
+        for local in fn_all_locals(&decl.stmts, &decl.params, &self.env) {
             // An array-typed `let` is not one sized `reg` — it lowers to N
             // scalar `reg`s named `<name>_<i>`, the same convention an array
             // param uses (built into `arrays` above).
@@ -444,7 +444,14 @@ impl Emitter<'_> {
         s.push_str("        begin\n");
         let tail = self.expr_subst(&decl.tail, &HashMap::new(), &arrays);
         let tail_code = format!("            {} = {};\n", decl.name.name, tail);
-        let body_code = self.emit_fn_stmts(&decl.stmts, &tail_code, &decl.name.name, 3, &arrays);
+        let body_code = self.emit_fn_stmts(
+            &decl.stmts,
+            &tail_code,
+            &decl.name.name,
+            3,
+            &arrays,
+            &decl.params,
+        );
         s.push_str(&body_code);
         s.push_str("        end\n");
         s.push_str("    endfunction\n");
@@ -460,6 +467,7 @@ impl Emitter<'_> {
     /// branch that falls through (ends without a `return`) embeds `rest`
     /// as ITS continuation, so the code after the `if` only runs on the
     /// paths that didn't already return.
+    #[allow(clippy::too_many_arguments)]
     fn emit_fn_stmts(
         &mut self,
         stmts: &[FnStmt],
@@ -467,6 +475,7 @@ impl Emitter<'_> {
         fname: &str,
         indent: usize,
         arrays: &ArrayScope,
+        params: &[FnParam],
     ) -> String {
         let pad = "    ".repeat(indent);
         match stmts.split_first() {
@@ -485,7 +494,7 @@ impl Emitter<'_> {
                     let v = self.expr_subst(&l.value, &HashMap::new(), arrays);
                     out.push_str(&format!("{pad}{} = {v};\n", l.name.name));
                 }
-                out.push_str(&self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays));
+                out.push_str(&self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays, params));
                 out
             }
             Some((FnStmt::Return(e), _)) => {
@@ -498,10 +507,10 @@ impl Emitter<'_> {
                 format!("{pad}{fname} = {v};\n")
             }
             Some((FnStmt::If { cond, then, els }, tail_stmts)) => {
-                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays);
-                let then_code = self.emit_fn_stmts(then, &cont, fname, indent + 1, arrays);
+                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays, params);
+                let then_code = self.emit_fn_stmts(then, &cont, fname, indent + 1, arrays, params);
                 let else_code = match els {
-                    Some(els) => self.emit_fn_stmts(els, &cont, fname, indent + 1, arrays),
+                    Some(els) => self.emit_fn_stmts(els, &cont, fname, indent + 1, arrays, params),
                     None => cont.clone(),
                 };
                 let c = self.expr_subst(cond, &HashMap::new(), arrays);
@@ -519,7 +528,7 @@ impl Emitter<'_> {
                 },
                 tail_stmts,
             )) => {
-                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays);
+                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays, params);
                 let (Some(lo_v), Some(hi_v)) = (self.eval_const(lo), self.eval_const(hi)) else {
                     return cont;
                 };
@@ -537,10 +546,35 @@ impl Emitter<'_> {
                     return cont;
                 }
                 self.repeat_budget -= count;
-                self.emit_fn_loop_unroll(&var.name, lo_v, hi_v, body, &cont, fname, indent, arrays)
+                self.emit_fn_loop_unroll(
+                    &var.name, lo_v, hi_v, body, &cont, fname, indent, arrays, params,
+                )
+            }
+            // `foreach` is pure sugar over `loop` — lower on the spot and
+            // splice the result in as this statement's own continuation
+            // chain: `cont` is "whatever comes after the foreach" (same
+            // shape `If`'s `then`/`els` branches thread through), and the
+            // lowered `[Loop]` re-derives its own per-iteration flow when
+            // recursed into with `cont` as ITS `rest`.
+            Some((
+                FnStmt::ForEach {
+                    var,
+                    source,
+                    body,
+                    span,
+                },
+                tail_stmts,
+            )) => {
+                let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays, params);
+                match crate::ast::lower_foreach_fn(var, source, body, *span, params) {
+                    Some(lowered) => {
+                        self.emit_fn_stmts(&lowered, &cont, fname, indent, arrays, params)
+                    }
+                    None => cont,
+                }
             }
             Some((FnStmt::Error(_), tail_stmts)) => {
-                self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays)
+                self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays, params)
             }
         }
     }
@@ -564,14 +598,15 @@ impl Emitter<'_> {
         fname: &str,
         indent: usize,
         arrays: &ArrayScope,
+        params: &[FnParam],
     ) -> String {
         if i >= hi {
             return rest.to_string();
         }
         let shadowed = self.env.insert(var.to_string(), i);
         let inner_rest =
-            self.emit_fn_loop_unroll(var, i + 1, hi, body, rest, fname, indent, arrays);
-        let out = self.emit_fn_stmts(body, &inner_rest, fname, indent, arrays);
+            self.emit_fn_loop_unroll(var, i + 1, hi, body, rest, fname, indent, arrays, params);
+        let out = self.emit_fn_stmts(body, &inner_rest, fname, indent, arrays, params);
         match shadowed {
             Some(v) => self.env.insert(var.to_string(), v),
             None => self.env.remove(var),
@@ -599,6 +634,14 @@ impl Emitter<'_> {
                     out.extend(self.flatten_items(branch));
                 }
                 ModuleItem::SyncLoop(sl) => out.extend(crate::ast::lower_sync_loop(sl)),
+                ModuleItem::ForEach(fe) => {
+                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                        out.extend(lowered);
+                    }
+                    // `None` is unreachable here — emit only ever runs on
+                    // already-checked programs, where E0417 would have
+                    // failed the build first.
+                }
                 _ => out.push(item.clone()),
             }
         }
@@ -638,6 +681,17 @@ impl Emitter<'_> {
             match item {
                 ModuleItem::Inst(inst) => self.instance(inst),
                 ModuleItem::Repeat(r) => self.unroll(r, Self::emit_instances),
+                // Unlike `sync loop` below, `foreach` is pure sugar over
+                // `repeat` (see `no_decls_in_repeat`, checker/names.rs) and
+                // its body may legally contain an `inst` — lower and recurse
+                // the same way `flatten_items`/`emit_drives` do, or an
+                // instance array written with `foreach` would silently never
+                // get instantiated.
+                ModuleItem::ForEach(fe) => {
+                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                        self.emit_instances(&lowered);
+                    }
+                }
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
@@ -746,6 +800,11 @@ impl Emitter<'_> {
                 ModuleItem::SyncLoop(sl) => {
                     let lowered = crate::ast::lower_sync_loop(sl);
                     self.emit_drives(&lowered);
+                }
+                ModuleItem::ForEach(fe) => {
+                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                        self.emit_drives(&lowered);
+                    }
                 }
                 ModuleItem::ConstIf {
                     cond, then, els, ..
@@ -908,8 +967,11 @@ impl Emitter<'_> {
 
     /// Emit the body of an always-block. `depth` is the nesting level
     /// inside the block (0 = directly under `always`), used for
-    /// indentation only.
-    fn seq_stmts(&mut self, stmts: &[SeqStmt], depth: usize) {
+    /// indentation only. `module_items` is the enclosing module's item
+    /// list — needed only to resolve a `foreach` Elements-form source
+    /// (`array_like_len`); threaded through so the `ForEach` arm below can
+    /// lower on the spot, same as `emit_drives`'s `SyncLoop`/`ForEach` arms.
+    fn seq_stmts(&mut self, stmts: &[SeqStmt], depth: usize, module_items: &[ModuleItem]) {
         let pad = "    ".repeat(depth + 1);
         // D-DEFAULT-3: defaults first so conditional assigns override (NB last-wins)
         for s in stmts {
@@ -928,10 +990,10 @@ impl Emitter<'_> {
                 SeqStmt::If { cond, then, els } => {
                     let c = self.expr(cond);
                     self.out.push_str(&format!("{pad}if ({c}) begin\n"));
-                    self.seq_stmts(then, depth + 1);
+                    self.seq_stmts(then, depth + 1, module_items);
                     if let Some(els) = els {
                         self.out.push_str(&format!("{pad}end else begin\n"));
-                        self.seq_stmts(els, depth + 1);
+                        self.seq_stmts(els, depth + 1, module_items);
                     }
                     self.out.push_str(&format!("{pad}end\n"));
                 }
@@ -968,12 +1030,28 @@ impl Emitter<'_> {
                         // a `loop` introduces no new Verilog block — its body
                         // is a literal textual duplicate of hand-written code,
                         // not a nested scope.
-                        self.seq_stmts(body, depth);
+                        self.seq_stmts(body, depth, module_items);
                         match shadowed {
                             Some(v) => self.env.insert(var.name.clone(), v),
                             None => self.env.remove(&var.name),
                         };
                         i += 1;
+                    }
+                }
+                // `foreach` is pure sugar over `loop` — lower on the spot
+                // and recurse at the SAME `depth` (the lowered `Loop` arm
+                // above re-derives its own per-iteration `depth`, same as
+                // any hand-written `loop` would).
+                SeqStmt::ForEach {
+                    var,
+                    source,
+                    body,
+                    span,
+                } => {
+                    if let Some(lowered) =
+                        crate::ast::lower_foreach_seq(var, source, body, *span, module_items)
+                    {
+                        self.seq_stmts(&lowered, depth, module_items);
                     }
                 }
                 // Unreachable on the codegen path: `parse` rejects a tree with
@@ -1246,53 +1324,118 @@ fn substitute_expr(e: &Expr, env: &consteval::Env) -> Expr {
 /// generated reset branch: only the regs an `on` block writes are reset
 /// in its always-block.
 ///
+/// Owned `String`s (not `&str`) because a `foreach` arm lowers into a
+/// temporary `Vec<SeqStmt>` that doesn't outlive this call — same reason
+/// `fn_all_locals` returns owned `LocalLet`s instead of borrowing. Cheap:
+/// `on`-block bodies are small (see the O(n²) note below).
+///
 /// NOTE(deferred): O(n²) — `Vec::contains` on every push. Acceptable because
 /// on-blocks are small in practice (typically <10 statements). If on-blocks
 /// ever grow large, switch to a `HashSet` or `IndexSet`.
-fn collect_assigned<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a str>) {
+fn collect_assigned(stmts: &[SeqStmt], out: &mut Vec<String>, module_items: &[ModuleItem]) {
     for s in stmts {
         match s {
             SeqStmt::Assign { lhs, .. } => {
-                if !out.contains(&lhs.base.name.as_str()) {
-                    out.push(&lhs.base.name);
+                if !out.iter().any(|n| n == &lhs.base.name) {
+                    out.push(lhs.base.name.clone());
                 }
             }
             SeqStmt::If { then, els, .. } => {
-                collect_assigned(then, out);
+                collect_assigned(then, out, module_items);
                 if let Some(els) = els {
-                    collect_assigned(els, out);
+                    collect_assigned(els, out, module_items);
                 }
             }
             SeqStmt::Default { name, .. } => {
-                if !out.contains(&name.name.as_str()) {
-                    out.push(&name.name);
+                if !out.iter().any(|n| n == &name.name) {
+                    out.push(name.name.clone());
                 }
             }
             SeqStmt::Loop { body, .. } => {
-                collect_assigned(body, out);
+                collect_assigned(body, out, module_items);
+            }
+            SeqStmt::ForEach {
+                var,
+                source,
+                body,
+                span,
+            } => {
+                if let Some(lowered) =
+                    crate::ast::lower_foreach_seq(var, source, body, *span, module_items)
+                {
+                    collect_assigned(&lowered, out, module_items);
+                }
             }
             SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
 }
 
+/// Raw bit-width of a scalar element `Type` (`Bit`/`Bits`/`Signed` — the
+/// only shapes an array/mem ELEMENT type can be, per the checker). Used to
+/// backfill `LocalLet::inferred_width` for the synthetic `var` binding
+/// `ast::lower_foreach_fn`'s Elements form produces: the checker validates
+/// that binding's uses via `cx.sigs` injection instead of ever
+/// constructing this node (see `checker/widths/mod.rs`'s `FnStmt::ForEach`
+/// arm doc comment), so nothing else ever sets this Cell for it.
+fn elem_width(ty: &Type, env: &Env) -> u32 {
+    match ty {
+        Type::Bit => 1,
+        Type::Bits(e) | Type::Signed(e) => consteval::eval(e, env)
+            .expect("checker already validated this array's element width")
+            as u32,
+        _ => 1, // unreachable: array/mem elements are never Array/Bundle/Named
+    }
+}
+
 /// Collect every `Let` binding across a `fn`-body statement list, recursing
 /// into BOTH arms of nested `if`s — Verilog-2005 `function` declarations
 /// must all sit before `begin`, regardless of which branch actually assigns
-/// them at runtime.
-fn fn_all_locals(stmts: &[FnStmt]) -> Vec<&LocalLet> {
+/// them at runtime. `params` and `env` are needed only by the `ForEach`
+/// arm: `params` to lower an Elements-form source (`ast::lower_foreach_fn`
+/// needs the enclosing `fn`'s own array-typed parameters — a `fn` is
+/// always project-top-level, so there's no module to resolve against),
+/// `env` to backfill the synthesized binding's `inferred_width` via
+/// `elem_width`. Returns owned `LocalLet`s (not `&LocalLet`) because a
+/// lowered `foreach` produces a temporary `Vec<FnStmt>` that doesn't
+/// outlive this call — same reason `collect_assigned` returns owned
+/// `String`s instead of borrowing.
+fn fn_all_locals(stmts: &[FnStmt], params: &[FnParam], env: &Env) -> Vec<LocalLet> {
     let mut out = Vec::new();
     for stmt in stmts {
         match stmt {
-            FnStmt::Let(l) => out.push(l),
+            FnStmt::Let(l) => out.push(l.clone()),
             FnStmt::If { then, els, .. } => {
-                out.extend(fn_all_locals(then));
+                out.extend(fn_all_locals(then, params, env));
                 if let Some(els) = els {
-                    out.extend(fn_all_locals(els));
+                    out.extend(fn_all_locals(els, params, env));
                 }
             }
             FnStmt::Loop { body, .. } => {
-                out.extend(fn_all_locals(body));
+                out.extend(fn_all_locals(body, params, env));
+            }
+            FnStmt::ForEach {
+                var,
+                source,
+                body,
+                span,
+            } => {
+                if let Some(lowered) =
+                    crate::ast::lower_foreach_fn(var, source, body, *span, params)
+                {
+                    // The Elements form's synthesized `var` binding (see
+                    // `lower_foreach_fn`) never gets its `inferred_width`
+                    // set by the checker — backfill it here from the
+                    // array's element type before it's collected below.
+                    if let ForEachSource::Elements(arr) = source
+                        && let Some((elem_ty, _)) = crate::ast::array_like_len_fn(&arr.name, params)
+                        && let FnStmt::Loop { body: inner, .. } = &lowered[0]
+                        && let Some(FnStmt::Let(synth)) = inner.first()
+                    {
+                        synth.inferred_width.set(Some(elem_width(&elem_ty, env)));
+                    }
+                    out.extend(fn_all_locals(&lowered, params, env));
+                }
             }
             FnStmt::Return(_) | FnStmt::Error(_) => {}
         }

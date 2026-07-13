@@ -92,8 +92,9 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
 - [x] **Controlled loop `suzhal`/`சுழல்`** (gap section 10) — bounded/FSM-lowered
       iteration distinct from `repeat`; static/provable trip-count bound is the
       load-bearing rule. Both spellings already reserved — **✅ DONE 2026-07-05 (spec v0.2.22)**
-- [ ] **`foreach`** (gap section 10 — NEW) — sugar over `repeat`/`suzhal` once
+- [x] **`foreach`** (gap section 10 — NEW) — sugar over `repeat`/`suzhal` once
       array/`mem` types exist
+      **✅ DONE 2026-07-12** — `examples/*/foreach_sum.mimz`, `foreach_fill.mimz`
 - [x] **Tagged unions with payloads** (2.7) — FIRST of the original Tier-3 line:
       enums + match exist; payload = tag bits + max-payload bits; gives `Result`
       (4.2) for free

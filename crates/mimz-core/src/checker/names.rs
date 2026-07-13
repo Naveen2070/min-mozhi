@@ -16,8 +16,8 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    BundleDecl, Conn, Dir, EnumDecl, Expr, ExprKind, FnStmt, FuncDecl, Inst, LValue, Module,
-    ModuleItem, NamedArg, Pattern, SeqStmt, TestDecl, TopItem, Type,
+    BundleDecl, Conn, Dir, EnumDecl, Expr, ExprKind, FnParam, FnStmt, ForEachSource, FuncDecl,
+    Inst, LValue, Module, ModuleItem, NamedArg, Pattern, SeqStmt, TestDecl, TopItem, Type,
 };
 
 use super::Checker;
@@ -175,6 +175,13 @@ impl<'a> Checker<'a> {
                 ModuleItem::Enum(e) => self.declare(file, sc, &e.name, Bind::Enum(e)),
                 ModuleItem::Inst(i) => self.declare(file, sc, &i.name, Bind::Inst(i)),
                 ModuleItem::Repeat(r) => self.collect_decls(file, sc, env, &r.items),
+                // Same "declared once, raw body" treatment as `Repeat` above —
+                // this recurses into the RAW (unlowered) `fe.items`, not the
+                // lowered `Repeat`, mirroring `Repeat`'s own comment: whatever
+                // this foreach body's items directly declare gets picked up
+                // once, without per-iteration substitution (substitution only
+                // matters to elaboration/width checks, not to name collection).
+                ModuleItem::ForEach(fe) => self.collect_decls(file, sc, env, &fe.items),
                 ModuleItem::SyncLoop(sl) => {
                     // A sync loop namespaces 4 generated signals off its own
                     // name — declare them here so the existing E0003 check
@@ -231,7 +238,16 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn walk_items(&mut self, file: usize, sc: &Scope<'a>, env: &mut Env, items: &'a [ModuleItem]) {
+    // `items` deliberately has NO `'a` bound (unlike `collect_decls`'s
+    // `items: &'a [ModuleItem]`) — this fn only ever reads through `items`
+    // for the duration of this call (via `ty`/`expr`/`lvalue`/`check_inst`,
+    // none of which stash anything long-lived either); the only thing that
+    // genuinely needs `'a` is `Scope<'a>` itself (`Bind::Inst`/`Bind::Enum`),
+    // built once by `collect_decls` over the REAL AST and reused by later
+    // passes. That independence is what lets a `ForEach` arm recurse here
+    // with a freshly lowered, locally-owned `Vec<ModuleItem>` (see that arm
+    // below) without needing to leak it to manufacture a fake `'a`.
+    fn walk_items(&mut self, file: usize, sc: &Scope<'a>, env: &mut Env, items: &[ModuleItem]) {
         for item in items {
             match item {
                 ModuleItem::Port { ty, name, .. } => {
@@ -289,7 +305,7 @@ impl<'a> Checker<'a> {
                                 );
                             }
                     }
-                    self.seq_stmts(file, sc, env, &on.body);
+                    self.seq_stmts(file, sc, env, items, &on.body);
                 }
                 ModuleItem::Drive { lhs, rhs } => {
                     self.lvalue(file, sc, env, lhs);
@@ -309,6 +325,42 @@ impl<'a> Checker<'a> {
                         Some(v) => env.insert(r.var.name.clone(), v),
                         None => env.remove(&r.var.name),
                     };
+                }
+                // `foreach` is pure sugar over `repeat`/`loop` — the ONLY
+                // checker logic it genuinely owns is validating an
+                // Elements-form source resolves to an array/mem type
+                // (E0417); everything else (bound const-ness, name
+                // resolution, `no_decls_in_repeat`, ...) is inherited for
+                // free by lowering to `Repeat` and recursing into the SAME
+                // `walk_items` this arm itself lives in — hitting the
+                // `ModuleItem::Repeat` arm above on the next pass.
+                ModuleItem::ForEach(fe) => {
+                    if let ForEachSource::Elements(arr) = &fe.source
+                        && crate::ast::array_like_len(&arr.name, items).is_none()
+                    {
+                        self.err(
+                            file,
+                            arr.span,
+                            "E0417",
+                            format!("`{}` is not an array or mem type", arr.name),
+                            format!(
+                                "`foreach {} in {}` needs `{}` to be a declared array/mem \
+                                 signal — use `foreach {} in lo..hi` if you meant a range \
+                                 instead",
+                                fe.var.name, arr.name, arr.name, fe.var.name
+                            ),
+                        );
+                        continue;
+                    }
+                    let Some(lowered) = crate::ast::lower_foreach_item(fe, items) else {
+                        continue; // E0417 already pushed above
+                    };
+                    // `lowered` is a fresh owned `Vec` (a clone of `fe.items`
+                    // with `fe.var` substituted), not part of the `'a` AST
+                    // arena — but `walk_items` doesn't need `'a` for `items`
+                    // (see the fn's own doc comment), so this borrows fine
+                    // for just the duration of this recursive call.
+                    self.walk_items(file, sc, env, &lowered);
                 }
                 ModuleItem::SyncLoop(sl) => {
                     match sc.names.get(&sl.clock.name) {
@@ -352,7 +404,7 @@ impl<'a> Checker<'a> {
                         names: sc.names.clone(),
                     };
                     body_sc.names.insert(sl.result_name.name.clone(), Bind::Reg);
-                    self.seq_stmts(file, &body_sc, env, &sl.body);
+                    self.seq_stmts(file, &body_sc, env, items, &sl.body);
                     match shadowed_var {
                         Some(v) => env.insert(sl.var.name.clone(), v),
                         None => env.remove(&sl.var.name),
@@ -399,7 +451,15 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn seq_stmts(&mut self, file: usize, sc: &Scope<'a>, env: &mut Env, stmts: &'a [SeqStmt]) {
+    // Same "no `'a` needed" reasoning as `walk_items` — see its doc comment.
+    fn seq_stmts(
+        &mut self,
+        file: usize,
+        sc: &Scope<'a>,
+        env: &mut Env,
+        module_items: &[ModuleItem],
+        stmts: &[SeqStmt],
+    ) {
         for s in stmts {
             match s {
                 SeqStmt::Assign { lhs, rhs } => {
@@ -408,9 +468,9 @@ impl<'a> Checker<'a> {
                 }
                 SeqStmt::If { cond, then, els } => {
                     self.expr(file, sc, env, cond);
-                    self.seq_stmts(file, sc, env, then);
+                    self.seq_stmts(file, sc, env, module_items, then);
                     if let Some(els) = els {
-                        self.seq_stmts(file, sc, env, els);
+                        self.seq_stmts(file, sc, env, module_items, els);
                     }
                 }
                 SeqStmt::Default { name, val, span } => {
@@ -442,11 +502,49 @@ impl<'a> Checker<'a> {
                     // (per-iteration values matter only to elaboration, not name
                     // resolution).
                     let shadowed = env.insert(var.name.clone(), lo_val.unwrap_or(0));
-                    self.seq_stmts(file, sc, env, body);
+                    self.seq_stmts(file, sc, env, module_items, body);
                     match shadowed {
                         Some(v) => env.insert(var.name.clone(), v),
                         None => env.remove(&var.name),
                     };
+                }
+                // Same "lower to `Loop`, recurse into the same fn" delegation
+                // as `ModuleItem::ForEach` above — see that arm's comment.
+                // `SeqStmt` has no local-binding statement, so the Elements
+                // form substitutes `var` throughout `body` instead of
+                // introducing a new binding (see `lower_foreach_seq`'s doc
+                // comment) — no synthesized declaration, so (unlike the
+                // `ModuleItem` form) there's no `no_decls_in_repeat`-style
+                // concern here.
+                SeqStmt::ForEach {
+                    var,
+                    source,
+                    body,
+                    span,
+                } => {
+                    if let ForEachSource::Elements(arr) = source
+                        && crate::ast::array_like_len(&arr.name, module_items).is_none()
+                    {
+                        self.err(
+                            file,
+                            arr.span,
+                            "E0417",
+                            format!("`{}` is not an array or mem type", arr.name),
+                            format!(
+                                "`foreach {} in {}` needs `{}` to be a declared array/mem \
+                                 signal — use `foreach {} in lo..hi` if you meant a range \
+                                 instead",
+                                var.name, arr.name, arr.name, var.name
+                            ),
+                        );
+                        continue;
+                    }
+                    let Some(lowered) =
+                        crate::ast::lower_foreach_seq(var, source, body, *span, module_items)
+                    else {
+                        continue; // E0417 already pushed above
+                    };
+                    self.seq_stmts(file, sc, env, module_items, &lowered);
                 }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
@@ -460,12 +558,13 @@ impl<'a> Checker<'a> {
     /// inside. Reports each offending item at its own span (the immediate
     /// level only; nested `repeat`s are checked when the walk reaches
     /// them).
-    fn no_decls_in_repeat(&mut self, file: usize, items: &'a [ModuleItem]) {
+    fn no_decls_in_repeat(&mut self, file: usize, items: &[ModuleItem]) {
         for item in items {
             let (span, what) = match item {
                 ModuleItem::Drive { .. }
                 | ModuleItem::Inst(_)
                 | ModuleItem::Repeat(_)
+                | ModuleItem::ForEach(_)
                 | ModuleItem::SyncLoop(_)
                 | ModuleItem::ConstIf { .. }
                 | ModuleItem::Error(_) => continue,
@@ -505,7 +604,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn ty(&mut self, file: usize, sc: &Scope<'a>, env: &Env, ty: &'a Type) {
+    fn ty(&mut self, file: usize, sc: &Scope<'a>, env: &Env, ty: &Type) {
         match ty {
             Type::Bit => {}
             Type::Bits(w) | Type::Signed(w) => self.expr(file, sc, env, w),
@@ -673,7 +772,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn check_inst(&mut self, file: usize, sc: &Scope<'a>, env: &Env, inst: &'a Inst) {
+    fn check_inst(&mut self, file: usize, sc: &Scope<'a>, env: &Env, inst: &Inst) {
         if let Some(idx) = &inst.index {
             self.expr(file, sc, env, idx);
         }
@@ -838,7 +937,7 @@ impl<'a> Checker<'a> {
         // they reference the module's ports, which needs port typing.
     }
 
-    fn lvalue(&mut self, file: usize, sc: &Scope<'a>, env: &Env, lv: &'a LValue) {
+    fn lvalue(&mut self, file: usize, sc: &Scope<'a>, env: &Env, lv: &LValue) {
         match sc.names.get(&lv.base.name) {
             Some(Bind::Out | Bind::Wire | Bind::Reg) => {}
             Some(Bind::Mem) => {
@@ -891,7 +990,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn expr(&mut self, file: usize, sc: &Scope<'a>, env: &Env, e: &'a Expr) {
+    fn expr(&mut self, file: usize, sc: &Scope<'a>, env: &Env, e: &Expr) {
         match &e.kind {
             ExprKind::Int { .. } | ExprKind::Bool(_) => {}
             ExprKind::Ident(name) => {
@@ -1294,7 +1393,13 @@ impl<'a> Checker<'a> {
             sc.names.insert(param.name.name.clone(), Bind::Param);
         }
         self.ty(file, &sc, &env, &func.ret);
-        self.check_fn_stmt_names(file, &mut sc, &mut env, &func.stmts);
+        // `fn` declarations are project-top-level, not nested in a module
+        // (see `resolve_names`'s `TopItem::Func` arm) — there is no
+        // enclosing module item list to resolve an Elements-form `foreach`
+        // source against. The only legal source is one of the `fn`'s own
+        // array-typed params, resolved via `array_like_len_fn` inside
+        // `check_fn_stmt_names` (see `FnStmt::ForEach` below).
+        self.check_fn_stmt_names(file, &mut sc, &mut env, &func.params, &func.stmts);
         self.expr(file, &sc, &env, &func.tail);
     }
 
@@ -1312,12 +1417,14 @@ impl<'a> Checker<'a> {
     /// variant, so there was no such precedent, and letting a branch-local
     /// name leak out was a genuine soundness gap, not a stylistic choice —
     /// see the final whole-branch review that found it.)
+    // Same "no `'a` needed" reasoning as `walk_items` — see its doc comment.
     fn check_fn_stmt_names(
         &mut self,
         file: usize,
         sc: &mut Scope<'a>,
         env: &mut Env,
-        stmts: &'a [FnStmt],
+        params: &[FnParam],
+        stmts: &[FnStmt],
     ) {
         for stmt in stmts {
             match stmt {
@@ -1330,12 +1437,12 @@ impl<'a> Checker<'a> {
                     let mut then_sc = Scope {
                         names: sc.names.clone(),
                     };
-                    self.check_fn_stmt_names(file, &mut then_sc, env, then);
+                    self.check_fn_stmt_names(file, &mut then_sc, env, params, then);
                     if let Some(els) = els {
                         let mut els_sc = Scope {
                             names: sc.names.clone(),
                         };
-                        self.check_fn_stmt_names(file, &mut els_sc, env, els);
+                        self.check_fn_stmt_names(file, &mut els_sc, env, params, els);
                     }
                 }
                 FnStmt::Return(expr) => {
@@ -1356,11 +1463,52 @@ impl<'a> Checker<'a> {
                     let mut loop_sc = Scope {
                         names: sc.names.clone(),
                     };
-                    self.check_fn_stmt_names(file, &mut loop_sc, env, body);
+                    self.check_fn_stmt_names(file, &mut loop_sc, env, params, body);
                     match shadowed {
                         Some(v) => env.insert(var.name.clone(), v),
                         None => env.remove(&var.name),
                     };
+                }
+                // Same "lower to `Loop`, recurse into the same fn" delegation
+                // as `ModuleItem::ForEach`/`SeqStmt::ForEach` above. Unlike
+                // `SeqStmt`, `FnStmt` has `Let` — the Elements form binds
+                // `var` with a real `let` (see `lower_foreach_fn`'s doc
+                // comment), so no substitution is needed, and (like the
+                // `ModuleItem` form) there IS a synthesized declaration —
+                // but `check_fn_stmt_names` has no `no_decls_in_repeat`-style
+                // restriction, so that's not a concern here. `params` is the
+                // enclosing `fn`'s own parameter list (a `fn` is always
+                // project-top-level, so there is no sibling module item list
+                // to resolve against — see `array_like_len_fn`).
+                FnStmt::ForEach {
+                    var,
+                    source,
+                    body,
+                    span,
+                } => {
+                    if let ForEachSource::Elements(arr) = source
+                        && crate::ast::array_like_len_fn(&arr.name, params).is_none()
+                    {
+                        self.err(
+                            file,
+                            arr.span,
+                            "E0417",
+                            format!("`{}` is not an array or mem type", arr.name),
+                            format!(
+                                "`foreach {} in {}` needs `{}` to be a declared array/mem \
+                                 signal — use `foreach {} in lo..hi` if you meant a range \
+                                 instead",
+                                var.name, arr.name, arr.name, var.name
+                            ),
+                        );
+                        continue;
+                    }
+                    let Some(lowered) =
+                        crate::ast::lower_foreach_fn(var, source, body, *span, params)
+                    else {
+                        continue; // E0417 already pushed above
+                    };
+                    self.check_fn_stmt_names(file, sc, env, params, &lowered);
                 }
                 FnStmt::Error(_) => {} // parse-recovery placeholder
             }

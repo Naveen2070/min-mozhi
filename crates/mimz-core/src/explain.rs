@@ -332,6 +332,16 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: declare the signal with a scalar type (`bit`, `bits[N]`,\n\
          `signed[N]`), or use separate named signals instead of an array.",
     ),
+    (
+        "E0417",
+        "E0417 — foreach element-form source is not an array/mem type\n\n\
+         `foreach x in y` binds `x` to each element of `y` — `y` must be a\n\
+         declared array-typed or `mem`-typed signal (a `port`, `wire`, `reg`, or\n\
+         `mem`). If you meant to iterate a range of integers instead, use\n\
+         `foreach i in lo..hi`.\n\n\
+         Fix: point `foreach` at a declared array/mem signal, or switch to the\n\
+         range form (`foreach i in lo..hi`).",
+    ),
     // ----- E05xx: drivers & cycles -----
     (
         "E0501",

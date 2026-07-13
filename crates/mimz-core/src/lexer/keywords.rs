@@ -116,11 +116,11 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 40] = [
+const REQUIRED_KEYS: [&str; 41] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
     "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default", "bundle",
-    "return", "loop", "sync", "sim", "bind", "speed",
+    "return", "loop", "sync", "sim", "bind", "speed", "foreach",
 ];
 
 /// The parsed, validated `keywords.toml` table — loaded once, lazily, on
@@ -229,6 +229,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "sim" => Kw::Sim,
         "bind" => Kw::Bind,
         "speed" => Kw::Speed,
+        "foreach" => Kw::Foreach,
         _ => return None,
     })
 }
@@ -365,8 +366,8 @@ mod tests {
     #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 40).
-        assert_eq!(en.len(), 40);
+        // One spelling per keyword (REQUIRED_KEYS has 41).
+        assert_eq!(en.len(), 41);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.

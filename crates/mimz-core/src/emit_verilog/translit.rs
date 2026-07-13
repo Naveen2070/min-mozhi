@@ -334,6 +334,19 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
                 expr(&mut r.hi, visit);
                 module_items(&mut r.items, visit);
             }
+            ModuleItem::ForEach(fe) => {
+                visit(&mut fe.var.name);
+                match &mut fe.source {
+                    ForEachSource::Range { lo, hi } => {
+                        expr(lo, visit);
+                        expr(hi, visit);
+                    }
+                    ForEachSource::Elements(id) => {
+                        visit(&mut id.name);
+                    }
+                }
+                module_items(&mut fe.items, visit);
+            }
             ModuleItem::SyncLoop(sl) => {
                 visit(&mut sl.name.name);
                 visit(&mut sl.clock.name);
@@ -412,6 +425,21 @@ fn seq_stmts(stmts: &mut [SeqStmt], visit: &mut dyn FnMut(&mut String)) {
                 expr(hi, visit);
                 seq_stmts(body, visit);
             }
+            SeqStmt::ForEach {
+                var, source, body, ..
+            } => {
+                visit(&mut var.name);
+                match source {
+                    ForEachSource::Range { lo, hi } => {
+                        expr(lo, visit);
+                        expr(hi, visit);
+                    }
+                    ForEachSource::Elements(id) => {
+                        visit(&mut id.name);
+                    }
+                }
+                seq_stmts(body, visit);
+            }
             SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }
@@ -440,6 +468,21 @@ fn fn_stmts(stmts: &mut [FnStmt], visit: &mut dyn FnMut(&mut String)) {
                 visit(&mut var.name);
                 expr(lo, visit);
                 expr(hi, visit);
+                fn_stmts(body, visit);
+            }
+            FnStmt::ForEach {
+                var, source, body, ..
+            } => {
+                visit(&mut var.name);
+                match source {
+                    ForEachSource::Range { lo, hi } => {
+                        expr(lo, visit);
+                        expr(hi, visit);
+                    }
+                    ForEachSource::Elements(id) => {
+                        visit(&mut id.name);
+                    }
+                }
                 fn_stmts(body, visit);
             }
             FnStmt::Error(_) => {} // unreachable on the codegen path

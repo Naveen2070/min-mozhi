@@ -1,0 +1,31 @@
+// Min-Mozhi example: sum an array of values with `foreach`
+// `foreach v in values` binds each element of `values` by value — the
+// iteration count (8) comes from `values`'s own declared length, never
+// hand-written, so it can never drift out of sync with the array.
+//
+// A `fn` body has no mutable state, only `let` — so the running total is
+// threaded through as `acc`, an extra `bits[11]` parameter the caller
+// seeds with 0 (a fold, like `values.fold(0, add)`). `extend(v, 11)`
+// widens each 8-bit element before adding into the 11-bit total (8 values
+// up to 255 each can sum as high as 2040, which needs 11 bits).
+
+சார்பு sum8(values: bits[8][8], acc: bits[11]) -> bits[11] {
+  ஒவ்வொன்றாக v உள்ளீடு values {
+    அமை acc = acc +% extend(v, 11)
+  }
+  acc
+}
+
+தொகுதி ForeachSum {
+  உள்ளீடு  a: bits[8]
+  உள்ளீடு  b: bits[8]
+  உள்ளீடு  c: bits[8]
+  உள்ளீடு  d: bits[8]
+  உள்ளீடு  e: bits[8]
+  உள்ளீடு  f: bits[8]
+  உள்ளீடு  g: bits[8]
+  உள்ளீடு  h: bits[8]
+  வெளியீடு total: bits[11]
+
+  total = sum8([a, b, c, d, e, f, g, h], 0)
+}

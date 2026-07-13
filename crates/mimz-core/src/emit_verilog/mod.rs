@@ -131,6 +131,20 @@ fn collect_fn_stmt_calls(stmts: &[FnStmt], out: &mut Vec<String>) {
                 collect_fn_calls(hi, out);
                 collect_fn_stmt_calls(body, out);
             }
+            // Which functions get called doesn't depend on whether/how
+            // `foreach` gets lowered (substitution only touches `Ident`
+            // reads of `var`, never `FnCall` nodes) — walk the raw `body`
+            // directly, same as `Loop` above, no `ast::lower_foreach_fn`
+            // needed. The Elements-form source is a plain array name (not
+            // an expression), so unlike `Loop` there's no `hi`/`lo` pair to
+            // walk for that variant.
+            FnStmt::ForEach { source, body, .. } => {
+                if let ForEachSource::Range { lo, hi } = source {
+                    collect_fn_calls(lo, out);
+                    collect_fn_calls(hi, out);
+                }
+                collect_fn_stmt_calls(body, out);
+            }
             FnStmt::Error(_) => {}
         }
     }
