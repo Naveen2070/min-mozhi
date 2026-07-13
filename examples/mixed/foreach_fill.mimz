@@ -1,0 +1,16 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords
+// in one file; mixing freely is the migration path): fill an array of
+// lamps with ஒவ்வொன்றாக (foreach, index-range form). Module-level ports
+// can't be array-typed (v0.2 — array types are `fn`-parameter-only), so
+// the 4 lamps are packed into one `bits[32]` bus, 8 bits per lamp, and
+// each iteration drives its own slice — independent slices, never the
+// same bits twice, so there is no last-assignment-wins accumulation to
+// worry about.
+
+thoguthi ForeachFill {
+  veliyeedu lamps: bits[32]
+
+  ஒவ்வொன்றாக i in 0..4 {
+    lamps[i * 8 + 7 : i * 8] = i * 2
+  }
+}

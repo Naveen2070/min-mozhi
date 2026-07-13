@@ -315,6 +315,82 @@ fn non_constant_repeat_bound_is_e0201() {
 }
 
 #[test]
+fn foreach_elements_form_on_scalar_is_e0417() {
+    let src =
+        "module M {\n  in a: bits[8]\n  out o: bits[8]\n  foreach x in a {\n    o = x\n  }\n}\n";
+    let d = first_err(src, "E0417");
+    assert!(d.msg.contains("not an array or mem type"));
+}
+
+#[test]
+fn foreach_range_form_checks_clean() {
+    // Regression fix: the original version of this test used an
+    // array-typed `out` (`out lamps: bits[8][4]`) with a `wire lamps[i]:
+    // ...` body — both invalid. Array-typed module-level ports/wires/regs
+    // are unconditionally rejected (E0416 — see
+    // `array_typed_module_port_is_e0416`/`array_typed_wire_is_e0416`
+    // below), and `wire name[i]: ty = expr` isn't valid wire-declaration
+    // syntax (only a bare identifier before `:`). Mirrors the known-good
+    // `repeat`-based bit-indexed-drive pattern already used throughout
+    // this file (e.g. `non_constant_repeat_bound_is_e0201` above).
+    let src = "module M {\n  out y: bits[4]\n  foreach i in 0..4 {\n    y[i] = 0\n  }\n}\n";
+    check_one(src).expect("foreach range form over a valid module must check clean");
+}
+
+#[test]
+fn foreach_elements_form_checks_clean_over_mem() {
+    // Regression fix: the original version of this test iterated an
+    // array-TYPED `in` port (`in values: bits[8][8]`) — module-level
+    // array-typed ports are unconditionally rejected by E0416 (see
+    // `array_typed_module_port_is_e0416` below), so that source never
+    // checked clean even before `foreach` existed. `mem` is the actual
+    // array-like module-level signal this language supports (see
+    // `ForEachSource::Elements`'s own doc comment and
+    // `ast::foreach_lower::array_like_len`'s `ModuleItem::Mem` arm) —
+    // reading `mem[idx]` combinationally is normal usage even inside an
+    // `on` block's RHS (mem is only WRITE-restricted to `<-`).
+    let src = "module M {\n  clock clk\n  reset rst\n  mem values: bits[8][8] = 0\n  reg acc: bits[11] = 0\n  on rise(clk) {\n    foreach v in values {\n      acc <- acc\n    }\n  }\n}\n";
+    check_one(src).expect("foreach element form over a declared mem must check clean");
+}
+
+#[test]
+fn foreach_elements_form_variable_resolves_inside_on_block() {
+    // Same `mem`-not-array-port fix as `foreach_elements_form_checks_clean_over_mem` above.
+    let src = "module M {\n  clock clk\n  reset rst\n  mem values: bits[8][8] = 0\n  reg acc: bits[8] = 0\n  on rise(clk) {\n    foreach v in values {\n      acc <- v\n    }\n  }\n}\n";
+    check_one(src).expect("`v` must resolve inside the foreach body via substitution");
+}
+
+/// Proves the module-item-level Elements form (`ModuleItem::ForEach`,
+/// `walk_items`'s arm) checks clean end-to-end: name resolution succeeds
+/// (no E0417 — `values` is a declared `mem`) and there's no spurious
+/// E0303 (`lower_foreach_item`'s Elements form substitutes `v` with
+/// `values[idx]` throughout the body rather than synthesizing a `Wire`
+/// declaration, so nothing is ever "declared inside a repeat"). A
+/// single-element `mem` sidesteps the unrelated question of whether
+/// combinationally driving `sum` from every unrolled iteration is
+/// single-driver-clean (E0501, drivers.rs — a later pass this task
+/// doesn't touch).
+#[test]
+fn foreach_elements_form_at_module_level_checks_clean() {
+    let src = "module M {\n  mem values: bits[8][1] = 0\n  out sum: bits[8]\n  foreach v in values {\n    sum = v\n  }\n}\n";
+    check_one(src).expect("module-item-level foreach elements form over a mem must check clean");
+}
+
+/// Proves the `fn`-body Elements form (`FnStmt::ForEach`,
+/// `check_fn_stmt_names`'s arm) resolves `v`'s source against the `fn`'s
+/// OWN array-typed parameter via `array_like_len_fn` (no module context
+/// exists for a top-level `fn` — see `check_func_names`'s comment) —
+/// mirrors the known-good `loop`-based array-param search pattern already
+/// covered by `fn_loop_variable_resolves_inside_its_own_body` below
+/// (`fn find(vals: bits[8][4]) -> ... { loop i: 0..4 { ... } }`).
+#[test]
+fn foreach_elements_form_in_fn_body_resolves_via_own_param() {
+    let src = "fn find(vals: bits[8][4]) -> bits[8] {\n  foreach v in vals {\n    if v == 0xFF { return v }\n  }\n  0\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  in c: bits[8]\n  in d: bits[8]\n  out o: bits[8]\n  o = find([a, b, c, d])\n}\n";
+    check_one(src)
+        .expect("fn-body foreach elements form over the fn's own array param must check clean");
+}
+
+#[test]
 fn const_using_a_later_const_is_e0201() {
     first_err(
         "const A: int = B\nconst B: int = 1\nmodule M {\n}\n",

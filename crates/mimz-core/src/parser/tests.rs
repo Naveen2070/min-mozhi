@@ -2,7 +2,7 @@
 //! (precedence trap, latch teaching, `=` vs `<-`).
 
 use super::*;
-use crate::ast::{Builtin, ExprKind, FnStmt, ModuleItem, TopItem, Type};
+use crate::ast::{Builtin, ExprKind, FnStmt, ForEachSource, ModuleItem, TopItem, Type};
 use crate::lexer::lex;
 
 fn parse_ok(src: &str) -> File {
@@ -637,6 +637,86 @@ fn parses_loop_inside_fn_body() {
     assert!(matches!(hi.kind, ExprKind::Int { value: 4, .. }));
     assert_eq!(body.len(), 1);
     assert!(matches!(body[0], FnStmt::If { .. }));
+}
+
+#[test]
+fn foreach_range_form_parses_as_module_item() {
+    let f = parse_ok(
+        "module M {\n  in src: bits[8][4]\n  out lamps: bits[8][4]\n  foreach i in 0..4 {\n    lamps[i] = src[i]\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!("expected module")
+    };
+    let fe = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::ForEach(fe) => Some(fe),
+            _ => None,
+        })
+        .expect("foreach item parsed");
+    assert_eq!(fe.var.name, "i");
+    assert!(matches!(fe.source, ForEachSource::Range { .. }));
+}
+
+#[test]
+fn foreach_elements_form_parses_as_module_item() {
+    let f = parse_ok(
+        "module M {\n  in values: bits[8][8]\n  reg acc: bits[11] = 0\n  foreach v in values {\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!("expected module")
+    };
+    let fe = m
+        .items
+        .iter()
+        .find_map(|it| match it {
+            ModuleItem::ForEach(fe) => Some(fe),
+            _ => None,
+        })
+        .expect("foreach item parsed");
+    assert_eq!(fe.var.name, "v");
+    assert!(matches!(&fe.source, ForEachSource::Elements(id) if id.name == "values"));
+}
+
+#[test]
+fn foreach_parses_inside_on_block() {
+    let f = parse_ok(
+        "module M {\n  in clk: bit\n  in values: bits[8][8]\n  reg acc: bits[11] = 0\n  on rise(clk) {\n    foreach v in values {\n      acc <- acc\n    }\n  }\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!("expected module")
+    };
+    let on = m
+        .items
+        .iter()
+        .find_map(|i| match i {
+            ModuleItem::On(o) => Some(o),
+            _ => None,
+        })
+        .expect("an `on` block");
+    assert!(matches!(&on.body[0], SeqStmt::ForEach { var, .. } if var.name == "v"));
+}
+
+#[test]
+fn foreach_parses_inside_fn_body() {
+    let f = parse_ok(
+        "fn f(values: bits[8][8]) -> bits[8] {\n  foreach v in values {\n    return v\n  }\n  0\n}\nmodule M {\n  in a: bits[8][8]\n  out o: bits[8]\n  o = f(a)\n}\n",
+    );
+    let has_foreach = f.items.iter().any(|it| {
+        matches!(it, TopItem::Func(fd) if fd.stmts.iter().any(|s| matches!(s, FnStmt::ForEach { .. })))
+    });
+    assert!(has_foreach, "expected FnStmt::ForEach in the fn body");
+}
+
+#[test]
+fn foreach_elements_form_rejects_non_identifier_source() {
+    let diags =
+        parse_err("module M {\n  in a: bits[8]\n  in b: bits[8]\n  foreach x in a + b {\n  }\n}\n");
+    assert!(
+        !diags.is_empty(),
+        "an expression source must be rejected at parse time"
+    );
 }
 
 #[test]

@@ -1,0 +1,16 @@
+// Min-Mozhi example: fill an array of lamps with `foreach` (index-range form)
+// `foreach i in 0..4` is spelled with `in` instead of `repeat`'s `:` — same
+// compile-time unroll underneath. Module-level ports can't be array-typed
+// (v0.2 — array types are `fn`-parameter-only, see fn_array_search.mimz's
+// header), so the 4 lamps are packed into one `bits[32]` bus, 8 bits per
+// lamp, and each iteration drives its own slice (`lamps[i*8+7 : i*8]`) —
+// independent slices, never the same bits twice, so there is no
+// last-assignment-wins accumulation to worry about (spec 1.15's callout).
+
+தொகுதி ForeachFill {
+  வெளியீடு lamps: bits[32]
+
+  ஒவ்வொன்றாக i உள்ளீடு 0..4 {
+    lamps[i * 8 + 7 : i * 8] = i * 2
+  }
+}

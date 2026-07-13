@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use super::{
-    Arm, BinOp, Builtin, Dir, Expr, ExprKind, FieldInit, Ident, LValue, ModuleItem, OnBlock,
-    Pattern, SeqStmt, SyncLoop, Type,
+    Arm, BinOp, Builtin, Dir, Expr, ExprKind, FieldInit, ForEachSource, Ident, LValue, ModuleItem,
+    OnBlock, Pattern, SeqStmt, SyncLoop, Type,
 };
 
 /// Lower one `sync loop` instance into 12 synthesized items, in this order:
@@ -246,6 +246,33 @@ fn rename_seq_stmt(s: &SeqStmt, rename: &HashMap<String, String>) -> SeqStmt {
                 var: var.clone(),
                 lo: rename_expr(lo, rename),
                 hi: rename_expr(hi, rename),
+                body: body.iter().map(|s| rename_seq_stmt(s, &inner)).collect(),
+                span: *span,
+            }
+        }
+        SeqStmt::ForEach {
+            var,
+            source,
+            body,
+            span,
+        } => {
+            // Same shadowing rule as `SeqStmt::Loop` above: a nested
+            // `foreach`'s own `var` shadows an outer name of the same
+            // spelling within its own body. `source` is evaluated in the
+            // OUTER scope (before `var` exists), so it always uses the
+            // unmodified `rename` map.
+            let renamed_source = match source {
+                ForEachSource::Range { lo, hi } => ForEachSource::Range {
+                    lo: rename_expr(lo, rename),
+                    hi: rename_expr(hi, rename),
+                },
+                ForEachSource::Elements(id) => ForEachSource::Elements(rename_ident(id, rename)),
+            };
+            let mut inner = rename.clone();
+            inner.remove(&var.name);
+            SeqStmt::ForEach {
+                var: var.clone(),
+                source: renamed_source,
                 body: body.iter().map(|s| rename_seq_stmt(s, &inner)).collect(),
                 span: *span,
             }

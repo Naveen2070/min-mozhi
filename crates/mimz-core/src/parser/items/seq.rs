@@ -113,6 +113,9 @@ impl Parser {
         if self.at_kw(Kw::Loop) {
             return self.seq_loop();
         }
+        if self.at_kw(Kw::Foreach) {
+            return self.seq_foreach();
+        }
         if self.at_kw(Kw::Default) {
             let start = self.bump().span; // default
             let name = self.ident("a register name")?;
@@ -205,6 +208,52 @@ impl Parser {
         })
     }
 
+    /// `foreachStmt = "foreach" ident "in" foreachSource seqBlock` — same
+    /// grammar `foreach_block` uses at module-item level, usable here inside
+    /// an `on` block (mirrors how `seq_loop_inner` reuses `repeat_block`'s
+    /// grammar shape for `loop` inside `on`).
+    fn seq_foreach(&mut self) -> Option<SeqStmt> {
+        self.enter()?;
+        let r = self.seq_foreach_inner();
+        self.leave();
+        r
+    }
+
+    fn seq_foreach_inner(&mut self) -> Option<SeqStmt> {
+        let start = self.bump().span; // foreach
+        let var = self.ident("a foreach loop variable name")?;
+        self.expect_kw(
+            Kw::In,
+            "`in` after the foreach variable, e.g. `foreach i in 0..8`",
+        )?;
+        let first = self.expr()?;
+        let source = if self.at(&TokKind::DotDot) {
+            self.bump(); // ..
+            let hi = self.expr()?;
+            ForEachSource::Range { lo: first, hi }
+        } else {
+            let ExprKind::Ident(name) = first.kind else {
+                self.error(
+                    first.span,
+                    "E1101",
+                    "foreach's element-form source must be a plain name (e.g. `foreach x in my_array`), not an expression",
+                );
+                return None;
+            };
+            ForEachSource::Elements(Ident {
+                name,
+                span: first.span,
+            })
+        };
+        let (body, end) = self.seq_block()?;
+        Some(SeqStmt::ForEach {
+            var,
+            source,
+            body,
+            span: start.join(end),
+        })
+    }
+
     /// `thamizh`-order seq statement: either `<cond> enil seqBlock …` or the
     /// unchanged register update `lvalue <- expr`. Both can begin with an
     /// identifier, so we parse the head as an expression and let the trailing
@@ -216,6 +265,11 @@ impl Parser {
         // `default` just below.
         if self.at_kw(Kw::Loop) {
             return self.seq_loop();
+        }
+        // `foreach` has NO SOV/thamizh-order flip (Global Constraints) —
+        // keyword-first in both word orders, same as `loop`/`default`.
+        if self.at_kw(Kw::Foreach) {
+            return self.seq_foreach();
         }
         // `default` is word-order neutral — it always leads the statement.
         if self.at_kw(Kw::Default) {

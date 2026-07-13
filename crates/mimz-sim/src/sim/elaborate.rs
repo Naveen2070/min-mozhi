@@ -533,12 +533,22 @@ fn elaborate_module(
     let mut lowered_sync_loops: Vec<ModuleItem> = Vec::new();
     collect_lowered_sync_loops(&m.items, &consts, &mut lowered_sync_loops);
 
+    // `foreach` is pure sugar for `repeat`/bare `loop` (see
+    // `ast::foreach_lower`) — lowered up front for the same reason as
+    // `sync loop` above: `work` holds `&ModuleItem` borrows into
+    // `lowered_foreach`, which must outlive the whole function.
+    // `collect_lowered_foreach` recurses into `const if` winning branches the
+    // same way `collect_lowered_sync_loops` does.
+    let mut lowered_foreach: Vec<ModuleItem> = Vec::new();
+    collect_lowered_foreach(&m.items, &consts, &mut lowered_foreach);
+
     let mut work: Vec<&ModuleItem> = m
         .items
         .iter()
-        .filter(|it| !matches!(it, ModuleItem::SyncLoop(_)))
+        .filter(|it| !matches!(it, ModuleItem::SyncLoop(_) | ModuleItem::ForEach(_)))
         .rev()
         .chain(lowered_sync_loops.iter().rev())
+        .chain(lowered_foreach.iter().rev())
         .collect();
     while let Some(it) = work.pop() {
         match it {
@@ -674,15 +684,21 @@ fn elaborate_module(
                     record_drive(lhs, rhs, &rw0, &consts, &mut comb, &mut bit_drives)?
                 }
             }
-            ModuleItem::On(on) => procs.push(Process {
-                clock: on.clock.name.clone(),
-                edge: on.edge,
-                body: on
-                    .body
-                    .iter()
-                    .map(|s| rw0.seq(s, &|n| n.to_string()))
-                    .collect::<Result<_, _>>()?,
-            }),
+            ModuleItem::On(on) => {
+                // `foreach` inside an `on`-block body is pure sugar over
+                // `loop` (see `ast::foreach_lower`) — lowered here, before
+                // `Rw::seq` ever runs, so `Rw::seq`/`assigns`/the kernel's
+                // `run_seq` never see a raw `SeqStmt::ForEach` node.
+                let lowered_body = lower_foreach_in_seq(&on.body, &m.items);
+                procs.push(Process {
+                    clock: on.clock.name.clone(),
+                    edge: on.edge,
+                    body: lowered_body
+                        .iter()
+                        .map(|s| rw0.seq(s, &|n| n.to_string()))
+                        .collect::<Result<_, _>>()?,
+                })
+            }
             // Consts are folded above; enum decls become the encoding above.
             ModuleItem::Const(_) | ModuleItem::Enum(_) => {}
             // Unreachable: elaboration runs on a strict-parsed tree, which
@@ -696,6 +712,15 @@ fn elaborate_module(
             ModuleItem::SyncLoop(_) => {
                 unreachable!(
                     "SyncLoop is lowered before the worklist runs — see elaborate_module's Step 1"
+                )
+            }
+            // Unreachable: every `ForEach` is lowered (to `Repeat`) and
+            // filtered out of `m.items` before the worklist runs, same as
+            // `SyncLoop` just above — see `collect_lowered_foreach` and
+            // `lowered_foreach` in this function's Step 1.
+            ModuleItem::ForEach(_) => {
+                unreachable!(
+                    "ForEach is lowered before the worklist runs — see elaborate_module's Step 1"
                 )
             }
             ModuleItem::Inst(inst) => {
@@ -790,15 +815,19 @@ fn elaborate_module(
                 } else {
                     els.as_deref().unwrap_or(&[])
                 };
-                // Any `SyncLoop` in this branch was already lowered (into
-                // `lowered_sync_loops`) by `collect_lowered_sync_loops` above,
-                // before the worklist started — filter the raw node back out
-                // here so it isn't pushed a second time un-lowered (which
-                // would hit the `unreachable!()` arm below).
+                // Any `SyncLoop`/`ForEach` in this branch was already lowered
+                // (into `lowered_sync_loops`/`lowered_foreach`) by
+                // `collect_lowered_sync_loops`/`collect_lowered_foreach`
+                // above, before the worklist started — filter the raw nodes
+                // back out here so neither is pushed a second time
+                // un-lowered (which would hit the `unreachable!()` arm
+                // below — there is no `ModuleItem::ForEach` match arm).
                 work.extend(
                     branch
                         .iter()
-                        .filter(|it| !matches!(it, ModuleItem::SyncLoop(_)))
+                        .filter(|it| {
+                            !matches!(it, ModuleItem::SyncLoop(_) | ModuleItem::ForEach(_))
+                        })
                         .rev(),
                 );
             }
@@ -1181,6 +1210,105 @@ fn collect_lowered_sync_loops(
             _ => {}
         }
     }
+}
+
+/// Recursively find every `ForEach` reachable from `items` — including one
+/// nested inside a `const if`'s winning branch, at any nesting depth — and
+/// push its lowering (`ast::lower_foreach_item`) onto `out`. Mirrors
+/// `collect_lowered_sync_loops` exactly, for the same reason: `foreach` is
+/// pure sugar over `repeat`/bare `loop` (`ast::foreach_lower`'s doc comment),
+/// so the simulator lowers it the same way the emitter does. Called once,
+/// before the worklist starts — see `elaborate_module`'s `lowered_foreach`.
+fn collect_lowered_foreach(
+    items: &[ModuleItem],
+    consts: &BTreeMap<String, i128>,
+    out: &mut Vec<ModuleItem>,
+) {
+    for it in items {
+        match it {
+            ModuleItem::ForEach(fe) => {
+                // `None` here means the Elements-form source name didn't
+                // resolve to an array/mem — the checker rejects this
+                // (E0417) before `mimz build`/`mimz test` ever reach here,
+                // but `mimz sim`/`mimz test` can run unchecked programs, so
+                // this is a reachable path in this file. We silently drop
+                // the loop rather than lowering it; any signal the dropped
+                // body would have driven surfaces as a driverless-signal
+                // read error downstream instead of a crash or wrong output.
+                if let Some(lowered) = ast::lower_foreach_item(fe, items) {
+                    out.extend(lowered);
+                }
+            }
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
+                // Same fallback as the main worklist loop's ConstIf arm — the
+                // checker rejects a non-const `const if` condition (E0811)
+                // before this ever runs in practice.
+                let val = const_eval(cond, consts).unwrap_or(0);
+                let branch: &[ModuleItem] = if val != 0 {
+                    then
+                } else {
+                    els.as_deref().unwrap_or(&[])
+                };
+                collect_lowered_foreach(branch, consts, out);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Recursively lower every `SeqStmt::ForEach` reachable in `stmts` — inside
+/// `If` branches and `Loop` bodies too, at any nesting depth — into its
+/// `SeqStmt::Loop` equivalent via `ast::lower_foreach_seq`. Called once, on
+/// an `on`-block's raw body, before it becomes a `Process` — so `Rw::seq`,
+/// `assigns`, and the kernel's `run_seq` never see a raw `ForEach` node
+/// (mirrors why `ModuleItem::ForEach` is pre-lowered before the worklist
+/// starts, Task 8). An Elements-form source that doesn't resolve (`None`)
+/// silently drops that `foreach`'s statements, matching this file's other
+/// `None`-handling for the same construct (see `collect_lowered_foreach`).
+fn lower_foreach_in_seq(stmts: &[SeqStmt], module_items: &[ModuleItem]) -> Vec<SeqStmt> {
+    let mut out = Vec::new();
+    for s in stmts {
+        match s {
+            SeqStmt::ForEach {
+                var,
+                source,
+                body,
+                span,
+            } => {
+                if let Some(lowered) =
+                    ast::lower_foreach_seq(var, source, body, *span, module_items)
+                {
+                    out.extend(lower_foreach_in_seq(&lowered, module_items));
+                }
+            }
+            SeqStmt::If { cond, then, els } => {
+                out.push(SeqStmt::If {
+                    cond: cond.clone(),
+                    then: lower_foreach_in_seq(then, module_items),
+                    els: els.as_ref().map(|e| lower_foreach_in_seq(e, module_items)),
+                });
+            }
+            SeqStmt::Loop {
+                var,
+                lo,
+                hi,
+                body,
+                span,
+            } => {
+                out.push(SeqStmt::Loop {
+                    var: var.clone(),
+                    lo: lo.clone(),
+                    hi: hi.clone(),
+                    body: lower_foreach_in_seq(body, module_items),
+                    span: *span,
+                });
+            }
+            other => out.push(other.clone()),
+        }
+    }
+    out
 }
 
 /// Record one combinational drive. A whole-signal drive becomes a `comb` entry;
@@ -1674,6 +1802,12 @@ impl<'d, 's> Rw<'d, 's> {
                     .collect::<Result<_, _>>()?,
                 span: *span,
             },
+            // Unreachable: every `SeqStmt::ForEach` in an `on`-block body is
+            // lowered before `Rw::seq` ever runs — see
+            // `elaborate_module`'s `ModuleItem::On` arm.
+            SeqStmt::ForEach { .. } => unreachable!(
+                "ForEach is lowered before Rw::seq/assigns/run_seq ever run — see elaborate_module's ModuleItem::On arm"
+            ),
             // Unreachable on the sim path (strict-parsed tree); pass through.
             SeqStmt::Error(sp) => SeqStmt::Error(*sp),
         })
@@ -1690,6 +1824,12 @@ fn assigns(body: &[SeqStmt], name: &str) -> bool {
         }
         SeqStmt::Default { name: n, .. } => n.name == name,
         SeqStmt::Loop { body, .. } => assigns(body, name),
+        // Unreachable: every `SeqStmt::ForEach` in an `on`-block body is
+        // lowered before `Rw::seq`/`assigns`/`run_seq` ever run — see
+        // `elaborate_module`'s `ModuleItem::On` arm.
+        SeqStmt::ForEach { .. } => unreachable!(
+            "ForEach is lowered before Rw::seq/assigns/run_seq ever run — see elaborate_module's ModuleItem::On arm"
+        ),
         SeqStmt::Error(_) => false,
     })
 }
@@ -1847,6 +1987,96 @@ mod tests {
         assert!(
             matches!(d.comb["s"].kind, ExprKind::Concat(_)),
             "s not a concat"
+        );
+    }
+
+    #[test]
+    fn unrolls_foreach_range_form_same_as_repeat() {
+        // `foreach i in 0..2` is pure sugar over `repeat i: 0..2` (Task 8) —
+        // same source as `unrolls_repeat_with_instance_array_and_bit_drives`
+        // above, with `repeat i: 0..2` swapped for `foreach i in 0..2`, must
+        // elaborate identically.
+        let d = elaborate(
+            &parse(
+                "module Xor {\n  in a: bit\n  in b: bit\n  out o: bit\n  o = a ^ b\n}\n\
+                 module R {\n  in x: bits[2]\n  in y: bits[2]\n  out s: bits[2]\n  \
+                 foreach i in 0..2 {\n    let fa[i] = Xor() { a: x[i], b: y[i] }\n    \
+                 s[i] = fa[i].o\n  }\n}\n",
+            ),
+            Some("R"),
+            &BTreeMap::new(),
+        )
+        .expect("foreach range form unrolls");
+        let wires: Vec<&str> = d.wires.iter().map(|w| w.name.as_str()).collect();
+        assert!(wires.contains(&"fa__0_o"), "wires: {wires:?}");
+        assert!(wires.contains(&"fa__1_o"), "wires: {wires:?}");
+        assert!(
+            matches!(d.comb["s"].kind, ExprKind::Concat(_)),
+            "s not a concat"
+        );
+    }
+
+    #[test]
+    fn foreach_elements_form_substitutes_var_with_mem_index() {
+        // Elements-form `foreach v in values` over a single-element `mem`
+        // (module-level array-typed ports/wires/regs are E0416 — `mem` is
+        // the only array-like module-level signal, mirroring the checker's
+        // `foreach_elements_form_at_module_level_checks_clean`) lowers to a
+        // `Repeat` over a synthesized index, substituting `v` with
+        // `values[idx]` throughout the body (Task 8's `lower_foreach_item`,
+        // Task 3). A single-element `mem` keeps the unrolled `sum = v`
+        // drive single-valued, so the resulting comb driver for `sum` is
+        // exactly `values[0]` — proving the substitution really flows
+        // through this crate's own `elaborate_module`, not just the
+        // AST-level unit test in `ast::foreach_lower`.
+        let d = elaborate(
+            &parse(
+                "module M {\n  mem values: bits[8][1] = 0\n  out sum: bits[8]\n  \
+                 foreach v in values {\n    sum = v\n  }\n}\n",
+            ),
+            Some("M"),
+            &BTreeMap::new(),
+        )
+        .expect("foreach elements form over a mem elaborates");
+        assert!(
+            d.mems.iter().any(|m| m.name == "values"),
+            "mems: {:?}",
+            d.mems
+        );
+        assert!(d.comb.contains_key("sum"), "comb: {:?}", d.comb);
+        assert!(
+            matches!(&d.comb["sum"].kind, ExprKind::Index { base, .. } if matches!(&base.kind, ExprKind::Ident(n) if n == "values")),
+            "sum must be driven by an index into `values`, got {:?}",
+            d.comb["sum"]
+        );
+    }
+
+    #[test]
+    fn foreach_nested_inside_if_in_on_block_lowers_via_recursion() {
+        // `lower_foreach_in_seq` must recurse into `If`'s `then` body, not
+        // just dispatch on the on-block's top-level statements — a `foreach`
+        // sitting inside an `if` inside `on rise(clk)` must still be
+        // replaced by a `SeqStmt::Loop` before the block becomes a
+        // `Process`, so `Rw::seq`/the kernel's `run_seq` never see a raw
+        // `SeqStmt::ForEach` node at any nesting depth.
+        let d = design(
+            "module M {\n  clock clk\n  reset rst\n  in cond: bit\n  reg acc: bits[8] = 0\n  \
+             on rise(clk) {\n    if cond {\n      foreach i in 0..4 {\n        acc <- acc +% 1\n      }\n    }\n  }\n}\n",
+        );
+        assert_eq!(d.procs.len(), 1);
+        let SeqStmt::If { then, .. } = &d.procs[0].body[0] else {
+            panic!(
+                "expected the on-block's top-level `if` to survive, got {:?}",
+                d.procs[0].body
+            );
+        };
+        assert!(
+            matches!(then.first(), Some(SeqStmt::Loop { .. })),
+            "foreach nested inside if must lower to Loop, got {then:?}"
+        );
+        assert!(
+            !then.iter().any(|s| matches!(s, SeqStmt::ForEach { .. })),
+            "raw ForEach must not survive lowering, got {then:?}"
         );
     }
 

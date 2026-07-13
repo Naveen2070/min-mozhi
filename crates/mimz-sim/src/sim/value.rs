@@ -10,7 +10,9 @@
 use std::collections::{BTreeMap, HashMap};
 
 use mimz_core::REPEAT_BUDGET;
-use mimz_core::ast::{self, BinOp, Builtin, Expr, ExprKind, FnStmt, FuncDecl, Pattern, Type, UnOp};
+use mimz_core::ast::{
+    self, BinOp, Builtin, Expr, ExprKind, FnParam, FnStmt, FuncDecl, Pattern, Type, UnOp,
+};
 
 /// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
 pub(super) fn mask(w: u32) -> u128 {
@@ -330,6 +332,7 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
         consts,
         funcs,
         arrays,
+        params: &f.params,
     };
     match eval_fn_stmts(&mut child, &f.stmts)? {
         FnFlow::Returned(v) => Ok(v),
@@ -433,6 +436,30 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                     i += 1;
                 }
             }
+            FnStmt::ForEach {
+                var,
+                source,
+                body,
+                span,
+            } => {
+                // `fn` bodies are interpreted directly (no pre-lowering pass
+                // exists for them, unlike module items/on-blocks) — lower on
+                // the spot, exactly where `emit_verilog/module.rs`'s
+                // `emit_fn_stmts` already does the same thing for the exact
+                // same reason (Task 7).
+                if let Some(lowered) = ast::lower_foreach_fn(var, source, body, *span, env.params)
+                    && let FnFlow::Returned(v) = eval_fn_stmts(env, &lowered)?
+                {
+                    return Ok(FnFlow::Returned(v));
+                }
+                // `None` = Elements-form source didn't resolve. The checker
+                // rejects this (E0417) before `mimz build`/`mimz test` reach
+                // here, but this evaluator also runs on unchecked ASTs
+                // (fuzzing/`mimz sim` without checking) — silently skip,
+                // matching `lower_foreach_item`'s own `None` handling
+                // elsewhere in this codebase (e.g. elaborate.rs's
+                // `collect_lowered_foreach`).
+            }
             FnStmt::Error(_) => {} // parse-recovery placeholder; unreachable on the eval path
         }
     }
@@ -453,6 +480,10 @@ struct FnEnv<'a> {
     /// `FnStmt::Let` handling for an `ArrayLit` value — mirrors the emitter's
     /// own `ArrayScope` (Task 8). The elements live in `locals` as `<name>_<i>`.
     arrays: BTreeMap<String, u32>,
+    /// The enclosing `fn`'s own parameter list — needed to resolve an
+    /// Elements-form `foreach`'s source (`fn` bodies have no enclosing
+    /// module to resolve against; see `ast::array_like_len_fn`).
+    params: &'a [FnParam],
 }
 
 impl Resolver for FnEnv<'_> {
@@ -902,5 +933,45 @@ mod tests {
         );
         let err = result.expect_err("over-budget `loop` must error, not hang or overflow");
         assert!(err.contains("`loop` would unroll"), "got: {err}");
+    }
+
+    #[test]
+    fn fn_foreach_range_form_with_return_finds_first_match_in_sim() {
+        // Same shape as `fn_loop_with_return_finds_first_match_in_sim`, but
+        // with `foreach i in 0..4` (Range form) in place of `loop i: 0..4` —
+        // `FnStmt::ForEach` must lower via `ast::lower_foreach_fn` to the
+        // same `FnStmt::Loop` and early-return correctly.
+        let result = eval_fn_call_one(
+            "fn find_first_set(vals: bits[8][4]) -> signed[4] {\n  foreach i in 0..4 {\n    if vals[i] == 0xFF { return i }\n  }\n  0 - 1\n}\n",
+            "find_first_set",
+            &[&[0x00, 0xFF, 0x00, 0x00]],
+        );
+        assert_eq!(result, 1);
+    }
+
+    #[test]
+    fn fn_foreach_elements_form_with_return_finds_match_in_sim() {
+        // Elements form: `foreach v in vals` binds `v` to each array element
+        // via a synthesized `Let`, and `return v` on a match must propagate
+        // as `FnFlow::Returned` out of the lowered `Loop`.
+        let result = eval_fn_call_one(
+            "fn find_val(vals: bits[8][4]) -> bits[8] {\n  foreach v in vals {\n    if v == 0xFF { return v }\n  }\n  0\n}\n",
+            "find_val",
+            &[&[0x11, 0xFF, 0x22, 0x33]],
+        );
+        assert_eq!(result, 0xFF);
+    }
+
+    #[test]
+    fn fn_foreach_elements_form_no_match_falls_through_in_sim() {
+        // No element matches — `eval_fn_stmts` must reach `FnFlow::FellThrough`
+        // and yield the fn's tail expression (`0`), NOT a spurious
+        // `FnFlow::Returned` from misreading fall-through as an early return.
+        let result = eval_fn_call_one(
+            "fn find_val(vals: bits[8][4]) -> bits[8] {\n  foreach v in vals {\n    if v == 0xFF { return v }\n  }\n  0\n}\n",
+            "find_val",
+            &[&[0x11, 0x22, 0x33, 0x44]],
+        );
+        assert_eq!(result, 0);
     }
 }

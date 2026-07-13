@@ -1,0 +1,39 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): the
+// Tamil twin of english/foreach_sum.mimz — sums eight 8-bit inputs with
+// `ஒவ்வொன்றாக` (foreach, elements form): `ஒவ்வொன்றாக மதி உள்ளீடு அணி` binds
+// each element of the array parameter `அணி` by value, one at a time — the
+// iteration count (8) comes from `அணி`'s own declared length, never
+// hand-written. `கூட்டு` (kootu) means "sum/total" — the filename and the
+// `fn` that does the summing.
+//
+// A `fn` body has no mutable state, only `let`/`அமை` — so the running
+// total is threaded through as `தொகை` (thogai, "sum amount"), an extra
+// parameter the caller seeds with 0 (a fold, like `array.fold(0, add)`),
+// exactly as `english/foreach_sum.mimz`'s `acc` parameter does.
+//
+// Names transliterate to readable ASCII Verilog (மொத்தம் → moththam,
+// கூட்டு → kuuttu, அணி → anni, தொகை → thokai, மதி → mathi, விடை → vitai);
+// the 8 module ports are the first 8 Tamil vowels (அ ஆ இ ஈ உ ஊ எ ஏ →
+// a aa i ii u uu e ee) instead of `a`..`h`, standing in for the eight
+// values being summed.
+
+சார்பு கூட்டு(அணி: bits[8][8], தொகை: bits[11]) -> bits[11] {
+  ஒவ்வொன்றாக மதி உள்ளீடு அணி {
+    அமை தொகை = தொகை +% extend(மதி, 11)
+  }
+  தொகை
+}
+
+தொகுதி மொத்தம் {
+  உள்ளீடு அ: bits[8]
+  உள்ளீடு ஆ: bits[8]
+  உள்ளீடு இ: bits[8]
+  உள்ளீடு ஈ: bits[8]
+  உள்ளீடு உ: bits[8]
+  உள்ளீடு ஊ: bits[8]
+  உள்ளீடு எ: bits[8]
+  உள்ளீடு ஏ: bits[8]
+  வெளியீடு விடை: bits[11]
+
+  விடை = கூட்டு([அ, ஆ, இ, ஈ, உ, ஊ, எ, ஏ], 0)
+}

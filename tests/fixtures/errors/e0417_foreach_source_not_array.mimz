@@ -1,0 +1,9 @@
+// expect: E0417
+module M {
+  in a: bits[8]
+  out o: bits[8]
+
+  foreach x in a {
+    o = x
+  }
+}

@@ -81,6 +81,10 @@ impl Parser {
                 stmts.push(self.fn_loop()?);
                 continue;
             }
+            if self.at_kw(Kw::Foreach) {
+                stmts.push(self.fn_foreach()?);
+                continue;
+            }
             if self.profile == Profile::Thamizh {
                 let head = self.binary(0)?;
                 if self.at_kw(Kw::If) {
@@ -223,6 +227,52 @@ impl Parser {
         })
     }
 
+    /// `foreachStmt = "foreach" ident "in" foreachSource "{" {fnStmt} "}"` —
+    /// same grammar `foreach_block` uses at module-item level, usable here
+    /// inside a `fn` body.
+    fn fn_foreach(&mut self) -> Option<FnStmt> {
+        self.enter()?;
+        let r = self.fn_foreach_inner();
+        self.leave();
+        r
+    }
+
+    fn fn_foreach_inner(&mut self) -> Option<FnStmt> {
+        let start = self.bump().span; // foreach
+        let var = self.ident("a foreach loop variable name")?;
+        self.expect_kw(
+            Kw::In,
+            "`in` after the foreach variable, e.g. `foreach i in 0..8`",
+        )?;
+        let first = self.expr()?;
+        let source = if self.at(&TokKind::DotDot) {
+            self.bump(); // ..
+            let hi = self.expr()?;
+            ForEachSource::Range { lo: first, hi }
+        } else {
+            let ExprKind::Ident(name) = first.kind else {
+                self.error(
+                    first.span,
+                    "E1101",
+                    "foreach's element-form source must be a plain name (e.g. `foreach x in my_array`), not an expression",
+                );
+                return None;
+            };
+            ForEachSource::Elements(Ident {
+                name,
+                span: first.span,
+            })
+        };
+        let body = self.fn_stmt_block()?;
+        let span = self.span_since(start);
+        Some(FnStmt::ForEach {
+            var,
+            source,
+            body,
+            span,
+        })
+    }
+
     /// `"{" {fnStmt} "}"` — a statement block with NO tail expression
     /// (unlike the top-level `fn_body`, an `if`/`else` block inside a `fn`
     /// body is statements only; the enclosing function's `tail` is still
@@ -250,6 +300,8 @@ impl Parser {
                         self.fn_return_stmt()
                     } else if self.at_kw(Kw::Loop) {
                         self.fn_loop()
+                    } else if self.at_kw(Kw::Foreach) {
+                        self.fn_foreach()
                     } else if self.profile == Profile::Thamizh {
                         match self.binary(0) {
                             Some(head) if self.at_kw(Kw::If) => self.fn_if_thamizh(head),

@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.24.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.25.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -831,6 +831,58 @@ selection. To get first-match-wins inside a `sync loop`, guard the write
 yourself with an "already found" latch, e.g.
 `if m[i] == key && !found { result <- i; found <- 1 }`.
 
+### 1.16 `foreach` — array/range sugar over `repeat`/`loop`
+
+```mimz
+module ForeachFill {
+  out lamps: bits[32]
+
+  foreach i in 0..4 {
+    lamps[i * 8 + 7 : i * 8] = i * 2
+  }
+}
+```
+
+```mimz
+fn sum8(values: bits[8][8], acc: bits[11]) -> bits[11] {
+  foreach v in values {
+    let acc = acc +% extend(v, 11)
+  }
+  acc
+}
+```
+
+- `foreach VAR in SOURCE { BODY }` is pure syntax sugar with two source
+  forms:
+  - **Range form** — `foreach i in lo..hi { ... }` — `VAR` walks the
+    half-open range exactly like `repeat`/`loop`'s own `lo..hi`. This is
+    nothing more than `in` spelled where `repeat`/`loop` spell `:`.
+  - **Elements form** — `foreach v in ARR { ... }` — `ARR` must be an
+    array or `mem`-typed name already in scope (a `fn`'s own array
+    parameter, or — at module-item level — a sibling `mem`); `VAR` binds
+    each element **by value**, one iteration per element, front to back.
+    The iteration count is `ARR`'s own declared length — never
+    hand-written, so it can never drift out of sync with the array.
+- **Placement mirrors `repeat`/`loop` exactly.** At module-item level,
+  `foreach` desugars toward `repeat` (section 1.6): compile-time-only,
+  item-level. Inside an `on` block or a `fn` body, `foreach` desugars
+  toward bare `loop` (section 1.15): a statement, legal wherever a
+  statement is expected. There is no third placement — `foreach` never
+  appears anywhere `repeat`/`loop` couldn't.
+- **Honesty rule — `foreach` costs exactly what the hand-written
+  `repeat`/`loop` it desugars to would cost, nothing more.** Same
+  area-not-time trade as sections 1.6 and 1.15: N iterations means N×
+  the hardware, evaluated in parallel, zero extra clock cycles. `foreach`
+  is never a hidden `sync loop` in disguise — see the next bullet.
+- **Always elaboration-time — never lowers to `sync loop`.** However long
+  `SOURCE` is, `foreach` unrolls fully at compile time before any
+  hardware exists, exactly like `repeat`/`loop`. If what's wanted is
+  "iterate over clock cycles," reach for `sync loop` (section 1.15b)
+  directly — `foreach` does not and will not grow that behavior.
+- **The Elements form's array/`mem` source must resolve to an
+  array/`mem` type** — E0417 if it doesn't (an undeclared name, a scalar
+  signal, or a `fn` parameter that isn't array-typed).
+
 ---
 
 ## 2. Lexical Rules
@@ -927,7 +979,7 @@ param       = IDENT ":" ( "int" | "bool" ) [ "=" constExpr ] ;
 
 moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
             | constDecl | enumDecl | instDecl | onBlock | driveStmt
-            | repeatBlock | bundleDestructure | syncLoopBlock ;
+            | repeatBlock | bundleDestructure | syncLoopBlock | foreachBlock ;
 
 bundleDestructure = "let" "{" IDENT { "," IDENT } "}" "=" expr NEWLINE ;
 
@@ -951,6 +1003,11 @@ conn        = IDENT ":" expr ;
 repeatBlock = "repeat" IDENT ":" constExpr ".." constExpr
               "{" { moduleItem } "}" ;             (* compile-time unrolled *)
 
+foreachSource = ( constExpr ".." constExpr ) | IDENT ;
+              (* range form (lo..hi) or elements form (an array/mem name) *)
+foreachBlock = "foreach" IDENT "in" foreachSource "{" { moduleItem } "}" ;
+              (* compile-time unrolled sugar over repeatBlock, section 1.16 *)
+
 syncLoopBlock = "sync" "loop" IDENT "on" ( "rise" | "fall" ) "(" IDENT ")"
                 "(" IDENT ":" constExpr ".." constExpr ")"
                 "->" IDENT ":" type "=" constExpr seqBlock ;
@@ -958,11 +1015,13 @@ syncLoopBlock = "sync" "loop" IDENT "on" ( "rise" | "fall" ) "(" IDENT ")"
 
 onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
-seqStmt     = regAssign | seqIf | seqLoop ;
+seqStmt     = regAssign | seqIf | seqLoop | seqForeach ;
 regAssign   = lvalue "<-" expr NEWLINE ;
 seqIf       = "if" expr seqBlock [ "else" ( seqIf | seqBlock ) ] ;
 seqLoop     = "loop" IDENT ":" constExpr ".." constExpr seqBlock ;
               (* compile-time unrolled; usable inside on blocks, unlike item-level repeat *)
+seqForeach  = "foreach" IDENT "in" foreachSource seqBlock ;
+              (* sugar over seqLoop, section 1.16 *)
 
 driveStmt   = lvalue "=" expr NEWLINE ;
 lvalue      = IDENT [ "[" constExpr [ ":" constExpr ] "]" ] ;
@@ -1017,13 +1076,16 @@ fnDecl      = "fn" IDENT "(" [ fnParamList ] ")" "->" type
               "{" { fnStmt } expr "}" ;         (* combinational; no clocks, no regs *)
 fnParamList = fnParam { "," fnParam } ;
 fnParam     = IDENT ":" type ;
-fnStmt      = localLet | fnIf | returnStmt | fnLoop ;
+fnStmt      = localLet | fnIf | returnStmt | fnLoop | fnForeach ;
 localLet    = "let" IDENT "=" expr NEWLINE ;    (* named intermediate value *)
 returnStmt  = "return" expr NEWLINE ;           (* priority-selected result, not a silicon exit *)
 fnIf        = "if" expr "{" { fnStmt } "}"
               [ "else" ( fnIf | "{" { fnStmt } "}" ) ] ; (* else OPTIONAL, unlike ifExpr *)
 fnLoop      = "loop" IDENT ":" constExpr ".." constExpr "{" { fnStmt } "}" ;
               (* compile-time unrolled; combine with return for first-match search *)
+fnForeach   = "foreach" IDENT "in" foreachSource "{" { fnStmt } "}" ;
+              (* sugar over fnLoop, section 1.16; elements form resolves against
+                 the fn's own array-typed params, no enclosing module *)
 fnCall      = IDENT "(" [ expr { "," expr } ] ")" ;  (* user-defined fn call *)
 ```
 
@@ -1144,6 +1206,21 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.25 (2026-07-12):** **`foreach` — array/range sugar over
+  `repeat`/`loop`** (new section 1.16, placed directly after `sync loop`'s
+  section 1.15b). New section 5 productions `foreachBlock` (mirrors
+  `repeatBlock`, `moduleItem` gains it), `seqForeach` (mirrors `seqLoop`,
+  `seqStmt` gains it), `fnForeach` (mirrors `fnLoop`, `fnStmt` gains it),
+  and the shared `foreachSource` production (a `lo..hi` range, or an
+  array/`mem` identifier already in scope). Two source forms: **range**
+  (`foreach i in lo..hi`, `in` spelled where `repeat`/`loop` spell `:`)
+  and **elements** (`foreach v in arr`, binds each element of `arr` by
+  value — the iteration count comes from `arr`'s own declared length,
+  never hand-written). Placement mirrors `repeat`/`loop` exactly:
+  module-item level desugars toward `repeat`, `on`-block/`fn`-body
+  desugars toward bare `loop` — always elaboration-time, never a hidden
+  `sync loop`. Elements form on a source that doesn't resolve to an
+  array/`mem` type is E0417. `docs/log/2026-07-12.md`.
 - **v0.2.24 (2026-07-11):** **Bundle-typed `fn` argument/return shape
   checking.** E0901 (section "Bundle checker rules") widened from
   bundle-literal-only to also cover a bundle-typed function call argument or

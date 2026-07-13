@@ -83,6 +83,10 @@ pub enum Kw {
     /// inside `on` blocks and `fn` bodies (distinct from `repeat`, which
     /// stays item-level only).
     Loop,
+    /// `foreach` / `ovvondraga` / `ஒவ்வொன்றாக` — element/range loop sugar over
+    /// `repeat`/bare `loop` (module-item, `on`-block, and `fn`-body
+    /// positions); PROVISIONAL Tanglish/Tamil spellings, see `keywords.toml`.
+    Foreach,
     /// `sync` / `othisai` / `ஒத்திசை` — modifies `loop` into a cycle-iterating
     /// FSM loop (`sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { }`),
     /// distinct from the compile-time-unrolled `loop`.

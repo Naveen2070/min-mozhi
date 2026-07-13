@@ -1,0 +1,31 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords
+// in one file; mixing freely is the migration path): sum an array of
+// values with foreach/ovvondraga. `foreach v in values` binds each element
+// of `values` by value — the iteration count (8) comes from `values`'s
+// own declared length, never hand-written, so it can never drift out of
+// sync with the array.
+//
+// A `fn` body has no mutable state, only `let`/`amai` — so the running
+// total is threaded through as `acc`, an extra `bits[11]` parameter the
+// caller seeds with 0 (a fold, like `values.fold(0, add)`).
+
+saarbu sum8(values: bits[8][8], acc: bits[11]) -> bits[11] {
+  ovvondraga v in values {
+    amai acc = acc +% extend(v, 11)
+  }
+  acc
+}
+
+thoguthi ForeachSum {
+  in  a: bits[8]
+  ulleedu  b: bits[8]
+  உள்ளீடு  c: bits[8]
+  in  d: bits[8]
+  ulleedu  e: bits[8]
+  உள்ளீடு  f: bits[8]
+  in  g: bits[8]
+  ulleedu  h: bits[8]
+  veliyeedu total: bits[11]
+
+  total = sum8([a, b, c, d, e, f, g, h], 0)
+}

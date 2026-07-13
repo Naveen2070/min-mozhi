@@ -38,8 +38,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::{
-    BinOp, EnumDecl, Expr, ExprKind, FieldInit, FnStmt, FuncDecl, Module, ModuleItem, NamedArg,
-    Pattern, SeqStmt, TopItem, Type,
+    BinOp, EnumDecl, Expr, ExprKind, FieldInit, FnStmt, ForEachSource, FuncDecl, Module,
+    ModuleItem, NamedArg, Pattern, SeqStmt, TopItem, Type,
 };
 use crate::span::Span;
 
@@ -444,6 +444,22 @@ impl<'a> Checker<'a> {
                     };
                     self.collect_sigs(cx, branch);
                 }
+                // `foreach` is pure sugar over `repeat`/`loop` (see
+                // `ast::foreach_lower`'s module doc comment). This pass only
+                // resolves DECLARED types (Port/Wire/Reg/Mem/Clock/Reset),
+                // never the loop variable's value — and `subst_module_item`
+                // never touches a declaration's `ty` field (only its
+                // driving `init`/`reset`/`depth` expr), so a lowered
+                // Elements-form body would resolve identical types to the
+                // raw one anyway. Recurse straight into the RAW `fe.items`
+                // (still borrowed from the `'a` AST arena, unlike a lowered
+                // `Vec` which is a fresh, non-`'a` clone) — same "declared
+                // once, raw body" treatment `names.rs`'s `collect_decls`
+                // uses for its own `ForEach` arm, and for the same reason:
+                // declarations inside a `foreach` body are rejected anyway
+                // (E0303, `no_decls_in_repeat`), so there's nothing here
+                // that substitution could ever legally affect.
+                ModuleItem::ForEach(fe) => self.collect_sigs(cx, &fe.items),
                 _ => {}
             }
         }
@@ -815,6 +831,88 @@ impl<'a> Checker<'a> {
                     };
                     self.walk_width_items(cx, branch, found);
                 }
+                // Unlike `drivers.rs`/`clocks.rs`, this pass cannot delegate
+                // by calling `ast::lower_foreach_item` and recursing into the
+                // lowered `Repeat`: `lower_foreach_item` always returns a
+                // freshly cloned/substituted `Vec<ModuleItem>` (never `'a`,
+                // even for the Range form — see its doc comment), but
+                // `walk_width_items` threads `&'a Expr`/`&'a Type` into
+                // `check_expr`/`infer_ty` (`widths/expr.rs`, outside this
+                // file's scope) via every item it walks — a lowered, owned
+                // Vec cannot satisfy that bound without leaking it (E0597
+                // confirmed this empirically; see task-6-report.md).
+                //
+                // Instead this arm walks the RAW (still-`'a`, AST-arena-
+                // owned) `fe.items` directly, reusing this file's own
+                // existing shadow/restore idioms: the Range form is
+                // semantically identical to `ModuleItem::Repeat` above, so
+                // it duplicates that exact per-iteration `cx.env` shadow;
+                // the Elements form doesn't need the lowered
+                // `arr[__foreach_v_idx]` substitution at all for WIDTH
+                // purposes (only for driver/clock EDGE tracking) — `var`'s
+                // type never varies per iteration, so it's enough to inject
+                // `var`'s element type into `cx.sigs` once (the exact
+                // pattern `inject_arm_bindings`, below, already uses for
+                // match-arm payload bindings) and walk the body a single
+                // time.
+                ModuleItem::ForEach(fe) => match &fe.source {
+                    ForEachSource::Range { lo, hi } => {
+                        let (Ok(lo_v), Ok(hi_v)) =
+                            (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
+                        else {
+                            continue; // bounds reported by pass 3
+                        };
+                        let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
+                            vec![lo_v, lo_v + 1, hi_v - 1]
+                        } else {
+                            (lo_v..hi_v).collect()
+                        };
+                        for v in values {
+                            let shadowed = cx.env.insert(fe.var.name.clone(), v);
+                            let before = self.diags.len();
+                            self.walk_width_items(cx, &fe.items, found);
+                            self.unshadow(cx, &fe.var.name, shadowed);
+                            if self.diags.len() > before {
+                                break;
+                            }
+                        }
+                    }
+                    ForEachSource::Elements(arr) => {
+                        let elem_ty = match cx.sigs.get(&arr.name).copied() {
+                            Some(Ty::Array {
+                                elem_width,
+                                elem_signed,
+                                ..
+                            }) => {
+                                if elem_signed {
+                                    Ty::Signed(elem_width)
+                                } else {
+                                    bits(elem_width)
+                                }
+                            }
+                            Some(Ty::Memory { width, signed, .. }) => {
+                                if signed {
+                                    Ty::Signed(width)
+                                } else {
+                                    bits(width)
+                                }
+                            }
+                            // Not an array/mem: E0417 already reported by
+                            // pass 3 (names.rs) — silently skip.
+                            _ => continue,
+                        };
+                        let shadowed = cx.sigs.insert(fe.var.name.clone(), elem_ty);
+                        self.walk_width_items(cx, &fe.items, found);
+                        match shadowed {
+                            Some(t) => {
+                                cx.sigs.insert(fe.var.name.clone(), t);
+                            }
+                            None => {
+                                cx.sigs.remove(&fe.var.name);
+                            }
+                        }
+                    }
+                },
                 ModuleItem::Port { .. }
                 | ModuleItem::Clock(_)
                 | ModuleItem::Reset { .. }
@@ -889,6 +987,67 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+                // Same "raw body + cx.env/cx.sigs shadow" delegation as
+                // `ModuleItem::ForEach` above, for the same cross-file
+                // `'a` reason (`check_expr` lives in `widths/expr.rs`).
+                SeqStmt::ForEach {
+                    var, source, body, ..
+                } => match source {
+                    ForEachSource::Range { lo, hi } => {
+                        let (Ok(lo_v), Ok(hi_v)) =
+                            (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
+                        else {
+                            continue; // bounds reported by pass 3
+                        };
+                        let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
+                            vec![lo_v, lo_v + 1, hi_v - 1]
+                        } else {
+                            (lo_v..hi_v).collect()
+                        };
+                        for v in values {
+                            let shadowed = cx.env.insert(var.name.clone(), v);
+                            let before = self.diags.len();
+                            self.seq_width_stmts(cx, body);
+                            self.unshadow(cx, &var.name, shadowed);
+                            if self.diags.len() > before {
+                                break;
+                            }
+                        }
+                    }
+                    ForEachSource::Elements(arr) => {
+                        let elem_ty = match cx.sigs.get(&arr.name).copied() {
+                            Some(Ty::Array {
+                                elem_width,
+                                elem_signed,
+                                ..
+                            }) => {
+                                if elem_signed {
+                                    Ty::Signed(elem_width)
+                                } else {
+                                    bits(elem_width)
+                                }
+                            }
+                            Some(Ty::Memory { width, signed, .. }) => {
+                                if signed {
+                                    Ty::Signed(width)
+                                } else {
+                                    bits(width)
+                                }
+                            }
+                            _ => continue, // E0417 already reported by pass 3
+                        };
+                        let shadowed = cx.sigs.insert(var.name.clone(), elem_ty);
+                        self.seq_width_stmts(cx, body);
+                        match shadowed {
+                            Some(t) => {
+                                cx.sigs.insert(var.name.clone(), t);
+                            }
+                            None => {
+                                cx.sigs.remove(&var.name);
+                            }
+                        }
+                    }
+                },
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
@@ -1238,6 +1397,71 @@ impl<'a> Checker<'a> {
                     }
                     cx.sigs = sigs_before;
                 }
+                // Same "raw body + cx.env/cx.sigs shadow" delegation as
+                // `ModuleItem::ForEach`/`SeqStmt::ForEach` above, for the
+                // same cross-file `'a` reason. `cx.sigs` is snapshotted and
+                // restored the same way `FnStmt::Loop` above does (a `fn`
+                // body's `let`-scoping means bindings made inside the loop
+                // body must not leak past it) — the Elements form's `var`
+                // binding is exactly such a binding (it's lowered to a real
+                // `FnStmt::Let` by `ast::lower_foreach_fn`; injecting its
+                // type into `cx.sigs` here has the same scoping effect
+                // without needing that lowered node to exist).
+                FnStmt::ForEach {
+                    var, source, body, ..
+                } => match source {
+                    ForEachSource::Range { lo, hi } => {
+                        let (Ok(lo_v), Ok(hi_v)) =
+                            (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
+                        else {
+                            continue; // bounds reported by pass 3
+                        };
+                        let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
+                            vec![lo_v, lo_v + 1, hi_v - 1]
+                        } else {
+                            (lo_v..hi_v).collect()
+                        };
+                        let sigs_before = cx.sigs.clone();
+                        for v in values {
+                            let shadowed = cx.env.insert(var.name.clone(), v);
+                            cx.sigs = sigs_before.clone();
+                            let before = self.diags.len();
+                            self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                            self.unshadow(cx, &var.name, shadowed);
+                            if self.diags.len() > before {
+                                break;
+                            }
+                        }
+                        cx.sigs = sigs_before;
+                    }
+                    ForEachSource::Elements(arr) => {
+                        let elem_ty = match cx.sigs.get(&arr.name).copied() {
+                            Some(Ty::Array {
+                                elem_width,
+                                elem_signed,
+                                ..
+                            }) => {
+                                if elem_signed {
+                                    Ty::Signed(elem_width)
+                                } else {
+                                    bits(elem_width)
+                                }
+                            }
+                            Some(Ty::Memory { width, signed, .. }) => {
+                                if signed {
+                                    Ty::Signed(width)
+                                } else {
+                                    bits(width)
+                                }
+                            }
+                            _ => continue, // E0417 already reported by pass 3
+                        };
+                        let sigs_before = cx.sigs.clone();
+                        cx.sigs.insert(var.name.clone(), elem_ty);
+                        self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                        cx.sigs = sigs_before;
+                    }
+                },
                 FnStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
