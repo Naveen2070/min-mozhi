@@ -14,6 +14,10 @@ mod expr;
 pub use expr::*;
 mod sync_loop_lower;
 pub use sync_loop_lower::lower_sync_loop;
+mod foreach_lower;
+pub use foreach_lower::{
+    array_like_len, array_like_len_fn, lower_foreach_fn, lower_foreach_item, lower_foreach_seq,
+};
 
 use std::cell::Cell;
 
@@ -136,6 +140,20 @@ pub enum FnStmt {
         /// Statements unrolled once per iteration.
         body: Vec<FnStmt>,
         /// Source span of the `loop` statement.
+        span: Span,
+    },
+    /// `foreach <var> in <source> { ... }` — statement-level sugar over
+    /// bare `loop`, usable inside a `fn` body. See `ForEach`'s doc
+    /// comment (the module-item form) for the shared semantics.
+    ForEach {
+        /// The bound name — an index (Range form) or an element value
+        /// (Elements form).
+        var: Ident,
+        /// Where the values come from.
+        source: ForEachSource,
+        /// Statements unrolled once per iteration.
+        body: Vec<FnStmt>,
+        /// Source span of the whole `foreach` statement.
         span: Span,
     },
     /// A statement that failed to parse. Produced ONLY by
@@ -475,6 +493,9 @@ pub enum ModuleItem {
     },
     /// Compile-time generation (`repeat i: 0..8 { ... }`).
     Repeat(Repeat),
+    /// `foreach <var> in <source> { ... }` — module-item-level sugar over
+    /// `repeat`; see `ForEach`'s doc comment.
+    ForEach(ForEach),
     /// `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { ... }`
     /// — cycle-iterating loop; see `SyncLoop` doc comment.
     SyncLoop(Box<SyncLoop>),
@@ -557,6 +578,43 @@ pub struct SyncLoop {
     /// Statements run each cycle while the loop is active.
     pub body: Vec<SeqStmt>,
     /// Source span of the whole `sync loop` declaration.
+    pub span: Span,
+}
+
+/// Where a `foreach` loop pulls its values from.
+#[derive(Clone, Debug)]
+pub enum ForEachSource {
+    /// `foreach i in lo..hi` — same range shape as `repeat`/bare `loop`.
+    Range {
+        /// Range lower bound (inclusive); must const-evaluate.
+        lo: Expr,
+        /// Range upper bound (exclusive); must const-evaluate.
+        hi: Expr,
+    },
+    /// `foreach x in arr` — binds each element of an array/`mem`-typed
+    /// identifier by value. `arr` must be a bare identifier naming an
+    /// array- or `mem`-typed `Port`/`Wire`/`Reg`/`Mem` declared in the
+    /// enclosing module (checker-enforced, E0417) — arbitrary expressions
+    /// are not resolved for length in v1.
+    Elements(Ident),
+}
+
+/// `foreach <var> in <source> { ... }` — module-item-level sugar over
+/// `repeat`. Preserved through parse/pretty/lint/translit for fidelity;
+/// the checker validates this node directly for the Elements-form source
+/// check (E0417), then delegates width/driver/clock checking to the
+/// lowered `Repeat` form (see `ast::foreach_lower::lower_foreach_item`).
+/// Emit/sim never see this node — only the lowered `Repeat`.
+#[derive(Clone, Debug)]
+pub struct ForEach {
+    /// The bound name — an index (Range form) or an element value
+    /// (Elements form).
+    pub var: Ident,
+    /// Where the values come from.
+    pub source: ForEachSource,
+    /// Module items unrolled once per iteration.
+    pub items: Vec<ModuleItem>,
+    /// Source span of the whole `foreach` block.
     pub span: Span,
 }
 
@@ -666,6 +724,23 @@ pub enum SeqStmt {
         /// Statements unrolled once per iteration.
         body: Vec<SeqStmt>,
         /// Source span of the whole `loop` statement.
+        span: Span,
+    },
+    /// `foreach <var> in <source> { ... }` — statement-level sugar over
+    /// bare `loop`, usable inside an `on` block. See `ForEach`'s doc
+    /// comment (the module-item form) for the shared semantics; this
+    /// variant is inline (matching `Loop`'s shape) rather than wrapping
+    /// the `ForEach` struct, since `body`'s element type differs
+    /// per context.
+    ForEach {
+        /// The bound name — an index (Range form) or an element value
+        /// (Elements form).
+        var: Ident,
+        /// Where the values come from.
+        source: ForEachSource,
+        /// Statements unrolled once per iteration.
+        body: Vec<SeqStmt>,
+        /// Source span of the whole `foreach` statement.
         span: Span,
     },
     /// A sequential statement that failed to parse. Produced ONLY by

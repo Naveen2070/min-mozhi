@@ -246,6 +246,7 @@ fn push_module_items(
                 module_idx,
             }),
             ModuleItem::Repeat(r) => push_module_items(out, &r.items, file_idx, module_idx),
+            ModuleItem::ForEach(fe) => push_module_items(out, &fe.items, file_idx, module_idx),
             ModuleItem::ConstIf { then, els, .. } => {
                 push_module_items(out, then, file_idx, module_idx);
                 if let Some(el) = els {
@@ -475,6 +476,24 @@ fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Ve
                 collect_item_refs(mi, module_idx, refs);
             }
         }
+        ModuleItem::ForEach(fe) => {
+            match &fe.source {
+                ForEachSource::Range { lo, hi } => {
+                    collect_expr_refs(lo, module_idx, refs);
+                    collect_expr_refs(hi, module_idx, refs);
+                }
+                ForEachSource::Elements(id) => {
+                    refs.push(Ref {
+                        name: id.name.clone(),
+                        span: id.span,
+                        module_idx,
+                    });
+                }
+            }
+            for mi in &fe.items {
+                collect_item_refs(mi, module_idx, refs);
+            }
+        }
         ModuleItem::SyncLoop(sl) => {
             for s in &sl.body {
                 collect_seq_refs(s, module_idx, refs);
@@ -532,6 +551,24 @@ fn collect_seq_refs(s: &SeqStmt, module_idx: Option<usize>, refs: &mut Vec<Ref>)
         SeqStmt::Loop { lo, hi, body, .. } => {
             collect_expr_refs(lo, module_idx, refs);
             collect_expr_refs(hi, module_idx, refs);
+            for s in body {
+                collect_seq_refs(s, module_idx, refs);
+            }
+        }
+        SeqStmt::ForEach { source, body, .. } => {
+            match source {
+                ForEachSource::Range { lo, hi } => {
+                    collect_expr_refs(lo, module_idx, refs);
+                    collect_expr_refs(hi, module_idx, refs);
+                }
+                ForEachSource::Elements(id) => {
+                    refs.push(Ref {
+                        name: id.name.clone(),
+                        span: id.span,
+                        module_idx,
+                    });
+                }
+            }
             for s in body {
                 collect_seq_refs(s, module_idx, refs);
             }

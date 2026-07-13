@@ -278,3 +278,48 @@ with its pure-Tamil twin `tamil-pure/nakartthi.mimz`), and a unit test
 **Severity.** MEDIUM — Missing simulator feature.
 
 **Workaround.** Use a full-register assignment with bitwise shifts and masks, e.g., `shift <- (shift >> 1) | (rx << 7)`.
+
+---
+
+## BUG-9 (OPEN) — Two `fn`-body `let` bindings with the same name emit two conflicting Verilog `reg` declarations
+
+**What.** A `fn` body that binds the same name twice via `let` at different
+points (e.g. `let acc = 0` followed later by a shadowing `let acc = acc +% 1`,
+including one inside a `loop`/`foreach` body re-binding a name declared
+outside it) emits **two** `reg <width> <name>;` declarations for the same
+identifier. Real Verilog rejects this outright (`iverilog`: `'<name>' has
+already been declared in this scope.`).
+
+**Cause.** `crates/mimz-core/src/emit_verilog/module.rs`'s `fn_all_locals`
+collects one `LocalLet` entry per source-level `FnStmt::Let` node with no
+dedup/rename by name, and the `reg` emission loop blindly emits one line per
+entry.
+
+**How found.** While writing the `examples/*/foreach_sum.mimz` example
+(`foreach`, 2026-07-12): a natural "seed then re-bind inside the loop"
+accumulator idiom (`let acc = 0` before `foreach`, `let acc = acc +% v`
+inside it) hit this. Reproduced minimally, with no `foreach`/loop involved
+at all: `fn bump(a: bits[8]) -> bits[8] { let x = a; let x = x +% 1; x }`
+produces the same double-`reg x` output. Confirmed pre-existing (predates
+`foreach`) and unrelated to the `foreach` feature itself.
+
+**Severity.** MEDIUM — silently produces Verilog that a real toolchain
+rejects; no compiler-side diagnostic warns the user before emit.
+
+**Workaround.** Avoid re-binding a `let` name inside a nested scope in a
+`fn` body; thread an accumulator through as an extra parameter instead
+(fold-style) — this is what `foreach_sum.mimz` does.
+
+**Note — the workaround's own variant, verified non-fatal but still a
+latent instance of the same root cause.** `foreach_sum.mimz` reuses the
+param name itself (`let acc = acc +% extend(v, 11)` inside the loop,
+rebinding the `acc` parameter), so its golden (`tests/golden/foreach_sum.v:21,23`)
+emits both `input [10:0] acc;` and `reg [10:0] acc;` for the same name —
+`fn_all_locals` doesn't dedupe a synthesized `Let` against an existing
+`FnParam` name either, only against other `Let`s. Confirmed via `iverilog`
+that THIS specific shape (input-then-reg-redeclaration, same width) is
+silently tolerated rather than rejected, and simulates correctly (a
+testbench with inputs 1..8 produced the correct sum, 36) — so the example
+is not broken. Flagged during the whole-branch review (2026-07-13) as a
+cosmetic variant of the same gap, worth fixing alongside the two-`let`
+case rather than as a separate bug.

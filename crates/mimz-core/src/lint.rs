@@ -195,6 +195,21 @@ fn collect_item(
                 collect_item(inner, spans, referenced);
             }
         }
+        ast::ModuleItem::ForEach(fe) => {
+            referenced.insert(fe.var.name.clone());
+            match &fe.source {
+                ast::ForEachSource::Range { lo, hi } => {
+                    collect_expr_names(lo, referenced);
+                    collect_expr_names(hi, referenced);
+                }
+                ast::ForEachSource::Elements(id) => {
+                    referenced.insert(id.name.clone());
+                }
+            }
+            for inner in &fe.items {
+                collect_item(inner, spans, referenced);
+            }
+        }
         ast::ModuleItem::SyncLoop(sl) => {
             referenced.insert(sl.var.name.clone());
             referenced.insert(sl.result_name.name.clone());
@@ -321,6 +336,20 @@ fn collect_seq_names(stmt: &ast::SeqStmt, names: &mut HashSet<String>) {
         ast::SeqStmt::Loop { lo, hi, body, .. } => {
             collect_expr_names(lo, names);
             collect_expr_names(hi, names);
+            for s in body {
+                collect_seq_names(s, names);
+            }
+        }
+        ast::SeqStmt::ForEach { source, body, .. } => {
+            match source {
+                ast::ForEachSource::Range { lo, hi } => {
+                    collect_expr_names(lo, names);
+                    collect_expr_names(hi, names);
+                }
+                ast::ForEachSource::Elements(id) => {
+                    names.insert(id.name.clone());
+                }
+            }
             for s in body {
                 collect_seq_names(s, names);
             }

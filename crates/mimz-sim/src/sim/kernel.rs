@@ -359,6 +359,12 @@ fn run_seq(
                     i += 1;
                 }
             }
+            // Unreachable: every `SeqStmt::ForEach` in an `on`-block body is
+            // lowered before `run_seq` ever runs — see `elaborate.rs`'s
+            // `elaborate_module`'s `ModuleItem::On` arm.
+            SeqStmt::ForEach { .. } => unreachable!(
+                "ForEach is lowered before Rw::seq/assigns/run_seq ever run — see elaborate_module's ModuleItem::On arm"
+            ),
             // Unreachable: the kernel runs on a strict-parsed tree, which
             // carries no `Error` placeholder.
             SeqStmt::Error(_) => {}

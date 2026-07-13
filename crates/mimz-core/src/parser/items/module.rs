@@ -275,6 +275,7 @@ impl Parser {
                 self.sync_loop_block(start)
             }
             TokKind::Kw(Kw::Repeat) => self.repeat_block(),
+            TokKind::Kw(Kw::Foreach) => self.foreach_block(),
             TokKind::Ident(_) => {
                 let lhs = self.lvalue()?;
                 if self.at(&TokKind::LArrow) {

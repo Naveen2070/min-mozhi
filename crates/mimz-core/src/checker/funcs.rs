@@ -112,6 +112,23 @@ fn check_unreachable_after_return(stmts: &[FnStmt], file: usize, ck: &mut Checke
             FnStmt::Loop { body, .. } => {
                 check_unreachable_after_return(body, file, ck);
             }
+            // `foreach` is pure sugar over `loop` (see `ast::foreach_lower`'s
+            // module doc comment), but this specific check needs no
+            // `ast::lower_foreach_fn` call at all: dead-code-after-`return`
+            // is a purely structural property of the statement list, and
+            // `lower_foreach_fn`'s Elements-form substitution only ever
+            // rewrites an `Ident(var)` read into `Index{arr, idx}` — it adds
+            // no `Return`/`If`/`Loop` nodes and removes none, so walking the
+            // RAW (unlowered) `body` finds exactly the same unreachable
+            // statements a lowered walk would. This also means it's correct
+            // to recurse unconditionally here, unlike `names.rs`/`widths`'s
+            // arms: gating on `lower_foreach_fn` returning `Some` (i.e.
+            // skipping when the Elements-form array doesn't resolve, E0417)
+            // would wrongly suppress a genuine E0812 inside a body whose
+            // `foreach` source happens to be invalid — an unrelated concern.
+            FnStmt::ForEach { body, .. } => {
+                check_unreachable_after_return(body, file, ck);
+            }
             FnStmt::Let(_) | FnStmt::Error(_) => {}
         }
     }
@@ -124,6 +141,7 @@ fn next_stmt_span(stmt: &FnStmt) -> Span {
         FnStmt::If { cond, .. } => cond.span,
         FnStmt::Return(e) => e.span,
         FnStmt::Loop { span, .. } => *span,
+        FnStmt::ForEach { span, .. } => *span,
         FnStmt::Error(s) => *s,
     }
 }
@@ -188,6 +206,20 @@ fn collect_fn_stmt_calls(stmts: &[FnStmt], out: &mut Vec<String>) {
             FnStmt::Loop { lo, hi, body, .. } => {
                 collect_calls(lo, out);
                 collect_calls(hi, out);
+                collect_fn_stmt_calls(body, out);
+            }
+            // Same "no lowering needed" reasoning as
+            // `check_unreachable_after_return`'s `ForEach` arm above: an
+            // `ExprKind::FnCall` node is neither introduced nor removed by
+            // `lower_foreach_fn`'s `Ident(var)` -> `Index{arr, idx}`
+            // substitution, so the raw body yields the identical call set.
+            // For the Range form, `source`'s `lo`/`hi` are walked too,
+            // mirroring `FnStmt::Loop` just above.
+            FnStmt::ForEach { source, body, .. } => {
+                if let crate::ast::ForEachSource::Range { lo, hi } = source {
+                    collect_calls(lo, out);
+                    collect_calls(hi, out);
+                }
                 collect_fn_stmt_calls(body, out);
             }
             FnStmt::Error(_) => {}

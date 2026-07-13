@@ -25,18 +25,26 @@ use crate::span::Span;
 
 use super::Checker;
 
-/// Per-module state for the domain coloring.
-struct Ccx<'a> {
+/// Per-module state for the domain coloring. Owns its `String`/`Expr` data
+/// (not `&'a`) — a `ForEach` body reaches `collect` through a LOWERED
+/// (freshly cloned, never `'a`) item list once Elements-form substitution
+/// happens (`ast::lower_foreach_item`), and `domains_of`/`domains_of_any`
+/// are methods on `impl<'a> Checker<'a>`, so a `Ccx<'a>` field type would
+/// otherwise force `'a` all the way down to `collect`'s `items` parameter,
+/// the same "unnecessarily tied lifetime" class of issue `checker/names.rs`
+/// already fixed (see its own doc comments), just needing an owning-struct
+/// fix here instead of merely dropping a bound.
+struct Ccx {
     /// reg name -> the clock that owns it (its `on` block's clock).
-    reg_clock: HashMap<&'a str, &'a str>,
+    reg_clock: HashMap<String, String>,
     /// wire/out name -> the expressions that drive it (init, drive rhs,
     /// and drive lhs index expressions — a demux select feeds the value).
-    drives: HashMap<&'a str, Vec<&'a Expr>>,
+    drives: HashMap<String, Vec<Expr>>,
     /// wire/out name -> its declaration span (for the mixing error).
-    decl_spans: HashMap<&'a str, Span>,
+    decl_spans: HashMap<String, Span>,
     /// Memoized domain sets; `None` marks in-progress (comb cycle —
     /// E0504 already reported it, treat as domain-free here).
-    domains: HashMap<&'a str, Option<HashSet<&'a str>>>,
+    domains: HashMap<String, Option<HashSet<String>>>,
 }
 
 impl<'a> Checker<'a> {
@@ -75,13 +83,13 @@ impl<'a> Checker<'a> {
 
         // A wire/out whose own derivation mixes two domains is already a
         // crossing, before anyone reads it.
-        let names: Vec<&str> = cx.decl_spans.keys().copied().collect();
+        let names: Vec<String> = cx.decl_spans.keys().cloned().collect();
         for name in names {
-            let doms = self.domains_of(&mut cx, name);
+            let doms = self.domains_of(&mut cx, &name);
             if doms.len() > 1 {
-                let mut list: Vec<&str> = doms.iter().copied().collect();
+                let mut list: Vec<&str> = doms.iter().map(String::as_str).collect();
                 list.sort_unstable();
-                let span = cx.decl_spans[name];
+                let span = cx.decl_spans[&name];
                 self.err(
                     file,
                     span,
@@ -97,16 +105,16 @@ impl<'a> Checker<'a> {
         // Reads inside an `on` block must stay in that block's domain.
         for item in &m.items {
             let ModuleItem::On(on) = item else { continue };
-            let mut reported: HashSet<&str> = HashSet::new();
-            let mut reads: Vec<(&'a str, Span)> = Vec::new();
-            body_reads(&on.body, &mut reads);
+            let mut reported: HashSet<String> = HashSet::new();
+            let mut reads: Vec<(String, Span)> = Vec::new();
+            body_reads(&on.body, &m.items, &mut reads);
             for (name, span) in reads {
-                if reported.contains(name) {
+                if reported.contains(&name) {
                     continue;
                 }
-                let doms = self.domains_of_any(&mut cx, name);
-                if let Some(foreign) = doms.iter().find(|&&d| d != on.clock.name) {
-                    reported.insert(name);
+                let doms = self.domains_of_any(&mut cx, &name);
+                if let Some(foreign) = doms.iter().find(|d| d.as_str() != on.clock.name) {
+                    reported.insert(name.clone());
                     self.err(
                         file,
                         span,
@@ -128,9 +136,9 @@ impl<'a> Checker<'a> {
 
     /// Domain set of a NAME of any kind: a reg's is its owning clock;
     /// wires/outs are computed; everything else is domain-free.
-    fn domains_of_any(&mut self, cx: &mut Ccx<'a>, name: &'a str) -> HashSet<&'a str> {
-        if let Some(&clk) = cx.reg_clock.get(name) {
-            return HashSet::from([clk]);
+    fn domains_of_any(&mut self, cx: &mut Ccx, name: &str) -> HashSet<String> {
+        if let Some(clk) = cx.reg_clock.get(name) {
+            return HashSet::from([clk.clone()]);
         }
         if cx.decl_spans.contains_key(name) {
             return self.domains_of(cx, name);
@@ -141,27 +149,27 @@ impl<'a> Checker<'a> {
     /// Domain set of a wire/out: the union over everything its driving
     /// expressions read, memoized. A comb cycle (already E0504) yields
     /// the empty set rather than recursing forever.
-    fn domains_of(&mut self, cx: &mut Ccx<'a>, name: &'a str) -> HashSet<&'a str> {
+    fn domains_of(&mut self, cx: &mut Ccx, name: &str) -> HashSet<String> {
         match cx.domains.get(name) {
             Some(Some(d)) => return d.clone(),
             Some(None) => return HashSet::new(), // in progress: cycle
             None => {}
         }
-        cx.domains.insert(name, None);
-        let mut acc: HashSet<&'a str> = HashSet::new();
+        cx.domains.insert(name.to_string(), None);
+        let mut acc: HashSet<String> = HashSet::new();
         let exprs = cx.drives.get(name).cloned().unwrap_or_default();
-        for e in exprs {
-            let mut reads: Vec<(&'a str, Span)> = Vec::new();
+        for e in &exprs {
+            let mut reads: Vec<(String, Span)> = Vec::new();
             expr_reads(e, &mut reads);
             for (read, _) in reads {
-                if let Some(&clk) = cx.reg_clock.get(read) {
-                    acc.insert(clk);
-                } else if cx.decl_spans.contains_key(read) {
-                    acc.extend(self.domains_of(cx, read));
+                if let Some(clk) = cx.reg_clock.get(&read) {
+                    acc.insert(clk.clone());
+                } else if cx.decl_spans.contains_key(&read) {
+                    acc.extend(self.domains_of(cx, &read));
                 }
             }
         }
-        cx.domains.insert(name, Some(acc.clone()));
+        cx.domains.insert(name.to_string(), Some(acc.clone()));
         acc
     }
 }
@@ -184,6 +192,12 @@ fn count_clocks(items: &[ModuleItem], n: &mut usize) {
             // a new one.
             ModuleItem::SyncLoop(_) => {}
             ModuleItem::Repeat(r) => count_clocks(&r.items, n),
+            // `foreach` is pure sugar over `repeat` — a `clock` declaration
+            // inside its body is rejected anyway (E0303, `no_decls_in_repeat`
+            // in `checker/names.rs`), so the raw (unlowered) `fe.items` is
+            // exactly as accurate as a lowered one here, same "declared
+            // once, raw body" treatment `ModuleItem::Repeat` gets above.
+            ModuleItem::ForEach(fe) => count_clocks(&fe.items, n),
             ModuleItem::ConstIf { then, els, .. } => {
                 count_clocks(then, n);
                 if let Some(el) = els {
@@ -202,7 +216,7 @@ fn count_clocks(items: &[ModuleItem], n: &mut usize) {
 /// Over-approximates reg ownership and drive expressions for the non-taken
 /// branch. Safe because the overcount only makes clock-coloring slightly less
 /// precise (never wrong) and the extra drive registrations are harmless.
-fn collect<'a>(items: &'a [ModuleItem], cx: &mut Ccx<'a>) {
+fn collect(items: &[ModuleItem], cx: &mut Ccx) {
     for item in items {
         match item {
             ModuleItem::Port {
@@ -210,34 +224,64 @@ fn collect<'a>(items: &'a [ModuleItem], cx: &mut Ccx<'a>) {
                 name,
                 ..
             } => {
-                cx.decl_spans.entry(&name.name).or_insert(name.span);
+                cx.decl_spans.entry(name.name.clone()).or_insert(name.span);
             }
             ModuleItem::Wire { name, init, .. } => {
-                cx.decl_spans.entry(&name.name).or_insert(name.span);
-                cx.drives.entry(&name.name).or_default().push(init);
+                cx.decl_spans.entry(name.name.clone()).or_insert(name.span);
+                cx.drives
+                    .entry(name.name.clone())
+                    .or_default()
+                    .push(init.clone());
             }
             ModuleItem::Drive { lhs, rhs } => {
-                cx.drives.entry(&lhs.base.name).or_default().push(rhs);
+                cx.drives
+                    .entry(lhs.base.name.clone())
+                    .or_default()
+                    .push(rhs.clone());
                 if let Some((i, hi)) = &lhs.index {
-                    cx.drives.entry(&lhs.base.name).or_default().push(i);
+                    cx.drives
+                        .entry(lhs.base.name.clone())
+                        .or_default()
+                        .push(i.clone());
                     if let Some(hi) = hi {
-                        cx.drives.entry(&lhs.base.name).or_default().push(hi);
+                        cx.drives
+                            .entry(lhs.base.name.clone())
+                            .or_default()
+                            .push(hi.clone());
                     }
                 }
             }
             ModuleItem::On(on) => {
-                let mut targets: Vec<&'a str> = Vec::new();
+                let mut targets: Vec<String> = Vec::new();
                 body_targets(&on.body, &mut targets);
                 for t in targets {
-                    cx.reg_clock.entry(t).or_insert(&on.clock.name);
+                    cx.reg_clock
+                        .entry(t)
+                        .or_insert_with(|| on.clock.name.clone());
                 }
             }
             ModuleItem::SyncLoop(sl) => {
                 cx.reg_clock
-                    .entry(&sl.result_name.name)
-                    .or_insert(&sl.clock.name);
+                    .entry(sl.result_name.name.clone())
+                    .or_insert_with(|| sl.clock.name.clone());
             }
             ModuleItem::Repeat(r) => collect(&r.items, cx),
+            // `foreach` is pure sugar over `repeat` (see
+            // `ast::foreach_lower`'s module doc comment) — lower and
+            // recurse into this SAME function, exactly like `Repeat` above.
+            // Unlike `widths/mod.rs`'s equivalent arms, `Ccx` (above) is
+            // owned rather than `'a`-tied, so this genuinely can consume a
+            // freshly lowered (locally-owned) `Vec<ModuleItem>`: the
+            // Elements form's `arr[__idx]` substitution makes a `Drive`
+            // rhs that reads the bound element correctly attribute to the
+            // array signal's own domain, which a raw (unsubstituted) walk
+            // would silently miss (the bound name isn't itself a declared
+            // signal in `cx.decl_spans`/`cx.reg_clock`).
+            ModuleItem::ForEach(fe) => {
+                if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                    collect(&lowered, cx);
+                }
+            }
             ModuleItem::ConstIf { then, els, .. } => {
                 collect(then, cx);
                 if let Some(el) = els {
@@ -250,26 +294,37 @@ fn collect<'a>(items: &'a [ModuleItem], cx: &mut Ccx<'a>) {
 }
 
 /// Assignment targets in an `on` body (the regs this block owns).
-fn body_targets<'a>(body: &'a [SeqStmt], out: &mut Vec<&'a str>) {
+fn body_targets(body: &[SeqStmt], out: &mut Vec<String>) {
     for s in body {
         match s {
-            SeqStmt::Assign { lhs, .. } => out.push(&lhs.base.name),
+            SeqStmt::Assign { lhs, .. } => out.push(lhs.base.name.clone()),
             SeqStmt::If { then, els, .. } => {
                 body_targets(then, out);
                 if let Some(els) = els {
                     body_targets(els, out);
                 }
             }
-            SeqStmt::Default { name, .. } => out.push(&name.name),
+            SeqStmt::Default { name, .. } => out.push(name.name.clone()),
             SeqStmt::Loop { body, .. } => body_targets(body, out),
+            // `subst_seq_stmt` (the Elements form's `var` substitution, see
+            // `ast::lower_foreach_seq`) only ever rewrites an assignment's
+            // RHS — it always keeps `lhs: lhs.clone()` — so an assignment
+            // TARGET name inside a `foreach` body is identical whether the
+            // body is raw or lowered. Walk the raw `body` directly, same
+            // "declared once, raw body" idiom as `count_clocks` above and
+            // `checker/drivers.rs`'s `on_block` `ForEach` arm (which is
+            // this exact function's `Dcx`-side sibling).
+            SeqStmt::ForEach { body, .. } => body_targets(body, out),
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }
 }
 
 /// Every read in an `on` body: assignment rhs, lhs index expressions
-/// (a demux select is a read), and `if` conditions.
-fn body_reads<'a>(body: &'a [SeqStmt], out: &mut Vec<(&'a str, Span)>) {
+/// (a demux select is a read), and `if` conditions. `module_items` is the
+/// enclosing module's full item list — needed (only by the `ForEach` arm)
+/// to resolve an Elements-form source's array via `ast::lower_foreach_seq`.
+fn body_reads(body: &[SeqStmt], module_items: &[ModuleItem], out: &mut Vec<(String, Span)>) {
     for s in body {
         match s {
             SeqStmt::Assign { lhs, rhs } => {
@@ -278,23 +333,55 @@ fn body_reads<'a>(body: &'a [SeqStmt], out: &mut Vec<(&'a str, Span)>) {
             }
             SeqStmt::If { cond, then, els } => {
                 expr_reads(cond, out);
-                body_reads(then, out);
+                body_reads(then, module_items, out);
                 if let Some(els) = els {
-                    body_reads(els, out);
+                    body_reads(els, module_items, out);
                 }
             }
             SeqStmt::Default { val, .. } => expr_reads(val, out),
             SeqStmt::Loop { lo, hi, body, .. } => {
                 expr_reads(lo, out);
                 expr_reads(hi, out);
-                body_reads(body, out);
+                body_reads(body, module_items, out);
+            }
+            // `foreach` is pure sugar over `loop` — lower and recurse into
+            // this SAME function, exactly like `SeqStmt::Loop` above (the
+            // lowered form is always a `SeqStmt::Loop`, so this hits that
+            // exact arm on the next call). Unlike `widths/mod.rs`'s
+            // equivalent arm, this file's `out` is fully owned (`String`,
+            // not `&'a str` — see `Ccx`'s doc comment), so `body_reads`
+            // isn't `'a`-tied and can consume a freshly lowered, locally-
+            // owned `Vec<SeqStmt>` directly.
+            //
+            // This replaced an earlier, buggy version of this arm that
+            // hand-retargeted raw `var` reads to `arr` by string equality
+            // AFTER walking the raw body — that approach silently mis-
+            // attributed a NESTED loop/foreach's own same-named `var`
+            // (shadowing the outer one) to the outer array's domain too,
+            // a false positive `lower_foreach_seq`'s substitution already
+            // gets right (its shadowing rules are tested — see
+            // `ast::foreach_lower`'s `loop_var_shadowing_...` tests).
+            SeqStmt::ForEach {
+                var,
+                source,
+                body,
+                span,
+            } => {
+                if let Some(lowered) =
+                    crate::ast::lower_foreach_seq(var, source, body, *span, module_items)
+                {
+                    body_reads(&lowered, module_items, out);
+                }
+                // On `None`: E0417 already reported by pass 3 (names.rs) —
+                // silently skip, same "reported once upstream" precedent
+                // used throughout this task.
             }
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }
 }
 
-fn lvalue_index_reads<'a>(lhs: &'a LValue, out: &mut Vec<(&'a str, Span)>) {
+fn lvalue_index_reads(lhs: &LValue, out: &mut Vec<(String, Span)>) {
     if let Some((i, hi)) = &lhs.index {
         expr_reads(i, out);
         if let Some(hi) = hi {
@@ -306,9 +393,9 @@ fn lvalue_index_reads<'a>(lhs: &'a LValue, out: &mut Vec<(&'a str, Span)>) {
 /// Every name an expression reads, with the span to point the error at.
 /// Instance outputs (`inst.out`) contribute nothing — cross-instance
 /// domain tracking is deferred (module-local analysis).
-fn expr_reads<'a>(e: &'a Expr, out: &mut Vec<(&'a str, Span)>) {
+fn expr_reads(e: &Expr, out: &mut Vec<(String, Span)>) {
     match &e.kind {
-        ExprKind::Ident(name) => out.push((name, e.span)),
+        ExprKind::Ident(name) => out.push((name.clone(), e.span)),
         ExprKind::Field { .. } => {} // Enum.Variant or inst.out: no domain
         ExprKind::Int { .. } | ExprKind::Bool(_) => {}
         ExprKind::Unary { expr, .. } => expr_reads(expr, out),
