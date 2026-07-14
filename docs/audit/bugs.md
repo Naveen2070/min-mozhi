@@ -253,7 +253,7 @@ with its pure-Tamil twin `tamil-pure/nakartthi.mimz`), and a unit test
 
 ---
 
-## BUG-7 (OPEN) — Simulator `eval_fn_call` masks arguments without sign-extending
+## BUG-7 (FIXED) — Simulator `eval_fn_call` masks arguments without sign-extending
 
 **What.** When passing a negative signed value to a function, the simulator loses the sign extension if the parameter width is wider. For example, passing `-128` (as `signed[8]`) to a function expecting `signed[16]` evaluates to `+128` rather than `-128`.
 
@@ -263,11 +263,20 @@ with its pure-Tamil twin `tamil-pure/nakartthi.mimz`), and a unit test
 
 **Severity.** HIGH — Silent miscompute in the simulator for negative numbers passed to functions.
 
-**Workaround.** Inline the `min`/`max` logic or use built-ins (which handle sign-extension correctly) instead of using a user-defined function.
+**Workaround (no longer needed).** Inline the `min`/`max` logic or use built-ins (which handle sign-extension correctly) instead of using a user-defined function.
+
+**Fix.** Factored the `Builtin::Extend` arm's sign-extension logic (replicate
+the sign bit into the new high bits when widening a negative signed value)
+into a shared `extend_bits` helper, and applied it in `eval_fn_call`'s two
+argument-binding sites (scalar and array-element params) in place of the
+naive `Val::new(val.bits, w, s)` (`crates/mimz-sim/src/sim/value.rs`).
+
+**Test.** `fn_call_sign_extends_narrower_signed_arg_to_wider_param`
+(`crates/mimz-sim/src/sim/value.rs`).
 
 ---
 
-## BUG-8 (OPEN) — Simulator errors on bit-indexed register assignment
+## BUG-8 (FIXED) — Simulator errors on bit-indexed register assignment
 
 **What.** The parser and AST support bit-indexed register assignment (e.g., `shift[bit_idx] <- rx`), but the simulator rejects it.
 
@@ -277,11 +286,26 @@ with its pure-Tamil twin `tamil-pure/nakartthi.mimz`), and a unit test
 
 **Severity.** MEDIUM — Missing simulator feature.
 
-**Workaround.** Use a full-register assignment with bitwise shifts and masks, e.g., `shift <- (shift >> 1) | (rx << 7)`.
+**Workaround (no longer needed).** Use a full-register assignment with bitwise shifts and masks, e.g., `shift <- (shift >> 1) | (rx << 7)`.
+
+**Fix.** A plain (non-array, non-mem) bit/slice index or slice bound must
+already be a compile-time constant on the READ path (`value::eval`'s
+`Index`/`Slice` arms use `const_eval`), so the write path needs no
+runtime-index handling either — it reads the base register value (chained
+through `next` first, so two disjoint-bit writes to the same register in
+one `on` block combine instead of the second clobbering the first), patches
+the constant-indexed bit or slice, and writes the merged whole value back
+(`crates/mimz-sim/src/sim/kernel.rs`). `checked_index` was widened from
+private to `pub(super)` to share it with the read path's existing helper.
+
+**Test.** `bit_indexed_register_write_sets_one_bit`,
+`slice_indexed_register_write_sets_a_range`, and
+`disjoint_bit_indexed_writes_in_one_on_block_combine`
+(`crates/mimz-sim/src/sim/kernel.rs`).
 
 ---
 
-## BUG-9 (OPEN) — Two `fn`-body `let` bindings with the same name emit two conflicting Verilog `reg` declarations
+## BUG-9 (FIXED) — Two `fn`-body `let` bindings with the same name emit two conflicting Verilog `reg` declarations
 
 **What.** A `fn` body that binds the same name twice via `let` at different
 points (e.g. `let acc = 0` followed later by a shadowing `let acc = acc +% 1`,
@@ -306,20 +330,43 @@ produces the same double-`reg x` output. Confirmed pre-existing (predates
 **Severity.** MEDIUM — silently produces Verilog that a real toolchain
 rejects; no compiler-side diagnostic warns the user before emit.
 
-**Workaround.** Avoid re-binding a `let` name inside a nested scope in a
-`fn` body; thread an accumulator through as an extra parameter instead
-(fold-style) — this is what `foreach_sum.mimz` does.
+**Workaround (no longer needed for the same-width case).** Avoid re-binding
+a `let` name inside a nested scope in a `fn` body; thread an accumulator
+through as an extra parameter instead (fold-style) — this is what
+`foreach_sum.mimz` does (and continues to do — same-width shadowing is the
+supported pattern, not a workaround, after this fix).
 
-**Note — the workaround's own variant, verified non-fatal but still a
-latent instance of the same root cause.** `foreach_sum.mimz` reuses the
-param name itself (`let acc = acc +% extend(v, 11)` inside the loop,
-rebinding the `acc` parameter), so its golden (`tests/golden/foreach_sum.v:21,23`)
-emits both `input [10:0] acc;` and `reg [10:0] acc;` for the same name —
-`fn_all_locals` doesn't dedupe a synthesized `Let` against an existing
-`FnParam` name either, only against other `Let`s. Confirmed via `iverilog`
-that THIS specific shape (input-then-reg-redeclaration, same width) is
-silently tolerated rather than rejected, and simulates correctly (a
-testbench with inputs 1..8 produced the correct sum, 36) — so the example
-is not broken. Flagged during the whole-branch review (2026-07-13) as a
-cosmetic variant of the same gap, worth fixing alongside the two-`let`
-case rather than as a separate bug.
+**Fix.** Two-part, since a shadow at a genuinely DIFFERENT width can't
+safely share one Verilog `reg` declaration (only same-width shadowing can):
+(1) a new checker rule in `check_fn_stmt_widths`'s `FnStmt::Let` arm
+(`crates/mimz-core/src/checker/widths/mod.rs`) rejects re-binding a name —
+an earlier `let` in the same straight-line body, or a `fn` parameter — at a
+different width, as new code **E0813**; (2) `render_fn_decl`'s reg-emission
+loop (`crates/mimz-core/src/emit_verilog/module.rs`) now dedupes by name
+(seeded with the scalar param names), skipping a second `reg` declaration
+for a name it already declared — safe now that E0813 guarantees any
+surviving shadow keeps the same width. `ALL_CHECKER_CODES` (`src/diag.rs`)
+and the long-form explanation (`src/explain.rs`) were updated to match, and
+the two goldens carrying the old duplicate-`reg` output for the workaround's
+own variant (`tests/golden/foreach_sum.v`, `tests/golden/tamil_pure_kootu.v`)
+were regenerated — the duplicate `reg [10:0] acc;`/`reg [10:0] thokai;`
+lines are gone, since `acc`/`thokai` are now recognized as already declared
+via their `input` param.
+
+**Test.** `e0813_fn_let_shadow_width_mismatch`,
+`fn_let_shadow_same_width_stays_clean`, and
+`fn_let_shadowing_a_param_at_a_different_width_is_e0813`
+(`crates/mimz-core/src/checker/tests.rs`), plus fixture
+`tests/fixtures/errors/e0813_fn_let_shadow_width_mismatch.mimz`.
+
+**Note — the workaround's own variant, closed by this fix too.**
+`foreach_sum.mimz` reuses the param name itself (`let acc = acc +%
+extend(v, 11)` inside the loop, rebinding the `acc` parameter), so its
+golden used to emit both `input [10:0] acc;` and `reg [10:0] acc;` for the
+same name — `fn_all_locals` didn't dedupe a synthesized `Let` against an
+existing `FnParam` name either, only against other `Let`s. `iverilog`
+tolerated this specific shape (input-then-reg-redeclaration, same width)
+rather than rejecting it, so the example was never actually broken — but
+the fix's param-seeded dedup set closes this variant too: the golden
+(`tests/golden/foreach_sum.v`, and its pure-Tamil twin
+`tests/golden/tamil_pure_kootu.v`) no longer emits the redundant `reg` line.

@@ -309,7 +309,10 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
                         )
                     })?;
                     ai += 1;
-                    locals.insert(format!("{}_{i}", param.name.name), Val::new(val.bits, w, s));
+                    locals.insert(
+                        format!("{}_{i}", param.name.name),
+                        Val::new(extend_bits(val, w), w, s),
+                    );
                 }
                 arrays.insert(param.name.name.clone(), n);
             }
@@ -323,7 +326,7 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
                     )
                 })?;
                 ai += 1;
-                locals.insert(param.name.name.clone(), Val::new(val.bits, w, s));
+                locals.insert(param.name.name.clone(), Val::new(extend_bits(val, w), w, s));
             }
         }
     }
@@ -509,6 +512,24 @@ impl Resolver for FnEnv<'_> {
     }
 }
 
+/// Widen `v`'s raw bits to (at least) `width`, sign-extending the new high
+/// bits when `v` is signed and negative — zero-extending otherwise. If
+/// `width <= v.width` this is just `v`'s own bits (truncation, if any,
+/// happens later via `Val::new`'s masking). Shared by `Builtin::Extend`
+/// (explicit, user-requested widening) and `eval_fn_call` (implicit
+/// widening when a narrower argument binds to a wider parameter) — BUG-7:
+/// binding used to mask the caller's raw bits to the param's width without
+/// this extension, so a negative value went positive when the param was
+/// wider (e.g. `signed[8]` `-128` into a `signed[16]` param read back as
+/// `+128`, since the new high bits came from a zero-masked `Val::new` alone).
+fn extend_bits(v: Val, width: u32) -> u128 {
+    if width > v.width && v.signed && (v.bits >> (v.width - 1)) & 1 == 1 {
+        v.bits | (mask(width) & !mask(v.width))
+    } else {
+        v.bits & mask(v.width)
+    }
+}
+
 fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, String> {
     match func {
         Builtin::Extend => {
@@ -520,12 +541,7 @@ fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, Str
                     v.width
                 ));
             }
-            let bits = if v.signed && v.width >= 1 && (v.bits >> (v.width - 1)) & 1 == 1 {
-                v.bits | (mask(n) & !mask(v.width)) // sign-extend
-            } else {
-                v.bits & mask(v.width)
-            };
-            Ok(Val::new(bits, n, v.signed))
+            Ok(Val::new(extend_bits(v, n), n, v.signed))
         }
         Builtin::Trunc => {
             let v = eval(r, &args[0])?;
@@ -754,7 +770,7 @@ pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128
 /// A bit index or slice bound must be a non-negative integer inside the value's
 /// width. Rejects negative / out-of-range positions instead of truncating via
 /// `as u32` or a later oversized shift (`>> n`, `n >= 128`, which panics).
-fn checked_index(n: i128, width: u32, what: &str) -> Result<u32, String> {
+pub(super) fn checked_index(n: i128, width: u32, what: &str) -> Result<u32, String> {
     if (0..width as i128).contains(&n) {
         Ok(n as u32)
     } else {
@@ -891,6 +907,39 @@ mod tests {
             .find(|o| o.name == "result")
             .expect("module declares `result`");
         Val::new(out.value, out.width, out.signed).as_i128()
+    }
+
+    #[test]
+    fn fn_call_sign_extends_narrower_signed_arg_to_wider_param() {
+        // BUG-7 regression: `eval_fn_call` used to bind an argument with
+        // `Val::new(val.bits, w, s)` — masking the caller's raw bits to the
+        // param's width with no sign-extension. A `signed[16]` param bound
+        // to the literal `-128` (whose own natural width is the minimal
+        // 8-bit two's-complement pattern, 0x80) came out `+128`: 0x80
+        // masked to 16 bits is still 0x0080, not the correctly
+        // sign-extended 0xFF80.
+        let src = "fn widen16(x: signed[16]) -> signed[16] {\n  x\n}\n\n\
+                   module M {\n  out result: signed[16]\n  result = widen16(-128)\n}\n";
+        let tokens = mimz_core::lexer::lex(src).expect("lex");
+        let file = mimz_core::parser::parse(tokens).expect("parse");
+        let outputs = super::super::comb::eval_outputs(
+            std::slice::from_ref(&file),
+            Some("M"),
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        )
+        .expect("eval_outputs");
+        let out = outputs
+            .into_iter()
+            .find(|o| o.name == "result")
+            .expect("module declares `result`");
+        assert_eq!(
+            Val::new(out.value, out.width, out.signed).as_i128(),
+            -128,
+            "got raw bits {:#x} at width {}",
+            out.value,
+            out.width
+        );
     }
 
     #[test]

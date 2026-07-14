@@ -1634,6 +1634,38 @@ fn e0811_const_if_condition_not_const() {
 }
 
 #[test]
+fn e0813_fn_let_shadow_width_mismatch() {
+    // BUG-9: `x` is first 8 bits, then re-bound to 16 via `extend` — two
+    // widths under one name can't share a single Verilog `reg` declaration.
+    first_err(
+        "fn bump(a: bits[8]) -> bits[16] {\n  let x = a\n  let x = extend(x, 16)\n  x\n}\n\
+         module M {\n  in a: bits[8]\n  out y: bits[16]\n  y = bump(a)\n}\n",
+        "E0813",
+    );
+}
+
+#[test]
+fn fn_let_shadow_same_width_stays_clean() {
+    // The common fold/accumulator idiom (foreach_sum.mimz's `let acc = acc
+    // +% v`) re-binds a name at the SAME width — must NOT trip E0813.
+    let src = "fn bump(a: bits[8]) -> bits[8] {\n  let x = a\n  let x = x +% 1\n  x\n}\n\
+               module M {\n  in a: bits[8]\n  out y: bits[8]\n  y = bump(a)\n}\n";
+    check_one(src).expect("same-width fn-body let shadowing must check clean");
+}
+
+#[test]
+fn fn_let_shadowing_a_param_at_a_different_width_is_e0813() {
+    // Shadowing a PARAM (not just an earlier `let`) at a different width
+    // is the same conflict — the param's own `input` port already claims
+    // the name at its declared width.
+    first_err(
+        "fn bump(acc: bits[8]) -> bits[16] {\n  let acc = extend(acc, 16)\n  acc\n}\n\
+         module M {\n  in a: bits[8]\n  out y: bits[16]\n  y = bump(a)\n}\n",
+        "E0813",
+    );
+}
+
+#[test]
 fn or_arm_wildcard_not_binding_e0808() {
     let src = format!(
         concat!(
