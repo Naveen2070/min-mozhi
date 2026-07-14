@@ -29,6 +29,26 @@ Plus:
 - Always-blocks with reset synthesis (`if (rst) ... else ...`)
 - Combinational drive assignments
 
+**`loop`/`suzhal`** (`SeqStmt::Loop` in an `on` block, `FnStmt::Loop` in a
+`fn` body) is unrolled by this module directly — no separate lowering pass,
+the emitter walks the loop body `hi - lo` times itself (fn-body loops thread
+each iteration's continuation so an inner `return` short-circuits correctly).
+
+**`foreach`** never gets its own emission path: every site that can hold a
+`ForEach` node (module item, `on`-block statement, `fn`-body statement)
+calls `crate::ast::lower_foreach_item`/`lower_foreach_in_seq`/
+`lower_foreach_fn` (see [`05-ast.md`](05-ast.md)) on the spot, then emits the
+resulting `Repeat`/`Loop` exactly as above — `None` (an unresolvable
+elements-form source) is unreachable here since the checker's `E0417` would
+already have failed the build.
+
+**`sync loop`** (`ModuleItem::SyncLoop`) is different: `crate::ast::lower_sync_loop`
+rewrites it into real `Port`/`Reg`/`On`/`Drive` items (an index register plus
+a `start`/`done` handshake FSM) BEFORE this module's normal item-emission
+loop runs, so by the time `module.rs` sees it, it's indistinguishable from
+hand-written primitives — there is no dedicated `SyncLoop`-shaped Verilog
+output at all.
+
 ## `crates/mimz-core/src/emit_verilog/expr.rs` — Expression Rendering
 
 Expressions are rendered to Verilog:

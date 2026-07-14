@@ -1,4 +1,4 @@
-# 5 — The AST: What the Parser Produces (2 Files)
+# 5 — The AST: What the Parser Produces (4 Files)
 
 The AST is the **single intermediate representation** that everything downstream uses — the checker, the Verilog emitter, the simulator, and the pretty-printer. It's deliberately flavor-blind and word-order-blind: all the surface variation (English vs Tamil keywords, SVO vs SOV clause order) is absorbed by the lexer and parser and never reaches the tree.
 
@@ -47,7 +47,9 @@ The AST is the **single intermediate representation** that everything downstream
 
 **`LValue`** — where a value is written: `signal`, `signal[i]`, or `signal[hi:lo]`.
 
-**`Type`** — `Bit` (single wire), `Bits(N)` (unsigned N-bit vector), `Signed(N)` (signed N-bit vector), or `Named(ident)` (enum type).
+**`Type`** — `Bit` (single wire), `Bits(N)` (unsigned N-bit vector), `Signed(N)` (signed N-bit vector), `Named(ident)` (enum type), or `Bundle(name, args)` (a bundle type by name, e.g. `MemBus(WIDTH: 32)` — `args` is empty for parameterless bundles; nominal-only today, matched by name not structural field-list).
+
+**`BundleDecl`** — `bundle Name(params) { fields }`: a struct-like grouping of ports/signals. `TopItem::Bundle` holds one. Bundle-typed values flatten to individual Verilog signals at emit time (name-mangled, e.g. `bus_in_valid`) — see [`05-emit-verilog.md`](../code/05-emit-verilog.md).
 
 **`TestDecl`** — `test "name" for Module(args) { body }`.
 
@@ -93,3 +95,30 @@ The AST is the **single intermediate representation** that everything downstream
 - No `/` or `%` — division doesn't exist (it synthesizes to big, slow hardware)
 
 **`Builtin`** — the complete list of built-in functions: `Extend`, `Trunc`, `SignedCast`, `UnsignedCast`, `Min`, `Max`, `Abs`, `Nand`, `Nor`, `Xnor`. Since v0.2.14, users can also define their own combinational functions via `fn` (covered by `ExprKind::FnCall`).
+
+---
+
+## `crates/mimz-core/src/ast/sync_loop_lower.rs` — Lowering `sync loop`
+
+`sync loop` is sugar over primitives the rest of the pipeline already
+understands: this file rewrites a `ModuleItem::SyncLoop` into an equivalent
+`Port`/`Reg`/`On`/`Drive` combination (a small FSM: an index register, a
+`start`/`done` handshake, and the loop body's per-iteration logic driven off
+that index) BEFORE the checker or emitter ever see a `SyncLoop` node. The
+checker, emitter, pretty-printer, and simulator all consume the lowered
+form — only the parser and pretty-printer round-trip the original syntax.
+
+## `crates/mimz-core/src/ast/foreach_lower.rs` — Lowering `foreach`
+
+Same idea, for `foreach`: rewrites both forms (`foreach i in lo..hi` and
+`foreach v in <array-or-mem>`) into the equivalent `Repeat`/`Loop` node —
+elements-form iteration becomes an index-bound `Repeat` that substitutes the
+bound variable with `source[idx]` throughout the body. Exposes one lowering
+function per syntax position, since a `foreach` can appear as a module item,
+inside an `on` block, or inside a `fn` body, and each position's surrounding
+node shape differs: `lower_foreach_item`, `lower_foreach_in_seq` (recurses
+into nested `if`s too), and `lower_foreach_fn`. Like `sync loop`, everything
+downstream of the parser sees only `Repeat`/`Loop` — never a raw `ForEach`
+node — except the checker, which validates `ForEach` directly before
+lowering (see [`06-checker.md`](06-checker.md)) so its errors (`E0417`) can
+point at the original `foreach` syntax.

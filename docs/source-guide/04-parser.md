@@ -1,4 +1,4 @@
-# 4 — The Parser: Building the Tree (9 Files)
+# 4 — The Parser: Building the Tree (10 Files)
 
 The parser takes the token stream and builds an **Abstract Syntax Tree (AST)** — a structured representation of your program's grammar. It's a recursive-descent parser with multi-error recovery.
 
@@ -97,6 +97,23 @@ This function never fails — a bad item records an error, skips to the next lin
 
 **`repeat_block()`** — parses `repeat i: lo..hi { body }`.
 
+**`sync_loop_block()`** — parses `sync loop name on rise(clk)(i: lo..hi) -> result: type = init { body }` (the `sync`/`loop` head is consumed by the caller in `module_item`, mirroring `async reset`). A module-item-level multi-cycle construct that lowers to a small FSM (index register + `start`/`done` handshake) before the checker or emitter ever see it (see [`05-ast.md`](05-ast.md)'s `sync_loop_lower.rs` entry).
+
+---
+
+## `crates/mimz-core/src/parser/items/func.rs` — Function Declarations, `loop`, `foreach`
+
+**`func_decl()`** — parses `fn name(params) -> type { body }`. A param's type can be an array (`bits[8][4]`) — the parser accepts it like any other `ty()`; array-vs-scalar expansion is a checker/emitter concern, not a parsing one.
+
+**`fn_body()`** — `{fnStmt} expr`: zero or more statements (`let`, guard-clause `return`, statement-level `if`/`else`, `loop`, `foreach`) followed by exactly one mandatory tail expression.
+
+- `loop var: lo..hi { }` → `FnStmt::Loop` (note the `:` separator, same as the module-item `repeat`)
+- `foreach var in source { }` → `FnStmt::ForEach`, where `source` is either a `lo..hi` range or a bare identifier (array/mem element form)
+
+## `crates/mimz-core/src/parser/items/bundle.rs` — Bundle Declarations
+
+**`bundle_decl()`** — parses `bundle Name(params) { fields }` (params are optional, same grammar as module params). A bundle literal (`Name { f: x }`) is parsed in `expr.rs` via lookahead (disambiguated from a concat/block), and destructuring (`let { f } = expr`) is parsed in `items/module.rs` (disambiguated from a plain instantiation by the leading `{` after `let`).
+
 ---
 
 ## `crates/mimz-core/src/parser/items/module.rs` — Module Body Items
@@ -138,7 +155,7 @@ This function never fails — a bad item records an error, skips to the next lin
 
 **`seq_stmt()`** — one statement inside a sequential block. Dispatches on profile:
 
-- Code order: `if cond { }` or `lhs <- rhs`. Using `=` here gets E1106 (teaching message about `<-`).
+- Code order: `if cond { }`, `lhs <- rhs`, `loop var: lo..hi { }` (→ `SeqStmt::Loop`), or `foreach var in source { }` (→ `SeqStmt::ForEach`). Using `=` here gets E1106 (teaching message about `<-`).
 - Thamizh order: parses the head as an expression, then checks for `enil` (conditional) or `<-` (assignment).
 
 **`seq_if()`** — statement-level `if`. `else` is optional here (registers hold their value when not assigned — no latch risk, unlike wires).

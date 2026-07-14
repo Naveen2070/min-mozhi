@@ -40,7 +40,13 @@ The results are available as `self.const_eval()` for later passes and the Verilo
 
 ### Pass 4: `widths/` — Are the Bits Right? (5 Files)
 
-This is the most complex pass. It checks:
+This is the most complex pass, split across `mod.rs` (the `Ty`/`Wcx` types and
+top-level dispatch), `expr.rs`, `patterns.rs`, `ops.rs` (operator/concat/
+builtin typing: the lossless `+`/`-`/`*` growth rules, the width-matching
+family `+%`/bitwise/comparisons, shifts, `{...}` concat, and the four
+builtins), and `insts.rs` (instantiation resolution: binds a child's
+parameters per call site and width-checks every connection against the
+child's port types under that binding). It checks:
 
 - **E0401** — expression width matches context (can't assign 8 bits to a 4-bit signal)
 - **E0402** — type mismatch (mixing `bits` and `signed` without a cast)
@@ -50,6 +56,16 @@ This is the most complex pass. It checks:
 - **E0602** — unreachable pattern (a case that can never match)
 - **E0409** — pattern type mismatch
 - **E0406** — index or slice out of bounds
+
+**`Ty<'a>`** (`widths/mod.rs`) is this pass's own internal type
+representation — richer than the AST's `Type` (see
+[`05-ast.md`](05-ast.md)) because it needs runtime-resolved facts the AST
+doesn't carry: folded widths, and (since the `Ty::Bundle` consolidation) a
+bundle's name plus its on-demand-resolved field types
+(`resolve_bundle_fields`), replacing an earlier separate `Wcx::bundle_sigs`
+side-table. A bundle-typed `fn` parameter or return value type-checks
+against this same `Ty::Bundle`, so passing/returning bundles through `fn`s
+is shape-checked identically to a plain module port.
 
 ### Pass 5: `drivers.rs` — One Driver Per Signal
 
