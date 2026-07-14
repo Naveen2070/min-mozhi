@@ -355,7 +355,56 @@ impl Emitter<'_> {
             // Emit a safe placeholder — the checker should have caught this.
             ExprKind::BundleLit(_) => "0".into(),
             ExprKind::ArrayLit(_) => unreachable!("Task 8 or Task 9 wires this up"),
-            ExprKind::EnumConstruct { .. } => unreachable!("Task 5 wires this up"),
+            ExprKind::EnumConstruct {
+                enum_name,
+                variant,
+                args,
+            } => {
+                let edecl = self
+                    .project
+                    .first_enum(&enum_name.name)
+                    .expect("checker already validated this enum exists");
+                let total_w = edecl
+                    .inferred_total_width
+                    .get()
+                    .expect("checker must run before emit") as u128;
+                let tag_w = clog2(edecl.variants.len()) as u128;
+                let max_payload_w = total_w - tag_w;
+                let idx = edecl
+                    .variants
+                    .iter()
+                    .position(|v| v.name.name == variant.name)
+                    .expect("checker already validated this variant exists");
+                if max_payload_w == 0 {
+                    // Tag-only enum: same localparam a bare `Enum.Variant`
+                    // reference (`ExprKind::Field`) already emits.
+                    return enum_const(&enum_name.name, &variant.name);
+                }
+                let decl_v = &edecl.variants[idx];
+                // Packs MSB-first in the payload region, padding the LOW
+                // end — mirrors `arm_binding_exprs`'s slicing exactly, so
+                // construction and pattern-match extraction agree on layout.
+                let used_w: u128 = decl_v
+                    .fields
+                    .iter()
+                    .map(|f| match &f.ty {
+                        Type::Bit => 1,
+                        Type::Bits(e) | Type::Signed(e) => {
+                            consteval::eval(e, &self.env).unwrap_or(0) as u128
+                        }
+                        Type::Named(_) | Type::Bundle { .. } | Type::Array { .. } => 0,
+                    })
+                    .sum();
+                let mut parts = vec![format!("{tag_w}'d{idx}")];
+                for a in args {
+                    parts.push(self.expr_subst(a, subst, arrays));
+                }
+                let padding_w = max_payload_w - used_w;
+                if padding_w > 0 {
+                    parts.push(format!("{padding_w}'d0"));
+                }
+                format!("{{{}}}", parts.join(", "))
+            }
         }
     }
 

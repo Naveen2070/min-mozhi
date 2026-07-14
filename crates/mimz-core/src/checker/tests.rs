@@ -1561,6 +1561,34 @@ fn enum_construct_literal_arg_adapts_to_field_width() {
     check_one(src).expect("a literal argument must adapt to the field width");
 }
 
+// ---- enum variant construction: emitter concat lowering (T5) --------------
+
+#[test]
+fn enum_construct_emits_tag_and_payload_concat() {
+    // Packet has 2 variants (tag_w = 1), max payload = max(4, 8) = 8 bits,
+    // total = 9 bits. Ctrl's own payload (k, 4 bits) is narrower than the
+    // 8-bit max payload, so 4 zero-padding bits fill the low end.
+    let v = compile_one(
+        "enum Packet {\n  Ctrl(k: bits[4]),\n  Data(v: bits[8])\n}\n\
+         module M {\n  in k: bits[4]\n  out y: Packet\n  y = Packet.Ctrl(k)\n}\n",
+    )
+    .expect("compiles clean");
+    assert!(
+        v.contains("1'd0, k, 4'd0"),
+        "expected tag(0)+k+4-bit zero pad, got:\n{v}"
+    );
+}
+
+#[test]
+fn enum_construct_tag_only_zero_args_emits_bare_tag() {
+    let v = compile_one(
+        "enum State {\n  Idle,\n  Running\n}\n\
+         module M {\n  out y: State\n  y = State.Idle()\n}\n",
+    )
+    .expect("compiles clean");
+    assert!(v.contains("y = "), "expected an assign for y, got:\n{v}");
+}
+
 // -------- E0808: OR-arm binding intersection --------
 
 /// Enum with four variants — used across E0808 tests.
