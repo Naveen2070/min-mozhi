@@ -50,6 +50,13 @@ in values`, its bound taken from the source's own declared length, never
   real `Ty::Bundle` (nominal identity + on-demand field resolution)
   instead of falling through to `Ty::Unknown`, replacing the old
   `Wcx::bundle_sigs` side-table this had relied on.
+- `Enum.Variant(arg1, arg2, ...)` construction syntax — the write-side
+  counterpart to tagged-union `match`, completing that feature. Positional
+  arguments only, in the variant's declared field order; a tag-only
+  variant is constructed `Enum.Variant()`. Lowers to the same tag+payload
+  bit layout `match` already extracts, on both the Verilog emitter and the
+  simulator. No new diagnostics — reuses E0806 (arity), E0401 (width), and
+  E0103 (unknown enum/variant), generalized to cover both call sites.
 
 ---
 
