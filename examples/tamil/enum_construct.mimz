@@ -1,0 +1,21 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change):
+// construct a tagged-union value with a payload, then read it back apart
+// with `தேர்ந்தெடு` (match) — the constructing half of the tagged-union
+// feature (matching already existed; this is what completes it).
+
+வகை Packet {
+  Ctrl(k: bits[4]),
+  Data(v: bits[8])
+}
+
+தொகுதி EnumConstruct {
+  உள்ளீடு k: bits[4]
+  வெளியீடு k_out: bits[4]
+
+  கம்பி p: Packet = Packet.Ctrl(k)
+
+  k_out = தேர்ந்தெடு p {
+    Packet.Ctrl(x) => x
+    Packet.Data(v) => 0
+  }
+}

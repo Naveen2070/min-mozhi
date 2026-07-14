@@ -1,0 +1,21 @@
+// Min-Mozhi example (Tanglish flavor — same grammar, only the keywords change):
+// construct a tagged-union value with a payload, then read it back apart
+// with `thernthedu` (match) — the constructing half of the tagged-union
+// feature (matching already existed; this is what completes it).
+
+vagai Packet {
+  Ctrl(k: bits[4]),
+  Data(v: bits[8])
+}
+
+thoguthi EnumConstruct {
+  ulleedu k: bits[4]
+  veliyeedu k_out: bits[4]
+
+  kambi p: Packet = Packet.Ctrl(k)
+
+  k_out = thernthedu p {
+    Packet.Ctrl(x) => x
+    Packet.Data(v) => 0
+  }
+}
