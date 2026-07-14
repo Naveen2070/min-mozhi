@@ -195,6 +195,13 @@ runner. The `crates/mimz-sim/src/sim/` directory:
   (expression source + cycle + each operand's value) and exiting non-zero on any
   failure; `--filter`/`--trace`/`--verbose`/`--signals` supported. The
   `tick`-count is bounded by `MAX_SIM_CYCLES`.
+  - **`--emulate`/`--step`** drive a test's `sim{}` blocks through real bound
+    peripherals (LED/speaker/UART) instead of no-op simulation, with
+    real-time pacing; `--step` single-steps one cycle per Enter press and
+    implies `--emulate`. Both auto-degrade to headless/no-op when stdout
+    isn't a TTY (CI-safe by default). See
+    [`14-hardware-emulation.md`](14-hardware-emulation.md) for the full
+    peripheral model.
 - This is the engine the 8.5 hardware REPL and the WASM playground will ride on,
   which is why it lives in the lib and stays callable on a single module.
 - **Independently judged.** The Layer-3 Icarus differential

@@ -178,7 +178,7 @@ Changelog of test-count changes (newest first):
 - The error-fixture tests are data-driven over ~70 broken`.mimz`fixtures; one locks`ALL_CHECKER_CODES`— now`pub`in`crates/mimz-core/src/diag.rs`— to the 11-checker.md catalog, one locks the`--json`wire format.
 - The 2026-06-13 quick-wins block added the tooling tests below:`explain`(+3),`translate`(+3 unit, +3 integration),`sim::comb`(+7 unit, +6`eval` integration).
 
-## Unit: keyword table (`crates/mimz-core/src/lexer/keywords.rs`, 11 tests)
+## Unit: keyword table (`crates/mimz-core/src/lexer/keywords.rs`, 12 tests)
 
 | Test                                                  | Locks in                                                                                                                                                                             | If it fails…                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
@@ -211,7 +211,7 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `fn_keyword_lexes_in_all_flavors`              | `fn`/`function`/`saarbu`/`சார்பு` lex as KW_FN (Phase 2)                                                  |
 | `rarrow_token_lexes`                           | `->` lexes as RArrow (for fn returns and sync loops)                                                      |
 
-## Unit: parser (`crates/mimz-core/src/parser/tests.rs`, 68 tests)
+## Unit: parser (`crates/mimz-core/src/parser/tests.rs`, 76 tests)
 
 | Test                                                               | Locks in                                                                                |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -264,12 +264,17 @@ TOML) need no dedicated test — the `LazyLock` panics at startup, so
 | `sync_loop_parses`                                                 | `sync loop` constructs parse with variables, boundaries, and result types               |
 | `parses_loop_inside_on_block`                                      | `loop i in 0..4` inside `on` block parses                                               |
 | `parses_loop_inside_fn_body`                                       | `loop` inside combinational `fn` block parses                                           |
+| `foreach_range_form_parses_as_module_item`                         | `foreach i in 0..4 { }` at module-item level parses to `ForEach` (range form)           |
+| `foreach_elements_form_parses_as_module_item`                      | `foreach v in arr { }` at module-item level parses to `ForEach` (elements form)         |
+| `foreach_parses_inside_on_block`                                   | `foreach` inside a clocked `on` block parses                                            |
+| `foreach_parses_inside_fn_body`                                    | `foreach` inside a combinational `fn` block parses                                      |
+| `foreach_elements_form_rejects_non_identifier_source`              | `foreach v in <non-identifier expr>` is a parse error, not a silent misparse            |
 
 The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`crates/mimz-core/src/checker/tests.rs`, 195 tests)
+## Unit: checker (`crates/mimz-core/src/checker/tests.rs`, 201 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -327,6 +332,12 @@ deserve a note:
 | `a_memory_init_that_overflows_the_element_is_e0405`                    | a `mem` init value too wide for the element type is E0405 (A4)                              |
 | `a_constant_address_past_the_depth_is_e0406`                           | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                               |
 | `a_memory_inside_repeat_is_e0303`                                      | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                     |
+| `foreach_elements_form_on_scalar_is_e0417`                             | `foreach v in <scalar>` (not array/mem-typed) is E0417                                      |
+| `foreach_range_form_checks_clean`                                      | `foreach i in 0..N { }` (range form) checks clean, lowering to `repeat`/`loop` as expected  |
+| `foreach_elements_form_checks_clean_over_mem`                          | `foreach v in <mem>` (elements form over a `mem`) checks clean                              |
+| `foreach_elements_form_variable_resolves_inside_on_block`              | the bound element variable resolves correctly inside a clocked `on` block                   |
+| `foreach_elements_form_at_module_level_checks_clean`                   | `foreach` as a bare module item (not inside `on`/`fn`) checks clean                         |
+| `foreach_elements_form_in_fn_body_resolves_via_own_param`              | inside a `fn` body, the elements-form source resolves against the `fn`'s own parameter list |
 
 ## Unit: widths pass internals (`crates/mimz-core/src/checker/widths/mod.rs`, `checker::widths::tests`, 7 tests)
 
@@ -356,7 +367,7 @@ model (see this file's changelog entry for that date).
 | `results_always_start_like_an_identifier` | output is always a valid Verilog identifier start                     |
 | `the_two_n_letters_romanize_identically`  | ந/ன → `n` is a DOCUMENTED collision; the suffix counter disambiguates |
 
-## Unit: emitter (`crates/mimz-core/src/emit_verilog/mod.rs`, 27 tests)
+## Unit: emitter (`crates/mimz-core/src/emit_verilog/mod.rs`, 28 tests)
 
 | Test                                                            | Locks in                                                                                                                                    |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -421,7 +432,7 @@ goldens (`tests/golden/tamil_pure_*.v`) + their own testbenches.
 | `pure_tamil_examples_match_goldens`                          | each `examples/tamil-pure/<x>.mimz` output equals `tests/golden/tamil_pure_<x>.v` (banner stripped) — pins the transliterated Verilog so a romanization regression can't slip through                                                                                                                                        |
 | `pure_tamil_examples_are_equivalent_to_their_counterparts`   | each pure-Tamil example is the SAME circuit as its English twin, proven by `canonicalize_verilog` (alpha-equivalence: identifiers renamed to `id<N>` by first appearance). Equal canonical forms ⇒ same hardware, just named in Tamil                                                                                        |
 
-## Icarus differential (`tests/icarus.rs`, 5 tests — run a REAL Verilog tool)
+## Icarus differential (`tests/icarus.rs`, 8 tests — run a REAL Verilog tool)
 
 The independent judge: our substring asserts check OUR expectations of
 the output; these check a real tool's. **Skips with a printed note when
@@ -431,13 +442,16 @@ PATH → the Windows installer default `C:\iverilog\bin`); in CI
 never skip silently. Local install: the Windows installer
 (bleyer.org/icarus) or `apt-get install iverilog`.
 
-| Test                                        | Locks in                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `every_emitted_verilog_passes_iverilog`     | all 178 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated Tamil-identifier `vilakku`, the pure-Tamil showcase, and `wire signed` `signed_math`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `every_emitted_testbench_passes_iverilog`   | every base example's auto-generated `_tb.v` (from `--emit-testbench`) passes `iverilog -t null` — the generated testbenches are themselves valid, elaborable Verilog by Icarus's judgment, not just our goldens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `self_checking_testbenches_pass`            | one hand-written TB per base example (`tests/icarus/*_tb.v`, counts vary — grew from 16 with stdlib and tamil-pure additions) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `self_checking_pure_tamil_testbenches_pass` | the four pure-Tamil showcase circuits (`kanakki`/`cimitti`/`oppidi`/`thervi`), driven through their **romanized** ports (clk=`katikai`, rst=`miill`, …) — proves the transliterated Verilog SIMULATES, not just elaborates. Shares the `run_self_checking` helper with the English layer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `our_simulator_matches_icarus_bit_for_bit`  | **Layer 3 (B8 + C1–C4):** three views must agree bit-for-bit per step — our kernel (in-process), the VCD waveform our writer emits, and Icarus on the emitted Verilog under the same stimulus. Auto-routes per design: **clocked** (counter, shift register, edge detector, blinker @ `LIMIT=3`) and **combinational** over generated input vectors (adder, comparator, mux4, datapath, window, full_adder + SIGNED `bitops`/`signed_math`) — 12 ASCII-named english examples — plus the 6 pure-Tamil showcases (kanakki/cimitti/oppidi/thervi/kuutti/saalaivilakku, driven through romanized port names) and the full-parity additions: **alu** (cross-file instance, C2), **chained** (chained instances, C2), **ripple_adder** (`repeat`, C3), **traffic_light** (enum FSM, C4), and **vilakku** (Tamil identifiers). **21 examples** in all — the entire single-file corpus the emitter compiles. Compared via Verilog `%b` (binary ⇒ signedness-agnostic). Where Layer 2 checks Icarus against hand-written asserts, this pits our simulator (engine AND waveform) directly against Icarus |
+| Test                                                          | Locks in                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `every_emitted_verilog_passes_iverilog`                       | all 187 examples' emitted `.v` pass `iverilog -t null` — syntax AND elaboration, by Icarus's judgment (incl. the transliterated Tamil-identifier `vilakku`, the pure-Tamil showcase, and `wire signed` `signed_math`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `every_emitted_testbench_passes_iverilog`                     | every base example's auto-generated `_tb.v` (from `--emit-testbench`) passes `iverilog -t null` — the generated testbenches are themselves valid, elaborable Verilog by Icarus's judgment, not just our goldens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `self_checking_testbenches_pass`                              | one hand-written TB per base example (`tests/icarus/*_tb.v`, 43 files) encodes Min-Mozhi's documented semantics (`+%` wraps, sync reset, non-blocking `<-`, FSM timing, SIGNED extension/comparison, `bitops` min/max/abs(MIN)/nand/nor/xnor, `datapath` lossless `*` vs wrapping `*%`/`>>`/concat/slice/`trunc`) and must print PASS under `vvp` — the differential                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `self_checking_pure_tamil_testbenches_pass`                   | the four pure-Tamil showcase circuits (`kanakki`/`cimitti`/`oppidi`/`thervi`), driven through their **romanized** ports (clk=`katikai`, rst=`miill`, …) — proves the transliterated Verilog SIMULATES, not just elaborates. Shares the `run_self_checking` helper with the English layer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `self_checking_showcase_testbenches_pass`                     | the `showcase/english` self-checking testbenches (`SHOWCASE_TESTBENCHES`) pass under `vvp`; skips on Icarus < v13 (needs `(expr)[(n)-1:0]` truncation syntax)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `fn_array_search_duplicate_match_lower_index_wins_via_icarus` | `fn_array_search.mimz`'s duplicate-match case (target present at index 0 AND 2): our own kernel AND real `iverilog`/`vvp` on the compiled example both return the LOWER index — the loop-unroll's continuation-threading in the emitter didn't regress relative to the kernel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `sync_loop_search_timing_matches_icarus`                      | `sync_loop_search.mimz`'s `start`→`done` FSM timing and result-latching against real `iverilog`/`vvp` (hand-written, self-checking TB, not the generated-`diff_tb` Layer 3 style)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `our_simulator_matches_icarus_bit_for_bit`                    | **Layer 3 (B8 + C1–C4):** three views must agree bit-for-bit per step — our kernel (in-process), the VCD waveform our writer emits, and Icarus on the emitted Verilog under the same stimulus. Auto-routes per design: **clocked** (counter, shift register, edge detector, blinker @ `LIMIT=3`) and **combinational** over generated input vectors (adder, comparator, mux4, datapath, window, full_adder + SIGNED `bitops`/`signed_math`) — 12 ASCII-named english examples — plus the 6 pure-Tamil showcases (kanakki/cimitti/oppidi/thervi/kuutti/saalaivilakku, driven through romanized port names) and the full-parity additions: **alu** (cross-file instance, C2), **chained** (chained instances, C2), **ripple_adder** (`repeat`, C3), **traffic_light** (enum FSM, C4), and **vilakku** (Tamil identifiers). **21 examples** in all — the entire single-file corpus the emitter compiles. Compared via Verilog `%b` (binary ⇒ signedness-agnostic). Where Layer 2 checks Icarus against hand-written asserts, this pits our simulator (engine AND waveform) directly against Icarus |
 
 House rule for the testbenches: each prints `PASS` exactly once or
 `FAIL: reason` and stops — the Rust side asserts on those markers, so a
@@ -497,6 +511,57 @@ grammar / the spec, don't weaken the test.
 | `spec_04_uses_no_superseded_keyword_spellings` | `spec/04`'s worked examples contain none of the 14 superseded v1 spellings (whole-word, Tamil-aware)                                                  |
 | `keywords_toml_has_no_superseded_spelling`     | a superseded v1 spelling may never return in `lang/keywords.toml` as a canonical spelling or any alias — guards the reintroduction risk at the source |
 | `grammar_and_extension_manifest_agree`         | `package.json` registers `.mimz` and its scope name matches the grammar                                                                               |
+
+## Integration: packages (`tests/packages.rs`, 2 tests — run the real binary)
+
+Proves qualified references (`a.b.Name`) disambiguate two different files'
+same-named module through the real `project.rs` loader, not a hand-wired
+`resolved_file` like the unit tests use.
+
+| Test                                                         | Locks in                                                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `qualified_references_check_clean_with_zero_diagnostics`     | `mimz check` on a qualified-reference fixture reports zero diagnostics                      |
+| `qualified_instances_compile_with_their_own_distinct_bodies` | two same-named modules from different files each keep their own body in the emitted Verilog |
+
+## Integration: showcase (`tests/showcase.rs`, 6 tests — run the real binary)
+
+Mirrors `tests/examples.rs` for `showcase/`, the demo set behind the web
+playground and documentation site: same flavor-identity and golden-file
+rules, plus the pure-Tamil equivalence check.
+
+| Test                                       | Locks in                                                                      |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `showcase_every_example_checks_clean`      | every showcase file passes `mimz check` with zero diagnostics                 |
+| `showcase_every_example_compiles`          | every showcase file emits Verilog without error                               |
+| `showcase_all_four_flavors_identical`      | english/tanglish/tamil/mixed showcase folders emit byte-identical Verilog     |
+| `showcase_emitted_verilog_matches_goldens` | showcase output matches `tests/golden/showcase_*.v`                           |
+| `showcase_pure_tamil_equivalent`           | the pure-Tamil showcase circuits emit Verilog equivalent to their base flavor |
+| `showcase_pure_tamil_match_goldens`        | pure-Tamil showcase output matches its own golden files                       |
+
+## Integration: compile_string (`tests/compile_string.rs`, 14 tests)
+
+Tests the in-memory `mimz::compile_string` entry point — the embedding API
+behind the WASM playground — asserting the same pipeline behavior a browser
+sees, with no filesystem access. Covers valid compilation, flavor identity,
+rendered diagnostics on error (width mismatch, syntax error, rejected
+import), bundle port flattening/literals, tagged-packet golden output,
+guard-clause return ordering, and array-parameter/array-index expansion
+(literal call args, `let` bindings, ports, constant vs. runtime indexing).
+
+## Integration: wasm_parity (`tests/wasm_parity.rs`, 2 tests — CLI vs. WASM)
+
+Drives every `.mimz` file under `examples/` and `showcase/` through both the
+native CLI and the built WASM package (via a Node.js script) and asserts
+`compile`/`check` output is byte-identical. **Skips with a printed note if
+`crates/mimz-wasm/pkg/` isn't built** — run `wasm-pack build crates/mimz-wasm
+--target web --release` first. Catches drift where a language feature works
+on one target but not the other (see `docs/log/2026-07-14.md`'s `foreach`
+WASM-pkg-staleness fix).
+
+| Test                        | Locks in                                                           |
+| --------------------------- | ------------------------------------------------------------------ |
+| `all_examples_work_in_wasm` | every `examples/` file compiles/checks identically on CLI and WASM |
+| `all_showcase_work_in_wasm` | every `showcase/` file compiles/checks identically on CLI and WASM |
 
 ## Editor analysis (`crates/mimz-core/src/analysis.rs`, 7 lib unit tests)
 
@@ -776,7 +841,26 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `shift_left_bit_32_set_in_amt`         | `1 << (1 << 32)` → 0 (the specific `as u32` truncation trigger)                   |
 | `shift_right_bit_32_set_in_amt`        | `(1 << 63) >> (1 << 32)` → 0                                                      |
 
-## Unit: elaboration (`crates/mimz-sim/src/sim/elaborate.rs`, 19 tests)
+## Unit: fn-body interpreter (`crates/mimz-sim/src/sim/value.rs`, 8 tests)
+
+Shared value model + expression evaluator behind both `comb.rs` and the
+kernel (B2). This pocket covers `fn`-body statement evaluation specifically —
+`fn` bodies are interpreted directly (no elaborate-time lowering pass exists
+for them, unlike module items/`on`-blocks), so `loop`/`foreach` are lowered
+on the spot inside the evaluator itself.
+
+| Test                                                         | Locks in                                                                                                   |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `shl_does_not_truncate_to_left_operand_width`                | `<<` result width isn't clamped to the left operand's own width                                            |
+| `fn_call_arity_mismatch_is_err_not_panic`                    | calling a `fn` with the wrong argument count is a clean `Err`, not a panic                                 |
+| `fn_loop_with_return_finds_first_match_in_sim`               | a `loop` + `return` inside a `fn` body finds the first match when interpreted                              |
+| `fn_loop_with_return_first_match_wins_on_duplicate_in_sim`   | on a duplicate match, `loop` + `return` in a `fn` body returns the FIRST (lowest-index) match              |
+| `fn_loop_over_budget_errors_in_sim`                          | a `loop` whose unroll budget is exceeded errors instead of hanging                                         |
+| `fn_foreach_range_form_with_return_finds_first_match_in_sim` | `foreach i in 0..N` + `return` in a `fn` body lowers via `ast::lower_foreach_fn` and finds the first match |
+| `fn_foreach_elements_form_with_return_finds_match_in_sim`    | elements-form `foreach v in vals` + `return v` on match propagates as an early return                      |
+| `fn_foreach_elements_form_no_match_falls_through_in_sim`     | elements-form `foreach` with no match falls through to the `fn`'s tail expression, not a spurious return   |
+
+## Unit: elaboration (`crates/mimz-sim/src/sim/elaborate.rs`, 22 tests)
 
 Phase 1.5 steps B1 + C2–C4: flatten an AST module (and its instances) into a
 `Design` (signals with folded widths, regs with folded reset + clock, comb
@@ -785,21 +869,24 @@ drivers, sequential processes), via the `elaborate_project` flattener and the
 array instances, bit-indexed drives). The event-driven kernel interprets a
 `Design`.
 
-| Test                                                | Locks in                                                                                                                                            |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `elaborates_the_counter`                            | the canonical counter flattens correctly: one reg (`value`, reset 0, clock `clk`), the `count` comb driver, `clk`/`rst` recorded, one process       |
-| `param_override_folds_widths`                       | passing `WIDTH=4` folds the reg and output widths to 4                                                                                              |
-| `elaborates_a_combinational_module`                 | a clockless module has empty regs/procs/clocks/resets, only comb drivers                                                                            |
-| `reg_takes_a_nonzero_folded_reset_value`            | `reg r: bits[8] = 5` folds the reset to 5 and binds the reg to its `on`-block clock                                                                 |
-| `flattens_a_same_file_instance`                     | C2: `Top`'s `let u = Add()` inlines the child's signals prefixed `u_*`; the `u.s` field-read resolves to the flattened `u_s` wire                   |
-| `rejects_unknown_instance_module`                   | C2: a `let` instance of a module that doesn't exist is a clean "unknown module" error                                                               |
-| `unrolls_repeat_with_instance_array_and_bit_drives` | C3: `repeat` inlines one child per bit (`fa__<i>`); the per-bit `s[i] = …` drives assemble into a whole-signal Concat                               |
-| `elaborates_an_enum_signal_and_match`               | C4: an enum reg gets width `clog2(variants)`, its reset folds to the variant index, and a `match` over the enum elaborates (patterns → indices)     |
-| `recursive_instantiation_errors_not_overflows`      | SEC-6: a self-instantiating module hits `MAX_INSTANCE_DEPTH` and errors cleanly instead of overflowing the stack                                    |
-| `extreme_repeat_bounds_error_not_overflow`          | SEC-6: a `repeat` span past `i128::MAX` is an over-budget error (`checked_sub`), not an overflow panic                                              |
-| `an_out_of_range_bit_index_errors`                  | SEC-6: a bit-index drive ≥ 128 errors before the `as u32` cast (no silent truncation)                                                               |
-| `a_flatten_name_collision_errors`                   | SEC-6: a parent signal colliding with a flattened `inst_port` wire errors instead of silently overwriting                                           |
-| `an_i128_min_const_elaborates_without_overflow`     | SEC-6 (SIM-5): a flattened child const evaluating to `i128::MIN` lowers via `unsigned_abs` instead of overflow-panicking the negation in `int_expr` |
+| Test                                                        | Locks in                                                                                                                                                     |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `elaborates_the_counter`                                    | the canonical counter flattens correctly: one reg (`value`, reset 0, clock `clk`), the `count` comb driver, `clk`/`rst` recorded, one process                |
+| `param_override_folds_widths`                               | passing `WIDTH=4` folds the reg and output widths to 4                                                                                                       |
+| `elaborates_a_combinational_module`                         | a clockless module has empty regs/procs/clocks/resets, only comb drivers                                                                                     |
+| `reg_takes_a_nonzero_folded_reset_value`                    | `reg r: bits[8] = 5` folds the reset to 5 and binds the reg to its `on`-block clock                                                                          |
+| `flattens_a_same_file_instance`                             | C2: `Top`'s `let u = Add()` inlines the child's signals prefixed `u_*`; the `u.s` field-read resolves to the flattened `u_s` wire                            |
+| `rejects_unknown_instance_module`                           | C2: a `let` instance of a module that doesn't exist is a clean "unknown module" error                                                                        |
+| `unrolls_repeat_with_instance_array_and_bit_drives`         | C3: `repeat` inlines one child per bit (`fa__<i>`); the per-bit `s[i] = …` drives assemble into a whole-signal Concat                                        |
+| `elaborates_an_enum_signal_and_match`                       | C4: an enum reg gets width `clog2(variants)`, its reset folds to the variant index, and a `match` over the enum elaborates (patterns → indices)              |
+| `recursive_instantiation_errors_not_overflows`              | SEC-6: a self-instantiating module hits `MAX_INSTANCE_DEPTH` and errors cleanly instead of overflowing the stack                                             |
+| `extreme_repeat_bounds_error_not_overflow`                  | SEC-6: a `repeat` span past `i128::MAX` is an over-budget error (`checked_sub`), not an overflow panic                                                       |
+| `an_out_of_range_bit_index_errors`                          | SEC-6: a bit-index drive ≥ 128 errors before the `as u32` cast (no silent truncation)                                                                        |
+| `a_flatten_name_collision_errors`                           | SEC-6: a parent signal colliding with a flattened `inst_port` wire errors instead of silently overwriting                                                    |
+| `an_i128_min_const_elaborates_without_overflow`             | SEC-6 (SIM-5): a flattened child const evaluating to `i128::MIN` lowers via `unsigned_abs` instead of overflow-panicking the negation in `int_expr`          |
+| `unrolls_foreach_range_form_same_as_repeat`                 | `foreach i in 0..2` elaborates identically to the equivalent `repeat i: 0..2` (pure sugar)                                                                   |
+| `foreach_elements_form_substitutes_var_with_mem_index`      | elements-form `foreach v in values` over a `mem` lowers to a `Repeat` substituting `v` with `values[idx]` throughout the body                                |
+| `foreach_nested_inside_if_in_on_block_lowers_via_recursion` | a `foreach` nested inside an `if` inside `on rise(clk)` still lowers — the seq-lowering pass recurses into `If`'s `then` body, not just top-level statements |
 
 ## Unit: kernel (`crates/mimz-sim/src/sim/kernel.rs`, 13 tests)
 

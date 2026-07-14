@@ -209,6 +209,48 @@ reusing the checker's `consteval::eval` rather than reimplementing it:
 ripple-carry adder built by unrolling one `FullAdder` per bit, verified
 exhaustively under Icarus.
 
+## `loop`/`suzhal`, `foreach`, and `sync loop`
+
+Three more compile-time constructs, each handled differently by this file:
+
+- **`loop`** unrolls exactly like `repeat` — same `env`/`REPEAT_BUDGET`
+  mechanism, directly in the emitter, no separate AST lowering pass. Both
+  the `on`-block form (`SeqStmt::Loop`) and the `fn`-body form
+  (`FnStmt::Loop`) unroll this way; unlike `SeqStmt::If`, a `loop` body
+  unrolls at the SAME nesting `depth` (it introduces no new Verilog block —
+  it's a literal textual duplicate of hand-written code).
+- **`foreach`** is pure sugar over `repeat`/`loop`, but lowered at different
+  points depending on where it appears: at the module-item and
+  instance-collection level it's pre-lowered once via
+  `ast::lower_foreach_item` before the emitter's normal item-walk runs; inside
+  `on`-blocks (`SeqStmt::ForEach`) and `fn` bodies (`FnStmt::ForEach`) it
+  lowers **on the spot**, at the point of use, via `ast::lower_foreach_in_seq`
+  / `lower_foreach_fn`, then recurses into the resulting `Loop` at the same
+  depth. There is no dedicated "emit a ForEach" code path anywhere — only
+  "lower a ForEach, then emit the `Loop`/`Repeat` it becomes."
+- **`sync loop`** is different in kind, not just in lowering point:
+  `ast::lower_sync_loop` rewrites `ModuleItem::SyncLoop` into ordinary
+  `Port`/`Reg`/`On`/`Drive` items (an index register plus a `start`/`done`
+  handshake) before `flatten_items` runs, so the emitter produces the exact
+  same `always @(posedge clk)` FSM it would for a hand-written equivalent.
+  No part of the actual emission logic in this file has a `SyncLoop`-specific
+  code path — only the flatten/instance-collection stages know a `SyncLoop`
+  item existed, so they can route it through the pre-lowered items instead.
+
+## Bundle flattening
+
+A bundle-typed port, wire, or signal never reaches Verilog as one signal.
+`Project::bundles` resolves the declaration, and `resolve_bundle_fields`
+expands each field to its own scalar/vector signal, name-mangled as
+**`{signal}_{field}`** (single underscore — distinct from the
+double-underscore `fa__<i>` scheme used for unrolled instance arrays, see
+above). A bundle literal (`Bundle { f: x }`) driving a bundle-typed wire
+emits one `assign name_field = value;` per field; a bundle-to-bundle drive
+(`rsp = req`) expands the same way, field by field. `Emitter::bundle_sigs`
+tracks which in-scope signal names are currently bundle-typed so
+`emit_drives` knows to flatten a drive rather than emit it as a single
+`assign`.
+
 ## Signed emission
 
 `signed[N]` signals are declared `wire signed`/`reg signed`/
@@ -235,10 +277,11 @@ spec/02 already rules "slicing signed yields bits".
 
 The emitter's rule for unimplemented features: **error, never guess.**
 
-| Gap                            | Error points at | Lands with                                                         |
-| ------------------------------ | --------------- | ------------------------------------------------------------------ |
-| Non-ASCII reaching the emitter | the identifier  | never, normally — `transliterate` runs first; this is the backstop |
-| Field access on complex exprs  | the expression  | checker/IR                                                         |
+| Gap                                                                   | Error points at           | Lands with                                                         |
+| --------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------ |
+| Non-ASCII reaching the emitter                                        | the identifier            | never, normally — `transliterate` runs first; this is the backstop |
+| Field access on complex exprs                                         | the expression            | checker/IR                                                         |
+| Bundle destructure in a module body (`ModuleItem::BundleDestructure`) | the destructure statement | not yet implemented — errors "not yet supported by the emitter"    |
 
 ## Known performance notes
 
