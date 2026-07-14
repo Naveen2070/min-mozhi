@@ -583,6 +583,7 @@ pub struct SyncLoop {
 
 /// Where a `foreach` loop pulls its values from.
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ForEachSource {
     /// `foreach i in lo..hi` — same range shape as `repeat`/bare `loop`.
     Range {

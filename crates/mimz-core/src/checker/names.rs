@@ -1314,6 +1314,11 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, e);
                 }
             }
+            ExprKind::EnumConstruct { args, .. } => {
+                for a in args {
+                    self.expr(file, sc, env, a);
+                }
+            }
         }
     }
 

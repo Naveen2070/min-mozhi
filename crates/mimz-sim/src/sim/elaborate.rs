@@ -1554,6 +1554,18 @@ impl<'d, 's> Rw<'d, 's> {
                     .map(|e| self.expr(e))
                     .collect::<Result<_, _>>()?,
             ),
+            ExprKind::EnumConstruct {
+                enum_name,
+                variant,
+                args,
+            } => ExprKind::EnumConstruct {
+                enum_name: enum_name.clone(),
+                variant: variant.clone(),
+                args: args
+                    .iter()
+                    .map(|a| self.expr(a))
+                    .collect::<Result<_, _>>()?,
+            },
         };
         Ok(Expr { kind, span: e.span })
     }

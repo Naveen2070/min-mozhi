@@ -624,6 +624,17 @@ fn expr(e: &mut Expr, visit: &mut dyn FnMut(&mut String)) {
                 expr(e, visit);
             }
         }
+        ExprKind::EnumConstruct {
+            enum_name,
+            variant,
+            args,
+        } => {
+            visit(&mut enum_name.name);
+            visit(&mut variant.name);
+            for a in args {
+                expr(a, visit);
+            }
+        }
     }
 }
 

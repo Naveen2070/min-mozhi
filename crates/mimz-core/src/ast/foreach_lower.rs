@@ -226,6 +226,15 @@ fn subst_expr(e: &Expr, target: &str, replacement: &Expr) -> Expr {
         ExprKind::ArrayLit(elems) => {
             ExprKind::ArrayLit(elems.iter().map(|e| subst_expr(e, target, replacement)).collect())
         }
+        ExprKind::EnumConstruct {
+            enum_name,
+            variant,
+            args,
+        } => ExprKind::EnumConstruct {
+            enum_name: enum_name.clone(),
+            variant: variant.clone(),
+            args: args.iter().map(|a| subst_expr(a, target, replacement)).collect(),
+        },
     };
     Expr { kind, span: e.span }
 }

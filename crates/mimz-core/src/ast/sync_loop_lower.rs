@@ -388,6 +388,15 @@ fn rename_expr(e: &Expr, rename: &HashMap<String, String>) -> Expr {
         ExprKind::ArrayLit(items) => {
             ExprKind::ArrayLit(items.iter().map(|i| rename_expr(i, rename)).collect())
         }
+        ExprKind::EnumConstruct {
+            enum_name,
+            variant,
+            args,
+        } => ExprKind::EnumConstruct {
+            enum_name: enum_name.clone(),
+            variant: variant.clone(),
+            args: args.iter().map(|a| rename_expr(a, rename)).collect(),
+        },
     };
     Expr { kind, span: e.span }
 }

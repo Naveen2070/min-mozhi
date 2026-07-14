@@ -454,5 +454,10 @@ fn expr_reads(e: &Expr, out: &mut Vec<(String, Span)>) {
                 expr_reads(e, out);
             }
         }
+        ExprKind::EnumConstruct { args, .. } => {
+            for a in args {
+                expr_reads(a, out);
+            }
+        }
     }
 }
