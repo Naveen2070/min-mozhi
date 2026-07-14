@@ -1163,6 +1163,21 @@ fn int_expr(v: i128, span: mimz_core::span::Span) -> Expr {
     }
 }
 
+/// Pin `e`'s evaluated width to exactly `width` bits via the `extend`
+/// builtin — a plain `ExprKind::Int` literal otherwise evaluates to its own
+/// minimal width (`Val::from_int`), not whatever fixed-width slot it needs
+/// to fill inside a `Concat`. A no-op at eval time when `e` already
+/// evaluates to `width` bits (e.g. an ident naming a same-width signal).
+fn extend_to(e: Expr, width: u32, span: mimz_core::span::Span) -> Expr {
+    Expr {
+        kind: ExprKind::Call {
+            func: ast::Builtin::Extend,
+            args: vec![e, int_expr(width as i128, span)],
+        },
+        span,
+    }
+}
+
 /// Collect every instance name (top-level and inside `repeat`), so an
 /// instance-port read resolves whether the instance is plain or an array.
 fn collect_inst_names(items: &[ModuleItem], out: &mut HashSet<String>) {
@@ -1558,16 +1573,81 @@ impl<'d, 's> Rw<'d, 's> {
                 enum_name,
                 variant,
                 args,
-            } => ExprKind::EnumConstruct {
-                enum_name: enum_name.clone(),
-                variant: variant.clone(),
-                args: args
-                    .iter()
-                    .map(|a| self.expr(a))
-                    .collect::<Result<_, _>>()?,
-            },
+            } => return self.enum_construct(enum_name, variant, args, e.span),
         };
         Ok(Expr { kind, span: e.span })
+    }
+
+    /// Lowers `ExprKind::EnumConstruct` into the same tag+payload bit
+    /// layout `pattern()`/`variant_bindings()` (above) already assume —
+    /// mirrors their exact `tag_w`/`max_payload_w` computation. Produces a
+    /// plain `ExprKind::Int` for a tag-only (zero-arg) variant, or an
+    /// `ExprKind::Concat` otherwise — both already fully evaluated by
+    /// `crate::sim::value`, so no new interpreter code is needed.
+    fn enum_construct(
+        &self,
+        enum_name: &ast::Ident,
+        variant: &ast::Ident,
+        args: &[Expr],
+        span: mimz_core::span::Span,
+    ) -> Result<Expr, String> {
+        let edecl = self
+            .enums
+            .get(&enum_name.name)
+            .ok_or_else(|| format!("unknown enum `{}`", enum_name.name))?;
+        let idx = edecl
+            .variants
+            .iter()
+            .position(|v| v.name.name == variant.name)
+            .ok_or_else(|| {
+                format!(
+                    "enum `{}` has no variant `{}`",
+                    enum_name.name, variant.name
+                )
+            })?;
+        let total_w = edecl
+            .inferred_total_width
+            .get()
+            .expect("checker must run before elaborate") as u128;
+        let tag_w = clog2(edecl.variants.len()) as u128;
+        let max_payload_w = total_w - tag_w;
+        if max_payload_w == 0 {
+            return Ok(int_expr(idx as i128, span));
+        }
+        let decl_v = &edecl.variants[idx];
+        // Every part of the concat must carry its EXACT bit width: a bare
+        // `ExprKind::Int` literal evaluates to its own minimal width (e.g.
+        // `0` is 1 bit — see `Val::from_int`), not the tag/field/padding
+        // width the layout requires, so tag, args, and padding are all
+        // wrapped in `extend(_, N)` to pin their width explicitly. A
+        // non-literal arg (an ident/signal) already carries its declared
+        // width; `extend` to that same width is then a no-op.
+        let mut parts = Vec::new();
+        if tag_w > 0 {
+            parts.push(extend_to(int_expr(idx as i128, span), tag_w as u32, span));
+        }
+        let mut used_w = 0u128;
+        for (a, field) in args.iter().zip(decl_v.fields.iter()) {
+            // Identical inline match to `variant_bindings`'s own field-width
+            // computation above in this same file.
+            let field_w: u128 = match &field.ty {
+                ast::Type::Bit => 1,
+                ast::Type::Bits(e) | ast::Type::Signed(e) => {
+                    const_eval(e, self.consts).unwrap_or(0) as u128
+                }
+                ast::Type::Named(_) | ast::Type::Bundle { .. } | ast::Type::Array { .. } => 0,
+            };
+            used_w += field_w;
+            parts.push(extend_to(self.expr(a)?, field_w as u32, span));
+        }
+        let padding_w = max_payload_w - used_w;
+        if padding_w > 0 {
+            parts.push(extend_to(int_expr(0, span), padding_w as u32, span));
+        }
+        Ok(Expr {
+            kind: ExprKind::Concat(parts),
+            span,
+        })
     }
 
     fn field(&self, e: &Expr, base: &Expr, field: &ast::Ident) -> Result<Expr, String> {
