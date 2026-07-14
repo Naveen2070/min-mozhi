@@ -1533,6 +1533,34 @@ fn enum_payload_array_type_is_e0807() {
     );
 }
 
+// ---- enum variant construction: arg widths + Ty::Enum inference (T3) ------
+
+#[test]
+fn enum_construct_wrong_arg_width_is_e0401() {
+    let src = "enum Packet { Ctrl(k: bits[4]) }\n\
+               module M {\n  in k: bits[8]\n  out y: Packet\n  y = Packet.Ctrl(k)\n}\n";
+    first_err(src, "E0401");
+}
+
+#[test]
+fn enum_construct_valid_use_checks_clean_and_infers_enum_ty() {
+    // Also proves the constructed value is usable as an ordinary
+    // enum-typed value: assigned to a `Packet`-typed output.
+    let src = "enum Packet { Ctrl(k: bits[4]), Data(v: bits[8]) }\n\
+               module M {\n  in k: bits[4]\n  out y: Packet\n  y = Packet.Ctrl(k)\n}\n";
+    check_one(src).expect("valid EnumConstruct must check clean");
+}
+
+#[test]
+fn enum_construct_literal_arg_adapts_to_field_width() {
+    // An unsized literal argument adapts to the field's declared width,
+    // same as any other typed boundary (fn call arg, port connection) —
+    // must NOT trip E0401.
+    let src = "enum Packet { Ctrl(k: bits[4]) }\n\
+               module M {\n  out y: Packet\n  y = Packet.Ctrl(3)\n}\n";
+    check_one(src).expect("a literal argument must adapt to the field width");
+}
+
 // -------- E0808: OR-arm binding intersection --------
 
 /// Enum with four variants — used across E0808 tests.

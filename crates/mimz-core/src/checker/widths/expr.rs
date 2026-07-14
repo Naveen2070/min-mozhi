@@ -743,11 +743,48 @@ impl<'a> Checker<'a> {
                     len: elems.len() as u128,
                 }
             }
-            ExprKind::EnumConstruct { args, .. } => {
-                for a in args {
-                    let _ = self.infer_ty(cx, a);
+            ExprKind::EnumConstruct {
+                enum_name,
+                variant,
+                args,
+            } => {
+                let Some(edecl) = self.lookup_enum(&cx.sc, &enum_name.name) else {
+                    // Unknown enum — pass 3 (names.rs) already reported it.
+                    for a in args {
+                        let _ = self.infer_ty(cx, a);
+                    }
+                    return Ty::Unknown;
+                };
+                let Some(decl_v) = edecl.variants.iter().find(|v| v.name.name == variant.name)
+                else {
+                    // Unknown variant — pass 3 already reported E0103.
+                    for a in args {
+                        let _ = self.infer_ty(cx, a);
+                    }
+                    return Ty::Unknown;
+                };
+                if decl_v.fields.len() != args.len() {
+                    // Arity mismatch — pass 3 already reported E0806. Still
+                    // infer each arg's own type so inner errors surface.
+                    for a in args {
+                        let _ = self.infer_ty(cx, a);
+                    }
+                    return Ty::Unknown;
                 }
-                Ty::Unknown
+                // The enum may be declared in a different file than the
+                // construction site — a field type like `bits[W]` must
+                // resolve against the enum's OWN file-level consts.
+                let enum_file = self
+                    .enums
+                    .get(&enum_name.name)
+                    .and_then(|v| v.first())
+                    .map(|&(f, _)| f)
+                    .unwrap_or(cx.file);
+                for (arg, field) in args.iter().zip(decl_v.fields.iter()) {
+                    let field_ty = self.fn_type_for_file(enum_file, &field.ty);
+                    self.check_expr(cx, arg, field_ty);
+                }
+                Ty::Enum(edecl)
             }
         }
     }
