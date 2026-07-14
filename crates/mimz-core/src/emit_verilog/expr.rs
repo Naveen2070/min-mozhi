@@ -389,10 +389,19 @@ impl Emitter<'_> {
                 // a self-sized signal reference: inside a `{}` concatenation
                 // an unsized decimal literal defaults to 32 bits (LRM
                 // §5.7.1), which would corrupt the tag/field/padding
-                // boundaries — so a literal argument is rendered with its
-                // field's own width prefix, not left to `expr_subst`'s
-                // ordinary (unsized) literal rendering.
+                // boundaries — so any argument that folds to a compile-time
+                // constant (a bare literal, `-3`, `2+1`, …) is rendered with
+                // its field's own width prefix rather than left to
+                // `expr_subst`'s ordinary (unsized) literal rendering. A
+                // negative constant is masked to its field-width two's-
+                // complement bit pattern first — concatenation is always an
+                // unsigned/self-determined context, so the sign is encoded
+                // in the bits, not the literal's base.
                 let mut parts = Vec::new();
+                // `tag_w` is `clog2(variant_count)`, which floors at 1 for
+                // any legal (>=1-variant) enum — this branch always taken
+                // in practice. Guarded anyway as defense in depth, matching
+                // the padding guard below for the symmetric zero-width case.
                 if tag_w > 0 {
                     parts.push(format!("{tag_w}'d{idx}"));
                 }
@@ -406,9 +415,16 @@ impl Emitter<'_> {
                         Type::Named(_) | Type::Bundle { .. } | Type::Array { .. } => 0,
                     };
                     used_w += field_w;
-                    parts.push(match &a.kind {
-                        ExprKind::Int { value, .. } => format!("{field_w}'d{value}"),
-                        _ => self.expr_subst(a, subst, arrays),
+                    parts.push(match consteval::eval(a, &self.env) {
+                        Ok(v) => {
+                            let bits = if field_w >= 128 {
+                                v as u128
+                            } else {
+                                (v as u128) & ((1u128 << field_w) - 1)
+                            };
+                            format!("{field_w}'d{bits}")
+                        }
+                        Err(_) => self.expr_subst(a, subst, arrays),
                     });
                 }
                 let padding_w = max_payload_w - used_w;
