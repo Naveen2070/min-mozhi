@@ -1406,6 +1406,46 @@ fn valid_tagged_pattern_compiles_clean() {
     check_one(src).expect("valid tagged pattern with correct arity compiles clean");
 }
 
+// ---- enum variant construction: name/variant/arity (T2) -------------------
+
+#[test]
+fn enum_construct_unknown_enum_name() {
+    first_err(
+        "module M {\n  out y: bit\n  y = NoSuchEnum.Variant()\n}\n",
+        "E0101",
+    );
+}
+
+#[test]
+fn enum_construct_unknown_variant_name() {
+    let src = "enum State { Idle, Running }\n\
+               module M {\n  out y: State\n  y = State.NoSuchVariant()\n}\n";
+    first_err(src, "E0103");
+}
+
+#[test]
+fn enum_construct_arity_mismatch_is_e0806() {
+    let src = "enum Packet { Ctrl(k: bits[4]) }\n\
+               module M {\n  in k: bits[4]\n  out y: Packet\n  y = Packet.Ctrl(k, k)\n}\n";
+    first_err(src, "E0806");
+}
+
+#[test]
+fn enum_construct_tag_only_with_extra_args_is_e0806() {
+    let src = "enum State { Idle, Running }\n\
+               module M {\n  in a: bit\n  out y: State\n  y = State.Idle(a)\n}\n";
+    first_err(src, "E0806");
+}
+
+#[test]
+fn enum_construct_recurses_into_args_for_name_resolution() {
+    // The argument `nosuch` is itself an unresolvable name — must be
+    // caught even though the OUTER construction (Packet.Ctrl) is valid.
+    let src = "enum Packet { Ctrl(k: bits[4]) }\n\
+               module M {\n  out y: Packet\n  y = Packet.Ctrl(nosuch)\n}\n";
+    first_err(src, "E0101");
+}
+
 // ---- tagged-union width checker (T4) ----------------------------------------
 
 #[test]
