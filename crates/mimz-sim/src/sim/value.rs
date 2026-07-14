@@ -239,6 +239,9 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
              (both pre-expand to scalars before evaluation)"
                 .into(),
         ),
+        ExprKind::EnumConstruct { .. } => {
+            Err("enum construction is not yet supported in simulation".into())
+        }
     }
 }
 

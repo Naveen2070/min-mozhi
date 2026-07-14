@@ -96,6 +96,11 @@ fn collect_fn_calls(expr: &Expr, out: &mut Vec<String>) {
                 collect_fn_calls(e, out);
             }
         }
+        ExprKind::EnumConstruct { args, .. } => {
+            for a in args {
+                collect_fn_calls(a, out);
+            }
+        }
     }
 }
 

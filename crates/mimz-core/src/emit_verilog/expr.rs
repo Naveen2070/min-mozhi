@@ -355,6 +355,7 @@ impl Emitter<'_> {
             // Emit a safe placeholder — the checker should have caught this.
             ExprKind::BundleLit(_) => "0".into(),
             ExprKind::ArrayLit(_) => unreachable!("Task 8 or Task 9 wires this up"),
+            ExprKind::EnumConstruct { .. } => unreachable!("Task 2 wires this up"),
         }
     }
 

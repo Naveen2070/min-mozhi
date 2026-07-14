@@ -648,6 +648,11 @@ fn collect_expr_refs(e: &Expr, module_idx: Option<usize>, refs: &mut Vec<Ref>) {
                 collect_expr_refs(e, module_idx, refs);
             }
         }
+        ExprKind::EnumConstruct { args, .. } => {
+            for a in args {
+                collect_expr_refs(a, module_idx, refs);
+            }
+        }
     }
 }
 

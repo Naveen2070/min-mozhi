@@ -743,6 +743,12 @@ impl<'a> Checker<'a> {
                     len: elems.len() as u128,
                 }
             }
+            ExprKind::EnumConstruct { args, .. } => {
+                for a in args {
+                    let _ = self.infer_ty(cx, a);
+                }
+                Ty::Unknown
+            }
         }
     }
 

@@ -308,6 +308,17 @@ fn collect_expr_names(expr: &ast::Expr, names: &mut HashSet<String>) {
                 collect_expr_names(e, names);
             }
         }
+        ast::ExprKind::EnumConstruct {
+            enum_name,
+            variant,
+            args,
+        } => {
+            names.insert(enum_name.name.clone());
+            names.insert(variant.name.clone());
+            for a in args {
+                collect_expr_names(a, names);
+            }
+        }
     }
 }
 
