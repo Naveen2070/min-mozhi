@@ -274,7 +274,7 @@ The error-path tests assert on message/help **substrings** (loose, so
 wording can be polished) AND on the stable E-code (tight — the
 contract). Lexer error tests do the same with E10xx.
 
-## Unit: checker (`crates/mimz-core/src/checker/tests.rs`, 201 tests)
+## Unit: checker (`crates/mimz-core/src/checker/tests.rs`, 204 tests)
 
 One test per error code plus clean-pass cases — the codes are the
 stable contract, so each test asserts the CODE and a message substring
@@ -294,50 +294,53 @@ clock-domain matrix (independent domains clean, direct read,
 through-a-wire, domain-mixing wire, unused-second-clock clean). A few
 deserve a note:
 
-| Test                                                                   | Locks in                                                                                    |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `clean_module_passes` / `const_arithmetic_and_repeat_bounds_evaluate`  | clean code produces ZERO diagnostics — the checker must never cry wolf                      |
-| `same_name_module_in_different_files_is_not_an_error_until_referenced` | packages/namespacing: cross-file name collisions are legal until referenced (spec/02 §1.5b) |
-| `plus_into_same_width_target_teaches_wrap_in_e0401`                    | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable         |
-| `defaultless_param_module_is_checked_per_instantiation`                | a module with no param defaults is checked under each instantiation's concrete binding      |
-| `replication_width_is_count_times_inner`                               | `{2{bits[4]}}` is `bits[8]`, `{3{bits[4]}}` is `bits[12]` (A1)                              |
-| `replication_width_mismatch_is_e0401`                                  | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                     |
-| `a_non_constant_replication_count_is_e0201`                            | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)                 |
-| `a_zero_replication_count_is_e0410`                                    | `{0{a}}` has zero width — reuses the "not a valid width" code                               |
-| `dont_care_pattern_must_match_the_scrutinee_width`                     | `0b1??` is fine on `bits[3]`, a width error (E0409) on `bits[4]` (A2)                       |
-| `a_dont_care_match_still_needs_a_wildcard`                             | masked patterns earn no coverage — `0b1??`+`0b0??` without `_` is E0601 (A2)                |
-| `a_dont_care_pattern_on_an_enum_is_e0409`                              | a masked pattern on an enum scrutinee is rejected (match variants by name) (A2)             |
-| `repeat_index_out_of_range_at_the_last_iteration_is_e0406`             | `repeat` bodies are width-checked per iteration value, not just once                        |
-| `extend_of_a_bit_into_bitwise_passes`                                  | the fixed shift-register shape — explicit `extend` where widths differ                      |
-| `disjoint_per_bit_drives_via_repeat_pass`                              | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal      |
-| `repeat_instance_array_ripple_carry_is_not_a_cycle`                    | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop                    |
-| `fn_body_width_mismatch_is_e0804`                                      | `fn` return values must match the declared return width                                     |
-| `e0809_default_target_not_reg`                                         | `default` keyword must target a `reg`                                                       |
-| `e0811_const_if_condition_not_const`                                   | `const if` conditions must be compile-time constants                                        |
-| `bundle_duplicate_name_is_e0909`                                       | duplicate bundle declarations error out                                                     |
-| `bundle_nested_bundle_field_is_e0807`                                  | nested bundles (bundles inside bundles) are caught as an error                              |
-| `bundle_literal_missing_field`                                         | bundle literal missing a declared field is an error                                         |
-| `bundle_type_mismatch`                                                 | bundle type mismatch is caught correctly                                                    |
-| `fn_loop_variable_does_not_leak_outside_the_loop`                      | `loop` variables are scoped strictly to the loop body                                       |
-| `non_constant_seq_loop_bound_is_e0201`                                 | loop boundary conditions must be compile-time constants                                     |
-| `a_cycle_through_instances_is_e0504`                                   | combinational loops THROUGH child modules are caught via the comb summaries                 |
-| `feedback_through_a_register_is_not_a_cycle`                           | a reg breaks the loop — the normal shape of hardware never false-positives                  |
-| `enum_match_covering_every_variant_needs_no_wildcard`                  | the v0.2.3 ruling, executable: full coverage IS exhaustive, no `_` ceremony                 |
-| `wildcard_after_full_enum_coverage_is_allowed`                         | the defensive `_` (bit-flip recovery) is never flagged unreachable                          |
-| `clock_and_reset_ports_may_be_omitted`                                 | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract                   |
-| `same_domain_logic_under_two_declared_clocks_passes`                   | E0701 colors by USE, not by declaration count — an unused clock changes nothing             |
-| `register_file_passes`                                                 | a `mem` with a clocked indexed write + combinational indexed read checks clean (A4)         |
-| `a_non_constant_memory_depth_is_e0201`                                 | a memory `DEPTH` that is not a compile-time constant is E0201 (A4)                          |
-| `a_zero_memory_depth_is_e0410`                                         | a memory `DEPTH` of 0 is E0410 — a memory needs at least one cell (A4)                      |
-| `a_memory_init_that_overflows_the_element_is_e0405`                    | a `mem` init value too wide for the element type is E0405 (A4)                              |
-| `a_constant_address_past_the_depth_is_e0406`                           | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                               |
-| `a_memory_inside_repeat_is_e0303`                                      | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                     |
-| `foreach_elements_form_on_scalar_is_e0417`                             | `foreach v in <scalar>` (not array/mem-typed) is E0417                                      |
-| `foreach_range_form_checks_clean`                                      | `foreach i in 0..N { }` (range form) checks clean, lowering to `repeat`/`loop` as expected  |
-| `foreach_elements_form_checks_clean_over_mem`                          | `foreach v in <mem>` (elements form over a `mem`) checks clean                              |
-| `foreach_elements_form_variable_resolves_inside_on_block`              | the bound element variable resolves correctly inside a clocked `on` block                   |
-| `foreach_elements_form_at_module_level_checks_clean`                   | `foreach` as a bare module item (not inside `on`/`fn`) checks clean                         |
-| `foreach_elements_form_in_fn_body_resolves_via_own_param`              | inside a `fn` body, the elements-form source resolves against the `fn`'s own parameter list |
+| Test                                                                   | Locks in                                                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `clean_module_passes` / `const_arithmetic_and_repeat_bounds_evaluate`  | clean code produces ZERO diagnostics — the checker must never cry wolf                            |
+| `same_name_module_in_different_files_is_not_an_error_until_referenced` | packages/namespacing: cross-file name collisions are legal until referenced (spec/02 §1.5b)       |
+| `plus_into_same_width_target_teaches_wrap_in_e0401`                    | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable               |
+| `defaultless_param_module_is_checked_per_instantiation`                | a module with no param defaults is checked under each instantiation's concrete binding            |
+| `replication_width_is_count_times_inner`                               | `{2{bits[4]}}` is `bits[8]`, `{3{bits[4]}}` is `bits[12]` (A1)                                    |
+| `replication_width_mismatch_is_e0401`                                  | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                           |
+| `a_non_constant_replication_count_is_e0201`                            | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)                       |
+| `a_zero_replication_count_is_e0410`                                    | `{0{a}}` has zero width — reuses the "not a valid width" code                                     |
+| `dont_care_pattern_must_match_the_scrutinee_width`                     | `0b1??` is fine on `bits[3]`, a width error (E0409) on `bits[4]` (A2)                             |
+| `a_dont_care_match_still_needs_a_wildcard`                             | masked patterns earn no coverage — `0b1??`+`0b0??` without `_` is E0601 (A2)                      |
+| `a_dont_care_pattern_on_an_enum_is_e0409`                              | a masked pattern on an enum scrutinee is rejected (match variants by name) (A2)                   |
+| `repeat_index_out_of_range_at_the_last_iteration_is_e0406`             | `repeat` bodies are width-checked per iteration value, not just once                              |
+| `extend_of_a_bit_into_bitwise_passes`                                  | the fixed shift-register shape — explicit `extend` where widths differ                            |
+| `disjoint_per_bit_drives_via_repeat_pass`                              | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal            |
+| `repeat_instance_array_ripple_carry_is_not_a_cycle`                    | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop                          |
+| `fn_body_width_mismatch_is_e0804`                                      | `fn` return values must match the declared return width                                           |
+| `e0809_default_target_not_reg`                                         | `default` keyword must target a `reg`                                                             |
+| `e0811_const_if_condition_not_const`                                   | `const if` conditions must be compile-time constants                                              |
+| `bundle_duplicate_name_is_e0909`                                       | duplicate bundle declarations error out                                                           |
+| `bundle_nested_bundle_field_is_e0807`                                  | nested bundles (bundles inside bundles) are caught as an error                                    |
+| `bundle_literal_missing_field`                                         | bundle literal missing a declared field is an error                                               |
+| `bundle_type_mismatch`                                                 | bundle type mismatch is caught correctly                                                          |
+| `fn_loop_variable_does_not_leak_outside_the_loop`                      | `loop` variables are scoped strictly to the loop body                                             |
+| `non_constant_seq_loop_bound_is_e0201`                                 | loop boundary conditions must be compile-time constants                                           |
+| `a_cycle_through_instances_is_e0504`                                   | combinational loops THROUGH child modules are caught via the comb summaries                       |
+| `feedback_through_a_register_is_not_a_cycle`                           | a reg breaks the loop — the normal shape of hardware never false-positives                        |
+| `enum_match_covering_every_variant_needs_no_wildcard`                  | the v0.2.3 ruling, executable: full coverage IS exhaustive, no `_` ceremony                       |
+| `wildcard_after_full_enum_coverage_is_allowed`                         | the defensive `_` (bit-flip recovery) is never flagged unreachable                                |
+| `clock_and_reset_ports_may_be_omitted`                                 | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract                         |
+| `same_domain_logic_under_two_declared_clocks_passes`                   | E0701 colors by USE, not by declaration count — an unused clock changes nothing                   |
+| `register_file_passes`                                                 | a `mem` with a clocked indexed write + combinational indexed read checks clean (A4)               |
+| `a_non_constant_memory_depth_is_e0201`                                 | a memory `DEPTH` that is not a compile-time constant is E0201 (A4)                                |
+| `a_zero_memory_depth_is_e0410`                                         | a memory `DEPTH` of 0 is E0410 — a memory needs at least one cell (A4)                            |
+| `a_memory_init_that_overflows_the_element_is_e0405`                    | a `mem` init value too wide for the element type is E0405 (A4)                                    |
+| `a_constant_address_past_the_depth_is_e0406`                           | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                                     |
+| `a_memory_inside_repeat_is_e0303`                                      | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                           |
+| `foreach_elements_form_on_scalar_is_e0417`                             | `foreach v in <scalar>` (not array/mem-typed) is E0417                                            |
+| `foreach_range_form_checks_clean`                                      | `foreach i in 0..N { }` (range form) checks clean, lowering to `repeat`/`loop` as expected        |
+| `foreach_elements_form_checks_clean_over_mem`                          | `foreach v in <mem>` (elements form over a `mem`) checks clean                                    |
+| `foreach_elements_form_variable_resolves_inside_on_block`              | the bound element variable resolves correctly inside a clocked `on` block                         |
+| `foreach_elements_form_at_module_level_checks_clean`                   | `foreach` as a bare module item (not inside `on`/`fn`) checks clean                               |
+| `foreach_elements_form_in_fn_body_resolves_via_own_param`              | inside a `fn` body, the elements-form source resolves against the `fn`'s own parameter list       |
+| `e0813_fn_let_shadow_width_mismatch`                                   | BUG-9: a `fn`-body `let` re-binding a name (earlier `let` or param) at a different width is E0813 |
+| `fn_let_shadow_same_width_stays_clean`                                 | the fold/accumulator idiom (same-width shadow, e.g. `foreach_sum.mimz`'s `acc`) stays legal       |
+| `fn_let_shadowing_a_param_at_a_different_width_is_e0813`               | shadowing a PARAM (not just an earlier `let`) at a different width is the same E0813 conflict     |
 
 ## Unit: widths pass internals (`crates/mimz-core/src/checker/widths/mod.rs`, `checker::widths::tests`, 7 tests)
 
@@ -841,7 +844,7 @@ The Phase 1.5 simulator's combinational slice behind `mimz eval`.
 | `shift_left_bit_32_set_in_amt`         | `1 << (1 << 32)` → 0 (the specific `as u32` truncation trigger)                   |
 | `shift_right_bit_32_set_in_amt`        | `(1 << 63) >> (1 << 32)` → 0                                                      |
 
-## Unit: fn-body interpreter (`crates/mimz-sim/src/sim/value.rs`, 8 tests)
+## Unit: fn-body interpreter (`crates/mimz-sim/src/sim/value.rs`, 9 tests)
 
 Shared value model + expression evaluator behind both `comb.rs` and the
 kernel (B2). This pocket covers `fn`-body statement evaluation specifically —
@@ -859,6 +862,7 @@ on the spot inside the evaluator itself.
 | `fn_foreach_range_form_with_return_finds_first_match_in_sim` | `foreach i in 0..N` + `return` in a `fn` body lowers via `ast::lower_foreach_fn` and finds the first match |
 | `fn_foreach_elements_form_with_return_finds_match_in_sim`    | elements-form `foreach v in vals` + `return v` on match propagates as an early return                      |
 | `fn_foreach_elements_form_no_match_falls_through_in_sim`     | elements-form `foreach` with no match falls through to the `fn`'s tail expression, not a spurious return   |
+| `fn_call_sign_extends_narrower_signed_arg_to_wider_param`    | BUG-7: a narrower signed argument sign-extends (not zero-masks) when bound to a wider `fn` param           |
 
 ## Unit: elaboration (`crates/mimz-sim/src/sim/elaborate.rs`, 22 tests)
 
@@ -888,7 +892,7 @@ array instances, bit-indexed drives). The event-driven kernel interprets a
 | `foreach_elements_form_substitutes_var_with_mem_index`      | elements-form `foreach v in values` over a `mem` lowers to a `Repeat` substituting `v` with `values[idx]` throughout the body                                |
 | `foreach_nested_inside_if_in_on_block_lowers_via_recursion` | a `foreach` nested inside an `if` inside `on rise(clk)` still lowers — the seq-lowering pass recurses into `If`'s `then` body, not just top-level statements |
 
-## Unit: kernel (`crates/mimz-sim/src/sim/kernel.rs`, 13 tests)
+## Unit: kernel (`crates/mimz-sim/src/sim/kernel.rs`, 16 tests)
 
 Phase 1.5 step B2: the event-driven, two-phase simulation kernel that interprets
 a `Design` over clock cycles (regs init to reset; each rising edge settles
@@ -901,6 +905,9 @@ Shares the value model + expression evaluator with `comb` via `crates/mimz-sim/s
 | `dual_edge_negedge_reg_captures_posedge_within_a_period` | a `posedge` reg feeds a `negedge` reg; the rise→fall tick lets `b` see the new `a` same period (A3)       |
 | `memory_write_then_read_round_trips_a_cell`              | a `mem` cell reads init until written, then holds the clocked value; another cell still reads init (A4)   |
 | `regs_init_to_their_reset_value`                         | before any tick a reg holds its (non-zero) folded reset value                                             |
+| `bit_indexed_register_write_sets_one_bit`                | BUG-8: `shift[i] <- v` on a plain register sets that bit, leaving the rest untouched                      |
+| `slice_indexed_register_write_sets_a_range`              | BUG-8: `r[hi:lo] <- v` replaces that bit range, keeping bits outside it from the prior value              |
+| `disjoint_bit_indexed_writes_in_one_on_block_combine`    | BUG-8: two `reg[i] <- v` writes to disjoint bits of the same register in one `on` block both take effect  |
 | `wraps_at_declared_width`                                | `+%` on a `bits[2]` reg wraps 3→0 — width masking on the next value                                       |
 | `two_phase_commit_swaps_registers`                       | `a <- b; b <- a` SWAPS (non-blocking): each reads the OLD value, proving the two-phase commit             |
 | `statement_if_picks_the_next_value`                      | a statement-level `if` in the `on` block selects the reg's next value from the current state              |

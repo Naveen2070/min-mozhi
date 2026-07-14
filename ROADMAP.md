@@ -96,17 +96,39 @@ the full triaged backlog (source of truth).
   type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/
   `system_fault`
 
-**IR/synthesis track — not started:**
+**IR/synthesis track — not started.** Backend strategy: Verilog-2005 + Yosys
+is the standing plan, not a placeholder — own logic synthesis is
+research-grade (Yosys/nextpnr represent a decade-plus of community
+engineering), so this track rides on that ecosystem for technology mapping
+rather than competing with it. The "internals study" item below feeds that
+integration; it is not an alternative path toward an in-house synthesizer.
 
-- Min-Mozhi IR — own netlist-like intermediate format
+- Min-Mozhi IR — own netlist-like intermediate format (typed cells/nets,
+  clock domains preserved — feeds the Yosys/nextpnr flow below, not a
+  replacement for it)
 - IR emitter from AST
-- Logic synthesizer — map IR to gates (AND/OR/NOT/FF)
-- Yosys integration or internals study for technology mapping
-- FPGA primitive mapping (LUTs, flip-flops)
+- IR → Yosys JSON netlist or a Yosys-friendly structural Verilog subset
+- Yosys + nextpnr flow scripted end-to-end (`mimz build blink.mimz --target ice40`)
+- Study Yosys internals (techmapping, ABC interaction) to inform the above
+
+**Verilog FFI — not started, high priority.** The single highest-leverage
+gap for adoption beyond education: without a way to instantiate existing
+Verilog/SystemVerilog IP (vendor primitives, AXI interconnects, DDR
+controllers) from Min-Mozhi, the language hits a hard ceiling the moment a
+design needs anything it doesn't already have a construct for. Design the
+**external Verilog wrapping** construct (Constitution: emit + wrap Verilog)
+— spec bump + Decision log required before code, same as any new construct.
+Sequence this before further language-feature work once the current
+Enum Variant Construction item ships.
 
 ### Phase 3 — Native FPGA Backend _(target: 2029–2030)_
 
 > Full end-to-end ownership.
+
+Genuinely on the table, not a hedge — Yosys/nextpnr is Phase 2's backend
+because it's the pragmatic path to real hardware _now_, not a verdict that
+a native backend is unwanted. If the maintainer wants to build one, this is
+where that ambition lives.
 
 - Target-specific backends per FPGA architecture
 - Direct bitstream generation (iCE40 family — open and well documented)
@@ -119,7 +141,10 @@ the full triaged backlog (source of truth).
 
 - ✅ WASM browser playground (`crates/mimz-wasm`, CLI/WASM output parity tested)
 - ✅ Documentation site (Astro, `site/`, deployed via `deploy-site.yml`)
-- 🟡 Standard library — 5 modules shipped (fifo, pwm, uart_tx, seg7, debouncer); SPI/ALU common modules still open
+- 🟡 Standard library — 5 modules shipped (fifo, pwm, uart_tx, seg7, debouncer);
+  SPI, I2C, AXI-Lite, and a CDC synchronizer (double-flop, double-dips with
+  the already-reserved `sync.<method>(...)` builtin-namespace token — see
+  spec/03's `KW_SYNC` disambiguation note) still open
 - ⏳ Package manager for Min-Mozhi modules
 - ⏳ npm / PyPI wrappers (thin — one Rust core, never reimplemented)
 - ⏳ `mimz repl` — interactive REPL
