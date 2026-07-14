@@ -85,6 +85,47 @@ debugging backend; do not grow it into a compiler in the meantime.
 The earlier a rule fires, the better the span and the simpler the
 message. Push enforcement as early as it can correctly live.
 
+### `loop`/`suzhal` and `sync loop` — two different unroll shapes, one keyword pair
+
+`loop`/`suzhal`/சுழல் (spec v0.2.21, 2026-07-05) is a **compile-time**
+unroll usable inside `on` blocks and `fn` bodies — same unrolling-at-build
+model as `repeat`, just with `fn`-body early-return support threaded through
+via continuation-passing in the emitter and a real early return in the
+interpreter. `sync loop` (spec v0.2.22, 2026-07-06) is a different thing
+entirely: a **multi-cycle** FSM+counter that actually costs `hi - lo + 1`
+clock cycles in hardware, lowered to ordinary `Port`/`Reg`/`On`/`Drive`
+primitives before the checker or emitter ever see it. `sync` is a
+**dual-purpose token** — also reserved for a not-yet-implemented CDC
+synchronizer builtin-namespace (`sync.double_flop(...)`) — disambiguated by
+the token immediately following it (`loop`/`suzhal`/சுழல் vs `.`), so the
+two future grammars never conflict. See spec/03's keyword table entry for
+`KW_SYNC` for the full disambiguation note.
+
+### `Ty::Bundle` replaces the `Wcx::bundle_sigs` side-table (2026-07-11)
+
+Bundle-typed values used to type-check via a special-cased side-table
+(`Wcx::bundle_sigs`) rather than a real type. `Ty::Bundle` (commit
+`8e9d575`) gave them a real `Ty` — nominal identity plus on-demand field
+resolution via `resolve_bundle_fields` — so a bundle behaves like any other
+type in the width pass instead of needing bundle-specific plumbing at every
+call site. This is what let bundle-typed `fn` call arguments (`a935b90`)
+and return values (`58181bf`) get shape-checked the same way any other
+`fn` argument/return does, immediately afterward.
+
+### `foreach` — sugar, not a new execution model (2026-07-12/13)
+
+`foreach <var> in <source> { }` (range form `0..N`, elements form over an
+array or `mem`) desugars to `repeat`/`loop` at the AST level
+(`ast::foreach_lower`) before the checker, emitter, pretty-printer, or
+simulator ever see a `ForEach` node — only the checker validates `ForEach`
+directly, so its one error (E0417: elements-form source must be array/mem
+typed) can point at the original syntax. The keyword was reserved
+2026-07-12 and the sugar landed 2026-07-13. Its Tanglish/Tamil spellings
+(`ovvondraga`/ஒவ்வொன்றாக, "one by one, each") are PROVISIONAL placeholders,
+maintainer-authorized so four-flavor tooling works now, pending
+native-speaker review (R9/R11) — same review-gate pattern as `sync`/`loop`
+above.
+
 ## How the code has actually turned out (honest notes)
 
 - The front end (lexer → parser → emitter) went from empty repo to

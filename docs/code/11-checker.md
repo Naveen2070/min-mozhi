@@ -266,6 +266,39 @@ itself to the language's own honesty rule.
 | Did-you-mean suggestions on E0101                     | nice-to-have; needs edit distance                                                                                                                                                                                                                            |
 | `count_clocks`/`collect` walk both `ConstIf` branches | deferred — no const-eval env plumbed into these free functions; overcounts harmless in practice (over-approximate clocks, extra reg drive registrations). Fix: fold `count_clocks` into the walk that already has env, or thread `&HashMap<…, i128>` through |
 
+## How `loop`/`suzhal` and `sync loop` get checked
+
+Neither construct claims its own E-code block — both are checked by
+routing through existing passes and existing codes, the same way `foreach`
+routes to `E0417` plus whatever the lowered `Repeat`/`Loop` triggers:
+
+- **`SeqStmt::Loop`/`FnStmt::Loop`** (`loop`/`suzhal`, inside an `on` block
+  or `fn` body): pass 3 (`names.rs`) const-evaluates the bounds the same
+  way `Repeat`'s are (non-const bounds are `E0201`, same as `Repeat`);
+  pass 5 (`widths/mod.rs`) width-checks the loop body per iteration —
+  ordinary `E04xx` codes fire on a bad drive/expression inside, exactly as
+  they would outside a loop. The loop variable is scoped strictly to the
+  body in both passes (leaks are a bug, not a diagnosable user error).
+- **`ModuleItem::SyncLoop`** (`sync loop`) is checked as the RAW AST node —
+  the checker runs before `ast::sync_loop_lower`'s desugaring into
+  `Port`/`Reg`/`On`/`Drive` primitives (see
+  [`docs/source-guide/05-ast.md`](../source-guide/05-ast.md)):
+  - `names.rs` (pass 4) declares the loop's 4 generated signals
+    (`<name>_start`/`_done`/`_result`/the counter) so a collision with a
+    user-declared signal reuses **E0003**; its `on rise(...)`/`on
+fall(...)` clock clause reuses **E0109** if the name isn't a real
+    clock (`b.what()` names what it actually is).
+  - `widths/mod.rs` (pass 5) width-checks the `result_ty`/`result_init`
+    pair and the `lo`/`hi` bounds through the same machinery as any other
+    typed declaration and const position — no new codes.
+  - `drivers.rs` (pass 6) treats the sync loop's body exactly like an
+    `on`-block body (`self.on_block(dcx, sl.span.start, &sl.body)`), so
+    single-driver/coverage/`=`-vs-`<-` rules (**E0501–E0505**) apply
+    unchanged.
+  - `clocks.rs` (pass 7) colors the generated result register with the
+    sync loop's own clock, exactly like a normal `reg` — **E0701**
+    applies if it's read across a domain elsewhere.
+
 ## How to add a checker rule
 
 1. Pick the pass file (or add a new sibling for a new pass — wire it in

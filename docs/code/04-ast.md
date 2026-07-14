@@ -154,6 +154,44 @@ It is `None` until the checker runs. Downstream passes (emitter, sim) use it to
 compute tag bits (MSBs) and payload slices (LSBs). See spec/02 section 5a for
 the full wire layout.
 
+## Bundles — `BundleDecl`, `Type::Bundle`, `BundleLit`, `BundleDestructure`
+
+`BundleDecl` (`TopItem::Bundle`) is a struct-like grouping of ports/signals:
+
+```rust
+BundleDecl {
+    name: Ident,
+    params: Vec<Param>,        // compile-time params, same grammar as module params
+    fields: Vec<FieldDecl>,
+    span: Span,
+}
+
+FieldDecl {
+    name: Ident,
+    ty: Type,   // must be a concrete bit-vector or enum (E0807/E0905)
+    span: Span,
+}
+```
+
+A bundle-typed value's _type_ is `Type::Bundle { name: QualIdent, args: Vec<NamedArg> }`
+— `args` holds compile-time parameter overrides (empty for parameterless
+bundles, e.g. plain `Handshake` vs. `MemBus(WIDTH: 32)`). Like
+`Type::Named`, it's nominal-only: two bundles are the same type iff they
+share a name, not a structurally-identical field list.
+
+A bundle literal is `ExprKind::BundleLit(Vec<FieldInit>)` — `{ name: Ident,
+value: Expr }` per field, order-independent (matched by name, not
+position). `ModuleItem::BundleDestructure { bindings: Vec<Ident>, expr: Expr,
+span }` is `let { f, g } = expr` — **partial** destructure is allowed
+(`bindings` need not cover every field); a field-rename attempt (`let {
+f: g } = expr`) is rejected at parse time (E0904, see spec/02 section 1.12).
+
+The checker's own internal type representation for a resolved bundle value
+(`Ty::Bundle` in `crates/mimz-core/src/checker/widths/mod.rs`) is a
+**separate type**, not this `Type::Bundle` — see
+[`11-checker.md`](11-checker.md) for how it resolves field types on demand
+and backs bundle-typed `fn` argument/return shape-checking.
+
 ## `Error` placeholder nodes (parse recovery)
 
 `TopItem`, `ModuleItem`, `SeqStmt`, `FnStmt`, and `TestStmt` each carry an

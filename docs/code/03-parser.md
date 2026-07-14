@@ -115,6 +115,36 @@ expression. This is a simpler disambiguation than bundle-literal vs.
 concat/replicate (both spelled with a leading `{` and split by
 lookahead) because array literals have no ambiguous sibling.
 
+## Loop constructs: `loop`, `sync loop`, `foreach`
+
+`items/mod.rs`'s `repeat_block()` (`ident ":" expr ".." expr "{" ... "}"`) is
+the shared grammar shape three other constructs echo:
+
+- **`loop`** (`items/seq.rs`'s `seq_loop_inner`, mirrored in `items/func.rs`
+  for `fn` bodies) — `"loop" ident ":" expr ".." expr seqBlock`, usable
+  inside an `on` block or a `fn` body. Same bound-clause shape as `repeat`
+  (note: **`:`**, not `in`), but produces `SeqStmt::Loop`/`FnStmt::Loop` —
+  interpreted directly by the checker/emitter/simulator, not lowered to
+  `Repeat` (see [`11-checker.md`](11-checker.md), [`05-emit-verilog.md`](05-emit-verilog.md)).
+- **`sync loop`** (`items/mod.rs`'s `sync_loop_block`) — a module-item-level
+  construct with its own FSM semantics, not sugar: `"sync" "loop" ident "on"
+("rise"|"fall") "(" ident ")" "(" ident ":" expr ".." expr ")" "->" ident
+":" type "=" expr seqBlock`. The `sync`/`loop` keyword pair is consumed by
+  the caller in `module_item` (mirroring how `async reset` is handled
+  there) before `sync_loop_block` picks up.
+- **`foreach`** (`items/mod.rs`'s `foreach_block`, mirrored in `items/seq.rs`
+  and `items/func.rs` for `on`-block/fn-body positions) — `"foreach" ident
+"in" foreachSource "{" ... "}"`, where `foreachSource` is `expr [".."
+expr]`: `expr ".." expr` is the **range** form (identical shape to
+  `repeat`'s bound clause, but with **`in`**, not `:`); a lone `expr` is the
+  **elements** form and must parse as a bare identifier — the parser only
+  enforces "must be `ExprKind::Ident`" (a fast parse-time reject for e.g.
+  `foreach x in a + b {}`); the checker enforces the deeper "must be
+  array/mem-typed" rule (`E0417`). Unlike `loop`/`sync loop`, `foreach` is
+  pure desugaring: `ast::foreach_lower` rewrites `ForEach` into the
+  equivalent `Repeat`/`Loop` node before the checker or emitter ever see it
+  (see [`04-ast.md`](04-ast.md)).
+
 ## Expression parsing (`expr.rs`)
 
 Precedence climbing in `binary(min_prec)`, with the table in `bin_op`:
