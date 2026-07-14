@@ -1167,6 +1167,18 @@ impl<'a> Checker<'a> {
         en: &'a EnumDecl,
         patterns: &[Pattern],
     ) -> Vec<(String, Option<Ty<'a>>)> {
+        // A payload field type (e.g. `bits[SOME_CONST]`) must resolve
+        // against the enum's OWN declaring file's consts, not the match
+        // site's — the same cross-file distinction `EnumConstruct`'s width
+        // check already makes (widths/expr.rs). Falls back to `cx.file`
+        // only if the lookup somehow misses (defensive; `en` came from a
+        // successfully-inferred `Ty::Enum`, so this file is always found).
+        let enum_file = self
+            .enums
+            .get(&en.name.name)
+            .and_then(|v| v.first())
+            .map(|&(f, _)| f)
+            .unwrap_or(cx.file);
         let mut injected = Vec::new();
         for p in patterns {
             if let Pattern::Variant {
@@ -1175,7 +1187,7 @@ impl<'a> Checker<'a> {
                 && let Some(ev) = en.variants.iter().find(|v| v.name.name == variant.name)
             {
                 for (binding, field) in bindings.iter().zip(ev.fields.iter()) {
-                    let ty = self.resolve_ty_silent(cx, &field.ty);
+                    let ty = self.fn_type_for_file(enum_file, &field.ty);
                     match ty {
                         Ty::Bit | Ty::Bits(_) | Ty::Signed(_) => {
                             let prev = cx.sigs.insert(binding.name.clone(), ty);
