@@ -537,7 +537,7 @@ impl Parser {
                     let mut args = Vec::new();
                     loop {
                         self.skip_newlines();
-                        if matches!(self.peek_kind(), TokKind::RParen) {
+                        if self.at(&TokKind::RParen) {
                             break;
                         }
                         args.push(self.expr()?);
@@ -547,7 +547,7 @@ impl Parser {
                         }
                     }
                     let close = self.expect(TokKind::RParen, "`)` after the argument list")?;
-                    let span = field.span.join(close.span);
+                    let span = enum_name.span.join(close.span);
                     e = Expr {
                         kind: ExprKind::EnumConstruct {
                             enum_name,
