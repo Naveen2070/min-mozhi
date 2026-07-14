@@ -1,0 +1,21 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file;
+// mixing freely is the migration path): construct a tagged-union value with a payload,
+// then read it back apart with `match` — the constructing half of the tagged-union
+// feature (matching already existed; this is what completes it).
+
+vagai Packet {
+  Ctrl(k: bits[4]),
+  Data(v: bits[8])
+}
+
+module EnumConstruct {
+  ulleedu k: bits[4]
+  வெளியீடு k_out: bits[4]
+
+  wire p: Packet = Packet.Ctrl(k)
+
+  k_out = தேர்ந்தெடு p {
+    Packet.Ctrl(x) => x
+    Packet.Data(v) => 0
+  }
+}

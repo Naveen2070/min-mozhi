@@ -1,0 +1,20 @@
+// Min-Mozhi example: construct a tagged-union value with a payload, then
+// read it back apart with `match` — the constructing half of the tagged-
+// union feature (matching already existed; this is what completes it).
+
+enum Packet {
+  Ctrl(k: bits[4]),
+  Data(v: bits[8])
+}
+
+module EnumConstruct {
+  in k: bits[4]
+  out k_out: bits[4]
+
+  wire p: Packet = Packet.Ctrl(k)
+
+  k_out = match p {
+    Packet.Ctrl(x) => x
+    Packet.Data(v) => 0
+  }
+}
