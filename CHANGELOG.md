@@ -34,6 +34,22 @@ Compiler versions follow [SemVer](https://semver.org).
   matching how `repeat` already elaborates to N copies of hardware.
   Indexing with a compile-time-constant folds directly; a runtime index
   generates a priority-mux over the elements. New diagnostics E0411-E0415.
+- `foreach <var> in <source> { ... }` sugar over `repeat`/`loop`: a range
+  form (`foreach i in lo..hi`) and an array/mem-element form (`foreach v
+in values`, its bound taken from the source's own declared length, never
+  hand-written). Desugars to the existing `repeat`/`loop` machinery before
+  the checker/emitter/simulator ever see it — no new codegen. New
+  diagnostic E0417 (elements-form source must be array/mem-typed). New
+  keyword `foreach`; the Tanglish/Tamil spellings (`ovvondraga`/
+  ஒவ்வொன்றாக) are provisional, pending native-speaker review.
+- Bundle-typed `fn` parameters and return values are now shape-checked
+  (previously silently accepted/typed as `Unknown`): a bundle-shaped call
+  argument or return value is validated against the bundle's declared
+  fields, reusing the same `E0901`-family diagnostics as module-level
+  bundle drives. Underlying checker fix: bundle-typed values now carry a
+  real `Ty::Bundle` (nominal identity + on-demand field resolution)
+  instead of falling through to `Ty::Unknown`, replacing the old
+  `Wcx::bundle_sigs` side-table this had relied on.
 
 ---
 

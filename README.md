@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-737%20passing-brightgreen.svg"></a>
+  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-765%20passing-brightgreen.svg"></a>
   <img alt="Status" src="https://img.shields.io/badge/status-compiler%20%2B%20simulator-success.svg">
   <a href="https://rustup.rs"><img alt="Rust" src="https://img.shields.io/badge/rust-%E2%89%A5%201.85-orange.svg"></a>
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-blue.svg">
@@ -105,7 +105,7 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 ## Status
 
 **Phases 1, 1.8, and 1.5 complete — a working compiler _and_ simulator**, with
-**737 passing tests**.
+**765 passing tests**.
 
 - **Compiler** — lexer (all three flavors) → parser → checker (every spec safety
   rule, stable `E`-codes) → Verilog emitter (`repeat` unrolling, Tamil→ASCII
@@ -119,6 +119,9 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 - **Tooling** — `mimz lsp` (live VS Code diagnostics), `mimz check --json`/`--watch`,
   `mimz init` / `doctor` (alias `env`) / `completions <shell>` project & environment
   helpers, and `mimz-bench` (speed / accuracy / safety / coverage → HTML report).
+- **Hardware emulation (beta)** — `mimz test --emulate` drives real LED, audio,
+  and UART peripherals bound in a `sim{}` test block, live in your terminal at
+  throttled real-world timing.
 
 ## Who it's for (and not for)
 
@@ -138,27 +141,27 @@ so nothing you build here is a dead end.
 
 ## Documentation
 
-| Where                                      | What                                                             |
-| ------------------------------------------ | ---------------------------------------------------------------- |
-| [`docs/guide/`](docs/guide/README.md)      | **Learn the language** — from-scratch tutorial book              |
-| [`spec/`](spec/01-goals-and-philosophy.md) | Language spec — goals, grammar, keywords, simulator              |
-| [`examples/`](examples/)                   | 34 designs × 4 flavor folders + 5 stdlib + 1 lib + 19 tamil-pure |
-| [`demo/`](demo/)                           | Accumulator-CPU showcase: check → test → sim → wave              |
-| [`docs/`](docs/README.md)                  | Docs hub — phase plans, architecture, dev log                    |
-| [`docs/code/`](docs/code/)                 | How the code works (maintainers & contributors)                  |
-| [`editors/vscode/`](editors/vscode/)       | VS Code syntax highlighting for `.mimz`                          |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | How to contribute                                                |
+| Where                                      | What                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| [`docs/guide/`](docs/guide/README.md)      | **Learn the language** — from-scratch tutorial book                |
+| [`spec/`](spec/01-goals-and-philosophy.md) | Language spec — goals, grammar, keywords, simulator                |
+| [`examples/`](examples/)                   | 187 total: english/tanglish/tamil 42 each, mixed 41, tamil-pure 20 |
+| [`demo/`](demo/)                           | Accumulator-CPU showcase: check → test → sim → wave                |
+| [`docs/`](docs/README.md)                  | Docs hub — phase plans, architecture, dev log                      |
+| [`docs/code/`](docs/code/)                 | How the code works (maintainers & contributors)                    |
+| [`editors/vscode/`](editors/vscode/)       | VS Code syntax highlighting for `.mimz`                            |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | How to contribute                                                  |
 
 ## Roadmap
 
-| Phase | Status | Summary                                                         |
-| ----- | ------ | --------------------------------------------------------------- |
-| 1     | ✅     | Rust compiler: lexer → parser → AST → Verilog (Icarus-tested)   |
-| 1.8   | ✅     | Grammar Engine — natural Tamil SOV word order (`thamizh-order`) |
-| 1.5   | ✅     | Own event-driven simulator + VCD, Icarus-differentiated         |
-| 2     | ⏳     | Own IR + synthesis via open toolchain (Yosys/nextpnr)           |
-| 3     | ⏳     | Native iCE40 bitstream generation                               |
-| 4     | ⏳     | Stdlib (UART/SPI/PWM), package manager, docs site, community    |
+| Phase | Status | Summary                                                                                                  |
+| ----- | ------ | -------------------------------------------------------------------------------------------------------- |
+| 1     | ✅     | Rust compiler: lexer → parser → AST → Verilog (Icarus-tested)                                            |
+| 1.8   | ✅     | Grammar Engine — natural Tamil SOV word order (`thamizh-order`)                                          |
+| 1.5   | ✅     | Own event-driven simulator + VCD, Icarus-differentiated                                                  |
+| 2     | ⏳     | Own IR + synthesis via open toolchain (Yosys/nextpnr)                                                    |
+| 3     | ⏳     | Native iCE40 bitstream generation                                                                        |
+| 4     | ⏳     | Docs site ✅, stdlib (fifo/pwm/uart_tx/seg7/debouncer) ✅ — SPI + package manager + community still open |
 
 ## License
 
