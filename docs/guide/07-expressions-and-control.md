@@ -99,13 +99,51 @@ Min-Mozhi supports a simple `loop` construct that evaluates iteratively. Since h
 
 ```mimz
 on rise(clk) {
-  loop i in 0..4 {
+  loop i: 0..4 {
     regs[i] <- data[i]
   }
 }
 ```
 
+Note `loop`'s bound uses `:` (`loop i: 0..4`), not `in` — `in` is
+`foreach`'s spelling (see below), a different, newer construct with
+different semantics (its bound comes from an array's own length in the
+element form, not a hand-written range).
+
 _(Note: For loops that take multiple actual clock cycles to execute, use a `sync loop`. See [chapter 8](08-sequential-logic.md).)_
+
+## Iteration sugar: `foreach`
+
+`foreach` is a thin desugaring over `repeat`/`loop` for the two most common
+shapes — walking a range, or walking every element of an array or `mem` — so
+you don't hand-write the bound yourself:
+
+```mimz
+// index-range form: same unroll as `loop i in 0..4`
+foreach i in 0..4 {
+  lamps[i * 8 + 7 : i * 8] = i * 2
+}
+```
+
+```mimz
+// element form: iterates every element of an array-typed value —
+// the count comes from the array's own declared length, so it can
+// never drift out of sync with it
+fn sum8(values: bits[8][8], acc: bits[11]) -> bits[11] {
+  foreach v in values {
+    let acc = acc +% extend(v, 11)
+  }
+  acc
+}
+```
+
+The element form requires the source to be array- or `mem`-typed
+(`E0417` otherwise). Like `loop`, `foreach` unrolls fully at compile time —
+it is sugar, not a new execution model.
+
+> **Provisional keyword:** the Tanglish/Tamil spellings (`ovvondraga` /
+> ஒவ்வொன்றாக) are dev/testing placeholders pending native-speaker review —
+> expect them to change before they're finalized.
 
 ## Statement-level `if` / `else`
 
