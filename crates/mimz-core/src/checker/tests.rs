@@ -1446,6 +1446,26 @@ fn enum_construct_recurses_into_args_for_name_resolution() {
     first_err(src, "E0101");
 }
 
+#[test]
+fn match_arm_binding_field_width_resolves_against_enum_declaring_file_not_match_site() {
+    // Regression: `inject_arm_bindings` used to resolve a payload field's
+    // type against the MATCH SITE's file consts, not the enum's own
+    // declaring file — so a field type like `bits[W]`, where `W` is a
+    // const declared only alongside the enum, silently resolved to
+    // Ty::Unknown at a different file's match site (no `W` in scope
+    // there). The anti-cascade rule then let that Unknown absorb any
+    // width mismatch on the bound value with no diagnostic at all. File 0
+    // declares `Packet` with a const-sized field; file 1 matches it with
+    // no local `W` and assigns the (4-bit) binding to an 8-bit output —
+    // must be caught as E0401, not silently pass.
+    let file_a = parse("const W: int = 4\nenum Packet { Ctrl(k: bits[W]) }\n");
+    let file_b = parse(
+        "module M {\n  in p: Packet\n  out y: bits[8]\n  \
+         y = match p {\n    Packet.Ctrl(a) => a\n  }\n}\n",
+    );
+    first_err_multi(&[file_a, file_b], "E0401");
+}
+
 // ---- tagged-union width checker (T4) ----------------------------------------
 
 #[test]
@@ -1594,6 +1614,25 @@ fn enum_construct_literal_arg_is_sized_to_field_width_in_concat() {
     assert!(
         v.contains("{1'd0, 4'd3}"),
         "expected a 4-bit-sized literal, got:\n{v}"
+    );
+}
+
+#[test]
+fn enum_construct_negative_literal_arg_is_masked_and_sized_not_left_bare() {
+    // Regression: the first fix only special-cased `ExprKind::Int`, missing
+    // `-3` (parses as `Unary{Neg, Int(3)}`) and other constant-foldable
+    // shapes — those fell through to `expr_subst`'s ordinary rendering, an
+    // unsized `-3` inside a `{}` concat (invalid Verilog, and even if
+    // accepted would default to 32 bits, silently corrupting the layout).
+    // -3 in a 4-bit two's-complement field is 0b1101 = 13.
+    let v = compile_one(
+        "enum Packet {\n  Ctrl(k: signed[4])\n}\n\
+         module M {\n  out y: Packet\n  y = Packet.Ctrl(-3)\n}\n",
+    )
+    .expect("compiles clean");
+    assert!(
+        v.contains("{1'd0, 4'd13}"),
+        "expected -3 masked to its 4-bit two's-complement pattern (13), got:\n{v}"
     );
 }
 

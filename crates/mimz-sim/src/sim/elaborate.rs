@@ -1623,6 +1623,10 @@ impl<'d, 's> Rw<'d, 's> {
         // non-literal arg (an ident/signal) already carries its declared
         // width; `extend` to that same width is then a no-op.
         let mut parts = Vec::new();
+        // `tag_w` is `clog2(variant_count)`, which floors at 1 for any
+        // legal (>=1-variant) enum — this branch always taken in practice.
+        // Guarded anyway as defense in depth, matching the padding guard
+        // below for the symmetric zero-width case.
         if tag_w > 0 {
             parts.push(extend_to(int_expr(idx as i128, span), tag_w as u32, span));
         }
