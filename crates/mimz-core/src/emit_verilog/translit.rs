@@ -692,4 +692,32 @@ mod tests {
         let translated = translate(src, Flavor::Tanglish).expect("lexes");
         parse(lex(&translated).expect("tanglish lexes")).expect("tanglish parses");
     }
+
+    /// Confirms `expr()`'s `ExprKind::EnumConstruct` arm visits all three
+    /// name-bearing parts — `enum_name`, `variant`, and each arg — during
+    /// `--romanize-names` rewriting, same as `Pattern::Variant` already does.
+    #[test]
+    fn enum_construct_romanizes_enum_and_variant_names() {
+        use crate::translate::{TranslateOpts, translate_opts};
+        // நிலை -> nilai, மணி -> manni, கணக்கு -> kannakku (all confirmed by
+        // this module's own `pure_tamil_words_romanize_readably` test).
+        let src = "enum நிலை {\n  மணி(கணக்கு: bits[4])\n}\n\
+                   module M {\n  in கணக்கு: bits[4]\n  out y: நிலை\n  y = நிலை.மணி(கணக்கு)\n}\n";
+        let out = translate_opts(
+            src,
+            crate::lexer::token::Flavor::English,
+            TranslateOpts {
+                romanize_names: true,
+            },
+        )
+        .unwrap();
+        assert!(
+            out.contains("nilai.manni(kannakku)"),
+            "enum name, variant, and arg must all be romanized: {out}"
+        );
+        assert!(
+            !out.contains("நிலை") && !out.contains("மணி") && !out.contains("கணக்கு"),
+            "Tamil names should be gone: {out}"
+        );
+    }
 }

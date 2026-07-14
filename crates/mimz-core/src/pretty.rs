@@ -1084,6 +1084,22 @@ mod tests {
     }
 
     #[test]
+    fn enum_construct_pretty_prints_with_args() {
+        let src = "enum Packet {\n  Ctrl(k: bits[4])\n}\n\nmodule M {\n  in k: bits[4]\n  out y: Packet\n  y = Packet.Ctrl(k)\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(printed.contains("Packet.Ctrl(k)"), "got:\n{printed}");
+        // Confirm it re-parses to the same shape, not just that the text appears.
+        let toks2 = crate::lexer::lex(&printed).unwrap();
+        crate::parser::parse(toks2).expect("pretty-printed EnumConstruct re-parses");
+    }
+
+    #[test]
     fn sync_loop_round_trips_through_pretty_print() {
         let src = "module M {\n  clock clk\n  mem m: bits[8][8] = 0\n  in key: bits[8]\n  sync loop find_first on rise(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {\n    if m[i] == key { result <- i }\n  }\n}\n";
         let toks = crate::lexer::lex(src).unwrap();
