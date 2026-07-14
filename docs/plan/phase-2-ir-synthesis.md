@@ -8,8 +8,30 @@
 
 A Min-Mozhi intermediate representation (netlist-level) and a path to real
 FPGA hardware via the open toolchain: `.mimz → IR → Yosys/nextpnr → bitstream`.
+Verilog-2005 + Yosys/nextpnr is **this phase's standing backend strategy** —
+the pragmatic path to real hardware now, since own logic synthesis is
+research-grade (Yosys/nextpnr represent a decade-plus of community
+engineering). This is a sequencing choice, not a verdict against ever
+building a native backend: that ambition genuinely lives in Phase 3
+(see [`ROADMAP.md`](../../ROADMAP.md)), pursued if/when the maintainer wants
+to build it — see Risks below. Everything in this phase's IR/optimizer work exists to feed
+the Yosys toolchain in the meantime.
 
 ## Work items
+
+### Verilog FFI (high priority — sequence before further language-feature work)
+
+The single highest-leverage gap for adoption beyond education: without a way
+to instantiate existing Verilog/SystemVerilog IP (vendor primitives, AXI
+interconnects, DDR controllers, existing SV modules) from Min-Mozhi, the
+language hits a hard ceiling the moment a real design needs anything it
+doesn't already have a construct for. Promoted out of the Synthesis-path
+list below to its own item — this should land before further Tier-3
+language-feature work, once the in-flight Enum Variant Construction item
+ships.
+
+- [ ] Design the **external Verilog wrapping** construct (Constitution: emit + wrap Verilog) — spec bump + Decision log required before any code,
+      same gate as every other new construct in this plan
 
 ### IR
 
@@ -30,7 +52,6 @@ FPGA hardware via the open toolchain: `.mimz → IR → Yosys/nextpnr → bitstr
 - [ ] Yosys + nextpnr flow scripted: `mimz build blink.mimz --target ice40`
 - [ ] Bitstream produced and verified **in CI/emulation** (no board owned yet — decision D8)
 - [ ] Hello-hardware demo on a real iCE40 board (iCEBreaker) — **when a board is acquired**
-- [ ] Design the **external Verilog wrapping** construct (Constitution: emit + wrap Verilog) — spec bump + Decision log
 
 ### Study track (feeds Phase 3)
 

@@ -120,7 +120,11 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-07-14 (`foreach` doc-sync pass: brought
+_Last synced with the code: 2026-07-14 (BUG-7/8/9 fix pass: test count
+765→772 — synced `10-test-map.md`'s checker (201→204, new E0813 rows),
+fn-body interpreter (8→9, sign-extension fix test), and kernel (13→16,
+bit/slice-indexed register write tests) sections, plus `README.md`'s test
+badge/status line). Prior: 2026-07-14 (`foreach` doc-sync pass: brought
 `10-test-map.md` back in line with the current 765-test workspace suite —
 updated per-file counts (keyword table 11→12, parser 68→76, checker
 195→201, emitter 27→28, icarus 5→8, elaboration 19→22) with rows for the
