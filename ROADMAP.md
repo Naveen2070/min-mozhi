@@ -90,7 +90,8 @@ the full triaged backlog (source of truth).
 - ✅ `default` assignments + item-level const-`if` (2026-06-30)
 - ✅ `clog2` const-builtin (2026-06-27)
 - ✅ Bundle-typed fn arg/return shape-checking (2026-07-11)
-- Still open: enum variant construction syntax, `foreach`, structural
+- ✅ `foreach` range/elements-form loop sugar (2026-07-13)
+- Still open: enum variant construction syntax, structural
   interface matching, `?`/`??` valid-bundle sugar, channels tier (a), wire
   type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/
   `system_fault`
@@ -116,14 +117,14 @@ the full triaged backlog (source of truth).
 
 > Make it usable by others.
 
-- WASM browser playground (interactive `mimz` in-browser)
-- Documentation site (Astro, deployed to Vercel)
-- Standard library — UART, SPI, PWM, ALU common modules
-- Package manager for Min-Mozhi modules
-- npm / PyPI wrappers (thin — one Rust core, never reimplemented)
-- `mimz repl` — interactive REPL
-- `mimz tui` — no-IDE TUI workbench
-- Community + Tamil Nadu semiconductor outreach
+- ✅ WASM browser playground (`crates/mimz-wasm`, CLI/WASM output parity tested)
+- ✅ Documentation site (Astro, `site/`, deployed via `deploy-site.yml`)
+- 🟡 Standard library — 5 modules shipped (fifo, pwm, uart_tx, seg7, debouncer); SPI/ALU common modules still open
+- ⏳ Package manager for Min-Mozhi modules
+- ⏳ npm / PyPI wrappers (thin — one Rust core, never reimplemented)
+- ⏳ `mimz repl` — interactive REPL
+- ⏳ `mimz tui` — no-IDE TUI workbench
+- ⏳ Community + Tamil Nadu semiconductor outreach
 
 ---
 
