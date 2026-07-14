@@ -125,6 +125,39 @@ built-ins (as above) — anything combinational. Function names are
 project-wide unique (`E0801`) and are never namespace-qualified, unlike
 module/enum/bundle names (chapter 9).
 
+## Array-typed `fn` parameters
+
+A `fn` parameter can be array-typed — `bits[8][4]` is an array of four
+`bits[8]` elements. This isn't real Verilog array hardware: it's sugar over
+N independent scalar ports, so the size must be fixed at compile time and
+known from the type itself (the `foreach` element form in
+[chapter 7](07-expressions-and-control.md) relies on exactly this — the
+iteration count comes from the array type's own length):
+
+```mimz
+fn find_index(vals: bits[8][4], target: bits[8]) -> signed[4] {
+  loop i: 0..4 {
+    if vals[i] == target { return i }
+  }
+  -1
+}
+```
+
+Indexing behaves differently depending on whether the index is known at
+compile time:
+
+- a **constant** index (a `loop`/`repeat` variable, a literal) folds
+  directly to the matching scalar — `vals[i]` inside the `loop` above just
+  becomes `vals_0`, `vals_1`, … at that unrolled position;
+- a **runtime** index (an ordinary signal) can't select a real array
+  element, so the emitter generates a ternary-chain mux over every element
+  instead: `fn pick(vals: bits[8][4], idx: bits[3]) -> bits[8] { vals[idx] }`
+  compiles to a chain of `idx == 0 ? vals_0 : idx == 1 ? vals_1 : …`. An
+  out-of-range runtime index (more index values than elements — `idx` is
+  3 bits here but the array only has 4 elements) falls through to the last
+  element rather than erroring, since the mux chain must cover every
+  possible bit pattern.
+
 ## Worked example
 
 The `datapath` example in [`../../examples/`](../../examples/) exercises the
