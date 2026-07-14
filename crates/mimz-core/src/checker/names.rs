@@ -1314,7 +1314,58 @@ impl<'a> Checker<'a> {
                     self.expr(file, sc, env, e);
                 }
             }
-            ExprKind::EnumConstruct { args, .. } => {
+            ExprKind::EnumConstruct {
+                enum_name,
+                variant,
+                args,
+            } => {
+                match self.lookup_enum(sc, &enum_name.name) {
+                    Some(en) => {
+                        if let Some(decl_v) =
+                            en.variants.iter().find(|v| v.name.name == variant.name)
+                        {
+                            let expected = decl_v.fields.len();
+                            let got = args.len();
+                            if expected != got {
+                                let help = if expected == 0 {
+                                    format!(
+                                        "`{}.{}` is tag-only — remove the `(...)` argument list",
+                                        enum_name.name, variant.name
+                                    )
+                                } else {
+                                    format!(
+                                        "provide exactly {} argument(s) — one per payload field",
+                                        expected
+                                    )
+                                };
+                                self.err(
+                                    file,
+                                    variant.span,
+                                    "E0806",
+                                    format!(
+                                        "construction of `{}.{}` passes {} argument(s) but the variant has {} field(s)",
+                                        enum_name.name, variant.name, got, expected
+                                    ),
+                                    help,
+                                );
+                            }
+                        } else {
+                            let list: Vec<&str> =
+                                en.variants.iter().map(|v| v.name.name.as_str()).collect();
+                            self.err(
+                                file,
+                                variant.span,
+                                "E0103",
+                                format!(
+                                    "enum `{}` has no variant `{}`",
+                                    enum_name.name, variant.name
+                                ),
+                                format!("`{}`'s variants are: {}", enum_name.name, list.join(", ")),
+                            );
+                        }
+                    }
+                    None => self.unknown(file, &enum_name.name, enum_name.span),
+                }
                 for a in args {
                     self.expr(file, sc, env, a);
                 }
