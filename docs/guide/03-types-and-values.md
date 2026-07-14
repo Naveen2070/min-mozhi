@@ -148,6 +148,17 @@ module Node {
 
 The compiler automatically flattens a bundle into individual signals (`bus_in_valid`, `bus_in_ready`, etc.) during Verilog emission, meaning bundles have zero runtime overhead and generate clean, synthesis-safe hardware.
 
+Build a bundle-typed value with a **literal**, `{ field: value, ... }` — every
+field must be given (a missing field is `E0901`, an unknown one is rejected
+too):
+
+```mimz
+bundle Hs { valid: bit, data: bits[8] }
+
+out dst: Hs
+dst = { valid: 1, data: 0 }
+```
+
 You can also **destructure** a bundle-typed value into individual bindings
 with `let { field, ... } = expr`:
 
@@ -161,6 +172,20 @@ A partial destructure (naming only some fields) is fine — you don't have to
 bind every field. Duplicate binding names and field-rename syntax
 (`{ f: alias }`) are both rejected at parse time; a destructured field keeps
 its own name.
+
+A bundle can also be a `fn` parameter or return type. Field access on a
+bundle-typed parameter works exactly like field access on a module port:
+
+```mimz
+bundle Handshake(W: int = 8) {
+  valid: bit
+  data:  bits[W]
+}
+
+fn get_valid(h: Handshake(W: 8)) -> bit {
+  h.valid
+}
+```
 
 ## Compile-time types: `int` and `bool`
 

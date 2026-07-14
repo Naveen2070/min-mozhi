@@ -94,6 +94,32 @@ on rise(clk) {
 A register must be updated from exactly one `on` block; splitting it across two is
 an error (`E0503`).
 
+## Explicit fallback: `default`
+
+Holding is implicit — nothing written means nothing changes. `default` is the
+opposite: an EXPLICIT fallback value, for when you want a register to fall
+back to something specific unless a later condition overrides it, without
+writing an `else` on every branch:
+
+```mimz
+on rise(clk) {
+  default done <- 0        // fallback: cleared unless a branch below sets it
+  if count == LIMIT {
+    done <- 1
+  }
+}
+```
+
+A `default` always applies FIRST, so any later conditional `<-` to the same
+register in the same block overrides it — write it once at the top and forget
+about it, rather than repeating `<- 0` in every unhandled branch. Rules the
+compiler enforces:
+
+- the target must be a `reg` (`E0809`) — a `wire`'s value is never held, so a
+  "default" for one is meaningless;
+- at most one `default` per register per `on` block (`E0810`) — two fallback
+  values for the same register is a contradiction, not a priority order.
+
 ## Finite state machines
 
 Put an `enum` register together with `match` and you have a clean, latch-free FSM.
