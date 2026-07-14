@@ -1580,6 +1580,24 @@ fn enum_construct_emits_tag_and_payload_concat() {
 }
 
 #[test]
+fn enum_construct_literal_arg_is_sized_to_field_width_in_concat() {
+    // Regression: an unsized literal inside a `{}` concatenation defaults
+    // to 32 bits per the Verilog LRM — `3` must be rendered `4'd3`, not a
+    // bare `3`, or it silently overruns the 4-bit field into neighboring
+    // tag/padding bits. Packet has exactly 1 variant (tag_w = 1, no
+    // padding), so the concat is just the tag and the sized literal.
+    let v = compile_one(
+        "enum Packet {\n  Ctrl(k: bits[4])\n}\n\
+         module M {\n  out y: Packet\n  y = Packet.Ctrl(3)\n}\n",
+    )
+    .expect("compiles clean");
+    assert!(
+        v.contains("{1'd0, 4'd3}"),
+        "expected a 4-bit-sized literal, got:\n{v}"
+    );
+}
+
+#[test]
 fn enum_construct_tag_only_zero_args_emits_bare_tag() {
     let v = compile_one(
         "enum State {\n  Idle,\n  Running\n}\n\

@@ -446,6 +446,80 @@ module BusDecoder {
     );
 }
 
+/// Round-trip: `Enum.Variant(args)` construction feeds directly into a
+/// `match` that extracts the payload back apart — proves construction's
+/// tag/payload bit layout agrees with `match`'s own extraction, the one
+/// place a reversed-field-order bug would otherwise be invisible from
+/// either side alone.
+#[test]
+fn sim_enum_construct_round_trips_through_match() {
+    use std::collections::BTreeMap;
+
+    use mimz::sim::elaborate::elaborate;
+    use mimz::sim::kernel::Sim;
+
+    let src = "
+module M {
+  enum Packet { Ctrl(k: bits[4]), Data(v: bits[8]) }
+  in k: bits[4]
+  out y: bits[4]
+  wire p: Packet = Packet.Ctrl(k)
+  y = match p {
+    Packet.Ctrl(x) => x
+    Packet.Data(_) => 0
+  }
+}
+";
+
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
+    let mut sim = Sim::new(design);
+
+    sim.set("k", 9).unwrap();
+    assert_eq!(
+        sim.peek("y").unwrap(),
+        9,
+        "constructed Ctrl(k) round-trips through match back to k"
+    );
+}
+
+/// Regression: a compile-time integer literal argument (`Packet.Ctrl(3)`)
+/// has its OWN minimal natural width when evaluated bare (e.g. `3` is 2
+/// bits), not the payload field's declared width (4 bits here) — the
+/// concat lowering must pin it to the field width explicitly, or the tag
+/// and padding boundaries shift and the whole packed value is wrong.
+#[test]
+fn sim_enum_construct_literal_arg_is_sized_to_field_width_not_its_own() {
+    use std::collections::BTreeMap;
+
+    use mimz::sim::elaborate::elaborate;
+    use mimz::sim::kernel::Sim;
+
+    let src = "
+module M {
+  enum Packet { Ctrl(k: bits[4]), Data(v: bits[8]) }
+  out y: bits[4]
+  wire p: Packet = Packet.Ctrl(3)
+  y = match p {
+    Packet.Ctrl(x) => x
+    Packet.Data(_) => 0
+  }
+}
+";
+
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
+    let sim = Sim::new(design);
+
+    assert_eq!(
+        sim.peek("y").unwrap(),
+        3,
+        "the literal 3 must land in the 4-bit payload field, not shift the layout"
+    );
+}
+
 /// Headless no-op `EmulationHost` for `run_test_ok` below — this test file
 /// never exercises `sim{}` emulation peripherals, it only needs something to
 /// satisfy `run_test`'s `host` parameter (mirrors `NullHost` in
