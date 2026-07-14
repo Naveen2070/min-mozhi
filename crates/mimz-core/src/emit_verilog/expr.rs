@@ -384,20 +384,32 @@ impl Emitter<'_> {
                 // Packs MSB-first in the payload region, padding the LOW
                 // end — mirrors `arm_binding_exprs`'s slicing exactly, so
                 // construction and pattern-match extraction agree on layout.
-                let used_w: u128 = decl_v
-                    .fields
-                    .iter()
-                    .map(|f| match &f.ty {
+                //
+                // Every part must be an explicitly-SIZED Verilog literal or
+                // a self-sized signal reference: inside a `{}` concatenation
+                // an unsized decimal literal defaults to 32 bits (LRM
+                // §5.7.1), which would corrupt the tag/field/padding
+                // boundaries — so a literal argument is rendered with its
+                // field's own width prefix, not left to `expr_subst`'s
+                // ordinary (unsized) literal rendering.
+                let mut parts = Vec::new();
+                if tag_w > 0 {
+                    parts.push(format!("{tag_w}'d{idx}"));
+                }
+                let mut used_w = 0u128;
+                for (a, field) in args.iter().zip(decl_v.fields.iter()) {
+                    let field_w: u128 = match &field.ty {
                         Type::Bit => 1,
                         Type::Bits(e) | Type::Signed(e) => {
                             consteval::eval(e, &self.env).unwrap_or(0) as u128
                         }
                         Type::Named(_) | Type::Bundle { .. } | Type::Array { .. } => 0,
-                    })
-                    .sum();
-                let mut parts = vec![format!("{tag_w}'d{idx}")];
-                for a in args {
-                    parts.push(self.expr_subst(a, subst, arrays));
+                    };
+                    used_w += field_w;
+                    parts.push(match &a.kind {
+                        ExprKind::Int { value, .. } => format!("{field_w}'d{value}"),
+                        _ => self.expr_subst(a, subst, arrays),
+                    });
                 }
                 let padding_w = max_payload_w - used_w;
                 if padding_w > 0 {
