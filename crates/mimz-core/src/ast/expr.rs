@@ -121,6 +121,20 @@ pub enum ExprKind {
     /// `[e1, e2, ..., eN]` — an array literal. All elements must share one
     /// element type and width (checker-enforced, E0414).
     ArrayLit(Vec<Expr>),
+    /// `Enum.Variant(arg1, arg2, ...)` — constructs a payload-carrying (or
+    /// tag-only, with zero args) enum value. `args` are positional, in the
+    /// variant's declared field order. Only fires when the base before `.`
+    /// is a bare identifier (`postfix()` in the parser) — this is a
+    /// dedicated node, not built by reusing `Field`, so `enum_name` here is
+    /// never ambiguous with an instance/bundle field access.
+    EnumConstruct {
+        /// The enum type name.
+        enum_name: super::Ident,
+        /// The variant name.
+        variant: super::Ident,
+        /// Positional arguments, one per [`PayloadField`](super::PayloadField).
+        args: Vec<Expr>,
+    },
 }
 
 /// One field initializer in a bundle literal: `valid: expr`.

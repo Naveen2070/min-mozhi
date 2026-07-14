@@ -516,14 +516,56 @@ impl Parser {
                 }
             } else if self.eat(&TokKind::Dot) {
                 let field = self.ident("a field — `Enum.Variant` or `instance.port`")?;
-                let span = e.span.join(field.span);
-                e = Expr {
-                    kind: ExprKind::Field {
-                        base: Box::new(e),
-                        field,
-                    },
-                    span,
-                };
+                if self.eat(&TokKind::LParen) {
+                    // `Enum.Variant(args)` — only when `e` is a bare
+                    // identifier (the enum name). Anything else followed by
+                    // `.field(` isn't a valid construction shape (matches
+                    // Pattern::Variant's own restriction to a simple name)
+                    // and is a parse error below, same as it is today.
+                    let ExprKind::Ident(enum_name_str) = e.kind else {
+                        self.error(
+                            e.span,
+                            "E1101",
+                            "`Enum.Variant(...)` requires a simple enum name before `.`",
+                        );
+                        return None;
+                    };
+                    let enum_name = Ident {
+                        name: enum_name_str,
+                        span: e.span,
+                    };
+                    let mut args = Vec::new();
+                    loop {
+                        self.skip_newlines();
+                        if matches!(self.peek_kind(), TokKind::RParen) {
+                            break;
+                        }
+                        args.push(self.expr()?);
+                        self.skip_newlines();
+                        if !self.eat(&TokKind::Comma) {
+                            break;
+                        }
+                    }
+                    let close = self.expect(TokKind::RParen, "`)` after the argument list")?;
+                    let span = field.span.join(close.span);
+                    e = Expr {
+                        kind: ExprKind::EnumConstruct {
+                            enum_name,
+                            variant: field,
+                            args,
+                        },
+                        span,
+                    };
+                } else {
+                    let span = e.span.join(field.span);
+                    e = Expr {
+                        kind: ExprKind::Field {
+                            base: Box::new(e),
+                            field,
+                        },
+                        span,
+                    };
+                }
             } else {
                 break;
             }

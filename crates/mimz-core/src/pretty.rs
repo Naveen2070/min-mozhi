@@ -959,6 +959,18 @@ impl Pretty {
                     .join(", ");
                 format!("[{parts}]")
             }
+            ExprKind::EnumConstruct {
+                enum_name,
+                variant,
+                args,
+            } => {
+                let a = args
+                    .iter()
+                    .map(|e| self.expr(e, ind))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{}.{}({})", enum_name.name, variant.name, a)
+            }
         }
     }
 

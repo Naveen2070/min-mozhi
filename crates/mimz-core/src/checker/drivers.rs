@@ -604,6 +604,11 @@ impl<'a> Checker<'a> {
                     self.expr_reads(dcx, e, out);
                 }
             }
+            ExprKind::EnumConstruct { args, .. } => {
+                for a in args {
+                    self.expr_reads(dcx, a, out);
+                }
+            }
         }
     }
 

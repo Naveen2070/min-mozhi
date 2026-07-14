@@ -1038,6 +1038,81 @@ fn match_with_payload_bindings_parses() {
 }
 
 #[test]
+fn enum_construct_parses_with_payload_args() {
+    let f = parse_ok(
+        "enum Packet {\n  Ctrl(k: bits[4]),\n  Data(v: bits[8])\n}\n\
+         module M {\n  in k: bits[4]\n  out y: Packet\n  y = Packet.Ctrl(k)\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[1] else {
+        panic!("expected module")
+    };
+    let ModuleItem::Drive { rhs, .. } = m
+        .items
+        .iter()
+        .find(|i| matches!(i, ModuleItem::Drive { .. }))
+        .expect("expected a drive")
+    else {
+        unreachable!()
+    };
+    let ExprKind::EnumConstruct {
+        enum_name,
+        variant,
+        args,
+    } = &rhs.kind
+    else {
+        panic!("expected EnumConstruct, got {:?}", rhs.kind)
+    };
+    assert_eq!(enum_name.name, "Packet");
+    assert_eq!(variant.name, "Ctrl");
+    assert_eq!(args.len(), 1);
+}
+
+#[test]
+fn enum_construct_parses_with_zero_args_for_tag_only_variant() {
+    let f = parse_ok(
+        "enum State {\n  Idle,\n  Running\n}\n\
+         module M {\n  out y: State\n  y = State.Idle()\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[1] else {
+        panic!("expected module")
+    };
+    let ModuleItem::Drive { rhs, .. } = m
+        .items
+        .iter()
+        .find(|i| matches!(i, ModuleItem::Drive { .. }))
+        .expect("expected a drive")
+    else {
+        unreachable!()
+    };
+    let ExprKind::EnumConstruct { args, .. } = &rhs.kind else {
+        panic!("expected EnumConstruct, got {:?}", rhs.kind)
+    };
+    assert_eq!(args.len(), 0);
+}
+
+#[test]
+fn bare_enum_variant_reference_still_parses_as_field() {
+    // Regression: `State.Idle` with NO trailing `(...)` must keep parsing
+    // as the existing `ExprKind::Field`, not be swept into EnumConstruct.
+    let f = parse_ok(
+        "enum State {\n  Idle,\n  Running\n}\n\
+         module M {\n  out y: State\n  y = State.Idle\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[1] else {
+        panic!("expected module")
+    };
+    let ModuleItem::Drive { rhs, .. } = m
+        .items
+        .iter()
+        .find(|i| matches!(i, ModuleItem::Drive { .. }))
+        .expect("expected a drive")
+    else {
+        unreachable!()
+    };
+    assert!(matches!(rhs.kind, ExprKind::Field { .. }));
+}
+
+#[test]
 fn fn_decl_parses_in_thamizh_order() {
     // `fn` declarations are code-order-only (no SOV flip needed — they are
     // prefix-keyword constructs, not clause-inverted). A file with
