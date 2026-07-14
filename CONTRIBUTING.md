@@ -27,11 +27,23 @@ detailed, recipe-level guide lives in
 
   ```text
   cargo fmt --all
-  cargo clippy --all-targets -- -D warnings
-  cargo test
+  cargo clippy --workspace --all-targets -- -D warnings
+  cargo test --workspace
   npx prettier --check "**/*.md"
   npx markdownlint-cli2
   ```
+
+  `--workspace` is required, not optional: root `Cargo.toml` sets
+  `default-members = ["."]` (fast local iteration on the shell crate), so a
+  bare `cargo test`/`cargo clippy` silently skips `mimz-core` and `mimz-sim`.
+  For a full per-suite breakdown instead of a single pass/fail line, use
+  `cargo test-summary --workspace` (a dev-helper crate at
+  `tools/test-summary/`, aliased in `.cargo/config.toml`).
+
+  The compiler is a 3-crate Cargo workspace: `mimz-core` (pure pipeline +
+  most tooling), `mimz-sim` (event-driven simulator + runner), and the root
+  `mimz` shell crate (fs I/O, CLI, LSP, hardware emulation) — this is the
+  workspace `--workspace` runs the gates across.
 
 - **Errors must teach.** Every diagnostic says what is wrong AND how to
   fix it, in words a learner understands
@@ -42,14 +54,15 @@ detailed, recipe-level guide lives in
   parser routines, and update the matching `docs/code/` page when
   behavior changes.
 
-## What help is most valuable right now (Phase 1)
+## What help is most valuable right now
 
 - **Native Tamil speakers**: reviewing the Tanglish/Tamil keyword table
-  (`spec/03-keywords-trilingual.md` — it is DRAFT until reviewed).
-  This needs no Rust at all.
-- **Compiler work**: the checker passes
-  ([`docs/plan/phase-1-verilog-backend.md`](docs/plan/phase-1-verilog-backend.md),
-  work item 4).
+  (`spec/03-keywords-trilingual.md` — provisional entries are marked DRAFT
+  until reviewed). This needs no Rust at all.
+- **Compiler work**: see [`docs/plan/`](docs/plan/) for the current
+  per-phase execution plans — each phase file lists concrete, in-progress
+  work items. Check which phase is active before picking one up; completed
+  phases stay in `docs/plan/` as a historical record.
 - **Testing**: trying the examples, filing confusing-error reports —
   a confusing error message is a bug here, by definition.
 

@@ -9,7 +9,9 @@
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
 > (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-07-10 (workspace-split: the compiler is now a 3-crate
+> Last updated: 2026-07-14 (`foreach` doc-sync pass: example count 178→187,
+> added `packages.rs`/`showcase.rs` to the test-file tree). Prior:
+> 2026-07-10 (workspace-split: the compiler is now a 3-crate
 > Cargo workspace — `mimz-core` (pure pipeline), `mimz-sim` (simulator +
 > runner), `mimz` (root shell crate: fs I/O, the new `emulate` hardware
 > peripherals, CLI facade); §3 and Repository layout rewritten). Prior:
@@ -213,7 +215,7 @@ mimz/ (workspace root)
 │   │   └── led.rs, speaker.rs, uart_rx.rs, uart_tx.rs   # peripherals
 │   └── ir/                                # (planned, Phase 2)
 ├── tests/                               # 20 integration test files
-│   ├── examples.rs                        # all 178 examples (34 × 4 complete flavors + 5 stdlib + 1 lib each + 19 tamil-pure)
+│   ├── examples.rs                        # all 187 examples (english/tanglish/tamil: 42 each, mixed: 41, tamil-pure: 20)
 │   ├── cli.rs                             # CLI surface: init / doctor / completions
 │   ├── errors.rs                          # broken fixtures, one code per E-code
 │   ├── icarus.rs                          # iverilog lint + self-checking TBs + our_simulator_matches_icarus_bit_for_bit (~21 ex)
@@ -225,6 +227,8 @@ mimz/ (workspace root)
 │   ├── compile_string.rs                  # library API tests
 │   ├── stdlib.rs                          # importable std.* library tests
 │   ├── wasm_parity.rs                     # WASM ↔ CLI output parity
+│   ├── packages.rs                        # qualified cross-file references (a.b.Name)
+│   ├── showcase.rs                        # showcase/ demos (web playground, docs site)
 │   ├── golden/                            # pinned .v output per base example (68 .v + 14 _tb.v + 1 .vcd)
 │   └── fixtures/errors/                   # the broken corpus (106 .mimz files)
 ├── benches/
@@ -252,7 +256,7 @@ min-mozhi/
 ├── tests/                      # integration tests (20 files)
 ├── benches/                    # Criterion micro-benchmarks
 ├── fuzz/                       # libFuzzer targets (4)
-├── examples/                   # .mimz programs (34 designs × 4 complete flavors + 5 stdlib + 1 lib each + 19 tamil-pure = 178)
+├── examples/                   # .mimz programs (english/tanglish/tamil: 42 each, mixed: 41, tamil-pure: 20 = 187)
 ├── demo/                       # alu + cpu hardware demos
 ├── editors/vscode/             # VS Code extension (grammar + LSP client)
 ├── site/                       # Astro documentation website (deployed)

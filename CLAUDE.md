@@ -47,7 +47,7 @@ min-mozhi/
 ├── tests/                       # 20 test files + fixtures/golden/icarus
 ├── benches/compile.rs           # Criterion micro-benchmarks
 ├── fuzz/                        # 4 libFuzzer targets
-├── examples/                    # 23 designs × 4 complete flavors + 6 stdlib each + 13 tamil-pure (129 total)
+├── examples/                    # english/tanglish/tamil: 42 each, mixed: 41, tamil-pure: 20 (187 total)
 │   └── {english,tanglish,tamil,tamil-pure,mixed}/
 ├── demo/                        # Real hardware demos (alu, cpu)
 ├── editors/vscode/              # VS Code extension (plain JS)
@@ -58,9 +58,9 @@ min-mozhi/
 │   ├── architecture.md          # Pipeline & components
 │   ├── prior-art.md             # Prior art comparison
 │   ├── how-the-compiler-works.md# Beginner's tour
-│   ├── guide/                   # Learn the language (12 chapters)
-│   ├── code/                    # Maintainer docs (13 files)
-│   ├── source-guide/            # Friendly Rust file tour (10 chapters)
+│   ├── guide/                   # Learn the language (13 chapters + stdlib/ subguide)
+│   ├── code/                    # Maintainer docs (14 files)
+│   ├── source-guide/            # Friendly Rust file tour (11 chapters)
 │   ├── audit/                   # Security & robustness audit
 │   ├── Ideas/                   # Forward-looking plans (5 files)
 │   ├── plan/                    # Per-phase execution plans
@@ -82,19 +82,19 @@ min-mozhi/
 
 ## docs/ folder structure
 
-| Folder / File                 | What lives here                              |
-| ----------------------------- | -------------------------------------------- |
-| `README.md`                   | Master docs index with table of all sections |
-| `RULES.md`                    | Repository working rules (source of truth)   |
-| `BUILD.md`                    | Build reference — tools, crates, commands    |
-| `architecture.md`             | Compiler architecture — pipeline, components |
-| `prior-art.md`                | Prior art: Veryl/Spade/Amaranth/Chisel       |
-| `how-the-compiler-works.md`   | Beginner's tour — pipeline on one example    |
-| `guide/` (README + 12 files)  | **Learn the language** — from-scratch book   |
-| `code/` (README + 13 files)   | **Maintainer docs** — per-module internals   |
-| `source-guide/` (README + 10) | **Friendly code tour** — every Rust file     |
-| `audit/` (README + bugs)      | Security & robustness audit                  |
-| `Ideas/` (5 files)            | Forward-looking plans, roadmaps              |
-| `plan/`                       | Detailed per-phase execution plans           |
-| `log/` (dated logs)           | Dev log — append-only decisions & progress   |
-| `archive/`                    | Closed working documents                     |
+| Folder / File                                    | What lives here                              |
+| ------------------------------------------------ | -------------------------------------------- |
+| `README.md`                                      | Master docs index with table of all sections |
+| `RULES.md`                                       | Repository working rules (source of truth)   |
+| `BUILD.md`                                       | Build reference — tools, crates, commands    |
+| `architecture.md`                                | Compiler architecture — pipeline, components |
+| `prior-art.md`                                   | Prior art: Veryl/Spade/Amaranth/Chisel       |
+| `how-the-compiler-works.md`                      | Beginner's tour — pipeline on one example    |
+| `guide/` (README + 13 files, + stdlib/ subguide) | **Learn the language** — from-scratch book   |
+| `code/` (README + 14 files)                      | **Maintainer docs** — per-module internals   |
+| `source-guide/` (README + 11)                    | **Friendly code tour** — every Rust file     |
+| `audit/` (README + bugs)                         | Security & robustness audit                  |
+| `Ideas/` (6 files)                               | Forward-looking plans, roadmaps              |
+| `plan/`                                          | Detailed per-phase execution plans           |
+| `log/` (dated logs)                              | Dev log — append-only decisions & progress   |
+| `archive/`                                       | Closed working documents                     |
