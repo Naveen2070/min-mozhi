@@ -20,7 +20,6 @@ module moththam (
         input [(8)-1:0] anni_7;
         input [(11)-1:0] thokai;
         reg [7:0] mathi;
-        reg [10:0] thokai;
         begin
             mathi = anni_0;
             thokai = (thokai + (mathi));

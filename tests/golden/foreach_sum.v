@@ -20,7 +20,6 @@ module ForeachSum (
         input [(8)-1:0] values_7;
         input [(11)-1:0] acc;
         reg [7:0] v;
-        reg [10:0] acc;
         begin
             v = values_0;
             acc = (acc + (v));

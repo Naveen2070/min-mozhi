@@ -312,11 +312,57 @@ fn run_seq(
                             );
                         }
                     }
-                    Some(_) => {
-                        return Err(format!(
-                            "assigning a slice/bit of `{}` is not supported by the simulator yet",
-                            lhs.base.name
-                        ));
+                    // Bit-indexed (`reg[i] <- v`) or slice-indexed
+                    // (`reg[hi:lo] <- v`) write into a plain register — BUG-8.
+                    // Both index/slice bounds must be compile-time constants
+                    // for a plain (non-array, non-mem) signal, same as the
+                    // read path (`value::eval`'s `ExprKind::Index`/`Slice`
+                    // arms), so no runtime-index case exists here to handle.
+                    // The base value is the CURRENT register state, chained
+                    // through `next` if an earlier statement this same cycle
+                    // already patched a disjoint bit/slice of it (so two
+                    // `reg[i] <- ..`/`reg[j] <- ..` writes in one `on` block
+                    // combine, rather than the second clobbering the first).
+                    Some((idx_or_hi, lo)) => {
+                        let base = match next.get(&lhs.base.name) {
+                            Some(v) => *v,
+                            None => env.signal(&lhs.base.name)?,
+                        };
+                        let v = value::eval(env, rhs)?;
+                        let bits = match lo {
+                            None => {
+                                let i = value::checked_index(
+                                    value::const_eval(idx_or_hi, env.ints())?,
+                                    base.width,
+                                    "bit index",
+                                )?;
+                                (base.bits & !(1u128 << i)) | ((v.bits & 1) << i)
+                            }
+                            Some(lo_expr) => {
+                                let hi = value::checked_index(
+                                    value::const_eval(idx_or_hi, env.ints())?,
+                                    base.width,
+                                    "slice high bound",
+                                )?;
+                                let lo = value::checked_index(
+                                    value::const_eval(lo_expr, env.ints())?,
+                                    base.width,
+                                    "slice low bound",
+                                )?;
+                                if hi < lo {
+                                    return Err(
+                                        "slice bounds reversed (write `[hi:lo]`, msb first)".into(),
+                                    );
+                                }
+                                let w = hi - lo + 1;
+                                let clear = value::mask(w) << lo;
+                                (base.bits & !clear) | ((v.bits & value::mask(w)) << lo)
+                            }
+                        };
+                        next.insert(
+                            lhs.base.name.clone(),
+                            Val::new(bits, base.width, base.signed),
+                        );
                     }
                 }
             }
@@ -522,6 +568,55 @@ mod tests {
         // A different, never-written cell still reads init.
         s.set("raddr", 1).unwrap();
         assert_eq!(s.peek("rdata").unwrap(), 0, "cell 1 was never written");
+    }
+
+    #[test]
+    fn bit_indexed_register_write_sets_one_bit() {
+        // BUG-8 regression: `shift[i] <- v` on a plain register used to
+        // error ("assigning a slice/bit of ... is not supported by the
+        // simulator yet"). `i` must be a compile-time constant for a plain
+        // (non-array/mem) signal, same as the read path.
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  in v: bit\n  out y: bits[4]\n  \
+             reg shift: bits[4] = 0\n  on rise(clk) { shift[2] <- v }\n  y = shift\n}\n",
+        );
+        s.set("rst", 0).unwrap();
+        s.set("v", 1).unwrap();
+        s.tick("clk").unwrap();
+        assert_eq!(s.peek("y").unwrap(), 0b0100, "bit 2 set, others untouched");
+    }
+
+    #[test]
+    fn slice_indexed_register_write_sets_a_range() {
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  in v: bits[2]\n  out y: bits[4]\n  \
+             reg r: bits[4] = 0b1001\n  on rise(clk) { r[2:1] <- v }\n  y = r\n}\n",
+        );
+        s.set("rst", 0).unwrap();
+        s.set("v", 0b11).unwrap();
+        s.tick("clk").unwrap();
+        assert_eq!(
+            s.peek("y").unwrap(),
+            0b1111,
+            "bits [2:1] replaced, bits 3 and 0 kept from the reset value"
+        );
+    }
+
+    #[test]
+    fn disjoint_bit_indexed_writes_in_one_on_block_combine() {
+        // Two separate `reg[i] <- v` statements to disjoint bits of the
+        // SAME register in one `on` block must both take effect — the
+        // second must see the first's already-patched value (via `next`),
+        // not clobber it by re-reading the stale pre-cycle `env` value.
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  in a: bit\n  in b: bit\n  out y: bits[2]\n  \
+             reg r: bits[2] = 0\n  on rise(clk) {\n    r[0] <- a\n    r[1] <- b\n  }\n  y = r\n}\n",
+        );
+        s.set("rst", 0).unwrap();
+        s.set("a", 1).unwrap();
+        s.set("b", 1).unwrap();
+        s.tick("clk").unwrap();
+        assert_eq!(s.peek("y").unwrap(), 0b11);
     }
 
     #[test]

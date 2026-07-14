@@ -420,6 +420,21 @@ impl Emitter<'_> {
                 }
             }
         }
+        // Names already given a `reg`/`input` declaration this function —
+        // seeded with the scalar params (an array param's `<name>_<i>`
+        // scalars never collide with a plain `let`'s single name). BUG-9: a
+        // `let` that shadows an earlier `let` or a param — the checker
+        // (E0813) now guarantees any such shadow keeps the SAME width — so
+        // it's the exact same Verilog identifier and needs declaring only
+        // once; the emitter used to blindly emit one `reg` line per source
+        // `let`, so a shadow re-declared the same name and real Verilog
+        // rejected it.
+        let mut declared: std::collections::HashSet<String> = decl
+            .params
+            .iter()
+            .filter(|p| !matches!(p.ty, Type::Array { .. }))
+            .map(|p| p.name.name.clone())
+            .collect();
         for local in fn_all_locals(&decl.stmts, &decl.params, &self.env) {
             // An array-typed `let` is not one sized `reg` — it lowers to N
             // scalar `reg`s named `<name>_<i>`, the same convention an array
@@ -429,6 +444,9 @@ impl Emitter<'_> {
                 for i in 0..elems.len() {
                     s.push_str(&format!("        reg {ew}{}_{i};\n", local.name.name));
                 }
+                continue;
+            }
+            if !declared.insert(local.name.name.clone()) {
                 continue;
             }
             let decl_line = match local.inferred_width.get() {
