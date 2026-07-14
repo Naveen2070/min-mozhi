@@ -126,6 +126,38 @@ maintainer-authorized so four-flavor tooling works now, pending
 native-speaker review (R9/R11) — same review-gate pattern as `sync`/`loop`
 above.
 
+### `Enum.Variant(args)` construction — positional args, zero new codes, match the existing per-layer duplication (2026-07-14)
+
+The tagged-union feature (2.7) shipped with matching (`Pattern::Variant`)
+but no way to actually build one — `Packet.Ctrl(k)` was a parse error.
+Three decisions, made during brainstorming before implementation:
+
+- **Positional arguments only**, no named-field syntax — mirrors
+  `Pattern::Variant`'s own binding convention (D2: enum field _names_ are
+  documentation only) so the read side and write side agree.
+- **Zero new error codes**: E0806 (payload arity mismatch) and E0401
+  (generic width mismatch) are reused with generalized wording, rather than
+  minting construction-specific codes, since the underlying failure modes
+  are identical to their pattern-side counterparts.
+- **Architecture: match the existing per-layer duplication precedent
+  rather than centralize** (Option B from brainstorming). This codebase
+  already computes `tag_w`/`max_payload_w`/field-packing independently in
+  four places for the pattern-matching side (checker's names.rs arity
+  check, widths pass, the Verilog emitter's `arm_binding_exprs`, and the
+  simulator's `variant_bindings`) rather than sharing one helper.
+  `EnumConstruct`'s new `ExprKind` variant follows the same shape: one new
+  arm per existing pass, each re-deriving the same layout math its
+  pattern-side sibling already has, instead of introducing a shared
+  abstraction this codebase has consistently avoided elsewhere.
+
+One correctness issue surfaced only once real values were run through the
+simulator and Icarus: `ExprKind::Concat` evaluates each part to its own
+natural width (a bare int literal is its minimal bit-width, not the
+tag/field/padding width the layout requires), so both backends now pin
+every concat part's width explicitly — the simulator via `extend(_, N)`,
+the emitter via an explicitly-sized `N'd<value>` literal instead of
+Verilog's unsized-literal-in-concat default (32 bits per the LRM).
+
 ## How the code has actually turned out (honest notes)
 
 - The front end (lexer → parser → emitter) went from empty repo to

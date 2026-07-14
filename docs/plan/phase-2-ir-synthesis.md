@@ -27,8 +27,8 @@ interconnects, DDR controllers, existing SV modules) from Min-Mozhi, the
 language hits a hard ceiling the moment a real design needs anything it
 doesn't already have a construct for. Promoted out of the Synthesis-path
 list below to its own item — this should land before further Tier-3
-language-feature work, once the in-flight Enum Variant Construction item
-ships.
+language-feature work, now that Enum Variant Construction has shipped
+(below).
 
 - [ ] Design the **external Verilog wrapping** construct (Constitution: emit + wrap Verilog) — spec bump + Decision log required before any code,
       same gate as every other new construct in this plan
@@ -120,11 +120,10 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       enums + match exist; payload = tag bits + max-payload bits; gives `Result`
       (4.2) for free
       **✅ DONE 2026-06-28 (spec/02 v0.2.15)** — `examples/.../tagged_packet.mimz`
-- [ ] **Enum Variant Construction (Payload)** — follow-up to Tagged Unions (2.7):
-      `Enum.Variant(expr1, expr2)` construction syntax is missing. Requires new
-      `ExprKind::EnumConstruct`, parser update in `postfix()` to consume `(` after
-      enum field access, checker validation of arguments, emitter concatenation
-      `{ tag_bits, arg0, arg1, padding }`, and simulator `Val` packing.
+- [x] **Enum Variant Construction (Payload)** — follow-up to Tagged Unions (2.7):
+      `Enum.Variant(expr1, expr2)` construction syntax, positional args, zero new
+      error codes (E0806/E0401 reused) — **✅ DONE 2026-07-14 (spec/02 §5a)** —
+      `examples/.../enum_construct.mimz`
 - [x] **Interfaces/bundles + destructuring** (2.4) — flatten to nets in the
       emitter; unlocks the next three items — **✅ DONE 2026-07-01 (spec v0.2.18)**
 - [ ] Structural interface matching (2.9) — small checker rule once bundles exist

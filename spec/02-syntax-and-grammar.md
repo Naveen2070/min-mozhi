@@ -1075,7 +1075,16 @@ binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&" | "^" | "|" | "==" | "!=" | "<" | "<=" | ">" | ">="
             | "&&" | "||" | "and" | "or" ;
 unary       = [ "~" | "-" | "!" | "not" | "&" | "|" | "^" ] postfix ;
-postfix     = primary { "[" expr [ ":" expr ] "]" | "." IDENT } ;
+postfix     = primary { "[" expr [ ":" expr ] "]"
+                       | "." IDENT [ "(" [ expr { "," expr } ] ")" ] } ;
+                                               (* trailing "(args)" after "." IDENT constructs a
+                                                  payload-carrying (or tag-only, zero-arg) enum
+                                                  value — Enum.Variant(arg1, arg2, …), positional,
+                                                  in the variant's declared field order. Requires a
+                                                  bare identifier before "." (the enum name); without
+                                                  it, "." IDENT is the ordinary field-access form
+                                                  (instance output / bundle field). See the
+                                                  Enum.Variant read-side in `pattern` above. *)
 primary     = literal | IDENT | "(" expr ")" | concat | replication | bundleLiteral
             | arrayLiteral | callExpr | fnCall ;
 concat      = "{" expr { "," expr } "}" ;
@@ -1169,12 +1178,48 @@ Bindings are **positional** (design decision D2): the field _names_ in the
 `enum` declaration are documentation only. Binding names in the `match` arm are
 arbitrary identifiers scoped to that arm's value expression.
 
+### Construction semantics: `Enum.Variant(args)`
+
+`Enum.Variant(arg1, arg2, …)` is an expression that builds a tagged-union
+value — the write-side counterpart to `match`'s extraction above. Arguments
+are **positional**, one per `payloadField`, in the variant's declared
+field order (same D2 convention as match bindings); a tag-only variant
+(zero payload fields) is constructed `Enum.Variant()`, with an empty
+argument list. The emitter and simulator both lower it to the exact
+tag+payload concatenation the wire layout above describes: `tag_w` bits
+holding the variant's index, then each argument packed MSB-first into the
+payload region, then zero-padding for any unused low bits.
+
+```
+enum Packet { Ctrl(k: bits[4]), Data(v: bits[8]) }
+
+module M {
+  in k: bits[4]
+  out y: Packet
+  y = Packet.Ctrl(k)          // payload-carrying construction
+}
+
+enum State { Idle, Running }
+
+module N {
+  out y: State
+  y = State.Idle()            // tag-only construction — the "()" is required
+}
+```
+
+A bare `Enum.Variant` (no trailing `(...)`) without payload fields is still
+the pre-existing `Field`-expression form; `Enum.Variant(...)` is a distinct
+AST node (`EnumConstruct`) that only exists when a `(...)` argument list
+follows.
+
 ### Checker rules for tagged enums
 
-| Code  | Triggered when                                                              |
-| ----- | --------------------------------------------------------------------------- |
-| E0806 | Number of bindings in a `match` pattern ≠ number of payload fields          |
-| E0807 | A payload field type is not a concrete bit-vector (`bit`, `bits`, `signed`) |
+| Code  | Triggered when                                                                                                |
+| ----- | ------------------------------------------------------------------------------------------------------------- |
+| E0806 | Number of bindings in a `match` pattern, or arguments to `Enum.Variant(...)`, ≠ variant's payload field count |
+| E0807 | A payload field type is not a concrete bit-vector (`bit`, `bits`, `signed`)                                   |
+| E0401 | An `Enum.Variant(...)` argument's width doesn't fit the corresponding payload field's declared width          |
+| E0103 | `Enum.Variant(...)` (construction) or a match pattern names a variant the enum doesn't have                   |
 
 Payload field types must be concrete bit-vectors so the compiler can compute
 `max_payload_w` statically. Nested enums as payload types are deferred (E0807
