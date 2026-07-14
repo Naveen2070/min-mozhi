@@ -512,6 +512,33 @@ hardware. `tick` and `expect` are keywords valid only inside `test`. Execution
 semantics (and the equivalent `await clk.cycles(n)` timing form) are specified in
 [`spec/05-simulator.md`](05-simulator.md).
 
+#### 1.10b Hardware-emulation `sim{}` blocks
+
+A `sim{}` block, nested inside a `test` block, binds test-block ports to
+REAL emulated peripherals (LED, speaker, UART) instead of plain assertions —
+only active under `mimz test --emulate`; ignored by a normal `mimz test` run:
+
+```mimz
+test "blink pattern" for Blinker(LIMIT: 3) {
+  sim {
+    speed hz(2)                     // real-world pacing: 2 Hz
+    bind led -> led(color: "green")
+    bind tx  -> uart_tx(baud: 9600)
+  }
+  tick(clk, 10)
+}
+```
+
+- **`speed`** takes one of `hz(n)` / `khz(n)` / `mhz(n)` — desugars to a plain
+  multiplication (`n * 1`/`1_000`/`1_000_000`), setting how many real
+  clock-cycles-per-second the emulated run paces itself to.
+- **`bind`** connects one port to one peripheral: `bind <port> -> <peripheral>(<config>)`.
+  Config values are `key: value` pairs (string, identifier, or bare integer).
+  The peripheral set and their config keys are documented in
+  [`docs/guide/13-hardware-emulation.md`](../docs/guide/13-hardware-emulation.md).
+- A `sim{}` block requires the `hw-emulation` cargo feature; without
+  `--emulate`, it parses and checks normally but has no runtime effect.
+
 ### 1.11 Memories — `mem`
 
 ```mimz
@@ -1066,11 +1093,22 @@ constExpr   = expr ;   (* must fold to a constant at compile time *)
 
 testDecl    = "test" STRING "for" IDENT "(" [ argList ] ")" testBlock ;
 testBlock   = "{" { testStmt } "}" ;
-testStmt    = tickStmt | expectStmt | testDrive | testIf ;
+testStmt    = tickStmt | expectStmt | testDrive | testIf | simBlock ;
 tickStmt    = "tick" "(" IDENT [ "," constExpr ] ")" NEWLINE ;
 expectStmt  = "expect" expr NEWLINE ;
 testDrive   = IDENT "=" expr NEWLINE ;          (* drive a module input *)
 testIf      = "if" expr testBlock [ "else" ( testIf | testBlock ) ] ;
+
+simBlock    = "sim" "{" [ speedStmt ] { bindStmt } "}" ;
+             (* hardware-emulation only — binds test-block ports to emulated
+                peripherals for `mimz test --emulate`; see spec/03 for the
+                `sim`/`bind`/`speed` keyword rows (provisional Tanglish/Tamil
+                spellings) *)
+speedStmt   = "speed" ( "hz" | "khz" | "mhz" ) "(" expr ")" NEWLINE ;
+             (* desugars to `expr * <multiplier>` (1 / 1_000 / 1_000_000) *)
+bindStmt    = "bind" IDENT "->" IDENT "(" [ bindArg { "," bindArg } ] ")" NEWLINE ;
+             (* port -> peripheral(config...); peripheral is a name like `led` *)
+bindArg     = IDENT ":" ( STRING | IDENT | INT ) ;
 
 fnDecl      = "fn" IDENT "(" [ fnParamList ] ")" "->" type
               "{" { fnStmt } expr "}" ;         (* combinational; no clocks, no regs *)
