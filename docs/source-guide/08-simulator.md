@@ -14,6 +14,13 @@ This is a full event-driven simulator that runs Min-Mozhi designs **without** an
 - `extend`/`trunc` → resize
 - `match` with don't-care patterns
 
+This file also interprets `fn` bodies directly (no pre-lowering pass exists
+for them, unlike module items/`on`-blocks): a `FnStmt::Loop` unrolls
+in-place with Rust's own early-return giving `return` its short-circuit
+behavior for free, and `FnStmt::ForEach` lowers on the spot via
+`ast::lower_foreach_fn` (see [`05-ast.md`](05-ast.md)) into the equivalent
+`Loop` before interpreting it the same way.
+
 ## `crates/mimz-sim/src/sim/comb.rs` — Combinational Evaluation
 
 **`eval_outputs(file, module, inputs, params)`** — evaluates a clockless module: set inputs, resolve combinational drivers in dependency order, return all output values.
@@ -26,6 +33,7 @@ Rejects designs with registers, `on` blocks, instances, or repeat (with clear me
 
 - **Instance flattening**: child modules are inlined with name-prefixed signals: `inst.port` becomes wire `inst_port`
 - **`repeat` unrolling**: loop variable is a compile-time constant
+- **`sync loop`/`foreach` lowering**: every `ModuleItem::SyncLoop` and module-level `ModuleItem::ForEach` is lowered (to `Port`/`Reg`/`On`/`Drive` primitives, or to `Repeat`, respectively) BEFORE the elaboration worklist runs — by the time the worklist sees the item list, neither node shape exists anymore
 - **Enum encoding**: variants mapped to `0, 1, 2...` with width `ceil(log2(n))`
 - **Width folding**: `bits[W]` where `W=8` becomes concrete `width=8`
 
@@ -45,6 +53,11 @@ Rejects designs with registers, `on` blocks, instances, or repeat (with clear me
 **Edges**: handles `rise` and `fall` in a single period. A negedge register sees the NEW posedge values from the same cycle.
 
 **Memory**: sparse cell storage (only written cells are tracked), init value for unwritten cells, reads during a cycle see the OLD value (non-blocking write behavior).
+
+**`loop`/`suzhal`**: an on-block `SeqStmt::Loop` (what's left after `sync
+loop`/`foreach` are pre-lowered in `elaborate.rs`) unrolls right here, at
+process-execution time each cycle — not folded away during elaboration like
+`repeat`.
 
 ## `crates/mimz-sim/src/sim/run.rs` — Default Stimulus
 
