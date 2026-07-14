@@ -152,6 +152,26 @@ fn same(a: &Ty, b: &Ty) -> bool {
     }
 }
 
+/// The concrete bit-width a `fn`-body `let` binding of this type would
+/// declare as a Verilog `reg` (mirrors the `FnStmt::Let` width-inference
+/// match in `check_fn_stmt_widths`, reused there both for a NEW binding and
+/// to look up an EXISTING one's width when checking for a shadowing
+/// conflict — BUG-9). `None` for a type with no single scalar reg width
+/// (memory, bundle, enum, clock/reset, `Unknown`).
+fn scalar_width(t: &Ty) -> Option<u32> {
+    match *t {
+        Ty::Bit => Some(1),
+        Ty::Bits(n) | Ty::Signed(n) => Some(n as u32),
+        Ty::CtInt(v) => Some(if v >= 0 {
+            min_bits(v)
+        } else {
+            min_signed_bits(v)
+        } as u32),
+        Ty::Array { elem_width, .. } => Some(elem_width as u32),
+        _ => None,
+    }
+}
+
 /// Human name for error messages.
 fn show(t: &Ty) -> String {
     match t {
@@ -1337,21 +1357,42 @@ impl<'a> Checker<'a> {
             match stmt {
                 FnStmt::Let(local) => {
                     let ty = self.infer_ty(cx, &local.value);
-                    let w: Option<u32> = match ty {
-                        Ty::Bit => Some(1),
-                        Ty::Bits(n) | Ty::Signed(n) => Some(n as u32),
-                        Ty::CtInt(v) => Some(if v >= 0 {
-                            min_bits(v)
-                        } else {
-                            min_signed_bits(v)
-                        } as u32),
-                        // An array-typed `let` has no single register width —
-                        // it lowers to N scalar `reg`s of the ELEMENT width.
-                        // Record the element width so the emitter can size each
-                        // `<name>_<i>` reg (emit_verilog `render_fn_decl`).
-                        Ty::Array { elem_width, .. } => Some(elem_width as u32),
-                        _ => None,
-                    };
+                    // An array-typed `let` has no single register width — it
+                    // lowers to N scalar `reg`s of the ELEMENT width. Record
+                    // the element width so the emitter can size each
+                    // `<name>_<i>` reg (emit_verilog `render_fn_decl`).
+                    let w = scalar_width(&ty);
+                    // BUG-9: a `let` that shadows an existing name — an
+                    // earlier `let` in this same straight-line body, or a
+                    // `fn` parameter — at a DIFFERENT width can't share one
+                    // Verilog `reg` declaration; the emitter used to emit
+                    // two conflicting `reg` lines for the same identifier
+                    // (real Verilog rejects the redeclaration). Same-width
+                    // shadowing stays legal — it's the common fold/
+                    // accumulator idiom (`foreach_sum.mimz`'s `let acc = acc
+                    // +% v`), which the emitter safely dedupes to one `reg`.
+                    if let (Some(new_w), Some(prev_ty)) = (w, cx.sigs.get(&local.name.name))
+                        && let Some(prev_w) = scalar_width(prev_ty)
+                        && prev_w != new_w
+                    {
+                        self.err(
+                            cx.file,
+                            local.span,
+                            "E0813",
+                            format!(
+                                "`{}` is re-bound here at a different width ({new_w} bits) \
+                                 than its earlier binding ({prev_w} bits)",
+                                local.name.name
+                            ),
+                            format!(
+                                "give this binding a different name instead of shadowing \
+                                 `{}` — a `let` may re-bind a name at the SAME width \
+                                 (the usual fold/accumulator pattern) but not a different one, \
+                                 since both must share one fixed-width Verilog declaration",
+                                local.name.name
+                            ),
+                        );
+                    }
                     if let Some(w) = w {
                         local.inferred_width.set(Some(w));
                     }

@@ -1,0 +1,12 @@
+// expect: E0813
+fn bump(a: bits[8]) -> bits[16] {
+    let x = a
+    let x = extend(x, 16)
+    x
+}
+
+module M {
+    in a: bits[8]
+    out y: bits[16]
+    y = bump(a)
+}

@@ -569,6 +569,17 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: remove the statement(s) after the `return`, or move the `return`\n\
          later if it was only meant to fire conditionally (wrap it in an `if`).",
     ),
+    (
+        "E0813",
+        "E0813 — `fn`-body `let` shadows an existing name at a different width\n\n\
+         A `let` may re-bind (shadow) an earlier `let` in the same body, or a\n\
+         parameter name — this is the common fold/accumulator pattern (e.g.\n\
+         `let acc = acc +% v` inside a loop). But every binding under one name\n\
+         becomes ONE Verilog `reg` declaration, which needs a single fixed\n\
+         width — a shadow at a DIFFERENT width can't be represented that way.\n\n\
+         Fix: give the differently-sized binding its own distinct name instead\n\
+         of shadowing; keep shadowing only for same-width re-binds.",
+    ),
     // ----- E09xx: bundles -----
     (
         "E0901",
