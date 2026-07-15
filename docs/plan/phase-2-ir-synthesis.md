@@ -30,8 +30,12 @@ list below to its own item — this should land before further Tier-3
 language-feature work, now that Enum Variant Construction has shipped
 (below).
 
-- [ ] Design the **external Verilog wrapping** construct (Constitution: emit + wrap Verilog) — spec bump + Decision log required before any code,
-      same gate as every other new construct in this plan
+- [x] Design the **external Verilog wrapping** construct (Constitution: emit + wrap Verilog) — spec bump + Decision log required before any code,
+      same gate as every other new construct in this plan —
+      **✅ DONE 2026-07-15 (spec/02 §1.5c)** — `extern module Name(params) { doc: "...", ports }`,
+      `ModuleTarget` shared real/extern resolution, `warn`/`strict` sim taint,
+      `mimz.toml`/`--extern-src` file wiring — `tests/fixtures/extern/pll.mimz`
+      (excluded from the `examples/` five-flavor sweep — needs a companion `.v` file)
 
 ### IR
 

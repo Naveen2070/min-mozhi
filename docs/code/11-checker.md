@@ -18,6 +18,7 @@ table below is the honest status of what remains.
 | `funcs.rs`           | Pass 2 — call-graph cycle detection (E0805), unreachable-after-return (E0812)                   |
 | `consteval.rs`       | Pass 3 — file consts + the `eval()` engine for const positions                                  |
 | `names.rs`           | Pass 4 — module scopes, name resolution, structure rules, E0302                                 |
+| `extern_module.rs`   | `extern module` port-type validation — scalar-only ports (E1302)                                |
 | `widths/mod.rs`      | Pass 5 — the `Ty` model, `Wcx`, config worklist, module walk                                    |
 | `widths/expr.rs`     | Pass 5 — bidirectional typing engine (check/infer, lvalues)                                     |
 | `widths/ops.rs`      | Pass 5 — operators, shifts, concat, the four builtins                                           |
@@ -155,6 +156,8 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0906 | Bundle type reference: unknown bundle name or wrong param count                                                                  | declare the bundle at file level or import the file that does; parameter count must match                                                                 |
 | E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                                                                           | bundles are nominally typed; ensure the expression produces the correct bundle type                                                                       |
 | E0909 | Bundle declared more than once (per-file name collision)                                                                         | rename one — bundle names are unique within one file; a different file may reuse the name, qualify by import path if it becomes ambiguous (spec/02 §1.5b) |
+| E1301 | `extern module` name reused more than once in this file                                                                          | rename one — extern module names are unique within one file, same rule as `module` (spec/02 §1.5b)                                                        |
+| E1302 | `extern module` port has a non-scalar type (bundle/array)                                                                        | flatten to `bit`/`bits[N]`/`signed[N]` — a real Verilog module's port list is always flat wires (spec/02 §1.5c)                                           |
 
 Numbering scheme:
 
@@ -167,7 +170,8 @@ Numbering scheme:
 - E06xx — exhaustiveness;
 - E07xx — clock domains;
 - E08xx — user-defined functions;
-- E09xx — bundles (Phase 2).
+- E09xx — bundles (Phase 2);
+- E13xx — `extern module` / Verilog FFI.
 
 (Lexer E10xx, parser E11xx, and loader E12xx codes live in
 docs/code/06 — retrofit completed 2026-06-12.) Claim a block when a new

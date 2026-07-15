@@ -1,0 +1,3 @@
+// expect: E1302
+extern module Pll { in vals: bits[8][4] }
+module M { }

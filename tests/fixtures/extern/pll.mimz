@@ -1,0 +1,15 @@
+extern module Pll(MULT: int = 2) {
+  doc: "50MHz input, 100MHz output, ~10us lock time"
+  clock clk_in
+  out clk_out: bit
+  out locked: bit
+}
+
+module ExternDemo {
+  clock sysclk
+  out fast_clk: bit
+  out pll_ok: bit
+  let u = Pll(MULT: 4) { clk_in: sysclk }
+  fast_clk = u.clk_out
+  pll_ok = u.locked
+}
