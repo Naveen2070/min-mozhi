@@ -11,7 +11,7 @@ use mimz::{ast, project};
 
 use super::helpers::{
     lib_std_dir, parse_bindings, parse_sweep, parse_u128, project_warnings, resolve_lang,
-    sweep_vectors, trace_scope,
+    resolve_sim_mode, sweep_vectors, trace_scope,
 };
 use crate::Output;
 
@@ -34,6 +34,7 @@ pub(crate) fn sim_file(
     trace_style: Option<String>,
     verbose: bool,
     signals: Option<String>,
+    extern_sim: &str,
     lang: Option<&str>,
     config_path: Option<&Path>,
     quiet: bool,
@@ -91,13 +92,15 @@ pub(crate) fn sim_file(
         }
     };
 
-    let design = match elaborate::elaborate_project(&asts, module.as_deref(), &params) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let mode = resolve_sim_mode(extern_sim);
+    let design =
+        match elaborate::elaborate_project_with_mode(&asts, module.as_deref(), &params, mode) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("error: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
     // Capture the trace-scope groups + whether the design is clocked before the
     // run consumes it.
     let in_names: Vec<String> = design.inputs.iter().map(|s| s.name.clone()).collect();

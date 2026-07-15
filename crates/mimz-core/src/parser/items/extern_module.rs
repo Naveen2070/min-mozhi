@@ -99,10 +99,9 @@ impl Parser {
                     );
                     break span;
                 }
-                TokKind::Kw(Kw::In) | TokKind::Kw(Kw::Out) => match self.port() {
-                    Some(item) => items.push(item),
-                    None => return None,
-                },
+                TokKind::Kw(Kw::In) | TokKind::Kw(Kw::Out) => {
+                    items.push(self.port()?);
+                }
                 TokKind::Kw(Kw::Clock) => {
                     self.bump();
                     let cname = self.ident("a clock name")?;

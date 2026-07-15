@@ -14,11 +14,21 @@ use crate::Output;
 /// `mimz compile` — load the entry file and all transitive imports, build
 /// the project symbol table, and emit one Verilog file (default: entry
 /// path with `.v` extension).
+///
+/// `verilog_files`/`extern_sim` round-trip `mimz.toml`/`--extern-src`/
+/// `--extern-sim` here (so a project's config is uniform across
+/// compile/sim/test) but have no effect on THIS function's body yet:
+/// `verilog_files` (companion Verilog for `extern module` real
+/// implementations) is toolchain wiring deferred to `mimz build`/Yosys
+/// integration; `extern_sim` is a simulator-only setting and `mimz compile`
+/// never runs the simulator.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compile(
     path: &Path,
     output: Option<PathBuf>,
     emit_testbench: bool,
+    verilog_files: &[String],
+    extern_sim: &str,
     json: bool,
     lang: Option<&str>,
     config_path: Option<&Path>,
@@ -35,6 +45,15 @@ pub(crate) fn compile(
             "debug: loading project starting from entry {}",
             path.display()
         );
+        // Round-tripped, not yet consumed: `verilog_files` is toolchain wiring
+        // deferred to `mimz build`/Yosys integration; `extern_sim` is a
+        // simulator-only setting `mimz compile` never acts on. Echoed here
+        // (not silently dropped) so `mimz.toml`/`--extern-src`/`--extern-sim`
+        // are visibly wired end-to-end even before that toolchain exists.
+        eprintln!("debug: extern_sim = \"{extern_sim}\"");
+        if !verilog_files.is_empty() {
+            eprintln!("debug: verilog_files = {verilog_files:?}");
+        }
     }
     // Phase timing (--debug): `load` fuses lex+parse+import-resolution, `check`
     // is the six checker passes, `emit` is transliterate + lower + Verilog text.

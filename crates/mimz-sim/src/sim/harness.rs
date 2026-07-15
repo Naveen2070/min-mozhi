@@ -27,7 +27,7 @@ use std::collections::BTreeMap;
 
 use mimz_core::ast::{self, BinOp, Expr, ExprKind, TestDecl, TestStmt};
 
-use super::elaborate::{Signal, Width, elaborate_project};
+use super::elaborate::{Signal, SimMode, Width, elaborate_project_with_mode};
 use super::host::{Direction, EmulationHost};
 use super::kernel::Sim;
 use super::run::{Frame, MAX_SIM_CYCLES, Timeline};
@@ -117,6 +117,10 @@ pub enum TestResult {
 /// or not anything ever reads the result.
 /// `Err` is a setup/semantic error; a normal `expect` failure is
 /// `Ok(Outcome { result: Fail(..), .. })`.
+///
+/// Defaults to [`SimMode::Warn`] for any `extern module` instance the test
+/// reaches; see [`run_test_with_mode`] for an explicit mode (`mimz test
+/// --extern-sim strict`).
 pub fn run_test(
     files: &[ast::File],
     src: &str,
@@ -126,8 +130,24 @@ pub fn run_test(
     step: bool,
     trace: bool,
 ) -> Result<Outcome, String> {
+    run_test_with_mode(files, src, decl, host, live, step, trace, SimMode::Warn)
+}
+
+/// Like [`run_test`], but takes an explicit [`SimMode`] for how an `extern
+/// module` instance reached during elaboration is handled.
+#[allow(clippy::too_many_arguments)]
+pub fn run_test_with_mode(
+    files: &[ast::File],
+    src: &str,
+    decl: &TestDecl,
+    host: Box<dyn EmulationHost>,
+    live: bool,
+    step: bool,
+    trace: bool,
+    mode: SimMode,
+) -> Result<Outcome, String> {
     let params = params(decl)?;
-    let design = elaborate_project(files, Some(&decl.module.name.name), &params)?;
+    let design = elaborate_project_with_mode(files, Some(&decl.module.name.name), &params, mode)?;
 
     let module = design.module.clone();
     let clocks = design.clocks.clone();
