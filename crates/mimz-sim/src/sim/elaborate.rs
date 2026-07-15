@@ -45,6 +45,22 @@ use mimz_core::REPEAT_BUDGET;
 /// levels deep, so 16 is generous for valid designs while staying crash-safe.
 const MAX_INSTANCE_DEPTH: u32 = 16;
 
+/// How the simulator handles an `extern module` instance — a declaration
+/// with no body, so nothing here can actually be simulated (Verilog
+/// emission is the only backend that models its real behavior). Threaded as
+/// a plain function parameter for now; Task 9 wires this to `mimz.toml`/CLI.
+/// Every entry point in this crate that doesn't take `mode` explicitly
+/// defaults to `Warn` (see [`elaborate`]/[`elaborate_project`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SimMode {
+    /// An extern instance's output ports read as `Val::unknown` — the design
+    /// can still run, just with those signals unconstrained.
+    Warn,
+    /// An extern instance is a hard `Err` at elaboration time, before any
+    /// cycle runs.
+    Strict,
+}
+
 /// Module registry across all loaded files: every `(file_idx, file, module)`
 /// declaring a given name — a multimap, since (spec/02 section 1.5b) a
 /// module name is unique only PER FILE; the same name may legally appear in
@@ -115,6 +131,78 @@ fn resolve_module<'a>(
             .find(|&&(f, _, _)| f == target)
             .map(|&(_, f, m)| (f, m))
             .ok_or_else(|| format!("uses unknown module `{}`", q.name.name))
+    }
+}
+
+/// Extern-module registry across all loaded files: every `(file_idx, decl)`
+/// declaring a given name — mirrors [`Registry`]. Resolved (alongside
+/// `Registry`) via [`resolve_target`].
+type ExternRegistry<'a> = HashMap<String, Vec<(usize, &'a ast::ExternModule)>>;
+
+fn build_extern_registry(files: &[ast::File]) -> ExternRegistry<'_> {
+    let mut reg: ExternRegistry<'_> = HashMap::new();
+    for (file_idx, f) in files.iter().enumerate() {
+        for item in &f.items {
+            if let ast::TopItem::ExternModule(em) = item {
+                reg.entry(em.name.name.clone())
+                    .or_default()
+                    .push((file_idx, em));
+            }
+        }
+    }
+    reg
+}
+
+/// Resolve an `Inst`'s target against both real modules and extern
+/// declarations — mirrors `emit_verilog::Project::resolve_target_with_file`'s
+/// modules-then-externs fallback (real modules win on a same-name clash,
+/// same defensive tie-break). A real module's declaring `&File` is returned
+/// alongside it, since `flatten_instance` needs it to recursively elaborate
+/// the child (see its `elaborate_module(reg, func_reg, bundle_reg, cfile,
+/// cm, ...)` call). An extern declaration has no body to elaborate, so no
+/// file is needed for it — confirmed by reading how `resolve_module`'s
+/// `&'a ast::File` half is actually consumed at that call site: only the
+/// `ModuleTarget::Real` case ever reads it.
+fn resolve_target<'a>(
+    reg: &Registry<'a>,
+    extern_reg: &ExternRegistry<'a>,
+    imports: &[ast::Import],
+    q: &ast::QualIdent,
+) -> Result<(Option<&'a ast::File>, ast::ModuleTarget<'a>), String> {
+    if reg.contains_key(&q.name.name) {
+        let (f, m) = resolve_module(reg, imports, q)?;
+        return Ok((Some(f), ast::ModuleTarget::Real(m)));
+    }
+    let candidates = extern_reg.get(&q.name.name).ok_or_else(|| {
+        format!(
+            "uses unknown module `{}` — is the file that defines it imported?",
+            q.name.name
+        )
+    })?;
+    if q.is_bare() {
+        match candidates.as_slice() {
+            [(_, em)] => Ok((None, ast::ModuleTarget::Extern(em))),
+            [] => unreachable!("empty Vec is never inserted"),
+            _ => Err(format!(
+                "uses extern module `{}`, which is ambiguous — declared in {} \
+                 different files; qualify with the import path to pick one",
+                q.name.name,
+                candidates.len()
+            )),
+        }
+    } else {
+        q.resolve_via_imports(imports);
+        let target_file = q.resolved_file.get().ok_or_else(|| {
+            format!(
+                "the path in `{}` doesn't match any `import` in this file",
+                q.to_dotted()
+            )
+        })?;
+        candidates
+            .iter()
+            .find(|&&(f, _)| f == target_file)
+            .map(|&(_, em)| (None, ast::ModuleTarget::Extern(em)))
+            .ok_or_else(|| format!("uses unknown extern module `{}`", q.name.name))
     }
 }
 
@@ -335,6 +423,12 @@ pub struct Design {
     /// User-defined combinational functions from ALL project files (D3),
     /// available to the kernel's expression evaluator at runtime (`FnCall`).
     pub funcs: HashMap<String, FuncDecl>,
+    /// Names of signals with no driver by design: an extern-module
+    /// instance's output ports in `warn` [`SimMode`]. Each is also present
+    /// in `wires` (for its width) but deliberately absent from `comb` (there
+    /// is no body to derive a driver from) — the kernel resolves a name in
+    /// this set straight to `Val::unknown`, bypassing `comb` entirely.
+    pub unknown_signals: HashSet<String>,
 }
 
 /// Elaborate `module` (or the file's only module when `module` is `None`) into a
@@ -346,7 +440,19 @@ pub fn elaborate(
     module: Option<&str>,
     params: &BTreeMap<String, i128>,
 ) -> Result<Design, String> {
-    elaborate_project(std::slice::from_ref(file), module, params)
+    elaborate_with_mode(file, module, params, SimMode::Warn)
+}
+
+/// Like [`elaborate`], but takes an explicit `mode` for how an `extern
+/// module` instance (if any) is handled. See [`SimMode`]; [`elaborate`]
+/// defaults to `Warn`.
+pub fn elaborate_with_mode(
+    file: &ast::File,
+    module: Option<&str>,
+    params: &BTreeMap<String, i128>,
+    mode: SimMode,
+) -> Result<Design, String> {
+    elaborate_project_with_mode(std::slice::from_ref(file), module, params, mode)
 }
 
 /// Elaborate the entry module across a loaded project (`files[0]` is the entry,
@@ -361,26 +467,52 @@ pub fn elaborate_project(
     module: Option<&str>,
     params: &BTreeMap<String, i128>,
 ) -> Result<Design, String> {
+    elaborate_project_with_mode(files, module, params, SimMode::Warn)
+}
+
+/// Like [`elaborate_project`], but takes an explicit `mode` for how an
+/// `extern module` instance (if any) is handled. See [`SimMode`];
+/// [`elaborate_project`] defaults to `Warn`.
+pub fn elaborate_project_with_mode(
+    files: &[ast::File],
+    module: Option<&str>,
+    params: &BTreeMap<String, i128>,
+    mode: SimMode,
+) -> Result<Design, String> {
     let reg = build_registry(files);
+    let extern_reg = build_extern_registry(files);
     let func_reg = build_func_registry(files);
     let bundle_reg = build_bundle_registry(files);
     let entry = files.first().ok_or("no files to elaborate")?;
     let m = pick_module(entry, module)?;
-    elaborate_module(&reg, &func_reg, &bundle_reg, entry, m, params, 0)
+    elaborate_module(
+        &reg,
+        &extern_reg,
+        &func_reg,
+        &bundle_reg,
+        entry,
+        m,
+        params,
+        0,
+        mode,
+    )
 }
 
 /// Elaborate one module (`m`, defined in `file`) under concrete `params`,
 /// resolving any instantiated children through `reg`. User-defined functions
 /// from ALL project files are supplied via `func_reg` (D3: functions are
 /// project-wide) so a fn declared in an imported file is available here.
+#[allow(clippy::too_many_arguments)]
 fn elaborate_module(
     reg: &Registry,
+    extern_reg: &ExternRegistry,
     func_reg: &FuncRegistry<'_>,
     bundle_reg: &BundleRegistry<'_>,
     file: &ast::File,
     m: &ast::Module,
     params: &BTreeMap<String, i128>,
     depth: u32,
+    mode: SimMode,
 ) -> Result<Design, String> {
     // Guard against recursive/cyclic instantiation (the checker would catch it,
     // but `mimz sim`/`test` skip the checker) — bound the stack, fail cleanly.
@@ -726,6 +858,7 @@ fn elaborate_module(
             ModuleItem::Inst(inst) => {
                 let f = flatten_instance(
                     reg,
+                    extern_reg,
                     func_reg,
                     bundle_reg,
                     &file.imports,
@@ -736,6 +869,7 @@ fn elaborate_module(
                     inst,
                     &inst.name.name,
                     depth,
+                    mode,
                 )?;
                 flat.absorb(f);
             }
@@ -770,6 +904,7 @@ fn elaborate_module(
                                 };
                                 let f = flatten_instance(
                                     reg,
+                                    extern_reg,
                                     func_reg,
                                     bundle_reg,
                                     &file.imports,
@@ -780,6 +915,7 @@ fn elaborate_module(
                                     inst,
                                     &iname,
                                     depth,
+                                    mode,
                                 )?;
                                 flat.absorb(f);
                             }
@@ -842,6 +978,7 @@ fn elaborate_module(
 
     // Merge inlined-instance pieces, then assemble bit-indexed drives into one
     // whole-signal Concat (widest bit first, Verilog concat order).
+    let unknown_signals: HashSet<String> = flat.unknown.iter().cloned().collect();
     wires.extend(flat.wires);
     regs.extend(flat.regs);
     // Merge instance drivers, erroring on a name collision instead of silently
@@ -912,6 +1049,7 @@ fn elaborate_module(
         clocks,
         resets,
         funcs,
+        unknown_signals,
     })
 }
 
@@ -923,6 +1061,9 @@ struct Flat {
     mems: Vec<Mem>,
     comb: Vec<(String, Expr)>,
     procs: Vec<Process>,
+    /// Names of driverless signals (extern-instance outputs in `warn`
+    /// [`SimMode`]) — see `Design::unknown_signals`.
+    unknown: Vec<String>,
 }
 
 impl Flat {
@@ -932,6 +1073,7 @@ impl Flat {
         self.mems.extend(other.mems);
         self.comb.extend(other.comb);
         self.procs.extend(other.procs);
+        self.unknown.extend(other.unknown);
     }
 }
 
@@ -943,6 +1085,7 @@ impl Flat {
 #[allow(clippy::too_many_arguments)]
 fn flatten_instance(
     reg: &Registry,
+    extern_reg: &ExternRegistry,
     func_reg: &FuncRegistry<'_>,
     bundle_reg: &BundleRegistry<'_>,
     parent_imports: &[ast::Import],
@@ -953,9 +1096,21 @@ fn flatten_instance(
     inst: &ast::Inst,
     iname: &str,
     depth: u32,
+    mode: SimMode,
 ) -> Result<Flat, String> {
-    let (cfile, cm) = resolve_module(reg, parent_imports, &inst.module)
-        .map_err(|e| format!("instance `{}` {e}", inst.name.name))?;
+    let (cfile, cm) = match resolve_target(reg, extern_reg, parent_imports, &inst.module)
+        .map_err(|e| format!("instance `{}` {e}", inst.name.name))?
+    {
+        (Some(f), ast::ModuleTarget::Real(m)) => (f, m),
+        (None, ast::ModuleTarget::Extern(em)) => {
+            return flatten_extern_instance(em, parent_consts, inst, iname, mode);
+        }
+        (_, target) => unreachable!(
+            "resolve_target always pairs ModuleTarget::Real with Some(file) and \
+             ModuleTarget::Extern with None — got is_extern={}",
+            target.is_extern()
+        ),
+    };
 
     // Child parameter bindings: an explicit `arg` (evaluated in the PARENT's
     // consts) wins; otherwise the child default (in the child's own consts).
@@ -974,7 +1129,17 @@ fn flatten_instance(
         cp.insert(p.name.name.clone(), v);
     }
 
-    let child = elaborate_module(reg, func_reg, bundle_reg, cfile, cm, &cp, depth + 1)?;
+    let child = elaborate_module(
+        reg,
+        extern_reg,
+        func_reg,
+        bundle_reg,
+        cfile,
+        cm,
+        &cp,
+        depth + 1,
+        mode,
+    )?;
     let pfx = format!("{iname}_");
 
     // Parent-context rewriter for connection expressions: folds the `repeat`
@@ -1066,6 +1231,11 @@ fn flatten_instance(
             .push((format!("{pfx}{}", s.name), prw.expr(&conn.signal)?));
     }
     // Child outputs + wires: a parent wire driven by the child's (rewritten) logic.
+    // A child wire/output with no `comb` driver is, by construction, one the
+    // child itself marked as unknown-tainted (an extern-instance output read
+    // through, however many levels deep) — copy it into the parent's own
+    // `unknown` set (not just drop it) so a grandparent that re-exposes it
+    // still finds a live wire + taint marker instead of a dangling name.
     for s in child.outputs.iter().chain(&child.wires) {
         if let Some(drv) = child.comb.get(&s.name) {
             flat.wires.push(Signal {
@@ -1073,6 +1243,13 @@ fn flatten_instance(
                 width: s.width,
             });
             flat.comb.push((format!("{pfx}{}", s.name), crw.expr(drv)?));
+        } else if child.unknown_signals.contains(&s.name) {
+            let flat_name = format!("{pfx}{}", s.name);
+            flat.wires.push(Signal {
+                name: flat_name.clone(),
+                width: s.width,
+            });
+            flat.unknown.push(flat_name);
         }
     }
     // Child registers (clock filled by the parent's reg-clock pass).
@@ -1112,6 +1289,78 @@ fn flatten_instance(
                 .map(|s| crw.seq(s, &rename))
                 .collect::<Result<_, _>>()?,
         });
+    }
+    Ok(flat)
+}
+
+/// Handle an extern-module instance: it has no body, so there's nothing to
+/// recursively elaborate. `strict` mode refuses to simulate around missing
+/// hardware behavior; `warn` mode lowers every output port to an
+/// unconstrained (`Val::unknown`) read and prints one warning per instance
+/// (this function runs exactly once per `Inst` node during elaboration, so
+/// "once per distinct instance" falls out for free — no dedup bookkeeping
+/// needed).
+fn flatten_extern_instance(
+    em: &ast::ExternModule,
+    parent_consts: &BTreeMap<String, i128>,
+    inst: &ast::Inst,
+    iname: &str,
+    mode: SimMode,
+) -> Result<Flat, String> {
+    if mode == SimMode::Strict {
+        return Err(format!(
+            "instance `{}` instantiates extern module `{}` — no simulation model; \
+             extern modules are Verilog-emission only (pass a `warn`-mode config to \
+             simulate around it)",
+            inst.name.name, em.name.name
+        ));
+    }
+    eprintln!(
+        "warning: instance `{}` instantiates extern module `{}` — its output(s) \
+         are unconstrained (X) in simulation; only Verilog emission models its real \
+         behavior",
+        inst.name.name, em.name.name
+    );
+
+    // Child parameter bindings — same precedence as a real module's instance
+    // (an explicit `arg` wins, else the extern's own default), needed to
+    // fold a param-dependent output width (e.g. `out y: bits[WIDTH]`).
+    let mut cp: BTreeMap<String, i128> = BTreeMap::new();
+    for p in &em.params {
+        let v = if let Some(a) = inst.args.iter().find(|a| a.name.name == p.name.name) {
+            const_eval(&a.value, parent_consts)?
+        } else if let Some(d) = &p.default {
+            const_eval(d, &cp)?
+        } else {
+            return Err(format!(
+                "instance `{}`: parameter `{}` has no value",
+                inst.name.name, p.name.name
+            ));
+        };
+        cp.insert(p.name.name.clone(), v);
+    }
+
+    let pfx = format!("{iname}_");
+    let mut flat = Flat::default();
+    // Extern ports are scalar-only (bit/bits[N]/signed[N]) — the checker
+    // enforces this on the declaration (Task 3), so `type_width` (the same
+    // width-resolution helper the real child-elaboration path uses) never
+    // hits its enum/bundle/array error arms here.
+    for it in &em.items {
+        if let ModuleItem::Port {
+            dir: Dir::Out,
+            name,
+            ty,
+        } = it
+        {
+            let (bits, signed) = type_width(ty, &cp)?;
+            let flat_name = format!("{pfx}{}", name.name);
+            flat.wires.push(Signal {
+                name: flat_name.clone(),
+                width: Width { bits, signed },
+            });
+            flat.unknown.push(flat_name);
+        }
     }
     Ok(flat)
 }

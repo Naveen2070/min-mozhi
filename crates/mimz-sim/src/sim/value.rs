@@ -29,11 +29,22 @@ pub(super) fn mask(w: u32) -> u128 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Val {
     /// The value's bit pattern; only the low `width` bits are meaningful.
+    /// MEANINGLESS when `unknown` is `true` — the bit pattern is NOT
+    /// guaranteed to be any particular value (e.g. 0) in that case; callers
+    /// must check `unknown` before trusting this field regardless.
     pub bits: u128,
     /// Bit width, `1..=128`.
     pub width: u32,
     /// Whether `bits` is interpreted as two's-complement `signed`.
     pub signed: bool,
+    /// Coarse whole-value taint: `true` means this value is entirely
+    /// unconstrained (an `extern module` instance output in `warn` sim
+    /// mode — see `docs/superpowers/specs/2026-07-15-verilog-ffi-design.local.md`).
+    /// NOT a per-bit X mask — the whole value is tainted or it isn't.
+    /// Every operator propagates this: any operand tainted -> result
+    /// tainted (see `unary`/`binary` and `eval`'s `Concat`/`Replicate`/
+    /// `Index`/`Slice` arms).
+    pub unknown: bool,
 }
 
 impl Val {
@@ -44,6 +55,18 @@ impl Val {
             bits: bits & mask(width),
             width: width.max(1),
             signed,
+            unknown: false,
+        }
+    }
+    /// An unconstrained value of the given width/signedness — see the
+    /// `unknown` field's doc comment. `bits` is `0` but MUST NOT be relied
+    /// upon by any caller; only `unknown` carries meaning here.
+    pub fn unknown(width: u32, signed: bool) -> Val {
+        Val {
+            bits: 0,
+            width: width.max(1),
+            signed,
+            unknown: true,
         }
     }
     /// A compile-time integer used as a value: minimal width that holds it.
@@ -145,6 +168,9 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
                 return Err("concatenation exceeds 128 bits (evaluator limit)".into());
             }
             let total = total64 as u32;
+            if vals.iter().any(|v| v.unknown) {
+                return Ok(Val::unknown(total, false));
+            }
             let mut bits = 0u128;
             let mut shift = total;
             for v in &vals {
@@ -166,6 +192,9 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
                 .checked_mul(n as u64)
                 .filter(|t| *t <= 128)
                 .ok_or("replication exceeds 128 bits (evaluator limit)")?;
+            if vals.iter().any(|v| v.unknown) {
+                return Ok(Val::unknown(total64 as u32, false));
+            }
             let inner = inner64 as u32;
             // Assemble the inner group once (widest part first), then repeat it.
             let mut chunk = 0u128;
@@ -213,6 +242,9 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
                 }
             }
             let b = eval(r, base)?;
+            if b.unknown {
+                return Ok(Val::unknown(1, false));
+            }
             let i = checked_index(const_eval(index, r.ints())?, b.width, "bit index")?;
             Ok(Val::new((b.bits >> i) & 1, 1, false))
         }
@@ -224,6 +256,9 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
                 return Err("slice bounds reversed (write `[hi:lo]`, msb first)".into());
             }
             let w = hi - lo + 1;
+            if b.unknown {
+                return Ok(Val::unknown(w, b.signed));
+            }
             Ok(Val::new((b.bits >> lo) & mask(w), w, b.signed))
         }
         ExprKind::Field { .. } => {
@@ -600,6 +635,14 @@ fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, Str
 }
 
 fn unary(op: UnOp, v: Val) -> Val {
+    let mut r = unary_known(op, v);
+    if v.unknown {
+        r.unknown = true;
+    }
+    r
+}
+
+fn unary_known(op: UnOp, v: Val) -> Val {
     match op {
         UnOp::Neg => {
             let bits = v.as_i128().wrapping_neg() as u128;
@@ -622,6 +665,16 @@ fn unary(op: UnOp, v: Val) -> Val {
 }
 
 fn binary(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
+    let unknown = l.unknown || r.unknown;
+    binary_known(op, l, r).map(|mut v| {
+        if unknown {
+            v.unknown = true;
+        }
+        v
+    })
+}
+
+fn binary_known(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
     let wmax = l.width.max(r.width);
     let signed = l.signed || r.signed;
     let v = match op {
@@ -1025,5 +1078,35 @@ mod tests {
             &[&[0x11, 0x22, 0x33, 0x44]],
         );
         assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn unknown_val_taints_binary_ops() {
+        let u = Val::unknown(4, false);
+        let known = Val::new(3, 4, false);
+        let r = binary(BinOp::Add, u, known).unwrap();
+        assert!(
+            r.unknown,
+            "adding an unknown operand must produce an unknown result"
+        );
+    }
+
+    #[test]
+    fn unknown_val_taints_unary_ops() {
+        let u = Val::unknown(4, false);
+        let r = unary(UnOp::BitNot, u);
+        assert!(
+            r.unknown,
+            "negating an unknown operand must produce an unknown result"
+        );
+    }
+
+    #[test]
+    fn known_vals_are_never_tainted() {
+        let a = Val::new(1, 4, false);
+        let b = Val::new(2, 4, false);
+        assert!(!a.unknown && !b.unknown);
+        assert!(!binary(BinOp::Add, a, b).unwrap().unknown);
+        assert!(!unary(UnOp::BitNot, a).unknown);
     }
 }

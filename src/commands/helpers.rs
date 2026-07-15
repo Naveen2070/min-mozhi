@@ -12,6 +12,7 @@ use std::time::Instant;
 
 use mimz::lexer::token::Flavor;
 use mimz::project::LoadedFile;
+use mimz::sim::elaborate::SimMode;
 use mimz::{diag, lexer, morph, project};
 
 // Argument parsers — single source in the library (`mimz::runner`).
@@ -68,6 +69,23 @@ pub(crate) fn lib_std_dir(input: &Path, explicit_config: Option<&Path>) -> Optio
         .map(Path::to_path_buf)
         .unwrap_or_else(|| input.parent().map(Path::to_path_buf).unwrap_or_default());
     Some(base.join(std))
+}
+
+/// Parse `--extern-sim`/`mimz.toml`'s `extern_sim` into a [`SimMode`] for
+/// `mimz sim`/`mimz test`. An unrecognized value (a typo) prints a warning
+/// and falls back to `Warn` rather than hard-erroring — mirrors `main.rs`'s
+/// `names_map` handling for the same "unrecognized config string" shape.
+pub(crate) fn resolve_sim_mode(extern_sim: &str) -> SimMode {
+    match extern_sim {
+        "strict" => SimMode::Strict,
+        "warn" => SimMode::Warn,
+        other => {
+            eprintln!(
+                "warning: extern_sim = \"{other}\" is not recognized — use \"warn\" or \"strict\"; assuming \"warn\""
+            );
+            SimMode::Warn
+        }
+    }
 }
 
 /// Non-fatal warnings for a loaded project (currently just the mixed-flavor

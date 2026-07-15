@@ -136,6 +136,16 @@ enum Cmd {
         /// Emit a standalone Verilog testbench (_tb.v) from inline test blocks
         #[arg(long)]
         emit_testbench: bool,
+        /// Companion Verilog file for an `extern module`'s real implementation
+        /// (repeatable; unions with `mimz.toml`'s `[compile] verilog_files`)
+        #[arg(long = "extern-src")]
+        extern_src: Vec<PathBuf>,
+        /// Simulator behavior for extern module instances: warn | strict
+        /// (has no effect on `compile` itself — accepted here so a
+        /// project's default can be set once via any command; overrides
+        /// `mimz.toml`)
+        #[arg(long)]
+        extern_sim: Option<String>,
         /// Print diagnostics as a JSON array on stdout (tool consumers)
         #[arg(long)]
         json: bool,
@@ -318,6 +328,9 @@ enum Cmd {
         /// Trace only these comma-separated signals
         #[arg(long)]
         signals: Option<String>,
+        /// Simulator behavior for extern module instances: warn | strict
+        #[arg(long)]
+        extern_sim: Option<String>,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
         #[arg(short = 'l', long)]
@@ -344,6 +357,9 @@ enum Cmd {
         /// Trace only these comma-separated signals
         #[arg(long)]
         signals: Option<String>,
+        /// Simulator behavior for extern module instances: warn | strict
+        #[arg(long)]
+        extern_sim: Option<String>,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
         #[arg(short = 'l', long)]
@@ -453,6 +469,8 @@ fn main() -> ExitCode {
             file,
             output,
             emit_testbench,
+            extern_src,
+            extern_sim,
             json,
             lang,
         } => {
@@ -462,10 +480,19 @@ fn main() -> ExitCode {
             };
             let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
             let emit_testbench = emit_testbench || cfg.compile.emit_testbench.unwrap_or(false);
+            // Additive union: config's list plus any CLI flags, never override.
+            let mut verilog_files: Vec<String> =
+                cfg.compile.verilog_files.clone().unwrap_or_default();
+            verilog_files.extend(extern_src.iter().map(|p| p.display().to_string()));
+            let extern_sim = extern_sim
+                .or(cfg.extern_sim.clone())
+                .unwrap_or_else(|| "warn".to_string());
             compile(
                 &file,
                 output,
                 emit_testbench,
+                &verilog_files,
+                &extern_sim,
                 json,
                 lang_str.as_deref(),
                 config_path.as_deref(),
@@ -608,6 +635,7 @@ fn main() -> ExitCode {
             trace,
             verbose,
             signals,
+            extern_sim,
             lang,
         } => {
             let cfg = match resolve_config(&file, config_path.as_deref()) {
@@ -615,6 +643,9 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            let extern_sim = extern_sim
+                .or(cfg.extern_sim.clone())
+                .unwrap_or_else(|| "warn".to_string());
             sim_file(
                 &file,
                 output,
@@ -627,6 +658,7 @@ fn main() -> ExitCode {
                 trace,
                 verbose,
                 signals,
+                &extern_sim,
                 lang_str.as_deref(),
                 config_path.as_deref(),
                 quiet,
@@ -639,6 +671,7 @@ fn main() -> ExitCode {
             trace,
             verbose,
             signals,
+            extern_sim,
             lang,
             emulate,
             step,
@@ -648,12 +681,16 @@ fn main() -> ExitCode {
                 Err(code) => return code,
             };
             let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            let extern_sim = extern_sim
+                .or(cfg.extern_sim.clone())
+                .unwrap_or_else(|| "warn".to_string());
             test_file(
                 &file,
                 filter,
                 trace,
                 verbose,
                 signals,
+                &extern_sim,
                 lang_str.as_deref(),
                 config_path.as_deref(),
                 quiet,
