@@ -367,7 +367,10 @@ impl Parser {
     }
 
     /// `port = ("in" | "out") ident ":" type`
-    fn port(&mut self) -> Option<ModuleItem> {
+    ///
+    /// `pub(super)` (not private): reused verbatim by `extern_module.rs`'s
+    /// body-item dispatch, a sibling module under `parser::items`.
+    pub(super) fn port(&mut self) -> Option<ModuleItem> {
         let dir = if self.bump().is_kw(Kw::In) {
             Dir::In
         } else {

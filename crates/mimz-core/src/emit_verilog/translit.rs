@@ -242,6 +242,20 @@ fn for_each_name(f: &mut File, visit: &mut dyn FnMut(&mut String)) {
             // Unreachable on the codegen path: `parse` rejects a tree with any
             // `Error` node, so transliteration never sees one.
             TopItem::Error(_) => {}
+            // `verilog_name` (if present) names the real external Verilog
+            // module and must NOT be renamed — only the Min-Mozhi-facing
+            // name/params/ports are subject to keyword-flavor translation,
+            // same as `Module`.
+            TopItem::ExternModule(em) => {
+                visit(&mut em.name.name);
+                for p in &mut em.params {
+                    visit(&mut p.name.name);
+                    if let Some(d) = &mut p.default {
+                        expr(d, visit);
+                    }
+                }
+                module_items(&mut em.items, visit);
+            }
             TopItem::Bundle(b) => {
                 visit(&mut b.name.name);
                 for p in &mut b.params {

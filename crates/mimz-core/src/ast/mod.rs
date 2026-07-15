@@ -65,6 +65,8 @@ pub enum TopItem {
     Func(FuncDecl),
     /// A file-level bundle declaration (`bundle Foo { ... }`).
     Bundle(BundleDecl),
+    /// An `extern module` declaration (Verilog FFI).
+    ExternModule(ExternModule),
     /// A top-level item that failed to parse. Produced ONLY by
     /// `parser::parse_recover` (the LSP path); the strict `parser::parse`
     /// pipeline never yields one, so codegen never sees it. The span covers
@@ -291,6 +293,78 @@ pub struct Module {
     pub items: Vec<ModuleItem>,
     /// Source span of the whole `module` declaration.
     pub span: Span,
+}
+
+/// `extern module Name(params) { doc: "...", ports }` — declares the port
+/// shape of a real Verilog module living outside Min-Mozhi (Verilog FFI).
+/// No body: nothing here is elaborated, checked for drivers, or emitted as
+/// logic — `items` is restricted (by the checker, not the parser) to
+/// `Port`/`Clock`/`Reset` variants only, with scalar-typed ports only.
+/// Deliberately shaped like `Module` minus a body so every existing
+/// connection-check/emission function that already walks `.items`
+/// generically needs no changes — see `ModuleTarget`.
+#[derive(Clone, Debug)]
+pub struct ExternModule {
+    /// The Min-Mozhi-facing name (what instantiation sites use).
+    pub name: Ident,
+    /// The real Verilog module's name, if it differs from `name`
+    /// (`extern module Pll = "PLL_HARD_IP_v2" { ... }`). `None` means the
+    /// real module is literally named `name`.
+    pub verilog_name: Option<String>,
+    /// Compile-time parameters — identical shape/checking to `Module::params`.
+    pub params: Vec<Param>,
+    /// Human-readable behavior notes (`doc: "..."`) — there is no body to
+    /// document inline, so this is the construct's one place for that
+    /// context. Not consumed by any compiler pass today; reserved for
+    /// hover/`mimz doc` tooling.
+    pub doc: Option<String>,
+    /// Port/clock/reset declarations — restricted to `ModuleItem::Port`
+    /// (scalar-typed only) / `ModuleItem::Clock` / `ModuleItem::Reset` by
+    /// the checker (Task 3); the parser (this task) accepts the same
+    /// syntax `Module`'s body does for these three item kinds only.
+    pub items: Vec<ModuleItem>,
+    /// Source span of the whole `extern module` declaration.
+    pub span: Span,
+}
+
+/// Resolves an instantiation target to either a real module or an extern
+/// declaration — the one type every checker/emitter/simulator resolution
+/// call site is retyped to, so connection-checking/emission logic (which
+/// only ever reads `.name`/`.params`/`.items`) works identically for both
+/// without duplicating a single line per call site.
+#[derive(Clone, Copy, Debug)]
+pub enum ModuleTarget<'a> {
+    /// A real, elaboratable module.
+    Real(&'a Module),
+    /// An extern declaration — port shape only, no body.
+    Extern(&'a ExternModule),
+}
+
+impl<'a> ModuleTarget<'a> {
+    pub fn name(&self) -> &'a Ident {
+        match self {
+            ModuleTarget::Real(m) => &m.name,
+            ModuleTarget::Extern(e) => &e.name,
+        }
+    }
+    pub fn params(&self) -> &'a [Param] {
+        match self {
+            ModuleTarget::Real(m) => &m.params,
+            ModuleTarget::Extern(e) => &e.params,
+        }
+    }
+    pub fn items(&self) -> &'a [ModuleItem] {
+        match self {
+            ModuleTarget::Real(m) => &m.items,
+            ModuleTarget::Extern(e) => &e.items,
+        }
+    }
+    /// `true` for an extern target — callers use this the few places
+    /// behavior must genuinely differ (e.g. "don't try to elaborate a
+    /// body", "use `verilog_name` instead of `name` when emitting").
+    pub fn is_extern(&self) -> bool {
+        matches!(self, ModuleTarget::Extern(_))
+    }
 }
 
 /// Type of a compile-time parameter or constant. Only `int` and `bool` —
