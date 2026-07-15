@@ -249,6 +249,10 @@ impl<'a> Project<'a> {
                             .push((file_idx, b));
                     }
                     TopItem::Const(_) | TopItem::Test(_) | TopItem::Error(_) => {}
+                    // Extern declarations aren't resolvable instantiation
+                    // targets yet — that wiring lands with the Verilog FFI
+                    // plan's checker/emitter tasks (Tasks 4-6).
+                    TopItem::ExternModule(_) => {}
                 }
             }
         }

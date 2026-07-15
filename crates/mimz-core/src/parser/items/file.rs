@@ -36,7 +36,7 @@ impl Parser {
         }
     }
 
-    /// `file = { importDecl } { constDecl | module | enumDecl | testDecl }`
+    /// `file = { importDecl } { constDecl | module | enumDecl | testDecl | externModule }`
     ///
     /// The whole-file entry point. Never fails — a bad item records its
     /// error and recovery skips to the next line.
@@ -80,6 +80,10 @@ impl Parser {
                     Some(b) => items.push(b),
                     None => items.push(TopItem::Error(self.span_since(start))),
                 },
+                TokKind::Kw(Kw::Extern) => match self.extern_module() {
+                    Some(em) => items.push(TopItem::ExternModule(em)),
+                    None => items.push(TopItem::Error(self.span_since(start))),
+                },
                 // thamizh order: a test header leads with the module under test,
                 // so a bare identifier at file level starts `M(args) kaaga "…"
                 // sodhanai { }`. The leading `ident()` always bumps, so the loop
@@ -96,7 +100,7 @@ impl Parser {
                     self.error(
                         span,
                         "E1102",
-                        format!("expected `module`, `import`, `const`, `enum`, `fn`, `bundle`, or `test` at file level, found {found}"),
+                        format!("expected `module`, `import`, `const`, `enum`, `fn`, `bundle`, `extern`, or `test` at file level, found {found}"),
                     );
                     // Always make progress. `sync_to_newline` STOPS at `}`
                     // without consuming it (it is a block terminator inside

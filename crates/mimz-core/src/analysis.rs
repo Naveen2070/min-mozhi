@@ -133,6 +133,7 @@ pub fn build_index(files: &[LoadedFile]) -> SymbolIndex {
                 TopItem::Test(_) | TopItem::Error(_) => {}
                 TopItem::Func(_) => {} // fn declarations not yet indexed for LSP
                 TopItem::Bundle(_) => {} // bundle declarations not yet indexed for LSP
+                TopItem::ExternModule(_) => {} // not yet indexed for LSP (Verilog FFI plan, Tasks 3+)
             }
         }
     }
@@ -362,6 +363,7 @@ fn collect_refs(index: &SymbolIndex, files: &[LoadedFile], file_idx: usize) -> V
             TopItem::Enum(_) | TopItem::Error(_) => {}
             TopItem::Func(_) => {} // fn body refs not yet tracked for LSP go-to-def
             TopItem::Bundle(_) => {} // bundle body refs not yet tracked for LSP go-to-def
+            TopItem::ExternModule(_) => {} // not yet tracked for LSP go-to-def (Verilog FFI plan, Tasks 3+)
         }
     }
     refs

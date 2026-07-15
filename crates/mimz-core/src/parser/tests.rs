@@ -1362,3 +1362,40 @@ fn array_literal_as_fn_call_argument_parses() {
     };
     assert!(matches!(args[0].kind, ExprKind::ArrayLit(_)));
 }
+
+#[test]
+fn extern_module_parses_with_params_doc_and_ports() {
+    let f = parse_ok(
+        "extern module Pll(MULT: int = 2) {\n  \
+         doc: \"50MHz input, 100MHz output\"\n  \
+         in clk_in: bit\n  out clk_out: bit\n  out locked: bit\n}\n",
+    );
+    let TopItem::ExternModule(em) = &f.items[0] else {
+        panic!("expected ExternModule, got {:?}", f.items[0]);
+    };
+    assert_eq!(em.name.name, "Pll");
+    assert_eq!(em.verilog_name, None);
+    assert_eq!(em.params.len(), 1);
+    assert_eq!(em.params[0].name.name, "MULT");
+    assert_eq!(em.doc.as_deref(), Some("50MHz input, 100MHz output"));
+    assert_eq!(em.items.len(), 3);
+}
+
+#[test]
+fn extern_module_parses_with_alias_and_no_params_or_doc() {
+    let f = parse_ok("extern module Pll = \"PLL_HARD_IP_v2\" {\n  in clk_in: bit\n}\n");
+    let TopItem::ExternModule(em) = &f.items[0] else {
+        panic!("expected ExternModule, got {:?}", f.items[0]);
+    };
+    assert_eq!(em.name.name, "Pll");
+    assert_eq!(em.verilog_name.as_deref(), Some("PLL_HARD_IP_v2"));
+    assert!(em.params.is_empty());
+    assert!(em.doc.is_none());
+    assert_eq!(em.items.len(), 1);
+}
+
+#[test]
+fn extern_module_body_rejects_wire_declarations() {
+    let src = "extern module Pll {\n  in clk_in: bit\n  wire w: bit = clk_in\n}\n";
+    parse_err(src);
+}
