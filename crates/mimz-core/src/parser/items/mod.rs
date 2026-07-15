@@ -8,9 +8,11 @@
 //! `mod.rs` keeps the shared helpers (`ty`, `lvalue`, `expr_to_lvalue`,
 //! `ident_from_expr`, `repeat_block`); `file.rs` parses file-level items;
 //! `module.rs` parses module bodies; `inst.rs` parses instantiations;
-//! `seq.rs` parses sequential (`on`) blocks; `test.rs` parses `test` blocks.
+//! `seq.rs` parses sequential (`on`) blocks; `test.rs` parses `test` blocks;
+//! `extern_module.rs` parses `extern module` declarations (Verilog FFI).
 
 mod bundle;
+mod extern_module;
 mod file;
 mod func;
 mod inst;

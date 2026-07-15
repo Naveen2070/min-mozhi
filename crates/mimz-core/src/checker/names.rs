@@ -97,6 +97,7 @@ impl<'a> Checker<'a> {
                     }
                     TopItem::Error(_) => {} // parse-recovery placeholder
                     TopItem::Func(f) => self.check_func_names(file, f),
+                    TopItem::ExternModule(_) => {} // full checking lands in Task 3
                 }
             }
         }

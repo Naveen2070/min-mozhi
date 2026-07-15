@@ -129,6 +129,7 @@ impl Pretty {
             // never carries an `Error` placeholder.
             TopItem::Error(_) => {}
             TopItem::Bundle(b) => self.bundle_decl(b),
+            TopItem::ExternModule(em) => self.extern_module(em),
         }
     }
 
@@ -305,6 +306,45 @@ impl Pretty {
         self.line(&head);
         self.indent += 1;
         for it in &m.items {
+            self.module_item(it);
+        }
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    /// `extern module Name [= "RealName"] [(params)] { [doc: "..."] ports }`
+    /// — reuses `module_item` verbatim for the body (it only ever contains
+    /// `Port`/`Clock`/`Reset` items, all of which `module_item` already
+    /// renders correctly).
+    fn extern_module(&mut self, em: &ExternModule) {
+        let alias = match &em.verilog_name {
+            Some(v) => format!(" = {v:?}"),
+            None => String::new(),
+        };
+        let params = if em.params.is_empty() {
+            String::new()
+        } else {
+            let ps = em
+                .params
+                .iter()
+                .map(|p| self.param(p))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({ps})")
+        };
+        let head = format!(
+            "{} {} {}{alias}{params} {{",
+            self.kw(Kw::Extern),
+            self.kw(Kw::Module),
+            em.name.name
+        );
+        self.line(&head);
+        self.indent += 1;
+        if let Some(doc) = &em.doc {
+            let s = format!("doc: {doc:?}");
+            self.line(&s);
+        }
+        for it in &em.items {
             self.module_item(it);
         }
         self.indent -= 1;
@@ -1155,6 +1195,61 @@ mod tests {
             })
             .expect("foreach item round-trips as ForEach, not Repeat");
         assert_eq!(fe.var.name, "i");
+    }
+
+    #[test]
+    fn extern_module_round_trips_through_pretty_print() {
+        let src = "extern module Pll(MULT: int = 2) {\n  \
+                   doc: \"50MHz input, 100MHz output\"\n  \
+                   in clk_in: bit\n  out clk_out: bit\n  out locked: bit\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(printed.contains("extern module Pll"), "got:\n{printed}");
+        assert!(printed.contains("MULT"), "got:\n{printed}");
+        assert!(
+            printed.contains("50MHz input, 100MHz output"),
+            "got:\n{printed}"
+        );
+        assert!(printed.contains("in clk_in: bit"), "got:\n{printed}");
+        assert!(printed.contains("out clk_out: bit"), "got:\n{printed}");
+        assert!(printed.contains("out locked: bit"), "got:\n{printed}");
+        // Confirm it actually re-parses back to the same shape (not just that
+        // the text happens to appear somewhere in the output).
+        let toks2 = crate::lexer::lex(&printed).unwrap();
+        let file2 = crate::parser::parse(toks2).expect("pretty-printed extern module re-parses");
+        let crate::ast::TopItem::ExternModule(em) = &file2.items[0] else {
+            panic!("expected ExternModule, got {:?}", file2.items[0]);
+        };
+        assert_eq!(em.name.name, "Pll");
+        assert_eq!(em.params.len(), 1);
+        assert_eq!(em.params[0].name.name, "MULT");
+        assert_eq!(em.doc.as_deref(), Some("50MHz input, 100MHz output"));
+        assert_eq!(em.items.len(), 3);
+    }
+
+    #[test]
+    fn extern_module_with_verilog_alias_round_trips_through_pretty_print() {
+        let src = "extern module Pll = \"PLL_HARD_IP_v2\" {\n  in clk_in: bit\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(printed.contains("PLL_HARD_IP_v2"), "got:\n{printed}");
+        let toks2 = crate::lexer::lex(&printed).unwrap();
+        let file2 =
+            crate::parser::parse(toks2).expect("pretty-printed extern module alias re-parses");
+        let crate::ast::TopItem::ExternModule(em) = &file2.items[0] else {
+            panic!("expected ExternModule, got {:?}", file2.items[0]);
+        };
+        assert_eq!(em.verilog_name.as_deref(), Some("PLL_HARD_IP_v2"));
     }
 
     #[test]
