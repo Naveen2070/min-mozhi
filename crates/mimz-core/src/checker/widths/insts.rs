@@ -4,21 +4,42 @@
 //! connection against the child's port types under THAT binding.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::ast::{Conn, Dir, Inst, Module, ModuleItem};
+use crate::ast::{Conn, Dir, Inst, ModuleItem, ModuleTarget};
 
 use super::super::Checker;
 use super::super::consteval::{self, Env};
+use super::super::names::Scope;
 use super::{Config, Ty, Wcx, same, show};
 
-/// One instantiation, resolved: which module, in which file, with the
-/// child-side environment (file consts + parameter binding) ready for
-/// evaluating the child's port types.
+/// One instantiation, resolved: which module (real or extern), in which
+/// file, with the child-side environment (file consts + parameter binding)
+/// ready for evaluating the child's port types.
 struct ChildBinding<'a> {
     file: usize,
-    module: &'a Module,
+    target: ModuleTarget<'a>,
     env: Env,
     binding: Vec<(String, i128)>,
+}
+
+/// The child's name scope, for resolving `Type::Named`/`Type::Bundle` port
+/// types under `resolve_ty_silent`. Real modules always have one (built by
+/// `resolve_names`/`check_module`); extern modules never get a scope entry
+/// (they have no body to elaborate), but that's harmless — extern port
+/// types are restricted to scalar `bit`/`bits[N]`/`signed[N]` (E1302), and
+/// none of those arms ever consult `cx.sc`, so an empty scope is exact,
+/// not an approximation.
+fn child_scope<'a>(checker: &Checker<'a>, child: &ChildBinding<'a>) -> Option<Rc<Scope<'a>>> {
+    match child.target {
+        ModuleTarget::Real(_) => checker
+            .scopes
+            .get(&(child.file, child.target.name().name.clone()))
+            .cloned(),
+        ModuleTarget::Extern(_) => Some(Rc::new(Scope {
+            names: HashMap::new(),
+        })),
+    }
 }
 
 impl<'a> Checker<'a> {
@@ -34,14 +55,10 @@ impl<'a> Checker<'a> {
         let Some(child) = self.child_binding(cx, inst, false) else {
             return Ty::Unknown;
         };
-        let Some(csc) = self
-            .scopes
-            .get(&(child.file, child.module.name.name.clone()))
-            .cloned()
-        else {
+        let Some(csc) = child_scope(self, &child) else {
             return Ty::Unknown;
         };
-        for item in &child.module.items {
+        for item in child.target.items() {
             if let ModuleItem::Port {
                 dir: Dir::Out,
                 name,
@@ -76,14 +93,24 @@ impl<'a> Checker<'a> {
         // ambiguous/unknown cases, where the sole candidate (`.first()`) is
         // the safe fallback (bare-and-unambiguous, or "nothing to find").
         let target_file = inst.module.resolved_file.get();
-        let candidates = self.modules.get(&inst.module.name.name)?;
-        let &(cfile, cm) = candidates
-            .iter()
-            .find(|&&(f, _)| Some(f) == target_file)
-            .or_else(|| candidates.first())?;
+        let (cfile, target): (usize, ModuleTarget<'a>) =
+            if let Some(candidates) = self.modules.get(&inst.module.name.name) {
+                let &(f, m) = candidates
+                    .iter()
+                    .find(|&&(f, _)| Some(f) == target_file)
+                    .or_else(|| candidates.first())?;
+                (f, ModuleTarget::Real(m))
+            } else {
+                let candidates = self.externs.get(&inst.module.name.name)?;
+                let &(f, em) = candidates
+                    .iter()
+                    .find(|&&(f, _)| Some(f) == target_file)
+                    .or_else(|| candidates.first())?;
+                (f, ModuleTarget::Extern(em))
+            };
         let mut cenv = self.file_consts[cfile].clone();
         let mut binding = Vec::new();
-        for p in &cm.params {
+        for p in target.params() {
             let arg = inst.args.iter().find(|a| a.name.name == p.name.name);
             let mut v = None;
             if let Some(arg) = arg {
@@ -107,7 +134,7 @@ impl<'a> Checker<'a> {
         }
         Some(ChildBinding {
             file: cfile,
-            module: cm,
+            target,
             env: cenv,
             binding,
         })
@@ -125,14 +152,10 @@ impl<'a> Checker<'a> {
         let Some(child) = self.child_binding(cx, inst, true) else {
             return;
         };
-        let cm = child.module;
-        let csc = self
-            .scopes
-            .get(&(child.file, cm.name.name.clone()))
-            .cloned();
+        let csc = child_scope(self, &child);
         for Conn { port, signal } in &inst.conns {
             let mut expected = Ty::Unknown; // unknown/output ports: E0107 owns it
-            for item in &cm.items {
+            for item in child.target.items() {
                 match item {
                     ModuleItem::Port {
                         dir: Dir::In,
@@ -176,7 +199,7 @@ impl<'a> Checker<'a> {
                             "E0401",
                             format!(
                                 "`{}`'s port `{}` is {}, but this connection is {}",
-                                cm.name.name,
+                                child.target.name().name,
                                 port.name,
                                 show(&t),
                                 show(&got)
@@ -189,6 +212,6 @@ impl<'a> Checker<'a> {
                 }
             }
         }
-        found.push((child.file, cm.name.name.clone(), child.binding));
+        found.push((child.file, child.target.name().name.clone(), child.binding));
     }
 }
