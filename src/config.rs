@@ -33,6 +33,13 @@ pub struct Config {
     /// tanglish | tamil. Overridden by `--lang`; itself overrides the file's
     /// keyword-majority default.
     pub lang: Option<String>,
+    /// Simulator behavior when an `extern module` instance is reached
+    /// (`mimz sim`/`mimz test`; `mimz compile` accepts and passes it through
+    /// too so a project can set its default once): `"warn"` (default — stub
+    /// outputs to an unknown-tainted value and keep simulating) or
+    /// `"strict"` (hard error at elaboration). Top-level, not nested under
+    /// `[compile]`, since it is a simulator setting shared by three commands.
+    pub extern_sim: Option<String>,
     /// Defaults for `mimz translate`.
     #[serde(default)]
     pub translate: TranslateConfig,
@@ -53,6 +60,13 @@ pub struct Config {
 pub struct CompileConfig {
     /// Emit testbench by default (`--emit-testbench`).
     pub emit_testbench: Option<bool>,
+    /// Companion Verilog files holding the real implementations of any
+    /// `extern module` declarations used in this project (Verilog FFI).
+    /// Unions with `--extern-src` CLI flags (additive, never overridden).
+    /// Compile/build-specific (the real toolchain needs these files), unlike
+    /// `extern_sim` (a simulator setting) — hence staying under `[compile]`
+    /// while `extern_sim` lives at the top level.
+    pub verilog_files: Option<Vec<String>>,
 }
 
 /// `[translate]` — defaults for the reskin / romanize subcommand.
@@ -232,6 +246,22 @@ mod tests {
     #[test]
     fn unknown_lib_key_is_rejected() {
         assert!(toml::from_str::<Config>("[lib]\nstdd = \"x\"\n").is_err());
+    }
+
+    #[test]
+    fn config_parses_top_level_extern_sim_and_compile_verilog_files() {
+        let toml = r#"
+extern_sim = "strict"
+
+[compile]
+verilog_files = ["vendor/pll.v", "vendor/ddr.v"]
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.extern_sim.as_deref(), Some("strict"));
+        assert_eq!(
+            cfg.compile.verilog_files,
+            Some(vec!["vendor/pll.v".to_string(), "vendor/ddr.v".to_string()])
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@
 //! [`Sim::snapshot`] returns every signal's current value: the per-cycle seam
 //! the VCD writer and the console tracer (B5) both consume.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mimz_core::REPEAT_BUDGET;
 use mimz_core::ast::{Edge, Expr, FuncDecl, SeqStmt};
@@ -224,7 +224,7 @@ impl Sim {
             out.push((name.clone(), v.masked(), self.widths[name]));
         }
         let mut env = self.comb_env();
-        for name in self.design.comb.keys() {
+        for name in self.design.comb.keys().chain(&self.design.unknown_signals) {
             let v = env.signal(name)?;
             let w = self.widths.get(name).copied().unwrap_or(Width {
                 bits: v.width,
@@ -257,6 +257,7 @@ impl Sim {
             mem_cells: &self.mems,
             mem_meta: &self.mem_meta,
             funcs: &self.design.funcs,
+            unknown: &self.design.unknown_signals,
         }
     }
 }
@@ -431,6 +432,11 @@ struct CombEnv<'a> {
     mem_cells: &'a BTreeMap<(String, u128), Val>,
     mem_meta: &'a BTreeMap<String, MemInfo>,
     funcs: &'a HashMap<String, FuncDecl>,
+    /// Driverless-by-design signals (extern-instance outputs in `warn`
+    /// `SimMode`) — resolved straight to `Val::unknown`, checked before
+    /// `comb` since these names have no entry there. See
+    /// `elaborate::Design::unknown_signals`.
+    unknown: &'a HashSet<String>,
 }
 
 impl CombEnv<'_> {
@@ -466,6 +472,16 @@ impl Resolver for CombEnv<'_> {
         if let Some(v) = self.memo.get(name) {
             return Ok(*v);
         }
+        if self.unknown.contains(name) {
+            // Extern-instance output in `warn` mode: no driver by design.
+            let w = self.widths.get(name).copied().unwrap_or(Width {
+                bits: 1,
+                signed: false,
+            });
+            let v = Val::unknown(w.bits, w.signed);
+            self.memo.insert(name.to_string(), v);
+            return Ok(v);
+        }
         if let Some(driver) = self.comb.get(name) {
             if self.stack.iter().any(|n| n == name) {
                 return Err(format!(
@@ -476,7 +492,14 @@ impl Resolver for CombEnv<'_> {
             let v = value::eval(self, driver)?;
             self.stack.pop();
             let v = match self.widths.get(name) {
-                Some(w) => Val::new(v.bits, w.bits, w.signed),
+                // `Val::new` always clears `unknown` — re-widthing a driver's
+                // result must not silently launder an extern-fed taint away
+                // (BUG found by Task 8: `ok = u.locked` re-masked to `ok`'s
+                // declared width here and lost `unknown` in the process).
+                Some(w) => Val {
+                    unknown: v.unknown,
+                    ..Val::new(v.bits, w.bits, w.signed)
+                },
                 None => v,
             };
             self.memo.insert(name.to_string(), v);
@@ -498,12 +521,89 @@ impl Resolver for CombEnv<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sim::elaborate::elaborate;
+    use crate::sim::elaborate::{SimMode, elaborate, elaborate_with_mode};
+    use mimz_core::ast::ExprKind;
 
     fn sim(src: &str) -> Sim {
         let f =
             mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         Sim::new(elaborate(&f, None, &BTreeMap::new()).expect("elaborates"))
+    }
+
+    const EXTERN_PLL_SRC: &str = "extern module Pll {\n  in clk_in: bit\n  out locked: bit\n}\n\
+        module M {\n  clock sysclk\n  out ok: bit\n  \
+        let u = Pll() { clk_in: sysclk, locked: ok }\n  \
+        ok = u.locked\n}\n";
+
+    #[test]
+    fn extern_instance_output_is_unknown_tainted_in_warn_mode() {
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(EXTERN_PLL_SRC).expect("lexes"))
+            .expect("parses");
+        let design = elaborate_with_mode(&f, None, &BTreeMap::new(), SimMode::Warn)
+            .expect("warn mode elaborates without error — the design just runs with X outputs");
+        let s = Sim::new(design);
+        let ok = Expr {
+            kind: ExprKind::Ident("ok".to_string()),
+            span: mimz_core::span::Span::new(0, 0),
+        };
+        let v = s
+            .eval(&ok)
+            .expect("reading an extern-fed signal in warn mode must not error");
+        assert!(
+            v.unknown,
+            "`ok` is driven by `u.locked` (an extern output) — it must read as unknown-tainted"
+        );
+    }
+
+    #[test]
+    fn extern_instance_is_a_hard_error_in_strict_mode() {
+        let f = mimz_core::parser::parse(mimz_core::lexer::lex(EXTERN_PLL_SRC).expect("lexes"))
+            .expect("parses");
+        let err = elaborate_with_mode(&f, None, &BTreeMap::new(), SimMode::Strict)
+            .expect_err("strict mode must reject an extern instance before any cycle runs");
+        assert!(err.contains('u'), "error should name the instance: {err}");
+        assert!(
+            err.contains("Pll"),
+            "error should name the extern module: {err}"
+        );
+    }
+
+    #[test]
+    fn extern_taint_survives_one_level_of_real_module_nesting() {
+        // C wraps an extern Pll instance and re-exposes its unknown-tainted
+        // output as C's own output port; Top instantiates C (not the extern
+        // directly). `flatten_instance`'s child->parent copy loop used to only
+        // copy a child wire/output that has a `comb` driver, silently dropping
+        // the driverless (extern-tainted) `u_locked` wire when C was flattened
+        // into Top — leaving `c_c_out`'s driver expression referencing a wire
+        // that was never declared or marked unknown in Top's own Design, which
+        // then blew up at read time with "unknown signal `c_u_locked`" instead
+        // of just reading as X like the direct (one-level) case does.
+        const SRC: &str = "extern module Pll {\n  in clk_in: bit\n  out locked: bit\n}\n\
+            module C {\n  clock sysclk\n  out c_out: bit\n  \
+            let u = Pll() { clk_in: sysclk, locked: c_out }\n  \
+            c_out = u.locked\n}\n\
+            module Top {\n  clock sysclk\n  out final_out: bit\n  \
+            let c = C() { sysclk: sysclk, c_out: final_out }\n  \
+            final_out = c.c_out\n}\n";
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(SRC).expect("lexes")).expect("parses");
+        let design = elaborate_with_mode(&f, Some("Top"), &BTreeMap::new(), SimMode::Warn)
+            .expect("warn mode elaborates a nested extern-tainted design without error");
+        let s = Sim::new(design);
+        let final_out = Expr {
+            kind: ExprKind::Ident("final_out".to_string()),
+            span: mimz_core::span::Span::new(0, 0),
+        };
+        let v = s.eval(&final_out).expect(
+            "reading a signal fed by an extern output through one level of real-module \
+             nesting must not error with \"unknown signal\" — it must just read as X",
+        );
+        assert!(
+            v.unknown,
+            "`final_out` is fed by `C`'s `c_out`, itself fed by extern `Pll.locked` — it \
+             must read as unknown-tainted"
+        );
     }
 
     const COUNTER: &str = "module Counter(WIDTH: int = 8) {\n  \

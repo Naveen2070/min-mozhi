@@ -8,10 +8,10 @@ use std::process::ExitCode;
 
 use mimz::ast::{self, TopItem};
 use mimz::project;
-use mimz::sim::harness::{TestResult, run_test};
+use mimz::sim::harness::{TestResult, run_test_with_mode};
 use mimz::sim::trace;
 
-use super::helpers::{lib_std_dir, project_warnings, resolve_lang, trace_scope};
+use super::helpers::{lib_std_dir, project_warnings, resolve_lang, resolve_sim_mode, trace_scope};
 use crate::Output;
 
 /// `mimz test <file>` — run the file's `test "…" for M(…) { … }` blocks and
@@ -27,6 +27,7 @@ pub(crate) fn test_file(
     trace_style: Option<String>,
     verbose: bool,
     signals: Option<String>,
+    extern_sim: &str,
     lang: Option<&str>,
     config_path: Option<&Path>,
     quiet: bool,
@@ -98,6 +99,7 @@ pub(crate) fn test_file(
     // CI/piped output). Computed once for the whole file, not per test.
     let is_tty = std::io::stdout().is_terminal();
     let live = (emulate || step) && is_tty;
+    let mode = resolve_sim_mode(extern_sim);
 
     for t in tests {
         // Constructed unconditionally (even headless) so bind validation
@@ -105,7 +107,16 @@ pub(crate) fn test_file(
         let host: Box<dyn mimz_sim::sim::EmulationHost> = Box::new(
             mimz::emulate::host::EmulateHost::new(t.name.clone(), live, step),
         );
-        match run_test(&asts, &src, t, host, live, step, trace_style.is_some()) {
+        match run_test_with_mode(
+            &asts,
+            &src,
+            t,
+            host,
+            live,
+            step,
+            trace_style.is_some(),
+            mode,
+        ) {
             Ok(o) => {
                 let quit = o.quit;
                 match &o.result {
