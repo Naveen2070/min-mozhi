@@ -116,11 +116,11 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 41] = [
+const REQUIRED_KEYS: [&str; 42] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
     "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default", "bundle",
-    "return", "loop", "sync", "sim", "bind", "speed", "foreach",
+    "return", "loop", "sync", "sim", "bind", "speed", "foreach", "extern",
 ];
 
 /// The parsed, validated `keywords.toml` table — loaded once, lazily, on
@@ -207,6 +207,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "enum" => Kw::Enum,
         "let" => Kw::Let,
         "const" => Kw::Const,
+        "extern" => Kw::Extern,
         "repeat" => Kw::Repeat,
         "import" => Kw::Import,
         "true" => Kw::True,
@@ -327,6 +328,14 @@ mod tests {
     }
 
     #[test]
+    fn extern_lexes_in_all_three_flavors() {
+        assert_eq!(TABLE.lookup("extern"), Some((Kw::Extern, Flavor::English)));
+        assert_eq!(TABLE.lookup("anniya"), Some((Kw::Extern, Flavor::Tanglish)));
+        assert_eq!(TABLE.lookup("அன்னிய"), Some((Kw::Extern, Flavor::Tamil)));
+        assert!(!TABLE.is_reserved("extern"));
+    }
+
+    #[test]
     fn fall_is_an_active_keyword() {
         // Promoted from reserved to active for `on fall(clk)` (A3, 2026-06-17).
         // Tanglish/Tamil spellings are PROVISIONAL pending native review (R9/R11).
@@ -366,8 +375,8 @@ mod tests {
     #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 41).
-        assert_eq!(en.len(), 41);
+        // One spelling per keyword (REQUIRED_KEYS has 42).
+        assert_eq!(en.len(), 42);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.
