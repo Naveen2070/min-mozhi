@@ -23,7 +23,7 @@ fn fixture(name: &str) -> PathBuf {
 
 /// A valid extern-module declaration + instantiation that checks clean
 /// (mirrors `crates/mimz-core/src/checker/tests.rs`'s
-/// `extern_module_valid_instantiation_checks_clean` fixture) — used for the
+/// `extern_instantiation_checks_clean_with_correct_connections` fixture) — used for the
 /// `mimz compile` union test, which must get past the checker to prove the
 /// merged `verilog_files` list is what's actually wired through.
 const VALID_EXTERN_MODULE: &str = "extern module Pll(MULT: int = 2) {\n  \
@@ -101,11 +101,13 @@ fn extern_sim_strict_flag_makes_mimz_test_fail_fast() {
     )
     .unwrap();
 
-    // Default mode (warn): the extern instance is stubbed to X, not an error.
+    // Default mode (warn): the extern instance is stubbed to an unknown-tainted
+    // value, not an elaboration error — but `expect` against a tainted value
+    // still fails the test (taint must not silently pass a check).
     let warn_out = mimz().arg("test").arg(&design).output().unwrap();
     assert!(
-        warn_out.status.success(),
-        "warn (default) mode should not fail on an extern instance: {}",
+        !warn_out.status.success(),
+        "warn (default) mode should still fail an `expect` against a tainted value: {}",
         String::from_utf8_lossy(&warn_out.stdout)
     );
 

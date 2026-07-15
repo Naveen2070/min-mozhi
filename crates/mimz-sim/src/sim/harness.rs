@@ -417,7 +417,7 @@ impl Run<'_> {
                 TestStmt::Expect(e) => {
                     self.checks += 1;
                     let v = self.sim.eval(e).map_err(Stop::Err)?;
-                    if v.bits & 1 != 1 {
+                    if v.unknown || v.bits & 1 != 1 {
                         return Err(Stop::Fail(self.fail_message(e)?));
                     }
                 }
