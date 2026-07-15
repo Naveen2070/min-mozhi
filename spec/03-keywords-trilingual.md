@@ -131,6 +131,7 @@ is valid even in an otherwise-English file.
 | KW_SIM        | `sim`     | `paavnai`       | `பாவனை`       | "simulation/emulation" — `sim { ... }` block inside a `test` block, binds ports to virtual peripherals for hardware emulation (`mimz test --emulate`); simulation-only, never reaches the emitter; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                                                                                                                                                                                                                                                                                                                            |
 | KW_BIND       | `bind`    | `inai`          | `இணை`         | "connect/bind" — `bind <port> -> <peripheral>(args)` inside a `sim` block; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | KW_SPEED      | `speed`   | `vegam`         | `வேகம்`       | "speed" — `speed hz\|khz\|mhz(n)` inside a `sim` block, sets real-time throttling; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| KW_EXTERN     | `extern`  | `anniya`        | `அன்னிய`      | "foreign/external" — Verilog FFI (Phase 2+); echoes "Foreign Function Interface"; Tanglish/Tamil PROVISIONAL, pending native review (R9/R11)                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ### Reserved words
 
@@ -138,21 +139,20 @@ Set aside for future features — using one as an identifier is a compile
 error (E1005) explaining why. They live in the `reserved` list in
 `lang/keywords.toml`, above the keyword tables:
 
-| Reserved     | Held for                                                    |
-| ------------ | ----------------------------------------------------------- |
-| `inout`      | top-level bidirectional pads (Phase 2)                      |
-| `struct`     | bundles/interfaces (post-Phase 2)                           |
-| `secret`     | explicit information-flow types (v0.3 G5)                   |
-| `declassify` | the only `secret`→public escape (v0.3 G5)                   |
-| `pipeline`   | pipeline-stage construct (v0.3 backlog)                     |
-| `interface`  | named port bundles (v0.3 backlog)                           |
-| `chan`       | handshake channels (v0.3 backlog)                           |
-| `prove`      | formal/temporal assertions (v0.3 backlog)                   |
-| `await`      | handshake sequencing (v0.3 backlog)                         |
-| `fixed`      | fixed-point arithmetic type (section 8 triage)              |
-| `requires`   | caller-side precondition contract (section 8)               |
-| `ensures`    | module postcondition contract (section 8)                   |
-| `extern`     | external-Verilog / black-box-IP module construct (Phase 2+) |
+| Reserved     | Held for                                       |
+| ------------ | ---------------------------------------------- |
+| `inout`      | top-level bidirectional pads (Phase 2)         |
+| `struct`     | bundles/interfaces (post-Phase 2)              |
+| `secret`     | explicit information-flow types (v0.3 G5)      |
+| `declassify` | the only `secret`→public escape (v0.3 G5)      |
+| `pipeline`   | pipeline-stage construct (v0.3 backlog)        |
+| `interface`  | named port bundles (v0.3 backlog)              |
+| `chan`       | handshake channels (v0.3 backlog)              |
+| `prove`      | formal/temporal assertions (v0.3 backlog)      |
+| `await`      | handshake sequencing (v0.3 backlog)            |
+| `fixed`      | fixed-point arithmetic type (section 8 triage) |
+| `requires`   | caller-side precondition contract (section 8)  |
+| `ensures`    | module postcondition contract (section 8)      |
 
 Reserved words are untranslated until their feature lands (no Tamil
 words before the native-speaker review — same rule as aliases).

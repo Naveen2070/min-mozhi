@@ -20,14 +20,18 @@ version = 1
 # so v0.1 programs cannot claim them, untranslated until each feature lands
 # (spec/03 section "Reserved words").
 reserved = [
-  "inout", "struct",
-  "secret", "declassify", "pipeline", "interface", "chan", "prove", "await",
-  "fixed", "requires", "ensures",
-  # External-Verilog / black-box-IP module construct (Phase 2+; architectural_ideas.md
-  # idea 3). The feature is additive/edition-safe, but the keyword is reserved pre-v0.1.0
-  # so no program can claim `extern` as an identifier (R11). English-only until the
-  # feature lands and native review supplies the Tamil/Tanglish spellings.
-  "extern",
+  "inout",
+  "struct",
+  "secret",
+  "declassify",
+  "pipeline",
+  "interface",
+  "chan",
+  "prove",
+  "await",
+  "fixed",
+  "requires",
+  "ensures",
 ]
 
 [keywords.module]
@@ -155,8 +159,8 @@ tamil = "சுழல்"
 # authorized 2026-07-12 so the four-flavor tooling works now.
 [keywords.foreach]
 en = "foreach"
-tanglish = "ovvondraga"   # PROVISIONAL — pending native review
-tamil = "ஒவ்வொன்றாக"       # PROVISIONAL — pending native review
+tanglish = "ovvondraga" # PROVISIONAL — pending native review
+tamil = "ஒவ்வொன்றாக"    # PROVISIONAL — pending native review
 
 [keywords.sync]
 en = "sync"
@@ -248,8 +252,8 @@ tamil = "சார்பு"
 # review (R9/R11). Maintainer-authorized 2026-06-30.
 [keywords.default]
 en = "default"
-tanglish = "iyalbu"   # PROVISIONAL — pending native review
-tamil = "இயல்பு"     # PROVISIONAL — pending native review
+tanglish = "iyalbu" # PROVISIONAL — pending native review
+tamil = "இயல்பு"    # PROVISIONAL — pending native review
 
 # Named group of signals (`bundle Foo { field: type }`; Phase 2, feature 2.4).
 # Tanglish/Tamil are PROVISIONAL dev/testing placeholders —
@@ -257,8 +261,8 @@ tamil = "இயல்பு"     # PROVISIONAL — pending native review
 # Maintainer-authorized 2026-06-30 so four-flavor tooling works now.
 [keywords.bundle]
 en = "bundle"
-tanglish = "kattai"   # PROVISIONAL — pending native review
-tamil = "கட்டை"       # PROVISIONAL — pending native review
+tanglish = "kattai" # PROVISIONAL — pending native review
+tamil = "கட்டை"     # PROVISIONAL — pending native review
 
 # Function return statement (Phase 2 statement-based fn bodies). Tanglish/Tamil
 # spellings are PROVISIONAL dev/testing placeholders — `thirumbu`/`திரும்பு`
@@ -266,8 +270,8 @@ tamil = "கட்டை"       # PROVISIONAL — pending native review
 # so four-flavor tooling works now.
 [keywords.return]
 en = "return"
-tanglish = "thirumbu"  # PROVISIONAL — pending native review
-tamil = "திரும்பு"      # PROVISIONAL — pending native review
+tanglish = "thirumbu" # PROVISIONAL — pending native review
+tamil = "திரும்பு"    # PROVISIONAL — pending native review
 
 [keywords.sim]
 en = "sim"
@@ -278,6 +282,18 @@ tamil = "பாவனை"
 en = "bind"
 tanglish = "inai"
 tamil = "இணை"
+
+# `extern module Name(params) { doc: "...", ports }` — declares the port
+# shape of a real Verilog module living outside Min-Mozhi (Verilog FFI,
+# docs/superpowers/specs/2026-07-15-verilog-ffi-design.local.md). Tanglish/
+# Tamil are PROVISIONAL dev/testing placeholders — anniya/அன்னிய ("foreign/
+# external" — echoes "Foreign Function Interface") — pending native-speaker
+# review (R9/R11). Maintainer-authorized 2026-07-15 so the four-flavor
+# tooling works now.
+[keywords.extern]
+en = "extern"
+tanglish = "anniya"   # PROVISIONAL — pending native review
+tamil = "அன்னிய"      # PROVISIONAL — pending native review
 
 [keywords.speed]
 en = "speed"

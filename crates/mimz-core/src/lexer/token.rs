@@ -101,6 +101,10 @@ pub enum Kw {
     /// `speed` / `vegam` / `வேகம்` — `speed <n>hz|khz|mhz(...)` inside a
     /// `sim` block; sets real-time throttling.
     Speed,
+    /// `extern` / `anniya` / `அன்னிய` — declares the port shape of a real
+    /// Verilog module living outside Min-Mozhi (Verilog FFI). PROVISIONAL
+    /// Tanglish/Tamil spellings, see `keywords.toml`.
+    Extern,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).
