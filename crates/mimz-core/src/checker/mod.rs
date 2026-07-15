@@ -4,8 +4,8 @@
 //! resolution + module-structure rules incl. instantiation completeness
 //! (`names.rs`), width/type rules + match exhaustiveness (`widths/`),
 //! single-driver + combinational-cycle rules (`drivers.rs`),
-//! ban-recursive-functions (`funcs.rs`), and clock-domain ownership
-//! (`clocks.rs`).
+//! ban-recursive-functions (`funcs.rs`), clock-domain ownership
+//! (`clocks.rs`), and extern-module port-shape validation (`extern_module.rs`).
 //!
 //! Every checker diagnostic carries a stable error code (`E0101`) and the
 //! index of the file it points into, so multi-file errors render against
@@ -15,6 +15,7 @@
 mod clocks;
 pub mod consteval;
 mod drivers;
+mod extern_module;
 mod funcs;
 mod names;
 mod symbols;
@@ -35,6 +36,7 @@ use crate::span::Span;
 pub fn check(files: &[ast::File]) -> Result<(), Vec<Diag>> {
     let mut ck = Checker::new(files);
     ck.build_symbols(); // project tables + project-wide duplicates
+    ck.check_extern_modules(); // extern module ports must be scalar (E1302)
     ck.check_func_cycles(); // ban recursive fn call cycles (E0805)
     ck.check_func_unreachable(); // dead code after `return` (E0812)
     ck.eval_consts(); // file-level consts, top to bottom
@@ -66,6 +68,9 @@ pub(super) struct Checker<'a> {
     funcs: HashMap<String, (usize, &'a ast::FuncDecl)>,
     /// file-level bundle name -> every (declaring file, node) sharing that name.
     bundles: HashMap<String, Vec<(usize, &'a ast::BundleDecl)>>,
+    /// extern-module name -> every (declaring file, node) sharing that name.
+    /// Uniqueness is enforced per-file (symbols.rs), mirroring `modules`.
+    externs: HashMap<String, Vec<(usize, &'a ast::ExternModule)>>,
     /// Per file: const name -> evaluated value (consts are file-local;
     /// imports do NOT bring consts into scope).
     file_consts: Vec<HashMap<String, i128>>,
@@ -88,6 +93,7 @@ impl<'a> Checker<'a> {
             enums: HashMap::new(),
             funcs: HashMap::new(),
             bundles: HashMap::new(),
+            externs: HashMap::new(),
             file_consts: vec![HashMap::new(); files.len()],
             scopes: HashMap::new(),
             diags: Vec::new(),
