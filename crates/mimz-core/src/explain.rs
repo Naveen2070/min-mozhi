@@ -807,6 +807,27 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          message lists them. To customize a module, `mimz eject std` and point\n\
          `mimz.toml [lib] std` at the directory (spec/02 section 1.5).",
     ),
+    // ----- E13xx: extern module (Verilog FFI) -----
+    (
+        "E1301",
+        "E1301 — extern module defined more than once in this file\n\n\
+         An `extern module` name is reused within the SAME file. Extern\n\
+         module names are unique within one file — a different file may\n\
+         reuse the name (qualify the reference with the import path if it\n\
+         becomes ambiguous, spec/02 section 1.5b).\n\n\
+         Fix: rename one of the duplicate declarations.",
+    ),
+    (
+        "E1302",
+        "E1302 — extern module port must be a scalar type\n\n\
+         `extern module` ports may only be `bit` / `bits[N]` / `signed[N]`\n\
+         (plus `clock`/`reset`) — bundle- and array-typed ports are not\n\
+         supported. A real Verilog module's port list is always flat wires;\n\
+         extern is a thin wrapper over that reality (spec/02, Verilog FFI\n\
+         section).\n\n\
+         Fix: flatten the port to its scalar fields, matching however the\n\
+         real Verilog module's actual port list is shaped.",
+    ),
     // ----- Wxxxx: lint warnings -----
     (
         "W0002",

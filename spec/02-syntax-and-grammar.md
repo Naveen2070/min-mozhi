@@ -255,6 +255,80 @@ module Top {
 - Function names (`fn`) are NOT covered — they stay project-wide unique
   (`E0801`), called in plain expression position.
 
+### 1.5c — `extern module` (Verilog FFI)
+
+`extern module` declares the **port list** of a hand-written Verilog
+module without defining its body — a thin wrapper so a real, external
+`.v` file (an IP core, a vendor PLL primitive, a hand-tuned block) can
+be instantiated from mimz source exactly like a native module.
+
+```mimz
+// declared without an alias — the mimz name IS the Verilog module name
+extern module Pll(MULT: int = 2) {
+  doc: "50MHz input, 100MHz output, ~10us lock time"
+  clock clk_in
+  out clk_out: bit
+  out locked: bit
+}
+
+module ExternDemo {
+  clock sysclk
+  out fast_clk: bit
+  out pll_ok: bit
+  let u = Pll(MULT: 4) { clk_in: sysclk }
+  fast_clk = u.clk_out
+  pll_ok = u.locked
+}
+```
+
+```mimz
+// declared WITH an alias — mimz name `Pll`, real Verilog module name
+// "PLL_HARD_IP_v2" (the emitted instantiation uses the real name)
+extern module Pll = "PLL_HARD_IP_v2" {
+  clock clk_in
+  out clk_out: bit
+}
+
+module AliasDemo {
+  clock sysclk
+  out fast_clk: bit
+  let u = Pll() { clk_in: sysclk }
+  fast_clk = u.clk_out
+}
+```
+
+Grammar (mirrors `module`'s param-list and port-line grammar exactly):
+
+```
+externModule = "extern" "module" ident [ "=" string ]
+  [ "(" paramList ")" ] "{" [ "doc" ":" string ] { port | clock | reset } "}"
+```
+
+- `ident` is the name used on the mimz side (instantiation, `.` field
+  access). The optional `= "string"` names the **real** Verilog module
+  emitted into the instantiation — omit it when the mimz name already
+  matches the real module name exactly.
+- The optional `doc: "..."` line (first thing in the body, before any
+  port) is a human-readable note about the wrapped IP — carried through
+  to nowhere mechanical yet, purely documentation for the reader.
+- The body accepts **only** `in`/`out`/`clock`/`reset` declarations —
+  there is no body for `wire`/`reg`/`on`/etc. to belong to, since
+  `extern module` defines no logic, only a port list.
+- **Ports are scalar-only**: `bit` / `bits[N]` / `signed[N]` (plus
+  `clock`/`reset`). A real Verilog module's port list is always flat
+  wires, so bundle- and array-typed ports are rejected (`E1302`) —
+  flatten them to the fields the real module actually exposes.
+- Instantiation, connection checking, and width checking all work
+  exactly as they do for a native `module` (missing/extra/mismatched
+  connections are the same errors); the only difference is the emitter
+  never writes a `module ... endmodule` body for it — only the
+  instantiation, referencing the real module name. The compiled Verilog
+  is expected to be linked (Yosys/iverilog) against the real, separately
+  supplied `.v` file (wired via `mimz.toml` or `--extern-src`).
+- `extern module` names are unique **within one file**, same rule as
+  `module` (`E1301`; a different file may reuse the name, qualify by
+  import path if it becomes ambiguous, §1.5b).
+
 ### 1.6 Repeated hardware — `repeat`
 
 ```mimz

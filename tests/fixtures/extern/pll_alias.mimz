@@ -1,0 +1,11 @@
+extern module Pll = "PLL_HARD_IP_v2" {
+  clock clk_in
+  out clk_out: bit
+}
+
+module AliasDemo {
+  clock sysclk
+  out fast_clk: bit
+  let u = Pll() { clk_in: sysclk }
+  fast_clk = u.clk_out
+}
