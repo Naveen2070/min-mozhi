@@ -846,7 +846,7 @@ impl Emitter<'_> {
     /// auto-declared wire named `{instance}_{port}` — which is exactly what
     /// `inst.port` field-accesses render to in `expr.rs`.
     fn instance(&mut self, inst: &Inst) {
-        let Some((child_file, child)) = self.project.resolve_module_with_file(&inst.module) else {
+        let Some((child_file, target)) = self.project.resolve_target_with_file(&inst.module) else {
             self.err(
                 inst.module.span,
                 format!("unknown module `{}`", inst.module.name.name),
@@ -868,7 +868,7 @@ impl Emitter<'_> {
         // and a negative width is already checker-rejected (E0410).
         let child_consts: Vec<(String, Expr)> = self
             .module_envs
-            .get(&(child_file, child.name.name.clone()))
+            .get(&(child_file, target.name().name.clone()))
             .map(|env| {
                 env.iter()
                     .filter(|&(_, &v)| v >= 0)
@@ -896,7 +896,7 @@ impl Emitter<'_> {
 
         // Declare wires for child outputs, connect everything by name.
         let mut port_conns: Vec<String> = Vec::new();
-        for item in &child.items {
+        for item in target.items() {
             match item {
                 ModuleItem::Clock(c) => {
                     // Implicit same-name connection (spec/02 section 1.5).
@@ -925,7 +925,7 @@ impl Emitter<'_> {
                                 inst.span,
                                 format!(
                                     "instance `{}` does not connect input `{}` of module `{}`",
-                                    inst.name.name, name.name, child.name.name
+                                    inst.name.name, name.name, target.name().name
                                 ),
                                 "every input must be connected: `let u = Mod() { port: signal }` (spec/02 section 1.5)",
                             );
@@ -947,7 +947,7 @@ impl Emitter<'_> {
 
         // Unknown connection names → error.
         for c in &inst.conns {
-            let known = child.items.iter().any(|i| match i {
+            let known = target.items().iter().any(|i| match i {
                 ModuleItem::Port { name, .. } => name.name == c.port.name,
                 ModuleItem::Clock(n) | ModuleItem::Reset { name: n, .. } => n.name == c.port.name,
                 _ => false,
@@ -955,7 +955,11 @@ impl Emitter<'_> {
             if !known {
                 self.err(
                     c.port.span,
-                    format!("module `{}` has no port `{}`", child.name.name, c.port.name),
+                    format!(
+                        "module `{}` has no port `{}`",
+                        target.name().name,
+                        c.port.name
+                    ),
                     "",
                 );
             }
@@ -971,9 +975,18 @@ impl Emitter<'_> {
                 .collect();
             format!(" #({})", ps.join(", "))
         };
-        // Must agree with the SAME `child`/`child_file` pair's declaration
+        // Must agree with the SAME `target`/`child_file` pair's declaration
         // header (`module()`, above) — same target, same emitted identifier.
-        let child_verilog_name = self.project.verilog_module_name(child_file, child);
+        // Extern targets have no per-file disambiguation: there is exactly
+        // one real external module regardless of which Min-Mozhi file
+        // declared the `extern module` referring to it.
+        let child_verilog_name = match target {
+            ModuleTarget::Real(m) => self.project.verilog_module_name(child_file, m),
+            ModuleTarget::Extern(em) => em
+                .verilog_name
+                .clone()
+                .unwrap_or_else(|| em.name.name.clone()),
+        };
         self.out.push_str(&format!(
             "    {}{} {} ({});\n",
             child_verilog_name,
