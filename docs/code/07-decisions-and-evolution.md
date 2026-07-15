@@ -158,6 +158,67 @@ every concat part's width explicitly — the simulator via `extend(_, N)`,
 the emitter via an explicitly-sized `N'd<value>` literal instead of
 Verilog's unsized-literal-in-concat default (32 bits per the LRM).
 
+### `extern module` — Verilog FFI: `ModuleTarget`, coarse taint, and the warn/strict split (2026-07-15)
+
+The Constitution promises Min-Mozhi will eventually wrap real Verilog
+(spec/01 §4.2); `extern module Name(params) { doc: "...", ports }`
+(design doc `docs/superpowers/specs/2026-07-15-verilog-ffi-design.local.md`)
+is the first cut, landed in one day across lexer → parser → checker →
+emitter → simulator → config/CLI → fixtures (commits `7aa1000`
+through this one). Four decisions worth recording:
+
+- **`ModuleTarget<'a>` mirrors `Module`'s shape exactly, rather than a
+  separate ports-only type.** `ExternModule` (`crates/mimz-core/src/ast/mod.rs`)
+  is deliberately shaped like `Module` minus a body, and every
+  connection-check/emission call site that used to resolve a name to
+  `&Module` now resolves to `ModuleTarget::{Real, Extern}` — a thin enum
+  exposing `.name()`/`.params()`/`.items()` generically. Because those
+  three accessors are all any existing connection-checking or
+  instantiation-emission code ever reads, none of that code needed a
+  single behavioral change; only `is_extern()` is consulted at the few
+  spots that must genuinely diverge (skip elaboration, prefer
+  `verilog_name` when emitting). Same reuse-over-new-abstraction
+  instinct as `Enum.Variant` construction above, applied the opposite
+  direction — one shared type instead of one new arm per pass.
+- **Coarse whole-value `unknown` taint on `Val`, not true four-state
+  simulation or emulation-host wiring.** `mimz-sim`'s `Val`
+  (`crates/mimz-sim/src/sim/value.rs`) is a 2-state bit-vector; real
+  per-bit X-propagation would be a simulator-wide rework (every
+  operator, the VCD writer, the Icarus differential suite) — its own
+  project, not scoped to one feature. Rewiring the hardware-emulation
+  peripheral system (`src/emulate/`, `EmulationHost`) to let a native
+  Rust twin drive an extern instance was rejected too: `EmulationHost`
+  binds top-level design ports today, not arbitrary child instances,
+  and most IP that actually needs `extern` (DDR controllers, PCIe
+  cores) can't be accurately simulated without the vendor's own
+  protected models anyway — a hand-written behavioral twin has low
+  expected payoff for real cost. Instead `Val` gained one `unknown: bool`
+  field (whole-value, not per-bit); every operator's dispatch point
+  propagates it (`unary`/`binary` and `eval`'s `Concat`/`Replicate`/
+  `Index`/`Slice` arms) — one propagation rule, not per-operator
+  special-casing.
+- **`warn` (default) vs `strict` sim mode, config- and CLI-selected.**
+  `warn` lowers an extern instance's outputs to `unknown`-tainted at
+  elaboration and keeps simulating (one warning printed per instance,
+  first touch); a `test`/`expect` against a tainted value still fails
+  loudly, so `warn` mode can never silently pass on faked data. `strict`
+  hard-errors at elaboration the moment any extern instance is seen,
+  before running anything. The choice belongs to the project (or a
+  one-off invocation), not the compiler, since whether a black box is
+  acceptable depends entirely on what the surrounding test is checking.
+- **File wiring is a union, never an override.** `mimz.toml`'s
+  `[compile] verilog_files` (companion `.v` files) and the repeatable
+  `--extern-src` CLI flag are additive — a project's checked-in default
+  list and a one-off ad hoc file never fight each other, matching the
+  same union pattern the codebase already uses elsewhere for
+  config-vs-CLI defaults.
+
+See `tests/fixtures/extern/pll.mimz`/`pll_alias.mimz`/`pll.v` for the
+worked with/without-alias examples and `tests/extern.rs` for the
+end-to-end coverage; extern-module fixtures are deliberately excluded
+from the five-flavor/Icarus-differential sweep (they need a companion
+`.v` file that pipeline doesn't model).
+
 ## How the code has actually turned out (honest notes)
 
 - The front end (lexer → parser → emitter) went from empty repo to

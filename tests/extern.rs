@@ -13,6 +13,14 @@ fn mimz() -> Command {
     Command::new(env!("CARGO_BIN_EXE_mimz"))
 }
 
+fn fixture(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("extern")
+        .join(name)
+}
+
 /// A valid extern-module declaration + instantiation that checks clean
 /// (mirrors `crates/mimz-core/src/checker/tests.rs`'s
 /// `extern_module_valid_instantiation_checks_clean` fixture) — used for the
@@ -124,4 +132,74 @@ fn extern_sim_strict_flag_makes_mimz_test_fail_fast() {
     );
 
     fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn extern_module_checks_clean() {
+    let out = mimz()
+        .arg("check")
+        .arg(fixture("pll.mimz"))
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "`mimz check pll.mimz` should succeed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "[]");
+}
+
+#[test]
+fn extern_module_compiles_to_instantiation_only() {
+    let out_v = std::env::temp_dir().join("mimz_test_extern_pll.v");
+    let out = mimz()
+        .arg("compile")
+        .arg(fixture("pll.mimz"))
+        .arg("-o")
+        .arg(&out_v)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "`mimz compile pll.mimz` should succeed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v = std::fs::read_to_string(&out_v).unwrap();
+    assert!(
+        v.contains("Pll #(.MULT(4)) u ("),
+        "expected instantiation, got:\n{v}"
+    );
+    assert!(
+        !v.contains("module Pll"),
+        "must never emit a definition for Pll, got:\n{v}"
+    );
+    assert!(
+        v.contains("module ExternDemo"),
+        "the real caller module must still emit, got:\n{v}"
+    );
+    let _ = std::fs::remove_file(&out_v);
+}
+
+#[test]
+fn extern_module_alias_uses_real_verilog_name() {
+    let out_v = std::env::temp_dir().join("mimz_test_extern_alias.v");
+    let out = mimz()
+        .arg("compile")
+        .arg(fixture("pll_alias.mimz"))
+        .arg("-o")
+        .arg(&out_v)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v = std::fs::read_to_string(&out_v).unwrap();
+    assert!(
+        v.contains("PLL_HARD_IP_v2"),
+        "expected the aliased name, got:\n{v}"
+    );
+    let _ = std::fs::remove_file(&out_v);
 }

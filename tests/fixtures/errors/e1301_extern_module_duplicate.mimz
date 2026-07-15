@@ -1,0 +1,4 @@
+// expect: E1301
+extern module Pll { in clk_in: bit }
+extern module Pll { in clk_in: bit }
+module M { }

@@ -57,6 +57,22 @@ in values`, its bound taken from the source's own declared length, never
   bit layout `match` already extracts, on both the Verilog emitter and the
   simulator. No new diagnostics — reuses E0806 (arity), E0401 (width), and
   E0103 (unknown enum/variant), generalized to cover both call sites.
+- `extern module Name(params) { doc: "...", ports }` — Verilog FFI: declares
+  the port shape of a real, hand-written Verilog module (vendor IP, a
+  hardened PLL, a protocol core) without defining its body, instantiable
+  with zero new syntax through the existing `let u = Name(...) { conns }`
+  form. Optional `= "RealName"` alias when the mimz-facing name differs
+  from the real Verilog module's name; optional `doc: "..."` note. Ports
+  are scalar-only (`bit`/`bits[N]`/`signed[N]`, plus `clock`/`reset`) — new
+  diagnostics E1301 (duplicate extern module name) and E1302 (non-scalar
+  extern port). The emitter instantiates the real module by name and never
+  emits a definition for it. The simulator, which cannot execute real
+  Verilog, taints an extern instance's outputs `unknown` in the new default
+  `warn` sim mode (a `test`/`expect` against a tainted value still fails)
+  or hard-errors immediately in `strict` mode; select the mode via
+  `mimz.toml`'s top-level `extern_sim` field. Companion `.v` files reach
+  the toolchain via `mimz.toml [compile] verilog_files` and the repeatable
+  `--extern-src` CLI flag, which union additively.
 
 ---
 
