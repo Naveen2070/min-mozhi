@@ -17,7 +17,8 @@ use std::collections::HashMap;
 
 use crate::ast::{
     BundleDecl, Conn, Dir, EnumDecl, Expr, ExprKind, FnParam, FnStmt, ForEachSource, FuncDecl,
-    Inst, LValue, Module, ModuleItem, NamedArg, Pattern, SeqStmt, TestDecl, TopItem, Type,
+    Inst, LValue, Module, ModuleItem, ModuleTarget, NamedArg, Pattern, SeqStmt, TestDecl, TopItem,
+    Type,
 };
 
 use super::Checker;
@@ -777,9 +778,23 @@ impl<'a> Checker<'a> {
         if let Some(idx) = &inst.index {
             self.expr(file, sc, env, idx);
         }
-        let candidates = self.modules.get(&inst.module.name.name).cloned();
-        let target = self.resolve(file, candidates, &inst.module, |ck| {
-            ck.err(
+        // Try a real module first, then an extern declaration — only report
+        // "no module named" (E0102) if BOTH buckets are empty. If a bucket
+        // is non-empty but ambiguous/unqualified-mismatch, `self.resolve`
+        // already reports E0110/E0111 itself and returns `None` — reporting
+        // E0102 on top of that would double-report, so those branches pass
+        // a no-op `unknown` closure and let `resolve`'s internal reporting
+        // stand alone.
+        let module_candidates = self.modules.get(&inst.module.name.name).cloned();
+        let extern_candidates = self.externs.get(&inst.module.name.name).cloned();
+        let target: Option<ModuleTarget> = if let Some(candidates) = module_candidates {
+            self.resolve(file, Some(candidates), &inst.module, |_| {})
+                .map(ModuleTarget::Real)
+        } else if let Some(candidates) = extern_candidates {
+            self.resolve(file, Some(candidates), &inst.module, |_| {})
+                .map(ModuleTarget::Extern)
+        } else {
+            self.err(
                 file,
                 inst.module.span,
                 "E0102",
@@ -790,7 +805,8 @@ impl<'a> Checker<'a> {
                 "check the spelling, or add the `import` that brings it in \
                  (spec/02 section 1.5)",
             );
-        });
+            None
+        };
         let Some(target) = target else {
             // Still resolve the argument/connection expressions.
             for NamedArg { value, .. } in &inst.args {
@@ -802,15 +818,19 @@ impl<'a> Checker<'a> {
             return;
         };
 
-        let params: Vec<&str> = target.params.iter().map(|p| p.name.name.as_str()).collect();
+        let params: Vec<&str> = target
+            .params()
+            .iter()
+            .map(|p| p.name.name.as_str())
+            .collect();
         for NamedArg { name, value } in &inst.args {
             if !params.contains(&name.name.as_str()) {
                 let available = if params.is_empty() {
-                    format!("`{}` takes no parameters", target.name.name)
+                    format!("`{}` takes no parameters", target.name().name)
                 } else {
                     format!(
                         "`{}`'s parameters are: {}",
-                        target.name.name,
+                        target.name().name,
                         params.join(", ")
                     )
                 };
@@ -818,7 +838,7 @@ impl<'a> Checker<'a> {
                     file,
                     name.span,
                     "E0106",
-                    format!("`{}` has no parameter `{}`", target.name.name, name.name),
+                    format!("`{}` has no parameter `{}`", target.name().name, name.name),
                     available,
                 );
             }
@@ -831,7 +851,7 @@ impl<'a> Checker<'a> {
         let mut ins: Vec<&str> = Vec::new();
         let mut implicit: Vec<&str> = Vec::new();
         let mut outputs: Vec<&str> = Vec::new();
-        for item in &target.items {
+        for item in target.items() {
             match item {
                 ModuleItem::Port {
                     dir: Dir::In, name, ..
@@ -852,7 +872,7 @@ impl<'a> Checker<'a> {
                     file,
                     port.span,
                     "E0107",
-                    format!("`{}` is an output of `{}`", port.name, target.name.name),
+                    format!("`{}` is an output of `{}`", port.name, target.name().name),
                     format!(
                         "outputs are not connected here — read them with \
                          `{}.{}` (spec/02 section 1.5)",
@@ -867,8 +887,12 @@ impl<'a> Checker<'a> {
                     file,
                     port.span,
                     "E0107",
-                    format!("`{}` has no input named `{}`", target.name.name, port.name),
-                    format!("`{}`'s inputs are: {}", target.name.name, all.join(", ")),
+                    format!(
+                        "`{}` has no input named `{}`",
+                        target.name().name,
+                        port.name
+                    ),
+                    format!("`{}`'s inputs are: {}", target.name().name, all.join(", ")),
                 );
             } else if connected.contains(&port.name.as_str()) {
                 self.err(
@@ -896,7 +920,7 @@ impl<'a> Checker<'a> {
                 "E0302",
                 format!(
                     "`{}` leaves input{} `{}` unconnected",
-                    target.name.name,
+                    target.name().name,
                     if missing.len() == 1 { "" } else { "s" },
                     missing.join("`, `")
                 ),
@@ -1385,15 +1409,22 @@ impl<'a> Checker<'a> {
         // `check_inst` already ran (and already reported E0102/E0110/E0111
         // for this same `inst.module`), we'd otherwise double-report.
         let before = self.diags.len();
-        let candidates = self.modules.get(&inst.module.name.name).cloned();
-        let target = self.resolve(file, candidates, &inst.module, |_| {});
+        let module_candidates = self.modules.get(&inst.module.name.name).cloned();
+        let target: Option<ModuleTarget> = if module_candidates.is_some() {
+            self.resolve(file, module_candidates, &inst.module, |_| {})
+                .map(ModuleTarget::Real)
+        } else {
+            let extern_candidates = self.externs.get(&inst.module.name.name).cloned();
+            self.resolve(file, extern_candidates, &inst.module, |_| {})
+                .map(ModuleTarget::Extern)
+        };
         self.diags.truncate(before);
         let Some(target) = target else {
             return; // unknown/ambiguous/unmatched module already reported at the `let`
         };
         let mut outputs: Vec<&str> = Vec::new();
         let mut is_input = false;
-        for item in &target.items {
+        for item in target.items() {
             match item {
                 ModuleItem::Port {
                     dir: Dir::Out,
@@ -1415,14 +1446,15 @@ impl<'a> Checker<'a> {
             format!(
                 "`{}` is an input of `{}` — inputs are connected at the `let`, \
                  only outputs are read with `.`",
-                field.name, target.name.name
+                field.name,
+                target.name().name
             )
         } else if outputs.is_empty() {
-            format!("`{}` has no outputs", target.name.name)
+            format!("`{}` has no outputs", target.name().name)
         } else {
             format!(
                 "`{}`'s outputs are: {}",
-                target.name.name,
+                target.name().name,
                 outputs.join(", ")
             )
         };
@@ -1432,7 +1464,8 @@ impl<'a> Checker<'a> {
             "E0104",
             format!(
                 "`{}` has no output named `{}`",
-                target.name.name, field.name
+                target.name().name,
+                field.name
             ),
             help,
         );

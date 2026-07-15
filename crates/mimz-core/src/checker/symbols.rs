@@ -1,9 +1,10 @@
 //! Pass 1 — project symbol tables and per-file duplicate detection.
 //!
-//! Builds `Checker::modules`, `Checker::enums`, and `Checker::bundles` as
-//! multimaps (name -> every declaring file/node) and reports E0001/E0002/
-//! E0909 for a name reused within the SAME file. Reusing a name across
-//! different files is legal here — it is resolved (or flagged ambiguous)
+//! Builds `Checker::modules`, `Checker::enums`, `Checker::bundles`, and
+//! `Checker::externs` as multimaps (name -> every declaring file/node) and
+//! reports E0001/E0002/E0909/E1301 for a name reused within the SAME file.
+//! Reusing a name across different files is legal here — it is resolved
+//! (or flagged ambiguous)
 //! at use-site by qualifying the reference (spec/02 section 1.5b), which
 //! is `names.rs`'s job, not this pass's. `funcs` stays project-wide unique
 //! (D-PKG-1) and is unaffected by this pass's per-file relaxation.
@@ -60,6 +61,26 @@ impl<'a> Checker<'a> {
                     }
                     TopItem::Const(_) | TopItem::Test(_) => {} // consteval.rs / names.rs
                     TopItem::Error(_) => {}                    // parse-recovery placeholder
+                    TopItem::ExternModule(em) => {
+                        let entry = self.externs.entry(em.name.name.clone()).or_default();
+                        if entry.iter().any(|&(f, _)| f == file) {
+                            self.err(
+                                file,
+                                em.name.span,
+                                "E1301",
+                                format!(
+                                    "extern module `{}` is defined more than once in this file",
+                                    em.name.name
+                                ),
+                                "extern module names are unique within one file — rename one \
+                                 of them (a different file may reuse this name; qualify the \
+                                 reference with the import path if it becomes ambiguous, \
+                                 spec/02 section 1.5b)",
+                            );
+                        } else {
+                            entry.push((file, em));
+                        }
+                    }
                     TopItem::Bundle(b) => {
                         let entry = self.bundles.entry(b.name.name.clone()).or_default();
                         if entry.iter().any(|&(f, _)| f == file) {
