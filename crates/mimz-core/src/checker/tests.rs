@@ -2401,8 +2401,15 @@ fn extern_module_scalar_ports_check_clean() {
 // reading a nonexistent OUTPUT, a different call site).
 #[test]
 fn extern_instantiation_checks_clean_with_correct_connections() {
+    // `clk_in` must be declared `clock` (not `in clk_in: bit`) to accept a
+    // clock-typed signal — `bit` and `clock` are distinct types (`same()`
+    // in widths/mod.rs), same rule real modules already follow. Task 5
+    // wires up width-checking for extern instantiations; this fixture
+    // predates that (Task 4 only checked names/arity) and connected a
+    // clock signal to a `bit` port, which is a genuine E0401 once widths
+    // are actually checked.
     let src = "extern module Pll(MULT: int = 2) {\n  \
-               in clk_in: bit\n  out clk_out: bit\n  out locked: bit\n}\n\
+               clock clk_in\n  out clk_out: bit\n  out locked: bit\n}\n\
                module M {\n  clock sysclk\n  out fast: bit\n  out ok: bit\n  \
                let u = Pll(MULT: 4) { clk_in: sysclk }\n  fast = u.clk_out\n  ok = u.locked\n}\n";
     check_one(src).expect("valid extern instantiation must check clean");
@@ -2420,4 +2427,12 @@ fn extern_instantiation_unknown_port_is_reported() {
     let src = "extern module Pll { in clk_in: bit }\n\
                module M {\n  in x: bit\n  let u = Pll() { nope: x }\n}\n";
     first_err(src, "E0107");
+}
+
+#[test]
+fn extern_instantiation_wrong_width_connection_is_e0401() {
+    let src = "extern module Pll { in clk_in: bit }\n\
+               module M {\n  in wide: bits[4]\n  \
+               let u = Pll() { clk_in: wide }\n}\n";
+    first_err(src, "E0401");
 }

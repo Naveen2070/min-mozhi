@@ -184,6 +184,8 @@ pub struct Project<'a> {
     /// All file-level bundle declarations, by name. Consulted by the emitter
     /// to flatten bundle-typed ports/wires to individual Verilog signals.
     pub bundles: HashMap<String, Vec<(usize, &'a BundleDecl)>>,
+    /// All `extern module` declarations, by name — mirrors `modules`.
+    pub externs: HashMap<String, Vec<(usize, &'a ExternModule)>>,
 }
 
 impl<'a> Project<'a> {
@@ -198,6 +200,7 @@ impl<'a> Project<'a> {
         let mut enums: HashMap<String, Vec<(usize, &EnumDecl)>> = HashMap::new();
         let mut funcs = HashMap::new();
         let mut bundles: HashMap<String, Vec<(usize, &BundleDecl)>> = HashMap::new();
+        let mut externs: HashMap<String, Vec<(usize, &ExternModule)>> = HashMap::new();
         let mut diags = Vec::new();
         for (file_idx, file) in files.iter().enumerate() {
             for item in &file.items {
@@ -249,10 +252,29 @@ impl<'a> Project<'a> {
                             .push((file_idx, b));
                     }
                     TopItem::Const(_) | TopItem::Test(_) | TopItem::Error(_) => {}
-                    // Extern declarations aren't resolvable instantiation
-                    // targets yet — that wiring lands with the Verilog FFI
-                    // plan's checker/emitter tasks (Tasks 4-6).
-                    TopItem::ExternModule(_) => {}
+                    TopItem::ExternModule(em) => {
+                        let entry = externs.entry(em.name.name.clone()).or_default();
+                        if entry.iter().any(|&(f, _)| f == file_idx) {
+                            diags.push(
+                                Diag::new(
+                                    em.name.span,
+                                    format!(
+                                        "extern module `{}` is defined more than once in this file",
+                                        em.name.name
+                                    ),
+                                )
+                                .with_help(
+                                    "extern module names are unique within one file — rename one \
+                                     of them (a different file may reuse this name; qualify the \
+                                     reference with the import path if it becomes ambiguous, \
+                                     spec/02 section 1.5b)",
+                                )
+                                .with_file(file_idx),
+                            );
+                        } else {
+                            entry.push((file_idx, em));
+                        }
+                    }
                 }
             }
         }
@@ -262,6 +284,7 @@ impl<'a> Project<'a> {
                 enums,
                 funcs,
                 bundles,
+                externs,
             })
         } else {
             Err(diags)
@@ -282,6 +305,29 @@ impl<'a> Project<'a> {
     /// give the module's own declaration header (see `module.rs::instance`).
     pub fn resolve_module_with_file(&self, q: &QualIdent) -> Option<(usize, &'a Module)> {
         Self::resolve(&self.modules, q)
+    }
+    /// Resolves a (possibly package-qualified) name to its `extern module`
+    /// declaration.
+    pub fn resolve_extern(&self, q: &QualIdent) -> Option<&'a ExternModule> {
+        Self::resolve(&self.externs, q).map(|(_, e)| e)
+    }
+    /// Like [`Self::resolve_extern`], but also returns the declaring file's index.
+    pub fn resolve_extern_with_file(&self, q: &QualIdent) -> Option<(usize, &'a ExternModule)> {
+        Self::resolve(&self.externs, q)
+    }
+    /// Resolves an instantiation target against BOTH real modules and
+    /// extern declarations — real modules take precedence if a name
+    /// somehow exists in both maps (should be unreachable in a checked
+    /// program; the checker's per-file uniqueness doesn't cross-check
+    /// categories, so this is a defensive tie-break, not a real ambiguity
+    /// rule).
+    pub fn resolve_target_with_file(&self, q: &QualIdent) -> Option<(usize, ModuleTarget<'a>)> {
+        if let Some((f, m)) = self.resolve_module_with_file(q) {
+            Some((f, ModuleTarget::Real(m)))
+        } else {
+            self.resolve_extern_with_file(q)
+                .map(|(f, e)| (f, ModuleTarget::Extern(e)))
+        }
     }
     /// Resolves a (possibly package-qualified) name to its `enum` declaration.
     pub fn resolve_enum(&self, q: &QualIdent) -> Option<&'a EnumDecl> {
@@ -660,6 +706,40 @@ mod tests {
         let files = [parse(src)];
         let project = Project::from_files(&files).unwrap();
         emit(&project, &files).expect_err("emit should fail")
+    }
+
+    #[test]
+    fn extern_instantiation_emits_only_the_instance_line_no_definition() {
+        let v = emit_src(
+            "extern module Pll(MULT: int = 2) {\n  \
+             in clk_in: bit\n  out clk_out: bit\n  out locked: bit\n}\n\
+             module M {\n  clock sysclk\n  out fast: bit\n  out ok: bit\n  \
+             let u = Pll(MULT: 4) { clk_in: sysclk, clk_out: fast, locked: ok }\n}\n",
+        );
+        assert!(
+            v.contains("Pll #(.MULT(4)) u ("),
+            "expected an instantiation of the real name `Pll`, got:\n{v}"
+        );
+        assert!(
+            !v.contains("module Pll"),
+            "extern modules must never get their own definition emitted, got:\n{v}"
+        );
+    }
+
+    #[test]
+    fn extern_instantiation_uses_the_alias_when_set() {
+        let v = emit_src(
+            "extern module Pll = \"PLL_HARD_IP_v2\" {\n  in clk_in: bit\n}\n\
+             module M {\n  clock sysclk\n  let u = Pll() { clk_in: sysclk }\n}\n",
+        );
+        assert!(
+            v.contains("PLL_HARD_IP_v2"),
+            "expected the aliased real name in the instantiation, got:\n{v}"
+        );
+        assert!(
+            !v.contains("Pll ("),
+            "the Min-Mozhi-facing name must not leak into the instantiation text (only the alias should), got:\n{v}"
+        );
     }
 
     #[test]
