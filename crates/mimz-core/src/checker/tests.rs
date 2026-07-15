@@ -2356,3 +2356,68 @@ fn array_typed_output_with_constant_indexed_drive_is_e0416_not_a_panic() {
     let src = "module M {\n  out vals: bits[8][4]\n  vals[0] = 1\n}\n";
     assert!(any_code(src, "E0416"));
 }
+
+#[test]
+fn extern_module_duplicate_in_same_file_is_e1301() {
+    let src = "extern module Pll { in clk_in: bit }\n\
+               extern module Pll { in clk_in: bit }\n\
+               module M { }\n";
+    first_err(src, "E1301");
+}
+
+#[test]
+fn extern_module_bundle_typed_port_is_e1302() {
+    let src = "bundle B { x: bit }\n\
+               extern module Pll { in b: B }\n\
+               module M { }\n";
+    first_err(src, "E1302");
+}
+
+#[test]
+fn extern_module_array_typed_port_is_e1302() {
+    let src = "extern module Pll { in vals: bits[8][4] }\nmodule M { }\n";
+    first_err(src, "E1302");
+}
+
+#[test]
+fn extern_module_scalar_ports_check_clean() {
+    let src = "extern module Pll(MULT: int = 2) {\n  \
+               doc: \"test\"\n  in clk_in: bit\n  out clk_out: bit\n  out locked: bit\n}\n\
+               module M { }\n";
+    check_one(src).expect("a scalar-only extern module must check clean");
+}
+
+// NOTE on the three tests below: the task brief's Step 1 sketch connected
+// extern OUTPUT ports (`clk_out`, `locked`) inside the `{ conns }` block,
+// but `check_inst` already rejects that for real modules too (E0107, see
+// `connecting_an_output_is_e0107` above) — outputs are read back with
+// `inst.field`, never connected. The sources below are corrected to match
+// that existing, unchanged semantics: only the input is connected, outputs
+// are read via `u.field`. Same correction applies to test 2's expected
+// code (E0302, not reachable if an output were connected first — E0107
+// would fire before the "missing input" check ever runs) and test 3's
+// expected code (E0107 "has no input named", the real code `check_inst`
+// emits for an unknown connection-name; E0104 is `inst_output`'s code for
+// reading a nonexistent OUTPUT, a different call site).
+#[test]
+fn extern_instantiation_checks_clean_with_correct_connections() {
+    let src = "extern module Pll(MULT: int = 2) {\n  \
+               in clk_in: bit\n  out clk_out: bit\n  out locked: bit\n}\n\
+               module M {\n  clock sysclk\n  out fast: bit\n  out ok: bit\n  \
+               let u = Pll(MULT: 4) { clk_in: sysclk }\n  fast = u.clk_out\n  ok = u.locked\n}\n";
+    check_one(src).expect("valid extern instantiation must check clean");
+}
+
+#[test]
+fn extern_instantiation_missing_input_connection_is_reported() {
+    let src = "extern module Pll { in clk_in: bit\n  out clk_out: bit }\n\
+               module M {\n  out fast: bit\n  let u = Pll() { }\n  fast = u.clk_out\n}\n";
+    first_err(src, "E0302");
+}
+
+#[test]
+fn extern_instantiation_unknown_port_is_reported() {
+    let src = "extern module Pll { in clk_in: bit }\n\
+               module M {\n  in x: bit\n  let u = Pll() { nope: x }\n}\n";
+    first_err(src, "E0107");
+}
