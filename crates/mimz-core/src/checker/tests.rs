@@ -2660,3 +2660,48 @@ fn port_connection_bundle_shared_field_wrong_width_is_e0401() {
         d.msg
     );
 }
+
+#[test]
+fn structural_match_composes_across_fn_return_and_port_connection() {
+    // Integration test: ONE structurally-compatible bundle pair
+    // (HasUART/SensorData) threaded through TWO of the four
+    // `bundle_shape_match` call sites in the SAME design — a `fn` return
+    // (`check_return_ty`, widths/mod.rs) followed by a module-port
+    // connection (`check_inst_widths`, widths/insts.rs) — to prove the
+    // call sites compose in one program, not just in isolation.
+    //
+    // `as_uart`'s body returns its `SensorData`-typed param `s` as the
+    // declared `HasUART` return type: structural match #1 (check_return_ty).
+    // The call's inferred type is the function's DECLARED return type
+    // (`HasUART`), which is then fed into `Child`'s `u: SensorData` port:
+    // structural match #2 (check_inst_widths), in the opposite direction.
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle SensorData { tx: bit, rx: bit }\n\
+               fn as_uart(s: SensorData) -> HasUART { s }\n\
+               module Child { in u: SensorData }\n\
+               module M {\n  in a_tx: bit\n  in a_rx: bit\n  \
+               wire s: SensorData = { tx: a_tx, rx: a_rx }\n  \
+               wire h: HasUART = as_uart(s)\n  \
+               let c = Child() { u: h }\n}\n";
+    check_one(src).expect(
+        "one structurally-compatible bundle pair threaded through a fn return \
+         and a port connection in the same design must check clean",
+    );
+}
+
+#[test]
+fn drive_bundle_zero_required_fields_always_compatible() {
+    // Edge case: `bundle Empty {}` has zero required fields, so
+    // `bundle_shape_match`'s `for` loop over `required`'s fields is a
+    // no-op — it must return `Compatible` no matter what the provided
+    // bundle declares. Routed through the Drive-path call site (simplest),
+    // mirroring `drive_bundle_same_name_regression_still_checks_clean`'s
+    // shape.
+    let src = "bundle Empty {}\n\
+               bundle SensorData { tx: bit, rx: bit }\n\
+               module M {\n  in a_tx: bit\n  in a_rx: bit\n  \
+               wire a: SensorData = { tx: a_tx, rx: a_rx }\n  \
+               out b: Empty\n  \
+               b = a\n}\n";
+    check_one(src).expect("a zero-required-field bundle must accept any provided bundle trivially");
+}

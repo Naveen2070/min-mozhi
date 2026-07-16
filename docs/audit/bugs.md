@@ -370,3 +370,63 @@ rather than rejecting it, so the example was never actually broken — but
 the fix's param-seeded dedup set closes this variant too: the golden
 (`tests/golden/foreach_sum.v`, and its pure-Tamil twin
 `tests/golden/tamil_pure_kootu.v`) no longer emits the redundant `reg` line.
+
+---
+
+## BUG-10 (MEDIUM) — Bundle-typed `fn` params/returns never flatten in emitted Verilog
+
+**What.** A bundle-typed `fn` parameter or return type is not flattened to
+one Verilog port per field the way module ports and wires are. A bare
+(non-parametric) bundle name used as a `fn` param/return type **hard-errors**
+at emit time (`"unknown type 'X' — not a built-in and not a declared enum"`).
+The parametric form (`Bundle(W: N)`) doesn't hard-error, but silently emits
+**invalid Verilog**: the function is declared with one unflattened
+`input u;` instead of `input u_tx; input u_rx;`, a call site passes a single
+argument (`pick_tx(a)`) instead of the flattened fields, and a bundle-typed
+`fn` call used as a wire initializer emits the syntactically invalid
+`assign b_tx = as_uart(a)_tx;` (a field suffix appended directly to a
+function-call expression).
+
+**Cause.** `render_fn_decl` (`crates/mimz-core/src/emit_verilog/module.rs`)
+calls `self.width(&decl.ret)` / `self.width(&param.ty)` directly with no
+bundle-flatten check beforehand. `width()`'s `Type::Named` arm only
+recognizes enums (hence the hard error for the bare form); its `Type::Bundle`
+arm silently returns an empty width string instead of flattening (hence the
+invalid-but-non-erroring output for the parametric form). Module
+ports/wires avoid this because their own emission paths
+(`module.rs:60-70`, `130-140`) check bundle-ness and flatten _before_ ever
+calling `width()` — `render_fn_decl` has no equivalent check. This
+contradicts `spec/02-syntax-and-grammar.md`'s claim that bundle flattening
+"applies uniformly to ... `fn` bundle-typed args/returns."
+
+**How found.** While writing emission-equality tests for feature 2.9
+(structural interface matching)'s final whole-branch review fix pass
+(2026-07-16) — the first tests to exercise a bundle-typed `fn` signature at
+the emitter level at all. Unrelated to structural matching itself: nominal
+and structurally-matched bundles hit the identical bug identically (both
+compile "successfully" via the parametric-form workaround and produce
+byte-identical, though invalid, Verilog) — pre-existing, not a regression
+introduced by feature 2.9.
+
+**Severity.** MEDIUM — silently produces Verilog a real toolchain rejects
+(or a hard compiler error for the bare form) for a scenario the spec
+documents as supported; no example or golden currently exercises a
+bundle-typed `fn` param/return, so nothing else was silently broken by it.
+
+**Workaround.** None at the language level — avoid bundle-typed `fn`
+params/returns until fixed; pass individual fields instead.
+
+**Fix.** Not yet fixed — filed as a follow-up. Likely shape: give
+`render_fn_decl` the same bundle-flatten-before-`width()` check the module
+port/wire paths already have, plus a `FnCall` RHS case in the "RHS is a
+signal" branch (`module.rs:762-770`) so a bundle-returning call's per-field
+uses resolve to `<call>_<field>` correctly instead of literal string
+concatenation.
+
+**Test.** None yet (bug is open). The two emission-equality tests that
+surfaced it (`structurally_matched_fn_arg_emits_same_as_nominal_match`,
+`structurally_matched_fn_return_emits_same_as_nominal_match`,
+`crates/mimz-core/src/emit_verilog/mod.rs`) route around the hard-error path
+via a dummy `W: int = 1` bundle param and assert only that structural vs.
+nominal bundle naming doesn't change the (still-invalid) emitted output —
+they do not assert the output is _correct_ Verilog, since it isn't yet.

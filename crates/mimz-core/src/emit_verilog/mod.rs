@@ -1396,4 +1396,71 @@ mod tests {
              Verilog to the same-name case"
         );
     }
+
+    #[test]
+    fn structurally_matched_fn_arg_emits_same_as_nominal_match() {
+        // `HasUART`/`SensorData` are given a dummy `W` param (unused by the
+        // fields) so the `fn` signature references them as `Type::Bundle`,
+        // not bare `Type::Named` — `render_fn_decl`'s `self.width(&param.ty)`
+        // has no bundle-flatten special case (unlike ports/wires, which
+        // check bundle-ness before ever calling `width`), so a bare
+        // zero-param bundle name there hits `width`'s `Type::Named` arm and
+        // hard-errors ("unknown type ... not a declared enum"). This is a
+        // separate, pre-existing emitter gap (bundle-typed `fn` params/
+        // returns are never flattened to per-field ports the way module
+        // ports/wires are — confirmed emitting `input u;` unflattened and a
+        // single-arg call site instead of `input u_tx; input u_rx;` /
+        // `pick_tx(a_tx, a_rx)`) — unrelated to structural matching itself
+        // and out of scope for this fix pass; using the parametric form
+        // here only sidesteps the hard-error so this test can still assert
+        // the thing feature 2.9 owns: the emitted text does not vary with
+        // the bundle's declared NAME, nominal or structural.
+        let nominal = emit_src(
+            "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
+             fn pick_tx(u: HasUART(W: 1)) -> bit { u.tx }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
+             wire a: HasUART(W: 1) = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
+        );
+        let structural = emit_src(
+            "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
+             bundle SensorData(W: int = 1) { tx: bit, rx: bit }\n\
+             fn pick_tx(u: HasUART(W: 1)) -> bit { u.tx }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
+             wire a: SensorData(W: 1) = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
+        );
+        assert_eq!(
+            nominal, structural,
+            "a structurally-matched (differently-named) bundle `fn` argument must \
+             emit byte-identical Verilog to the same-name case"
+        );
+    }
+
+    #[test]
+    fn structurally_matched_fn_return_emits_same_as_nominal_match() {
+        // Same dummy-`W`-param workaround as the `fn`-arg test above (see
+        // its comment) — sidesteps the unrelated `render_fn_decl` bundle-
+        // flatten gap so this can still assert feature 2.9's own invariant:
+        // a structurally-matched `fn` return emits identically to the
+        // same-name case.
+        let nominal = emit_src(
+            "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
+             fn as_uart(u: HasUART(W: 1)) -> HasUART(W: 1) { u }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
+             wire a: HasUART(W: 1) = { tx: a_tx, rx: a_rx }\n  \
+             wire b: HasUART(W: 1) = as_uart(a)\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
+        );
+        let structural = emit_src(
+            "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
+             bundle SensorData(W: int = 1) { tx: bit, rx: bit }\n\
+             fn as_uart(u: SensorData(W: 1)) -> HasUART(W: 1) { u }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
+             wire a: SensorData(W: 1) = { tx: a_tx, rx: a_rx }\n  \
+             wire b: HasUART(W: 1) = as_uart(a)\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
+        );
+        assert_eq!(
+            nominal, structural,
+            "a structurally-matched (differently-named) bundle `fn` return must \
+             emit byte-identical Verilog to the same-name case"
+        );
+    }
 }
