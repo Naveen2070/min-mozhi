@@ -708,18 +708,18 @@ prefixed `portname_fieldname`. Wires and regs flatten the same way.
 
 ### Bundle checker rules
 
-| Code  | Triggered when                                                                                                                            |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| E0901 | Bundle literal missing a required field; or (v0.2.24, 2026-07-11) a bundle-typed `fn` call argument or `return` value has the wrong shape |
-| E0902 | Bundle literal references an unknown field name                                                                                           |
-| E0903 | Duplicate binding name in `let { }` destructure                                                                                           |
-| E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (parser error)                                                      |
-| E0905 | Bundle field type is `clock` or `reset` (deferred — Phase 2)                                                                              |
-| E0906 | Bundle type reference: unknown bundle name or wrong param count                                                                           |
-| E0907 | Bundle field type mismatch (structural — a shared field's type differs)                                                                   |
-| E0908 | Duplicate field name in `bundle` declaration (deferred — Phase 2)                                                                         |
-| E0909 | Bundle declared more than once (project-wide name collision)                                                                              |
-| E0910 | Bundle is missing a required field (structural — extra fields are fine, missing ones are not)                                             |
+| Code  | Triggered when                                                                                                                                                                                                                                          |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E0901 | Bundle literal (`{ field: expr, ... }`) missing a required field, at any site a literal can appear (Drive RHS, `fn` call argument, `fn` return/tail) — not the same as passing an already bundle-typed value; that structural case is E0910/E0907/E0804 |
+| E0902 | Bundle literal references an unknown field name                                                                                                                                                                                                         |
+| E0903 | Duplicate binding name in `let { }` destructure                                                                                                                                                                                                         |
+| E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (parser error)                                                                                                                                                                    |
+| E0905 | Bundle field type is `clock` or `reset` (deferred — Phase 2)                                                                                                                                                                                            |
+| E0906 | Bundle type reference: unknown bundle name or wrong param count                                                                                                                                                                                         |
+| E0907 | Bundle field type mismatch (structural — a shared field's type differs)                                                                                                                                                                                 |
+| E0908 | Duplicate field name in `bundle` declaration (deferred — Phase 2)                                                                                                                                                                                       |
+| E0909 | Bundle declared more than once (project-wide name collision)                                                                                                                                                                                            |
+| E0910 | Bundle is missing a required field (structural — extra fields are fine, missing ones are not)                                                                                                                                                           |
 
 ---
 
