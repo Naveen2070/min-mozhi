@@ -414,6 +414,26 @@ impl Emitter<'_> {
                         s.push_str(&format!("        input {ew}{}_{i};\n", param.name.name));
                     }
                 }
+                // BUG-10 (docs/audit/bugs.md): a bundle-typed `fn` parameter
+                // is never a single scalar `input` — it flattens to one
+                // `input` per field, same convention module ports/wires use
+                // (module.rs:60-78, 130-140). `expr.rs`'s `Field` arm
+                // already renders `u.tx` as `u_tx` unconditionally, so the
+                // body needs no change — only this declaration and the
+                // call-site argument expansion below (`ExprKind::FnCall`
+                // in expr.rs) were missing the flatten step.
+                Type::Bundle { name: bname, args } => {
+                    for (fname, fty) in self.resolve_bundle_fields(bname, args) {
+                        let fw = self.width_resolved(&fty);
+                        s.push_str(&format!("        input {fw}{}_{fname};\n", param.name.name));
+                    }
+                }
+                Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                    for (fname, fty) in self.resolve_bundle_fields(id, &[]) {
+                        let fw = self.width_resolved(&fty);
+                        s.push_str(&format!("        input {fw}{}_{fname};\n", param.name.name));
+                    }
+                }
                 other => {
                     let pw = self.width(other);
                     s.push_str(&format!("        input {pw}{};\n", param.name.name));
