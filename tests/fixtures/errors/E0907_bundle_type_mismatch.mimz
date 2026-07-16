@@ -1,6 +1,6 @@
 // expect: E0907
-bundle A { valid: bit }
-bundle B { valid: bit }
+bundle A { valid: bit, data: bits[4] }
+bundle B { valid: bit, data: bits[8] }
 module Top {
   in x: A
   out y: B

@@ -11,8 +11,8 @@ use super::super::Checker;
 use super::super::consteval;
 use super::super::names::Bind;
 use super::{
-    Ty, Wcx, bits, fits_bits, fits_in_count, fits_signed, max_signed_v, max_unsigned, min_bits,
-    min_signed, min_signed_bits, same, show,
+    BundleShapeMatch, Ty, Wcx, bits, fits_bits, fits_in_count, fits_signed, max_signed_v,
+    max_unsigned, min_bits, min_signed, min_signed_bits, same, show,
 };
 
 impl<'a> Checker<'a> {
@@ -276,14 +276,38 @@ impl<'a> Checker<'a> {
             (Ty::Unknown, _) | (_, Ty::Unknown) => {}
             (Ty::CtInt(v), t) => self.fit(cx, e.span, v, t),
             (g, t) if same(&g, &t) => {}
-            (Ty::Bundle { name: g, .. }, Ty::Bundle { name: t, .. }) => {
-                self.err(
-                    cx.file,
-                    e.span,
-                    "E0907",
-                    format!("bundle type mismatch: cannot assign `{g}` where `{t}` is expected"),
-                    "bundle types are matched by name — they must be the same bundle declaration",
-                );
+            (g @ Ty::Bundle { .. }, t @ Ty::Bundle { .. }) => {
+                match self.bundle_shape_match(cx, t, g, e.span) {
+                    BundleShapeMatch::Compatible => {}
+                    BundleShapeMatch::MissingField(field) => {
+                        self.err(
+                            cx.file,
+                            e.span,
+                            "E0910",
+                            format!(
+                                "the provided bundle is missing field `{field}`, which the \
+                                 expected bundle type requires"
+                            ),
+                            "structural matching allows extra fields on the provided bundle, \
+                             but never fewer — add the missing field, or use a bundle that \
+                             already has it",
+                        );
+                    }
+                    BundleShapeMatch::FieldTypeMismatch {
+                        field,
+                        expected,
+                        got,
+                    } => {
+                        self.err(
+                            cx.file,
+                            e.span,
+                            "E0907",
+                            format!("field `{field}`: expected {expected}, got {got}"),
+                            "widths/types must match exactly — nothing resizes implicitly at \
+                             a bundle field boundary",
+                        );
+                    }
+                }
             }
             (g, t) => {
                 // The classic dropped-carry moment: `value + 1` into a
