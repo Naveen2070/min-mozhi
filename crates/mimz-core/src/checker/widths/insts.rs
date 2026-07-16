@@ -11,7 +11,7 @@ use crate::ast::{Conn, Dir, Inst, ModuleItem, ModuleTarget};
 use super::super::Checker;
 use super::super::consteval::{self, Env};
 use super::super::names::Scope;
-use super::{Config, Ty, Wcx, same, show};
+use super::{BundleShapeMatch, Config, Ty, Wcx, same, show};
 
 /// One instantiation, resolved: which module (real or extern), in which
 /// file, with the child-side environment (file consts + parameter binding)
@@ -190,6 +190,48 @@ impl<'a> Checker<'a> {
                     }
                     if let Ty::CtInt(v) = got {
                         self.fit(cx, signal.span, v, t);
+                        continue;
+                    }
+                    if let (g @ Ty::Bundle { .. }, exp @ Ty::Bundle { .. }) = (got, t) {
+                        match self.bundle_shape_match(cx, exp, g, signal.span) {
+                            BundleShapeMatch::Compatible => {}
+                            BundleShapeMatch::MissingField(field) => {
+                                self.err(
+                                    cx.file,
+                                    signal.span,
+                                    "E0910",
+                                    format!(
+                                        "`{}`'s port `{}` requires field `{field}`, which the \
+                                         connected bundle doesn't have",
+                                        child.target.name().name,
+                                        port.name,
+                                    ),
+                                    "structural matching allows extra fields on the connected \
+                                     bundle, but never fewer — add the missing field, or \
+                                     connect a bundle that already has it",
+                                );
+                            }
+                            BundleShapeMatch::FieldTypeMismatch {
+                                field,
+                                expected,
+                                got,
+                            } => {
+                                self.err(
+                                    cx.file,
+                                    signal.span,
+                                    "E0401",
+                                    format!(
+                                        "`{}`'s port `{}`, field `{field}`: expected {expected}, \
+                                         got {got}",
+                                        child.target.name().name,
+                                        port.name,
+                                    ),
+                                    "widths must match exactly at module boundaries — \
+                                     `extend`/`trunc`/slice the signal, or change the \
+                                     parameter this width comes from",
+                                );
+                            }
+                        }
                         continue;
                     }
                     if !same(&got, &t) {

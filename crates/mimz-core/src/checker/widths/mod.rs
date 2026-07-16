@@ -1663,6 +1663,42 @@ impl<'a> Checker<'a> {
             (Ty::Unknown, _) | (_, Ty::Unknown) => {}
             (Ty::CtInt(v), t) => self.fit(cx, span, v, t),
             (g, t) if same(&g, &t) => {}
+            (g @ Ty::Bundle { .. }, t @ Ty::Bundle { .. }) => {
+                match self.bundle_shape_match(cx, t, g, span) {
+                    BundleShapeMatch::Compatible => {}
+                    BundleShapeMatch::MissingField(field) => {
+                        self.err(
+                            cx.file,
+                            span,
+                            "E0910",
+                            format!(
+                                "function `{func_name}` returns a bundle missing field \
+                                 `{field}`, which the declared return type requires"
+                            ),
+                            "structural matching allows extra fields on the returned bundle, \
+                             but never fewer — add the missing field, or return a bundle that \
+                             already has it",
+                        );
+                    }
+                    BundleShapeMatch::FieldTypeMismatch {
+                        field,
+                        expected,
+                        got,
+                    } => {
+                        self.err(
+                            cx.file,
+                            span,
+                            "E0804",
+                            format!(
+                                "function `{func_name}` returns field `{field}` as {got}, but \
+                                 the declared return type expects {expected}"
+                            ),
+                            "widths/types must match exactly — nothing resizes implicitly at \
+                             a bundle field boundary",
+                        );
+                    }
+                }
+            }
             (g, t) => {
                 self.err(
                     cx.file,
