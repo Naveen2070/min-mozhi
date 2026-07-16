@@ -73,6 +73,16 @@ in values`, its bound taken from the source's own declared length, never
   `mimz.toml`'s top-level `extern_sim` field. Companion `.v` files reach
   the toolchain via `mimz.toml [compile] verilog_files` and the repeatable
   `--extern-src` CLI flag, which union additively.
+- Structural bundle matching (feature 2.9): a bundle satisfies any
+  bundle-typed slot whose required fields it covers with exactly-matching
+  types, regardless of the two bundles' declared names — applies to `let`
+  bindings, `Drive` assignments, module-instantiation port connections, and
+  `fn` bundle-typed args/returns. Extra fields on the provided side are
+  allowed; shared fields never coerce width. New diagnostic E0910 (a
+  required field is missing entirely); E0907 now describes a structural
+  field-type mismatch instead of a purely nominal one. Also fixes a
+  pre-existing bug where a bundle-typed port connected across a module
+  instantiation emitted broken (non-flattened) Verilog.
 
 ---
 

@@ -694,8 +694,13 @@ Rules:
 - A bundle literal `{ field: expr, ... }` must name every field (E0901/E0902).
 - `let { f1, f2 } = expr` — partial destructure is allowed. Field rename
   syntax `{ f: alias }` is a parse error (E0904); use dot access instead.
-- Bundle types are nominally typed: `A` and `B` are different types even if
-  their fields match (structural subtyping is deferred to feature 2.9).
+- Bundle types are matched STRUCTURALLY (feature 2.9, shipped): a bundle
+  satisfies any bundle-typed slot whose required fields it covers with
+  exactly-matching types (widths never coerce), regardless of the two
+  bundles' declared names. Extra fields on the provided side are allowed
+  and ignored. Applies uniformly to `let` bindings, `Drive` assignments,
+  module-instantiation port connections, and `fn` bundle-typed
+  args/returns. Fully automatic — no conformance declaration needed.
 
 **Verilog emission:** a bundle-typed port `in req: MemBus(WIDTH: 32)` lowers to
 `input wire req_valid; input wire [31:0] req_data;` — one signal per field,
@@ -711,9 +716,10 @@ prefixed `portname_fieldname`. Wires and regs flatten the same way.
 | E0904 | Field rename `{ f: alias }` in `let { }` destructure is not supported (parser error)                                                      |
 | E0905 | Bundle field type is `clock` or `reset` (deferred — Phase 2)                                                                              |
 | E0906 | Bundle type reference: unknown bundle name or wrong param count                                                                           |
-| E0907 | Bundle type mismatch (nominal — expected `A`, got `B`)                                                                                    |
+| E0907 | Bundle field type mismatch (structural — a shared field's type differs)                                                                   |
 | E0908 | Duplicate field name in `bundle` declaration (deferred — Phase 2)                                                                         |
 | E0909 | Bundle declared more than once (project-wide name collision)                                                                              |
+| E0910 | Bundle is missing a required field (structural — extra fields are fine, missing ones are not)                                             |
 
 ---
 
