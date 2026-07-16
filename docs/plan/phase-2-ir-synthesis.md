@@ -136,6 +136,17 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       **✅ DONE 2026-07-16** (branch `phase-2-structural-interface-matching`,
       spec/02 §1.12, new E0910) — also fixed a pre-existing bug where
       bundle-typed ports broke Verilog emission at instantiation
+- [ ] **Bundle-typed `fn` return via inlining** (new, discovered 2026-07-16
+      alongside 2.9 as BUG-10 in `docs/audit/bugs.md`) — a Verilog
+      `function` can only return one value, so a bundle-typed `fn` return
+      can't flatten to per-field outputs the way ports/wires/params do
+      (fixed 2026-07-16, same day). Needs a different codegen strategy:
+      inline the function body at each call site (uniquify locals per call
+      site) instead of emitting a real Verilog `function` call. The checker
+      already accepts bundle-typed `fn` returns structurally (feature 2.9,
+      `check_return_ty`) — this closes the checker/emitter gap that leaves.
+      No examples/goldens depend on this today; not urgent, but a real,
+      honest gap (spec/02 §1.12 documents it as open, not silently broken).
 - [ ] `?` valid-bundle sugar (2.1 re-targeted): `bits[N]?` =
       `{valid, data}`, `??` = mux on valid — never tri-state
 - [ ] **Channels tier (a)** (3.1) — Decoupled-style valid/ready/data bundles,

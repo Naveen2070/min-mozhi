@@ -373,7 +373,7 @@ the fix's param-seeded dedup set closes this variant too: the golden
 
 ---
 
-## BUG-10 (MEDIUM) — Bundle-typed `fn` params/returns never flatten in emitted Verilog
+## BUG-10 (MEDIUM, PARTIALLY FIXED — params fixed, returns still open) — Bundle-typed `fn` params/returns never flatten in emitted Verilog
 
 **What.** A bundle-typed `fn` parameter or return type is not flattened to
 one Verilog port per field the way module ports and wires are. A bare
@@ -413,15 +413,44 @@ introduced by feature 2.9.
 documents as supported; no example or golden currently exercises a
 bundle-typed `fn` param/return, so nothing else was silently broken by it.
 
-**Workaround.** None at the language level — avoid bundle-typed `fn`
-params/returns until fixed; pass individual fields instead.
+**Workaround.** None at the language level for the still-open return case —
+avoid bundle-typed `fn` returns until that half lands; pass individual
+fields back instead. (The param case needs no workaround anymore — fixed
+below.)
 
-**Fix.** Not yet fixed — filed as a follow-up. Likely shape: give
-`render_fn_decl` the same bundle-flatten-before-`width()` check the module
-port/wire paths already have, plus a `FnCall` RHS case in the "RHS is a
-signal" branch (`module.rs:762-770`) so a bundle-returning call's per-field
-uses resolve to `<call>_<field>` correctly instead of literal string
-concatenation.
+**Fix — params (2026-07-16, this fix).** `render_fn_decl`'s param loop
+(`crates/mimz-core/src/emit_verilog/module.rs`) now flattens a
+bundle-typed (`Type::Bundle` or `Type::Named` resolving to a bundle)
+parameter to one `input` per field, resolved via the existing
+`resolve_bundle_fields` — same convention module ports/wires already use.
+The `ExprKind::FnCall` call-site arg-expansion (`crates/mimz-core/src/
+emit_verilog/expr.rs`) now expands a bundle-typed argument the same way: by
+the **callee's declared param field names** (not the argument's own bundle
+type), which is what makes this correct under structural matching (feature
+2.9) — a differently-named-but-structurally-compatible argument still
+resolves to the right `<arg>_<field>` wires, since flattened signal names
+are always keyed by field name, never by a bundle's internal declaration
+order. No change was needed in the function body's own codegen — `expr.rs`'s
+generic `Field` arm (`x.y` → `x_y`) already assumed flattened names existed;
+only the port declaration and the call-site argument list were missing the
+flatten step. Verified against the exact repro in "What" above: `pick_tx`
+(bit-returning, bundle-typed param only) now emits fully correct Verilog
+end-to-end.
+
+**Fix — returns (still open).** NOT the same kind of fix. A Verilog
+`function` can only return **one** value — there is no Verilog syntax for
+a function to return multiple named outputs, so "flatten the return type"
+the way params/ports do isn't applicable here at all. Supporting a
+bundle-typed `fn` return for real needs a different codegen strategy
+(inlining the function body at each call site instead of emitting a real
+Verilog `function` call) — filed as a separate, larger feature idea, not a
+bug-fix continuation. See `docs/plan/phase-2-ir-synthesis.md`'s language
+features backlog.
+
+**Test.** `bundle_typed_fn_param_flattens_to_per_field_inputs`
+(`crates/mimz-core/src/emit_verilog/mod.rs`) — asserts the exact flattened
+port declarations, body reference, and call-site expansion for both a bare
+and a parametric bundle-typed param on the same `fn`.
 
 **Test.** None yet (bug is open). The two emission-equality tests that
 surfaced it (`structurally_matched_fn_arg_emits_same_as_nominal_match`,
