@@ -1920,8 +1920,8 @@ module Top {
 fn bundle_type_mismatch() {
     first_err(
         r#"
-bundle A { valid: bit }
-bundle B { valid: bit }
+bundle A { valid: bit, data: bits[4] }
+bundle B { valid: bit, data: bits[8] }
 module Top {
   in x: A
   out y: B
@@ -1930,6 +1930,81 @@ module Top {
 "#,
         "E0907",
     );
+}
+
+#[test]
+fn structurally_compatible_bundles_check_clean_in_a_drive() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle SensorData { tx: bit, rx: bit }\n\
+               module M {\n  in  a_tx: bit\n  in  a_rx: bit\n  \
+               out b_tx: bit\n  out b_rx: bit\n  \
+               wire a: SensorData = { tx: a_tx, rx: a_rx }\n  \
+               out b: HasUART\n  \
+               b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n";
+    check_one(src).expect("structurally-compatible differently-named bundles must check clean");
+}
+
+#[test]
+fn structurally_compatible_bundle_with_extra_fields_checks_clean() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle SensorData { tx: bit, rx: bit, power: bit }\n\
+               module M {\n  in  a_tx: bit\n  in  a_rx: bit\n  in a_pw: bit\n  \
+               out b_tx: bit\n  \
+               wire a: SensorData = { tx: a_tx, rx: a_rx, power: a_pw }\n  \
+               out b: HasUART\n  \
+               b = a\n  b_tx = b.tx\n}\n";
+    check_one(src)
+        .expect("a provided bundle with EXTRA fields beyond what's required must check clean");
+}
+
+#[test]
+fn drive_bundle_missing_required_field_is_e0910() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Partial { tx: bit }\n\
+               module M {\n  in  a_tx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
+               wire a: Partial = { tx: a_tx }\n  \
+               out b: HasUART\n  \
+               b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n";
+    let d = first_err(src, "E0910");
+    assert!(
+        d.msg.contains("rx"),
+        "expected the missing field `rx` named in the message, got: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn drive_bundle_shared_field_wrong_width_is_e0907() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Wrong { tx: bits[4], rx: bit }\n\
+               module M {\n  in  a_tx: bits[4]\n  in a_rx: bit\n  \
+               out b_tx: bit\n  out b_rx: bit\n  \
+               wire a: Wrong = { tx: a_tx, rx: a_rx }\n  \
+               out b: HasUART\n  \
+               b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n";
+    let d = first_err(src, "E0907");
+    assert!(
+        d.msg.contains("tx"),
+        "expected the mismatched field `tx` named in the message, got: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn drive_bundle_same_name_regression_still_checks_clean() {
+    // Regression: two bundle declarations can never share a name (E0909
+    // forbids it), so "same name" always means "the same declaration" —
+    // there is no "same name, still a mismatch" case to regress. This
+    // proves the ORIGINAL same-name case (both sides ARE `HasUART`) still
+    // checks clean exactly as before — the dedup didn't change the
+    // trivial-self-compatibility case.
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               module M {\n  in  a_tx: bit\n  in a_rx: bit\n  \
+               out b_tx: bit\n  out b_rx: bit\n  \
+               wire a: HasUART = { tx: a_tx, rx: a_rx }\n  \
+               out b: HasUART\n  \
+               b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n";
+    check_one(src).expect("same-name bundle assignment must still check clean");
 }
 
 #[test]
@@ -2435,4 +2510,49 @@ fn extern_instantiation_wrong_width_connection_is_e0401() {
                module M {\n  in wide: bits[4]\n  \
                let u = Pll() { clk_in: wide }\n}\n";
     first_err(src, "E0401");
+}
+
+#[test]
+fn structurally_compatible_bundle_wire_binding_checks_clean() {
+    // "Let bindings" in the design spec's Goals means a typed-value
+    // binding from an expression — in this language that's `wire NAME:
+    // TYPE = expr` (module-body local `let` has no type-annotation syntax
+    // and was never meant to grow one for this feature; see the plan's
+    // note on this call site). `wire`'s own init-expr check already routes
+    // through `check_expr`'s generic fallback into `expect_ty`, so this
+    // exercises the exact same arm `fn` args do, with zero grammar changes.
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle SensorData { tx: bit, rx: bit }\n\
+               module M {\n  in a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
+               wire a: SensorData = { tx: a_tx, rx: a_rx }\n  \
+               wire b: HasUART = a\n  \
+               b_tx = b.tx\n  b_rx = b.rx\n}\n";
+    check_one(src).expect("a structurally-compatible wire binding must check clean");
+}
+
+#[test]
+fn structurally_compatible_fn_arg_checks_clean() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle SensorData { tx: bit, rx: bit }\n\
+               fn pick_tx(u: HasUART) -> bit { u.tx }\n\
+               module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
+               wire a: SensorData = { tx: a_tx, rx: a_rx }\n  \
+               o = pick_tx(a)\n}\n";
+    check_one(src).expect("a structurally-compatible fn argument must check clean");
+}
+
+#[test]
+fn wire_binding_bundle_missing_field_is_e0910() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Partial { tx: bit }\n\
+               module M {\n  in a_tx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
+               wire a: Partial = { tx: a_tx }\n  \
+               wire b: HasUART = a\n  \
+               b_tx = b.tx\n  b_rx = b.rx\n}\n";
+    let d = first_err(src, "E0910");
+    assert!(
+        d.msg.contains("rx"),
+        "expected field `rx` named, got: {}",
+        d.msg
+    );
 }

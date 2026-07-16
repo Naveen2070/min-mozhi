@@ -1,4 +1,4 @@
-// expect: E0907
+// expect: E0910
 bundle Handshake(W: int = 8) {
   valid: bit
   data: bits[W]

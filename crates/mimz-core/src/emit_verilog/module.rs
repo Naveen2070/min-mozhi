@@ -917,30 +917,73 @@ impl Emitter<'_> {
                         .unwrap_or_else(|| rstp.name.clone());
                     port_conns.push(format!(".{}({})", rstp.name, sig));
                 }
-                ModuleItem::Port { dir, name, ty } => match dir {
-                    Dir::In => {
-                        let Some(conn) = inst.conns.iter().find(|c| c.port.name == name.name)
-                        else {
-                            self.err(
-                                inst.span,
-                                format!(
-                                    "instance `{}` does not connect input `{}` of module `{}`",
-                                    inst.name.name, name.name, target.name().name
-                                ),
-                                "every input must be connected: `let u = Mod() { port: signal }` (spec/02 section 1.5)",
-                            );
-                            continue;
-                        };
-                        let sig = self.expr(&conn.signal);
-                        port_conns.push(format!(".{}({})", name.name, sig));
+                ModuleItem::Port { dir, name, ty } => {
+                    // Bundle ports flatten to one Verilog port per field,
+                    // same convention as the module header (module.rs:60-78)
+                    // and Drive-path (module.rs:762-807) — a bundle-typed
+                    // port is never a single scalar Verilog port.
+                    //
+                    // NOTE: `args` here is this function's own instance-argument
+                    // map (`HashMap<&str, &Expr>`, e.g. `{"W": &Expr(8)}` for
+                    // this instantiation) — NOT the port's bundle-type args
+                    // (bound as `bargs` below to avoid shadowing it). A bundle
+                    // param forwarding the child's own parameter (`Handshake(W:
+                    // W)`) must resolve against THIS instance's `args`, not stay
+                    // symbolic — see `resolve_bundle_fields_for_instance`'s doc.
+                    let bundle_fields = match ty {
+                        Type::Bundle {
+                            name: bname,
+                            args: bargs,
+                        } => Some(self.resolve_bundle_fields_for_instance(bname, bargs, &args)),
+                        Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                            Some(self.resolve_bundle_fields_for_instance(id, &[], &args))
+                        }
+                        _ => None,
+                    };
+                    match dir {
+                        Dir::In => {
+                            let Some(conn) = inst.conns.iter().find(|c| c.port.name == name.name)
+                            else {
+                                self.err(
+                                    inst.span,
+                                    format!(
+                                        "instance `{}` does not connect input `{}` of module `{}`",
+                                        inst.name.name, name.name, target.name().name
+                                    ),
+                                    "every input must be connected: `let u = Mod() { port: signal }` (spec/02 section 1.5)",
+                                );
+                                continue;
+                            };
+                            let sig = self.expr(&conn.signal);
+                            if let Some(fields) = &bundle_fields {
+                                for (fname, _) in fields {
+                                    port_conns.push(format!(
+                                        ".{}_{}({}_{})",
+                                        name.name, fname, sig, fname
+                                    ));
+                                }
+                            } else {
+                                port_conns.push(format!(".{}({})", name.name, sig));
+                            }
+                        }
+                        Dir::Out => {
+                            if let Some(fields) = &bundle_fields {
+                                for (fname, fty) in fields {
+                                    let wire_name = format!("{}_{}_{}", iname, name.name, fname);
+                                    let w = self.width_resolved(fty);
+                                    self.out.push_str(&format!("    wire {w}{wire_name};\n"));
+                                    port_conns
+                                        .push(format!(".{}_{}({})", name.name, fname, wire_name));
+                                }
+                            } else {
+                                let wire_name = format!("{}_{}", iname, name.name);
+                                let w = self.width_subst(ty, &args);
+                                self.out.push_str(&format!("    wire {w}{wire_name};\n"));
+                                port_conns.push(format!(".{}({})", name.name, wire_name));
+                            }
+                        }
                     }
-                    Dir::Out => {
-                        let wire_name = format!("{}_{}", iname, name.name);
-                        let w = self.width_subst(ty, &args);
-                        self.out.push_str(&format!("    wire {w}{wire_name};\n"));
-                        port_conns.push(format!(".{}({})", name.name, wire_name));
-                    }
-                },
+                }
                 _ => {}
             }
         }
@@ -1228,26 +1271,93 @@ impl Emitter<'_> {
     /// any bundle parameters. Returns `Vec<(field_name, resolved_type)>`.
     /// Args in the `Type::Bundle` override bundle defaults; remaining params
     /// fold using the current env.
+    ///
+    /// A param whose arg forwards an identifier NOT in `self.env` (the
+    /// common case: a module's own `parameter`, which stays a genuine
+    /// symbolic Verilog parameter and is deliberately never folded to a
+    /// literal — see `module()`'s header emission) is kept symbolic rather
+    /// than silently falling back to the bundle's own unrelated default.
+    /// Concretely: `module Child(W: int) { in req: Handshake(W: W) }` must
+    /// emit `[(W)-1:0]` (tracking Child's own parameter through Verilog's
+    /// own elaboration), not a literal folded from `Handshake`'s default.
+    ///
+    /// Use this at a module's OWN declaration (header, wire decls) — where
+    /// no per-instance argument map exists and an unresolved param must
+    /// stay symbolic. At an INSTANTIATION site, use
+    /// [`Self::resolve_bundle_fields_for_instance`] instead, which also
+    /// resolves a forwarded param against that instance's own concrete
+    /// arguments (the `Ident("W")` in `Handshake(W: W)` means something
+    /// different in the parent's scope than in the child's).
     pub(super) fn resolve_bundle_fields(
         &self,
         bname: &QualIdent,
         args: &[NamedArg],
     ) -> Vec<(String, Type)> {
+        self.resolve_bundle_fields_inner(bname, args, None)
+    }
+
+    /// Like [`Self::resolve_bundle_fields`], but for a bundle-typed port at
+    /// an instantiation site: `inst_args` is the SAME child-parameter
+    /// substitution map `instance()` already builds for non-bundle port
+    /// widths (see `width_subst`'s callers) — a param forwarding the
+    /// child's own parameter (e.g. `Handshake(W: W)`) resolves against
+    /// THIS instance's concrete argument for it, not `self.env` (the
+    /// PARENT's scope, where the child's bare parameter name means
+    /// nothing) and not symbolically (there is no such identifier in the
+    /// parent's Verilog scope to reference).
+    pub(super) fn resolve_bundle_fields_for_instance(
+        &self,
+        bname: &QualIdent,
+        args: &[NamedArg],
+        inst_args: &HashMap<&str, &Expr>,
+    ) -> Vec<(String, Type)> {
+        self.resolve_bundle_fields_inner(bname, args, Some(inst_args))
+    }
+
+    fn resolve_bundle_fields_inner(
+        &self,
+        bname: &QualIdent,
+        args: &[NamedArg],
+        inst_args: Option<&HashMap<&str, &Expr>>,
+    ) -> Vec<(String, Type)> {
         let Some(bdecl) = self.project.resolve_bundle(bname) else {
             return vec![];
         };
-        // Build param env: bundle defaults first, then call-site overrides.
+        // Owned copy of inst_args's expressions, for use as a `substitute_expr`
+        // symbol table (which needs owned `Expr`s, not borrowed `&Expr`s).
+        let inst_args_owned: HashMap<String, Expr> = inst_args
+            .map(|m| {
+                m.iter()
+                    .map(|(k, v)| (k.to_string(), (*v).clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        // Build the param bindings: each param is either a concrete literal
+        // (`param_env`) or, when its arg forwards a symbol neither `self.env`
+        // nor (at an instantiation site) `inst_args` can resolve, the
+        // caller's own raw expression (`param_symbolic`) — never silently
+        // defaulted when an arg was given.
         let mut param_env: HashMap<String, i128> = HashMap::new();
+        let mut param_symbolic: HashMap<String, Expr> = HashMap::new();
         for p in &bdecl.params {
-            if let Some(default) = &p.default
+            let arg = args.iter().find(|a| a.name.name == p.name.name);
+            if let Some(a) = arg {
+                if let Ok(v) = consteval::eval(&a.value, &self.env) {
+                    param_env.insert(p.name.name.clone(), v);
+                    continue;
+                }
+                if inst_args.is_some() {
+                    let substituted = substitute_expr(&a.value, &self.env, &inst_args_owned);
+                    if let Ok(v) = consteval::eval(&substituted, &self.env) {
+                        param_env.insert(p.name.name.clone(), v);
+                        continue;
+                    }
+                }
+                param_symbolic.insert(p.name.name.clone(), a.value.clone());
+            } else if let Some(default) = &p.default
                 && let Ok(v) = consteval::eval(default, &self.env)
             {
                 param_env.insert(p.name.name.clone(), v);
-            }
-        }
-        for a in args {
-            if let Ok(v) = consteval::eval(&a.value, &self.env) {
-                param_env.insert(a.name.name.clone(), v);
             }
         }
         // Merge param_env into env for field-type expression evaluation.
@@ -1256,44 +1366,29 @@ impl Emitter<'_> {
         for (k, v) in &param_env {
             merged_env.insert(k.clone(), *v);
         }
-        // Resolve each field's type: evaluate width expressions fully to integer
-        // literals using the merged env (bundle params + module consts).
-        // This produces `[7:0]` rather than `[(8)-1:0]` for clean Verilog output.
+        // Resolve each field's type: evaluate width expressions fully to
+        // integer literals using the merged env (bundle params + module
+        // consts) when possible — this produces `[7:0]` rather than
+        // `[(8)-1:0]` for clean Verilog output. When a param is symbolic
+        // (forwards the enclosing module's own parameter), the width stays
+        // symbolic too — `width_resolved`/`width_subst` already render a
+        // non-literal `Type::Bits`/`Type::Signed` correctly.
         bdecl
             .fields
             .iter()
             .map(|f| {
                 let resolved_ty = match &f.ty {
                     Type::Bit => Type::Bit,
-                    Type::Bits(e) => {
-                        let w = consteval::eval(e, &merged_env).unwrap_or_else(|_| {
-                            // Fall back to substitution if eval fails (symbolic param).
-                            consteval::eval(&substitute_expr(e, &merged_env), &merged_env)
-                                .unwrap_or(1)
-                        });
-                        let lit = Expr {
-                            kind: ExprKind::Int {
-                                value: w as u128,
-                                raw: w.to_string(),
-                            },
-                            span: f.span,
-                        };
-                        Type::Bits(Box::new(lit))
-                    }
-                    Type::Signed(e) => {
-                        let w = consteval::eval(e, &merged_env).unwrap_or_else(|_| {
-                            consteval::eval(&substitute_expr(e, &merged_env), &merged_env)
-                                .unwrap_or(1)
-                        });
-                        let lit = Expr {
-                            kind: ExprKind::Int {
-                                value: w as u128,
-                                raw: w.to_string(),
-                            },
-                            span: f.span,
-                        };
-                        Type::Signed(Box::new(lit))
-                    }
+                    Type::Bits(e) => Type::Bits(Box::new(self.resolve_field_width(
+                        e,
+                        &merged_env,
+                        &param_symbolic,
+                    ))),
+                    Type::Signed(e) => Type::Signed(Box::new(self.resolve_field_width(
+                        e,
+                        &merged_env,
+                        &param_symbolic,
+                    ))),
                     // Enums and nested bundles: leave as-is (checker validates).
                     other => other.clone(),
                 };
@@ -1301,14 +1396,48 @@ impl Emitter<'_> {
             })
             .collect()
     }
+
+    /// One bundle field's width expression, resolved as far as it can be:
+    /// a literal if every identifier in it is known (env or symbolic
+    /// substitution), otherwise the substituted-but-still-symbolic
+    /// expression (e.g. `Ident("W")`, referencing the enclosing module's
+    /// own Verilog parameter) — never a hardcoded fallback to `1`.
+    fn resolve_field_width(
+        &self,
+        e: &Expr,
+        merged_env: &consteval::Env,
+        param_symbolic: &HashMap<String, Expr>,
+    ) -> Expr {
+        if let Ok(w) = consteval::eval(e, merged_env) {
+            return Expr {
+                kind: ExprKind::Int {
+                    value: w as u128,
+                    raw: w.to_string(),
+                },
+                span: e.span,
+            };
+        }
+        let substituted = substitute_expr(e, merged_env, param_symbolic);
+        match consteval::eval(&substituted, merged_env) {
+            Ok(w) => Expr {
+                kind: ExprKind::Int {
+                    value: w as u128,
+                    raw: w.to_string(),
+                },
+                span: e.span,
+            },
+            Err(_) => substituted,
+        }
+    }
 }
 
-/// Substitute constant ident values in a type-width expression. Used by
-/// `resolve_bundle_fields` to fold bundle param names (e.g. `W`) into their
-/// concrete values so `bits[W]` becomes `bits[8]` in the emitted Verilog.
-/// Only replaces `ExprKind::Ident` nodes that appear in `env`; leaves all
-/// other nodes (arithmetic, literals) structurally identical.
-fn substitute_expr(e: &Expr, env: &consteval::Env) -> Expr {
+/// Substitute ident values in a type-width expression: a numeric value from
+/// `env` folds to a literal; a name with no numeric value but a `symbolic`
+/// entry (a bundle param whose arg forwards an outer identifier `env`
+/// doesn't have, e.g. the enclosing module's own `parameter`) is replaced
+/// by that raw expression instead, so the width stays genuinely symbolic
+/// rather than silently wrong. Anything neither map covers is left as-is.
+fn substitute_expr(e: &Expr, env: &consteval::Env, symbolic: &HashMap<String, Expr>) -> Expr {
     match &e.kind {
         ExprKind::Ident(name) => {
             if let Some(&v) = env.get(name.as_str()) {
@@ -1319,6 +1448,8 @@ fn substitute_expr(e: &Expr, env: &consteval::Env) -> Expr {
                     },
                     span: e.span,
                 }
+            } else if let Some(sub) = symbolic.get(name.as_str()) {
+                sub.clone()
             } else {
                 e.clone()
             }
@@ -1326,22 +1457,25 @@ fn substitute_expr(e: &Expr, env: &consteval::Env) -> Expr {
         ExprKind::Binary { op, lhs, rhs } => Expr {
             kind: ExprKind::Binary {
                 op: *op,
-                lhs: Box::new(substitute_expr(lhs, env)),
-                rhs: Box::new(substitute_expr(rhs, env)),
+                lhs: Box::new(substitute_expr(lhs, env, symbolic)),
+                rhs: Box::new(substitute_expr(rhs, env, symbolic)),
             },
             span: e.span,
         },
         ExprKind::Unary { op, expr } => Expr {
             kind: ExprKind::Unary {
                 op: *op,
-                expr: Box::new(substitute_expr(expr, env)),
+                expr: Box::new(substitute_expr(expr, env, symbolic)),
             },
             span: e.span,
         },
         ExprKind::Call { func, args } => Expr {
             kind: ExprKind::Call {
                 func: *func,
-                args: args.iter().map(|a| substitute_expr(a, env)).collect(),
+                args: args
+                    .iter()
+                    .map(|a| substitute_expr(a, env, symbolic))
+                    .collect(),
             },
             span: e.span,
         },

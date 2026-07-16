@@ -1039,6 +1039,104 @@ mod tests {
     }
 
     #[test]
+    fn bundle_typed_port_flattens_at_instantiation() {
+        let v = emit_src(
+            "bundle Handshake(W: int = 8) { valid: bit, data: bits[W] }\n\
+             module Child(W: int = 8) {\n  \
+             in  req: Handshake(W: W)\n  out rsp: Handshake(W: W)\n  \
+             rsp = { valid: req.valid, data: req.data }\n}\n\
+             module Parent {\n  \
+             in  pv: bit\n  in  pd: bits[8]\n  out ov: bit\n  out od: bits[8]\n  \
+             wire in_bus: Handshake(W: 8) = { valid: pv, data: pd }\n  \
+             let c = Child(W: 8) { req: in_bus }\n  \
+             wire out_bus: Handshake(W: 8) = c.rsp\n  \
+             ov = out_bus.valid\n  od = out_bus.data\n}\n",
+        );
+        assert!(
+            v.contains(
+                "Child #(.W(8)) c (.req_valid(in_bus_valid), .req_data(in_bus_data), \
+                 .rsp_valid(c_rsp_valid), .rsp_data(c_rsp_data));"
+            ),
+            "expected per-field flattened connections, got:\n{v}"
+        );
+        assert!(
+            v.contains("    wire c_rsp_valid;\n"),
+            "expected a per-field output wire, got:\n{v}"
+        );
+        assert!(
+            v.contains("    wire [7:0] c_rsp_data;\n"),
+            "expected a per-field output wire with the resolved width, got:\n{v}"
+        );
+        assert!(
+            !v.contains("wire c_rsp;\n"),
+            "must not declare the old single-scalar (broken) wire, got:\n{v}"
+        );
+    }
+
+    #[test]
+    fn bundle_port_forwarding_a_module_parameter_stays_symbolic() {
+        // `Handshake(W: W)` forwards Child's OWN parameter `W` into the
+        // bundle's param. Child's `W` is a genuine Verilog `parameter` and
+        // is never folded to a literal (the module is emitted once,
+        // generically — Verilog's own elaboration specializes it per
+        // instantiation), so the bundle field's width must stay symbolic
+        // too, not silently fall back to Handshake's own unrelated default.
+        let v = emit_src(
+            "bundle Handshake(W: int = 8) { valid: bit, data: bits[W] }\n\
+             module Child(W: int = 8) {\n  \
+             in  req: Handshake(W: W)\n  out rsp: Handshake(W: W)\n  \
+             rsp = { valid: req.valid, data: req.data }\n}\n",
+        );
+        assert!(
+            v.contains("input wire [(W)-1:0] req_data,"),
+            "expected the port width to track Child's own parameter symbolically, got:\n{v}"
+        );
+        assert!(
+            v.contains("output wire [(W)-1:0] rsp_data"),
+            "expected the port width to track Child's own parameter symbolically, got:\n{v}"
+        );
+        assert!(
+            !v.contains("[7:0]"),
+            "must not silently fold to Handshake's own unrelated default width, got:\n{v}"
+        );
+    }
+
+    #[test]
+    fn bundle_port_forwarding_a_module_parameter_resolves_per_instance() {
+        // At the INSTANTIATION site (unlike the header, which stays
+        // symbolic — see the sibling test above), `Handshake(W: W)`'s
+        // forwarded `W` must resolve against THIS instance's own concrete
+        // argument (`Child(W: 16)`), producing the actual override width —
+        // not the bundle's own default (8) and not a bare symbolic `W`
+        // (which would reference a nonexistent identifier in the parent's
+        // scope).
+        let v = emit_src(
+            "bundle Handshake(W: int = 8) { valid: bit, data: bits[W] }\n\
+             module Child(W: int = 8) {\n  \
+             in  req: Handshake(W: W)\n  out rsp: Handshake(W: W)\n  \
+             rsp = { valid: req.valid, data: req.data }\n}\n\
+             module Parent {\n  \
+             in  pv: bit\n  in  pd: bits[16]\n  out ov: bit\n  out od: bits[16]\n  \
+             wire in_bus: Handshake(W: 16) = { valid: pv, data: pd }\n  \
+             let c = Child(W: 16) { req: in_bus }\n  \
+             wire out_bus: Handshake(W: 16) = c.rsp\n  \
+             ov = out_bus.valid\n  od = out_bus.data\n}\n",
+        );
+        assert!(
+            v.contains("    wire [15:0] c_rsp_data;\n"),
+            "expected the instance's own W=16 override to produce a concrete \
+             16-bit wire, got:\n{v}"
+        );
+        assert!(
+            v.contains(
+                "Child #(.W(16)) c (.req_valid(in_bus_valid), .req_data(in_bus_data), \
+                 .rsp_valid(c_rsp_valid), .rsp_data(c_rsp_data));"
+            ),
+            "expected per-field flattened connections at the overridden width, got:\n{v}"
+        );
+    }
+
+    #[test]
     fn child_consts_fold_into_parent_auto_wires() {
         // The child's ports are sized by ITS OWN `const W`. The parent's
         // auto-wire for `u.y` must fold that const to a literal — the

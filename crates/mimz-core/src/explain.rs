@@ -617,11 +617,15 @@ const EXPLANATIONS: &[(&str, &str)] = &[
     ),
     (
         "E0907",
-        "E0907 — bundle type mismatch (nominal — expected `A`, got `B`)\n\n\
-         Bundles use nominal typing: two bundles with identical fields are still\n\
-         different types and cannot be assigned to each other. The error message\n\
-         names the expected type and the actual type.\n\n\
-         Fix: ensure assignments and connections use the same bundle type on both sides.",
+        "E0907 — bundle field type mismatch (structural)\n\n\
+         Bundles are matched STRUCTURALLY: a bundle satisfies any bundle-typed\n\
+         slot whose required fields it covers with exactly-matching types,\n\
+         regardless of the two bundles' declared names. This code fires when a\n\
+         shared field's type differs — the message names the field and both\n\
+         types. Width/type never coerce implicitly, the same rule as everywhere\n\
+         else in the language.\n\n\
+         Fix: make the field's type match exactly (`extend`/`trunc`/a slice on\n\
+         the source signal, or fix the bundle declaration).",
     ),
     (
         "E0909",
@@ -630,6 +634,16 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          names are project-wide (like module and enum names), so every bundle must have\n\
          a unique name.\n\n\
          Fix: rename one of the duplicate bundles so all names are distinct.",
+    ),
+    (
+        "E0910",
+        "E0910 — bundle is missing a required field (structural)\n\n\
+         The provided bundle doesn't have a field the required bundle type\n\
+         declares. Structural matching allows a provided bundle to have EXTRA\n\
+         fields beyond what's required, but never fewer — the message names the\n\
+         missing field.\n\n\
+         Fix: add the missing field to the provided bundle's declaration, or\n\
+         connect/assign a bundle that already has it.",
     ),
     // ----- E10xx: lexer -----
     (

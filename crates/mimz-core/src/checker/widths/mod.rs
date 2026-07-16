@@ -152,6 +152,23 @@ fn same(a: &Ty, b: &Ty) -> bool {
     }
 }
 
+/// Outcome of comparing a required bundle's field shape against a
+/// provided bundle's field shape (feature 2.9: structural interface
+/// matching, `docs/plan/phase-2-ir-synthesis.md`). `Compatible` when every
+/// field the `required` side declares also exists in `provided` with an
+/// identical type — extra fields on `provided` are allowed and ignored; no
+/// field ever widens/narrows implicitly (the language's no-silent-
+/// truncation rule holds here too).
+pub(super) enum BundleShapeMatch {
+    Compatible,
+    MissingField(String),
+    FieldTypeMismatch {
+        field: String,
+        expected: String,
+        got: String,
+    },
+}
+
 /// The concrete bit-width a `fn`-body `let` binding of this type would
 /// declare as a Verilog `reg` (mirrors the `FnStmt::Let` width-inference
 /// match in `check_fn_stmt_widths`, reused there both for a NEW binding and
@@ -777,22 +794,51 @@ impl<'a> Checker<'a> {
                                 self.check_bundle_lit(cx, l, bfile_hint, args, inits, rhs.span);
                             }
                             ExprKind::Ident(rhs_sig) => {
-                                // Nominal type check (E0907): both sides must name the same bundle.
-                                if let Some(Ty::Bundle { name: r, .. }) =
+                                // Structural type check (feature 2.9): `l`'s fields
+                                // must all exist in the RHS bundle's fields with an
+                                // exactly-matching type. Same-name bundles never
+                                // reach the mismatch arms below (trivially their
+                                // own required-fields subset).
+                                if let Some(rhs_ty @ Ty::Bundle { .. }) =
                                     cx.sigs.get(rhs_sig.as_str()).copied()
-                                    && r != l
                                 {
-                                    self.err(
-                                        cx.file,
-                                        rhs.span,
-                                        "E0907",
-                                        format!(
-                                            "bundle type mismatch: cannot assign \
-                                                     `{r}` where `{l}` is expected"
-                                        ),
-                                        "bundle types are matched by name — they \
-                                                 must be the same bundle declaration",
-                                    );
+                                    let required = Ty::Bundle {
+                                        name: l,
+                                        bfile_hint,
+                                        args,
+                                    };
+                                    match self.bundle_shape_match(cx, required, rhs_ty, rhs.span) {
+                                        BundleShapeMatch::Compatible => {}
+                                        BundleShapeMatch::MissingField(field) => {
+                                            self.err(
+                                                cx.file,
+                                                rhs.span,
+                                                "E0910",
+                                                format!(
+                                                    "the connected bundle is missing field `{field}`, which `{l}` requires"
+                                                ),
+                                                "structural matching allows extra fields on the \
+                                                 provided bundle, but never fewer — add the \
+                                                 missing field, or connect a bundle that has it",
+                                            );
+                                        }
+                                        BundleShapeMatch::FieldTypeMismatch {
+                                            field,
+                                            expected,
+                                            got,
+                                        } => {
+                                            self.err(
+                                                cx.file,
+                                                rhs.span,
+                                                "E0907",
+                                                format!(
+                                                    "field `{field}`: expected {expected}, got {got}"
+                                                ),
+                                                "widths/types must match exactly — nothing \
+                                                 resizes implicitly at a bundle field boundary",
+                                            );
+                                        }
+                                    }
                                 }
                             }
                             _ => {
@@ -1273,6 +1319,60 @@ impl<'a> Checker<'a> {
             .map(|f| (f.name.name.clone(), self.resolve_ty(&mut tmp, &f.ty)))
             .collect();
         Some(fields)
+    }
+
+    /// Structurally compares two bundle types: every field `required`
+    /// declares must exist in `provided` with an exactly-matching type.
+    /// Both arguments MUST be `Ty::Bundle` — callers guard this before
+    /// calling. Resolves each side's field list via `resolve_bundle_fields`
+    /// (which may itself emit E0906 for an unresolvable bundle param); if
+    /// either side fails to resolve, this returns `Compatible` rather than
+    /// reporting a second diagnostic for the same root cause — the same
+    /// "don't pile on" convention `Ty::Unknown` already follows elsewhere
+    /// in this pass.
+    fn bundle_shape_match(
+        &mut self,
+        cx: &Wcx<'a>,
+        required: Ty<'a>,
+        provided: Ty<'a>,
+        span: Span,
+    ) -> BundleShapeMatch {
+        let (
+            Ty::Bundle {
+                name: rname,
+                bfile_hint: rhint,
+                args: rargs,
+            },
+            Ty::Bundle {
+                name: pname,
+                bfile_hint: phint,
+                args: pargs,
+            },
+        ) = (required, provided)
+        else {
+            unreachable!("bundle_shape_match called with a non-Bundle Ty");
+        };
+        let Some(rfields) = self.resolve_bundle_fields(cx, rname, rhint, rargs, span) else {
+            return BundleShapeMatch::Compatible;
+        };
+        let Some(pfields) = self.resolve_bundle_fields(cx, pname, phint, pargs, span) else {
+            return BundleShapeMatch::Compatible;
+        };
+        for (fname, fty) in &rfields {
+            match pfields.iter().find(|(n, _)| n == fname) {
+                None => return BundleShapeMatch::MissingField(fname.clone()),
+                Some((_, pty)) => {
+                    if !same(fty, pty) {
+                        return BundleShapeMatch::FieldTypeMismatch {
+                            field: fname.clone(),
+                            expected: show(fty),
+                            got: show(pty),
+                        };
+                    }
+                }
+            }
+        }
+        BundleShapeMatch::Compatible
     }
 
     /// Field-by-field check of a bundle literal against its declared type.

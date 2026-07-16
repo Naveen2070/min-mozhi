@@ -1,0 +1,13 @@
+// expect: E0910
+bundle HasUART { tx: bit, rx: bit }
+bundle Partial { tx: bit }
+module M {
+  in  a_tx: bit
+  out b_tx: bit
+  out b_rx: bit
+  wire a: Partial = { tx: a_tx }
+  out b: HasUART
+  b = a
+  b_tx = b.tx
+  b_rx = b.rx
+}
