@@ -219,6 +219,46 @@ end-to-end coverage; extern-module fixtures are deliberately excluded
 from the five-flavor/Icarus-differential sweep (they need a companion
 `.v` file that pipeline doesn't model).
 
+### Structural bundle matching — one shared helper, four call sites (2026-07-16)
+
+Bundles were nominally typed since their introduction (`Ty::Bundle`
+equality was `a.name == b.name`) — feature 2.9 in
+`docs/plan/phase-2-ir-synthesis.md` always intended to relax this
+(`spec/02`'s bundle rules carried a "deferred to feature 2.9" breadcrumb
+from day one). Implementation found a **prerequisite bug** during design:
+bundle-typed ports connected across a module-instantiation boundary emitted
+broken Verilog (the emitter treated a bundle-typed port as a single scalar
+port/wire) — fixed first, since the feature's most natural use case (module
+ports) sat directly on top of it.
+
+The structural rule itself: the required bundle's fields must be a subset
+of the provided bundle's fields, every shared field's type must match
+EXACTLY (no width coercion — the constitution's no-silent-truncation
+guarantee holds here too), extra fields on the provided side are ignored.
+One pure helper (`BundleShapeMatch` + `Checker::bundle_shape_match`) is
+consumed by four call sites (`Drive`-path, `let`/`fn`-arg `expect_ty`,
+`fn`-return `check_return_ty`, module-port `check_inst_widths`) — each
+keeps its own pre-existing error code for "field type differs" (`E0907`
+for `Drive`-path and `let`/`fn`-arg `expect_ty`, `E0804` for `fn`-return
+`check_return_ty`, `E0401` for module-port `check_inst_widths`) and shares
+one new code, `E0910`,
+for "field missing entirely" (a genuinely new failure category no call
+site could raise under the old nominal-only rule). Two call sites
+(`ops.rs` operator typing, `patterns.rs` if/match-arm unification)
+deliberately keep the old nominal rule — bundles reaching an operator are
+already nonsensical, and if/match-arm structural unification would need
+threading resolution context through `unify_arms`, out of this feature's
+approved scope; a documented gap, not an oversight.
+
+The emitter needed a fix (the prerequisite bug) but zero NEW changes for
+structural matching itself — bundle flattening at every site was already
+purely field-NAME-driven (an assignment iterates the LHS bundle's own
+field list and emits `assign lhs_field = rhs_field`, never comparing the
+two bundle TYPE names), so once the checker widened what it accepts, the
+emission layer needed nothing further — the same "generic code, checker
+widens what it accepts" precedent `extern module`/`ModuleTarget`
+established one feature earlier.
+
 ## How the code has actually turned out (honest notes)
 
 - The front end (lexer → parser → emitter) went from empty repo to

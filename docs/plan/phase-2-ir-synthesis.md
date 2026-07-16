@@ -130,7 +130,12 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       `examples/.../enum_construct.mimz`
 - [x] **Interfaces/bundles + destructuring** (2.4) — flatten to nets in the
       emitter; unlocks the next three items — **✅ DONE 2026-07-01 (spec v0.2.18)**
-- [ ] Structural interface matching (2.9) — small checker rule once bundles exist
+- [x] **Structural interface matching (2.9)** — `A`/`B` bundles with
+      identical field shapes now interchange regardless of declared name;
+      subset-of-fields + exact-type-on-shared-fields, fully automatic —
+      **✅ DONE 2026-07-16** (branch `phase-2-structural-interface-matching`,
+      spec/02 §1.12, new E0910) — also fixed a pre-existing bug where
+      bundle-typed ports broke Verilog emission at instantiation
 - [ ] `?` valid-bundle sugar (2.1 re-targeted): `bits[N]?` =
       `{valid, data}`, `??` = mux on valid — never tri-state
 - [ ] **Channels tier (a)** (3.1) — Decoupled-style valid/ready/data bundles,
