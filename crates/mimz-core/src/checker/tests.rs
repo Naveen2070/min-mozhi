@@ -2556,3 +2556,107 @@ fn wire_binding_bundle_missing_field_is_e0910() {
         d.msg
     );
 }
+
+#[test]
+fn structurally_compatible_fn_return_checks_clean() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle SensorData { tx: bit, rx: bit }\n\
+               fn as_uart(u: SensorData) -> HasUART { u }\n\
+               module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  \
+               wire a: SensorData = { tx: a_tx, rx: a_rx }\n  \
+               wire b: HasUART = as_uart(a)\n  b_tx = b.tx\n}\n";
+    check_one(src).expect("a structurally-compatible fn return must check clean");
+}
+
+#[test]
+fn fn_return_bundle_missing_field_is_e0910() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Partial { tx: bit }\n\
+               fn as_uart(u: Partial) -> HasUART { u }\n\
+               module M {\n  in  a_tx: bit\n  out b_tx: bit\n  \
+               wire a: Partial = { tx: a_tx }\n  \
+               wire b: HasUART = as_uart(a)\n  b_tx = b.tx\n}\n";
+    let d = first_err(src, "E0910");
+    assert!(
+        d.msg.contains("rx"),
+        "expected field `rx` named, got: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn fn_return_same_name_bundle_regression_still_e0804() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Other { tx: bit, rx: bit }\n\
+               fn broken(u: HasUART) -> Other { u }\n\
+               module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  \
+               wire a: HasUART = { tx: a_tx, rx: a_rx }\n  \
+               wire b: Other = broken(a)\n  b_tx = b.tx\n}\n";
+    // `HasUART` and `Other` are structurally compatible (identical fields),
+    // so this must now check CLEAN, not E0804 — proving check_return_ty was
+    // upgraded (this is the inverse of the old behavior, an intentional
+    // behavior change, not a regression to preserve).
+    check_one(src).expect(
+        "HasUART and Other are structurally identical — this must check clean post-upgrade",
+    );
+}
+
+#[test]
+fn fn_return_bundle_shared_field_wrong_width_is_e0804() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Wrong { tx: bits[4], rx: bit }\n\
+               fn as_uart(w: Wrong) -> HasUART { w }\n\
+               module M {\n  in  a_tx: bits[4]\n  in a_rx: bit\n  \
+               out b_tx: bit\n  out b_rx: bit\n  \
+               wire a: Wrong = { tx: a_tx, rx: a_rx }\n  \
+               wire b: HasUART = as_uart(a)\n  b_tx = b.tx\n  b_rx = b.rx\n}\n";
+    let d = first_err(src, "E0804");
+    assert!(
+        d.msg.contains("tx"),
+        "expected the mismatched field `tx` named in the message, got: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn structurally_compatible_bundle_port_connection_checks_clean() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle SensorData { tx: bit, rx: bit }\n\
+               module Child { in u: HasUART }\n\
+               module M {\n  in  a_tx: bit\n  in a_rx: bit\n  \
+               wire a: SensorData = { tx: a_tx, rx: a_rx }\n  \
+               let c = Child() { u: a }\n}\n";
+    check_one(src).expect("a structurally-compatible port connection must check clean");
+}
+
+#[test]
+fn port_connection_bundle_missing_field_is_e0910() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Partial { tx: bit }\n\
+               module Child { in u: HasUART }\n\
+               module M {\n  in  a_tx: bit\n  \
+               wire a: Partial = { tx: a_tx }\n  \
+               let c = Child() { u: a }\n}\n";
+    let d = first_err(src, "E0910");
+    assert!(
+        d.msg.contains("rx"),
+        "expected field `rx` named, got: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn port_connection_bundle_shared_field_wrong_width_is_e0401() {
+    let src = "bundle HasUART { tx: bit, rx: bit }\n\
+               bundle Wrong { tx: bits[4], rx: bit }\n\
+               module Child { in u: HasUART }\n\
+               module M {\n  in  a_tx: bits[4]\n  in a_rx: bit\n  \
+               wire a: Wrong = { tx: a_tx, rx: a_rx }\n  \
+               let c = Child() { u: a }\n}\n";
+    let d = first_err(src, "E0401");
+    assert!(
+        d.msg.contains("tx"),
+        "expected field `tx` named, got: {}",
+        d.msg
+    );
+}

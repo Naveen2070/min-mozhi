@@ -1351,4 +1351,49 @@ mod tests {
             "flattened/sibling ifs never immediately follow `end else begin`"
         );
     }
+
+    #[test]
+    fn structurally_matched_drive_emits_same_as_nominal_match() {
+        let nominal = emit_src(
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
+             wire a: HasUART = { tx: a_tx, rx: a_rx }\n  wire b: HasUART = { tx: 0, rx: 0 }\n  \
+             b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
+        );
+        let structural = emit_src(
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             bundle SensorData { tx: bit, rx: bit }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
+             wire a: SensorData = { tx: a_tx, rx: a_rx }\n  wire b: HasUART = { tx: 0, rx: 0 }\n  \
+             b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
+        );
+        assert_eq!(
+            nominal, structural,
+            "a structurally-matched (differently-named) bundle Drive must emit \
+             byte-identical Verilog to the same-name case — the emission layer \
+             is field-name-driven, not type-driven"
+        );
+    }
+
+    #[test]
+    fn structurally_matched_port_connection_emits_same_as_nominal_match() {
+        let nominal = emit_src(
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             module Child { in u: HasUART }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  \
+             wire a: HasUART = { tx: a_tx, rx: a_rx }\n  let c = Child() { u: a }\n}\n",
+        );
+        let structural = emit_src(
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             bundle SensorData { tx: bit, rx: bit }\n\
+             module Child { in u: HasUART }\n\
+             module M {\n  in  a_tx: bit\n  in a_rx: bit\n  \
+             wire a: SensorData = { tx: a_tx, rx: a_rx }\n  let c = Child() { u: a }\n}\n",
+        );
+        assert_eq!(
+            nominal, structural,
+            "a structurally-matched port connection must emit byte-identical \
+             Verilog to the same-name case"
+        );
+    }
 }
