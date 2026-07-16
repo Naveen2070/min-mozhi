@@ -704,7 +704,12 @@ Rules:
 
 **Verilog emission:** a bundle-typed port `in req: MemBus(WIDTH: 32)` lowers to
 `input wire req_valid; input wire [31:0] req_data;` — one signal per field,
-prefixed `portname_fieldname`. Wires and regs flatten the same way.
+prefixed `portname_fieldname`. Wires and regs flatten the same way. A
+bundle-typed `fn` PARAMETER flattens the same way too (one `input` per
+field). A bundle-typed `fn` RETURN does not yet — a Verilog `function` can
+only return one value, so flattening a return the way ports/wires/params do
+isn't applicable; this is a real, open gap (`docs/audit/bugs.md` BUG-10),
+not yet supported.
 
 ### Bundle checker rules
 

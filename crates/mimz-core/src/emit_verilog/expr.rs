@@ -267,10 +267,36 @@ impl Emitter<'_> {
                 // callee's array param elaborated into (Task 7's `<name>_<i>`
                 // port convention): an array LITERAL expands element-by-element,
                 // and a bare array-typed name (param or `let`) expands to its
-                // `<name>_<i>` scalars. Every other argument passes through 1:1.
+                // `<name>_<i>` scalars. A bundle-typed argument (BUG-10, see
+                // `render_fn_decl`'s matching flatten) expands by the CALLEE's
+                // declared param field NAMES, not the argument's own bundle
+                // type — required so a structurally-matched but differently-
+                // named/ordered argument (feature 2.9) still resolves to the
+                // right `<arg>_<field>` wires, since flattened signal names
+                // are always keyed by field name, never by declaration order.
+                // Every other argument passes through 1:1.
                 self.mark_fn_used(&name.name);
+                let callee_params = self
+                    .project
+                    .funcs
+                    .get(name.name.as_str())
+                    .copied()
+                    .map(|d| d.params.as_slice());
                 let mut args_str: Vec<String> = Vec::new();
-                for a in args {
+                for (i, a) in args.iter().enumerate() {
+                    let bundle_fields =
+                        callee_params
+                            .and_then(|params| params.get(i))
+                            .and_then(|p| match &p.ty {
+                                Type::Bundle {
+                                    name: bname,
+                                    args: bargs,
+                                } => Some(self.resolve_bundle_fields(bname, bargs)),
+                                Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                                    Some(self.resolve_bundle_fields(id, &[]))
+                                }
+                                _ => None,
+                            });
                     match &a.kind {
                         ExprKind::ArrayLit(elems) => {
                             for el in elems {
@@ -281,6 +307,11 @@ impl Emitter<'_> {
                             let (_, len) = &arrays[n];
                             for i in 0..*len {
                                 args_str.push(format!("{n}_{i}"));
+                            }
+                        }
+                        ExprKind::Ident(n) if bundle_fields.is_some() => {
+                            for (fname, _) in bundle_fields.as_ref().unwrap() {
+                                args_str.push(format!("{n}_{fname}"));
                             }
                         }
                         _ => args_str.push(self.expr_subst(a, subst, arrays)),

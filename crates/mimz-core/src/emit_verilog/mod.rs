@@ -1074,6 +1074,47 @@ mod tests {
     }
 
     #[test]
+    fn bundle_typed_fn_param_flattens_to_per_field_inputs() {
+        // BUG-10 (docs/audit/bugs.md): a bundle-typed `fn` parameter used to
+        // hit `width()`'s `Type::Named` arm (hard error, bare form) or
+        // `Type::Bundle` arm (silently 0-width, parametric form) instead of
+        // flattening like module ports/wires do. Covers both forms: `u` is
+        // bare `HasUART` (zero-param), `v` is parametric `Handshake(W: 4)`.
+        let v = emit_src(
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             bundle Handshake(W: int = 8) { valid: bit, data: bits[W] }\n\
+             fn pick(u: HasUART, v: Handshake(W: 4)) -> bit { u.tx & v.valid }\n\
+             module M {\n  \
+             in  a_tx: bit\n  in a_rx: bit\n  in b_valid: bit\n  in b_data: bits[4]\n  \
+             out o: bit\n  \
+             wire a: HasUART = { tx: a_tx, rx: a_rx }\n  \
+             wire b: Handshake(W: 4) = { valid: b_valid, data: b_data }\n  \
+             o = pick(a, b)\n}\n",
+        );
+        assert!(
+            v.contains("        input u_tx;\n        input u_rx;\n"),
+            "expected per-field flattened inputs for the bare bundle param, got:\n{v}"
+        );
+        assert!(
+            v.contains("        input v_valid;\n        input [3:0] v_data;\n"),
+            "expected per-field flattened inputs for the parametric bundle param, got:\n{v}"
+        );
+        assert!(
+            !v.contains("input u;\n") && !v.contains("input v;\n"),
+            "must not declare the old single-scalar (broken) input, got:\n{v}"
+        );
+        assert!(
+            v.contains("pick = (u_tx & v_valid);\n") || v.contains("pick = u_tx & v_valid;\n"),
+            "the function body already refers to the flattened field names, got:\n{v}"
+        );
+        assert!(
+            v.contains("pick(a_tx, a_rx, b_valid, b_data)"),
+            "the call site must expand the bundle-typed arguments into the \
+             callee's flattened field names, got:\n{v}"
+        );
+    }
+
+    #[test]
     fn bundle_port_forwarding_a_module_parameter_stays_symbolic() {
         // `Handshake(W: W)` forwards Child's OWN parameter `W` into the
         // bundle's param. Child's `W` is a genuine Verilog `parameter` and
@@ -1399,34 +1440,25 @@ mod tests {
 
     #[test]
     fn structurally_matched_fn_arg_emits_same_as_nominal_match() {
-        // `HasUART`/`SensorData` are given a dummy `W` param (unused by the
-        // fields) so the `fn` signature references them as `Type::Bundle`,
-        // not bare `Type::Named` — `render_fn_decl`'s `self.width(&param.ty)`
-        // has no bundle-flatten special case (unlike ports/wires, which
-        // check bundle-ness before ever calling `width`), so a bare
-        // zero-param bundle name there hits `width`'s `Type::Named` arm and
-        // hard-errors ("unknown type ... not a declared enum"). This is a
-        // separate, pre-existing emitter gap (bundle-typed `fn` params/
-        // returns are never flattened to per-field ports the way module
-        // ports/wires are — confirmed emitting `input u;` unflattened and a
-        // single-arg call site instead of `input u_tx; input u_rx;` /
-        // `pick_tx(a_tx, a_rx)`) — unrelated to structural matching itself
-        // and out of scope for this fix pass; using the parametric form
-        // here only sidesteps the hard-error so this test can still assert
-        // the thing feature 2.9 owns: the emitted text does not vary with
-        // the bundle's declared NAME, nominal or structural.
+        // BUG-10's param half is fixed (bundle-typed `fn` params now flatten
+        // to per-field inputs, same as ports/wires — see
+        // `bundle_typed_fn_param_flattens_to_per_field_inputs` above) — bare
+        // zero-param bundles no longer need the old dummy-`W`-param
+        // workaround. This test asserts feature 2.9's own invariant: the
+        // emitted text does not vary with the bundle's declared NAME,
+        // nominal or structural.
         let nominal = emit_src(
-            "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
-             fn pick_tx(u: HasUART(W: 1)) -> bit { u.tx }\n\
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             fn pick_tx(u: HasUART) -> bit { u.tx }\n\
              module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
-             wire a: HasUART(W: 1) = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
+             wire a: HasUART = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
         );
         let structural = emit_src(
-            "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
-             bundle SensorData(W: int = 1) { tx: bit, rx: bit }\n\
-             fn pick_tx(u: HasUART(W: 1)) -> bit { u.tx }\n\
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             bundle SensorData { tx: bit, rx: bit }\n\
+             fn pick_tx(u: HasUART) -> bit { u.tx }\n\
              module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
-             wire a: SensorData(W: 1) = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
+             wire a: SensorData = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
         );
         assert_eq!(
             nominal, structural,
@@ -1437,11 +1469,20 @@ mod tests {
 
     #[test]
     fn structurally_matched_fn_return_emits_same_as_nominal_match() {
-        // Same dummy-`W`-param workaround as the `fn`-arg test above (see
-        // its comment) — sidesteps the unrelated `render_fn_decl` bundle-
-        // flatten gap so this can still assert feature 2.9's own invariant:
-        // a structurally-matched `fn` return emits identically to the
-        // same-name case.
+        // BUG-10's PARAM half is fixed (see
+        // `structurally_matched_fn_arg_emits_same_as_nominal_match` above),
+        // but the RETURN half is still open — `render_fn_decl`'s `ret_w =
+        // self.width(&decl.ret)` has no bundle-flatten case, and a Verilog
+        // `function` can only return ONE value in the first place (no
+        // syntax for multiple named outputs), so this isn't a simple
+        // flatten-the-declaration fix the way params were — it needs a
+        // different codegen strategy (inlining), tracked as a follow-up
+        // feature, not fixed here. The dummy `W` param on the RETURN type
+        // only sidesteps the hard-error path so this test can still assert
+        // feature 2.9's own invariant: a structurally-matched `fn` return
+        // emits identically (still broken, but identically broken) to the
+        // same-name case — the emission layer is name-driven, not
+        // type-driven, even for this unrelated, still-open gap.
         let nominal = emit_src(
             "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
              fn as_uart(u: HasUART(W: 1)) -> HasUART(W: 1) { u }\n\
