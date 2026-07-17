@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.25.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.26.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -711,6 +711,82 @@ only return one value, so flattening a return the way ports/wires/params do
 isn't applicable; this is a real, open gap (`docs/audit/bugs.md` BUG-10),
 not yet supported.
 
+### 1.12a Valid-bundle sugar: `T?` and `??`
+
+`T?` is shorthand for "maybe-present `T`": a trailing `?` on `bit`, `bits[N]`,
+or `signed[N]` desugars at **parse time** to a reference to one of two
+compiler-synthesized bundles — no new `Type` variant, no new runtime
+representation, just sugar over the bundle machinery `§1.12` already
+describes.
+
+```mimz
+module Mux {
+  in  a: bits[8]?
+  in  b: bits[8]?
+  in  fallback: bits[8]
+  out picked: bits[8]
+  out either: bits[8]?
+
+  // unwrap: T? ?? T -> T
+  picked = a ?? fallback
+
+  // OR-mux: T? ?? T? -> T?
+  either = a ?? b
+}
+```
+
+Rules:
+
+- `bit?` and `bits[N]?` desugar to `{ valid: bit, data: bits[N] }` (`N`
+  defaults to 1 for bare `bit?`); `signed[N]?` desugars to
+  `{ valid: bit, data: signed[N] }`. `T?` is legal anywhere a scalar `Type`
+  is legal — wire/reg/port/`fn` parameter/`fn` return — but **not** as a
+  bundle field type; that hits the pre-existing nested-bundle rejection
+  (E0807), same as any other bundle used as a field type.
+- Construction is **bundle-literal only**: `{ valid: expr, data: expr }`,
+  reusing the exact same E0901/E0902 rules as any other bundle literal.
+  There is no implicit auto-wrap from a bare value — `wire w: bit? = 1`
+  does not compile.
+- Because `T?` desugars to an ordinary structurally-typed bundle, a
+  user-declared bundle with the exact shape `{ valid: bit, data: T }`
+  satisfies a `T?`-typed slot and vice versa — an accepted consequence of
+  `§1.12`'s structural matching rule, not a special case carved out for
+  this feature.
+- `a ?? b` — new operator, lowest precedence (binds looser than `||`),
+  left-associative (`a ?? b ?? c` parses as `(a ?? b) ?? c`). Which of two
+  forms applies is decided by the right operand's shape, not a keyword or
+  annotation:
+  - **Unwrap** — `T? ?? T -> T`: the right side's type matches the left
+    operand's `data` field exactly.
+  - **OR-mux** — `T? ?? T? -> T?`: the right side is itself a valid-bundle
+    whose `data` matches the left operand's exactly.
+  - Neither form coerces width in either direction (E0912 if the right
+    side's type/`data` type doesn't match exactly). The left operand must
+    itself be valid-bundle-shaped (E0911 otherwise).
+- Never tri-state: both forms always lower to an ordinary two-way
+  mux (ternary / `IfExpr`) — never a Verilog `z`/`x` literal — matching
+  the "no uninitialized state" guarantee the rest of the spec holds
+  elsewhere (`mem` init, reset).
+- A `T?` used as an `fn` **return** type inherits the pre-existing,
+  unrelated bundle-return gap: the checker accepts it, but the emitter
+  cannot flatten ANY bundle-typed `fn` return yet, `?`-sugar or not
+  (`docs/audit/bugs.md` BUG-10). Not addressed by this feature.
+
+**Verilog emission:** `T?` flattens exactly like any other bundle (`§1.12`)
+— one wire per field (`req_valid`, `req_data`), nothing sugar-specific about
+the emitted signals. `a ?? b` lowers to a ternary: the unwrap form emits
+`a_valid ? a_data : b`; the OR-mux form emits one ternary per field
+(`a_valid ? 1'b1 : b_valid` for `valid`, `a_valid ? a_data : b_data` for
+`data`), evaluated at every field-consuming call site a bundle-typed value
+can reach (wire/reg init, `Drive`, module-port connection, `fn`-call
+argument) in the Verilog emitter. The simulator supports the same lowering
+at wire/reg init and `Drive` only — bundle-typed instance ports and `fn`
+arguments are unsupported in the simulator today, `??` or not
+(`docs/audit/bugs.md` BUG-15). A chained `??` (`x ?? y ?? z`) recurses into
+nested `??` operands rather than treating an already-bundle-typed
+sub-expression as a plain signal — required for the chain to lower to
+correct, not just plausible-looking, Verilog.
+
 ### Bundle checker rules
 
 | Code  | Triggered when                                                                                                                                                                                                                                          |
@@ -725,6 +801,8 @@ not yet supported.
 | E0908 | Duplicate field name in `bundle` declaration (deferred — Phase 2)                                                                                                                                                                                       |
 | E0909 | Bundle declared more than once (project-wide name collision)                                                                                                                                                                                            |
 | E0910 | Bundle is missing a required field (structural — extra fields are fine, missing ones are not)                                                                                                                                                           |
+| E0911 | `??`'s left operand is not a valid-bundle (`T?`) — must be `bit?`/`bits[N]?`/`signed[N]?`-shaped, or a user bundle with the identical `{ valid: bit, data: T }` shape                                                                                   |
+| E0912 | `??`'s right operand doesn't match the left operand's `data` type exactly — neither the unwrap form (`T`) nor the OR-mux form (`T?`) coerce width                                                                                                       |
 
 ---
 

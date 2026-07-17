@@ -795,6 +795,89 @@ mod tests {
     }
 
     #[test]
+    fn qq_unwrap_form_evaluates_in_a_test_block() {
+        // `raw ?? 0` unwraps a `bits[8]?` to its `data` when `valid`, else the
+        // fallback — purely combinational, so no clock/tick is needed; `expect`
+        // settles `safe` on demand from the driven inputs (see `Sim::peek`).
+        let src = "module M {\n  in c: bit\n  in d: bits[8]\n  out safe: bits[8]\n  \
+             wire raw: bits[8]? = { valid: c, data: d }\n  \
+             safe = raw ?? 0\n}\n\
+             test \"unwrap\" for M {\n  c = 1\n  d = 5\n  expect safe == 5\n}\n\
+             test \"unwrap-invalid\" for M {\n  c = 0\n  d = 5\n  expect safe == 0\n}\n";
+        let outs = run(src);
+        assert_eq!(outs.len(), 2);
+        assert!(passes(&outs[0]), "unwrap: {:?}", outs[0].result);
+        assert!(passes(&outs[1]), "unwrap-invalid: {:?}", outs[1].result);
+    }
+
+    #[test]
+    fn qq_or_mux_form_evaluates_at_wire_init() {
+        // `x ?? y` where both operands (and the result) stay `bits[8]?` —
+        // per-field mux: `merged.valid = x.valid || y.valid`,
+        // `merged.data = x.valid ? x.data : y.data`. Wire-init call site
+        // (`ModuleItem::Wire`'s `bundle_field_expr` extraction).
+        let src = "module M {\n  in c1: bit\n  in d1: bits[8]\n  in c2: bit\n  in d2: bits[8]\n  \
+             wire x: bits[8]? = { valid: c1, data: d1 }\n  \
+             wire y: bits[8]? = { valid: c2, data: d2 }\n  \
+             wire merged: bits[8]? = x ?? y\n}\n\
+             test \"lhs-valid\" for M {\n  c1 = 1\n  d1 = 5\n  c2 = 1\n  d2 = 9\n  \
+             expect merged_valid == 1\n  expect merged_data == 5\n}\n\
+             test \"lhs-invalid-falls-to-rhs\" for M {\n  c1 = 0\n  d1 = 5\n  c2 = 1\n  d2 = 9\n  \
+             expect merged_valid == 1\n  expect merged_data == 9\n}\n";
+        let outs = run(src);
+        assert_eq!(outs.len(), 2);
+        assert!(passes(&outs[0]), "lhs-valid: {:?}", outs[0].result);
+        assert!(
+            passes(&outs[1]),
+            "lhs-invalid-falls-to-rhs: {:?}",
+            outs[1].result
+        );
+    }
+
+    #[test]
+    fn qq_or_mux_form_evaluates_via_drive() {
+        // Same OR-mux semantics, but through a Drive statement onto a
+        // bundle-typed `out` port (`ModuleItem::Drive`'s bundle-drive arm)
+        // instead of a wire-init.
+        let src = "module M {\n  in c1: bit\n  in d1: bits[8]\n  in c2: bit\n  in d2: bits[8]\n  \
+             out merged: bits[8]?\n  \
+             wire x: bits[8]? = { valid: c1, data: d1 }\n  \
+             wire y: bits[8]? = { valid: c2, data: d2 }\n  \
+             merged = x ?? y\n}\n\
+             test \"lhs-valid\" for M {\n  c1 = 1\n  d1 = 5\n  c2 = 1\n  d2 = 9\n  \
+             expect merged_valid == 1\n  expect merged_data == 5\n}\n\
+             test \"both-invalid\" for M {\n  c1 = 0\n  d1 = 5\n  c2 = 0\n  d2 = 9\n  \
+             expect merged_valid == 0\n}\n";
+        let outs = run(src);
+        assert_eq!(outs.len(), 2);
+        assert!(passes(&outs[0]), "lhs-valid: {:?}", outs[0].result);
+        assert!(passes(&outs[1]), "both-invalid: {:?}", outs[1].result);
+    }
+
+    #[test]
+    fn qq_or_mux_chain_evaluates_correctly() {
+        // `x ?? y ?? z` (left-associative: `Coalesce(Coalesce(x,y), z)`).
+        // `x`/`y` invalid, `z` valid: nested extraction must reach `z`'s
+        // fields, not mis-render the nested `Coalesce(x,y)` sub-expression
+        // as a plain signal (the bug class fixed in Task 8's emitter-side
+        // review — this is its simulator-side regression test).
+        let src = "module M {\n  in c1: bit\n  in d1: bits[8]\n  in c2: bit\n  in d2: bits[8]\n  \
+             in c3: bit\n  in d3: bits[8]\n  \
+             wire x: bits[8]? = { valid: c1, data: d1 }\n  \
+             wire y: bits[8]? = { valid: c2, data: d2 }\n  \
+             wire z: bits[8]? = { valid: c3, data: d3 }\n  \
+             wire merged: bits[8]? = x ?? y ?? z\n}\n\
+             test \"falls-through-to-z\" for M {\n  c1 = 0\n  d1 = 1\n  c2 = 0\n  d2 = 2\n  \
+             c3 = 1\n  d3 = 3\n  expect merged_valid == 1\n  expect merged_data == 3\n}\n\
+             test \"middle-valid\" for M {\n  c1 = 0\n  d1 = 1\n  c2 = 1\n  d2 = 2\n  \
+             c3 = 1\n  d3 = 3\n  expect merged_valid == 1\n  expect merged_data == 2\n}\n";
+        let outs = run(src);
+        assert_eq!(outs.len(), 2);
+        assert!(passes(&outs[0]), "falls-through-to-z: {:?}", outs[0].result);
+        assert!(passes(&outs[1]), "middle-valid: {:?}", outs[1].result);
+    }
+
+    #[test]
     fn a_test_if_branches_on_state() {
         // `if` takes the true branch; the false branch's bogus expect never runs.
         let src = format!(
