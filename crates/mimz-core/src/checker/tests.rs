@@ -1967,6 +1967,51 @@ fn builtin_valid_bundle_shows_as_surface_syntax_in_diagnostics() {
 }
 
 #[test]
+fn builtin_valid_bundle_bit_question_collapses_to_bit_in_diagnostics() {
+    // Test the N=1 case: `__Valid` with N=1 must render as `bit?`, not `bits[1]?`.
+    // Same mechanism as the `bits[8]?` test above: assigning a plain `bit` value
+    // to a `bit?`-typed wire is a bundle-vs-non-bundle mismatch that renders the
+    // whole LHS type via `show()` in E0401.
+    let src = "module M {\n  in a: bit\n  wire x: bit? = a\n}\n";
+    let d = first_err(src, "E0401");
+    assert!(
+        !d.msg.contains("__Valid"),
+        "internal builtin bundle name leaked into a diagnostic: {}",
+        d.msg
+    );
+    assert!(
+        d.msg.contains("`bit?`"),
+        "expected the surface `bit?` syntax in the diagnostic, got: {}",
+        d.msg
+    );
+    assert!(
+        !d.msg.contains("bits[1]"),
+        "expected `bit?` not `bits[1]?` in the diagnostic, got: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn builtin_valid_signed_bundle_shows_as_surface_syntax_in_diagnostics() {
+    // Test the `__ValidSigned` case: must render as `signed[N]?`.
+    // Same mechanism as the `bits[N]?` tests above: assigning a plain `signed[8]`
+    // value to a `signed[8]?`-typed wire is a bundle-vs-non-bundle mismatch that
+    // renders the whole LHS type via `show()` in E0401.
+    let src = "module M {\n  in a: signed[8]\n  wire x: signed[8]? = a\n}\n";
+    let d = first_err(src, "E0401");
+    assert!(
+        !d.msg.contains("__ValidSigned"),
+        "internal builtin bundle name leaked into a diagnostic: {}",
+        d.msg
+    );
+    assert!(
+        d.msg.contains("`signed[8]?`"),
+        "expected the surface `signed[8]?` syntax in the diagnostic, got: {}",
+        d.msg
+    );
+}
+
+#[test]
 fn qq_same_shaped_user_bundle_satisfies_a_valid_bundle_slot() {
     // Accepted, intentional consequence of desugaring to the existing
     // structural-bundle machinery (feature 2.9) — pinned as a regression
