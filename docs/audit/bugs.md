@@ -460,7 +460,6 @@ via a dummy `W: int = 1` bundle param and assert only that structural vs.
 nominal bundle naming doesn't change the (still-invalid) emitted output —
 they do not assert the output is _correct_ Verilog, since it isn't yet.
 
-
 ## BUG-11 (CRITICAL) — Simulation vs. Synthesis Mismatch on Left Shift (`<<`)
 
 **What.** The simulator evaluates left shifts by dynamically expanding the width of the result based on the shift amount. The expression `a << 2` is evaluated with `w = (a.width + 2).min(128)`, carrying extra bits into subsequent operations.
