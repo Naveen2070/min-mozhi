@@ -819,6 +819,15 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: `sim { speed mhz(50)  bind led -> led(color: green) }`; see\n\
          docs/Ideas/hardware_emulation.md.",
     ),
+    (
+        "E1115",
+        "E1115 — `??` on a valid-bundle type\n\n\
+         A `?`-suffixed type (`bit?`, `bits[N]?`, `signed[N]?`) was itself\n\
+         followed by another `?`. These desugar to a compiler-synthesized\n\
+         valid-bundle (`__Valid`/`__ValidSigned`), which cannot be made\n\
+         optional a second time.\n\n\
+         Fix: use a single `?`, e.g. `bits[8]?`.",
+    ),
     // ----- E12xx: loader -----
     (
         "E1201",
