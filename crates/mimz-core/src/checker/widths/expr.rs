@@ -263,6 +263,21 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            // `??` needs the context type: a bare-literal fallback (`x ?? 0`)
+            // adapts to the LHS's `data` width, and the surrounding target
+            // type is what distinguishes a clean unwrap from an E0912
+            // mismatch (see `coalesce_ty`). The generic `_` arm below infers
+            // bottom-up with no context, so `??` gets its own arm here.
+            ExprKind::Binary {
+                op: BinOp::Coalesce,
+                lhs,
+                rhs,
+            } => {
+                let lt = self.infer_ty(cx, lhs);
+                let rt = self.infer_ty(cx, rhs);
+                let got = self.coalesce_ty(cx, (lhs, lt), (rhs, rt), expected);
+                self.expect_ty(cx, e, got, expected);
+            }
             _ => {
                 let got = self.infer_ty(cx, e);
                 self.expect_ty(cx, e, got, expected);

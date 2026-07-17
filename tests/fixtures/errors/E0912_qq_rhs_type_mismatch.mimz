@@ -1,0 +1,8 @@
+// expect: E0912
+module M {
+  in c: bit
+  in d: bits[8]
+  out o: bits[4]
+  wire x: bits[8]? = { valid: c, data: d }
+  o = x ?? 0
+}

@@ -18,6 +18,8 @@ mod foreach_lower;
 pub use foreach_lower::{
     array_like_len, array_like_len_fn, lower_foreach_fn, lower_foreach_item, lower_foreach_seq,
 };
+mod builtin_bundles;
+pub use builtin_bundles::builtin_valid_bundles;
 
 use std::cell::Cell;
 

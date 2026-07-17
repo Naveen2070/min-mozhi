@@ -1,0 +1,6 @@
+// expect: E0911
+module M {
+  in a: bits[8]
+  out o: bits[8]
+  o = a ?? 0
+}

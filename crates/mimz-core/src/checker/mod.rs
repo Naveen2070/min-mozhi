@@ -72,7 +72,11 @@ pub(super) struct Checker<'a> {
     /// Uniqueness is enforced per-file (symbols.rs), mirroring `modules`.
     externs: HashMap<String, Vec<(usize, &'a ast::ExternModule)>>,
     /// Per file: const name -> evaluated value (consts are file-local;
-    /// imports do NOT bring consts into scope).
+    /// imports do NOT bring consts into scope). One extra always-empty slot
+    /// past `files.len() - 1` backs the synthesized `__Valid`/`__ValidSigned`
+    /// builtin bundles' file index (`build_symbols`) — `resolve_bundle_fields`
+    /// (`widths/mod.rs`) indexes this array directly by a bundle's declaring
+    /// file with no bounds check, so that index must stay in range.
     file_consts: Vec<HashMap<String, i128>>,
     /// (declaring file, module name) -> its name table, built by pass 3
     /// (`names.rs`) and reused by pass 4 (`widths.rs`) and pass 5
@@ -94,7 +98,7 @@ impl<'a> Checker<'a> {
             funcs: HashMap::new(),
             bundles: HashMap::new(),
             externs: HashMap::new(),
-            file_consts: vec![HashMap::new(); files.len()],
+            file_consts: vec![HashMap::new(); files.len() + 1],
             scopes: HashMap::new(),
             diags: Vec::new(),
         }

@@ -176,7 +176,124 @@ impl<'a> Checker<'a> {
                 }
                 Ty::Bit
             }
+            // `??` in an inference-only position (a sub-expression with no
+            // context type) — no `expected` to disambiguate a literal
+            // fallback's width, so pass `Ty::Unknown` (check_expr's own
+            // `Coalesce` arm threads the real context type in when there is
+            // one). See `coalesce_ty`.
+            Coalesce => self.coalesce_ty(cx, (lhs, lt), (rhs, rt), Ty::Unknown),
         }
+    }
+
+    /// Types a `??` expression (design:
+    /// `docs/superpowers/specs/2026-07-16-valid-bundle-sugar-design.local.md`,
+    /// "The `??` operator"). LHS must be a valid-bundle (`T?`, i.e.
+    /// structurally `{ valid: bit, data: T }` — feature 2.9's structural
+    /// rule decides this, same as any other bundle-typed slot); otherwise
+    /// E0911. RHS is polymorphic:
+    /// - a sized value whose type matches `data` exactly → UNWRAP form,
+    ///   result `T`;
+    /// - a bundle whose own `data` field matches `T` exactly → OR-MUX form,
+    ///   result stays the LHS's own `Ty::Bundle` (`T?`), unchanged;
+    /// - a bare literal → adapts to `data`'s width (UNWRAP form). `expected`
+    ///   (the assignment/context type, or `Unknown` when inferring a
+    ///   sub-expression) decides: a literal in a context that itself wants
+    ///   `data`'s type unwraps cleanly; a context that wants a *different*
+    ///   concrete type can't be satisfied by the unwrap result, so that is
+    ///   the ??-specific mismatch E0912 rather than a generic width error.
+    /// - anything else → E0912.
+    ///
+    /// Deliberately NOT routed through `bundle_shape_match`: that rule covers
+    /// a required *subset* of fields (extras ignored); `??`'s rule is the
+    /// narrower "`data` types match exactly on both sides", written here as a
+    /// direct field comparison via `resolve_bundle_fields` + `same`.
+    pub(super) fn coalesce_ty(
+        &mut self,
+        cx: &mut Wcx<'a>,
+        (lhs, lt): (&'a Expr, Ty<'a>),
+        (rhs, rt): (&'a Expr, Ty<'a>),
+        expected: Ty<'a>,
+    ) -> Ty<'a> {
+        if matches!(lt, Ty::Unknown) || matches!(rt, Ty::Unknown) {
+            return Ty::Unknown; // an inner error was already reported
+        }
+        let Ty::Bundle {
+            name: lname,
+            bfile_hint: lhint,
+            args: largs,
+        } = lt
+        else {
+            self.err(
+                cx.file,
+                lhs.span,
+                "E0911",
+                "`??`'s left operand must be a valid-bundle (`T?`)",
+                "`??` reads validity off its left operand — the left side must be a \
+                 `bits[N]?`/`bit?`/`signed[N]?`-shaped value (or a user bundle with \
+                 an identical `{ valid: bit, data: T }` shape)",
+            );
+            return Ty::Unknown;
+        };
+        let Some(lfields) = self.resolve_bundle_fields(cx, lname, lhint, largs, lhs.span) else {
+            return Ty::Unknown; // E0906 already reported
+        };
+        let Some((_, data_ty)) = lfields.iter().find(|(n, _)| n == "data") else {
+            // Structurally a bundle but with no `data` field — not a
+            // valid-bundle shape, same diagnostic as "not optional".
+            self.err(
+                cx.file,
+                lhs.span,
+                "E0911",
+                "`??`'s left operand must be a valid-bundle (`T?`)",
+                "expected a bundle with `valid`/`data` fields",
+            );
+            return Ty::Unknown;
+        };
+        let data_ty = *data_ty;
+        // Bare-literal fallback: it adapts to `data`'s width (unwrap form),
+        // but only in a context that actually wants `data`'s type.
+        if let Ty::CtInt(v) = rt {
+            if matches!(expected, Ty::Unknown) || same(&expected, &data_ty) {
+                self.fit(cx, rhs.span, v, data_ty);
+                return data_ty;
+            }
+            return self.qq_rhs_mismatch(cx, rhs.span, &data_ty);
+        }
+        // Unwrap form: a sized RHS whose type matches `data` exactly.
+        if same(&rt, &data_ty) {
+            return data_ty;
+        }
+        // OR-mux form: RHS is itself a bundle whose own `data` matches `T`
+        // exactly (direct field comparison, NOT `bundle_shape_match`).
+        if let Ty::Bundle {
+            name: rname,
+            bfile_hint: rhint,
+            args: rargs,
+        } = rt
+            && let Some(rfields) = self.resolve_bundle_fields(cx, rname, rhint, rargs, rhs.span)
+            && let Some((_, rdata)) = rfields.iter().find(|(n, _)| n == "data")
+            && same(rdata, &data_ty)
+        {
+            return lt;
+        }
+        self.qq_rhs_mismatch(cx, rhs.span, &data_ty)
+    }
+
+    /// The shared E0912 diagnostic for a `??` right operand that matches
+    /// neither the unwrap nor the OR-mux form. Returns `Unknown`.
+    fn qq_rhs_mismatch(&mut self, cx: &mut Wcx<'a>, span: Span, data_ty: &Ty<'a>) -> Ty<'a> {
+        self.err(
+            cx.file,
+            span,
+            "E0912",
+            format!(
+                "`??`'s right operand doesn't match the left operand's `data` type ({})",
+                show(data_ty)
+            ),
+            "the right operand must be either the same type as `data`, or another \
+             valid-bundle whose `data` matches exactly — no width coercion",
+        );
+        Ty::Unknown
     }
 
     /// `+`/`-`/`*` — lossless growth. Operand widths may differ (the
