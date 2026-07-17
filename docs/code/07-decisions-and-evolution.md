@@ -259,6 +259,77 @@ emission layer needed nothing further — the same "generic code, checker
 widens what it accepts" precedent `extern module`/`ModuleTarget`
 established one feature earlier.
 
+### `T?`/`??` valid-bundle sugar — reuse over a parallel type system (2026-07-17)
+
+`T?` (`bit?`/`bits[N]?`/`signed[N]?`) desugars at parse time to a reference
+to one of two compiler-synthesized bundle declarations
+(`ast::builtin_valid_bundles`: `__Valid(N: int = 1) { valid: bit, data:
+bits[N] }` and `__ValidSigned(N: int = 1) { valid: bit, data: signed[N] }`)
+rather than becoming a new `Type::Optional` variant with its own checker/
+emitter/simulator arms. The deciding factor: `§1.12`'s structural bundle
+matching (feature 2.9, shipped one day earlier) already gives a bundle
+type free field-extraction, free flattening in both backends, and free
+literal-construction diagnostics (E0901/E0902) — a parallel `Optional`
+type would have needed to re-derive all three from scratch for a shape
+that a bundle already models exactly. The parser resolves `T?` to a
+`Type::Bundle` node naming `__Valid`/`__ValidSigned`; everywhere past the
+parser, it is an ordinary bundle and nothing downstream needs to know it
+came from sugar (diagnostics render it back as `T?` — Task 6 — purely
+cosmetic, not a separate code path).
+
+**Accepted consequence: structural interchange.** Because `T?` is just a
+bundle with a well-known shape, feature 2.9's own rule applies to it for
+free — a user-declared `bundle Maybe { valid: bit, data: bits[8] }` is
+structurally identical to `bits[8]?` and satisfies it (and vice versa) at
+every call site. This was not special-cased away; it's the natural, and
+intentional, result of choosing reuse over a new type. Task 11's
+regression test proves it's not just type-checked but byte-identical at
+emission: a `bits[8]?`-typed wire and a nominally-different but
+identically-shaped user bundle produce the same Verilog.
+
+**Scope correction: OR-mux touches every call site, not one rule.** The
+plan for `??`'s OR-mux form (`T? ?? T? -> T?`) originally assumed a single
+dedicated emission rule would cover it, on the theory that `??` is "just
+another expression" the existing generic expression-emission path would
+handle. That's wrong for a bundle-typed result: a bundle doesn't have one
+Verilog value to substitute, it has one value **per field**, and a
+bundle-typed expression gets its fields extracted at whichever of several
+places consumes it — wire/reg initializer, `Drive` RHS, module-port
+connection, `fn`-call argument (four sites in `mimz-core`'s emitter;
+wire-init and `Drive` in `mimz-sim`'s simulator, which lacks the other two
+— see the two new bugs.md entries below). Each site independently asks
+"what's the value of field X of this bundle-typed expression", so OR-mux
+lowering had to live in a shared per-field helper
+(`coalesce_field_expr`/`bundle_field_expr`) called FROM every one of
+those sites, not a single top-level rule the way unwrap-form (which
+collapses to one ordinary scalar ternary, `a_valid ? a_data : b`) could
+be. Discovered while writing the plan itself, before any code was wrong —
+a genuine scope correction, not a review finding.
+
+**Lesson from code review: chained `??` needs recursive lowering.** The
+OR-mux helper's first version, in both crates, handled only a single
+`lhs ?? rhs` pair: it called `self.expr(operand)` (emitter) or built a
+bare `Field` node (simulator) on each operand to get its per-field value.
+That's correct when both operands are plain bundle-typed signals, but `??`
+is left-associative and chains (`x ?? y ?? z` parses as
+`Coalesce(Coalesce(x, y), z)`), so an operand can itself be a `Coalesce`
+node — a bundle-typed compound expression, not a signal. Treating it as a
+signal and bolting `_fname` onto its rendered text (emitter) or handing it
+to `Field`'s generic fallback (simulator, which recurses through the
+UNWRAP arm — the wrong semantics for a still-bundle-typed value) produced
+syntactically invalid Verilog for the emitter case and silently wrong
+values for the simulator case. Caught in Task 8's code review before it
+shipped; the fix recurses into a nested `Coalesce` operand
+(`coalesce_operand_field` / `bundle_field_expr`'s own `Coalesce` arm)
+instead of rendering it as an opaque signal — Task 10's simulator OR-mux
+was written with the fix already in place, citing the emitter's review
+finding directly rather than repeating the mistake. The lesson: a
+left-associative chaining operator whose lowering touches sub-fields, not
+just sub-values, cannot assume its operands are leaves — the naive
+per-call-site "render the operand, then suffix a field name" approach is
+only correct for the base case, and silently wrong (not a compile error)
+for the recursive one.
+
 ## How the code has actually turned out (honest notes)
 
 - The front end (lexer → parser → emitter) went from empty repo to

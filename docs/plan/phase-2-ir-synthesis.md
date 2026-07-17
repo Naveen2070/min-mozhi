@@ -147,8 +147,22 @@ VHDL/Verilog/SV, ordered cheapest-first; these precede the original Tier-3 list:
       `check_return_ty`) — this closes the checker/emitter gap that leaves.
       No examples/goldens depend on this today; not urgent, but a real,
       honest gap (spec/02 §1.12 documents it as open, not silently broken).
-- [ ] `?` valid-bundle sugar (2.1 re-targeted): `bits[N]?` =
-      `{valid, data}`, `??` = mux on valid — never tri-state
+- [x] **`?` valid-bundle sugar (2.1 re-targeted)** — `bit?`/`bits[N]?`/
+      `signed[N]?` desugar at parse time to `{ valid: bit, data: T }`
+      (compiler-synthesized `__Valid`/`__ValidSigned` bundles, reusing
+      feature 2.9's structural machinery rather than a new `Type`
+      variant); construction is bundle-literal only. New `??` operator
+      (lowest precedence, left-assoc, chains): unwrap (`T? ?? T -> T`)
+      and OR-mux (`T? ?? T? -> T?`), decided by the right operand's
+      shape, no coercion either way (E0911/E0912). Always lowers to an
+      ordinary two-way mux — never tri-state — in both the emitter and
+      the simulator. **✅ DONE 2026-07-17 (spec/02 v0.2.26, new §1.12a)**
+      — `crates/mimz-core/src/checker/tests.rs`,
+      `crates/mimz-core/src/emit_verilog/mod.rs`; also fixed a
+      pre-existing bug where `mimz-sim`'s elaborator never registered
+      the `__Valid`/`__ValidSigned` builtins (BUG-14) and documented an
+      open pre-existing gap in `mimz-sim`'s instance/fn-arg bundle
+      flattening (BUG-15) found while scoping this feature.
 - [ ] **Channels tier (a)** (3.1) — Decoupled-style valid/ready/data bundles,
       explicit handshake + must-consume lint on unused channel reads
       (the honest salvage of affine tokens, 1.3)

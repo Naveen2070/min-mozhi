@@ -779,8 +779,21 @@ impl Emitter<'_> {
                                     ));
                                 }
                             }
+                        } else if let ExprKind::Binary {
+                            op: BinOp::Coalesce,
+                            lhs: clhs,
+                            rhs: crhs,
+                        } = &init.kind
+                        {
+                            for (fname, _) in &fields {
+                                let r = self.coalesce_field_expr(clhs, crhs, fname);
+                                self.out.push_str(&format!(
+                                    "    assign {}_{fname} = {r};\n",
+                                    name.name
+                                ));
+                            }
                         } else {
-                            // RHS is a signal: emit signame_field = rhs_field.
+                            // RHS is a plain signal: emit signame_field = rhs_field.
                             let r = self.expr(init);
                             for (fname, _) in &fields {
                                 self.out.push_str(&format!(
@@ -810,6 +823,19 @@ impl Emitter<'_> {
                                         lhs.base.name, fname, r
                                     ));
                                 }
+                            }
+                        } else if let ExprKind::Binary {
+                            op: BinOp::Coalesce,
+                            lhs: clhs,
+                            rhs: crhs,
+                        } = &rhs.kind
+                        {
+                            for (fname, _) in &fields {
+                                let r = self.coalesce_field_expr(clhs, crhs, fname);
+                                self.out.push_str(&format!(
+                                    "    assign {}_{fname} = {r};\n",
+                                    lhs.base.name
+                                ));
                             }
                         } else {
                             // RHS is a bundle signal (e.g. `rsp = req`).
@@ -974,15 +1000,29 @@ impl Emitter<'_> {
                                 );
                                 continue;
                             };
-                            let sig = self.expr(&conn.signal);
                             if let Some(fields) = &bundle_fields {
-                                for (fname, _) in fields {
-                                    port_conns.push(format!(
-                                        ".{}_{}({}_{})",
-                                        name.name, fname, sig, fname
-                                    ));
+                                if let ExprKind::Binary {
+                                    op: BinOp::Coalesce,
+                                    lhs: clhs,
+                                    rhs: crhs,
+                                } = &conn.signal.kind
+                                {
+                                    let (clhs, crhs) = (clhs.clone(), crhs.clone());
+                                    for (fname, _) in fields.clone() {
+                                        let r = self.coalesce_field_expr(&clhs, &crhs, &fname);
+                                        port_conns.push(format!(".{}_{}({})", name.name, fname, r));
+                                    }
+                                } else {
+                                    let sig = self.expr(&conn.signal);
+                                    for (fname, _) in fields {
+                                        port_conns.push(format!(
+                                            ".{}_{}({}_{})",
+                                            name.name, fname, sig, fname
+                                        ));
+                                    }
                                 }
                             } else {
+                                let sig = self.expr(&conn.signal);
                                 port_conns.push(format!(".{}({})", name.name, sig));
                             }
                         }
@@ -1314,6 +1354,45 @@ impl Emitter<'_> {
         args: &[NamedArg],
     ) -> Vec<(String, Type)> {
         self.resolve_bundle_fields_inner(bname, args, None)
+    }
+
+    /// Render one OR-mux operand's value for field `fname`. `??` chains
+    /// left-associatively (`x ?? y ?? z` parses as `(x ?? y) ?? z`), so an
+    /// operand here can itself be a nested `Coalesce` — in which case this
+    /// recurses into [`Self::coalesce_field_expr`] to extract the same
+    /// field from that sub-chain, rather than rendering the (bundle-typed)
+    /// sub-expression as a plain signal and bolting `_fname` onto it.
+    fn coalesce_operand_field(&mut self, operand: &Expr, fname: &str) -> String {
+        if let ExprKind::Binary {
+            op: BinOp::Coalesce,
+            lhs,
+            rhs,
+        } = &operand.kind
+        {
+            self.coalesce_field_expr(lhs, rhs, fname)
+        } else {
+            let s = self.expr(operand);
+            format!("{s}_{fname}")
+        }
+    }
+
+    /// Render the per-field expression for extracting field `fname` from a
+    /// `??` OR-mux expression (`lhs ?? rhs`, both bundle-typed): the
+    /// `valid` field becomes `lhs_valid ? 1'b1 : rhs_valid`, every other
+    /// field becomes `lhs_valid ? lhs_fname : rhs_fname`. `lhs`/`rhs` may
+    /// themselves be nested `Coalesce` chains (`??` is left-associative and
+    /// chains) — [`Self::coalesce_operand_field`] recurses through those
+    /// rather than treating a bundle-typed operand as a plain signal.
+    pub(super) fn coalesce_field_expr(&mut self, lhs: &Expr, rhs: &Expr, fname: &str) -> String {
+        let l_valid = self.coalesce_operand_field(lhs, "valid");
+        if fname == "valid" {
+            let r_valid = self.coalesce_operand_field(rhs, "valid");
+            format!("({l_valid} ? 1'b1 : {r_valid})")
+        } else {
+            let l = self.coalesce_operand_field(lhs, fname);
+            let r = self.coalesce_operand_field(rhs, fname);
+            format!("({l_valid} ? {l} : {r})")
+        }
     }
 
     /// Like [`Self::resolve_bundle_fields`], but for a bundle-typed port at

@@ -22,7 +22,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mimz_core::ast::{
-    self, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg, Pattern, SeqStmt, UnOp,
+    self, BinOp, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg, Pattern, SeqStmt, UnOp,
 };
 
 use super::value::{const_eval, pick_module, type_width};
@@ -224,6 +224,20 @@ fn build_bundle_registry(files: &[ast::File]) -> BundleRegistry<'_> {
                     .push((file_idx, b));
             }
         }
+    }
+    // Mirror the checker's/emitter's synthesized `__Valid`/`__ValidSigned`
+    // builtin bundles (`ast::builtin_valid_bundles`) so a `bit?`/`bits[N]?`/
+    // `signed[N]?`-typed signal resolves here too — the sim elaborates the
+    // raw parsed AST without the checker pass that normally registers these
+    // (see this module's doc comment), so without this they'd be an
+    // "unknown bundle `__Valid`" error the moment `?`-sugar reaches a wire.
+    // `files.len()` — one past every real file index — matches the
+    // checker/emitter convention (see `builtin_valid_bundles`'s doc comment).
+    let builtin_file = files.len();
+    for decl in ast::builtin_valid_bundles() {
+        reg.entry(decl.name.name.clone())
+            .or_default()
+            .push((builtin_file, decl));
     }
     reg
 }
@@ -1663,6 +1677,51 @@ fn bundle_type_info(
 ///   (dot-access, which `Rw::field` will flatten to `ident_fieldname`).
 /// - Otherwise, falls back to a dot-access node.
 fn bundle_field_expr(expr: &Expr, field: &str, span: mimz_core::span::Span) -> Expr {
+    // OR-mux form: `lhs ?? rhs` where both operands (and the result) stay
+    // bundle-typed. `merged.valid = lhs.valid || rhs.valid` (built as
+    // `if lhs.valid { true } else { rhs.valid }`); every other field is
+    // `if lhs.valid { lhs.field } else { rhs.field }`. Extracted per-field
+    // by RECURSING into `bundle_field_expr` for `lhs`/`rhs` rather than
+    // wrapping them in a bare `Field` node — `??` is left-associative and
+    // chains (`x ?? y ?? z` parses as `Coalesce(Coalesce(x, y), z)`), so
+    // `lhs` can itself be a `Coalesce` node: a bundle-typed compound
+    // expression, not a plain signal reference. Recursing here re-enters
+    // this same match and expands the nested chain correctly; wrapping it
+    // in `Field { base: lhs, field }` instead would hand a `Coalesce` base
+    // to `Rw::field`'s fallback, which recurses through `Rw::expr`'s
+    // generic (unwrap-form) `Coalesce` arm — the wrong semantics for a
+    // still-bundle-typed nested operand. Mirrors the fix applied to
+    // `emit_verilog`'s `coalesce_field_expr` in Task 8's review.
+    if let ExprKind::Binary {
+        op: BinOp::Coalesce,
+        lhs,
+        rhs,
+    } = &expr.kind
+    {
+        let cond = bundle_field_expr(lhs, "valid", span);
+        let (then, els) = if field == "valid" {
+            (
+                Expr {
+                    kind: ExprKind::Bool(true),
+                    span,
+                },
+                bundle_field_expr(rhs, "valid", span),
+            )
+        } else {
+            (
+                bundle_field_expr(lhs, field, span),
+                bundle_field_expr(rhs, field, span),
+            )
+        };
+        return Expr {
+            kind: ExprKind::IfExpr {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                els: Box::new(els),
+            },
+            span,
+        };
+    }
     if let ExprKind::BundleLit(inits) = &expr.kind {
         if let Some(fi) = inits.iter().find(|fi| fi.name.name == field) {
             return fi.value.clone();
@@ -1719,6 +1778,49 @@ impl<'d, 's> Rw<'d, 's> {
                 op: *op,
                 expr: Box::new(self.expr(expr)?),
             },
+            // `raw ?? 0` (unwrap form only — the operand stays scalar-typed
+            // after the `??`). Rewrite to `if raw.valid { raw.data } else { 0 }`
+            // as an `IfExpr` (not rendered text — this AST is what the
+            // event-driven kernel interprets at runtime). Mirrors
+            // `emit_verilog`'s Task 7 ternary lowering. The OR-mux form
+            // (`x ?? y` where both sides — and the result — stay
+            // bundle-typed) never reaches this generic scalar-expression
+            // rewrite; it's handled at the bundle-field level in
+            // `bundle_field_expr` (Task 10).
+            ExprKind::Binary {
+                op: BinOp::Coalesce,
+                lhs,
+                rhs,
+            } => {
+                let valid_field = Expr {
+                    kind: ExprKind::Field {
+                        base: lhs.clone(),
+                        field: ast::Ident {
+                            name: "valid".to_string(),
+                            span: lhs.span,
+                        },
+                    },
+                    span: lhs.span,
+                };
+                let data_field = Expr {
+                    kind: ExprKind::Field {
+                        base: lhs.clone(),
+                        field: ast::Ident {
+                            name: "data".to_string(),
+                            span: lhs.span,
+                        },
+                    },
+                    span: lhs.span,
+                };
+                return self.expr(&Expr {
+                    kind: ExprKind::IfExpr {
+                        cond: Box::new(valid_field),
+                        then: Box::new(data_field),
+                        els: rhs.clone(),
+                    },
+                    span: e.span,
+                });
+            }
             ExprKind::Binary { op, lhs, rhs } => ExprKind::Binary {
                 op: *op,
                 lhs: Box::new(self.expr(lhs)?),
