@@ -252,3 +252,16 @@ emitter) and the untrusted-input boundary (project/import loading, config
 discovery, name-map deserialization) audited clean: SEC-1..4 + BUG-1/2 intact,
 all five thamizh-order flips depth-guarded, checked arithmetic throughout, and
 no path traversal (import segments are XID identifiers — `..`/`/` inexpressible).
+
+
+## SEC-5 (MEDIUM) — Security Risk in `[lib] std` Overrides
+
+**What.** The `[lib] std = "..."` override in `mimz.toml` relies on `std::fs::canonicalize` and raw path joining.
+
+**Cause.** `src/config.rs` does not sandbox the relative path of the `std` library override. An attacker supplying a malicious `mimz.toml` could specify `std = "../../../../etc/keys"` or similar to traverse directories outside the workspace root.
+
+**How found.** CTO Architectural Review (July 2026).
+
+**Severity.** MEDIUM — If the compiler is executed in a shared cloud environment (like the new WASM playground or a CI server), this directory traversal could leak host files by embedding them as standard library modules.
+
+**Fix (Pending).** Sandbox config resolution. Enforce that `std` overrides must be subdirectories of the workspace root, or require an explicit CLI flag (e.g., `--allow-external-std`) to escape the root.
