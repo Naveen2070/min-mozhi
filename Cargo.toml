@@ -51,7 +51,7 @@ notify = { version = "8", optional = true }
 # excludes them, same as lsp/bench/watch. See
 # docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md.
 ratatui = { version = "0.29", optional = true }
-crossterm = { version = "0.28", optional = true }
+crossterm = { version = "0.29", optional = true }
 # Real audio output for the `speaker` sim peripheral
 # (docs/superpowers/specs/2026-07-08-hw-emulation-speaker-design.local.md).
 # Optional + behind `hw-emulation`, same reasoning as ratatui/crossterm above.
