@@ -131,6 +131,12 @@ impl Emitter<'_> {
                     BinOp::Ge => ">=",
                     BinOp::LogicAnd => "&&",
                     BinOp::LogicOr => "||",
+                    // ponytail: `??` lowering (unwrap vs. OR-mux, decided by
+                    // RHS shape) lands in Task 7/9; the checker (Task 5) is
+                    // what gates any `??` from reaching codegen until then.
+                    BinOp::Coalesce => {
+                        unreachable!("BinOp::Coalesce lowering not yet implemented (task 7/9)")
+                    }
                 };
                 format!("({l} {sym} {r})")
             }

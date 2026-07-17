@@ -126,6 +126,13 @@ pub fn eval(e: &Expr, env: &Env) -> Result<i128, Diag> {
                     "`+%`/`-%`/`*%` wrap at a bit width, and compile-time integers \
                      have no width — use plain `+`/`-`/`*` in constants",
                 ),
+                // ponytail: `??` operates on valid-bundles (`T?`), which have no
+                // compile-time-constant form; typing/lowering lands in later tasks.
+                BinOp::Coalesce => not_const(
+                    "`??`",
+                    "`??` unwraps or muxes a valid-bundle, which has no \
+                     compile-time-constant form",
+                ),
             }
         }
         ExprKind::IfExpr { cond, then, els } => {

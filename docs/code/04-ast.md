@@ -4,12 +4,13 @@ The data structure every other stage agrees on.
 
 ## File layout
 
-| File                 | Owns                                                                                                                                                                                                  |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.rs`             | Files, modules, declarations, sequential/test statements                                                                                                                                              |
-| `expr.rs`            | Expressions, patterns, operators — re-exported via `pub use`                                                                                                                                          |
-| `sync_loop_lower.rs` | Desugars `ModuleItem::SyncLoop` into `Port`/`Reg`/`On`/`Drive` primitives — the one shared function `emit_verilog` and `sim` both call                                                                |
-| `foreach_lower.rs`   | Desugars `ForEach`/`SeqStmt::ForEach`/`FnStmt::ForEach` into `Repeat`/`SeqStmt::Loop`/`FnStmt::Loop` — checker validates the original `ForEach` node directly; emit/sim/pretty each lower on the spot |
+| File                 | Owns                                                                                                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`             | Files, modules, declarations, sequential/test statements                                                                                                                                                                  |
+| `expr.rs`            | Expressions, patterns, operators — re-exported via `pub use`                                                                                                                                                              |
+| `sync_loop_lower.rs` | Desugars `ModuleItem::SyncLoop` into `Port`/`Reg`/`On`/`Drive` primitives — the one shared function `emit_verilog` and `sim` both call                                                                                    |
+| `foreach_lower.rs`   | Desugars `ForEach`/`SeqStmt::ForEach`/`FnStmt::ForEach` into `Repeat`/`SeqStmt::Loop`/`FnStmt::Loop` — checker validates the original `ForEach` node directly; emit/sim/pretty each lower on the spot                     |
+| `builtin_bundles.rs` | Builds the two compiler-synthesized `__Valid`/`__ValidSigned` `BundleDecl`s backing `T?` sugar — never present in any `.mimz` source; shared by `checker::symbols::build_symbols` and `emit_verilog::Project::from_files` |
 
 The split is purely for file size; `pub use expr::*` means consumers
 write `ast::ExprKind` and never see it.

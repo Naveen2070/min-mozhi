@@ -183,6 +183,10 @@ pub enum TokKind {
     PipePipe, // ||
     /// `!` — logical NOT.
     Bang, // !
+    /// `?` — valid-bundle type suffix.
+    Question, // ?
+    /// `??` — fallback/mux operator.
+    QQ, // ??
     // comparison
     /// `==` — equality.
     EqEq, // ==
@@ -289,6 +293,8 @@ fn punct_text(kind: &TokKind) -> &'static str {
         AmpAmp => "&&",
         PipePipe => "||",
         Bang => "!",
+        Question => "?",
+        QQ => "??",
         EqEq => "==",
         Ne => "!=",
         Lt => "<",

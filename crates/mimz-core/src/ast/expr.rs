@@ -261,6 +261,10 @@ pub enum BinOp {
     LogicAnd,
     /// `||` / `or`
     LogicOr,
+    /// `??` — valid-bundle fallback: unwrap (`T? ?? T -> T`) or OR-mux
+    /// (`T? ?? T? -> T?`), decided by the RHS's structural shape (design:
+    /// `docs/superpowers/specs/2026-07-16-valid-bundle-sugar-design.local.md`).
+    Coalesce,
 }
 
 /// The built-in functions — the complete list; users cannot define more.

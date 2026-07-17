@@ -127,3 +127,10 @@ fn rarrow_token_lexes() {
     let toks = lex("-> ").unwrap();
     assert!(matches!(toks[0].kind, TokKind::RArrow));
 }
+
+#[test]
+fn lexes_question_and_question_question() {
+    let toks = lex("? ??").unwrap();
+    assert_eq!(toks[0].kind, TokKind::Question);
+    assert_eq!(toks[1].kind, TokKind::QQ);
+}

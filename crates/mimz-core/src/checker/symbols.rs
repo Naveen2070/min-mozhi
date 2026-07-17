@@ -127,5 +127,21 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+
+        // Synthesized `__Valid`/`__ValidSigned` builtin bundles backing `T?`
+        // sugar (Task 3's parser desugar references these two names
+        // directly). Never declared in any `.mimz` source, so they're
+        // injected here rather than found by the loop above. Registered
+        // under `self.files.len()` — one past every real file index, which
+        // `Checker::new` reserves an extra `file_consts` slot for (see its
+        // doc comment) so `resolve_bundle_fields`'s direct array index never
+        // goes out of bounds for these two bundles.
+        let builtin_file = self.files.len();
+        for decl in crate::ast::builtin_valid_bundles() {
+            self.bundles
+                .entry(decl.name.name.clone())
+                .or_default()
+                .push((builtin_file, decl));
+        }
     }
 }

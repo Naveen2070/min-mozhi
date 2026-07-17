@@ -1886,6 +1886,108 @@ fn bundle_array_field_is_e0807() {
     );
 }
 
+#[test]
+fn builtin_valid_bundle_resolves_by_name() {
+    // No `bundle __Valid` declaration anywhere in this source — it must
+    // still resolve, proving the synthesized registration works.
+    let src = "module M {\n  in a: bit\n  in d: bits[8]\n  \
+               out o: bit\n  \
+               wire x: __Valid(N: 8) = { valid: a, data: d }\n  \
+               o = x.valid\n}\n";
+    check_one(src).expect("the compiler-synthesized __Valid bundle must resolve");
+}
+
+#[test]
+fn builtin_valid_signed_bundle_resolves_by_name() {
+    let src = "module M {\n  in a: bit\n  in d: signed[8]\n  \
+               out o: bit\n  \
+               wire x: __ValidSigned(N: 8) = { valid: a, data: d }\n  \
+               o = x.valid\n}\n";
+    check_one(src).expect("the compiler-synthesized __ValidSigned bundle must resolve");
+}
+
+#[test]
+fn qq_unwrap_form_types_as_the_data_field_type() {
+    let src = "module M {\n  in c: bit\n  in d: bits[8]\n  out o: bits[8]\n  \
+               wire x: bits[8]? = { valid: c, data: d }\n  \
+               o = x ?? 0\n}\n";
+    check_one(src).expect("unwrap form (T? ?? plain T) must check clean");
+}
+
+#[test]
+fn qq_or_mux_form_types_as_still_optional() {
+    let src = "module M {\n  in c1: bit\n  in d1: bits[8]\n  \
+               in c2: bit\n  in d2: bits[8]\n  out o: bit\n  \
+               wire x: bits[8]? = { valid: c1, data: d1 }\n  \
+               wire y: bits[8]? = { valid: c2, data: d2 }\n  \
+               wire merged: bits[8]? = x ?? y\n  o = merged.valid\n}\n";
+    check_one(src).expect("OR-mux form (T? ?? T?) must check clean, result stays T?");
+}
+
+#[test]
+fn qq_lhs_not_optional_is_e0911() {
+    let src = "module M {\n  in a: bits[8]\n  out o: bits[8]\n  \
+               o = a ?? 0\n}\n"; // `a` is plain bits[8], not bits[8]?
+    let d = first_err(src, "E0911");
+    assert!(d.msg.to_lowercase().contains("valid-bundle") || d.msg.contains("??"));
+}
+
+#[test]
+fn qq_rhs_wrong_width_is_e0912() {
+    let src = "module M {\n  in c: bit\n  in d: bits[8]\n  out o: bits[4]\n  \
+               wire x: bits[8]? = { valid: c, data: d }\n  \
+               o = x ?? 0\n}\n"; // `o` forces the unwrap result to bits[4], x's data is bits[8]
+    let d = first_err(src, "E0912");
+    assert!(!d.msg.is_empty());
+}
+
+#[test]
+fn builtin_valid_bundle_shows_as_surface_syntax_in_diagnostics() {
+    // NOTE: this does NOT round-trip through E0912 (`??`'s RHS mismatch) —
+    // that diagnostic names `data_ty` (already unwrapped to `bits[8]`, see
+    // `coalesce_ty`/`qq_rhs_mismatch` in checker/widths/ops.rs), never the
+    // outer `Ty::Bundle{name: "__Valid", ..}` itself, so a test built around
+    // E0912 would trivially pass with no fix at all. Instead: assigning a
+    // plain `bits[8]` value to a `bits[8]?`-typed wire is a genuine
+    // bundle-vs-non-bundle mismatch, which DOES render the whole LHS type via
+    // `show()` in `expect_ty`'s generic fallback (E0401) — this is the path
+    // that actually leaked `` bundle `__Valid` `` before the fix.
+    let src = "module M {\n  in a: bits[8]\n  wire x: bits[8]? = a\n}\n";
+    let d = first_err(src, "E0401");
+    assert!(
+        !d.msg.contains("__Valid"),
+        "internal builtin bundle name leaked into a diagnostic: {}",
+        d.msg
+    );
+    assert!(
+        d.msg.contains("bits[8]?"),
+        "expected the surface `bits[8]?` syntax in the diagnostic, got: {}",
+        d.msg
+    );
+}
+
+#[test]
+fn qq_same_shaped_user_bundle_satisfies_a_valid_bundle_slot() {
+    // Accepted, intentional consequence of desugaring to the existing
+    // structural-bundle machinery (feature 2.9) — pinned as a regression
+    // test per the design spec, not left as prose.
+    let src = "bundle MyOptional { valid: bit, data: bits[8] }\n\
+               module M {\n  in c: bit\n  in d: bits[8]\n  out o: bits[8]\n  \
+               wire x: MyOptional = { valid: c, data: d }\n  \
+               o = x ?? 0\n}\n";
+    check_one(src)
+        .expect("a user bundle shaped exactly like bits[8]? must satisfy ?? structurally");
+}
+
+#[test]
+fn bundle_field_typed_as_valid_bundle_sugar_is_rejected_e0807() {
+    // `T?` desugars to Type::Bundle in the parser, and bundle fields already
+    // reject Type::Bundle (nested bundles, E0807) — this must fire
+    // automatically for `?`-sugar too, with zero new checker code.
+    let src = "bundle Foo { x: bits[8]? }\nmodule M {\n  out o: bit\n  o = 0\n}\n";
+    assert!(any_code(src, "E0807"));
+}
+
 // ---- bundles: literal / destructure / nominal typing (E0901-E0903, E0907) ------
 
 #[test]

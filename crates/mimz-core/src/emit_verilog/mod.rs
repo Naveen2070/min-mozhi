@@ -278,6 +278,23 @@ impl<'a> Project<'a> {
                 }
             }
         }
+
+        // Mirror the checker's synthesized `__Valid`/`__ValidSigned` builtin
+        // bundles (`ast::builtin_valid_bundles`, registered on the checker
+        // side by `checker::symbols::build_symbols`) so the emitter's own
+        // bundle-flattening code (port/wire declarations, bundle literals)
+        // resolves these two names too, without a `.mimz` declaration ever
+        // existing for them. `files.len()` — one past every real file
+        // index — matches the checker's convention (see that function's doc
+        // comment for why the checker specifically needs this exact index).
+        let builtin_file = files.len();
+        for decl in crate::ast::builtin_valid_bundles() {
+            bundles
+                .entry(decl.name.name.clone())
+                .or_default()
+                .push((builtin_file, decl));
+        }
+
         if diags.is_empty() {
             Ok(Project {
                 modules,
