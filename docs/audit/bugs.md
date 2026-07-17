@@ -459,3 +459,40 @@ surfaced it (`structurally_matched_fn_arg_emits_same_as_nominal_match`,
 via a dummy `W: int = 1` bundle param and assert only that structural vs.
 nominal bundle naming doesn't change the (still-invalid) emitted output —
 they do not assert the output is _correct_ Verilog, since it isn't yet.
+
+
+## BUG-11 (CRITICAL) — Simulation vs. Synthesis Mismatch on Left Shift (`<<`)
+
+**What.** The simulator evaluates left shifts by dynamically expanding the width of the result based on the shift amount. The expression `a << 2` is evaluated with `w = (a.width + 2).min(128)`, carrying extra bits into subsequent operations.
+
+**Cause.** `sim/value.rs` (`BinOp::Shl`) intentionally grows the width of the `Val` returned, whereas the type checker (`checker/widths/ops.rs`) correctly specifies that shifts preserve the left-hand operand's width (matching standard Verilog).
+
+**How found.** CTO Architectural Review (July 2026) inspecting the fix for shift-amount truncation (cbcefd0).
+
+**Severity.** CRITICAL — Causes simulation to behave differently than synthesized hardware. Intermediate calculations will silently carry overflow bits in simulation that will be truncated in the actual synthesized netlist.
+
+**Fix (Pending).** The simulator must immediately truncate/wrap the result to `l.width` and not dynamically grow `w`.
+
+## BUG-12 (HIGH) — Broken Parameterization in Combinational Functions
+
+**What.** Functions (`fn`) cannot access the enclosing module's constants/parameters.
+
+**Cause.** In `emit_verilog/module.rs` (`render_fn_decl`), the emitter intentionally replaces the environment with `file_env` (stripping module consts) to prevent shadowing function parameters. This prevents functions from depending on module parameters (e.g. `WIDTH`), breaking standard Verilog lexical scoping.
+
+**How found.** CTO Architectural Review (July 2026).
+
+**Severity.** HIGH — Breaks core HDL parameterization paradigms where local functions rely on generic module parameters.
+
+**Fix (Pending).** Fix symbol table resolution hierarchy to properly scope parameters instead of amputating lexical scope during code generation.
+
+## BUG-13 (MEDIUM) — 128-bit Simulator Ceiling
+
+**What.** The simulator cannot handle vectors larger than 128 bits.
+
+**Cause.** The simulator's `Val` struct is hardcoded around Rust's `u128`. Operations like shift yield `0` if `shift >= 128`.
+
+**How found.** CTO Architectural Review (July 2026).
+
+**Severity.** MEDIUM — Modern digital design routinely utilizes buses of 256, 512, or 1024 bits. This hard limit causes silent data corruption for wider memory buses.
+
+**Fix (Pending).** Transition `Val` to a dynamic arbitrary-precision integer backend (e.g. `BigUint`).
