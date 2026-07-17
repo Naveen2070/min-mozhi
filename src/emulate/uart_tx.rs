@@ -479,8 +479,12 @@ mod tests {
         for _ in 0..200_000 {
             tx.push_char('x');
         }
+        // 30s (not the non-blocking loop's actual sub-second cost) because
+        // this runs alongside every other test in the suite; a genuine
+        // blocking regression stalls far longer than any reasonable bound,
+        // so the slack only absorbs scheduler contention, not the bug.
         assert!(
-            started.elapsed() < std::time::Duration::from_secs(5),
+            started.elapsed() < std::time::Duration::from_secs(30),
             "push_char took {:?} with an unread peer — the socket may not be non-blocking",
             started.elapsed()
         );

@@ -100,7 +100,7 @@ fn query_sample_rate() -> Result<u32, String> {
         let supported = device
             .default_output_config()
             .map_err(|e| format!("speaker: could not read the default output config: {e}"))?;
-        Ok(supported.sample_rate().0)
+        Ok(supported.sample_rate())
     })
     .join()
     .map_err(|_| "speaker: audio setup thread panicked".to_string())?
@@ -125,7 +125,7 @@ fn play_samples(samples: &[bool], sample_rate: u32) -> Result<(), String> {
         let pos = Arc::new(AtomicUsize::new(0));
         let stream = match sample_format {
             cpal::SampleFormat::F32 => device.build_output_stream(
-                &config,
+                config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                     for frame in data.chunks_mut(channels) {
                         let i = pos.fetch_add(1, Ordering::Relaxed);
