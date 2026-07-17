@@ -726,6 +726,33 @@ mod tests {
     }
 
     #[test]
+    fn qq_unwrap_form_emits_a_ternary_on_validity() {
+        let v = emit_src(
+            "module M {\n  in c: bit\n  in d: bits[8]\n  out o: bits[8]\n  \
+             wire raw: bits[8]? = { valid: c, data: d }\n  \
+             wire safe: bits[8] = raw ?? 0\n  o = safe\n}\n",
+        );
+        assert!(
+            v.contains("assign safe = (raw_valid ? raw_data : 0);")
+                || v.contains("assign safe = raw_valid ? raw_data : 0;"),
+            "expected a ternary keyed on raw_valid, got:\n{v}"
+        );
+    }
+
+    #[test]
+    fn qq_unwrap_form_emits_a_ternary_via_drive() {
+        let v = emit_src(
+            "module M {\n  in c: bit\n  in d: bits[8]\n  out safe: bits[8]\n  \
+             wire raw: bits[8]? = { valid: c, data: d }\n  \
+             safe = raw ?? 0\n}\n",
+        );
+        assert!(
+            v.contains("raw_valid ? raw_data : 0"),
+            "expected the same ternary shape via a Drive statement, got:\n{v}"
+        );
+    }
+
+    #[test]
     fn extern_instantiation_emits_only_the_instance_line_no_definition() {
         let v = emit_src(
             "extern module Pll(MULT: int = 2) {\n  \
