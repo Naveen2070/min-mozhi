@@ -495,3 +495,88 @@ they do not assert the output is _correct_ Verilog, since it isn't yet.
 **Severity.** MEDIUM — Modern digital design routinely utilizes buses of 256, 512, or 1024 bits. This hard limit causes silent data corruption for wider memory buses.
 
 **Fix (Pending).** Transition `Val` to a dynamic arbitrary-precision integer backend (e.g. `BigUint`).
+
+## BUG-14 (MEDIUM, FIXED) — `mimz-sim` never registered the `__Valid`/`__ValidSigned` builtin bundles
+
+**What.** Any `bit?`/`bits[N]?`/`signed[N]?`-typed wire or reg was
+completely broken in the simulator: elaboration failed with an "unknown
+bundle `__Valid`" error the moment a `?`-sugar-typed signal was touched,
+even though the same code checked cleanly and emitted correct Verilog.
+
+**Cause.** `bit?`/`bits[N]?`/`signed[N]?` desugar at parse time to a
+reference to one of two compiler-synthesized bundle declarations
+(`ast::builtin_valid_bundles`, `__Valid`/`__ValidSigned` — never present in
+source, so both the checker and the emitter register them into their own
+bundle tables at startup: `checker/symbols.rs` and `emit_verilog/mod.rs`
+both call `ast::builtin_valid_bundles()` and insert the result into their
+bundle registry alongside every real `bundle` declaration in the project).
+`mimz-sim`'s elaborator (`sim/elaborate.rs`, `build_bundle_registry`) builds
+its own, separate bundle registry from the parsed AST — it never got the
+equivalent call, so it only ever knew about user-declared bundles. This
+predates the `?`/`??` feature; it was a latent gap from whenever
+`builtin_valid_bundles` was first introduced, invisible until something
+actually tried to simulate a `?`-sugar-typed signal.
+
+**How found.** `?`-sugar valid-bundle feature (this feature's) Task 9 —
+the first work item to exercise a `?`-sugar-typed signal through the
+simulator at all.
+
+**Severity.** MEDIUM — total, unconditional failure for the affected
+signal shape in the simulator only (checker and emitter were always fine);
+no example/golden exercised a `?`-sugar-typed signal in `mimz test`/`mimz
+eval` before this feature, so nothing else was silently broken by it.
+
+**Fix (2026-07-17, Task 9 of the `?`/`??` feature).**
+`build_bundle_registry` (`crates/mimz-sim/src/sim/elaborate.rs`) now also
+registers `ast::builtin_valid_bundles()`, under a synthetic file index
+(`files.len()`, one past every real file) — mirroring the existing
+checker/emitter convention exactly. No other elaborator change was needed;
+once registered, `__Valid`/`__ValidSigned` resolve through the same
+bundle-lookup path any user bundle already used.
+
+**Test.** Task 9's simulator unwrap-form tests (`crates/mimz-sim/src/sim/
+elaborate.rs`) exercise a `bit?`/`bits[N]?`-typed wire end-to-end through
+the simulator; they would fail with the pre-fix "unknown bundle" error.
+
+## BUG-15 (MEDIUM, OPEN) — `mimz-sim` has no bundle-field-expansion baseline for instance ports or `fn` call arguments
+
+**What.** A bundle-typed module-instantiation port connection or a
+bundle-typed `fn` call argument is completely unsupported in the
+simulator — `mimz-sim`'s `flatten_instance` and its `fn`-call argument
+handling (`crates/mimz-sim/src/sim/elaborate.rs`) have no bundle-field
+expansion at all for these two sites, unlike `mimz-core`'s emitter, which
+already flattens a bundle-typed value at both (plus wire-init and
+`Drive`) as a pre-existing baseline.
+
+**Cause.** The simulator's bundle support grew incrementally, site by
+site, and never reached instance-port connection or `fn`-argument passing
+— those two sites still expect a plain scalar value where a bundle-typed
+one is given.
+
+**How found.** `?`-sugar valid-bundle feature's Task 10 (simulator `??`
+OR-mux form): OR-mux needed a per-field extraction helper at every site a
+bundle-typed value can reach. `mimz-core`'s emitter has that baseline at
+four sites (wire-init, `Drive`, port connection, `fn`-call argument) and
+Task 8 extended all four; `mimz-sim` only had wire-init and `Drive` to
+extend — probing an instance port or `fn` argument with a plain (non-`??`)
+bundle-typed value confirmed both are unsupported today, independent of
+`??` entirely.
+
+**Severity.** MEDIUM — a real capability gap (not a regression, and not
+introduced by `??`), but narrow: no example/golden passes a bundle-typed
+value to an instance port or `fn` call in the simulator today, so nothing
+currently relies on it. `??`'s OR-mux form does not support these two
+sites in the simulator as a direct, scoped-out consequence (`§1.12a`
+correctly does not list them as supported combinations); `mimz-core`'s
+emitter is unaffected and supports OR-mux at all four sites.
+
+**Fix (Pending).** Give `mimz-sim` the same foundational bundle-field-
+expansion baseline `mimz-core`'s emitter already has for instance ports
+and `fn` call arguments, then `??`'s OR-mux form (or any other bundle-
+typed value) can reach those two sites the same way it already reaches
+wire-init and `Drive`. Filed as a follow-up, not part of this feature's
+scope.
+
+**Test.** None yet (gap is open, pre-existing, and out of this feature's
+scope) — Task 10's probe tests confirmed the gap empirically but were not
+committed as permanent regression coverage for a known-unsupported path.

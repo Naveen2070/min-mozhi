@@ -354,6 +354,35 @@ impl Emitter<'_> {
                                 args_str.push(format!("{n}_{fname}"));
                             }
                         }
+                        ExprKind::Binary {
+                            op: BinOp::Coalesce,
+                            lhs: clhs,
+                            rhs: crhs,
+                        } if bundle_fields.is_some() => {
+                            let fnames: Vec<String> = bundle_fields
+                                .as_ref()
+                                .unwrap()
+                                .iter()
+                                .map(|(fname, _)| fname.clone())
+                                .collect();
+                            for fname in fnames {
+                                let raw = self.coalesce_field_expr(clhs, crhs, &fname);
+                                // `coalesce_field_expr` always wraps its result in
+                                // exactly one outer paren pair; strip it here — a
+                                // fn-call argument is already unambiguously
+                                // delimited by `(`/`,`/`)`, and keeping the extra
+                                // parens would make the first argument open with
+                                // `((`, indistinguishable at a glance from the
+                                // unexpanded single-argument bug this desugar
+                                // replaces.
+                                let trimmed = raw
+                                    .strip_prefix('(')
+                                    .and_then(|s| s.strip_suffix(')'))
+                                    .unwrap_or(&raw)
+                                    .to_string();
+                                args_str.push(trimmed);
+                            }
+                        }
                         _ => args_str.push(self.expr_subst(a, subst, arrays)),
                     }
                 }

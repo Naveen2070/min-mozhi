@@ -83,6 +83,16 @@ in values`, its bound taken from the source's own declared length, never
   field-type mismatch instead of a purely nominal one. Also fixes a
   pre-existing bug where a bundle-typed port connected across a module
   instantiation emitted broken (non-flattened) Verilog.
+- `?` valid-bundle sugar and the `??` operator. `bit?`/`bits[N]?`/
+  `signed[N]?` desugar to a compiler-synthesized `{ valid: bit, data: T }`
+  bundle, legal anywhere a scalar type is legal; construction is
+  bundle-literal only (`{ valid: ..., data: ... }`), no implicit auto-wrap.
+  `??` has two forms, chosen by the right operand's shape and never
+  coercing width: unwrap (`T? ?? T -> T`) and OR-mux (`T? ?? T? -> T?`,
+  chains left-associatively). Both always lower to an ordinary two-way mux
+  in the emitter and the simulator — never a tri-state/high-Z value. New
+  diagnostics E0911 (left operand isn't a valid-bundle) and E0912 (right
+  operand doesn't match the left's `data` type exactly).
 
 ---
 
