@@ -177,6 +177,67 @@ fn nested_array_type_parses_two_brackets_deep() {
     assert!(matches!(**elem, Type::Array { .. }));
 }
 
+// ---- `T?` valid-bundle sugar (bit?/bits[N]?/signed[N]?) ----
+
+#[test]
+fn bit_question_desugars_to_builtin_valid_bundle() {
+    let f = parse_ok("module M {\n  in a: bit?\n  out o: bit\n  o = a.valid\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Port { ty, .. } = &m.items[0] else {
+        panic!()
+    };
+    let Type::Bundle { name, args } = ty else {
+        panic!("expected Type::Bundle, got {ty:?}")
+    };
+    assert_eq!(name.name.name, "__Valid");
+    assert_eq!(args.len(), 1);
+    assert_eq!(args[0].name.name, "N");
+    assert!(matches!(args[0].value.kind, ExprKind::Int { value: 1, .. }));
+}
+
+#[test]
+fn bits_n_question_desugars_with_the_width_expr() {
+    let f = parse_ok("module M {\n  in a: bits[8]?\n  out o: bit\n  o = a.valid\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Port { ty, .. } = &m.items[0] else {
+        panic!()
+    };
+    let Type::Bundle { name, args } = ty else {
+        panic!("expected Type::Bundle, got {ty:?}")
+    };
+    assert_eq!(name.name.name, "__Valid");
+    assert!(matches!(args[0].value.kind, ExprKind::Int { value: 8, .. }));
+}
+
+#[test]
+fn signed_n_question_desugars_to_valid_signed() {
+    let f = parse_ok("module M {\n  in a: signed[8]?\n  out o: bit\n  o = a.valid\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Port { ty, .. } = &m.items[0] else {
+        panic!()
+    };
+    let Type::Bundle { name, args } = ty else {
+        panic!("expected Type::Bundle, got {ty:?}")
+    };
+    assert_eq!(name.name.name, "__ValidSigned");
+    assert!(matches!(args[0].value.kind, ExprKind::Int { value: 8, .. }));
+}
+
+#[test]
+fn double_question_on_a_type_is_rejected() {
+    let d = parse_err("module M {\n  in a: bits[8]??\n  out o: bit\n}\n");
+    assert!(
+        d.iter().any(|x| x.code == Some("E1115")),
+        "bits[8]?? must be a parse error, not silently accepted: {d:?}"
+    );
+}
+
 #[test]
 fn mem_declaration_still_parses_to_the_same_shape_after_array_type_grammar_lands() {
     // Regression: mem's OWN declaration grammar (`mem name: elem[DEPTH] =
@@ -435,6 +496,51 @@ fn monotonic_chained_comparison_desugars_to_and() {
     };
     assert_eq!(*lop, BinOp::Le);
     assert_eq!(*rop, BinOp::Le);
+}
+
+#[test]
+fn qq_parses_as_lowest_precedence_left_associative() {
+    // `a || b ?? c` must parse as `(a || b) ?? c`, not `a || (b ?? c)`.
+    let e = parse_expr_ok("a || b ?? c");
+    match e.kind {
+        ExprKind::Binary {
+            op: BinOp::Coalesce,
+            lhs,
+            rhs,
+        } => {
+            assert!(matches!(rhs.kind, ExprKind::Ident(ref n) if n == "c"));
+            assert!(matches!(
+                lhs.kind,
+                ExprKind::Binary {
+                    op: BinOp::LogicOr,
+                    ..
+                }
+            ));
+        }
+        other => panic!("expected top-level Coalesce, got {other:?}"),
+    }
+}
+
+#[test]
+fn qq_chain_is_left_associative() {
+    // `a ?? b ?? c` reads `(a ?? b) ?? c`.
+    let e = parse_expr_ok("a ?? b ?? c");
+    match e.kind {
+        ExprKind::Binary {
+            op: BinOp::Coalesce,
+            lhs,
+            ..
+        } => {
+            assert!(matches!(
+                lhs.kind,
+                ExprKind::Binary {
+                    op: BinOp::Coalesce,
+                    ..
+                }
+            ));
+        }
+        other => panic!("expected nested left-associative Coalesce, got {other:?}"),
+    }
 }
 
 #[test]

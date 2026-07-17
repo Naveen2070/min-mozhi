@@ -745,6 +745,10 @@ fn binary_known(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
         BinOp::Ge => Val::new((!cmp_lt(l, r)) as u128, 1, false),
         BinOp::LogicAnd => Val::new((l.bits & 1) & (r.bits & 1), 1, false),
         BinOp::LogicOr => Val::new((l.bits & 1) | (r.bits & 1), 1, false),
+        // ponytail: `??` simulation (unwrap vs. OR-mux over a valid-bundle)
+        // is Task 9's job — not implemented yet, so deliberately not
+        // reachable until then.
+        BinOp::Coalesce => todo!("BinOp::Coalesce simulation not yet implemented (task 9)"),
     };
     Ok(v)
 }

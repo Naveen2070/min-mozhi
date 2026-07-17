@@ -58,6 +58,20 @@ pub(crate) fn type_str(ty: &Type) -> String {
     p.ty(ty, 0)
 }
 
+/// Canonical English string for `e` — the `Expr`-level counterpart of
+/// [`type_str`], for width checker diagnostics that need to render a
+/// `NamedArg`'s value (e.g. a valid-bundle's `N` width argument) back to
+/// source text.
+pub(crate) fn expr_str(e: &Expr) -> String {
+    let p = Pretty {
+        out: String::new(),
+        indent: 0,
+        flavor: crate::lexer::token::Flavor::English,
+        order: Order::Code,
+    };
+    p.expr(e, 0)
+}
+
 struct Pretty {
     out: String,
     indent: usize,
@@ -1089,6 +1103,7 @@ fn bin_op(op: BinOp) -> &'static str {
         BinOp::Ge => ">=",
         BinOp::LogicAnd => "&&",
         BinOp::LogicOr => "||",
+        BinOp::Coalesce => "??",
     }
 }
 

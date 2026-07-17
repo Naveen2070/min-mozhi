@@ -222,7 +222,28 @@ fn show(t: &Ty) -> String {
             };
             format!("{elem}[{len}]")
         }
-        Ty::Bundle { name, .. } => format!("bundle `{name}`"),
+        // `__Valid`/`__ValidSigned` are compiler-synthesized to back `T?`
+        // (Task 2/3) — show them back as the surface syntax the user
+        // actually wrote, never the internal name.
+        Ty::Bundle { name, args, .. } => match *name {
+            "__Valid" | "__ValidSigned" => {
+                let n = args
+                    .iter()
+                    .find(|a| a.name.name == "N")
+                    .map(|a| crate::pretty::expr_str(&a.value))
+                    .unwrap_or_else(|| "N".to_string());
+                if *name == "__Valid" {
+                    if n == "1" {
+                        "`bit?`".to_string()
+                    } else {
+                        format!("`bits[{n}]?`")
+                    }
+                } else {
+                    format!("`signed[{n}]?`")
+                }
+            }
+            _ => format!("bundle `{name}`"),
+        },
         Ty::CtInt(v) => format!("the compile-time value `{v}`"),
         Ty::Clock => "a clock".into(),
         Ty::Reset => "a reset".into(),
@@ -1814,6 +1835,7 @@ fn op_text(op: BinOp) -> &'static str {
         Ge => ">=",
         LogicAnd => "&&",
         LogicOr => "||",
+        Coalesce => "??",
     }
 }
 

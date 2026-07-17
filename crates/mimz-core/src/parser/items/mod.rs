@@ -128,12 +128,12 @@ impl Parser {
     fn scalar_ty(&mut self) -> Option<Type> {
         let id = self.ident("a type — `bit`, `bits[N]`, `signed[N]`, or an enum name")?;
         match id.name.as_str() {
-            "bit" => Some(Type::Bit),
+            "bit" => Some(self.valid_suffix(Type::Bit)),
             "bits" => {
                 self.expect(TokKind::LBracket, "`[` — bit vectors are written `bits[N]`")?;
                 let n = self.expr()?;
                 self.expect(TokKind::RBracket, "`]` after the width")?;
-                Some(Type::Bits(Box::new(n)))
+                Some(self.valid_suffix(Type::Bits(Box::new(n))))
             }
             "signed" => {
                 self.expect(
@@ -142,7 +142,7 @@ impl Parser {
                 )?;
                 let n = self.expr()?;
                 self.expect(TokKind::RBracket, "`]` after the width")?;
-                Some(Type::Signed(Box::new(n)))
+                Some(self.valid_suffix(Type::Signed(Box::new(n))))
             }
             _ => {
                 // Plain enum/bundle name, namespaced (`a.b.Foo`), OR parametric
@@ -186,6 +186,64 @@ impl Parser {
                     Some(Type::Named(qid))
                 }
             }
+        }
+    }
+
+    /// Desugar a trailing `?` on a scalar type into the compiler-synthesized
+    /// valid-bundle: `bit?`/`bits[N]?` → `__Valid(N: 1|N)`, `signed[N]?` →
+    /// `__ValidSigned(N: N)`. Only called from the `bit`/`bits`/`signed` arms
+    /// of `scalar_ty` — `Type::Named`/`Type::Bundle`/`Type::Array` never pass
+    /// through here, so `?` after those falls through as an ordinary
+    /// unexpected-token error at the call site, not silent acceptance.
+    /// `??` (lexed as one `TokKind::QQ` token — a valid-bundle type can't
+    /// itself be made optional) is rejected with E1115.
+    fn valid_suffix(&mut self, ty: Type) -> Type {
+        if self.at(&TokKind::QQ) {
+            let span = self.bump().span;
+            self.error(
+                span,
+                "E1115",
+                "`??` is not valid here — a valid-bundle type cannot itself be made optional",
+            );
+            self.help("use a single `?`, e.g. `bits[8]?`");
+            return ty;
+        }
+        if !self.at(&TokKind::Question) {
+            return ty;
+        }
+        let q_span = self.bump().span; // consume `?`
+        let (bundle_name, width) = match &ty {
+            Type::Bit => (
+                "__Valid",
+                Expr {
+                    kind: ExprKind::Int {
+                        value: 1,
+                        raw: "1".into(),
+                    },
+                    span: q_span,
+                },
+            ),
+            Type::Bits(w) => ("__Valid", (**w).clone()),
+            Type::Signed(w) => ("__ValidSigned", (**w).clone()),
+            _ => unreachable!("valid_suffix is only called for Bit/Bits/Signed"),
+        };
+        Type::Bundle {
+            name: QualIdent {
+                path: vec![],
+                name: Ident {
+                    name: bundle_name.to_string(),
+                    span: q_span,
+                },
+                span: q_span,
+                resolved_file: std::cell::Cell::new(None),
+            },
+            args: vec![NamedArg {
+                name: Ident {
+                    name: "N".to_string(),
+                    span: q_span,
+                },
+                value: width,
+            }],
         }
     }
 

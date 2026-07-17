@@ -363,6 +363,8 @@ impl Lexer<'_> {
             '|' => Pipe,
             '^' => Caret,
             '~' => Tilde,
+            '?' if self.peek() == Some('?') => two(self, QQ),
+            '?' => Question,
             ':' => Colon,
             ',' => Comma,
             '.' if self.peek() == Some('.') => two(self, DotDot),

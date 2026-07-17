@@ -645,6 +645,25 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: add the missing field to the provided bundle's declaration, or\n\
          connect/assign a bundle that already has it.",
     ),
+    (
+        "E0911",
+        "E0911 — `??`'s left operand must be a valid-bundle (`T?`)\n\n\
+         `??` reads validity off its left operand. The left side must be a\n\
+         `bits[N]?`/`bit?`/`signed[N]?`-shaped value — or a user-declared bundle\n\
+         with an identical `{ valid: bit, data: T }` shape, which satisfies it\n\
+         structurally (feature 2.9).\n\n\
+         Fix: use a valid-bundle-typed value on the left of `??`.",
+    ),
+    (
+        "E0912",
+        "E0912 — `??`'s right operand doesn't match the left operand's `data` type\n\n\
+         `??` has two forms: `T? ?? T -> T` (unwrap, right side is a plain fallback\n\
+         value) and `T? ?? T? -> T?` (OR-mux, right side is another valid-bundle).\n\
+         Either way, the right side's type — or its own `data` field, in the OR-mux\n\
+         case — must match the left operand's `data` type EXACTLY. No coercion.\n\n\
+         Fix: match the type/width exactly, or resize the source signal with\n\
+         `extend`/`trunc`/a slice before using it as the right operand.",
+    ),
     // ----- E10xx: lexer -----
     (
         "E1001",

@@ -6,32 +6,33 @@
 use super::*;
 
 /// Binary operator precedence, Rust-style. Higher binds tighter.
-/// unary(9) → mul(8) → add(7) → shift(6) → & (5) → ^ (4) → | (3)
-/// → comparison(2, chain via `comparison_chain`) → && (1) → || (0)
+/// unary(10) → mul(9) → add(8) → shift(7) → & (6) → ^ (5) → | (4)
+/// → comparison(3, chain via `comparison_chain`) → && (2) → || (1) → ?? (0)
 fn bin_op(kind: &TokKind) -> Option<(BinOp, u8)> {
     use TokKind::*;
     Some(match kind {
-        Star => (BinOp::Mul, 8),
-        StarPct => (BinOp::MulWrap, 8),
-        Plus => (BinOp::Add, 7),
-        Minus => (BinOp::Sub, 7),
-        PlusPct => (BinOp::AddWrap, 7),
-        MinusPct => (BinOp::SubWrap, 7),
-        Shl => (BinOp::Shl, 6),
-        Shr => (BinOp::Shr, 6),
-        Amp => (BinOp::BitAnd, 5),
-        Caret => (BinOp::BitXor, 4),
-        Pipe => (BinOp::BitOr, 3),
-        EqEq => (BinOp::Eq, 2),
-        Ne => (BinOp::Ne, 2),
-        Lt => (BinOp::Lt, 2),
-        Le => (BinOp::Le, 2),
-        Gt => (BinOp::Gt, 2),
-        Ge => (BinOp::Ge, 2),
-        AmpAmp => (BinOp::LogicAnd, 1),
-        Kw(super::Kw::And) => (BinOp::LogicAnd, 1),
-        PipePipe => (BinOp::LogicOr, 0),
-        Kw(super::Kw::Or) => (BinOp::LogicOr, 0),
+        Star => (BinOp::Mul, 9),
+        StarPct => (BinOp::MulWrap, 9),
+        Plus => (BinOp::Add, 8),
+        Minus => (BinOp::Sub, 8),
+        PlusPct => (BinOp::AddWrap, 8),
+        MinusPct => (BinOp::SubWrap, 8),
+        Shl => (BinOp::Shl, 7),
+        Shr => (BinOp::Shr, 7),
+        Amp => (BinOp::BitAnd, 6),
+        Caret => (BinOp::BitXor, 5),
+        Pipe => (BinOp::BitOr, 4),
+        EqEq => (BinOp::Eq, 3),
+        Ne => (BinOp::Ne, 3),
+        Lt => (BinOp::Lt, 3),
+        Le => (BinOp::Le, 3),
+        Gt => (BinOp::Gt, 3),
+        Ge => (BinOp::Ge, 3),
+        AmpAmp => (BinOp::LogicAnd, 2),
+        Kw(super::Kw::And) => (BinOp::LogicAnd, 2),
+        PipePipe => (BinOp::LogicOr, 1),
+        Kw(super::Kw::Or) => (BinOp::LogicOr, 1),
+        QQ => (BinOp::Coalesce, 0),
         _ => return None,
     })
 }
@@ -320,7 +321,7 @@ impl Parser {
 
     /// Precedence climbing: parse a unary operand, then greedily fold
     /// operators of precedence ≥ `min_prec`. Recursing with `prec + 1`
-    /// makes every level left-associative. The comparison level (prec 2) is
+    /// makes every level left-associative. The comparison level (prec 3) is
     /// special: it routes to [`Self::comparison_chain`], which allows a
     /// monotonic one-direction chain (`0 <= x < 100`) but rejects the
     /// confusing forms — spec/02 section 3.
@@ -333,7 +334,7 @@ impl Parser {
             if prec < min_prec {
                 break;
             }
-            if prec == 2 {
+            if prec == 3 {
                 // Parse the whole (possibly chained) comparison here, then
                 // re-check the loop — only lower-prec `&&`/`||` may follow.
                 lhs = self.comparison_chain(lhs)?;
@@ -367,10 +368,10 @@ impl Parser {
         let chain_start = self.peek().span; // first comparison op (for errors)
         let mut operands = vec![first];
         let mut ops: Vec<BinOp> = Vec::new();
-        while let Some((op, 2)) = bin_op(self.peek_kind()) {
+        while let Some((op, 3)) = bin_op(self.peek_kind()) {
             self.bump();
             self.skip_newlines();
-            operands.push(self.binary(3)?); // operands never contain a comparison
+            operands.push(self.binary(4)?); // operands never contain a comparison
             ops.push(op);
         }
 
