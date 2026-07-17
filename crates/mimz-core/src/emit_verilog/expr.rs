@@ -13,6 +13,24 @@ use super::*;
 /// non-`fn`-body expression render.
 pub(super) type ArrayScope = HashMap<String, (String, u128)>;
 
+/// Build a synthetic `<base>.<field_name>` field-access expression — used to
+/// desugar `raw ?? 0` into `raw.valid ? raw.data : 0` by reusing the
+/// existing `ExprKind::Field` rendering instead of hand-formatting
+/// `<name>_<field>` strings. No such helper existed before this task; kept
+/// local (not a method) since it only builds a value, it doesn't render one.
+fn field_expr(base: &Expr, field_name: &str) -> Expr {
+    Expr {
+        kind: ExprKind::Field {
+            base: Box::new(base.clone()),
+            field: Ident {
+                name: field_name.into(),
+                span: base.span,
+            },
+        },
+        span: base.span,
+    }
+}
+
 impl Emitter<'_> {
     /// Render an expression with no substitutions (the common case).
     pub(super) fn expr(&mut self, e: &Expr) -> String {
@@ -110,6 +128,22 @@ impl Emitter<'_> {
                 };
                 format!("({sym}{x})")
             }
+            // `??` unwrap form: reaches here only when the WHOLE expression
+            // is used in a scalar (non-bundle) position — a `wire`/`Drive`
+            // RHS like `raw ?? 0`. The OR-mux form (result itself
+            // bundle-typed) never renders as a single scalar expression; it
+            // is desugared at the wire-init/Drive/port-connection/fn-arg
+            // level instead (Task 8), so it never reaches this arm.
+            ExprKind::Binary {
+                op: BinOp::Coalesce,
+                lhs,
+                rhs,
+            } => {
+                let valid = self.expr_subst(&field_expr(lhs, "valid"), subst, arrays);
+                let data = self.expr_subst(&field_expr(lhs, "data"), subst, arrays);
+                let fallback = self.expr_subst(rhs, subst, arrays);
+                format!("({valid} ? {data} : {fallback})")
+            }
             ExprKind::Binary { op, lhs, rhs } => {
                 let l = self.expr_subst(lhs, subst, arrays);
                 let r = self.expr_subst(rhs, subst, arrays);
@@ -131,12 +165,12 @@ impl Emitter<'_> {
                     BinOp::Ge => ">=",
                     BinOp::LogicAnd => "&&",
                     BinOp::LogicOr => "||",
-                    // ponytail: `??` lowering (unwrap vs. OR-mux, decided by
-                    // RHS shape) lands in Task 7/9; the checker (Task 5) is
-                    // what gates any `??` from reaching codegen until then.
-                    BinOp::Coalesce => {
-                        unreachable!("BinOp::Coalesce lowering not yet implemented (task 7/9)")
-                    }
+                    // Unreachable in practice: the arm above intercepts
+                    // every `Coalesce` before the match reaches this one.
+                    // Kept only because `op`'s static type still ranges
+                    // over all of `BinOp` here, so the inner match must
+                    // stay exhaustive.
+                    BinOp::Coalesce => unreachable!("Coalesce is handled by the arm above"),
                 };
                 format!("({l} {sym} {r})")
             }
