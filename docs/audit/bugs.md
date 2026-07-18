@@ -472,17 +472,52 @@ they do not assert the output is _correct_ Verilog, since it isn't yet.
 
 **Fix (Pending).** The simulator must immediately truncate/wrap the result to `l.width` and not dynamically grow `w`.
 
-## BUG-12 (HIGH) — Broken Parameterization in Combinational Functions
+## BUG-12 (MEDIUM, re-filed 2026-07-18) — `fn` cannot be parameterized by module scope (consistent design limitation, not a divergence)
 
-**What.** Functions (`fn`) cannot access the enclosing module's constants/parameters.
+**Re-filing note (2026-07-18).** Originally filed HIGH as "broken
+parameterization... breaking standard Verilog lexical scoping," implying an
+emitter-only bug. The 2026-07-17 CTO review (§4.2) verified this is wrong:
+**the checker rejects the same construct too** — a module-const reference
+inside a `fn` body fails `mimz check` with **E0101** ("unknown name"),
+reproduced and re-confirmed 2026-07-18. Checker and emitter **agree**: `fn`
+is a file-scoped construct that sees file-level consts and its own params,
+never module scope. That is a consistent language-design limitation, not a
+checker/emitter divergence and not "broken" scoping — downgraded HIGH → MEDIUM
+and reframed accordingly. The original **What**/**Cause** below are kept for
+history; the corrected framing is in **Severity** and **Fix**.
 
-**Cause.** In `emit_verilog/module.rs` (`render_fn_decl`), the emitter intentionally replaces the environment with `file_env` (stripping module consts) to prevent shadowing function parameters. This prevents functions from depending on module parameters (e.g. `WIDTH`), breaking standard Verilog lexical scoping.
+**What.** Functions (`fn`) cannot access the enclosing module's
+constants/parameters — by design, consistently enforced by both the checker
+and the emitter (not an emitter-only gap).
 
-**How found.** CTO Architectural Review (July 2026).
+**Cause.** In `emit_verilog/module.rs` (`render_fn_decl`), the emitter
+replaces the environment with `file_env` (stripping module consts) to
+prevent shadowing function parameters — and the checker's own name
+resolution (E0101 on a module-const reference from inside a `fn` body)
+enforces the identical file-scoped-only rule ahead of emission. File-level
+consts in `fn` bodies work fine
+(`examples/english/fn_with_const.mimz` demonstrates exactly this) — only
+module-scoped consts/params are unreachable from a `fn` body, in both
+passes.
 
-**Severity.** HIGH — Breaks core HDL parameterization paradigms where local functions rely on generic module parameters.
+**How found.** CTO Architectural Review (July 2026); severity/framing
+corrected by the same review's own §4.2 after checking the checker's actual
+behavior, not just the emitter's.
 
-**Fix (Pending).** Fix symbol table resolution hierarchy to properly scope parameters instead of amputating lexical scope during code generation.
+**Severity.** MEDIUM — a real, workaroundable language-design gap (pass the
+value as a `fn` parameter, or hoist the const to file level), not a
+divergence bug and not broken lexical scoping. Module-parameterized helper
+functions are inexpressible today; that is a feature gap, not a defect two
+passes disagree on.
+
+**Fix (Pending).** Not a symbol-table bugfix — a language-design decision:
+either bless file-scoping explicitly in `spec/02-syntax-and-grammar.md`
+(document the limitation as intentional), or design deliberate module-scope
+capture for `fn` (a real feature, needs its own spec section covering how a
+`fn`'s width/const resolution would interact with the module's own
+parametric instantiation). The emitter's current `file_env` swap
+(`emit_verilog/module.rs`) is correct as-is either way — it already matches
+the checker; nothing to fix there until the spec decision is made.
 
 ## BUG-13 (MEDIUM) — 128-bit Simulator Ceiling
 
