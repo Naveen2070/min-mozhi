@@ -253,14 +253,87 @@ discovery, name-map deserialization) audited clean: SEC-1..4 + BUG-1/2 intact,
 all five thamizh-order flips depth-guarded, checked arithmetic throughout, and
 no path traversal (import segments are XID identifiers — `..`/`/` inexpressible).
 
-## SEC-5 (MEDIUM) — Security Risk in `[lib] std` Overrides
+## SEC-7 (MEDIUM, OPEN) — `[lib] std` override path traversal
 
-**What.** The `[lib] std = "..."` override in `mimz.toml` relies on `std::fs::canonicalize` and raw path joining.
+**Note (2026-07-18).** This entry was originally filed as a second, duplicate
+`SEC-5` (a copy-paste-without-renumbering slip when the CTO review's finding
+was appended) — renumbered here, nothing else changed. Also corrected the
+**Cause** location below: verified against current source, the join lives in
+`src/commands/helpers.rs`, not `src/config.rs`.
 
-**Cause.** `src/config.rs` does not sandbox the relative path of the `std` library override. An attacker supplying a malicious `mimz.toml` could specify `std = "../../../../etc/keys"` or similar to traverse directories outside the workspace root.
+**What.** The `[lib] std = "..."` override in `mimz.toml` resolves with a raw
+path join and no containment check.
 
-**How found.** CTO Architectural Review (July 2026).
+**Cause.** `lib_std_dir` (`src/commands/helpers.rs:63-72`) computes
+`base.join(std)` (line 71) with no `canonicalize` and no check that the
+result stays inside the workspace root. An attacker supplying a malicious
+`mimz.toml` could specify `std = "../../../../etc/keys"` or similar to
+traverse directories outside the workspace root — `import std.<m>` would
+then load an arbitrary on-disk file as a standard-library module.
 
-**Severity.** MEDIUM — If the compiler is executed in a shared cloud environment (like the new WASM playground or a CI server), this directory traversal could leak host files by embedding them as standard library modules.
+**How found.** CTO Architectural Review (July 2026); re-verified against
+current source 2026-07-18 (still present, unchanged, same location modulo
+the file-path correction above).
 
-**Fix (Pending).** Sandbox config resolution. Enforce that `std` overrides must be subdirectories of the workspace root, or require an explicit CLI flag (e.g., `--allow-external-std`) to escape the root.
+**Severity.** MEDIUM — if the compiler is executed in a shared cloud
+environment (like the WASM playground or a CI server), this directory
+traversal could leak host files by embedding them as standard library
+modules.
+
+**Fix (Pending).** Sandbox config resolution. Enforce that `std` overrides
+must be subdirectories of the workspace root, or require an explicit CLI
+flag (e.g., `--allow-external-std`) to escape the root.
+
+---
+
+## SEC-8 (HIGH, OPEN) — `mimz eval`/`sim`/`test` run on untrusted input without `checker::check`
+
+**What.** The three commands that directly execute a `.mimz` file's
+semantics (`mimz eval`, `mimz sim`, `mimz test`) parse and elaborate/evaluate
+the AST **without ever calling `checker::check`** first. The checker is the
+compiler's one hardened, fully-checked-arithmetic semantic authority
+(`MAX_WIDTH`, overflow guards, E02xx/E04xx width rules); every one of these
+three paths runs the simulator's own, independently-implemented width/const
+model directly against raw, unchecked AST.
+
+**Cause.** `src/commands/eval.rs` (verified 2026-07-18, full file read): the
+command's pipeline is lex → parse → `sim::comb::eval_outputs`, with no
+`checker::check` call anywhere on the path. `sim`/`test` share the same
+elaborator entry points. This was flagged once already as SEC-2 (the
+simulator's `const_eval` was a divergent naive copy, fixed by delegating to
+the checker's hardened evaluator) and again as S1-S3 in
+`review-2026-07-03.md` — SEC-8 is the general form of the same root cause,
+not a new mechanism: as long as any input-execution path can reach the
+simulator's semantics without the checker ever running, every future
+checker-vs-simulator divergence (see SEC-9/BUG-11 below) is silently
+reachable from untrusted input, not just from already-checked source.
+
+**How found.** CTO Architectural Review (July 2026, "A2"); re-verified
+against current source 2026-07-18 (unchanged — confirmed no checker call on
+any of the three command paths).
+
+**Severity.** HIGH — this is what makes BUG-11 (SEC-9 below) reachable from
+untrusted input with no warning at all: the checker would reject the same
+divergent shift semantics were it ever run, but none of these three
+commands run it. Matches the project's own stated threat model (`mimz eval |
+check | sim <file>` run on an untrusted `.mimz` file) — `eval`/`sim`/`test`
+are explicitly in scope for that model and currently bypass its strongest
+guard.
+
+**Fix (Pending).** Run `checker::check` before `eval`/`sim`/`test` evaluate
+anything (reject on any checker error, same as `compile`/`check` already
+do), then extract one shared width/const-eval module the checker and
+simulator both call — the long-term fix that makes a second divergence
+class like BUG-11 structurally impossible rather than merely caught.
+
+---
+
+## SEC-9 (CRITICAL, OPEN) — Simulator vs. emitted Verilog disagree on left-shift result width
+
+**Note.** Tracked in full in [`bugs.md`](bugs.md) as **BUG-11** (functional
+divergence, not an input-triggered crash) — filed here too, under its own
+SEC number, because the CTO review classifies it as the audit's headline
+correctness/trust defect and because it is the concrete, reproduced instance
+of the SEC-8 divergence-reachability class above. See `bugs.md` BUG-11 for
+the full reproduction, cause, and pending fix; no separate write-up
+duplicated here to avoid the two drifting out of sync.
