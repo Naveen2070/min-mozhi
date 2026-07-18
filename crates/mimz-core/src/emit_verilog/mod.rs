@@ -1285,6 +1285,54 @@ mod tests {
     }
 
     #[test]
+    fn bare_bundle_typed_fn_return_is_a_diagnostic_not_invalid_verilog() {
+        // BUG-10 returns (docs/audit/bugs.md): a bundle-typed `fn` return has
+        // no flattening strategy (a Verilog `function` can only return one
+        // value) — must be a real diagnostic, not silent invalid output.
+        // Bare (unparametrized) form — this used to fall through to a
+        // misleading "not a declared enum" message; now gets its own clear
+        // one.
+        // `identity` must actually be CALLED — the emitter only renders a
+        // `fn` (and so only reaches `width_subst` on its return type) when
+        // something references it.
+        let diags = emit_src_err(
+            "bundle HasUART { tx: bit, rx: bit }\n\
+             fn identity(u: HasUART) -> HasUART { u }\n\
+             module M {\n  in a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
+             wire a: HasUART = { tx: a_tx, rx: a_rx }\n  \
+             wire b: HasUART = identity(a)\n  o = b.tx\n}\n",
+        );
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.msg.contains("cannot return a bundle-typed value")),
+            "expected a bundle-return diagnostic, got: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn parametric_bundle_typed_fn_return_is_a_diagnostic_not_invalid_verilog() {
+        // Same as above, parametric form — this is the shape that used to
+        // silently emit invalid Verilog with NO diagnostic at all (an empty
+        // return-type string from `width_subst`'s old `Type::Bundle { .. }
+        // => String::new()` arm), unlike the bare form which at least
+        // hard-errored, if with a confusing message.
+        let diags = emit_src_err(
+            "bundle Handshake(W: int = 8) { valid: bit, data: bits[W] }\n\
+             fn identity(v: Handshake(W: 4)) -> Handshake(W: 4) { v }\n\
+             module M {\n  in a_valid: bit\n  in a_data: bits[4]\n  out o: bit\n  \
+             wire a: Handshake(W: 4) = { valid: a_valid, data: a_data }\n  \
+             wire b: Handshake(W: 4) = identity(a)\n  o = b.valid\n}\n",
+        );
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.msg.contains("cannot return a bundle-typed value")),
+            "expected a bundle-return diagnostic, got: {diags:?}"
+        );
+    }
+
+    #[test]
     fn bundle_port_forwarding_a_module_parameter_stays_symbolic() {
         // `Handshake(W: W)` forwards Child's OWN parameter `W` into the
         // bundle's param. Child's `W` is a genuine Verilog `parameter` and
@@ -1638,29 +1686,30 @@ mod tests {
     }
 
     #[test]
-    fn structurally_matched_fn_return_emits_same_as_nominal_match() {
+    fn structurally_matched_fn_return_is_a_diagnostic_same_as_nominal_match() {
         // BUG-10's PARAM half is fixed (see
-        // `structurally_matched_fn_arg_emits_same_as_nominal_match` above),
-        // but the RETURN half is still open — `render_fn_decl`'s `ret_w =
-        // self.width(&decl.ret)` has no bundle-flatten case, and a Verilog
-        // `function` can only return ONE value in the first place (no
-        // syntax for multiple named outputs), so this isn't a simple
-        // flatten-the-declaration fix the way params were — it needs a
-        // different codegen strategy (inlining), tracked as a follow-up
-        // feature, not fixed here. The dummy `W` param on the RETURN type
-        // only sidesteps the hard-error path so this test can still assert
-        // feature 2.9's own invariant: a structurally-matched `fn` return
-        // emits identically (still broken, but identically broken) to the
-        // same-name case — the emission layer is name-driven, not
-        // type-driven, even for this unrelated, still-open gap.
-        let nominal = emit_src(
+        // `structurally_matched_fn_arg_emits_same_as_nominal_match` above);
+        // the RETURN half now gets a real diagnostic instead of emitting
+        // anything (invalid or otherwise) — a Verilog `function` can only
+        // return ONE value, so there is no flatten-the-declaration fix the
+        // way params got; the real fix (call-site inlining) is tracked as a
+        // follow-up feature (`docs/plan/phase-2-ir-synthesis.md`), not done
+        // here. This test used to assert nominal/structural forms emitted
+        // BYTE-IDENTICAL (still invalid) Verilog via a dummy `W` param that
+        // sidestepped the old hard-error path — that workaround is gone now
+        // that the parametric form is ALSO rejected, so there is no longer
+        // any output to compare. Repurposed to the still-meaningful
+        // invariant this was really pinning: feature 2.9's structural vs.
+        // nominal matching gets IDENTICAL treatment even for this unrelated
+        // gap — both now hit the same diagnostic, neither dodges it.
+        let nominal = emit_src_err(
             "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
              fn as_uart(u: HasUART(W: 1)) -> HasUART(W: 1) { u }\n\
              module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
              wire a: HasUART(W: 1) = { tx: a_tx, rx: a_rx }\n  \
              wire b: HasUART(W: 1) = as_uart(a)\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
         );
-        let structural = emit_src(
+        let structural = emit_src_err(
             "bundle HasUART(W: int = 1) { tx: bit, rx: bit }\n\
              bundle SensorData(W: int = 1) { tx: bit, rx: bit }\n\
              fn as_uart(u: SensorData(W: 1)) -> HasUART(W: 1) { u }\n\
@@ -1668,10 +1717,19 @@ mod tests {
              wire a: SensorData(W: 1) = { tx: a_tx, rx: a_rx }\n  \
              wire b: HasUART(W: 1) = as_uart(a)\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
         );
+        let msg = |diags: &[Diag]| {
+            diags
+                .iter()
+                .find(|d| d.msg.contains("cannot return a bundle-typed value"))
+                .unwrap_or_else(|| panic!("expected a bundle-return diagnostic, got: {diags:?}"))
+                .msg
+                .clone()
+        };
         assert_eq!(
-            nominal, structural,
+            msg(&nominal),
+            msg(&structural),
             "a structurally-matched (differently-named) bundle `fn` return must \
-             emit byte-identical Verilog to the same-name case"
+             get the identical diagnostic as the same-name case"
         );
     }
 }
