@@ -1002,3 +1002,28 @@ planned/shipped (pointers above, no duplication). The only forward action is
 item 6 (port grouping) and the expr-`let` sliver of item 2 — both freeze-safe
 additive sugar gated on a **G1 ruling**, recorded in the phase-2 plan's
 "section 8 additive ideas" list as decision-pending (not committed work).
+
+## 12. `fn` module-scope capture (2026-07-18, from CTO review BUG-12)
+
+Today a `fn` body only sees file-level consts/params, never the enclosing
+module's — a module-const reference from inside a `fn` fails `mimz check`
+with E0101, and the emitter agrees (`file_env` swap in
+`emit_verilog/module.rs`). Filed as [`docs/audit/bugs.md`](../audit/bugs.md)
+BUG-12, re-scoped 2026-07-17 from an emitter bug to a language-design
+limitation (checker and emitter are consistent, not divergent).
+
+**Status: open, deliberately deferred — not a bug to close, a feature to
+design.** Two directions, neither picked yet:
+
+- Bless file-scoping explicitly in `spec/02-syntax-and-grammar.md` (document
+  the limitation as intentional; workaround stays "pass the value as a `fn`
+  parameter, or hoist the const to file level").
+- Design real module-scope capture for `fn` — needs its own spec section
+  covering how a `fn`'s width/const resolution interacts with the module's
+  own parametric instantiation; a checker + emitter change, not a doc-only
+  fix.
+
+Revisit after the `phase-2-correctness-consolidation` stages land (the
+`fn`-scoping decision doesn't block those, and per that roadmap's own
+recommendation, new language surface waits until the correctness class it
+depends on — one shared width/const-eval authority — is closed).
