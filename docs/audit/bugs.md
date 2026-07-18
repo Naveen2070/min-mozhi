@@ -623,6 +623,49 @@ bundle-lookup path any user bundle already used.
 elaborate.rs`) exercise a `bit?`/`bits[N]?`-typed wire end-to-end through
 the simulator; they would fail with the pre-fix "unknown bundle" error.
 
+## BUG-15 (MEDIUM, OPEN) — `mimz-sim` has no bundle-field-expansion baseline for instance ports or `fn` call arguments
+
+**What.** A bundle-typed module-instantiation port connection or a
+bundle-typed `fn` call argument is completely unsupported in the
+simulator — `mimz-sim`'s `flatten_instance` and its `fn`-call argument
+handling (`crates/mimz-sim/src/sim/elaborate.rs`) have no bundle-field
+expansion at all for these two sites, unlike `mimz-core`'s emitter, which
+already flattens a bundle-typed value at both (plus wire-init and
+`Drive`) as a pre-existing baseline.
+
+**Cause.** The simulator's bundle support grew incrementally, site by
+site, and never reached instance-port connection or `fn`-argument passing
+— those two sites still expect a plain scalar value where a bundle-typed
+one is given.
+
+**How found.** `?`-sugar valid-bundle feature's Task 10 (simulator `??`
+OR-mux form): OR-mux needed a per-field extraction helper at every site a
+bundle-typed value can reach. `mimz-core`'s emitter has that baseline at
+four sites (wire-init, `Drive`, port connection, `fn`-call argument) and
+Task 8 extended all four; `mimz-sim` only had wire-init and `Drive` to
+extend — probing an instance port or `fn` argument with a plain (non-`??`)
+bundle-typed value confirmed both are unsupported today, independent of
+`??` entirely.
+
+**Severity.** MEDIUM — a real capability gap (not a regression, and not
+introduced by `??`), but narrow: no example/golden passes a bundle-typed
+value to an instance port or `fn` call in the simulator today, so nothing
+currently relies on it. `??`'s OR-mux form does not support these two
+sites in the simulator as a direct, scoped-out consequence (`§1.12a`
+correctly does not list them as supported combinations); `mimz-core`'s
+emitter is unaffected and supports OR-mux at all four sites.
+
+**Fix (Pending).** Give `mimz-sim` the same foundational bundle-field-
+expansion baseline `mimz-core`'s emitter already has for instance ports
+and `fn` call arguments, then `??`'s OR-mux form (or any other bundle-
+typed value) can reach those two sites the same way it already reaches
+wire-init and `Drive`. Filed as a follow-up, not part of this feature's
+scope.
+
+**Test.** None yet (gap is open, pre-existing, and out of this feature's
+scope) — Task 10's probe tests confirmed the gap empirically but were not
+committed as permanent regression coverage for a known-unsupported path.
+
 ## BUG-16 (MEDIUM, FIXED 2026-07-18) — `mimz-sim` never resolved file-scoped `enum` declarations
 
 **What.** A file-scoped `enum Name { ... }` declared _alongside_ a module
@@ -684,45 +727,61 @@ error. Also surfaced (and fixed in the same pass) that
 (a genuinely payload-bearing tagged enum) to be populated, matching what
 every real `mimz sim`/`test` invocation does since A2.
 
-## BUG-15 (MEDIUM, OPEN) — `mimz-sim` has no bundle-field-expansion baseline for instance ports or `fn` call arguments
+## BUG-17 (MEDIUM, OPEN) — Simulator rejects a combinational slice-indexed drive (`sig[hi:lo] = expr`)
 
-**What.** A bundle-typed module-instantiation port connection or a
-bundle-typed `fn` call argument is completely unsupported in the
-simulator — `mimz-sim`'s `flatten_instance` and its `fn`-call argument
-handling (`crates/mimz-sim/src/sim/elaborate.rs`) have no bundle-field
-expansion at all for these two sites, unlike `mimz-core`'s emitter, which
-already flattens a bundle-typed value at both (plus wire-init and
-`Drive`) as a pre-existing baseline.
+**What.** Driving a **slice** of a wire/output combinationally —
+`lamps[i*8+7 : i*8] = i*2`, `examples/english/foreach_fill.mimz`'s actual
+line — is rejected by both simulator entry points: `mimz sim`/`test`
+(`crates/mimz-sim/src/sim/elaborate.rs`) with "driving a slice of `lamps`
+is not supported by the simulator yet", and `mimz eval`
+(`crates/mimz-sim/src/sim/comb.rs`) with "driving a slice of `lamps` is
+not supported by the evaluator yet". The parser, checker, and Verilog
+emitter all fully support it — `mimz compile` emits a correct, valid
+indexed part-select assignment; only Min-Mozhi's own simulator/evaluator
+can't run a design that uses it. **Not the same gap as BUG-8** (FIXED):
+BUG-8 covers a **sequential** (`<-`, inside `on rise`/`fall`) slice write
+to a register, which works fine
+(`slice_indexed_register_write_sets_a_range`,
+`crates/mimz-sim/src/sim/kernel.rs`). This is specifically a
+**combinational** (`=`) slice drive on a wire/output/port.
 
-**Cause.** The simulator's bundle support grew incrementally, site by
-site, and never reached instance-port connection or `fn`-argument passing
-— those two sites still expect a plain scalar value where a bundle-typed
-one is given.
+**Cause.** `elaborate.rs::record_drive` (the elaborator behind `mimz
+sim`/`test`) handles a whole-signal drive (`lhs.index == None`) and a
+single-bit-indexed drive (`Some((idx, None))`, collected per-bit into
+`bit_drives` and reassembled as a `Concat`), but its third arm,
+`Some((_, Some(_)))` — an actual range/slice — just returns an error;
+nothing assembles a partial-slice `Concat` the way the bit-indexed arm
+does. `comb.rs`'s lightweight single-file evaluator (behind `mimz eval`)
+is even more restrictive: its `ModuleItem::Drive` handling rejects **any**
+indexed drive at all via a blanket `lhs.index.is_some()` check — so it
+also rejects the single-bit-indexed case `elaborate.rs` already supports,
+not just slices (its error message says "a slice", which is the common
+case but not the literal condition it checks).
 
-**How found.** `?`-sugar valid-bundle feature's Task 10 (simulator `??`
-OR-mux form): OR-mux needed a per-field extraction helper at every site a
-bundle-typed value can reach. `mimz-core`'s emitter has that baseline at
-four sites (wire-init, `Drive`, port connection, `fn`-call argument) and
-Task 8 extended all four; `mimz-sim` only had wire-init and `Drive` to
-extend — probing an instance port or `fn` argument with a plain (non-`??`)
-bundle-typed value confirmed both are unsupported today, independent of
-`??` entirely.
+**How found.** Stage 3 (T1, differential-testing consolidation,
+`docs/plan/phase-2-correctness-consolidation.local.md`) — adding layer-3
+Icarus differential coverage for `foreach_fill.mimz` (previously
+layer-1-only) hit this immediately; excluded from that pass rather than
+folded in, since fixing it is a simulator-kernel change, not a test
+addition.
 
-**Severity.** MEDIUM — a real capability gap (not a regression, and not
-introduced by `??`), but narrow: no example/golden passes a bundle-typed
-value to an instance port or `fn` call in the simulator today, so nothing
-currently relies on it. `??`'s OR-mux form does not support these two
-sites in the simulator as a direct, scoped-out consequence (`§1.12a`
-correctly does not list them as supported combinations); `mimz-core`'s
-emitter is unaffected and supports OR-mux at all four sites.
+**Severity.** MEDIUM — a real capability gap in both simulator entry
+points (not a crash, not silent miscompute — errors cleanly), but narrow:
+only one shipped example (`foreach_fill.mimz`) currently uses a
+combinational slice drive, so nothing else is silently affected. Blocks
+`mimz sim`/`mimz eval`/`mimz test` on any design using this otherwise
+fully-supported (parser/checker/emitter) construct.
 
-**Fix (Pending).** Give `mimz-sim` the same foundational bundle-field-
-expansion baseline `mimz-core`'s emitter already has for instance ports
-and `fn` call arguments, then `??`'s OR-mux form (or any other bundle-
-typed value) can reach those two sites the same way it already reaches
-wire-init and `Drive`. Filed as a follow-up, not part of this feature's
-scope.
+**Fix (Pending).** Extend `record_drive` (`elaborate.rs`) to handle
+`Some((lo, Some(hi)))` the same way BUG-8's register-write fix handled a
+slice: read/collect the affected bit range and merge it into the
+existing `bit_drives`-then-`Concat` assembly path (or a parallel
+range-aware structure) rather than erroring outright. `comb.rs`'s
+`eval_outputs` needs the equivalent — and should also stop rejecting the
+already-elsewhere-supported single-bit-indexed case while at it, since
+its current check is broader than its own error message claims.
 
-**Test.** None yet (gap is open, pre-existing, and out of this feature's
-scope) — Task 10's probe tests confirmed the gap empirically but were not
-committed as permanent regression coverage for a known-unsupported path.
+**Test.** None yet — filed as still open; `examples/english/
+foreach_fill.mimz` is a ready-made, already-shipped repro (currently
+covered only by `tests/icarus.rs`'s layer-1 `iverilog -t null` validity
+check, excluded from layer 3 pending this fix).
