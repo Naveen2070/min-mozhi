@@ -745,10 +745,15 @@ fn binary_known(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
         BinOp::Ge => Val::new((!cmp_lt(l, r)) as u128, 1, false),
         BinOp::LogicAnd => Val::new((l.bits & 1) & (r.bits & 1), 1, false),
         BinOp::LogicOr => Val::new((l.bits & 1) | (r.bits & 1), 1, false),
-        // ponytail: `??` simulation (unwrap vs. OR-mux over a valid-bundle)
-        // is Task 9's job — not implemented yet, so deliberately not
-        // reachable until then.
-        BinOp::Coalesce => todo!("BinOp::Coalesce simulation not yet implemented (task 9)"),
+        // `??` is always rewritten to `IfExpr` by `Rw::expr` during
+        // elaboration (crates/mimz-sim/src/sim/elaborate.rs) before the
+        // kernel ever calls `binary_known` — so this arm is unreachable in
+        // practice. Still a typed error rather than a panic: this function
+        // returns `Result`, and a future caller of `binary_known` that skips
+        // elaboration must get a diagnosable error, not a crashed process.
+        BinOp::Coalesce => {
+            return Err("?? should have been lowered during elaboration".to_string());
+        }
     };
     Ok(v)
 }
