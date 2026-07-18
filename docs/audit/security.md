@@ -328,12 +328,18 @@ class like BUG-11 structurally impossible rather than merely caught.
 
 ---
 
-## SEC-9 (CRITICAL, OPEN) — Simulator vs. emitted Verilog disagree on left-shift result width
+## SEC-9 (CRITICAL, FIXED 2026-07-18) — Simulator vs. emitted Verilog disagree on left-shift result width
 
 **Note.** Tracked in full in [`bugs.md`](bugs.md) as **BUG-11** (functional
 divergence, not an input-triggered crash) — filed here too, under its own
 SEC number, because the CTO review classifies it as the audit's headline
 correctness/trust defect and because it is the concrete, reproduced instance
 of the SEC-8 divergence-reachability class above. See `bugs.md` BUG-11 for
-the full reproduction, cause, and pending fix; no separate write-up
-duplicated here to avoid the two drifting out of sync.
+the full reproduction, cause, and fix; no separate write-up duplicated here
+to avoid the two drifting out of sync.
+
+**SEC-8 itself stays OPEN** — fixing BUG-11 closes this one _specific_
+instance of the divergence-reachability class, not the class itself.
+`eval`/`sim`/`test` still run without `checker::check`; a future construct
+with its own checker-vs-simulator mismatch is exactly as reachable from
+untrusted input as this one was, until SEC-8 lands.

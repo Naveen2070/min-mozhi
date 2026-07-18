@@ -81,6 +81,16 @@
 Two tracks, running in parallel; see `docs/plan/phase-2-ir-synthesis.md` for
 the full triaged backlog (source of truth).
 
+**Correctness consolidation — opened 2026-07-18, gates further
+language-feature work.** The 2026-07-17 CTO review found one architectural
+root cause (three independently-implemented semantic authorities: checker,
+simulator, emitter) behind every recurring divergence bug in the audit log,
+plus a proven CRITICAL sim-vs-synthesis mismatch (BUG-11). Recommendation:
+freeze new language surface, land the fixes, then resume. Full staged plan:
+`docs/plan/phase-2-correctness-consolidation.local.md` (local working doc,
+not tracked — see the audit trail in `docs/audit/` for the tracked source
+of truth on each item).
+
 **Language-features track — in progress:**
 
 - ✅ Packages/namespacing (2026-07-02)
