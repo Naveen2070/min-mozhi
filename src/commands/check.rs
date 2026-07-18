@@ -125,7 +125,16 @@ fn run_check(
     // does them together); `check` is the six checker passes. For a finer
     // lex-vs-parse-vs-emit split, see the criterion harness (`cargo bench`).
     let t_load = Instant::now();
-    let lib_std = lib_std_dir(path, config_path);
+    let lib_std = match lib_std_dir(path, config_path) {
+        Ok(v) => v,
+        Err(code) => {
+            return Pass {
+                code,
+                dirs: entry_only(),
+                loaded: false,
+            };
+        }
+    };
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => {
