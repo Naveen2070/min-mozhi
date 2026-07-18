@@ -1274,6 +1274,29 @@ impl Emitter<'_> {
                         .get()
                         .expect("inferred_total_width not set — checker must run before emitter");
                     format!("[{}:0] ", w - 1)
+                } else if self.project.resolve_bundle(id).is_some() {
+                    // BUG-10 (docs/audit/bugs.md): a bare bundle name reaches
+                    // here ONLY via a `fn` return type — module ports/wires
+                    // and `fn` params flatten a bundle to per-field signals
+                    // BEFORE ever calling width()/width_subst() (see
+                    // render_fn_decl's own Type::Bundle/Type::Named arms
+                    // above it). A Verilog `function` can only return one
+                    // value, so there is no flattening strategy for a
+                    // bundle-typed return — reject with a real diagnostic
+                    // instead of the misleading "not a declared enum"
+                    // message this used to fall through to.
+                    self.err(
+                        id.span,
+                        format!(
+                            "`fn` cannot return a bundle-typed value (`{}`)",
+                            id.name.name
+                        ),
+                        "a Verilog `function` can only return one value, and there is no \
+                         flattening strategy for a bundle-typed return (unlike a bundle-typed \
+                         param, which flattens to one input per field) — return an individual \
+                         field instead, or restructure as separate `fn`s",
+                    );
+                    String::new()
                 } else {
                     self.err(
                         id.span,
@@ -1286,10 +1309,29 @@ impl Emitter<'_> {
                     String::new()
                 }
             }
-            // Bundle types are flattened to individual signals — `width` is
-            // never called on a bundle type directly in the port/wire path.
-            // If it is called (e.g., from an unexpected path), treat as 0-width.
-            Type::Bundle { .. } => String::new(),
+            // BUG-10 (docs/audit/bugs.md): the parametric form of a
+            // bundle-typed `fn` return (`Foo(W: 8)`) reaches here for the
+            // exact same reason the bare form reaches the `Type::Named` arm
+            // above — every OTHER caller (module ports/wires, `fn` params)
+            // flattens a bundle to per-field signals before ever calling
+            // width()/width_subst(). This used to silently return an empty
+            // (0-width) string here, producing invalid Verilog with no
+            // diagnostic at all — worse than the bare form's at least-an-
+            // error behavior. Same fix, same message.
+            Type::Bundle { name, .. } => {
+                self.err(
+                    name.span,
+                    format!(
+                        "`fn` cannot return a bundle-typed value (`{}`)",
+                        name.name.name
+                    ),
+                    "a Verilog `function` can only return one value, and there is no \
+                     flattening strategy for a bundle-typed return (unlike a bundle-typed \
+                     param, which flattens to one input per field) — return an individual \
+                     field instead, or restructure as separate `fn`s",
+                );
+                String::new()
+            }
             Type::Array { .. } => unreachable!(
                 "array types are rejected by the checker (E0416) before reaching the \
                  emitter for anything but a `fn` parameter, which render_fn_decl handles \

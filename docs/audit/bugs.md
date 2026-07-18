@@ -373,7 +373,7 @@ the fix's param-seeded dedup set closes this variant too: the golden
 
 ---
 
-## BUG-10 (MEDIUM, PARTIALLY FIXED — params fixed, returns still open) — Bundle-typed `fn` params/returns never flatten in emitted Verilog
+## BUG-10 (MEDIUM, params FIXED 2026-07-16 / returns diagnostic FIXED 2026-07-18, real fix still pending) — Bundle-typed `fn` params/returns never flatten in emitted Verilog
 
 **What.** A bundle-typed `fn` parameter or return type is not flattened to
 one Verilog port per field the way module ports and wires are. A bare
@@ -414,9 +414,11 @@ documents as supported; no example or golden currently exercises a
 bundle-typed `fn` param/return, so nothing else was silently broken by it.
 
 **Workaround.** None at the language level for the still-open return case —
-avoid bundle-typed `fn` returns until that half lands; pass individual
-fields back instead. (The param case needs no workaround anymore — fixed
-below.)
+avoid bundle-typed `fn` returns until the real fix (call-site inlining)
+lands; pass individual fields back instead. A bundle-typed return is now at
+least a clean compile-time diagnostic instead of invalid output (see "Fix —
+returns, diagnostic" below). (The param case needs no workaround anymore —
+fixed below.)
 
 **Fix — params (2026-07-16, this fix).** `render_fn_decl`'s param loop
 (`crates/mimz-core/src/emit_verilog/module.rs`) now flattens a
@@ -437,28 +439,61 @@ flatten step. Verified against the exact repro in "What" above: `pick_tx`
 (bit-returning, bundle-typed param only) now emits fully correct Verilog
 end-to-end.
 
-**Fix — returns (still open).** NOT the same kind of fix. A Verilog
-`function` can only return **one** value — there is no Verilog syntax for
-a function to return multiple named outputs, so "flatten the return type"
-the way params/ports do isn't applicable here at all. Supporting a
-bundle-typed `fn` return for real needs a different codegen strategy
-(inlining the function body at each call site instead of emitting a real
-Verilog `function` call) — filed as a separate, larger feature idea, not a
-bug-fix continuation. See `docs/plan/phase-2-ir-synthesis.md`'s language
-features backlog.
+**Fix — returns, real fix (still pending).** NOT the same kind of fix as
+params. A Verilog `function` can only return **one** value — there is no
+Verilog syntax for a function to return multiple named outputs, so
+"flatten the return type" the way params/ports do isn't applicable here at
+all. Supporting a bundle-typed `fn` return for real needs a different
+codegen strategy (inlining the function body at each call site instead of
+emitting a real Verilog `function` call) — filed as a separate, larger
+feature idea, not a bug-fix continuation. Already tracked in
+`docs/plan/phase-2-ir-synthesis.md`'s language-features backlog
+("Bundle-typed `fn` return via inlining") — confirmed present there
+2026-07-18, not duplicated.
+
+**Fix — returns, diagnostic (2026-07-18, interim — per
+`docs/plan/phase-2-correctness-consolidation.local.md` Stage 1).** Until
+the real fix above lands, a bundle-typed `fn` return is now a clean
+compile-time diagnostic instead of either the bare form's confusing
+"not a declared enum" hard error or the parametric form's silent invalid
+Verilog. Fixed at the EMITTER level, not the checker: an earlier attempt to
+reject this in the checker (`check_func_body_widths`) was reverted before
+landing — feature 2.9's structural interface matching already has full,
+deliberately-built, tested support for bundle-typed `fn` returns at the
+checker level (`check_return_ty`'s `BundleShapeMatch` handling, E0910/E0804
+etc.); rejecting there would have broken that legitimate, independently
+valuable validation, not fixed BUG-10. The real gap is narrower: only
+`width_subst` (`crates/mimz-core/src/emit_verilog/module.rs`) — reached
+**exclusively** via `render_fn_decl`'s `let ret_w = self.width(&decl.ret)`,
+since every other caller (module ports/wires, `fn` params) flattens a
+bundle to per-field signals before ever calling `width()`/`width_subst()`
+— doesn't know what to do with a bundle-typed return. Its `Type::Bundle`
+arm now reports a real diagnostic (was: silent `String::new()`); its
+`Type::Named` arm's bundle-resolving branch does too, replacing the
+misleading "not a declared enum" message the bare form used to fall
+through to. `mimz check` still accepts a bundle-typed `fn` return cleanly
+(the checker's own view is unchanged and correct); `mimz compile` now
+rejects it with a clear message — the same check-vs-compile split that
+already existed for the bare form, now consistent for both forms.
 
 **Test.** `bundle_typed_fn_param_flattens_to_per_field_inputs`
 (`crates/mimz-core/src/emit_verilog/mod.rs`) — asserts the exact flattened
 port declarations, body reference, and call-site expansion for both a bare
 and a parametric bundle-typed param on the same `fn`.
 
-**Test.** None yet (bug is open). The two emission-equality tests that
-surfaced it (`structurally_matched_fn_arg_emits_same_as_nominal_match`,
-`structurally_matched_fn_return_emits_same_as_nominal_match`,
-`crates/mimz-core/src/emit_verilog/mod.rs`) route around the hard-error path
-via a dummy `W: int = 1` bundle param and assert only that structural vs.
-nominal bundle naming doesn't change the (still-invalid) emitted output —
-they do not assert the output is _correct_ Verilog, since it isn't yet.
+**Test.** `bare_bundle_typed_fn_return_is_a_diagnostic_not_invalid_verilog`,
+`parametric_bundle_typed_fn_return_is_a_diagnostic_not_invalid_verilog`
+(`crates/mimz-core/src/emit_verilog/mod.rs`) — both forms now assert a
+`Diag` mentioning "cannot return a bundle-typed value", not successful
+emission.
+`structurally_matched_fn_return_is_a_diagnostic_same_as_nominal_match`
+(same file, repurposed from `..._emits_same_as_nominal_match`, which used a
+dummy `W: int = 1` param to sidestep the old hard-error path and compare
+byte-identical-but-invalid Verilog between nominal/structural bundle
+returns — that workaround no longer works now that BOTH forms are rejected,
+so there's no output left to compare; repurposed to the still-meaningful
+invariant it was really pinning: nominal and structurally-matched bundle
+returns get the IDENTICAL diagnostic, neither dodges it).
 
 ## BUG-11 (CRITICAL, FIXED 2026-07-18) — Simulation vs. Synthesis Mismatch on Left Shift (`<<`)
 
