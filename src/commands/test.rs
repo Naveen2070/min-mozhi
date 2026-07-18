@@ -50,7 +50,10 @@ pub(crate) fn test_file(
     }
     // Load imports too, so a module-under-test that instantiates a sub-module
     // from another file can be flattened.
-    let lib_std = lib_std_dir(path, config_path);
+    let lib_std = match lib_std_dir(path, config_path) {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
     let files = match project::load_project_with_lib(path, lib_std.as_deref()) {
         Ok(f) => f,
         Err(e) => return out.load_error(&e),
