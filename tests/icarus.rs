@@ -17,12 +17,17 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mimz::ast::{File, ModuleItem, TopItem};
 use mimz::sim::elaborate::elaborate_project;
 use mimz::sim::run::{SimOpts, Timeline, comb_run, run};
 use mimz::sim::vcd::to_vcd;
+
+mod support;
+use support::{
+    comb_testbench, compile_example, display_args, display_fmt, gen_vectors, instantiation, mimz,
+    parse_icarus, repo, require_iverilog, run_vvp, tool,
+};
 
 /// Testbench file (under tests/icarus/) -> the example it tests.
 /// Testbench module name = file name minus `.v`.
@@ -86,59 +91,6 @@ const PURE_TESTBENCHES: [(&str, &str); 12] = [
     ("anuppi_tb.v", "tamil-pure/anuppi.mimz"),
 ];
 
-fn repo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
-fn mimz() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_mimz"))
-}
-
-/// Locate the Icarus `bin` directory: `MIMZ_IVERILOG` (a directory or the
-/// iverilog executable itself) → PATH → the Windows installer default.
-/// `None` means "not installed" — the caller decides skip vs fail.
-fn iverilog_bin() -> Option<PathBuf> {
-    let exe = |dir: &Path| dir.join(format!("iverilog{}", std::env::consts::EXE_SUFFIX));
-    if let Ok(p) = std::env::var("MIMZ_IVERILOG") {
-        let p = PathBuf::from(p);
-        let dir = if p.is_file() {
-            p.parent().map(Path::to_path_buf).unwrap_or_default()
-        } else {
-            p
-        };
-        return exe(&dir).exists().then_some(dir);
-    }
-    if Command::new("iverilog")
-        .arg("-V")
-        .output()
-        .is_ok_and(|o| o.status.success())
-    {
-        return Some(PathBuf::new()); // empty = resolve via PATH
-    }
-    let default = PathBuf::from(r"C:\iverilog\bin");
-    if cfg!(windows) && exe(&default).exists() {
-        return Some(default);
-    }
-    None
-}
-
-/// `Some(bin dir)` to run, `None` to skip (already logged). Panics when
-/// CI demands Icarus (`REQUIRE_IVERILOG`) but it is missing.
-fn require_iverilog() -> Option<PathBuf> {
-    match iverilog_bin() {
-        Some(d) => Some(d),
-        None => {
-            assert!(
-                std::env::var("REQUIRE_IVERILOG").is_err(),
-                "REQUIRE_IVERILOG is set but iverilog was not found — \
-                 install it (CI: apt-get install -y iverilog)"
-            );
-            eprintln!("skipping: Icarus Verilog not installed (docs/code/10-test-map.md)");
-            None
-        }
-    }
-}
-
 /// Parse the Icarus major version from `iverilog -V` output.
 /// `None` means parsing failed (conservatively assume recent enough).
 fn icarus_major_version(bin: &Path) -> Option<u32> {
@@ -149,34 +101,6 @@ fn icarus_major_version(bin: &Path) -> Option<u32> {
     let rest = first.strip_prefix("Icarus Verilog version ")?;
     let maj_str = rest.split('.').next()?;
     maj_str.parse().ok()
-}
-
-fn tool(bin: &Path, name: &str) -> Command {
-    if bin.as_os_str().is_empty() {
-        Command::new(name)
-    } else {
-        Command::new(bin.join(name))
-    }
-}
-
-/// Compile one example with mimz; return the generated `.v` path.
-fn compile_example(path: &Path) -> PathBuf {
-    let name = path.display().to_string().replace(['\\', '/', ':'], "_");
-    let out_v = std::env::temp_dir().join(format!("mimz_icarus_{name}.v"));
-    let out = mimz()
-        .arg("compile")
-        .arg(path)
-        .arg("-o")
-        .arg(&out_v)
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "`mimz compile {}` failed:\n{}",
-        path.display(),
-        String::from_utf8_lossy(&out.stderr)
-    );
-    out_v
 }
 
 /// Layer 1 — every emitted `.v` in the corpus is valid Verilog by the
@@ -510,27 +434,6 @@ fn sync_loop_search_timing_matches_icarus() {
 /// One held input: name + value (clocked designs only).
 type Stim<'a> = &'a [(&'a str, u128)];
 
-/// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
-fn mask(w: u32) -> u128 {
-    if w >= 128 {
-        u128::MAX
-    } else {
-        (1u128 << w) - 1
-    }
-}
-
-/// `name #(.P(v), …) uut (conns)` — the instantiation line, with optional
-/// parameter overrides (so a design can be driven at a chosen width/limit).
-fn instantiation(module: &str, params: &[(String, i128)], conns: &[String]) -> String {
-    let p = if params.is_empty() {
-        String::new()
-    } else {
-        let items: Vec<String> = params.iter().map(|(n, v)| format!(".{n}({v})")).collect();
-        format!(" #({})", items.join(", "))
-    };
-    format!("  {module}{p} uut ({});\n", conns.join(", "))
-}
-
 /// Clocked testbench: instantiate, apply the default stimulus, and print
 /// `DIFF <cycle> <out>=<bits> …` (binary) after each rising edge.
 #[allow(clippy::too_many_arguments)]
@@ -578,76 +481,6 @@ fn clocked_testbench(
     s += &format!("      #4 {clock} = 0;\n");
     s += "    end\n    $finish;\n  end\nendmodule\n";
     s
-}
-
-/// Combinational testbench: instantiate (no clock/reset), and for each input
-/// vector set the inputs, settle (`#1`), and print `DIFF <i> <out>=<bits> …`.
-fn comb_testbench(
-    module: &str,
-    params: &[(String, i128)],
-    inputs: &[(String, u32)],
-    outputs: &[(String, u32)],
-    vectors: &[BTreeMap<String, u128>],
-) -> String {
-    let mut s = String::from("module diff_tb;\n");
-    for (n, w) in inputs {
-        s += &format!("  reg [{}:0] {n} = 0;\n", w - 1);
-    }
-    for (n, w) in outputs {
-        s += &format!("  wire [{}:0] {n};\n", w - 1);
-    }
-    let mut conns: Vec<String> = inputs.iter().map(|(n, _)| format!(".{n}({n})")).collect();
-    conns.extend(outputs.iter().map(|(n, _)| format!(".{n}({n})")));
-    s += &instantiation(module, params, &conns);
-
-    let fmt = display_fmt(outputs);
-    let args = display_args(outputs);
-    s += "  initial begin\n";
-    for (i, vec) in vectors.iter().enumerate() {
-        for (n, w) in inputs {
-            let v = vec.get(n).copied().unwrap_or(0);
-            s += &format!("    {n} = {w}'d{v};\n");
-        }
-        s += "    #1;\n";
-        s += &format!("    $display(\"DIFF {i} {fmt}\", {args});\n");
-    }
-    s += "    $finish;\n  end\nendmodule\n";
-    s
-}
-
-fn display_fmt(outputs: &[(String, u32)]) -> String {
-    outputs
-        .iter()
-        .map(|(n, _)| format!("{n}=%b"))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn display_args(outputs: &[(String, u32)]) -> String {
-    outputs
-        .iter()
-        .map(|(n, _)| n.clone())
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-/// Deterministic pseudo-random input vectors, each value masked to its input's
-/// width — the same vectors fed to our kernel and the Verilog testbench.
-fn gen_vectors(inputs: &[(String, u32)], n: u64) -> Vec<BTreeMap<String, u128>> {
-    (0..n)
-        .map(|k| {
-            inputs
-                .iter()
-                .enumerate()
-                .map(|(j, (name, w))| {
-                    let raw = (k as u128)
-                        .wrapping_mul(2_654_435_761)
-                        .wrapping_add((j as u128 + 1).wrapping_mul(40_503));
-                    (name.clone(), raw & mask(*w))
-                })
-                .collect()
-        })
-        .collect()
 }
 
 /// Replay a VCD document into `time -> {signal: value}` snapshots. VCD lists
@@ -702,52 +535,6 @@ fn vcd_snapshots(text: &str) -> BTreeMap<u64, BTreeMap<String, u128>> {
         snaps.insert(t, cur.clone());
     }
     snaps
-}
-
-/// Build + run a testbench under `iverilog`/`vvp`; return vvp's stdout.
-fn run_vvp(bin: &Path, example: &str, design_v: &Path, tb: &str) -> String {
-    let safe = example.replace(['\\', '/', ':', '.'], "_");
-    let tb_path = std::env::temp_dir().join(format!("mimz_diff_{safe}.v"));
-    std::fs::write(&tb_path, tb).unwrap();
-    let vvp_out = std::env::temp_dir().join(format!("mimz_diff_{safe}.vvp"));
-    let build = tool(bin, "iverilog")
-        .arg("-o")
-        .arg(&vvp_out)
-        .args(["-s", "diff_tb"])
-        .arg(&tb_path)
-        .arg(design_v)
-        .output()
-        .unwrap();
-    assert!(
-        build.status.success(),
-        "iverilog failed on the {example} differential testbench:\n{}\n--- tb ---\n{tb}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let sim = tool(bin, "vvp").arg(&vvp_out).output().unwrap();
-    let stdout = String::from_utf8_lossy(&sim.stdout).to_string();
-    assert!(sim.status.success(), "vvp failed on {example}:\n{stdout}");
-    stdout
-}
-
-/// Parse `DIFF <step> name=<bits> …` (binary values) into `step -> {name: value}`.
-fn parse_icarus(stdout: &str) -> BTreeMap<u64, BTreeMap<String, u128>> {
-    let mut icarus: BTreeMap<u64, BTreeMap<String, u128>> = BTreeMap::new();
-    for line in stdout.lines() {
-        let Some(rest) = line.strip_prefix("DIFF ") else {
-            continue;
-        };
-        let mut it = rest.split_whitespace();
-        let step: u64 = it.next().unwrap().parse().unwrap();
-        let row = icarus.entry(step).or_default();
-        for pair in it {
-            let (n, v) = pair.split_once('=').unwrap();
-            row.insert(
-                n.to_string(),
-                u128::from_str_radix(v, 2).expect("binary value"),
-            );
-        }
-    }
-    icarus
 }
 
 /// Assert kernel == VCD waveform == Icarus, per step, for every output.

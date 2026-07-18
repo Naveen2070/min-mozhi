@@ -37,6 +37,33 @@ impl Emitter<'_> {
         self.expr_subst(e, &HashMap::new(), &ArrayScope::new())
     }
 
+    /// Try to resolve an expression to a constant integer value, seeing
+    /// through `extend`/`trunc` that wrap a literal (BUG-18). `extend` widens
+    /// without changing the value; `trunc` masks it to its low N bits. Returns
+    /// `None` for anything with a runtime component (a signal or a computed
+    /// expression) — those already carry a definite Verilog width from their
+    /// own declaration, so the `Builtin::Extend` passthrough is safe for them.
+    /// Values are always non-negative (source literals are unsized and
+    /// non-negative; masking preserves that), so callers render `W'd{v}`.
+    fn resolve_const_value(&self, e: &Expr) -> Option<i128> {
+        match &e.kind {
+            ExprKind::Int { value, .. } => i128::try_from(*value).ok(),
+            ExprKind::Call {
+                func: Builtin::Extend,
+                args,
+            } => self.resolve_const_value(&args[0]),
+            ExprKind::Call {
+                func: Builtin::Trunc,
+                args,
+            } => {
+                let v = self.resolve_const_value(&args[0])?;
+                let n = u32::try_from(consteval::eval(&args[1], &self.env).ok()?).ok()?;
+                Some(if n >= 127 { v } else { v & ((1i128 << n) - 1) })
+            }
+            _ => None,
+        }
+    }
+
     /// Render an index or slice bound. A non-literal that folds at compile
     /// time — a `repeat` variable or arithmetic over one, like `i + 1` —
     /// collapses to its decimal value (`sum[i] → sum[2]`); plain literals
@@ -399,7 +426,26 @@ impl Emitter<'_> {
                 // unsigned operands zero-extend; `signed`-declared ones
                 // SIGN-extend (declarations carry `signed`, see
                 // `width_subst`). The checker has already verified widths.
-                Builtin::Extend => format!("({})", self.expr_subst(&args[0], subst, arrays)),
+                //
+                // BUG-18: that implicit widening only fires in
+                // context-determined positions. A concatenation operand is
+                // self-determined (Verilog LRM) — it must carry its own
+                // width. A named signal already does (from its declaration),
+                // but an unsized literal does NOT, so `extend(3, 12)` inside a
+                // `{...}` is rejected by Icarus ("indefinite width"). When the
+                // argument resolves to a constant (a literal, possibly through
+                // nested extend/trunc), render it as an explicitly-sized
+                // literal at this extend's target width; otherwise fall back to
+                // the passthrough, which is safe for runtime operands.
+                Builtin::Extend => {
+                    match (
+                        self.resolve_const_value(&args[0]),
+                        consteval::eval(&args[1], &self.env).ok(),
+                    ) {
+                        (Some(v), Some(w)) => format!("{}'d{v}", w as u128),
+                        _ => format!("({})", self.expr_subst(&args[0], subst, arrays)),
+                    }
+                }
                 Builtin::Trunc => {
                     let x = self.expr_subst(&args[0], subst, arrays);
                     let n = self.expr_subst(&args[1], subst, arrays);

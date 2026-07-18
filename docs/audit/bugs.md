@@ -785,3 +785,157 @@ its current check is broader than its own error message claims.
 foreach_fill.mimz` is a ready-made, already-shipped repro (currently
 covered only by `tests/icarus.rs`'s layer-1 `iverilog -t null` validity
 check, excluded from layer 3 pending this fix).
+
+## BUG-18 (MEDIUM, FIXED 2026-07-18) — `extend()` of a literal lost its width in self-determined Verilog contexts
+
+**What.** A checker-valid, kernel-correct program whose emitted Verilog
+`iverilog` **refuses to elaborate**. The generated design
+
+```
+module Fuzz {
+  in p0: bits[3]
+  in p1: bits[12]
+  out y: bits[13]
+  y = {(extend(extend(3, 3), 12) | p1), (extend(p0, 5) < extend(29, 5))}
+}
+```
+
+passes `mimz check` and `mimz eval` computes the correct `y = 6367`, but the
+emitted Verilog was `assign y = {(((3)) | p1), ((p0) < (29))};` and Icarus
+rejected it: `Concatenation operand "('sd3)|(p1)" has indefinite width.`
+
+**Cause.** `emit_verilog/expr.rs`'s `Builtin::Extend` arm was a pure
+passthrough — `format!("({})", self.expr_subst(&args[0], ...))` — that emitted
+its argument unchanged and relied entirely on Verilog's **context-determined**
+implicit widening to size it at the point of use. That rule only fires in
+context-determined positions (e.g. directly on an `assign` RHS). A
+concatenation `{...}` operand is **self-determined** (Verilog-2005 LRM §5.4.1):
+each operand's width must be knowable from the operand alone. A named signal
+already carries a definite width from its declaration, so `extend()` over a
+signal is fine anywhere — but an **unsized integer literal** (rendered by
+`verilog_literal` in `emit_verilog/mod.rs` as a bare `3`, never with a width
+prefix) has no self-determined width, and the passthrough did nothing to give
+it one. The failing case nests: `extend(extend(3, 3), 12)` — the outer
+`extend`'s `args[0]` is itself an `extend` wrapping the literal — so a fix
+matching only a bare `ExprKind::Int` would patch the reported seed while
+leaving the general (routinely generated) nested shape broken.
+
+**How found.** T2 v1 of the differential fuzzer
+(`tests/differential_fuzz.rs`'s `differential_fuzz_matches_icarus`,
+`docs/plan/phase-2-differential-fuzzing.md`) on its **first real run** — seed
+`12648432` (iteration i=2, not a rare corner). The random-program generator's
+`widen()` helper produces the nested-`extend`-of-literal shape routinely.
+Same "checker accepts it, simulator/emitter disagree" divergence class as
+BUG-6/BUG-11/BUG-16/BUG-17 — here specifically the emitter's Verilog output
+being rejected by a real Verilog compiler, not a value disagreement.
+
+**Severity.** MEDIUM — an emitter miscompile (invalid Verilog) for an
+otherwise-valid, kernel-correct construct: any `extend()` over a literal
+(directly or through nested `extend`/`trunc`) placed inside a concatenation
+operand or other self-determined position. Not a crash and not a silent wrong
+value — `iverilog` errors cleanly at elaboration — but it blocks synthesis of
+affected designs. No shipped example triggered it (found only by fuzzing).
+
+**Fix (2026-07-18).** Approach A — an emitter-local recursive resolver, chosen
+over widening the shared `checker::consteval::eval` (approach B) to keep the
+blast radius minimal: `consteval::eval` is used by the checker for array sizes,
+`repeat` bounds, parameter defaults, etc., and folding `extend`/`trunc` there
+could shift which programs const-fold (e.g. the E0407 "`trunc` of a bare
+literal does nothing useful" path). The new `resolve_const_value`
+(`emit_verilog/expr.rs`) walks `ExprKind::Int` directly and recurses through
+`Builtin::Extend` (value unchanged) and `Builtin::Trunc` (value masked to its
+low N bits, using `consteval::eval` only on the width argument, which is always
+separately constant-foldable). The `Builtin::Extend` arm now renders a
+constant-resolved argument as an explicitly-sized `W'd{v}` literal at this
+extend's own target width (`args[1]`) — extending a fully-resolved constant to
+a larger width doesn't change its value, only the bits available to hold it —
+and falls back to the original passthrough for genuine runtime operands (which
+already carry a definite width). Scoped to the **unsigned** case: `extend()` of
+a `CtInt` literal always yields unsigned `bits(n)` per the checker
+(`checker/widths/ops.rs`'s `Builtin::Extend | Builtin::Trunc` arm), and source
+literals are unsized and non-negative, so `W'd{v}` is always correct here; a
+negative/signed literal renders as `Unary(Neg, Int)`, which `resolve_const_value`
+does not match and so falls through to the (safe) passthrough. After the fix the
+repro emits `assign y = {(12'd3 | p1), ((p0) < 5'd29)};`, which Icarus accepts.
+
+**Test.** `tests/differential_fuzz.rs`'s `differential_fuzz_matches_icarus`
+(T2 v1) — green at N=20 (was failing on seed 12648432) and confirmed against
+Icarus. No golden file or emitter unit test asserted the previous (broken)
+`extend` rendering, so changing its format regressed nothing (full workspace
+suite: 886 passed).
+
+## BUG-19 (MEDIUM, OPEN) — Lossless `+`/`-` result silently narrows in a self-determined Verilog context
+
+**What.** A checker-valid, kernel-correct program whose emitted Verilog gives
+a **different value** under real Icarus — not an elaboration error like
+BUG-18, a genuine value mismatch. The generated design:
+
+```
+module Fuzz {
+  in p0: bits[6]
+  in p1: bits[15]
+  in p2: bits[8]
+  out y: bits[31]
+  y = {(p1 ^ extend(extend(1, 1), 15)), (extend(p2, 15) - p1)}
+}
+```
+
+Vector `p0=55, p1=15470, p2=165`: our kernel computes `y=1013957687`; Icarus
+computes `y=506971191`. Emitted Verilog (post-BUG-18 fix):
+`assign y = {(p1 ^ 15'd1), ((p2) - p1)};`
+
+**Cause.** `extend(p2, 15) - p1` is `bits[15] - bits[15]`, spec's lossless
+`-` (always grows the result by exactly one bit — spec/02 §1.2 — so the
+checker and our kernel both model this subexpression as **16 bits**, giving
+`{15-bit hi, 16-bit lo} = 31 bits = y`). But this subtraction is a
+**self-determined** concat operand (same Verilog-2005 LRM §5.4.1 rule
+BUG-18 hit): Verilog sizes a self-determined `-` to the **max operand
+width** (15 bits here) with zero awareness of mimz's own "lossless, grows
+by one" semantics — there is no surrounding assignment target to borrow a
+wider width from, the way a plain `y = a - b` (context-determined position)
+would correctly get. So Icarus computes `{15-bit hi, 15-bit lo} = 30 bits`,
+zero-padded to the declared 31-bit `y` — silently misaligning the high
+field by one bit position and dropping the carry the checker's own width
+model assumed was preserved. Verified arithmetically: kernel
+`15471*65536 + 50231 = 1013957687`; Icarus `15471*32768 + 17463 =
+506971191`.
+
+**How found.** T2 v1's `differential_fuzz_matches_icarus`, a deeper manual
+confidence pass (`MIMZ_DIFF_FUZZ_N=500`) — seed `12648451` (iteration i=21).
+Masked until BUG-18 was fixed (BUG-18 panicked the loop at i=2, before the
+fuzzer ever reached this seed) — always latent, not a regression from the
+BUG-18 fix. Same "checker/kernel and emitted Verilog disagree" divergence
+class as BUG-6/BUG-11/BUG-16/BUG-18, but a distinct construct (a lossless
+arithmetic operator's result width, not extend-of-literal) and a distinct
+symptom (wrong value, not a build failure) — genuinely deeper than BUG-18,
+since it means the emitter cannot in general assume a mimz-computed width
+survives into a self-determined Verilog position, for ANY width-growing
+operator, not just `extend()`.
+
+**Severity.** MEDIUM — silent wrong value (no crash, no compile error) for
+lossless `+`/`-` specifically when its result lands inside a concatenation
+(or other self-determined position) rather than directly on an assignment
+RHS. Does not block the default `cargo test`/CI gate (only the manual
+`MIMZ_DIFF_FUZZ_N=500` deeper pass reaches it), but is a real synthesis
+correctness gap for any hand-written design combining lossless `+`/`-` with
+concatenation the same way — the project's own constitution rates silent
+miscompute above elaboration failure (BUG-18) in severity, being harder for
+a user to notice.
+
+**Fix (Pending).** Broader than BUG-18's narrow literal-rendering patch:
+needs the emitter to make a width-growing operator's result
+self-determined-safe wherever it can land in a non-context-determined
+position — e.g. explicitly wrapping the operator's Verilog rendering in a
+width-forcing idiom (a `{1'b0, (a - b)}`-style explicit pad, or a
+`$unsigned'()`-style size cast, contingent on Icarus-version compatibility)
+whenever the surrounding position is self-determined, not just when the
+operand happens to be `extend()`-of-literal. Likely belongs alongside
+BUG-17 and the A1 "one shared width/const-eval module" item
+(`docs/plan/phase-2-correctness-consolidation.local.md` stage 4) rather than
+as another narrow one-off patch — deferred by explicit decision (not
+overlooked) pending that broader design pass.
+
+**Test.** None yet — filed as open. `tests/differential_fuzz.rs`'s
+`MIMZ_DIFF_FUZZ_N=500` manual run is a ready-made, reproducible repro
+(seed 12648451); not part of the default N=20 CI gate, so no red test blocks
+landing T2 v1 with this filed open.
