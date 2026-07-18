@@ -158,8 +158,8 @@ fn build_extern_registry(files: &[ast::File]) -> ExternRegistry<'_> {
 /// modules-then-externs fallback (real modules win on a same-name clash,
 /// same defensive tie-break). A real module's declaring `&File` is returned
 /// alongside it, since `flatten_instance` needs it to recursively elaborate
-/// the child (see its `elaborate_module(reg, func_reg, bundle_reg, cfile,
-/// cm, ...)` call). An extern declaration has no body to elaborate, so no
+/// the child (see its `elaborate_module(reg, func_reg, bundle_reg, enum_reg,
+/// cfile, cm, ...)` call). An extern declaration has no body to elaborate, so no
 /// file is needed for it — confirmed by reading how `resolve_module`'s
 /// `&'a ast::File` half is actually consumed at that call site: only the
 /// `ModuleTarget::Real` case ever reads it.
@@ -318,6 +318,31 @@ fn resolve_bundle_fields_sim(
             Ok((f.name.name.clone(), Width { bits, signed }))
         })
         .collect()
+}
+
+/// File-level enum registry across all loaded files: name → AST declaration.
+/// Enums declared at file scope (`enum Name { ... }`, spec/02 §1.5b) are
+/// visible to every module in that file, same as bundles/modules — mirrors
+/// [`build_func_registry`]. `elaborate_module` merges this with any enum
+/// declared *inside* the module body (`ModuleItem::Enum`, still supported),
+/// module-local taking priority on a name clash. Not a full per-file
+/// multimap like [`BundleRegistry`]/the checker's own enum table (no
+/// `a.b.Name` qualifier resolution here) — a checker-clean program (gated
+/// before every sim path, A2) never reaches sim with a genuine cross-file
+/// enum-name ambiguity, so last-declaration-wins on a name collision here is
+/// unreachable in practice, not a silent-miscompute risk.
+type EnumRegistry<'a> = HashMap<String, &'a ast::EnumDecl>;
+
+fn build_enum_registry(files: &[ast::File]) -> EnumRegistry<'_> {
+    let mut reg = HashMap::new();
+    for f in files {
+        for it in &f.items {
+            if let ast::TopItem::Enum(e) = it {
+                reg.insert(e.name.name.clone(), e);
+            }
+        }
+    }
+    reg
 }
 
 /// Function registry across all loaded files: name → AST declaration. Functions
@@ -497,6 +522,7 @@ pub fn elaborate_project_with_mode(
     let extern_reg = build_extern_registry(files);
     let func_reg = build_func_registry(files);
     let bundle_reg = build_bundle_registry(files);
+    let enum_reg = build_enum_registry(files);
     let entry = files.first().ok_or("no files to elaborate")?;
     let m = pick_module(entry, module)?;
     elaborate_module(
@@ -504,6 +530,7 @@ pub fn elaborate_project_with_mode(
         &extern_reg,
         &func_reg,
         &bundle_reg,
+        &enum_reg,
         entry,
         m,
         params,
@@ -522,14 +549,18 @@ fn elaborate_module(
     extern_reg: &ExternRegistry,
     func_reg: &FuncRegistry<'_>,
     bundle_reg: &BundleRegistry<'_>,
+    enum_reg: &EnumRegistry<'_>,
     file: &ast::File,
     m: &ast::Module,
     params: &BTreeMap<String, i128>,
     depth: u32,
     mode: SimMode,
 ) -> Result<Design, String> {
-    // Guard against recursive/cyclic instantiation (the checker would catch it,
-    // but `mimz sim`/`test` skip the checker) — bound the stack, fail cleanly.
+    // Guard against recursive/cyclic instantiation — bound the stack, fail
+    // cleanly. (Historically this said "the checker would catch it, but sim
+    // skips the checker" — no longer true: `src/commands/sim.rs`/`test.rs`
+    // now gate on `checker::check` first. Kept as defense-in-depth, cheap
+    // and still correct either way.)
     if depth > MAX_INSTANCE_DEPTH {
         return Err(format!(
             "instance nesting exceeds {MAX_INSTANCE_DEPTH} levels in `{}` — \
@@ -576,17 +607,19 @@ fn elaborate_module(
         .map(|f| (f.name.name.clone(), (*f).clone()))
         .collect();
 
-    // Module-level enums: name → full decl. The total wire width
-    // (`inferred_total_width`) is set by the checker; falls back to `clog2(count)`
-    // for tag-only enums when the checker has not run (e.g. bare sim tests).
-    let enums: HashMap<String, &ast::EnumDecl> = m
-        .items
-        .iter()
-        .filter_map(|it| match it {
-            ModuleItem::Enum(e) => Some((e.name.name.clone(), e)),
-            _ => None,
-        })
-        .collect();
+    // Enums visible to this module: file-scoped ones from `enum_reg` (spec/02
+    // §1.5b — `enum Name { ... }` declared alongside the module, not inside
+    // it) plus any declared INSIDE this module body (`ModuleItem::Enum`,
+    // still supported), the latter taking priority on a name clash. The
+    // total wire width (`inferred_total_width`) is set by the checker; falls
+    // back to `clog2(count)` for tag-only enums when the checker has not run
+    // (e.g. bare sim tests).
+    let mut enums: HashMap<String, &ast::EnumDecl> = enum_reg.clone();
+    for it in &m.items {
+        if let ModuleItem::Enum(e) = it {
+            enums.insert(e.name.name.clone(), e);
+        }
+    }
 
     // Instance names (top-level AND inside `repeat`), so `inst.port` and the
     // array form `arr[i].port` rewrite to their flat wire names.
@@ -875,6 +908,7 @@ fn elaborate_module(
                     extern_reg,
                     func_reg,
                     bundle_reg,
+                    enum_reg,
                     &file.imports,
                     &consts,
                     &insts,
@@ -921,6 +955,7 @@ fn elaborate_module(
                                     extern_reg,
                                     func_reg,
                                     bundle_reg,
+                                    enum_reg,
                                     &file.imports,
                                     &ci,
                                     &insts,
@@ -1102,6 +1137,7 @@ fn flatten_instance(
     extern_reg: &ExternRegistry,
     func_reg: &FuncRegistry<'_>,
     bundle_reg: &BundleRegistry<'_>,
+    enum_reg: &EnumRegistry<'_>,
     parent_imports: &[ast::Import],
     parent_consts: &BTreeMap<String, i128>,
     parent_insts: &HashSet<String>,
@@ -1148,6 +1184,7 @@ fn flatten_instance(
         extern_reg,
         func_reg,
         bundle_reg,
+        enum_reg,
         cfile,
         cm,
         &cp,

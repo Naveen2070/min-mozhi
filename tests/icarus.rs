@@ -816,6 +816,12 @@ fn differential_m(
         Err(_) => panic!("load_project failed for {example}"),
     };
     let asts: Vec<File> = files.iter().map(|f| f.ast.clone()).collect();
+    // Every real `mimz sim`/`test` invocation runs the checker before
+    // elaborating (A2, docs/plan/phase-2-correctness-consolidation.local.md
+    // stage 2) — a tagged enum's `inferred_total_width` Cell is populated by
+    // the checker's width pass, not the elaborator. Skipping this here would
+    // test a code path no real user can reach.
+    mimz::checker::check(&asts).expect("checker passes on a differential-test example");
     let entry = asts[0].clone();
     let pmap: BTreeMap<String, i128> = params.iter().map(|(n, v)| (n.to_string(), *v)).collect();
     let design = elaborate_project(&asts, module, &pmap).expect("elaborates");
@@ -1034,4 +1040,34 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/traffic_light.mimz", &[], &[], 12);
     // Tamil-identifier toggler (interface names romanize like tamil-pure).
     differential(&bin, "english/vilakku.mimz", &[], &[], 8);
+
+    // T1 (docs/audit/review-2026-07-17.md §8): "Icarus differential is a
+    // curated example list" — the 10 designs below had zero semantic
+    // differential coverage (layer 1's `iverilog -t null` validity check
+    // only). Each exercises a construct no other differential-covered
+    // example does.
+    // Bundle ports (BUG-10's flattened `portname_fieldname` scalars).
+    differential(&bin, "english/bundle_passthrough.mimz", &[], &[], 8);
+    // `const if` compile-time conditional routing.
+    differential(&bin, "english/debug_wrapper.mimz", &[], &[], 8);
+    // Tagged-union construction (`Packet.Ctrl(k)`) read back via `match`.
+    differential(&bin, "english/enum_construct.mimz", &[], &[], 8);
+    // `fn` body-local `let` inference (compile-time int -> minimal reg width).
+    differential(&bin, "english/fn_const_local.mimz", &[], &[], 8);
+    // `fn` body-local `let` inference from a wrapping multiply.
+    differential(&bin, "english/fn_mac_local.mimz", &[], &[], 8);
+    // File-level `const` folded into a `fn` body.
+    differential(&bin, "english/fn_with_const.mimz", &[], &[], 8);
+    // `foreach_fill.mimz` (index-range `foreach` filling output slices) is
+    // NOT layer-3-able: our own kernel doesn't support driving a signal
+    // slice yet ("driving a slice of `lamps` is not supported by the
+    // simulator yet") — a real, pre-existing simulator gap, not something
+    // this differential-coverage pass should grow into fixing. Still covered
+    // by layer 1 (valid Verilog) via the whole-corpus walk above.
+    // `foreach` (by-value form) folding an array `fn` parameter into a sum.
+    differential(&bin, "english/foreach_sum.mimz", &[], &[], 8);
+    // `default` inside `on rise` (deassert-by-default pulse generator).
+    differential(&bin, "english/pulse_gen.mimz", &[], &[("start", 1)], 8);
+    // Inline `test` block coexisting with the module it targets.
+    differential(&bin, "english/tested_adder.mimz", &[], &[], 8);
 }
