@@ -26,64 +26,87 @@
 
 use super::{BundleDecl, Expr, ExprKind, FieldDecl, Ident, Param, ParamTy, Type};
 use crate::span::Span;
+use std::cell::OnceCell;
+
+thread_local! {
+    // Per-thread, not a single global `OnceLock`: `BundleDecl` embeds `Type`,
+    // which has a `Named(QualIdent)` variant carrying `Cell<Option<usize>>`
+    // (the checker's name-resolution cache) — that `Cell` makes `BundleDecl`
+    // (and so `&'static BundleDecl`) `!Sync`/`!Send`, so a shared `static`
+    // won't compile, and forcing it with `unsafe impl Sync` would be a real
+    // data race across the LSP's multi-threaded tokio runtime if two threads
+    // ever annotated the same leaked node concurrently. A `thread_local`
+    // sidesteps both: each thread memoizes (and leaks) its own copy once,
+    // instead of leaking two fresh `BundleDecl`s on every call.
+    static BUILTIN_VALID_BUNDLES: OnceCell<[&'static BundleDecl; 2]> = const { OnceCell::new() };
+}
 
 /// Builds `__Valid(N: int = 1) { valid: bit, data: bits[N] }` and
 /// `__ValidSigned(N: int = 1) { valid: bit, data: signed[N] }`, leaked once
-/// to `'static` so a caller can put them in a `&'a BundleDecl` table for any
-/// `'a` (they never borrow from a real loaded file).
+/// per calling thread to `'static` so a caller can put them in a `&'a
+/// BundleDecl` table for any `'a` (they never borrow from a real loaded
+/// file). Memoized (see `BUILTIN_VALID_BUNDLES` above) — the one-shot CLI
+/// only ever calls this once anyway, but the LSP re-checks on every
+/// keystroke and the WASM playground recompiles per run, so without
+/// memoization every such call would leak two more `BundleDecl`s (and their
+/// heap-allocated `String`s/`Vec`s) forever.
 pub fn builtin_valid_bundles() -> [&'static BundleDecl; 2] {
-    let synth_span = Span::new(0, 0); // synthetic node — never shown to the user
+    BUILTIN_VALID_BUNDLES.with(|cell| {
+        *cell.get_or_init(|| {
+            let synth_span = Span::new(0, 0); // synthetic node — never shown to the user
 
-    let ident = |s: &str| Ident {
-        name: s.to_string(),
-        span: synth_span,
-    };
-    let n_param = || Param {
-        name: ident("N"),
-        ty: ParamTy::Int,
-        default: Some(Expr {
-            kind: ExprKind::Int {
-                value: 1,
-                raw: "1".to_string(),
-            },
-            span: synth_span,
-        }),
-    };
-    let n_ident_expr = || Expr {
-        kind: ExprKind::Ident("N".to_string()),
-        span: synth_span,
-    };
-    let valid_field = || FieldDecl {
-        name: ident("valid"),
-        ty: Type::Bit,
-        span: synth_span,
-    };
+            let ident = |s: &str| Ident {
+                name: s.to_string(),
+                span: synth_span,
+            };
+            let n_param = || Param {
+                name: ident("N"),
+                ty: ParamTy::Int,
+                default: Some(Expr {
+                    kind: ExprKind::Int {
+                        value: 1,
+                        raw: "1".to_string(),
+                    },
+                    span: synth_span,
+                }),
+            };
+            let n_ident_expr = || Expr {
+                kind: ExprKind::Ident("N".to_string()),
+                span: synth_span,
+            };
+            let valid_field = || FieldDecl {
+                name: ident("valid"),
+                ty: Type::Bit,
+                span: synth_span,
+            };
 
-    let unsigned = Box::leak(Box::new(BundleDecl {
-        name: ident("__Valid"),
-        params: vec![n_param()],
-        fields: vec![
-            valid_field(),
-            FieldDecl {
-                name: ident("data"),
-                ty: Type::Bits(Box::new(n_ident_expr())),
+            let unsigned = Box::leak(Box::new(BundleDecl {
+                name: ident("__Valid"),
+                params: vec![n_param()],
+                fields: vec![
+                    valid_field(),
+                    FieldDecl {
+                        name: ident("data"),
+                        ty: Type::Bits(Box::new(n_ident_expr())),
+                        span: synth_span,
+                    },
+                ],
                 span: synth_span,
-            },
-        ],
-        span: synth_span,
-    }));
-    let signed = Box::leak(Box::new(BundleDecl {
-        name: ident("__ValidSigned"),
-        params: vec![n_param()],
-        fields: vec![
-            valid_field(),
-            FieldDecl {
-                name: ident("data"),
-                ty: Type::Signed(Box::new(n_ident_expr())),
+            }));
+            let signed = Box::leak(Box::new(BundleDecl {
+                name: ident("__ValidSigned"),
+                params: vec![n_param()],
+                fields: vec![
+                    valid_field(),
+                    FieldDecl {
+                        name: ident("data"),
+                        ty: Type::Signed(Box::new(n_ident_expr())),
+                        span: synth_span,
+                    },
+                ],
                 span: synth_span,
-            },
-        ],
-        span: synth_span,
-    }));
-    [unsigned, signed]
+            }));
+            [unsigned, signed]
+        })
+    })
 }

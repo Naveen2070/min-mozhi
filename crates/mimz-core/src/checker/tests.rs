@@ -2025,6 +2025,34 @@ fn qq_same_shaped_user_bundle_satisfies_a_valid_bundle_slot() {
 }
 
 #[test]
+fn qq_lhs_missing_valid_field_is_e0911() {
+    // `NoValid` has a `data` field but no `valid` field at all — not a
+    // valid-bundle shape, must be rejected the same as any other
+    // non-optional LHS (E0911), not silently accepted just because a
+    // `data` field happens to exist.
+    let src = "bundle NoValid { data: bits[8] }\n\
+               module M {\n  in d: bits[8]\n  out o: bits[8]\n  \
+               wire x: NoValid = { data: d }\n  \
+               o = x ?? 0\n}\n";
+    first_err(src, "E0911");
+}
+
+#[test]
+fn qq_or_mux_rhs_with_extra_field_is_e0912() {
+    // `Big` has `valid`/`data` matching a `bits[8]?` LHS, but also an
+    // `extra` field — not an exactly-`{valid, data}`-shaped bundle, so the
+    // OR-mux form must reject it (E0912), not accept it with a nonsensical
+    // result shape that later lowering can't emit.
+    let src = "bundle Big { valid: bit, data: bits[8], extra: bits[4] }\n\
+               module M {\n  in c: bit\n  in d: bits[8]\n  in e: bits[4]\n  \
+               out o: bit\n  \
+               wire x: bits[8]? = { valid: c, data: d }\n  \
+               wire y: Big = { valid: c, data: d, extra: e }\n  \
+               wire merged: bits[8]? = x ?? y\n  o = merged.valid\n}\n";
+    first_err(src, "E0912");
+}
+
+#[test]
 fn bundle_field_typed_as_valid_bundle_sugar_is_rejected_e0807() {
     // `T?` desugars to Type::Bundle in the parser, and bundle fields already
     // reject Type::Bundle (nested bundles, E0807) — this must fire
