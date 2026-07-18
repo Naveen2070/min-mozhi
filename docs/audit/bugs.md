@@ -623,6 +623,67 @@ bundle-lookup path any user bundle already used.
 elaborate.rs`) exercise a `bit?`/`bits[N]?`-typed wire end-to-end through
 the simulator; they would fail with the pre-fix "unknown bundle" error.
 
+## BUG-16 (MEDIUM, FIXED 2026-07-18) — `mimz-sim` never resolved file-scoped `enum` declarations
+
+**What.** A file-scoped `enum Name { ... }` declared _alongside_ a module
+(spec/02 §1.5b — the same tier as `bundle`/module declarations, not nested
+inside the module body) crashed `mimz sim`/`mimz eval`/`mimz test` with
+`unknown enum type` the moment any signal of that type was touched, even
+though the same file checked cleanly with `mimz check` and compiled to
+correct Verilog. `examples/english/enum_construct.mimz` — a shipped
+example — hit this on every `mimz sim`/`eval` invocation.
+
+**Cause.** `elaborate_module` (`crates/mimz-sim/src/sim/elaborate.rs`)
+built its `enums: HashMap<String, &EnumDecl>` lookup **only** from
+`ModuleItem::Enum` — enum declarations nested inside the current module's
+own body (as `examples/english/traffic_light.mimz`'s `enum State { ... }`
+does). It never scanned `ast::TopItem::Enum` — a file-scoped enum
+declared as a sibling of the module, not inside it — across the loaded
+project, unlike `func_reg`/`bundle_reg` (both already built project-wide
+via `build_func_registry`/`build_bundle_registry` and threaded through
+`elaborate_module`/`flatten_instance`). The checker's own enum table
+(`checker/mod.rs`, `HashMap<String, Vec<(usize, &EnumDecl)>>`) already
+covers both declaration positions correctly — this was a simulator-only
+gap, invisible until an example used the file-scoped form instead of the
+module-nested one (every enum-using example prior to this audit happened
+to nest its enum inside the module).
+
+**How found.** Stage 3 (T1, differential-testing consolidation,
+`docs/plan/phase-2-correctness-consolidation.local.md`) — adding a layer-3
+Icarus differential test for `enum_construct.mimz` (previously uncovered
+by any semantic differential, only layer-1 validity) hit `unknown enum
+type Packet` on the very first `mimz sim` run, despite `mimz check`
+passing clean. Exactly the "checker accepts it, simulator can't run it"
+divergence class BUG-6/BUG-11/BUG-14 are all instances of.
+
+**Severity.** MEDIUM — total, unconditional failure for the affected
+declaration shape (module-nested enums were always fine; checker and
+emitter were always fine), but every enum-using example prior to this
+audit happened to avoid it by nesting the enum inside the module, so
+nothing else was silently broken by it.
+
+**Fix (2026-07-18).** Added `EnumRegistry`/`build_enum_registry`
+(`crates/mimz-sim/src/sim/elaborate.rs`), mirroring `FuncRegistry`/
+`build_func_registry` exactly: scans `ast::TopItem::Enum` across every
+loaded file, built once in `elaborate_project_with_mode` and threaded
+through `elaborate_module`/`flatten_instance` (the same plumbing path
+`func_reg`/`bundle_reg` already use). `elaborate_module`'s local `enums`
+map now seeds from this project-wide registry, then overlays any
+module-nested `ModuleItem::Enum` (module-local wins on a name clash).
+Not a full per-file multimap with `a.b.Name` qualifier resolution like
+the checker's own enum table — a checker-clean program (gated before
+every sim path since A2) never reaches sim with a genuine cross-file
+enum-name ambiguity, so a flat name→decl map is sufficient in practice.
+
+**Test.** `tests/icarus.rs`'s `our_simulator_matches_icarus_bit_for_bit`
+now differentials `english/enum_construct.mimz` (layer 3 — kernel == VCD
+== Icarus, bit-for-bit); would fail with the pre-fix "unknown enum type"
+error. Also surfaced (and fixed in the same pass) that
+`differential_m`/the test harness itself never ran `checker::check` before
+`elaborate_project` — needed for `Packet`'s `inferred_total_width` Cell
+(a genuinely payload-bearing tagged enum) to be populated, matching what
+every real `mimz sim`/`test` invocation does since A2.
+
 ## BUG-15 (MEDIUM, OPEN) — `mimz-sim` has no bundle-field-expansion baseline for instance ports or `fn` call arguments
 
 **What.** A bundle-typed module-instantiation port connection or a

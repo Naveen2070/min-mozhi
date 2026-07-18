@@ -301,7 +301,7 @@ concern (a real `mimz.toml` + on-disk directories), not a unit-testable one.
 
 ---
 
-## SEC-8 (HIGH, OPEN) — `mimz eval`/`sim`/`test` run on untrusted input without `checker::check`
+## SEC-8 (HIGH, FIXED 2026-07-18) — `mimz eval`/`sim`/`test` run on untrusted input without `checker::check`
 
 **What.** The three commands that directly execute a `.mimz` file's
 semantics (`mimz eval`, `mimz sim`, `mimz test`) parse and elaborate/evaluate
@@ -335,11 +335,22 @@ check | sim <file>` run on an untrusted `.mimz` file) — `eval`/`sim`/`test`
 are explicitly in scope for that model and currently bypass its strongest
 guard.
 
-**Fix (Pending).** Run `checker::check` before `eval`/`sim`/`test` evaluate
-anything (reject on any checker error, same as `compile`/`check` already
-do), then extract one shared width/const-eval module the checker and
-simulator both call — the long-term fix that makes a second divergence
-class like BUG-11 structurally impossible rather than merely caught.
+**Fix (2026-07-18, A2, stage 2 of
+`docs/plan/phase-2-correctness-consolidation.local.md`).** All 4 unchecked-
+AST call sites now gate on `checker::check` before executing anything
+(reject on any checker error, same convention `compile`/`check` already
+use) — not just the 3 CLI commands named above: `src/commands/eval.rs`,
+`sim.rs`, `test.rs`, **and** `crates/mimz-sim/src/runner.rs` (the WASM/
+playground engine shares the identical bypass, found during
+implementation). `eval.rs` gates only when the file has no `import`/
+`include` — it never resolves those by design (single-file only), so
+running the full-project checker on a file with an unresolved cross-file
+instance would reject an unrelated module instead of eval's own existing
+"sub-module" rejection message; the gap for import-bearing files is named
+in-code (`ponytail:` comment) with its upgrade path. The follow-on
+long-term fix — one shared width/const-eval module so a divergence class
+like BUG-11 is structurally impossible, not merely caught — remains
+tracked separately (A1, roadmap stage 4).
 
 ---
 
