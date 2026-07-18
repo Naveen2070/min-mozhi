@@ -253,7 +253,7 @@ discovery, name-map deserialization) audited clean: SEC-1..4 + BUG-1/2 intact,
 all five thamizh-order flips depth-guarded, checked arithmetic throughout, and
 no path traversal (import segments are XID identifiers — `..`/`/` inexpressible).
 
-## SEC-7 (MEDIUM, OPEN) — `[lib] std` override path traversal
+## SEC-7 (MEDIUM, FIXED 2026-07-18) — `[lib] std` override path traversal
 
 **Note (2026-07-18).** This entry was originally filed as a second, duplicate
 `SEC-5` (a copy-paste-without-renumbering slip when the CTO review's finding
@@ -280,9 +280,24 @@ environment (like the WASM playground or a CI server), this directory
 traversal could leak host files by embedding them as standard library
 modules.
 
-**Fix (Pending).** Sandbox config resolution. Enforce that `std` overrides
-must be subdirectories of the workspace root, or require an explicit CLI
-flag (e.g., `--allow-external-std`) to escape the root.
+**Fix (2026-07-18).** `lib_std_dir` (`src/commands/helpers.rs`) now
+`canonicalize`s both the workspace root and the resolved `std` candidate and
+rejects with a clean CLI error (`ExitCode::FAILURE`, no panic) when the
+candidate doesn't stay inside the root — no escape-hatch flag; the roadmap's
+two options were "subdirectory enforcement" OR "an explicit CLI flag to
+escape it," and plain enforcement is the simpler, safer-by-default choice
+with no accidental-opt-out foot-gun. If the candidate doesn't exist on disk,
+`canonicalize` fails and the override is let through unchecked — nothing to
+leak from a path that doesn't exist, and the later `import` resolution
+fails on it normally either way. All 4 call sites (`check`, `compile`,
+`sim`, `test` — `lib_std_dir`'s only callers) updated for the new
+`Result<Option<PathBuf>, ExitCode>` signature (was `Option<PathBuf>`), same
+error-handling convention as `resolve_config`/`resolve_lang`.
+
+**Test.** `std_override_escaping_workspace_root_is_rejected`,
+`std_override_inside_workspace_root_is_allowed` (`tests/config.rs`) — driven
+through the real binary (`mimz check`), since the sandbox is a CLI-layer
+concern (a real `mimz.toml` + on-disk directories), not a unit-testable one.
 
 ---
 

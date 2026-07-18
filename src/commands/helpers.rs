@@ -57,18 +57,49 @@ pub(crate) fn resolve_lang(path: &Path, lang: Option<&str>) -> Result<Flavor, Ex
 }
 
 /// The on-disk standard-library directory configured by `[lib] std`, made
-/// absolute relative to the governing `mimz.toml`. `None` when unset or no
-/// config file exists. Errors in config resolution fall back to `None` (the
-/// command re-resolves and reports config errors on its own path).
-pub(crate) fn lib_std_dir(input: &Path, explicit_config: Option<&Path>) -> Option<PathBuf> {
-    let (cfg, cfg_path) = mimz::config::Config::resolve_with_path(input, explicit_config).ok()?;
-    let std = cfg.lib.std?;
+/// absolute relative to the governing `mimz.toml`. `Ok(None)` when unset or
+/// no config file exists. Errors in config resolution fall back to
+/// `Ok(None)` (the command re-resolves and reports config errors on its own
+/// path). `Err` only for a `std` override that escapes the workspace root
+/// (SEC-7, `docs/audit/security.md`) — printed and reported as a clean CLI
+/// failure, same convention as [`resolve_config`]/[`resolve_lang`].
+pub(crate) fn lib_std_dir(
+    input: &Path,
+    explicit_config: Option<&Path>,
+) -> Result<Option<PathBuf>, ExitCode> {
+    let Ok((cfg, cfg_path)) = mimz::config::Config::resolve_with_path(input, explicit_config)
+    else {
+        return Ok(None);
+    };
+    let Some(std) = cfg.lib.std else {
+        return Ok(None);
+    };
     let base = cfg_path
         .as_deref()
         .and_then(Path::parent)
         .map(Path::to_path_buf)
         .unwrap_or_else(|| input.parent().map(Path::to_path_buf).unwrap_or_default());
-    Some(base.join(std))
+    let candidate = base.join(&std);
+    // Sandbox: `std` must resolve inside the workspace root (`base` — the
+    // directory holding `mimz.toml`, or the entry file's own directory when
+    // there's no config file). A malicious `mimz.toml` could otherwise point
+    // `std = "../../../../etc"` at arbitrary host directories, which matters
+    // in shared/CI/playground contexts — `import std.<m>` would load an
+    // arbitrary on-disk file as a standard-library module. `canonicalize`
+    // resolves `..`/symlinks so the check can't be defeated lexically; if
+    // the candidate doesn't exist on disk, canonicalize fails and the
+    // override is let through unchecked — nothing to leak from a path that
+    // doesn't exist, and the later `import` resolution fails on it normally.
+    if let (Ok(root), Ok(resolved)) = (base.canonicalize(), candidate.canonicalize())
+        && !resolved.starts_with(&root)
+    {
+        eprintln!(
+            "error: `[lib] std = \"{std}\"` resolves outside the workspace root ({})",
+            root.display()
+        );
+        return Err(ExitCode::FAILURE);
+    }
+    Ok(Some(candidate))
 }
 
 /// Parse `--extern-sim`/`mimz.toml`'s `extern_sim` into a [`SimMode`] for

@@ -168,6 +168,58 @@ fn name_map_with_unknown_version_is_rejected() {
     fs::remove_dir_all(&dir).ok();
 }
 
+/// SEC-7 (docs/audit/security.md): a `[lib] std` override that resolves
+/// outside the workspace root (the directory holding `mimz.toml`) is
+/// rejected with a clean error, not silently followed — a malicious
+/// `mimz.toml` could otherwise point `import std.<m>` at an arbitrary
+/// on-disk directory.
+#[test]
+fn std_override_escaping_workspace_root_is_rejected() {
+    let parent = work_dir("sec7_escape_parent");
+    let outside_std = parent.join("outside_std");
+    fs::create_dir_all(&outside_std).unwrap();
+    let workspace = parent.join("workspace");
+    fs::create_dir_all(&workspace).unwrap();
+    fs::write(
+        workspace.join("mimz.toml"),
+        "[lib]\nstd = \"../outside_std\"\n",
+    )
+    .unwrap();
+    let file = workspace.join("c.mimz");
+    fs::copy(repo().join("examples/english/counter.mimz"), &file).unwrap();
+
+    let out = mimz().arg("check").arg(&file).output().unwrap();
+    assert!(
+        !out.status.success(),
+        "a std override escaping the workspace root must fail"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("outside the workspace root"),
+        "error should name the sandbox violation:\n{stderr}"
+    );
+    fs::remove_dir_all(&parent).ok();
+}
+
+/// A `[lib] std` override that stays inside the workspace root is unaffected
+/// by the SEC-7 sandbox — the common, legitimate case must keep working.
+#[test]
+fn std_override_inside_workspace_root_is_allowed() {
+    let dir = work_dir("sec7_allow");
+    fs::create_dir_all(dir.join("vendor_std")).unwrap();
+    fs::write(dir.join("mimz.toml"), "[lib]\nstd = \"vendor_std\"\n").unwrap();
+    let file = dir.join("c.mimz");
+    fs::copy(repo().join("examples/english/counter.mimz"), &file).unwrap();
+
+    let out = mimz().arg("check").arg(&file).output().unwrap();
+    assert!(
+        out.status.success(),
+        "an in-workspace std override must not be rejected:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    fs::remove_dir_all(&dir).ok();
+}
+
 /// A malformed `mimz.toml` is a clean error, not a panic.
 #[test]
 fn malformed_config_is_a_clean_error() {
