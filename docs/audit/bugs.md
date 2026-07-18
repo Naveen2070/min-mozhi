@@ -460,17 +460,27 @@ via a dummy `W: int = 1` bundle param and assert only that structural vs.
 nominal bundle naming doesn't change the (still-invalid) emitted output —
 they do not assert the output is _correct_ Verilog, since it isn't yet.
 
-## BUG-11 (CRITICAL) — Simulation vs. Synthesis Mismatch on Left Shift (`<<`)
+## BUG-11 (CRITICAL, FIXED 2026-07-18) — Simulation vs. Synthesis Mismatch on Left Shift (`<<`)
 
 **What.** The simulator evaluates left shifts by dynamically expanding the width of the result based on the shift amount. The expression `a << 2` is evaluated with `w = (a.width + 2).min(128)`, carrying extra bits into subsequent operations.
 
-**Cause.** `sim/value.rs` (`BinOp::Shl`) intentionally grows the width of the `Val` returned, whereas the type checker (`checker/widths/ops.rs`) correctly specifies that shifts preserve the left-hand operand's width (matching standard Verilog).
+**Cause.** `sim/value.rs` (`BinOp::Shl`) intentionally grows the width of the `Val` returned. The originally-filed cause statement above ("the checker correctly specifies that shifts preserve the left operand's width, matching standard Verilog") turned out to be **only half right** — see the Fix note below for what the CTO review's own prescribed fix got wrong, and why.
 
 **How found.** CTO Architectural Review (July 2026) inspecting the fix for shift-amount truncation (cbcefd0).
 
 **Severity.** CRITICAL — Causes simulation to behave differently than synthesized hardware. Intermediate calculations will silently carry overflow bits in simulation that will be truncated in the actual synthesized netlist.
 
-**Fix (Pending).** The simulator must immediately truncate/wrap the result to `l.width` and not dynamically grow `w`.
+**Fix (2026-07-18).** The review's own prescribed fix ("truncate/wrap the result to `l.width` unconditionally") was tried first and **empirically disproven** against `iverilog` before landing: `din << 2` for `din: bits[4]` assigned to an 8-bit target computes **28** in real Verilog (context-extends `din` to 8 bits before shifting), not **12** (truncating to `din`'s own 4-bit width first). Ground truth:
+
+```
+din=7 (bits[4]) << 2  →  8-bit target: 28 (0001_1100)   4-bit target: 12 (1100)
+```
+
+Verilog's `<<`/`>>` are **context-determined** on their left operand (the shift amount is always self-determined) — the operand widens to the ENCLOSING width (an assignment target, `extend`'s target width) BEFORE the shift, not truncated-then-extended after. The checker's own `shift_ty` rule ("width preserved") is not wrong — it's a static TYPE-system invariant (the shift's declared type for downstream compatibility checks), separate from the runtime VALUE Verilog actually computes when that type flows into a wider context via an explicit `extend()`. Neither "grow by the shift amount" (the original BUG-6 fix, wrong on BUG-11's own `(a << 2) >> 2` chain) nor "always truncate to `l.width`" (the review's fix, wrong on the `din << 2` case above) match Verilog in general — only threading the real context width through does.
+
+Implemented in `crates/mimz-sim/src/sim/value.rs`: `eval`/`binary` gained a context-aware sibling (`eval_ctx`/`binary_ctx`) taking an `expected_width: Option<u32>`, used only by `Shl`/`Shr` (every other operator's width rule is unchanged — deliberately scoped, see `docs/plan/phase-2-correctness-consolidation.local.md` Stage 1). `if`/`match` propagate the same `expected_width` into every branch (Verilog's ternary/case are likewise context-determined), so a shift nested in a branch still sees the real target width. Callers with a known target width now pass it in: `comb.rs`'s combinational driver resolution, `kernel.rs`'s register/default/memory-cell writes, `Builtin::Extend`'s argument (using `extend`'s own target width — the exact site that exposed the `din << 2` case), and `FnStmt::Let` (reusing the checker's existing `inferred_width`, the same mechanism that already re-masked post-hoc). Callers with no meaningful target width (conditions, indices, loop bounds) pass `None`, matching Verilog's self-determined rule for those positions.
+
+**Test.** `shl_self_determined_preserves_left_operand_width`, `shl_widens_to_context_like_verilog`, `shl_chain_stays_at_shared_context_width` (`crates/mimz-sim/src/sim/value.rs`) — the middle one pins the `din << 2` ground-truth case above, the last pins the review's own `(a << 2) >> 2` reproduction (63, not 255). The pre-existing Icarus differential (`tests/icarus.rs`, `english/shift.mimz`'s `var_shift`) also now agrees with real Icarus end-to-end (it did not before this fix — the differential sweep hits `din` values the example's own static `test` block, using `din = 3`, never exercised).
 
 ## BUG-12 (MEDIUM, re-filed 2026-07-18) — `fn` cannot be parameterized by module scope (consistent design limitation, not a divergence)
 

@@ -280,7 +280,11 @@ impl Env<'_> {
             .get(name)
             .ok_or_else(|| format!("signal `{name}` is never driven"))?;
         self.in_progress.push(name.to_string());
-        let v = value::eval(self, driver)?;
+        // The signal's declared width is known up front (independent of
+        // evaluating `driver`) — feed it in as context so a `<<`/`>>` in the
+        // driver expression sees its real consuming width (BUG-11).
+        let target_w = self.sig_ty.get(name).map(|(w, _)| *w);
+        let v = value::eval_ctx(self, driver, target_w)?;
         self.in_progress.pop();
         let (w, s) = self
             .sig_ty

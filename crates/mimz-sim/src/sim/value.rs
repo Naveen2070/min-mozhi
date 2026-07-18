@@ -129,24 +129,52 @@ pub(super) trait Resolver {
     }
 }
 
-/// Evaluate `e` against `r`. The single source of Min-Mozhi's expression
-/// semantics for both the combinational evaluator and the kernel.
+/// Evaluate `e` against `r` with no target-width context (self-determined —
+/// the right call for conditions, indices, loop bounds, and anywhere else
+/// Verilog itself doesn't propagate an enclosing width inward). Most callers
+/// want this. See [`eval_ctx`] for context-determined positions (an
+/// assignment RHS, `extend`'s argument) where a shift's real result depends
+/// on the width it's eventually consumed at (BUG-11).
 pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
+    eval_ctx(r, e, None)
+}
+
+/// Evaluate `e` against `r`, threading `expected_width` — the width of the
+/// enclosing context (an assignment target, `extend`'s target width) — into
+/// every CONTEXT-DETERMINED position. The single source of Min-Mozhi's
+/// expression semantics for both the combinational evaluator and the kernel.
+///
+/// Verilog's `<<`/`>>` are context-determined on their LEFT operand (the
+/// shift amount is always self-determined): `assign wide = (narrow << k)`
+/// widens `narrow` to `wide`'s width BEFORE shifting, not after — ground-
+/// truthed against `iverilog` (BUG-11's fix). Only `Shl`/`Shr` use
+/// `expected_width` here; every other binary operator's own width rule is
+/// unchanged (deliberately scoped — see `docs/plan/phase-2-correctness-
+/// consolidation.local.md` Stage 1 for the rest of this operator family).
+/// `if`/`match` propagate the SAME `expected_width` into every branch
+/// (Verilog's ternary/case are likewise context-determined), so a shift
+/// nested in a branch still sees the real target width.
+pub(super) fn eval_ctx<R: Resolver>(
+    r: &mut R,
+    e: &Expr,
+    expected_width: Option<u32>,
+) -> Result<Val, String> {
     match &e.kind {
         ExprKind::Int { value, .. } => Ok(Val::from_int(*value as i128)),
         ExprKind::Bool(b) => Ok(Val::new(*b as u128, 1, false)),
         ExprKind::Ident(n) => r.signal(n),
         ExprKind::Unary { op, expr } => Ok(unary(*op, eval(r, expr)?)),
         ExprKind::Binary { op, lhs, rhs } => {
-            let l = eval(r, lhs)?;
-            let rr = eval(r, rhs)?;
-            binary(*op, l, rr)
+            let shift_ctx = matches!(op, BinOp::Shl | BinOp::Shr);
+            let l = eval_ctx(r, lhs, if shift_ctx { expected_width } else { None })?;
+            let rr = eval(r, rhs)?; // shift amount (or any other RHS) is self-determined
+            binary_ctx(*op, l, rr, expected_width)
         }
         ExprKind::IfExpr { cond, then, els } => {
             if eval(r, cond)?.bits & 1 == 1 {
-                eval(r, then)
+                eval_ctx(r, then, expected_width)
             } else {
-                eval(r, els)
+                eval_ctx(r, els, expected_width)
             }
         }
         ExprKind::Match { scrutinee, arms } => {
@@ -154,7 +182,7 @@ pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
             for arm in arms {
                 for p in &arm.patterns {
                     if pattern_matches(p, &s)? {
-                        return eval(r, &arm.value);
+                        return eval_ctx(r, &arm.value, expected_width);
                     }
                 }
             }
@@ -403,9 +431,13 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                 // emitter's own array-`let` lowering, Task 8). `inferred_width`
                 // is the ELEMENT width for an array `let` (checker's width pass).
                 if let ExprKind::ArrayLit(elems) = &local.value.kind {
+                    // `inferred_width` is also this let's real context width
+                    // (BUG-11) — feed it into evaluating each element too, not
+                    // just the post-hoc re-mask.
+                    let ctx_w = local.inferred_width.get();
                     for (i, el) in elems.iter().enumerate() {
-                        let v = eval(env, el)?;
-                        let v = match local.inferred_width.get() {
+                        let v = eval_ctx(env, el, ctx_w)?;
+                        let v = match ctx_w {
                             Some(w) => Val::new(v.bits, w, v.signed),
                             None => v,
                         };
@@ -415,8 +447,9 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                         .insert(local.name.name.clone(), elems.len() as u32);
                     continue;
                 }
-                let v = eval(env, &local.value)?;
-                let v = match local.inferred_width.get() {
+                let ctx_w = local.inferred_width.get();
+                let v = eval_ctx(env, &local.value, ctx_w)?;
+                let v = match ctx_w {
                     Some(w) => Val::new(v.bits, w, v.signed),
                     None => v, // checker not run (e.g. bare sim test); trust the Val width
                 };
@@ -571,8 +604,12 @@ fn extend_bits(v: Val, width: u32) -> u128 {
 fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, String> {
     match func {
         Builtin::Extend => {
-            let v = eval(r, &args[0])?;
             let n = checked_width(const_eval(&args[1], r.ints())?)?;
+            // `n` is `extend`'s own target width — feed it in as context so a
+            // shift inside the argument (`extend(din << 2, 8)`) sees its real
+            // consuming width, matching what the emitter's own no-op-extend
+            // optimization relies on Verilog to compute (BUG-11).
+            let v = eval_ctx(r, &args[0], Some(n))?;
             if n < v.width {
                 return Err(format!(
                     "extend to {n} bits is narrower than the {}-bit value — use trunc",
@@ -664,9 +701,13 @@ fn unary_known(op: UnOp, v: Val) -> Val {
     }
 }
 
-fn binary(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
+/// Evaluate a binary operator over two already-evaluated operands.
+/// `expected_width` is the enclosing context's width (an assignment target,
+/// `extend`'s target) — only `Shl`/`Shr` use it; pass `None` for a
+/// self-determined position (see [`eval_ctx`]'s doc comment).
+fn binary_ctx(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
     let unknown = l.unknown || r.unknown;
-    binary_known(op, l, r).map(|mut v| {
+    binary_known(op, l, r, expected_width).map(|mut v| {
         if unknown {
             v.unknown = true;
         }
@@ -674,7 +715,7 @@ fn binary(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
     })
 }
 
-fn binary_known(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
+fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
     let wmax = l.width.max(r.width);
     let signed = l.signed || r.signed;
     let v = match op {
@@ -706,29 +747,38 @@ fn binary_known(op: BinOp, l: Val, r: Val) -> Result<Val, String> {
         BinOp::BitAnd => Val::new(l.bits & r.bits, wmax, signed),
         BinOp::BitOr => Val::new(l.bits | r.bits, wmax, signed),
         BinOp::BitXor => Val::new(l.bits ^ r.bits, wmax, signed),
+        // `<<`/`>>` are context-determined on their left operand in real
+        // Verilog (ground-truthed against `iverilog`, BUG-11): the operand
+        // widens to the ENCLOSING width before the shift, not after —
+        // growing by the shift amount (the old fix here) or truncating to
+        // `l.width` unconditionally (the naive "spec says width preserved"
+        // fix) are both wrong in general; only "widen to the real
+        // context, then shift, keeping that width" matches Icarus for
+        // every case tried (same-width chain, narrower-operand-into-wider-
+        // context, standalone). `ctx_w` is `l`'s own width when no context
+        // is known (self-determined fallback — e.g. a bare test/eval
+        // expression with no assignment target).
         BinOp::Shl => {
+            let ctx_w = expected_width.map(|w| w.max(l.width)).unwrap_or(l.width);
+            let widened = extend_bits(l, ctx_w);
             let shift = r.bits;
             let bits = if shift >= 128 {
                 0
             } else {
-                l.bits.checked_shl(shift as u32).unwrap_or(0)
+                widened.checked_shl(shift as u32).unwrap_or(0)
             };
-            let w = if shift >= 128 {
-                128
-            } else {
-                (l.width + shift as u32).min(128)
-            };
-            Val::new(bits, w, l.signed)
+            Val::new(bits, ctx_w, l.signed)
         }
-        BinOp::Shr => Val::new(
-            if r.bits >= 128 {
+        BinOp::Shr => {
+            let ctx_w = expected_width.map(|w| w.max(l.width)).unwrap_or(l.width);
+            let widened = extend_bits(l, ctx_w);
+            let bits = if r.bits >= 128 {
                 0
             } else {
-                l.bits >> (r.bits as u32)
-            },
-            l.width,
-            l.signed,
-        ),
+                widened >> (r.bits as u32)
+            };
+            Val::new(bits, ctx_w, l.signed)
+        }
         BinOp::Eq => Val::new(
             ((l.bits & mask(wmax)) == (r.bits & mask(wmax))) as u128,
             1,
@@ -880,21 +930,61 @@ mod tests {
     use super::*;
 
     #[test]
-    fn shl_does_not_truncate_to_left_operand_width() {
-        // BUG-6: 1 << 2 was returning 0 because `1` has width 1, and the shift result
-        // was truncated to width 1 (1 << 2 = 4; 4 & 1 = 0).
-        // It should instead retain a width of at least width + shift.
+    fn shl_self_determined_preserves_left_operand_width() {
+        // No context (bare `binary()`, matching a condition/index/loop-bound
+        // position, or a raw compile-time literal with nothing sizing it) —
+        // Verilog's shift is self-determined here: the result stays exactly
+        // `l`'s own width, truncating what doesn't fit. `1 << 2` with `1` at
+        // its minimal width (1 bit) masks the whole result away — that's
+        // correct self-determined behavior, not BUG-6 (BUG-6 was reachable
+        // through `extend(1 << 2, N)`, which now threads `N` in as context —
+        // see `shl_widens_to_context_like_verilog` below).
         let l = Val::from_int(1); // width 1
         let r = Val::from_int(2);
-        let res = binary(BinOp::Shl, l, r).unwrap();
-        assert_eq!(res.masked(), 4);
-        assert_eq!(res.width, 3); // 1 + 2
+        let res = binary_ctx(BinOp::Shl, l, r, None).unwrap();
+        assert_eq!(res.masked(), 0); // 4 & mask(1) == 0
+        assert_eq!(res.width, 1);
+    }
 
-        let l2 = Val::from_int(8); // width 4 (1000)
-        let r2 = Val::from_int(1);
-        let res2 = binary(BinOp::Shl, l2, r2).unwrap();
-        assert_eq!(res2.masked(), 16);
-        assert_eq!(res2.width, 5); // 4 + 1
+    #[test]
+    fn shl_widens_to_context_like_verilog() {
+        // BUG-11 (supersedes the BUG-6 fix the old version of this test
+        // asserted — growing the result by the shift amount, unconditionally
+        // — that broke real signal shifts, see `shl_chain_stays_at_shared_
+        // context_width` below). Ground-truthed against `iverilog`: `<<`'s
+        // left operand is CONTEXT-DETERMINED — it widens to the enclosing
+        // width (an assignment target, `extend`'s target) BEFORE the shift,
+        // not truncated-then-extended after.
+        let l = Val::from_int(1); // width 1
+        let r = Val::from_int(2);
+        let res = binary_ctx(BinOp::Shl, l, r, Some(8)).unwrap();
+        assert_eq!(res.width, 8);
+        assert_eq!(res.masked(), 4); // 1 << 2, no bits lost once widened first
+
+        // review-2026-07-17.md's exact repro: din (4-bit) << 2 into an 8-bit
+        // context. iverilog: 28, NOT 12 (12 is what self-determined-then-
+        // truncated-into-8-bits would wrongly give if extension happened
+        // AFTER the shift instead of before).
+        let din = Val::new(7, 4, false);
+        let shifted = binary_ctx(BinOp::Shl, din, Val::from_int(2), Some(8)).unwrap();
+        assert_eq!(shifted.width, 8);
+        assert_eq!(shifted.masked(), 28);
+    }
+
+    #[test]
+    fn shl_chain_stays_at_shared_context_width() {
+        // BUG-11's own reproduction: `(a << 2) >> 2` for `a: bits[8]`
+        // assigned to `y: bits[8]` — iverilog says 63, not 255. The context
+        // (8) must be threaded into BOTH shifts, not just the first: a
+        // width that only grows by the shift amount at each step (the old
+        // fix) lets an intermediate carry stray high bits into the second
+        // shift that a real 8-bit-wide Verilog computation never has.
+        let a = Val::new(255, 8, false);
+        let shifted_left = binary_ctx(BinOp::Shl, a, Val::from_int(2), Some(8)).unwrap();
+        assert_eq!(shifted_left.width, 8);
+        let shifted_right =
+            binary_ctx(BinOp::Shr, shifted_left, Val::from_int(2), Some(8)).unwrap();
+        assert_eq!(shifted_right.masked(), 63); // NOT 255 — this was BUG-11
     }
 
     #[test]
@@ -1093,7 +1183,7 @@ mod tests {
     fn unknown_val_taints_binary_ops() {
         let u = Val::unknown(4, false);
         let known = Val::new(3, 4, false);
-        let r = binary(BinOp::Add, u, known).unwrap();
+        let r = binary_ctx(BinOp::Add, u, known, None).unwrap();
         assert!(
             r.unknown,
             "adding an unknown operand must produce an unknown result"
@@ -1115,7 +1205,7 @@ mod tests {
         let a = Val::new(1, 4, false);
         let b = Val::new(2, 4, false);
         assert!(!a.unknown && !b.unknown);
-        assert!(!binary(BinOp::Add, a, b).unwrap().unknown);
+        assert!(!binary_ctx(BinOp::Add, a, b, None).unwrap().unknown);
         assert!(!unary(UnOp::BitNot, a).unknown);
     }
 }

@@ -275,7 +275,10 @@ fn run_seq(
     // D-DEFAULT-3: defaults first so conditional assigns override them
     for s in body {
         if let SeqStmt::Default { name, val, .. } = s {
-            let v = value::eval(env, val)?;
+            // Target width is known up front — feed it in as context so a
+            // `<<`/`>>` in `val` sees its real consuming width (BUG-11).
+            let target_w = widths.get(&name.name).map(|w| w.bits);
+            let v = value::eval_ctx(env, val, target_w)?;
             let w = widths.get(&name.name).copied().unwrap_or(Width {
                 bits: v.width,
                 signed: v.signed,
@@ -289,7 +292,11 @@ fn run_seq(
                 match &lhs.index {
                     // Whole-register update.
                     None => {
-                        let v = value::eval(env, rhs)?;
+                        // Target width known up front — feed it in as
+                        // context so a `<<`/`>>` in `rhs` sees its real
+                        // consuming width (BUG-11).
+                        let target_w = widths.get(&lhs.base.name).map(|w| w.bits);
+                        let v = value::eval_ctx(env, rhs, target_w)?;
                         let w = widths.get(&lhs.base.name).copied().unwrap_or(Width {
                             bits: v.width,
                             signed: v.signed,
@@ -302,7 +309,7 @@ fn run_seq(
                     Some((addr_expr, None)) if env.is_mem(&lhs.base.name) => {
                         let info = env.mem_info(&lhs.base.name);
                         let addr = value::eval(env, addr_expr)?.bits;
-                        let v = value::eval(env, rhs)?;
+                        let v = value::eval_ctx(env, rhs, info.map(|i| i.width.bits))?;
                         // A write past the end is dropped (matches Verilog).
                         if let Some(info) = info
                             && addr < info.depth
@@ -489,7 +496,10 @@ impl Resolver for CombEnv<'_> {
                 ));
             }
             self.stack.push(name.to_string());
-            let v = value::eval(self, driver)?;
+            // Target width known up front — feed it in as context so a
+            // `<<`/`>>` in `driver` sees its real consuming width (BUG-11).
+            let target_w = self.widths.get(name).map(|w| w.bits);
+            let v = value::eval_ctx(self, driver, target_w)?;
             self.stack.pop();
             let v = match self.widths.get(name) {
                 // `Val::new` always clears `unknown` — re-widthing a driver's
