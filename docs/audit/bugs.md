@@ -555,14 +555,19 @@ divergence bug and not broken lexical scoping. Module-parameterized helper
 functions are inexpressible today; that is a feature gap, not a defect two
 passes disagree on.
 
-**Fix (Pending).** Not a symbol-table bugfix — a language-design decision:
-either bless file-scoping explicitly in `spec/02-syntax-and-grammar.md`
-(document the limitation as intentional), or design deliberate module-scope
-capture for `fn` (a real feature, needs its own spec section covering how a
-`fn`'s width/const resolution would interact with the module's own
-parametric instantiation). The emitter's current `file_env` swap
-(`emit_verilog/module.rs`) is correct as-is either way — it already matches
-the checker; nothing to fix there until the spec decision is made.
+**Fix (Deferred — open, tracked as a feature, not a bug to close).** Not a
+symbol-table bugfix — a language-design decision: either bless file-scoping
+explicitly in `spec/02-syntax-and-grammar.md` (document the limitation as
+intentional), or design deliberate module-scope capture for `fn` (a real
+feature, needs its own spec section covering how a `fn`'s width/const
+resolution would interact with the module's own parametric instantiation).
+The emitter's current `file_env` swap (`emit_verilog/module.rs`) is correct
+as-is either way — it already matches the checker; nothing to fix there
+until the spec decision is made. **2026-07-18 decision:** left open and
+deliberately deferred (not folded into the current correctness-consolidation
+work) — tracked as a feature idea in
+[`docs/Ideas/language_plan.md`](../Ideas/language_plan.md) §12, revisit once
+that work lands.
 
 ## BUG-13 (MEDIUM) — 128-bit Simulator Ceiling
 

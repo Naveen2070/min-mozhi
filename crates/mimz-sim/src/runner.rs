@@ -307,6 +307,10 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
+    // A2 (docs/audit/review-2026-07-17.md §3.1): gate on the checker like
+    // `compile` already does — otherwise the playground's `eval` evaluates
+    // programs the checker would reject under different width rules.
+    checker::check(&asts).map_err(|d| mimz_core::project::render_diags(&d, &files))?;
     let outputs = comb::eval_outputs(&asts, module.as_deref(), &inputs, &params)?;
     let mut out = String::new();
     for o in outputs {
@@ -434,6 +438,9 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     }
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
+    // A2 (docs/audit/review-2026-07-17.md §3.1): same checker gate as `compile`
+    // and `eval` above — `sim` must not simulate unchecked semantics.
+    checker::check(&asts).map_err(|d| mimz_core::project::render_diags(&d, &files))?;
     let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
     // Capture the scope groups + clocked-ness before the run consumes the design.
     let in_names: Vec<String> = design.inputs.iter().map(|s| s.name.clone()).collect();
@@ -561,6 +568,10 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
     }
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
+    // A2 (docs/audit/review-2026-07-17.md §3.1): same checker gate as `compile`
+    // above — a `test` block can otherwise go green against semantics the
+    // checker would reject (the BUG-6/BUG-11 false-green mechanism).
+    checker::check(&asts).map_err(|d| mimz_core::project::render_diags(&d, &files))?;
     let mut out = String::new();
     let (mut passed, mut failed) = (0u32, 0u32);
     for decl in decls {

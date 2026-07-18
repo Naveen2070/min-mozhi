@@ -7,7 +7,7 @@ use std::process::ExitCode;
 
 use mimz::sim::run::{SimOpts, comb_run, run};
 use mimz::sim::{elaborate, trace, vcd};
-use mimz::{ast, project};
+use mimz::{ast, checker, project};
 
 use super::helpers::{
     lib_std_dir, parse_bindings, parse_sweep, parse_u128, project_warnings, resolve_lang,
@@ -68,9 +68,20 @@ pub(crate) fn sim_file(
         }
     }
     let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
-    let warnings = project_warnings(&files);
-    if !warnings.is_empty() {
-        eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
+    // A2 (docs/audit/review-2026-07-17.md §3.1): `sim` must not run a program
+    // the checker would reject — before this gate it lexed/parsed/elaborated
+    // directly, so the simulator's width rules silently stood in for the
+    // checker's on unchecked input. Same error/warning split as `mimz check`:
+    // warnings ride along but never block the run.
+    let mut diags = project_warnings(&files);
+    if let Err(errors) = checker::check(&asts) {
+        diags.extend(errors);
+    }
+    if !diags.is_empty() {
+        eprint!("{}", project::render_diags_lang(&diags, &files, flavor));
+    }
+    if diags.iter().any(|d| d.is_error()) {
+        return ExitCode::FAILURE;
     }
 
     let inputs = match parse_bindings(inputs, parse_u128) {

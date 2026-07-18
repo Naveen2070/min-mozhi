@@ -7,9 +7,9 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use mimz::ast::{self, TopItem};
-use mimz::project;
 use mimz::sim::harness::{TestResult, run_test_with_mode};
 use mimz::sim::trace;
+use mimz::{checker, project};
 
 use super::helpers::{lib_std_dir, project_warnings, resolve_lang, resolve_sim_mode, trace_scope};
 use crate::Output;
@@ -65,9 +65,19 @@ pub(crate) fn test_file(
         }
     }
     let asts: Vec<ast::File> = files.iter().map(|f| f.ast.clone()).collect();
-    let warnings = project_warnings(&files);
-    if !warnings.is_empty() {
-        eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
+    // A2 (docs/audit/review-2026-07-17.md §3.1): `test` shares the sim's
+    // evaluator, so a testbench could go green against semantics the checker
+    // would reject (the BUG-6/BUG-11 false-green mechanism) — gate it the same
+    // way `mimz check` does: warnings ride along, only errors block.
+    let mut diags = project_warnings(&files);
+    if let Err(errors) = checker::check(&asts) {
+        diags.extend(errors);
+    }
+    if !diags.is_empty() {
+        eprint!("{}", project::render_diags_lang(&diags, &files, flavor));
+    }
+    if diags.iter().any(|d| d.is_error()) {
+        return ExitCode::FAILURE;
     }
     let path_str = path.display().to_string();
     let src = files[0].src.clone();

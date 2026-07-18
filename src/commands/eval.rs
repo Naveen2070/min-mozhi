@@ -6,7 +6,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use mimz::{diag, lexer, morph, parser, project, sim};
+use mimz::{checker, diag, lexer, morph, parser, project, sim};
 
 use super::helpers::{parse_bindings, parse_u128, resolve_lang};
 use crate::Output;
@@ -52,6 +52,30 @@ pub(crate) fn eval_file(
         Ok(f) => f,
         Err(diags) => return out.one_file(&diags, &src, &path_str),
     };
+    // A2 (docs/audit/review-2026-07-17.md §3.1): eval must not evaluate a
+    // program the checker would reject — `1 << 2` on a bare literal type-checks
+    // differently under the sim's width rules than the checker's (E0405), and
+    // a program that never sees the checker is a different language. Warnings
+    // alone don't block eval, matching `mimz check`'s own error/warning split.
+    //
+    // Only gated when the file has no `import`/`include`: eval resolves none
+    // (single-file only, by design — see module doc comment), so the checker
+    // would otherwise reject an unrelated module's unresolved cross-file
+    // instance (e.g. `Top` needing `Adder` while `--module Alu` is what's
+    // actually being evaluated) instead of letting `comb::eval_outputs`'s own
+    // friendlier "sub-module" rejection fire. ponytail: import-bearing files
+    // skip this gate entirely; a per-module check that ignores unrelated
+    // modules' import errors would close the gap, add if eval ever gains
+    // real import resolution.
+    if file.imports.is_empty()
+        && let Err(diags) = checker::check(std::slice::from_ref(&file))
+    {
+        let has_error = diags.iter().any(|d| d.is_error());
+        let code = out.one_file(&diags, &src, &path_str);
+        if has_error {
+            return code;
+        }
+    }
     let inputs = match parse_bindings(inputs, parse_u128) {
         Ok(m) => m,
         Err(e) => {
