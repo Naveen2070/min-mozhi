@@ -3,7 +3,7 @@
 > Structural defense against the "three semantic authorities" divergence
 > class (checker / simulator / emitter each reimplement expression
 > semantics independently — `docs/audit/review-2026-07-17.md` §3.1).
-> Window: ongoing, grows with the language · Status: 🟡 v1 in progress
+> Window: ongoing, grows with the language · Status: 🟡 v1 landed, v2+ not started
 
 ## Goal
 
@@ -22,12 +22,21 @@ the generator itself proves out and as the language gains surface area.
 
 ## Work items
 
-- [ ] **v1 — unsigned combinational** (`tests/differential_fuzz.rs`):
+- [x] **v1 — unsigned combinational** (`tests/differential_fuzz.rs`):
       seeded deterministic PRNG, width-tracked bottom-up expression
       generator (`+ - +% -% & | ^` comparisons, shift, concat, slice-read),
       no signed/clocked/enum/bundle/fn/foreach. 20 programs per
       `cargo test`, `MIMZ_DIFF_FUZZ_N` env var for a deeper manual run.
       Gated by `REQUIRE_IVERILOG` like every other Icarus differential.
+      **Landed 2026-07-19** — `tests/support/mod.rs` extraction +
+      `tests/differential_fuzz.rs`, clean at both N=20 (CI default) and
+      N=500 (manual confidence pass, after fixes). Found and fixed
+      **BUG-18** (extend()-of-literal losing Verilog width in self-determined
+      contexts) on the very first real run. The N=500 deeper pass then found
+      **BUG-19** (subtraction-result-width divergence in a self-determined
+      concat operand, same class, different construct) — filed OPEN and
+      deliberately deferred (does not block the default N=20 CI gate), not
+      fixed in this pass. Both bugs are documented in docs/audit/bugs.md.
 - [ ] **v2 — signed values**: `signed[N]` generation with real
       signed/unsigned-mixing avoidance (E0403), not the "always one
       concrete type" shortcut v1 uses.
@@ -46,12 +55,17 @@ the generator itself proves out and as the language gains surface area.
       own growth, matching T1's finding that language surface needs
       differential coverage to keep pace with it, not trail behind it.
 
-## Milestone (v1)
+## Milestone (v1) — achieved 2026-07-19
 
-`tests/differential_fuzz.rs` lands, green in CI with `REQUIRE_IVERILOG=1`,
-and finds zero new bugs on the first clean run (a bug found immediately
-would mean v1 itself has a generator defect, not a product one — the
-generator's own checker-validity is asserted separately and continuously).
+`tests/differential_fuzz.rs` landed, green in CI with `REQUIRE_IVERILOG=1`.
+Original framing here predicted "finds zero new bugs on the first clean
+run, else it's a generator defect" — that was wrong in the way that
+matters least: it found two real, previously-unknown _product_ bugs
+(BUG-18, BUG-19) on its first meaningful runs, not a generator defect (the
+generator's own checker-validity held at 1000/1000 seeds throughout,
+verified separately and continuously). That outcome is the actual proof
+the milestone was reaching for — a curated example list (T1) had already
+missed both.
 
 ## Exit criteria (v1)
 
