@@ -10,6 +10,23 @@ use super::super::Checker;
 use super::super::consteval;
 use super::{MAX_WIDTH, Ty, Wcx, bits, min_bits, min_signed_bits, op_text, same, show};
 
+/// Returns `data`'s type iff `fields` is EXACTLY `{ valid: bit, data: T }`
+/// — no missing `valid`, no wrong-typed `valid`, no extra fields. Shared by
+/// `coalesce_ty`'s LHS check and its OR-mux RHS check — `??`'s rule is
+/// narrower than `bundle_shape_match` (feature 2.9's "cover a required
+/// subset, extras OK" rule) on purpose; do not reuse that function here.
+fn valid_bundle_shape<'a>(fields: &[(String, Ty<'a>)]) -> Option<Ty<'a>> {
+    if fields.len() != 2 {
+        return None;
+    }
+    let valid = fields.iter().find(|(n, _)| n == "valid")?;
+    if !same(&valid.1, &Ty::Bit) {
+        return None;
+    }
+    let data = fields.iter().find(|(n, _)| n == "data")?;
+    Some(data.1)
+}
+
 impl<'a> Checker<'a> {
     pub(super) fn unary_ty(
         &mut self,
@@ -237,19 +254,19 @@ impl<'a> Checker<'a> {
         let Some(lfields) = self.resolve_bundle_fields(cx, lname, lhint, largs, lhs.span) else {
             return Ty::Unknown; // E0906 already reported
         };
-        let Some((_, data_ty)) = lfields.iter().find(|(n, _)| n == "data") else {
-            // Structurally a bundle but with no `data` field — not a
+        let Some(data_ty) = valid_bundle_shape(&lfields) else {
+            // Structurally a bundle, but not exactly `{ valid: bit, data: T }`
+            // — missing `valid`, wrong-typed `valid`, or extra fields — not a
             // valid-bundle shape, same diagnostic as "not optional".
             self.err(
                 cx.file,
                 lhs.span,
                 "E0911",
                 "`??`'s left operand must be a valid-bundle (`T?`)",
-                "expected a bundle with `valid`/`data` fields",
+                "expected a bundle shaped exactly `{ valid: bit, data: T }`",
             );
             return Ty::Unknown;
         };
-        let data_ty = *data_ty;
         // Bare-literal fallback: it adapts to `data`'s width (unwrap form),
         // but only in a context that actually wants `data`'s type.
         if let Ty::CtInt(v) = rt {
@@ -263,16 +280,17 @@ impl<'a> Checker<'a> {
         if same(&rt, &data_ty) {
             return data_ty;
         }
-        // OR-mux form: RHS is itself a bundle whose own `data` matches `T`
-        // exactly (direct field comparison, NOT `bundle_shape_match`).
+        // OR-mux form: RHS is itself a valid-bundle (exactly `{ valid, data }`
+        // shaped, same rule as the LHS) whose own `data` matches `T` exactly
+        // (direct field comparison, NOT `bundle_shape_match`).
         if let Ty::Bundle {
             name: rname,
             bfile_hint: rhint,
             args: rargs,
         } = rt
             && let Some(rfields) = self.resolve_bundle_fields(cx, rname, rhint, rargs, rhs.span)
-            && let Some((_, rdata)) = rfields.iter().find(|(n, _)| n == "data")
-            && same(rdata, &data_ty)
+            && let Some(rdata) = valid_bundle_shape(&rfields)
+            && same(&rdata, &data_ty)
         {
             return lt;
         }
