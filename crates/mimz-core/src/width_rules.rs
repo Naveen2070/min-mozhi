@@ -46,3 +46,62 @@ pub enum RuleError {
     /// bits wide (`hi >= base_width`).
     SliceOutOfRange { hi: u32, base_width: u32 },
 }
+
+/// `<<`/`>>`: the result keeps the LEFT operand's kind (spec/02 section
+/// 3 — a STATIC type-system invariant, not a claim about the runtime
+/// value Verilog computes once that type flows into a wider context via
+/// an explicit `extend()`; see `docs/audit/bugs.md`'s BUG-11 for why
+/// those are deliberately different rules at different levels). The
+/// simulator layers its own additional context-width growth on top of
+/// this result — see `sim/value.rs`'s `Shl`/`Shr` arms — that part is
+/// simulator-specific value-flow behavior, not a shared static rule.
+pub fn shift_result(lhs: Kind, amount: Kind) -> Result<Kind, RuleError> {
+    if amount.signed {
+        return Err(RuleError::ShiftAmountSigned);
+    }
+    Ok(lhs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shift_result_preserves_lhs_kind() {
+        let lhs = Kind {
+            width: 8,
+            signed: false,
+        };
+        let amount = Kind {
+            width: 3,
+            signed: false,
+        };
+        assert_eq!(shift_result(lhs, amount), Ok(lhs));
+    }
+
+    #[test]
+    fn shift_result_preserves_signed_lhs() {
+        let lhs = Kind {
+            width: 16,
+            signed: true,
+        };
+        let amount = Kind {
+            width: 4,
+            signed: false,
+        };
+        assert_eq!(shift_result(lhs, amount), Ok(lhs));
+    }
+
+    #[test]
+    fn shift_result_rejects_signed_amount() {
+        let lhs = Kind {
+            width: 8,
+            signed: false,
+        };
+        let amount = Kind {
+            width: 3,
+            signed: true,
+        };
+        assert_eq!(shift_result(lhs, amount), Err(RuleError::ShiftAmountSigned));
+    }
+}
