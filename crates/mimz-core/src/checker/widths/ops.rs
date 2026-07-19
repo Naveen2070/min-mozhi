@@ -31,6 +31,31 @@ fn kind_to_ty(k: crate::width_rules::Kind) -> Ty<'static> {
     }
 }
 
+/// Narrow a `Ty` to a `width_rules::Kind`, for the three scalar
+/// variants `lossless_ty`/`matched_ty` accept (`Bit`/`Bits`/`Signed`).
+/// `None` for anything else (`Enum`, `Memory`, `Array`, `Bundle`,
+/// `CtInt`, `Unknown`, `Clock`, `Reset`) — those are rejected by their
+/// callers with the existing "cannot mix" diagnostic before this
+/// function is even relevant; it is not this helper's job to diagnose,
+/// only to convert what IS a scalar kind.
+fn ty_to_kind_opt(t: &Ty) -> Option<crate::width_rules::Kind> {
+    match t {
+        Ty::Bit => Some(crate::width_rules::Kind {
+            width: 1,
+            signed: false,
+        }),
+        Ty::Bits(n) => Some(crate::width_rules::Kind {
+            width: width_u32(*n),
+            signed: false,
+        }),
+        Ty::Signed(n) => Some(crate::width_rules::Kind {
+            width: width_u32(*n),
+            signed: true,
+        }),
+        _ => None,
+    }
+}
+
 /// Returns `data`'s type iff `fields` is EXACTLY `{ valid: bit, data: T }`
 /// — no missing `valid`, no wrong-typed `valid`, no extra fields. Shared by
 /// `coalesce_ty`'s LHS check and its OR-mux RHS check — `??`'s rule is
@@ -363,14 +388,7 @@ impl<'a> Checker<'a> {
             }
             (a, b) => (a, b),
         };
-        let widths = match (&a, &b) {
-            (Ty::Bit, Ty::Bit) => Some((1, 1, false)),
-            (Ty::Bit, Ty::Bits(n)) | (Ty::Bits(n), Ty::Bit) => Some((1, *n, false)),
-            (Ty::Bits(x), Ty::Bits(y)) => Some((*x, *y, false)),
-            (Ty::Signed(x), Ty::Signed(y)) => Some((*x, *y, true)),
-            _ => None,
-        };
-        let Some((x, y, signed)) = widths else {
+        let (Some(ka), Some(kb)) = (ty_to_kind_opt(&a), ty_to_kind_opt(&b)) else {
             self.err(
                 cx.file,
                 lhs.span.join(rhs.span),
@@ -381,11 +399,20 @@ impl<'a> Checker<'a> {
             );
             return Ty::Unknown;
         };
-        let w = match op {
-            BinOp::Mul => x + y,
-            _ => x.max(y) + 1,
-        };
-        if signed { Ty::Signed(w) } else { bits(w) }
+        match crate::width_rules::lossless_result(ka, kb, matches!(op, BinOp::Mul)) {
+            Ok(k) => kind_to_ty(k),
+            Err(_) => {
+                self.err(
+                    cx.file,
+                    lhs.span.join(rhs.span),
+                    "E0403",
+                    format!("`{}` cannot mix {} and {}", op_text(op), show(&a), show(&b)),
+                    "`signed` and `bits` never mix in an operator — convert \
+                     visibly with `signed(x)` / `unsigned(x)` (spec/02 section 1.7)",
+                );
+                Ty::Unknown
+            }
+        }
     }
 
     /// A compile-time operand of a lossless op: prefer the other side's
@@ -449,11 +476,7 @@ impl<'a> Checker<'a> {
             }
             return a;
         }
-        let kinds_differ = matches!(
-            (&a, &b),
-            (Ty::Signed(_), Ty::Bit | Ty::Bits(_)) | (Ty::Bit | Ty::Bits(_), Ty::Signed(_))
-        ) || matches!((&a, &b), (Ty::Enum(_), _) | (_, Ty::Enum(_)));
-        if kinds_differ {
+        if matches!(a, Ty::Enum(_)) || matches!(b, Ty::Enum(_)) {
             self.err(
                 cx.file,
                 lhs.span.join(rhs.span),
@@ -462,23 +485,71 @@ impl<'a> Checker<'a> {
                 "`signed` and `bits` never mix in an operator — convert \
                  visibly with `signed(x)` / `unsigned(x)` (spec/02 section 1.7)",
             );
-        } else {
-            self.err_args(
-                cx.file,
-                lhs.span.join(rhs.span),
-                "E0402",
-                format!(
-                    "`{op}` needs equal widths, found {} and {}",
-                    show(&a),
-                    show(&b)
-                ),
-                "this operator works bit-for-bit, so both sides must be the \
-                 same width — `extend(x, N)` the narrow side, or slice the \
-                 wide one (spec/02 section 3)",
-                vec![("op", op.to_string()), ("lhs", show(&a)), ("rhs", show(&b))],
-            );
+            return Ty::Unknown;
         }
-        Ty::Unknown
+        match (ty_to_kind_opt(&a), ty_to_kind_opt(&b)) {
+            (Some(ka), Some(kb)) => {
+                // Both scalar, and `same(&a, &b)` above already ruled out
+                // an exact match, so `matched_result` is guaranteed to
+                // return `Err` here — called anyway so the shared rule
+                // stays the single source of truth for what counts as a
+                // scalar match, rather than re-deriving that boundary.
+                match crate::width_rules::matched_result(ka, kb) {
+                    Ok(k) => kind_to_ty(k),
+                    Err(_) if ka.signed != kb.signed => {
+                        self.err(
+                            cx.file,
+                            lhs.span.join(rhs.span),
+                            "E0403",
+                            format!("`{op}` cannot mix {} and {}", show(&a), show(&b)),
+                            "`signed` and `bits` never mix in an operator — convert \
+                             visibly with `signed(x)` / `unsigned(x)` (spec/02 section 1.7)",
+                        );
+                        Ty::Unknown
+                    }
+                    Err(_) => {
+                        self.err_args(
+                            cx.file,
+                            lhs.span.join(rhs.span),
+                            "E0402",
+                            format!(
+                                "`{op}` needs equal widths, found {} and {}",
+                                show(&a),
+                                show(&b)
+                            ),
+                            "this operator works bit-for-bit, so both sides must be the \
+                             same width — `extend(x, N)` the narrow side, or slice the \
+                             wide one (spec/02 section 3)",
+                            vec![("op", op.to_string()), ("lhs", show(&a)), ("rhs", show(&b))],
+                        );
+                        Ty::Unknown
+                    }
+                }
+            }
+            _ => {
+                // At least one side isn't a scalar Kind (e.g. two
+                // different-shaped bundles/arrays, or a scalar vs. a
+                // bundle) — the original code's fallback for this shape
+                // is E0402 "needs equal widths" (its `kinds_differ` was
+                // false here, since enum involvement was already handled
+                // above).
+                self.err_args(
+                    cx.file,
+                    lhs.span.join(rhs.span),
+                    "E0402",
+                    format!(
+                        "`{op}` needs equal widths, found {} and {}",
+                        show(&a),
+                        show(&b)
+                    ),
+                    "this operator works bit-for-bit, so both sides must be the \
+                     same width — `extend(x, N)` the narrow side, or slice the \
+                     wide one (spec/02 section 3)",
+                    vec![("op", op.to_string()), ("lhs", show(&a)), ("rhs", show(&b))],
+                );
+                Ty::Unknown
+            }
+        }
     }
 
     /// `<<`/`>>`: the result keeps the LEFT operand's type; the amount is
