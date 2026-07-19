@@ -220,9 +220,10 @@ fn force_width(rng: &mut Rng, f: Frag, target_w: u32, target_signed: bool) -> Fr
 /// base, not a wrong value. So this generator only ever slices a fragment
 /// that IS a bare port identifier (safe — matches `gen_slice`'s own
 /// existing restriction, which already never slices anything else); an
-/// over-cap composite fragment (only `combine_concat`'s sum can exceed
-/// `cap` today, since lossless growth was removed above) is discarded and
-/// replaced with a fresh literal sized EXACTLY to `cap`, built directly
+/// over-cap composite fragment (`combine_concat`'s sum, `combine_lossless`'s
+/// `max+1`/product growth, or `combine_wrap`'s own operand-width result
+/// all can exceed `cap`) is discarded and replaced with a fresh literal
+/// sized EXACTLY to `cap`, built directly
 /// here rather than via `gen_leaf` — `gen_leaf`'s port branch could itself
 /// return something wider than `cap` (v3's per-register `cap` can be
 /// narrower than any port), so the fallback must not risk exceeding the
@@ -305,35 +306,22 @@ fn gen_leaf(rng: &mut Rng, ports: &[Port]) -> Frag {
 /// generator knows the new fragment's width without re-deriving each
 /// operator's own rule from scratch.
 ///
-/// Deliberately excludes `+`/`-` (lossless) AND `+%`/`-%` (wrapping) — both
-/// are **BUG-19**'s class (`docs/audit/bugs.md`, OPEN, deliberately
-/// deferred to Stage 4's shared width/IR work), just two different
-/// operators hitting the same root cause: `widen()` unifies a narrower
-/// operand up to the wider sibling's width via `extend()`, which is a pure
-/// passthrough for a non-literal argument (BUG-18 only taught it to render
-/// an explicit width for a resolved CONSTANT) — real Verilog then applies
-/// its OWN context-determined propagation to the underlying operator
-/// instead of trusting mimz's already-computed width. For lossless `+`/`-`
-/// (checker models `max(w1,w2)+1` bits) that means the extra growth bit
-/// only survives when the surrounding position is genuinely
-/// context-determined (found live: seed `12648432`, an all-unsigned
-/// program, `(p0 + p0)` losing its carry inside a concat member). For
-/// wrapping `+%`/`-%` it's worse than losing a bit — Verilog **redoes the
-/// subtraction at the wider context width** instead of wrapping at the
-/// original operand width first, giving a different value outright (found
-/// live, N=500 deep pass: seed `12648524`, `extend((extend(3,3) -% p2),
-/// 18)` as an `&` operand — kernel computes the spec's "wrap at 3 bits,
-/// then zero-extend" value `4`; confirmed against a standalone `iverilog`
-/// run that real Verilog computes `61884`, i.e. `(3 - 5)` redone at 18
-/// bits, `262142`, ANDed with the 18-bit concat). Reproducing an
-/// already-filed, already-triaged-as-deferred bug on every default `cargo
-/// test` run isn't useful new CI signal, so all four operators are scoped
-/// out here the same way v1 scoped out BUG-17's write-slice shape — not a
-/// fix, a deliberate non-goal until the real fix lands. `&`/`|`/`^` and
-/// every comparison stay in scope: bitwise ops commute correctly with
-/// zero/sign-extension regardless of WHEN Verilog performs it, and a
-/// comparison's result is always exactly 1 bit either way, so neither
-/// operator family is sensitive to this timing difference.
+/// Excludes `+`/`-` (lossless) AND `+%`/`-%` (wrapping) — not because
+/// they're unsafe (BUG-19, `docs/audit/bugs.md`, is now FIXED — the
+/// emitter hoists a self-determined-position mismatch instead of
+/// trusting a passthrough `extend()`), but because they don't fit this
+/// table's width-effect model: lossless growth needs no prior width
+/// unification (`combine_lossless` unifies KIND only) and yields
+/// `max(w1,w2)+1`/`w1+w2` rather than `Preserve`/`ToBit`, while wrapping
+/// keeps the operand width but isn't a `Preserve`-style bitwise/compare
+/// op either. Both families are generated separately by
+/// `combine_lossless`/`combine_wrap` and wired into `gen_expr`'s own
+/// dispatch, re-enabled once BUG-19's fix was confirmed live against
+/// Icarus. `&`/`|`/`^` and every comparison stay in this table: bitwise
+/// ops commute correctly with zero/sign-extension regardless of WHEN
+/// Verilog performs it, and a comparison's result is always exactly 1
+/// bit either way, so neither operator family was ever sensitive to the
+/// self-determined-position timing difference BUG-19 was about.
 #[derive(Clone, Copy)]
 enum WidthEffect {
     /// `& | ^` — preserve the (now-equal) operand width.
@@ -383,6 +371,65 @@ fn combine_same_width(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
         text: format!("({} {op} {})", a.text, b.text),
         width,
         signed,
+        atomic: false,
+    }
+}
+
+/// Combine two fragments under a randomly chosen lossless operator
+/// (`+`/`-`/`*`) — Stage 4, Phase A1b re-enables this family now that
+/// the emitter hoists a self-determined-position mismatch instead of
+/// trusting a passthrough (BUG-19, `docs/audit/bugs.md`, now fixed).
+/// Unlike `combine_same_width`, no width-unification is needed first —
+/// lossless growth accepts unequal operand widths by design; only KIND
+/// must match (mixing `signed`/`bits` is E0403).
+fn combine_lossless(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
+    let target_signed = if rng.next_range(2) == 0 {
+        a.signed
+    } else {
+        b.signed
+    };
+    let a = cast_to(a, target_signed);
+    let b = cast_to(b, target_signed);
+    let (op, width) = match rng.next_range(3) {
+        0 => ("+", a.width.max(b.width) + 1),
+        1 => ("-", a.width.max(b.width) + 1),
+        _ => ("*", a.width + b.width),
+    };
+    Frag {
+        text: format!("({} {op} {})", a.text, b.text),
+        width,
+        signed: target_signed,
+        atomic: false,
+    }
+}
+
+/// Combine two fragments under a randomly chosen wrapping operator
+/// (`+%`/`-%`/`*%`) — re-enabled alongside `combine_lossless` for the
+/// same reason (BUG-19 fixed). Re-enabling this combinator also surfaced
+/// BUG-23 (a distinct, still-open gap: wrapping operators lose their width
+/// truncation when nested under sibling context-determined operators).
+/// Needs width-unification first (the wrap family keeps the operand width,
+/// mirroring `combine_same_width`'s own approach).
+fn combine_wrap(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
+    let target_signed = if rng.next_range(2) == 0 {
+        a.signed
+    } else {
+        b.signed
+    };
+    let a = cast_to(a, target_signed);
+    let b = cast_to(b, target_signed);
+    let w = a.width.max(b.width);
+    let a = widen(rng, a, w);
+    let b = widen(rng, b, w);
+    let op = match rng.next_range(3) {
+        0 => "+%",
+        1 => "-%",
+        _ => "*%",
+    };
+    Frag {
+        text: format!("({} {op} {})", a.text, b.text),
+        width: w,
+        signed: target_signed,
         atomic: false,
     }
 }
@@ -458,10 +505,10 @@ fn gen_slice(rng: &mut Rng, ports: &[Port]) -> Option<Frag> {
 /// tighter `cap` guarantees that by construction rather than needing a
 /// separate narrowing pass after the fact.
 fn gen_expr(rng: &mut Rng, ports: &[Port], depth: u32, cap: u32) -> Frag {
-    let raw = if depth == 0 || rng.next_range(4) == 0 {
+    let raw = if depth == 0 || rng.next_range(6) == 0 {
         gen_leaf(rng, ports)
     } else {
-        match rng.next_range(4) {
+        match rng.next_range(6) {
             0 => {
                 let a = gen_expr(rng, ports, depth - 1, cap);
                 let b = gen_expr(rng, ports, depth - 1, cap);
@@ -475,6 +522,16 @@ fn gen_expr(rng: &mut Rng, ports: &[Port], depth: u32, cap: u32) -> Frag {
                 let a = gen_expr(rng, ports, depth - 1, cap);
                 let b = gen_expr(rng, ports, depth - 1, cap);
                 combine_concat(a, b)
+            }
+            3 => {
+                let a = gen_expr(rng, ports, depth - 1, cap);
+                let b = gen_expr(rng, ports, depth - 1, cap);
+                combine_lossless(rng, a, b)
+            }
+            4 => {
+                let a = gen_expr(rng, ports, depth - 1, cap);
+                let b = gen_expr(rng, ports, depth - 1, cap);
+                combine_wrap(rng, a, b)
             }
             _ => gen_slice(rng, ports).unwrap_or_else(|| gen_leaf(rng, ports)),
         }
@@ -634,6 +691,9 @@ fn differential_fuzz_generates_checker_valid_programs() {
 /// Icarus differential test (`tests/icarus.rs`) — skips locally without
 /// Icarus, hard-fails in CI (`REQUIRE_IVERILOG=1`, already set in
 /// `.github/workflows/ci.yml`).
+/// NOTE: This test is currently EXPECTED to fail until BUG-23 (docs/audit/bugs.md)
+/// is fixed — wrapping operators nested under sibling context-determined operators
+/// lose their own-width truncation.
 #[test]
 fn differential_fuzz_matches_icarus() {
     let Some(bin) = support::require_iverilog() else {
@@ -757,6 +817,9 @@ fn differential_fuzz_clocked_generates_checker_valid_programs() {
 /// clocked stimulus `tests/icarus.rs`'s own differential already uses.
 /// Gated by `require_iverilog()` exactly like every other Icarus
 /// differential test.
+/// NOTE: This test is currently EXPECTED to fail until BUG-23 (docs/audit/bugs.md)
+/// is fixed — wrapping operators nested under sibling context-determined operators
+/// lose their own-width truncation.
 #[test]
 fn differential_fuzz_clocked_matches_icarus() {
     let Some(bin) = support::require_iverilog() else {

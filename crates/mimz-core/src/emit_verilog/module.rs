@@ -14,6 +14,8 @@ impl Emitter<'_> {
         self.check_ascii(&m.name);
         self.clog2_fn_used = false;
         self.funcs_used.clear();
+        self.hoist_counter = 0;
+        self.hoisted_decls.clear();
 
         // Module-level consts layer onto the file consts for the duration
         // of this module; they fold to literals wherever used (widths,
@@ -21,6 +23,13 @@ impl Emitter<'_> {
         let file_env = self.env.clone();
         self.env = self.eval_consts_items(&m.items, file_env.clone());
         let flat: Vec<ModuleItem> = self.flatten_items(&m.items);
+        // Task 6's "flat_items_in_scope": every hoist call site in
+        // `expr.rs` needs this module's own Port/Wire/Reg `Kind`s to
+        // compare against Verilog's self-determined rule. Built once
+        // here (not per-expression) and read via `self.cur_decls` —
+        // mirrors `bundle_sigs`' own "populate from flat items once,
+        // reset per module" convention a few lines below.
+        self.cur_decls = self.build_decls(&flat);
 
         // Parameters. The Verilog identifier is the bare name, UNLESS
         // another file also declares a module of this name — the
@@ -309,6 +318,7 @@ impl Emitter<'_> {
             inject.push_str(CLOG2_FN);
         }
         inject.push_str(&user_fn_inject);
+        inject.push_str(&self.hoisted_decls);
         if !inject.is_empty() {
             self.out.insert_str(fn_pos, &inject);
         }
@@ -1340,6 +1350,176 @@ impl Emitter<'_> {
         }
     }
 
+    /// Every `Port`/`Wire`/`Reg` name in `flat` (the current module's own
+    /// flattened item list, already produced by `flatten_items` before this
+    /// runs), mapped to its resolved `Kind`. Mirrors `width_subst`'s own
+    /// `Type` resolution exactly (same `consteval::eval` against `self.env`,
+    /// same `EnumDecl.inferred_total_width` source for `Type::Named`), just
+    /// producing a `Kind` instead of a declaration-text fragment.
+    ///
+    /// A bundle-typed `Port`/`Wire` is never a single scalar Verilog signal
+    /// (same convention the ports/wires-declaration loops and `emit_drives`
+    /// already follow) — `flat` never pre-expands one to per-field scalars
+    /// (`flatten_items` only lowers `const if`/`sync loop`/`foreach`, not
+    /// bundles), so this calls `resolve_bundle_fields` itself, the same way
+    /// every other bundle-aware renderer in this file does, and inserts one
+    /// `{name}_{field}` entry per field — the exact identifier
+    /// `expr.rs::Field`'s rendering (`base_field`) and the ports/wires
+    /// loops' own declarations already use for it.
+    ///
+    /// Task 6 adds the real caller (`module()`'s own `self.cur_decls`
+    /// assignment, above).
+    pub(super) fn build_decls(
+        &self,
+        flat: &[ModuleItem],
+    ) -> HashMap<String, crate::width_rules::Kind> {
+        let mut decls = HashMap::new();
+        for item in flat {
+            let (name, ty) = match item {
+                ModuleItem::Port { name, ty, .. } => (name, ty),
+                ModuleItem::Wire { name, ty, .. } => (name, ty),
+                ModuleItem::Reg { name, ty, .. } => (name, ty),
+                _ => continue,
+            };
+            let bundle_fields = match ty {
+                Type::Bundle {
+                    name: bname,
+                    args: bargs,
+                } => Some(self.resolve_bundle_fields(bname, bargs)),
+                Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                    Some(self.resolve_bundle_fields(id, &[]))
+                }
+                _ => None,
+            };
+            if let Some(fields) = bundle_fields {
+                for (fname, fty) in &fields {
+                    decls.insert(format!("{}_{}", name.name, fname), self.resolved_kind(fty));
+                }
+            } else {
+                decls.insert(name.name.clone(), self.resolved_kind(ty));
+            }
+        }
+        decls
+    }
+
+    /// Resolve a scalar (never `Bundle`/`Array` — `build_decls` above
+    /// flattens those to per-field scalars before this ever sees them) type
+    /// to its `Kind`. A bundle-typed field reaching the `Type::Named` arm's
+    /// else-branch would mean a NESTED bundle field — not currently
+    /// supported by any bundle-aware renderer in this file, so this panics
+    /// rather than silently falling back, same as the rest of this file's
+    /// convention for a genuinely-unhandled shape.
+    fn resolved_kind(&self, ty: &Type) -> crate::width_rules::Kind {
+        use crate::width_rules::Kind;
+        match ty {
+            Type::Bit => Kind {
+                width: 1,
+                signed: false,
+            },
+            Type::Bits(e) => Kind {
+                width: consteval::eval(e, &self.env).unwrap_or(1) as u32,
+                signed: false,
+            },
+            Type::Signed(e) => Kind {
+                width: consteval::eval(e, &self.env).unwrap_or(1) as u32,
+                signed: true,
+            },
+            Type::Named(id) => {
+                if let Some(en) = self.project.resolve_enum(id) {
+                    Kind {
+                        width: en.inferred_total_width.get().expect(
+                            "inferred_total_width not set — checker must run before emitter",
+                        ),
+                        signed: false,
+                    }
+                } else {
+                    panic!(
+                        "build_decls: `{}` is bundle-typed — nested bundle fields are not \
+                         supported by build_decls",
+                        id.name.name
+                    )
+                }
+            }
+            Type::Bundle { name, .. } => panic!(
+                "build_decls: bundle field `{}` is itself bundle-typed — nested bundles are \
+                 not supported by build_decls",
+                name.name.name
+            ),
+            Type::Array { .. } => unreachable!(
+                "array types are rejected by the checker (E0416) before reaching the emitter \
+                 for anything but a `fn` parameter, which never reaches build_decls"
+            ),
+        }
+    }
+
+    /// Compares `expr`'s mimz-computed `Kind` against what Verilog would
+    /// self-determine for it in a self-determined position (Stage 4,
+    /// Phase A1b). On a mismatch, hoists `rendered_text` into a fresh
+    /// `wire`/`assign` pair (appended to `self.hoisted_decls`, inserted
+    /// at `fn_pos` alongside the existing `clog2`/user-`fn` injections
+    /// — see `fn module`'s own `self.out.insert_str(fn_pos, &inject)`
+    /// call) and returns the wire's name instead of `rendered_text`.
+    /// Returns `rendered_text` unchanged when there is no mismatch (the
+    /// common case — no new wire, no behavior change).
+    ///
+    /// Callers (`expr.rs`) must only reach this when `expr::kind_is_inferrable`
+    /// has already confirmed `infer_kind` can resolve `expr` against `decls`
+    /// without panicking — this function does not re-check that itself.
+    pub(super) fn hoist_if_needed(
+        &mut self,
+        expr: &Expr,
+        rendered_text: String,
+        decls: &HashMap<String, crate::width_rules::Kind>,
+    ) -> String {
+        use crate::emit_verilog::kinds::infer_kind;
+        use crate::emit_verilog::self_determined::verilog_self_determined_kind;
+
+        let mimz_kind = infer_kind(expr, decls);
+        let Some(verilog_kind) = verilog_self_determined_kind(expr, decls) else {
+            return rendered_text;
+        };
+        if mimz_kind == verilog_kind {
+            return rendered_text;
+        }
+        self.hoist_counter += 1;
+        let name = format!("__mimz_sub_{}", self.hoist_counter);
+        let ty = if mimz_kind.signed {
+            format!("signed [{}:0]", mimz_kind.width.saturating_sub(1))
+        } else {
+            format!("[{}:0]", mimz_kind.width.saturating_sub(1))
+        };
+        self.hoisted_decls
+            .push_str(&format!("    wire {ty} {name};\n"));
+        self.hoisted_decls
+            .push_str(&format!("    assign {name} = {rendered_text};\n"));
+        name
+    }
+
+    /// Same mismatch detection, but for BUG-20's condition instead of a
+    /// width mismatch: hoists whenever `rendered_text` (a slice's base)
+    /// isn't already a plain identifier, since Verilog's part-select
+    /// grammar only accepts one. Shares the same counter/buffer as
+    /// `hoist_if_needed` (a single per-module numbering sequence for
+    /// every kind of hoist, not two separate ones).
+    pub(super) fn hoist_slice_base_if_needed(
+        &mut self,
+        rendered_text: String,
+        width: u32,
+    ) -> String {
+        if super::expr::is_plain_identifier(&rendered_text) {
+            return rendered_text;
+        }
+        self.hoist_counter += 1;
+        let name = format!("__mimz_sub_{}", self.hoist_counter);
+        self.hoisted_decls.push_str(&format!(
+            "    wire [{}:0] {name};\n",
+            width.saturating_sub(1)
+        ));
+        self.hoisted_decls
+            .push_str(&format!("    assign {name} = {rendered_text};\n"));
+        name
+    }
+
     /// Emit a bundle field value expression, sized to the field's type.
     /// For integer literals, this produces `1'b1` (bit), `8'd0` (bits[8]), etc.
     /// For non-literal expressions, falls back to plain `expr()`.
@@ -1752,6 +1932,7 @@ fn fn_all_locals(stmts: &[FnStmt], params: &[FnParam], env: &Env) -> Vec<LocalLe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::span::Span;
     use crate::{lexer, parser};
 
     /// Parse + emit one self-contained source (no imports) to Verilog text.
@@ -1761,6 +1942,96 @@ mod tests {
         let files = [parser::parse(lexer::lex(src).unwrap()).unwrap()];
         let project = Project::from_files(&files).unwrap();
         emit(&project, &files).expect("emit should succeed")
+    }
+
+    /// Minimal `Emitter` for unit-level tests that need to call a `&self`/
+    /// `&mut self` method directly without driving the whole `emit()`
+    /// pipeline. There is no existing helper for this anywhere in
+    /// `emit_verilog` (every other inline test here and in `mod.rs` goes
+    /// through `emit_src`/`emit()`) — this mirrors `emit()`'s own `Emitter`
+    /// struct literal (`emit_verilog/mod.rs`) field-for-field, the one
+    /// other place this struct gets constructed.
+    fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
+        Emitter {
+            project,
+            out: String::new(),
+            diags: Vec::new(),
+            cur_file: 0,
+            env: Env::new(),
+            module_envs: HashMap::new(),
+            repeat_budget: REPEAT_BUDGET,
+            clog2_fn_used: false,
+            emitting_port: false,
+            funcs_used: Vec::new(),
+            bundle_sigs: HashMap::new(),
+            hoist_counter: 0,
+            hoisted_decls: String::new(),
+            cur_decls: HashMap::new(),
+        }
+    }
+
+    /// Smoke test: build_decls's own logic is exercised indirectly through
+    /// a normal compile (Port/Wire declarations still render), before
+    /// Step 3's direct unit test below checks its return value.
+    #[test]
+    fn build_decls_resolves_port_and_wire_widths() {
+        let src = "module M {\n  in p0: bits[8]\n  in p1: signed[4]\n  \
+                    wire w: bits[3] = 0\n  out y: bit\n  y = p0[0:0]\n}\n";
+        let v = emit_src(src);
+        assert!(v.contains("input"));
+        assert!(v.contains("wire"));
+    }
+
+    #[test]
+    fn build_decls_maps_names_to_kinds() {
+        let files = [parser::parse(lexer::lex("module M {}\n").unwrap()).unwrap()];
+        let project = Project::from_files(&files).unwrap();
+        let emitter = test_emitter(&project);
+        let flat = vec![
+            ModuleItem::Port {
+                dir: Dir::In,
+                name: Ident {
+                    name: "p0".to_string(),
+                    span: Span::new(0, 0),
+                },
+                ty: Type::Bits(Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: 8,
+                        raw: "8".to_string(),
+                    },
+                    span: Span::new(0, 0),
+                })),
+            },
+            ModuleItem::Port {
+                dir: Dir::In,
+                name: Ident {
+                    name: "p1".to_string(),
+                    span: Span::new(0, 0),
+                },
+                ty: Type::Signed(Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: 4,
+                        raw: "4".to_string(),
+                    },
+                    span: Span::new(0, 0),
+                })),
+            },
+        ];
+        let decls = emitter.build_decls(&flat);
+        assert_eq!(
+            decls["p0"],
+            crate::width_rules::Kind {
+                width: 8,
+                signed: false
+            }
+        );
+        assert_eq!(
+            decls["p1"],
+            crate::width_rules::Kind {
+                width: 4,
+                signed: true
+            }
+        );
     }
 
     /// Proves `sync loop` actually desugars in the emitter: its 4 ports, 4
