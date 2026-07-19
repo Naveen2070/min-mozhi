@@ -151,7 +151,11 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// `[hi:lo]` bounds: both const, `lo <= hi < n`. Returns the slice type.
+    /// `[hi:lo]` bounds: both const, `lo <= hi < n`. Returns the slice
+    /// type. The actual reversed/range/signedness rule is shared with
+    /// the simulator via `width_rules::slice_result` (Stage 4, A1a) —
+    /// this is the exact function whose signedness rule BUG-21 found
+    /// duplicated (and diverged) in the simulator's own evaluator.
     fn slice_ty(
         &mut self,
         cx: &mut Wcx<'a>,
@@ -161,28 +165,43 @@ impl<'a> Checker<'a> {
     ) -> Option<Ty<'a>> {
         let h = self.const_bound(cx, hi)?;
         let l = self.const_bound(cx, lo)?;
-        if l > h {
-            self.err(
-                cx.file,
-                hi.span.join(lo.span),
-                "E0406",
-                format!("slice bounds are reversed: `[{h}:{l}]`"),
-                "slices are written `[hi:lo]`, most significant bit first \
-                 (spec/02 section 1.8)",
-            );
-            return None;
+        // `h`/`l` are non-negative here (`const_bound` already rejected a
+        // negative bound), but unlike `n` (checker-bounded by `MAX_WIDTH`,
+        // see `ops.rs`'s `width_u32` doc comment) they come straight from
+        // an arbitrary user constant expression and have no upper bound —
+        // a raw `as u32` would wrap modulo 2^32 (e.g. `2^32` -> `0`) and
+        // silently accept a bound that should be rejected as out of range.
+        // Saturate instead: any `h`/`l` over `u32::MAX` becomes `u32::MAX`,
+        // which is always `>= n` (itself `<= u32::MAX`) and so still trips
+        // `slice_result`'s out-of-range check below — the diagnostic text
+        // prints the original `i128` `h`/`l`, not this narrowed value.
+        let h32 = super::ops::width_u32(h as u128);
+        let l32 = super::ops::width_u32(l as u128);
+        match crate::width_rules::slice_result(n as u32, h32, l32) {
+            Ok(k) => Some(bits(k.width as u128)),
+            Err(crate::width_rules::RuleError::SliceReversed { .. }) => {
+                self.err(
+                    cx.file,
+                    hi.span.join(lo.span),
+                    "E0406",
+                    format!("slice bounds are reversed: `[{h}:{l}]`"),
+                    "slices are written `[hi:lo]`, most significant bit first \
+                     (spec/02 section 1.8)",
+                );
+                None
+            }
+            Err(crate::width_rules::RuleError::SliceOutOfRange { .. }) => {
+                self.err(
+                    cx.file,
+                    hi.span,
+                    "E0406",
+                    format!("slice bound `{h}` is out of range"),
+                    format!("the value has {n} bits, so bit positions run 0..={}", n - 1),
+                );
+                None
+            }
+            Err(_) => unreachable!("slice_result only returns SliceReversed/SliceOutOfRange"),
         }
-        if !fits_in_count(h, n) {
-            self.err(
-                cx.file,
-                hi.span,
-                "E0406",
-                format!("slice bound `{h}` is out of range"),
-                format!("the value has {n} bits, so bit positions run 0..={}", n - 1),
-            );
-            return None;
-        }
-        Some(bits((h - l) as u128 + 1))
     }
 
     /// A slice bound: must const-evaluate and be non-negative.
