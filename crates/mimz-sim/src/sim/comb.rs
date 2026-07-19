@@ -183,7 +183,13 @@ pub fn eval_outputs(
 
     // 3. Signals (in/out/wire) with their declared (width, signed).
     let mut sig_ty: BTreeMap<String, (u32, bool)> = BTreeMap::new();
-    let mut drivers: BTreeMap<String, &Expr> = BTreeMap::new();
+    let mut drivers: BTreeMap<String, Expr> = BTreeMap::new();
+    // A bit-indexed (`sig[i] = …`) or slice (`sig[hi:lo] = …`, BUG-17) drive
+    // is collected per bit here and assembled into a `Concat` after the item
+    // loop — same strategy `crates/mimz-sim/src/sim/elaborate.rs`'s
+    // `record_drive` uses. A slice drive just expands to one bit-drive entry
+    // per bit position, each reading the matching bit straight off the RHS.
+    let mut bit_drives: BTreeMap<String, BTreeMap<u32, Expr>> = BTreeMap::new();
     let mut out_order: Vec<(String, u32, bool)> = Vec::new();
     for it in flat_items.iter().copied() {
         match it {
@@ -197,20 +203,110 @@ pub fn eval_outputs(
             ModuleItem::Wire { name, ty, init } => {
                 let (w, s) = value::type_width(ty, &ints)?;
                 sig_ty.insert(name.name.clone(), (w, s));
-                drivers.insert(name.name.clone(), init);
+                drivers.insert(name.name.clone(), init.clone());
             }
-            ModuleItem::Drive { lhs, rhs } => {
-                if lhs.index.is_some() {
-                    return Err(format!(
-                        "driving a slice of `{}` is not supported by the evaluator yet — \
-                         drive the whole signal",
-                        lhs.base.name
-                    ));
+            ModuleItem::Drive { lhs, rhs } => match &lhs.index {
+                None => {
+                    drivers.insert(lhs.base.name.clone(), rhs.clone());
                 }
-                drivers.insert(lhs.base.name.clone(), rhs);
-            }
+                Some((idx, None)) => {
+                    let bit = value::const_eval(idx, &ints)?;
+                    if !(0..128).contains(&bit) {
+                        return Err(format!(
+                            "bit index {bit} driving `{}` is out of range (0..128)",
+                            lhs.base.name
+                        ));
+                    }
+                    bit_drives
+                        .entry(lhs.base.name.clone())
+                        .or_default()
+                        .insert(bit as u32, rhs.clone());
+                }
+                Some((hi_e, Some(lo_e))) => {
+                    let hi = value::const_eval(hi_e, &ints)?;
+                    let lo = value::const_eval(lo_e, &ints)?;
+                    if !(0..128).contains(&hi) || !(0..128).contains(&lo) {
+                        return Err(format!(
+                            "slice bound driving `{}` is out of range (0..128)",
+                            lhs.base.name
+                        ));
+                    }
+                    if hi < lo {
+                        return Err(format!(
+                            "slice bounds driving `{}` are reversed (write `[hi:lo]`, \
+                             most significant bit first)",
+                            lhs.base.name
+                        ));
+                    }
+                    let span = rhs.span;
+                    let entry = bit_drives.entry(lhs.base.name.clone()).or_default();
+                    // A compile-time-constant RHS (e.g. `i * 2` after a
+                    // `foreach` unroll substitutes `i` with a literal)
+                    // adapts to the slice's width like any other CtInt
+                    // assignment — pull each target bit from the folded
+                    // value (arithmetic shift, so a negative constant
+                    // sign-extends correctly) instead of indexing into the
+                    // raw expression, which may have a narrower "natural"
+                    // width of its own (see elaborate.rs's `record_drive`,
+                    // the same fix mirrored here).
+                    if let Ok(v) = value::const_eval(rhs, &ints) {
+                        for b in lo..=hi {
+                            let bit = ((v >> (b - lo)) & 1) as u128;
+                            entry.insert(
+                                b as u32,
+                                Expr {
+                                    kind: ast::ExprKind::Int {
+                                        value: bit,
+                                        raw: bit.to_string(),
+                                    },
+                                    span,
+                                },
+                            );
+                        }
+                    } else {
+                        for b in lo..=hi {
+                            let rhs_bit = (b - lo) as u128;
+                            let sel = Expr {
+                                kind: ast::ExprKind::Index {
+                                    base: Box::new(rhs.clone()),
+                                    index: Box::new(Expr {
+                                        kind: ast::ExprKind::Int {
+                                            value: rhs_bit,
+                                            raw: rhs_bit.to_string(),
+                                        },
+                                        span,
+                                    }),
+                                },
+                                span,
+                            };
+                            entry.insert(b as u32, sel);
+                        }
+                    }
+                }
+            },
             _ => {}
         }
+    }
+    for (sig, bits) in bit_drives {
+        let width = sig_ty
+            .get(&sig)
+            .map(|(w, _)| *w)
+            .ok_or_else(|| format!("bit-driven signal `{sig}` has no declaration"))?;
+        let mut parts = Vec::with_capacity(width as usize);
+        for b in (0..width).rev() {
+            let e = bits
+                .get(&b)
+                .ok_or_else(|| format!("signal `{sig}` bit {b} is not driven"))?;
+            parts.push(e.clone());
+        }
+        let span = parts.first().map(|e| e.span).unwrap_or(m.span);
+        drivers.insert(
+            sig,
+            Expr {
+                kind: ast::ExprKind::Concat(parts),
+                span,
+            },
+        );
     }
 
     // 4. Seed input values (masked to their declared width).
@@ -257,7 +353,7 @@ pub fn eval_outputs(
 struct Env<'a> {
     ints: &'a BTreeMap<String, i128>,
     sig_ty: &'a BTreeMap<String, (u32, bool)>,
-    drivers: &'a BTreeMap<String, &'a Expr>,
+    drivers: &'a BTreeMap<String, Expr>,
     memo: BTreeMap<String, Val>,
     in_progress: Vec<String>,
     funcs: &'a HashMap<String, FuncDecl>,

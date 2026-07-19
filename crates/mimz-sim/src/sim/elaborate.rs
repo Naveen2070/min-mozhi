@@ -1626,9 +1626,19 @@ fn lower_foreach_in_seq(stmts: &[SeqStmt], module_items: &[ModuleItem]) -> Vec<S
     out
 }
 
-/// Record one combinational drive. A whole-signal drive becomes a `comb` entry;
-/// a bit-indexed drive (`sum[i] = …`, from `repeat`) is collected per bit and
-/// assembled into a Concat after the item loop. Slice drives are not yet handled.
+/// Record one combinational drive. A whole-signal drive becomes a `comb`
+/// entry; a bit-indexed drive (`sum[i] = …`, from `repeat`) OR a slice
+/// drive (`sig[hi:lo] = …`, BUG-17) is collected per bit and assembled
+/// into a Concat after the item loop — a slice drive just expands to one
+/// bit-drive entry per bit position, each reading the matching bit
+/// straight back off the RHS (`sig[hi:lo] = rhs` behaves exactly like
+/// writing `sig[hi] = rhs[hi-lo]; …; sig[lo] = rhs[0];` one bit at a
+/// time), so it reuses the exact same per-bit assembly path the
+/// bit-indexed case already has — no separate range-aware structure
+/// needed. The one exception: a compile-time-constant RHS (common after a
+/// `foreach` unroll substitutes its loop variable with a literal, e.g.
+/// `lamps[i*8+7:i*8] = i*2`) pulls bits from the FOLDED VALUE instead of
+/// indexing the raw expression — see the inner comment for why.
 fn record_drive(
     lhs: &ast::LValue,
     rhs: &Expr,
@@ -1656,11 +1666,67 @@ fn record_drive(
                 .or_default()
                 .insert(bit as u32, rw.expr(rhs)?);
         }
-        Some((_, Some(_))) => {
-            return Err(format!(
-                "driving a slice of `{}` is not supported by the simulator yet",
-                lhs.base.name
-            ));
+        Some((hi_e, Some(lo_e))) => {
+            let hi = const_eval(&rw.expr(hi_e)?, consts)?;
+            let lo = const_eval(&rw.expr(lo_e)?, consts)?;
+            if !(0..128).contains(&hi) || !(0..128).contains(&lo) {
+                return Err(format!(
+                    "slice bound driving `{}` is out of range (0..128)",
+                    lhs.base.name
+                ));
+            }
+            if hi < lo {
+                return Err(format!(
+                    "slice bounds driving `{}` are reversed (write `[hi:lo]`, \
+                     most significant bit first)",
+                    lhs.base.name
+                ));
+            }
+            let rhs_expr = rw.expr(rhs)?;
+            let span = rhs_expr.span;
+            let entry = bit_drives.entry(lhs.base.name.clone()).or_default();
+            // A compile-time-constant RHS (e.g. `i * 2` after a `foreach`
+            // unroll substitutes `i` with a literal) adapts to the slice's
+            // width the same way any other CtInt assignment does (the
+            // checker's own `fit` check only verifies the VALUE fits,
+            // never that the expression's own "natural" width already
+            // equals `hi - lo + 1`) — pull each target bit straight from
+            // the folded value (arithmetic shift, so a negative constant
+            // sign-extends correctly into a wider slice) instead of
+            // indexing into the raw expression, which may be narrower.
+            if let Ok(v) = const_eval(&rhs_expr, consts) {
+                for b in lo..=hi {
+                    let bit = ((v >> (b - lo)) & 1) as u128;
+                    entry.insert(
+                        b as u32,
+                        Expr {
+                            kind: ExprKind::Int {
+                                value: bit,
+                                raw: bit.to_string(),
+                            },
+                            span,
+                        },
+                    );
+                }
+            } else {
+                for b in lo..=hi {
+                    let rhs_bit = (b - lo) as u128;
+                    let sel = Expr {
+                        kind: ExprKind::Index {
+                            base: Box::new(rhs_expr.clone()),
+                            index: Box::new(Expr {
+                                kind: ExprKind::Int {
+                                    value: rhs_bit,
+                                    raw: rhs_bit.to_string(),
+                                },
+                                span,
+                            }),
+                        },
+                        span,
+                    };
+                    entry.insert(b as u32, sel);
+                }
+            }
         }
     }
     Ok(())
