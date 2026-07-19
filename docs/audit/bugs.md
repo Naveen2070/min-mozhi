@@ -864,7 +864,7 @@ Icarus. No golden file or emitter unit test asserted the previous (broken)
 `extend` rendering, so changing its format regressed nothing (full workspace
 suite: 886 passed).
 
-## BUG-19 (MEDIUM, OPEN) — Lossless `+`/`-` result silently narrows in a self-determined Verilog context
+## BUG-19 (MEDIUM, OPEN) — A width-growing/-changing operator's result silently gets the WRONG value once `extend()` crosses back into a wider Verilog context
 
 **What.** A checker-valid, kernel-correct program whose emitted Verilog gives
 a **different value** under real Icarus — not an elaboration error like
@@ -912,30 +912,147 @@ since it means the emitter cannot in general assume a mimz-computed width
 survives into a self-determined Verilog position, for ANY width-growing
 operator, not just `extend()`.
 
+**Update (2026-07-19, T2 v2 — the class is bigger than "lossless `+`/`-`").**
+While extending the differential fuzzer's generator to signed values (v2),
+a **second, distinct manifestation** turned up in the same `MIMZ_DIFF_FUZZ_N=500`
+deep pass, seed `12648524`, an entirely unsigned program — no signed values
+involved, so not a v2-specific regression, the same pre-existing gap v1 has
+always had, just reached by a different generated shape:
+
+```
+module Fuzz {
+  in p0: bits[15]
+  in p2: bits[3]
+  out y: bits[18]
+  y = ({p0, p2} & extend((extend(3, 3) -% p2), 18))
+}
+```
+
+Vector `p0=7735, p2=5`: our kernel computes `y=4` (matching the spec: `-%`
+wraps modulo 2^3 at its own 3-bit operand width — `3 -% 5 = 6` — THEN
+`extend(6, 18)` zero-extends the already-wrapped value, giving `4` after
+the `&`). Real Icarus computes `y=61884`. Emitted Verilog:
+`assign y = ({p0, p2} & ((3'd3 - p2)));` (the `extend(..., 18)` call is,
+again, an invisible passthrough for a non-literal argument, exactly BUG-18's
+pattern). Confirmed by hand and against a standalone `iverilog` run: Icarus
+does **not** compute "wrap at 3 bits, then zero-extend" — because `&` is a
+context-determined operator, Icarus widens BOTH of its operands to the
+context width (18 bits, borrowed from the `{p0,p2}` concat sibling) **before**
+performing the subtraction, i.e. it computes `(18'd3 - 18'd5) = 262142` (the
+wraparound now happens modulo 2^18, not 2^3) and ANDs that with the 18-bit
+concat, landing on `61884`. This is the same root cause as the original
+lossless-`+`/`-` case (`extend()`'s passthrough codegen trusts a
+mimz-computed width that real Verilog silently recomputes on its own terms)
+but hits **wrapping** `+%`/`-%` too, not just lossless `+`/`-` — and here the
+divergence isn't a lost carry bit, it's an entirely different modulus, so
+the wrong value is not even close. This means the class is: **any operator
+whose spec-defined result depends on the width it was originally evaluated
+at** (lossless growth for `+`/`-`, or the wrap modulus for `+%`/`-%`) is
+unsound the moment its result gets `widen()`-ed (via `extend()`) to fit a
+wider sibling and that combination is not itself the assignment's own
+top-level context-determined position. Bitwise `&`/`|`/`^` and comparisons
+are NOT in this class (confirmed by construction, not just observation):
+zero/sign-extension commutes with bitwise ops and with order comparison
+regardless of when Verilog performs it, so re-deriving them at a wider
+context always gives the same answer either way.
+
 **Severity.** MEDIUM — silent wrong value (no crash, no compile error) for
-lossless `+`/`-` specifically when its result lands inside a concatenation
-(or other self-determined position) rather than directly on an assignment
-RHS. Does not block the default `cargo test`/CI gate (only the manual
-`MIMZ_DIFF_FUZZ_N=500` deeper pass reaches it), but is a real synthesis
-correctness gap for any hand-written design combining lossless `+`/`-` with
-concatenation the same way — the project's own constitution rates silent
-miscompute above elaboration failure (BUG-18) in severity, being harder for
-a user to notice.
+lossless `+`/`-` or wrapping `+%`/`-%` whenever the result is `extend()`-ed
+to match a wider sibling and that combination is not itself the top-level
+assignment RHS (a concat member, a comparison operand, or an operand of a
+further bitwise/shift op that later escapes into one of those). Does not
+block T2 v2's default `cargo test`/CI gate — the fuzzer's generator now
+deliberately excludes all four operators (`+ - +% -%`) from its
+same-width-family combine step precisely to avoid resurfacing this already-
+filed, already-deferred bug on every run (`tests/differential_fuzz.rs`'s
+`WidthEffect`/`SAME_WIDTH_OPS` doc comment has the full reasoning) — but it
+remains a real synthesis correctness gap for any hand-written design
+combining either operator family with concatenation/comparison the same
+way, and the project's own constitution rates silent miscompute above
+elaboration failure (BUG-18) in severity, being harder for a user to
+notice.
 
 **Fix (Pending).** Broader than BUG-18's narrow literal-rendering patch:
-needs the emitter to make a width-growing operator's result
+needs the emitter to make a width-growing/-changing operator's result
 self-determined-safe wherever it can land in a non-context-determined
 position — e.g. explicitly wrapping the operator's Verilog rendering in a
-width-forcing idiom (a `{1'b0, (a - b)}`-style explicit pad, or a
-`$unsigned'()`-style size cast, contingent on Icarus-version compatibility)
-whenever the surrounding position is self-determined, not just when the
-operand happens to be `extend()`-of-literal. Likely belongs alongside
-BUG-17 and the A1 "one shared width/const-eval module" item
+width-forcing idiom (a `{1'b0, (a - b)}`-style explicit pad for lossless
+growth, or forcing the wrap operator's own operands to a temporary at their
+ORIGINAL width — e.g. a `$unsigned'()`-style size cast at the pre-widen
+width before the wrap, then extending the RESULT — contingent on
+Icarus-version compatibility) whenever the surrounding position is
+self-determined, not just when the operand happens to be
+`extend()`-of-literal. Likely belongs alongside BUG-17 and the A1 "one
+shared width/const-eval module" item
 (`docs/plan/phase-2-correctness-consolidation.local.md` stage 4) rather than
 as another narrow one-off patch — deferred by explicit decision (not
 overlooked) pending that broader design pass.
 
-**Test.** None yet — filed as open. `tests/differential_fuzz.rs`'s
-`MIMZ_DIFF_FUZZ_N=500` manual run is a ready-made, reproducible repro
-(seed 12648451); not part of the default N=20 CI gate, so no red test blocks
-landing T2 v1 with this filed open.
+**Test.** None yet — filed as open. Both repros above are standalone,
+reproducible `.mimz` snippets (not currently exercised by any committed
+test — `tests/differential_fuzz.rs`'s generator deliberately avoids
+generating either shape, per the "Severity" note above); re-adding a
+regression test for this is part of the Stage-4 fix, not before.
+
+## BUG-21 (MEDIUM, FIXED 2026-07-19) — Simulator's slice-read incorrectly inherited the base's signedness
+
+**What.** `mimz sim`/`test`'s evaluator computed the WRONG value for
+`extend(<a slice of a signed value>, N)` whenever the slice's top bit was
+set. Minimal repro:
+
+```
+module Fuzz {
+  clock clk
+  reset rst
+  in p1: signed[10]
+  reg r1: bits[9] = 0
+  out y: bit
+  on rise(clk) {
+    r1 <- extend(p1[9:7], 9)
+  }
+  y = r1[8:8]
+}
+```
+
+With `p1 = 1012` (bit pattern `1111110100`, so `p1[9:7] = 0b111 = 7`): real
+Icarus computes `r1 = 7` (`y = 0`) — correct, since a slice is always
+`bits`-typed regardless of the base's kind (spec/02, and `mimz check`
+agrees). Our kernel computed `r1 = 511` (`y = 1`): it treated the 3-bit
+slice `0b111` as `signed`, saw its top bit set, and sign-extended it to 9
+bits instead of zero-extending.
+
+**Cause.** `ExprKind::Slice`'s evaluator (`crates/mimz-sim/src/sim/value.rs`)
+built its result as `Val::new((b.bits >> lo) & mask(w), w, b.signed)` —
+propagating the SLICED BASE's `signed` flag to the slice result. The
+checker's own `slice_ty` (`crates/mimz-core/src/checker/widths/expr.rs`)
+returns `bits(...)` unconditionally, never `Signed`, regardless of the
+base's kind — and the sibling single-bit `ExprKind::Index` arm one case
+above already got this right (`Val::new(..., 1, false)`, hardcoded
+unsigned). The multi-bit `Slice` arm was the one place that copied the
+base's signedness instead.
+
+**How found.** T2 v3 (`tests/differential_fuzz.rs`'s clocked generator,
+`docs/plan/phase-2-differential-fuzzing.md`), a `MIMZ_DIFF_FUZZ_CLOCKED_N=2000`
+deep confidence pass — seed `202428133`. `extend()`'s own passthrough
+codegen for a non-literal argument (the same mechanism BUG-18/BUG-19 hit)
+was the first suspect, but an isolated standalone repro against real
+`iverilog` matched the checker's OWN model exactly (zero-extend), proving
+the emitter was innocent this time — the divergence was entirely inside
+our own kernel's evaluator, not the emitted Verilog.
+
+**Severity.** MEDIUM — silent wrong value (no crash, no compile error),
+narrow trigger: only a slice of a `signed`-typed value whose sliced bits
+happen to have their own top bit set, subsequently widened via `extend()`
+or bound to a wider context. No shipped example exercises this shape
+(found only by fuzzing, same story as BUG-16/BUG-18).
+
+**Fix.** `ExprKind::Slice`'s two `Val`-construction sites (the `unknown`
+early-return and the normal case) now hardcode `signed: false`, matching
+its sibling `Index` arm and the checker's own `slice_ty`
+(`crates/mimz-sim/src/sim/value.rs`).
+
+**Test.** Confirmed by `tests/differential_fuzz.rs`'s
+`differential_fuzz_clocked_matches_icarus` at `MIMZ_DIFF_FUZZ_CLOCKED_N=2000`
+(seed 202428133 no longer reproduces); no standalone unit test added
+(the fuzzer itself is the regression guard, same as BUG-18/BUG-19's
+discovery path).
