@@ -33,6 +33,7 @@ pub mod span;
 pub mod stdlib;
 pub mod translate;
 pub mod version;
+pub mod width_rules;
 
 #[cfg(test)]
 mod tests {
