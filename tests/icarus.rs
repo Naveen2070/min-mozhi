@@ -796,10 +796,10 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/fn_mac_local.mimz", &[], &[], 8);
     // File-level `const` folded into a `fn` body.
     differential(&bin, "english/fn_with_const.mimz", &[], &[], 8);
-    // `foreach_fill.mimz` is NOT layer-3-able: BUG-17 (docs/audit/bugs.md,
-    // OPEN) — the simulator rejects a combinational slice-indexed drive.
-    // Still covered by layer 1 (valid Verilog) via the whole-corpus walk
-    // above.
+    // `foreach_fill.mimz` (index-range form): a combinational slice-indexed
+    // drive (`lamps[i*8+7:i*8] = i*2`) — BUG-17 (docs/audit/bugs.md, FIXED),
+    // now layer-3-able.
+    differential(&bin, "english/foreach_fill.mimz", &[], &[], 1);
     // `foreach` (by-value form) folding an array `fn` parameter into a sum.
     differential(&bin, "english/foreach_sum.mimz", &[], &[], 8);
     // `default` inside `on rise` (deassert-by-default pulse generator).

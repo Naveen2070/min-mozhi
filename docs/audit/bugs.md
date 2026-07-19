@@ -727,7 +727,7 @@ error. Also surfaced (and fixed in the same pass) that
 (a genuinely payload-bearing tagged enum) to be populated, matching what
 every real `mimz sim`/`test` invocation does since A2.
 
-## BUG-17 (MEDIUM, OPEN) — Simulator rejects a combinational slice-indexed drive (`sig[hi:lo] = expr`)
+## BUG-17 (MEDIUM, FIXED 2026-07-19) — Simulator rejects a combinational slice-indexed drive (`sig[hi:lo] = expr`)
 
 **What.** Driving a **slice** of a wire/output combinationally —
 `lamps[i*8+7 : i*8] = i*2`, `examples/english/foreach_fill.mimz`'s actual
@@ -772,19 +772,58 @@ combinational slice drive, so nothing else is silently affected. Blocks
 `mimz sim`/`mimz eval`/`mimz test` on any design using this otherwise
 fully-supported (parser/checker/emitter) construct.
 
-**Fix (Pending).** Extend `record_drive` (`elaborate.rs`) to handle
-`Some((lo, Some(hi)))` the same way BUG-8's register-write fix handled a
-slice: read/collect the affected bit range and merge it into the
-existing `bit_drives`-then-`Concat` assembly path (or a parallel
-range-aware structure) rather than erroring outright. `comb.rs`'s
-`eval_outputs` needs the equivalent — and should also stop rejecting the
-already-elsewhere-supported single-bit-indexed case while at it, since
-its current check is broader than its own error message claims.
+**Fix (2026-07-19).** `record_drive` (`elaborate.rs`) now handles
+`Some((hi, Some(lo)))` by expanding it to one `bit_drives` entry per bit
+position — `sig[hi:lo] = rhs` behaves exactly like writing
+`sig[hi] = rhs[hi-lo]; …; sig[lo] = rhs[0];` one bit at a time — reusing
+the existing `bit_drives`-then-`Concat` assembly path unchanged, no
+parallel range-aware structure needed. `comb.rs`'s `eval_outputs` got the
+same treatment (its `ModuleItem::Drive` handling now matches on
+`lhs.index` the same three ways instead of a blanket
+`lhs.index.is_some()` rejection), plus its own `bit_drives`/`drivers`
+plumbing to assemble the Concat — `drivers` had to change from
+`BTreeMap<String, &Expr>` to an owning `BTreeMap<String, Expr>` since the
+synthesized per-bit `Index`/`Concat` nodes are new, not borrowed from the
+original AST.
 
-**Test.** None yet — filed as still open; `examples/english/
-foreach_fill.mimz` is a ready-made, already-shipped repro (currently
-covered only by `tests/icarus.rs`'s layer-1 `iverilog -t null` validity
-check, excluded from layer 3 pending this fix).
+One real subtlety found while fixing it: naively reconstructing each
+target bit as `rhs[bit_position]` (indexing into the RAW rhs expression)
+is wrong whenever `rhs` is compile-time-constant — `foreach_fill.mimz`'s
+own `lamps[i*8+7:i*8] = i*2` becomes, after the `foreach` unroll
+substitutes a literal for `i`, a constant-foldable RHS (e.g. `3 * 2`) —
+and a constant RHS _adapts_ to the slice's declared width the same way
+any other `Ty::CtInt` assignment does (the checker's `fit` check only
+verifies the folded VALUE fits, never that the expression's own "natural"
+width already equals `hi - lo + 1`). Indexing bit 7 of a value the
+evaluator infers as only 4 bits wide panicked-clean with "bit index 7 is
+out of range for a 4-bit value" — a real bug in the fix's first draft,
+caught by testing against the actual repro before landing. Fixed by
+special-casing a constant-foldable RHS: pull each target bit straight
+from the folded `i128` value (`(v >> (b - lo)) & 1`, arithmetic shift so
+a negative constant sign-extends correctly into a wider slice) instead of
+indexing into the expression; a genuine runtime RHS (the checker already
+guarantees it's exactly `hi - lo + 1` bits wide in that case) still uses
+the original per-bit `Index` reconstruction.
+
+Verified end-to-end: `mimz sim --trace` on `foreach_fill.mimz` now
+produces `lamps = 100925952`, matching a standalone `iverilog` run of the
+same compiled Verilog bit-for-bit. `mimz eval` on the same file still
+errors — but with the ACCURATE "signal `lamps` is never driven" instead
+of the slice-specific message this entry originally claimed: `comb.rs`
+has never unrolled module-level `foreach`/`repeat` at all (its own header
+comment says so — "deliberately a SLICE of the Phase 1.5 simulator...no
+repeat" — `ModuleItem::ForEach`/`Repeat` just fall through its item loop's
+wildcard arm), so a foreach-wrapped drive is invisible to it regardless
+of this fix. That's a separate, pre-existing, deliberately-scoped
+limitation of `mimz eval` specifically (elaborate.rs, behind `mimz
+sim`/`test`, DOES lower `ForEach` to `Repeat` and unroll it — that's the
+path this fix actually lands on) — not part of this bug, and the
+inaccurate claim in this entry's original filing is corrected here rather
+than left standing.
+
+**Test.** `tests/icarus.rs`'s `our_simulator_matches_icarus_bit_for_bit`
+now differentials `english/foreach_fill.mimz` (layer 3 — kernel == Icarus,
+bit-for-bit) — previously excluded pending this fix, per T1's own note.
 
 ## BUG-18 (MEDIUM, FIXED 2026-07-18) — `extend()` of a literal lost its width in self-determined Verilog contexts
 
