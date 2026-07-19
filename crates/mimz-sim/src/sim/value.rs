@@ -728,7 +728,6 @@ fn binary_ctx(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Result<
 
 fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
     let wmax = l.width.max(r.width);
-    let signed = l.signed || r.signed;
     let v = match op {
         // Lossless growth (spec/02 section 3). Operate on the SIGN-EXTENDED
         // values (`as_i128`) so a negative signed operand is widened correctly
@@ -736,28 +735,192 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
         // unsigned operands `as_i128` is the plain magnitude, so this is
         // identical to a raw-bit add/mul. (The wrapping family below keeps the
         // operand width, where the raw-bit op is already correct mod 2^width.)
-        BinOp::Add => Val::new(
-            l.as_i128().wrapping_add(r.as_i128()) as u128,
-            wmax + 1,
-            signed,
-        ),
-        BinOp::Sub => Val::new(
-            l.as_i128().wrapping_sub(r.as_i128()) as u128,
-            wmax + 1,
-            true,
-        ),
-        BinOp::Mul => Val::new(
-            l.as_i128().wrapping_mul(r.as_i128()) as u128,
-            l.width + r.width,
-            signed,
-        ),
-        // Wrapping family: keep operand width.
-        BinOp::AddWrap => Val::new(l.bits.wrapping_add(r.bits), wmax, signed),
-        BinOp::SubWrap => Val::new(l.bits.wrapping_sub(r.bits), wmax, signed),
-        BinOp::MulWrap => Val::new(l.bits.wrapping_mul(r.bits), wmax, signed),
-        BinOp::BitAnd => Val::new(l.bits & r.bits, wmax, signed),
-        BinOp::BitOr => Val::new(l.bits | r.bits, wmax, signed),
-        BinOp::BitXor => Val::new(l.bits ^ r.bits, wmax, signed),
+        BinOp::Add => {
+            let k = mimz_core::width_rules::lossless_result(
+                mimz_core::width_rules::Kind {
+                    width: l.width,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: r.width,
+                    signed: r.signed,
+                },
+                false,
+            )
+            .expect("checker already rejected mixed signed/unsigned operands");
+            Val::new(
+                l.as_i128().wrapping_add(r.as_i128()) as u128,
+                k.width,
+                k.signed,
+            )
+        }
+        BinOp::Sub => {
+            let k = mimz_core::width_rules::lossless_result(
+                mimz_core::width_rules::Kind {
+                    width: l.width,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: r.width,
+                    signed: r.signed,
+                },
+                false,
+            )
+            .expect("checker already rejected mixed signed/unsigned operands");
+            Val::new(
+                l.as_i128().wrapping_sub(r.as_i128()) as u128,
+                k.width,
+                k.signed,
+            )
+        }
+        BinOp::Mul => {
+            let k = mimz_core::width_rules::lossless_result(
+                mimz_core::width_rules::Kind {
+                    width: l.width,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: r.width,
+                    signed: r.signed,
+                },
+                true,
+            )
+            .expect("checker already rejected mixed signed/unsigned operands");
+            Val::new(
+                l.as_i128().wrapping_mul(r.as_i128()) as u128,
+                k.width,
+                k.signed,
+            )
+        }
+        // Wrapping family: keep operand width. A bare integer literal's `Val`
+        // keeps its own minimal natural width (never pre-widened to match the
+        // other operand, unlike the checker's compile-time-only "adapting"
+        // fiction for `CtInt` — see `matched_ty`), so both operands must be
+        // widened to `wmax` here before `matched_result` can find their
+        // `Kind`s equal. The `.unwrap_or` reproduces the original
+        // `l.signed || r.signed` bookkeeping for the one case
+        // `matched_result` can still reject after widening (mismatched
+        // signedness) — real fallback code, not a placeholder.
+        BinOp::AddWrap => {
+            let wmax = l.width.max(r.width);
+            let lw = extend_bits(l, wmax);
+            let rw = extend_bits(r, wmax);
+            let k = mimz_core::width_rules::matched_result(
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: r.signed,
+                },
+            )
+            .unwrap_or(mimz_core::width_rules::Kind {
+                width: wmax,
+                signed: l.signed || r.signed,
+            });
+            Val::new(lw.wrapping_add(rw), k.width, k.signed)
+        }
+        BinOp::SubWrap => {
+            let wmax = l.width.max(r.width);
+            let lw = extend_bits(l, wmax);
+            let rw = extend_bits(r, wmax);
+            let k = mimz_core::width_rules::matched_result(
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: r.signed,
+                },
+            )
+            .unwrap_or(mimz_core::width_rules::Kind {
+                width: wmax,
+                signed: l.signed || r.signed,
+            });
+            Val::new(lw.wrapping_sub(rw), k.width, k.signed)
+        }
+        BinOp::MulWrap => {
+            let wmax = l.width.max(r.width);
+            let lw = extend_bits(l, wmax);
+            let rw = extend_bits(r, wmax);
+            let k = mimz_core::width_rules::matched_result(
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: r.signed,
+                },
+            )
+            .unwrap_or(mimz_core::width_rules::Kind {
+                width: wmax,
+                signed: l.signed || r.signed,
+            });
+            Val::new(lw.wrapping_mul(rw), k.width, k.signed)
+        }
+        BinOp::BitAnd => {
+            let wmax = l.width.max(r.width);
+            let lw = extend_bits(l, wmax);
+            let rw = extend_bits(r, wmax);
+            let k = mimz_core::width_rules::matched_result(
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: r.signed,
+                },
+            )
+            .unwrap_or(mimz_core::width_rules::Kind {
+                width: wmax,
+                signed: l.signed || r.signed,
+            });
+            Val::new(lw & rw, k.width, k.signed)
+        }
+        BinOp::BitOr => {
+            let wmax = l.width.max(r.width);
+            let lw = extend_bits(l, wmax);
+            let rw = extend_bits(r, wmax);
+            let k = mimz_core::width_rules::matched_result(
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: r.signed,
+                },
+            )
+            .unwrap_or(mimz_core::width_rules::Kind {
+                width: wmax,
+                signed: l.signed || r.signed,
+            });
+            Val::new(lw | rw, k.width, k.signed)
+        }
+        BinOp::BitXor => {
+            let wmax = l.width.max(r.width);
+            let lw = extend_bits(l, wmax);
+            let rw = extend_bits(r, wmax);
+            let k = mimz_core::width_rules::matched_result(
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: wmax,
+                    signed: r.signed,
+                },
+            )
+            .unwrap_or(mimz_core::width_rules::Kind {
+                width: wmax,
+                signed: l.signed || r.signed,
+            });
+            Val::new(lw ^ rw, k.width, k.signed)
+        }
         // `<<`/`>>` are context-determined on their left operand in real
         // Verilog (ground-truthed against `iverilog`, BUG-11): the operand
         // widens to the ENCLOSING width before the shift, not after —
@@ -967,6 +1130,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bitand_widens_a_narrower_literal_operand() {
+        // A bare literal's Val keeps its own minimal width (here 1),
+        // never pre-widened to match a wider operand — the checker's
+        // static type system treats the literal as "adapting" to the
+        // other side (a compile-time-only fact), but the simulator's
+        // actual Val for that literal is NOT pre-widened anywhere. The
+        // wrap/bitwise arms must widen it themselves before combining.
+        let l = Val::new(0b1010, 4, false); // a 4-bit signal
+        let r = Val::new(1, 1, false); // the literal `1`, its own minimal width
+        let result = binary_known(BinOp::BitAnd, l, r, None).unwrap();
+        assert_eq!(result.width, 4);
+        assert_eq!(result.bits, 0b1010 & 1);
+    }
+
+    #[test]
     fn shl_self_determined_preserves_left_operand_width() {
         // No context (bare `binary()`, matching a condition/index/loop-bound
         // position, or a raw compile-time literal with nothing sizing it) —
@@ -1017,6 +1195,28 @@ mod tests {
             err.contains("signed"),
             "expected an error mentioning `signed`, got: {err}"
         );
+    }
+
+    #[test]
+    fn sub_of_two_unsigned_values_is_unsigned() {
+        // BUG-22 (docs/audit/bugs.md): binary_known's Sub arm used to
+        // hardcode `signed: true` unconditionally, disagreeing with the
+        // checker's own lossless_ty rule (unsigned bits[N] - unsigned
+        // bits[M] is unsigned bits[N.max(M)+1]).
+        let l = Val::new(0, 4, false);
+        let r = Val::new(0, 4, false);
+        let result = binary_known(BinOp::Sub, l, r, None).unwrap();
+        assert!(!result.signed, "expected an unsigned result, got signed");
+        assert_eq!(result.width, 5);
+    }
+
+    #[test]
+    fn sub_of_two_signed_values_is_signed() {
+        let l = Val::new(0, 4, true);
+        let r = Val::new(0, 4, true);
+        let result = binary_known(BinOp::Sub, l, r, None).unwrap();
+        assert!(result.signed, "expected a signed result");
+        assert_eq!(result.width, 5);
     }
 
     #[test]

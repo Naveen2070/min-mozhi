@@ -2897,3 +2897,19 @@ fn drive_bundle_zero_required_fields_always_compatible() {
                b = a\n}\n";
     check_one(src).expect("a zero-required-field bundle must accept any provided bundle trivially");
 }
+
+#[test]
+fn matched_ty_same_shaped_bundle_equality_passes() {
+    // Regression: `matched_ty` (checker/widths/ops.rs) must check
+    // `same(&a, &b)` BEFORE falling through to the scalar-only
+    // `ty_to_kind_opt` conversion. Two identically-shaped bundles
+    // compared with `==` are structurally equal (`same()` handles
+    // Bundle-name-equality), so this must pass clean — a prior refactor
+    // instead tried `ty_to_kind_opt` on both sides first, which returns
+    // `None` for any Bundle/Array/Memory, wrongly falling into the
+    // "cannot mix" (E0403) diagnostic for this exact-match case.
+    let src = "bundle Bus { a: bit, b: bits[8] }\n\
+               module Top {\n  in a: Bus\n  in b: Bus\n  out z: bit\n  \
+               z = (a == b)\n}\n";
+    check_one(src).expect("comparing two identically-shaped bundles with `==` must pass");
+}

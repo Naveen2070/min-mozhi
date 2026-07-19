@@ -45,6 +45,12 @@ pub enum RuleError {
     /// `hi` is not a valid bit position of a value that's `base_width`
     /// bits wide (`hi >= base_width`).
     SliceOutOfRange { hi: u32, base_width: u32 },
+    /// Two `Kind`s that were required to agree (fully, for
+    /// `matched_result`; on signedness only, for `lossless_result`)
+    /// didn't. Which specific mismatch this is (signedness vs. width) is
+    /// for the caller to determine by comparing `a`/`b`'s own fields —
+    /// no message text here, same pattern as every other variant.
+    KindMismatch { a: Kind, b: Kind },
 }
 
 /// `<<`/`>>`: the result keeps the LEFT operand's kind (spec/02 section
@@ -79,6 +85,48 @@ pub fn slice_result(base_width: u32, hi: u32, lo: u32) -> Result<Kind, RuleError
         width: hi - lo + 1,
         signed: false,
     })
+}
+
+/// `+`/`-`/`*`: lossless growth (spec/02 section 3) — the result never
+/// drops information, so operand widths may differ freely; only
+/// signedness must already match (the checker rejects mixing `signed`
+/// and `bits` before this point — `lossless_ty`,
+/// `crates/mimz-core/src/checker/widths/ops.rs`). `is_mul` selects `*`'s
+/// "sum of both widths" rule from `+`/`-`'s "grows by exactly one bit"
+/// rule. This unification is what fixes BUG-22
+/// (`docs/audit/bugs.md`): the simulator's `Sub` arm previously
+/// hardcoded its result `signed: true` unconditionally, disagreeing
+/// with this same rule whenever both operands were actually unsigned.
+pub fn lossless_result(a: Kind, b: Kind, is_mul: bool) -> Result<Kind, RuleError> {
+    if a.signed != b.signed {
+        return Err(RuleError::KindMismatch { a, b });
+    }
+    let width = if is_mul {
+        a.width + b.width
+    } else {
+        a.width.max(b.width) + 1
+    };
+    Ok(Kind {
+        width,
+        signed: a.signed,
+    })
+}
+
+/// The width-matching family: `+%`/`-%`/`*%` (wrapping arithmetic),
+/// `&`/`|`/`^` (bitwise), and the operand-compatibility check every
+/// comparison operator (`==`/`!=`/`<`/`<=`/`>`/`>=`) also performs
+/// before producing its own always-1-bit result. Both sides must be the
+/// IDENTICAL `Kind` — same width AND same signedness, no growth, no
+/// coercion. Returns that shared `Kind` (the caller discards it for
+/// comparisons, which always yield `Kind { width: 1, signed: false }`
+/// regardless — that constant needs no shared function, there is no
+/// rule to drift).
+pub fn matched_result(a: Kind, b: Kind) -> Result<Kind, RuleError> {
+    if a == b {
+        Ok(a)
+    } else {
+        Err(RuleError::KindMismatch { a, b })
+    }
 }
 
 #[cfg(test)]
@@ -166,5 +214,113 @@ mod tests {
                 base_width: 8
             })
         );
+    }
+
+    #[test]
+    fn lossless_result_add_grows_by_one_bit() {
+        let a = Kind {
+            width: 8,
+            signed: false,
+        };
+        let b = Kind {
+            width: 6,
+            signed: false,
+        };
+        assert_eq!(
+            lossless_result(a, b, false),
+            Ok(Kind {
+                width: 9,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn lossless_result_mul_sums_widths() {
+        let a = Kind {
+            width: 8,
+            signed: false,
+        };
+        let b = Kind {
+            width: 6,
+            signed: false,
+        };
+        assert_eq!(
+            lossless_result(a, b, true),
+            Ok(Kind {
+                width: 14,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn lossless_result_preserves_signed_when_both_operands_are() {
+        let a = Kind {
+            width: 8,
+            signed: true,
+        };
+        let b = Kind {
+            width: 6,
+            signed: true,
+        };
+        assert_eq!(
+            lossless_result(a, b, false),
+            Ok(Kind {
+                width: 9,
+                signed: true
+            })
+        );
+    }
+
+    #[test]
+    fn lossless_result_rejects_mixed_signedness() {
+        let a = Kind {
+            width: 8,
+            signed: false,
+        };
+        let b = Kind {
+            width: 8,
+            signed: true,
+        };
+        assert_eq!(
+            lossless_result(a, b, false),
+            Err(RuleError::KindMismatch { a, b })
+        );
+    }
+
+    #[test]
+    fn matched_result_returns_the_shared_kind() {
+        let k = Kind {
+            width: 8,
+            signed: false,
+        };
+        assert_eq!(matched_result(k, k), Ok(k));
+    }
+
+    #[test]
+    fn matched_result_rejects_different_widths() {
+        let a = Kind {
+            width: 8,
+            signed: false,
+        };
+        let b = Kind {
+            width: 6,
+            signed: false,
+        };
+        assert_eq!(matched_result(a, b), Err(RuleError::KindMismatch { a, b }));
+    }
+
+    #[test]
+    fn matched_result_rejects_different_signedness() {
+        let a = Kind {
+            width: 8,
+            signed: false,
+        };
+        let b = Kind {
+            width: 8,
+            signed: true,
+        };
+        assert_eq!(matched_result(a, b), Err(RuleError::KindMismatch { a, b }));
     }
 }

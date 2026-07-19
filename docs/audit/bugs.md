@@ -1152,7 +1152,7 @@ its sibling `Index` arm and the checker's own `slice_ty`
 (the fuzzer itself is the regression guard, same as BUG-18/BUG-19's
 discovery path).
 
-## BUG-22 (MEDIUM, OPEN) — Simulator's `-` result is always tagged `signed`, disagreeing with the checker's own lossless-growth rule
+## BUG-22 (MEDIUM, FIXED 2026-07-19) — Simulator's `-` result is always tagged `signed`, disagreeing with the checker's own lossless-growth rule
 
 **What.** `mimz sim`/`test`/`eval`'s evaluator tags EVERY subtraction's
 result value as `signed`, even when the checker types the same
@@ -1207,14 +1207,18 @@ Phase A1b's scoping, not by fuzzing — `tests/differential_fuzz.rs`'s
 generator currently excludes lossless `-` entirely per BUG-19, so it
 has not had a chance to surface this independently).
 
-**Fix (Planned, folded into Stage 4's width_rules expansion — same
-plan that adds `lossless_result`/`matched_result` to
-`mimz_core::width_rules`).** Route `binary_known`'s `Sub` arm through
-the shared `lossless_result` function (mirroring how `Add`/`Mul` will
-also route through it), which derives `signed` from the operands the
-same way the checker's `lossless_ty` does — the hardcoded `true`
-disappears as a natural consequence of sharing one rule, not a
-separate patch.
+**Fix.** `binary_known`'s `Add`/`Sub`/`Mul` arms now all route through
+the shared `width_rules::lossless_result(Kind{l.width,l.signed},
+Kind{r.width,r.signed}, is_mul)`, which derives `signed` from the
+operands the same way the checker's `lossless_ty` does — `Sub`'s
+hardcoded `true` disappeared as a natural consequence of sharing one
+rule with `Add`/`Mul`, not a separate patch (`.expect(...)` guards the
+call, since `checker::check`'s mandatory gating — Stage 2, A2 — already
+rejects any mixed-signedness operand pair before this code can run).
 
-**Test.** None yet — filed as open, fix + regression test scoped into
-the width_rules-expansion implementation plan (not before).
+**Test.** New regression tests in `crates/mimz-sim/src/sim/value.rs`'s
+inline test module: `sub_of_two_unsigned_values_is_unsigned` (confirmed
+it failed against the pre-fix hardcoded `true`) and
+`sub_of_two_signed_values_is_signed` (a positive pin — this case
+already passed by coincidence, kept as a regression guard going
+forward).
