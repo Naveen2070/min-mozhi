@@ -21,7 +21,7 @@
 //! drives a default stimulus for `mimz sim`, while [`harness`] runs `test`
 //! blocks (`drive`/`tick`/`expect`/`if`) for `mimz test`.
 
-mod value;
+pub mod value;
 
 pub mod comb;
 pub mod elaborate;
