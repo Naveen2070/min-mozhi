@@ -150,6 +150,56 @@ pub(crate) fn comb_testbench(
     s
 }
 
+/// Clocked testbench: instantiate, apply the default stimulus (reset
+/// asserted for `reset_cycles`, inputs held constant), and print
+/// `DIFF <cycle> <out>=<bits> …` (binary) after each rising edge.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn clocked_testbench(
+    module: &str,
+    params: &[(String, i128)],
+    clock: &str,
+    reset: Option<&str>,
+    inputs: &[(String, u32, u128)],
+    outputs: &[(String, u32)],
+    cycles: u64,
+    reset_cycles: u64,
+) -> String {
+    let mut s = String::from("module diff_tb;\n");
+    s += &format!("  reg {clock} = 0;\n");
+    if let Some(r) = reset {
+        s += &format!("  reg {r} = 0;\n");
+    }
+    for (n, w, v) in inputs {
+        s += &format!("  reg [{}:0] {n} = {v};\n", w - 1);
+    }
+    for (n, w) in outputs {
+        s += &format!("  wire [{}:0] {n};\n", w - 1);
+    }
+    s += "  integer cyc;\n";
+
+    let mut conns = vec![format!(".{clock}({clock})")];
+    if let Some(r) = reset {
+        conns.push(format!(".{r}({r})"));
+    }
+    conns.extend(inputs.iter().map(|(n, _, _)| format!(".{n}({n})")));
+    conns.extend(outputs.iter().map(|(n, _)| format!(".{n}({n})")));
+    s += &instantiation(module, params, &conns);
+
+    let fmt = display_fmt(outputs);
+    let args = display_args(outputs);
+    s += "  initial begin\n";
+    s += &format!("    for (cyc = 0; cyc < {cycles}; cyc = cyc + 1) begin\n");
+    if let Some(r) = reset {
+        s += &format!("      {r} = (cyc < {reset_cycles}) ? 1'b1 : 1'b0;\n");
+    }
+    s += &format!("      #5 {clock} = 1;\n");
+    s += "      #1;\n";
+    s += &format!("      $display(\"DIFF %0d {fmt}\", cyc, {args});\n");
+    s += &format!("      #4 {clock} = 0;\n");
+    s += "    end\n    $finish;\n  end\nendmodule\n";
+    s
+}
+
 pub(crate) fn display_fmt(outputs: &[(String, u32)]) -> String {
     outputs
         .iter()

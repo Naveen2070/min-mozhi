@@ -284,10 +284,14 @@ pub(super) fn eval_ctx<R: Resolver>(
                 return Err("slice bounds reversed (write `[hi:lo]`, msb first)".into());
             }
             let w = hi - lo + 1;
+            // A slice is always unsigned regardless of the base's own kind
+            // (`checker/widths/expr.rs`'s `slice_ty` returns `bits(...)`
+            // unconditionally, never `Signed`, matching this arm's sibling
+            // single-bit `Index` case just above) — BUG-21.
             if b.unknown {
-                return Ok(Val::unknown(w, b.signed));
+                return Ok(Val::unknown(w, false));
             }
-            Ok(Val::new((b.bits >> lo) & mask(w), w, b.signed))
+            Ok(Val::new((b.bits >> lo) & mask(w), w, false))
         }
         ExprKind::Field { .. } => {
             Err("enum-variant / instance-port access is not supported by the evaluator yet".into())
