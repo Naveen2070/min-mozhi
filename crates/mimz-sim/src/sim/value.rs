@@ -98,8 +98,11 @@ impl Val {
 
 /// Resolves names while an expression is evaluated: a signal/reg/wire to its
 /// current value, plus the compile-time integer environment for index and
-/// slice bounds. The two evaluators differ only in `signal`.
-pub(super) trait Resolver {
+/// slice bounds. The two evaluators differ only in `signal`. `pub` (not just
+/// `pub(super)`) since `mimz-core`'s `width_rules_conformance` integration
+/// test (Stage 4 T3) implements this trait to drive `eval` from outside
+/// `mimz-sim` entirely.
+pub trait Resolver {
     /// Resolve `name` to a value — a signal (evaluating its driver if
     /// combinational) or a compile-time constant. Errors if `name` is neither.
     fn signal(&mut self, name: &str) -> Result<Val, String>;
@@ -134,8 +137,11 @@ pub(super) trait Resolver {
 /// Verilog itself doesn't propagate an enclosing width inward). Most callers
 /// want this. See [`eval_ctx`] for context-determined positions (an
 /// assignment RHS, `extend`'s argument) where a shift's real result depends
-/// on the width it's eventually consumed at (BUG-11).
-pub(super) fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
+/// on the width it's eventually consumed at (BUG-11). `pub` since
+/// `mimz-core`'s `width_rules_conformance` test (Stage 4 T3) drives this
+/// directly to check the simulator's own evaluator against the shared
+/// `width_rules::shift_result` and the checker's `Ty`-level inference.
+pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
     eval_ctx(r, e, None)
 }
 
