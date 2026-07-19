@@ -62,6 +62,25 @@ pub fn shift_result(lhs: Kind, amount: Kind) -> Result<Kind, RuleError> {
     Ok(lhs)
 }
 
+/// `[hi:lo]`, both bounds inclusive, `0 <= lo <= hi < base_width`.
+/// Always unsigned regardless of the sliced value's own kind — this one
+/// function, called from both the checker's `slice_ty` and the
+/// simulator's `ExprKind::Slice` evaluation, is what makes BUG-21
+/// (`docs/audit/bugs.md`) structurally impossible to reintroduce: there
+/// is no second copy of this rule left to drift.
+pub fn slice_result(base_width: u32, hi: u32, lo: u32) -> Result<Kind, RuleError> {
+    if hi < lo {
+        return Err(RuleError::SliceReversed { hi, lo });
+    }
+    if hi >= base_width {
+        return Err(RuleError::SliceOutOfRange { hi, base_width });
+    }
+    Ok(Kind {
+        width: hi - lo + 1,
+        signed: false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,5 +122,49 @@ mod tests {
             signed: true,
         };
         assert_eq!(shift_result(lhs, amount), Err(RuleError::ShiftAmountSigned));
+    }
+
+    #[test]
+    fn slice_result_computes_width_and_is_always_unsigned() {
+        // A slice of ANYTHING is unsigned — this is the exact rule
+        // BUG-21 (docs/audit/bugs.md) found the simulator getting wrong
+        // by copying the sliced base's own signedness instead.
+        assert_eq!(
+            slice_result(9, 5, 3),
+            Ok(Kind {
+                width: 3,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn slice_result_single_bit() {
+        assert_eq!(
+            slice_result(8, 4, 4),
+            Ok(Kind {
+                width: 1,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn slice_result_rejects_reversed_bounds() {
+        assert_eq!(
+            slice_result(8, 2, 5),
+            Err(RuleError::SliceReversed { hi: 2, lo: 5 })
+        );
+    }
+
+    #[test]
+    fn slice_result_rejects_out_of_range_hi() {
+        assert_eq!(
+            slice_result(8, 8, 0),
+            Err(RuleError::SliceOutOfRange {
+                hi: 8,
+                base_width: 8
+            })
+        );
     }
 }
