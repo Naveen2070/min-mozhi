@@ -666,6 +666,23 @@ fn reversed_slice_is_e0406() {
 }
 
 #[test]
+fn huge_slice_bound_that_would_wrap_u32_is_still_e0406() {
+    // Regression: `slice_ty` narrows the const bit-position bounds to
+    // `u32` before calling `width_rules::slice_result`. A raw `as u32`
+    // cast wraps modulo 2^32, so `2^32` (4294967296) would wrap to `0` —
+    // a well-in-range value — and silently accept a bound that must be
+    // rejected. The narrowing must saturate instead of wrap.
+    let src =
+        "module M {\n  in data: bits[8]\n  out y: bit\n  y = data[4294967296:4294967296]\n}\n";
+    let d = first_err(src, "E0406");
+    assert!(
+        d.msg.contains("4294967296"),
+        "names the real, unwrapped bound"
+    );
+    assert!(d.help.unwrap().contains("0..=7"));
+}
+
+#[test]
 fn extend_to_a_smaller_width_is_e0407() {
     let src = "module M {\n  in a: bits[8]\n  out y: bits[4]\n  y = extend(a, 4)\n}\n";
     let d = first_err(src, "E0407");

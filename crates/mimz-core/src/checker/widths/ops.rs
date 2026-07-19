@@ -16,7 +16,7 @@ use super::{MAX_WIDTH, Ty, Wcx, bits, min_bits, min_signed_bits, op_text, same, 
 /// `checker/widths/mod.rs`) is far below `u32::MAX` (~4.29 billion) —
 /// written as a checked conversion rather than a raw cast so a future
 /// change to `MAX_WIDTH` fails loudly instead of silently wrapping.
-fn width_u32(n: u128) -> u32 {
+pub(super) fn width_u32(n: u128) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
