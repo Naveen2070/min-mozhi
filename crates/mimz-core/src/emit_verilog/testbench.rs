@@ -120,6 +120,9 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         emitting_port: false,
         funcs_used: Vec::new(),
         bundle_sigs: HashMap::new(),
+        hoist_counter: 0,
+        hoisted_decls: String::new(),
+        cur_decls: HashMap::new(),
     };
 
     em.out.push_str(&format!(

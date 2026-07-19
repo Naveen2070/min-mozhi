@@ -12,6 +12,8 @@ module VgaKuri (
     output wire [(4)-1:0] frame_cnt_result,
     output wire frame_cnt_running
 );
+    wire [5:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (16 - 1);
     reg [(10)-1:0] h_cnt;
     reg [(10)-1:0] v_cnt;
     wire hsync;
@@ -66,7 +68,7 @@ module VgaKuri (
             frame_cnt_acc <= 0;
         end else begin
             if (frame_cnt_running_r) begin
-                if ((frame_cnt_cnt == (16 - 1))) begin
+                if ((frame_cnt_cnt == __mimz_sub_1)) begin
                     frame_cnt_running_r <= 0;
                     frame_cnt_done_r <= 1;
                 end else begin

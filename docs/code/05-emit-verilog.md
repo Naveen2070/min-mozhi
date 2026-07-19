@@ -4,13 +4,15 @@ ASTs + project symbol table → one Verilog-2005 source string.
 
 ## File layout
 
-| File           | Owns                                                                                                        |
-| -------------- | ----------------------------------------------------------------------------------------------------------- |
-| `mod.rs`       | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`) |
-| `module.rs`    | Module shells, ports, declarations, instances, always-blocks                                                |
-| `expr.rs`      | Expression rendering (incl. `match` → ternary chains)                                                       |
-| `testbench.rs` | Inline `test` blocks → Verilog testbench wrappers (`_tb.v`)                                                 |
-| `translit.rs`  | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)          |
+| File                 | Owns                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`             | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`)                           |
+| `module.rs`          | Module shells, ports, declarations, instances, always-blocks, `build_decls`/`hoist_if_needed`/`hoist_slice_base_if_needed`            |
+| `expr.rs`            | Expression rendering (incl. `match` → ternary chains); self-determined-position hoist call sites                                      |
+| `kinds.rs`           | `infer_kind` — mimz's own width/signedness for an expression, computed straight from the AST (Stage 4, Phase A1b)                     |
+| `self_determined.rs` | `verilog_self_determined_kind` — what real Verilog would compute for an expression in a self-determined position (Stage 4, Phase A1b) |
+| `testbench.rs`       | Inline `test` blocks → Verilog testbench wrappers (`_tb.v`)                                                                           |
+| `translit.rs`        | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)                                    |
 
 Same module-scoping pattern as the parser: state and shared helpers in
 `mod.rs`, the other files are `impl Emitter` blocks entered via
@@ -173,10 +175,60 @@ Mostly 1:1 symbol mapping. The interesting cases:
 - **`extend(x, N)`** emits just `(x)` — extension is context-automatic
   in Verilog assignments: unsigned operands zero-extend, and
   `signed`-declared ones SIGN-extend (see "Signed emission" below). The
-  call exists for the checker to verify widths.
+  call exists for the checker to verify widths. When `x` is a compile-time
+  constant it renders as an explicitly-sized literal instead (BUG-18); when
+  `x` is a compound (non-identifier) runtime expression, it is first
+  hoisted to its own wire at its own natural width (BUG-19, see
+  "Self-determined-position hoisting" below) so a wider surrounding
+  context can never silently re-derive its internal wrap/growth arithmetic
+  at the wrong width.
   **`trunc(x, N)`** emits `x[(N)-1:0]`.
 - **Literals** preserve the writer's base via the token's `raw` spelling:
   `0xFF` → `'hFF`, `0b1010` → `'b1010`, decimal stays decimal.
+
+### Self-determined-position hoisting (BUG-19, BUG-20)
+
+Verilog's own width-inference rule for a **self-determined position**
+(a concat/replication member, a comparison operand, a `$signed`/
+`$unsigned` argument, `extend()`'s own argument) can disagree with
+mimz's — e.g. a lossless `-` grows by one bit in mimz's model but
+Verilog self-determines it at the plain max-operand width with no
+growth (BUG-19), and a slice's base (`x[hi:lo]`) must be a plain
+identifier in real Verilog even though mimz's own grammar allows an
+arbitrary expression there (BUG-20).
+
+`kinds::infer_kind` (mimz's own Kind) and `self_determined::
+verilog_self_determined_kind` (Verilog's Kind for the same expression in
+a self-determined position) are two independent computations over the
+same `Expr`, both driven by `Emitter::build_decls` — every `Port`/`Wire`/
+`Reg` `Kind` of the CURRENT module, built once per module and cached on
+`Emitter::cur_decls`, bundle fields flattened to `{name}_{field}` entries
+the same way every other bundle-aware renderer here does. `Emitter::
+hoist_if_needed` compares the two; on a mismatch it lifts the expression
+into a fresh `wire __mimz_sub_N; assign __mimz_sub_N = <expr>;` pair
+(injected at the module-body top, alongside the `clog2`/user-`fn`
+injections) and uses the wire's name instead — forcing the expression to
+evaluate at mimz's own intended width before it ever reaches the
+self-determined position. `Emitter::hoist_slice_base_if_needed` is the
+BUG-20/BUG-19-`extend` sibling: it hoists unconditionally on SHAPE
+(`expr::is_plain_identifier`) rather than on a `Kind` mismatch, since
+Verilog's part-select grammar rejects a compound base outright,
+regardless of width.
+
+Call sites (`expr.rs`): `ExprKind::Concat`/`Replicate` (each part),
+the shared binary-operator arm (comparison operators only:
+`Eq|Ne|Lt|Le|Gt|Ge` — Verilog LRM 5.5.1 makes only comparison operands
+genuinely self-determined; every other binary operator's operands are
+context-determined and should not be hoisted), `Builtin::SignedCast`/
+`UnsignedCast`, `Builtin::Extend`'s non-constant argument, and
+`ExprKind::Slice`'s base.
+Every call site is guarded by `expr::kind_is_inferrable`, a non-panicking
+mirror of `infer_kind`'s own traversal shape: `Emitter::cur_decls` is
+deliberately incomplete (it never has a `fn` body's own params/`let`s, a
+module `parameter` kept symbolic by design, or anything from the
+testbench emitter, which never calls `module()` at all) — the guard
+skips hoisting cleanly for those instead of panicking, so hoisting only
+ever fires for genuine module-body value expressions.
 
 ## Compile-time generation: `repeat` unrolling
 
