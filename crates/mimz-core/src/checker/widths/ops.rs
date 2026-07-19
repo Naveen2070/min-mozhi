@@ -10,6 +10,27 @@ use super::super::Checker;
 use super::super::consteval;
 use super::{MAX_WIDTH, Ty, Wcx, bits, min_bits, min_signed_bits, op_text, same, show};
 
+/// Narrow a checker-side width (`u128`, since `Ty::Bits`/`Ty::Signed`
+/// store one) to the `u32` `width_rules::Kind` uses. Safe for any width
+/// this checker would ever actually accept — `MAX_WIDTH` (1,000,000,
+/// `checker/widths/mod.rs`) is far below `u32::MAX` (~4.29 billion) —
+/// written as a checked conversion rather than a raw cast so a future
+/// change to `MAX_WIDTH` fails loudly instead of silently wrapping.
+fn width_u32(n: u128) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
+/// The inverse of the checker's own `Ty` -> `Kind` narrowing: turn a
+/// `width_rules::Kind` (the shared rule's result) back into this pass's
+/// `Ty`.
+fn kind_to_ty(k: crate::width_rules::Kind) -> Ty<'static> {
+    if k.signed {
+        Ty::Signed(k.width as u128)
+    } else {
+        bits(k.width as u128)
+    }
+}
+
 /// Returns `data`'s type iff `fields` is EXACTLY `{ valid: bit, data: T }`
 /// — no missing `valid`, no wrong-typed `valid`, no extra fields. Shared by
 /// `coalesce_ty`'s LHS check and its OR-mux RHS check — `??`'s rule is
@@ -461,7 +482,11 @@ impl<'a> Checker<'a> {
     }
 
     /// `<<`/`>>`: the result keeps the LEFT operand's type; the amount is
-    /// a compile-time value or an unsigned signal.
+    /// a compile-time value or an unsigned signal. The actual width/kind
+    /// rule is shared with the simulator via `width_rules::shift_result`
+    /// (Stage 4, A1a) — see that function's doc comment for why the
+    /// checker's static rule and the simulator's runtime rule (BUG-11)
+    /// are deliberately different beyond this shared floor.
     fn shift_ty(
         &mut self,
         cx: &mut Wcx<'a>,
@@ -501,8 +526,19 @@ impl<'a> Checker<'a> {
                 return Ty::Unknown;
             }
         }
-        match lt {
-            Ty::Bit | Ty::Bits(_) | Ty::Signed(_) => lt, // width preserved (spec/02 section 3)
+        let lhs_kind = match lt {
+            Ty::Bit => crate::width_rules::Kind {
+                width: 1,
+                signed: false,
+            },
+            Ty::Bits(n) => crate::width_rules::Kind {
+                width: width_u32(n),
+                signed: false,
+            },
+            Ty::Signed(n) => crate::width_rules::Kind {
+                width: width_u32(n),
+                signed: true,
+            },
             Ty::CtInt(_) => {
                 self.err(
                     cx.file,
@@ -512,9 +548,22 @@ impl<'a> Checker<'a> {
                     "give it one first: `extend(1, N) << k`, or shift a sized \
                      signal",
                 );
-                Ty::Unknown
+                return Ty::Unknown;
             }
-            other => self.not_numeric(cx, lhs.span, &other, "a shift"),
+            other => return self.not_numeric(cx, lhs.span, &other, "a shift"),
+        };
+        // `rt` is already known non-signed (every branch above that could
+        // make it signed already returned) — the amount side of
+        // `shift_result` can never fire here.
+        match crate::width_rules::shift_result(
+            lhs_kind,
+            crate::width_rules::Kind {
+                width: 0,
+                signed: false,
+            },
+        ) {
+            Ok(k) => kind_to_ty(k),
+            Err(_) => unreachable!("amount signedness already checked above"),
         }
     }
 
