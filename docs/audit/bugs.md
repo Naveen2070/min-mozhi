@@ -903,7 +903,7 @@ Icarus. No golden file or emitter unit test asserted the previous (broken)
 `extend` rendering, so changing its format regressed nothing (full workspace
 suite: 886 passed).
 
-## BUG-19 (MEDIUM, OPEN) — A width-growing/-changing operator's result silently gets the WRONG value once `extend()` crosses back into a wider Verilog context
+## BUG-19 (MEDIUM, FIXED 2026-07-19) — A width-growing/-changing operator's result silently gets the WRONG value once `extend()` crosses back into a wider Verilog context
 
 **What.** A checker-valid, kernel-correct program whose emitted Verilog gives
 a **different value** under real Icarus — not an elaboration error like
@@ -1011,29 +1011,11 @@ way, and the project's own constitution rates silent miscompute above
 elaboration failure (BUG-18) in severity, being harder for a user to
 notice.
 
-**Fix (Pending).** Broader than BUG-18's narrow literal-rendering patch:
-needs the emitter to make a width-growing/-changing operator's result
-self-determined-safe wherever it can land in a non-context-determined
-position — e.g. explicitly wrapping the operator's Verilog rendering in a
-width-forcing idiom (a `{1'b0, (a - b)}`-style explicit pad for lossless
-growth, or forcing the wrap operator's own operands to a temporary at their
-ORIGINAL width — e.g. a `$unsigned'()`-style size cast at the pre-widen
-width before the wrap, then extending the RESULT — contingent on
-Icarus-version compatibility) whenever the surrounding position is
-self-determined, not just when the operand happens to be
-`extend()`-of-literal. Likely belongs alongside BUG-17 and the A1 "one
-shared width/const-eval module" item
-(`docs/plan/phase-2-correctness-consolidation.local.md` stage 4) rather than
-as another narrow one-off patch — deferred by explicit decision (not
-overlooked) pending that broader design pass.
+**Fix.** The emitter now computes both mimz's own `Kind` (`emit_verilog::kinds::infer_kind`) and Verilog's self-determined `Kind` (`emit_verilog::self_determined::verilog_self_determined_kind`) for every concat member, replication part, comparison operand, and `$signed`/`$unsigned` argument, hoisting to a named wire on a mismatch instead of trusting a passthrough.
 
-**Test.** None yet — filed as open. Both repros above are standalone,
-reproducible `.mimz` snippets (not currently exercised by any committed
-test — `tests/differential_fuzz.rs`'s generator deliberately avoids
-generating either shape, per the "Severity" note above); re-adding a
-regression test for this is part of the Stage-4 fix, not before.
+**Test.** `bug_19_lossless_sub_in_a_concat_matches_icarus` and `bug_19_wrapping_sub_in_a_bitand_matches_icarus` (`tests/self_determined_regression.rs`) — both regression tests from Task 6, verifying the fix against real Icarus.
 
-## BUG-20 (MEDIUM, OPEN) — Emitter renders a slice of a non-identifier base ungrouped, invalid Verilog part-select syntax
+## BUG-20 (MEDIUM, FIXED 2026-07-19) — Emitter renders a slice of a non-identifier base ungrouped, invalid Verilog part-select syntax
 
 **What.** mimz's own language semantics allow `[hi:lo]` on any expression,
 not just a plain signal — e.g. `(p1 & p2)[3:0]` passes `mimz check` and
@@ -1079,15 +1061,9 @@ tools — but blocks synthesis of affected designs. No shipped example
 triggers it (the fuzzer's own workaround has kept it from surfacing in
 CI so far).
 
-**Fix (Planned, Stage 4 Phase A1b).** Same mechanism as A1b's
-self-determined-position fix: when `base` is not already a plain
-identifier, hoist it into a fresh explicit-width intermediate wire
-(`__mimz_sub_N`) before the current statement, then slice the wire
-instead of the raw expression text — a named signal is always a valid
-part-select base regardless of what it was assigned from.
+**Fix.** The emitter now hoists a slice's base into a named wire whenever it isn't already a plain identifier (`Emitter::hoist_slice_base_if_needed`). A named signal is always a valid part-select base regardless of what it was assigned from.
 
-**Test.** None yet — filed as open, fix scoped into A1b's implementation
-plan (not before).
+**Test.** `bug_20_slice_of_a_composite_expression_matches_icarus` (`tests/self_determined_regression.rs`) — regression test from Task 6, verifying the fix against real Icarus.
 
 ## BUG-21 (MEDIUM, FIXED 2026-07-19) — Simulator's slice-read incorrectly inherited the base's signedness
 
@@ -1222,3 +1198,129 @@ it failed against the pre-fix hardcoded `true`) and
 `sub_of_two_signed_values_is_signed` (a positive pin — this case
 already passed by coincidence, kept as a regression guard going
 forward).
+
+## BUG-23 (MEDIUM, OPEN) — A wrapping operator nested under a sibling context-determined operator loses its own-width truncation
+
+**What.** A checker-valid, kernel-correct program whose emitted Verilog
+gives a **different value** under real Icarus, whenever a wrapping
+operator (`+%`/`-%`/`*%`) is used as a direct operand of a DIFFERENT,
+context-determined arithmetic/bitwise operator (`+`/`-`/`*`/`&`/`|`/`^`)
+— not inside one of the four Verilog self-determined positions Stage 4
+Phase A1b's hoist mechanism actually checks (concat member, replication
+part, comparison operand, `$signed`/`$unsigned` argument). Two repros,
+both found by `tests/differential_fuzz.rs`'s generator on its very first
+re-enabled run (Stage 4 Phase A1b, Task 8) — the fuzzer's `+`/`-`/`+%`/
+`-%` combinators had been excluded from the generator entirely since
+BUG-19 was filed; re-enabling them (the closing-the-loop proof for
+BUG-19's own fix) surfaced this DIFFERENT, narrower member of the same
+bug class immediately, at default `N`, no deep pass needed:
+
+```
+module Fuzz {
+  in p0: signed[6]
+  in p1: signed[8]
+  out y: bits[18]
+  y = (extend(63, 7) + ({unsigned((extend(signed(extend(1, 1)), 6) ^ p0)), {unsigned(p0), extend(21, 5)}} +% extend(63727, 17)))
+}
+```
+
+Vector `p0=25, p1=208`: our kernel computes `y=11363`; Icarus computes
+`y=142435`. The outer `+`'s right operand is a `+%` — not sitting in
+any of the four checked self-determined positions, since it's a direct
+operand of `+`, which is itself the top-level assignment's RHS (never
+itself run through `hoist_if_needed`, only the four checked positions
+are).
+
+A second, clocked repro (seed `202427630`):
+
+```
+module Fuzz {
+  clock clk
+  reset rst
+  in p0: bits[1]
+  in p1: bits[3]
+  in p2: bits[5]
+  reg r0: bits[11] = 0
+  reg r1: bits[13] = 0
+  out y: bits[26]
+  on rise(clk) {
+    r0 <- extend(287, 11)
+    r1 <- extend(5643, 13)
+  }
+  y = {(extend(1524, 14) | {r1, p0}), (p0[0:0] + (extend(extend(1, 1), 11) -% r0))}
+}
+```
+
+held inputs `p0=0, p1=7, p2=24`: our kernel computes `y=48195298`;
+Icarus computes `y=48197346`. Here the outer `+` (containing the `-%`)
+IS itself a concat member, so it correctly gets hoisted by Task 6's own
+mechanism — but the hoisted wire's own `assign` RHS still contains the
+inner `-%` rendered as bare `-`, still directly connected (via that
+outer `+`) to the new wire's declared width. The hoist protects the
+OUTER growth bit but does not isolate the INNER wrap subexpression from
+that same context.
+
+**Cause.** mimz's own model (`emit_verilog::kinds::infer_binary`,
+`width_rules::matched_result`) gives `AddWrap`/`SubWrap`/`MulWrap` the
+same width rule as `BitAnd`/`BitOr`/`BitXor` — `max(l, r)`, no growth —
+treating "wrap at the operand width, discard the carry" as a fact of
+the operator itself, independent of where the expression sits.
+`emit_verilog/expr.rs` renders `AddWrap`/`SubWrap`/`MulWrap` as the
+EXACT same Verilog text as `Add`/`Sub`/`Mul` (bare `+`/`-`/`*`) —
+nothing in the emitted text marks a width boundary there. Real
+Verilog's arithmetic/bitwise operators are context-determined: a
+connected tree of `+`/`-`/`*`/`&`/`|`/`^` computes ONE width for the
+whole tree (the widest leaf, extended outward to whatever ends the
+chain), and does not stop partway through to "wrap" an inner
+subexpression at that subexpression's own declared width first — the
+exact effect `tests/differential_fuzz.rs`'s own `SAME_WIDTH_OPS` doc
+comment already described for a hand-found case before Stage 4 (seed
+`12648524`: `extend((extend(3,3) -% p2), 18)` inside an `&`), now shown
+to be reachable generally through the fuzzer, not only by hand
+construction.
+
+**How found.** `tests/differential_fuzz.rs`'s
+`differential_fuzz_matches_icarus`/`differential_fuzz_clocked_matches_icarus`,
+default N (`N=20` combinational, `N=20` clocked), Stage 4 Phase A1b's
+Task 8 — the very first re-enablement run of the `combine_lossless`/
+`combine_wrap` combinators (added specifically as BUG-19's own
+closing-the-loop proof). Both failures are real, `iverilog`-confirmed
+value mismatches (not a generator/parser/checker panic — the checker
+accepted both generated programs as valid, and real Icarus disagreed
+with the kernel's own computed value).
+
+**Severity.** MEDIUM — silent wrong value (no crash, no compile error)
+whenever a wrapping operator (`+%`/`-%`/`*%`) is a direct operand of
+ANY other context-determined arithmetic/bitwise operator and that
+combination doesn't happen to land in one of Task 6's four checked
+self-determined positions (or does land there, as in the clocked repro,
+but the hoisted wire's own contents still connect the inner wrap
+operator to the same wider context). Distinct from BUG-19's two
+original repros (both already fixed by Task 6) and from BUG-20 (an
+unrelated slice-grammar issue) — this is a narrower, previously-
+undetected member of the same "self-determined vs. context-determined"
+divergence class, closer to the class's true boundary than either of
+BUG-19's named cases.
+
+**Fix (Pending).** Two directions look plausible, neither evaluated in
+depth yet (deliberately out of Stage 4 Phase A1b's own scope — that
+phase targeted the four Verilog self-determined positions specifically,
+not "operand of a sibling context-determined operator", a genuinely
+different check): (a) extend `emit_verilog::self_determined`'s checked-
+position set to also cover "direct operand of another context-determined
+binary operator" — likely requiring the hoist to recurse INTO an
+already-hoisted subexpression's own contents, not just the position at
+which the outer mismatch was found (the clocked repro's exact gap); or
+(b) always force every `*Wrap` node through an explicit hoisted wire
+regardless of surrounding position, trading a broader (but simpler,
+harder-to-get-wrong) rendering change for less precision about when a
+hoist is actually needed. Needs its own design pass, not a one-off patch
+— tracked here as open, deliberately not fixed as part of Phase A1b.
+
+**Test.** `tests/differential_fuzz.rs`'s `differential_fuzz_matches_icarus`
+(seed `12648435`) and `differential_fuzz_clocked_matches_icarus` (seed
+`202427630`), both at DEFAULT N — this bug is left exposed rather than
+worked around in the generator a second time (a deliberate decision:
+the fuzzer's `+`/`-`/`+%`/`-%` combinators stay enabled, so `cargo test`
+fails until this is actually fixed, an honest visible regression marker
+rather than a silently narrowed generator).

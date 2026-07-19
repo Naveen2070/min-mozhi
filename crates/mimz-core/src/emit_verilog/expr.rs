@@ -31,6 +31,104 @@ fn field_expr(base: &Expr, field_name: &str) -> Expr {
     }
 }
 
+/// True iff `kinds::infer_kind` can resolve `expr`'s `Kind` against `decls`
+/// WITHOUT panicking — the pre-check every hoist call site below runs
+/// before ever calling `Emitter::hoist_if_needed` (which calls `infer_kind`
+/// unconditionally, first thing, with no such check of its own).
+///
+/// Mirrors `infer_kind`'s own traversal shape (same `ExprKind`s, same
+/// eagerness — e.g. a `Binary`'s `lhs` is checked even for `Eq`/`Ne`, since
+/// `infer_kind`'s `l = infer_kind(lhs, decls)` runs before it looks at
+/// `op`) and `kinds::const_fold`'s literal-only requirement for slice
+/// bounds/extend-trunc widths, without ever panicking itself.
+///
+/// This exists because `decls` (`Emitter::cur_decls`, built once per
+/// module from its own Port/Wire/Reg declarations) is deliberately NOT a
+/// complete symbol table: a `fn` body's own params/`let`s, a module
+/// `parameter` (kept symbolic by design — see `build_decls`'s own doc),
+/// and the testbench emitter's signals (which never populate `cur_decls`
+/// at all — the testbench `Emitter` never calls `module()`) are all real
+/// `Ident`s `expr_subst` renders through the exact same Concat/Replicate/
+/// Binary/Slice/Cast arms this task wires hoisting into, and none of them
+/// are ever keys in `decls`. Without this guard, `hoist_if_needed` would
+/// panic compiling any of those — a testbench `expect sum == 15`, a `fn`
+/// body's own arithmetic, or a port width like `bits[W + 1]` — instead of
+/// just rendering them exactly as before this task (the correct behavior:
+/// hoisting is only ever needed for the module-body value expressions
+/// BUG-19/BUG-20 are about).
+fn kind_is_inferrable(expr: &Expr, decls: &HashMap<String, crate::width_rules::Kind>) -> bool {
+    match &expr.kind {
+        ExprKind::Int { .. } | ExprKind::Bool(_) => true,
+        ExprKind::Ident(name) => decls.contains_key(name),
+        ExprKind::Unary { expr: inner, .. } => kind_is_inferrable(inner, decls),
+        // `infer_kind`'s `Binary` arm computes `l = infer_kind(lhs, decls)`
+        // unconditionally before it even looks at `op` (and `r` too, for
+        // every arm but `Eq`/`Ne`/`Lt`/`Le`/`Gt`/`Ge`/`LogicAnd`/`LogicOr`)
+        // — checking both sides regardless of `op` is conservative (may
+        // skip a hoist that would have been safe) but never wrong.
+        ExprKind::Binary { lhs, rhs, .. } => {
+            kind_is_inferrable(lhs, decls) && kind_is_inferrable(rhs, decls)
+        }
+        ExprKind::Concat(parts) | ExprKind::Replicate { parts, .. } => {
+            parts.iter().all(|p| kind_is_inferrable(p, decls))
+        }
+        // `infer_kind`'s `Slice` arm never looks at `base` at all — only
+        // `hi`/`lo`, via `const_fold`, which panics on anything but a
+        // literal `Int` node (NOT just "constant-foldable": `W - 1` is
+        // compile-time-constant but is a `Binary` node, not an `Int` one,
+        // and `const_fold` does not evaluate it).
+        ExprKind::Slice { hi, lo, .. } => {
+            matches!(hi.kind, ExprKind::Int { .. }) && matches!(lo.kind, ExprKind::Int { .. })
+        }
+        ExprKind::Call { func, args } => match func {
+            Builtin::Extend | Builtin::Trunc => {
+                matches!(args[1].kind, ExprKind::Int { .. }) && kind_is_inferrable(&args[0], decls)
+            }
+            Builtin::SignedCast | Builtin::UnsignedCast => kind_is_inferrable(&args[0], decls),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// True iff `kind`'s own top-level operator is one whose spec-defined
+/// result depends on the width it was originally evaluated at — lossless
+/// growth (`+`/`-`/`*`) or wrap-modulus (`+%`/`-%`/`*%`) — BUG-19's own
+/// documented class (`docs/audit/bugs.md`). Every OTHER operator
+/// (`<<`/`>>`/`&`/`|`/`^`/comparisons/…) gives the SAME value no matter
+/// what width Verilog happens to (re)compute it at, so `Builtin::Extend`'s
+/// argument-hoist (below) only needs to isolate THIS family, not every
+/// non-identifier shape.
+fn is_width_effect_binop(kind: &ExprKind) -> bool {
+    matches!(
+        kind,
+        ExprKind::Binary {
+            op: BinOp::Add
+                | BinOp::Sub
+                | BinOp::Mul
+                | BinOp::AddWrap
+                | BinOp::SubWrap
+                | BinOp::MulWrap,
+            ..
+        }
+    )
+}
+
+/// True iff `text` is a bare Verilog identifier (letters, digits,
+/// underscore, not starting with a digit) — the ONLY kind of text a
+/// Verilog part-select (`x[hi:lo]`) or a self-determined position that
+/// needs a definite-width signal reference can safely receive without
+/// hoisting to a wire first. Deliberately conservative: a hoisted
+/// wire's own name (`__mimz_sub_N`) always passes this check trivially.
+pub(super) fn is_plain_identifier(text: &str) -> bool {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 impl Emitter<'_> {
     /// Render an expression with no substitutions (the common case).
     pub(super) fn expr(&mut self, e: &Expr) -> String {
@@ -172,8 +270,57 @@ impl Emitter<'_> {
                 format!("({valid} ? {data} : {fallback})")
             }
             ExprKind::Binary { op, lhs, rhs } => {
-                let l = self.expr_subst(lhs, subst, arrays);
-                let r = self.expr_subst(rhs, subst, arrays);
+                // Hoist BOTH operands, but ONLY for a comparison — those
+                // are the one family whose operands the Verilog LRM
+                // itself always treats as self-determined regardless of
+                // where the comparison sits (relational/equality operator
+                // operands, LRM 5.5.1), so `verilog_self_determined_kind`'s
+                // answer is meaningful for `lhs`/`rhs` here. Every OTHER
+                // operator's operands are normally CONTEXT-determined (they
+                // inherit the surrounding assignment/expression's width,
+                // not their own) — checking them against the self-
+                // determined rule here would be comparing against the
+                // wrong rule entirely, not just an unnecessary no-op:
+                // confirmed empirically (`shift`'s golden test) that doing
+                // this unconditionally for e.g. `Shl` spuriously hoists a
+                // plain top-level `y = 1 << 3`, whose un-hoisted rendering
+                // was already correct (real Verilog computes it via the
+                // ASSIGNMENT's context there, not a self-determined rule).
+                // A width-matching/wrap-family/lossless operator's own
+                // MEMBERSHIP in a genuinely self-determined position (a
+                // concat/replicate part, `extend()`'s argument) is instead
+                // caught at those call sites directly (`ExprKind::Concat`/
+                // `Replicate` above, `Builtin::Extend` below) — hoisting
+                // the WHOLE sub-expression there, not by second-guessing
+                // this shared arm's own `lhs`/`rhs`.
+                let (l, r) = if matches!(
+                    op,
+                    BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
+                ) {
+                    let decls = self.cur_decls.clone();
+                    let l = {
+                        let text = self.expr_subst(lhs, subst, arrays);
+                        if kind_is_inferrable(lhs, &decls) {
+                            self.hoist_if_needed(lhs, text, &decls)
+                        } else {
+                            text
+                        }
+                    };
+                    let r = {
+                        let text = self.expr_subst(rhs, subst, arrays);
+                        if kind_is_inferrable(rhs, &decls) {
+                            self.hoist_if_needed(rhs, text, &decls)
+                        } else {
+                            text
+                        }
+                    };
+                    (l, r)
+                } else {
+                    (
+                        self.expr_subst(lhs, subst, arrays),
+                        self.expr_subst(rhs, subst, arrays),
+                    )
+                };
                 // Wrapping ops: same-width Verilog arithmetic already wraps.
                 let sym = match op {
                     BinOp::Add | BinOp::AddWrap => "+",
@@ -273,17 +420,33 @@ impl Emitter<'_> {
                 format!("({out})")
             }
             ExprKind::Concat(parts) => {
+                let decls = self.cur_decls.clone();
                 let ps: Vec<String> = parts
                     .iter()
-                    .map(|p| self.expr_subst(p, subst, arrays))
+                    .map(|p| {
+                        let text = self.expr_subst(p, subst, arrays);
+                        if kind_is_inferrable(p, &decls) {
+                            self.hoist_if_needed(p, text, &decls)
+                        } else {
+                            text
+                        }
+                    })
                     .collect();
                 format!("{{{}}}", ps.join(", "))
             }
             ExprKind::Replicate { count, parts } => {
+                let decls = self.cur_decls.clone();
                 let c = self.index_expr(count, subst, arrays);
                 let ps: Vec<String> = parts
                     .iter()
-                    .map(|p| self.expr_subst(p, subst, arrays))
+                    .map(|p| {
+                        let text = self.expr_subst(p, subst, arrays);
+                        if kind_is_inferrable(p, &decls) {
+                            self.hoist_if_needed(p, text, &decls)
+                        } else {
+                            text
+                        }
+                    })
                     .collect();
                 format!("{{{c}{{{}}}}}", ps.join(", "))
             }
@@ -322,7 +485,24 @@ impl Emitter<'_> {
                 format!("{b}[{i}]")
             }
             ExprKind::Slice { base, hi, lo } => {
+                // BUG-20: Verilog's part-select (`x[hi:lo]`) grammar only
+                // accepts a plain identifier as `x` — a composite base
+                // expression (`(p0 & p1)[1:0]`) is a syntax error in real
+                // Verilog, not just a width mismatch, so this hoists
+                // unconditionally on shape (`is_plain_identifier`, inside
+                // `hoist_slice_base_if_needed`) rather than on a Kind
+                // mismatch. `kind_is_inferrable` still guards the
+                // `infer_kind` call needed to size the hoisted wire — a
+                // `fn`-body/testbench/width slice base is left exactly as
+                // before this task.
                 let b = self.expr_subst(base, subst, arrays);
+                let decls = self.cur_decls.clone();
+                let b = if kind_is_inferrable(base, &decls) {
+                    let base_width = crate::emit_verilog::kinds::infer_kind(base, &decls).width;
+                    self.hoist_slice_base_if_needed(b, base_width)
+                } else {
+                    b
+                };
                 let h = self.index_expr(hi, subst, arrays);
                 let l = self.index_expr(lo, subst, arrays);
                 format!("{b}[{h}:{l}]")
@@ -417,10 +597,24 @@ impl Emitter<'_> {
             }
             ExprKind::Call { func, args } => match func {
                 Builtin::SignedCast => {
-                    format!("$signed({})", self.expr_subst(&args[0], subst, arrays))
+                    let decls = self.cur_decls.clone();
+                    let text = self.expr_subst(&args[0], subst, arrays);
+                    let hoisted = if kind_is_inferrable(&args[0], &decls) {
+                        self.hoist_if_needed(&args[0], text, &decls)
+                    } else {
+                        text
+                    };
+                    format!("$signed({hoisted})")
                 }
                 Builtin::UnsignedCast => {
-                    format!("$unsigned({})", self.expr_subst(&args[0], subst, arrays))
+                    let decls = self.cur_decls.clone();
+                    let text = self.expr_subst(&args[0], subst, arrays);
+                    let hoisted = if kind_is_inferrable(&args[0], &decls) {
+                        self.hoist_if_needed(&args[0], text, &decls)
+                    } else {
+                        text
+                    };
+                    format!("$unsigned({hoisted})")
                 }
                 // Extension is context-automatic in Verilog assignments:
                 // unsigned operands zero-extend; `signed`-declared ones
@@ -435,15 +629,62 @@ impl Emitter<'_> {
                 // `{...}` is rejected by Icarus ("indefinite width"). When the
                 // argument resolves to a constant (a literal, possibly through
                 // nested extend/trunc), render it as an explicitly-sized
-                // literal at this extend's target width; otherwise fall back to
-                // the passthrough, which is safe for runtime operands.
+                // literal at this extend's target width; otherwise fall back
+                // to the passthrough — which is syntactically safe (parens
+                // are always valid Verilog), but NOT semantically safe for
+                // every argument shape.
+                //
+                // BUG-19 (docs/audit/bugs.md, its second filed repro, T2 v2):
+                // parens do not stop Verilog's context propagation — a plain
+                // `((expr))` is still a context-determined position, so when
+                // this whole `extend(...)` call is itself an operand of a
+                // wider context-determined operator (e.g. `&` next to a
+                // concat sibling), Verilog re-derives `args[0]`'s own
+                // arithmetic AT THAT WIDER WIDTH instead of at its own
+                // natural one — silently changing a wrap operator's modulus
+                // (`+%`/`-%`) or a lossless operator's growth (BUG-19's own
+                // doc: "any operator whose spec-defined result depends on
+                // the width it was originally evaluated at"). Only THAT
+                // family is unsound this way — `1 << 3`, `p0 & p1`, a bare
+                // signal, all give the SAME value no matter what width
+                // Verilog happens to (re)compute them at, so hoisting them
+                // here would be pure noise (confirmed empirically: doing
+                // this unconditionally for any non-identifier `args[0]`
+                // spuriously hoisted `extend(1 << 3, N)`, changing golden
+                // output with no correctness benefit). So this checks
+                // `args[0]`'s own TOP-level operator directly, not a Kind
+                // mismatch (`mimz_kind`/`verilog_self_determined_kind` agree
+                // on `args[0]`'s own width here regardless — the bug is
+                // context ESCAPE of ITS INTERNAL ARITHMETIC, not a self-
+                // determined-position width disagreement, so the usual
+                // mismatch check would never fire): when it IS one of the
+                // width-effect operators, hoist it into its own wire at its
+                // own natural width (same shape-based, unconditional-once-
+                // triggered mechanism BUG-20's `Slice` fix below uses) so
+                // its internal arithmetic evaluates in an assignment fixed
+                // at exactly that width — then this extend's own (still-
+                // unsized) passthrough zero/sign-extends the now-fixed wire
+                // value correctly, matching mimz's intended semantics.
                 Builtin::Extend => {
                     match (
                         self.resolve_const_value(&args[0]),
                         consteval::eval(&args[1], &self.env).ok(),
                     ) {
                         (Some(v), Some(w)) => format!("{}'d{v}", w as u128),
-                        _ => format!("({})", self.expr_subst(&args[0], subst, arrays)),
+                        _ => {
+                            let text = self.expr_subst(&args[0], subst, arrays);
+                            let decls = self.cur_decls.clone();
+                            let text = if is_width_effect_binop(&args[0].kind)
+                                && kind_is_inferrable(&args[0], &decls)
+                            {
+                                let w =
+                                    crate::emit_verilog::kinds::infer_kind(&args[0], &decls).width;
+                                self.hoist_slice_base_if_needed(text, w)
+                            } else {
+                                text
+                            };
+                            format!("({text})")
+                        }
                     }
                 }
                 Builtin::Trunc => {
@@ -701,5 +942,19 @@ impl Emitter<'_> {
             return out;
         }
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_plain_identifier_accepts_and_rejects_correctly() {
+        assert!(is_plain_identifier("p0"));
+        assert!(is_plain_identifier("__mimz_sub_3"));
+        assert!(!is_plain_identifier("(p0 & p1)"));
+        assert!(!is_plain_identifier("3"));
+        assert!(!is_plain_identifier(""));
     }
 }
