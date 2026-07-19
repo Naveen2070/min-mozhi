@@ -763,7 +763,20 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
         // is known (self-determined fallback — e.g. a bare test/eval
         // expression with no assignment target).
         BinOp::Shl => {
-            let ctx_w = expected_width.map(|w| w.max(l.width)).unwrap_or(l.width);
+            let base = mimz_core::width_rules::shift_result(
+                mimz_core::width_rules::Kind {
+                    width: l.width,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: r.width,
+                    signed: r.signed,
+                },
+            )
+            .map_err(|_| "a shift amount cannot be `signed`".to_string())?;
+            let ctx_w = expected_width
+                .map(|w| w.max(base.width))
+                .unwrap_or(base.width);
             let widened = extend_bits(l, ctx_w);
             let shift = r.bits;
             let bits = if shift >= 128 {
@@ -771,17 +784,30 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
             } else {
                 widened.checked_shl(shift as u32).unwrap_or(0)
             };
-            Val::new(bits, ctx_w, l.signed)
+            Val::new(bits, ctx_w, base.signed)
         }
         BinOp::Shr => {
-            let ctx_w = expected_width.map(|w| w.max(l.width)).unwrap_or(l.width);
+            let base = mimz_core::width_rules::shift_result(
+                mimz_core::width_rules::Kind {
+                    width: l.width,
+                    signed: l.signed,
+                },
+                mimz_core::width_rules::Kind {
+                    width: r.width,
+                    signed: r.signed,
+                },
+            )
+            .map_err(|_| "a shift amount cannot be `signed`".to_string())?;
+            let ctx_w = expected_width
+                .map(|w| w.max(base.width))
+                .unwrap_or(base.width);
             let widened = extend_bits(l, ctx_w);
             let bits = if r.bits >= 128 {
                 0
             } else {
                 widened >> (r.bits as u32)
             };
-            Val::new(bits, ctx_w, l.signed)
+            Val::new(bits, ctx_w, base.signed)
         }
         BinOp::Eq => Val::new(
             ((l.bits & mask(wmax)) == (r.bits & mask(wmax))) as u128,
@@ -973,6 +999,17 @@ mod tests {
         let shifted = binary_ctx(BinOp::Shl, din, Val::from_int(2), Some(8)).unwrap();
         assert_eq!(shifted.width, 8);
         assert_eq!(shifted.masked(), 28);
+    }
+
+    #[test]
+    fn shl_rejects_a_signed_shift_amount() {
+        let l = Val::new(1, 8, false);
+        let r = Val::new(2, 3, true); // signed amount — spec/02 section 3 forbids this
+        let err = binary_known(BinOp::Shl, l, r, None).unwrap_err();
+        assert!(
+            err.contains("signed"),
+            "expected an error mentioning `signed`, got: {err}"
+        );
     }
 
     #[test]
