@@ -1033,6 +1033,62 @@ test — `tests/differential_fuzz.rs`'s generator deliberately avoids
 generating either shape, per the "Severity" note above); re-adding a
 regression test for this is part of the Stage-4 fix, not before.
 
+## BUG-20 (MEDIUM, OPEN) — Emitter renders a slice of a non-identifier base ungrouped, invalid Verilog part-select syntax
+
+**What.** mimz's own language semantics allow `[hi:lo]` on any expression,
+not just a plain signal — e.g. `(p1 & p2)[3:0]` passes `mimz check` and
+evaluates correctly under `mimz sim`/`eval`. The emitter, however, would
+render this as invalid Verilog.
+
+**Cause.** `emit_verilog/expr.rs`'s `ExprKind::Slice` arm:
+
+```rust
+ExprKind::Slice { base, hi, lo } => {
+    let b = self.expr_subst(base, subst, arrays);
+    let h = self.index_expr(hi, subst, arrays);
+    let l = self.index_expr(lo, subst, arrays);
+    format!("{b}[{h}:{l}]")
+}
+```
+
+renders `base`'s text with no grouping. Verilog's part-select grammar
+(`expr[hi:lo]`) only accepts an identifier or hierarchical reference as
+the base — parenthesizing a composite expression does not help; Verilog
+does not permit part-selecting an arbitrary expression at all, only a
+net/reg reference. `(p1 & p2)[3:0]` is invalid Verilog regardless of how
+`b`'s text is wrapped.
+
+**How found.** Not by fuzzing directly — the differential fuzzer's own
+generator (`tests/differential_fuzz.rs`) already works around this gap:
+`clamp()` (its slice-producing helper) was restricted during T2 v2 to
+only slice a real port identifier, discarding-and-regenerating
+otherwise (see `docs/plan/phase-2-differential-fuzzing.md`'s v2 entry).
+That restriction masked this bug from ever being exercised by the
+fuzzer, leaving it undiscovered as a live gap until reviewed directly
+against the emitter's source during Stage 4 Phase A1b's design pass
+(2026-07-19) — referenced there as "BUG-20" in
+`docs/superpowers/specs/2026-07-19-shared-width-semantics-design.local.md`'s
+Non-goals section (deferred pending confirmation it shares machinery
+with A1b), but never previously given its own tracked entry until now.
+
+**Severity.** MEDIUM — an emitter miscompile (invalid Verilog, `iverilog`
+would reject at parse/elaboration) for a checker-valid, kernel-correct
+construct: any slice of a non-identifier expression. Not a crash, not a
+silent wrong value — a clean compile-time rejection by real Verilog
+tools — but blocks synthesis of affected designs. No shipped example
+triggers it (the fuzzer's own workaround has kept it from surfacing in
+CI so far).
+
+**Fix (Planned, Stage 4 Phase A1b).** Same mechanism as A1b's
+self-determined-position fix: when `base` is not already a plain
+identifier, hoist it into a fresh explicit-width intermediate wire
+(`__mimz_sub_N`) before the current statement, then slice the wire
+instead of the raw expression text — a named signal is always a valid
+part-select base regardless of what it was assigned from.
+
+**Test.** None yet — filed as open, fix scoped into A1b's implementation
+plan (not before).
+
 ## BUG-21 (MEDIUM, FIXED 2026-07-19) — Simulator's slice-read incorrectly inherited the base's signedness
 
 **What.** `mimz sim`/`test`'s evaluator computed the WRONG value for
@@ -1095,3 +1151,70 @@ its sibling `Index` arm and the checker's own `slice_ty`
 (seed 202428133 no longer reproduces); no standalone unit test added
 (the fuzzer itself is the regression guard, same as BUG-18/BUG-19's
 discovery path).
+
+## BUG-22 (MEDIUM, OPEN) — Simulator's `-` result is always tagged `signed`, disagreeing with the checker's own lossless-growth rule
+
+**What.** `mimz sim`/`test`/`eval`'s evaluator tags EVERY subtraction's
+result value as `signed`, even when the checker types the same
+expression as unsigned `bits[N]`. Minimal repro (checker-level, not yet
+confirmed against a concrete value mismatch — filed from static code
+reading during Stage 4 Phase A1b's scoping, not from fuzzing):
+
+```
+module Fuzz {
+  in p0: bits[4]
+  in p1: bits[4]
+  out y: bits[5]
+  y = p0 - p1
+}
+```
+
+The checker's `lossless_ty` (`checker/widths/ops.rs`) types `p0 - p1` as
+unsigned `bits[5]` (both operands are unsigned `Bits`, so the result
+kind is unsigned per the lossless-growth rule: signed only when BOTH
+operands are already `Signed`). The simulator's `binary_known`
+(`crates/mimz-sim/src/sim/value.rs`)'s `BinOp::Sub` arm:
+
+```rust
+BinOp::Sub => Val::new(
+    l.as_i128().wrapping_sub(r.as_i128()) as u128,
+    wmax + 1,
+    true,
+),
+```
+
+hardcodes the result's `signed` field to `true` unconditionally —
+unlike its sibling `Add`/`Mul` arms, which correctly propagate
+`l.signed || r.signed`.
+
+**Cause.** Appears to be a simple oversight: `Add`/`Mul` compute
+`signed` from the operands (`let signed = l.signed || r.signed;` at the
+top of `binary_known`), but `Sub`'s arm was written with a literal
+`true` instead of using that same `signed` variable.
+
+**Severity.** MEDIUM — the raw bit pattern computed for the subtraction
+itself is correct (sign-extended arithmetic via `as_i128`), but the
+resulting `Val`'s `signed` tag is wrong for any all-unsigned-operand
+subtraction. Since `Val.signed` propagates into subsequent operations
+(shift's sign extension in `extend_bits`, further lossless-op chaining,
+etc.), a chained expression consuming an unsigned `-` result could
+compute a different value than the checker's own type model — and thus
+than the emitted Verilog — implies. Same divergence CLASS as BUG-21
+(simulator's kind for an operator's result disagreeing with the
+checker's own rule for that same operator), not yet confirmed with a
+concrete wrong-output repro (found by code inspection during Stage 4
+Phase A1b's scoping, not by fuzzing — `tests/differential_fuzz.rs`'s
+generator currently excludes lossless `-` entirely per BUG-19, so it
+has not had a chance to surface this independently).
+
+**Fix (Planned, folded into Stage 4's width_rules expansion — same
+plan that adds `lossless_result`/`matched_result` to
+`mimz_core::width_rules`).** Route `binary_known`'s `Sub` arm through
+the shared `lossless_result` function (mirroring how `Add`/`Mul` will
+also route through it), which derives `signed` from the operands the
+same way the checker's `lossless_ty` does — the hardcoded `true`
+disappears as a natural consequence of sharing one rule, not a
+separate patch.
+
+**Test.** None yet — filed as open, fix + regression test scoped into
+the width_rules-expansion implementation plan (not before).
