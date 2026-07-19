@@ -280,18 +280,19 @@ pub(super) fn eval_ctx<R: Resolver>(
             let b = eval(r, base)?;
             let hi = checked_index(const_eval(hi, r.ints())?, b.width, "slice high bound")?;
             let lo = checked_index(const_eval(lo, r.ints())?, b.width, "slice low bound")?;
-            if hi < lo {
-                return Err("slice bounds reversed (write `[hi:lo]`, msb first)".into());
-            }
-            let w = hi - lo + 1;
-            // A slice is always unsigned regardless of the base's own kind
-            // (`checker/widths/expr.rs`'s `slice_ty` returns `bits(...)`
-            // unconditionally, never `Signed`, matching this arm's sibling
-            // single-bit `Index` case just above) — BUG-21.
+            // A slice is always unsigned regardless of the base's own
+            // kind (BUG-21, docs/audit/bugs.md) — enforced by
+            // `width_rules::slice_result`, the same function the
+            // checker's own `slice_ty` calls, so there is exactly one
+            // copy of this rule left. `checked_index` above already
+            // guarantees `hi`/`lo` are each individually in range, so
+            // only the reversed-bounds case can actually fire here.
+            let k = mimz_core::width_rules::slice_result(b.width, hi, lo)
+                .map_err(|_| "slice bounds reversed (write `[hi:lo]`, msb first)".to_string())?;
             if b.unknown {
-                return Ok(Val::unknown(w, false));
+                return Ok(Val::unknown(k.width, false));
             }
-            Ok(Val::new((b.bits >> lo) & mask(w), w, false))
+            Ok(Val::new((b.bits >> lo) & mask(k.width), k.width, false))
         }
         ExprKind::Field { .. } => {
             Err("enum-variant / instance-port access is not supported by the evaluator yet".into())
