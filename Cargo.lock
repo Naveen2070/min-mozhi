@@ -1116,6 +1116,7 @@ dependencies = [
 name = "mimz-core"
 version = "0.1.0"
 dependencies = [
+ "mimz-sim",
  "owo-colors",
  "serde",
  "serde_json",
