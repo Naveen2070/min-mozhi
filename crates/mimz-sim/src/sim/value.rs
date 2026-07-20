@@ -135,7 +135,7 @@ pub trait Resolver {
 /// Evaluate `e` against `r` with no target-width context (self-determined —
 /// the right call for conditions, indices, loop bounds, and anywhere else
 /// Verilog itself doesn't propagate an enclosing width inward). Most callers
-/// want this. See [`eval_ctx`] for context-determined positions (an
+/// want this. See `eval_ctx` for context-determined positions (an
 /// assignment RHS, `extend`'s argument) where a shift's real result depends
 /// on the width it's eventually consumed at (BUG-11). `pub` since
 /// `mimz-core`'s `width_rules_conformance` test (Stage 4 T3) drives this

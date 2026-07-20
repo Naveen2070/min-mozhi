@@ -1199,7 +1199,7 @@ it failed against the pre-fix hardcoded `true`) and
 already passed by coincidence, kept as a regression guard going
 forward).
 
-## BUG-23 (MEDIUM, OPEN) — A wrapping operator nested under a sibling context-determined operator loses its own-width truncation
+## BUG-23 (MEDIUM, FIXED 2026-07-20) — A wrapping operator nested under a sibling context-determined operator loses its own-width truncation
 
 **What.** A checker-valid, kernel-correct program whose emitted Verilog
 gives a **different value** under real Icarus, whenever a wrapping
@@ -1302,30 +1302,77 @@ undetected member of the same "self-determined vs. context-determined"
 divergence class, closer to the class's true boundary than either of
 BUG-19's named cases.
 
-**Fix (Pending).** Two directions look plausible, neither evaluated in
-depth yet (deliberately out of Stage 4 Phase A1b's own scope — that
-phase targeted the four Verilog self-determined positions specifically,
-not "operand of a sibling context-determined operator", a genuinely
-different check): (a) extend `emit_verilog::self_determined`'s checked-
-position set to also cover "direct operand of another context-determined
-binary operator" — likely requiring the hoist to recurse INTO an
-already-hoisted subexpression's own contents, not just the position at
-which the outer mismatch was found (the clocked repro's exact gap); or
-(b) always force every `*Wrap` node through an explicit hoisted wire
-regardless of surrounding position, trading a broader (but simpler,
-harder-to-get-wrong) rendering change for less precision about when a
-hoist is actually needed. Needs its own design pass, not a one-off patch
-— tracked here as open, deliberately not fixed as part of Phase A1b.
+**Fix.** `Emitter::hoist_width_effect_operand`
+(`crates/mimz-core/src/emit_verilog/expr.rs`) — extracted from the
+pre-existing hoist pattern already used by `Builtin::Extend`'s own
+render arm (a pure refactor, no behavior change) — is now called at
+every recursive-descent operand position `expr_subst` walks into: the
+shared binary-operator arm's LHS/RHS (the primary gap this bug named),
+`Unary`, `IfExpr`/`Match` branches, `Concat`/`Replicate` members, an
+`Index`'s base, function-call/enum-construct arguments, and the
+remaining builtins (`Trunc`/`Min`/`Max`/`Abs`/`Nand`/`Nor`/`Xnor`/
+`SignedCast`/`UnsignedCast`). Any lossless (`+`/`-`/`*`) or wrap
+(`+%`/`-%`/`*%`) operand sitting at any of these positions is hoisted
+unconditionally into a fresh, definite-width wire — regardless of
+whether that position also happens to be one of Stage 4 Phase A1b's
+four self-determined-mismatch positions — closing the gap this entry's
+two repros both exploited. Only the true top-level assignment RHS stays
+exempt (it is never itself passed through the hoist), since the
+assignment target's own declared width already pins it correctly.
 
-**Test.** `tests/differential_fuzz.rs`'s `differential_fuzz_matches_icarus`
-(seed `12648435`) and `differential_fuzz_clocked_matches_icarus` (seed
-`202427630`), both at DEFAULT N — this bug is left exposed rather than
-worked around in the generator a second time (a deliberate decision:
-the fuzzer's `+`/`-`/`+%`/`-%` combinators stay enabled, so `cargo test`
-fails until this is actually fixed, an honest visible regression marker
-rather than a silently narrowed generator).
+Two sub-fixes landed alongside the wiring, both found while implementing
+it: (1) `hoist_slice_base_if_needed` (`emit_verilog/module.rs`)
+previously always declared its hoisted wire plain unsigned; it now
+takes a `signed: bool` parameter (mirroring `hoist_if_needed`'s existing
+correct pattern) so a signed wrap operand's hoisted wire is itself
+declared signed — without this, Verilog's "any unsigned operand makes
+the whole expression unsigned" rule (LRM 5.5.1) would zero-extend the
+wire instead of sign-extending it once the surrounding operator is
+evaluated at its own wider context, silently changing the value. (2) At
+the four call sites where both the new unconditional hoist and the
+existing self-determined-mismatch hoist (`hoist_if_needed`) run on the
+same operand (`Concat`/`Replicate`/`SignedCast`/`UnsignedCast`), a
+lossless operand could get hoisted twice, emitting a redundant
+same-width alias wire; `hoist_if_needed` now early-returns its input
+unchanged when it is already a plain identifier (`is_plain_identifier`)
+— the same guard `hoist_slice_base_if_needed` already used.
 
-## BUG-24 (MEDIUM, OPEN) — A context-determined operator sitting as the LEFT operand of a shift loses its width growth, a fifth self-determined position `self_determined.rs` never checks
+See "Follow-on findings" below for two further regressions this same
+effort's own full-workspace verification pass found and fixed before
+landing.
+
+**Test.** `tests/self_determined_regression.rs`:
+`bug_23_wrap_under_sibling_add_matches_icarus` and
+`bug_23_wrap_under_sibling_add_inside_a_concat_matches_icarus` (this
+entry's two originally-filed repros, seeds `12648435`/`202427630`, both
+checked against real Icarus), `bug_23_signed_wrap_operand_hoist_preserves_sign_extension`
+(the signedness sub-fix, above), `bug_23_top_level_wrap_needs_no_hoist`
+(the top-level-exemption case), and `bug_23_wrap_directly_inside_a_concat_matches_icarus`
+together with `bug_19_lossless_sub_in_a_concat_hoists_exactly_one_wire`
+(the composability/double-hoist case — the latter is the one that
+actually proves no double-hoist occurs, since a wrap operand's own
+hoist is provably a no-op for the mismatch-check path; a wrap needed a
+LOSSLESS sibling operand to exercise the real double-hoist shape).
+Also: `tests/differential_fuzz.rs`'s `differential_fuzz_matches_icarus`/
+`differential_fuzz_clocked_matches_icarus` — the exact tests that
+surfaced this bug via the `+`/`-`/`+%`/`-%` combinators re-enabled by
+Stage 4 Phase A1b's Task 8 — now pass at default N, and a deep pass
+(`MIMZ_DIFF_FUZZ_N=500`/`MIMZ_DIFF_FUZZ_CLOCKED_N=2000`) is clean too now
+that BUG-24 (below), the one thing the deep pass still caught, is also
+fixed.
+
+**Follow-on findings (2026-07-20).** See BUG-24's own entry below for
+the same paragraph — while landing this fix and BUG-24's, a
+full-workspace verification pass (`cargo test --workspace --all-targets
+--no-fail-fast`, not something Tasks 1-4 individually ran, each having
+scoped its own verification to narrower suites) found two further
+regressions, both fixed before either bug's status changed to FIXED: a
+generic/parametric-width decls fallback bug in `resolved_kind`, and an
+over-broad version of BUG-24's own fix. Neither ever shipped or was
+independently filed as a numbered bug — both were found and fixed
+within this same BUG-23/BUG-24 effort, before anything was committed.
+
+## BUG-24 (MEDIUM, FIXED 2026-07-20) — A shift nested under a sibling operator was wrongly excluded from the width-effect hoist, letting Verilog re-widen its left operand in the wider context
 
 **What.** A checker-valid, kernel-correct program whose emitted Verilog
 gives a **different value** under real Icarus, whenever a width-growing
@@ -1350,53 +1397,62 @@ module Fuzz {
 Vector `{"p0": 2024, "p1": 13855}`: our kernel computes `y=51135944`;
 Icarus computes `y=51004872`.
 
-**Cause.** Per the Verilog-2005 LRM (Table 5-22, "Expression bit
-lengths"), the shift operators `<<`/`>>`/`**` always produce a
-self-determined result, fixed at the LEFT operand's own natural width,
-unaffected by any surrounding context — this part is already correctly
-modeled (`emit_verilog::kinds::infer_binary`'s `Shl | Shr` arm calls
-`width_rules::shift_result(l, r)` off each operand's own bottom-up
-`infer_kind`, with no top-down context passed in). The actual gap: the
-LEFT OPERAND of a shift is **itself** a self-determined position in
-real Verilog. When a context-determined expression (here,
-`p1*p1 + (p1 << extend(3,4))`, a lossless `+`) sits as the left operand
-of `>>`, real Verilog sizes THAT ADD in a self-determined way — no
-growth borrowed from the outer assignment context, since the shift
-boundary blocks context propagation — giving `max(l, r)`, not the
-"+1 bit lossless growth" mimz's own semantic model always assumes for
-`+`. This is the exact same divergence class BUG-19 was about (a
-context-determined operator losing its assumed growth bit behind a
-self-determined boundary) — just a FIFTH self-determined position that
-Stage 4 Phase A1b's design (`emit_verilog/self_determined.rs`) never
-enumerated. That module's own doc comment (lines 1-9) lists only four
-checked positions: concat member, replication's repeated part/count,
-comparison operand, `$signed`/`$unsigned` argument. "Left operand of a
-shift" was missed entirely when A1b was designed. This is a DIFFERENT
-bug from BUG-23: BUG-23 is a wrap operator (`+%`/`-%`/`*%`) escaping
-its own width truncation as a direct operand of a sibling
-context-determined operator; BUG-24 is a context-determined operator
-(lossless `+`/`-`) losing its growth bit because it is trapped behind
-a self-determined boundary (a shift) that Stage 4 Phase A1b never
-enumerated as a checked position. It was only found now because deep-N
-fuzzing (re-enabled by BUG-23's own plan, Phase A1b Task 8) got
-statistically unlucky enough to generate this exact nested shape — it
-could equally have surfaced from a deep A1b fuzz run months ago,
-independent of BUG-23 ever existing.
+**Cause (corrected 2026-07-20 — the original diagnosis below was wrong).**
+The entry as originally filed claimed the root cause was a missing
+"fifth self-determined position" (a shift's left operand) that
+`emit_verilog/self_determined.rs` needed to be taught to check, mirroring
+BUG-19's fix shape. Hands-on empirical verification against real Icarus
+found a simpler, different, and ALREADY-FAMILIAR root cause: this is the
+SAME bug class as BUG-23, just for two operators BUG-23's own fix
+(Tasks 1-3) didn't cover.
 
-A secondary, related latent inaccuracy (an observation from this same
-root-cause trace, not separately confirmed against Icarus with its own
-repro): `self_determined.rs`'s `verilog_self_determined_kind`'s generic
-`_ =>` arm (the catch-all for every other binary operator, lines
-~33-44) computes `l.max(r)` uniformly for ANY binary operator,
-including `Shl`/`Shr` themselves — but per the same LRM table,
-`Shl`/`Shr`'s own self-determined width is `L(operand1)` alone (the
-left operand only), not `max(l, r)` of both operands. So if a shift
-expression itself ever sits inside one of the four already-checked
-self-determined positions (e.g. a shift inside a concat member), this
-function currently computes the wrong "Verilog self-determined width"
-for that shift. A second latent bug in the same area, whose fix likely
-belongs alongside BUG-24's own fix since both concern
-`self_determined.rs`'s handling of shift operators.
+`emit_verilog/expr.rs`'s `is_width_effect_binop` decides which nested
+binary operators must be hoisted into their own definite-width wire
+before a sibling operator's Verilog text can safely embed them (BUG-23's
+mechanism: `hoist_width_effect_operand`, wired into all ~9 recursive-
+descent call sites in `expr_subst`). Its doc comment claimed every
+operator OTHER than lossless (`+`/`-`/`*`) and wrap (`+%`/`-%`/`*%`)
+"gives the SAME value no matter what width Verilog happens to (re)compute
+it at" — including `<<`/`>>`. **This is false for `Shl`, verified
+directly against real Icarus in this task:** `p1 << 3` (`p1` = -2529 as a
+signed 14-bit value) evaluated at its own natural 14-bit width gives
+`-3848`; the SAME expression evaluated in a wider 29-bit context gives
+`-20232` — genuinely different values. A shift's own RESULT width is
+self-determined (fixed to the left operand's natural width, unaffected
+by context — this part of the old diagnosis was correct), but the
+shift's LEFT OPERAND is itself context-determined: real Verilog widens
+it to whatever ambient context the whole shift expression sits in
+BEFORE performing the shift. `crates/mimz-sim/src/sim/value.rs`'s
+`eval_ctx` already models this correctly for the simulator (its own doc
+comment: "Verilog's `<<`/`>>` are context-determined on their LEFT
+operand … ground-truthed against `iverilog` (BUG-11's fix)") — the
+emitter's hoist mechanism just never extended the same fact to
+`is_width_effect_binop`'s match arm. **`Shr` is included on the strength
+of that same simulator precedent** (the `eval_ctx` doc comment above
+treats `Shl`/`Shr` identically, and BUG-11's own historical fix covered
+both) **rather than a fresh, independent Icarus repro for `Shr`
+specifically in this task** — no `Shr`-shaped differential test was run
+here; the inclusion is a reasoned extension of an already-ground-truthed
+fact, not a second freshly-confirmed repro. So a `Shl`/`Shr` nested as a
+direct operand of ANOTHER operator has EXACTLY the same "context escape"
+problem BUG-23 fixed for lossless/wrap arithmetic: it was never added to
+the check, on the strength of that function's own (incorrect, for these
+two operators) doc-comment claim.
+
+This makes BUG-24 the SAME underlying bug class as BUG-23 (a
+context-determined-family operator escaping the hoist due to a wrong
+exclusion from `is_width_effect_binop`), just for `Shl`/`Shr` instead of
+`AddWrap`/`SubWrap`/`MulWrap`. It is NOT a missing self-determined
+position, and `self_determined.rs` (Stage 4 Phase A1b's four checked
+positions: concat member, replication's repeated part/count, comparison
+operand, `$signed`/`$unsigned` argument) needed no change — the original
+entry's "fifth self-determined position" framing, and its secondary
+observation about `verilog_self_determined_kind`'s generic `_ =>` arm
+computing `l.max(r)` for `Shl`/`Shr`, do not apply to this repro and are
+withdrawn along with the rest of the original diagnosis (that function is
+only ever consulted for the four A1b positions, none of which this
+repro's shift sits in — the shift here is a plain sibling operand of `+`
+and `>>`, reached only through `hoist_width_effect_operand`).
 
 **How found.** BUG-23's own fix plan (Tasks 1-3), Task 4's confidence
 verification pass: `cargo test --test differential_fuzz` at default N
@@ -1405,26 +1461,88 @@ level), but the deep pass
 (`MIMZ_DIFF_FUZZ_N=500 cargo test --test differential_fuzz
 differential_fuzz_matches_icarus`) found this different, reproducible
 failure (confirmed deterministic across two re-runs). Root-caused by
-tracing rather than by a second fuzz session.
+tracing, then confirmed by manually hoisting `(p1 << extend(3,4))` into
+its own dedicated 14-bit wire and re-running through real Icarus — this
+reproduced the kernel's `y=51135944` exactly, confirming the fix
+direction before it was implemented.
 
 **Severity.** MEDIUM — silent wrong value (no crash, no compile error),
-requiring a specific nested shape (a width-growing context-determined
-operator as a shift's left operand) that deep-N fuzzing needed 108
-iterations to generate — same severity class as BUG-19/20/21/22/23.
+requiring a specific nested shape (a shift as a direct operand of a
+sibling operator) that deep-N fuzzing needed 108 iterations to generate —
+same severity class as BUG-19/20/21/22/23.
 
-**Fix (Pending).** Two directions, not yet evaluated in depth, likely
-both needed since they concern related but separate gaps in the same
-file: (a) add "left operand of a shift" to `self_determined.rs`'s
-checked-position set and wire a hoist at that render site — likely
-reusing the existing `hoist_if_needed` mechanism (`module.rs`), not
-`hoist_width_effect_operand` (`expr.rs`), which is BUG-23-specific; (b)
-separately fix the generic `_ =>` arm's `l.max(r)` to special-case
-`Shl`/`Shr` as `l` alone, matching the LRM's actual self-determined
-rule for shifts. Needs its own design pass, not a one-off patch —
-tracked here as open, not fixed as part of BUG-23's plan (out of that
-plan's scope; BUG-23's own Task 4/5 finish as scoped without touching
-this).
+**Fix (as first landed — superseded below, see "Follow-on findings").**
+Added `BinOp::Shl | BinOp::Shr` to `is_width_effect_binop`'s match arm in
+`crates/mimz-core/src/emit_verilog/expr.rs`, alongside the existing
+`Add | Sub | Mul | AddWrap | SubWrap | MulWrap`, and corrected that
+function's doc comment (it no longer claims shift is context-immune; it
+now explains why a shift's left operand belongs in the same
+context-escape family as lossless/wrap arithmetic, while confirming
+`&`/`|`/`^`/comparisons/logical-and-or genuinely remain safe to exclude).
+The existing Task 1-3 hoisting machinery
+(`hoist_width_effect_operand`/`hoist_slice_base_if_needed`, already wired
+into every recursive-descent call site) then automatically covers `Shl`/
+`Shr` the same way it already covers the lossless/wrap family — no other
+code changes were needed. A matching correction was made to a stale
+comment in `Builtin::Extend`'s render arm (which had used `1 << 3` as an
+example of a "context-immune" expression — no longer accurate).
 
-**Test.** No regression test yet — not fixed. Repro: seed `12648537`
-via `MIMZ_DIFF_FUZZ_N=500 cargo test --test differential_fuzz
-differential_fuzz_matches_icarus` (does not manifest at default N=20).
+**This was too broad** (regressed BUG-6, see "Follow-on findings" below)
+— `Shl`/`Shr` were split back OUT of `is_width_effect_binop` into their
+own `is_shift_binop` predicate, hoistable only where an `allow_shift`
+parameter confirms the position is safe. `is_width_effect_binop`'s match
+arm, in the code as it stands now, is back to exactly
+`Add | Sub | Mul | AddWrap | SubWrap | MulWrap` — this paragraph
+describes the fix's first (incomplete) shape, kept here for the fix's
+own history, not the current state of `is_width_effect_binop` itself.
+
+**Test.** `tests/self_determined_regression.rs`'s
+`bug_24_shl_under_sibling_add_matches_icarus`, using BUG-24's own filed
+repro and vector (`p0=2024, p1=13855`) verified against real Icarus.
+Confirmed RED (kernel `51135944` vs. Icarus `51004872`, the exact
+originally-filed mismatch) before the fix, GREEN after. Also verified:
+`cargo test -p mimz-core emit_verilog::` (unchanged emitter suite, no
+behavior change for any program without a nested shift),
+`cargo test --test self_determined_regression` (all 10, including
+BUG-19/20/22/23's regressions), `cargo test --test differential_fuzz`
+at default N (4/4), and the scoped deep-N completeness check
+`MIMZ_DIFF_FUZZ_N=500 REQUIRE_IVERILOG=1 cargo test --test
+differential_fuzz differential_fuzz_matches_icarus` (the exact level
+BUG-24 itself was found at) — all pass.
+
+**Follow-on findings (2026-07-20).** Landing this fix (and BUG-23's,
+above) together, a full-workspace verification pass
+(`cargo test --workspace --all-targets --no-fail-fast`, not something
+Tasks 1-4 individually ran, each having scoped its own verification to
+narrower suites) found two further regressions, both fixed before
+either bug's status changed to FIXED. Neither ever shipped or was
+independently filed as a numbered bug — both were found and fixed
+within this same BUG-23/BUG-24 effort, before anything was committed:
+
+- **Generic-width decls fallback.** `resolved_kind`
+  (`emit_verilog/module.rs`) silently defaulted an unresolved
+  generic-parameter width (e.g. a module's own `WIDTH: int = 8` generic
+  feeding a `bits[WIDTH]` port) to 1 bit. The new hoist call sites above
+  — plus this bug's own `Shl`/`Shr` addition to `is_width_effect_binop`
+  — started reaching that fallback, silently truncating real hardware
+  (`alu.mimz`, `shift_register.mimz`, confirmed via Icarus). Fixed by
+  changing `resolved_kind`'s return type to `Option<Kind>` and having
+  `build_decls` skip inserting a decl entirely when a width can't be
+  resolved, rather than substituting a wrong value — `kind_is_inferrable`'s
+  existing check then naturally refuses to hoist there.
+- **Shift-hoist over-broadening.** This bug's own fix (adding `Shl`/`Shr`
+  to `is_width_effect_binop`, above) initially hoisted a shift at EVERY
+  call site — but the reference simulator only treats a shift's left
+  operand as self-determined at SOME positions (see `is_shift_binop`'s
+  doc comment in `crates/mimz-core/src/emit_verilog/expr.rs` for the
+  full per-site rationale). The over-broad version regressed
+  `examples/english/shift.mimz` (BUG-6's own historical guard). Fixed by
+  splitting `is_shift_binop` out from `is_width_effect_binop` and adding
+  an `allow_shift: bool` parameter to `hoist_width_effect_operand`,
+  individually classified per call site against the simulator's actual
+  source — `false` at the 4 unsafe positions (`Builtin::Extend`'s
+  argument, `IfExpr`/`Match` branches, a shift's LHS when the outer
+  operator is itself a shift), `true` everywhere else. Two new
+  regression tests: `bug_24_regression_shift_in_if_branch_stays_unhoisted`
+  and `bug_24_regression_nested_shift_lhs_of_shift_stays_unhoisted`
+  (`tests/self_determined_regression.rs`).
