@@ -34,9 +34,8 @@ the generator itself proves out and as the language gains surface area.
       **BUG-18** (extend()-of-literal losing Verilog width in self-determined
       contexts) on the very first real run. The N=500 deeper pass then found
       **BUG-19** (subtraction-result-width divergence in a self-determined
-      concat operand, same class, different construct) — filed OPEN and
-      deliberately deferred (does not block the default N=20 CI gate), not
-      fixed in this pass. Both bugs are documented in docs/audit/bugs.md.
+      concat operand, same class, different construct) — initially filed OPEN
+      and deferred, but later FIXED in Stage 4 Phase A1b. Both bugs are documented in docs/audit/bugs.md.
 - [x] **v2 — signed values** (`tests/differential_fuzz.rs`): `signed[N]`
       ports and literal leaves (`signed(extend(v, w))`, since `extend()` of
       a bare literal is always unsigned — `call_ty`'s `CtInt` arm), real
@@ -58,14 +57,12 @@ the generator itself proves out and as the language gains surface area.
       finding wrapping `+%`/`-%` ALSO belongs to the same class (a
       genuinely different symptom: Verilog redoes the wrap at the widened
       context, not just drops a carry bit) — documented in BUG-19's own
-      entry (`docs/audit/bugs.md`) rather than filed separately, and all
-      four operators (`+ - +% -%`) are excluded from the generator's
-      same-width-family combine step so this already-deferred bug doesn't
-      turn every `cargo test` red; `&`/`|`/`^`/comparisons stay in scope
-      (confirmed immune by construction: zero/sign-extension commutes with
-      bitwise ops and order comparisons regardless of when Verilog performs
-      it). Clean at both N=20 (CI default) and N=500 (manual confidence
-      pass) after both fixes.
+      entry (`docs/audit/bugs.md`) rather than filed separately. All four
+      operators (`+ - +% -%`) were initially excluded from the generator
+      to keep CI green, but as of Stage 4 Phase A1b (which fixed BUG-19 and BUG-23),
+      they have been fully re-enabled. The generator now natively produces them,
+      and `&`/`|`/`^`/comparisons stay in scope as before. Clean at both N=20 (CI default)
+      and N=500 (manual confidence pass) after both fixes.
 - [x] **v3 — clocked designs** (`tests/differential_fuzz.rs`,
       `gen_clocked_module`): `clock clk` + `reset rst` + 1-3 `reg`s each
       driven by one `on rise(clk)` block, `out y` combinational over
