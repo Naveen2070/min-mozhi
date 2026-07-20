@@ -1393,10 +1393,12 @@ impl Emitter<'_> {
             };
             if let Some(fields) = bundle_fields {
                 for (fname, fty) in &fields {
-                    decls.insert(format!("{}_{}", name.name, fname), self.resolved_kind(fty));
+                    if let Some(k) = self.resolved_kind(fty) {
+                        decls.insert(format!("{}_{}", name.name, fname), k);
+                    }
                 }
-            } else {
-                decls.insert(name.name.clone(), self.resolved_kind(ty));
+            } else if let Some(k) = self.resolved_kind(ty) {
+                decls.insert(name.name.clone(), k);
             }
         }
         decls
@@ -1409,29 +1411,29 @@ impl Emitter<'_> {
     /// supported by any bundle-aware renderer in this file, so this panics
     /// rather than silently falling back, same as the rest of this file's
     /// convention for a genuinely-unhandled shape.
-    fn resolved_kind(&self, ty: &Type) -> crate::width_rules::Kind {
+    fn resolved_kind(&self, ty: &Type) -> Option<crate::width_rules::Kind> {
         use crate::width_rules::Kind;
         match ty {
-            Type::Bit => Kind {
+            Type::Bit => Some(Kind {
                 width: 1,
                 signed: false,
-            },
-            Type::Bits(e) => Kind {
-                width: consteval::eval(e, &self.env).unwrap_or(1) as u32,
+            }),
+            Type::Bits(e) => Some(Kind {
+                width: consteval::eval(e, &self.env).ok()? as u32,
                 signed: false,
-            },
-            Type::Signed(e) => Kind {
-                width: consteval::eval(e, &self.env).unwrap_or(1) as u32,
+            }),
+            Type::Signed(e) => Some(Kind {
+                width: consteval::eval(e, &self.env).ok()? as u32,
                 signed: true,
-            },
+            }),
             Type::Named(id) => {
                 if let Some(en) = self.project.resolve_enum(id) {
-                    Kind {
+                    Some(Kind {
                         width: en.inferred_total_width.get().expect(
                             "inferred_total_width not set — checker must run before emitter",
                         ),
                         signed: false,
-                    }
+                    })
                 } else {
                     panic!(
                         "build_decls: `{}` is bundle-typed — nested bundle fields are not \
@@ -1471,6 +1473,21 @@ impl Emitter<'_> {
         rendered_text: String,
         decls: &HashMap<String, crate::width_rules::Kind>,
     ) -> String {
+        // Same early-return `hoist_slice_base_if_needed` already uses: a
+        // rendered text that is ALREADY a plain identifier is either a bare
+        // `Ident` (whose declared `Kind` in `decls` trivially equals its own
+        // `mimz_kind` — nothing to compare) or the name of a wire a prior
+        // hoist (`hoist_width_effect_operand`) just created, sized to
+        // exactly THIS expression's own `infer_kind` — Verilog self-
+        // determines an identifier at its declared width, so that width
+        // already IS `mimz_kind` regardless of what `expr`'s own AST shape
+        // is. Skipping here avoids a double-hoist at the four call sites
+        // (`Concat`/`Replicate`/`SignedCast`/`UnsignedCast`) where both
+        // `hoist_width_effect_operand` and this function run on the same
+        // operand — see BUG-23's double-hoist finding (docs/audit/bugs.md).
+        if super::expr::is_plain_identifier(&rendered_text) {
+            return rendered_text;
+        }
         use crate::emit_verilog::kinds::infer_kind;
         use crate::emit_verilog::self_determined::verilog_self_determined_kind;
 
@@ -1501,20 +1518,31 @@ impl Emitter<'_> {
     /// grammar only accepts one. Shares the same counter/buffer as
     /// `hoist_if_needed` (a single per-module numbering sequence for
     /// every kind of hoist, not two separate ones).
+    ///
+    /// `signed` picks the declared wire's own signedness, mirroring
+    /// `hoist_if_needed`'s `ty` computation exactly — needed by BUG-23's
+    /// wrap-operand hoist (`hoist_width_effect_operand`), whose hoisted
+    /// operand can itself be signed; the BUG-20 slice-base caller always
+    /// passes `false`, since a part-select's result is unsigned
+    /// regardless of the base's own declared signedness.
     pub(super) fn hoist_slice_base_if_needed(
         &mut self,
         rendered_text: String,
         width: u32,
+        signed: bool,
     ) -> String {
         if super::expr::is_plain_identifier(&rendered_text) {
             return rendered_text;
         }
         self.hoist_counter += 1;
         let name = format!("__mimz_sub_{}", self.hoist_counter);
-        self.hoisted_decls.push_str(&format!(
-            "    wire [{}:0] {name};\n",
-            width.saturating_sub(1)
-        ));
+        let ty = if signed {
+            format!("signed [{}:0]", width.saturating_sub(1))
+        } else {
+            format!("[{}:0]", width.saturating_sub(1))
+        };
+        self.hoisted_decls
+            .push_str(&format!("    wire {ty} {name};\n"));
         self.hoisted_decls
             .push_str(&format!("    assign {name} = {rendered_text};\n"));
         name

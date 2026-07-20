@@ -93,12 +93,20 @@ fn kind_is_inferrable(expr: &Expr, decls: &HashMap<String, crate::width_rules::K
 
 /// True iff `kind`'s own top-level operator is one whose spec-defined
 /// result depends on the width it was originally evaluated at — lossless
-/// growth (`+`/`-`/`*`) or wrap-modulus (`+%`/`-%`/`*%`) — BUG-19's own
-/// documented class (`docs/audit/bugs.md`). Every OTHER operator
+/// growth (`+`/`-`/`*`) or wrap-modulus (`+%`/`-%`/`*%` — BUG-19's own
+/// documented class, `docs/audit/bugs.md`). Every OTHER operator
 /// (`<<`/`>>`/`&`/`|`/`^`/comparisons/…) gives the SAME value no matter
 /// what width Verilog happens to (re)compute it at, so `Builtin::Extend`'s
 /// argument-hoist (below) only needs to isolate THIS family, not every
 /// non-identifier shape.
+///
+/// `Shl`/`Shr` are NOT in this family: unlike lossless/wrap arithmetic
+/// (context-independent by mimz's own design — `binary_ctx`'s own doc
+/// comment says only `Shl`/`Shr` ever consult `expected_width`), a
+/// shift's correct value CAN depend on the ambient width the reference
+/// simulator threads through certain AST positions (BUG-24; see
+/// `is_shift_binop` and `hoist_width_effect_operand`'s `allow_shift`
+/// parameter for the exact, narrower, position-scoped rule).
 fn is_width_effect_binop(kind: &ExprKind) -> bool {
     matches!(
         kind,
@@ -109,6 +117,25 @@ fn is_width_effect_binop(kind: &ExprKind) -> bool {
                 | BinOp::AddWrap
                 | BinOp::SubWrap
                 | BinOp::MulWrap,
+            ..
+        }
+    )
+}
+
+/// True for `Shl`/`Shr` — BUG-24's family. Unlike `is_width_effect_binop`'s
+/// lossless/wrap family (context-independent, safe to hoist unconditionally
+/// everywhere), a shift's correct value CAN depend on the ambient width the
+/// simulator threads through (`mimz-sim`'s `eval_ctx`, ground-truthed against
+/// Icarus since BUG-11) — so callers must only treat this as hoistable at a
+/// position where that ambient width is ALSO `None` (self-determined) in the
+/// simulator's own model. See `hoist_width_effect_operand`'s `allow_shift`
+/// parameter for the exact call-site scoping (regression found and fixed
+/// after BUG-24's own fix was applied too broadly — see docs/audit/bugs.md).
+fn is_shift_binop(kind: &ExprKind) -> bool {
+    matches!(
+        kind,
+        ExprKind::Binary {
+            op: BinOp::Shl | BinOp::Shr,
             ..
         }
     )
@@ -159,6 +186,60 @@ impl Emitter<'_> {
                 Some(if n >= 127 { v } else { v & ((1i128 << n) - 1) })
             }
             _ => None,
+        }
+    }
+
+    /// Unconditionally hoists `text` into a fresh explicit-width wire
+    /// when `child` is a width-effect binary operator (lossless
+    /// `+`/`-`/`*` or wrapping `+%`/`-%`/`*%` — `is_width_effect_binop`)
+    /// — BUG-23 (`docs/audit/bugs.md`): real Verilog's arithmetic/
+    /// bitwise operators are context-determined (a connected tree
+    /// computes ONE width for the whole tree), so a wrap operator
+    /// nested as a direct operand of ANY other operator has its own
+    /// width truncation silently redone at that operator's wider
+    /// context instead of at its own declared width — UNLESS it is
+    /// first materialized as a named signal, whose declared width
+    /// Verilog cannot widen out from under. Lossless operators are
+    /// also matched by `is_width_effect_binop` even though they are
+    /// SAFE to compute at any wider context (extra bits are harmless
+    /// leading zero/sign extension) — hoisting them here too is
+    /// unnecessary but not incorrect, and reusing this one existing,
+    /// already-tested check (rather than a narrower wrap-only match)
+    /// keeps this function's caller list a single, simple rule instead
+    /// of two nearly-identical ones.
+    ///
+    /// Called after every recursive descent into an operand position
+    /// within `expr_subst` — never at the true top-level statement-RHS
+    /// render (the external entry points — `Drive`, `Wire` init, `Reg`
+    /// next-state, etc. — call `expr_subst`/`expr` directly and never
+    /// wrap their own result through this function), which is already
+    /// correct on its own: the assignment target's declared width
+    /// already pins a bare `y = a -% b`'s result correctly.
+    ///
+    /// `allow_shift` additionally admits a `Shl`/`Shr` child (BUG-24) —
+    /// but ONLY at call sites where the reference simulator
+    /// (`mimz-sim/src/sim/value.rs`) also evaluates that position with
+    /// `expected_width: None` (self-determined), so this hoist's
+    /// bottom-up `infer_kind` computation matches the simulator's own
+    /// value exactly. Passing `true` at a position where the simulator
+    /// instead threads a real ambient width in (`Builtin::Extend`'s
+    /// argument, an `IfExpr`/`Match` branch, or a shift's LHS when the
+    /// OUTER operator is itself a shift) would hoist to the WRONG width —
+    /// see each call site for its justification.
+    fn hoist_width_effect_operand(
+        &mut self,
+        child: &Expr,
+        text: String,
+        decls: &HashMap<String, crate::width_rules::Kind>,
+        allow_shift: bool,
+    ) -> String {
+        let hoistable =
+            is_width_effect_binop(&child.kind) || (allow_shift && is_shift_binop(&child.kind));
+        if hoistable && kind_is_inferrable(child, decls) {
+            let kind = crate::emit_verilog::kinds::infer_kind(child, decls);
+            self.hoist_slice_base_if_needed(text, kind.width, kind.signed)
+        } else {
+            text
         }
     }
 
@@ -241,8 +322,10 @@ impl Emitter<'_> {
                 );
                 "0".into()
             }
-            ExprKind::Unary { op, expr } => {
-                let x = self.expr_subst(expr, subst, arrays);
+            ExprKind::Unary { op, expr: inner } => {
+                let x = self.expr_subst(inner, subst, arrays);
+                let decls = self.cur_decls.clone();
+                let x = self.hoist_width_effect_operand(inner, x, &decls, true);
                 let sym = match op {
                     UnOp::Neg => "-",
                     UnOp::BitNot => "~",
@@ -316,12 +399,52 @@ impl Emitter<'_> {
                     };
                     (l, r)
                 } else {
-                    (
-                        self.expr_subst(lhs, subst, arrays),
-                        self.expr_subst(rhs, subst, arrays),
-                    )
+                    // BUG-23 (docs/audit/bugs.md): every OTHER binary
+                    // operator's operands are context-determined, but a
+                    // width-effect operand (lossless or wrapping —
+                    // `is_width_effect_binop`) sitting HERE, as a direct
+                    // operand of this outer operator, still needs its
+                    // own width pinned before Verilog's context
+                    // propagation reaches it — hoisting is unconditional
+                    // on shape (`hoist_width_effect_operand`), not a
+                    // Kind-mismatch check, since a wrap operator's own
+                    // `infer_kind`/`verilog_self_determined_kind` always
+                    // AGREE (both compute `max(l, r)`, no growth) — the
+                    // bug is context ESCAPE of the operand's internal
+                    // arithmetic once it's textually embedded here, not
+                    // a self-determined-position width disagreement, so
+                    // the mismatch check alone would never catch it.
+                    //
+                    // `allow_shift` (BUG-24, narrowed after a regression —
+                    // see `is_shift_binop`'s doc): the RHS of ANY binary
+                    // operator is always self-determined for a shift child
+                    // (`mimz-sim/src/sim/value.rs`'s `eval_ctx` always uses
+                    // plain `eval` — `expected_width: None` — for `rhs`,
+                    // regardless of `op`), so `true` unconditionally. The
+                    // LHS is self-determined too UNLESS the outer `op` is
+                    // ITSELF a shift, in which case the simulator threads
+                    // its OWN `expected_width` into the LHS
+                    // (`shift_ctx`-gated in `eval_ctx`) — a shift child
+                    // sitting there must be left un-hoisted so real
+                    // Verilog's ordinary context propagation reaches it,
+                    // matching that threaded semantics instead of freezing
+                    // it at the wrong (bottom-up, context-free) width.
+                    let allow_shift_lhs = !matches!(op, BinOp::Shl | BinOp::Shr);
+                    let decls = self.cur_decls.clone();
+                    let l = {
+                        let text = self.expr_subst(lhs, subst, arrays);
+                        self.hoist_width_effect_operand(lhs, text, &decls, allow_shift_lhs)
+                    };
+                    let r = {
+                        let text = self.expr_subst(rhs, subst, arrays);
+                        self.hoist_width_effect_operand(rhs, text, &decls, true)
+                    };
+                    (l, r)
                 };
-                // Wrapping ops: same-width Verilog arithmetic already wraps.
+                // Wrapping ops: hoisted above (BUG-23) whenever they are
+                // a direct operand of another operator; a bare top-level
+                // `y = a -% b` needs no hoist — the assignment target's
+                // own declared width already pins it correctly.
                 let sym = match op {
                     BinOp::Add | BinOp::AddWrap => "+",
                     BinOp::Sub | BinOp::SubWrap => "-",
@@ -360,9 +483,20 @@ impl Emitter<'_> {
                         self.expr_subst(els, subst, arrays)
                     };
                 }
+                let decls = self.cur_decls.clone();
                 let c = self.expr_subst(cond, subst, arrays);
+                // `allow_shift: false` (BUG-24 regression fix): `eval_ctx`'s
+                // `IfExpr` arm (`mimz-sim/src/sim/value.rs`) propagates the
+                // SAME `expected_width` the `IfExpr` itself received into
+                // BOTH `then`/`els` — a shift branch here is context-
+                // determined, not self-determined, so hoisting it to
+                // `infer_kind`'s bottom-up width would compute a value
+                // different from the simulator's reference semantics. See
+                // `tests/self_determined_regression.rs` for a proving case.
                 let t = self.expr_subst(then, subst, arrays);
+                let t = self.hoist_width_effect_operand(then, t, &decls, false);
                 let f = self.expr_subst(els, subst, arrays);
+                let f = self.hoist_width_effect_operand(els, f, &decls, false);
                 format!("(({c}) ? ({t}) : ({f}))")
             }
             ExprKind::Match { scrutinee, arms } => {
@@ -381,6 +515,12 @@ impl Emitter<'_> {
                     }
 
                     let v = self.expr_subst(&arm.value, &arm_subst, arrays);
+                    let decls = self.cur_decls.clone();
+                    // `allow_shift: false` — same reason as `IfExpr` above:
+                    // `eval_ctx`'s `Match` arm propagates the SAME
+                    // `expected_width` into `arm.value`, so a shift arm
+                    // here is context-determined, not self-determined.
+                    let v = self.hoist_width_effect_operand(&arm.value, v, &decls, false);
                     let is_last = arm_idx == arms.len() - 1;
                     let is_wild = arm.patterns.iter().any(|p| matches!(p, Pattern::Wildcard));
                     if is_last || is_wild {
@@ -425,6 +565,11 @@ impl Emitter<'_> {
                     .iter()
                     .map(|p| {
                         let text = self.expr_subst(p, subst, arrays);
+                        // `allow_shift: true` — `eval_ctx`'s `Concat`/
+                        // `Replicate` arms always evaluate a part with
+                        // plain `eval` (`expected_width: None`), so a
+                        // shift part here is self-determined.
+                        let text = self.hoist_width_effect_operand(p, text, &decls, true);
                         if kind_is_inferrable(p, &decls) {
                             self.hoist_if_needed(p, text, &decls)
                         } else {
@@ -441,6 +586,11 @@ impl Emitter<'_> {
                     .iter()
                     .map(|p| {
                         let text = self.expr_subst(p, subst, arrays);
+                        // `allow_shift: true` — `eval_ctx`'s `Concat`/
+                        // `Replicate` arms always evaluate a part with
+                        // plain `eval` (`expected_width: None`), so a
+                        // shift part here is self-determined.
+                        let text = self.hoist_width_effect_operand(p, text, &decls, true);
                         if kind_is_inferrable(p, &decls) {
                             self.hoist_if_needed(p, text, &decls)
                         } else {
@@ -481,6 +631,10 @@ impl Emitter<'_> {
                     return chain;
                 }
                 let b = self.expr_subst(base, subst, arrays);
+                let decls = self.cur_decls.clone();
+                // `allow_shift: true` — `eval_ctx`'s `Index` arm evaluates
+                // `base` with plain `eval` (self-determined).
+                let b = self.hoist_width_effect_operand(base, b, &decls, true);
                 let i = self.index_expr(index, subst, arrays);
                 format!("{b}[{i}]")
             }
@@ -494,12 +648,14 @@ impl Emitter<'_> {
                 // mismatch. `kind_is_inferrable` still guards the
                 // `infer_kind` call needed to size the hoisted wire — a
                 // `fn`-body/testbench/width slice base is left exactly as
-                // before this task.
+                // before this task. Always `false` for `signed` — a
+                // part-select's result is unsigned regardless of the
+                // base's own declared signedness.
                 let b = self.expr_subst(base, subst, arrays);
                 let decls = self.cur_decls.clone();
                 let b = if kind_is_inferrable(base, &decls) {
                     let base_width = crate::emit_verilog::kinds::infer_kind(base, &decls).width;
-                    self.hoist_slice_base_if_needed(b, base_width)
+                    self.hoist_slice_base_if_needed(b, base_width, false)
                 } else {
                     b
                 };
@@ -590,7 +746,17 @@ impl Emitter<'_> {
                                 args_str.push(trimmed);
                             }
                         }
-                        _ => args_str.push(self.expr_subst(a, subst, arrays)),
+                        _ => {
+                            // `allow_shift: true` — `eval_fn_call` evaluates
+                            // every argument with plain `eval` FIRST, then
+                            // separately extends it to the parameter's width
+                            // AFTER (`extend_bits`); the extension is post-
+                            // hoc, not threaded into evaluation, so a shift
+                            // argument here is self-determined.
+                            let text = self.expr_subst(a, subst, arrays);
+                            let decls = self.cur_decls.clone();
+                            args_str.push(self.hoist_width_effect_operand(a, text, &decls, true));
+                        }
                     }
                 }
                 format!("{}({})", name.name, args_str.join(", "))
@@ -599,6 +765,11 @@ impl Emitter<'_> {
                 Builtin::SignedCast => {
                     let decls = self.cur_decls.clone();
                     let text = self.expr_subst(&args[0], subst, arrays);
+                    // `allow_shift: true` — `Builtin::SignedCast`/
+                    // `UnsignedCast` arguments are always evaluated by
+                    // `eval_ctx`'s `Call` arm with plain `eval` (see
+                    // `call`'s own match arms).
+                    let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
                     let hoisted = if kind_is_inferrable(&args[0], &decls) {
                         self.hoist_if_needed(&args[0], text, &decls)
                     } else {
@@ -609,6 +780,11 @@ impl Emitter<'_> {
                 Builtin::UnsignedCast => {
                     let decls = self.cur_decls.clone();
                     let text = self.expr_subst(&args[0], subst, arrays);
+                    // `allow_shift: true` — `Builtin::SignedCast`/
+                    // `UnsignedCast` arguments are always evaluated by
+                    // `eval_ctx`'s `Call` arm with plain `eval` (see
+                    // `call`'s own match arms).
+                    let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
                     let hoisted = if kind_is_inferrable(&args[0], &decls) {
                         self.hoist_if_needed(&args[0], text, &decls)
                     } else {
@@ -644,13 +820,15 @@ impl Emitter<'_> {
                 // natural one — silently changing a wrap operator's modulus
                 // (`+%`/`-%`) or a lossless operator's growth (BUG-19's own
                 // doc: "any operator whose spec-defined result depends on
-                // the width it was originally evaluated at"). Only THAT
-                // family is unsound this way — `1 << 3`, `p0 & p1`, a bare
-                // signal, all give the SAME value no matter what width
+                // the width it was originally evaluated at") — and, per
+                // BUG-24, a shift (`<<`/`>>`), whose LEFT operand is
+                // likewise context-determined in real Verilog. Only THAT
+                // family is unsound this way — `p0 & p1`, a comparison, a
+                // bare signal, all give the SAME value no matter what width
                 // Verilog happens to (re)compute them at, so hoisting them
                 // here would be pure noise (confirmed empirically: doing
                 // this unconditionally for any non-identifier `args[0]`
-                // spuriously hoisted `extend(1 << 3, N)`, changing golden
+                // spuriously hoisted `extend(p0 & p1, N)`, changing golden
                 // output with no correctness benefit). So this checks
                 // `args[0]`'s own TOP-level operator directly, not a Kind
                 // mismatch (`mimz_kind`/`verilog_self_determined_kind` agree
@@ -674,44 +852,81 @@ impl Emitter<'_> {
                         _ => {
                             let text = self.expr_subst(&args[0], subst, arrays);
                             let decls = self.cur_decls.clone();
-                            let text = if is_width_effect_binop(&args[0].kind)
-                                && kind_is_inferrable(&args[0], &decls)
-                            {
-                                let w =
-                                    crate::emit_verilog::kinds::infer_kind(&args[0], &decls).width;
-                                self.hoist_slice_base_if_needed(text, w)
-                            } else {
-                                text
-                            };
+                            // `allow_shift: false` (BUG-24 regression fix,
+                            // docs/audit/bugs.md): `call`'s `Builtin::Extend`
+                            // arm explicitly threads THIS extend's own
+                            // target width `n` into evaluating its argument
+                            // (`eval_ctx(r, &args[0], Some(n))`, doc'd there
+                            // as BUG-11's fix — "a shift inside the argument
+                            // sees its real consuming width") — a shift
+                            // argument here is context-determined, not
+                            // self-determined, so hoisting it would compute
+                            // a value different from the simulator's
+                            // reference semantics (this exact case is
+                            // `examples/english/shift.mimz`'s BUG-6 guard:
+                            // `extend(1 << 3, 8)` must stay 8, not collapse
+                            // to a bottom-up-inferred 0).
+                            let text =
+                                self.hoist_width_effect_operand(&args[0], text, &decls, false);
                             format!("({text})")
                         }
                     }
                 }
+                // `allow_shift: true` for the remaining `Builtin` arms below
+                // (`Trunc`/`Min`/`Max`/`Abs`/`Nand`/`Nor`/`Xnor`) — every one
+                // of `call`'s own match arms for these evaluates its
+                // argument(s) with plain `eval`, never `eval_ctx`, so a
+                // shift argument is always self-determined here.
                 Builtin::Trunc => {
+                    let decls = self.cur_decls.clone();
                     let x = self.expr_subst(&args[0], subst, arrays);
+                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
                     let n = self.expr_subst(&args[1], subst, arrays);
                     format!("{x}[({n})-1:0]")
                 }
                 Builtin::Min => {
+                    let decls = self.cur_decls.clone();
                     let a = self.expr_subst(&args[0], subst, arrays);
+                    let a = self.hoist_width_effect_operand(&args[0], a, &decls, true);
                     let b = self.expr_subst(&args[1], subst, arrays);
+                    let b = self.hoist_width_effect_operand(&args[1], b, &decls, true);
                     format!("(({a} < {b}) ? ({a}) : ({b}))")
                 }
                 Builtin::Max => {
+                    let decls = self.cur_decls.clone();
                     let a = self.expr_subst(&args[0], subst, arrays);
+                    let a = self.hoist_width_effect_operand(&args[0], a, &decls, true);
                     let b = self.expr_subst(&args[1], subst, arrays);
+                    let b = self.hoist_width_effect_operand(&args[1], b, &decls, true);
                     format!("(({a} < {b}) ? ({b}) : ({a}))")
                 }
                 // Result is `signed[N+1]`; the assignment context sign-extends
                 // both ternary arms (the operand is declared `signed`).
                 Builtin::Abs => {
+                    let decls = self.cur_decls.clone();
                     let x = self.expr_subst(&args[0], subst, arrays);
+                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
                     format!("(({x} < 0) ? (-{x}) : ({x}))")
                 }
                 // Verilog-2005 negated reduction operators — one bit out.
-                Builtin::Nand => format!("(~&({}))", self.expr_subst(&args[0], subst, arrays)),
-                Builtin::Nor => format!("(~|({}))", self.expr_subst(&args[0], subst, arrays)),
-                Builtin::Xnor => format!("(~^({}))", self.expr_subst(&args[0], subst, arrays)),
+                Builtin::Nand => {
+                    let decls = self.cur_decls.clone();
+                    let x = self.expr_subst(&args[0], subst, arrays);
+                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    format!("(~&({x}))")
+                }
+                Builtin::Nor => {
+                    let decls = self.cur_decls.clone();
+                    let x = self.expr_subst(&args[0], subst, arrays);
+                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    format!("(~|({x}))")
+                }
+                Builtin::Xnor => {
+                    let decls = self.cur_decls.clone();
+                    let x = self.expr_subst(&args[0], subst, arrays);
+                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    format!("(~^({x}))")
+                }
                 // `clog2(n)` folds to a literal when `n` is a constant (a literal
                 // or `const`). Of a module PARAMETER it stays symbolic, so it
                 // lowers to a call of the injected Verilog-2005 `clog2` constant
@@ -811,7 +1026,15 @@ impl Emitter<'_> {
                             };
                             format!("{field_w}'d{bits}")
                         }
-                        Err(_) => self.expr_subst(a, subst, arrays),
+                        Err(_) => {
+                            // `allow_shift: true` — a payload field's value
+                            // is evaluated independently of any enclosing
+                            // width context (each field is separately
+                            // masked to its own `field_w` right here).
+                            let text = self.expr_subst(a, subst, arrays);
+                            let decls = self.cur_decls.clone();
+                            self.hoist_width_effect_operand(a, text, &decls, true)
+                        }
                     });
                 }
                 let padding_w = max_payload_w - used_w;

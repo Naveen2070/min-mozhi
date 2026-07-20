@@ -1324,3 +1324,107 @@ worked around in the generator a second time (a deliberate decision:
 the fuzzer's `+`/`-`/`+%`/`-%` combinators stay enabled, so `cargo test`
 fails until this is actually fixed, an honest visible regression marker
 rather than a silently narrowed generator).
+
+## BUG-24 (MEDIUM, OPEN) — A context-determined operator sitting as the LEFT operand of a shift loses its width growth, a fifth self-determined position `self_determined.rs` never checks
+
+**What.** A checker-valid, kernel-correct program whose emitted Verilog
+gives a **different value** under real Icarus, whenever a width-growing
+context-determined operator (e.g. lossless `+`) is the left operand of
+a shift (`<<`/`>>`). Found during BUG-23's own fix (Tasks 1-3) by that
+plan's Task 4 deep-confidence pass
+(`MIMZ_DIFF_FUZZ_N=500 cargo test --test differential_fuzz
+differential_fuzz_matches_icarus`) — seed `12648537`, the 108th
+generated program (seed = `0xC0FFEE + i`, `i=107`), outside default
+`N=20`'s range, so it does not manifest at the level `cargo test`
+normally runs at:
+
+```
+module Fuzz {
+  in p0: signed[12]
+  in p1: signed[14]
+  out y: signed[29]
+  y = ((((p1 * p1) + (p1 << extend(3, 4))) >> extend(0, 4)) << extend(3, 2))
+}
+```
+
+Vector `{"p0": 2024, "p1": 13855}`: our kernel computes `y=51135944`;
+Icarus computes `y=51004872`.
+
+**Cause.** Per the Verilog-2005 LRM (Table 5-22, "Expression bit
+lengths"), the shift operators `<<`/`>>`/`**` always produce a
+self-determined result, fixed at the LEFT operand's own natural width,
+unaffected by any surrounding context — this part is already correctly
+modeled (`emit_verilog::kinds::infer_binary`'s `Shl | Shr` arm calls
+`width_rules::shift_result(l, r)` off each operand's own bottom-up
+`infer_kind`, with no top-down context passed in). The actual gap: the
+LEFT OPERAND of a shift is **itself** a self-determined position in
+real Verilog. When a context-determined expression (here,
+`p1*p1 + (p1 << extend(3,4))`, a lossless `+`) sits as the left operand
+of `>>`, real Verilog sizes THAT ADD in a self-determined way — no
+growth borrowed from the outer assignment context, since the shift
+boundary blocks context propagation — giving `max(l, r)`, not the
+"+1 bit lossless growth" mimz's own semantic model always assumes for
+`+`. This is the exact same divergence class BUG-19 was about (a
+context-determined operator losing its assumed growth bit behind a
+self-determined boundary) — just a FIFTH self-determined position that
+Stage 4 Phase A1b's design (`emit_verilog/self_determined.rs`) never
+enumerated. That module's own doc comment (lines 1-9) lists only four
+checked positions: concat member, replication's repeated part/count,
+comparison operand, `$signed`/`$unsigned` argument. "Left operand of a
+shift" was missed entirely when A1b was designed. This is a DIFFERENT
+bug from BUG-23: BUG-23 is a wrap operator (`+%`/`-%`/`*%`) escaping
+its own width truncation as a direct operand of a sibling
+context-determined operator; BUG-24 is a context-determined operator
+(lossless `+`/`-`) losing its growth bit because it is trapped behind
+a self-determined boundary (a shift) that Stage 4 Phase A1b never
+enumerated as a checked position. It was only found now because deep-N
+fuzzing (re-enabled by BUG-23's own plan, Phase A1b Task 8) got
+statistically unlucky enough to generate this exact nested shape — it
+could equally have surfaced from a deep A1b fuzz run months ago,
+independent of BUG-23 ever existing.
+
+A secondary, related latent inaccuracy (an observation from this same
+root-cause trace, not separately confirmed against Icarus with its own
+repro): `self_determined.rs`'s `verilog_self_determined_kind`'s generic
+`_ =>` arm (the catch-all for every other binary operator, lines
+~33-44) computes `l.max(r)` uniformly for ANY binary operator,
+including `Shl`/`Shr` themselves — but per the same LRM table,
+`Shl`/`Shr`'s own self-determined width is `L(operand1)` alone (the
+left operand only), not `max(l, r)` of both operands. So if a shift
+expression itself ever sits inside one of the four already-checked
+self-determined positions (e.g. a shift inside a concat member), this
+function currently computes the wrong "Verilog self-determined width"
+for that shift. A second latent bug in the same area, whose fix likely
+belongs alongside BUG-24's own fix since both concern
+`self_determined.rs`'s handling of shift operators.
+
+**How found.** BUG-23's own fix plan (Tasks 1-3), Task 4's confidence
+verification pass: `cargo test --test differential_fuzz` at default N
+passes 4/4 (confirmed twice — BUG-23 itself is genuinely fixed at that
+level), but the deep pass
+(`MIMZ_DIFF_FUZZ_N=500 cargo test --test differential_fuzz
+differential_fuzz_matches_icarus`) found this different, reproducible
+failure (confirmed deterministic across two re-runs). Root-caused by
+tracing rather than by a second fuzz session.
+
+**Severity.** MEDIUM — silent wrong value (no crash, no compile error),
+requiring a specific nested shape (a width-growing context-determined
+operator as a shift's left operand) that deep-N fuzzing needed 108
+iterations to generate — same severity class as BUG-19/20/21/22/23.
+
+**Fix (Pending).** Two directions, not yet evaluated in depth, likely
+both needed since they concern related but separate gaps in the same
+file: (a) add "left operand of a shift" to `self_determined.rs`'s
+checked-position set and wire a hoist at that render site — likely
+reusing the existing `hoist_if_needed` mechanism (`module.rs`), not
+`hoist_width_effect_operand` (`expr.rs`), which is BUG-23-specific; (b)
+separately fix the generic `_ =>` arm's `l.max(r)` to special-case
+`Shl`/`Shr` as `l` alone, matching the LRM's actual self-determined
+rule for shifts. Needs its own design pass, not a one-off patch —
+tracked here as open, not fixed as part of BUG-23's plan (out of that
+plan's scope; BUG-23's own Task 4/5 finish as scoped without touching
+this).
+
+**Test.** No regression test yet — not fixed. Repro: seed `12648537`
+via `MIMZ_DIFF_FUZZ_N=500 cargo test --test differential_fuzz
+differential_fuzz_matches_icarus` (does not manifest at default N=20).
