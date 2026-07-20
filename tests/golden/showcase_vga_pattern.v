@@ -12,8 +12,10 @@ module VgaPattern (
     output wire [(4)-1:0] frame_cnt_result,
     output wire frame_cnt_running
 );
-    wire [5:0] __mimz_sub_1;
-    assign __mimz_sub_1 = (16 - 1);
+    wire [9:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (h_cnt >> 7);
+    wire [5:0] __mimz_sub_2;
+    assign __mimz_sub_2 = (16 - 1);
     reg [(10)-1:0] h_cnt;
     reg [(10)-1:0] v_cnt;
     wire hsync;
@@ -32,7 +34,7 @@ module VgaPattern (
     assign h_active = (h_cnt < 640);
     assign v_active = (v_cnt < 480);
     assign blank = ((!h_active) || (!v_active));
-    assign bar_sel = (h_cnt >> 7)[(2)-1:0];
+    assign bar_sel = __mimz_sub_1[(2)-1:0];
     assign invert = v_cnt[4];
     assign vga_hsync = hsync;
     assign vga_vsync = vsync;
@@ -68,7 +70,7 @@ module VgaPattern (
             frame_cnt_acc <= 0;
         end else begin
             if (frame_cnt_running_r) begin
-                if ((frame_cnt_cnt == __mimz_sub_1)) begin
+                if ((frame_cnt_cnt == __mimz_sub_2)) begin
                     frame_cnt_running_r <= 0;
                     frame_cnt_done_r <= 1;
                 end else begin
