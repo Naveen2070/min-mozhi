@@ -406,10 +406,14 @@ fn combine_lossless(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
 /// Combine two fragments under a randomly chosen wrapping operator
 /// (`+%`/`-%`/`*%`) — re-enabled alongside `combine_lossless` for the
 /// same reason (BUG-19 fixed). Re-enabling this combinator also surfaced
-/// BUG-23 (a distinct, still-open gap: wrapping operators lose their width
-/// truncation when nested under sibling context-determined operators).
-/// Needs width-unification first (the wrap family keeps the operand width,
-/// mirroring `combine_same_width`'s own approach).
+/// BUG-23 (wrapping operators lose their width truncation when nested
+/// under sibling context-determined operators) — now fixed; default N
+/// (`cargo test --test differential_fuzz`) is green. This deep-N pass
+/// also once surfaced BUG-24 (seed `12648537` — a shift's left operand
+/// losing its width growth under a sibling context-determined operator)
+/// — also now fixed, see `docs/audit/bugs.md`. Needs width-unification
+/// first (the wrap family keeps the operand width, mirroring
+/// `combine_same_width`'s own approach).
 fn combine_wrap(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
     let target_signed = if rng.next_range(2) == 0 {
         a.signed
@@ -691,9 +695,10 @@ fn differential_fuzz_generates_checker_valid_programs() {
 /// Icarus differential test (`tests/icarus.rs`) — skips locally without
 /// Icarus, hard-fails in CI (`REQUIRE_IVERILOG=1`, already set in
 /// `.github/workflows/ci.yml`).
-/// NOTE: This test is currently EXPECTED to fail until BUG-23 (docs/audit/bugs.md)
-/// is fixed — wrapping operators nested under sibling context-determined operators
-/// lose their own-width truncation.
+/// NOTE: BUG-23 (docs/audit/bugs.md) is fixed — this test passes at default N.
+/// This deep-N pass also once surfaced BUG-24 (seed `12648537` — a
+/// context-determined operator losing its width growth as the left
+/// operand of a shift) — also now fixed, see `docs/audit/bugs.md`.
 #[test]
 fn differential_fuzz_matches_icarus() {
     let Some(bin) = support::require_iverilog() else {
@@ -817,9 +822,10 @@ fn differential_fuzz_clocked_generates_checker_valid_programs() {
 /// clocked stimulus `tests/icarus.rs`'s own differential already uses.
 /// Gated by `require_iverilog()` exactly like every other Icarus
 /// differential test.
-/// NOTE: This test is currently EXPECTED to fail until BUG-23 (docs/audit/bugs.md)
-/// is fixed — wrapping operators nested under sibling context-determined operators
-/// lose their own-width truncation.
+/// NOTE: BUG-23 (docs/audit/bugs.md) is fixed — this test passes at default N.
+/// This deep-N pass also once surfaced BUG-24 (seed `12648537` — a
+/// context-determined operator losing its width growth as the left
+/// operand of a shift) — also now fixed, see `docs/audit/bugs.md`.
 #[test]
 fn differential_fuzz_clocked_matches_icarus() {
     let Some(bin) = support::require_iverilog() else {
