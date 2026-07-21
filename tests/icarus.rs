@@ -415,6 +415,49 @@ fn sync_loop_search_timing_matches_icarus() {
     );
 }
 
+/// `sync.double_flop` CDC differential: proves the two-stage synchronizer's
+/// crossing latency (Tasks 1-6) against real `iverilog`/`vvp`. Hand-written,
+/// self-checking testbench (Layer 2 style, like `sync_loop_search` above) —
+/// NOT the generated-`diff_tb` Layer 3 `differential()` helper below, because
+/// that helper's default stimulus (`run`/`SimOpts`) only drives ONE clock and
+/// rejects a design with more than one (`module has N clocks — choose one`,
+/// crates/mimz-sim/src/sim/run.rs). `SyncDoubleFlop` genuinely has two
+/// (`clk_src`, `clk_dst`), so it needs its own driver — mirroring
+/// `sync_double_flop_settles_after_two_dst_clock_cycles` in
+/// crates/mimz-sim/src/sim/harness.rs, but through the real compiled Verilog.
+#[test]
+fn sync_double_flop_matches_icarus() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    run_self_checking(
+        &bin,
+        &[("sync_double_flop_tb.v", "english/sync_double_flop.mimz")],
+    );
+}
+
+/// `sync.pulse` CDC differential: proves the toggle-based single-cycle pulse
+/// synchronizer's crossing latency and pulse width (Tasks 1-6) against real
+/// `iverilog`/`vvp`. Hand-written, self-checking testbench (Layer 2 style,
+/// same reasoning as `sync_double_flop_matches_icarus` above — `SyncPulse`
+/// also genuinely has two clocks, `clk_src`/`clk_dst`, so it can't use the
+/// Layer 3 `differential()` helper below, whose default stimulus only
+/// drives ONE clock) — mirrors
+/// `sync_pulse_produces_a_one_cycle_dst_pulse_after_toggle` in
+/// crates/mimz-sim/src/sim/harness.rs, but through the real compiled
+/// Verilog. Together with `sync_double_flop_matches_icarus`, this satisfies
+/// the spec's §7 testing plan ask for "at least one kernel-vs-Icarus
+/// multi-clock test that exercises an actual crossing end-to-end" — both
+/// ARE multi-clock crossings run against real Icarus, so no separate test
+/// is needed beyond these two per-primitive examples.
+#[test]
+fn sync_pulse_matches_icarus() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    run_self_checking(&bin, &[("sync_pulse_tb.v", "english/sync_pulse.mimz")]);
+}
+
 // ---- Layer 3 (Phase 1.5 B8 + C1): OUR simulator vs Icarus, bit-for-bit ----
 //
 // Layer 2 compares Icarus against hand-written semantic asserts. Layer 3 compares

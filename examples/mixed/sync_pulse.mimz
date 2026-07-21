@@ -1,0 +1,17 @@
+thoguthi SyncPulse {
+    clock clk_src
+    துடிப்பு clk_dst
+    meettamai rst
+
+    in src_pulse: bit
+    பதிவேடு src_reg: bit = 0
+    வெளியீடு dst_pulse: bit
+
+    போது rise(clk_src) {
+        src_reg <- src_pulse
+    }
+
+    wire dst_pulse_w: bit = sync.pulse(src_reg, clk_src, clk_dst)
+
+    dst_pulse = dst_pulse_w
+}

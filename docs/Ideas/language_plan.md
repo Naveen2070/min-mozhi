@@ -43,29 +43,46 @@ The core philosophy of Rust is catching bugs at compile time. In hardware, runti
 ### 1.2 Clock Domain Checker (Hardware Thread-Safety)
 
 - **Explanation:** Passing a signal from one clock domain to another without proper synchronization (CDC) causes metastability, where the chip enters an undefined electrical state. This is the hardware equivalent of a software data race.
-- **Example:**
+- **Example (shipped, real syntax — no `@ clock` annotation; clock ownership
+  is inferred from which `on` block drives a `reg`, exactly like everywhere
+  else in the language):**
 
   ```mimz
-  clock clk_100mhz
-  clock clk_uart  // 115200 Hz
+  clock clk_src
+  clock clk_dst
+  reset rst
 
-  reg fast_data: bits[8] @ clk_100mhz
-  reg slow_data: bits[8] @ clk_uart
+  in fast_bit: bit
+  out slow_bit: bit
 
-  on rise(clk_uart) {
-      // ❌ COMPILE ERROR: Clock domain violation!
-      slow_data <- fast_data
+  reg fast_reg: bit = 0
+  reg synced:   bit = 0
 
-      // ✅ OK: Must use an explicit synchronizer from the standard library
-      slow_data <- sync.double_flop(fast_data, clk_100mhz, clk_uart)
+  on rise(clk_src) {
+      fast_reg <- fast_bit
   }
+
+  on rise(clk_dst) {
+      // ❌ COMPILE ERROR: Clock domain violation!
+      synced <- fast_reg
+
+      // ✅ OK: explicit synchronizer primitive
+      synced <- sync.double_flop(fast_reg, clk_src, clk_dst)
+  }
+
+  slow_bit = synced
   ```
 
-  > `sync` is now an active keyword for the unrelated `sync loop` construct
-  > (spec/03-keywords-trilingual.md v0.2.22) — the two are dual-purposed,
-  > not conflicting, since the parser disambiguates by the token after
-  > `sync` (`loop`/`suzhal`/`சுழல்` vs `.`). See that changelog entry before
-  > designing this CDC construct's real grammar.
+  > **Shipped** — `sync.double_flop` (level/control signal) and `sync.pulse`
+  > (single-cycle pulse) are real, checker-enforced synchronizer primitives,
+  > 1-bit signals only (spec/02-syntax-and-grammar.md §1.2b,
+  > `docs/superpowers/specs/2026-07-20-sync-cdc-design.local.md`). `sync` is
+  > dual-purpose with the unrelated `sync loop` construct (disambiguated by
+  > the token after `sync` — `loop`/`suzhal`/`சுழல்` vs `.`), exactly as the
+  > v0.2.22 changelog entry in `spec/03-keywords-trilingual.md` predicted.
+  > Handshake protocols and async FIFOs (multi-bit data-bus crossing) remain
+  > future work, buildable as ordinary `.mimz` stdlib modules on top of
+  > these two primitives.
 
 ### 1.3 Affine Types (Preventing Dropped Data)
 
@@ -889,24 +906,25 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 > such). Verified by grepping for the concrete AST/checker/emit symbols, not
 > by re-reading old commit messages.
 
-| Feature (V/VHDL/SV)                                                                                                        | Status | Note                                                                                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| replication `{N{x}}`                                                                                                       | ✅     | `ExprKind::Replicate`, parser+checker+emit, compile-time N                                                                                                                             |
-| falling-edge `on fall(clk)`                                                                                                | ✅     | `Edge::Fall`, wired through parser/checker/emit/sim (`negedge` sensitivity)                                                                                                            |
-| memories / arrays / RAM (`mem`)                                                                                            | ✅     | `ModuleItem::Mem { name, ty, depth, init }` — shipped 2026-06-17; full parser/checker(widths+names+drivers)/emit/sim/pretty/lint/analysis                                              |
-| struct / record + interfaces (`struct`/`interface`)                                                                        | ✅     | shipped as `bundle` — checker/emit/sim complete; bundle-width-model (T6, 2026-07-11) added arg/return shape-checking                                                                   |
-| combinational `function`                                                                                                   | ✅     | this **is** `fn` — AST doc comment: "user-defined combinational function... pure and combinational, no registers, no clocks"; Specs 1-2 shipped it                                     |
-| async reset / reset polarity                                                                                               | ✅     | `ModuleItem::Reset { is_async, .. }`, wired to emit (`posedge rst` added to sensitivity list when async)                                                                               |
-| packages / namespacing                                                                                                     | ✅     | `QualIdent` namespace-keying in checker (names/widths), shipped 2026-07-02/03 (Phase-2-packages-namespacing, 570 tests)                                                                |
-| tagged-union payloads (2.7)                                                                                                | ✅     | `EnumVariant`/`PayloadField` in AST, wired through emit_verilog (translit/module/expr)                                                                                                 |
-| `sync loop` — cycle-iterating FSM+counter loop                                                                             | ✅     | Spec 4 of `phase-2-suzhal-loop.local.md`, shipped 2026-07-06, 13 commits — lowers to existing Port/Reg/On/Drive, no new emit/sim shape needed                                          |
-| don't-care `match` (casex/casez)                                                                                           | ✅     | `Pattern::IntMask { value, mask }` in `ast/expr.rs`, e.g. `0b1?? => ...`; `examples/*/priority.mimz` — shipped 2026-06-17 (corrected after a bad first grep — see re-audit note below) |
-| `sync` CDC (1.2, `sync.double_flop(...)`) · `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | confirmed still open — reserved keywords only (`secret`/`prove`/`fixed`/`requires`/`ensures`), no AST/checker/emit support yet                                                         |
-| `foreach`                                                                                                                  | ✅     | sugar over `repeat`/bare `loop`, shipped 2026-07-13 — range + array/`mem`-element source forms, module-item and `on`-block/`fn`-body statement level                                   |
-| Enum-variant construction `Enum.Variant(a, b)`                                                                             | 🟡     | confirmed still open (`docs/plan/phase-2-ir-synthesis.md` line ~101) — needs `ExprKind::EnumConstruct`, follow-up to tagged unions                                                     |
-| ternary `?:`                                                                                                               | ⛔     | `if {} else {}` expr is the one way (G1)                                                                                                                                               |
-| division `/` / modulo `%` operators                                                                                        | ⛔     | no cheap operator form; future stdlib divider module                                                                                                                                   |
-| internal tri-state; auto-retiming-with-Fmax                                                                                | ⛔     | physics / honesty (Tier 4, section 7)                                                                                                                                                  |
+| Feature (V/VHDL/SV)                                                            | Status | Note                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| replication `{N{x}}`                                                           | ✅     | `ExprKind::Replicate`, parser+checker+emit, compile-time N                                                                                                                                                            |
+| falling-edge `on fall(clk)`                                                    | ✅     | `Edge::Fall`, wired through parser/checker/emit/sim (`negedge` sensitivity)                                                                                                                                           |
+| memories / arrays / RAM (`mem`)                                                | ✅     | `ModuleItem::Mem { name, ty, depth, init }` — shipped 2026-06-17; full parser/checker(widths+names+drivers)/emit/sim/pretty/lint/analysis                                                                             |
+| struct / record + interfaces (`struct`/`interface`)                            | ✅     | shipped as `bundle` — checker/emit/sim complete; bundle-width-model (T6, 2026-07-11) added arg/return shape-checking                                                                                                  |
+| combinational `function`                                                       | ✅     | this **is** `fn` — AST doc comment: "user-defined combinational function... pure and combinational, no registers, no clocks"; Specs 1-2 shipped it                                                                    |
+| async reset / reset polarity                                                   | ✅     | `ModuleItem::Reset { is_async, .. }`, wired to emit (`posedge rst` added to sensitivity list when async)                                                                                                              |
+| packages / namespacing                                                         | ✅     | `QualIdent` namespace-keying in checker (names/widths), shipped 2026-07-02/03 (Phase-2-packages-namespacing, 570 tests)                                                                                               |
+| tagged-union payloads (2.7)                                                    | ✅     | `EnumVariant`/`PayloadField` in AST, wired through emit_verilog (translit/module/expr)                                                                                                                                |
+| `sync loop` — cycle-iterating FSM+counter loop                                 | ✅     | Spec 4 of `phase-2-suzhal-loop.local.md`, shipped 2026-07-06, 13 commits — lowers to existing Port/Reg/On/Drive, no new emit/sim shape needed                                                                         |
+| don't-care `match` (casex/casez)                                               | ✅     | `Pattern::IntMask { value, mask }` in `ast/expr.rs`, e.g. `0b1?? => ...`; `examples/*/priority.mimz` — shipped 2026-06-17 (corrected after a bad first grep — see re-audit note below)                                |
+| `sync` CDC (1.2, §1.2b `sync.double_flop`/`sync.pulse`)                        | ✅     | 1-bit-only synchronizer primitives, checker-enforced (E0702-E0705), shipped on `phase-2-correctness-consolidation-part2` (Stage 5 L2) — handshake protocols/async FIFOs still future work, as ordinary stdlib modules |
+| `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | confirmed still open — reserved keywords only (`secret`/`prove`/`fixed`/`requires`/`ensures`), no AST/checker/emit support yet                                                                                        |
+| `foreach`                                                                      | ✅     | sugar over `repeat`/bare `loop`, shipped 2026-07-13 — range + array/`mem`-element source forms, module-item and `on`-block/`fn`-body statement level                                                                  |
+| Enum-variant construction `Enum.Variant(a, b)`                                 | 🟡     | confirmed still open (`docs/plan/phase-2-ir-synthesis.md` line ~101) — needs `ExprKind::EnumConstruct`, follow-up to tagged unions                                                                                    |
+| ternary `?:`                                                                   | ⛔     | `if {} else {}` expr is the one way (G1)                                                                                                                                                                              |
+| division `/` / modulo `%` operators                                            | ⛔     | no cheap operator form; future stdlib divider module                                                                                                                                                                  |
+| internal tri-state; auto-retiming-with-Fmax                                    | ⛔     | physics / honesty (Tier 4, section 7)                                                                                                                                                                                 |
 
 ### Loops (explicit — three honest hardware shapes)
 
@@ -958,15 +976,15 @@ strikethrough, so the sequencing rationale stays legible:
    `match`~~ ✅ all done, 2026-06-17.
 2. ~~Memories/arrays (`mem`)~~ ✅ done. 3. ~~Structs + interfaces~~ ✅ done. 4. ~~Combinational `function`~~ ✅ done (is `fn`).
 3. ~~Async reset / polarity~~ ✅ done (active-high; active-low still open). 6. ~~Controlled loop (`suzhal` + `sync loop`) + `foreach`~~ ✅ done.
-4. Phase-2 line: ~~tagged unions~~ ✅ done. Enum-variant construction syntax
-   (`Enum.Variant(a, b)`), `sync` CDC, `prove`/contracts, `secret`/
+4. Phase-2 line: ~~tagged unions~~ ✅ done. ~~`sync` CDC~~ ✅ done. Enum-variant
+   construction syntax (`Enum.Variant(a, b)`), `prove`/contracts, `secret`/
    `system_fault`, fixed-point — still open (reserved keywords / AST gaps
    only, no checker/emit support). 8. Verification layer — future,
    post-simulator, spec/01 amendment.
 
 **Remaining open items, in order:** enum-variant construction
-syntax → `sync` CDC synchronizers → `prove`/contracts → `secret`/
-`system_fault` → fixed-point → verification layer.
+syntax → `prove`/contracts → `secret`/`system_fault` → fixed-point →
+verification layer.
 
 ### Newly-tracked items (were missing from this plan / phase-2)
 

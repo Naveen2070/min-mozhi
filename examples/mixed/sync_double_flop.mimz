@@ -1,0 +1,21 @@
+thoguthi SyncDoubleFlop {
+    clock clk_src
+    துடிப்பு clk_dst
+    meettamai rst
+
+    in fast_bit: bit
+    வெளியீடு slow_bit: bit
+
+    reg fast_reg: bit = 0
+    பதிவேடு synced: bit = 0
+
+    on yetram(clk_src) {
+        fast_reg <- fast_bit
+    }
+
+    போது rise(clk_dst) {
+        synced <- sync.double_flop(fast_reg, clk_src, clk_dst)
+    }
+
+    slow_bit = synced
+}

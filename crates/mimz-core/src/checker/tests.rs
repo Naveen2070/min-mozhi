@@ -1177,6 +1177,19 @@ fn sync_double_flop_hidden_in_a_reg_reset_value_is_e0705() {
     assert!(any_code(src, "E0705"), "{:?}", errs(src));
 }
 
+#[test]
+fn sync_double_flop_hidden_in_a_sync_loop_body_is_e0705() {
+    // Placement violation via a position `collect_all_sync_prim_calls`
+    // must scan: `SyncLoop::body` (`Vec<SeqStmt>`) is walked directly, not
+    // skipped as a no-op — `ast::sync_loop_lower`'s desugaring never
+    // re-runs E0705 placement detection over calls inside the loop body,
+    // so without this scan a `sync.*` call written there would pass the
+    // checker clean and then panic the emitter/simulator's
+    // `unreachable!()` guard instead of being rejected here.
+    let src = "module M {\n  clock clk_a\n  clock clk_b\n  in x: bit\n  reset rst\n  reg r: bit = 0\n  on rise(clk_a) {\n    r <- x\n  }\n  sync loop s on rise(clk_b) (i: 0..2) -> result: bit = 0 {\n    result <- sync.double_flop(r, clk_a, clk_b)\n  }\n}\n";
+    assert!(any_code(src, "E0705"), "{:?}", errs(src));
+}
+
 // ---- no declarations inside `repeat` (E0303) ------------------------------
 
 /// True if any diagnostic carries `code` (E0303 may not be the FIRST error,

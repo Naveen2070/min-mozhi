@@ -1,0 +1,21 @@
+தொகுதி SyncDoubleFlop {
+    துடிப்பு clk_src
+    துடிப்பு clk_dst
+    மீட்டமை rst
+
+    உள்ளீடு fast_bit: bit
+    வெளியீடு slow_bit: bit
+
+    பதிவேடு fast_reg: bit = 0
+    பதிவேடு synced: bit = 0
+
+    போது ஏற்றம்(clk_src) {
+        fast_reg <- fast_bit
+    }
+
+    போது ஏற்றம்(clk_dst) {
+        synced <- ஒத்திசை.double_flop(fast_reg, clk_src, clk_dst)
+    }
+
+    slow_bit = synced
+}

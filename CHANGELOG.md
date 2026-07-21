@@ -16,6 +16,26 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ### Added
 
+- `sync.double_flop(signal, src_clock, dst_clock)` / `sync.pulse(signal,
+src_clock, dst_clock)` — clock-domain-crossing (CDC) synchronizer
+  primitives: `double_flop` is a classic 2-flop synchronizer for a
+  level/control signal, `pulse` is a toggle-based synchronizer for a
+  single-cycle pulse. Both are ordinary builtin-namespace calls (no new
+  `ExprKind`) restricted to 1-bit signals (new diagnostic E0703 — a
+  bit-independent synchronizer on a multi-bit bus is a real metastability
+  hazard, not just a style warning). New diagnostics E0702 (clock-argument
+  shape), E0704 (domain rule — asymmetric between the two primitives:
+  `double_flop` accepts a domain-free or already-`src_clock`-owned signal,
+  `pulse` requires `src_clock`-owned only), E0705 (illegal placement), and
+  parser diagnostic E1116 (unknown `sync.` method name). `sync` remains
+  dual-purpose with the existing `sync loop` construct, disambiguated by
+  the token immediately after `sync`. Handshake (req/ack) protocols and
+  async FIFOs — the multi-bit-safe data-bus crossing — remain future work,
+  buildable as ordinary `.mimz` stdlib modules on top of these primitives.
+  New examples `examples/*/sync_double_flop.mimz` /
+  `examples/*/sync_pulse.mimz`; new Icarus differential tests
+  `sync_double_flop_matches_icarus` / `sync_pulse_matches_icarus`. See
+  `spec/02-syntax-and-grammar.md` §1.2b.
 - `mimz test --emulate`: `sim` blocks inside `test` blocks bind ports to
   virtual peripherals (`led`, `uart_tx`, `uart_rx`, `speaker`) with
   real-time throttling. `uart_tx`/`uart_rx` decode/encode 8-N-1 serial to
