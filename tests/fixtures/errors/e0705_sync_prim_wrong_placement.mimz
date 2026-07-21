@@ -1,0 +1,16 @@
+// expect: E0705
+module M {
+    clock clk_src
+    clock clk_dst
+    reg src_reg: bit = 0
+    reset rst
+    reg dst_reg: bit = 0
+
+    on rise(clk_src) {
+        src_reg <- 1
+    }
+
+    on rise(clk_dst) {
+        dst_reg <- sync.pulse(src_reg, clk_src, clk_dst)
+    }
+}

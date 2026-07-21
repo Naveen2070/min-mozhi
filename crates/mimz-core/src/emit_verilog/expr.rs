@@ -950,6 +950,13 @@ impl Emitter<'_> {
                         format!("clog2({})", self.expr_subst(&args[0], subst, arrays))
                     }
                 },
+                Builtin::SyncDoubleFlop | Builtin::SyncPulse => {
+                    unreachable!(
+                        "sync.double_flop/sync.pulse must be lowered by \
+                         ast::sync_prim_lower::expand_sync_prims before reaching \
+                         Verilog rendering — a later task wires that call in"
+                    )
+                }
             },
             // BundleLit is only valid as the direct RHS of a Drive or Wire init;
             // emit_drives handles it before calling expr(). Reaching here means

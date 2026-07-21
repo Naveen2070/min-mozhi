@@ -1,0 +1,12 @@
+// expect: E0702
+module M {
+    clock clk_dst
+    in fast_bit: bit
+    in not_a_clock: bit
+    reg slow_bit: bit = 0
+    reset rst
+
+    on rise(clk_dst) {
+        slow_bit <- sync.double_flop(fast_bit, not_a_clock, clk_dst)
+    }
+}
