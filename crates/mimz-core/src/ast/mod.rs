@@ -14,6 +14,8 @@ mod expr;
 pub use expr::*;
 mod sync_loop_lower;
 pub use sync_loop_lower::lower_sync_loop;
+mod sync_prim_lower;
+pub use sync_prim_lower::expand_sync_prims;
 mod foreach_lower;
 pub use foreach_lower::{
     array_like_len, array_like_len_fn, lower_foreach_fn, lower_foreach_item, lower_foreach_seq,

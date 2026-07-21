@@ -867,6 +867,84 @@ impl<'a> Checker<'a> {
                 );
                 Ty::Unknown
             }
+            Builtin::SyncDoubleFlop | Builtin::SyncPulse => {
+                let name = if func == Builtin::SyncDoubleFlop {
+                    "sync.double_flop"
+                } else {
+                    "sync.pulse"
+                };
+                let Some(src_arg) = args.get(1) else {
+                    return Ty::Unknown;
+                };
+                let Some(dst_arg) = args.get(2) else {
+                    return Ty::Unknown;
+                };
+                let src_ty = self.infer_ty(cx, src_arg);
+                let dst_ty = self.infer_ty(cx, dst_arg);
+                if !matches!(src_ty, Ty::Clock) {
+                    self.err(
+                        cx.file,
+                        src_arg.span,
+                        "E0702",
+                        format!("`{name}`'s second argument must be a declared `clock` name"),
+                        "pass the clock the SIGNAL is already synchronous to — a \
+                         `clock` declaration's own name, not a data expression",
+                    );
+                    return Ty::Unknown;
+                }
+                if !matches!(dst_ty, Ty::Clock) {
+                    self.err(
+                        cx.file,
+                        dst_arg.span,
+                        "E0702",
+                        format!("`{name}`'s third argument must be a declared `clock` name"),
+                        "pass the clock the RESULT should be synchronous to",
+                    );
+                    return Ty::Unknown;
+                }
+                let (crate::ast::ExprKind::Ident(src_name), crate::ast::ExprKind::Ident(dst_name)) =
+                    (&src_arg.kind, &dst_arg.kind)
+                else {
+                    self.err(
+                        cx.file,
+                        e.span,
+                        "E0702",
+                        format!("`{name}`'s clock arguments must be bare clock names"),
+                        "write the clock's own name directly, e.g. `clk_uart` — \
+                         not a computed expression",
+                    );
+                    return Ty::Unknown;
+                };
+                if src_name == dst_name {
+                    self.err(
+                        cx.file,
+                        e.span,
+                        "E0702",
+                        format!(
+                            "`{name}`'s source and destination clocks are the same (`{src_name}`)"
+                        ),
+                        "synchronizing a signal to the clock it already belongs to \
+                         is a no-op — check for a typo in one of the two clock names",
+                    );
+                    return Ty::Unknown;
+                }
+                let width_ok = matches!(xt, Ty::Bit) || matches!(xt, Ty::Bits(1));
+                if !width_ok {
+                    self.err(
+                        cx.file,
+                        x.span,
+                        "E0703",
+                        format!("`{name}`'s signal argument must be exactly 1 bit"),
+                        "a 2-flop/toggle synchronizer is only sound for a single \
+                         control bit — bit-independently synchronizing a wider bus \
+                         is a real hardware hazard (bits can resolve on different \
+                         destination cycles); a multi-bit-safe crossing (handshake \
+                         or gray-coded FIFO) is not yet provided by this compiler",
+                    );
+                    return Ty::Unknown;
+                }
+                Ty::Bit
+            }
             Builtin::Min | Builtin::Max => {
                 let name = if func == Builtin::Min { "min" } else { "max" };
                 let Some(b) = args.get(1) else {

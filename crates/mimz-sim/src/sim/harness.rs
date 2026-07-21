@@ -795,6 +795,81 @@ mod tests {
     }
 
     #[test]
+    fn sync_double_flop_settles_after_two_dst_clock_cycles() {
+        // `fast_reg` lives in `clk_src`'s own domain (via its `on rise`
+        // block) rather than a bare domain-free `in` port — closer to real
+        // CDC usage; `double_flop` also permits a domain-free signal, but
+        // this exercises the more realistic path.
+        let src = "module M {\n\
+                 clock clk_src\n\
+                 clock clk_dst\n\
+                 reset rst\n\
+                 in fast_bit: bit\n\
+                 reg fast_reg: bit = 0\n\
+                 reg slow_bit: bit = 0\n\
+                 out o: bit\n\
+                 on rise(clk_src) {\n\
+                     fast_reg <- fast_bit\n\
+                 }\n\
+                 on rise(clk_dst) {\n\
+                     slow_bit <- sync.double_flop(fast_reg, clk_src, clk_dst)\n\
+                 }\n\
+                 o = slow_bit\n\
+               }\n\
+               test \"crosses after 2 dst cycles\" for M {\n\
+                 rst = 0\n\
+                 fast_bit = 1\n\
+                 tick(clk_src)\n\
+                 expect o == 0\n\
+                 tick(clk_dst)\n\
+                 expect o == 0\n\
+                 tick(clk_dst)\n\
+                 expect o == 1\n\
+               }\n";
+        let outs = run(src);
+        assert!(passes(&outs[0]), "{:?}", outs[0]);
+    }
+
+    #[test]
+    fn sync_pulse_produces_a_one_cycle_dst_pulse_after_toggle() {
+        // Smoke test for the `Wire`-rewrite path `expand_sync_prims` takes
+        // for `sync.pulse` (distinct from `double_flop`'s Reg/On-only path,
+        // see Task 5's own emitter fixture needing a second dedicated test
+        // for exactly this reason). `fast_reg` is driven high for exactly
+        // one `clk_src` cycle, which flips the hidden toggle reg once; the
+        // 3-stage `clk_dst` synchronizer then reproduces that as a single
+        // one-cycle-wide pulse on `o`, two `clk_dst` edges after the toggle.
+        let src = "module M {\n\
+                 clock clk_src\n\
+                 clock clk_dst\n\
+                 reset rst\n\
+                 in trigger: bit\n\
+                 reg fast_reg: bit = 0\n\
+                 on rise(clk_src) {\n\
+                     fast_reg <- trigger\n\
+                 }\n\
+                 wire dst_pulse: bit = sync.pulse(fast_reg, clk_src, clk_dst)\n\
+                 out o: bit\n\
+                 o = dst_pulse\n\
+               }\n\
+               test \"one-cycle pulse two dst edges after the toggle\" for M {\n\
+                 rst = 0\n\
+                 trigger = 1\n\
+                 tick(clk_src)\n\
+                 trigger = 0\n\
+                 tick(clk_src)\n\
+                 tick(clk_dst)\n\
+                 expect o == 0\n\
+                 tick(clk_dst)\n\
+                 expect o == 1\n\
+                 tick(clk_dst)\n\
+                 expect o == 0\n\
+               }\n";
+        let outs = run(src);
+        assert!(passes(&outs[0]), "{:?}", outs[0]);
+    }
+
+    #[test]
     fn qq_unwrap_form_evaluates_in_a_test_block() {
         // `raw ?? 0` unwraps a `bits[8]?` to its `data` when `valid`, else the
         // fallback — purely combinational, so no clock/tick is needed; `expect`

@@ -679,6 +679,16 @@ fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, Str
         // value (E0407) and folds it in widths, so a checked program never lands
         // here.
         Builtin::Clog2 => Err("clog2 is compile-time only".into()),
+        Builtin::SyncDoubleFlop | Builtin::SyncPulse => {
+            unreachable!(
+                "sync.double_flop/sync.pulse must be lowered by \
+                 ast::sync_prim_lower::expand_sync_prims before reaching the \
+                 simulator's expression evaluator — elaborate_module already \
+                 calls expand_sync_prims before the worklist runs, so this \
+                 arm is reachable only via a checker-bypassing (or nested- \
+                 const-if/repeat/foreach, out of scope for v1) call site"
+            )
+        }
     }
 }
 
