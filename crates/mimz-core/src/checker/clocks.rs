@@ -9,9 +9,9 @@
 //!   clock's reg (direct, or through any chain of wires), and
 //! - a wire/out that combinationally mixes two domains.
 //!
-//! Cross-domain data movement needs the explicit `sync` construct
-//! (Phase 2) — until then it is a compile error, never a silent
-//! metastability hazard.
+//! Cross-domain data movement needs the explicit `sync.double_flop`/
+//! `sync.pulse` construct — without it, it is a compile error, never a
+//! silent metastability hazard.
 //!
 //! Scope (the honest list): analysis is per-module — instance outputs
 //! contribute NO domain, so a domain crossing routed through a child
@@ -96,8 +96,9 @@ impl<'a> Checker<'a> {
                     "E0701",
                     format!("`{name}` mixes the clock domains `{}`", list.join("`, `")),
                     "a combinational signal must derive from one clock — \
-                     cross-domain data needs the explicit `sync` construct \
-                     (Phase 2); until then keep each domain's logic separate",
+                     cross the boundary explicitly with `sync.double_flop`/\
+                     `sync.pulse` (see E0701's explanation), or keep each \
+                     domain's logic separate",
                 );
             }
         }
@@ -125,9 +126,9 @@ impl<'a> Checker<'a> {
                             on.clock.name
                         ),
                         "reading across clock domains causes metastability — \
-                         it needs the explicit `sync` construct (Phase 2); \
-                         until then move this logic into the owning clock's \
-                         `on` block",
+                         cross it explicitly with `sync.double_flop`/\
+                         `sync.pulse` (see E0701's explanation), or move \
+                         this logic into the owning clock's `on` block",
                     );
                 }
             }
@@ -666,14 +667,11 @@ fn expr_reads(e: &Expr, out: &mut Vec<(String, Span)>) {
 /// future new `ModuleItem` variant forces this function to be revisited
 /// instead of silently falling through unscanned.
 ///
-/// Two variants are intentionally still no-ops, but as explicit arms, not
-/// a wildcard: `ModuleItem::ForEach` (module-item-level `foreach`, the
-/// sugar-over-`repeat` form — its raw, unlowered `items` are superseded by
-/// the lowered `Repeat` form other passes check) and `ModuleItem::SyncLoop`
-/// (its per-cycle `body`, checked by `ast::sync_loop_lower`'s own lowering
-/// instead — this is the "sync loop" half of the older comment's "foreach/
-/// sync loop bodies" wording, now split out since the STATEMENT-level
-/// `foreach` above is very much walked).
+/// `ModuleItem::ForEach` (module-item-level `foreach`, the sugar-over-
+/// `repeat` form) and `ModuleItem::SyncLoop` (a `sync loop`'s per-cycle
+/// body) are both walked directly here too, mirroring the `Repeat`/
+/// `ConstIf` arms just above — neither is lowered/re-scanned for a hidden
+/// `sync.*` call by any other pass before this one runs.
 fn collect_all_sync_prim_calls(items: &[ModuleItem], out: &mut Vec<Span>) {
     fn walk_expr(e: &Expr, out: &mut Vec<Span>) {
         match &e.kind {
@@ -820,9 +818,12 @@ fn collect_all_sync_prim_calls(items: &[ModuleItem], out: &mut Vec<Span>) {
                     collect_all_sync_prim_calls(e, out);
                 }
             }
-            // Deliberately no-ops — see this function's doc comment.
-            ModuleItem::ForEach(_) => {}
-            ModuleItem::SyncLoop(_) => {}
+            ModuleItem::ForEach(fe) => collect_all_sync_prim_calls(&fe.items, out),
+            ModuleItem::SyncLoop(sl) => {
+                for s in &sl.body {
+                    walk_seq_stmt(s, out);
+                }
+            }
         }
     }
 }
