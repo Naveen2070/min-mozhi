@@ -294,6 +294,15 @@ pub enum Builtin {
     /// address `n` items. Valid only where a constant is (widths, consts,
     /// parameter defaults); the checker rejects it in a runtime value position.
     Clog2,
+    /// `sync.double_flop(signal, src_clock, dst_clock)` — 2-flop CDC
+    /// synchronizer for a 1-bit level/control signal. Only reachable via the
+    /// dot-namespaced `sync.` call form (`Builtin::sync_from_name`, not
+    /// `from_name` — no bare-identifier spelling exists for this or `Pulse`).
+    SyncDoubleFlop,
+    /// `sync.pulse(signal, src_clock, dst_clock)` — toggle-based CDC
+    /// synchronizer that survives a single-cycle source pulse. Same
+    /// dot-namespaced-only reachability as `SyncDoubleFlop`.
+    SyncPulse,
 }
 
 impl Builtin {
@@ -313,6 +322,20 @@ impl Builtin {
             "nor" => Some((Builtin::Nor, 1)),
             "xnor" => Some((Builtin::Xnor, 1)),
             "clog2" => Some((Builtin::Clog2, 1)),
+            _ => None,
+        }
+    }
+
+    /// Map a `sync.<method>` spelling to its variant + arity — kept SEPARATE
+    /// from `from_name` (bare-identifier builtins): `sync.double_flop`/
+    /// `sync.pulse` are only reachable through the dot-namespaced `sync.`
+    /// call form the parser recognizes in `parser/expr.rs`'s
+    /// `sync_prim_call`. A bare `double_flop(...)` with no `sync.` prefix is
+    /// an ordinary (undefined) `FnCall`, never this.
+    pub fn sync_from_name(name: &str) -> Option<(Builtin, usize)> {
+        match name {
+            "double_flop" => Some((Builtin::SyncDoubleFlop, 3)),
+            "pulse" => Some((Builtin::SyncPulse, 3)),
             _ => None,
         }
     }

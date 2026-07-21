@@ -20,7 +20,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{Expr, ExprKind, LValue, Module, ModuleItem, SeqStmt, TopItem};
+use crate::ast::{Expr, ExprKind, LValue, Module, ModuleItem, OnBlock, SeqStmt, TopItem};
 use crate::span::Span;
 
 use super::Checker;
@@ -131,6 +131,186 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+        }
+
+        self.check_sync_prim_calls(file, m, &mut cx);
+    }
+
+    /// Pass 6's own carve-out: validates every `sync.double_flop`/
+    /// `sync.pulse` call's domain rule (E0704) and placement rule (E0705).
+    /// `expr_reads`'s `ExprKind::Call` arm already excludes these calls'
+    /// arguments from the generic E0701 read-collector (this is the ONLY
+    /// place their signal argument's domain gets checked).
+    fn check_sync_prim_calls(&mut self, file: usize, m: &'a Module, cx: &mut Ccx) {
+        use crate::ast::Builtin;
+
+        // Every legally-placed call site found below, by span — used at the
+        // end to flag any call found ANYWHERE ELSE in the module (a
+        // placement violation). A plain `Vec` (not `HashSet`) because
+        // `Span` doesn't derive `Hash` (only `PartialEq`/`Eq` —
+        // `span.rs:7`) — call counts per module are small, so a linear
+        // `.contains()` scan below is fine.
+        let mut legal_spans: Vec<Span> = Vec::new();
+
+        for item in &m.items {
+            match item {
+                ModuleItem::On(on) => {
+                    for stmt in &on.body {
+                        let SeqStmt::Assign { rhs, .. } = stmt else {
+                            continue;
+                        };
+                        let ExprKind::Call {
+                            func: Builtin::SyncDoubleFlop,
+                            args,
+                        } = &rhs.kind
+                        else {
+                            continue;
+                        };
+                        legal_spans.push(rhs.span);
+                        self.check_double_flop_domain(file, cx, on, args, rhs.span);
+                    }
+                }
+                ModuleItem::Wire { init, .. } => {
+                    let ExprKind::Call {
+                        func: Builtin::SyncPulse,
+                        args,
+                    } = &init.kind
+                    else {
+                        continue;
+                    };
+                    legal_spans.push(init.span);
+                    self.check_pulse_domain(file, cx, args);
+                }
+                _ => {}
+            }
+        }
+
+        // Placement violation: a `sync.*` call reachable from ANYWHERE in
+        // the module that wasn't found in one of the two legal positions
+        // above (nested in a bigger expression, a `Drive` rhs, a `fn` body,
+        // etc.).
+        let mut all_spans: Vec<Span> = Vec::new();
+        collect_all_sync_prim_calls(&m.items, &mut all_spans);
+        for span in all_spans {
+            if !legal_spans.contains(&span) {
+                self.err(
+                    file,
+                    span,
+                    "E0705",
+                    "`sync.double_flop`/`sync.pulse` used in an unsupported position",
+                    "`sync.double_flop(...)` is legal only as the direct RHS of \
+                     `<-` inside the `on rise`/`on fall` block matching its OWN \
+                     third (dst_clock) argument; `sync.pulse(...)` is legal only \
+                     as a `wire`'s direct initializer",
+                );
+            }
+        }
+    }
+
+    /// E0704 for `double_flop`: the signal's domain must be exactly the
+    /// call's own `src_clock` argument, OR domain-free (an async/external
+    /// source with no owning `on` block — the common "synchronize an
+    /// off-chip pin" case). Also checks the placement half of E0705 that
+    /// belongs here structurally: `dst_clock` must equal the enclosing
+    /// block's own clock.
+    fn check_double_flop_domain(
+        &mut self,
+        file: usize,
+        cx: &mut Ccx,
+        on: &OnBlock,
+        args: &[Expr],
+        call_span: Span,
+    ) {
+        let Some(signal) = args.first() else {
+            return;
+        };
+        let Some(src_arg) = args.get(1) else { return };
+        let Some(dst_arg) = args.get(2) else { return };
+        let ExprKind::Ident(src_name) = &src_arg.kind else {
+            return;
+        };
+        let ExprKind::Ident(dst_name) = &dst_arg.kind else {
+            return;
+        };
+
+        if dst_name != &on.clock.name {
+            self.err(
+                file,
+                call_span,
+                "E0705",
+                format!(
+                    "`sync.double_flop`'s dst_clock argument (`{dst_name}`) doesn't \
+                     match this `on` block's own clock (`{}`)",
+                    on.clock.name
+                ),
+                "the third argument must name the SAME clock as the enclosing \
+                 `on rise`/`on fall` block — the hidden synchronizer stage is \
+                 spliced into this exact block",
+            );
+            return;
+        }
+
+        let ExprKind::Ident(signal_name) = &signal.kind else {
+            return; // not a bare signal reference: nothing to domain-check
+        };
+        let doms = self.domains_of_any(cx, signal_name);
+        if !doms.is_empty() && !(doms.len() == 1 && doms.contains(src_name)) {
+            let mut list: Vec<&str> = doms.iter().map(String::as_str).collect();
+            list.sort_unstable();
+            self.err(
+                file,
+                signal.span,
+                "E0704",
+                format!(
+                    "`{signal_name}`'s actual domain (`{}`) doesn't match the \
+                     src_clock argument `{src_name}`",
+                    list.join("`, `")
+                ),
+                format!(
+                    "pass the clock `{signal_name}` actually belongs to as the \
+                     second argument, or leave it domain-free (no owning `on` \
+                     block) if it's an external/async source"
+                ),
+            );
+        }
+    }
+
+    /// E0704 for `pulse`: unlike `double_flop`, the signal must be EXACTLY
+    /// `src_clock` — never domain-free — because the toggle register
+    /// samples it synchronously in `src_clock`'s own domain.
+    fn check_pulse_domain(&mut self, file: usize, cx: &mut Ccx, args: &[Expr]) {
+        let Some(signal) = args.first() else {
+            return;
+        };
+        let Some(src_arg) = args.get(1) else { return };
+        let ExprKind::Ident(src_name) = &src_arg.kind else {
+            return;
+        };
+        let ExprKind::Ident(signal_name) = &signal.kind else {
+            return;
+        };
+        let doms = self.domains_of_any(cx, signal_name);
+        if doms.len() != 1 || !doms.contains(src_name) {
+            let desc = if doms.is_empty() {
+                "domain-free (an async/external source)".to_string()
+            } else {
+                let mut list: Vec<&str> = doms.iter().map(String::as_str).collect();
+                list.sort_unstable();
+                format!("in domain `{}`", list.join("`, `"))
+            };
+            self.err(
+                file,
+                signal.span,
+                "E0704",
+                format!(
+                    "`sync.pulse`'s signal `{signal_name}` is {desc}, but must be \
+                     exactly the src_clock argument `{src_name}`"
+                ),
+                "`sync.pulse` samples the signal synchronously in its OWN \
+                 src_clock domain before toggling — it must already be a \
+                 register owned by that exact clock, not domain-free and not \
+                 a different domain",
+            );
         }
     }
 
@@ -434,9 +614,23 @@ fn expr_reads(e: &Expr, out: &mut Vec<(String, Span)>) {
             expr_reads(hi, out);
             expr_reads(lo, out);
         }
-        ExprKind::Call { args, .. } => {
-            for a in args {
-                expr_reads(a, out);
+        ExprKind::Call { func, args } => {
+            // `sync.double_flop`/`sync.pulse`'s own signal/clock arguments
+            // are validated by `check_sync_prim_calls` directly (domain
+            // rule + placement, E0704/E0705) — including a sanctioned
+            // foreign-domain read of the signal argument. Skip them here so
+            // the generic cross-domain check above doesn't ALSO flag that
+            // same read as an unsanctioned E0701 violation; every other
+            // `Call` (all other builtins, which are pure/stateless and
+            // never sanctioned to cross domains) keeps the original
+            // unconditional recursion.
+            if !matches!(
+                func,
+                crate::ast::Builtin::SyncDoubleFlop | crate::ast::Builtin::SyncPulse
+            ) {
+                for a in args {
+                    expr_reads(a, out);
+                }
             }
         }
         ExprKind::FnCall { args, .. } => {
@@ -458,6 +652,177 @@ fn expr_reads(e: &Expr, out: &mut Vec<(String, Span)>) {
             for a in args {
                 expr_reads(a, out);
             }
+        }
+    }
+}
+
+/// Every `sync.double_flop`/`sync.pulse` call reachable anywhere in `items`
+/// (every module-item field that can hold an `Expr`, `on`-block bodies —
+/// INCLUDING a statement-level `foreach` nested in one, see
+/// `walk_seq_stmt`'s `SeqStmt::ForEach` arm — and nested `repeat`/`const
+/// if`) — used only to detect a call in a position OTHER than the two
+/// legal ones `check_sync_prim_calls` already recognizes (E0705). The
+/// `match item` below is deliberately EXHAUSTIVE (no `_` wildcard) so a
+/// future new `ModuleItem` variant forces this function to be revisited
+/// instead of silently falling through unscanned.
+///
+/// Two variants are intentionally still no-ops, but as explicit arms, not
+/// a wildcard: `ModuleItem::ForEach` (module-item-level `foreach`, the
+/// sugar-over-`repeat` form — its raw, unlowered `items` are superseded by
+/// the lowered `Repeat` form other passes check) and `ModuleItem::SyncLoop`
+/// (its per-cycle `body`, checked by `ast::sync_loop_lower`'s own lowering
+/// instead — this is the "sync loop" half of the older comment's "foreach/
+/// sync loop bodies" wording, now split out since the STATEMENT-level
+/// `foreach` above is very much walked).
+fn collect_all_sync_prim_calls(items: &[ModuleItem], out: &mut Vec<Span>) {
+    fn walk_expr(e: &Expr, out: &mut Vec<Span>) {
+        match &e.kind {
+            ExprKind::Call { func, args } => {
+                if matches!(
+                    func,
+                    crate::ast::Builtin::SyncDoubleFlop | crate::ast::Builtin::SyncPulse
+                ) {
+                    out.push(e.span);
+                }
+                for a in args {
+                    walk_expr(a, out);
+                }
+            }
+            ExprKind::Ident(_) => {}
+            ExprKind::Field { .. } => {}
+            ExprKind::Int { .. } | ExprKind::Bool(_) => {}
+            ExprKind::Unary { expr, .. } => walk_expr(expr, out),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                walk_expr(lhs, out);
+                walk_expr(rhs, out);
+            }
+            ExprKind::IfExpr { cond, then, els } => {
+                walk_expr(cond, out);
+                walk_expr(then, out);
+                walk_expr(els, out);
+            }
+            ExprKind::Match { scrutinee, arms } => {
+                walk_expr(scrutinee, out);
+                for arm in arms {
+                    walk_expr(&arm.value, out);
+                }
+            }
+            ExprKind::Concat(parts) => {
+                for p in parts {
+                    walk_expr(p, out);
+                }
+            }
+            ExprKind::Replicate { count, parts } => {
+                walk_expr(count, out);
+                for p in parts {
+                    walk_expr(p, out);
+                }
+            }
+            ExprKind::Index { base, index } => {
+                walk_expr(base, out);
+                walk_expr(index, out);
+            }
+            ExprKind::Slice { base, hi, lo } => {
+                walk_expr(base, out);
+                walk_expr(hi, out);
+                walk_expr(lo, out);
+            }
+            ExprKind::FnCall { args, .. } => {
+                for a in args {
+                    walk_expr(a, out);
+                }
+            }
+            ExprKind::BundleLit(inits) => {
+                for init in inits {
+                    walk_expr(&init.value, out);
+                }
+            }
+            ExprKind::ArrayLit(elems) => {
+                for e in elems {
+                    walk_expr(e, out);
+                }
+            }
+            ExprKind::EnumConstruct { args, .. } => {
+                for a in args {
+                    walk_expr(a, out);
+                }
+            }
+        }
+    }
+    fn walk_seq_stmt(s: &SeqStmt, out: &mut Vec<Span>) {
+        match s {
+            SeqStmt::Assign { rhs, .. } => walk_expr(rhs, out),
+            SeqStmt::If { cond, then, els } => {
+                walk_expr(cond, out);
+                for s in then {
+                    walk_seq_stmt(s, out);
+                }
+                if let Some(els) = els {
+                    for s in els {
+                        walk_seq_stmt(s, out);
+                    }
+                }
+            }
+            SeqStmt::Default { val, .. } => walk_expr(val, out),
+            SeqStmt::Loop { body, .. } => {
+                for s in body {
+                    walk_seq_stmt(s, out);
+                }
+            }
+            SeqStmt::ForEach { body, .. } => {
+                for s in body {
+                    walk_seq_stmt(s, out);
+                }
+            }
+            SeqStmt::Error(_) => {}
+        }
+    }
+    for item in items {
+        match item {
+            // No `Expr` field: nothing to walk.
+            ModuleItem::Port { .. }
+            | ModuleItem::Clock(_)
+            | ModuleItem::Reset { .. }
+            | ModuleItem::Enum(_)
+            | ModuleItem::Error(_) => {}
+            ModuleItem::Wire { init, .. } => walk_expr(init, out),
+            ModuleItem::Reg { reset, .. } => walk_expr(reset, out),
+            ModuleItem::Mem { depth, init, .. } => {
+                // `depth` must const-evaluate (a `sync.*` call there is
+                // already rejected elsewhere as non-const), but scan it
+                // directly too rather than relying on that other pass.
+                walk_expr(depth, out);
+                walk_expr(init, out);
+            }
+            ModuleItem::Const(c) => walk_expr(&c.value, out),
+            ModuleItem::Inst(inst) => {
+                if let Some(idx) = &inst.index {
+                    walk_expr(idx, out);
+                }
+                for a in &inst.args {
+                    walk_expr(&a.value, out);
+                }
+                for c in &inst.conns {
+                    walk_expr(&c.signal, out);
+                }
+            }
+            ModuleItem::BundleDestructure { expr, .. } => walk_expr(expr, out),
+            ModuleItem::Drive { rhs, .. } => walk_expr(rhs, out),
+            ModuleItem::On(on) => {
+                for s in &on.body {
+                    walk_seq_stmt(s, out);
+                }
+            }
+            ModuleItem::Repeat(r) => collect_all_sync_prim_calls(&r.items, out),
+            ModuleItem::ConstIf { then, els, .. } => {
+                collect_all_sync_prim_calls(then, out);
+                if let Some(e) = els {
+                    collect_all_sync_prim_calls(e, out);
+                }
+            }
+            // Deliberately no-ops — see this function's doc comment.
+            ModuleItem::ForEach(_) => {}
+            ModuleItem::SyncLoop(_) => {}
         }
     }
 }

@@ -11,22 +11,22 @@ table below is the honest status of what remains.
 
 ## File layout
 
-| File                 | Owns                                                                                            |
-| -------------------- | ----------------------------------------------------------------------------------------------- |
-| `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing                                      |
-| `symbols.rs`         | Pass 1 — per-file module/enum/bundle tables, project-wide funcs + E0001/E0002/E0801/E0802/E0909 |
-| `funcs.rs`           | Pass 2 — call-graph cycle detection (E0805), unreachable-after-return (E0812)                   |
-| `consteval.rs`       | Pass 3 — file consts + the `eval()` engine for const positions                                  |
-| `names.rs`           | Pass 4 — module scopes, name resolution, structure rules, E0302                                 |
-| `extern_module.rs`   | `extern module` port-type validation — scalar-only ports (E1302)                                |
-| `widths/mod.rs`      | Pass 5 — the `Ty` model, `Wcx`, config worklist, module walk                                    |
-| `widths/expr.rs`     | Pass 5 — bidirectional typing engine (check/infer, lvalues)                                     |
-| `widths/ops.rs`      | Pass 5 — operators, shifts, concat, the four builtins                                           |
-| `widths/insts.rs`    | Pass 5 — instantiation bindings + connection widths                                             |
-| `widths/patterns.rs` | Pass 5 — `match` patterns + exhaustiveness (E0601/E0602)                                        |
-| `drivers.rs`         | Pass 6 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                                 |
-| `clocks.rs`          | Pass 7 — clock-domain ownership, cross-domain reads (E0701)                                     |
-| `tests.rs`           | Unit tests — one per error code, plus clean-pass cases                                          |
+| File                 | Owns                                                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing                                           |
+| `symbols.rs`         | Pass 1 — per-file module/enum/bundle tables, project-wide funcs + E0001/E0002/E0801/E0802/E0909      |
+| `funcs.rs`           | Pass 2 — call-graph cycle detection (E0805), unreachable-after-return (E0812)                        |
+| `consteval.rs`       | Pass 3 — file consts + the `eval()` engine for const positions                                       |
+| `names.rs`           | Pass 4 — module scopes, name resolution, structure rules, E0302                                      |
+| `extern_module.rs`   | `extern module` port-type validation — scalar-only ports (E1302)                                     |
+| `widths/mod.rs`      | Pass 5 — the `Ty` model, `Wcx`, config worklist, module walk                                         |
+| `widths/expr.rs`     | Pass 5 — bidirectional typing engine (check/infer, lvalues)                                          |
+| `widths/ops.rs`      | Pass 5 — operators, shifts, concat, the four builtins                                                |
+| `widths/insts.rs`    | Pass 5 — instantiation bindings + connection widths                                                  |
+| `widths/patterns.rs` | Pass 5 — `match` patterns + exhaustiveness (E0601/E0602)                                             |
+| `drivers.rs`         | Pass 6 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                                      |
+| `clocks.rs`          | Pass 7 — clock-domain ownership, cross-domain reads (E0701); `sync.*` domain/placement (E0704/E0705) |
+| `tests.rs`           | Unit tests — one per error code, plus clean-pass cases                                               |
 
 Same module pattern as the parser (03): `mod.rs` owns the struct and the
 diagnostic plumbing; each pass is an `impl` block in its own file behind
@@ -136,6 +136,10 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0601 | `match` not exhaustive (names a missing value/variant)                                                                                                                                                                                                  | add the missing arms, or end with `_ =>`                                                                                                                  |
 | E0602 | unreachable `match` arm (after `_`, or a duplicate value)                                                                                                                                                                                               | move `_` last / delete the duplicate                                                                                                                      |
 | E0701 | cross-clock-domain read, or a wire mixing two domains                                                                                                                                                                                                   | one domain per signal; `sync` (Phase 2) will allow crossings                                                                                              |
+| E0702 | `sync.double_flop`/`sync.pulse` clock argument is not a declared `clock`, or the two clocks are the same                                                                                                                                                | pass two different declared clocks — source and destination                                                                                               |
+| E0703 | `sync.double_flop`/`sync.pulse` signal argument is wider than 1 bit                                                                                                                                                                                     | synchronize a single control bit; multi-bit crossing is not yet provided                                                                                  |
+| E0704 | `sync.*` signal argument is in the wrong clock domain (`double_flop`: not src_clock and not domain-free; `pulse`: not exactly src_clock)                                                                                                                | pass the clock the signal actually belongs to as src_clock                                                                                                |
+| E0705 | `sync.*` used outside its one legal position (`double_flop`: not the direct `<-` RHS in its own dst_clock's `on` block; `pulse`: not a `wire`'s direct initializer)                                                                                     | move the call to its one legal position                                                                                                                   |
 | E0801 | duplicate user-defined function name (project-wide)                                                                                                                                                                                                     | rename — function names are project-unique                                                                                                                |
 | E0802 | function name collides with a builtin (`extend`, `trunc`, `min`, …)                                                                                                                                                                                     | choose a different name                                                                                                                                   |
 | E0803 | wrong number of arguments in a `fn` call (expected N, got M)                                                                                                                                                                                            | pass exactly the number of arguments the function declares                                                                                                |

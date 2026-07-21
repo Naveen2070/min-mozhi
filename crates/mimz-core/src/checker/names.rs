@@ -170,7 +170,28 @@ impl<'a> Checker<'a> {
                 }
                 ModuleItem::Clock(n) => self.declare(file, sc, n, Bind::Clock),
                 ModuleItem::Reset { name: n, .. } => self.declare(file, sc, n, Bind::Reset),
-                ModuleItem::Wire { name, .. } => self.declare(file, sc, name, Bind::Wire),
+                ModuleItem::Wire { name, init, .. } => {
+                    self.declare(file, sc, name, Bind::Wire);
+                    // `sync.pulse` namespaces 4 generated signals off its
+                    // OWN wire's name — declare them here (same precedent
+                    // as `SyncLoop` below) so a collision with a
+                    // user-declared signal is caught as an ordinary E0003,
+                    // before `ast::expand_sync_prims` ever runs.
+                    if let ExprKind::Call {
+                        func: crate::ast::Builtin::SyncPulse,
+                        ..
+                    } = &init.kind
+                    {
+                        let mk = |suffix: &str| crate::ast::Ident {
+                            name: format!("__sync_{}_{suffix}", name.name),
+                            span: name.span,
+                        };
+                        self.declare(file, sc, &mk("toggle"), Bind::Reg);
+                        self.declare(file, sc, &mk("stage0"), Bind::Reg);
+                        self.declare(file, sc, &mk("stage1"), Bind::Reg);
+                        self.declare(file, sc, &mk("stage2"), Bind::Reg);
+                    }
+                }
                 ModuleItem::Reg { name, .. } => self.declare(file, sc, name, Bind::Reg),
                 ModuleItem::Mem { name, .. } => self.declare(file, sc, name, Bind::Mem),
                 ModuleItem::Const(c) => self.declare(file, sc, &c.name, Bind::Const),
@@ -210,7 +231,33 @@ impl<'a> Checker<'a> {
                     };
                     self.collect_decls(file, sc, env, branch);
                 }
-                ModuleItem::On(_) | ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
+                ModuleItem::On(on) => {
+                    // `sync.double_flop` namespaces 1 generated stage reg
+                    // off its own `<-` target's name — same precedent as
+                    // `sync.pulse` above / `SyncLoop` below.
+                    for stmt in &on.body {
+                        if let SeqStmt::Assign {
+                            lhs,
+                            rhs:
+                                Expr {
+                                    kind:
+                                        ExprKind::Call {
+                                            func: crate::ast::Builtin::SyncDoubleFlop,
+                                            ..
+                                        },
+                                    ..
+                                },
+                        } = stmt
+                        {
+                            let hidden = crate::ast::Ident {
+                                name: format!("__sync_{}_stage0", lhs.base.name),
+                                span: lhs.base.span,
+                            };
+                            self.declare(file, sc, &hidden, Bind::Reg);
+                        }
+                    }
+                }
+                ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
                 ModuleItem::BundleDestructure { .. } => {} // checker stub (T5)
             }
         }
@@ -1734,5 +1781,43 @@ mod tests {
         let src = "module M {\n  clock clk\n  in find_first_start: bit\n  sync loop find_first on rise(clk) (i: 0..4) -> result: bit = 0 {\n    result <- 1\n  }\n}\n";
         let diags = diags_for(src);
         assert!(diags.iter().any(|d| d.code == Some("E0003")));
+    }
+
+    #[test]
+    fn sync_double_flop_generated_name_collision_is_e0003() {
+        // `sync.double_flop`'s hidden stage reg is named off its own `<-`
+        // target (`slow_bit` -> `__sync_slow_bit_stage0`), deterministically
+        // — no counter involved, so this collision is reproducible on every
+        // run (unlike a global-atomic-counter scheme would be).
+        let src = "module M {\n\
+                     clock clk_src\n\
+                     clock clk_dst\n\
+                     in fast_bit: bit\n\
+                     reg slow_bit: bit = 0\n\
+                     reg __sync_slow_bit_stage0: bit = 0\n\
+                     reset rst\n\
+                     on rise(clk_dst) {\n\
+                         slow_bit <- sync.double_flop(fast_bit, clk_src, clk_dst)\n\
+                     }\n\
+                   }";
+        let diags = diags_for(src);
+        assert!(diags.iter().any(|d| d.code == Some("E0003")), "{diags:?}");
+    }
+
+    #[test]
+    fn sync_pulse_generated_name_collision_is_e0003() {
+        // Same, off the wire's own name (`dst_pulse` -> `__sync_dst_pulse_toggle`).
+        let src = "module M {\n\
+                     clock clk_src\n\
+                     clock clk_dst\n\
+                     in src_pulse: bit\n\
+                     reg __sync_dst_pulse_toggle: bit = 0\n\
+                     reset rst\n\
+                     wire dst_pulse: bit = sync.pulse(src_pulse, clk_src, clk_dst)\n\
+                     out o: bit\n\
+                     o = dst_pulse\n\
+                   }";
+        let diags = diags_for(src);
+        assert!(diags.iter().any(|d| d.code == Some("E0003")), "{diags:?}");
     }
 }

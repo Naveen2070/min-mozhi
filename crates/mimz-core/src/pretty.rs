@@ -1120,6 +1120,9 @@ fn builtin(b: Builtin) -> &'static str {
         Builtin::Nor => "nor",
         Builtin::Xnor => "xnor",
         Builtin::Clog2 => "clog2",
+        // CDC sync primitives: dot-namespaced calls require "sync." prefix
+        Builtin::SyncDoubleFlop => "sync.double_flop",
+        Builtin::SyncPulse => "sync.pulse",
     }
 }
 
@@ -1282,5 +1285,40 @@ mod tests {
         // printer emitted `speed 50 * 1000000`, which fails to re-parse).
         let toks2 = crate::lexer::lex(&printed).unwrap();
         crate::parser::parse(toks2).expect("pretty-printed speed clause re-parses");
+    }
+
+    #[test]
+    fn sync_double_flop_call_round_trips_through_pretty_print() {
+        let src = "module M {\n  clock clk_src\n  clock clk_dst\n  in fast_bit: bit\n  wire slow_bit: bit = sync.double_flop(fast_bit, clk_src, clk_dst)\n}\n";
+        let toks = crate::lexer::lex(src).unwrap();
+        let file = crate::parser::parse(toks).unwrap();
+        let printed = crate::pretty::pretty_print(
+            &file,
+            crate::lexer::token::Flavor::English,
+            crate::pretty::Order::Code,
+        );
+        assert!(
+            printed.contains("sync.double_flop(fast_bit, clk_src, clk_dst)"),
+            "got:\n{printed}"
+        );
+        // Confirm it re-parses to the same shape.
+        let toks2 = crate::lexer::lex(&printed).unwrap();
+        let file2 = crate::parser::parse(toks2).expect("pretty-printed sync.double_flop re-parses");
+        let crate::ast::TopItem::Module(m) = &file2.items[0] else {
+            panic!("expected module")
+        };
+        let wire_init = m
+            .items
+            .iter()
+            .find_map(|it| match it {
+                crate::ast::ModuleItem::Wire { init, .. } => Some(init),
+                _ => None,
+            })
+            .expect("expected wire");
+        let crate::ast::ExprKind::Call { func, args } = &wire_init.kind else {
+            panic!("expected a Call expression")
+        };
+        assert_eq!(*func, crate::ast::Builtin::SyncDoubleFlop);
+        assert_eq!(args.len(), 3);
     }
 }
