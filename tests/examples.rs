@@ -12,7 +12,7 @@ const FLAVORS: [&str; 4] = ["english", "tanglish", "tamil", "mixed"];
 
 /// Every base example name (relative path without extension). Each appears
 /// once per flavor folder — `4 * BASE_EXAMPLES.len()` files total.
-const BASE_EXAMPLES: [&str; 41] = [
+const BASE_EXAMPLES: [&str; 43] = [
     "adder",
     "alu",
     "async_reset",
@@ -54,6 +54,8 @@ const BASE_EXAMPLES: [&str; 41] = [
     "tagged_packet",
     "debug_wrapper",
     "enum_construct",
+    "sync_double_flop",
+    "sync_pulse",
 ];
 
 /// Pure-Tamil showcase examples (Tamil keywords AND identifiers), each paired

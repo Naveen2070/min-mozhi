@@ -1,0 +1,21 @@
+thoguthi SyncDoubleFlop {
+    thudippu clk_src
+    thudippu clk_dst
+    meettamai rst
+
+    ulleedu fast_bit: bit
+    veliyeedu slow_bit: bit
+
+    pathivedu fast_reg: bit = 0
+    pathivedu synced: bit = 0
+
+    pothu yetram(clk_src) {
+        fast_reg <- fast_bit
+    }
+
+    pothu yetram(clk_dst) {
+        synced <- othisai.double_flop(fast_reg, clk_src, clk_dst)
+    }
+
+    slow_bit = synced
+}

@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.26.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.27.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -78,8 +78,70 @@ Rules on display:
   that is where latches come from.)
 - A module may declare **multiple clocks**, each with its own `on` blocks.
   Every reg is owned by exactly one clock; reading a signal across clock
-  domains is a compile error until the explicit `sync` construct ships
-  (Phase 2).
+  domains directly is a compile error — crossing requires the explicit
+  `sync.double_flop`/`sync.pulse` synchronizer primitives (section 1.2b).
+
+### 1.2b — Clock-domain-crossing synchronizers — `sync.double_flop`/`sync.pulse`
+
+```mimz
+module SyncDoubleFlop {
+  clock clk_src
+  clock clk_dst
+  reset rst
+
+  in  fast_bit: bit
+  out slow_bit: bit
+
+  reg fast_reg: bit = 0
+  reg synced:   bit = 0
+
+  on rise(clk_src) {
+    fast_reg <- fast_bit
+  }
+
+  on rise(clk_dst) {
+    synced <- sync.double_flop(fast_reg, clk_src, clk_dst)
+  }
+
+  slow_bit = synced
+}
+```
+
+- `sync.double_flop(signal, src_clock, dst_clock)` — a classic 2-flop
+  synchronizer for a level/control signal. `sync.pulse(signal, src_clock,
+dst_clock)` — a toggle-based synchronizer for a single-cycle pulse. Both
+  are ordinary builtin-namespace calls (`Builtin::SyncDoubleFlop`/
+  `Builtin::SyncPulse`), not a new expression form — three positional
+  arguments: the signal to cross, its source clock, its destination clock.
+  There is no `@ clock` annotation anywhere in this grammar; `src_clock`/
+  `dst_clock` are ordinary bare `Ident` expressions that type-check to the
+  existing `Ty::Clock` a `clock` declaration already produces.
+- **Width restriction — 1 bit only (E0703).** A bit-independent synchronizer
+  applied to a multi-bit bus is a real-hardware metastability hazard a
+  functional simulator can't observe, so both primitives reject anything
+  wider than `bit`. Multi-bit data crossing (handshake protocols, async
+  FIFOs) is explicitly out of scope — see the note below.
+- **Domain rule (E0704), asymmetric on purpose:** `double_flop`'s `signal`
+  may be domain-free (an external/async input) OR already owned by
+  `src_clock`. `pulse`'s `signal` must ALREADY be owned by `src_clock` —
+  domain-free is rejected, because the toggle encoding `pulse` lowers to
+  only makes sense sampled synchronously on the source side first.
+- **Placement (E0705), one legal position each.** `double_flop` must appear
+  as the direct `<-` right-hand side of an assignment inside its own
+  `dst_clock`'s `on rise`/`on fall` block (its hidden synchronizer register
+  is spliced into that existing block). `pulse` must appear as a `wire`'s
+  direct initializer (it lowers to its own dedicated `on` blocks on both
+  clocks, never merged into a user-written block).
+- **Clock-argument shape (E0702).** Both clock arguments must be declared
+  `clock`s, and they must be two _different_ clocks — a same-clock call is
+  rejected (there is nothing to synchronize).
+- **Not yet provided:** handshake (req/ack) protocols and async FIFOs
+  (gray-code pointers) — the actual multi-bit-safe data-bus crossing —
+  remain future work, buildable as ordinary `.mimz` stdlib modules layered
+  on top of these two primitives (no further compiler/checker/emitter/
+  simulator changes needed for that layering). See
+  `docs/superpowers/specs/2026-07-20-sync-cdc-design.local.md` for the full
+  design rationale and Axis decisions.
 
 ### 1.3 Choosing — `if` and `match` are expressions
 
@@ -1430,7 +1492,8 @@ because the `_` alternative provides no binding for `x`.
    any `reg` must declare a `reset`.
 5. **Domain typing:** `clock`/`reset` never appear in data expressions; data
    never used as a clock; each reg owned by one clock; cross-clock reads are
-   errors until `sync` (Phase 2).
+   errors except through the explicit `sync.double_flop`/`sync.pulse`
+   synchronizer primitives (§1.2b).
 6. **Combinational cycles:** rejected (wire graph must be a DAG).
 7. **Const-ness:** widths, params, reset values, `const`, `repeat` bounds fold
    at compile time.
@@ -1442,7 +1505,7 @@ because the `_` alternative provides no binding for `x`.
 | ----------------------------------------------- | ----------------------------------------------------- |
 | `inout`/tristate ports                          | Phase 2                                               |
 | Enum-element and 2-D memories (`mem`)           | post-v1 (scalar `bit`/`bits`/`signed` cells ship now) |
-| Clock-domain crossing (`sync`)                  | Phase 2                                               |
+| Handshake (req/ack) protocols, async FIFOs      | future work (stdlib, on top of §1.2b)                 |
 | Structs/bundles/buses                           | post-Phase 2 (stdlib time)                            |
 | `match` ranges (e.g. `0..7`)                    | v0.3+                                                 |
 | Division/modulo                                 | never as operators; stdlib divider module (Phase 4)   |
@@ -1452,6 +1515,26 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.27 (2026-07-21):** **Clock-domain-crossing synchronizer primitives
+  `sync.double_flop`/`sync.pulse`** (new section 1.2b, placed directly after
+  `1.2`'s counter example). Reuses the existing `sync` token — disambiguated
+  from `sync loop` by the `.` immediately after `sync`, per the dual-purpose
+  decision recorded in `spec/03-keywords-trilingual.md`'s v0.2.22 entry — and
+  the existing `ExprKind::Call` shape via two new `Builtin` variants, no new
+  top-level expression kind. `double_flop(signal, src_clock, dst_clock)` is a
+  2-flop synchronizer for a level/control signal; `pulse(signal, src_clock,
+dst_clock)` is a toggle-based synchronizer for a single-cycle pulse; both
+  reject anything wider than `bit` (E0703). New diagnostics E0702
+  (clock-argument shape), E0703 (width), E0704 (domain rule — asymmetric:
+  `double_flop` accepts a domain-free or `src_clock`-owned signal, `pulse`
+  requires `src_clock`-owned only), E0705 (illegal placement), plus parser
+  diagnostic E1116 (unknown `sync.` method name). §6 rule 5 and the §7
+  deferred-features table updated accordingly — cross-clock reads are no
+  longer blanket-deferred to "Phase 2," only handshake/FIFO multi-bit
+  crossing remains so. Full design rationale:
+  `docs/superpowers/specs/2026-07-20-sync-cdc-design.local.md`; execution
+  plan: `docs/superpowers/plans/2026-07-20-sync-cdc.local.md` (9 tasks,
+  `phase-2-correctness-consolidation-part2` branch). `docs/log/2026-07-21.md`.
 - **v0.2.25 (2026-07-12):** **`foreach` — array/range sugar over
   `repeat`/`loop`** (new section 1.16, placed directly after `sync loop`'s
   section 1.15b). New section 5 productions `foreachBlock` (mirrors
