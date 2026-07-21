@@ -667,8 +667,9 @@ impl Emitter<'_> {
     /// Nested ConstIf is resolved recursively. Used by `module()` for loops
     /// that don't recurse.
     fn flatten_items(&self, items: &[ModuleItem]) -> Vec<ModuleItem> {
+        let items = crate::ast::expand_sync_prims(items);
         let mut out = Vec::new();
-        for item in items {
+        for item in &items {
             match item {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
@@ -683,7 +684,7 @@ impl Emitter<'_> {
                 }
                 ModuleItem::SyncLoop(sl) => out.extend(crate::ast::lower_sync_loop(sl)),
                 ModuleItem::ForEach(fe) => {
-                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, &items) {
                         out.extend(lowered);
                     }
                     // `None` is unreachable here — emit only ever runs on
@@ -768,6 +769,23 @@ impl Emitter<'_> {
         for item in items {
             match item {
                 ModuleItem::Wire { name, ty, init } => {
+                    // `emit_drives` (unlike the `flat`-driven loops above) walks
+                    // the RAW module item list, not `flatten_items`'s output —
+                    // same precedent as `SyncLoop`/`ForEach` below: a bare
+                    // `sync.pulse(...)` initializer must be expanded on the
+                    // spot, then its lowered items (hidden regs/on-blocks are
+                    // skipped here — they render via `flat` elsewhere; only
+                    // the final rewritten `Wire` matters to this pass) driven
+                    // through this same function recursively.
+                    if let ExprKind::Call {
+                        func: Builtin::SyncPulse,
+                        ..
+                    } = &init.kind
+                    {
+                        let lowered = crate::ast::expand_sync_prims(std::slice::from_ref(item));
+                        self.emit_drives(&lowered);
+                        continue;
+                    }
                     // Bundle wires: emit one assign per field.
                     let binfo = match ty {
                         Type::Bundle { name: bn, args } => Some((bn.clone(), args.clone())),
@@ -1996,6 +2014,78 @@ mod tests {
             hoisted_decls: String::new(),
             cur_decls: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn sync_double_flop_emits_a_plain_reg_chain() {
+        let src = "module M {\n\
+                 clock clk_src\n\
+                 clock clk_dst\n\
+                 in fast_bit: bit\n\
+                 reg slow_bit: bit = 0\n\
+                 reset rst\n\
+                 out o: bit\n\
+                 on rise(clk_dst) {\n\
+                     slow_bit <- sync.double_flop(fast_bit, clk_src, clk_dst)\n\
+                 }\n\
+                 o = slow_bit\n\
+               }";
+        let v = emit_src(src);
+        assert_eq!(
+            v.matches("reg __sync_slow_bit_stage0;").count(),
+            1,
+            "expected exactly one hidden stage reg in the output:\n{v}"
+        );
+        assert!(
+            v.contains("posedge clk_dst"),
+            "the hidden stage must be clocked on clk_dst:\n{v}"
+        );
+    }
+
+    #[test]
+    fn sync_pulse_emits_a_toggle_reg_and_a_src_clock_on_block() {
+        // `fast_reg` lives in `clk_src`'s own domain (via its `on rise`
+        // block) rather than a domain-free `in` port — `sync.pulse`
+        // requires exactly that (unlike `double_flop`, which permits a
+        // domain-free signal); a domain-free signal here is real-checker-
+        // rejected (E0704), so this fixture stays representative of actual
+        // checker-clean input even though `emit_src` itself bypasses the
+        // checker.
+        let src = "module M {\n\
+                 clock clk_src\n\
+                 clock clk_dst\n\
+                 reg fast_reg: bit = 0\n\
+                 reset rst\n\
+                 on rise(clk_src) {\n\
+                     fast_reg <- 1\n\
+                 }\n\
+                 wire dst_pulse: bit = sync.pulse(fast_reg, clk_src, clk_dst)\n\
+                 out o: bit\n\
+                 o = dst_pulse\n\
+               }";
+        let v = emit_src(src);
+        assert_eq!(
+            v.matches("wire dst_pulse;").count(),
+            1,
+            "expected exactly one declaration of the rewritten wire:\n{v}"
+        );
+        assert_eq!(
+            v.matches("assign dst_pulse =").count(),
+            1,
+            "expected exactly one drive of the rewritten wire:\n{v}"
+        );
+        assert!(
+            v.contains("__sync_dst_pulse_stage1 ^ __sync_dst_pulse_stage2"),
+            "the wire must be driven by stage1 XOR stage2:\n{v}"
+        );
+        assert!(
+            v.contains("reg __sync_dst_pulse_toggle"),
+            "expected the hidden toggle reg in the output:\n{v}"
+        );
+        assert!(
+            v.contains("posedge clk_src"),
+            "the toggle reg's own on-block must be clocked on clk_src:\n{v}"
+        );
     }
 
     /// Smoke test: build_decls's own logic is exercised indirectly through

@@ -426,6 +426,55 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: keep one clock domain per signal. A proper synchronizer for\n\
          crossing domains arrives with `sync` in Phase 2.",
     ),
+    (
+        "E0702",
+        "E0702 — invalid `sync.*` clock argument\n\n\
+         `sync.double_flop`/`sync.pulse`'s clock arguments must both be\n\
+         declared `clock` names, and must differ from each other.\n\
+         Synchronizing a signal to the clock it already belongs to is a\n\
+         no-op — this usually means one of the two clock names is a typo.\n\n\
+         Fix: pass two different declared clocks — the source clock the\n\
+         signal is already synchronous to, and the destination clock the\n\
+         result should be synchronous to.",
+    ),
+    (
+        "E0703",
+        "E0703 — `sync.*` signal argument not 1 bit\n\n\
+         `sync.double_flop`/`sync.pulse`'s signal argument must be exactly\n\
+         1 bit. A 2-flop/toggle synchronizer is only sound for a single\n\
+         control bit — applying it bit-independently across a wider bus is\n\
+         a real hardware hazard even though a functional simulator can't\n\
+         see it (the bits can resolve on different destination-clock\n\
+         cycles, producing a torn value).\n\n\
+         Fix: synchronize a single control bit. A multi-bit-safe crossing\n\
+         (handshake or gray-coded FIFO) is not yet provided by this\n\
+         compiler.",
+    ),
+    (
+        "E0704",
+        "E0704 — `sync.*` signal argument in the wrong clock domain\n\n\
+         `sync.double_flop`'s signal argument must belong to its OWN\n\
+         src_clock domain (or be domain-free — an external/async source\n\
+         with no owning `on` block). `sync.pulse`'s signal argument must\n\
+         belong to EXACTLY its src_clock domain (never domain-free) — it\n\
+         samples the signal synchronously before toggling, so an unowned\n\
+         source can't be sampled correctly.\n\n\
+         Fix: pass the clock the signal actually belongs to as src_clock,\n\
+         or (for `double_flop` only) leave an external/async source\n\
+         domain-free.",
+    ),
+    (
+        "E0705",
+        "E0705 — `sync.*` used in an unsupported position\n\n\
+         `sync.double_flop` is legal only as the direct RHS of `<-` inside\n\
+         the `on rise`/`on fall` block matching its own third (dst_clock)\n\
+         argument. `sync.pulse` is legal only as a `wire`'s direct\n\
+         initializer. Both inject hidden register state and can't be used\n\
+         as an ordinary sub-expression.\n\n\
+         Fix: move the call to its one legal position — a `<-` assignment\n\
+         in the matching `on` block for `double_flop`, or a `wire`\n\
+         initializer for `pulse`.",
+    ),
     // ----- E08xx: user-defined functions -----
     (
         "E0801",
@@ -827,6 +876,13 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          valid-bundle (`__Valid`/`__ValidSigned`), which cannot be made\n\
          optional a second time.\n\n\
          Fix: use a single `?`, e.g. `bits[8]?`.",
+    ),
+    (
+        "E1116",
+        "E1116 — unknown `sync.*` method\n\n\
+         A `sync.` call names a method that doesn't exist. The CDC-sync\n\
+         primitives are `sync.double_flop` and `sync.pulse`.\n\n\
+         Fix: spell the method as `sync.double_flop(...)` or `sync.pulse(...)`.",
     ),
     // ----- E12xx: loader -----
     (
