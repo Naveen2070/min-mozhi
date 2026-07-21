@@ -1,6 +1,6 @@
 # Min-Mozhi — Trilingual Keyword Design
 
-> **Spec v0.2.22.**
+> **Spec v0.2.27.**
 > One grammar, three keyword skins: English, Tanglish (romanized Tamil), Tamil script.
 > Stage 1 ships English + Tanglish; Tamil script comes for free from the same table.
 
@@ -284,6 +284,17 @@ module Counter(WIDTH: int = 8) {
 
 ## Changelog
 
+- **v0.2.27 (2026-07-21):** The CDC half of `sync`'s dual purpose (reserved
+  by the v0.2.22 entry below) is now implemented: `sync.double_flop`/
+  `sync.pulse` clock-domain-crossing synchronizer primitives
+  (spec/02-syntax-and-grammar.md §1.2b, new). The parser's disambiguation
+  rule the v0.2.22 entry predicted — `sync` followed by `loop`/`suzhal`/
+  `சுழல்` is the sync-loop construct, `sync` followed by `.` is a CDC
+  call — is exactly what shipped; no grammar collision, no re-reservation
+  needed. `sync.double_flop(signal, src_clock, dst_clock)` and
+  `sync.pulse(signal, src_clock, dst_clock)` are ordinary builtin-namespace
+  calls, 1-bit signals only; handshake protocols and async FIFOs remain
+  future work. `docs/log/2026-07-21.md`.
 - **v0.2.22 (2026-07-06):** Promoted `sync` from **reserved** to active
   keyword KW_SYNC for the module-item `sync loop`/`sync suzhal`/`sync
 சுழல்` cycle-iterating FSM+counter loop (spec/02 `sync loop` section,
