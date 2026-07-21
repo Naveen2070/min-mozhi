@@ -743,6 +743,7 @@ impl Parser {
                 None
             }
             TokKind::Kw(Kw::If) => self.if_expr(),
+            TokKind::Kw(Kw::Sync) => self.sync_prim_call(),
             TokKind::Kw(Kw::Match) => self.match_expr(),
             TokKind::Ident(name) => {
                 let id = self.ident("a name")?;
@@ -813,5 +814,63 @@ impl Parser {
                 span,
             })
         }
+    }
+
+    /// Parse `sync.<method>(args)` in expression position — the OTHER
+    /// meaning of `sync` (the module-item `sync loop` form is handled
+    /// separately, in `parser::items::module`; this is the CDC-primitive
+    /// call form). Disambiguated by the token immediately after `sync`:
+    /// `loop`/`suzhal`/`சுழல்` there, `.` here — per
+    /// `spec/03-keywords-trilingual.md`'s v0.2.22 changelog entry, which
+    /// reserved exactly this split.
+    fn sync_prim_call(&mut self) -> Option<Expr> {
+        let start = self.bump().span; // `sync`
+        self.expect(
+            TokKind::Dot,
+            "`.` — `sync` starts a CDC call here (`sync.double_flop(...)`); \
+             for the cycle-iterating loop construct write `sync loop`",
+        )?;
+        let method = self.ident("a method name (`double_flop` or `pulse`)")?;
+        let Some((func, arity)) = Builtin::sync_from_name(&method.name) else {
+            self.error(
+                method.span,
+                "E1116",
+                format!(
+                    "unknown `sync.` method `{}` — expected `double_flop` or `pulse`",
+                    method.name
+                ),
+            );
+            return None;
+        };
+        self.expect(TokKind::LParen, "`(` to start the call's arguments")?;
+        let mut args = Vec::new();
+        loop {
+            self.skip_newlines();
+            if self.at(&TokKind::RParen) {
+                break;
+            }
+            args.push(self.expr()?);
+            self.skip_newlines();
+            if !self.eat(&TokKind::Comma) {
+                break;
+            }
+        }
+        let end = self.expect(TokKind::RParen, "`)` to close the call")?;
+        if args.len() != arity {
+            self.error(
+                start.join(end.span),
+                "E1110",
+                format!(
+                    "`sync.{}` takes {arity} argument(s), got {}",
+                    method.name,
+                    args.len()
+                ),
+            );
+            return None;
+        }
+        Some(Expr {
+            kind: ExprKind::Call { func, args },
+            span: start.join(end.span),
+        })
     }
 }

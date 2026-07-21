@@ -694,6 +694,17 @@ fn elaborate_module(
     let mut bit_drives: BTreeMap<String, BTreeMap<u32, Expr>> = BTreeMap::new();
     let mut flat = Flat::default();
 
+    // `sync.double_flop`/`sync.pulse` call sites are expanded to plain
+    // Reg/On/Wire items BEFORE `sync loop`/`foreach` lowering runs, exactly
+    // mirroring `emit_verilog::module::flatten_items`'s own ordering (Task
+    // 5) — the two expansions are orthogonal (this one never touches
+    // `SyncLoop`/`ForEach` items), so order between them doesn't matter in
+    // practice, but running it first keeps both passes' item-list
+    // references consistent below. `expanded_items` must outlive the whole
+    // function since `work` holds `&ModuleItem` borrows into it, same as
+    // `lowered_sync_loops`/`lowered_foreach` below.
+    let expanded_items: Vec<ModuleItem> = mimz_core::ast::expand_sync_prims(&m.items);
+
     // `sync loop` is lowered to plain Port/Reg/On/Drive items (the same
     // desugaring the Verilog emitter uses, `ast::lower_sync_loop` — Task 4)
     // BEFORE the worklist starts, so the loop below never sees a `SyncLoop`
@@ -710,7 +721,7 @@ fn elaborate_module(
     // `unreachable!()` arm — the same class of gap Task 9 fixed in the
     // emitter).
     let mut lowered_sync_loops: Vec<ModuleItem> = Vec::new();
-    collect_lowered_sync_loops(&m.items, &consts, &mut lowered_sync_loops);
+    collect_lowered_sync_loops(&expanded_items, &consts, &mut lowered_sync_loops);
 
     // `foreach` is pure sugar for `repeat`/bare `loop` (see
     // `ast::foreach_lower`) — lowered up front for the same reason as
@@ -719,10 +730,9 @@ fn elaborate_module(
     // `collect_lowered_foreach` recurses into `const if` winning branches the
     // same way `collect_lowered_sync_loops` does.
     let mut lowered_foreach: Vec<ModuleItem> = Vec::new();
-    collect_lowered_foreach(&m.items, &consts, &mut lowered_foreach);
+    collect_lowered_foreach(&expanded_items, &consts, &mut lowered_foreach);
 
-    let mut work: Vec<&ModuleItem> = m
-        .items
+    let mut work: Vec<&ModuleItem> = expanded_items
         .iter()
         .filter(|it| !matches!(it, ModuleItem::SyncLoop(_) | ModuleItem::ForEach(_)))
         .rev()
@@ -868,7 +878,7 @@ fn elaborate_module(
                 // `loop` (see `ast::foreach_lower`) — lowered here, before
                 // `Rw::seq` ever runs, so `Rw::seq`/`assigns`/the kernel's
                 // `run_seq` never see a raw `SeqStmt::ForEach` node.
-                let lowered_body = lower_foreach_in_seq(&on.body, &m.items);
+                let lowered_body = lower_foreach_in_seq(&on.body, &expanded_items);
                 procs.push(Process {
                     clock: on.clock.name.clone(),
                     edge: on.edge,
@@ -884,19 +894,20 @@ fn elaborate_module(
             // carries no `Error` placeholder.
             ModuleItem::Error(_) => {}
             // Unreachable: every `SyncLoop` is lowered and filtered out of
-            // `m.items` before the worklist runs (see this function's Step 1,
-            // just above `let mut work: Vec<&ModuleItem> = ...`) — the match
-            // arm exists only so a future refactor that breaks that filter
-            // fails loudly instead of silently dropping the construct.
+            // `expanded_items` before the worklist runs (see this function's
+            // Step 1, just above `let mut work: Vec<&ModuleItem> = ...`) —
+            // the match arm exists only so a future refactor that breaks
+            // that filter fails loudly instead of silently dropping the
+            // construct.
             ModuleItem::SyncLoop(_) => {
                 unreachable!(
                     "SyncLoop is lowered before the worklist runs — see elaborate_module's Step 1"
                 )
             }
             // Unreachable: every `ForEach` is lowered (to `Repeat`) and
-            // filtered out of `m.items` before the worklist runs, same as
-            // `SyncLoop` just above — see `collect_lowered_foreach` and
-            // `lowered_foreach` in this function's Step 1.
+            // filtered out of `expanded_items` before the worklist runs,
+            // same as `SyncLoop` just above — see `collect_lowered_foreach`
+            // and `lowered_foreach` in this function's Step 1.
             ModuleItem::ForEach(_) => {
                 unreachable!(
                     "ForEach is lowered before the worklist runs — see elaborate_module's Step 1"
