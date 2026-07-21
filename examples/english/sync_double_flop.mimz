@@ -1,0 +1,21 @@
+module SyncDoubleFlop {
+    clock clk_src
+    clock clk_dst
+    reset rst
+
+    in fast_bit: bit
+    out slow_bit: bit
+
+    reg fast_reg: bit = 0
+    reg synced: bit = 0
+
+    on rise(clk_src) {
+        fast_reg <- fast_bit
+    }
+
+    on rise(clk_dst) {
+        synced <- sync.double_flop(fast_reg, clk_src, clk_dst)
+    }
+
+    slow_bit = synced
+}

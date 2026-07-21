@@ -423,8 +423,12 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          change at an unrelated clock edge causes metastability — the flip-flop\n\
          catches it mid-transition and its output is briefly undefined. This is\n\
          the hardware data race.\n\n\
-         Fix: keep one clock domain per signal. A proper synchronizer for\n\
-         crossing domains arrives with `sync` in Phase 2.",
+         Fix: keep one clock domain per signal, or cross it explicitly with\n\
+         `sync.double_flop`/`sync.pulse` — both are restricted to a single\n\
+         control bit (E0703). `sync.double_flop` accepts a signal that is\n\
+         either domain-free (external/async) or already owned by its own\n\
+         src_clock; `sync.pulse` requires the signal already be owned by\n\
+         src_clock (see E0704).",
     ),
     (
         "E0702",
