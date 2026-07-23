@@ -99,15 +99,32 @@ fn differential(src: &str, inputs: &[(&str, u128)]) {
     );
 
     // Our own kernel.
+    let input_map_bits: BTreeMap<String, mimz::sim::value::Bits> = input_map
+        .iter()
+        .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
+        .collect();
     let outputs = comb::eval_outputs(
         std::slice::from_ref(&file),
         None,
-        &input_map,
+        &input_map_bits,
         &BTreeMap::new(),
     )
     .unwrap_or_else(|e| panic!("our kernel rejected this program:\n{src}\n{e}"));
-    let kernel_row: BTreeMap<String, u128> =
-        outputs.into_iter().map(|o| (o.name, o.value)).collect();
+    // Regression fixtures here are hand-picked small-width repros, so every
+    // output value is always `Bits::Small` — narrow back to `u128` to
+    // compare against Icarus's own u128-typed parsed output.
+    let kernel_row: BTreeMap<String, u128> = outputs
+        .into_iter()
+        .map(|o| {
+            let v = match o.value {
+                mimz::sim::value::Bits::Small(v) => v,
+                mimz::sim::value::Bits::Wide(_) => {
+                    unreachable!("this test's fixtures are all narrow-width repros")
+                }
+            };
+            (o.name, v)
+        })
+        .collect();
 
     // Real Icarus — a unique temp path (and `run_vvp` "example" tag) per
     // test so parallel `cargo test` runs never clash on the same temp
@@ -196,7 +213,10 @@ fn differential_clocked(src: &str, held_inputs: &[(&str, u128)]) {
 
     let opts = SimOpts {
         clock: None,
-        inputs: held.clone(),
+        inputs: held
+            .iter()
+            .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
+            .collect(),
         cycles: CYCLES,
         reset_cycles: RESET_CYCLES,
     };
@@ -228,11 +248,12 @@ fn differential_clocked(src: &str, held_inputs: &[(&str, u128)]) {
             .get(&cyc)
             .unwrap_or_else(|| panic!("Icarus produced no row for cycle {cyc}"));
         for (name, _) in &outputs_meta {
-            let kernel_v = f.values[name];
+            let kernel_v = f.values[name].clone();
             let icarus_v = icarus_row[name];
             assert_eq!(
-                kernel_v, icarus_v,
-                "output `{name}` at cycle {cyc}: our kernel says {kernel_v} but Icarus says {icarus_v}\nsource:\n{src}"
+                kernel_v,
+                mimz::sim::value::Bits::Small(icarus_v),
+                "output `{name}` at cycle {cyc}: our kernel says {kernel_v:?} but Icarus says {icarus_v}\nsource:\n{src}"
             );
         }
         compared += 1;

@@ -77,7 +77,10 @@ pub(crate) fn eval_file(
         }
     }
     let inputs = match parse_bindings(inputs, parse_u128) {
-        Ok(m) => m,
+        Ok(m) => m
+            .into_iter()
+            .map(|(k, v)| (k, sim::value::Bits::Small(v)))
+            .collect(),
         Err(e) => {
             eprintln!("error: {e}");
             return ExitCode::FAILURE;
@@ -99,7 +102,8 @@ pub(crate) fn eval_file(
         Ok(outputs) => {
             for o in outputs {
                 let kind = if o.signed { "signed" } else { "bits" };
-                println!("{} = {}  ({kind}[{}])", o.name, o.value, o.width);
+                let value = sim::value::bits_to_decimal_string(&o.value, o.width, o.signed);
+                println!("{} = {value}  ({kind}[{}])", o.name, o.width);
             }
             ExitCode::SUCCESS
         }

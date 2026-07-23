@@ -14,7 +14,20 @@ use mimz_core::{ast, checker, diag, emit_verilog, lexer, parser};
 
 use crate::sim::host::{Direction, EmulationHost};
 use crate::sim::run::{MAX_SIM_CYCLES, MAX_SWEEP_VECTORS, SimOpts, comb_run, run};
+use crate::sim::value::Bits;
 use crate::sim::{Val, comb, elaborate, trace, vcd};
+
+/// Wrap a `--steps`/`--sweep`-produced `u128` vector list into `Bits` — every
+/// value these CLI/WASM parsers currently produce stays <=128 bits (real
+/// width-aware `--in`/`--sweep`/`--steps` parsing is Task 10's job, BUG-13
+/// layer 1 part 5); this is the minimal type-only fallout fix for
+/// `comb_run`'s vectors becoming `Bits`-typed (Task 8).
+fn to_bits_vectors(vectors: Vec<BTreeMap<String, u128>>) -> Vec<BTreeMap<String, Bits>> {
+    vectors
+        .into_iter()
+        .map(|m| m.into_iter().map(|(k, v)| (k, Bits::Small(v))).collect())
+        .collect()
+}
 
 /// The cosmetic file name shown in caret headers for in-memory sources.
 const NAME: &str = "input.mimz";
@@ -303,7 +316,10 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     }
 
     let files = parse_source(src)?;
-    let inputs = parse_bindings(inputs_s, parse_u128)?;
+    // `parse_u128` still does the narrow-only parsing (Task 10's job to make
+    // this width-aware); wrap each value as `Bits::Small` for `eval_outputs`'s
+    // now-`Bits`-typed `inputs` (Task 8).
+    let inputs = parse_bindings(inputs_s, |s| parse_u128(s).map(Bits::Small))?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
@@ -315,10 +331,15 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     let mut out = String::new();
     for o in outputs {
         let kind = if o.signed { "signed" } else { "bits" };
-        out.push_str(&format!(
-            "{} = {}  ({kind}[{}])\n",
-            o.name, o.value, o.width
-        ));
+        // `Bits` has no `Display` impl (Task 11's wide-aware decimal
+        // rendering isn't wired up yet) — every value `eval_outputs` can
+        // currently produce here stays <=128 bits, so unwrap the narrow
+        // path directly (Task 8's minimal type-only fallout fix).
+        let value = match o.value {
+            Bits::Small(v) => v,
+            Bits::Wide(_) => unreachable!("wide `eval` output display is Task 11's job"),
+        };
+        out.push_str(&format!("{} = {value}  ({kind}[{}])\n", o.name, o.width));
     }
     Ok(out)
 }
@@ -459,16 +480,22 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     let timeline = if clocked {
         let opts = SimOpts {
             clock,
-            inputs,
+            // `inputs` stays `u128`-parsed here (Task 10's job to widen
+            // `--in` parsing) — wrap to `Bits::Small` for `SimOpts`'
+            // now-`Bits`-typed `inputs` (Task 8's minimal fallout fix).
+            inputs: inputs
+                .iter()
+                .map(|(k, v)| (k.clone(), Bits::Small(*v)))
+                .collect(),
             cycles,
             reset_cycles: 1,
         };
         run(design, &opts)?
     } else if !steps.is_empty() {
-        comb_run(design, &steps)?
+        comb_run(design, &to_bits_vectors(steps))?
     } else {
         let vectors = sweep_vectors(&inputs, &sweep)?;
-        comb_run(design, &vectors)?
+        comb_run(design, &to_bits_vectors(vectors))?
     };
     let steps = timeline.frames.iter().filter(|f| f.cycle.is_some()).count();
 
