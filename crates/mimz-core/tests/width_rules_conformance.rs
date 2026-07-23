@@ -135,8 +135,8 @@ fn simulator_agrees(lhs: Kind, amount: Kind) -> bool {
     impl Resolver for FixedResolver {
         fn signal(&mut self, name: &str) -> Result<Val, String> {
             match name {
-                "lhs" => Ok(self.lhs),
-                "amount" => Ok(self.amount),
+                "lhs" => Ok(self.lhs.clone()),
+                "amount" => Ok(self.amount.clone()),
                 other => Err(format!("unknown signal `{other}` in conformance test")),
             }
         }

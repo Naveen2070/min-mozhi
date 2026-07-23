@@ -127,7 +127,10 @@ pub(crate) fn sim_file(
     let timeline = if clocked {
         let opts = SimOpts {
             clock,
-            inputs,
+            inputs: inputs
+                .iter()
+                .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
+                .collect(),
             cycles,
             reset_cycles: 1,
         };
@@ -146,6 +149,14 @@ pub(crate) fn sim_file(
                 return ExitCode::FAILURE;
             }
         };
+        let vectors: Vec<std::collections::BTreeMap<String, mimz::sim::value::Bits>> = vectors
+            .into_iter()
+            .map(|v| {
+                v.into_iter()
+                    .map(|(k, val)| (k, mimz::sim::value::Bits::Small(val)))
+                    .collect()
+            })
+            .collect();
         match comb_run(design, &vectors) {
             Ok(t) => t,
             Err(e) => {

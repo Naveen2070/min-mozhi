@@ -190,7 +190,7 @@ fn the_counter_kernel_clears_the_perf_baseline() {
     let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
     let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
     let mut sim = Sim::new(design);
-    sim.set("rst", 0).unwrap();
+    sim.set("rst", mimz::sim::value::Bits::Small(0)).unwrap();
 
     // Warm up, then time several short runs and take the BEST rate. The baseline
     // is a capability claim ("the kernel CAN do ≥1M/sec"), so best-of-N rejects
@@ -306,22 +306,22 @@ module FSM {
     let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
     let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
     let mut sim = Sim::new(design);
-    sim.set("rst", 0).unwrap();
+    sim.set("rst", mimz::sim::value::Bits::Small(0)).unwrap();
 
     // Initial: Idle → tag = 0.
-    assert_eq!(sim.peek("tag").unwrap(), 0, "Idle → tag=0");
+    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(0), "Idle → tag=0");
 
     // After tick 1: Idle → Run, tag = 1.
     sim.tick("clk").unwrap();
-    assert_eq!(sim.peek("tag").unwrap(), 1, "Run → tag=1");
+    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(1), "Run → tag=1");
 
     // After tick 2: Run → Done, tag = 2.
     sim.tick("clk").unwrap();
-    assert_eq!(sim.peek("tag").unwrap(), 2, "Done → tag=2");
+    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(2), "Done → tag=2");
 
     // After tick 3: Done → Idle, tag = 0.
     sim.tick("clk").unwrap();
-    assert_eq!(sim.peek("tag").unwrap(), 0, "Idle again → tag=0");
+    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(0), "Idle again → tag=0");
 }
 
 /// Tagged enum match works end-to-end: a `Packet { Read(addr: bits[4]), Nop }`
@@ -362,26 +362,26 @@ module Decoder {
     let mut sim = Sim::new(design);
 
     // Packet.Read(addr=10): packed = (0 << 4) | 10 = 10.
-    sim.set("pkt", 10).unwrap();
+    sim.set("pkt", mimz::sim::value::Bits::Small(10)).unwrap();
     assert_eq!(
         sim.peek("got_read").unwrap(),
-        1,
+        mimz::sim::value::Bits::Small(1),
         "Read tag must fire got_read"
     );
     assert_eq!(
         sim.peek("addr_out").unwrap(),
-        10,
+        mimz::sim::value::Bits::Small(10),
         "addr payload extracted = 10"
     );
 
     // Packet.Nop: packed = (1 << 4) | 0 = 16.
-    sim.set("pkt", 16).unwrap();
+    sim.set("pkt", mimz::sim::value::Bits::Small(16)).unwrap();
     assert_eq!(
         sim.peek("got_read").unwrap(),
-        0,
+        mimz::sim::value::Bits::Small(0),
         "Nop tag must not fire got_read"
     );
-    assert_eq!(sim.peek("addr_out").unwrap(), 0, "Nop has no addr payload");
+    assert_eq!(sim.peek("addr_out").unwrap(), mimz::sim::value::Bits::Small(0), "Nop has no addr payload");
 }
 
 /// Write-arm payload extraction: a two-field tagged variant `Write(addr: bits[32], data: bits[32])`
@@ -427,10 +427,10 @@ module BusDecoder {
     // packed = (1u128 << 64) | (0xAAu128 << 32) | 0x55u128
     let packed: u128 = (1u128 << 64) | (0xAAu128 << 32) | 0x55u128;
     // Sim::set takes u128 via Into<u128>; the value fits in 65 bits.
-    sim.set("pkt", packed).unwrap();
+    sim.set("pkt", mimz::sim::value::Bits::Small(packed)).unwrap();
     assert_eq!(
         sim.peek("xor_out").unwrap(),
-        0xAA ^ 0x55,
+        mimz::sim::value::Bits::Small(0xAA ^ 0x55),
         "Write arm: xor_out must equal addr XOR data = 0xFF"
     );
 
@@ -438,10 +438,10 @@ module BusDecoder {
     // max_payload_w=64; Read.addr is the only field → hi=63, lo=32.
     // packed = (0 << 64) | (0xBEEF << 32)
     let packed_read: u128 = 0xBEEFu128 << 32;
-    sim.set("pkt", packed_read).unwrap();
+    sim.set("pkt", mimz::sim::value::Bits::Small(packed_read)).unwrap();
     assert_eq!(
         sim.peek("xor_out").unwrap(),
-        0xBEEF,
+        mimz::sim::value::Bits::Small(0xBEEF),
         "Read arm: xor_out must equal addr = 0xBEEF"
     );
 }
@@ -476,10 +476,10 @@ module M {
     let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
     let mut sim = Sim::new(design);
 
-    sim.set("k", 9).unwrap();
+    sim.set("k", mimz::sim::value::Bits::Small(9)).unwrap();
     assert_eq!(
         sim.peek("y").unwrap(),
-        9,
+        mimz::sim::value::Bits::Small(9),
         "constructed Ctrl(k) round-trips through match back to k"
     );
 }
@@ -515,7 +515,7 @@ module M {
 
     assert_eq!(
         sim.peek("y").unwrap(),
-        3,
+        mimz::sim::value::Bits::Small(3),
         "the literal 3 must land in the 4-bit payload field, not shift the layout"
     );
 }

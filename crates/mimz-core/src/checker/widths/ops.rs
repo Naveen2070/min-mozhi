@@ -13,7 +13,7 @@ use super::{MAX_WIDTH, Ty, Wcx, bits, min_bits, min_signed_bits, op_text, same, 
 /// Narrow a checker-side width (`u128`, since `Ty::Bits`/`Ty::Signed`
 /// store one) to the `u32` `width_rules::Kind` uses. Safe for any width
 /// this checker would ever actually accept — `MAX_WIDTH` (1,000,000,
-/// `checker/widths/mod.rs`) is far below `u32::MAX` (~4.29 billion) —
+/// `crate::width_rules`) is far below `u32::MAX` (~4.29 billion) —
 /// written as a checked conversion rather than a raw cast so a future
 /// change to `MAX_WIDTH` fails loudly instead of silently wrapping.
 pub(super) fn width_u32(n: u128) -> u32 {
