@@ -17,6 +17,14 @@
 //! `checker/widths/ops.rs`, unconverted, as explicit follow-up work —
 //! not an oversight, a scoping decision made when this plan was written.
 
+/// Widths above this are rejected (checker's E0410) — keeps `2^n`
+/// arithmetic trivially safe, and no real design comes close. The ONE
+/// definition both the checker and `mimz-sim`'s `value::checked_width`
+/// consume — previously two independent copies (checker-only), which is
+/// exactly the class of drift this module exists to prevent (see the
+/// module doc comment's BUG-21 story).
+pub const MAX_WIDTH: i128 = 1_000_000;
+
 /// A value's width + signedness — the minimal shape every per-operator
 /// width/kind rule needs, independent of whether the caller has a
 /// static type (the checker's `Ty`) or a concrete runtime value (the
@@ -322,5 +330,13 @@ mod tests {
             signed: true,
         };
         assert_eq!(matched_result(a, b), Err(RuleError::KindMismatch { a, b }));
+    }
+
+    #[test]
+    fn max_width_matches_the_checkers_own_ceiling() {
+        // The checker's own width-range check (`checker/widths/mod.rs`'s
+        // `eval_width`) accepts `1..=MAX_WIDTH` — this constant is the
+        // single source of truth both sides now consume.
+        assert_eq!(MAX_WIDTH, 1_000_000);
     }
 }

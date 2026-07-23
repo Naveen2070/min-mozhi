@@ -18,6 +18,18 @@ use std::collections::{BTreeMap, HashMap};
 use mimz_core::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 
 use super::value::{self, Resolver, Val};
+use super::wide;
+
+/// Re-mask `v`'s raw bits to width `w` (with `signed`) — a pure reinterpret
+/// (truncate/zero-pad the limbs), NOT a sign-extending resize. Mirrors the
+/// exact "reinterpret the same raw bits" semantics `Val::new(v.bits, w, s)`
+/// had before `Bits` gained a `Wide` variant (Task 2's Copy-loss fallout,
+/// Task 7); same pattern as `value.rs`'s own (private) `remask_to_width`.
+fn remask_to_width(v: Val, w: u32, signed: bool) -> Val {
+    let mut limbs = v.to_limbs();
+    limbs.resize(wide::limb_count(w), 0);
+    Val::new_wide(limbs, w, signed)
+}
 
 /// Flatten `const if` nodes in `items`, evaluating conditions against `ints`.
 /// Items from winning branches replace the ConstIf node; losing branches drop.
@@ -80,7 +92,7 @@ pub struct Output {
     /// The output port's name.
     pub name: String,
     /// The output value, in the low `width` bits.
-    pub value: u128,
+    pub value: value::Bits,
     /// Bit width of the output port.
     pub width: u32,
     /// Whether the output port is `signed`.
@@ -95,7 +107,7 @@ pub struct Output {
 pub fn eval_outputs(
     files: &[ast::File],
     module: Option<&str>,
-    inputs: &BTreeMap<String, u128>,
+    inputs: &BTreeMap<String, value::Bits>,
     params: &BTreeMap<String, i128>,
 ) -> Result<Vec<Output>, String> {
     let file = files.first().ok_or("eval_outputs: no files")?;
@@ -324,13 +336,18 @@ pub fn eval_outputs(
         } = it
         {
             let (w, s) = sig_ty[&name.name];
-            let raw = inputs.get(&name.name).copied().ok_or_else(|| {
+            let raw = inputs.get(&name.name).cloned().ok_or_else(|| {
                 format!(
                     "missing value for input `{}` — pass it with --in {}=<n>",
                     name.name, name.name
                 )
             })?;
-            env.memo.insert(name.name.clone(), Val::new(raw, w, s));
+            let val = match raw {
+                value::Bits::Small(b) if w <= 128 => Val::new(b, w, s),
+                value::Bits::Small(b) => Val::new_wide(value::wide_limbs_from_u128(b, w), w, s),
+                value::Bits::Wide(limbs) => Val::new_wide(limbs, w, s),
+            };
+            env.memo.insert(name.name.clone(), val);
         }
     }
 
@@ -340,7 +357,7 @@ pub fn eval_outputs(
         let v = env.resolve(name)?;
         outputs.push(Output {
             name: name.clone(),
-            value: v.masked(),
+            value: v.bits_masked(),
             width: v.width,
             signed: v.signed,
         });
@@ -364,7 +381,7 @@ impl Env<'_> {
     /// use. A signal seen twice on the active stack is a combinational cycle.
     fn resolve(&mut self, name: &str) -> Result<Val, String> {
         if let Some(v) = self.memo.get(name) {
-            return Ok(*v);
+            return Ok(v.clone());
         }
         if self.in_progress.iter().any(|n| n == name) {
             return Err(format!(
@@ -387,8 +404,8 @@ impl Env<'_> {
             .get(name)
             .copied()
             .unwrap_or((v.width, v.signed));
-        let v = Val::new(v.bits, w, s); // mask to the declared width
-        self.memo.insert(name.to_string(), v);
+        let v = remask_to_width(v, w, s); // mask to the declared width
+        self.memo.insert(name.to_string(), v.clone());
         Ok(v)
     }
 }
@@ -419,8 +436,11 @@ mod tests {
         mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses")
     }
 
-    fn ins(pairs: &[(&str, u128)]) -> BTreeMap<String, u128> {
-        pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect()
+    fn ins(pairs: &[(&str, u128)]) -> BTreeMap<String, value::Bits> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), value::Bits::Small(*v)))
+            .collect()
     }
 
     fn one(file: &ast::File, inputs: &[(&str, u128)]) -> Vec<Output> {
@@ -431,6 +451,17 @@ mod tests {
             &BTreeMap::new(),
         )
         .expect("evaluates")
+    }
+
+    /// Unwrap a narrow-path `Output.value`/test result — every test in this
+    /// module only ever drives/reads `bits[<=128]` signals, so `Bits::Wide`
+    /// is never actually produced here; this is the test-only counterpart to
+    /// `Val::masked`'s "narrow-path-only" contract.
+    fn small(b: &value::Bits) -> u128 {
+        match b {
+            value::Bits::Small(v) => *v,
+            value::Bits::Wide(_) => panic!("test expected a narrow (Small) value"),
+        }
     }
 
     #[test]
@@ -461,9 +492,9 @@ mod tests {
         );
         let out = one(&f, &[("a", 3), ("b", 5)]);
         assert_eq!(out[0].name, "sum");
-        assert_eq!((out[0].value, out[0].width), (8, 9));
+        assert_eq!((small(&out[0].value), out[0].width), (8, 9));
         // 200 + 100 = 300, carried into the 9th bit (no wrap).
-        assert_eq!(one(&f, &[("a", 200), ("b", 100)])[0].value, 300);
+        assert_eq!(small(&one(&f, &[("a", 200), ("b", 100)])[0].value), 300);
     }
 
     #[test]
@@ -471,7 +502,7 @@ mod tests {
         let f = parse(
             "module W {\n  in a: bits[8]\n  in b: bits[8]\n  out y: bits[8]\n  y = a +% b\n}\n",
         );
-        assert_eq!(one(&f, &[("a", 200), ("b", 100)])[0].value, 44); // 300 mod 256
+        assert_eq!(small(&one(&f, &[("a", 200), ("b", 100)])[0].value), 44); // 300 mod 256
         assert_eq!(one(&f, &[("a", 200), ("b", 100)])[0].width, 8);
     }
 
@@ -481,12 +512,18 @@ mod tests {
             "module C(W: int = 8) {\n  in a: bits[W]\n  in b: bits[W]\n  out eq: bit\n  out gt: bit\n  out max: bits[W]\n  eq = a == b\n  gt = a > b\n  max = if a > b { a } else { b }\n}\n",
         );
         let o = one(&f, &[("a", 7), ("b", 3)]);
-        let m: BTreeMap<_, _> = o.iter().map(|x| (x.name.as_str(), x.value)).collect();
+        let m: BTreeMap<_, _> = o
+            .iter()
+            .map(|x| (x.name.as_str(), small(&x.value)))
+            .collect();
         assert_eq!(m["eq"], 0);
         assert_eq!(m["gt"], 1);
         assert_eq!(m["max"], 7);
         let o = one(&f, &[("a", 4), ("b", 4)]);
-        let m: BTreeMap<_, _> = o.iter().map(|x| (x.name.as_str(), x.value)).collect();
+        let m: BTreeMap<_, _> = o
+            .iter()
+            .map(|x| (x.name.as_str(), small(&x.value)))
+            .collect();
         assert_eq!((m["eq"], m["gt"], m["max"]), (1, 0, 4));
     }
 
@@ -499,7 +536,7 @@ mod tests {
         let o = one(&f, &[("a", 0b1010)]);
         let m: BTreeMap<_, _> = o
             .iter()
-            .map(|x| (x.name.as_str(), (x.value, x.width)))
+            .map(|x| (x.name.as_str(), (small(&x.value), x.width)))
             .collect();
         assert_eq!(m["y"], (0b1010_1010, 8));
         assert_eq!(m["z"], (0b1010_1010_1010, 12));
@@ -511,7 +548,7 @@ mod tests {
         let f = parse(
             "module D {\n  in s: bits[3]\n  out y: bits[2]\n  y = match s {\n    0b1?? => 0b11\n    0b01? => 0b10\n    _ => 0b00\n  }\n}\n",
         );
-        let pick = |v: u128| one(&f, &[("s", v)])[0].value;
+        let pick = |v: u128| small(&one(&f, &[("s", v)])[0].value);
         assert_eq!(pick(0b100), 3); // matches 0b1??
         assert_eq!(pick(0b111), 3); // matches 0b1??
         assert_eq!(pick(0b010), 2); // matches 0b01?
@@ -524,19 +561,23 @@ mod tests {
             "module M(W: int = 8) {\n  in sel: bits[2]\n  in a: bits[W]\n  in b: bits[W]\n  in c: bits[W]\n  in d: bits[W]\n  out y: bits[W]\n  y = match sel {\n    0b00 => a\n    0b01 => b\n    0b10 => c\n    0b11 => d\n  }\n}\n",
         );
         assert_eq!(
-            one(
-                &f,
-                &[("sel", 2), ("a", 10), ("b", 20), ("c", 30), ("d", 40)]
-            )[0]
-            .value,
+            small(
+                &one(
+                    &f,
+                    &[("sel", 2), ("a", 10), ("b", 20), ("c", 30), ("d", 40)]
+                )[0]
+                .value
+            ),
             30
         );
         assert_eq!(
-            one(
-                &f,
-                &[("sel", 0), ("a", 10), ("b", 20), ("c", 30), ("d", 40)]
-            )[0]
-            .value,
+            small(
+                &one(
+                    &f,
+                    &[("sel", 0), ("a", 10), ("b", 20), ("c", 30), ("d", 40)]
+                )[0]
+                .value
+            ),
             10
         );
     }
@@ -547,15 +588,15 @@ mod tests {
             "module Window {\n  in lo: bits[8]\n  in value: bits[8]\n  in hi: bits[8]\n  out in_range: bit\n  in_range = lo <= value <= hi\n}\n",
         );
         assert_eq!(
-            one(&f, &[("lo", 10), ("value", 50), ("hi", 100)])[0].value,
+            small(&one(&f, &[("lo", 10), ("value", 50), ("hi", 100)])[0].value),
             1
         );
         assert_eq!(
-            one(&f, &[("lo", 10), ("value", 5), ("hi", 100)])[0].value,
+            small(&one(&f, &[("lo", 10), ("value", 5), ("hi", 100)])[0].value),
             0
         );
         assert_eq!(
-            one(&f, &[("lo", 10), ("value", 100), ("hi", 100)])[0].value,
+            small(&one(&f, &[("lo", 10), ("value", 100), ("hi", 100)])[0].value),
             1
         ); // boundary
     }
@@ -584,7 +625,7 @@ mod tests {
         let f = parse(
             "module S {\n  in a: bits[64]\n  in s: bits[8]\n  out y: bits[64]\n  y = a << s\n}\n",
         );
-        assert_eq!(one(&f, &[("a", 1), ("s", 0)])[0].value, 1);
+        assert_eq!(small(&one(&f, &[("a", 1), ("s", 0)])[0].value), 1);
     }
 
     #[test]
@@ -592,7 +633,7 @@ mod tests {
         let f = parse(
             "module S {\n  in a: bits[64]\n  in s: bits[8]\n  out y: bits[64]\n  y = a >> s\n}\n",
         );
-        assert_eq!(one(&f, &[("a", 2), ("s", 0)])[0].value, 2);
+        assert_eq!(small(&one(&f, &[("a", 2), ("s", 0)])[0].value), 2);
     }
 
     #[test]
@@ -601,7 +642,10 @@ mod tests {
             "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
         );
         // 127 = valid shift within 128-bit value
-        assert_eq!(one(&f, &[("a", 1), ("s", 127)])[0].value, 1u128 << 127);
+        assert_eq!(
+            small(&one(&f, &[("a", 1), ("s", 127)])[0].value),
+            1u128 << 127
+        );
     }
 
     #[test]
@@ -612,9 +656,9 @@ mod tests {
         // Shift by 128, 200, and all-ones must all yield 0 (regression: the bug
         // where `as u32` truncated `r.bits` when bit≥32 was set, producing a wrong
         // non-zero result instead of 0).
-        assert_eq!(one(&f, &[("a", 1), ("s", 128)])[0].value, 0);
-        assert_eq!(one(&f, &[("a", 1), ("s", 200)])[0].value, 0);
-        assert_eq!(one(&f, &[("a", 1), ("s", u128::MAX)])[0].value, 0);
+        assert_eq!(small(&one(&f, &[("a", 1), ("s", 128)])[0].value), 0);
+        assert_eq!(small(&one(&f, &[("a", 1), ("s", 200)])[0].value), 0);
+        assert_eq!(small(&one(&f, &[("a", 1), ("s", u128::MAX)])[0].value), 0);
     }
 
     #[test]
@@ -622,9 +666,9 @@ mod tests {
         let f = parse(
             "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a >> s\n}\n",
         );
-        assert_eq!(one(&f, &[("a", 2), ("s", 128)])[0].value, 0);
-        assert_eq!(one(&f, &[("a", 2), ("s", 200)])[0].value, 0);
-        assert_eq!(one(&f, &[("a", 2), ("s", u128::MAX)])[0].value, 0);
+        assert_eq!(small(&one(&f, &[("a", 2), ("s", 128)])[0].value), 0);
+        assert_eq!(small(&one(&f, &[("a", 2), ("s", 200)])[0].value), 0);
+        assert_eq!(small(&one(&f, &[("a", 2), ("s", u128::MAX)])[0].value), 0);
     }
 
     #[test]
@@ -635,7 +679,7 @@ mod tests {
         let f = parse(
             "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
         );
-        assert_eq!(one(&f, &[("a", 1), ("s", 1u128 << 32)])[0].value, 0);
+        assert_eq!(small(&one(&f, &[("a", 1), ("s", 1u128 << 32)])[0].value), 0);
     }
 
     #[test]
@@ -644,7 +688,7 @@ mod tests {
             "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a >> s\n}\n",
         );
         assert_eq!(
-            one(&f, &[("a", 1u128 << 63), ("s", 1u128 << 32)])[0].value,
+            small(&one(&f, &[("a", 1u128 << 63), ("s", 1u128 << 32)])[0].value),
             0
         );
     }
@@ -675,7 +719,7 @@ module M {\n\
             &BTreeMap::new(),
         )
         .expect("mac(3,4,5) evaluates");
-        assert_eq!(out[0].value, 17, "mac(3,4,5) must equal 17");
+        assert_eq!(small(&out[0].value), 17, "mac(3,4,5) must equal 17");
         assert_eq!(out[0].width, 16);
     }
 
@@ -692,8 +736,32 @@ module M {\n\
         )
         .expect("mac(200,200,0) evaluates");
         assert_eq!(
-            out[0].value, 64,
+            small(&out[0].value),
+            64,
             "wrap-truncation: p must be 8-bit (64), not 40000"
+        );
+    }
+
+    #[test]
+    fn eval_outputs_handles_a_wide_input() {
+        let src =
+            "module M(WIDTH: int = 200) {\n  in a: bits[WIDTH]\n  out b: bits[WIDTH]\n  b = a\n}\n";
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            "a".to_string(),
+            super::value::Bits::Wide(super::wide::from_u128(123, 200)),
+        );
+        let outputs = eval_outputs(&[f], Some("M"), &inputs, &std::collections::BTreeMap::new())
+            .expect("eval_outputs");
+        let b = outputs
+            .into_iter()
+            .find(|o| o.name == "b")
+            .expect("declares b");
+        assert_eq!(
+            b.value,
+            super::value::Bits::Wide(super::wide::from_u128(123, 200))
         );
     }
 }

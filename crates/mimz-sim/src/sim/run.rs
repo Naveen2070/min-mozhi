@@ -16,13 +16,14 @@ use mimz_core::ast::Edge;
 
 use super::elaborate::{Design, Signal};
 use super::kernel::Sim;
+use super::value::Bits;
 
 /// How to drive a `mimz sim` run.
 pub struct SimOpts {
     /// Which clock to toggle. `None` picks the design's only clock.
     pub clock: Option<String>,
     /// Input values, held constant for the whole run.
-    pub inputs: BTreeMap<String, u128>,
+    pub inputs: BTreeMap<String, Bits>,
     /// Number of clock cycles to run.
     pub cycles: u64,
     /// How many initial cycles to hold reset asserted (active-high).
@@ -38,7 +39,7 @@ pub struct Frame {
     /// The cycle number for a rising-edge frame; `None` for the falling half.
     pub cycle: Option<u64>,
     /// Every signal's value at this instant, keyed by name.
-    pub values: BTreeMap<String, u128>,
+    pub values: BTreeMap<String, Bits>,
 }
 
 /// A captured run: the (stable) signal list with widths, plus the frames.
@@ -109,7 +110,7 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
 
     let mut sim = Sim::new(design);
     for (name, value) in &opts.inputs {
-        sim.set(name, *value)?; // an unknown input name is a clean error
+        sim.set(name, value.clone())?; // an unknown input name is a clean error
     }
 
     // The signal list is stable across the run — take it once.
@@ -121,15 +122,15 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
 
     let mut frames = Vec::new();
     for cycle in 0..opts.cycles {
-        let rst = (cycle < opts.reset_cycles) as u128;
+        let rst = Bits::Small((cycle < opts.reset_cycles) as u128);
         for r in &resets {
-            sim.set(r, rst)?;
+            sim.set(r, rst.clone())?;
         }
         // Rising edge: clock high, apply posedge updates, capture the settled
         // frame. Like the differential testbench, sample AFTER the posedge but
         // BEFORE the negedge — so `on fall` registers update half a period later
         // (visible next cycle), matching Verilog bit-for-bit.
-        sim.set(&clock, 1)?;
+        sim.set(&clock, Bits::Small(1))?;
         sim.tick_edge(&clock, Edge::Rise)?;
         frames.push(Frame {
             time: cycle * PERIOD,
@@ -137,7 +138,7 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
             values: values(&sim)?,
         });
         // Falling edge: clock low, apply negedge updates.
-        sim.set(&clock, 0)?;
+        sim.set(&clock, Bits::Small(0))?;
         sim.tick_edge(&clock, Edge::Fall)?;
         frames.push(Frame {
             time: cycle * PERIOD + HALF,
@@ -158,7 +159,7 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
 /// vectors (`--sweep`) give a frame each. Each vector is applied over the prior
 /// state, so an input not re-listed keeps its last value. Errors if `design` is
 /// clocked or has registers (use [`run`] for those).
-pub fn comb_run(design: Design, vectors: &[BTreeMap<String, u128>]) -> Result<Timeline, String> {
+pub fn comb_run(design: Design, vectors: &[BTreeMap<String, Bits>]) -> Result<Timeline, String> {
     if !design.clocks.is_empty() || !design.regs.is_empty() {
         return Err(format!(
             "module `{}` is clocked — run it with the clocked stimulus, not `comb_run`",
@@ -177,7 +178,7 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, u128>]) -> Result<Ti
 
     // No vectors → a single all-default (zero-input) frame.
     let empty = BTreeMap::new();
-    let vectors: &[BTreeMap<String, u128>] = if vectors.is_empty() {
+    let vectors: &[BTreeMap<String, Bits>] = if vectors.is_empty() {
         std::slice::from_ref(&empty)
     } else {
         vectors
@@ -186,7 +187,7 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, u128>]) -> Result<Ti
     let mut frames = Vec::new();
     for (i, vec) in vectors.iter().enumerate() {
         for (name, value) in vec {
-            sim.set(name, *value)?; // an unknown input name is a clean error
+            sim.set(name, value.clone())?; // an unknown input name is a clean error
         }
         frames.push(Frame {
             time: i as u64 * PERIOD,
@@ -203,7 +204,7 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, u128>]) -> Result<Ti
 
 /// A name → value snapshot of the current state (drops the widths, which the
 /// timeline already carries in `signals`).
-fn values(sim: &Sim) -> Result<BTreeMap<String, u128>, String> {
+fn values(sim: &Sim) -> Result<BTreeMap<String, Bits>, String> {
     Ok(sim
         .snapshot()?
         .into_iter()
@@ -241,14 +242,14 @@ mod tests {
         let tl = run(design(COUNTER), &opts(4)).expect("runs");
         let rows: Vec<&Frame> = tl.frames.iter().filter(|f| f.cycle.is_some()).collect();
         assert_eq!(rows.len(), 4);
-        assert_eq!(rows[0].values["count"], 0); // reset cycle
-        assert_eq!(rows[1].values["count"], 1);
-        assert_eq!(rows[2].values["count"], 2);
-        assert_eq!(rows[3].values["count"], 3);
+        assert_eq!(rows[0].values["count"], Bits::Small(0)); // reset cycle
+        assert_eq!(rows[1].values["count"], Bits::Small(1));
+        assert_eq!(rows[2].values["count"], Bits::Small(2));
+        assert_eq!(rows[3].values["count"], Bits::Small(3));
         // The clock is a square wave: high on rising frames, low on falling.
-        assert_eq!(rows[1].values["clk"], 1);
+        assert_eq!(rows[1].values["clk"], Bits::Small(1));
         let falling: Vec<&Frame> = tl.frames.iter().filter(|f| f.cycle.is_none()).collect();
-        assert_eq!(falling[1].values["clk"], 0);
+        assert_eq!(falling[1].values["clk"], Bits::Small(0));
     }
 
     #[test]
@@ -256,12 +257,12 @@ mod tests {
         let src = "module Add {\n  clock clk\n  reset rst\n  in x: bits[8]\n  out y: bits[8]\n  \
                    reg r: bits[8] = 0\n  on rise(clk) { r <- r +% x }\n  y = r\n}\n";
         let mut o = opts(3);
-        o.inputs.insert("x".into(), 10);
+        o.inputs.insert("x".into(), Bits::Small(10));
         let tl = run(design(src), &o).expect("runs");
         let rows: Vec<&Frame> = tl.frames.iter().filter(|f| f.cycle.is_some()).collect();
-        assert_eq!(rows[0].values["y"], 0); // reset
-        assert_eq!(rows[1].values["y"], 10); // +x
-        assert_eq!(rows[2].values["y"], 20);
+        assert_eq!(rows[0].values["y"], Bits::Small(0)); // reset
+        assert_eq!(rows[1].values["y"], Bits::Small(10)); // +x
+        assert_eq!(rows[2].values["y"], Bits::Small(20));
     }
 
     #[test]
@@ -277,7 +278,7 @@ mod tests {
     #[test]
     fn an_unknown_input_is_rejected() {
         let mut o = opts(2);
-        o.inputs.insert("nope".into(), 1);
+        o.inputs.insert("nope".into(), Bits::Small(1));
         assert!(run(design(COUNTER), &o).is_err());
     }
 
@@ -287,24 +288,29 @@ mod tests {
     #[test]
     fn comb_run_settles_one_frame_per_vector() {
         let mut v = BTreeMap::new();
-        v.insert("a".to_string(), 200u128);
-        v.insert("b".to_string(), 100u128);
+        v.insert("a".to_string(), Bits::Small(200));
+        v.insert("b".to_string(), Bits::Small(100));
         let tl = comb_run(design(ADDER), std::slice::from_ref(&v)).expect("runs");
         assert_eq!(tl.frames.len(), 1);
-        assert_eq!(tl.frames[0].values["sum"], 300); // lossless 9-bit add
+        assert_eq!(tl.frames[0].values["sum"], Bits::Small(300)); // lossless 9-bit add
     }
 
     #[test]
     fn comb_run_sweeps_a_frame_per_vector() {
-        let vectors: Vec<BTreeMap<String, u128>> = [1u128, 2, 3]
+        let vectors: Vec<BTreeMap<String, Bits>> = [1u128, 2, 3]
             .iter()
-            .map(|&a| BTreeMap::from([("a".to_string(), a), ("b".to_string(), 10)]))
+            .map(|&a| {
+                BTreeMap::from([
+                    ("a".to_string(), Bits::Small(a)),
+                    ("b".to_string(), Bits::Small(10)),
+                ])
+            })
             .collect();
         let tl = comb_run(design(ADDER), &vectors).expect("runs");
         assert_eq!(tl.frames.len(), 3);
-        assert_eq!(tl.frames[0].values["sum"], 11);
-        assert_eq!(tl.frames[1].values["sum"], 12);
-        assert_eq!(tl.frames[2].values["sum"], 13);
+        assert_eq!(tl.frames[0].values["sum"], Bits::Small(11));
+        assert_eq!(tl.frames[1].values["sum"], Bits::Small(12));
+        assert_eq!(tl.frames[2].values["sum"], Bits::Small(13));
         // Each frame is a distinct settle point, on the same period as a clocked run.
         assert_eq!(tl.frames[2].time, 2 * PERIOD);
     }
@@ -313,7 +319,7 @@ mod tests {
     fn comb_run_with_no_vectors_is_one_zero_frame() {
         let tl = comb_run(design(ADDER), &[]).expect("runs");
         assert_eq!(tl.frames.len(), 1);
-        assert_eq!(tl.frames[0].values["sum"], 0);
+        assert_eq!(tl.frames[0].values["sum"], Bits::Small(0));
     }
 
     #[test]
@@ -328,8 +334,15 @@ mod tests {
         // a = +7, b = 0b1110 = -2 (signed[4]) ⇒ a + b = +5, not 21.
         let src = "module S { in a: signed[4]\n  in b: signed[4]\n  \
                    out sum: signed[5]\n  sum = a + b\n}\n";
-        let v = BTreeMap::from([("a".to_string(), 7u128), ("b".to_string(), 0b1110u128)]);
+        let v = BTreeMap::from([
+            ("a".to_string(), Bits::Small(7)),
+            ("b".to_string(), Bits::Small(0b1110)),
+        ]);
         let tl = comb_run(design(src), std::slice::from_ref(&v)).expect("runs");
-        assert_eq!(tl.frames[0].values["sum"], 5, "signed add must sign-extend");
+        assert_eq!(
+            tl.frames[0].values["sum"],
+            Bits::Small(5),
+            "signed add must sign-extend"
+        );
     }
 }

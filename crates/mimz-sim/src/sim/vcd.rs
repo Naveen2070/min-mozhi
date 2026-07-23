@@ -8,6 +8,20 @@
 use std::collections::BTreeMap;
 
 use super::run::Timeline;
+use super::value::Bits;
+
+/// Unwrap a narrow-path `Frame` value to a raw `u128` — every value this
+/// crate can currently DRIVE through `mimz sim`'s CLI stays <=128 bits, so
+/// `Bits::Wide` is not reachable here yet. Real `Wide` VCD rendering
+/// (binary, limb-wise) is Task 9's job (BUG-13 layer 1, part 4); this is
+/// the minimal type-only fallout fix for `Frame.values` becoming `Bits`-typed
+/// (Task 8), mirroring `Val::masked`'s own "narrow-path-only" contract.
+fn narrow(b: &Bits) -> u128 {
+    match b {
+        Bits::Small(v) => *v,
+        Bits::Wide(_) => unreachable!("wide VCD dumping is Task 9's job"),
+    }
+}
 
 /// Render `tl` as a VCD document.
 pub fn to_vcd(tl: &Timeline) -> String {
@@ -35,7 +49,7 @@ pub fn to_vcd(tl: &Timeline) -> String {
             out.push_str("$dumpvars\n");
         }
         for sig in &tl.signals {
-            let v = *frame.values.get(&sig.name).unwrap_or(&0);
+            let v = narrow(frame.values.get(&sig.name).unwrap_or(&Bits::Small(0)));
             if fi == 0 || prev.get(&sig.name) != Some(&v) {
                 let (id, width) = &ids[&sig.name];
                 out.push_str(&fmt_value(*width, v, id));

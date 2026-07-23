@@ -14,6 +14,8 @@ use mimz_core::ast::{
     self, BinOp, Builtin, Expr, ExprKind, FnParam, FnStmt, FuncDecl, Pattern, Type, UnOp,
 };
 
+use super::wide;
+
 /// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
 pub(super) fn mask(w: u32) -> u128 {
     if w >= 128 {
@@ -23,77 +25,232 @@ pub(super) fn mask(w: u32) -> u128 {
     }
 }
 
-/// A bit-vector value: the low `width` bits of `bits` are meaningful. `pub`
-/// (re-exported at `mimz_sim::sim::Val`) since `EmulationHost::on_change`/
-/// `on_tick` hand this to the shell crate's peripheral implementations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A value's raw bit pattern: `Small` for the fast path (width <= 128,
+/// stored as a plain `u128`, unchanged from before this task), `Wide`
+/// for anything larger (little-endian `u64` limbs, `wide::limb_count`
+/// of them). `Val::new_wide` guarantees `width <= 128` is ALWAYS
+/// `Small` — no other constructor produces a `Wide` value that fits in
+/// 128 bits, so callers can treat "is this Wide" and "is width > 128"
+/// as the same question.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Bits {
+    Small(u128),
+    Wide(Vec<u64>),
+}
+
+/// Render `bits` (masked to `width`, interpreted per `signed`) as a decimal string —
+/// the `Bits`-only counterpart to `harness.rs`'s `Val`-based `show()`, for callers
+/// (`Sim::peek`/`Output.value` consumers outside this crate) that only have a `Bits`
+/// plus its width/signedness, not a full `Val`.
+pub fn bits_to_decimal_string(bits: &Bits, width: u32, signed: bool) -> String {
+    match bits {
+        Bits::Small(b) => {
+            let m = b & mask(width);
+            if signed && width >= 1 && (m >> (width - 1)) & 1 == 1 {
+                ((m | !mask(width)) as i128).to_string()
+            } else {
+                m.to_string()
+            }
+        }
+        Bits::Wide(limbs) => wide::to_decimal_string(limbs, width, signed),
+    }
+}
+
+/// A bit-vector value: the low `width` bits of `bits` are meaningful.
+/// `pub` (re-exported at `mimz_sim::sim::Val`) since
+/// `EmulationHost::on_change`/`on_tick` hand this to the shell crate's
+/// peripheral implementations. NO LONGER `Copy` (Task 2,
+/// `docs/superpowers/specs/2026-07-22-sim-wide-values-design.local.md`
+/// §3) — `Bits::Wide`'s `Vec<u64>` can't be a bitwise copy. Every caller
+/// that relied on implicit-copy semantics gets a compiler error at the
+/// exact site needing an explicit `.clone()` (Task 7).
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Val {
     /// The value's bit pattern; only the low `width` bits are meaningful.
-    /// MEANINGLESS when `unknown` is `true` — the bit pattern is NOT
-    /// guaranteed to be any particular value (e.g. 0) in that case; callers
-    /// must check `unknown` before trusting this field regardless.
-    pub bits: u128,
-    /// Bit width, `1..=128`.
+    /// MEANINGLESS when `unknown` is `true`.
+    pub bits: Bits,
+    /// Bit width, `1..=1_000_000` (`mimz_core::width_rules::MAX_WIDTH`).
     pub width: u32,
     /// Whether `bits` is interpreted as two's-complement `signed`.
     pub signed: bool,
-    /// Coarse whole-value taint: `true` means this value is entirely
-    /// unconstrained (an `extern module` instance output in `warn` sim
-    /// mode — see `docs/superpowers/specs/2026-07-15-verilog-ffi-design.local.md`).
-    /// NOT a per-bit X mask — the whole value is tainted or it isn't.
-    /// Every operator propagates this: any operand tainted -> result
-    /// tainted (see `unary`/`binary` and `eval`'s `Concat`/`Replicate`/
-    /// `Index`/`Slice` arms).
+    /// Coarse whole-value taint — see the pre-existing doc comment this
+    /// field always had; unchanged by this task.
     pub unknown: bool,
 }
 
 impl Val {
-    /// Builds a `Val`, masking `bits` to `width` (`width` floors at 1 — no
-    /// zero-width signal exists in Min-Mozhi).
+    /// Builds a `Small`-path `Val`, masking `bits` to `width` (`width`
+    /// floors at 1). UNCHANGED behavior from before this task — every
+    /// existing caller with `width <= 128` gets the exact same `Val` it
+    /// always did.
     pub fn new(bits: u128, width: u32, signed: bool) -> Val {
         Val {
-            bits: bits & mask(width),
+            bits: Bits::Small(bits & mask(width)),
             width: width.max(1),
             signed,
             unknown: false,
         }
     }
-    /// An unconstrained value of the given width/signedness — see the
-    /// `unknown` field's doc comment. `bits` is `0` but MUST NOT be relied
-    /// upon by any caller; only `unknown` carries meaning here.
+    /// Builds a `Val` from a limb vector, masking to `width` and
+    /// auto-narrowing to `Bits::Small` when `width <= 128` — so
+    /// `width <= 128` implies `Small` is an invariant every OTHER
+    /// constructor/consumer can rely on without re-checking. `limbs`
+    /// must have exactly `wide::limb_count(width)` elements.
+    pub(super) fn new_wide(mut limbs: Vec<u64>, width: u32, signed: bool) -> Val {
+        wide::mask_to_width(&mut limbs, width);
+        if width <= 128 {
+            let lo = limbs.first().copied().unwrap_or(0) as u128;
+            let hi = limbs.get(1).copied().unwrap_or(0) as u128;
+            return Val::new(lo | (hi << 64), width, signed);
+        }
+        Val {
+            bits: Bits::Wide(limbs),
+            width,
+            signed,
+            unknown: false,
+        }
+    }
+    /// An unconstrained value of the given width/signedness.
     pub fn unknown(width: u32, signed: bool) -> Val {
         Val {
-            bits: 0,
+            bits: Bits::Small(0),
             width: width.max(1),
             signed,
             unknown: true,
         }
     }
-    /// A compile-time integer used as a value: minimal width that holds it.
+    /// A compile-time integer used as a value: minimal width that holds
+    /// it. Literals stay `i128`-bounded (layer 2, deliberately out of
+    /// scope for this plan — see the design doc) — always `Small`.
     pub fn from_int(v: i128) -> Val {
         if v >= 0 {
             let w = (128 - (v as u128).leading_zeros()).max(1);
             Val::new(v as u128, w, false)
         } else {
-            // Two's complement in just enough bits.
             let w = (129 - v.leading_ones()).max(1);
             Val::new(v as u128, w, true)
         }
     }
+    /// `true` if this value is on the wide (>128-bit) slow path.
+    pub fn is_wide(&self) -> bool {
+        matches!(self.bits, Bits::Wide(_))
+    }
+    /// This value's limbs, promoting a `Small` value to a
+    /// `wide::limb_count(self.width)`-length vector on the fly. Used by
+    /// every wide-path operator (Task 6) to treat both operands
+    /// uniformly regardless of which one is actually wide.
+    pub(super) fn to_limbs(&self) -> Vec<u64> {
+        match &self.bits {
+            Bits::Wide(v) => v.clone(),
+            Bits::Small(b) => {
+                let mut out = wide::zeros(self.width);
+                out[0] = *b as u64;
+                if out.len() > 1 {
+                    out[1] = (*b >> 64) as u64;
+                }
+                out
+            }
+        }
+    }
     /// Sign-aware value, sign-extended to i128 for signed comparisons.
+    /// PANICS if called on a `Wide` value wider than 128 meaningful
+    /// signed bits — every caller of this function operates on values
+    /// already known to be `Small` (the narrow fast path only; Task 6's
+    /// wide dispatch never calls this).
     pub fn as_i128(&self) -> i128 {
+        let Bits::Small(bits) = &self.bits else {
+            unreachable!("as_i128 called on a Wide value — narrow-path-only helper")
+        };
         let m = mask(self.width);
-        let b = self.bits & m;
+        let b = bits & m;
         if self.signed && self.width >= 1 && (b >> (self.width - 1)) & 1 == 1 {
             (b | !m) as i128
         } else {
             b as i128
         }
     }
-    /// The meaningful bits (masked to `width`) — what a consumer stores/prints.
+    /// The meaningful bits (masked to `width`) as a `u128` — PANICS on a
+    /// `Wide` value (same "narrow-path-only" contract as `as_i128`;
+    /// display code goes through `wide::to_decimal_string`/
+    /// `to_binary_string` instead, see Task 11).
     pub fn masked(&self) -> u128 {
-        self.bits & mask(self.width)
+        let Bits::Small(bits) = &self.bits else {
+            unreachable!("masked() called on a Wide value — narrow-path-only helper")
+        };
+        bits & mask(self.width)
     }
+    /// This value's bits, masked to `width`, as a `Bits` — the
+    /// `Bits`-returning counterpart to `masked()`/`as_i128()` for
+    /// callers (like `Sim::peek`/`Sim::snapshot`) that must handle BOTH
+    /// `Small` and `Wide` values, not just the narrow fast path.
+    pub fn bits_masked(&self) -> Bits {
+        match &self.bits {
+            Bits::Small(b) => Bits::Small(b & mask(self.width)),
+            Bits::Wide(limbs) => {
+                let mut out = limbs.clone();
+                wide::mask_to_width(&mut out, self.width);
+                Bits::Wide(out)
+            }
+        }
+    }
+    /// The value's least significant bit — works for both `Small` and
+    /// `Wide` without the caller needing to branch.
+    pub(super) fn lsb(&self) -> u128 {
+        match &self.bits {
+            Bits::Small(b) => b & 1,
+            Bits::Wide(limbs) => wide::bit_at(limbs, 0) as u128,
+        }
+    }
+    /// This value's low 128 bits as a `u128`, for contexts (like a shift
+    /// AMOUNT) that only ever care about small magnitudes regardless of
+    /// the operand's declared width. A `Wide` value too large to matter
+    /// here (shifting by more than 2^128) saturates to `u128::MAX`, which
+    /// every caller already treats as "shift the whole value away."
+    pub(super) fn bits_small_or_zero(&self) -> u128 {
+        match &self.bits {
+            Bits::Small(b) => *b,
+            Bits::Wide(limbs) => {
+                if wide::cmp_unsigned(limbs, &wide::from_u128(u128::MAX, self.width))
+                    == std::cmp::Ordering::Greater
+                {
+                    u128::MAX
+                } else {
+                    (limbs.first().copied().unwrap_or(0) as u128)
+                        | ((limbs.get(1).copied().unwrap_or(0) as u128) << 64)
+                }
+            }
+        }
+    }
+}
+
+/// Thin re-export of `wide::from_u128` — `kernel.rs` is a sibling module
+/// and goes through `value`'s own surface rather than reaching into
+/// `wide` directly, mirroring this codebase's existing `pub(super)`
+/// visibility convention between sibling `sim::*` modules.
+pub(super) fn wide_limbs_from_u128(v: u128, width: u32) -> Vec<u64> {
+    wide::from_u128(v, width)
+}
+
+/// Promote `l`/`r` to matching-length limb vectors at `result_width`,
+/// running the SAME sign-extension `extend_bits` already applies on the
+/// narrow path. Shared by every wide-path binary operator arm below.
+fn wide_operands(l: Val, r: Val, result_width: u32) -> (Vec<u64>, Vec<u64>) {
+    (
+        wide::extend(&l.to_limbs(), l.width, result_width, l.signed),
+        wide::extend(&r.to_limbs(), r.width, result_width, r.signed),
+    )
+}
+
+/// Reinterpret `v`'s raw bit pattern at a new width `w` — a pure re-mask
+/// (truncating if `w < v.width`, zero-padding if `w > v.width`), NOT a
+/// sign-extending resize (that's `extend_bits`/`wide::extend`). Used by
+/// `eval_fn_stmts`'s `Let` handling to re-mask a local to its checker-
+/// inferred width, mirroring the exact "reinterpret the same raw bits"
+/// semantics the pre-`Bits`-enum code had via `Val::new(v.bits, w, ...)`.
+fn remask_to_width(v: Val, w: u32) -> Val {
+    let mut limbs = v.to_limbs();
+    limbs.resize(wide::limb_count(w), 0);
+    Val::new_wide(limbs, w, v.signed)
 }
 
 /// Resolves names while an expression is evaluated: a signal/reg/wire to its
@@ -177,7 +334,7 @@ pub(super) fn eval_ctx<R: Resolver>(
             binary_ctx(*op, l, rr, expected_width)
         }
         ExprKind::IfExpr { cond, then, els } => {
-            if eval(r, cond)?.bits & 1 == 1 {
+            if eval(r, cond)?.lsb() == 1 {
                 eval_ctx(r, then, expected_width)
             } else {
                 eval_ctx(r, els, expected_width)
@@ -198,20 +355,28 @@ pub(super) fn eval_ctx<R: Resolver>(
             let vals: Vec<Val> = parts.iter().map(|p| eval(r, p)).collect::<Result<_, _>>()?;
             // Sum in u64 so many parts cannot wrap a u32 below the guard.
             let total64: u64 = vals.iter().map(|v| v.width as u64).sum();
-            if total64 > 128 {
-                return Err("concatenation exceeds 128 bits (evaluator limit)".into());
+            if total64 > mimz_core::width_rules::MAX_WIDTH as u64 {
+                return Err(format!(
+                    "concatenation exceeds {} bits",
+                    mimz_core::width_rules::MAX_WIDTH
+                ));
             }
             let total = total64 as u32;
             if vals.iter().any(|v| v.unknown) {
                 return Ok(Val::unknown(total, false));
             }
-            let mut bits = 0u128;
+            let mut limbs = wide::zeros(total);
             let mut shift = total;
             for v in &vals {
                 shift -= v.width;
-                bits |= (v.bits & mask(v.width)) << shift;
+                let placed = wide::shl(
+                    &wide::extend(&v.to_limbs(), v.width, total, false),
+                    shift,
+                    total,
+                );
+                limbs = wide::bitor(&limbs, &placed);
             }
-            Ok(Val::new(bits, total, false))
+            Ok(Val::new_wide(limbs, total, false))
         }
         ExprKind::Replicate { count, parts } => {
             let n = const_eval(count, r.ints())?;
@@ -220,28 +385,41 @@ pub(super) fn eval_ctx<R: Resolver>(
             }
             let vals: Vec<Val> = parts.iter().map(|p| eval(r, p)).collect::<Result<_, _>>()?;
             // Inner group width, then the replicated total — both in u64 so the
-            // product cannot wrap a u32 below the 128-bit guard.
+            // product cannot wrap a u32 below the width guard.
             let inner64: u64 = vals.iter().map(|v| v.width as u64).sum();
             let total64 = inner64
                 .checked_mul(n as u64)
-                .filter(|t| *t <= 128)
-                .ok_or("replication exceeds 128 bits (evaluator limit)")?;
+                .filter(|t| *t <= mimz_core::width_rules::MAX_WIDTH as u64)
+                .ok_or_else(|| {
+                    format!(
+                        "replication exceeds {} bits",
+                        mimz_core::width_rules::MAX_WIDTH
+                    )
+                })?;
             if vals.iter().any(|v| v.unknown) {
                 return Ok(Val::unknown(total64 as u32, false));
             }
+            let total = total64 as u32;
             let inner = inner64 as u32;
             // Assemble the inner group once (widest part first), then repeat it.
-            let mut chunk = 0u128;
+            let mut chunk = wide::zeros(inner);
             let mut shift = inner;
             for v in &vals {
                 shift -= v.width;
-                chunk |= (v.bits & mask(v.width)) << shift;
+                let placed = wide::shl(
+                    &wide::extend(&v.to_limbs(), v.width, inner, false),
+                    shift,
+                    inner,
+                );
+                chunk = wide::bitor(&chunk, &placed);
             }
-            let mut bits = 0u128;
-            for _ in 0..n {
-                bits = (bits << inner) | chunk;
+            let mut limbs = wide::zeros(total);
+            for i in 0..n {
+                let shift = inner * (n - 1 - i) as u32;
+                let placed = wide::shl(&wide::extend(&chunk, inner, total, false), shift, total);
+                limbs = wide::bitor(&limbs, &placed);
             }
-            Ok(Val::new(bits, total64 as u32, false))
+            Ok(Val::new_wide(limbs, total, false))
         }
         ExprKind::Index { base, index } => {
             // An array element `vals[i]` (array-typed param or `let`) resolves
@@ -267,12 +445,12 @@ pub(super) fn eval_ctx<R: Resolver>(
                     // Out-of-range runtime index clamps to the last element,
                     // matching the emitter's ternary-chain default fallback and
                     // spec/02 §1.14 (keeps sim and Verilog in agreement).
-                    let i = (eval(r, index)?.bits as usize).min(last);
-                    return Ok(elems[i]);
+                    let i = (eval(r, index)?.bits_small_or_zero() as usize).min(last);
+                    return Ok(elems[i].clone());
                 }
                 if r.is_mem(name) {
                     let addr = eval(r, index)?;
-                    return r.mem_read(name, addr.bits);
+                    return r.mem_read(name, addr.bits_small_or_zero());
                 }
             }
             let b = eval(r, base)?;
@@ -280,7 +458,12 @@ pub(super) fn eval_ctx<R: Resolver>(
                 return Ok(Val::unknown(1, false));
             }
             let i = checked_index(const_eval(index, r.ints())?, b.width, "bit index")?;
-            Ok(Val::new((b.bits >> i) & 1, 1, false))
+            let bit = if b.is_wide() {
+                wide::bit_at(&b.to_limbs(), i) as u128
+            } else {
+                (b.masked() >> i) & 1
+            };
+            Ok(Val::new(bit, 1, false))
         }
         ExprKind::Slice { base, hi, lo } => {
             let b = eval(r, base)?;
@@ -298,7 +481,13 @@ pub(super) fn eval_ctx<R: Resolver>(
             if b.unknown {
                 return Ok(Val::unknown(k.width, false));
             }
-            Ok(Val::new((b.bits >> lo) & mask(k.width), k.width, false))
+            if !b.is_wide() {
+                Ok(Val::new((b.masked() >> lo) & mask(k.width), k.width, false))
+            } else {
+                let mut shifted = wide::shr(&b.to_limbs(), lo);
+                shifted.resize(wide::limb_count(k.width), 0);
+                Ok(Val::new_wide(shifted, k.width, false))
+            }
         }
         ExprKind::Field { .. } => {
             Err("enum-variant / instance-port access is not supported by the evaluator yet".into())
@@ -378,7 +567,7 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
                     // this evaluator is also exercised directly on unchecked
                     // ASTs (fuzzing), so an out-of-range `ai` must be a clean
                     // `Err`, not an out-of-bounds panic.
-                    let val = *argv.get(ai).ok_or_else(|| {
+                    let val = argv.get(ai).cloned().ok_or_else(|| {
                         format!(
                             "function `{}` called with too few arguments (missing element \
                              for array parameter `{}`)",
@@ -395,7 +584,7 @@ fn eval_fn_call<R: Resolver>(r: &mut R, name: &ast::Ident, args: &[Expr]) -> Res
             }
             other => {
                 let (w, s) = type_width(other, consts)?;
-                let val = *argv.get(ai).ok_or_else(|| {
+                let val = argv.get(ai).cloned().ok_or_else(|| {
                     format!(
                         "function `{}` called with too few arguments (missing value for \
                          parameter `{}`)",
@@ -449,7 +638,7 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                     for (i, el) in elems.iter().enumerate() {
                         let v = eval_ctx(env, el, ctx_w)?;
                         let v = match ctx_w {
-                            Some(w) => Val::new(v.bits, w, v.signed),
+                            Some(w) => remask_to_width(v, w),
                             None => v,
                         };
                         env.locals.insert(format!("{}_{i}", local.name.name), v);
@@ -461,14 +650,19 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                 let ctx_w = local.inferred_width.get();
                 let v = eval_ctx(env, &local.value, ctx_w)?;
                 let v = match ctx_w {
-                    Some(w) => Val::new(v.bits, w, v.signed),
+                    Some(w) => remask_to_width(v, w),
                     None => v, // checker not run (e.g. bare sim test); trust the Val width
                 };
                 env.locals.insert(local.name.name.clone(), v);
             }
             FnStmt::If { cond, then, els } => {
                 let c = eval(env, cond)?;
-                let branch = if c.bits != 0 {
+                let truthy = if c.is_wide() {
+                    !wide::is_zero(&c.to_limbs())
+                } else {
+                    c.masked() != 0
+                };
+                let branch = if truthy {
                     Some(then.as_slice())
                 } else {
                     els.as_deref()
@@ -486,8 +680,8 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
             FnStmt::Loop {
                 var, lo, hi, body, ..
             } => {
-                let lo_v = eval(env, lo)?.bits as i128;
-                let hi_v = eval(env, hi)?.bits as i128;
+                let lo_v = eval(env, lo)?.bits_small_or_zero() as i128;
+                let hi_v = eval(env, hi)?.bits_small_or_zero() as i128;
                 let count = (hi_v - lo_v).max(0);
                 if count > REPEAT_BUDGET {
                     return Err(format!(
@@ -574,7 +768,7 @@ struct FnEnv<'a> {
 impl Resolver for FnEnv<'_> {
     fn signal(&mut self, name: &str) -> Result<Val, String> {
         if let Some(v) = self.locals.get(name) {
-            return Ok(*v);
+            return Ok(v.clone());
         }
         if let Some(c) = self.consts.get(name) {
             return Ok(Val::from_int(*c));
@@ -605,10 +799,16 @@ impl Resolver for FnEnv<'_> {
 /// wider (e.g. `signed[8]` `-128` into a `signed[16]` param read back as
 /// `+128`, since the new high bits came from a zero-masked `Val::new` alone).
 fn extend_bits(v: Val, width: u32) -> u128 {
-    if width > v.width && v.signed && (v.bits >> (v.width - 1)) & 1 == 1 {
-        v.bits | (mask(width) & !mask(v.width))
+    // `masked()` panics on a `Wide` value — every caller of `extend_bits`
+    // only invokes it on an operand already known to be `Small` (either
+    // inside a dispatch's narrow-path `if` branch, or on a fn-call
+    // argument, which stays narrow-only for now — see `docs/superpowers/
+    // specs/2026-07-22-sim-wide-values-design.local.md`).
+    let bits = v.masked();
+    if width > v.width && v.signed && (bits >> (v.width - 1)) & 1 == 1 {
+        bits | (mask(width) & !mask(v.width))
     } else {
-        v.bits & mask(v.width)
+        bits & mask(v.width)
     }
 }
 
@@ -627,53 +827,87 @@ fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, Str
                     v.width
                 ));
             }
-            Ok(Val::new(extend_bits(v, n), n, v.signed))
+            if !v.is_wide() && n <= 128 {
+                let signed = v.signed;
+                Ok(Val::new(extend_bits(v, n), n, signed))
+            } else {
+                Ok(Val::new_wide(
+                    wide::extend(&v.to_limbs(), v.width, n, v.signed),
+                    n,
+                    v.signed,
+                ))
+            }
         }
         Builtin::Trunc => {
             let v = eval(r, &args[0])?;
             let n = checked_width(const_eval(&args[1], r.ints())?)?;
-            Ok(Val::new(v.bits & mask(n), n, v.signed))
+            if !v.is_wide() {
+                Ok(Val::new(v.masked() & mask(n), n, v.signed))
+            } else {
+                let mut limbs = v.to_limbs();
+                wide::mask_to_width(&mut limbs, n);
+                limbs.truncate(wide::limb_count(n));
+                Ok(Val::new_wide(limbs, n, v.signed))
+            }
         }
         Builtin::SignedCast => {
             let v = eval(r, &args[0])?;
-            Ok(Val::new(v.bits, v.width, true))
+            Ok(Val { signed: true, ..v })
         }
         Builtin::UnsignedCast => {
             let v = eval(r, &args[0])?;
-            Ok(Val::new(v.bits, v.width, false))
+            Ok(Val { signed: false, ..v })
         }
         Builtin::Min => {
             let a = eval(r, &args[0])?;
             let b = eval(r, &args[1])?;
-            Ok(if cmp_lt(a, b) { a } else { b })
+            Ok(if cmp_lt(a.clone(), b.clone()) { a } else { b })
         }
         Builtin::Max => {
             let a = eval(r, &args[0])?;
             let b = eval(r, &args[1])?;
-            Ok(if cmp_lt(a, b) { b } else { a })
+            Ok(if cmp_lt(a.clone(), b.clone()) { b } else { a })
         }
         Builtin::Abs => {
             let v = eval(r, &args[0])?;
             // signed magnitude into width+1 (room for abs(MIN))
-            let m = v.as_i128().unsigned_abs();
-            Ok(Val::new(m & mask(v.width + 1), v.width + 1, true))
+            if !v.is_wide() {
+                let m = v.as_i128().unsigned_abs();
+                Ok(Val::new(m & mask(v.width + 1), v.width + 1, true))
+            } else {
+                let extended = wide::extend(&v.to_limbs(), v.width, v.width + 1, v.signed);
+                let negated = wide::neg(&extended, v.width + 1);
+                let is_negative = v.signed && wide::bit_at(&v.to_limbs(), v.width - 1);
+                let magnitude = if is_negative { negated } else { extended };
+                Ok(Val::new_wide(magnitude, v.width + 1, true))
+            }
         }
         Builtin::Nand => {
             let v = eval(r, &args[0])?;
-            let mk = mask(v.width);
-            Ok(Val::new(((v.bits & mk) != mk) as u128, 1, false))
+            let all_ones = if v.is_wide() {
+                wide::count_ones(&v.to_limbs()) == v.width
+            } else {
+                v.masked() == mask(v.width)
+            };
+            Ok(Val::new(!all_ones as u128, 1, false))
         }
         Builtin::Nor => {
             let v = eval(r, &args[0])?;
-            Ok(Val::new(((v.bits & mask(v.width)) == 0) as u128, 1, false))
+            let any_set = if v.is_wide() {
+                !wide::is_zero(&v.to_limbs())
+            } else {
+                v.masked() != 0
+            };
+            Ok(Val::new(!any_set as u128, 1, false))
         }
         Builtin::Xnor => {
             let v = eval(r, &args[0])?;
-            Ok(Val::new(
-                (((v.bits & mask(v.width)).count_ones() & 1) == 0) as u128,
-                1,
-                false,
-            ))
+            let ones = if v.is_wide() {
+                wide::count_ones(&v.to_limbs())
+            } else {
+                v.masked().count_ones()
+            };
+            Ok(Val::new(((ones & 1) == 0) as u128, 1, false))
         }
         // `clog2` is compile-time only — the checker rejects it as a runtime
         // value (E0407) and folds it in widths, so a checked program never lands
@@ -693,8 +927,9 @@ fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, Str
 }
 
 fn unary(op: UnOp, v: Val) -> Val {
+    let was_unknown = v.unknown;
     let mut r = unary_known(op, v);
-    if v.unknown {
+    if was_unknown {
         r.unknown = true;
     }
     r
@@ -703,22 +938,45 @@ fn unary(op: UnOp, v: Val) -> Val {
 fn unary_known(op: UnOp, v: Val) -> Val {
     match op {
         UnOp::Neg => {
-            let bits = v.as_i128().wrapping_neg() as u128;
-            Val::new(bits, v.width, true)
+            if !v.is_wide() {
+                let bits = v.as_i128().wrapping_neg() as u128;
+                Val::new(bits, v.width, true)
+            } else {
+                Val::new_wide(wide::neg(&v.to_limbs(), v.width), v.width, true)
+            }
         }
-        UnOp::BitNot => Val::new(!v.bits, v.width, v.signed),
-        UnOp::LogicNot => Val::new((!(v.bits & 1)) & 1, 1, false),
-        UnOp::RedAnd => Val::new(
-            ((v.bits & mask(v.width)) == mask(v.width)) as u128,
-            1,
-            false,
-        ),
-        UnOp::RedOr => Val::new(((v.bits & mask(v.width)) != 0) as u128, 1, false),
-        UnOp::RedXor => Val::new(
-            ((v.bits & mask(v.width)).count_ones() & 1) as u128,
-            1,
-            false,
-        ),
+        UnOp::BitNot => {
+            if !v.is_wide() {
+                Val::new(!v.masked(), v.width, v.signed)
+            } else {
+                Val::new_wide(wide::not(&v.to_limbs()), v.width, v.signed)
+            }
+        }
+        UnOp::LogicNot => Val::new((!(v.lsb())) & 1, 1, false),
+        UnOp::RedAnd => {
+            let ones = if v.is_wide() {
+                wide::count_ones(&v.to_limbs()) == v.width
+            } else {
+                v.masked() == mask(v.width)
+            };
+            Val::new(ones as u128, 1, false)
+        }
+        UnOp::RedOr => {
+            let any = if v.is_wide() {
+                !wide::is_zero(&v.to_limbs())
+            } else {
+                v.masked() != 0
+            };
+            Val::new(any as u128, 1, false)
+        }
+        UnOp::RedXor => {
+            let ones = if v.is_wide() {
+                wide::count_ones(&v.to_limbs())
+            } else {
+                v.masked().count_ones()
+            };
+            Val::new((ones & 1) as u128, 1, false)
+        }
     }
 }
 
@@ -737,7 +995,6 @@ fn binary_ctx(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Result<
 }
 
 fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
-    let wmax = l.width.max(r.width);
     let v = match op {
         // Lossless growth (spec/02 section 3). Operate on the SIGN-EXTENDED
         // values (`as_i128`) so a negative signed operand is widened correctly
@@ -758,11 +1015,16 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 false,
             )
             .expect("checker already rejected mixed signed/unsigned operands");
-            Val::new(
-                l.as_i128().wrapping_add(r.as_i128()) as u128,
-                k.width,
-                k.signed,
-            )
+            if !l.is_wide() && !r.is_wide() && k.width <= 128 {
+                Val::new(
+                    l.as_i128().wrapping_add(r.as_i128()) as u128,
+                    k.width,
+                    k.signed,
+                )
+            } else {
+                let (lw, rw) = wide_operands(l, r, k.width);
+                Val::new_wide(wide::add(&lw, &rw, k.width), k.width, k.signed)
+            }
         }
         BinOp::Sub => {
             let k = mimz_core::width_rules::lossless_result(
@@ -777,11 +1039,16 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 false,
             )
             .expect("checker already rejected mixed signed/unsigned operands");
-            Val::new(
-                l.as_i128().wrapping_sub(r.as_i128()) as u128,
-                k.width,
-                k.signed,
-            )
+            if !l.is_wide() && !r.is_wide() && k.width <= 128 {
+                Val::new(
+                    l.as_i128().wrapping_sub(r.as_i128()) as u128,
+                    k.width,
+                    k.signed,
+                )
+            } else {
+                let (lw, rw) = wide_operands(l, r, k.width);
+                Val::new_wide(wide::sub(&lw, &rw, k.width), k.width, k.signed)
+            }
         }
         BinOp::Mul => {
             let k = mimz_core::width_rules::lossless_result(
@@ -796,11 +1063,16 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 true,
             )
             .expect("checker already rejected mixed signed/unsigned operands");
-            Val::new(
-                l.as_i128().wrapping_mul(r.as_i128()) as u128,
-                k.width,
-                k.signed,
-            )
+            if !l.is_wide() && !r.is_wide() && k.width <= 128 {
+                Val::new(
+                    l.as_i128().wrapping_mul(r.as_i128()) as u128,
+                    k.width,
+                    k.signed,
+                )
+            } else {
+                let (lw, rw) = wide_operands(l, r, k.width);
+                Val::new_wide(wide::mul(&lw, &rw, k.width), k.width, k.signed)
+            }
         }
         // Wrapping family: keep operand width. A bare integer literal's `Val`
         // keeps its own minimal natural width (never pre-widened to match the
@@ -810,11 +1082,14 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
         // `Kind`s equal. The `.unwrap_or` reproduces the original
         // `l.signed || r.signed` bookkeeping for the one case
         // `matched_result` can still reject after widening (mismatched
-        // signedness) — real fallback code, not a placeholder.
+        // signedness) — real fallback code, not a placeholder. `k` is
+        // computed from `l.signed`/`r.signed` (field reads, not moves)
+        // BEFORE the dispatch below moves `l`/`r` into `extend_bits`/
+        // `wide_operands` — `Val` losing `Copy` (Task 2) means the old
+        // ordering (widen first, compute `k` after) would no longer
+        // compile.
         BinOp::AddWrap => {
             let wmax = l.width.max(r.width);
-            let lw = extend_bits(l, wmax);
-            let rw = extend_bits(r, wmax);
             let k = mimz_core::width_rules::matched_result(
                 mimz_core::width_rules::Kind {
                     width: wmax,
@@ -829,12 +1104,17 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 width: wmax,
                 signed: l.signed || r.signed,
             });
-            Val::new(lw.wrapping_add(rw), k.width, k.signed)
+            if !l.is_wide() && !r.is_wide() && wmax <= 128 {
+                let lw = extend_bits(l, wmax);
+                let rw = extend_bits(r, wmax);
+                Val::new(lw.wrapping_add(rw), k.width, k.signed)
+            } else {
+                let (lw, rw) = wide_operands(l, r, wmax);
+                Val::new_wide(wide::add(&lw, &rw, k.width), k.width, k.signed)
+            }
         }
         BinOp::SubWrap => {
             let wmax = l.width.max(r.width);
-            let lw = extend_bits(l, wmax);
-            let rw = extend_bits(r, wmax);
             let k = mimz_core::width_rules::matched_result(
                 mimz_core::width_rules::Kind {
                     width: wmax,
@@ -849,12 +1129,17 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 width: wmax,
                 signed: l.signed || r.signed,
             });
-            Val::new(lw.wrapping_sub(rw), k.width, k.signed)
+            if !l.is_wide() && !r.is_wide() && wmax <= 128 {
+                let lw = extend_bits(l, wmax);
+                let rw = extend_bits(r, wmax);
+                Val::new(lw.wrapping_sub(rw), k.width, k.signed)
+            } else {
+                let (lw, rw) = wide_operands(l, r, wmax);
+                Val::new_wide(wide::sub(&lw, &rw, k.width), k.width, k.signed)
+            }
         }
         BinOp::MulWrap => {
             let wmax = l.width.max(r.width);
-            let lw = extend_bits(l, wmax);
-            let rw = extend_bits(r, wmax);
             let k = mimz_core::width_rules::matched_result(
                 mimz_core::width_rules::Kind {
                     width: wmax,
@@ -869,12 +1154,17 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 width: wmax,
                 signed: l.signed || r.signed,
             });
-            Val::new(lw.wrapping_mul(rw), k.width, k.signed)
+            if !l.is_wide() && !r.is_wide() && wmax <= 128 {
+                let lw = extend_bits(l, wmax);
+                let rw = extend_bits(r, wmax);
+                Val::new(lw.wrapping_mul(rw), k.width, k.signed)
+            } else {
+                let (lw, rw) = wide_operands(l, r, wmax);
+                Val::new_wide(wide::mul(&lw, &rw, k.width), k.width, k.signed)
+            }
         }
         BinOp::BitAnd => {
             let wmax = l.width.max(r.width);
-            let lw = extend_bits(l, wmax);
-            let rw = extend_bits(r, wmax);
             let k = mimz_core::width_rules::matched_result(
                 mimz_core::width_rules::Kind {
                     width: wmax,
@@ -889,12 +1179,17 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 width: wmax,
                 signed: l.signed || r.signed,
             });
-            Val::new(lw & rw, k.width, k.signed)
+            if !l.is_wide() && !r.is_wide() && wmax <= 128 {
+                let lw = extend_bits(l, wmax);
+                let rw = extend_bits(r, wmax);
+                Val::new(lw & rw, k.width, k.signed)
+            } else {
+                let (lw, rw) = wide_operands(l, r, wmax);
+                Val::new_wide(wide::bitand(&lw, &rw), k.width, k.signed)
+            }
         }
         BinOp::BitOr => {
             let wmax = l.width.max(r.width);
-            let lw = extend_bits(l, wmax);
-            let rw = extend_bits(r, wmax);
             let k = mimz_core::width_rules::matched_result(
                 mimz_core::width_rules::Kind {
                     width: wmax,
@@ -909,12 +1204,17 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 width: wmax,
                 signed: l.signed || r.signed,
             });
-            Val::new(lw | rw, k.width, k.signed)
+            if !l.is_wide() && !r.is_wide() && wmax <= 128 {
+                let lw = extend_bits(l, wmax);
+                let rw = extend_bits(r, wmax);
+                Val::new(lw | rw, k.width, k.signed)
+            } else {
+                let (lw, rw) = wide_operands(l, r, wmax);
+                Val::new_wide(wide::bitor(&lw, &rw), k.width, k.signed)
+            }
         }
         BinOp::BitXor => {
             let wmax = l.width.max(r.width);
-            let lw = extend_bits(l, wmax);
-            let rw = extend_bits(r, wmax);
             let k = mimz_core::width_rules::matched_result(
                 mimz_core::width_rules::Kind {
                     width: wmax,
@@ -929,7 +1229,14 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
                 width: wmax,
                 signed: l.signed || r.signed,
             });
-            Val::new(lw ^ rw, k.width, k.signed)
+            if !l.is_wide() && !r.is_wide() && wmax <= 128 {
+                let lw = extend_bits(l, wmax);
+                let rw = extend_bits(r, wmax);
+                Val::new(lw ^ rw, k.width, k.signed)
+            } else {
+                let (lw, rw) = wide_operands(l, r, wmax);
+                Val::new_wide(wide::bitxor(&lw, &rw), k.width, k.signed)
+            }
         }
         // `<<`/`>>` are context-determined on their left operand in real
         // Verilog (ground-truthed against `iverilog`, BUG-11): the operand
@@ -957,14 +1264,20 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
             let ctx_w = expected_width
                 .map(|w| w.max(base.width))
                 .unwrap_or(base.width);
-            let widened = extend_bits(l, ctx_w);
-            let shift = r.bits;
-            let bits = if shift >= 128 {
-                0
+            if !l.is_wide() && ctx_w <= 128 {
+                let widened = extend_bits(l, ctx_w);
+                let shift = r.bits_small_or_zero();
+                let bits = if shift >= 128 {
+                    0
+                } else {
+                    widened.checked_shl(shift as u32).unwrap_or(0)
+                };
+                Val::new(bits, ctx_w, base.signed)
             } else {
-                widened.checked_shl(shift as u32).unwrap_or(0)
-            };
-            Val::new(bits, ctx_w, base.signed)
+                let widened = wide::extend(&l.to_limbs(), l.width, ctx_w, l.signed);
+                let shift = r.bits_small_or_zero().min(ctx_w as u128) as u32;
+                Val::new_wide(wide::shl(&widened, shift, ctx_w), ctx_w, base.signed)
+            }
         }
         BinOp::Shr => {
             let base = mimz_core::width_rules::shift_result(
@@ -981,30 +1294,36 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
             let ctx_w = expected_width
                 .map(|w| w.max(base.width))
                 .unwrap_or(base.width);
-            let widened = extend_bits(l, ctx_w);
-            let bits = if r.bits >= 128 {
-                0
+            if !l.is_wide() && ctx_w <= 128 {
+                let widened = extend_bits(l, ctx_w);
+                let bits = if r.bits_small_or_zero() >= 128 {
+                    0
+                } else {
+                    widened >> (r.bits_small_or_zero() as u32)
+                };
+                Val::new(bits, ctx_w, base.signed)
             } else {
-                widened >> (r.bits as u32)
-            };
-            Val::new(bits, ctx_w, base.signed)
+                let widened = wide::extend(&l.to_limbs(), l.width, ctx_w, l.signed);
+                let shift = r.bits_small_or_zero().min(ctx_w as u128) as u32;
+                Val::new_wide(wide::shr(&widened, shift), ctx_w, base.signed)
+            }
         }
-        BinOp::Eq => Val::new(
-            ((l.bits & mask(wmax)) == (r.bits & mask(wmax))) as u128,
-            1,
-            false,
-        ),
-        BinOp::Ne => Val::new(
-            ((l.bits & mask(wmax)) != (r.bits & mask(wmax))) as u128,
-            1,
-            false,
-        ),
+        BinOp::Eq => Val::new(cmp_eq(l, r) as u128, 1, false),
+        BinOp::Ne => Val::new(!cmp_eq(l, r) as u128, 1, false),
         BinOp::Lt => Val::new(cmp_lt(l, r) as u128, 1, false),
-        BinOp::Le => Val::new((cmp_lt(l, r) || cmp_eq(l, r)) as u128, 1, false),
-        BinOp::Gt => Val::new((!cmp_lt(l, r) && !cmp_eq(l, r)) as u128, 1, false),
+        BinOp::Le => Val::new(
+            (cmp_lt(l.clone(), r.clone()) || cmp_eq(l, r)) as u128,
+            1,
+            false,
+        ),
+        BinOp::Gt => Val::new(
+            (!cmp_lt(l.clone(), r.clone()) && !cmp_eq(l, r)) as u128,
+            1,
+            false,
+        ),
         BinOp::Ge => Val::new((!cmp_lt(l, r)) as u128, 1, false),
-        BinOp::LogicAnd => Val::new((l.bits & 1) & (r.bits & 1), 1, false),
-        BinOp::LogicOr => Val::new((l.bits & 1) | (r.bits & 1), 1, false),
+        BinOp::LogicAnd => Val::new(l.lsb() & r.lsb(), 1, false),
+        BinOp::LogicOr => Val::new(l.lsb() | r.lsb(), 1, false),
         // `??` is always rewritten to `IfExpr` by `Rw::expr` during
         // elaboration (crates/mimz-sim/src/sim/elaborate.rs) before the
         // kernel ever calls `binary_known` — so this arm is unreachable in
@@ -1019,26 +1338,60 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
 }
 
 fn cmp_lt(l: Val, r: Val) -> bool {
-    if l.signed || r.signed {
-        l.as_i128() < r.as_i128()
+    let wmax = l.width.max(r.width);
+    if !l.is_wide() && !r.is_wide() {
+        if l.signed || r.signed {
+            l.as_i128() < r.as_i128()
+        } else {
+            l.masked() < r.masked()
+        }
     } else {
-        l.bits < r.bits
+        // Capture `signed` BEFORE `wide_operands` moves `l`/`r` — `Val`
+        // losing `Copy` (Task 2) means reading `l.signed`/`r.signed` after
+        // the move (as the brief's own draft code did) does not compile.
+        let signed = l.signed || r.signed;
+        let (lw, rw) = wide_operands(l, r, wmax);
+        let ord = if signed {
+            wide::cmp_signed(&lw, &rw, wmax)
+        } else {
+            wide::cmp_unsigned(&lw, &rw)
+        };
+        ord == std::cmp::Ordering::Less
     }
 }
 fn cmp_eq(l: Val, r: Val) -> bool {
-    if l.signed || r.signed {
-        l.as_i128() == r.as_i128()
+    if !l.is_wide() && !r.is_wide() {
+        if l.signed || r.signed {
+            l.as_i128() == r.as_i128()
+        } else {
+            l.masked() == r.masked()
+        }
     } else {
-        l.bits == r.bits
+        let wmax = l.width.max(r.width);
+        let (lw, rw) = wide_operands(l, r, wmax);
+        lw == rw
     }
 }
 
 pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
+    // Helper: extract the low 128 bits of s without the saturation that
+    // bits_small_or_zero() applies to values > u128::MAX.
+    let low128 = |s: &Val| -> u128 {
+        match &s.bits {
+            Bits::Small(b) => *b,
+            Bits::Wide(limbs) => {
+                (limbs.first().copied().unwrap_or(0) as u128)
+                    | ((limbs.get(1).copied().unwrap_or(0) as u128) << 64)
+            }
+        }
+    };
     match p {
         Pattern::Wildcard => Ok(true),
-        Pattern::Int { value, .. } => Ok((s.bits & mask(s.width)) == (*value & mask(s.width))),
-        Pattern::IntMask { value, mask: m, .. } => Ok((s.bits & *m) == (*value & *m)),
-        Pattern::Bool(b) => Ok((s.bits & 1) == (*b as u128)),
+        Pattern::Int { value, .. } => {
+            Ok(low128(s) & mask(s.width.min(128)) == *value & mask(s.width.min(128)))
+        }
+        Pattern::IntMask { value, mask: m, .. } => Ok((low128(s) & *m) == (*value & *m)),
+        Pattern::Bool(b) => Ok(s.lsb() == (*b as u128)),
         Pattern::Variant { .. } => {
             unreachable!(
                 "Pattern::Variant is lowered to IntMask during elaboration — raw variants should not reach pattern_matches"
@@ -1072,10 +1425,11 @@ pub(super) fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u3
 }
 
 pub(super) fn checked_width(n: i128) -> Result<u32, String> {
+    use mimz_core::width_rules::MAX_WIDTH;
     if n < 1 {
         Err(format!("width must be at least 1, got {n}"))
-    } else if n > 128 {
-        Err(format!("width {n} exceeds the simulator's 128-bit limit"))
+    } else if n > MAX_WIDTH {
+        Err(format!("width {n} exceeds the maximum of {MAX_WIDTH} bits"))
     } else {
         Ok(n as u32)
     }
@@ -1151,7 +1505,7 @@ mod tests {
         let r = Val::new(1, 1, false); // the literal `1`, its own minimal width
         let result = binary_known(BinOp::BitAnd, l, r, None).unwrap();
         assert_eq!(result.width, 4);
-        assert_eq!(result.bits, 0b1010 & 1);
+        assert_eq!(result.masked(), 0b1010 & 1);
     }
 
     #[test]
@@ -1263,10 +1617,10 @@ mod tests {
                    }\n";
         let tokens = mimz_core::lexer::lex(src).expect("lex");
         let file = mimz_core::parser::parse(tokens).expect("parse");
-        let inputs: BTreeMap<String, u128> = [
-            ("a".to_string(), 1u128),
-            ("b".to_string(), 2u128),
-            ("idx".to_string(), 0u128),
+        let inputs: BTreeMap<String, Bits> = [
+            ("a".to_string(), Bits::Small(1u128)),
+            ("b".to_string(), Bits::Small(2u128)),
+            ("idx".to_string(), Bits::Small(0u128)),
         ]
         .into_iter()
         .collect();
@@ -1319,7 +1673,12 @@ mod tests {
             .into_iter()
             .find(|o| o.name == "result")
             .expect("module declares `result`");
-        Val::new(out.value, out.width, out.signed).as_i128()
+        // Every value this test helper's callers produce stays narrow
+        // (bits[8]/signed[16] fn args) — `Bits::Wide` is not reachable here.
+        let Bits::Small(bits) = out.value else {
+            panic!("test expected a narrow (Small) value")
+        };
+        Val::new(bits, out.width, out.signed).as_i128()
     }
 
     #[test]
@@ -1346,11 +1705,14 @@ mod tests {
             .into_iter()
             .find(|o| o.name == "result")
             .expect("module declares `result`");
+        let Bits::Small(bits) = out.value else {
+            panic!("test expected a narrow (Small) value")
+        };
         assert_eq!(
-            Val::new(out.value, out.width, out.signed).as_i128(),
+            Val::new(bits, out.width, out.signed).as_i128(),
             -128,
             "got raw bits {:#x} at width {}",
-            out.value,
+            bits,
             out.width
         );
     }
@@ -1386,7 +1748,9 @@ mod tests {
         );
         let tokens = mimz_core::lexer::lex(&full).expect("lex");
         let file = mimz_core::parser::parse(tokens).expect("parse");
-        let inputs: BTreeMap<String, u128> = [("x".to_string(), 1u128)].into_iter().collect();
+        let inputs: BTreeMap<String, Bits> = [("x".to_string(), Bits::Small(1u128))]
+            .into_iter()
+            .collect();
         let result = super::super::comb::eval_outputs(
             std::slice::from_ref(&file),
             Some("M"),
@@ -1463,7 +1827,184 @@ mod tests {
         let a = Val::new(1, 4, false);
         let b = Val::new(2, 4, false);
         assert!(!a.unknown && !b.unknown);
-        assert!(!binary_ctx(BinOp::Add, a, b, None).unwrap().unknown);
+        assert!(!binary_ctx(BinOp::Add, a.clone(), b, None).unwrap().unknown);
         assert!(!unary(UnOp::BitNot, a).unknown);
+    }
+
+    #[test]
+    fn val_new_stays_on_the_small_fast_path() {
+        let v = Val::new(42, 8, false);
+        assert!(!v.is_wide());
+        assert_eq!(v.masked(), 42);
+    }
+
+    #[test]
+    fn val_new_wide_masks_to_the_declared_width() {
+        // 200 bits of all-ones, masked down to 130 bits.
+        let limbs = vec![u64::MAX; wide::limb_count(200)];
+        let v = Val::new_wide(limbs, 130, false);
+        assert!(v.is_wide());
+        assert_eq!(v.width, 130);
+    }
+
+    #[test]
+    fn val_new_wide_auto_narrows_to_small_at_128_bits_or_less() {
+        // A width-96 result never needs to carry a heap-allocated Vec —
+        // new_wide must narrow it back to `Bits::Small` itself, so every
+        // OTHER caller (Task 6's dispatch) can rely on "width <= 128
+        // implies Small" without re-checking.
+        let limbs = vec![0u64; wide::limb_count(96)];
+        let v = Val::new_wide(limbs, 96, false);
+        assert!(!v.is_wide());
+    }
+
+    #[test]
+    fn wide_unsigned_add_carries_past_128_bits() {
+        // Two 128-bit unsigned max values: the TRUE lossless result is
+        // 129 bits and does NOT fit in a u128 — this is the exact
+        // boundary case the 128-bit ceiling silently got wrong before
+        // this task (a 129-bit-wide RESULT from two Small operands).
+        let a = Val::new(u128::MAX, 128, false);
+        let b = Val::new(1, 128, false);
+        let sum = binary_known(BinOp::Add, a, b, None).unwrap();
+        assert_eq!(sum.width, 129);
+        assert!(sum.is_wide());
+    }
+
+    #[test]
+    fn wide_bitand_of_two_512_bit_values() {
+        let a = Val::new_wide(wide::from_u128(0b1100, 512), 512, false);
+        let b = Val::new_wide(wide::from_u128(0b1010, 512), 512, false);
+        let result = binary_known(BinOp::BitAnd, a, b, None).unwrap();
+        assert!(result.is_wide());
+        assert_eq!(wide::bit_at(&result.to_limbs(), 3), true);
+        assert_eq!(wide::bit_at(&result.to_limbs(), 1), false);
+    }
+
+    #[test]
+    fn wide_shl_crosses_a_limb_boundary_in_a_512_bit_context() {
+        let l = Val::new(1, 8, false);
+        let shifted = binary_ctx(BinOp::Shl, l, Val::from_int(70), Some(512)).unwrap();
+        assert_eq!(shifted.width, 512);
+        assert!(wide::bit_at(&shifted.to_limbs(), 70));
+    }
+
+    #[test]
+    fn wide_eq_compares_two_equal_512_bit_values() {
+        let a = Val::new_wide(wide::from_u128(42, 512), 512, false);
+        let b = Val::new_wide(wide::from_u128(42, 512), 512, false);
+        let eq = binary_known(BinOp::Eq, a, b, None).unwrap();
+        assert_eq!(eq.masked(), 1);
+    }
+
+    #[test]
+    fn wide_lt_compares_signed_512_bit_values() {
+        let neg = Val::new_wide(wide::neg(&wide::from_u128(1, 512), 512), 512, true);
+        let pos = Val::new_wide(wide::from_u128(1, 512), 512, true);
+        let lt = binary_known(BinOp::Lt, neg, pos, None).unwrap();
+        assert_eq!(lt.masked(), 1);
+    }
+
+    #[test]
+    fn wide_neg_of_a_512_bit_value() {
+        let one = Val::new_wide(wide::from_u128(1, 512), 512, true);
+        let negated = unary(UnOp::Neg, one);
+        assert_eq!(
+            wide::to_decimal_string(&negated.to_limbs(), 512, true),
+            "-1"
+        );
+    }
+
+    #[test]
+    fn wide_extend_builtin_widens_past_128_bits() {
+        let mut ints = std::collections::BTreeMap::new();
+        ints.insert("W".to_string(), 512i128);
+        // extend(1, W) with W bound to 512 in the const env.
+        let n = checked_width(512).unwrap();
+        let v = Val::from_int(1);
+        let extended = Val::new_wide(
+            wide::extend(&v.to_limbs(), v.width, n, v.signed),
+            n,
+            v.signed,
+        );
+        assert_eq!(extended.width, 512);
+        assert!(wide::bit_at(&extended.to_limbs(), 0));
+    }
+
+    #[test]
+    fn checked_width_accepts_up_to_the_shared_max_width() {
+        assert!(checked_width(1_000_000).is_ok());
+        assert!(checked_width(1_000_001).is_err());
+    }
+
+    #[test]
+    fn concat_can_exceed_128_bits() {
+        let a = Val::new(u128::MAX, 128, false);
+        let b = Val::new(1, 1, false);
+        // Simulate what eval_ctx's Concat arm does: total width 129.
+        let total = a.width + b.width;
+        assert_eq!(total, 129);
+    }
+
+    #[test]
+    fn cmp_eq_signed_different_widths() {
+        // 4-bit -2 (0xE, masked=14) vs 8-bit -2 (0xFE, masked=254)
+        let l = Val::new(0b1110, 4, true);
+        let r = Val::new(0b1111_1110, 8, true);
+        assert!(cmp_eq(l, r));
+    }
+
+    #[test]
+    fn pattern_matches_handles_wide_value_no_saturation() {
+        // A 200-bit value with bit 128 set and low 128 bits = 0 must NOT match
+        // Pattern::Int { value: u128::MAX } — the old bits_small_or_zero()
+        // saturated it to u128::MAX and caused a false match.
+        let mut limbs = wide::zeros(200);
+        limbs[2] = 1; // bit 128 set, low 128 bits are 0
+        let s = Val::new_wide(limbs, 200, false);
+        let p_not_max = Pattern::Int {
+            value: u128::MAX,
+            raw: String::new(),
+        };
+        assert_eq!(
+            pattern_matches(&p_not_max, &s),
+            Ok(false),
+            "saturation must not cause false match"
+        );
+        // A pattern matching the low bits (0) should match:
+        let p_zero = Pattern::Int {
+            value: 0,
+            raw: String::new(),
+        };
+        assert_eq!(pattern_matches(&p_zero, &s), Ok(true));
+    }
+
+    #[test]
+    fn builtin_abs_wide_negative() {
+        // -1 as a 200-bit signed value
+        let one = Val::new_wide(wide::from_u128(1, 200), 200, true);
+        let neg_one = unary(UnOp::Neg, one);
+        // Abs should convert -1 (200-bit) to +1 (201-bit)
+        let limbs = neg_one.to_limbs();
+        let extended = wide::extend(&limbs, neg_one.width, neg_one.width + 1, neg_one.signed);
+        let negated = wide::neg(&extended, neg_one.width + 1);
+        assert_eq!(wide::to_decimal_string(&negated, 201, true), "1");
+    }
+
+    #[test]
+    fn builtin_trunc_wide_limb_count() {
+        // 200 bits truncated to 130 bits -> limb_count should be limb_count(130) = 3
+        let limbs = vec![u64::MAX; wide::limb_count(200)]; // 4 limbs
+        let v = Val::new_wide(limbs, 200, false);
+        let mut limbs_t = v.to_limbs();
+        wide::mask_to_width(&mut limbs_t, 130);
+        limbs_t.truncate(wide::limb_count(130));
+        assert_eq!(limbs_t.len(), wide::limb_count(130));
+        let res = Val::new_wide(limbs_t, 130, false);
+        if let Bits::Wide(res_limbs) = res.bits {
+            assert_eq!(res_limbs.len(), wide::limb_count(130));
+        } else {
+            panic!("expected Wide bits");
+        }
     }
 }

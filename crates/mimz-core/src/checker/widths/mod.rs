@@ -42,14 +42,11 @@ use crate::ast::{
     ModuleItem, NamedArg, Pattern, SeqStmt, TopItem, Type,
 };
 use crate::span::Span;
+use crate::width_rules::MAX_WIDTH;
 
 use super::Checker;
 use super::consteval::{self, Env};
 use super::names::Scope;
-
-/// Widths above this are rejected (E0410) — keeps `2^n` arithmetic
-/// trivially safe, and no real design comes close.
-const MAX_WIDTH: i128 = 1_000_000;
 
 /// Memory depth ceiling (number of cells). Like [`MAX_WIDTH`], a sanity bound
 /// far above any real design — keeps `initial`-seed emission and the kernel's

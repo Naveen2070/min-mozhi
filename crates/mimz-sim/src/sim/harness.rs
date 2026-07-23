@@ -331,7 +331,9 @@ impl Run<'_> {
             match stmt {
                 TestStmt::Drive { name, value } => {
                     let v = self.sim.eval(value).map_err(Stop::Err)?;
-                    self.sim.set(&name.name, v.masked()).map_err(Stop::Err)?;
+                    self.sim
+                        .set(&name.name, v.bits_masked())
+                        .map_err(Stop::Err)?;
                 }
                 TestStmt::Tick { clock, count } => {
                     if !self.clocks.iter().any(|c| c == &clock.name) {
@@ -417,12 +419,20 @@ impl Run<'_> {
                 TestStmt::Expect(e) => {
                     self.checks += 1;
                     let v = self.sim.eval(e).map_err(Stop::Err)?;
-                    if v.unknown || v.bits & 1 != 1 {
+                    // `.lsb()` (not `.bits & 1`, invalid since `Bits` gained a
+                    // `Wide` variant) mirrors the identical fallout fix Task 7
+                    // already applied to this exact "is this bit 1" truthy
+                    // check elsewhere (kernel.rs/comb.rs) — trivially in the
+                    // way of this task's own build/test verification, per
+                    // the task brief's "unless trivially in your way" carve-
+                    // out. `harness.rs`'s Wide-aware DECIMAL DISPLAY (`show`,
+                    // below) is untouched — that part is still Task 11's job.
+                    if v.unknown || v.lsb() != 1 {
                         return Err(Stop::Fail(self.fail_message(e)?));
                     }
                 }
                 TestStmt::If { cond, then, els } => {
-                    if self.sim.eval(cond).map_err(Stop::Err)?.bits & 1 == 1 {
+                    if self.sim.eval(cond).map_err(Stop::Err)?.lsb() == 1 {
                         self.exec(then)?;
                     } else if let Some(e) = els {
                         self.exec(e)?;
@@ -554,8 +564,16 @@ impl Run<'_> {
                 continue;
             };
             let raw = self.sim.peek(port)?;
-            self.host
-                .on_change(port, &Val::new(raw, width.bits, width.signed));
+            let v = match raw {
+                value::Bits::Small(b) if width.bits <= 128 => Val::new(b, width.bits, width.signed),
+                value::Bits::Small(b) => Val::new_wide(
+                    value::wide_limbs_from_u128(b, width.bits),
+                    width.bits,
+                    width.signed,
+                ),
+                value::Bits::Wide(limbs) => Val::new_wide(limbs, width.bits, width.signed),
+            };
+            self.host.on_change(port, &v);
         }
         Ok(())
     }
@@ -580,8 +598,16 @@ impl Run<'_> {
                 .map(|s| s.width);
             let Some(width) = width else { continue };
             let raw = self.sim.peek(port)?;
-            self.host
-                .on_tick(port, &Val::new(raw, width.bits, width.signed))?;
+            let v = match raw {
+                value::Bits::Small(b) if width.bits <= 128 => Val::new(b, width.bits, width.signed),
+                value::Bits::Small(b) => Val::new_wide(
+                    value::wide_limbs_from_u128(b, width.bits),
+                    width.bits,
+                    width.signed,
+                ),
+                value::Bits::Wide(limbs) => Val::new_wide(limbs, width.bits, width.signed),
+            };
+            self.host.on_tick(port, &v)?;
         }
         Ok(())
     }
@@ -603,7 +629,7 @@ impl Run<'_> {
             }
         }
         for (port, bit) in sets {
-            self.sim.set(&port, bit as u128)?;
+            self.sim.set(&port, value::Bits::Small(bit as u128))?;
         }
         Ok(())
     }

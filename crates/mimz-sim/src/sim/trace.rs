@@ -9,6 +9,19 @@
 use std::collections::BTreeMap;
 
 use super::run::Timeline;
+use super::value::Bits;
+
+/// Unwrap a narrow-path `Frame` value to a raw `u128` — every value this
+/// crate can currently DRIVE through `mimz sim`'s CLI stays <=128 bits, so
+/// `Bits::Wide` is not reachable here yet. Real `Wide`-aware decimal
+/// rendering is Task 9's job (BUG-13 layer 1, part 4); this is the minimal
+/// type-only fallout fix for `Frame.values` becoming `Bits`-typed (Task 8).
+fn narrow(b: &Bits) -> u128 {
+    match b {
+        Bits::Small(v) => *v,
+        Bits::Wide(_) => unreachable!("wide trace rendering is Task 9's job"),
+    }
+}
 
 /// Render `tl` for the console. `style` is `"changes"` for the on-change log;
 /// anything else (the default `"table"`) is the every-cycle table.
@@ -67,23 +80,25 @@ fn render_changes(tl: &Timeline, scope: &[String]) -> String {
     for (i, f) in tl.frames.iter().enumerate() {
         let changed = scope
             .iter()
-            .any(|s| prev.get(s.as_str()) != Some(&f.values.get(s).copied().unwrap_or(0)));
+            .any(|s| prev.get(s.as_str()) != Some(&f.values.get(s).map(narrow).unwrap_or(0)));
         if i == 0 || changed {
             let cells: Vec<String> = scope
                 .iter()
-                .map(|s| format!("{s}={}", f.values.get(s).copied().unwrap_or(0)))
+                .map(|s| format!("{s}={}", f.values.get(s).map(narrow).unwrap_or(0)))
                 .collect();
             out.push_str(&format!("#{}  {}\n", f.time, cells.join("  ")));
         }
         for s in scope {
-            prev.insert(s.as_str(), f.values.get(s).copied().unwrap_or(0));
+            prev.insert(s.as_str(), f.values.get(s).map(narrow).unwrap_or(0));
         }
     }
     out
 }
 
-fn cell(v: Option<&u128>) -> String {
-    v.map(u128::to_string).unwrap_or_else(|| "?".into())
+fn cell(v: Option<&Bits>) -> String {
+    v.map(narrow)
+        .map(|n| n.to_string())
+        .unwrap_or_else(|| "?".into())
 }
 
 fn join_row(cells: &[String], widths: &[usize]) -> String {
