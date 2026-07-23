@@ -748,17 +748,34 @@ fn differential_fuzz_matches_icarus() {
         // Our own kernel, one row per input vector.
         let mut kernel_rows: Vec<BTreeMap<String, u128>> = Vec::new();
         for v in &vectors {
+            let v_bits: BTreeMap<String, mimz::sim::value::Bits> = v
+                .iter()
+                .map(|(k, val)| (k.clone(), mimz::sim::value::Bits::Small(*val)))
+                .collect();
             let outputs = comb::eval_outputs(
                 std::slice::from_ref(&file),
                 None,
-                v,
+                &v_bits,
                 &BTreeMap::new(),
             )
             .unwrap_or_else(|e| {
                 panic!("seed {seed}: our kernel rejected its own generated program:\n{src}\n{e}")
             });
-            let row: BTreeMap<String, u128> =
-                outputs.into_iter().map(|o| (o.name, o.value)).collect();
+            // Fuzzer widths are capped at `MAX_WIDTH` (32), so every output value
+            // is always `Bits::Small` — narrow it back to `u128` to compare
+            // against Icarus's own u128-typed parsed output.
+            let row: BTreeMap<String, u128> = outputs
+                .into_iter()
+                .map(|o| {
+                    let v = match o.value {
+                        mimz::sim::value::Bits::Small(v) => v,
+                        mimz::sim::value::Bits::Wide(_) => {
+                            unreachable!("fuzzer widths are capped at MAX_WIDTH=32")
+                        }
+                    };
+                    (o.name, v)
+                })
+                .collect();
             kernel_rows.push(row);
         }
 
@@ -872,7 +889,10 @@ fn differential_fuzz_clocked_matches_icarus() {
             });
         let opts = SimOpts {
             clock: None,
-            inputs: held.clone(),
+            inputs: held
+                .iter()
+                .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
+                .collect(),
             cycles: CYCLES,
             reset_cycles: RESET_CYCLES,
         };
@@ -913,11 +933,12 @@ fn differential_fuzz_clocked_matches_icarus() {
             let icarus_row = icarus
                 .get(&cyc)
                 .unwrap_or_else(|| panic!("seed {seed}: Icarus produced no row for cycle {cyc}"));
-            let kernel_y = f.values["y"];
+            let kernel_y = f.values["y"].clone();
             let icarus_y = icarus_row["y"];
             assert_eq!(
-                kernel_y, icarus_y,
-                "seed {seed}, cycle {cyc}: our kernel y={kernel_y} but Icarus y={icarus_y}\n\
+                kernel_y,
+                mimz::sim::value::Bits::Small(icarus_y),
+                "seed {seed}, cycle {cyc}: our kernel y={kernel_y:?} but Icarus y={icarus_y}\n\
                  source:\n{src}\nheld inputs: {held:?}"
             );
             compared += 1;

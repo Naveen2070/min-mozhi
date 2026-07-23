@@ -14,6 +14,7 @@ use crate::ast::{BindArg, BindArgValue};
 use super::{Peripheral, parse_port};
 use mimz_sim::sim::Val;
 use mimz_sim::sim::elaborate::Width;
+use mimz_sim::sim::value::Bits;
 
 /// How many trailing decoded characters `render` shows.
 const LOG_CAP: usize = 32;
@@ -243,7 +244,10 @@ impl Peripheral for UartTx {
     fn on_change(&mut self, _val: &Val) {}
 
     fn on_tick(&mut self, val: &Val) -> Result<(), String> {
-        let bit = (val.bits & 1) as u8;
+        let bit = match &val.bits {
+            Bits::Small(b) => (b & 1) as u8,
+            Bits::Wide(limbs) => (limbs.first().copied().unwrap_or(0) & 1) as u8,
+        };
         if matches!(self.state, State::Idle) {
             if bit != 0 {
                 return Ok(()); // still idle-high

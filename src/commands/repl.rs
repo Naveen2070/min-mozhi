@@ -121,20 +121,28 @@ pub(crate) fn repl(
 
         // Evaluate with these input bindings.
         match parse_bindings(&line, parse_u128) {
-            Ok(inputs) => match sim::comb::eval_outputs(
-                std::slice::from_ref(&file),
-                module.as_deref(),
-                &inputs,
-                &params,
-            ) {
-                Ok(outputs) => {
-                    for o in outputs {
-                        let kind = if o.signed { "signed" } else { "bits" };
-                        println!("  {} = {}  ({kind}[{}])", o.name, o.value, o.width);
+            Ok(inputs) => {
+                let inputs: std::collections::BTreeMap<String, sim::value::Bits> = inputs
+                    .into_iter()
+                    .map(|(k, v)| (k, sim::value::Bits::Small(v)))
+                    .collect();
+                match sim::comb::eval_outputs(
+                    std::slice::from_ref(&file),
+                    module.as_deref(),
+                    &inputs,
+                    &params,
+                ) {
+                    Ok(outputs) => {
+                        for o in outputs {
+                            let kind = if o.signed { "signed" } else { "bits" };
+                            let value =
+                                sim::value::bits_to_decimal_string(&o.value, o.width, o.signed);
+                            println!("  {} = {value}  ({kind}[{}])", o.name, o.width);
+                        }
                     }
+                    Err(e) => eprintln!("error: {e}"),
                 }
-                Err(e) => eprintln!("error: {e}"),
-            },
+            }
             Err(e) => eprintln!("error: {e}"),
         }
     }
