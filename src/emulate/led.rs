@@ -12,6 +12,7 @@ use crate::ast::{BindArg, BindArgValue};
 use super::Peripheral;
 use mimz_sim::sim::Val;
 use mimz_sim::sim::elaborate::Width;
+use mimz_sim::sim::value::Bits;
 
 pub(super) fn construct(
     width: Width,
@@ -66,7 +67,10 @@ struct Led {
 
 impl Peripheral for Led {
     fn on_change(&mut self, val: &Val) {
-        self.on = val.bits != 0;
+        self.on = match &val.bits {
+            Bits::Small(b) => *b != 0,
+            Bits::Wide(limbs) => limbs.iter().any(|&l| l != 0),
+        };
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {

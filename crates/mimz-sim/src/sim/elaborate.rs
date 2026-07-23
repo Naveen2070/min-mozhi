@@ -2850,32 +2850,33 @@ mod tests {
         let mut s = sim(
             "module M {\n  clock clk\n  reset rst\n  sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 0 {\n    result <- result + 1\n  }\n}\n",
         );
-        s.set("rst", 1).unwrap();
+        use super::super::value::Bits;
+        s.set("rst", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
-        s.set("rst", 0).unwrap();
-        s.set("s_start", 1).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("s_start", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap(); // idle -> running, cnt = lo = 0
-        s.set("s_start", 1).unwrap(); // held high through the run — must not re-trigger
+        s.set("s_start", Bits::Small(1)).unwrap(); // held high through the run — must not re-trigger
         for _ in 0..3 {
             assert_eq!(
                 s.peek("s_done").unwrap(),
-                0,
+                Bits::Small(0),
                 "must not pulse done before hi - lo cycles elapse"
             );
             s.tick("clk").unwrap();
         }
         assert_eq!(
             s.peek("s_done").unwrap(),
-            0,
+            Bits::Small(0),
             "still one cycle short of hi - lo + 1"
         );
         s.tick("clk").unwrap();
         assert_eq!(
             s.peek("s_done").unwrap(),
-            1,
+            Bits::Small(1),
             "done must pulse exactly hi - lo + 1 cycles after start was sampled"
         );
-        assert_eq!(s.peek("s_result").unwrap(), 4);
+        assert_eq!(s.peek("s_result").unwrap(), Bits::Small(4));
     }
 
     /// Final whole-branch review, Finding 1: a `SyncLoop` nested inside a
@@ -2892,16 +2893,17 @@ mod tests {
              const if (1) {\n    \
              sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 0 {\n      result <- result + 1\n    }\n  \
              }\n}\n");
-        s.set("rst", 1).unwrap();
+        use super::super::value::Bits;
+        s.set("rst", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
-        s.set("rst", 0).unwrap();
-        s.set("s_start", 1).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("s_start", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
         for _ in 0..4 {
             s.tick("clk").unwrap();
         }
-        assert_eq!(s.peek("s_done").unwrap(), 1);
-        assert_eq!(s.peek("s_result").unwrap(), 4);
+        assert_eq!(s.peek("s_done").unwrap(), Bits::Small(1));
+        assert_eq!(s.peek("s_result").unwrap(), Bits::Small(4));
     }
 
     /// Same as above, but the `SyncLoop` sits in the `const if`'s losing

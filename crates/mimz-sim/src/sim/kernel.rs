@@ -23,6 +23,17 @@ use mimz_core::ast::{Edge, Expr, FuncDecl, SeqStmt};
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
 
+/// Re-mask `v`'s raw bits to width `w` (with `signed`) — a pure reinterpret
+/// (truncate/zero-pad the limbs), NOT a sign-extending resize. Mirrors the
+/// exact "reinterpret the same raw bits" semantics `Val::new(v.bits, w, s)`
+/// had before `Bits` gained a `Wide` variant (Task 2's Copy-loss fallout,
+/// Task 7); same pattern as `value.rs`'s own (private) `remask_to_width`.
+fn remask_to_width(v: Val, w: u32, signed: bool) -> Val {
+    let mut limbs = v.to_limbs();
+    limbs.resize(super::wide::limb_count(w), 0);
+    Val::new_wide(limbs, w, signed)
+}
+
 /// A running simulation of one elaborated [`Design`].
 pub struct Sim {
     design: Design,
@@ -120,11 +131,17 @@ impl Sim {
 
     /// Drive a leaf signal (an input, clock, or reset) to `value`, masked to its
     /// declared width. Errors if `name` is not a drivable leaf.
-    pub fn set(&mut self, name: &str, value: u128) -> Result<(), String> {
+    pub fn set(&mut self, name: &str, value: value::Bits) -> Result<(), String> {
         match self.widths.get(name) {
             Some(w) if self.leaves.contains_key(name) => {
-                self.leaves
-                    .insert(name.to_string(), Val::new(value, w.bits, w.signed));
+                let val = match value {
+                    value::Bits::Small(b) if w.bits <= 128 => Val::new(b, w.bits, w.signed),
+                    value::Bits::Small(b) => {
+                        Val::new_wide(value::wide_limbs_from_u128(b, w.bits), w.bits, w.signed)
+                    }
+                    value::Bits::Wide(limbs) => Val::new_wide(limbs, w.bits, w.signed),
+                };
+                self.leaves.insert(name.to_string(), val);
                 Ok(())
             }
             _ => Err(format!(
@@ -136,15 +153,15 @@ impl Sim {
 
     /// Read the current value of any signal — a leaf (input/clock/reset), a
     /// register, or a combinational wire/output (settled on demand).
-    pub fn peek(&self, name: &str) -> Result<u128, String> {
+    pub fn peek(&self, name: &str) -> Result<value::Bits, String> {
         if let Some(v) = self.leaves.get(name) {
-            return Ok(v.masked());
+            return Ok(v.bits_masked());
         }
         if let Some(v) = self.regs.get(name) {
-            return Ok(v.masked());
+            return Ok(v.bits_masked());
         }
         let mut env = self.comb_env();
-        Ok(env.signal(name)?.masked())
+        Ok(env.signal(name)?.bits_masked())
     }
 
     /// Advance one full period of `clock`: the rising edge, then the falling
@@ -168,7 +185,7 @@ impl Sim {
             .design
             .resets
             .iter()
-            .any(|r| self.leaves.get(r).is_some_and(|v| v.bits & 1 == 1));
+            .any(|r| self.leaves.get(r).is_some_and(|v| v.lsb() == 1));
 
         // Start from the current registers (hold-by-default), overlay this
         // edge's updates, then commit. Memory holds across reset (power-on
@@ -215,13 +232,18 @@ impl Sim {
     /// A snapshot of every signal's current value (low bits) with its width —
     /// the per-cycle data the VCD writer and console tracer consume. Order:
     /// leaves, then registers, then combinational signals (settled now).
-    pub fn snapshot(&self) -> Result<Vec<(String, u128, Width)>, String> {
+    ///
+    /// Returns `Bits` (not a raw `u128`) so a signal wider than 128 bits can
+    /// be snapshotted without panicking — `Frame.values`' own element type
+    /// (`run.rs`, Task 8) and `Val::bits_masked`'s "both `Small` and `Wide`"
+    /// contract, mirroring `Sim::peek` immediately above.
+    pub fn snapshot(&self) -> Result<Vec<(String, value::Bits, Width)>, String> {
         let mut out = Vec::new();
         for (name, v) in &self.leaves {
-            out.push((name.clone(), v.masked(), self.widths[name]));
+            out.push((name.clone(), v.bits_masked(), self.widths[name]));
         }
         for (name, v) in &self.regs {
-            out.push((name.clone(), v.masked(), self.widths[name]));
+            out.push((name.clone(), v.bits_masked(), self.widths[name]));
         }
         let mut env = self.comb_env();
         for name in self.design.comb.keys().chain(&self.design.unknown_signals) {
@@ -230,7 +252,7 @@ impl Sim {
                 bits: v.width,
                 signed: v.signed,
             });
-            out.push((name.clone(), v.masked(), w));
+            out.push((name.clone(), v.bits_masked(), w));
         }
         Ok(out)
     }
@@ -246,7 +268,7 @@ impl Sim {
     /// known leaf values; wires/outputs resolve through their drivers.
     fn comb_env(&self) -> CombEnv<'_> {
         let mut known = self.leaves.clone();
-        known.extend(self.regs.iter().map(|(k, v)| (k.clone(), *v)));
+        known.extend(self.regs.iter().map(|(k, v)| (k.clone(), v.clone())));
         CombEnv {
             consts: &self.design.consts,
             known,
@@ -283,7 +305,7 @@ fn run_seq(
                 bits: v.width,
                 signed: v.signed,
             });
-            next.insert(name.name.clone(), Val::new(v.bits, w.bits, w.signed));
+            next.insert(name.name.clone(), remask_to_width(v, w.bits, w.signed));
         }
     }
     for s in body {
@@ -301,14 +323,14 @@ fn run_seq(
                             bits: v.width,
                             signed: v.signed,
                         });
-                        next.insert(lhs.base.name.clone(), Val::new(v.bits, w.bits, w.signed));
+                        next.insert(lhs.base.name.clone(), remask_to_width(v, w.bits, w.signed));
                     }
                     // Memory cell write `m[addr] <- v`. The address reads the
                     // CURRENT state (`env`); the write lands in `next_mems`, so
                     // a same-cycle read of the cell still sees the old value.
                     Some((addr_expr, None)) if env.is_mem(&lhs.base.name) => {
                         let info = env.mem_info(&lhs.base.name);
-                        let addr = value::eval(env, addr_expr)?.bits;
+                        let addr = value::eval(env, addr_expr)?.bits_small_or_zero();
                         let v = value::eval_ctx(env, rhs, info.map(|i| i.width.bits))?;
                         // A write past the end is dropped (matches Verilog).
                         if let Some(info) = info
@@ -316,7 +338,7 @@ fn run_seq(
                         {
                             next_mems.insert(
                                 (lhs.base.name.clone(), addr),
-                                Val::new(v.bits, info.width.bits, info.width.signed),
+                                remask_to_width(v, info.width.bits, info.width.signed),
                             );
                         }
                     }
@@ -333,7 +355,7 @@ fn run_seq(
                     // combine, rather than the second clobbering the first).
                     Some((idx_or_hi, lo)) => {
                         let base = match next.get(&lhs.base.name) {
-                            Some(v) => *v,
+                            Some(v) => v.clone(),
                             None => env.signal(&lhs.base.name)?,
                         };
                         let v = value::eval(env, rhs)?;
@@ -344,7 +366,7 @@ fn run_seq(
                                     base.width,
                                     "bit index",
                                 )?;
-                                (base.bits & !(1u128 << i)) | ((v.bits & 1) << i)
+                                (base.masked() & !(1u128 << i)) | (v.lsb() << i)
                             }
                             Some(lo_expr) => {
                                 let hi = value::checked_index(
@@ -364,7 +386,7 @@ fn run_seq(
                                 }
                                 let w = hi - lo + 1;
                                 let clear = value::mask(w) << lo;
-                                (base.bits & !clear) | ((v.bits & value::mask(w)) << lo)
+                                (base.masked() & !clear) | ((v.masked() & value::mask(w)) << lo)
                             }
                         };
                         next.insert(
@@ -375,7 +397,7 @@ fn run_seq(
                 }
             }
             SeqStmt::If { cond, then, els } => {
-                if value::eval(env, cond)?.bits & 1 == 1 {
+                if value::eval(env, cond)?.lsb() == 1 {
                     run_seq(env, then, next, next_mems, widths)?;
                 } else if let Some(e) = els {
                     run_seq(env, e, next, next_mems, widths)?;
@@ -385,8 +407,8 @@ fn run_seq(
             SeqStmt::Loop {
                 var, lo, hi, body, ..
             } => {
-                let lo_v = value::eval(env, lo)?.bits as i128;
-                let hi_v = value::eval(env, hi)?.bits as i128;
+                let lo_v = value::eval(env, lo)?.masked() as i128;
+                let hi_v = value::eval(env, hi)?.masked() as i128;
                 let count = (hi_v - lo_v).max(0);
                 if count > REPEAT_BUDGET {
                     return Err(format!(
@@ -468,16 +490,16 @@ impl Resolver for CombEnv<'_> {
         Ok(self
             .mem_cells
             .get(&(name.to_string(), addr))
-            .copied()
+            .cloned()
             .unwrap_or_else(|| Val::new(info.init as u128, info.width.bits, info.width.signed)))
     }
 
     fn signal(&mut self, name: &str) -> Result<Val, String> {
         if let Some(v) = self.known.get(name) {
-            return Ok(*v);
+            return Ok(v.clone());
         }
         if let Some(v) = self.memo.get(name) {
-            return Ok(*v);
+            return Ok(v.clone());
         }
         if self.unknown.contains(name) {
             // Extern-instance output in `warn` mode: no driver by design.
@@ -486,7 +508,7 @@ impl Resolver for CombEnv<'_> {
                 signed: false,
             });
             let v = Val::unknown(w.bits, w.signed);
-            self.memo.insert(name.to_string(), v);
+            self.memo.insert(name.to_string(), v.clone());
             return Ok(v);
         }
         if let Some(driver) = self.comb.get(name) {
@@ -506,13 +528,16 @@ impl Resolver for CombEnv<'_> {
                 // result must not silently launder an extern-fed taint away
                 // (BUG found by Task 8: `ok = u.locked` re-masked to `ok`'s
                 // declared width here and lost `unknown` in the process).
-                Some(w) => Val {
-                    unknown: v.unknown,
-                    ..Val::new(v.bits, w.bits, w.signed)
-                },
+                Some(w) => {
+                    let unknown = v.unknown;
+                    Val {
+                        unknown,
+                        ..remask_to_width(v, w.bits, w.signed)
+                    }
+                }
                 None => v,
             };
-            self.memo.insert(name.to_string(), v);
+            self.memo.insert(name.to_string(), v.clone());
             return Ok(v);
         }
         if let Some(i) = self.consts.get(name) {
@@ -530,6 +555,7 @@ impl Resolver for CombEnv<'_> {
 
 #[cfg(test)]
 mod tests {
+    use super::value::Bits;
     use super::*;
     use crate::sim::elaborate::{SimMode, elaborate, elaborate_with_mode};
     use mimz_core::ast::ExprKind;
@@ -625,21 +651,21 @@ mod tests {
     fn counter_counts_and_resets() {
         let mut s = sim(COUNTER);
         // A reset cycle holds the register at 0.
-        s.set("rst", 1).unwrap();
+        s.set("rst", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("count").unwrap(), 0);
+        assert_eq!(s.peek("count").unwrap(), Bits::Small(0));
         // Then it counts up each rising edge.
-        s.set("rst", 0).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("count").unwrap(), 1);
+        assert_eq!(s.peek("count").unwrap(), Bits::Small(1));
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("value").unwrap(), 2);
+        assert_eq!(s.peek("value").unwrap(), Bits::Small(2));
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("count").unwrap(), 3);
+        assert_eq!(s.peek("count").unwrap(), Bits::Small(3));
         // Asserting reset forces it back to 0.
-        s.set("rst", 1).unwrap();
+        s.set("rst", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("count").unwrap(), 0);
+        assert_eq!(s.peek("count").unwrap(), Bits::Small(0));
     }
 
     #[test]
@@ -650,11 +676,15 @@ mod tests {
         let mut s = sim(
             "module M {\n  clock clk\n  reset rst\n  in d: bits[8]\n  out q: bits[8]\n  reg a: bits[8] = 0\n  reg b: bits[8] = 0\n  on rise(clk) { a <- d }\n  on fall(clk) { b <- a }\n  q = b\n}\n",
         );
-        s.set("d", 5).unwrap();
-        s.set("rst", 0).unwrap();
+        s.set("d", Bits::Small(5)).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("a").unwrap(), 5);
-        assert_eq!(s.peek("q").unwrap(), 5, "negedge `b` captured the new `a`");
+        assert_eq!(s.peek("a").unwrap(), Bits::Small(5));
+        assert_eq!(
+            s.peek("q").unwrap(),
+            Bits::Small(5),
+            "negedge `b` captured the new `a`"
+        );
     }
 
     #[test]
@@ -663,21 +693,29 @@ mod tests {
             "module RF {\n  clock clk\n  in we: bit\n  in waddr: bits[2]\n  in wdata: bits[8]\n  in raddr: bits[2]\n  out rdata: bits[8]\n  mem m: bits[8][4] = 0\n  on rise(clk) {\n    if we {\n      m[waddr] <- wdata\n    }\n  }\n  rdata = m[raddr]\n}\n",
         );
         // Every cell starts at the init value (power-on seed).
-        s.set("raddr", 2).unwrap();
-        assert_eq!(s.peek("rdata").unwrap(), 0, "an unwritten cell reads init");
+        s.set("raddr", Bits::Small(2)).unwrap();
+        assert_eq!(
+            s.peek("rdata").unwrap(),
+            Bits::Small(0),
+            "an unwritten cell reads init"
+        );
         // Write 165 to cell 2, then read it back.
-        s.set("we", 1).unwrap();
-        s.set("waddr", 2).unwrap();
-        s.set("wdata", 165).unwrap();
+        s.set("we", Bits::Small(1)).unwrap();
+        s.set("waddr", Bits::Small(2)).unwrap();
+        s.set("wdata", Bits::Small(165)).unwrap();
         s.tick("clk").unwrap();
         assert_eq!(
             s.peek("rdata").unwrap(),
-            165,
+            Bits::Small(165),
             "cell 2 holds the written value"
         );
         // A different, never-written cell still reads init.
-        s.set("raddr", 1).unwrap();
-        assert_eq!(s.peek("rdata").unwrap(), 0, "cell 1 was never written");
+        s.set("raddr", Bits::Small(1)).unwrap();
+        assert_eq!(
+            s.peek("rdata").unwrap(),
+            Bits::Small(0),
+            "cell 1 was never written"
+        );
     }
 
     #[test]
@@ -690,10 +728,14 @@ mod tests {
             "module M {\n  clock clk\n  reset rst\n  in v: bit\n  out y: bits[4]\n  \
              reg shift: bits[4] = 0\n  on rise(clk) { shift[2] <- v }\n  y = shift\n}\n",
         );
-        s.set("rst", 0).unwrap();
-        s.set("v", 1).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("v", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("y").unwrap(), 0b0100, "bit 2 set, others untouched");
+        assert_eq!(
+            s.peek("y").unwrap(),
+            Bits::Small(0b0100),
+            "bit 2 set, others untouched"
+        );
     }
 
     #[test]
@@ -702,12 +744,12 @@ mod tests {
             "module M {\n  clock clk\n  reset rst\n  in v: bits[2]\n  out y: bits[4]\n  \
              reg r: bits[4] = 0b1001\n  on rise(clk) { r[2:1] <- v }\n  y = r\n}\n",
         );
-        s.set("rst", 0).unwrap();
-        s.set("v", 0b11).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("v", Bits::Small(0b11)).unwrap();
         s.tick("clk").unwrap();
         assert_eq!(
             s.peek("y").unwrap(),
-            0b1111,
+            Bits::Small(0b1111),
             "bits [2:1] replaced, bits 3 and 0 kept from the reset value"
         );
     }
@@ -722,11 +764,11 @@ mod tests {
             "module M {\n  clock clk\n  reset rst\n  in a: bit\n  in b: bit\n  out y: bits[2]\n  \
              reg r: bits[2] = 0\n  on rise(clk) {\n    r[0] <- a\n    r[1] <- b\n  }\n  y = r\n}\n",
         );
-        s.set("rst", 0).unwrap();
-        s.set("a", 1).unwrap();
-        s.set("b", 1).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("a", Bits::Small(1)).unwrap();
+        s.set("b", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("y").unwrap(), 0b11);
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(0b11));
     }
 
     #[test]
@@ -734,20 +776,20 @@ mod tests {
         // Before any tick, a reg holds its (non-zero) reset value.
         let s = sim("module R {\n  clock clk\n  reset rst\n  out y: bits[8]\n  \
              reg r: bits[8] = 5\n  on rise(clk) { r <- r +% 1 }\n  y = r\n}\n");
-        assert_eq!(s.peek("y").unwrap(), 5);
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(5));
     }
 
     #[test]
     fn wraps_at_declared_width() {
         let mut s = sim("module W {\n  clock clk\n  reset rst\n  out y: bits[2]\n  \
              reg r: bits[2] = 0\n  on rise(clk) { r <- r +% 1 }\n  y = r\n}\n");
-        s.set("rst", 0).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
         for _ in 0..3 {
             s.tick("clk").unwrap(); // 1, 2, 3
         }
-        assert_eq!(s.peek("y").unwrap(), 3);
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(3));
         s.tick("clk").unwrap(); // 3 +% 1 wraps to 0 in bits[2]
-        assert_eq!(s.peek("y").unwrap(), 0);
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(0));
     }
 
     #[test]
@@ -758,10 +800,10 @@ mod tests {
              reg a: bits[8] = 1\n  reg b: bits[8] = 2\n  \
              on rise(clk) {\n    a <- b\n    b <- a\n  }\n  oa = a\n  ob = b\n}\n",
         );
-        s.set("rst", 0).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("oa").unwrap(), 2); // a took the OLD b
-        assert_eq!(s.peek("ob").unwrap(), 1); // b took the OLD a, not the new a
+        assert_eq!(s.peek("oa").unwrap(), Bits::Small(2)); // a took the OLD b
+        assert_eq!(s.peek("ob").unwrap(), Bits::Small(1)); // b took the OLD a, not the new a
     }
 
     #[test]
@@ -771,13 +813,13 @@ mod tests {
              reg r: bits[8] = 0\n  \
              on rise(clk) {\n    if up { r <- r +% 1 } else { r <- r -% 1 }\n  }\n  y = r\n}\n",
         );
-        s.set("rst", 0).unwrap();
-        s.set("up", 1).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("up", Bits::Small(1)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("y").unwrap(), 1);
-        s.set("up", 0).unwrap();
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(1));
+        s.set("up", Bits::Small(0)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("y").unwrap(), 0); // 1 -% 1
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(0)); // 1 -% 1
     }
 
     #[test]
@@ -793,8 +835,8 @@ mod tests {
     #[test]
     fn set_rejects_a_non_leaf() {
         let mut s = sim(COUNTER);
-        assert!(s.set("count", 1).is_err()); // an output, not drivable
-        assert!(s.set("nope", 1).is_err()); // unknown
+        assert!(s.set("count", Bits::Small(1)).is_err()); // an output, not drivable
+        assert!(s.set("nope", Bits::Small(1)).is_err()); // unknown
     }
 
     #[test]
@@ -807,13 +849,13 @@ mod tests {
              reg r: bits[8] = 0\n  wire a: bits[8] = x +% 1\n  wire b: bits[8] = a +% r\n  \
              on rise(clk) { r <- r +% 1 }\n  y = b +% 1\n}\n",
         );
-        s.set("rst", 0).unwrap();
-        s.set("x", 10).unwrap();
-        assert_eq!(s.peek("y").unwrap(), 12); // r = 0
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("x", Bits::Small(10)).unwrap();
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(12)); // r = 0
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("y").unwrap(), 13); // r = 1
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(13)); // r = 1
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("y").unwrap(), 14); // r = 2
+        assert_eq!(s.peek("y").unwrap(), Bits::Small(14)); // r = 2
     }
 
     #[test]
@@ -825,9 +867,9 @@ mod tests {
             "module M {\n  clock clk\n  reset rst\n  reg acc: bits[8] = 0\n  \
              on rise(clk) {\n    loop i: 0..4 {\n      acc <- i\n    }\n  }\n}\n",
         );
-        s.set("rst", 0).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
         s.tick("clk").unwrap();
-        assert_eq!(s.peek("acc").unwrap(), 3);
+        assert_eq!(s.peek("acc").unwrap(), Bits::Small(3));
     }
 
     #[test]
@@ -838,12 +880,28 @@ mod tests {
             mimz_core::REPEAT_BUDGET + 1
         );
         let mut s = sim(&src);
-        s.set("rst", 0).unwrap();
-        s.set("v0", 1).unwrap();
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("v0", Bits::Small(1)).unwrap();
         let err = s
             .tick("clk")
             .expect_err("over-budget loop must error, not hang or overflow");
         assert!(err.contains("`loop` would unroll"), "got: {err}");
+    }
+
+    #[test]
+    fn set_and_peek_round_trip_a_wide_value() {
+        let src =
+            "module M(WIDTH: int = 200) {\n  in a: bits[WIDTH]\n  out b: bits[WIDTH]\n  b = a\n}\n";
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
+        let design =
+            super::super::elaborate::elaborate(&f, None, &std::collections::BTreeMap::new())
+                .expect("elaborates");
+        let mut sim = Sim::new(design);
+        let wide_val =
+            super::super::value::Bits::Wide(super::super::wide::from_u128(0xDEADBEEF, 200));
+        sim.set("a", wide_val.clone()).expect("a is drivable");
+        assert_eq!(sim.peek("a").expect("a is readable"), wide_val);
     }
 
     #[test]

@@ -362,11 +362,16 @@ fn fn_array_search_duplicate_match_lower_index_wins_via_icarus() {
     .into_iter()
     .collect();
 
-    let tl = comb_run(design, std::slice::from_ref(&vector)).expect("our comb sim runs");
-    let kernel_idx = tl.frames[0].values["idx"];
+    let bits_vector: BTreeMap<String, mimz::sim::value::Bits> = vector
+        .iter()
+        .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
+        .collect();
+    let tl = comb_run(design, std::slice::from_ref(&bits_vector)).expect("our comb sim runs");
+    let kernel_idx = tl.frames[0].values["idx"].clone();
     assert_eq!(
-        kernel_idx, 0,
-        "our own simulator must return the LOWER duplicate index (0), got {kernel_idx}"
+        kernel_idx,
+        mimz::sim::value::Bits::Small(0),
+        "our own simulator must return the LOWER duplicate index (0), got {kernel_idx:?}"
     );
 
     let tb = comb_testbench(
@@ -553,12 +558,13 @@ fn compare_three_ways(
             .get(&(step * 10))
             .unwrap_or_else(|| panic!("our VCD has no frame at time {} for {example}", step * 10));
         for ((name, _), (rom, _)) in outputs.iter().zip(outputs_rom) {
-            let kernel = f.values[name];
+            let kernel = f.values[name].clone();
             let icarus_v = theirs[rom];
             let vcd_v = wave[name];
             assert_eq!(
-                kernel, icarus_v,
-                "{example} step {step}: our kernel `{name}`={kernel} but Icarus `{rom}`={icarus_v}"
+                kernel,
+                mimz::sim::value::Bits::Small(icarus_v),
+                "{example} step {step}: our kernel `{name}`={kernel:?} but Icarus `{rom}`={icarus_v}"
             );
             assert_eq!(
                 vcd_v, icarus_v,
@@ -651,7 +657,10 @@ fn differential_m(
             .collect();
         let opts = SimOpts {
             clock: None,
-            inputs: stim.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
+            inputs: stim
+                .iter()
+                .map(|(n, v)| (n.to_string(), mimz::sim::value::Bits::Small(*v)))
+                .collect(),
             cycles: steps,
             reset_cycles: RESET_CYCLES,
         };
@@ -686,7 +695,15 @@ fn differential_m(
             .iter()
             .map(|m| m.iter().map(|(k, v)| (r(k), *v)).collect())
             .collect();
-        let tl = comb_run(design, &vectors).expect("our comb sim runs");
+        let bits_vectors: Vec<BTreeMap<String, mimz::sim::value::Bits>> = vectors
+            .iter()
+            .map(|m| {
+                m.iter()
+                    .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
+                    .collect()
+            })
+            .collect();
+        let tl = comb_run(design, &bits_vectors).expect("our comb sim runs");
         let tb = comb_testbench(
             &module,
             &params_rom,

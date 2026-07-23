@@ -26,6 +26,14 @@ use crate::ast::BindArg;
 use super::Peripheral;
 use mimz_sim::sim::Val;
 use mimz_sim::sim::elaborate::Width;
+use mimz_sim::sim::value::Bits;
+
+fn bit0(bits: &Bits) -> bool {
+    match bits {
+        Bits::Small(b) => b & 1 != 0,
+        Bits::Wide(limbs) => limbs.first().copied().unwrap_or(0) & 1 != 0,
+    }
+}
 
 pub(super) fn construct(
     width: Width,
@@ -74,7 +82,7 @@ struct Speaker {
 
 impl Speaker {
     fn set_bit(&self, val: &Val) {
-        self.bit.store(val.bits & 1 != 0, Ordering::Relaxed);
+        self.bit.store(bit0(&val.bits), Ordering::Relaxed);
     }
 }
 
@@ -168,7 +176,7 @@ impl Peripheral for Speaker {
     fn on_change(&mut self, _val: &Val) {}
 
     fn on_tick(&mut self, val: &Val) -> Result<(), String> {
-        self.current_bit = val.bits & 1 != 0;
+        self.current_bit = bit0(&val.bits);
         self.set_bit(val);
 
         if !self.initialized {
