@@ -6,22 +6,8 @@
 //! (the command computes it from `--verbose` / `--signals` / the default
 //! interface+state set). Default off — these only render when `--trace` is given.
 
-use std::collections::BTreeMap;
-
 use super::run::Timeline;
 use super::value::Bits;
-
-/// Unwrap a narrow-path `Frame` value to a raw `u128` — every value this
-/// crate can currently DRIVE through `mimz sim`'s CLI stays <=128 bits, so
-/// `Bits::Wide` is not reachable here yet. Real `Wide`-aware decimal
-/// rendering is Task 9's job (BUG-13 layer 1, part 4); this is the minimal
-/// type-only fallout fix for `Frame.values` becoming `Bits`-typed (Task 8).
-fn narrow(b: &Bits) -> u128 {
-    match b {
-        Bits::Small(v) => *v,
-        Bits::Wide(_) => unreachable!("wide trace rendering is Task 9's job"),
-    }
-}
 
 /// Render `tl` for the console. `style` is `"changes"` for the on-change log;
 /// anything else (the default `"table"`) is the every-cycle table.
@@ -35,6 +21,13 @@ pub fn render(tl: &Timeline, style: &str, scope: &[String]) -> String {
 
 /// One row per rising-edge cycle; columns are `cycle` then each scope signal.
 fn render_table(tl: &Timeline, scope: &[String]) -> String {
+    // Build a lookup: signal name → (width_bits, signed) for decimal display.
+    let meta: std::collections::BTreeMap<&str, (u32, bool)> = tl
+        .signals
+        .iter()
+        .map(|s| (s.name.as_str(), (s.width.bits, s.width.signed)))
+        .collect();
+
     let mut headers = vec!["cycle".to_string()];
     headers.extend(scope.iter().cloned());
 
@@ -42,7 +35,8 @@ fn render_table(tl: &Timeline, scope: &[String]) -> String {
     for f in tl.frames.iter().filter(|f| f.cycle.is_some()) {
         let mut row = vec![f.cycle.unwrap_or(0).to_string()];
         for s in scope {
-            row.push(cell(f.values.get(s)));
+            let (w, signed) = meta.get(s.as_str()).copied().unwrap_or((1, false));
+            row.push(cell(f.values.get(s), w, signed));
         }
         rows.push(row);
     }
@@ -75,30 +69,51 @@ fn render_table(tl: &Timeline, scope: &[String]) -> String {
 /// A `$monitor`-style log: print every scope signal whenever any of them
 /// changes (plus the first frame), tagged with the timestamp.
 fn render_changes(tl: &Timeline, scope: &[String]) -> String {
+    // Build a lookup: signal name → (width_bits, signed) for decimal display.
+    let meta: std::collections::BTreeMap<&str, (u32, bool)> = tl
+        .signals
+        .iter()
+        .map(|s| (s.name.as_str(), (s.width.bits, s.width.signed)))
+        .collect();
+    let absent = Bits::Small(0);
+
     let mut out = String::new();
-    let mut prev: BTreeMap<&str, u128> = BTreeMap::new();
+    let mut prev: std::collections::BTreeMap<&str, Bits> = std::collections::BTreeMap::new();
     for (i, f) in tl.frames.iter().enumerate() {
         let changed = scope
             .iter()
-            .any(|s| prev.get(s.as_str()) != Some(&f.values.get(s).map(narrow).unwrap_or(0)));
+            .any(|s| prev.get(s.as_str()) != Some(f.values.get(s).unwrap_or(&absent)));
         if i == 0 || changed {
             let cells: Vec<String> = scope
                 .iter()
-                .map(|s| format!("{s}={}", f.values.get(s).map(narrow).unwrap_or(0)))
+                .map(|s| {
+                    let (w, signed) = meta.get(s.as_str()).copied().unwrap_or((1, false));
+                    format!("{s}={}", cell(f.values.get(s), w, signed))
+                })
                 .collect();
             out.push_str(&format!("#{}  {}\n", f.time, cells.join("  ")));
         }
         for s in scope {
-            prev.insert(s.as_str(), f.values.get(s).map(narrow).unwrap_or(0));
+            prev.insert(s.as_str(), f.values.get(s).unwrap_or(&absent).clone());
         }
     }
     out
 }
 
-fn cell(v: Option<&Bits>) -> String {
-    v.map(narrow)
-        .map(|n| n.to_string())
-        .unwrap_or_else(|| "?".into())
+fn cell(v: Option<&Bits>, width: u32, signed: bool) -> String {
+    match v {
+        None => "?".to_string(),
+        Some(Bits::Small(b)) => {
+            if signed {
+                crate::sim::value::Val::new(*b, width, true)
+                    .as_i128()
+                    .to_string()
+            } else {
+                b.to_string()
+            }
+        }
+        Some(Bits::Wide(limbs)) => crate::sim::wide::to_decimal_string(limbs, width, signed),
+    }
 }
 
 fn join_row(cells: &[String], widths: &[usize]) -> String {
@@ -115,6 +130,37 @@ mod tests {
     use super::*;
     use crate::sim::elaborate::elaborate;
     use crate::sim::run::{SimOpts, run};
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn table_renders_a_wide_signal_in_decimal() {
+        let src = "module Wide(WIDTH: int = 200) {\n  clock clk\n  reset rst\n  in a: bits[WIDTH]\n  out b: bits[WIDTH]\n  b = a\n}\n";
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
+        let d = elaborate(&f, None, &std::collections::BTreeMap::new()).expect("elaborates");
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            "a".to_string(),
+            crate::sim::value::Bits::Wide(crate::sim::wide::from_u128(u128::MAX, 200)),
+        );
+        let tl = run(
+            d,
+            &SimOpts {
+                clock: None,
+                inputs,
+                cycles: 2,
+                reset_cycles: 1,
+            },
+        )
+        .expect("runs");
+        let out = render(&tl, "table", &["b".into()]);
+        // u128::MAX == 340282366920938463463374607431768211455 — the exact
+        // decimal string a truncated/garbled wide render would NOT produce.
+        assert!(
+            out.contains("340282366920938463463374607431768211455"),
+            "expected the wide value's full decimal form somewhere in:\n{out}"
+        );
+    }
 
     fn counter(cycles: u64) -> Timeline {
         let src = "module Counter(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  \

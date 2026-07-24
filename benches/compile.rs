@@ -53,6 +53,53 @@ fn phases(c: &mut Criterion) {
         });
     });
 
+    // Simulator: narrow (u128 fast-path, confirms the Small/Wide dispatch
+    // added zero overhead to the existing case) and wide (>128-bit
+    // slow-path, confirms it's reasonably fast) — BUG-13 layer 1.
+    use mimz::sim::elaborate::elaborate;
+    use mimz::sim::run::{SimOpts, run};
+    use std::collections::BTreeMap;
+
+    const NARROW_SRC: &str = "module Counter(WIDTH: int = 32) {\n  clock clk\n  reset rst\n  out count: bits[WIDTH]\n  reg value: bits[WIDTH] = 0\n  on rise(clk) { value <- value +% 1 }\n  count = value\n}\n";
+    const WIDE_SRC: &str = "module Counter(WIDTH: int = 512) {\n  clock clk\n  reset rst\n  out count: bits[WIDTH]\n  reg value: bits[WIDTH] = 0\n  on rise(clk) { value <- value +% 1 }\n  count = value\n}\n";
+
+    let narrow_file =
+        parse(lex(NARROW_SRC).expect("narrow example lexes")).expect("narrow example parses");
+    let narrow_design =
+        elaborate(&narrow_file, None, &BTreeMap::new()).expect("narrow example elaborates");
+    group.bench_function("sim_narrow_128cycles", |b| {
+        b.iter(|| {
+            run(
+                black_box(narrow_design.clone()),
+                &SimOpts {
+                    clock: None,
+                    inputs: BTreeMap::new(),
+                    cycles: 128,
+                    reset_cycles: 1,
+                },
+            )
+            .expect("narrow example runs")
+        });
+    });
+
+    let wide_file = parse(lex(WIDE_SRC).expect("wide example lexes")).expect("wide example parses");
+    let wide_design =
+        elaborate(&wide_file, None, &BTreeMap::new()).expect("wide example elaborates");
+    group.bench_function("sim_wide_128cycles", |b| {
+        b.iter(|| {
+            run(
+                black_box(wide_design.clone()),
+                &SimOpts {
+                    clock: None,
+                    inputs: BTreeMap::new(),
+                    cycles: 128,
+                    reset_cycles: 1,
+                },
+            )
+            .expect("wide example runs")
+        });
+    });
+
     group.finish();
 }
 

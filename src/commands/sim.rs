@@ -10,8 +10,8 @@ use mimz::sim::{elaborate, trace, vcd};
 use mimz::{ast, checker, project};
 
 use super::helpers::{
-    lib_std_dir, parse_bindings, parse_sweep, parse_u128, project_warnings, resolve_lang,
-    resolve_sim_mode, sweep_vectors, trace_scope,
+    lib_std_dir, parse_bindings, parse_bits_bindings, parse_sweep, parse_u128, project_warnings,
+    resolve_lang, resolve_sim_mode, sweep_vectors, trace_scope,
 };
 use crate::Output;
 
@@ -84,22 +84,8 @@ pub(crate) fn sim_file(
         return ExitCode::FAILURE;
     }
 
-    let inputs = match parse_bindings(inputs, parse_u128) {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
     let params = match parse_bindings(param, |s| parse_u128(s).map(|v| v as i128)) {
         Ok(m) => m,
-        Err(e) => {
-            eprintln!("error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let sweep = match parse_sweep(sweep) {
-        Ok(s) => s,
         Err(e) => {
             eprintln!("error: {e}");
             return ExitCode::FAILURE;
@@ -115,6 +101,13 @@ pub(crate) fn sim_file(
                 return ExitCode::FAILURE;
             }
         };
+    // Input port widths, so `--in`/`--sweep` parse width-aware (BUG-13 layer
+    // 1 part 5) — looked up before the design is moved into `run`/`comb_run`.
+    let widths: std::collections::BTreeMap<String, u32> = design
+        .inputs
+        .iter()
+        .map(|s| (s.name.clone(), s.width.bits))
+        .collect();
     // Capture the trace-scope groups + whether the design is clocked before the
     // run consumes it.
     let in_names: Vec<String> = design.inputs.iter().map(|s| s.name.clone()).collect();
@@ -122,15 +115,27 @@ pub(crate) fn sim_file(
     let reg_names: Vec<String> = design.regs.iter().map(|r| r.name.clone()).collect();
     let clocked = !design.clocks.is_empty();
 
+    let inputs = match parse_bits_bindings(inputs, &widths) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let sweep = match parse_sweep(sweep, &widths) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
     // Clocked → default stimulus over `cycles`. Combinational → one settled frame
     // per input vector (held `--in`, fanned out by `--sweep`).
     let timeline = if clocked {
         let opts = SimOpts {
             clock,
-            inputs: inputs
-                .iter()
-                .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
-                .collect(),
+            inputs,
             cycles,
             reset_cycles: 1,
         };
@@ -149,14 +154,6 @@ pub(crate) fn sim_file(
                 return ExitCode::FAILURE;
             }
         };
-        let vectors: Vec<std::collections::BTreeMap<String, mimz::sim::value::Bits>> = vectors
-            .into_iter()
-            .map(|v| {
-                v.into_iter()
-                    .map(|(k, val)| (k, mimz::sim::value::Bits::Small(val)))
-                    .collect()
-            })
-            .collect();
         match comb_run(design, &vectors) {
             Ok(t) => t,
             Err(e) => {

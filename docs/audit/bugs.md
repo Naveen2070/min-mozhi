@@ -569,17 +569,85 @@ work) — tracked as a feature idea in
 [`docs/Ideas/language_plan.md`](../Ideas/language_plan.md) §12, revisit once
 that work lands.
 
-## BUG-13 (MEDIUM) — 128-bit Simulator Ceiling
+## BUG-13 (MEDIUM, FIXED — layer 1) — 128-bit Simulator Ceiling
 
-**What.** The simulator cannot handle vectors larger than 128 bits.
+**What.** The simulator could not handle vectors larger than 128 bits.
+Correction to the original write-up: this was a CLEAN elaboration-time
+error (`"width {n} exceeds the simulator's 128-bit limit"`,
+`value::checked_width`), not silent data corruption — a >128-bit design
+was rejected outright, never silently wrong.
 
-**Cause.** The simulator's `Val` struct is hardcoded around Rust's `u128`. Operations like shift yield `0` if `shift >= 128`.
+**Cause.** The simulator's `Val` struct was hardcoded around Rust's
+`u128`, and every runtime-value boundary in `mimz-sim` (`SimOpts.inputs`,
+`Frame.values`, `comb::Output.value`, `kernel::Sim::set`/`peek`, the VCD
+writer, the console tracer, `runner.rs`'s parsers) was typed on raw
+`u128` too.
 
 **How found.** CTO Architectural Review (July 2026).
 
-**Severity.** MEDIUM — Modern digital design routinely utilizes buses of 256, 512, or 1024 bits. This hard limit causes silent data corruption for wider memory buses.
+**Severity.** MEDIUM — modern digital design routinely uses buses of
+256/512/1024 bits; the 128-bit ceiling blocked those designs from
+running in `mimz sim`/`mimz test`/`mimz eval`/the WASM playground
+entirely (checker and emitter already supported them).
 
-**Fix (Pending).** Transition `Val` to a dynamic arbitrary-precision integer backend (e.g. `BigUint`).
+**Fix (2026-07-22, layer 1 — runtime values).**
+`docs/superpowers/plans/2026-07-22-sim-wide-values.local.md`. `Val.bits`
+became a `Small(u128)`/`Wide(Vec<u64>)` enum; a new `sim/wide.rs` holds
+hand-rolled limb arithmetic (no division — the language has none); every
+operator in `value.rs` dispatches on the operand/result-width
+combination, with the narrow path byte-for-byte unchanged. The same
+`Bits` type replaced raw `u128` at every runtime-value boundary in the
+crate. `MAX_WIDTH` (1,000,000 bits) relocated from the checker into
+`mimz_core::width_rules` as the one shared ceiling both checker and
+simulator now consume. `tests/differential_fuzz.rs`'s generator width
+raised from 32 to 512 to prove wide-value correctness against Icarus.
+
+**Fix-forward (2026-07-24, final-review findings).** A full-branch review
+before merge found `kernel.rs`'s register-lifecycle code was left on the
+old width-unaware `Val::new` pattern — `Sim::new`'s leaf/reg init,
+`tick_edge`'s synchronous reset, and `CombEnv::mem_read`'s unwritten-cell
+fallback all built a `Val` straight from the signal's declared width
+without routing through the `Small`/`Wide` dispatch, so a `bits[200]`
+register reset to a small magnitude (the common case — most registers
+start at/near 0) stayed `Bits::Small` despite its width. Every unary
+operator (`~`, `-`, reduction) and comparison then dispatched on
+`is_wide()` alone, silently truncating results to 128 bits for such a
+register (confirmed: `~r` on a 200-bit register reset to 0 flipped only
+the low 128 bits). Separately, the bit/slice-indexed register write path
+(`reg[i] <- v` / `reg[hi:lo] <- v`) still did raw `1u128 << i` arithmetic,
+panicking for any index/bound >= 128. Fixed by adding a width-aware
+`value::from_u128_at_width` constructor (used at every kernel.rs site
+above), rewriting the bit/slice-write arm to dispatch through
+`wide.rs`'s limb primitives when `base.width > 128`, and hardening
+`unary_known`/`cmp_lt`/`cmp_eq`'s dispatch to gate on `width <= 128`
+rather than `is_wide()` alone (defense in depth, in case a future
+construction site regresses the same way). 4 new regression tests in
+`kernel.rs` cover a wide register through `~`, a wide bit-indexed write,
+and a wide slice-indexed write.
+
+**Remaining gap (layer 2, tracked separately, NOT part of this fix).**
+`Reg.reset`/`Mem.init`'s compile-time-folded value stays `i128`-bounded,
+and `ast::ExprKind::Int`'s literal value stays `u128`-bounded in the AST
+itself (`mimz-core`'s lexer/parser) — a wide reg/mem that resets to `0`
+is unaffected; a nonzero large literal reset, or a >128-bit literal
+written directly in source, is not yet fixed. Its own spec+plan, same
+split pattern as this project's Phase A1a/A1b or T1/T2/T3 staged efforts.
+
+Separately (adjacent, `mimz-sim`-internal, pre-existing — not introduced
+by this fix): `comb.rs`'s combinational bit-drive/slice-drive assignment
+(`wire y: bits[200]; y[150] = x` style) still hard-errors on any bit
+index/slice bound outside `0..128` regardless of the wire's declared
+width (`comb.rs`'s `"... out of range (0..128)"` messages) — this path
+was never migrated to `Bits`. Real designs almost always read a wide
+signal rather than bit/slice-_drive_ one combinationally, so this is a
+narrow, rare gap, but it means "compute, drive, and observe any
+checker-legal width" isn't quite 100% true for this one combinational
+assignment shape yet.
+
+**Test.** `crates/mimz-sim/src/sim/wide.rs`'s own unit tests;
+`crates/mimz-sim/src/sim/value.rs`'s `wide_*` tests; `differential_fuzz`
+at `MAX_WIDTH = 512` (both default and deep `N`); `kernel.rs`'s 4
+register-lifecycle regression tests (2026-07-24 fix-forward).
 
 ## BUG-14 (MEDIUM, FIXED) — `mimz-sim` never registered the `__Valid`/`__ValidSigned` builtin bundles
 
