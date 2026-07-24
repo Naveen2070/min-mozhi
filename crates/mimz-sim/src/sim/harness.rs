@@ -351,7 +351,8 @@ impl Run<'_> {
                     }
                     let n = match count {
                         Some(e) => {
-                            let v = self.sim.eval(e).map_err(Stop::Err)?.as_i128();
+                            let v =
+                                require_i128(self.sim.eval(e).map_err(Stop::Err)?, "tick count")?;
                             if v < 0 {
                                 return Err(Stop::Err(format!("tick count {v} is negative")));
                             }
@@ -441,7 +442,8 @@ impl Run<'_> {
                 TestStmt::Sim(block) => {
                     let speed_hz = match &block.speed {
                         Some(e) => {
-                            let v = self.sim.eval(e).map_err(Stop::Err)?.as_i128();
+                            let v =
+                                require_i128(self.sim.eval(e).map_err(Stop::Err)?, "sim speed")?;
                             if v <= 0 {
                                 return Err(Stop::Err(format!(
                                     "sim block's speed must be positive, got {v}"
@@ -691,10 +693,28 @@ fn is_cmp(op: BinOp) -> bool {
     )
 }
 
+/// `v.as_i128()`, but a clean `Err` instead of a panic if `v` is `Wide` —
+/// `as_i128()`'s own contract is narrow-path-only (it PANICS on a `Wide`
+/// value). `count`/`speed` expressions are always small in practice (a tick
+/// count or Hz value in the millions, not the millions-of-bits range), but
+/// this project's discipline is a clean `Err` on adversarial input rather
+/// than a panic, even for cases this unlikely.
+fn require_i128(v: Val, what: &str) -> Result<i128, Stop> {
+    if v.is_wide() {
+        return Err(Stop::Err(format!(
+            "{what} must fit a normal integer, got a {}-bit value",
+            v.width
+        )));
+    }
+    Ok(v.as_i128())
+}
+
 /// Render a value the way a reader expects: signed values as a signed integer,
 /// otherwise the unsigned magnitude.
 fn show(v: Val) -> String {
-    if v.signed {
+    if v.is_wide() {
+        crate::sim::wide::to_decimal_string(&v.to_limbs(), v.width, v.signed)
+    } else if v.signed {
         v.as_i128().to_string()
     } else {
         v.masked().to_string()
@@ -704,6 +724,23 @@ fn show(v: Val) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn show_renders_a_wide_unsigned_value_in_decimal() {
+        let v = Val::new_wide(crate::sim::wide::from_u128(u128::MAX, 200), 200, false);
+        // u128::MAX == 340282366920938463463374607431768211455
+        assert_eq!(show(v), "340282366920938463463374607431768211455");
+    }
+
+    #[test]
+    fn show_renders_a_wide_negative_signed_value_in_decimal() {
+        let v = Val::new_wide(
+            crate::sim::wide::neg(&crate::sim::wide::from_u128(1, 200), 200),
+            200,
+            true,
+        );
+        assert_eq!(show(v), "-1");
+    }
 
     /// Minimal `EmulationHost` test double — only `led`/`speaker`/`uart_tx`
     /// (Output) and `uart_rx` (Input) are known peripherals, mirroring the

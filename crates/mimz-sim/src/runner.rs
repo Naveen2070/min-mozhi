@@ -17,18 +17,6 @@ use crate::sim::run::{MAX_SIM_CYCLES, MAX_SWEEP_VECTORS, SimOpts, comb_run, run}
 use crate::sim::value::Bits;
 use crate::sim::{Val, comb, elaborate, trace, vcd};
 
-/// Wrap a `--steps`/`--sweep`-produced `u128` vector list into `Bits` — every
-/// value these CLI/WASM parsers currently produce stays <=128 bits (real
-/// width-aware `--in`/`--sweep`/`--steps` parsing is Task 10's job, BUG-13
-/// layer 1 part 5); this is the minimal type-only fallout fix for
-/// `comb_run`'s vectors becoming `Bits`-typed (Task 8).
-fn to_bits_vectors(vectors: Vec<BTreeMap<String, u128>>) -> Vec<BTreeMap<String, Bits>> {
-    vectors
-        .into_iter()
-        .map(|m| m.into_iter().map(|(k, v)| (k, Bits::Small(v))).collect())
-        .collect()
-}
-
 /// The cosmetic file name shown in caret headers for in-memory sources.
 const NAME: &str = "input.mimz";
 
@@ -66,24 +54,100 @@ pub fn parse_bindings<T>(
     Ok(map)
 }
 
+/// Parse a decimal/`0x`/`0b` literal into a `Bits` sized to `width` — the
+/// width-aware counterpart to `parse_u128`, for binding a `--in`/`--sweep`/
+/// `--steps` value to a (possibly wide) port. `width <= 128` always
+/// produces `Bits::Small`.
+pub fn parse_bits(s: &str, width: u32) -> Result<Bits, String> {
+    if width <= 128 {
+        return Ok(Bits::Small(parse_u128(s)?));
+    }
+    // A literal this large can't be parsed straight into a u128 — reuse
+    // `parse_u128`'s own radix detection, then fall back to a decimal
+    // big-string parse (repeated multiply-by-radix-and-add) only when the
+    // value doesn't fit u128's 128 bits at all.
+    if let Ok(small) = parse_u128(s) {
+        return Ok(Bits::Wide(crate::sim::wide::from_u128(small, width)));
+    }
+    let (radix, digits) = if let Some(hex) = s.strip_prefix("0x") {
+        (16u32, hex)
+    } else if let Some(bin) = s.strip_prefix("0b") {
+        (2u32, bin)
+    } else {
+        (10u32, s)
+    };
+    // An empty literal (`""`, or a bare `"0x"`/`"0b"` prefix with no digits
+    // after it) must error like the narrow branch's `parse_u128` already
+    // does for the same input — without this check the loop below just
+    // never iterates and silently returns `0`.
+    if digits.is_empty() {
+        return Err(format!(
+            "`{s}` is not a number (use decimal, 0x.., or 0b..)"
+        ));
+    }
+    let mut limbs = crate::sim::wide::zeros(width);
+    for ch in digits.chars() {
+        let digit = ch
+            .to_digit(radix)
+            .ok_or_else(|| format!("`{s}` is not a number (use decimal, 0x.., or 0b..)"))?;
+        limbs = crate::sim::wide::mul(
+            &limbs,
+            &crate::sim::wide::from_u128(radix as u128, width),
+            width,
+        );
+        limbs = crate::sim::wide::add(
+            &limbs,
+            &crate::sim::wide::from_u128(digit as u128, width),
+            width,
+        );
+    }
+    Ok(Bits::Wide(limbs))
+}
+
+/// Parse `name=val,name=val` into a `Bits` map, sizing each value to its
+/// port's declared width (`widths`) — falling back to the narrow 128-bit
+/// width for a name that isn't a known input (kept lenient: an unknown
+/// binding is validated downstream, same as before this parser existed).
+pub fn parse_bits_bindings(
+    s: &str,
+    widths: &BTreeMap<String, u32>,
+) -> Result<BTreeMap<String, Bits>, String> {
+    let mut map = BTreeMap::new();
+    for part in s.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        let (name, val) = part
+            .split_once('=')
+            .ok_or_else(|| format!("expected `name=value`, got `{part}`"))?;
+        let name = name.trim();
+        let width = widths.get(name).copied().unwrap_or(128);
+        map.insert(name.to_string(), parse_bits(val.trim(), width)?);
+    }
+    Ok(map)
+}
+
 /// Parse a `--sweep name=v1|v2|v3,other=w1|w2` spec into ordered
 /// `(name, [values])` pairs: entries split on `,`, the value list on `|`.
-pub fn parse_sweep(s: &str) -> Result<Vec<(String, Vec<u128>)>, String> {
+/// Each name's values are sized per `widths` (see [`parse_bits_bindings`]).
+pub fn parse_sweep(
+    s: &str,
+    widths: &BTreeMap<String, u32>,
+) -> Result<Vec<(String, Vec<Bits>)>, String> {
     let mut out = Vec::new();
     for entry in s.split(',').map(str::trim).filter(|e| !e.is_empty()) {
         let (name, vals) = entry
             .split_once('=')
             .ok_or_else(|| format!("expected `name=v1|v2`, got `{entry}`"))?;
+        let name = name.trim();
+        let width = widths.get(name).copied().unwrap_or(128);
         let values = vals
             .split('|')
             .map(str::trim)
             .filter(|v| !v.is_empty())
-            .map(parse_u128)
-            .collect::<Result<Vec<u128>, String>>()?;
+            .map(|v| parse_bits(v, width))
+            .collect::<Result<Vec<Bits>, String>>()?;
         if values.is_empty() {
-            return Err(format!("sweep input `{}` lists no values", name.trim()));
+            return Err(format!("sweep input `{name}` lists no values"));
         }
-        out.push((name.trim().to_string(), values));
+        out.push((name.to_string(), values));
     }
     Ok(out)
 }
@@ -93,7 +157,10 @@ pub fn parse_sweep(s: &str) -> Result<Vec<(String, Vec<u128>)>, String> {
 /// dropped). Bounded by [`MAX_SWEEP_VECTORS`] so a pasted giant table can't hang
 /// the tool. Unlike [`parse_sweep`]/[`sweep_vectors`] (a cartesian product), each
 /// group is one literal vector — what the playground step table produces.
-pub fn parse_steps(s: &str) -> Result<Vec<BTreeMap<String, u128>>, String> {
+pub fn parse_steps(
+    s: &str,
+    widths: &BTreeMap<String, u32>,
+) -> Result<Vec<BTreeMap<String, Bits>>, String> {
     let groups: Vec<&str> = s
         .split(';')
         .map(str::trim)
@@ -104,7 +171,7 @@ pub fn parse_steps(s: &str) -> Result<Vec<BTreeMap<String, u128>>, String> {
     }
     groups
         .iter()
-        .map(|g| parse_bindings(g, parse_u128))
+        .map(|g| parse_bits_bindings(g, widths))
         .collect()
 }
 
@@ -113,9 +180,9 @@ pub fn parse_steps(s: &str) -> Result<Vec<BTreeMap<String, u128>>, String> {
 /// sweep yields a single vector equal to `base`. Errors if the product would
 /// exceed [`MAX_SWEEP_VECTORS`] (a large sweep must not OOM/hang the tool).
 pub fn sweep_vectors(
-    base: &BTreeMap<String, u128>,
-    sweep: &[(String, Vec<u128>)],
-) -> Result<Vec<BTreeMap<String, u128>>, String> {
+    base: &BTreeMap<String, Bits>,
+    sweep: &[(String, Vec<Bits>)],
+) -> Result<Vec<BTreeMap<String, Bits>>, String> {
     let mut product: usize = 1;
     for (_, values) in sweep {
         product = product
@@ -130,7 +197,7 @@ pub fn sweep_vectors(
         for v in &vectors {
             for val in values {
                 let mut m = v.clone();
-                m.insert(name.clone(), *val);
+                m.insert(name.clone(), val.clone());
                 next.push(m);
             }
         }
@@ -316,10 +383,6 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     }
 
     let files = parse_source(src)?;
-    // `parse_u128` still does the narrow-only parsing (Task 10's job to make
-    // this width-aware); wrap each value as `Bits::Small` for `eval_outputs`'s
-    // now-`Bits`-typed `inputs` (Task 8).
-    let inputs = parse_bindings(inputs_s, |s| parse_u128(s).map(Bits::Small))?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
@@ -327,17 +390,23 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     // `compile` already does — otherwise the playground's `eval` evaluates
     // programs the checker would reject under different width rules.
     checker::check(&asts).map_err(|d| mimz_core::project::render_diags(&d, &files))?;
+    // Elaborate purely to learn each input port's declared width, so `--in`
+    // can be parsed width-aware (BUG-13 layer 1 part 5) — `eval_outputs`
+    // below does its own lighter, comb-only evaluation of the same ASTs.
+    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
+    let widths: BTreeMap<String, u32> = design
+        .inputs
+        .iter()
+        .map(|s| (s.name.clone(), s.width.bits))
+        .collect();
+    let inputs = parse_bits_bindings(inputs_s, &widths)?;
     let outputs = comb::eval_outputs(&asts, module.as_deref(), &inputs, &params)?;
     let mut out = String::new();
     for o in outputs {
         let kind = if o.signed { "signed" } else { "bits" };
-        // `Bits` has no `Display` impl (Task 11's wide-aware decimal
-        // rendering isn't wired up yet) — every value `eval_outputs` can
-        // currently produce here stays <=128 bits, so unwrap the narrow
-        // path directly (Task 8's minimal type-only fallout fix).
         let value = match o.value {
-            Bits::Small(v) => v,
-            Bits::Wide(_) => unreachable!("wide `eval` output display is Task 11's job"),
+            Bits::Small(v) => v.to_string(),
+            Bits::Wide(limbs) => crate::sim::wide::to_decimal_string(&limbs, o.width, o.signed),
         };
         out.push_str(&format!("{} = {value}  ({kind}[{}])\n", o.name, o.width));
     }
@@ -447,27 +516,35 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     }
 
     let files = parse_source(src)?;
-    let inputs = parse_bindings(inputs_s, parse_u128)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
-    let sweep = parse_sweep(sweep_s)?;
-    // `--steps "a=3,b=5;a=7,b=1"` — explicit per-step input vectors (one `;`-group
-    // each), for the playground's combinational step table. Distinct from
-    // `--sweep`'s cartesian product, so the two cannot be combined.
-    let steps = parse_steps(steps_s)?;
-    if !steps.is_empty() && !sweep.is_empty() {
-        return Err("--steps and --sweep cannot be combined".to_string());
-    }
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     // A2 (docs/audit/review-2026-07-17.md §3.1): same checker gate as `compile`
     // and `eval` above — `sim` must not simulate unchecked semantics.
     checker::check(&asts).map_err(|d| mimz_core::project::render_diags(&d, &files))?;
     let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
+    // Input port widths, so `--in`/`--sweep`/`--steps` parse width-aware
+    // (BUG-13 layer 1 part 5) — looked up BEFORE the design is moved below.
+    let widths: BTreeMap<String, u32> = design
+        .inputs
+        .iter()
+        .map(|s| (s.name.clone(), s.width.bits))
+        .collect();
     // Capture the scope groups + clocked-ness before the run consumes the design.
     let in_names: Vec<String> = design.inputs.iter().map(|s| s.name.clone()).collect();
     let out_names: Vec<String> = design.outputs.iter().map(|s| s.name.clone()).collect();
     let reg_names: Vec<String> = design.regs.iter().map(|r| r.name.clone()).collect();
     let clocked = !design.clocks.is_empty();
+
+    let inputs = parse_bits_bindings(inputs_s, &widths)?;
+    let sweep = parse_sweep(sweep_s, &widths)?;
+    // `--steps "a=3,b=5;a=7,b=1"` — explicit per-step input vectors (one `;`-group
+    // each), for the playground's combinational step table. Distinct from
+    // `--sweep`'s cartesian product, so the two cannot be combined.
+    let steps = parse_steps(steps_s, &widths)?;
+    if !steps.is_empty() && !sweep.is_empty() {
+        return Err("--steps and --sweep cannot be combined".to_string());
+    }
 
     if clocked && !steps.is_empty() {
         return Err(
@@ -480,22 +557,16 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
     let timeline = if clocked {
         let opts = SimOpts {
             clock,
-            // `inputs` stays `u128`-parsed here (Task 10's job to widen
-            // `--in` parsing) — wrap to `Bits::Small` for `SimOpts`'
-            // now-`Bits`-typed `inputs` (Task 8's minimal fallout fix).
-            inputs: inputs
-                .iter()
-                .map(|(k, v)| (k.clone(), Bits::Small(*v)))
-                .collect(),
+            inputs,
             cycles,
             reset_cycles: 1,
         };
         run(design, &opts)?
     } else if !steps.is_empty() {
-        comb_run(design, &to_bits_vectors(steps))?
+        comb_run(design, &steps)?
     } else {
         let vectors = sweep_vectors(&inputs, &sweep)?;
-        comb_run(design, &to_bits_vectors(vectors))?
+        comb_run(design, &vectors)?
     };
     let steps = timeline.frames.iter().filter(|f| f.cycle.is_some()).count();
 
@@ -647,8 +718,8 @@ mod tests {
         // SEC: 7 dims x 10 values = 10^7 > MAX_SWEEP_VECTORS — must error before
         // allocating, not OOM/hang.
         let base = BTreeMap::new();
-        let dim: Vec<u128> = (0..10).collect();
-        let sweep: Vec<(String, Vec<u128>)> =
+        let dim: Vec<Bits> = (0..10).map(Bits::Small).collect();
+        let sweep: Vec<(String, Vec<Bits>)> =
             (0..7).map(|i| (format!("x{i}"), dim.clone())).collect();
         let err = sweep_vectors(&base, &sweep).unwrap_err();
         assert!(err.contains("input vectors"), "unexpected error: {err}");
@@ -658,11 +729,37 @@ mod tests {
     fn sweep_vectors_allows_a_normal_product() {
         let base = BTreeMap::new();
         let sweep = vec![
-            ("a".to_string(), vec![0u128, 1]),
-            ("b".to_string(), vec![0u128, 1, 2]),
+            ("a".to_string(), vec![Bits::Small(0), Bits::Small(1)]),
+            (
+                "b".to_string(),
+                vec![Bits::Small(0), Bits::Small(1), Bits::Small(2)],
+            ),
         ];
         let v = sweep_vectors(&base, &sweep).unwrap();
         assert_eq!(v.len(), 6, "2 x 3 cartesian product");
+    }
+
+    #[test]
+    fn parse_bits_produces_a_wide_value_for_a_wide_width() {
+        let v = parse_bits("0xDEADBEEF", 200).expect("parses");
+        assert_eq!(v, Bits::Wide(crate::sim::wide::from_u128(0xDEADBEEF, 200)));
+    }
+
+    #[test]
+    fn parse_bits_stays_on_the_small_path_for_a_narrow_width() {
+        let v = parse_bits("42", 8).expect("parses");
+        assert_eq!(v, Bits::Small(42));
+    }
+
+    #[test]
+    fn parse_bits_rejects_an_empty_literal_at_a_wide_width() {
+        // Regression: the wide-path digit loop simply never iterated on an
+        // empty string (or a bare `0x`/`0b` prefix with no digits), silently
+        // returning `Bits::Wide` all-zeros instead of erroring — unlike the
+        // narrow path's `parse_u128`, which already errors on the same input.
+        assert!(parse_bits("", 200).is_err());
+        assert!(parse_bits("0x", 200).is_err());
+        assert!(parse_bits("0b", 200).is_err());
     }
 
     #[test]
