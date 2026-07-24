@@ -15,7 +15,7 @@ use libfuzzer_sys::fuzz_target;
 use unicode_normalization::UnicodeNormalization;
 
 use mimz::lexer::token::Flavor;
-use mimz::pretty::{Order, pretty_print};
+use mimz::pretty::{pretty_print, Order};
 
 fuzz_target!(|data: &[u8]| {
     let Ok(src) = std::str::from_utf8(data) else {
