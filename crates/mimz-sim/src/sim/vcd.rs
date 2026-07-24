@@ -10,19 +10,6 @@ use std::collections::BTreeMap;
 use super::run::Timeline;
 use super::value::Bits;
 
-/// Unwrap a narrow-path `Frame` value to a raw `u128` — every value this
-/// crate can currently DRIVE through `mimz sim`'s CLI stays <=128 bits, so
-/// `Bits::Wide` is not reachable here yet. Real `Wide` VCD rendering
-/// (binary, limb-wise) is Task 9's job (BUG-13 layer 1, part 4); this is
-/// the minimal type-only fallout fix for `Frame.values` becoming `Bits`-typed
-/// (Task 8), mirroring `Val::masked`'s own "narrow-path-only" contract.
-fn narrow(b: &Bits) -> u128 {
-    match b {
-        Bits::Small(v) => *v,
-        Bits::Wide(_) => unreachable!("wide VCD dumping is Task 9's job"),
-    }
-}
-
 /// Render `tl` as a VCD document.
 pub fn to_vcd(tl: &Timeline) -> String {
     // Assign each signal a short identifier code (printable ASCII, base-94).
@@ -42,20 +29,21 @@ pub fn to_vcd(tl: &Timeline) -> String {
     out.push_str("$enddefinitions $end\n");
 
     // Initial full dump, then only changed values at each later timestamp.
-    let mut prev: BTreeMap<String, u128> = BTreeMap::new();
+    let zero = Bits::Small(0);
+    let mut prev: BTreeMap<String, Bits> = BTreeMap::new();
     for (fi, frame) in tl.frames.iter().enumerate() {
         out.push_str(&format!("#{}\n", frame.time));
         if fi == 0 {
             out.push_str("$dumpvars\n");
         }
         for sig in &tl.signals {
-            let v = narrow(frame.values.get(&sig.name).unwrap_or(&Bits::Small(0)));
-            if fi == 0 || prev.get(&sig.name) != Some(&v) {
+            let v = frame.values.get(&sig.name).unwrap_or(&zero);
+            if fi == 0 || prev.get(&sig.name) != Some(v) {
                 let (id, width) = &ids[&sig.name];
                 out.push_str(&fmt_value(*width, v, id));
                 out.push('\n');
             }
-            prev.insert(sig.name.clone(), v);
+            prev.insert(sig.name.clone(), v.clone());
         }
         if fi == 0 {
             out.push_str("$end\n");
@@ -66,11 +54,15 @@ pub fn to_vcd(tl: &Timeline) -> String {
 
 /// A VCD scalar (`0!`/`1!`) or vector (`b1010 !`) value-change line. `value` is
 /// already masked to `width` by the snapshot, so it needs no further masking.
-fn fmt_value(width: u32, value: u128, id: &str) -> String {
+fn fmt_value(width: u32, value: &Bits, id: &str) -> String {
+    let bin = match value {
+        Bits::Small(b) => format!("{b:b}"),
+        Bits::Wide(limbs) => crate::sim::wide::to_binary_string(limbs, width),
+    };
     if width <= 1 {
-        format!("{}{}", value & 1, id)
+        format!("{}{}", bin.chars().last().unwrap_or('0'), id)
     } else {
-        format!("b{value:b} {id}")
+        format!("b{bin} {id}")
     }
 }
 
@@ -93,8 +85,33 @@ fn id_code(mut i: usize) -> String {
 mod tests {
     use super::*;
     use crate::sim::elaborate::elaborate;
-    use crate::sim::run::{SimOpts, run};
+    use crate::sim::run::{SimOpts, comb_run, run};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn dumps_a_wide_signal_as_a_binary_vector() {
+        let src = "module Wide(WIDTH: int = 200) {\n  in a: bits[WIDTH]\n  out b: bits[WIDTH]\n  b = a\n}\n";
+        let f =
+            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
+        let d = elaborate(&f, None, &BTreeMap::new()).expect("elaborates");
+        let tl = comb_run(
+            d,
+            std::slice::from_ref(&{
+                let mut v = BTreeMap::new();
+                v.insert(
+                    "a".to_string(),
+                    crate::sim::value::Bits::Wide(crate::sim::wide::from_u128(0b101, 200)),
+                );
+                v
+            }),
+        )
+        .expect("runs");
+        let v = to_vcd(&tl);
+        assert!(
+            v.contains("b101"),
+            "expected the wide value's binary form somewhere in:\n{v}"
+        );
+    }
 
     fn counter_vcd(cycles: u64) -> String {
         let src = "module Counter(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  \

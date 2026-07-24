@@ -79,5 +79,8 @@ pub use mimz_core::{
 // reuse) and the embedding entry point. `parse_steps` is intentionally NOT
 // re-exported here — it was never part of the root facade before the split
 // either (pre-existing gap, not introduced by this refactor).
-pub use mimz_sim::runner::{parse_bindings, parse_sweep, parse_u128, sweep_vectors, trace_scope};
+pub use mimz_sim::runner::{
+    parse_bindings, parse_bits, parse_bits_bindings, parse_sweep, parse_u128, sweep_vectors,
+    trace_scope,
+};
 pub use mimz_sim::{compile_string, run_command, sim};

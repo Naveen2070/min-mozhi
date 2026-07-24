@@ -24,6 +24,63 @@ use mimz::{checker, diag, lexer, parser};
 
 mod support;
 
+/// Parse `DIFF <step> name=<raw binary> …` into `step -> {name: raw string}`
+/// — the wide-value counterpart of `support::parse_icarus` (which parses
+/// straight into `u128` and can't represent a value over 128 bits, per
+/// BUG-13 layer 1). Used by both fuzz tests below, since their generators
+/// now emit widths past the old 128-bit ceiling (Task 12).
+fn parse_icarus_raw(stdout: &str) -> BTreeMap<u64, BTreeMap<String, String>> {
+    let mut icarus: BTreeMap<u64, BTreeMap<String, String>> = BTreeMap::new();
+    for line in stdout.lines() {
+        let Some(rest) = line.strip_prefix("DIFF ") else {
+            continue;
+        };
+        let mut it = rest.split_whitespace();
+        let step: u64 = it.next().unwrap().parse().unwrap();
+        let row = icarus.entry(step).or_default();
+        for pair in it {
+            let (n, v) = pair.split_once('=').unwrap();
+            row.insert(n.to_string(), v.to_string());
+        }
+    }
+    icarus
+}
+
+/// Parse a `%b`-format binary string (Icarus's `$display` output, no
+/// separators, any padding) into little-endian `u64` limbs sized for
+/// `width` bits — the inverse of the kernel's own (crate-private)
+/// `wide::to_binary_string`, needed since `u128::from_str_radix` can't
+/// hold more than 128 bits.
+fn limbs_from_binary(s: &str, width: u32) -> Vec<u64> {
+    let n_limbs = (width as u64).div_ceil(64) as usize;
+    let mut limbs = vec![0u64; n_limbs];
+    for (i, c) in s.trim().chars().rev().enumerate() {
+        if c == '1' {
+            limbs[i / 64] |= 1u64 << (i % 64);
+        }
+    }
+    limbs
+}
+
+/// `Bits` (either variant) as little-endian `u64` limbs sized for `width`
+/// bits, so a kernel output compares against [`limbs_from_binary`]
+/// regardless of which path (narrow/wide) produced it.
+fn bits_to_limbs(b: &mimz::sim::value::Bits, width: u32) -> Vec<u64> {
+    use mimz::sim::value::Bits;
+    match b {
+        Bits::Wide(limbs) => limbs.clone(),
+        Bits::Small(v) => {
+            let n_limbs = (width as u64).div_ceil(64) as usize;
+            let mut limbs = vec![0u64; n_limbs];
+            limbs[0] = *v as u64;
+            if limbs.len() > 1 {
+                limbs[1] = (*v >> 64) as u64;
+            }
+            limbs
+        }
+    }
+}
+
 /// One input port (or, in the v3 clocked generator, one register):
 /// `(name, width, signed)`.
 type Port = (String, u32, bool);
@@ -92,11 +149,14 @@ struct Frag {
     atomic: bool,
 }
 
-/// Hard cap on any single fragment's width — bounds the generator so it
-/// always terminates well under the simulator's 128-bit ceiling (BUG-13),
-/// regardless of how many width-growing combines (concat, lossless
-/// `+`/`-`) get chosen along the way.
-const MAX_WIDTH: u32 = 32;
+/// Hard cap on any single fragment's width. Raised past the simulator's
+/// former 128-bit ceiling (BUG-13, fixed 2026-07-22 — this generator's own
+/// `MAX_WIDTH` is unrelated to `mimz_core::width_rules::MAX_WIDTH`, same
+/// name, different scope: this one just bounds how wide a FUZZED program's
+/// signals get, purely for keeping generated `.mimz` sources a readable
+/// size) so the differential suite actually exercises the wide
+/// (`Bits::Wide`) code path against Icarus, not just the narrow one.
+const MAX_WIDTH: u32 = 512;
 
 /// Widen `f` to `target` bits if it's narrower; a no-op otherwise. When
 /// `f` is `atomic` (see `Frag`'s doc comment), this is a plain
@@ -745,8 +805,11 @@ fn differential_fuzz_matches_icarus() {
             ports.iter().map(|(n, w, _)| (n.clone(), *w)).collect();
         let vectors = support::gen_vectors(&inputs_meta, 8);
 
-        // Our own kernel, one row per input vector.
-        let mut kernel_rows: Vec<BTreeMap<String, u128>> = Vec::new();
+        // Our own kernel, one row per input vector. Values stay `Bits`
+        // (Small or Wide) — comparison against Icarus normalizes both to
+        // limbs (`bits_to_limbs`/`limbs_from_binary`) so a >128-bit output
+        // (BUG-13 layer 1, Task 12) compares correctly, not just a narrow one.
+        let mut kernel_rows: Vec<BTreeMap<String, mimz::sim::value::Bits>> = Vec::new();
         for v in &vectors {
             let v_bits: BTreeMap<String, mimz::sim::value::Bits> = v
                 .iter()
@@ -761,21 +824,8 @@ fn differential_fuzz_matches_icarus() {
             .unwrap_or_else(|e| {
                 panic!("seed {seed}: our kernel rejected its own generated program:\n{src}\n{e}")
             });
-            // Fuzzer widths are capped at `MAX_WIDTH` (32), so every output value
-            // is always `Bits::Small` — narrow it back to `u128` to compare
-            // against Icarus's own u128-typed parsed output.
-            let row: BTreeMap<String, u128> = outputs
-                .into_iter()
-                .map(|o| {
-                    let v = match o.value {
-                        mimz::sim::value::Bits::Small(v) => v,
-                        mimz::sim::value::Bits::Wide(_) => {
-                            unreachable!("fuzzer widths are capped at MAX_WIDTH=32")
-                        }
-                    };
-                    (o.name, v)
-                })
-                .collect();
+            let row: BTreeMap<String, mimz::sim::value::Bits> =
+                outputs.into_iter().map(|o| (o.name, o.value)).collect();
             kernel_rows.push(row);
         }
 
@@ -784,19 +834,19 @@ fn differential_fuzz_matches_icarus() {
         let outputs_meta = vec![("y".to_string(), out_width)];
         let tb = support::comb_testbench("Fuzz", &[], &inputs_meta, &outputs_meta, &vectors);
         let stdout = support::run_vvp(&bin, &format!("fuzz seed {seed}"), &design_v, &tb);
-        let icarus = support::parse_icarus(&stdout);
+        let icarus = parse_icarus_raw(&stdout);
 
         for (idx, kernel_row) in kernel_rows.iter().enumerate() {
             let icarus_row = icarus
                 .get(&(idx as u64))
                 .unwrap_or_else(|| panic!("seed {seed}: Icarus produced no row for vector {idx}"));
-            let kernel_y = kernel_row["y"];
-            let icarus_y = icarus_row["y"];
+            let kernel_y = bits_to_limbs(&kernel_row["y"], out_width);
+            let icarus_y = limbs_from_binary(&icarus_row["y"], out_width);
             assert_eq!(
                 kernel_y, icarus_y,
-                "seed {seed}, vector {idx}: our kernel y={kernel_y} but Icarus y={icarus_y}\n\
+                "seed {seed}, vector {idx}: our kernel y={:?} but Icarus y={:?}\n\
                  source:\n{src}\nvector: {:?}",
-                vectors[idx]
+                kernel_row["y"], icarus_row["y"], vectors[idx]
             );
         }
     }
@@ -925,7 +975,7 @@ fn differential_fuzz_clocked_matches_icarus() {
             RESET_CYCLES,
         );
         let stdout = support::run_vvp(&bin, &format!("clocked fuzz seed {seed}"), &design_v, &tb);
-        let icarus = support::parse_icarus(&stdout);
+        let icarus = parse_icarus_raw(&stdout);
 
         let mut compared = 0;
         for f in tl.frames.iter().filter(|f| f.cycle.is_some()) {
@@ -934,12 +984,13 @@ fn differential_fuzz_clocked_matches_icarus() {
                 .get(&cyc)
                 .unwrap_or_else(|| panic!("seed {seed}: Icarus produced no row for cycle {cyc}"));
             let kernel_y = f.values["y"].clone();
-            let icarus_y = icarus_row["y"];
+            let kernel_limbs = bits_to_limbs(&kernel_y, out_width);
+            let icarus_limbs = limbs_from_binary(&icarus_row["y"], out_width);
             assert_eq!(
-                kernel_y,
-                mimz::sim::value::Bits::Small(icarus_y),
-                "seed {seed}, cycle {cyc}: our kernel y={kernel_y:?} but Icarus y={icarus_y}\n\
-                 source:\n{src}\nheld inputs: {held:?}"
+                kernel_limbs, icarus_limbs,
+                "seed {seed}, cycle {cyc}: our kernel y={kernel_y:?} but Icarus y={}\n\
+                 source:\n{src}\nheld inputs: {held:?}",
+                icarus_row["y"]
             );
             compared += 1;
         }

@@ -22,6 +22,7 @@ use mimz_core::ast::{Edge, Expr, FuncDecl, SeqStmt};
 
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
+use super::wide;
 
 /// Re-mask `v`'s raw bits to width `w` (with `signed`) — a pure reinterpret
 /// (truncate/zero-pad the limbs), NOT a sign-extending resize. Mirrors the
@@ -92,7 +93,10 @@ impl Sim {
 
         let mut leaves = BTreeMap::new();
         for s in &design.inputs {
-            leaves.insert(s.name.clone(), Val::new(0, s.width.bits, s.width.signed));
+            leaves.insert(
+                s.name.clone(),
+                value::from_u128_at_width(0, s.width.bits, s.width.signed),
+            );
         }
         for c in &design.clocks {
             leaves.insert(c.clone(), Val::new(0, 1, false));
@@ -104,7 +108,7 @@ impl Sim {
         for r in &design.regs {
             regs.insert(
                 r.name.clone(),
-                Val::new(r.reset as u128, r.width.bits, r.width.signed),
+                value::from_u128_at_width(r.reset as u128, r.width.bits, r.width.signed),
             );
         }
         // Memories start empty (sparse): an unwritten cell reads its init value.
@@ -204,7 +208,11 @@ impl Sim {
                 if reg.clock == clock && reg.edge == edge {
                     next.insert(
                         reg.name.clone(),
-                        Val::new(reg.reset as u128, reg.width.bits, reg.width.signed),
+                        value::from_u128_at_width(
+                            reg.reset as u128,
+                            reg.width.bits,
+                            reg.width.signed,
+                        ),
                     );
                 }
             }
@@ -359,40 +367,111 @@ fn run_seq(
                             None => env.signal(&lhs.base.name)?,
                         };
                         let v = value::eval(env, rhs)?;
-                        let bits = match lo {
-                            None => {
-                                let i = value::checked_index(
-                                    value::const_eval(idx_or_hi, env.ints())?,
-                                    base.width,
-                                    "bit index",
-                                )?;
-                                (base.masked() & !(1u128 << i)) | (v.lsb() << i)
-                            }
-                            Some(lo_expr) => {
-                                let hi = value::checked_index(
-                                    value::const_eval(idx_or_hi, env.ints())?,
-                                    base.width,
-                                    "slice high bound",
-                                )?;
-                                let lo = value::checked_index(
-                                    value::const_eval(lo_expr, env.ints())?,
-                                    base.width,
-                                    "slice low bound",
-                                )?;
-                                if hi < lo {
-                                    return Err(
-                                        "slice bounds reversed (write `[hi:lo]`, msb first)".into(),
-                                    );
+                        // Dispatch on `base.width`, not `base.is_wide()` (the
+                        // narrow-path raw `u128` shifts below panic — "attempt
+                        // to shift left with overflow" — for any bit index/lo
+                        // bound >= 128, which is reachable for any register
+                        // wider than 128 bits regardless of its CURRENT
+                        // representation).
+                        let result = if base.width <= 128 {
+                            let bits = match lo {
+                                None => {
+                                    let i = value::checked_index(
+                                        value::const_eval(idx_or_hi, env.ints())?,
+                                        base.width,
+                                        "bit index",
+                                    )?;
+                                    (base.masked() & !(1u128 << i)) | (v.lsb() << i)
                                 }
-                                let w = hi - lo + 1;
-                                let clear = value::mask(w) << lo;
-                                (base.masked() & !clear) | ((v.masked() & value::mask(w)) << lo)
-                            }
+                                Some(lo_expr) => {
+                                    let hi = value::checked_index(
+                                        value::const_eval(idx_or_hi, env.ints())?,
+                                        base.width,
+                                        "slice high bound",
+                                    )?;
+                                    let lo = value::checked_index(
+                                        value::const_eval(lo_expr, env.ints())?,
+                                        base.width,
+                                        "slice low bound",
+                                    )?;
+                                    if hi < lo {
+                                        return Err(
+                                            "slice bounds reversed (write `[hi:lo]`, msb first)"
+                                                .into(),
+                                        );
+                                    }
+                                    let w = hi - lo + 1;
+                                    let clear = value::mask(w) << lo;
+                                    (base.masked() & !clear) | ((v.masked() & value::mask(w)) << lo)
+                                }
+                            };
+                            Val::new(bits, base.width, base.signed)
+                        } else {
+                            let base_limbs = base.to_limbs();
+                            let limbs = match lo {
+                                None => {
+                                    let i = value::checked_index(
+                                        value::const_eval(idx_or_hi, env.ints())?,
+                                        base.width,
+                                        "bit index",
+                                    )?;
+                                    let bit_mask =
+                                        wide::shl(&wide::from_u128(1, base.width), i, base.width);
+                                    let cleared = wide::bitand(&base_limbs, &wide::not(&bit_mask));
+                                    let v_shifted = wide::shl(
+                                        &wide::from_u128(v.lsb(), base.width),
+                                        i,
+                                        base.width,
+                                    );
+                                    wide::bitor(&cleared, &v_shifted)
+                                }
+                                Some(lo_expr) => {
+                                    let hi = value::checked_index(
+                                        value::const_eval(idx_or_hi, env.ints())?,
+                                        base.width,
+                                        "slice high bound",
+                                    )?;
+                                    let lo = value::checked_index(
+                                        value::const_eval(lo_expr, env.ints())?,
+                                        base.width,
+                                        "slice low bound",
+                                    )?;
+                                    if hi < lo {
+                                        return Err(
+                                            "slice bounds reversed (write `[hi:lo]`, msb first)"
+                                                .into(),
+                                        );
+                                    }
+                                    let w = hi - lo + 1;
+                                    // An exact w-bit all-ones mask, zero-extended
+                                    // to base.width then shifted into place —
+                                    // the limb analogue of `mask(w) << lo`.
+                                    let mut ones_w = vec![u64::MAX; wide::limb_count(w)];
+                                    wide::mask_to_width(&mut ones_w, w);
+                                    let clear_mask = wide::shl(
+                                        &wide::extend(&ones_w, w, base.width, false),
+                                        lo,
+                                        base.width,
+                                    );
+                                    let cleared =
+                                        wide::bitand(&base_limbs, &wide::not(&clear_mask));
+                                    // `v`'s raw bits reinterpreted (not sign-
+                                    // extended) at width `w`, matching the
+                                    // narrow path's `v.masked() & mask(w)`.
+                                    let mut v_limbs = v.to_limbs();
+                                    v_limbs.resize(wide::limb_count(w), 0);
+                                    wide::mask_to_width(&mut v_limbs, w);
+                                    let v_shifted = wide::shl(
+                                        &wide::extend(&v_limbs, w, base.width, false),
+                                        lo,
+                                        base.width,
+                                    );
+                                    wide::bitor(&cleared, &v_shifted)
+                                }
+                            };
+                            Val::new_wide(limbs, base.width, base.signed)
                         };
-                        next.insert(
-                            lhs.base.name.clone(),
-                            Val::new(bits, base.width, base.signed),
-                        );
+                        next.insert(lhs.base.name.clone(), result);
                     }
                 }
             }
@@ -491,7 +570,9 @@ impl Resolver for CombEnv<'_> {
             .mem_cells
             .get(&(name.to_string(), addr))
             .cloned()
-            .unwrap_or_else(|| Val::new(info.init as u128, info.width.bits, info.width.signed)))
+            .unwrap_or_else(|| {
+                value::from_u128_at_width(info.init as u128, info.width.bits, info.width.signed)
+            }))
     }
 
     fn signal(&mut self, name: &str) -> Result<Val, String> {
@@ -914,5 +995,105 @@ mod tests {
         );
         let err = s.peek("y").unwrap_err();
         assert!(err.contains("cycle"), "expected a cycle error, got: {err}");
+    }
+
+    #[test]
+    fn bitwise_not_of_a_wide_register_reset_to_zero_flips_every_bit() {
+        // Regression: a `bits[200]` register reset to 0 initialized via a
+        // width-unaware `Val::new(0, 200, ..)` stayed `Bits::Small` (0 fits
+        // trivially in a u128) even though its declared width is 200. `~r`
+        // then dispatched on `is_wide()` alone, silently flipping only the
+        // low 128 bits instead of all 200 — wrong output, no error.
+        let mut s = sim(
+            "module M(WIDTH: int = 200) {\n  clock clk\n  reset rst\n  out y: bits[WIDTH]\n  \
+             reg r: bits[WIDTH] = 0\n  on rise(clk) { r <- ~r }\n  y = r\n}\n",
+        );
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.tick("clk").unwrap();
+        let Bits::Wide(limbs) = s.peek("y").unwrap() else {
+            panic!("a 200-bit signal must snapshot as Bits::Wide");
+        };
+        assert_eq!(
+            crate::sim::wide::to_decimal_string(&limbs, 200, false),
+            // 2^200 - 1: every one of the 200 bits set.
+            "1606938044258990275541962092341162602522202993782792835301375"
+        );
+    }
+
+    #[test]
+    fn bit_indexed_write_above_bit_127_on_a_wide_register_does_not_panic() {
+        // Regression: `reg[i] <- v` reconstructed the result via raw
+        // `1u128 << i`, which panics ("attempt to shift left with
+        // overflow") for any index >= 128 on a register wider than 128
+        // bits — a legal, reachable index for such a register.
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  in v: bit\n  out y: bits[200]\n  \
+             reg shift: bits[200] = 0\n  on rise(clk) { shift[150] <- v }\n  y = shift\n}\n",
+        );
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("v", Bits::Small(1)).unwrap();
+        s.tick("clk").unwrap();
+        let Bits::Wide(limbs) = s.peek("y").unwrap() else {
+            panic!("a 200-bit signal must snapshot as Bits::Wide");
+        };
+        assert!(super::wide::bit_at(&limbs, 150), "bit 150 must be set");
+        assert!(
+            !super::wide::bit_at(&limbs, 149),
+            "neighboring bits untouched"
+        );
+        assert!(
+            !super::wide::bit_at(&limbs, 151),
+            "neighboring bits untouched"
+        );
+        assert_eq!(
+            super::wide::count_ones(&limbs),
+            1,
+            "exactly one bit set across all 200 bits"
+        );
+    }
+
+    #[test]
+    fn slice_indexed_write_above_bit_127_on_a_wide_register_does_not_panic() {
+        // Same class of regression as the bit-indexed case, for the
+        // `reg[hi:lo] <- v` slice-write path (`value::mask(w) << lo`
+        // overflowing for `lo >= 128`).
+        let mut s = sim(
+            "module M {\n  clock clk\n  reset rst\n  in v: bits[8]\n  out y: bits[200]\n  \
+             reg r: bits[200] = 0\n  on rise(clk) { r[159:152] <- v }\n  y = r\n}\n",
+        );
+        s.set("rst", Bits::Small(0)).unwrap();
+        s.set("v", Bits::Small(0xAB)).unwrap();
+        s.tick("clk").unwrap();
+        let Bits::Wide(limbs) = s.peek("y").unwrap() else {
+            panic!("a 200-bit signal must snapshot as Bits::Wide");
+        };
+        for i in 0..8u32 {
+            assert_eq!(
+                super::wide::bit_at(&limbs, 152 + i),
+                (0xABu32 >> i) & 1 == 1,
+                "bit {} of the written byte",
+                152 + i
+            );
+        }
+        assert_eq!(
+            super::wide::count_ones(&limbs),
+            0xABu32.count_ones(),
+            "bits outside [159:152] stay zero"
+        );
+    }
+
+    #[test]
+    fn regs_init_to_a_wide_reset_value_and_wide_comparisons_still_work() {
+        // A register wider than 128 bits, reset to a small nonzero value,
+        // must be readable/comparable without panicking through the
+        // width-aware construction path.
+        let s = sim(
+            "module M {\n  clock clk\n  reset rst\n  out y: bits[200]\n  \
+             reg r: bits[200] = 5\n  on rise(clk) { r <- r +% 1 }\n  y = r\n}\n",
+        );
+        let Bits::Wide(limbs) = s.peek("y").unwrap() else {
+            panic!("a 200-bit signal must snapshot as Bits::Wide even before any tick");
+        };
+        assert_eq!(crate::sim::wide::to_decimal_string(&limbs, 200, false), "5");
     }
 }

@@ -231,6 +231,26 @@ pub(super) fn wide_limbs_from_u128(v: u128, width: u32) -> Vec<u64> {
     wide::from_u128(v, width)
 }
 
+/// Build a `Val` from a raw `u128` bit pattern at `width`, zero-extending
+/// into `Bits::Wide` when `width > 128` instead of defaulting to `Small`
+/// like `Val::new` does. `Val::new` is deliberately narrow-only (its own
+/// doc comment: "every caller with `width <= 128`") — it is UNSAFE to call
+/// it with a `width` that isn't already known to be `<= 128`, because it
+/// unconditionally builds `Bits::Small`, silently violating the
+/// `width <= 128 ⟹ Small` invariant every dispatch in this file (and every
+/// consumer of `Val::is_wide()`) relies on. This is the width-aware
+/// counterpart for any construction site whose `width` is a SIGNAL's own
+/// declared width (which may be runtime-supplied and arbitrarily large),
+/// as opposed to a small literal constant (`1`, `8`, ...) a caller already
+/// knows is narrow. Mirrors `Sim::set`'s existing `Small`-vs-`Wide` match.
+pub(super) fn from_u128_at_width(v: u128, width: u32, signed: bool) -> Val {
+    if width <= 128 {
+        Val::new(v, width, signed)
+    } else {
+        Val::new_wide(wide::from_u128(v, width), width, signed)
+    }
+}
+
 /// Promote `l`/`r` to matching-length limb vectors at `result_width`,
 /// running the SAME sign-extension `extend_bits` already applies on the
 /// narrow path. Shared by every wide-path binary operator arm below.
@@ -936,9 +956,15 @@ fn unary(op: UnOp, v: Val) -> Val {
 }
 
 fn unary_known(op: UnOp, v: Val) -> Val {
+    // Gate on `width <= 128`, not `is_wide()` alone: a `Bits::Small` value
+    // can still be DECLARED wider than 128 bits (e.g. a `bits[200]` register
+    // that currently holds a small magnitude) — the narrow arithmetic below
+    // is only correct up to the value's actual bit width, so a width check
+    // is required even when the representation happens to be `Small`.
+    let narrow = !v.is_wide() && v.width <= 128;
     match op {
         UnOp::Neg => {
-            if !v.is_wide() {
+            if narrow {
                 let bits = v.as_i128().wrapping_neg() as u128;
                 Val::new(bits, v.width, true)
             } else {
@@ -946,7 +972,7 @@ fn unary_known(op: UnOp, v: Val) -> Val {
             }
         }
         UnOp::BitNot => {
-            if !v.is_wide() {
+            if narrow {
                 Val::new(!v.masked(), v.width, v.signed)
             } else {
                 Val::new_wide(wide::not(&v.to_limbs()), v.width, v.signed)
@@ -954,26 +980,26 @@ fn unary_known(op: UnOp, v: Val) -> Val {
         }
         UnOp::LogicNot => Val::new((!(v.lsb())) & 1, 1, false),
         UnOp::RedAnd => {
-            let ones = if v.is_wide() {
-                wide::count_ones(&v.to_limbs()) == v.width
-            } else {
+            let ones = if narrow {
                 v.masked() == mask(v.width)
+            } else {
+                wide::count_ones(&v.to_limbs()) == v.width
             };
             Val::new(ones as u128, 1, false)
         }
         UnOp::RedOr => {
-            let any = if v.is_wide() {
-                !wide::is_zero(&v.to_limbs())
-            } else {
+            let any = if narrow {
                 v.masked() != 0
+            } else {
+                !wide::is_zero(&v.to_limbs())
             };
             Val::new(any as u128, 1, false)
         }
         UnOp::RedXor => {
-            let ones = if v.is_wide() {
-                wide::count_ones(&v.to_limbs())
-            } else {
+            let ones = if narrow {
                 v.masked().count_ones()
+            } else {
+                wide::count_ones(&v.to_limbs())
             };
             Val::new((ones & 1) as u128, 1, false)
         }
@@ -1339,7 +1365,10 @@ fn binary_known(op: BinOp, l: Val, r: Val, expected_width: Option<u32>) -> Resul
 
 fn cmp_lt(l: Val, r: Val) -> bool {
     let wmax = l.width.max(r.width);
-    if !l.is_wide() && !r.is_wide() {
+    // Gate on width, not `is_wide()` alone — same reasoning as
+    // `unary_known`: a `Bits::Small` value can still be declared wider than
+    // 128 bits, and `as_i128()`/`masked()` are narrow-path-only.
+    if !l.is_wide() && !r.is_wide() && l.width <= 128 && r.width <= 128 {
         if l.signed || r.signed {
             l.as_i128() < r.as_i128()
         } else {
@@ -1360,7 +1389,7 @@ fn cmp_lt(l: Val, r: Val) -> bool {
     }
 }
 fn cmp_eq(l: Val, r: Val) -> bool {
-    if !l.is_wide() && !r.is_wide() {
+    if !l.is_wide() && !r.is_wide() && l.width <= 128 && r.width <= 128 {
         if l.signed || r.signed {
             l.as_i128() == r.as_i128()
         } else {
@@ -1877,8 +1906,8 @@ mod tests {
         let b = Val::new_wide(wide::from_u128(0b1010, 512), 512, false);
         let result = binary_known(BinOp::BitAnd, a, b, None).unwrap();
         assert!(result.is_wide());
-        assert_eq!(wide::bit_at(&result.to_limbs(), 3), true);
-        assert_eq!(wide::bit_at(&result.to_limbs(), 1), false);
+        assert!(wide::bit_at(&result.to_limbs(), 3));
+        assert!(!wide::bit_at(&result.to_limbs(), 1));
     }
 
     #[test]
