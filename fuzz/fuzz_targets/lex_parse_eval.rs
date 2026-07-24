@@ -33,7 +33,8 @@ fuzz_target!(|data: &[u8]| {
     // bounds, and indices — the SEC-2 path. A clean `Err` is fine; a panic is
     // not, which is exactly what the fuzzer is here to catch.
     let params: BTreeMap<String, i128> = BTreeMap::new();
-    let _ = mimz::sim::comb::eval_outputs(std::slice::from_ref(&file), None, &BTreeMap::new(), &params);
+    let _ =
+        mimz::sim::comb::eval_outputs(std::slice::from_ref(&file), None, &BTreeMap::new(), &params);
 
     // Runtime path: feed each input port a value derived from the bytes so the
     // evaluator exercises the real datapath. Use the first module with inputs.
@@ -49,14 +50,19 @@ fuzz_target!(|data: &[u8]| {
             } = mi
             {
                 // Deterministic pseudo-value from the input bytes + port index.
-                let seed = data
-                    .iter()
-                    .fold(i as u128, |a, &b| a.wrapping_mul(31).wrapping_add(b as u128));
+                let seed = data.iter().fold(i as u128, |a, &b| {
+                    a.wrapping_mul(31).wrapping_add(b as u128)
+                });
                 inputs.insert(name.name.clone(), Bits::Small(seed));
             }
         }
         if !inputs.is_empty() {
-            let _ = mimz::sim::comb::eval_outputs(std::slice::from_ref(&file), Some(&m.name.name), &inputs, &params);
+            let _ = mimz::sim::comb::eval_outputs(
+                std::slice::from_ref(&file),
+                Some(&m.name.name),
+                &inputs,
+                &params,
+            );
 
             // Edge-case passes: re-evaluate the same module with dangerous input
             // values that triggered Finding A (Shl `as u32` truncation) and other
@@ -67,11 +73,11 @@ fuzz_target!(|data: &[u8]| {
                 0,
                 1,
                 u128::MAX,
-                1u128 << 32,   // bit 32 — the `as u32` truncation threshold
-                1u128 << 63,   // bit 63 — upper half of u128
-                1u128 << 127,  // bit 127 — max valid bit
-                (1u128 << 126) - 1,  // just below the 127-bit boundary
-                (1u128 << 64) - 1,   // 64-bit all-ones
+                1u128 << 32,        // bit 32 — the `as u32` truncation threshold
+                1u128 << 63,        // bit 63 — upper half of u128
+                1u128 << 127,       // bit 127 — max valid bit
+                (1u128 << 126) - 1, // just below the 127-bit boundary
+                (1u128 << 64) - 1,  // 64-bit all-ones
             ];
             for &edge in &edge_cases {
                 let edge_inputs: BTreeMap<String, Bits> = inputs
