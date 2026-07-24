@@ -16,7 +16,9 @@ use mimz::sim::elaborate::SimMode;
 use mimz::{diag, lexer, morph, project};
 
 // Argument parsers — single source in the library (`mimz::runner`).
-pub(crate) use mimz::{parse_bindings, parse_sweep, parse_u128, sweep_vectors, trace_scope};
+pub(crate) use mimz::{
+    parse_bindings, parse_bits_bindings, parse_sweep, parse_u128, sweep_vectors, trace_scope,
+};
 
 /// Milliseconds elapsed since `start`, as f64 (for the `--debug` timing lines
 /// printed by `check` and `compile`).
