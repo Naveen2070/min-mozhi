@@ -10,6 +10,7 @@
 //! path) and AST-derived inputs (a value per real input port, so the evaluator
 //! walks the actual datapath, not just constant folding).
 use libfuzzer_sys::fuzz_target;
+use mimz::sim::value::Bits;
 use std::collections::BTreeMap;
 use unicode_normalization::UnicodeNormalization;
 
@@ -41,7 +42,7 @@ fuzz_target!(|data: &[u8]| {
         let TopItem::Module(m) = item else {
             continue;
         };
-        let mut inputs: BTreeMap<String, u128> = BTreeMap::new();
+        let mut inputs: BTreeMap<String, Bits> = BTreeMap::new();
         for (i, mi) in m.items.iter().enumerate() {
             if let ModuleItem::Port {
                 dir: Dir::In, name, ..
@@ -51,7 +52,7 @@ fuzz_target!(|data: &[u8]| {
                 let seed = data
                     .iter()
                     .fold(i as u128, |a, &b| a.wrapping_mul(31).wrapping_add(b as u128));
-                inputs.insert(name.name.clone(), seed);
+                inputs.insert(name.name.clone(), Bits::Small(seed));
             }
         }
         if !inputs.is_empty() {
@@ -73,9 +74,9 @@ fuzz_target!(|data: &[u8]| {
                 (1u128 << 64) - 1,   // 64-bit all-ones
             ];
             for &edge in &edge_cases {
-                let edge_inputs: BTreeMap<String, u128> = inputs
+                let edge_inputs: BTreeMap<String, Bits> = inputs
                     .keys()
-                    .map(|k| (k.clone(), edge))
+                    .map(|k| (k.clone(), Bits::Small(edge)))
                     .collect();
                 let _ = mimz::sim::comb::eval_outputs(
                     std::slice::from_ref(&file),
