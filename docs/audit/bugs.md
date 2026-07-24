@@ -1614,3 +1614,61 @@ within this same BUG-23/BUG-24 effort, before anything was committed:
   regression tests: `bug_24_regression_shift_in_if_branch_stays_unhoisted`
   and `bug_24_regression_nested_shift_lhs_of_shift_stays_unhoisted`
   (`tests/self_determined_regression.rs`).
+
+## BUG-25 (MEDIUM, FIXED 2026-07-24) — Emitter panics on a nested `+%`/`-%`/`*%`/bitwise op with a narrower bare-literal operand
+
+**What.** `emit_verilog::kinds::infer_binary`'s `AddWrap`/`SubWrap`/
+`MulWrap`/`BitAnd`/`BitOr`/`BitXor` arm PANICS ("checker already
+validated this operator's operand kinds: `KindMismatch { .. }`") when
+one of these operators appears NESTED as a hoist-candidate child (see
+BUG-23) and one operand is a bare integer literal narrower than its
+sibling — e.g. `cnt +% 1 +% 1` with `cnt: bits[26]`, where the inner
+`cnt +% 1` becomes the hoistable child. This is an ordinary,
+checker-VALID program: `cnt +% 1` alone (not nested) compiles and runs
+fine today, and would too if written as the sole assignment. Only the
+NESTED shape reaches the buggy code path.
+
+**Cause.** The checker's own width-matching (`checker::widths::ops::
+matched_ty`) treats a bare integer literal as `Ty::CtInt` — untyped,
+adapting to a sized sibling operand's width with no equality
+requirement (`(Ty::CtInt(v), t) | (t, Ty::CtInt(v)) => { fit(v, t); t }`).
+`emit_verilog::kinds::infer_kind`'s `Int` arm has no such context: it
+always computes a literal's own MINIMAL natural width
+(`min_width_for`), independent of any sibling operand. `infer_binary`'s
+matched-width family then calls `width_rules::matched_result(l, r)`,
+which requires the two `Kind`s to be IDENTICAL — so `cnt`'s `Kind{26,
+false}` against literal `1`'s `Kind{1, false}` mismatches, an outcome
+the checker never considered an error, and the `.expect(...)` panics.
+
+**How found.** `fuzz_targets/pretty_roundtrip.rs`'s libFuzzer run in CI
+(mutated a real example — `examples/*/led_blinker.mimz`'s counter
+increment — into a doubled `cnt +% 1 +% 1`).
+
+**Severity.** MEDIUM — a real, if narrow, correctness bug: any design
+with a matched-family operator against a narrower bare literal, nested
+under another operator that triggers BUG-23's hoist, crashes the
+compiler instead of emitting. Not data corruption (a hard crash, always
+caught immediately), and the un-nested form (the overwhelmingly common
+shape in practice — a plain `reg <- reg +% 1` at statement level never
+reaches this code path at all, per `hoist_width_effect_operand`'s own
+doc comment) is unaffected.
+
+**Fix (2026-07-24).** `infer_binary`'s matched-width arm
+(`crates/mimz-core/src/emit_verilog/kinds.rs`) now checks, before
+calling `matched_result`, whether either operand is a bare `ExprKind::
+Int` — if so, the literal side's `Kind` is DISCARDED and the sibling's
+`Kind` used directly (mirroring `matched_ty`'s own unconditional
+adapt-to-peer arms), falling back to the existing `matched_result` check
+only when neither side is a bare literal (preserving existing behavior
+for the two-declared-signal case). New `is_bare_int` helper. Deliberately
+narrow: a literal wrapped in `Unary` (e.g. a negated constant) is not
+recognized by this check — out of scope for this fix, filed only if a
+real case surfaces (see the fix's own code comment).
+
+**Test.** `emit_verilog::kinds::tests::
+wrap_add_with_a_narrower_bare_literal_adapts_to_the_sized_operand`
+(`crates/mimz-core/src/emit_verilog/kinds.rs`) — checks both literal-on-
+left and literal-on-right against a `bits[26]` sibling. Manually
+verified end-to-end against the exact fuzzer-found input (lex → parse →
+pretty-print → re-parse → emit both sides → `assert_eq!`), matching
+`fuzz_targets/pretty_roundtrip.rs`'s own property.

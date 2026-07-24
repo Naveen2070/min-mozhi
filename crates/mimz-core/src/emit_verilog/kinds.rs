@@ -108,6 +108,19 @@ fn min_width_for(value: u128) -> u32 {
     }
 }
 
+/// True iff `kind` is a bare integer literal — the checker's untyped
+/// `Ty::CtInt`, which adapts to a sized sibling operand rather than
+/// carrying a fixed width of its own (see `infer_binary`'s matched-width
+/// arm). Deliberately narrow: a literal wrapped in `Unary` (e.g. a
+/// negated constant) is NOT recognized here — that shape doesn't appear
+/// in this function's one caller's reproduced crash, and widening this
+/// check to cover it would mean re-deriving how far the checker's own
+/// const-folding reaches, which this file's doc comment already commits
+/// to leaving to `mimz-core`'s checker rather than re-implementing here.
+fn is_bare_int(kind: &ExprKind) -> bool {
+    matches!(kind, ExprKind::Int { .. })
+}
+
 /// Fold a compile-time-constant expression (a slice bound, a replication
 /// count) to its `u32` value. Slice bounds/replication counts are
 /// guaranteed compile-time constant by the checker (`slice_ty`/
@@ -150,8 +163,23 @@ fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>
         | BinOp::BitOr
         | BinOp::BitXor => {
             let r = infer_kind(rhs, decls);
-            crate::width_rules::matched_result(l, r)
-                .expect("checker already validated this operator's operand kinds")
+            // A bare integer literal is the checker's `Ty::CtInt` — untyped,
+            // adapting to a sized sibling operand's width/signedness rather
+            // than carrying its own minimal natural width (`checker::widths::
+            // ops::matched_ty`'s `(Ty::CtInt(v), t) | (t, Ty::CtInt(v))`
+            // arms, which return the SIZED side's type unconditionally, no
+            // equality check). `infer_kind`'s own `Int` arm has no such
+            // context, so without this, `cnt +% 1` (`cnt: bits[26]`) — a
+            // perfectly ordinary, checker-valid program — infers the
+            // literal `1` at its own 1-bit width and panics the
+            // `matched_result` fallback below on a mismatch the checker
+            // never considered one.
+            match (is_bare_int(&lhs.kind), is_bare_int(&rhs.kind)) {
+                (true, false) => r,
+                (false, true) => l,
+                _ => crate::width_rules::matched_result(l, r)
+                    .expect("checker already validated this operator's operand kinds"),
+            }
         }
         BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => Kind {
             width: 1,
@@ -304,5 +332,50 @@ mod tests {
                 signed: false
             }
         );
+    }
+
+    #[test]
+    fn wrap_add_with_a_narrower_bare_literal_adapts_to_the_sized_operand() {
+        // Regression: `cnt +% 1` (`cnt: bits[26]`) is an ordinary,
+        // checker-valid program (`checker::widths::ops::matched_ty` lets a
+        // bare `Ty::CtInt` literal adapt to its sized sibling's width, no
+        // equality check) — but `infer_binary`'s `AddWrap` arm used to
+        // call `infer_kind` on `1` independently, getting its own 1-bit
+        // natural width, then PANICKED calling `matched_result(Kind{26},
+        // Kind{1})` on a mismatch the checker never considered one. Found
+        // by `fuzz_targets/pretty_roundtrip.rs` fuzzing a doubled
+        // `cnt +% 1 +% 1` (the inner `cnt +% 1` becomes a hoist-candidate
+        // child, which is the call path that reaches `infer_kind`; a
+        // top-level `cnt <- cnt +% 1` never does).
+        let mut decls = HashMap::new();
+        decls.insert(
+            "cnt".to_string(),
+            Kind {
+                width: 26,
+                signed: false,
+            },
+        );
+        let lit_rhs = Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::AddWrap,
+                lhs: Box::new(ident("cnt")),
+                rhs: Box::new(int(1)),
+            },
+            span: Span::new(0, 0),
+        };
+        let lit_lhs = Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::AddWrap,
+                lhs: Box::new(int(1)),
+                rhs: Box::new(ident("cnt")),
+            },
+            span: Span::new(0, 0),
+        };
+        let expected = Kind {
+            width: 26,
+            signed: false,
+        };
+        assert_eq!(infer_kind(&lit_rhs, &decls), expected);
+        assert_eq!(infer_kind(&lit_lhs, &decls), expected);
     }
 }
