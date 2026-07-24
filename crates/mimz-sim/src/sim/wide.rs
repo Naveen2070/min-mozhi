@@ -8,11 +8,11 @@
 
 /// Number of 64-bit limbs needed to hold `width` bits.
 pub(super) fn limb_count(width: u32) -> usize {
-    ((width as u64 + 63) / 64) as usize
+    (width as u64).div_ceil(64) as usize
 }
 
 /// A `width`-bit zero vector, ready to mask/fill.
-pub(super) fn zeros(width: u32) -> Vec<u64> {
+pub(crate) fn zeros(width: u32) -> Vec<u64> {
     vec![0u64; limb_count(width)]
 }
 
@@ -21,10 +21,10 @@ pub(super) fn zeros(width: u32) -> Vec<u64> {
 pub(super) fn mask_to_width(limbs: &mut [u64], width: u32) {
     let full = (width / 64) as usize;
     let rem = width % 64;
-    if rem != 0 {
-        if let Some(l) = limbs.get_mut(full) {
-            *l &= (1u64 << rem) - 1;
-        }
+    if rem != 0
+        && let Some(l) = limbs.get_mut(full)
+    {
+        *l &= (1u64 << rem) - 1;
     }
     let clear_from = if rem == 0 { full } else { full + 1 };
     for l in limbs.iter_mut().skip(clear_from) {
@@ -34,7 +34,7 @@ pub(super) fn mask_to_width(limbs: &mut [u64], width: u32) {
 
 /// Build a wide limb vector from a `u128`, zero-extended to `width`
 /// limbs.
-pub(super) fn from_u128(v: u128, width: u32) -> Vec<u64> {
+pub(crate) fn from_u128(v: u128, width: u32) -> Vec<u64> {
     let mut out = zeros(width);
     out[0] = v as u64;
     if out.len() > 1 {
@@ -126,13 +126,13 @@ pub(super) fn count_ones(a: &[u64]) -> u32 {
 /// Assumes inputs are canonical (masked to their declared width) — the
 /// output is re-masked here, but garbage bits within `result_width` would
 /// still corrupt the sum.
-pub(super) fn add(a: &[u64], b: &[u64], result_width: u32) -> Vec<u64> {
+pub(crate) fn add(a: &[u64], b: &[u64], result_width: u32) -> Vec<u64> {
     let mut out = zeros(result_width);
     let mut carry: u128 = 0;
-    for i in 0..out.len() {
+    for (i, o) in out.iter_mut().enumerate() {
         let sum =
             carry + a.get(i).copied().unwrap_or(0) as u128 + b.get(i).copied().unwrap_or(0) as u128;
-        out[i] = sum as u64;
+        *o = sum as u64;
         carry = sum >> 64;
     }
     mask_to_width(&mut out, result_width);
@@ -147,15 +147,15 @@ pub(super) fn add(a: &[u64], b: &[u64], result_width: u32) -> Vec<u64> {
 pub(super) fn sub(a: &[u64], b: &[u64], result_width: u32) -> Vec<u64> {
     let mut out = zeros(result_width);
     let mut borrow: i128 = 0;
-    for i in 0..out.len() {
+    for (i, o) in out.iter_mut().enumerate() {
         let av = a.get(i).copied().unwrap_or(0) as i128;
         let bv = b.get(i).copied().unwrap_or(0) as i128;
         let diff = av - bv - borrow;
         if diff < 0 {
-            out[i] = (diff + (1i128 << 64)) as u64;
+            *o = (diff + (1i128 << 64)) as u64;
             borrow = 1;
         } else {
-            out[i] = diff as u64;
+            *o = diff as u64;
             borrow = 0;
         }
     }
@@ -182,7 +182,7 @@ pub(super) fn not(a: &[u64]) -> Vec<u64> {
 /// limbs at the absolute extreme; real designs are far smaller).
 /// Assumes inputs are canonical (masked to their declared width) — same
 /// caveat as `add`.
-pub(super) fn mul(a: &[u64], b: &[u64], result_width: u32) -> Vec<u64> {
+pub(crate) fn mul(a: &[u64], b: &[u64], result_width: u32) -> Vec<u64> {
     let mut acc = vec![0u128; a.len() + b.len() + 1];
     for (i, &ai) in a.iter().enumerate() {
         let mut carry: u128 = 0;
@@ -216,7 +216,7 @@ pub(super) fn mul(a: &[u64], b: &[u64], result_width: u32) -> Vec<u64> {
 /// zero-padded to 19 digits.
 /// Assumes `limbs` is canonical (masked to `width`) — the non-negative
 /// path does not re-mask before rendering.
-pub(super) fn to_decimal_string(limbs: &[u64], width: u32, signed: bool) -> String {
+pub(crate) fn to_decimal_string(limbs: &[u64], width: u32, signed: bool) -> String {
     let negative = signed && width >= 1 && bit_at(limbs, width - 1);
     let mut cur = if negative {
         neg(limbs, width)
@@ -265,14 +265,14 @@ pub(super) fn shl(a: &[u64], amount: u32, result_width: u32) -> Vec<u64> {
     let mut out = zeros(result_width);
     let limb_shift = (amount / 64) as usize;
     let bit_shift = amount % 64;
-    for i in 0..a.len() {
+    for (i, &ai) in a.iter().enumerate() {
         let dst = i + limb_shift;
         if dst >= out.len() {
             break;
         }
-        out[dst] |= a[i] << bit_shift;
+        out[dst] |= ai << bit_shift;
         if bit_shift > 0 && dst + 1 < out.len() {
-            out[dst + 1] |= a[i] >> (64 - bit_shift);
+            out[dst + 1] |= ai >> (64 - bit_shift);
         }
     }
     mask_to_width(&mut out, result_width);
@@ -289,14 +289,14 @@ pub(super) fn shr(a: &[u64], amount: u32) -> Vec<u64> {
     let mut out = vec![0u64; a.len()];
     let limb_shift = (amount / 64) as usize;
     let bit_shift = amount % 64;
-    for i in 0..a.len() {
+    for (i, o) in out.iter_mut().enumerate() {
         let src = i + limb_shift;
         if src >= a.len() {
             continue;
         }
-        out[i] = a[src] >> bit_shift;
+        *o = a[src] >> bit_shift;
         if bit_shift > 0 && src + 1 < a.len() {
-            out[i] |= a[src + 1] << (64 - bit_shift);
+            *o |= a[src + 1] << (64 - bit_shift);
         }
     }
     out

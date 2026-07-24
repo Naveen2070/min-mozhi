@@ -309,19 +309,35 @@ module FSM {
     sim.set("rst", mimz::sim::value::Bits::Small(0)).unwrap();
 
     // Initial: Idle → tag = 0.
-    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(0), "Idle → tag=0");
+    assert_eq!(
+        sim.peek("tag").unwrap(),
+        mimz::sim::value::Bits::Small(0),
+        "Idle → tag=0"
+    );
 
     // After tick 1: Idle → Run, tag = 1.
     sim.tick("clk").unwrap();
-    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(1), "Run → tag=1");
+    assert_eq!(
+        sim.peek("tag").unwrap(),
+        mimz::sim::value::Bits::Small(1),
+        "Run → tag=1"
+    );
 
     // After tick 2: Run → Done, tag = 2.
     sim.tick("clk").unwrap();
-    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(2), "Done → tag=2");
+    assert_eq!(
+        sim.peek("tag").unwrap(),
+        mimz::sim::value::Bits::Small(2),
+        "Done → tag=2"
+    );
 
     // After tick 3: Done → Idle, tag = 0.
     sim.tick("clk").unwrap();
-    assert_eq!(sim.peek("tag").unwrap(), mimz::sim::value::Bits::Small(0), "Idle again → tag=0");
+    assert_eq!(
+        sim.peek("tag").unwrap(),
+        mimz::sim::value::Bits::Small(0),
+        "Idle again → tag=0"
+    );
 }
 
 /// Tagged enum match works end-to-end: a `Packet { Read(addr: bits[4]), Nop }`
@@ -381,7 +397,11 @@ module Decoder {
         mimz::sim::value::Bits::Small(0),
         "Nop tag must not fire got_read"
     );
-    assert_eq!(sim.peek("addr_out").unwrap(), mimz::sim::value::Bits::Small(0), "Nop has no addr payload");
+    assert_eq!(
+        sim.peek("addr_out").unwrap(),
+        mimz::sim::value::Bits::Small(0),
+        "Nop has no addr payload"
+    );
 }
 
 /// Write-arm payload extraction: a two-field tagged variant `Write(addr: bits[32], data: bits[32])`
@@ -427,7 +447,8 @@ module BusDecoder {
     // packed = (1u128 << 64) | (0xAAu128 << 32) | 0x55u128
     let packed: u128 = (1u128 << 64) | (0xAAu128 << 32) | 0x55u128;
     // Sim::set takes u128 via Into<u128>; the value fits in 65 bits.
-    sim.set("pkt", mimz::sim::value::Bits::Small(packed)).unwrap();
+    sim.set("pkt", mimz::sim::value::Bits::Small(packed))
+        .unwrap();
     assert_eq!(
         sim.peek("xor_out").unwrap(),
         mimz::sim::value::Bits::Small(0xAA ^ 0x55),
@@ -438,7 +459,8 @@ module BusDecoder {
     // max_payload_w=64; Read.addr is the only field → hi=63, lo=32.
     // packed = (0 << 64) | (0xBEEF << 32)
     let packed_read: u128 = 0xBEEFu128 << 32;
-    sim.set("pkt", mimz::sim::value::Bits::Small(packed_read)).unwrap();
+    sim.set("pkt", mimz::sim::value::Bits::Small(packed_read))
+        .unwrap();
     assert_eq!(
         sim.peek("xor_out").unwrap(),
         mimz::sim::value::Bits::Small(0xBEEF),
