@@ -8,7 +8,7 @@ use crate::span::Span;
 
 use super::super::Checker;
 use super::super::consteval;
-use super::{MAX_WIDTH, Ty, Wcx, bits, min_bits, min_signed_bits, op_text, same, show};
+use super::{MAX_WIDTH, Ty, Wcx, bits, op_text, same, show};
 
 /// Narrow a checker-side width (`u128`, since `Ty::Bits`/`Ty::Signed`
 /// store one) to the `u32` `width_rules::Kind` uses. Safe for any width
@@ -70,7 +70,7 @@ fn valid_bundle_shape<'a>(fields: &[(String, Ty<'a>)]) -> Option<Ty<'a>> {
         return None;
     }
     let data = fields.iter().find(|(n, _)| n == "data")?;
-    Some(data.1)
+    Some(data.1.clone())
 }
 
 impl<'a> Checker<'a> {
@@ -167,7 +167,7 @@ impl<'a> Checker<'a> {
                 return self.not_data(cx, side.span, t);
             }
         }
-        if let (Ty::CtInt(_), Ty::CtInt(_)) = (lt, rt) {
+        if let (Ty::CtInt(_), Ty::CtInt(_)) = (&lt, &rt) {
             // Pure compile-time: fold the whole node (consteval rejects
             // what genuinely has no compile-time meaning, e.g. `+%`).
             return match consteval::eval(e, &cx.env) {
@@ -222,7 +222,7 @@ impl<'a> Checker<'a> {
                 for (t, side) in [(&lt, lhs), (&rt, rhs)] {
                     match t {
                         Ty::Bit => {}
-                        Ty::CtInt(v) if *v == 0 || *v == 1 => {}
+                        Ty::CtInt(v) if v.is_zero() || v.is_one() => {}
                         other => self.err(
                             cx.file,
                             side.span,
@@ -315,9 +315,9 @@ impl<'a> Checker<'a> {
         };
         // Bare-literal fallback: it adapts to `data`'s width (unwrap form),
         // but only in a context that actually wants `data`'s type.
-        if let Ty::CtInt(v) = rt {
+        if let Ty::CtInt(v) = &rt {
             if matches!(expected, Ty::Unknown) || same(&expected, &data_ty) {
-                self.fit(cx, rhs.span, v, data_ty);
+                self.fit(cx, rhs.span, v, data_ty.clone());
                 return data_ty;
             }
             return self.qq_rhs_mismatch(cx, rhs.span, &data_ty);
@@ -375,13 +375,13 @@ impl<'a> Checker<'a> {
         let _ = e;
         let (a, b) = match (lt, rt) {
             (Ty::CtInt(v), t) => {
-                let Some(adapted) = self.adapt_lossless(cx, lhs.span, v, &t) else {
+                let Some(adapted) = self.adapt_lossless(cx, lhs.span, &v, &t) else {
                     return Ty::Unknown;
                 };
                 (adapted, t)
             }
             (t, Ty::CtInt(v)) => {
-                let Some(adapted) = self.adapt_lossless(cx, rhs.span, v, &t) else {
+                let Some(adapted) = self.adapt_lossless(cx, rhs.span, &v, &t) else {
                     return Ty::Unknown;
                 };
                 (t, adapted)
@@ -422,21 +422,26 @@ impl<'a> Checker<'a> {
         &mut self,
         cx: &mut Wcx<'a>,
         span: Span,
-        v: i128,
+        v: &consteval::ConstVal,
         other: &Ty<'a>,
     ) -> Option<Ty<'a>> {
         match other {
             Ty::Bit | Ty::Bits(_) => {
-                if v < 0 {
-                    self.fit(cx, span, v, *other); // reports the negative case
+                if v.signed {
+                    self.fit(cx, span, v, other.clone()); // reports the negative case
                     return None;
                 }
                 let n = if let Ty::Bits(n) = other { *n } else { 1 };
-                Some(bits(n.max(min_bits(v))))
+                Some(bits(n.max(v.width as u128)))
             }
-            Ty::Signed(n) => Some(Ty::Signed((*n).max(min_signed_bits(v)))),
+            // Minimal signed width that holds `v`: itself if already
+            // signed, else one extra bit of room for the sign.
+            Ty::Signed(n) => {
+                let effective = if v.signed { v.width } else { v.width + 1 };
+                Some(Ty::Signed((*n).max(effective as u128)))
+            }
             _ => {
-                self.fit(cx, span, v, *other);
+                self.fit(cx, span, v, other.clone());
                 None
             }
         }
@@ -454,11 +459,11 @@ impl<'a> Checker<'a> {
     ) -> Ty<'a> {
         let (a, b) = match (lt, rt) {
             (Ty::CtInt(v), t) => {
-                self.fit(cx, lhs.span, v, t);
+                self.fit(cx, lhs.span, &v, t.clone());
                 return t;
             }
             (t, Ty::CtInt(v)) => {
-                self.fit(cx, rhs.span, v, t);
+                self.fit(cx, rhs.span, &v, t.clone());
                 return t;
             }
             (a, b) => (a, b),
@@ -565,7 +570,7 @@ impl<'a> Checker<'a> {
         (rhs, rt): (&'a Expr, Ty<'a>),
     ) -> Ty<'a> {
         match rt {
-            Ty::CtInt(v) if v < 0 => {
+            Ty::CtInt(v) if v.is_negative() => {
                 self.err(
                     cx.file,
                     rhs.span,
@@ -702,7 +707,9 @@ impl<'a> Checker<'a> {
                 return Ty::Unknown;
             }
         };
-        let total = i128::try_from(inner).ok().and_then(|n| c.checked_mul(n));
+        let total = i128::try_from(inner)
+            .ok()
+            .and_then(|n| c.to_i128_saturating().checked_mul(n));
         match total {
             Some(t) if (1..=MAX_WIDTH).contains(&t) => bits(t as u128),
             _ => {
@@ -752,9 +759,9 @@ impl<'a> Checker<'a> {
                 } else {
                     "trunc"
                 };
-                let m = match xt {
+                let m = match &xt {
                     Ty::Bit => 1,
-                    Ty::Bits(w) | Ty::Signed(w) => w,
+                    Ty::Bits(w) | Ty::Signed(w) => *w,
                     Ty::CtInt(v) => {
                         // `extend(1, N)` is the idiom for giving a literal an
                         // explicit width; trunc of a literal is confusion.
@@ -772,7 +779,7 @@ impl<'a> Checker<'a> {
                         );
                         return Ty::Unknown;
                     }
-                    other => return self.not_numeric(cx, x.span, &other, name),
+                    other => return self.not_numeric(cx, x.span, other, name),
                 };
                 if func == Builtin::Extend && n < m {
                     self.err(
@@ -954,7 +961,7 @@ impl<'a> Checker<'a> {
                 if matches!(bt, Ty::Unknown) {
                     return Ty::Unknown;
                 }
-                if let (Ty::CtInt(_), Ty::CtInt(_)) = (xt, bt) {
+                if let (Ty::CtInt(_), Ty::CtInt(_)) = (&xt, &bt) {
                     self.err(
                         cx.file,
                         e.span,

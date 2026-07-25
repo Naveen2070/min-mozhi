@@ -5,10 +5,11 @@
 use std::collections::HashSet;
 
 use crate::ast::Pattern;
+use crate::bits::Bits;
 use crate::span::Span;
 
 use super::super::Checker;
-use super::{Ty, Wcx, fits_bits, same, show};
+use super::{Ty, Wcx, same, show};
 
 impl<'a> Checker<'a> {
     /// `if`/`match` arms must agree. A compile-time arm adapts to a sized
@@ -27,7 +28,7 @@ impl<'a> Checker<'a> {
             }
             if !matches!(t, Ty::CtInt(_)) {
                 match &acc {
-                    None => acc = Some(*t),
+                    None => acc = Some(t.clone()),
                     Some(prev) if same(prev, t) => {}
                     Some(prev) => {
                         self.err_args(
@@ -59,7 +60,7 @@ impl<'a> Checker<'a> {
         // Now fit every compile-time arm against the agreed type.
         for (span, t) in arms {
             if let Ty::CtInt(v) = t {
-                self.fit(cx, *span, *v, result);
+                self.fit(cx, *span, v, result.clone());
             }
         }
         result
@@ -128,7 +129,7 @@ impl<'a> Checker<'a> {
             Ty::Bit | Ty::Bits(_) => {
                 let n = if let Ty::Bits(n) = st { n } else { 1 };
                 let mut bad = false;
-                let mut seen: HashSet<u128> = HashSet::new();
+                let mut seen: HashSet<Bits> = HashSet::new();
                 let mut wild = false;
                 for arm in arms {
                     if wild {
@@ -139,8 +140,12 @@ impl<'a> Checker<'a> {
                     for p in &arm.patterns {
                         match p {
                             Pattern::Int { value, raw } => {
-                                let v = i128::try_from(*value).unwrap_or(i128::MAX);
-                                if !fits_bits(v, n) {
+                                // A literal pattern is always non-negative
+                                // (the lexer never produces a negative
+                                // `Bits`), so fitting in `n` unsigned bits is
+                                // exactly "does its natural width fit".
+                                let w = crate::bits::natural_width(value);
+                                if w as u128 > n {
                                     bad = true;
                                     self.err(
                                         cx.file,
@@ -153,7 +158,7 @@ impl<'a> Checker<'a> {
                                             show(&st)
                                         ),
                                     );
-                                } else if !seen.insert(*value) {
+                                } else if !seen.insert(value.clone()) {
                                     self.covered_already(cx, arm.value.span, raw);
                                 }
                             }
@@ -194,7 +199,7 @@ impl<'a> Checker<'a> {
                                         ),
                                         "match multi-bit values against numbers",
                                     );
-                                } else if !seen.insert(u128::from(*b)) {
+                                } else if !seen.insert(Bits::Small(u128::from(*b))) {
                                     self.covered_already(
                                         cx,
                                         arm.value.span,
@@ -224,8 +229,16 @@ impl<'a> Checker<'a> {
                     let total = if n < 128 { 1u128 << n } else { u128::MAX };
                     if (seen.len() as u128) < total {
                         // Smallest uncovered value: after sorting, the
-                        // first index whose value differs is the gap.
-                        let mut vals: Vec<u128> = seen.iter().copied().collect();
+                        // first index whose value differs is the gap. Every
+                        // value in `seen` here has `natural_width <= n <
+                        // 128` (guarded above), so it is always `Bits::Small`.
+                        let mut vals: Vec<u128> = seen
+                            .iter()
+                            .map(|b| match b {
+                                Bits::Small(x) => *x,
+                                Bits::Wide(_) => unreachable!("n < 128 guarantees Small"),
+                            })
+                            .collect();
                         vals.sort_unstable();
                         let missing = vals
                             .iter()

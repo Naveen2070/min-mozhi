@@ -11,15 +11,15 @@ use super::super::Checker;
 use super::super::consteval;
 use super::super::names::Bind;
 use super::{
-    BundleShapeMatch, Ty, Wcx, bits, fits_bits, fits_in_count, fits_signed, max_signed_v,
-    max_unsigned, min_bits, min_signed, min_signed_bits, same, show,
+    BundleShapeMatch, Ty, Wcx, bits, fits_in_count, max_signed_v, max_unsigned, min_signed, same,
+    show,
 };
 
 impl<'a> Checker<'a> {
     /// Type of an assignment target (`name`, `name[i]`, `name[hi:lo]`).
     pub(super) fn lvalue_ty(&mut self, cx: &mut Wcx<'a>, lv: &'a LValue) -> Ty<'a> {
         let base = match cx.sigs.get(&lv.base.name) {
-            Some(t) => *t,
+            Some(t) => t.clone(),
             None => return Ty::Unknown, // E0101/E0108 already reported
         };
         let Some((first, second)) = &lv.index else {
@@ -84,7 +84,7 @@ impl<'a> Checker<'a> {
         let t = self.infer_ty(cx, idx);
         match t {
             Ty::CtInt(v) => {
-                if v < 0 || !fits_in_count(v, n) {
+                if !fits_in_count(&v, n) {
                     self.err(
                         cx.file,
                         idx.span,
@@ -120,7 +120,7 @@ impl<'a> Checker<'a> {
         let t = self.infer_ty(cx, addr);
         match t {
             Ty::CtInt(v) => {
-                if v < 0 || !fits_in_count(v, depth) {
+                if !fits_in_count(&v, depth) {
                     self.err(
                         cx.file,
                         addr.span,
@@ -204,10 +204,12 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A slice bound: must const-evaluate and be non-negative.
+    /// A slice bound: must const-evaluate and be non-negative. Saturates
+    /// to `i128` (a bound this far over `MAX_WIDTH` is already invalid —
+    /// `slice_ty`'s caller saturates it further to `u32`, see its comment).
     fn const_bound(&mut self, cx: &Wcx<'a>, e: &'a Expr) -> Option<i128> {
         match consteval::eval(e, &cx.env) {
-            Ok(v) if v >= 0 => Some(v),
+            Ok(v) if !v.is_negative() => Some(v.to_i128_saturating()),
             Ok(v) => {
                 self.err(
                     cx.file,
@@ -236,12 +238,12 @@ impl<'a> Checker<'a> {
         match &e.kind {
             ExprKind::IfExpr { cond, then, els } => {
                 self.check_cond(cx, cond);
-                self.check_expr(cx, then, expected);
+                self.check_expr(cx, then, expected.clone());
                 self.check_expr(cx, els, expected);
             }
             ExprKind::Match { scrutinee, arms } => {
                 let st = self.infer_ty(cx, scrutinee);
-                self.check_patterns(cx, scrutinee.span, st, arms);
+                self.check_patterns(cx, scrutinee.span, st.clone(), arms);
                 let en_decl = if let Ty::Enum(en) = st {
                     Some(en)
                 } else {
@@ -253,7 +255,7 @@ impl<'a> Checker<'a> {
                     } else {
                         Vec::new()
                     };
-                    self.check_expr(cx, &arm.value, expected);
+                    self.check_expr(cx, &arm.value, expected.clone());
                     for (name, prev) in injected {
                         match prev {
                             Some(old_ty) => {
@@ -294,7 +296,7 @@ impl<'a> Checker<'a> {
             } => {
                 let lt = self.infer_ty(cx, lhs);
                 let rt = self.infer_ty(cx, rhs);
-                let got = self.coalesce_ty(cx, (lhs, lt), (rhs, rt), expected);
+                let got = self.coalesce_ty(cx, (lhs, lt), (rhs, rt), expected.clone());
                 self.expect_ty(cx, e, got, expected);
             }
             _ => {
@@ -308,7 +310,7 @@ impl<'a> Checker<'a> {
     fn expect_ty(&mut self, cx: &mut Wcx<'a>, e: &'a Expr, got: Ty<'a>, expected: Ty<'a>) {
         match (got, expected) {
             (Ty::Unknown, _) | (_, Ty::Unknown) => {}
-            (Ty::CtInt(v), t) => self.fit(cx, e.span, v, t),
+            (Ty::CtInt(v), t) => self.fit(cx, e.span, &v, t),
             (g, t) if same(&g, &t) => {}
             (g @ Ty::Bundle { .. }, t @ Ty::Bundle { .. }) => {
                 match self.bundle_shape_match(cx, t, g, e.span) {
@@ -384,11 +386,11 @@ impl<'a> Checker<'a> {
     }
 
     /// A compile-time integer meeting a sized context: does it fit?
-    pub(super) fn fit(&mut self, cx: &mut Wcx<'a>, span: Span, v: i128, t: Ty<'a>) {
+    pub(super) fn fit(&mut self, cx: &mut Wcx<'a>, span: Span, v: &consteval::ConstVal, t: Ty<'a>) {
         match t {
             Ty::Bit | Ty::Bits(_) => {
                 let n = if let Ty::Bits(n) = t { n } else { 1 };
-                if v < 0 {
+                if v.signed {
                     self.err(
                         cx.file,
                         span,
@@ -397,7 +399,7 @@ impl<'a> Checker<'a> {
                         "negative values need a `signed[N]` context \
                          (spec/02 section 1.7)",
                     );
-                } else if !fits_bits(v, n) {
+                } else if v.width as u128 > n {
                     self.err(
                         cx.file,
                         span,
@@ -413,7 +415,12 @@ impl<'a> Checker<'a> {
                 }
             }
             Ty::Signed(n) => {
-                if !fits_signed(v, n) {
+                // A signed[n] context holds a `signed`-width-n-or-fewer
+                // value; an unsigned ConstVal fits if it has ROOM for an
+                // implicit sign bit (width < n), a negative ConstVal fits
+                // if its own tight two's-complement width is <= n.
+                let effective_width = if v.signed { v.width } else { v.width + 1 };
+                if effective_width > n as u32 {
                     self.err(
                         cx.file,
                         span,
@@ -478,7 +485,7 @@ impl<'a> Checker<'a> {
         let t = self.infer_ty(cx, e);
         match t {
             Ty::Bit | Ty::Unknown => {}
-            Ty::CtInt(v) if v == 0 || v == 1 => {}
+            Ty::CtInt(v) if v.is_zero() || v.is_one() => {}
             other => self.err(
                 cx.file,
                 e.span,
@@ -493,19 +500,31 @@ impl<'a> Checker<'a> {
     /// Synthesize an expression's type bottom-up.
     pub(super) fn infer_ty(&mut self, cx: &mut Wcx<'a>, e: &'a Expr) -> Ty<'a> {
         match &e.kind {
-            ExprKind::Int { value, .. } => match i128::try_from(*value) {
-                Ok(v) => Ty::CtInt(v),
-                Err(_) => {
+            ExprKind::Int { value, .. } => {
+                let w = crate::bits::natural_width(value);
+                if w > crate::width_rules::MAX_WIDTH as u32 {
                     self.err(
                         cx.file,
                         e.span,
                         "E0405",
                         "literal is too large",
-                        "values up to 2^127 - 1 are supported",
+                        format!(
+                            "values up to {} bits are supported",
+                            crate::width_rules::MAX_WIDTH
+                        ),
                     );
                     Ty::Unknown
+                } else {
+                    // `retag`, not `.clone()` — the lexer's `Bits::Wide`
+                    // vector may hold more limbs than `w` needs (e.g. a
+                    // hex literal with leading zero digits).
+                    Ty::CtInt(consteval::ConstVal {
+                        bits: crate::bits::retag(value, w),
+                        width: w,
+                        signed: false,
+                    })
                 }
-            },
+            }
             ExprKind::Bool(_) => Ty::Bit,
             ExprKind::Ident(name) => self.ident_ty(cx, e.span, name),
             ExprKind::Field { base, field } => self.field_ty(cx, base, field),
@@ -519,7 +538,7 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Match { scrutinee, arms } => {
                 let st = self.infer_ty(cx, scrutinee);
-                self.check_patterns(cx, scrutinee.span, st, arms);
+                self.check_patterns(cx, scrutinee.span, st.clone(), arms);
                 let en_decl = if let Ty::Enum(en) = st {
                     Some(en)
                 } else {
@@ -580,7 +599,7 @@ impl<'a> Checker<'a> {
                     // a runtime index is allowed unchecked, same allowance
                     // mem's own read side already has for a runtime address.
                     if let Ty::CtInt(v) = self.infer_ty(cx, index)
-                        && (v < 0 || v as u128 >= len)
+                        && (v.is_negative() || v.to_i128_saturating() as u128 >= len)
                     {
                         self.err(
                             cx.file,
@@ -686,8 +705,10 @@ impl<'a> Checker<'a> {
                             len: expected,
                         },
                         ExprKind::ArrayLit(elems),
-                    ) = (param_ty, &arg.kind)
+                    ) = (&param_ty, &arg.kind)
                     {
+                        let (elem_width, elem_signed, expected) =
+                            (*elem_width, *elem_signed, *expected);
                         self.infer_ty(cx, arg);
                         let actual = elems.len() as u128;
                         if actual != expected {
@@ -721,10 +742,16 @@ impl<'a> Checker<'a> {
                             bits(elem_width)
                         };
                         for el in elems {
-                            if let ExprKind::Int { value, .. } = &el.kind
-                                && let Ok(v) = i128::try_from(*value)
-                            {
-                                self.fit(cx, el.span, v, elem_ty);
+                            if let ExprKind::Int { value, .. } = &el.kind {
+                                let w = crate::bits::natural_width(value);
+                                if w <= crate::width_rules::MAX_WIDTH as u32 {
+                                    let cv = consteval::ConstVal {
+                                        bits: crate::bits::retag(value, w),
+                                        width: w,
+                                        signed: false,
+                                    };
+                                    self.fit(cx, el.span, &cv, elem_ty.clone());
+                                }
                             }
                         }
                         continue;
@@ -750,14 +777,9 @@ impl<'a> Checker<'a> {
                     Ty::Bit => (1, false),
                     Ty::Bits(n) => (n, false),
                     Ty::Signed(n) => (n, true),
-                    Ty::CtInt(v) => {
-                        let w = if v >= 0 {
-                            min_bits(v)
-                        } else {
-                            min_signed_bits(v)
-                        };
-                        (w, v < 0)
-                    }
+                    // `ConstVal` already carries its own minimal width and
+                    // sign — no separate min_bits/min_signed_bits needed.
+                    Ty::CtInt(v) => (v.width as u128, v.signed),
                     Ty::Unknown => return Ty::Unknown,
                     other => {
                         self.err(
@@ -850,10 +872,10 @@ impl<'a> Checker<'a> {
     /// What a bare name means as a VALUE in this module.
     fn ident_ty(&mut self, cx: &mut Wcx<'a>, span: Span, name: &str) -> Ty<'a> {
         if let Some(t) = cx.sigs.get(name) {
-            return *t;
+            return t.clone();
         }
         if let Some(v) = cx.env.get(name) {
-            return Ty::CtInt(*v);
+            return Ty::CtInt(v.clone());
         }
         match cx.sc.names.get(name) {
             Some(Bind::Inst(_)) => {
@@ -919,7 +941,7 @@ impl<'a> Checker<'a> {
                         name: bname,
                         bfile_hint,
                         args,
-                    }) = cx.sigs.get(name).copied()
+                    }) = cx.sigs.get(name).cloned()
                     {
                         return match self
                             .resolve_bundle_fields(cx, bname, bfile_hint, args, base.span)
@@ -992,7 +1014,7 @@ impl<'a> Checker<'a> {
         }
         // No `cx.sc.names` entry at all: a genuine fn parameter, found via
         // `cx.sigs` instead (seeded directly by `check_func_body_widths`).
-        if let Some(sig_ty) = cx.sigs.get(name).copied() {
+        if let Some(sig_ty) = cx.sigs.get(name).cloned() {
             if let Ty::Bundle {
                 name: bname,
                 bfile_hint,

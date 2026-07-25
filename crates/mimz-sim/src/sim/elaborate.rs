@@ -25,7 +25,7 @@ use mimz_core::ast::{
     self, BinOp, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg, Pattern, SeqStmt, UnOp,
 };
 
-use super::value::{const_eval, pick_module, type_width};
+use super::value::{const_eval, const_eval_wide, pick_module, type_width};
 
 /// Max `repeat` iterations the simulator will unroll — the same crate-root
 /// constant the emitter uses, so a design that compiles also elaborates (the
@@ -389,7 +389,7 @@ pub struct Reg {
     /// The register's folded width and signedness.
     pub width: Width,
     /// The folded compile-time reset value (masked to `width` by the kernel).
-    pub reset: i128,
+    pub reset: mimz_core::checker::consteval::ConstVal,
     /// The clock of the `on` block that assigns this reg (empty if none does,
     /// in which case the reg simply holds its reset value forever).
     pub clock: String,
@@ -411,7 +411,7 @@ pub struct Mem {
     /// Number of addressable cells.
     pub depth: u128,
     /// The folded compile-time value every cell is seeded to at power-on.
-    pub init: i128,
+    pub init: mimz_core::checker::consteval::ConstVal,
     /// The clock of the `on` block that writes this memory (empty if none does).
     pub clock: String,
     /// The edge of the writing `on` block (`rise`/`fall`).
@@ -813,7 +813,7 @@ fn elaborate_module(
             }
             ModuleItem::Reg { name, ty, reset } => {
                 let width = width_of(ty, &consts)?;
-                let reset = const_eval(&rw0.expr(reset)?, &consts)?;
+                let reset = const_eval_wide(&rw0.expr(reset)?, &consts)?;
                 regs.push(Reg {
                     name: name.name.clone(),
                     width,
@@ -834,7 +834,7 @@ fn elaborate_module(
                 let depth = u128::try_from(d).ok().filter(|d| *d >= 1).ok_or_else(|| {
                     format!("memory `{}` has a non-positive depth ({d})", name.name)
                 })?;
-                let init = const_eval(&rw0.expr(init)?, &consts)?;
+                let init = const_eval_wide(&rw0.expr(init)?, &consts)?;
                 mems.push(Mem {
                     name: name.name.clone(),
                     width,
@@ -1319,7 +1319,7 @@ fn flatten_instance(
         flat.regs.push(Reg {
             name: format!("{pfx}{}", r.name),
             width: r.width,
-            reset: r.reset,
+            reset: r.reset.clone(),
             clock: String::new(),
             edge: r.edge,
         });
@@ -1330,7 +1330,7 @@ fn flatten_instance(
             name: format!("{pfx}{}", mem.name),
             width: mem.width,
             depth: mem.depth,
-            init: mem.init,
+            init: mem.init.clone(),
             clock: String::new(),
             edge: mem.edge,
         });
@@ -1446,7 +1446,7 @@ fn int_expr(v: i128, span: mimz_core::span::Span) -> Expr {
     if v >= 0 {
         return Expr {
             kind: ExprKind::Int {
-                value: v as u128,
+                value: (v as u128).into(),
                 raw: v.to_string(),
             },
             span,
@@ -1464,7 +1464,7 @@ fn int_expr(v: i128, span: mimz_core::span::Span) -> Expr {
             op: UnOp::Neg,
             expr: Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: mag,
+                    value: mag.into(),
                     raw: mag.to_string(),
                 },
                 span,
@@ -1712,7 +1712,7 @@ fn record_drive(
                         b as u32,
                         Expr {
                             kind: ExprKind::Int {
-                                value: bit,
+                                value: bit.into(),
                                 raw: bit.to_string(),
                             },
                             span,
@@ -1727,7 +1727,7 @@ fn record_drive(
                             base: Box::new(rhs_expr.clone()),
                             index: Box::new(Expr {
                                 kind: ExprKind::Int {
-                                    value: rhs_bit,
+                                    value: rhs_bit.into(),
                                     raw: rhs_bit.to_string(),
                                 },
                                 span,
@@ -2198,7 +2198,7 @@ impl<'d, 's> Rw<'d, 's> {
                 if max_payload_w == 0 {
                     // Tag-only: simple integer comparison (existing behaviour).
                     Ok(Pattern::Int {
-                        value: idx as u128,
+                        value: (idx as u128).into(),
                         raw: idx.to_string(),
                     })
                 } else {
@@ -2436,7 +2436,7 @@ mod tests {
                     bits: 8,
                     signed: false
                 },
-                reset: 0,
+                reset: mimz_core::checker::consteval::ConstVal::zero(),
                 clock: "clk".into(),
                 edge: Edge::Rise,
             }]
@@ -2482,7 +2482,10 @@ mod tests {
             "module R {\n  clock clk\n  reset rst\n  out y: bits[8]\n  \
              reg r: bits[8] = 5\n  on rise(clk) { r <- r +% 1 }\n  y = r\n}\n",
         );
-        assert_eq!(d.regs[0].reset, 5);
+        assert_eq!(
+            d.regs[0].reset,
+            mimz_core::checker::consteval::ConstVal::from_i128(5)
+        );
         assert_eq!(d.regs[0].clock, "clk");
     }
 
@@ -2653,7 +2656,7 @@ mod tests {
         );
         let st = d.regs.iter().find(|r| r.name == "st").expect("reg st");
         assert_eq!(st.width.bits, 1);
-        assert_eq!(st.reset, 0);
+        assert_eq!(st.reset, mimz_core::checker::consteval::ConstVal::zero());
         assert!(d.comb.contains_key("o"));
     }
 
