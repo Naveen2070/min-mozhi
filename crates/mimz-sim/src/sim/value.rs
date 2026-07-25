@@ -14,47 +14,10 @@ use mimz_core::ast::{
     self, BinOp, Builtin, Expr, ExprKind, FnParam, FnStmt, FuncDecl, Pattern, Type, UnOp,
 };
 
-use super::wide;
+pub use mimz_core::bits::{Bits, mask};
+pub use mimz_core::wide;
 
-/// Low-`w`-bits mask (`w >= 128` ⇒ all ones).
-pub(super) fn mask(w: u32) -> u128 {
-    if w >= 128 {
-        u128::MAX
-    } else {
-        (1u128 << w) - 1
-    }
-}
-
-/// A value's raw bit pattern: `Small` for the fast path (width <= 128,
-/// stored as a plain `u128`, unchanged from before this task), `Wide`
-/// for anything larger (little-endian `u64` limbs, `wide::limb_count`
-/// of them). `Val::new_wide` guarantees `width <= 128` is ALWAYS
-/// `Small` — no other constructor produces a `Wide` value that fits in
-/// 128 bits, so callers can treat "is this Wide" and "is width > 128"
-/// as the same question.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Bits {
-    Small(u128),
-    Wide(Vec<u64>),
-}
-
-/// Render `bits` (masked to `width`, interpreted per `signed`) as a decimal string —
-/// the `Bits`-only counterpart to `harness.rs`'s `Val`-based `show()`, for callers
-/// (`Sim::peek`/`Output.value` consumers outside this crate) that only have a `Bits`
-/// plus its width/signedness, not a full `Val`.
-pub fn bits_to_decimal_string(bits: &Bits, width: u32, signed: bool) -> String {
-    match bits {
-        Bits::Small(b) => {
-            let m = b & mask(width);
-            if signed && width >= 1 && (m >> (width - 1)) & 1 == 1 {
-                ((m | !mask(width)) as i128).to_string()
-            } else {
-                m.to_string()
-            }
-        }
-        Bits::Wide(limbs) => wide::to_decimal_string(limbs, width, signed),
-    }
-}
+pub use mimz_core::bits::bits_to_decimal_string;
 
 /// A bit-vector value: the low `width` bits of `bits` are meaningful.
 /// `pub` (re-exported at `mimz_sim::sim::Val`) since
@@ -120,8 +83,10 @@ impl Val {
         }
     }
     /// A compile-time integer used as a value: minimal width that holds
-    /// it. Literals stay `i128`-bounded (layer 2, deliberately out of
-    /// scope for this plan — see the design doc) — always `Small`.
+    /// it. For an `i128`-ranged value (loop/repeat counters — always
+    /// small in practice, bounded by their own sanity limits) — always
+    /// `Small`. A source LITERAL (which may be arbitrary-width, BUG-13
+    /// layer 2) goes through `from_literal` instead.
     pub fn from_int(v: i128) -> Val {
         if v >= 0 {
             let w = (128 - (v as u128).leading_zeros()).max(1);
@@ -130,6 +95,17 @@ impl Val {
             let w = (129 - v.leading_ones()).max(1);
             Val::new(v as u128, w, true)
         }
+    }
+    /// A source integer literal (`ExprKind::Int`'s `Bits`) used as a
+    /// runtime value: minimal width that holds it, same convention as
+    /// `from_int`'s non-negative branch (a literal is always non-negative
+    /// — the lexer never produces a negative `Bits`) but not capped at
+    /// 128 bits (BUG-13 layer 2) — `new_wide` auto-narrows to `Small`
+    /// when the natural width still fits.
+    pub fn from_literal(value: &mimz_core::bits::Bits) -> Val {
+        let width = mimz_core::bits::natural_width(value).max(1);
+        let limbs = mimz_core::bits::to_limbs(value, width);
+        Val::new_wide(limbs, width, false)
     }
     /// `true` if this value is on the wide (>128-bit) slow path.
     pub fn is_wide(&self) -> bool {
@@ -251,6 +227,25 @@ pub(super) fn from_u128_at_width(v: u128, width: u32, signed: bool) -> Val {
     }
 }
 
+/// Build a `Val` from a compile-time-folded constant (`ConstVal`), sign/
+/// zero-extending its own natural width to the signal's declared `width`.
+/// The width-aware counterpart of `from_u128_at_width` for constants that
+/// may already be wider than `u128` (BUG-13 layer 2) — `Reg.reset`/
+/// `Mem.init` are `ConstVal` now, not `i128`.
+pub(super) fn from_const_at_width(
+    cv: &mimz_core::checker::consteval::ConstVal,
+    width: u32,
+    signed: bool,
+) -> Val {
+    let limbs = wide::extend(
+        &mimz_core::bits::to_limbs(&cv.bits, cv.width),
+        cv.width,
+        width,
+        cv.signed,
+    );
+    Val::new_wide(limbs, width, signed)
+}
+
 /// Promote `l`/`r` to matching-length limb vectors at `result_width`,
 /// running the SAME sign-extension `extend_bits` already applies on the
 /// narrow path. Shared by every wide-path binary operator arm below.
@@ -343,7 +338,7 @@ pub(super) fn eval_ctx<R: Resolver>(
     expected_width: Option<u32>,
 ) -> Result<Val, String> {
     match &e.kind {
-        ExprKind::Int { value, .. } => Ok(Val::from_int(*value as i128)),
+        ExprKind::Int { value, .. } => Ok(Val::from_literal(value)),
         ExprKind::Bool(b) => Ok(Val::new(*b as u128, 1, false)),
         ExprKind::Ident(n) => r.signal(n),
         ExprKind::Unary { op, expr } => Ok(unary(*op, eval(r, expr)?)),
@@ -1417,7 +1412,16 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
     match p {
         Pattern::Wildcard => Ok(true),
         Pattern::Int { value, .. } => {
-            Ok(low128(s) & mask(s.width.min(128)) == *value & mask(s.width.min(128)))
+            // Same low-128-bits extraction as `low128(s)` above, for the
+            // pattern literal's own (possibly wide, BUG-13 layer 2) `Bits`.
+            let vlow = match value {
+                Bits::Small(b) => *b,
+                Bits::Wide(limbs) => {
+                    (limbs.first().copied().unwrap_or(0) as u128)
+                        | ((limbs.get(1).copied().unwrap_or(0) as u128) << 64)
+                }
+            };
+            Ok(low128(s) & mask(s.width.min(128)) == vlow & mask(s.width.min(128)))
         }
         Pattern::IntMask { value, mask: m, .. } => Ok((low128(s) & *m) == (*value & *m)),
         Pattern::Bool(b) => Ok(s.lsb() == (*b as u128)),
@@ -1464,15 +1468,49 @@ pub(super) fn checked_width(n: i128) -> Result<u32, String> {
     }
 }
 
+/// Build the checker's `Env` (name -> `ConstVal`) from this file's own
+/// folded-`i128` `consts`/`params` map, via `ConstVal::from_i128`. Shared by
+/// `const_eval` and `const_eval_wide` below.
+fn build_env(ints: &BTreeMap<String, i128>) -> mimz_core::checker::consteval::Env {
+    ints.iter()
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                mimz_core::checker::consteval::ConstVal::from_i128(*v),
+            )
+        })
+        .collect()
+}
+
 /// Compile-time const evaluation for widths, parameters, consts, indices, and
 /// slice bounds. **Delegates to the checker's hardened evaluator**
 /// (`checker::consteval::eval`) — the single source of truth — which uses
 /// `checked_*` arithmetic and guarded shifts, so an oversized const such as
 /// `1 << 200` is a clean error, never a debug panic or a silent release wrap.
+///
+/// Narrows the checker's arbitrary-width `ConstVal` result back to `i128`
+/// via `to_i128_saturating` — every caller here wants a STRUCTURAL size
+/// (a width, depth, index, or repeat bound), never a `Reg.reset`/`Mem.init`
+/// DATA value, and those are already capped far below `i128::MAX` by their
+/// own sanity limits (`MAX_WIDTH`, `MAX_DEPTH`), so this narrowing is exact
+/// in every legal design (BUG-13 layer 2's arbitrary-width representation
+/// only actually matters for `const_eval_wide`, below).
 pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, String> {
-    let env: mimz_core::checker::consteval::Env =
-        ints.iter().map(|(k, v)| (k.clone(), *v)).collect();
-    mimz_core::checker::consteval::eval(e, &env).map_err(|d| d.msg)
+    mimz_core::checker::consteval::eval(e, &build_env(ints))
+        .map(|v| v.to_i128_saturating())
+        .map_err(|d| d.msg)
+}
+
+/// Compile-time const evaluation for a `Reg.reset`/`Mem.init` expression —
+/// the one place a compile-time value's own MAGNITUDE (not just a
+/// structural size) matters, so this returns the checker's own
+/// arbitrary-width `ConstVal` directly instead of narrowing it to `i128`
+/// (BUG-13 layer 2).
+pub(super) fn const_eval_wide(
+    e: &Expr,
+    ints: &BTreeMap<String, i128>,
+) -> Result<mimz_core::checker::consteval::ConstVal, String> {
+    mimz_core::checker::consteval::eval(e, &build_env(ints)).map_err(|d| d.msg)
 }
 
 /// A bit index or slice bound must be a non-negative integer inside the value's
@@ -1992,7 +2030,7 @@ mod tests {
         limbs[2] = 1; // bit 128 set, low 128 bits are 0
         let s = Val::new_wide(limbs, 200, false);
         let p_not_max = Pattern::Int {
-            value: u128::MAX,
+            value: u128::MAX.into(),
             raw: String::new(),
         };
         assert_eq!(
@@ -2002,7 +2040,7 @@ mod tests {
         );
         // A pattern matching the low bits (0) should match:
         let p_zero = Pattern::Int {
-            value: 0,
+            value: 0u128.into(),
             raw: String::new(),
         };
         assert_eq!(pattern_matches(&p_zero, &s), Ok(true));

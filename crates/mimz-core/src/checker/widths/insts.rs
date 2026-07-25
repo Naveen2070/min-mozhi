@@ -129,8 +129,8 @@ impl<'a> Checker<'a> {
                 v = consteval::eval(d, &cenv).ok();
             }
             let v = v?;
+            binding.push((p.name.name.clone(), v.to_i128_saturating()));
             cenv.insert(p.name.name.clone(), v);
-            binding.push((p.name.name.clone(), v));
         }
         Some(ChildBinding {
             file: cfile,
@@ -185,15 +185,15 @@ impl<'a> Checker<'a> {
                 }
                 t => {
                     let got = self.infer_ty(cx, signal);
-                    if let (Ty::Unknown, _) | (_, Ty::Unknown) = (got, t) {
+                    if let (Ty::Unknown, _) | (_, Ty::Unknown) = (&got, &t) {
                         continue;
                     }
-                    if let Ty::CtInt(v) = got {
+                    if let Ty::CtInt(v) = &got {
                         self.fit(cx, signal.span, v, t);
                         continue;
                     }
-                    if let (g @ Ty::Bundle { .. }, exp @ Ty::Bundle { .. }) = (got, t) {
-                        match self.bundle_shape_match(cx, exp, g, signal.span) {
+                    if let (g @ Ty::Bundle { .. }, exp @ Ty::Bundle { .. }) = (&got, &t) {
+                        match self.bundle_shape_match(cx, exp.clone(), g.clone(), signal.span) {
                             BundleShapeMatch::Compatible => {}
                             BundleShapeMatch::MissingField(field) => {
                                 self.err(

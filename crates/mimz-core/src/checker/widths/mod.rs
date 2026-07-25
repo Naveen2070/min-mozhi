@@ -66,8 +66,12 @@ const MAX_CONFIGS: usize = 1000;
 const MAX_REPEAT_CHECKS: i128 = 256;
 
 /// The width-pass type of an expression. Lives only inside this pass —
-/// the AST stays untyped.
-#[derive(Clone, Copy)]
+/// the AST stays untyped. Not `Copy`: `CtInt` carries a `ConstVal`, which
+/// may hold an arbitrary-width `Bits::Wide(Vec<u64>)` (BUG-13 layer 2) —
+/// every former implicit-copy call site becomes an explicit `.clone()`
+/// (cheap in every case but a genuinely wide compile-time constant, which
+/// is rare).
+#[derive(Clone)]
 enum Ty<'a> {
     /// `bit` — identical to `bits[1]` everywhere ([`bits`] normalizes).
     Bit,
@@ -112,8 +116,9 @@ enum Ty<'a> {
     },
     /// A compile-time integer: literal, const, parameter, or `repeat`
     /// variable. Polymorphic — adapts to any sized context it fits
-    /// (spec/02 section 1.8). Carries the value for the fit check.
-    CtInt(i128),
+    /// (spec/02 section 1.8). Carries the value (already at its minimal
+    /// width/signedness, per `ConstVal`'s own invariant) for the fit check.
+    CtInt(consteval::ConstVal),
     Clock,
     Reset,
     /// Something already reported (here or by an earlier pass). Absorbs
@@ -173,15 +178,14 @@ pub(super) enum BundleShapeMatch {
 /// conflict — BUG-9). `None` for a type with no single scalar reg width
 /// (memory, bundle, enum, clock/reset, `Unknown`).
 fn scalar_width(t: &Ty) -> Option<u32> {
-    match *t {
+    match t {
         Ty::Bit => Some(1),
-        Ty::Bits(n) | Ty::Signed(n) => Some(n as u32),
-        Ty::CtInt(v) => Some(if v >= 0 {
-            min_bits(v)
-        } else {
-            min_signed_bits(v)
-        } as u32),
-        Ty::Array { elem_width, .. } => Some(elem_width as u32),
+        Ty::Bits(n) | Ty::Signed(n) => Some(*n as u32),
+        // `ConstVal` is already stored at its minimal width (every
+        // constructor runs it through `bits::shrink`) — no separate
+        // min_bits/min_signed_bits computation needed anymore.
+        Ty::CtInt(v) => Some(v.width),
+        Ty::Array { elem_width, .. } => Some(*elem_width as u32),
         _ => None,
     }
 }
@@ -246,20 +250,6 @@ fn show(t: &Ty) -> String {
         Ty::Reset => "a reset".into(),
         Ty::Unknown => "an unknown type".into(),
     }
-}
-
-/// Does the compile-time value `v` fit in `n` unsigned bits?
-fn fits_bits(v: i128, n: u128) -> bool {
-    v >= 0 && (n >= 127 || v < (1i128 << n))
-}
-
-/// Does `v` fit in `n` two's-complement bits?
-fn fits_signed(v: i128, n: u128) -> bool {
-    if n >= 128 {
-        return true;
-    }
-    let half = 1i128 << (n - 1);
-    (-half..half).contains(&v)
 }
 
 /// One module being checked under one concrete parameter binding.
@@ -375,8 +365,8 @@ impl<'a> Checker<'a> {
             let d = p.default.as_ref()?;
             match consteval::eval(d, &env) {
                 Ok(v) => {
+                    binding.push((p.name.name.clone(), v.to_i128_saturating()));
                     env.insert(p.name.name.clone(), v);
-                    binding.push((p.name.name.clone(), v));
                 }
                 Err(diag) => {
                     if report {
@@ -402,7 +392,7 @@ impl<'a> Checker<'a> {
         };
         let mut env = self.file_consts[file].clone();
         for (name, v) in binding {
-            env.insert(name.clone(), *v);
+            env.insert(name.clone(), consteval::ConstVal::from_i128(*v));
         }
         for item in &m.items {
             if let ModuleItem::Const(c) = item {
@@ -483,7 +473,8 @@ impl<'a> Checker<'a> {
                     // Types inside `repeat` resolve under a representative
                     // value (`lo`); per-iteration width EXPRESSIONS in
                     // declarations are an elaboration-slice concern.
-                    let lo = consteval::eval(&r.lo, &cx.env).unwrap_or(0);
+                    let lo = consteval::eval(&r.lo, &cx.env)
+                        .unwrap_or_else(|_| consteval::ConstVal::zero());
                     let shadowed = cx.env.insert(r.var.name.clone(), lo);
                     self.collect_sigs(cx, &r.items);
                     self.unshadow(cx, &r.var.name, shadowed);
@@ -491,8 +482,9 @@ impl<'a> Checker<'a> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &cx.env).unwrap_or(0);
-                    let branch = if val != 0 {
+                    let val = consteval::eval(cond, &cx.env)
+                        .unwrap_or_else(|_| consteval::ConstVal::zero());
+                    let branch = if !val.is_zero() {
                         then.as_slice()
                     } else {
                         els.as_deref().unwrap_or(&[])
@@ -520,7 +512,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn unshadow(&mut self, cx: &mut Wcx<'a>, name: &str, shadowed: Option<i128>) {
+    fn unshadow(&mut self, cx: &mut Wcx<'a>, name: &str, shadowed: Option<consteval::ConstVal>) {
         match shadowed {
             Some(v) => cx.env.insert(name.to_string(), v),
             None => cx.env.remove(name),
@@ -632,7 +624,7 @@ impl<'a> Checker<'a> {
 
     /// Evaluate a width expression and validate the value (E0410).
     fn eval_width(&mut self, cx: &Wcx<'a>, e: &'a Expr) -> Option<u128> {
-        match consteval::eval(e, &cx.env) {
+        match consteval::eval(e, &cx.env).map(|v| v.to_i128_saturating()) {
             Ok(v) if (1..=MAX_WIDTH).contains(&v) => Some(v as u128),
             Ok(v) => {
                 self.err(
@@ -658,7 +650,7 @@ impl<'a> Checker<'a> {
     /// width, a depth must be a positive compile-time constant within
     /// [`MAX_DEPTH`].
     fn eval_depth(&mut self, cx: &Wcx<'a>, e: &'a Expr) -> Option<u128> {
-        match consteval::eval(e, &cx.env) {
+        match consteval::eval(e, &cx.env).map(|v| v.to_i128_saturating()) {
             Ok(v) if (1..=MAX_DEPTH).contains(&v) => Some(v as u128),
             Ok(v) => {
                 self.err(
@@ -689,7 +681,7 @@ impl<'a> Checker<'a> {
     /// an unreasonably large N will simply produce a lot of Verilog, the
     /// same honesty story `repeat` already tells for large bounds).
     fn eval_array_len(&mut self, cx: &Wcx<'a>, e: &'a Expr) -> Option<u128> {
-        match consteval::eval(e, &cx.env) {
+        match consteval::eval(e, &cx.env).map(|v| v.to_i128_saturating()) {
             Ok(v) if v >= 1 => Some(v as u128),
             Ok(v) => {
                 self.err(
@@ -718,28 +710,28 @@ impl<'a> Checker<'a> {
         for item in items {
             match item {
                 ModuleItem::Wire { name, init, .. } => {
-                    let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
+                    let expected = cx.sigs.get(&name.name).cloned().unwrap_or(Ty::Unknown);
                     self.check_expr(cx, init, expected);
                 }
                 ModuleItem::Reg { name, reset, .. } => {
-                    let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
+                    let expected = cx.sigs.get(&name.name).cloned().unwrap_or(Ty::Unknown);
                     self.check_expr(cx, reset, expected);
                 }
                 ModuleItem::SyncLoop(sl) => {
                     let result_t = cx
                         .sigs
                         .get(&format!("{}_result", sl.name.name))
-                        .copied()
+                        .cloned()
                         .unwrap_or(Ty::Unknown);
-                    self.check_expr(cx, &sl.result_init, result_t);
+                    self.check_expr(cx, &sl.result_init, result_t.clone());
                     // Bounds that do not const-eval were already reported by
                     // pass 3 (names.rs) — nothing more to check here. `lo`
                     // isn't used in the width formula below (see the comment
                     // there), but must still const-eval — same skip-if-either-
                     // fails behavior as before Finding 2's fix.
                     let (Ok(_lo), Ok(hi)) = (
-                        consteval::eval(&sl.lo, &cx.env),
-                        consteval::eval(&sl.hi, &cx.env),
+                        consteval::eval(&sl.lo, &cx.env).map(|v| v.to_i128_saturating()),
+                        consteval::eval(&sl.hi, &cx.env).map(|v| v.to_i128_saturating()),
                     ) else {
                         continue;
                     };
@@ -799,7 +791,7 @@ impl<'a> Checker<'a> {
                     // an earlier pass; the `cx.sigs` lookup by base name
                     // below is safe regardless, since it only looks at
                     // `lhs.base`, never `lhs.index`.
-                    let lhs_bundle = cx.sigs.get(&lhs.base.name).copied();
+                    let lhs_bundle = cx.sigs.get(&lhs.base.name).cloned();
                     if let Some(Ty::Bundle {
                         name: l,
                         bfile_hint,
@@ -818,7 +810,7 @@ impl<'a> Checker<'a> {
                                 // reach the mismatch arms below (trivially their
                                 // own required-fields subset).
                                 if let Some(rhs_ty @ Ty::Bundle { .. }) =
-                                    cx.sigs.get(rhs_sig.as_str()).copied()
+                                    cx.sigs.get(rhs_sig.as_str()).cloned()
                                 {
                                     let required = Ty::Bundle {
                                         name: l,
@@ -875,8 +867,8 @@ impl<'a> Checker<'a> {
                 ModuleItem::Repeat(r) => {
                     // Bounds that do not const-eval were reported by pass 3.
                     let (Ok(lo), Ok(hi)) = (
-                        consteval::eval(&r.lo, &cx.env),
-                        consteval::eval(&r.hi, &cx.env),
+                        consteval::eval(&r.lo, &cx.env).map(|v| v.to_i128_saturating()),
+                        consteval::eval(&r.hi, &cx.env).map(|v| v.to_i128_saturating()),
                     ) else {
                         continue;
                     };
@@ -886,7 +878,9 @@ impl<'a> Checker<'a> {
                         (lo..hi).collect()
                     };
                     for v in values {
-                        let shadowed = cx.env.insert(r.var.name.clone(), v);
+                        let shadowed = cx
+                            .env
+                            .insert(r.var.name.clone(), consteval::ConstVal::from_i128(v));
                         let before = self.diags.len();
                         self.walk_width_items(cx, &r.items, found);
                         self.unshadow(cx, &r.var.name, shadowed);
@@ -907,7 +901,9 @@ impl<'a> Checker<'a> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &cx.env).unwrap_or(0);
+                    let val = consteval::eval(cond, &cx.env)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
                     let branch = if val != 0 {
                         then.as_slice()
                     } else {
@@ -941,9 +937,10 @@ impl<'a> Checker<'a> {
                 // time.
                 ModuleItem::ForEach(fe) => match &fe.source {
                     ForEachSource::Range { lo, hi } => {
-                        let (Ok(lo_v), Ok(hi_v)) =
-                            (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
-                        else {
+                        let (Ok(lo_v), Ok(hi_v)) = (
+                            consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
+                            consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
+                        ) else {
                             continue; // bounds reported by pass 3
                         };
                         let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
@@ -952,7 +949,9 @@ impl<'a> Checker<'a> {
                             (lo_v..hi_v).collect()
                         };
                         for v in values {
-                            let shadowed = cx.env.insert(fe.var.name.clone(), v);
+                            let shadowed = cx
+                                .env
+                                .insert(fe.var.name.clone(), consteval::ConstVal::from_i128(v));
                             let before = self.diags.len();
                             self.walk_width_items(cx, &fe.items, found);
                             self.unshadow(cx, &fe.var.name, shadowed);
@@ -962,7 +961,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     ForEachSource::Elements(arr) => {
-                        let elem_ty = match cx.sigs.get(&arr.name).copied() {
+                        let elem_ty = match cx.sigs.get(&arr.name).cloned() {
                             Some(Ty::Array {
                                 elem_width,
                                 elem_signed,
@@ -1044,16 +1043,17 @@ impl<'a> Checker<'a> {
                     }
                 }
                 SeqStmt::Default { name, val, .. } => {
-                    let expected = cx.sigs.get(&name.name).copied().unwrap_or(Ty::Unknown);
+                    let expected = cx.sigs.get(&name.name).cloned().unwrap_or(Ty::Unknown);
                     self.check_expr(cx, val, expected);
                 }
                 SeqStmt::Loop {
                     var, lo, hi, body, ..
                 } => {
                     // Bounds that do not const-eval were reported by pass 3.
-                    let (Ok(lo_v), Ok(hi_v)) =
-                        (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
-                    else {
+                    let (Ok(lo_v), Ok(hi_v)) = (
+                        consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
+                        consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
+                    ) else {
                         continue;
                     };
                     let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
@@ -1062,7 +1062,9 @@ impl<'a> Checker<'a> {
                         (lo_v..hi_v).collect()
                     };
                     for v in values {
-                        let shadowed = cx.env.insert(var.name.clone(), v);
+                        let shadowed = cx
+                            .env
+                            .insert(var.name.clone(), consteval::ConstVal::from_i128(v));
                         let before = self.diags.len();
                         self.seq_width_stmts(cx, body);
                         self.unshadow(cx, &var.name, shadowed);
@@ -1078,9 +1080,10 @@ impl<'a> Checker<'a> {
                     var, source, body, ..
                 } => match source {
                     ForEachSource::Range { lo, hi } => {
-                        let (Ok(lo_v), Ok(hi_v)) =
-                            (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
-                        else {
+                        let (Ok(lo_v), Ok(hi_v)) = (
+                            consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
+                            consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
+                        ) else {
                             continue; // bounds reported by pass 3
                         };
                         let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
@@ -1089,7 +1092,9 @@ impl<'a> Checker<'a> {
                             (lo_v..hi_v).collect()
                         };
                         for v in values {
-                            let shadowed = cx.env.insert(var.name.clone(), v);
+                            let shadowed = cx
+                                .env
+                                .insert(var.name.clone(), consteval::ConstVal::from_i128(v));
                             let before = self.diags.len();
                             self.seq_width_stmts(cx, body);
                             self.unshadow(cx, &var.name, shadowed);
@@ -1099,7 +1104,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     ForEachSource::Elements(arr) => {
-                        let elem_ty = match cx.sigs.get(&arr.name).copied() {
+                        let elem_ty = match cx.sigs.get(&arr.name).cloned() {
                             Some(Ty::Array {
                                 elem_width,
                                 elem_signed,
@@ -1430,7 +1435,7 @@ impl<'a> Checker<'a> {
         // E0901: bundle declares a field the literal omits; type-check present fields.
         for (fname, fty) in &fields {
             if let Some(init) = inits.iter().find(|i| i.name.name == *fname) {
-                self.check_expr(cx, &init.value, *fty);
+                self.check_expr(cx, &init.value, fty.clone());
             } else {
                 self.err(
                     cx.file,
@@ -1459,7 +1464,7 @@ impl<'a> Checker<'a> {
             cx.sigs.insert(param.name.name.clone(), ty);
         }
         let ret_ty = self.resolve_ty(&mut cx, &func.ret);
-        self.check_fn_stmt_widths(&mut cx, &func.stmts, ret_ty, &func.name.name);
+        self.check_fn_stmt_widths(&mut cx, &func.stmts, ret_ty.clone(), &func.name.name);
         // The tail is the guaranteed fallthrough — always checked, exactly
         // like every `return` expression.
         self.check_return_expr(&mut cx, &func.tail, ret_ty, &func.name.name);
@@ -1531,23 +1536,24 @@ impl<'a> Checker<'a> {
                 FnStmt::If { cond, then, els } => {
                     self.check_cond(cx, cond);
                     let sigs_before = cx.sigs.clone();
-                    self.check_fn_stmt_widths(cx, then, ret_ty, func_name);
+                    self.check_fn_stmt_widths(cx, then, ret_ty.clone(), func_name);
                     if let Some(els) = els {
                         cx.sigs = sigs_before.clone();
-                        self.check_fn_stmt_widths(cx, els, ret_ty, func_name);
+                        self.check_fn_stmt_widths(cx, els, ret_ty.clone(), func_name);
                     }
                     cx.sigs = sigs_before;
                 }
                 FnStmt::Return(expr) => {
-                    self.check_return_expr(cx, expr, ret_ty, func_name);
+                    self.check_return_expr(cx, expr, ret_ty.clone(), func_name);
                 }
                 FnStmt::Loop {
                     var, lo, hi, body, ..
                 } => {
                     // Bounds that do not const-eval were reported by pass 3.
-                    let (Ok(lo_v), Ok(hi_v)) =
-                        (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
-                    else {
+                    let (Ok(lo_v), Ok(hi_v)) = (
+                        consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
+                        consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
+                    ) else {
                         continue;
                     };
                     let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
@@ -1557,10 +1563,12 @@ impl<'a> Checker<'a> {
                     };
                     let sigs_before = cx.sigs.clone();
                     for v in values {
-                        let shadowed = cx.env.insert(var.name.clone(), v);
+                        let shadowed = cx
+                            .env
+                            .insert(var.name.clone(), consteval::ConstVal::from_i128(v));
                         cx.sigs = sigs_before.clone();
                         let before = self.diags.len();
-                        self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                        self.check_fn_stmt_widths(cx, body, ret_ty.clone(), func_name);
                         self.unshadow(cx, &var.name, shadowed);
                         if self.diags.len() > before {
                             break; // one iteration's worth of errors is enough
@@ -1582,9 +1590,10 @@ impl<'a> Checker<'a> {
                     var, source, body, ..
                 } => match source {
                     ForEachSource::Range { lo, hi } => {
-                        let (Ok(lo_v), Ok(hi_v)) =
-                            (consteval::eval(lo, &cx.env), consteval::eval(hi, &cx.env))
-                        else {
+                        let (Ok(lo_v), Ok(hi_v)) = (
+                            consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
+                            consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
+                        ) else {
                             continue; // bounds reported by pass 3
                         };
                         let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
@@ -1594,10 +1603,12 @@ impl<'a> Checker<'a> {
                         };
                         let sigs_before = cx.sigs.clone();
                         for v in values {
-                            let shadowed = cx.env.insert(var.name.clone(), v);
+                            let shadowed = cx
+                                .env
+                                .insert(var.name.clone(), consteval::ConstVal::from_i128(v));
                             cx.sigs = sigs_before.clone();
                             let before = self.diags.len();
-                            self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                            self.check_fn_stmt_widths(cx, body, ret_ty.clone(), func_name);
                             self.unshadow(cx, &var.name, shadowed);
                             if self.diags.len() > before {
                                 break;
@@ -1606,7 +1617,7 @@ impl<'a> Checker<'a> {
                         cx.sigs = sigs_before;
                     }
                     ForEachSource::Elements(arr) => {
-                        let elem_ty = match cx.sigs.get(&arr.name).copied() {
+                        let elem_ty = match cx.sigs.get(&arr.name).cloned() {
                             Some(Ty::Array {
                                 elem_width,
                                 elem_signed,
@@ -1629,7 +1640,7 @@ impl<'a> Checker<'a> {
                         };
                         let sigs_before = cx.sigs.clone();
                         cx.sigs.insert(var.name.clone(), elem_ty);
-                        self.check_fn_stmt_widths(cx, body, ret_ty, func_name);
+                        self.check_fn_stmt_widths(cx, body, ret_ty.clone(), func_name);
                         cx.sigs = sigs_before;
                     }
                 },
@@ -1650,14 +1661,16 @@ impl<'a> Checker<'a> {
         ret_ty: Ty<'a>,
         func_name: &str,
     ) {
-        if let (
-            Ty::Bundle {
-                name,
-                bfile_hint,
-                args,
-            },
-            ExprKind::BundleLit(inits),
-        ) = (ret_ty, &expr.kind)
+        // `Ty::Bundle`'s own fields (`&'a str`/`Option<usize>`/`&'a
+        // [NamedArg]`) are all `Copy`, so matching them out of `ret_ty`
+        // here does not consume it — it's still available below for
+        // `check_return_ty` whether or not this arm matches.
+        if let Ty::Bundle {
+            name,
+            bfile_hint,
+            args,
+        } = ret_ty
+            && let ExprKind::BundleLit(inits) = &expr.kind
         {
             self.check_bundle_lit(cx, name, bfile_hint, args, inits, expr.span);
             return;
@@ -1679,7 +1692,7 @@ impl<'a> Checker<'a> {
     ) {
         match (ty, ret_ty) {
             (Ty::Unknown, _) | (_, Ty::Unknown) => {}
-            (Ty::CtInt(v), t) => self.fit(cx, span, v, t),
+            (Ty::CtInt(v), t) => self.fit(cx, span, &v, t),
             (g, t) if same(&g, &t) => {}
             (g @ Ty::Bundle { .. }, t @ Ty::Bundle { .. }) => {
                 match self.bundle_shape_match(cx, t, g, span) {
@@ -1757,23 +1770,13 @@ impl<'a> Checker<'a> {
     }
 }
 
-/// `v` is a valid bit position for a width of `n` (0 <= v < n).
-fn fits_in_count(v: i128, n: u128) -> bool {
-    v >= 0 && (v as u128) < n
-}
-
-/// Minimal unsigned width that holds `v` (>= 0). `0` and `1` need 1 bit.
-fn min_bits(v: i128) -> u128 {
-    (128 - v.leading_zeros()).max(1) as u128
-}
-
-/// Minimal two's-complement width that holds `v`.
-fn min_signed_bits(v: i128) -> u128 {
-    if v >= 0 {
-        min_bits(v) + 1 // room for the sign bit
-    } else {
-        (129 - (!v).leading_zeros()).max(1) as u128
-    }
+/// `v` is a valid bit position for a width of `n` (0 <= v < n). `n` is
+/// always a checker-bounded count (a signal width or memory depth, both
+/// <= `MAX_WIDTH`/`MAX_DEPTH`), so `to_i128_saturating` never actually
+/// saturates here except for a `v` that's already far too large to fit —
+/// exactly the "not in range" answer this function should give it.
+fn fits_in_count(v: &consteval::ConstVal, n: u128) -> bool {
+    !v.is_negative() && (v.to_i128_saturating() as u128) < n
 }
 
 fn max_unsigned(n: u128) -> String {
