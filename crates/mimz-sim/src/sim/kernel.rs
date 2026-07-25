@@ -57,10 +57,10 @@ pub struct Sim {
 /// `design.mems`: the element width, the init value returned for an unwritten
 /// or out-of-range cell, and the depth (writes past it are dropped, as in
 /// Verilog).
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct MemInfo {
     width: Width,
-    init: i128,
+    init: mimz_core::checker::consteval::ConstVal,
     depth: u128,
 }
 
@@ -108,7 +108,7 @@ impl Sim {
         for r in &design.regs {
             regs.insert(
                 r.name.clone(),
-                value::from_u128_at_width(r.reset as u128, r.width.bits, r.width.signed),
+                value::from_const_at_width(&r.reset, r.width.bits, r.width.signed),
             );
         }
         // Memories start empty (sparse): an unwritten cell reads its init value.
@@ -118,7 +118,7 @@ impl Sim {
                 mem.name.clone(),
                 MemInfo {
                     width: mem.width,
-                    init: mem.init,
+                    init: mem.init.clone(),
                     depth: mem.depth,
                 },
             );
@@ -208,11 +208,7 @@ impl Sim {
                 if reg.clock == clock && reg.edge == edge {
                     next.insert(
                         reg.name.clone(),
-                        value::from_u128_at_width(
-                            reg.reset as u128,
-                            reg.width.bits,
-                            reg.width.signed,
-                        ),
+                        value::from_const_at_width(&reg.reset, reg.width.bits, reg.width.signed),
                     );
                 }
             }
@@ -339,7 +335,7 @@ fn run_seq(
                     Some((addr_expr, None)) if env.is_mem(&lhs.base.name) => {
                         let info = env.mem_info(&lhs.base.name);
                         let addr = value::eval(env, addr_expr)?.bits_small_or_zero();
-                        let v = value::eval_ctx(env, rhs, info.map(|i| i.width.bits))?;
+                        let v = value::eval_ctx(env, rhs, info.as_ref().map(|i| i.width.bits))?;
                         // A write past the end is dropped (matches Verilog).
                         if let Some(info) = info
                             && addr < info.depth
@@ -548,10 +544,11 @@ struct CombEnv<'a> {
 }
 
 impl CombEnv<'_> {
-    /// Metadata of memory `name`, if it is one (`Copy`, so the caller is free
+    /// Metadata of memory `name`, if it is one (cloned — `init` may be an
+    /// arbitrary-width `ConstVal`, no longer `Copy` — so the caller is free
     /// of the borrow afterward).
     fn mem_info(&self, name: &str) -> Option<MemInfo> {
-        self.mem_meta.get(name).copied()
+        self.mem_meta.get(name).cloned()
     }
 }
 
@@ -571,7 +568,7 @@ impl Resolver for CombEnv<'_> {
             .get(&(name.to_string(), addr))
             .cloned()
             .unwrap_or_else(|| {
-                value::from_u128_at_width(info.init as u128, info.width.bits, info.width.signed)
+                value::from_const_at_width(&info.init, info.width.bits, info.width.signed)
             }))
     }
 
@@ -1095,5 +1092,20 @@ mod tests {
             panic!("a 200-bit signal must snapshot as Bits::Wide even before any tick");
         };
         assert_eq!(crate::sim::wide::to_decimal_string(&limbs, 200, false), "5");
+    }
+
+    #[test]
+    fn a_wide_register_resets_to_a_nonzero_literal_past_128_bits() {
+        // 1361129467683753853853498429727072845824 == 2^130 — bit 130 set,
+        // everything else 0. Reset values past the old 128-bit ceiling
+        // (BUG-13 layer 2) must fold and elaborate correctly, not just
+        // small ones (the prior test's `5`).
+        let s = sim("module M {\n  clock clk\n  reg r: bits[200] = \
+             1361129467683753853853498429727072845824\n  out y: bit\n  y = r[0]\n}\n");
+        let bits = s.peek("r").unwrap();
+        assert_eq!(
+            value::bits_to_decimal_string(&bits, 200, false),
+            "1361129467683753853853498429727072845824"
+        );
     }
 }

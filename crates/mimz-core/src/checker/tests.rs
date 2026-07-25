@@ -400,7 +400,10 @@ fn const_using_a_later_const_is_e0201() {
 
 #[test]
 fn const_overflow_is_e0202() {
-    let src = "const HUGE: int = 170141183460469231731687303715884105727 + 1\nmodule M {\n}\n";
+    // `2^127-1 + 1 = 2^127` used to overflow the old i128 ceiling; under
+    // BUG-13 layer 2's MAX_WIDTH=1,000,000 ceiling it folds cleanly (only
+    // 128 bits) — push well past the new ceiling instead.
+    let src = "const HUGE: int = 1 << 1000001\nmodule M {\n}\n";
     first_err(src, "E0202");
 }
 
@@ -649,6 +652,21 @@ fn literal_that_does_not_fit_is_e0405() {
 fn negative_literal_in_unsigned_context_is_e0405() {
     let d = first_err("module M {\n  out y: bits[8]\n  y = -1\n}\n", "E0405");
     assert!(d.help.unwrap().contains("signed"));
+}
+
+#[test]
+fn a_wide_literal_fits_a_wide_declared_width() {
+    // A 200-bit signal reset to a 130-bit literal must check clean — this
+    // was E0405 ("literal is too large") under the old i128 cap, even
+    // though 130 bits is nowhere near the checker's own MAX_WIDTH for the
+    // declared signal width (BUG-13 layer 2).
+    let src = "module M {\n  reg r: bits[200] = 1361129467683753853853498429727072845824\n  out y: bit\n  y = 0\n}\n";
+    if let Err(diags) = check_one(src) {
+        assert!(
+            diags.iter().all(|d| d.code != Some("E0405")),
+            "expected no E0405, got: {diags:?}"
+        );
+    }
 }
 
 #[test]
