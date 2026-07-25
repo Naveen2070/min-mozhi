@@ -135,31 +135,40 @@ fn instances_are_rejected_clearly() {
 
 #[test]
 fn oversized_shift_const_does_not_panic() {
-    // `1 << 200` as a bit index: raw `<<` would panic (debug) / wrap (release).
-    // The hardened evaluator must report a clean overflow error instead.
+    // `1 << 200` as a bit index: raw `<<` would panic (debug) / wrap
+    // (release). The hardened evaluator computes it cleanly (200 bits is
+    // nowhere near BUG-13 layer 2's MAX_WIDTH=1,000,000 ceiling — no
+    // overflow anymore), then the checker correctly rejects the resulting
+    // huge constant as an out-of-range index for an 8-bit signal (E0406)
+    // — still a clean error, never a panic or a silent wrap.
     let (ok, _, err) = eval_src(
         "module M {\n  in a: bits[8]\n  out y: bit\n  y = a[1 << 200]\n}\n",
         &["--in", "a=5"],
     );
     assert!(!ok, "must fail, not panic");
     assert!(
-        err.to_lowercase().contains("overflow"),
-        "expected an overflow diagnostic, got: {err}"
+        err.contains("E0406") && err.contains("out of range"),
+        "expected an out-of-range-index diagnostic, got: {err}"
     );
 }
 
 #[test]
 fn overflowing_multiply_const_does_not_panic() {
-    // Four 10-digit factors ~= 1e40, past i128::MAX (~1.7e38) → checked_mul
-    // overflows. Raw `*` would panic (debug) / wrap (release); must be clean.
+    // Four 10-digit factors ~= 1e40, past i128::MAX (~1.7e38) — raw `*`
+    // would panic (debug) / wrap (release). The hardened evaluator
+    // computes it cleanly via checked wide arithmetic (~134 bits, nowhere
+    // near BUG-13 layer 2's MAX_WIDTH=1,000,000 ceiling — no overflow
+    // anymore), then the checker correctly rejects the resulting huge
+    // constant as an invalid signal width (E0410) — still a clean error,
+    // never a panic or a silent wrap.
     let (ok, _, err) = eval_src(
         "const W: int = 9999999999 * 9999999999 * 9999999999 * 9999999999\nmodule M {\n  in a: bits[8]\n  out y: bits[W]\n  y = extend(a, W)\n}\n",
         &["--in", "a=1"],
     );
     assert!(!ok);
     assert!(
-        err.to_lowercase().contains("overflow"),
-        "expected an overflow diagnostic, got: {err}"
+        err.contains("E0410") && err.contains("not a valid width"),
+        "expected an invalid-width diagnostic, got: {err}"
     );
 }
 

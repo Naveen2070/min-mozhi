@@ -385,7 +385,7 @@ impl Emitter<'_> {
             if let Type::Array { elem, len } = &param.ty {
                 let n = consteval::eval(len, &self.env)
                     .expect("checker already validated this array's length")
-                    as u128;
+                    .to_i128_saturating() as u128;
                 arrays.insert(param.name.name.clone(), (self.width(elem), n));
             }
         }
@@ -416,9 +416,11 @@ impl Emitter<'_> {
                     // it elaborates to N independent scalar `input` ports,
                     // named `<param>_<index>`, exactly like `repeat` elaborates
                     // to N copies of hardware rather than a real loop.
-                    let n = consteval::eval(len, &self.env).expect(
-                        "checker already validated this array's length is a positive compile-time constant",
-                    );
+                    let n = consteval::eval(len, &self.env)
+                        .expect(
+                            "checker already validated this array's length is a positive compile-time constant",
+                        )
+                        .to_i128_saturating();
                     let ew = self.width(elem);
                     for i in 0..n {
                         s.push_str(&format!("        input {ew}{}_{i};\n", param.name.name));
@@ -651,7 +653,9 @@ impl Emitter<'_> {
         if i >= hi {
             return rest.to_string();
         }
-        let shadowed = self.env.insert(var.to_string(), i);
+        let shadowed = self
+            .env
+            .insert(var.to_string(), consteval::ConstVal::from_i128(i));
         let inner_rest =
             self.emit_fn_loop_unroll(var, i + 1, hi, body, rest, fname, indent, arrays, params);
         let out = self.emit_fn_stmts(body, &inner_rest, fname, indent, arrays, params);
@@ -674,7 +678,9 @@ impl Emitter<'_> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &self.env).unwrap_or(0);
+                    let val = consteval::eval(cond, &self.env)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
                     let branch = if val != 0 {
                         then.as_slice()
                     } else {
@@ -708,7 +714,9 @@ impl Emitter<'_> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &base).unwrap_or(0);
+                    let val = consteval::eval(cond, &base)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
                     let branch: &[ModuleItem] = if val != 0 {
                         then
                     } else {
@@ -744,7 +752,9 @@ impl Emitter<'_> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &self.env).unwrap_or(0);
+                    let val = consteval::eval(cond, &self.env)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
                     let branch = if val != 0 {
                         then.as_slice()
                     } else {
@@ -901,7 +911,9 @@ impl Emitter<'_> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &self.env).unwrap_or(0);
+                    let val = consteval::eval(cond, &self.env)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
                     let branch = if val != 0 {
                         then.as_slice()
                     } else {
@@ -945,10 +957,10 @@ impl Emitter<'_> {
             .get(&(child_file, target.name().name.clone()))
             .map(|env| {
                 env.iter()
-                    .filter(|&(_, &v)| v >= 0)
-                    .map(|(n, &v)| {
+                    .filter(|(_, v)| !v.is_negative())
+                    .map(|(n, v)| {
                         let kind = ExprKind::Int {
-                            value: v as u128,
+                            value: v.bits.clone(),
                             raw: v.to_string(),
                         };
                         (
@@ -1187,7 +1199,9 @@ impl Emitter<'_> {
                     self.repeat_budget -= count;
                     let mut i = lo_v;
                     while i < hi_v {
-                        let shadowed = self.env.insert(var.name.clone(), i);
+                        let shadowed = self
+                            .env
+                            .insert(var.name.clone(), consteval::ConstVal::from_i128(i));
                         // Same `depth`, not `depth + 1`: unlike `SeqStmt::If`,
                         // a `loop` introduces no new Verilog block — its body
                         // is a literal textual duplicate of hand-written code,
@@ -1255,7 +1269,7 @@ impl Emitter<'_> {
         match ty {
             Type::Bit => String::new(),
             Type::Bits(e) => {
-                if let Ok(w) = consteval::eval(e, &self.env)
+                if let Ok(w) = consteval::eval(e, &self.env).map(|v| v.to_i128_saturating())
                     && w >= 1
                 {
                     return format!("[{}:0] ", w - 1);
@@ -1265,7 +1279,7 @@ impl Emitter<'_> {
                 format!("[({we})-1:0] ")
             }
             Type::Signed(e) => {
-                if let Ok(w) = consteval::eval(e, &self.env)
+                if let Ok(w) = consteval::eval(e, &self.env).map(|v| v.to_i128_saturating())
                     && w >= 1
                 {
                     return format!("signed [{}:0] ", w - 1);
@@ -1437,11 +1451,11 @@ impl Emitter<'_> {
                 signed: false,
             }),
             Type::Bits(e) => Some(Kind {
-                width: consteval::eval(e, &self.env).ok()? as u32,
+                width: consteval::eval(e, &self.env).ok()?.to_i128_saturating() as u32,
                 signed: false,
             }),
             Type::Signed(e) => Some(Kind {
-                width: consteval::eval(e, &self.env).ok()? as u32,
+                width: consteval::eval(e, &self.env).ok()?.to_i128_saturating() as u32,
                 signed: true,
             }),
             Type::Named(id) => {
@@ -1571,21 +1585,30 @@ impl Emitter<'_> {
     /// For non-literal expressions, falls back to plain `expr()`.
     fn sized_field_expr(&mut self, e: &Expr, fty: &Type) -> String {
         if let ExprKind::Int { value, .. } = &e.kind {
-            let v = *value;
             match fty {
                 Type::Bit => {
                     // 1-bit field: emit as 1'b0 / 1'b1.
-                    return format!("1'b{}", v & 1);
+                    let lsb = match value {
+                        crate::bits::Bits::Small(v) => v & 1,
+                        crate::bits::Bits::Wide(limbs) => {
+                            (limbs.first().copied().unwrap_or(0) & 1) as u128
+                        }
+                    };
+                    return format!("1'b{lsb}");
                 }
                 Type::Bits(w_expr) => {
                     if let Ok(w) = consteval::eval(w_expr, &self.env) {
-                        let w = w as u128;
+                        let w = w.to_i128_saturating() as u128;
+                        let display_width = crate::bits::natural_width(value).max(1);
+                        let v = crate::bits::bits_to_decimal_string(value, display_width, false);
                         return format!("{w}'d{v}");
                     }
                 }
                 Type::Signed(w_expr) => {
                     if let Ok(w) = consteval::eval(w_expr, &self.env) {
-                        let w = w as u128;
+                        let w = w.to_i128_saturating() as u128;
+                        let display_width = crate::bits::natural_width(value).max(1);
+                        let v = crate::bits::bits_to_decimal_string(value, display_width, false);
                         return format!("{w}'sd{v}");
                     }
                 }
@@ -1704,7 +1727,7 @@ impl Emitter<'_> {
         // nor (at an instantiation site) `inst_args` can resolve, the
         // caller's own raw expression (`param_symbolic`) — never silently
         // defaulted when an arg was given.
-        let mut param_env: HashMap<String, i128> = HashMap::new();
+        let mut param_env: HashMap<String, consteval::ConstVal> = HashMap::new();
         let mut param_symbolic: HashMap<String, Expr> = HashMap::new();
         for p in &bdecl.params {
             let arg = args.iter().find(|a| a.name.name == p.name.name);
@@ -1731,7 +1754,7 @@ impl Emitter<'_> {
         // We do this by building a temporary Env that extends self.env.
         let mut merged_env = self.env.clone();
         for (k, v) in &param_env {
-            merged_env.insert(k.clone(), *v);
+            merged_env.insert(k.clone(), v.clone());
         }
         // Resolve each field's type: evaluate width expressions fully to
         // integer literals using the merged env (bundle params + module
@@ -1778,7 +1801,7 @@ impl Emitter<'_> {
         if let Ok(w) = consteval::eval(e, merged_env) {
             return Expr {
                 kind: ExprKind::Int {
-                    value: w as u128,
+                    value: w.bits.clone(),
                     raw: w.to_string(),
                 },
                 span: e.span,
@@ -1788,7 +1811,7 @@ impl Emitter<'_> {
         match consteval::eval(&substituted, merged_env) {
             Ok(w) => Expr {
                 kind: ExprKind::Int {
-                    value: w as u128,
+                    value: w.bits.clone(),
                     raw: w.to_string(),
                 },
                 span: e.span,
@@ -1807,10 +1830,10 @@ impl Emitter<'_> {
 fn substitute_expr(e: &Expr, env: &consteval::Env, symbolic: &HashMap<String, Expr>) -> Expr {
     match &e.kind {
         ExprKind::Ident(name) => {
-            if let Some(&v) = env.get(name.as_str()) {
+            if let Some(v) = env.get(name.as_str()) {
                 Expr {
                     kind: ExprKind::Int {
-                        value: v as u128,
+                        value: v.bits.clone(),
                         raw: v.to_string(),
                     },
                     span: e.span,
@@ -1915,7 +1938,7 @@ fn elem_width(ty: &Type, env: &Env) -> u32 {
         Type::Bit => 1,
         Type::Bits(e) | Type::Signed(e) => consteval::eval(e, env)
             .expect("checker already validated this array's element width")
-            as u32,
+            .to_i128_saturating() as u32,
         _ => 1, // unreachable: array/mem elements are never Array/Bundle/Named
     }
 }
@@ -2114,7 +2137,7 @@ mod tests {
                 },
                 ty: Type::Bits(Box::new(Expr {
                     kind: ExprKind::Int {
-                        value: 8,
+                        value: 8u128.into(),
                         raw: "8".to_string(),
                     },
                     span: Span::new(0, 0),
@@ -2128,7 +2151,7 @@ mod tests {
                 },
                 ty: Type::Signed(Box::new(Expr {
                     kind: ExprKind::Int {
-                        value: 4,
+                        value: 4u128.into(),
                         raw: "4".to_string(),
                     },
                     span: Span::new(0, 0),

@@ -40,7 +40,7 @@ use crate::width_rules::Kind;
 pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Kind {
     match &expr.kind {
         ExprKind::Int { value, .. } => Kind {
-            width: min_width_for(*value),
+            width: min_width_for(value),
             signed: false,
         },
         ExprKind::Bool(_) => Kind {
@@ -100,12 +100,8 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Kind {
 /// `emit_verilog`; this is a one-line arithmetic helper, not a rule with
 /// any drift risk (there is nothing to "get wrong" differently between
 /// two copies of `128 - value.leading_zeros()`).
-fn min_width_for(value: u128) -> u32 {
-    if value == 0 {
-        1
-    } else {
-        (128 - value.leading_zeros()).max(1)
-    }
+fn min_width_for(value: &crate::bits::Bits) -> u32 {
+    crate::bits::natural_width(value)
 }
 
 /// True iff `kind` is a bare integer literal — the checker's untyped
@@ -129,7 +125,10 @@ fn is_bare_int(kind: &ExprKind) -> bool {
 /// this call site.
 fn const_fold(expr: &Expr) -> u32 {
     match &expr.kind {
-        ExprKind::Int { value, .. } => *value as u32,
+        ExprKind::Int { value, .. } => match value {
+            crate::bits::Bits::Small(v) => *v as u32,
+            crate::bits::Bits::Wide(limbs) => limbs.first().copied().unwrap_or(0) as u32,
+        },
         other => panic!(
             "emit_verilog::kinds::const_fold: {other:?} is not a literal — \
              the checker guarantees slice bounds/replication counts are \
@@ -237,7 +236,7 @@ mod tests {
     fn int(value: u128) -> Expr {
         Expr {
             kind: ExprKind::Int {
-                value,
+                value: value.into(),
                 raw: value.to_string(),
             },
             span: Span::new(0, 0),
