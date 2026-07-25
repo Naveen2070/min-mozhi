@@ -217,7 +217,7 @@ impl Parser {
                 "__Valid",
                 Expr {
                     kind: ExprKind::Int {
-                        value: 1,
+                        value: 1u128.into(),
                         raw: "1".into(),
                     },
                     span: q_span,
