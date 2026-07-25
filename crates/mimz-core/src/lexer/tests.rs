@@ -2,6 +2,7 @@
 //! operators, newline policy, and teaching rejections.
 
 use super::*;
+use crate::bits::Bits;
 use token::Kw;
 
 fn kinds(src: &str) -> Vec<TokKind> {
@@ -28,11 +29,29 @@ fn tamil_identifiers_work() {
 #[test]
 fn numbers() {
     assert!(matches!(
-        kinds("0b1010_0001")[0],
-        TokKind::Int { value: 0xA1, .. }
+        &kinds("0b1010_0001")[0],
+        TokKind::Int { value, .. } if *value == Bits::Small(0xA1)
     ));
-    assert!(matches!(kinds("0xA1")[0], TokKind::Int { value: 0xA1, .. }));
-    assert!(matches!(kinds("161")[0], TokKind::Int { value: 161, .. }));
+    assert!(matches!(
+        &kinds("0xA1")[0],
+        TokKind::Int { value, .. } if *value == Bits::Small(0xA1)
+    ));
+    assert!(matches!(
+        &kinds("161")[0],
+        TokKind::Int { value, .. } if *value == Bits::Small(161)
+    ));
+}
+
+#[test]
+fn a_literal_wider_than_128_bits_lexes_without_a_size_cap() {
+    // 40 hex digits = 160 bits — well past the OLD u128 ceiling, well
+    // under MAX_WIDTH. Must lex cleanly, not E1004.
+    let src = "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
+    let toks = lex(src).expect("a wide hex literal must lex successfully");
+    let TokKind::Int { value, .. } = &toks[0].kind else {
+        panic!("expected an Int token");
+    };
+    assert!(matches!(value, Bits::Wide(_)));
 }
 
 #[test]
@@ -50,7 +69,10 @@ fn dont_care_binary_literal_lexes_to_masked_int() {
     // A plain binary literal is still an `Int` — no regression.
     assert!(matches!(
         kinds("0b101")[0],
-        TokKind::Int { value: 0b101, .. }
+        TokKind::Int {
+            value: crate::bits::Bits::Small(0b101),
+            ..
+        }
     ));
 }
 

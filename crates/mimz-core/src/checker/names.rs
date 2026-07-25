@@ -223,8 +223,9 @@ impl<'a> Checker<'a> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, env).unwrap_or(0);
-                    let branch = if val != 0 {
+                    let val =
+                        consteval::eval(cond, env).unwrap_or_else(|_| consteval::ConstVal::zero());
+                    let branch = if !val.is_zero() {
                         then.as_slice()
                     } else {
                         els.as_deref().unwrap_or(&[])
@@ -368,7 +369,10 @@ impl<'a> Checker<'a> {
                     // body. Its per-iteration values matter only to
                     // elaboration (later slice) — names resolve the same
                     // for every iteration, so one walk with `lo` suffices.
-                    let shadowed = env.insert(r.var.name.clone(), lo.unwrap_or(0));
+                    let shadowed = env.insert(
+                        r.var.name.clone(),
+                        consteval::ConstVal::from_i128(lo.unwrap_or(0)),
+                    );
                     self.walk_items(file, sc, env, &r.items);
                     match shadowed {
                         Some(v) => env.insert(r.var.name.clone(), v),
@@ -448,7 +452,10 @@ impl<'a> Checker<'a> {
                     // (E0108). Give it a real (body-local) `Bind::Reg` entry
                     // instead, via the same clone-and-extend scope idiom
                     // `ExprKind::Match`'s per-arm bindings already use above.
-                    let shadowed_var = env.insert(sl.var.name.clone(), lo_val.unwrap_or(0));
+                    let shadowed_var = env.insert(
+                        sl.var.name.clone(),
+                        consteval::ConstVal::from_i128(lo_val.unwrap_or(0)),
+                    );
                     let mut body_sc = Scope {
                         names: sc.names.clone(),
                     };
@@ -469,7 +476,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::ConstIf { cond, then, els, span } => {
                     match consteval::eval(cond, env) {
                         Ok(val) => {
-                            let branch = if val != 0 {
+                            let branch = if !val.is_zero() {
                                 then.as_slice()
                             } else {
                                 els.as_deref().unwrap_or(&[])
@@ -550,7 +557,10 @@ impl<'a> Checker<'a> {
                     // same one-representative-walk model as `ModuleItem::Repeat`
                     // (per-iteration values matter only to elaboration, not name
                     // resolution).
-                    let shadowed = env.insert(var.name.clone(), lo_val.unwrap_or(0));
+                    let shadowed = env.insert(
+                        var.name.clone(),
+                        consteval::ConstVal::from_i128(lo_val.unwrap_or(0)),
+                    );
                     self.seq_stmts(file, sc, env, module_items, body);
                     match shadowed {
                         Some(v) => env.insert(var.name.clone(), v),
@@ -645,7 +655,7 @@ impl<'a> Checker<'a> {
     /// Returns the value if it did.
     fn const_pos(&mut self, file: usize, env: &Env, e: &Expr) -> Option<i128> {
         match consteval::eval(e, env) {
-            Ok(v) => Some(v),
+            Ok(v) => Some(v.to_i128_saturating()),
             Err(d) => {
                 self.diags.push(d.with_file(file));
                 None
@@ -1593,7 +1603,10 @@ impl<'a> Checker<'a> {
                     // rather than silently defaulting to 0.
                     let lo_val = self.const_pos(file, env, lo);
                     self.const_pos(file, env, hi);
-                    let shadowed = env.insert(var.name.clone(), lo_val.unwrap_or(0));
+                    let shadowed = env.insert(
+                        var.name.clone(),
+                        consteval::ConstVal::from_i128(lo_val.unwrap_or(0)),
+                    );
                     // Fresh scope clone: same branch-local-scope discipline as
                     // the `If` arm above — a `let` inside the loop body must
                     // not leak past it, same soundness rule as an if-branch.

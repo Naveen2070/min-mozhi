@@ -21,7 +21,7 @@ pub enum ExprKind {
     /// so the emitter can preserve the writer's chosen base.
     Int {
         /// The literal's numeric value.
-        value: u128,
+        value: crate::bits::Bits,
         /// The literal exactly as written (`0b1010`, `0xFF`, `42`, …).
         raw: String,
     },
@@ -164,7 +164,7 @@ pub enum Pattern {
     /// An exact integer literal — matches `s` iff `s == value`.
     Int {
         /// The literal's numeric value.
-        value: u128,
+        value: crate::bits::Bits,
         /// The literal exactly as written.
         raw: String,
     },

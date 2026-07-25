@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::ast::{Builtin, ExprKind, FnStmt, ForEachSource, ModuleItem, TopItem, Type};
+use crate::bits::Bits;
 use crate::lexer::lex;
 
 fn parse_ok(src: &str) -> File {
@@ -194,7 +195,7 @@ fn bit_question_desugars_to_builtin_valid_bundle() {
     assert_eq!(name.name.name, "__Valid");
     assert_eq!(args.len(), 1);
     assert_eq!(args[0].name.name, "N");
-    assert!(matches!(args[0].value.kind, ExprKind::Int { value: 1, .. }));
+    assert!(matches!(&args[0].value.kind, ExprKind::Int { value, .. } if *value == Bits::Small(1)));
 }
 
 #[test]
@@ -210,7 +211,7 @@ fn bits_n_question_desugars_with_the_width_expr() {
         panic!("expected Type::Bundle, got {ty:?}")
     };
     assert_eq!(name.name.name, "__Valid");
-    assert!(matches!(args[0].value.kind, ExprKind::Int { value: 8, .. }));
+    assert!(matches!(&args[0].value.kind, ExprKind::Int { value, .. } if *value == Bits::Small(8)));
 }
 
 #[test]
@@ -226,7 +227,7 @@ fn signed_n_question_desugars_to_valid_signed() {
         panic!("expected Type::Bundle, got {ty:?}")
     };
     assert_eq!(name.name.name, "__ValidSigned");
-    assert!(matches!(args[0].value.kind, ExprKind::Int { value: 8, .. }));
+    assert!(matches!(&args[0].value.kind, ExprKind::Int { value, .. } if *value == Bits::Small(8)));
 }
 
 #[test]
@@ -261,7 +262,7 @@ fn mem_declaration_still_parses_to_the_same_shape_after_array_type_grammar_lands
         "mem's element type must stay a scalar Type::Bits, not become Type::Array — got {ty:?}"
     );
     // `depth` is still a plain Expr (the `4`), not folded into `ty`.
-    assert!(matches!(depth.kind, ExprKind::Int { value: 4, .. }));
+    assert!(matches!(&depth.kind, ExprKind::Int { value, .. } if *value == Bits::Small(4)));
 }
 
 #[test]
@@ -556,7 +557,7 @@ fn replication_parses_to_replicate() {
     let ExprKind::Replicate { count, parts } = &rhs.kind else {
         panic!("`{{2{{a}}}}` must parse as replication")
     };
-    assert!(matches!(&count.kind, ExprKind::Int { value: 2, .. }));
+    assert!(matches!(&count.kind, ExprKind::Int { value, .. } if *value == Bits::Small(2)));
     assert_eq!(parts.len(), 1, "one inner part");
 }
 
@@ -691,8 +692,8 @@ fn parses_loop_inside_on_block() {
         panic!("expected Loop")
     };
     assert_eq!(var.name, "i");
-    assert!(matches!(lo.kind, ExprKind::Int { value: 0, .. }));
-    assert!(matches!(hi.kind, ExprKind::Int { value: 4, .. }));
+    assert!(matches!(&lo.kind, ExprKind::Int { value, .. } if *value == Bits::Small(0)));
+    assert!(matches!(&hi.kind, ExprKind::Int { value, .. } if *value == Bits::Small(4)));
     assert_eq!(body.len(), 1);
 }
 
@@ -716,8 +717,8 @@ fn sync_loop_parses() {
     assert_eq!(sl.clock.name, "clk");
     assert!(matches!(sl.edge, Edge::Rise));
     assert_eq!(sl.var.name, "i");
-    assert!(matches!(sl.lo.kind, ExprKind::Int { value: 0, .. }));
-    assert!(matches!(sl.hi.kind, ExprKind::Int { value: 8, .. }));
+    assert!(matches!(&sl.lo.kind, ExprKind::Int { value, .. } if *value == Bits::Small(0)));
+    assert!(matches!(&sl.hi.kind, ExprKind::Int { value, .. } if *value == Bits::Small(8)));
     assert_eq!(sl.result_name.name, "result");
     assert!(matches!(sl.result_ty, Type::Signed(_)));
     assert_eq!(sl.body.len(), 1);
@@ -739,8 +740,8 @@ fn parses_loop_inside_fn_body() {
         panic!("expected Loop")
     };
     assert_eq!(var.name, "i");
-    assert!(matches!(lo.kind, ExprKind::Int { value: 0, .. }));
-    assert!(matches!(hi.kind, ExprKind::Int { value: 4, .. }));
+    assert!(matches!(&lo.kind, ExprKind::Int { value, .. } if *value == Bits::Small(0)));
+    assert!(matches!(&hi.kind, ExprKind::Int { value, .. } if *value == Bits::Small(4)));
     assert_eq!(body.len(), 1);
     assert!(matches!(body[0], FnStmt::If { .. }));
 }

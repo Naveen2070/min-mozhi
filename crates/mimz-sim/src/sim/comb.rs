@@ -268,7 +268,7 @@ pub fn eval_outputs(
                                 b as u32,
                                 Expr {
                                     kind: ast::ExprKind::Int {
-                                        value: bit,
+                                        value: bit.into(),
                                         raw: bit.to_string(),
                                     },
                                     span,
@@ -283,7 +283,7 @@ pub fn eval_outputs(
                                     base: Box::new(rhs.clone()),
                                     index: Box::new(Expr {
                                         kind: ast::ExprKind::Int {
-                                            value: rhs_bit,
+                                            value: rhs_bit.into(),
                                             raw: rhs_bit.to_string(),
                                         },
                                         span,

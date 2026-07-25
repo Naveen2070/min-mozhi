@@ -93,7 +93,7 @@ fn lower_double_flop_in_on_block(on: &OnBlock) -> Option<(Vec<ModuleItem>, OnBlo
             ty: Type::Bit,
             reset: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: 0u128.into(),
                     raw: "0".into(),
                 },
                 span: sp,
@@ -159,7 +159,7 @@ fn lower_pulse(wire_name: &Ident, wire_ty: &Type, args: &[Expr]) -> Vec<ModuleIt
 
     let zero = || Expr {
         kind: ExprKind::Int {
-            value: 0,
+            value: 0u128.into(),
             raw: "0".into(),
         },
         span: sp,

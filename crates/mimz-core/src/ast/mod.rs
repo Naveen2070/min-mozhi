@@ -1069,14 +1069,14 @@ mod tests {
         let _ty = Type::Array {
             elem: Box::new(Type::Bits(Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp,
             }))),
             len: Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: 4,
+                    value: crate::bits::Bits::Small(4),
                     raw: "4".into(),
                 },
                 span: sp,
@@ -1085,14 +1085,14 @@ mod tests {
         let _lit = ExprKind::ArrayLit(vec![
             Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp,
             },
             Expr {
                 kind: ExprKind::Int {
-                    value: 1,
+                    value: crate::bits::Bits::Small(1),
                     raw: "1".into(),
                 },
                 span: sp,
@@ -1109,7 +1109,7 @@ mod tests {
         };
         let int = |v: u128| Expr {
             kind: ExprKind::Int {
-                value: v,
+                value: v.into(),
                 raw: v.to_string(),
             },
             span: sp,
