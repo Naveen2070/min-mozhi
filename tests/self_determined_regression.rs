@@ -53,9 +53,10 @@ fn module_ports(file: &ast::File) -> (PortList, PortList) {
         if let ast::ModuleItem::Port { dir, name, ty } = item {
             let w = match ty {
                 ast::Type::Bit => 1,
-                ast::Type::Bits(e) | ast::Type::Signed(e) => {
-                    consteval::eval(e, &empty_env).expect("literal width") as u32
-                }
+                ast::Type::Bits(e) | ast::Type::Signed(e) => consteval::eval(e, &empty_env)
+                    .expect("literal width")
+                    .to_i128_saturating()
+                    as u32,
                 other => panic!("module_ports: unsupported port type {other:?}"),
             };
             match dir {

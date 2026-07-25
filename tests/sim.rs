@@ -542,6 +542,42 @@ module M {
     );
 }
 
+/// End-to-end (BUG-13 layer 2): a `const` past the old ~127-bit ceiling,
+/// used as BOTH a register's reset value and a runtime comparison operand,
+/// must fold identically in both positions — proving `ConstVal`/`Reg.reset`
+/// carry the same arbitrary-width value all the way from the checker's
+/// const-eval through elaboration to the kernel's comparison.
+#[test]
+fn a_wide_const_folds_through_the_full_pipeline_and_matches_a_wide_reset() {
+    use std::collections::BTreeMap;
+
+    use mimz::sim::elaborate::elaborate;
+    use mimz::sim::kernel::Sim;
+
+    let src = "
+module M {
+  clock clk
+  reset rst
+  const BIG: int = 1361129467683753853853498429727072845824
+  reg r: bits[200] = BIG
+  out eq: bit
+  on rise(clk) { r <- r }
+  eq = r == BIG
+}
+";
+
+    let file = mimz::parser::parse(mimz::lexer::lex(src).expect("lexes")).expect("parses");
+    mimz::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
+    let sim = Sim::new(design);
+
+    assert_eq!(
+        sim.peek("eq").unwrap(),
+        mimz::sim::value::Bits::Small(1),
+        "r's reset value and BIG must be the exact same 130-bit constant"
+    );
+}
+
 /// Headless no-op `EmulationHost` for `run_test_ok` below — this test file
 /// never exercises `sim{}` emulation peripherals, it only needs something to
 /// satisfy `run_test`'s `host` parameter (mirrors `NullHost` in
