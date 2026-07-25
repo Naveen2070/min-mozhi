@@ -169,7 +169,7 @@ impl Parser {
                             other,
                             Expr {
                                 kind: ExprKind::Int {
-                                    value: 0,
+                                    value: 0u128.into(),
                                     raw: "0".into(),
                                 },
                                 span: name.span,

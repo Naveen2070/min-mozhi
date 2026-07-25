@@ -19,6 +19,7 @@ pub fn nfc_normalize(s: &str) -> String {
 
 pub mod analysis;
 pub mod ast;
+pub mod bits;
 pub mod checker;
 pub mod diag;
 pub mod emit_verilog;
@@ -33,6 +34,7 @@ pub mod span;
 pub mod stdlib;
 pub mod translate;
 pub mod version;
+pub mod wide;
 pub mod width_rules;
 
 #[cfg(test)]

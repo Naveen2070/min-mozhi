@@ -77,7 +77,7 @@ pub(super) struct Checker<'a> {
     /// builtin bundles' file index (`build_symbols`) — `resolve_bundle_fields`
     /// (`widths/mod.rs`) indexes this array directly by a bundle's declaring
     /// file with no bounds check, so that index must stay in range.
-    file_consts: Vec<HashMap<String, i128>>,
+    file_consts: Vec<HashMap<String, consteval::ConstVal>>,
     /// (declaring file, module name) -> its name table, built by pass 3
     /// (`names.rs`) and reused by pass 4 (`widths.rs`) and pass 5
     /// (`drivers.rs`). Keyed by file so two same-named modules from

@@ -31,7 +31,7 @@ pub mod kernel;
 pub mod run;
 pub mod trace;
 pub mod vcd;
-pub(crate) mod wide;
+pub mod wide;
 
 pub use host::{Direction, EmulationHost};
 pub use value::Val;

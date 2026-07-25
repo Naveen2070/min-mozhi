@@ -269,7 +269,7 @@ impl Lexer<'_> {
             return;
         }
 
-        match u128::from_str_radix(&digits, radix) {
+        match parse_digits_to_bits(&digits, radix) {
             Ok(value) => self.push(TokKind::Int { value, raw }, start),
             Err(_) => {
                 let what = match radix {
@@ -405,6 +405,45 @@ impl Lexer<'_> {
         };
         self.push(kind, start);
     }
+}
+
+/// Parse `digits` (already validated as `_`-free `[0-9a-zA-Z]*` by the
+/// caller) in `radix` into a `Bits` of whatever width the value actually
+/// needs — no artificial size cap. The lexer itself never rejects a
+/// literal for being "too large", only for containing an invalid digit;
+/// `width_rules::MAX_WIDTH` is enforced later, at the checker's `fit()`
+/// (BUG-13 layer 2).
+fn parse_digits_to_bits(digits: &str, radix: u32) -> Result<crate::bits::Bits, ()> {
+    if radix != 10 {
+        // Binary/hex: each digit is exactly `bits_per_digit` bits (1 or
+        // 4), both of which divide 64 evenly — so a digit's bits never
+        // straddle a limb boundary, and one direct OR per digit (no
+        // shifting/carrying) builds the whole vector.
+        let bits_per_digit = if radix == 2 { 1 } else { 4 };
+        let total_width = (digits.len() as u32) * bits_per_digit;
+        let mut limbs = crate::wide::zeros(total_width.max(1));
+        for (i, c) in digits.chars().enumerate() {
+            let digit = c.to_digit(radix).ok_or(())? as u64;
+            let bit_pos = (digits.len() - 1 - i) as u32 * bits_per_digit;
+            let (limb, off) = ((bit_pos / 64) as usize, bit_pos % 64);
+            limbs[limb] |= digit << off;
+        }
+        return Ok(crate::bits::from_limbs(limbs, total_width.max(1)));
+    }
+    // Decimal: no per-digit bit-packing trick exists (10 isn't a power of
+    // two), so build it the arithmetic way — value = value*10 + digit —
+    // at a safe upper-bound width computed up front from the digit count
+    // (log2(10) ≈ 3.322 bits/digit; `*4 + 8` is a deliberately generous
+    // overestimate, cheap insurance against an off-by-one undercount) so
+    // no per-digit regrowth/reallocation is needed.
+    let safe_width = (digits.len() as u32) * 4 + 8;
+    let mut limbs = crate::wide::zeros(safe_width);
+    for c in digits.chars() {
+        let digit = c.to_digit(10).ok_or(())? as u64;
+        limbs = crate::wide::mul(&limbs, &[10], safe_width);
+        limbs = crate::wide::add(&limbs, &[digit], safe_width);
+    }
+    Ok(crate::bits::from_limbs(limbs, safe_width))
 }
 
 /// Newline policy (spec/02 section 2): collapse runs, drop leading newlines, and

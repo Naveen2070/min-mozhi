@@ -27,7 +27,7 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
     };
     let int_expr = |v: u128| Expr {
         kind: ExprKind::Int {
-            value: v,
+            value: v.into(),
             raw: v.to_string(),
         },
         span: sp,
@@ -416,7 +416,7 @@ mod tests {
         };
         let int = |v: u128| Expr {
             kind: ExprKind::Int {
-                value: v,
+                value: v.into(),
                 raw: v.to_string(),
             },
             span: sp,
@@ -495,7 +495,7 @@ mod tests {
         };
         let int = |v: u128| Expr {
             kind: ExprKind::Int {
-                value: v,
+                value: v.into(),
                 raw: v.to_string(),
             },
             span: sp,
@@ -532,8 +532,9 @@ mod tests {
             panic!("expected an int literal arg")
         };
         assert_eq!(
-            *value, 12,
-            "counter width must be clog2(hi) = clog2(12), got clog2({value})"
+            *value,
+            crate::bits::Bits::Small(12),
+            "counter width must be clog2(hi) = clog2(12), got clog2({value:?})"
         );
     }
 
@@ -554,7 +555,7 @@ mod tests {
         };
         let int = |v: u128| Expr {
             kind: ExprKind::Int {
-                value: v,
+                value: v.into(),
                 raw: v.to_string(),
             },
             span: sp,

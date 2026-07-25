@@ -199,7 +199,7 @@ fn e0505_renders_tamil() {
 /// A name-less template (E0202 const overflow) localizes with no `{name}` slot.
 #[test]
 fn e0202_renders_tanglish_nameless() {
-    let src = "thoguthi M {\n  maarili HUGE: int = 170141183460469231731687303715884105727 + 1\n  veliyeedu y: bit\n  y = 0\n}\n";
+    let src = "thoguthi M {\n  maarili HUGE: int = 1 << 1000001\n  veliyeedu y: bit\n  y = 0\n}\n";
     let err = check_stderr(src, None);
     assert!(
         err.contains("error[E0202]: Maariliyin kanakkeedu"),

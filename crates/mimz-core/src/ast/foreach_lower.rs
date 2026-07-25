@@ -64,7 +64,7 @@ pub fn array_like_len_fn(name: &str, params: &[FnParam]) -> Option<(Type, Expr)>
 fn zero(span: Span) -> Expr {
     Expr {
         kind: ExprKind::Int {
-            value: 0,
+            value: 0u128.into(),
             raw: "0".into(),
         },
         span,
@@ -141,7 +141,7 @@ fn subst_expr(e: &Expr, target: &str, replacement: &Expr) -> Expr {
     let kind = match &e.kind {
         ExprKind::Ident(name) if name == target => return replacement.clone(),
         ExprKind::Int { value, raw } => ExprKind::Int {
-            value: *value,
+            value: value.clone(),
             raw: raw.clone(),
         },
         ExprKind::Bool(b) => ExprKind::Bool(*b),
@@ -626,7 +626,7 @@ mod tests {
                 lo: super::zero(sp()),
                 hi: Expr {
                     kind: ExprKind::Int {
-                        value: 4,
+                        value: crate::bits::Bits::Small(4),
                         raw: "4".into(),
                     },
                     span: sp(),
@@ -648,14 +648,14 @@ mod tests {
             ty: Type::Array {
                 elem: Box::new(Type::Bits(Box::new(Expr {
                     kind: ExprKind::Int {
-                        value: 8,
+                        value: crate::bits::Bits::Small(8),
                         raw: "8".into(),
                     },
                     span: sp(),
                 }))),
                 len: Box::new(Expr {
                     kind: ExprKind::Int {
-                        value: 8,
+                        value: crate::bits::Bits::Small(8),
                         raw: "8".into(),
                     },
                     span: sp(),
@@ -719,21 +719,21 @@ mod tests {
             name: id("m"),
             ty: Type::Bits(Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             })),
             depth: Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             },
             init: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
@@ -783,21 +783,21 @@ mod tests {
             name: id("arr"),
             ty: Type::Bits(Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             })),
             depth: Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             },
             init: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
@@ -807,14 +807,14 @@ mod tests {
             var: id("v"),
             lo: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
             },
             hi: Expr {
                 kind: ExprKind::Int {
-                    value: 4,
+                    value: crate::bits::Bits::Small(4),
                     raw: "4".into(),
                 },
                 span: sp(),
@@ -928,21 +928,21 @@ mod tests {
             name: id("arr"),
             ty: Type::Bits(Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             })),
             depth: Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             },
             init: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
@@ -952,14 +952,14 @@ mod tests {
             var: id("v"),
             lo: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
             },
             hi: Expr {
                 kind: ExprKind::Int {
-                    value: 4,
+                    value: crate::bits::Bits::Small(4),
                     raw: "4".into(),
                 },
                 span: sp(),
@@ -1011,21 +1011,21 @@ mod tests {
             name: id("arr"),
             ty: Type::Bits(Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             })),
             depth: Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             },
             init: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
@@ -1038,14 +1038,14 @@ mod tests {
             var: id("i"),
             lo: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
             },
             hi: Expr {
                 kind: ExprKind::Int {
-                    value: 4,
+                    value: crate::bits::Bits::Small(4),
                     raw: "4".into(),
                 },
                 span: sp(),
@@ -1053,14 +1053,14 @@ mod tests {
             result_name: id("result"),
             result_ty: Type::Bits(Box::new(Expr {
                 kind: ExprKind::Int {
-                    value: 8,
+                    value: crate::bits::Bits::Small(8),
                     raw: "8".into(),
                 },
                 span: sp(),
             })),
             result_init: Expr {
                 kind: ExprKind::Int {
-                    value: 0,
+                    value: crate::bits::Bits::Small(0),
                     raw: "0".into(),
                 },
                 span: sp(),
@@ -1111,14 +1111,14 @@ mod tests {
             ty: Type::Array {
                 elem: Box::new(Type::Bits(Box::new(Expr {
                     kind: ExprKind::Int {
-                        value: 8,
+                        value: crate::bits::Bits::Small(8),
                         raw: "8".into(),
                     },
                     span: sp(),
                 }))),
                 len: Box::new(Expr {
                     kind: ExprKind::Int {
-                        value: 4,
+                        value: crate::bits::Bits::Small(4),
                         raw: "4".into(),
                     },
                     span: sp(),

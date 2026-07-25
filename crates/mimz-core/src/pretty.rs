@@ -833,10 +833,10 @@ impl Pretty {
         } = &speed.kind
             && let ExprKind::Int { value, .. } = &rhs.kind
         {
-            let unit = match *value {
-                1 => Some("hz"),
-                1_000 => Some("khz"),
-                1_000_000 => Some("mhz"),
+            let unit = match value {
+                crate::bits::Bits::Small(1) => Some("hz"),
+                crate::bits::Bits::Small(1_000) => Some("khz"),
+                crate::bits::Bits::Small(1_000_000) => Some("mhz"),
                 _ => None,
             };
             if let Some(unit) = unit {

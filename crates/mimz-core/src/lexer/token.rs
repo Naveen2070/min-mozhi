@@ -127,7 +127,7 @@ pub enum TokKind {
     /// Integer literal; `raw` preserves the written form (`0b1010`, `0xFF`).
     Int {
         /// The parsed numeric value.
-        value: u128,
+        value: crate::bits::Bits,
         /// The original written form, as it appeared in source.
         raw: String,
     },

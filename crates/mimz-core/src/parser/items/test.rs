@@ -283,7 +283,7 @@ impl Parser {
                 rhs: Box::new(Expr {
                     span: unit_span.join(end),
                     kind: ExprKind::Int {
-                        value: mult,
+                        value: mult.into(),
                         raw: mult.to_string(),
                     },
                 }),
@@ -315,7 +315,18 @@ impl Parser {
                 TokKind::Ident(_) => BindArgValue::Ident(self.ident("a config value")?.name),
                 TokKind::Int { value, .. } => {
                     self.bump();
-                    BindArgValue::Int(value)
+                    match &value {
+                        crate::bits::Bits::Small(v) => BindArgValue::Int(*v),
+                        crate::bits::Bits::Wide(_) => {
+                            self.error(
+                                arg_start,
+                                "E1114",
+                                "this config value is too large (peripheral config \
+                                 values fit in 128 bits)",
+                            );
+                            return None;
+                        }
+                    }
                 }
                 other => {
                     let found = kind_name(&other);

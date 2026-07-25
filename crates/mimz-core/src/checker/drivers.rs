@@ -167,7 +167,7 @@ impl<'a> Checker<'a> {
         let bound = match self.default_binding(file, m, false) {
             Some(binding) => {
                 for (k, v) in binding {
-                    env.insert(k, v);
+                    env.insert(k, consteval::ConstVal::from_i128(v));
                 }
                 true
             }
@@ -262,8 +262,8 @@ impl<'a> Checker<'a> {
                 ModuleItem::Inst(inst) => self.inst_edges(dcx, inst, summaries, in_progress),
                 ModuleItem::Repeat(r) => {
                     let (Ok(lo), Ok(hi)) = (
-                        consteval::eval(&r.lo, &dcx.env),
-                        consteval::eval(&r.hi, &dcx.env),
+                        consteval::eval(&r.lo, &dcx.env).map(|v| v.to_i128_saturating()),
+                        consteval::eval(&r.hi, &dcx.env).map(|v| v.to_i128_saturating()),
                     ) else {
                         // Bounds unevaluable (reported by pass 3, or no
                         // binding): one unbound walk — extents degrade.
@@ -278,7 +278,9 @@ impl<'a> Checker<'a> {
                     }
                     dcx.repeat_budget -= (hi - lo).max(0);
                     for v in lo..hi {
-                        let shadowed = dcx.env.insert(r.var.name.clone(), v);
+                        let shadowed = dcx
+                            .env
+                            .insert(r.var.name.clone(), consteval::ConstVal::from_i128(v));
                         self.collect_items(dcx, &r.items, summaries, in_progress);
                         match shadowed {
                             Some(p) => dcx.env.insert(r.var.name.clone(), p),
@@ -289,7 +291,9 @@ impl<'a> Checker<'a> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &dcx.env).unwrap_or(0);
+                    let val = consteval::eval(cond, &dcx.env)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
                     let branch = if val != 0 {
                         then.as_slice()
                     } else {
@@ -489,7 +493,8 @@ impl<'a> Checker<'a> {
         let index = inst
             .index
             .as_ref()
-            .and_then(|e| consteval::eval(e, &dcx.env).ok());
+            .and_then(|e| consteval::eval(e, &dcx.env).ok())
+            .map(|v| v.to_i128_saturating());
         for (out, ins) in summary.iter() {
             let node = Node::InstOut {
                 inst: inst.name.name.clone(),
@@ -535,7 +540,7 @@ impl<'a> Checker<'a> {
                         // Unevaluable array index: skip the edge
                         // (under-approximate — documented).
                         Some(e) => match consteval::eval(e, &dcx.env) {
-                            Ok(v) => Some(v),
+                            Ok(v) => Some(v.to_i128_saturating()),
                             Err(_) => return,
                         },
                         None => None,
@@ -622,13 +627,16 @@ impl<'a> Checker<'a> {
         } else {
             Extent::Unknown
         };
-        let f = consteval::eval(first, &dcx.env);
+        let f = consteval::eval(first, &dcx.env).map(|v| v.to_i128_saturating());
         match second {
             None => match f {
                 Ok(v) if v >= 0 => Extent::Range(v as u128, v as u128),
                 _ => fallback,
             },
-            Some(lo) => match (f, consteval::eval(lo, &dcx.env)) {
+            Some(lo) => match (
+                f,
+                consteval::eval(lo, &dcx.env).map(|v| v.to_i128_saturating()),
+            ) {
                 (Ok(h), Ok(l)) if l >= 0 && h >= l => Extent::Range(l as u128, h as u128),
                 _ => fallback, // reversed/negative bounds: widths owns E0406
             },
@@ -696,7 +704,7 @@ impl<'a> Checker<'a> {
                 Type::Bit => Some(1),
                 Type::Bits(w) | Type::Signed(w) => consteval::eval(w, &dcx.env)
                     .ok()
-                    .and_then(|v| u128::try_from(v).ok()),
+                    .and_then(|v| u128::try_from(v.to_i128_saturating()).ok()),
                 Type::Named(_) => None,
                 // No scalar drive extent for a bundle port until the width
                 // pass models bundle widths (tracked under T6, see

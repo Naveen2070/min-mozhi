@@ -64,7 +64,7 @@ pub fn builtin_valid_bundles() -> [&'static BundleDecl; 2] {
                 ty: ParamTy::Int,
                 default: Some(Expr {
                     kind: ExprKind::Int {
-                        value: 1,
+                        value: 1u128.into(),
                         raw: "1".to_string(),
                     },
                     span: synth_span,
