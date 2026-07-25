@@ -170,9 +170,12 @@ impl Emitter<'_> {
     /// own declaration, so the `Builtin::Extend` passthrough is safe for them.
     /// Values are always non-negative (source literals are unsized and
     /// non-negative; masking preserves that), so callers render `W'd{v}`.
-    fn resolve_const_value(&self, e: &Expr) -> Option<i128> {
+    ///
+    /// Returns `Bits` (not `i128`, BUG-13 layer 2) — a literal here may be
+    /// wider than 128 bits.
+    fn resolve_const_value(&self, e: &Expr) -> Option<crate::bits::Bits> {
         match &e.kind {
-            ExprKind::Int { value, .. } => i128::try_from(*value).ok(),
+            ExprKind::Int { value, .. } => Some(value.clone()),
             ExprKind::Call {
                 func: Builtin::Extend,
                 args,
@@ -182,8 +185,15 @@ impl Emitter<'_> {
                 args,
             } => {
                 let v = self.resolve_const_value(&args[0])?;
-                let n = u32::try_from(consteval::eval(&args[1], &self.env).ok()?).ok()?;
-                Some(if n >= 127 { v } else { v & ((1i128 << n) - 1) })
+                let n_val = consteval::eval(&args[1], &self.env).ok()?;
+                let n = crate::bits::to_limbs(&n_val.bits, n_val.width)
+                    .first()
+                    .copied()? as u32;
+                let width = crate::bits::natural_width(&v);
+                let limbs = crate::bits::to_limbs(&v, width.max(n));
+                let mut truncated = limbs;
+                crate::wide::mask_to_width(&mut truncated, n);
+                Some(crate::bits::from_limbs(truncated, n))
             }
             _ => None,
         }
@@ -273,7 +283,7 @@ impl Emitter<'_> {
         arrays: &ArrayScope,
     ) -> String {
         match &e.kind {
-            ExprKind::Int { value, raw } => verilog_literal(*value, raw),
+            ExprKind::Int { value, raw } => verilog_literal(value, raw),
             ExprKind::Bool(b) => if *b { "1'b1" } else { "1'b0" }.to_string(),
             ExprKind::Ident(name) => {
                 // Child-param substitution wins (we're rendering a child's
@@ -477,7 +487,7 @@ impl Emitter<'_> {
                 // is what keeps `if i == 0 { cin } else { fa[i-1].cout }`
                 // from emitting the dead `fa[-1]` arm at i == 0.
                 if let Ok(c) = consteval::eval(cond, &self.env) {
-                    return if c != 0 {
+                    return if !c.is_zero() {
                         self.expr_subst(then, subst, arrays)
                     } else {
                         self.expr_subst(els, subst, arrays)
@@ -532,7 +542,7 @@ impl Emitter<'_> {
                         .iter()
                         .map(|p| match p {
                             Pattern::Int { value, raw } => {
-                                format!("({s} == {})", verilog_literal(*value, raw))
+                                format!("({s} == {})", verilog_literal(value, raw))
                             }
                             Pattern::IntMask {
                                 value, mask, width, ..
@@ -848,7 +858,14 @@ impl Emitter<'_> {
                         self.resolve_const_value(&args[0]),
                         consteval::eval(&args[1], &self.env).ok(),
                     ) {
-                        (Some(v), Some(w)) => format!("{}'d{v}", w as u128),
+                        (Some(v), Some(w)) => {
+                            let vw = crate::bits::natural_width(&v).max(1);
+                            format!(
+                                "{}'d{}",
+                                w.to_i128_saturating() as u128,
+                                crate::bits::bits_to_decimal_string(&v, vw, false)
+                            )
+                        }
                         _ => {
                             let text = self.expr_subst(&args[0], subst, arrays);
                             let decls = self.cur_decls.clone();
@@ -933,7 +950,9 @@ impl Emitter<'_> {
                 // function — except in a port width, where that function (body-
                 // scoped) can't be reached, so it is an honest error.
                 Builtin::Clog2 => match consteval::eval(&args[0], &self.env) {
-                    Ok(n) if n >= 1 => consteval::clog2_bits(n as u128).to_string(),
+                    Ok(n) if n.to_i128_saturating() >= 1 => {
+                        consteval::clog2_bits(n.to_i128_saturating() as u128).to_string()
+                    }
                     Ok(_) => "1".to_string(), // n < 1: the checker already reported E0202
                     Err(_) if self.emitting_port => {
                         self.err(
@@ -1018,20 +1037,33 @@ impl Emitter<'_> {
                 for (a, field) in args.iter().zip(decl_v.fields.iter()) {
                     let field_w: u128 = match &field.ty {
                         Type::Bit => 1,
-                        Type::Bits(e) | Type::Signed(e) => {
-                            consteval::eval(e, &self.env).unwrap_or(0) as u128
-                        }
+                        Type::Bits(e) | Type::Signed(e) => consteval::eval(e, &self.env)
+                            .map(|x| x.to_i128_saturating())
+                            .unwrap_or(0)
+                            as u128,
                         Type::Named(_) | Type::Bundle { .. } | Type::Array { .. } => 0,
                     };
                     used_w += field_w;
                     parts.push(match consteval::eval(a, &self.env) {
                         Ok(v) => {
-                            let bits = if field_w >= 128 {
-                                v as u128
-                            } else {
-                                (v as u128) & ((1u128 << field_w) - 1)
-                            };
-                            format!("{field_w}'d{bits}")
+                            let fw = field_w as u32;
+                            // `wide::extend`, not a plain `to_limbs` reshape —
+                            // a negative payload value must be SIGN-extended
+                            // to `fw` bits before masking, not zero-padded
+                            // (zero-padding a negative value's raw bit
+                            // pattern silently drops its sign).
+                            let mut limbs = crate::wide::extend(
+                                &crate::bits::to_limbs(&v.bits, v.width),
+                                v.width,
+                                fw,
+                                v.signed,
+                            );
+                            crate::wide::mask_to_width(&mut limbs, fw);
+                            let masked = crate::bits::from_limbs(limbs, fw);
+                            format!(
+                                "{field_w}'d{}",
+                                crate::bits::bits_to_decimal_string(&masked, fw, false)
+                            )
                         }
                         Err(_) => {
                             // `allow_shift: true` — a payload field's value
@@ -1124,9 +1156,10 @@ impl Emitter<'_> {
             for (field, binding) in vdecl.fields.iter().zip(bindings.iter()) {
                 let field_w: u128 = match &field.ty {
                     Type::Bit => 1,
-                    Type::Bits(e) | Type::Signed(e) => {
-                        consteval::eval(e, &self.env).unwrap_or(0) as u128
-                    }
+                    Type::Bits(e) | Type::Signed(e) => consteval::eval(e, &self.env)
+                        .map(|x| x.to_i128_saturating())
+                        .unwrap_or(0)
+                        as u128,
                     Type::Named(_) => 0, // E0807: already rejected by checker
                     // Bundles are not valid enum payload fields (checker enforces).
                     Type::Bundle { .. } => 0,
@@ -1152,14 +1185,14 @@ impl Emitter<'_> {
                         base: Box::new(scrutinee.clone()),
                         hi: Box::new(Expr {
                             kind: ExprKind::Int {
-                                value: hi,
+                                value: (hi as u128).into(),
                                 raw: hi.to_string(),
                             },
                             span: sp,
                         }),
                         lo: Box::new(Expr {
                             kind: ExprKind::Int {
-                                value: lo,
+                                value: (lo as u128).into(),
                                 raw: lo.to_string(),
                             },
                             span: sp,

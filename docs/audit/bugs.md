@@ -569,7 +569,7 @@ work) — tracked as a feature idea in
 [`docs/Ideas/language_plan.md`](../Ideas/language_plan.md) §12, revisit once
 that work lands.
 
-## BUG-13 (MEDIUM, FIXED — layer 1) — 128-bit Simulator Ceiling
+## BUG-13 (MEDIUM, FIXED) — 128-bit Simulator Ceiling
 
 **What.** The simulator could not handle vectors larger than 128 bits.
 Correction to the original write-up: this was a CLEAN elaboration-time
@@ -643,6 +643,42 @@ signal rather than bit/slice-_drive_ one combinationally, so this is a
 narrow, rare gap, but it means "compute, drive, and observe any
 checker-legal width" isn't quite 100% true for this one combinational
 assignment shape yet.
+
+**Fix (2026-07-25, layer 2 — compile-time constants).**
+`docs/superpowers/specs/2026-07-25-const-literal-wide-values-design.local.md`.
+`Bits` and its limb arithmetic (`wide.rs`) relocated from `mimz-sim` into
+`mimz-core` so the lexer, AST, and checker could share the same
+representation. `ExprKind::Int`/`Pattern::Int`/`TokKind::Int`'s literal
+value became `Bits` instead of `u128`; `checker::consteval`'s evaluator
+now returns a `ConstVal` (an arbitrary-width two's-complement integer)
+instead of a bare `i128`, computing each arithmetic op at a safe
+upper-bound width before shrinking to natural width and checking against
+`width_rules::MAX_WIDTH` — preserving the evaluator's "overflow is a
+clean error, never a silent wrap" contract at a 1,000,000-bit ceiling
+instead of 127. `Reg.reset`/`Mem.init` carry `ConstVal` end to end. A wide
+register/memory can now reset/init to any nonzero literal the checker
+would accept for its declared width — the gap layer 1 explicitly left
+open is closed. `Pattern::IntMask`/`TokKind::MaskedInt` (the `0b1??`
+don't-care match-pattern literal) were deliberately left untouched — no
+real use case for a >128-bit don't-care pattern has come up.
+
+Along the way, getting `cargo test --workspace --all-targets` to actually
+run clean (rather than just `cargo build -p mimz-core`) surfaced a real,
+pre-existing arithmetic bug in `consteval.rs`'s own sign-detection
+headroom: `Add`/`Sub`'s `+1`-bit growth (and `Mul`/`Shl`'s original
+no-extra-bit growth) is only safe when both operands are already
+n-bit-*signed* values; an unsigned magnitude sitting at its own tight
+n-bit width (e.g. a literal, whose every bit is real magnitude, no
+reserved sign bit) can produce a sum/product/shift whose own top bit is
+legitimately set without the true result being negative — e.g.
+`(2^127-1)+(2^127-1)` needs exactly 128 bits and was misread as negative.
+Fixed by widening `Add`/`Sub` to `+2` and `Mul`/`Shl` to their tight
+magnitude bound `+1`, verified against `examples/english/shift.mimz`
+(`1 << 3` was failing E0405 before the fix) and a new consteval unit
+test. `emit_verilog`'s enum-payload literal masking (also touched by this
+layer) had the mirror bug: a negative payload value must be
+sign-extended to its field width before masking, not zero-padded via a
+raw limb reshape.
 
 **Test.** `crates/mimz-sim/src/sim/wide.rs`'s own unit tests;
 `crates/mimz-sim/src/sim/value.rs`'s `wide_*` tests; `differential_fuzz`

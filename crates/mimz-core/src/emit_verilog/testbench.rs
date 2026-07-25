@@ -55,7 +55,7 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
                 let count_val = count
                     .as_ref()
                     .and_then(|c| match consteval::eval(c, &Env::new()) {
-                        Ok(v) => Some(v),
+                        Ok(v) => Some(v.to_i128_saturating()),
                         Err(e) => {
                             em.diags.push(e);
                             None
@@ -224,6 +224,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
                         Type::Bits(e) | Type::Signed(e) => {
                             match consteval::eval(e.as_ref(), &test_env) {
                                 Ok(v) => {
+                                    let v = v.to_i128_saturating();
                                     if v > 1 {
                                         format!("[{}-1:0] ", v)
                                     } else {

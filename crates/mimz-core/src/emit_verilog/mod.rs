@@ -625,10 +625,14 @@ impl Emitter<'_> {
     /// Evaluate a compile-time expression against the current env — used
     /// for `repeat` bounds and instance/lvalue indices, where the emitter
     /// genuinely needs the integer (to unroll, or to build a flat name).
-    /// Reports and returns `None` if it doesn't fold.
+    /// Reports and returns `None` if it doesn't fold. Narrows the checker's
+    /// arbitrary-width `ConstVal` to `i128` via `to_i128_saturating` — every
+    /// caller here wants a STRUCTURAL size (a repeat bound or an index),
+    /// already capped far below `i128::MAX` by `REPEAT_BUDGET`/`MAX_WIDTH`,
+    /// never a signal's own data value (BUG-13 layer 2).
     fn eval_const(&mut self, e: &Expr) -> Option<i128> {
         match consteval::eval(e, &self.env) {
-            Ok(v) => Some(v),
+            Ok(v) => Some(v.to_i128_saturating()),
             Err(d) => {
                 self.diags.push(d.with_file(self.cur_file));
                 None
@@ -673,7 +677,9 @@ impl Emitter<'_> {
         self.repeat_budget -= count;
         let mut i = lo;
         while i < hi {
-            let shadowed = self.env.insert(r.var.name.clone(), i);
+            let shadowed = self
+                .env
+                .insert(r.var.name.clone(), consteval::ConstVal::from_i128(i));
             body(self, &r.items);
             match shadowed {
                 Some(v) => self.env.insert(r.var.name.clone(), v),
@@ -716,13 +722,14 @@ fn enum_const(enum_name: &str, variant: &str) -> String {
 }
 
 /// Render an integer literal, preserving the writer's chosen base.
-fn verilog_literal(value: u128, raw: &str) -> String {
+fn verilog_literal(value: &crate::bits::Bits, raw: &str) -> String {
     if let Some(bin) = raw.strip_prefix("0b") {
         format!("'b{bin}")
     } else if let Some(hex) = raw.strip_prefix("0x") {
         format!("'h{hex}")
     } else {
-        format!("{value}")
+        let width = crate::bits::natural_width(value).max(1);
+        crate::bits::bits_to_decimal_string(value, width, false)
     }
 }
 
@@ -747,6 +754,16 @@ mod tests {
         let files = [parse(src)];
         let project = Project::from_files(&files).unwrap();
         emit(&project, &files).expect_err("emit should fail")
+    }
+
+    #[test]
+    fn a_decimal_literal_past_128_bits_emits_correctly() {
+        let src = "module M {\n  wire w: bits[200] = 1361129467683753853853498429727072845824\n  out y: bit\n  y = w[0]\n}\n";
+        let out = emit_src(src);
+        assert!(
+            out.contains("1361129467683753853853498429727072845824"),
+            "expected the full decimal literal in the emitted Verilog, got:\n{out}"
+        );
     }
 
     #[test]
