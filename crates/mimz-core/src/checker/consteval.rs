@@ -192,6 +192,7 @@ fn extend_to(v: &ConstVal, w: u32) -> Vec<u64> {
 /// width and check that against `MAX_WIDTH`. This is the one place
 /// const-eval's "overflow is a clean error, never a silent wrap" contract
 /// (this module's own doc comment) gets enforced past 128 bits.
+#[allow(clippy::result_large_err)]
 fn grown_op(
     e: &Expr,
     la: &[u64],
@@ -457,6 +458,7 @@ pub fn eval(e: &Expr, env: &Env) -> Result<ConstVal, Diag> {
 /// Read a shift amount as a plain `u32` shift count — errors (E0202) if
 /// negative or implausibly large (an amount this evaluator would never
 /// finish computing a result for is treated the same as "overflowed").
+#[allow(clippy::result_large_err)]
 fn shift_amount(v: &ConstVal, e: &Expr) -> Result<u32, Diag> {
     if v.is_negative() {
         return Err(overflow(e));
@@ -513,6 +515,7 @@ mod eval_tests {
     use crate::lexer;
     use crate::parser;
 
+    #[allow(clippy::result_large_err)]
     fn eval_src(src: &str) -> Result<ConstVal, Diag> {
         let toks = lexer::lex(src).unwrap();
         let file = parser::parse(toks).unwrap();
