@@ -667,7 +667,7 @@ run clean (rather than just `cargo build -p mimz-core`) surfaced a real,
 pre-existing arithmetic bug in `consteval.rs`'s own sign-detection
 headroom: `Add`/`Sub`'s `+1`-bit growth (and `Mul`/`Shl`'s original
 no-extra-bit growth) is only safe when both operands are already
-n-bit-*signed* values; an unsigned magnitude sitting at its own tight
+n-bit-_signed_ values; an unsigned magnitude sitting at its own tight
 n-bit width (e.g. a literal, whose every bit is real magnitude, no
 reserved sign bit) can produce a sum/product/shift whose own top bit is
 legitimately set without the true result being negative — e.g.
