@@ -228,33 +228,42 @@ impl<'a> Checker<'a> {
                     // u128 range the arm count alone proves nothing.
                     let total = if n < 128 { 1u128 << n } else { u128::MAX };
                     if (seen.len() as u128) < total {
-                        // Smallest uncovered value: after sorting, the
-                        // first index whose value differs is the gap. Every
-                        // value in `seen` here has `natural_width <= n <
-                        // 128` (guarded above), so it is always `Bits::Small`.
-                        let mut vals: Vec<u128> = seen
-                            .iter()
-                            .map(|b| match b {
-                                Bits::Small(x) => *x,
-                                Bits::Wide(_) => unreachable!("n < 128 guarantees Small"),
-                            })
-                            .collect();
-                        vals.sort_unstable();
-                        let missing = vals
-                            .iter()
-                            .enumerate()
-                            .find(|&(i, &v)| v != i as u128)
-                            .map(|(i, _)| i as u128)
-                            .unwrap_or(vals.len() as u128);
+                        // Smallest uncovered value: after sorting, the first
+                        // index whose value differs is the gap. Only valid
+                        // when `n < 128` — that's the only case where every
+                        // value in `seen` is guaranteed `Bits::Small` (a
+                        // wider scrutinee can hold `Bits::Wide` patterns,
+                        // which don't fit this u128-based gap scan).
+                        let missing = if n < 128 {
+                            let mut vals: Vec<u128> = seen
+                                .iter()
+                                .map(|b| match b {
+                                    Bits::Small(x) => *x,
+                                    Bits::Wide(_) => unreachable!("n < 128 guarantees Small"),
+                                })
+                                .collect();
+                            vals.sort_unstable();
+                            let v = vals
+                                .iter()
+                                .enumerate()
+                                .find(|&(i, &v)| v != i as u128)
+                                .map(|(i, _)| i as u128)
+                                .unwrap_or(vals.len() as u128);
+                            format!(
+                                "value `{v}` has no arm (there may be more) — \
+                                     add arms, or end with `_ =>` for the rest"
+                            )
+                        } else {
+                            "not every value has an arm — add arms, or end with `_ =>` \
+                             for the rest"
+                                .to_string()
+                        };
                         self.err_args(
                             cx.file,
                             scrutinee,
                             "E0601",
                             format!("`match` does not cover every value of {}", show(&st)),
-                            format!(
-                                "value `{missing}` has no arm (there may be more) — \
-                                 add arms, or end with `_ =>` for the rest"
-                            ),
+                            missing,
                             vec![("type", show(&st))],
                         );
                     }

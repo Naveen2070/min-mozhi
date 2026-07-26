@@ -1185,14 +1185,14 @@ impl Emitter<'_> {
                         base: Box::new(scrutinee.clone()),
                         hi: Box::new(Expr {
                             kind: ExprKind::Int {
-                                value: (hi as u128).into(),
+                                value: hi.into(),
                                 raw: hi.to_string(),
                             },
                             span: sp,
                         }),
                         lo: Box::new(Expr {
                             kind: ExprKind::Int {
-                                value: (lo as u128).into(),
+                                value: lo.into(),
                                 raw: lo.to_string(),
                             },
                             span: sp,

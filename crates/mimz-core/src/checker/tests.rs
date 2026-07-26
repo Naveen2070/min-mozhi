@@ -1038,6 +1038,16 @@ fn wide_match_without_wildcard_is_e0601() {
 }
 
 #[test]
+fn wide_match_with_a_past_128_bit_pattern_is_e0601_not_a_panic() {
+    // BUG-13 layer 2 regression: a `bits[200]` scrutinee can hold a
+    // `Bits::Wide` pattern value; the exhaustiveness scan must not assume
+    // every `seen` entry is `Bits::Small` just because it's non-exhaustive.
+    let src = "module M {\n  in v: bits[200]\n  in a: bit\n  out y: bit\n  y = match v {\n    1361129467683753853853498429727072845824 => a\n  }\n}\n";
+    let d = first_err(src, "E0601");
+    assert!(d.msg.contains("bits[200]"));
+}
+
+#[test]
 fn multi_pattern_arms_count_toward_coverage() {
     let src = "module M {\n  in sel: bits[2]\n  in a: bit\n  in b: bit\n  out y: bit\n  y = match sel {\n    0, 1 => a\n    2, 3 => b\n  }\n}\n";
     check_one(src).expect("`0, 1 =>` covers two values");
