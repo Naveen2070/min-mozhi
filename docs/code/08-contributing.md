@@ -98,7 +98,8 @@ The full per-test ledger — what each test locks in and what is
 deliberately uncovered — is [`10-test-map.md`](10-test-map.md). Update it
 when you add or remove tests.
 
-- **Unit tests** live in `src/<module>/tests.rs` (lexer, parser) or a
+- **Unit tests** live in `src/<module>/tests.rs` (lexer), `src/<module>/tests/`
+  — split by topic, `mod.rs` + one file per section (parser, checker) — or a
   `#[cfg(test)] mod tests` block (keywords, emitter).
 - **Integration tests** in `tests/examples.rs` compile real examples
   end-to-end. `every_example_checks_clean` means: add an example file and

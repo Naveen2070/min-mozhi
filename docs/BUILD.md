@@ -95,17 +95,19 @@ cargo install --path .          # installs `mimz` (and `mimz-bench`)
 The full gate CI enforces (also in [`../CONTRIBUTING.md`](../CONTRIBUTING.md)):
 
 ```sh
-cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets
 npx prettier --check "**/*.md"
 npx markdownlint-cli2 "**/*.md"
 ```
 
+`--workspace` is not optional here (see section 2) — CI (`.github/workflows/ci.yml`) runs every one of these with it.
+
 Extras:
 
 ```sh
-cargo test-summary                  # per-binary test table + grand total (alias)
+cargo test-summary --workspace       # per-binary test table + grand total (alias; --workspace required, same reason as above)
 cargo doc --no-deps --workspace     # rustdoc (gate uses RUSTDOCFLAGS="-D warnings")
 cargo bench                         # criterion per-phase benchmarks
 cargo build --no-default-features   # proves the lib builds without lsp/bench (wasm-ready)

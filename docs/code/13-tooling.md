@@ -141,8 +141,8 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
 - **Native-speaker-authored (decision C3 ratified, 2026-06-15).** The localized
   catalog (`MESSAGES`, loaded once via `LazyLock` from `lang/messages.toml`) and the
   sandhi rules in `lang/case_suffixes.toml` came from native-speaker review — no longer
-  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 44 checker codes**;
-  E0403/E0404/E0405 are deferred (each emits many distinct message shapes — English
+  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 73 checker codes**
+  (`diag::ALL_CHECKER_CODES`); E0403/E0404/E0405 are deferred (each emits many distinct message shapes — English
   kept, the Tamil drafts preserved as comments in `lang/messages.toml`). Templates also
   interpolate **structured args** the checker attaches via `Diag::with_arg`
   (`Checker::err_args`): `{expected}/{found}` (E0401), `{op}/{lhs}/{rhs}` (E0402),
@@ -161,17 +161,18 @@ the combinational evaluator behind `mimz eval`, the event-driven kernel behind
 `mimz sim` / `mimz test`, VCD + console-trace output, and the `test`-block
 runner. The `crates/mimz-sim/src/sim/` directory:
 
-| File           | Owns                                                                                                 |
-| -------------- | ---------------------------------------------------------------------------------------------------- |
-| `mod.rs`       | the module tree + the shared overview                                                                |
-| `value.rs`     | the 2-state value model + expression evaluator (a `Resolver` trait both engines implement)           |
-| `comb.rs`      | the combinational evaluator (`eval_outputs`) behind `mimz eval`                                      |
-| `elaborate.rs` | `elaborate_project` flattening (instances, `repeat`, enums) + the `Rw` rewriter → a `Design`         |
-| `kernel.rs`    | the event-driven, two-phase commit kernel that interprets a `Design`                                 |
-| `run.rs`       | the default stimulus + `comb_run` per-vector settle; the `MAX_SIM_CYCLES`/`MAX_SWEEP_VECTORS` bounds |
-| `vcd.rs`       | the hand-written 2-state VCD writer                                                                  |
-| `trace.rs`     | the console trace table (`--trace` / `--trace=changes`)                                              |
-| `harness.rs`   | the `test`-block runner (`drive`/`tick`/`expect`/`if`) behind `mimz test`                            |
+| File           | Owns                                                                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`       | the module tree + the shared overview                                                                                                  |
+| `value.rs`     | the 2-state value model + expression evaluator (a `Resolver` trait both engines implement)                                             |
+| `comb.rs`      | the combinational evaluator (`eval_outputs`) behind `mimz eval`                                                                        |
+| `elaborate.rs` | `elaborate_project` flattening (instances, `repeat`, enums) + the `Rw` rewriter → a `Design`                                           |
+| `kernel.rs`    | the event-driven, two-phase commit kernel that interprets a `Design`                                                                   |
+| `run.rs`       | the default stimulus + `comb_run` per-vector settle; the `MAX_SIM_CYCLES`/`MAX_SWEEP_VECTORS` bounds                                   |
+| `vcd.rs`       | the hand-written 2-state VCD writer                                                                                                    |
+| `trace.rs`     | the console trace table (`--trace` / `--trace=changes`)                                                                                |
+| `harness.rs`   | the `test`-block runner (`drive`/`tick`/`expect`/`if`) behind `mimz test`                                                              |
+| `host.rs`      | `EmulationHost` trait — the abstract seam to `src/emulate/`'s peripherals (see [`14-hardware-emulation.md`](14-hardware-emulation.md)) |
 
 - **`mimz eval` (`comb`).** `sim::comb::eval_outputs` interprets a single
   **combinational** module: given a value per input, it computes the outputs by
@@ -364,7 +365,7 @@ Most of these grow incrementally: `explain` grows one code at a time,
 `translate`/`pretty` cover keyword flavor and all five landed word-order flips
 (clocked block, conditional, if-expression, match, test header), and `morph`
 ships the selection + inflection mechanism with the native-authored catalog
-(33 of 44 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
+(33 of 73 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
 feature-complete (the combinational `comb`, the event-driven kernel, VCD/trace,
 and `mimz test`). Each documents its own limits in its module header so the
 honesty rule (spec/01) holds for the tooling too.

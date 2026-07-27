@@ -1,4 +1,4 @@
-# 4 — The Parser: Building the Tree (10 Files)
+# 4 — The Parser: Building the Tree (11 Files)
 
 The parser takes the token stream and builds an **Abstract Syntax Tree (AST)** — a structured representation of your program's grammar. It's a recursive-descent parser with multi-error recovery.
 
@@ -174,3 +174,13 @@ This function never fails — a bad item records an error, skips to the next lin
 - `expect expr` — assert a condition
 - `ident = expr` — drive an input
 - `if cond { }` — test-time conditional
+
+---
+
+## `crates/mimz-core/src/parser/items/extern_module.rs` — Verilog FFI
+
+**`extern_module()`** — `extern module Name(params) { doc: "...", ports }`,
+the black-box/external-Verilog declaration. Reuses `module()`'s param-list
+parsing and `port()`'s port-line parsing verbatim; the body accepts an
+optional `doc: STRING` line and otherwise only port/clock/reset items — a
+`wire` or `on` block has no body to belong to, so it's a parse error here.

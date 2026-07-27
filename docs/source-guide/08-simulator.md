@@ -4,7 +4,7 @@ This is a full event-driven simulator that runs Min-Mozhi designs **without** an
 
 ## `crates/mimz-sim/src/sim/value.rs` — The Value Model
 
-**`Val`** — a bit-vector value: `bits: u128`, `width: u32`, `signed: bool`. Two-state model only (no `X` or `Z` — Min-Mozhi doesn't have them in v0.1).
+**`Val`** — a bit-vector value: `bits: Bits` (see [`02-foundations.md`](02-foundations.md) for the `Small`/`Wide` split backing widths past 128 bits), `width: u32`, `signed: bool`, plus a coarse `unknown` taint flag. Two-state model only (no `X` or `Z` — Min-Mozhi doesn't have them in v0.1). `Val` is `Clone` but not `Copy` — a `Wide` value's `Vec<u64>` can't be a bitwise copy, so every caller needs an explicit `.clone()`.
 
 **`eval(expr, resolver, consts)`** — this is THE expression evaluator, used by both the comb evaluator and the event-driven kernel. It handles every operator, builtin, and expression form with correct width semantics:
 

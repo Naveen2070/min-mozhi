@@ -120,7 +120,23 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-07-14 (BUG-7/8/9 fix pass: test count
+_Last synced with the code: 2026-07-27 (full docs audit across `docs/code/`,
+`docs/guide/`, `docs/source-guide/`, `docs/how-the-compiler-works.md`, and
+`docs/BUILD.md`, prompted by the `oversized-test-file-split` branch: test
+count corrected 765→1034 (`cargo test-summary --workspace`); `10-test-map.md`
+rebuilt — checker/parser sections restructured from single-file tables into
+per-topic-file tables (`checker/tests/` 11 files/268 tests, `parser/tests/`
+13 files/91 tests), 79 previously-undocumented tests given descriptions,
+keyword-table/lexer/transliteration counts corrected; `06-diagnostics.md`/
+`13-tooling.md` E-code and localization counts fixed (33 of 44 → 33 of 73);
+`how-the-compiler-works.md` rewritten for the workspace split (paths,
+checker pass count 7→9, test count); `BUILD.md`'s quality-gate command
+missing `--workspace` fixed; `docs/guide/09-modules-and-reuse.md` gained an
+`extern module` section (previously undocumented); `docs/source-guide/`
+gained coverage for `bits.rs`/`wide.rs`/`width_rules.rs`/`extern_module.rs`/
+`sync_prim_lower.rs`/`builtin_bundles.rs`/self-determined-width emitter
+files and its `Val` description was corrected post-BUG-13). Prior: 2026-07-14
+(BUG-7/8/9 fix pass: test count
 765→772 — synced `10-test-map.md`'s checker (201→204, new E0813 rows),
 fn-body interpreter (8→9, sign-extension fix test), and kernel (13→16,
 bit/slice-indexed register write tests) sections, plus `README.md`'s test

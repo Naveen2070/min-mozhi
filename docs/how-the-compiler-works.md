@@ -1,8 +1,10 @@
 # How the Compiler Works — A Beginner's Tour
 
 This page explains, slowly and in plain words, what happens when you run
-the `mimz` compiler — which files in `src/` do the work, in what order,
-and what the data looks like at each step. It follows ONE real example
+the `mimz` compiler — which files do the work, in what order, and what
+the data looks like at each step. The pure pipeline (lexer through
+emitter) lives in the `mimz-core` crate (`crates/mimz-core/src/`); the
+root `mimz` crate (`src/`) is the CLI shell plus file loading. It follows ONE real example
 (`examples/english/counter.mimz`) all the way from text to Verilog.
 
 If you only read one documentation page to understand this project,
@@ -20,22 +22,22 @@ load, lex, parse, check — then takes one of two **back ends**:
  your .mimz file
        |
        v
-  [0] LOAD       src/project.rs        read the file, resolve its imports
+  [0] LOAD       src/project.rs                    read the file, resolve its imports
        |
        v
-  [1] LEX        src/lexer/            characters  ->  tokens (words)
+  [1] LEX        crates/mimz-core/src/lexer/       characters  ->  tokens (words)
        |
        v
-  [2] PARSE      src/parser/           tokens      ->  AST (a tree)
+  [2] PARSE      crates/mimz-core/src/parser/      tokens      ->  AST (a tree)
        |
        v
-  [3] CHECK      src/checker/          is the tree CORRECT and SAFE?
+  [3] CHECK      crates/mimz-core/src/checker/     is the tree CORRECT and SAFE?
        |
-       +-----------------------------+
-       v                             v
-  [4a] EMIT                      [4b] SIMULATE
-  src/emit_verilog/              src/sim/
-  tree -> Verilog text           tree -> elaborate -> run -> waveform
+       +-----------------------------------------+
+       v                                          v
+  [4a] EMIT                                   [4b] SIMULATE
+  crates/mimz-core/src/emit_verilog/          crates/mimz-sim/src/sim/
+  tree -> Verilog text                        tree -> elaborate -> run -> waveform
        |                             |
        v                             v
  your .v file                   VCD waveform / pass-fail tests
@@ -47,7 +49,7 @@ emitter never sees raw text — which is why the code is split one folder per
 stage.
 
 > The example below follows the **compile** branch end to end; a short
-> [Station 5 — Simulate](#station-5--simulate-srcsim) section at the end picks up
+> [Station 5 — Simulate](#station-5--simulate-cratesmimz-simsrcsim) section at the end picks up
 > the same checked tree and runs it instead.
 
 ## The example we will follow
@@ -82,9 +84,12 @@ The sections below trace what happens, station by station.
 
 ## Where it all starts: `src/main.rs` (and `src/lib.rs`)
 
-The compiler itself is a **library** — `src/lib.rs` lists its modules
-(the pipeline stages plus shared tools like `translate`, `sim`, and
-`config`).
+The compiler itself is a **library**, split across three crates: the
+pure pipeline lives in `mimz-core` (`crates/mimz-core/src/`), the
+simulator in `mimz-sim` (`crates/mimz-sim/src/`), and the root `mimz`
+crate (`src/lib.rs`) is a thin facade that re-exports both under the
+same `mimz::…` paths plus its own filesystem-touching modules
+(`project`, `config`, `emulate`).
 
 `main.rs` is the thin front door over it:
 
@@ -139,7 +144,7 @@ file too.**
 
 The counter example has no imports, so the result is a single `LoadedFile`.
 
-## Station 1 — Lex (`src/lexer/`)
+## Station 1 — Lex (`crates/mimz-core/src/lexer/`)
 
 **Job: chop a stream of characters into a stream of _tokens_ — the
 "words" of the language.**
@@ -174,9 +179,11 @@ Five details stand out:
 - Every token carries a `Span` — "I came from bytes 217..222 of the
   source". Spans ride along through every later station so that an
   error found at station 3 can still point at the exact source
-  characters. `src/span.rs` is that tiny type.
+  characters. `crates/mimz-core/src/span.rs` is that tiny type.
 
 Files in this folder:
+
+All paths below are under `crates/mimz-core/src/`.
 
 | File                | Does what                                                          |
 | ------------------- | ------------------------------------------------------------------ |
@@ -215,7 +222,7 @@ _profile_, not a second grammar. It rearranges the very same rules, so station 2
 produces the **identical AST** whichever order you wrote — every station after
 the parser is none the wiser. Code-order is the default; no directive needed.
 
-## Station 2 — Parse (`src/parser/`)
+## Station 2 — Parse (`crates/mimz-core/src/parser/`)
 
 **Job: turn the flat list of tokens into a _tree_ that mirrors the
 structure of the program. The tree is called the AST — Abstract Syntax
@@ -249,48 +256,54 @@ function eats the tokens its rule allows and calls other rule-functions
 for the parts inside. Every parser function carries its grammar rule as
 a doc comment, so the code and the spec read side by side.
 
-| File              | Does what                                                           |
-| ----------------- | ------------------------------------------------------------------- |
-| `parser/mod.rs`   | the `Parser` state (current position, collected errors), `parse()`  |
-| `parser/items/`   | big structures: modules, ports, regs, `on` blocks, imports, tests   |
-| `parser/expr.rs`  | expressions: operators, precedence, calls, `if`/`match` expressions |
-| `parser/tests.rs` | unit tests for tree shapes and teaching errors                      |
+| File             | Does what                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `parser/mod.rs`  | the `Parser` state (current position, collected errors), `parse()`                       |
+| `parser/items/`  | big structures: modules, ports, regs, `on` blocks, imports, tests                        |
+| `parser/expr.rs` | expressions: operators, precedence, calls, `if`/`match` expressions                      |
+| `parser/tests/`  | unit tests for tree shapes and teaching errors — one topic per file (14 files, 91 tests) |
 
-The tree types themselves live in `src/ast/` (`ast/mod.rs` for
+All paths above are under `crates/mimz-core/src/`. The tree types
+themselves also live there, in `ast/` (`ast/mod.rs` for
 file/module/item shapes, `ast/expr.rs` for expression shapes). The AST
 files contain almost no logic — they are the shared "shape vocabulary"
 that parser, checker, and emitter all agree on.
 
-## Station 3 — Check (`src/checker/`)
+## Station 3 — Check (`crates/mimz-core/src/checker/`)
 
 **Job: the tree has the right SHAPE — but does it MAKE SENSE? Find
 every mistake, explain each one, never stop at the first.**
 
 The parser would happily accept `count = valu` — it is a perfectly
 shaped assignment. Only the checker knows there is nothing named
-`valu`. It runs seven passes, in order, each in its own file (or folder):
+`valu`. `check()` (`checker/mod.rs`) runs the passes below in order,
+each in its own file (some files run more than one pass):
 
-1. **`symbols.rs`** — walk every file, collect all module names and
-   enum names into project-wide tables. Two modules with one name?
-   Error E0001.
-2. **`consteval.rs`** — compute every `const` to an actual number, top
+1. **`symbols.rs`** — walk every file, collect all module/enum/func/
+   bundle/extern-module names into project-wide tables. Two modules
+   with one name? Error E0001.
+2. **`extern_module.rs`** — `extern module` port shapes must stay
+   scalar (E1302).
+3. **`funcs.rs`** — ban recursive `fn` call cycles (E0805) and dead
+   code after `return` (E0812).
+4. **`consteval.rs`** — compute every `const` to an actual number, top
    to bottom, so later passes can use the values (for example as
    `repeat` bounds). Overflow is an error, never a silent wrap — the
    checker obeys the language's own honesty rule.
-3. **`names.rs`** — for every module: build a scope (every declared
+5. **`names.rs`** — for every module: build a scope (every declared
    name and what it is — port, wire, reg, clock, const, instance…),
    then walk every expression and assignment and ask "does this name
    exist, and is this use legal?" Assigning to an input, clocking on a
    non-clock, leaving an instance input unconnected — all caught here.
    It also enforces structure rules like "a module with regs must
    declare a `reset`" (E0301).
-4. **`widths/`** — the exact-widths promise: every assignment,
+6. **`widths/`** — the exact-widths promise: every assignment,
    operand, and connection has the width its context needs; `signed`
    and `bits` never mix silently; a `match` must cover every value.
-5. **`drivers.rs`** — every wire and output driven exactly once, every
+7. **`drivers.rs`** — every wire and output driven exactly once, every
    reg owned by exactly one `on` block, and no combinational loops
    (the wire graph must be a DAG).
-6. **`clocks.rs`** — every reg belongs to one clock, and nothing reads
+8. **`clocks.rs`** — every reg belongs to one clock, and nothing reads
    across clock domains (that needs the explicit `sync` of Phase 2).
 
 When something is wrong, the checker never panics and never stops
@@ -316,7 +329,7 @@ location** (that's the `Span` riding along since station 1), and a
 
 Only when the checker finds zero errors does the pipeline continue.
 
-## Station 4 — Emit (`src/emit_verilog/`)
+## Station 4 — Emit (`crates/mimz-core/src/emit_verilog/`)
 
 **Job: walk the (now trusted) tree and print Verilog text.**
 
@@ -363,6 +376,8 @@ line of input. Keeping the Verilog readable like this is a project
 rule (the prior-art doc explains why, using Chisel as the cautionary
 tale).
 
+All paths below are under `crates/mimz-core/src/`.
+
 | File                       | Does what                                                 |
 | -------------------------- | --------------------------------------------------------- |
 | `emit_verilog/mod.rs`      | `emit()` entry, the project table, output assembly        |
@@ -389,11 +404,12 @@ remember, the flavors stopped existing at station 1. A CI test
 (`all_four_flavors_compile_to_identical_verilog`) asserts this for
 every example in the repo.
 
-## Station 5 — Simulate (`src/sim/`)
+## Station 5 — Simulate (`crates/mimz-sim/src/sim/`)
 
 `mimz compile` stops at station 4. But the same checked tree can take the OTHER
 back end: `mimz sim` (write a waveform) and `mimz test` (run `tick`/`expect`
-checks) hand the tree to `src/sim/` instead of the Verilog emitter. Three steps:
+checks) hand the tree to `mimz-sim`'s `sim/` module instead of the Verilog
+emitter. Three steps:
 
 1. **Elaborate** (`elaborate.rs`) — flatten the design into a plain list of
    signals and registers a machine can step: module instances are inlined
@@ -421,6 +437,8 @@ through our kernel, reconstructs the values from the VCD we wrote, AND runs the
 same design through **Icarus Verilog** — all three must agree bit-for-bit, every
 cycle. The moment our simulator disagreed with real Verilog, that test goes red.
 
+All paths below are under `crates/mimz-sim/src/`.
+
 | File                      | Does what                                                                    |
 | ------------------------- | ---------------------------------------------------------------------------- |
 | `sim/elaborate.rs`        | flatten the AST into a steppable `Design` (instances, `repeat`, enums, mems) |
@@ -428,16 +446,19 @@ cycle. The moment our simulator disagreed with real Verilog, that test goes red.
 | `sim/comb.rs`             | settle a clockless (combinational) design, one frame per vector              |
 | `sim/value.rs`            | the shared expression evaluator (also behind `mimz eval`)                    |
 | `sim/vcd.rs` / `trace.rs` | `Timeline` → VCD waveform / per-cycle table                                  |
+| `sim/harness.rs`          | the `test`-block runner (`mimz test`: `tick`/`expect`/`if`)                  |
 
 The simulator's design notes live in
 [`docs/code/13-tooling.md`](code/13-tooling.md) (the `sim` section).
 
 ## The two files every station uses
 
-| File          | Does what                                                                                                                                             |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/span.rs` | `Span` — "bytes 217..222 of the source". Created at station 1, carried through every tree node, spent at error-render time to draw the `^^^^` carets. |
-| `src/diag.rs` | `Diag` — one error: span, message, optional code, optional help, optional file index. Plus `render()`, which draws the error block you saw above.     |
+Both live in `crates/mimz-core/src/`:
+
+| File      | Does what                                                                                                                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `span.rs` | `Span` — "bytes 217..222 of the source". Created at station 1, carried through every tree node, spent at error-render time to draw the `^^^^` carets. |
+| `diag.rs` | `Diag` — one error: span, message, optional code, optional help, optional file index. Plus `render()`, which draws the error block you saw above.     |
 
 Every station returns `Result<_, Vec<Diag>>` — errors are ordinary
 values, never exceptions, never process aborts. `main.rs` renders
@@ -445,13 +466,15 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test --workspace` runs several layers (**737 tests** today; the full
-ledger, per-binary breakdown, and "what a failure means" notes are in
+`cargo test --workspace` runs several layers (**1034 tests** today —
+run `cargo test-summary --workspace` for the exact per-binary count; the
+full ledger and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):
 
-- **Unit tests** live next to the code they test (`lexer/tests.rs`,
-  `parser/tests.rs`, `checker/tests.rs`) — token shapes, tree shapes,
-  one test per checker error code.
+- **Unit tests** live next to the code they test (`crates/mimz-core/src/lexer/tests.rs`,
+  `crates/mimz-core/src/parser/tests/`, `crates/mimz-core/src/checker/tests/`
+  — the parser and checker suites are each split one topic per file) —
+  token shapes, tree shapes, one test per checker error code.
 - **Integration tests** (`tests/examples.rs`) run the real pipeline
   over every file in `examples/` — every example must check clean,
   compile, and match its three sibling flavors byte-for-byte.
@@ -466,21 +489,21 @@ ledger, per-binary breakdown, and "what a failure means" notes are in
 
 ## "Where do I look when…" cheat sheet
 
-| You want to…                                | Look in                                              |
-| ------------------------------------------- | ---------------------------------------------------- |
-| change/add a keyword spelling               | `lang/keywords.toml` (data only — no code)           |
-| see why `<-` lexes as one token             | `src/lexer/mod.rs` + `lexer/tests.rs`                |
-| change what a construct LOOKS like (syntax) | `src/parser/items/` or `parser/expr.rs`              |
-| change what the tree STORES                 | `src/ast/` (then fix parser + checker + emitter)     |
-| add a new error / safety rule               | `src/checker/` — recipe in `docs/code/11-checker.md` |
-| change the generated Verilog                | `src/emit_verilog/module.rs` or `expr.rs`            |
-| change how a design is simulated            | `src/sim/` (elaborate / kernel / value)              |
-| change how errors are printed               | `src/diag.rs` (`render`)                             |
-| change import resolution / file loading     | `src/project.rs`                                     |
-| add a CLI flag or subcommand                | `src/main.rs` (clap) + a handler in `src/commands/`  |
-| vendor the stdlib modules to disk           | `mimz eject std [--to <dir>] [--flavor tamil]`       |
-| see errors as squiggles in VS Code          | `editors/vscode` (the extension runs `mimz lsp`)     |
-| debug "what tokens does this file produce?" | `mimz check file.mimz --tokens`                      |
+| You want to…                                | Look in                                                               |
+| ------------------------------------------- | --------------------------------------------------------------------- |
+| change/add a keyword spelling               | `lang/keywords.toml` (data only — no code)                            |
+| see why `<-` lexes as one token             | `crates/mimz-core/src/lexer/mod.rs` + `lexer/tests.rs`                |
+| change what a construct LOOKS like (syntax) | `crates/mimz-core/src/parser/items/` or `parser/expr.rs`              |
+| change what the tree STORES                 | `crates/mimz-core/src/ast/` (then fix parser + checker + emitter)     |
+| add a new error / safety rule               | `crates/mimz-core/src/checker/` — recipe in `docs/code/11-checker.md` |
+| change the generated Verilog                | `crates/mimz-core/src/emit_verilog/module.rs` or `expr.rs`            |
+| change how a design is simulated            | `crates/mimz-sim/src/sim/` (elaborate / kernel / value)               |
+| change how errors are printed               | `crates/mimz-core/src/diag.rs` (`render`)                             |
+| change import resolution / file loading     | `src/project.rs`                                                      |
+| add a CLI flag or subcommand                | `src/main.rs` (clap) + a handler in `src/commands/`                   |
+| vendor the stdlib modules to disk           | `mimz eject std [--to <dir>] [--flavor tamil]`                        |
+| see errors as squiggles in VS Code          | `editors/vscode` (the extension runs `mimz lsp`)                      |
+| debug "what tokens does this file produce?" | `mimz check file.mimz --tokens`                                       |
 
 ## Going deeper
 
