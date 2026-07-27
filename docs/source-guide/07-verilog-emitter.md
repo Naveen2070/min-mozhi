@@ -1,4 +1,4 @@
-# 7 — The Verilog Emitter (5 Files)
+# 7 — The Verilog Emitter (7 Files)
 
 This takes the checked AST and turns it into synthesizable Verilog-2005 text.
 
@@ -71,3 +71,18 @@ If two different Tamil names romanize the same way, the second gets `_2`. ASCII 
 ## `crates/mimz-core/src/emit_verilog/testbench.rs` — Testbenches
 
 Generates standalone Verilog testbench modules from inline `test` blocks. The testbench instantiates the DUT, drives inputs and clocks, and evaluates `expect` expressions using `$display("FAIL: ...")` and `$finish`.
+
+## `crates/mimz-core/src/emit_verilog/kinds.rs` and `self_determined.rs` — Matching Verilog's Own Width Rules
+
+Two files backing one guarantee: that an emitted expression's width in
+real Verilog matches what mimz already checked. `kinds.rs` computes mimz's
+own width/signedness for an expression directly from the checked AST
+(`Kind` — the emitter-local counterpart to the checker's `Ty`).
+`self_determined.rs` computes what Verilog's OWN self-determined-width
+rule would compute for that same expression once emitted as text — the two
+must agree, or the emitted Verilog would silently context-determine a
+different width than mimz checked (a real class of Verilog footguns:
+concat/replicate members, comparison operands, and `$signed`/`$unsigned`
+arguments are all self-determined positions in the LRM). Where they'd
+disagree, the emitter hoists the subexpression into an explicitly-sized
+intermediate wire first.

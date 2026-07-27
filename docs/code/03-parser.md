@@ -6,12 +6,12 @@ able to map "the spec says X" to "the function that parses X" in seconds.
 
 ## File layout
 
-| File       | Owns                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------- |
-| `mod.rs`   | `parse()` / `parse_recover()` entries, `Parser` state, token plumbing, error recovery |
-| `items/`   | File level, modules, `on`-blocks, `repeat`, `test` blocks, `fn` declarations          |
-| `expr.rs`  | Expressions: precedence climbing, `if`/`match`, patterns, builtins, `FnCall`          |
-| `tests.rs` | Unit tests (see [`10-test-map.md`](10-test-map.md))                                   |
+| File      | Owns                                                                                  |
+| --------- | ------------------------------------------------------------------------------------- |
+| `mod.rs`  | `parse()` / `parse_recover()` entries, `Parser` state, token plumbing, error recovery |
+| `items/`  | File level, modules, `on`-blocks, `repeat`, `test` blocks, `fn` declarations          |
+| `expr.rs` | Expressions: precedence climbing, `if`/`match`, patterns, builtins, `FnCall`          |
+| `tests/`  | Unit tests, split by topic (see [`10-test-map.md`](10-test-map.md))                   |
 
 The `items/` submodule splits item parsing across files by grammar
 section: `items/mod.rs` (shared `ty`/`lvalue`/`repeat_block` helpers +
