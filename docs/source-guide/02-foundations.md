@@ -137,6 +137,36 @@ Tamil has four grammatical cases (வேற்றுமை) that get attached to
 
 ---
 
+## `crates/mimz-core/src/bits.rs`, `wide.rs`, `width_rules.rs` — Arbitrary-Width Values
+
+Three files behind one guarantee: a signal can be wider than 128 bits and
+every pass (checker, simulator, emitter) still agrees on its value and
+width.
+
+**`bits.rs`** defines `Bits`, the raw bit-pattern representation shared by
+`Val` (simulator values) and `ConstVal` (compile-time constants — see
+[`06-checker.md`](06-checker.md)): `Small(u128)` for the fast path (width ≤
+128), `Wide(Vec<u64>)` for anything larger. Whoever constructs a value must
+guarantee a `Wide` variant is never used when the value actually fits in
+128 bits — every constructor in this module upholds that invariant.
+
+**`wide.rs`** is the "slow path": arbitrary-width arithmetic over
+little-endian `u64` limb vectors (a `Vec<u64>` for width `w` always holds
+exactly `limb_count(w)` limbs). Not a general-purpose bignum library —
+only the handful of operations the evaluator actually needs (no division;
+the language has none).
+
+**`width_rules.rs`** holds `MAX_WIDTH` (1,000,000 — the ceiling every pass
+enforces) and `Kind` (width + signedness), plus the width/signedness
+inference rules themselves (`shift_result` and friends). The checker's
+`widths` pass and the simulator's `sim/value.rs` each used to compute these
+independently — two copies of the same rule can drift, which is exactly
+how BUG-21 happened (the simulator's slice evaluator disagreed with the
+checker's own `slice_ty` on signedness). This module holds one
+implementation per rule that both consume.
+
+---
+
 ## `src/config.rs` — Reading `mimz.toml` Settings
 
 This lets you set default CLI flags in a per-project config file, just like `Cargo.toml` or `rustfmt.toml`. The precedence is simple: **CLI flag beats `mimz.toml` beats built-in default**.

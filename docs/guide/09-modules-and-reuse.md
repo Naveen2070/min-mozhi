@@ -106,6 +106,38 @@ additive. `E0110` fires if a bare name resolves to two or more declarations;
 `E0111` fires if the qualifier doesn't match any import in the file.
 Functions (`fn`) stay project-wide unique and are never qualified.
 
+## Wrapping real Verilog: `extern module`
+
+`extern module` declares a hand-written Verilog module's port list without
+giving it a body — for a vendor IP core or a hand-tuned block you want to
+instantiate from mimz source exactly like a native module:
+
+```mimz
+extern module Pll(MULT: int = 2) {
+  doc: "50MHz input, 100MHz output"
+  clock clk_in
+  out clk_out: bit
+  out locked: bit
+}
+
+module Top {
+  clock sysclk
+  out fast_clk: bit
+  let u = Pll(MULT: 4) { clk_in: sysclk }
+  fast_clk = u.clk_out
+}
+```
+
+Instantiation, connection checking, and width checking work exactly as for
+a native module — the only difference is the compiler never emits a
+`module ... endmodule` body for it, only the instantiation. Ports are
+scalar-only (`bit`/`bits[N]`/`signed[N]`/`clock`/`reset` — no bundles or
+arrays, `E1302`), since a real Verilog port list is always flat wires. Add
+`= "RealModuleName"` after the name when the mimz-side name and the actual
+Verilog module name differ; the compiled output must be linked against the
+real `.v` file separately (`mimz.toml` or `--extern-src`). See spec/02
+§1.5c for the full grammar.
+
 ## Compile-time loops: `repeat`
 
 `repeat` unrolls at build time — it is hardware generation, not a runtime loop.

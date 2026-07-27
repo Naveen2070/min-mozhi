@@ -98,3 +98,10 @@ The checker uses a three-color DFS (white/gray/black) over the combinational dep
 - **E0701** — every register is owned by exactly one clock
 - Every combinational signal is "colored" with the clock domain(s) it derives from
 - Reading a signal from one clock domain inside another clock's `on` block is rejected (metastability hazard)
+
+### `extern_module.rs` — `extern module` Port Shape
+
+Not one of the seven numbered passes — a standalone check for Verilog-FFI
+`extern module` declarations. Ports must stay scalar (`bit`/`bits[N]`/
+`signed[N]`) — no bundle- or array-typed extern port, since there is no
+Verilog-side shape to enforce against.

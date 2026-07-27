@@ -26,7 +26,7 @@ table below is the honest status of what remains.
 | `widths/patterns.rs` | Pass 5 — `match` patterns + exhaustiveness (E0601/E0602)                                             |
 | `drivers.rs`         | Pass 6 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                                      |
 | `clocks.rs`          | Pass 7 — clock-domain ownership, cross-domain reads (E0701); `sync.*` domain/placement (E0704/E0705) |
-| `tests.rs`           | Unit tests — one per error code, plus clean-pass cases                                               |
+| `tests/`             | Unit tests, split by topic — one per error code, plus clean-pass cases                               |
 
 Same module pattern as the parser (03): `mod.rs` owns the struct and the
 diagnostic plumbing; each pass is an `impl` block in its own file behind
@@ -85,7 +85,7 @@ that does not fit is E0405, never a silent wrap.
 Codes are a **stable contract**: tests assert on them, and future docs/
 translations key off them. Never renumber; retire codes by leaving a
 tombstone row here. Each code is exercised two ways: in-process by
-`crates/mimz-core/src/checker/tests.rs`, and **end-to-end** by a broken fixture under
+`crates/mimz-core/src/checker/tests/` (split by topic), and **end-to-end** by a broken fixture under
 `tests/fixtures/errors/` that the real binary must reject with this code
 (`tests/errors.rs` — a completeness guard fails if any code lacks one).
 
@@ -318,8 +318,9 @@ fall(...)` clock clause reuses **E0109** if the name isn't a real
 2. Claim the next code in the right E-block; add the catalog row above.
 3. Write the error with `self.err(file, span, code, msg, help)` — the
    help line is the teaching moment, write it for the spec/01 persona.
-4. Add a unit test in `tests.rs` asserting the CODE and a message
-   substring (loose on wording, tight on contract).
+4. Add a unit test in the matching `tests/<topic>.rs` file (or a new one,
+   declared via `mod <topic>;` in `tests/mod.rs`) asserting the CODE and a
+   message substring (loose on wording, tight on contract).
 5. If the rule rejects something an example does — fix the example or
    the rule; `every_example_compiles` decides who wins. (The width slice
    did exactly this: `shift_register.mimz` now writes

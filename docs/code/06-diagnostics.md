@@ -62,12 +62,13 @@ Every diagnostic in the compiler carries a code (retrofit completed
 `--json` output exposes them, and the Phase 1.8 Tanglish/Tamil catalogs
 will key off them — never renumber.
 
-| Block       | Stage   | Catalog                          |
-| ----------- | ------- | -------------------------------- |
-| E0001–E0909 | checker | [`11-checker.md`](11-checker.md) |
-| E10xx       | lexer   | below                            |
-| E11xx       | parser  | below                            |
-| E12xx       | loader  | below                            |
+| Block       | Stage                   | Catalog                          |
+| ----------- | ----------------------- | -------------------------------- |
+| E0001–E0912 | checker                 | [`11-checker.md`](11-checker.md) |
+| E10xx       | lexer                   | below                            |
+| E11xx       | parser                  | below                            |
+| E12xx       | loader                  | below                            |
+| E1301–E1302 | checker (extern module) | [`11-checker.md`](11-checker.md) |
 
 | Code  | Meaning                                                             |
 | ----- | ------------------------------------------------------------------- |
@@ -146,9 +147,9 @@ the table above and required to have an error-fixture). Current warnings:
   keyed off the codes above; `morph::localized_msg` looks one up per code and
   flavor and interpolates the offending identifier (Tamil case-inflected) plus
   structured args (`{expected}/{found}/{op}/{lhs}/{rhs}/{first}/{second}/{type}`).
-  **33 of 44 checker codes** are localized — E0403/E0404/E0405 stay English-only
-  (each emits many distinct shapes; the Tamil drafts are preserved as comments in
-  `lang/messages.toml`). Any code with no template renders the English `msg` verbatim,
+  **33 of 73 checker codes** (`diag::ALL_CHECKER_CODES`) are localized — E0403/E0404/E0405
+  stay English-only (each emits many distinct shapes; the Tamil drafts are preserved as
+  comments in `lang/messages.toml`). Any code with no template renders the English `msg` verbatim,
   so uncovered codes are byte-identical across flavors. JSON diagnostics stay
   English (the machine contract is unchanged). Details in `13-tooling.md`.
 - Caret rendering clamps to a single line; multi-line spans underline

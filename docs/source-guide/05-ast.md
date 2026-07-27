@@ -1,4 +1,4 @@
-# 5 — The AST: What the Parser Produces (4 Files)
+# 5 — The AST: What the Parser Produces (6 Files)
 
 The AST is the **single intermediate representation** that everything downstream uses — the checker, the Verilog emitter, the simulator, and the pretty-printer. It's deliberately flavor-blind and word-order-blind: all the surface variation (English vs Tamil keywords, SVO vs SOV clause order) is absorbed by the lexer and parser and never reaches the tree.
 
@@ -122,3 +122,20 @@ downstream of the parser sees only `Repeat`/`Loop` — never a raw `ForEach`
 node — except the checker, which validates `ForEach` directly before
 lowering (see [`06-checker.md`](06-checker.md)) so its errors (`E0417`) can
 point at the original `foreach` syntax.
+
+## `crates/mimz-core/src/ast/sync_prim_lower.rs` — Lowering `sync.*`
+
+Same sugar-over-primitives pattern again, for the CDC builtins:
+`expand_sync_prims` rewrites `sync.double_flop`/`sync.pulse` call sites into
+ordinary `Reg`/`On`/`Wire` items. Assumes checker-clean input — the checker
+already validated each call's shape, domain, and placement before this runs,
+the same contract `sync_loop_lower`/`foreach_lower` have with their passes.
+
+## `crates/mimz-core/src/ast/builtin_bundles.rs` — `T?` Valid-Bundle Sugar
+
+The two compiler-synthesized bundle declarations backing `T?` sugar
+(`bit?`/`bits[N]?`/`signed[N]?`) — never written in `.mimz` source; a
+`?`-suffixed type desugars directly to a reference to one of these two
+synthesized `BundleDecl`s at parse time. Lives here rather than duplicated
+across `checker::symbols` and the emitter, since both need the same
+declaration.

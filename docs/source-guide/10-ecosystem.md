@@ -112,7 +112,7 @@ Three workflows keep the repo healthy:
 
 **`release.yml`** — builds the VS Code `.vsix`, the WASM package, and creates a GitHub Release with all artifacts when a tag is pushed.
 
-## `tests/` — Making Sure Everything Works (18 Test Files)
+## `tests/` — Making Sure Everything Works (23 Test Files)
 
 The test suite is thorough:
 
@@ -134,17 +134,22 @@ The test suite is thorough:
 - **`cli.rs`** — CLI surface tests: `mimz init` scaffolding, `doctor` environment checks, `completions <shell>` generation
 - **`lsp.rs`** — LSP server tests
 - **`wasm_parity.rs`** — checks that the WASM commands produce the same output as the native CLI
+- **`extern.rs`** — `extern module` (Verilog FFI) end-to-end CLI coverage: `verilog_files`/`--extern-src` union, `extern_sim`/`--extern-sim` mode selection
+- **`packages.rs`** — proves qualified references (`a.b.Name`) disambiguate two files' same-named module through the real `mimz` binary and loader, not a hand-wired unit-test fixture
+- **`self_determined_regression.rs`** — regression tests for BUG-19/BUG-20 (self-determined-position and non-identifier-slice emitter hoisting bugs)
+- **`showcase.rs`** — mirrors `examples.rs` but over `showcase/`, the designs used by the web playground and doc site
+- **`differential_fuzz.rs`** — random-program differential fuzzing against the simulator (combinational + clocked designs)
 
 **Fixtures:**
 
-- `tests/fixtures/errors/` — 84 `.mimz` files, one per error code (44 checker + additional parser/lexer)
+- `tests/fixtures/errors/` — 117 `.mimz` files, one per error code (checker + parser/lexer)
 - `tests/fixtures/grammar/` — 8 grammar conformance examples
-- `tests/golden/` — 50 golden Verilog outputs + 14 testbench goldens + 1 VCD trace
-- `tests/icarus/` — 38 Icarus Verilog testbenches
+- `tests/golden/` — 70 golden Verilog outputs + 17 testbench goldens + 1 VCD trace
+- `tests/icarus/` — 45 Icarus Verilog testbenches
 
 ## `examples/` — Designs in All Five Flavors
 
-The `examples/` directory has the same 34 designs (plus 5 stdlib modules and 1 lib module) in **four** keyword flavors — English, Tanglish, Tamil, and mixed — plus a **fifth** `tamil-pure/` showcase with Tamil keywords AND identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
+The `examples/` directory has the same 39 designs (plus 5 stdlib modules and 1 lib module) in **four** keyword flavors — English, Tanglish, Tamil, and mixed — plus a **fifth** `tamil-pure/` showcase (20 designs) with Tamil keywords AND identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
 
 Designs include: adders, counters, FSMs (traffic light, blinker), comparators, multiplexers, shift registers, memories, stdlib modules (seg7, PWM, FIFO, UART, debouncer), and more.
 

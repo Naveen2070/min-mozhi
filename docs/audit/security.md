@@ -364,8 +364,17 @@ of the SEC-8 divergence-reachability class above. See `bugs.md` BUG-11 for
 the full reproduction, cause, and fix; no separate write-up duplicated here
 to avoid the two drifting out of sync.
 
-**SEC-8 itself stays OPEN** — fixing BUG-11 closes this one _specific_
-instance of the divergence-reachability class, not the class itself.
-`eval`/`sim`/`test` still run without `checker::check`; a future construct
-with its own checker-vs-simulator mismatch is exactly as reachable from
-untrusted input as this one was, until SEC-8 lands.
+**Correction (2026-07-28 doc sync).** This note originally read "SEC-8
+itself stays OPEN," written before SEC-8's own fix landed later the same
+day. **SEC-8 is fixed** (see its entry above, A2, Stage 2 of
+`docs/plan/phase-2-correctness-consolidation.local.md`): all 4
+unchecked-AST call sites (`eval.rs`, `sim.rs`, `test.rs`, and
+`mimz-sim/src/runner.rs`) now gate on `checker::check` before executing.
+What remains true, and is the actual point this note was making: gating
+on the checker closes the _reachability_ half of the class (no path
+executes unchecked AST), not the _divergence_ half — a future
+checker-vs-simulator disagreement (like BUG-11) is still a real risk on
+its own terms, it's just no longer reachable from genuinely untrusted
+(checker-rejected) input. A1 (Stage 4, shared `width_rules` module) is
+the mitigation for the divergence half, and Stage 4 is done as of
+2026-07-20.
