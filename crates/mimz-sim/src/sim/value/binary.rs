@@ -1,4 +1,5 @@
 use super::*;
+use crate::sim::Diag;
 
 /// Promote `l`/`r` to matching-length limb vectors at `result_width`,
 /// running the SAME sign-extension `extend_bits` already applies on the
@@ -103,9 +104,10 @@ pub(super) fn binary_ctx(
     l: Val,
     r: Val,
     expected_width: Option<u32>,
-) -> Result<Val, String> {
+    span: mimz_core::span::Span,
+) -> Result<Val, Box<Diag>> {
     let unknown = l.unknown || r.unknown;
-    binary_known(op, l, r, expected_width).map(|mut v| {
+    binary_known(op, l, r, expected_width, span).map(|mut v| {
         if unknown {
             v.unknown = true;
         }
@@ -375,7 +377,12 @@ fn bitxor(l: Val, r: Val) -> Val {
 // context, standalone). `ctx_w` is `l`'s own width when no context
 // is known (self-determined fallback — e.g. a bare test/eval
 // expression with no assignment target).
-fn shl(l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
+fn shl(
+    l: Val,
+    r: Val,
+    expected_width: Option<u32>,
+    span: mimz_core::span::Span,
+) -> Result<Val, Box<Diag>> {
     let base = mimz_core::width_rules::shift_result(
         mimz_core::width_rules::Kind {
             width: l.width,
@@ -386,7 +393,9 @@ fn shl(l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
             signed: r.signed,
         },
     )
-    .map_err(|_| "a shift amount cannot be `signed`".to_string())?;
+    .map_err(|_| {
+        Box::new(Diag::new(span, "a shift amount cannot be `signed`").with_code("S0221"))
+    })?;
     let ctx_w = expected_width
         .map(|w| w.max(base.width))
         .unwrap_or(base.width);
@@ -406,7 +415,12 @@ fn shl(l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
     })
 }
 
-fn shr(l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
+fn shr(
+    l: Val,
+    r: Val,
+    expected_width: Option<u32>,
+    span: mimz_core::span::Span,
+) -> Result<Val, Box<Diag>> {
     let base = mimz_core::width_rules::shift_result(
         mimz_core::width_rules::Kind {
             width: l.width,
@@ -417,7 +431,9 @@ fn shr(l: Val, r: Val, expected_width: Option<u32>) -> Result<Val, String> {
             signed: r.signed,
         },
     )
-    .map_err(|_| "a shift amount cannot be `signed`".to_string())?;
+    .map_err(|_| {
+        Box::new(Diag::new(span, "a shift amount cannot be `signed`").with_code("S0221"))
+    })?;
     let ctx_w = expected_width
         .map(|w| w.max(base.width))
         .unwrap_or(base.width);
@@ -441,7 +457,8 @@ pub(super) fn binary_known(
     l: Val,
     r: Val,
     expected_width: Option<u32>,
-) -> Result<Val, String> {
+    span: mimz_core::span::Span,
+) -> Result<Val, Box<Diag>> {
     Ok(match op {
         BinOp::Add => add(l, r),
         BinOp::Sub => sub(l, r),
@@ -452,8 +469,8 @@ pub(super) fn binary_known(
         BinOp::BitAnd => bitand(l, r),
         BinOp::BitOr => bitor(l, r),
         BinOp::BitXor => bitxor(l, r),
-        BinOp::Shl => return shl(l, r, expected_width),
-        BinOp::Shr => return shr(l, r, expected_width),
+        BinOp::Shl => return shl(l, r, expected_width, span),
+        BinOp::Shr => return shr(l, r, expected_width, span),
         BinOp::Eq => Val::new(cmp_eq(l, r) as u128, 1, false),
         BinOp::Ne => Val::new(!cmp_eq(l, r) as u128, 1, false),
         BinOp::Lt => Val::new(cmp_lt(l, r) as u128, 1, false),
@@ -477,7 +494,10 @@ pub(super) fn binary_known(
         // returns `Result`, and a future caller of `binary_known` that skips
         // elaboration must get a diagnosable error, not a crashed process.
         BinOp::Coalesce => {
-            return Err("?? should have been lowered during elaboration".to_string());
+            return Err(Box::new(
+                Diag::new(span, "?? should have been lowered during elaboration")
+                    .with_code("S0222"),
+            ));
         }
     })
 }

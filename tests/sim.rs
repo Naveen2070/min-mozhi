@@ -648,7 +648,7 @@ fn run_test_ok(src: &str) {
             false,
             false,
         )
-        .unwrap_or_else(|e| panic!("test `{}` errored: {e}", decl.name));
+        .unwrap_or_else(|e| panic!("test `{}` errored: {}", decl.name, e.msg));
         match &outcome.result {
             TestResult::Pass => {}
             TestResult::Fail(msg) => panic!("test `{}` failed:\n{msg}", decl.name),

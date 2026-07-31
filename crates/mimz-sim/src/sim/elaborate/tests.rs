@@ -127,7 +127,7 @@ fn rejects_unknown_instance_module() {
         &BTreeMap::new(),
     )
     .unwrap_err();
-    assert!(err.contains("unknown module"), "got: {err}");
+    assert!(err.msg.contains("unknown module"), "got: {}", err.msg);
 }
 
 #[test]
@@ -273,7 +273,7 @@ fn recursive_instantiation_errors_not_overflows() {
         &BTreeMap::new(),
     )
     .unwrap_err();
-    assert!(err.contains("nesting"), "got: {err}");
+    assert!(err.msg.contains("nesting"), "got: {}", err.msg);
 }
 
 #[test]
@@ -285,7 +285,7 @@ fn extreme_repeat_bounds_error_not_overflow() {
         "module R {{\n  out y: bit\n  repeat i: -{big}..{big} {{\n    y[i] = 0\n  }}\n}}\n"
     );
     let err = elaborate(&parse(&src), None, &BTreeMap::new()).unwrap_err();
-    assert!(err.contains("unroll"), "got: {err}");
+    assert!(err.msg.contains("unroll"), "got: {}", err.msg);
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn an_out_of_range_bit_index_errors() {
         &BTreeMap::new(),
     )
     .unwrap_err();
-    assert!(err.contains("out of range"), "got: {err}");
+    assert!(err.msg.contains("out of range"), "got: {}", err.msg);
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn a_flatten_name_collision_errors() {
         &BTreeMap::new(),
     )
     .unwrap_err();
-    assert!(err.contains("collides"), "got: {err}");
+    assert!(err.msg.contains("collides"), "got: {}", err.msg);
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn ambiguous_bare_module_reference_errors_instead_of_silently_picking_one() {
     let user = parse("module M {\n  let u = Fifo() { }\n}\n");
     let files = [user, a, b];
     let err = elaborate_project(&files, Some("M"), &BTreeMap::new()).unwrap_err();
-    assert!(err.contains("ambiguous"), "got: {err}");
+    assert!(err.msg.contains("ambiguous"), "got: {}", err.msg);
 }
 
 #[test]

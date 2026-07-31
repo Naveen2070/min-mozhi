@@ -1,4 +1,5 @@
 use super::*;
+use crate::sim::Diag;
 
 /// Builds an [`Rw`] from individual field borrows (not a `&self` method) so
 /// callers can hold it alongside `&mut self.comb` in one statement.
@@ -70,12 +71,18 @@ impl<'a> Elaboration<'a> {
         params: &BTreeMap<String, i128>,
         depth: u32,
         mode: SimMode,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Box<Diag>> {
         if depth > MAX_INSTANCE_DEPTH {
-            return Err(format!(
-                "instance nesting exceeds {MAX_INSTANCE_DEPTH} levels in `{}` — \
-                 a module likely instantiates itself (directly or in a cycle)",
-                m.name.name
+            return Err(Box::new(
+                Diag::new(
+                    m.span,
+                    format!(
+                        "instance nesting exceeds {MAX_INSTANCE_DEPTH} levels in `{}` — \
+                         a module likely instantiates itself (directly or in a cycle)",
+                        m.name.name
+                    ),
+                )
+                .with_code("S0119"),
             ));
         }
         // Compile-time integer environment: params (override or default), then
@@ -87,9 +94,15 @@ impl<'a> Elaboration<'a> {
                 None => match &p.default {
                     Some(d) => const_eval(d, &consts)?,
                     None => {
-                        return Err(format!(
-                            "parameter `{}` has no default — provide a value for it",
-                            p.name.name
+                        return Err(Box::new(
+                            Diag::new(
+                                p.name.span,
+                                format!(
+                                    "parameter `{}` has no default — provide a value for it",
+                                    p.name.name
+                                ),
+                            )
+                            .with_code("S0121"),
                         ));
                     }
                 },
@@ -200,12 +213,24 @@ impl<'a> Elaboration<'a> {
     /// Folded width of a type — an enum type resolves to its total wire width.
     /// Uses `inferred_total_width` when the checker has run; falls back to
     /// `clog2(variant count)` for tag-only enums without the checker.
-    fn width_of(&self, ty: &ast::Type, ints: &BTreeMap<String, i128>) -> Result<Width, String> {
+    ///
+    /// `span` (a declaration's own `Ident.span` at every call site — `ast::Type`
+    /// itself carries no span) anchors the one error this can raise directly
+    /// (unknown enum type) and the one it bridges from `type_width` (`value.rs`,
+    /// not yet converted).
+    fn width_of(
+        &self,
+        ty: &ast::Type,
+        ints: &BTreeMap<String, i128>,
+        span: mimz_core::span::Span,
+    ) -> Result<Width, Box<Diag>> {
         if let ast::Type::Named(n) = ty {
-            let e = self
-                .enums
-                .get(&n.name.name)
-                .ok_or_else(|| format!("unknown enum type `{}`", n.name.name))?;
+            let e = self.enums.get(&n.name.name).ok_or_else(|| {
+                Box::new(
+                    Diag::new(span, format!("unknown enum type `{}`", n.name.name))
+                        .with_code("S0122"),
+                )
+            })?;
             // note: fallback only correct for tag-only enums (max_payload_w=0)
             let bits = e.inferred_total_width.get().unwrap_or_else(|| {
                 debug_assert!(
@@ -219,7 +244,7 @@ impl<'a> Elaboration<'a> {
                 signed: false,
             })
         } else {
-            let (bits, signed) = type_width(ty, ints)?;
+            let (bits, signed) = type_width(ty, ints, span)?;
             Ok(Width { bits, signed })
         }
     }
@@ -260,7 +285,7 @@ impl<'a> Elaboration<'a> {
         &mut self,
         mut work: Vec<&'a ModuleItem>,
         expanded_items: &'a [ModuleItem],
-    ) -> Result<(), String> {
+    ) -> Result<(), Box<Diag>> {
         while let Some(it) = work.pop() {
             match it {
                 ModuleItem::Port { dir, name, ty } => {
@@ -286,7 +311,7 @@ impl<'a> Elaboration<'a> {
                             }
                         }
                     } else {
-                        let width = self.width_of(ty, &self.consts)?;
+                        let width = self.width_of(ty, &self.consts, name.span)?;
                         let sig = Signal {
                             name: name.name.clone(),
                             width,
@@ -330,7 +355,7 @@ impl<'a> Elaboration<'a> {
                             self.comb.insert(flat_name, driver);
                         }
                     } else {
-                        let width = self.width_of(ty, &self.consts)?;
+                        let width = self.width_of(ty, &self.consts, name.span)?;
                         self.wires.push(Signal {
                             name: name.name.clone(),
                             width,
@@ -340,7 +365,7 @@ impl<'a> Elaboration<'a> {
                     }
                 }
                 ModuleItem::Reg { name, ty, reset } => {
-                    let width = self.width_of(ty, &self.consts)?;
+                    let width = self.width_of(ty, &self.consts, name.span)?;
                     let reset_expr = self.rw0().expr(reset)?;
                     let reset = const_eval_wide(&reset_expr, &self.consts)?;
                     self.regs.push(Reg {
@@ -357,12 +382,18 @@ impl<'a> Elaboration<'a> {
                     depth,
                     init,
                 } => {
-                    let width = self.width_of(ty, &self.consts)?;
+                    let width = self.width_of(ty, &self.consts, name.span)?;
                     // The sim runs WITHOUT the checker, so guard the depth here too.
                     let depth_expr = self.rw0().expr(depth)?;
                     let d = const_eval(&depth_expr, &self.consts)?;
                     let depth = u128::try_from(d).ok().filter(|d| *d >= 1).ok_or_else(|| {
-                        format!("memory `{}` has a non-positive depth ({d})", name.name)
+                        Box::new(
+                            Diag::new(
+                                depth.span,
+                                format!("memory `{}` has a non-positive depth ({d})", name.name),
+                            )
+                            .with_code("S0123"),
+                        )
                     })?;
                     let init_expr = self.rw0().expr(init)?;
                     let init = const_eval_wide(&init_expr, &self.consts)?;
@@ -429,7 +460,7 @@ impl<'a> Elaboration<'a> {
                             &self.consts,
                             &mut self.comb,
                             &mut self.bit_drives,
-                        )?
+                        )?;
                     }
                 }
                 ModuleItem::On(on) => {
@@ -497,8 +528,14 @@ impl<'a> Elaboration<'a> {
                     // overflow-panic — treat an out-of-range span as over-budget.
                     let count = hi.checked_sub(lo).unwrap_or(i128::MAX).max(0);
                     if count > REPEAT_BUDGET {
-                        return Err(format!(
-                            "`repeat` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                        return Err(Box::new(
+                            Diag::new(
+                                r.span,
+                                format!(
+                                    "`repeat` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                                ),
+                            )
+                            .with_code("S0124"),
                         ));
                     }
                     for iv in lo..hi {
@@ -541,16 +578,22 @@ impl<'a> Elaboration<'a> {
                                     &mut self.bit_drives,
                                 )?,
                                 ModuleItem::Repeat(_) => {
-                                    return Err(
-                                        "nested `repeat` is not supported by the simulator yet"
-                                            .into(),
-                                    );
+                                    return Err(Box::new(
+                                        Diag::new(
+                                            r.span,
+                                            "nested `repeat` is not supported by the simulator yet",
+                                        )
+                                        .with_code("S0125"),
+                                    ));
                                 }
                                 _ => {
-                                    return Err(
-                                        "a `repeat` body may only contain instances and drives"
-                                            .into(),
-                                    );
+                                    return Err(Box::new(
+                                        Diag::new(
+                                            r.span,
+                                            "a `repeat` body may only contain instances and drives",
+                                        )
+                                        .with_code("S0126"),
+                                    ));
                                 }
                             }
                         }
@@ -586,11 +629,14 @@ impl<'a> Elaboration<'a> {
                             .rev(),
                     );
                 }
-                ModuleItem::BundleDestructure { .. } => {
-                    return Err(
-                        "bundle destructure in module body is not yet supported by the simulator"
-                            .to_string(),
-                    );
+                ModuleItem::BundleDestructure { span, .. } => {
+                    return Err(Box::new(
+                        Diag::new(
+                            *span,
+                            "bundle destructure in module body is not yet supported by the simulator",
+                        )
+                        .with_code("S0127"),
+                    ));
                 }
             }
         }
@@ -598,7 +644,7 @@ impl<'a> Elaboration<'a> {
     }
 
     /// Post-loop merge, bit-drive Concat assembly, clock/edge propagation, final `Design`.
-    fn finish(self) -> Result<Design, String> {
+    fn finish(self) -> Result<Design, Box<Diag>> {
         let Elaboration {
             m,
             consts,
@@ -626,9 +672,15 @@ impl<'a> Elaboration<'a> {
         // overwriting (a parent signal named like a flattened `inst_port` wire).
         for (name, driver) in flat.comb {
             if comb.insert(name.clone(), driver).is_some() {
-                return Err(format!(
-                    "flattened instance signal `{name}` collides with an existing signal in `{}`",
-                    m.name.name
+                return Err(Box::new(
+                    Diag::new(
+                        m.span,
+                        format!(
+                            "flattened instance signal `{name}` collides with an existing signal in `{}`",
+                            m.name.name
+                        ),
+                    )
+                    .with_code("S0128"),
                 ));
             }
         }
@@ -641,12 +693,23 @@ impl<'a> Elaboration<'a> {
                 .chain(&wires)
                 .find(|s| s.name == sig)
                 .map(|s| s.width.bits)
-                .ok_or_else(|| format!("bit-driven signal `{sig}` has no declaration"))?;
+                .ok_or_else(|| {
+                    Box::new(
+                        Diag::new(
+                            m.span,
+                            format!("bit-driven signal `{sig}` has no declaration"),
+                        )
+                        .with_code("S0129"),
+                    )
+                })?;
             let mut parts = Vec::with_capacity(width as usize);
             for b in (0..width).rev() {
-                let e = bits
-                    .get(&b)
-                    .ok_or_else(|| format!("signal `{sig}` bit {b} is not driven"))?;
+                let e = bits.get(&b).ok_or_else(|| {
+                    Box::new(
+                        Diag::new(m.span, format!("signal `{sig}` bit {b} is not driven"))
+                            .with_code("S0130"),
+                    )
+                })?;
                 parts.push(e.clone());
             }
             let span = parts.first().map(|e| e.span).unwrap_or(m.span);
@@ -712,7 +775,7 @@ pub(super) fn elaborate_module(
     params: &BTreeMap<String, i128>,
     depth: u32,
     mode: SimMode,
-) -> Result<Design, String> {
+) -> Result<Design, Box<Diag>> {
     let mut e = Elaboration::new(
         reg, extern_reg, func_reg, bundle_reg, enum_reg, file, m, params, depth, mode,
     )?;
@@ -908,19 +971,26 @@ fn record_drive(
     consts: &BTreeMap<String, i128>,
     comb: &mut BTreeMap<String, Expr>,
     bit_drives: &mut BTreeMap<String, BTreeMap<u32, Expr>>,
-) -> Result<(), String> {
+) -> Result<(), Box<Diag>> {
     match &lhs.index {
         None => {
             comb.insert(lhs.base.name.clone(), rw.expr(rhs)?);
         }
         Some((idx, None)) => {
-            let bit = const_eval(&rw.expr(idx)?, consts)?;
+            let idx_expr = rw.expr(idx)?;
+            let bit = const_eval(&idx_expr, consts)?;
             // Bound to the evaluator's max width BEFORE `as u32`, so an oversized
             // index can't silently truncate into a valid bit.
             if !(0..128).contains(&bit) {
-                return Err(format!(
-                    "bit index {bit} driving `{}` is out of range (0..128)",
-                    lhs.base.name
+                return Err(Box::new(
+                    Diag::new(
+                        idx.span,
+                        format!(
+                            "bit index {bit} driving `{}` is out of range (0..128)",
+                            lhs.base.name
+                        ),
+                    )
+                    .with_code("S0134"),
                 ));
             }
             bit_drives
@@ -929,19 +999,33 @@ fn record_drive(
                 .insert(bit as u32, rw.expr(rhs)?);
         }
         Some((hi_e, Some(lo_e))) => {
-            let hi = const_eval(&rw.expr(hi_e)?, consts)?;
-            let lo = const_eval(&rw.expr(lo_e)?, consts)?;
+            let hi_expr = rw.expr(hi_e)?;
+            let hi = const_eval(&hi_expr, consts)?;
+            let lo_expr = rw.expr(lo_e)?;
+            let lo = const_eval(&lo_expr, consts)?;
             if !(0..128).contains(&hi) || !(0..128).contains(&lo) {
-                return Err(format!(
-                    "slice bound driving `{}` is out of range (0..128)",
-                    lhs.base.name
+                return Err(Box::new(
+                    Diag::new(
+                        hi_e.span.join(lo_e.span),
+                        format!(
+                            "slice bound driving `{}` is out of range (0..128)",
+                            lhs.base.name
+                        ),
+                    )
+                    .with_code("S0135"),
                 ));
             }
             if hi < lo {
-                return Err(format!(
-                    "slice bounds driving `{}` are reversed (write `[hi:lo]`, \
-                     most significant bit first)",
-                    lhs.base.name
+                return Err(Box::new(
+                    Diag::new(
+                        hi_e.span.join(lo_e.span),
+                        format!(
+                            "slice bounds driving `{}` are reversed (write `[hi:lo]`, \
+                             most significant bit first)",
+                            lhs.base.name
+                        ),
+                    )
+                    .with_code("S0136"),
                 ));
             }
             let rhs_expr = rw.expr(rhs)?;

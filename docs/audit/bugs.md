@@ -1708,3 +1708,100 @@ left and literal-on-right against a `bits[26]` sibling. Manually
 verified end-to-end against the exact fuzzer-found input (lex → parse →
 pretty-print → re-parse → emit both sides → `assert_eq!`), matching
 `fuzz_targets/pretty_roundtrip.rs`'s own property.
+
+---
+
+## BUG-26 (LOW, OPEN) — `mimz-sim`'s `resolve_module`'s own "unknown module" branch is dead code
+
+**What.** `sim/elaborate/registry.rs`'s `resolve_module` has its own
+"uses unknown module `{name}`" error, coded `S0101` (the sim-runtime
+diagnostics catalog, R2). It never fires: `resolve_module`'s only
+caller, `resolve_target`, always checks `reg.contains_key(&q.name.name)`
+before calling `resolve_module` at all — so by the time `resolve_module`
+runs, the name is already confirmed present in the module registry, and
+its own `reg.get(...).ok_or_else(S0101)` branch can never see a miss.
+
+**Cause.** `resolve_target` (added when the extern-module registry was
+introduced) needed to try the real-module registry FIRST, falling back
+to the extern registry on a miss — the `contains_key` pre-check exists
+for that dispatch, not for `resolve_module`'s own benefit, but it has
+the side effect of making `resolve_module`'s own unknown-name arm
+unreachable from this, its only call site.
+
+**How found.** Writing `crates/mimz-sim/tests/sim_errors.rs` (the R2
+design's Phase 5 `S0xxx` fixture-per-code contract test) — a fixture
+built to fire `S0101` (`let x = Bogus() {}`, `Bogus` undeclared
+anywhere) instead fired `S0105` (`resolve_target`'s own combined
+module-or-extern lookup miss), every time.
+
+**Severity.** LOW — a diagnostics-catalog quality gap, not a functional
+bug: a genuinely unknown bare module reference still produces a correct,
+well-spanned error (`S0105`, worded identically to `S0101`'s own
+message), just under the "wrong" of two codes that were meant to mean
+slightly different things. No wrong behavior, no missed rejection.
+
+**Fix (Pending).** Either delete `resolve_module`'s own dead `S0101`
+arm (and its `ALL_SIM_CODES` entry) since `resolve_target` already
+covers the case end-to-end, or restructure `resolve_target` so a bare
+reference that exists in NEITHER registry reports through
+`resolve_module` when the name was expected to be a real module —
+whichever reads more clearly once someone is looking directly at both
+functions together. Filed as a follow-up; out of scope for the test
+that found it (Task 5.4 of the R2 plan is "add a contract test", not
+"redesign registry resolution").
+
+**Test.** None yet — `sim_errors.rs`'s `every_sim_code_has_a_fixture_above`
+lists `S0101` in its `known_gaps` with a comment pointing at this entry,
+so the coverage check doesn't silently regress once this is fixed
+(removing the code, or making it reachable, both require touching that
+list, not just this file).
+
+---
+
+## BUG-27 (LOW, OPEN) — `mimz-sim`'s combinational-cycle diagnostic always loses its own code to `S0201`
+
+**What.** `sim/comb.rs`'s `Env::resolve` constructs a well-worded,
+correctly-coded `S0238` ("combinational cycle through {name} — feedback
+must pass through a register") when it detects a signal already on its
+own in-progress resolution stack. That `Diag` never survives to a
+caller with `S0238` intact — it always arrives as `S0201`
+instead, with the SAME message text.
+
+**Cause.** A cycle can only be DETECTED on a re-entrant `Env::resolve`
+call (the in-progress check requires a name to already be mid-resolution
+elsewhere on the stack) — and every re-entrant call is reached through
+`Env::signal` (`comb.rs`'s `Resolver::signal` impl), never through
+`Env::resolve` directly. `Resolver::signal`'s trait signature is fixed
+at `Result<Val, String>` (Phase 2's deliberate "leave the trait alone"
+design, so the boundary never threads a `Span`/`Diag` through every
+implementer), so `Env::signal` bridges `Env::resolve`'s result down to a
+flat `String` via `.map_err(|e| e.msg)` — discarding `S0238` — and the
+OUTER `value::eval_ctx`'s `Ident` arm then re-wraps that string as a NEW
+`Diag` coded `S0201` (the generic "Resolver::signal failed" code), since
+it has no way to know the original error already had a more specific
+code of its own.
+
+**How found.** Same as BUG-26 — a `sim_errors.rs` fixture built to fire
+`S0238` (two wires driving each other) consistently produced `S0201`
+instead, with `S0238`'s own message text intact underneath.
+
+**Severity.** LOW — again a diagnostics-catalog quality gap: a
+combinational cycle is still correctly REJECTED with a clear, accurate
+message (feedback must pass through a register) and a real span; it
+just can't be filtered/matched on the more specific `S0238` code the
+catalog documents for it, since that code never actually reaches a
+caller.
+
+**Fix (Pending).** Would need Phase 2's Resolver-boundary bridging
+pattern itself revisited — e.g. encoding a code prefix into the bridged
+`String` for `Env`'s own internal errors and having `eval_ctx`'s
+`Ident`/`Index` arms preserve it when present, or some other mechanism
+that doesn't require threading a `Span`/`Diag` through the `Resolver`
+trait's signature. Filed as a follow-up; out of scope for the test that
+found it, same reasoning as BUG-26.
+
+**Test.** None yet — `sim_errors.rs`'s
+`s0238_combinational_cycle_condition_fires_recoded_as_s0201` fixture
+asserts the CONDITION and message text (not the code), and
+`every_sim_code_has_a_fixture_above` lists `S0238` in its `known_gaps`
+with a comment pointing at this entry.

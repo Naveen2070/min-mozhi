@@ -822,7 +822,10 @@ fn differential_fuzz_matches_icarus() {
                 &BTreeMap::new(),
             )
             .unwrap_or_else(|e| {
-                panic!("seed {seed}: our kernel rejected its own generated program:\n{src}\n{e}")
+                panic!(
+                    "seed {seed}: our kernel rejected its own generated program:\n{src}\n{}",
+                    e.msg
+                )
             });
             let row: BTreeMap<String, mimz::sim::value::Bits> =
                 outputs.into_iter().map(|o| (o.name, o.value)).collect();
@@ -934,7 +937,8 @@ fn differential_fuzz_clocked_matches_icarus() {
             .unwrap_or_else(|e| {
                 panic!(
                     "seed {seed}: our kernel failed to elaborate its own generated \
-                     clocked program:\n{src}\n{e}"
+                     clocked program:\n{src}\n{}",
+                    e.msg
                 )
             });
         let opts = SimOpts {

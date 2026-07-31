@@ -201,7 +201,11 @@ pub(crate) fn test_file(
                 } else {
                     "FAIL".to_string()
                 };
-                eprintln!("{fail_str} error in test \"{}\": {e}", t.name);
+                eprintln!("{fail_str} error in test \"{}\":", t.name);
+                eprint!(
+                    "{}",
+                    project::render_diags_lang(std::slice::from_ref(e.as_ref()), &files, flavor)
+                );
             }
         }
     }

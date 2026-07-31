@@ -70,6 +70,13 @@ will key off them — never renumber.
 | E12xx       | loader                  | below                            |
 | E1301–E1302 | checker (extern module) | [`11-checker.md`](11-checker.md) |
 
+`mimz-sim`'s own runtime diagnostics (`S01xx`–`S04xx`) are a SEPARATE
+catalog — fires at elaboration/execution time, after the checker has
+already accepted the program (`mimz sim`/`mimz eval`/`mimz test`, and
+the WASM playground's single-source path). Catalogued in
+[`13-tooling.md`](13-tooling.md#s0xxx--runtime-diagnostic-codes-r2-docsauditreview-2026-07-17md),
+not here — `ALL_SIM_CODES` lives in `crates/mimz-sim`, not `mimz-core`.
+
 | Code  | Meaning                                                             |
 | ----- | ------------------------------------------------------------------- |
 | E1001 | unterminated block comment                                          |

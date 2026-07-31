@@ -22,6 +22,8 @@ pub use mimz_core::bits::bits_to_decimal_string;
 use binary::{binary_ctx, unary};
 use fn_eval::{call, eval_fn_call};
 
+use crate::sim::Diag;
+
 /// A bit-vector value: the low `width` bits of `bits` are meaningful.
 /// `pub` (re-exported at `mimz_sim::sim::Val`) since
 /// `EmulationHost::on_change`/`on_tick` hand this to the shell crate's
@@ -306,7 +308,7 @@ pub trait Resolver {
 /// `mimz-core`'s `width_rules_conformance` test (Stage 4 T3) drives this
 /// directly to check the simulator's own evaluator against the shared
 /// `width_rules::shift_result` and the checker's `Ty`-level inference.
-pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, String> {
+pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
     eval_ctx(r, e, None)
 }
 
@@ -329,17 +331,19 @@ pub(super) fn eval_ctx<R: Resolver>(
     r: &mut R,
     e: &Expr,
     expected_width: Option<u32>,
-) -> Result<Val, String> {
+) -> Result<Val, Box<Diag>> {
     match &e.kind {
         ExprKind::Int { value, .. } => Ok(Val::from_literal(value)),
         ExprKind::Bool(b) => Ok(Val::new(*b as u128, 1, false)),
-        ExprKind::Ident(n) => r.signal(n),
+        ExprKind::Ident(n) => r
+            .signal(n)
+            .map_err(|msg| Box::new(Diag::new(e.span, msg).with_code("S0201"))),
         ExprKind::Unary { op, expr } => Ok(unary(*op, eval(r, expr)?)),
         ExprKind::Binary { op, lhs, rhs } => {
             let shift_ctx = matches!(op, BinOp::Shl | BinOp::Shr);
             let l = eval_ctx(r, lhs, if shift_ctx { expected_width } else { None })?;
             let rr = eval(r, rhs)?; // shift amount (or any other RHS) is self-determined
-            binary_ctx(*op, l, rr, expected_width)
+            binary_ctx(*op, l, rr, expected_width, e.span)
         }
         ExprKind::IfExpr { cond, then, els } => {
             if eval(r, cond)?.lsb() == 1 {
@@ -352,21 +356,33 @@ pub(super) fn eval_ctx<R: Resolver>(
             let s = eval(r, scrutinee)?;
             for arm in arms {
                 for p in &arm.patterns {
-                    if pattern_matches(p, &s)? {
+                    if pattern_matches(p, &s) {
                         return eval_ctx(r, &arm.value, expected_width);
                     }
                 }
             }
-            Err("no `match` arm matched the value (enum patterns are not evaluated yet)".into())
+            Err(Box::new(
+                Diag::new(
+                    e.span,
+                    "no `match` arm matched the value (enum patterns are not evaluated yet)",
+                )
+                .with_code("S0202"),
+            ))
         }
         ExprKind::Concat(parts) => {
             let vals: Vec<Val> = parts.iter().map(|p| eval(r, p)).collect::<Result<_, _>>()?;
             // Sum in u64 so many parts cannot wrap a u32 below the guard.
             let total64: u64 = vals.iter().map(|v| v.width as u64).sum();
             if total64 > mimz_core::width_rules::MAX_WIDTH as u64 {
-                return Err(format!(
-                    "concatenation exceeds {} bits",
-                    mimz_core::width_rules::MAX_WIDTH
+                return Err(Box::new(
+                    Diag::new(
+                        e.span,
+                        format!(
+                            "concatenation exceeds {} bits",
+                            mimz_core::width_rules::MAX_WIDTH
+                        ),
+                    )
+                    .with_code("S0203"),
                 ));
             }
             let total = total64 as u32;
@@ -389,7 +405,10 @@ pub(super) fn eval_ctx<R: Resolver>(
         ExprKind::Replicate { count, parts } => {
             let n = const_eval(count, r.ints())?;
             if n < 1 {
-                return Err("replication count must be at least 1".into());
+                return Err(Box::new(
+                    Diag::new(count.span, "replication count must be at least 1")
+                        .with_code("S0204"),
+                ));
             }
             let vals: Vec<Val> = parts.iter().map(|p| eval(r, p)).collect::<Result<_, _>>()?;
             // Inner group width, then the replicated total — both in u64 so the
@@ -399,9 +418,15 @@ pub(super) fn eval_ctx<R: Resolver>(
                 .checked_mul(n as u64)
                 .filter(|t| *t <= mimz_core::width_rules::MAX_WIDTH as u64)
                 .ok_or_else(|| {
-                    format!(
-                        "replication exceeds {} bits",
-                        mimz_core::width_rules::MAX_WIDTH
+                    Box::new(
+                        Diag::new(
+                            e.span,
+                            format!(
+                                "replication exceeds {} bits",
+                                mimz_core::width_rules::MAX_WIDTH
+                            ),
+                        )
+                        .with_code("S0203"),
                     )
                 })?;
             if vals.iter().any(|v| v.unknown) {
@@ -440,7 +465,10 @@ pub(super) fn eval_ctx<R: Resolver>(
             if let ExprKind::Ident(name) = &base.kind {
                 if let Some(len) = r.array_len(name) {
                     let elems: Vec<Val> = (0..len)
-                        .map(|i| r.signal(&format!("{name}_{i}")))
+                        .map(|i| {
+                            r.signal(&format!("{name}_{i}"))
+                                .map_err(|msg| Box::new(Diag::new(e.span, msg).with_code("S0201")))
+                        })
                         .collect::<Result<_, _>>()?;
                     // A zero-length array is rejected by the checker (E0412)
                     // in the normal compiler pipeline, but this evaluator is
@@ -448,7 +476,10 @@ pub(super) fn eval_ctx<R: Resolver>(
                     // `elems.len() - 1` below would underflow, so this must
                     // be a clean `Err`, not a panic.
                     let Some(last) = elems.len().checked_sub(1) else {
-                        return Err(format!("array `{name}` has no elements to index"));
+                        return Err(Box::new(
+                            Diag::new(e.span, format!("array `{name}` has no elements to index"))
+                                .with_code("S0205"),
+                        ));
                     };
                     // Out-of-range runtime index clamps to the last element,
                     // matching the emitter's ternary-chain default fallback and
@@ -458,14 +489,21 @@ pub(super) fn eval_ctx<R: Resolver>(
                 }
                 if r.is_mem(name) {
                     let addr = eval(r, index)?;
-                    return r.mem_read(name, addr.bits_small_or_zero());
+                    return r
+                        .mem_read(name, addr.bits_small_or_zero())
+                        .map_err(|msg| Box::new(Diag::new(e.span, msg).with_code("S0206")));
                 }
             }
             let b = eval(r, base)?;
             if b.unknown {
                 return Ok(Val::unknown(1, false));
             }
-            let i = checked_index(const_eval(index, r.ints())?, b.width, "bit index")?;
+            let i = checked_index(
+                const_eval(index, r.ints())?,
+                b.width,
+                "bit index",
+                index.span,
+            )?;
             let bit = if b.is_wide() {
                 wide::bit_at(&b.to_limbs(), i) as u128
             } else {
@@ -475,8 +513,18 @@ pub(super) fn eval_ctx<R: Resolver>(
         }
         ExprKind::Slice { base, hi, lo } => {
             let b = eval(r, base)?;
-            let hi = checked_index(const_eval(hi, r.ints())?, b.width, "slice high bound")?;
-            let lo = checked_index(const_eval(lo, r.ints())?, b.width, "slice low bound")?;
+            let hi_v = checked_index(
+                const_eval(hi, r.ints())?,
+                b.width,
+                "slice high bound",
+                hi.span,
+            )?;
+            let lo_v = checked_index(
+                const_eval(lo, r.ints())?,
+                b.width,
+                "slice low bound",
+                lo.span,
+            )?;
             // A slice is always unsigned regardless of the base's own
             // kind (BUG-21, docs/audit/bugs.md) — enforced by
             // `width_rules::slice_result`, the same function the
@@ -484,8 +532,16 @@ pub(super) fn eval_ctx<R: Resolver>(
             // copy of this rule left. `checked_index` above already
             // guarantees `hi`/`lo` are each individually in range, so
             // only the reversed-bounds case can actually fire here.
-            let k = mimz_core::width_rules::slice_result(b.width, hi, lo)
-                .map_err(|_| "slice bounds reversed (write `[hi:lo]`, msb first)".to_string())?;
+            let k = mimz_core::width_rules::slice_result(b.width, hi_v, lo_v).map_err(|_| {
+                Box::new(
+                    Diag::new(
+                        hi.span.join(lo.span),
+                        "slice bounds reversed (write `[hi:lo]`, msb first)",
+                    )
+                    .with_code("S0208"),
+                )
+            })?;
+            let lo = lo_v;
             if b.unknown {
                 return Ok(Val::unknown(k.width, false));
             }
@@ -497,26 +553,41 @@ pub(super) fn eval_ctx<R: Resolver>(
                 Ok(Val::new_wide(shifted, k.width, false))
             }
         }
-        ExprKind::Field { .. } => {
-            Err("enum-variant / instance-port access is not supported by the evaluator yet".into())
-        }
+        ExprKind::Field { .. } => Err(Box::new(
+            Diag::new(
+                e.span,
+                "enum-variant / instance-port access is not supported by the evaluator yet",
+            )
+            .with_code("S0209"),
+        )),
         ExprKind::Call { func, args } => call(r, *func, args),
         ExprKind::FnCall { name, args } => eval_fn_call(r, name, args),
-        ExprKind::BundleLit(_) => {
-            Err("BundleLit reached value evaluator — should be pre-expanded by elaborate".into())
-        }
-        ExprKind::ArrayLit(_) => Err(
-            "array literal is only valid as a `fn` argument or `let` binding \
-             (both pre-expand to scalars before evaluation)"
-                .into(),
-        ),
-        ExprKind::EnumConstruct { .. } => Err(
-            "EnumConstruct reached value evaluator — should be pre-expanded by elaborate".into(),
-        ),
+        ExprKind::BundleLit(_) => Err(Box::new(
+            Diag::new(
+                e.span,
+                "BundleLit reached value evaluator — should be pre-expanded by elaborate",
+            )
+            .with_code("S0210"),
+        )),
+        ExprKind::ArrayLit(_) => Err(Box::new(
+            Diag::new(
+                e.span,
+                "array literal is only valid as a `fn` argument or `let` binding \
+                 (both pre-expand to scalars before evaluation)",
+            )
+            .with_code("S0211"),
+        )),
+        ExprKind::EnumConstruct { .. } => Err(Box::new(
+            Diag::new(
+                e.span,
+                "EnumConstruct reached value evaluator — should be pre-expanded by elaborate",
+            )
+            .with_code("S0212"),
+        )),
     }
 }
 
-pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
+pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> bool {
     // Helper: extract the low 128 bits of s without the saturation that
     // bits_small_or_zero() applies to values > u128::MAX.
     let low128 = |s: &Val| -> u128 {
@@ -529,7 +600,7 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
         }
     };
     match p {
-        Pattern::Wildcard => Ok(true),
+        Pattern::Wildcard => true,
         Pattern::Int { value, .. } => {
             // Same low-128-bits extraction as `low128(s)` above, for the
             // pattern literal's own (possibly wide, BUG-13 layer 2) `Bits`.
@@ -540,10 +611,10 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
                         | ((limbs.get(1).copied().unwrap_or(0) as u128) << 64)
                 }
             };
-            Ok(low128(s) & mask(s.width.min(128)) == vlow & mask(s.width.min(128)))
+            low128(s) & mask(s.width.min(128)) == vlow & mask(s.width.min(128))
         }
-        Pattern::IntMask { value, mask: m, .. } => Ok((low128(s) & *m) == (*value & *m)),
-        Pattern::Bool(b) => Ok(s.lsb() == (*b as u128)),
+        Pattern::IntMask { value, mask: m, .. } => (low128(s) & *m) == (*value & *m),
+        Pattern::Bool(b) => s.lsb() == (*b as u128),
         Pattern::Variant { .. } => {
             unreachable!(
                 "Pattern::Variant is lowered to IntMask during elaboration — raw variants should not reach pattern_matches"
@@ -553,35 +624,62 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> Result<bool, String> {
 }
 
 /// The declared (width, signed) of a hardware type, evaluating any width
-/// expression in the const environment.
-pub(super) fn type_width(ty: &Type, ints: &BTreeMap<String, i128>) -> Result<(u32, bool), String> {
+/// expression in the const environment. `span` is the declaring signal/
+/// field/param's own span — `ast::Type` itself carries none.
+pub(super) fn type_width(
+    ty: &Type,
+    ints: &BTreeMap<String, i128>,
+    span: mimz_core::span::Span,
+) -> Result<(u32, bool), Box<Diag>> {
     match ty {
         Type::Bit => Ok((1, false)),
-        Type::Bits(e) => Ok((checked_width(const_eval(e, ints)?)?, false)),
-        Type::Signed(e) => Ok((checked_width(const_eval(e, ints)?)?, true)),
-        Type::Named(n) => Err(format!(
-            "signal of enum type `{}` — the simulator does not model enum signals yet",
-            n.name.name
+        Type::Bits(e) => Ok((checked_width(const_eval(e, ints)?, e.span)?, false)),
+        Type::Signed(e) => Ok((checked_width(const_eval(e, ints)?, e.span)?, true)),
+        Type::Named(n) => Err(Box::new(
+            Diag::new(
+                span,
+                format!(
+                    "signal of enum type `{}` — the simulator does not model enum signals yet",
+                    n.name.name
+                ),
+            )
+            .with_code("S0213"),
         )),
-        Type::Bundle { .. } => {
-            Err("Type::Bundle reached type_width — should be pre-flattened by elaborate".into())
-        }
+        Type::Bundle { .. } => Err(Box::new(
+            Diag::new(
+                span,
+                "Type::Bundle reached type_width — should be pre-flattened by elaborate",
+            )
+            .with_code("S0214"),
+        )),
         // An array type never reaches here: an array param/`let` is expanded to
         // per-element scalars (each queried via its ELEMENT type), array module
         // signals are rejected (E0416), and array bundle/enum-payload fields are
         // rejected/flattened. Mirror the Bundle arm rather than panicking.
-        Type::Array { .. } => {
-            Err("Type::Array reached type_width — arrays expand to per-element scalars".into())
-        }
+        Type::Array { .. } => Err(Box::new(
+            Diag::new(
+                span,
+                "Type::Array reached type_width — arrays expand to per-element scalars",
+            )
+            .with_code("S0215"),
+        )),
     }
 }
 
-pub(super) fn checked_width(n: i128) -> Result<u32, String> {
+pub(super) fn checked_width(n: i128, span: mimz_core::span::Span) -> Result<u32, Box<Diag>> {
     use mimz_core::width_rules::MAX_WIDTH;
     if n < 1 {
-        Err(format!("width must be at least 1, got {n}"))
+        Err(Box::new(
+            Diag::new(span, format!("width must be at least 1, got {n}")).with_code("S0216"),
+        ))
     } else if n > MAX_WIDTH {
-        Err(format!("width {n} exceeds the maximum of {MAX_WIDTH} bits"))
+        Err(Box::new(
+            Diag::new(
+                span,
+                format!("width {n} exceeds the maximum of {MAX_WIDTH} bits"),
+            )
+            .with_code("S0217"),
+        ))
     } else {
         Ok(n as u32)
     }
@@ -614,10 +712,10 @@ fn build_env(ints: &BTreeMap<String, i128>) -> mimz_core::checker::consteval::En
 /// own sanity limits (`MAX_WIDTH`, `MAX_DEPTH`), so this narrowing is exact
 /// in every legal design (BUG-13 layer 2's arbitrary-width representation
 /// only actually matters for `const_eval_wide`, below).
-pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, String> {
+pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, Box<Diag>> {
     mimz_core::checker::consteval::eval(e, &build_env(ints))
         .map(|v| v.to_i128_saturating())
-        .map_err(|d| d.msg)
+        .map_err(Box::new)
 }
 
 /// Compile-time const evaluation for a `Reg.reset`/`Mem.init` expression —
@@ -628,28 +726,41 @@ pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128
 pub(super) fn const_eval_wide(
     e: &Expr,
     ints: &BTreeMap<String, i128>,
-) -> Result<mimz_core::checker::consteval::ConstVal, String> {
-    mimz_core::checker::consteval::eval(e, &build_env(ints)).map_err(|d| d.msg)
+) -> Result<mimz_core::checker::consteval::ConstVal, Box<Diag>> {
+    mimz_core::checker::consteval::eval(e, &build_env(ints)).map_err(Box::new)
 }
 
 /// A bit index or slice bound must be a non-negative integer inside the value's
 /// width. Rejects negative / out-of-range positions instead of truncating via
 /// `as u32` or a later oversized shift (`>> n`, `n >= 128`, which panics).
-pub(super) fn checked_index(n: i128, width: u32, what: &str) -> Result<u32, String> {
+pub(super) fn checked_index(
+    n: i128,
+    width: u32,
+    what: &str,
+    span: mimz_core::span::Span,
+) -> Result<u32, Box<Diag>> {
     if (0..width as i128).contains(&n) {
         Ok(n as u32)
     } else {
-        Err(format!(
-            "{what} {n} is out of range for a {width}-bit value"
+        Err(Box::new(
+            Diag::new(
+                span,
+                format!("{what} {n} is out of range for a {width}-bit value"),
+            )
+            .with_code("S0207"),
         ))
     }
 }
 
-/// Pick `module` from `file`, or the file's only module when `None`.
+/// Pick `module` from `file`, or the file's only module when `None`. No
+/// span in scope precise enough to beat `Span::default()` — `want` is a
+/// bare `&str` and an absent/ambiguous module has no single declaration to
+/// point at (mirrors `elaborate_project_with_mode`'s own defensive
+/// zero-span "no files" case).
 pub(super) fn pick_module<'a>(
     file: &'a ast::File,
     want: Option<&str>,
-) -> Result<&'a ast::Module, String> {
+) -> Result<&'a ast::Module, Box<Diag>> {
     let mods: Vec<&ast::Module> = file
         .items
         .iter()
@@ -663,13 +774,30 @@ pub(super) fn pick_module<'a>(
             .iter()
             .copied()
             .find(|m| m.name.name == n)
-            .ok_or_else(|| format!("no module named `{n}` in this file")),
+            .ok_or_else(|| {
+                Box::new(
+                    Diag::new(
+                        mimz_core::span::Span::default(),
+                        format!("no module named `{n}` in this file"),
+                    )
+                    .with_code("S0218"),
+                )
+            }),
         None => match mods.as_slice() {
             [one] => Ok(one),
-            [] => Err("file defines no module".into()),
-            many => Err(format!(
-                "file defines {} modules — choose one with --module <name>",
-                many.len()
+            [] => Err(Box::new(
+                Diag::new(mimz_core::span::Span::default(), "file defines no module")
+                    .with_code("S0219"),
+            )),
+            many => Err(Box::new(
+                Diag::new(
+                    mimz_core::span::Span::default(),
+                    format!(
+                        "file defines {} modules — choose one with --module <name>",
+                        many.len()
+                    ),
+                )
+                .with_code("S0220"),
             )),
         },
     }

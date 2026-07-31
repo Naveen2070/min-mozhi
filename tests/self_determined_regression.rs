@@ -110,7 +110,7 @@ fn differential(src: &str, inputs: &[(&str, u128)]) {
         &input_map_bits,
         &BTreeMap::new(),
     )
-    .unwrap_or_else(|e| panic!("our kernel rejected this program:\n{src}\n{e}"));
+    .unwrap_or_else(|e| panic!("our kernel rejected this program:\n{src}\n{}", e.msg));
     // Regression fixtures here are hand-picked small-width repros, so every
     // output value is always `Bits::Small` — narrow back to `u128` to
     // compare against Icarus's own u128-typed parsed output.
@@ -187,7 +187,7 @@ fn differential_clocked(src: &str, held_inputs: &[(&str, u128)]) {
         .collect();
 
     let design = elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
-        .unwrap_or_else(|e| panic!("our kernel failed to elaborate:\n{src}\n{e}"));
+        .unwrap_or_else(|e| panic!("our kernel failed to elaborate:\n{src}\n{}", e.msg));
     assert_eq!(
         held.len(),
         design.inputs.len(),
