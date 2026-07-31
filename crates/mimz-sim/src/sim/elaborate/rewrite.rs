@@ -1,4 +1,5 @@
 use super::*;
+use crate::sim::Diag;
 use mimz_core::ast::Pattern;
 
 /// Rewrites expressions/statements during elaboration: enum-variant reads
@@ -20,7 +21,7 @@ pub(super) struct Rw<'d, 's> {
 }
 
 impl<'d, 's> Rw<'d, 's> {
-    pub(super) fn expr(&self, e: &Expr) -> Result<Expr, String> {
+    pub(super) fn expr(&self, e: &Expr) -> Result<Expr, Box<Diag>> {
         let kind = match &e.kind {
             ExprKind::Int { .. } | ExprKind::Bool(_) => e.kind.clone(),
             ExprKind::Ident(n) => {
@@ -114,7 +115,7 @@ impl<'d, 's> Rw<'d, 's> {
                             };
                             ext_rw.expr(&a.value)?
                         };
-                        Ok::<_, String>(ast::Arm {
+                        Ok::<_, Box<Diag>>(ast::Arm {
                             patterns: a
                                 .patterns
                                 .iter()
@@ -168,7 +169,10 @@ impl<'d, 's> Rw<'d, 's> {
                     .collect::<Result<_, _>>()?,
             },
             ExprKind::BundleLit(_) => {
-                return Err("bundle literal in unsupported expression position".to_string());
+                return Err(Box::new(
+                    Diag::new(e.span, "bundle literal in unsupported expression position")
+                        .with_code("S0117"),
+                ));
             }
             ExprKind::ArrayLit(elems) => ExprKind::ArrayLit(
                 elems
@@ -197,19 +201,27 @@ impl<'d, 's> Rw<'d, 's> {
         variant: &ast::Ident,
         args: &[Expr],
         span: mimz_core::span::Span,
-    ) -> Result<Expr, String> {
-        let edecl = self
-            .enums
-            .get(&enum_name.name)
-            .ok_or_else(|| format!("unknown enum `{}`", enum_name.name))?;
+    ) -> Result<Expr, Box<Diag>> {
+        let edecl = self.enums.get(&enum_name.name).ok_or_else(|| {
+            Box::new(
+                Diag::new(enum_name.span, format!("unknown enum `{}`", enum_name.name))
+                    .with_code("S0115"),
+            )
+        })?;
         let idx = edecl
             .variants
             .iter()
             .position(|v| v.name.name == variant.name)
             .ok_or_else(|| {
-                format!(
-                    "enum `{}` has no variant `{}`",
-                    enum_name.name, variant.name
+                Box::new(
+                    Diag::new(
+                        variant.span,
+                        format!(
+                            "enum `{}` has no variant `{}`",
+                            enum_name.name, variant.name
+                        ),
+                    )
+                    .with_code("S0116"),
                 )
             })?;
         let total_w = edecl
@@ -261,7 +273,12 @@ impl<'d, 's> Rw<'d, 's> {
         })
     }
 
-    pub(super) fn field(&self, e: &Expr, base: &Expr, field: &ast::Ident) -> Result<Expr, String> {
+    pub(super) fn field(
+        &self,
+        e: &Expr,
+        base: &Expr,
+        field: &ast::Ident,
+    ) -> Result<Expr, Box<Diag>> {
         if let ExprKind::Ident(b) = &base.kind {
             // `Enum.Variant` → its index literal.
             if let Some(edecl) = self.enums.get(b) {
@@ -269,7 +286,15 @@ impl<'d, 's> Rw<'d, 's> {
                     .variants
                     .iter()
                     .position(|v| v.name.name == field.name)
-                    .ok_or_else(|| format!("enum `{b}` has no variant `{}`", field.name))?;
+                    .ok_or_else(|| {
+                        Box::new(
+                            Diag::new(
+                                field.span,
+                                format!("enum `{b}` has no variant `{}`", field.name),
+                            )
+                            .with_code("S0116"),
+                        )
+                    })?;
                 return Ok(int_expr(idx as i128, e.span));
             }
             // `inst.port` → flat wire `inst_port`.
@@ -286,7 +311,8 @@ impl<'d, 's> Rw<'d, 's> {
             && let ExprKind::Ident(arr_name) = &arr.kind
             && self.insts.contains(arr_name)
         {
-            let n = const_eval(&self.expr(index)?, self.consts)?;
+            let rw_index = self.expr(index)?;
+            let n = const_eval(&rw_index, self.consts)?;
             return Ok(ident_expr(
                 format!("{arr_name}__{n}_{}", field.name),
                 e.span,
@@ -302,25 +328,33 @@ impl<'d, 's> Rw<'d, 's> {
         })
     }
 
-    fn pattern(&self, p: &Pattern) -> Result<Pattern, String> {
+    fn pattern(&self, p: &Pattern) -> Result<Pattern, Box<Diag>> {
         match p {
             Pattern::Variant {
                 enum_name,
                 variant,
                 bindings: _,
             } => {
-                let edecl = self
-                    .enums
-                    .get(&enum_name.name)
-                    .ok_or_else(|| format!("unknown enum `{}`", enum_name.name))?;
+                let edecl = self.enums.get(&enum_name.name).ok_or_else(|| {
+                    Box::new(
+                        Diag::new(enum_name.span, format!("unknown enum `{}`", enum_name.name))
+                            .with_code("S0115"),
+                    )
+                })?;
                 let idx = edecl
                     .variants
                     .iter()
                     .position(|v| v.name.name == variant.name)
                     .ok_or_else(|| {
-                        format!(
-                            "enum `{}` has no variant `{}`",
-                            enum_name.name, variant.name
+                        Box::new(
+                            Diag::new(
+                                variant.span,
+                                format!(
+                                    "enum `{}` has no variant `{}`",
+                                    enum_name.name, variant.name
+                                ),
+                            )
+                            .with_code("S0116"),
                         )
                     })?;
                 // note: fallback only correct for tag-only enums
@@ -367,7 +401,7 @@ impl<'d, 's> Rw<'d, 's> {
         &self,
         patterns: &[Pattern],
         scrutinee: &Expr,
-    ) -> Result<HashMap<String, Expr>, String> {
+    ) -> Result<HashMap<String, Expr>, Box<Diag>> {
         for p in patterns {
             let Pattern::Variant {
                 enum_name,
@@ -452,7 +486,7 @@ impl<'d, 's> Rw<'d, 's> {
         &self,
         s: &SeqStmt,
         rename: &dyn Fn(&str) -> String,
-    ) -> Result<SeqStmt, String> {
+    ) -> Result<SeqStmt, Box<Diag>> {
         Ok(match s {
             SeqStmt::Assign { lhs, rhs } => SeqStmt::Assign {
                 lhs: ast::LValue {

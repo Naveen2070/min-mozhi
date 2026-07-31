@@ -2,6 +2,8 @@ use super::binary::{cmp_lt, extend_bits};
 use super::remask_to_width;
 use super::*;
 
+use crate::sim::Diag;
+
 /// Evaluate a user-defined function call.
 ///
 /// Args are evaluated in the CALLER's env, then bound to params in a child
@@ -13,7 +15,7 @@ pub(super) fn eval_fn_call<R: Resolver>(
     r: &mut R,
     name: &ast::Ident,
     args: &[Expr],
-) -> Result<Val, String> {
+) -> Result<Val, Box<Diag>> {
     // Flatten each argument to one-or-more `Val`s: an `ArrayLit` expands to N
     // values in place (mirroring the emitter's own N-scalar call-argument
     // expansion, so both backends agree on argument order); every other
@@ -33,15 +35,23 @@ pub(super) fn eval_fn_call<R: Resolver>(
     // Immutable borrows of *r — no more &mut calls on r after this point.
     let consts = r.ints();
     let funcs = r.funcs().ok_or_else(|| {
-        format!(
-            "function `{}` cannot be called in this evaluation context \
-             (function table unavailable)",
-            name.name
+        Box::new(
+            Diag::new(
+                name.span,
+                format!(
+                    "function `{}` cannot be called in this evaluation context \
+                     (function table unavailable)",
+                    name.name
+                ),
+            )
+            .with_code("S0223"),
         )
     })?;
-    let f = funcs
-        .get(&name.name)
-        .ok_or_else(|| format!("undefined function `{}`", name.name))?;
+    let f = funcs.get(&name.name).ok_or_else(|| {
+        Box::new(
+            Diag::new(name.span, format!("undefined function `{}`", name.name)).with_code("S0224"),
+        )
+    })?;
     // Bind each param to its arg value(s), masked to the declared param type.
     // An array param consumes `len` consecutive `argv` slots and binds them
     // under `<param>_0`..`<param>_{len-1}` — the SAME `<name>_<i>` convention
@@ -55,9 +65,16 @@ pub(super) fn eval_fn_call<R: Resolver>(
             Type::Array { elem, len } => {
                 // Length is a positive constant the checker already validated;
                 // `try_from` guards against a corrupt/negative value cleanly.
-                let n = u32::try_from(const_eval(len, consts)?)
-                    .map_err(|_| format!("array `{}` has an invalid length", param.name.name))?;
-                let (w, s) = type_width(elem, consts)?;
+                let n = u32::try_from(const_eval(len, consts)?).map_err(|_| {
+                    Box::new(
+                        Diag::new(
+                            len.span,
+                            format!("array `{}` has an invalid length", param.name.name),
+                        )
+                        .with_code("S0225"),
+                    )
+                })?;
+                let (w, s) = type_width(elem, consts, param.name.span)?;
                 for i in 0..n {
                     // `ai` can run past `argv` when the call site's argument
                     // count doesn't match this fn's arity — the checker
@@ -66,10 +83,16 @@ pub(super) fn eval_fn_call<R: Resolver>(
                     // ASTs (fuzzing), so an out-of-range `ai` must be a clean
                     // `Err`, not an out-of-bounds panic.
                     let val = argv.get(ai).cloned().ok_or_else(|| {
-                        format!(
-                            "function `{}` called with too few arguments (missing element \
-                             for array parameter `{}`)",
-                            name.name, param.name.name
+                        Box::new(
+                            Diag::new(
+                                name.span,
+                                format!(
+                                    "function `{}` called with too few arguments (missing \
+                                     element for array parameter `{}`)",
+                                    name.name, param.name.name
+                                ),
+                            )
+                            .with_code("S0226"),
                         )
                     })?;
                     ai += 1;
@@ -81,12 +104,18 @@ pub(super) fn eval_fn_call<R: Resolver>(
                 arrays.insert(param.name.name.clone(), n);
             }
             other => {
-                let (w, s) = type_width(other, consts)?;
+                let (w, s) = type_width(other, consts, param.name.span)?;
                 let val = argv.get(ai).cloned().ok_or_else(|| {
-                    format!(
-                        "function `{}` called with too few arguments (missing value for \
-                         parameter `{}`)",
-                        name.name, param.name.name
+                    Box::new(
+                        Diag::new(
+                            name.span,
+                            format!(
+                                "function `{}` called with too few arguments (missing value \
+                                 for parameter `{}`)",
+                                name.name, param.name.name
+                            ),
+                        )
+                        .with_code("S0226"),
                     )
                 })?;
                 ai += 1;
@@ -119,7 +148,7 @@ enum FnFlow {
 /// through the recursion, mirroring the Verilog emitter's continuation-passing
 /// lowering but using Rust's own early-return control flow instead of an
 /// explicit continuation string.
-fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
+fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, Box<Diag>> {
     for stmt in stmts {
         match stmt {
             FnStmt::Let(local) => {
@@ -176,14 +205,24 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, String> {
                 return Ok(FnFlow::Returned(v));
             }
             FnStmt::Loop {
-                var, lo, hi, body, ..
+                var,
+                lo,
+                hi,
+                body,
+                span,
             } => {
                 let lo_v = eval(env, lo)?.bits_small_or_zero() as i128;
                 let hi_v = eval(env, hi)?.bits_small_or_zero() as i128;
                 let count = (hi_v - lo_v).max(0);
                 if count > REPEAT_BUDGET {
-                    return Err(format!(
-                        "`loop` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                    return Err(Box::new(
+                        Diag::new(
+                            *span,
+                            format!(
+                                "`loop` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                            ),
+                        )
+                        .with_code("S0227"),
                     ));
                 }
                 // Bind the loop variable into `locals` (owned, mutable) for
@@ -271,6 +310,10 @@ impl Resolver for FnEnv<'_> {
         if let Some(c) = self.consts.get(name) {
             return Ok(Val::from_int(*c));
         }
+        // `Resolver::signal` itself stays `String` (trait signature is out of
+        // scope per the design's "leave the boundary alone" decision) — the
+        // caller (`eval_ctx`'s `Ident`/`Index` arms) wraps this with the
+        // enclosing `Expr`'s span into a real `Diag` (S0201).
         Err(format!(
             "unknown name `{name}` in function body (module signals are not in scope)"
         ))
@@ -286,19 +329,25 @@ impl Resolver for FnEnv<'_> {
     }
 }
 
-pub(super) fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, String> {
+pub(super) fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Result<Val, Box<Diag>> {
     match func {
         Builtin::Extend => {
-            let n = checked_width(const_eval(&args[1], r.ints())?)?;
+            let n = checked_width(const_eval(&args[1], r.ints())?, args[1].span)?;
             // `n` is `extend`'s own target width — feed it in as context so a
             // shift inside the argument (`extend(din << 2, 8)`) sees its real
             // consuming width, matching what the emitter's own no-op-extend
             // optimization relies on Verilog to compute (BUG-11).
             let v = eval_ctx(r, &args[0], Some(n))?;
             if n < v.width {
-                return Err(format!(
-                    "extend to {n} bits is narrower than the {}-bit value — use trunc",
-                    v.width
+                return Err(Box::new(
+                    Diag::new(
+                        args[0].span,
+                        format!(
+                            "extend to {n} bits is narrower than the {}-bit value — use trunc",
+                            v.width
+                        ),
+                    )
+                    .with_code("S0228"),
                 ));
             }
             if !v.is_wide() && n <= 128 {
@@ -314,7 +363,7 @@ pub(super) fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Resu
         }
         Builtin::Trunc => {
             let v = eval(r, &args[0])?;
-            let n = checked_width(const_eval(&args[1], r.ints())?)?;
+            let n = checked_width(const_eval(&args[1], r.ints())?, args[1].span)?;
             if !v.is_wide() {
                 Ok(Val::new(v.masked() & mask(n), n, v.signed))
             } else {
@@ -386,7 +435,13 @@ pub(super) fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Resu
         // `clog2` is compile-time only — the checker rejects it as a runtime
         // value (E0407) and folds it in widths, so a checked program never lands
         // here.
-        Builtin::Clog2 => Err("clog2 is compile-time only".into()),
+        Builtin::Clog2 => Err(Box::new(
+            Diag::new(
+                args.first().map(|a| a.span).unwrap_or_default(),
+                "clog2 is compile-time only",
+            )
+            .with_code("S0229"),
+        )),
         Builtin::SyncDoubleFlop | Builtin::SyncPulse => {
             unreachable!(
                 "sync.double_flop/sync.pulse must be lowered by \

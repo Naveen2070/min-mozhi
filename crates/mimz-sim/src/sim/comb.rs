@@ -19,6 +19,7 @@ use mimz_core::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 
 use super::value::{self, Resolver, Val};
 use super::wide;
+use crate::sim::Diag;
 
 /// Re-mask `v`'s raw bits to width `w` (with `signed`) — a pure reinterpret
 /// (truncate/zero-pad the limbs), NOT a sign-extending resize. Mirrors the
@@ -62,7 +63,7 @@ fn flatten_const_if<'a>(
 fn collect_module_consts(
     items: &[ModuleItem],
     ints: &mut BTreeMap<String, i128>,
-) -> Result<(), String> {
+) -> Result<(), Box<Diag>> {
     for it in items {
         match it {
             ModuleItem::Const(c) => {
@@ -109,44 +110,67 @@ pub fn eval_outputs(
     module: Option<&str>,
     inputs: &BTreeMap<String, value::Bits>,
     params: &BTreeMap<String, i128>,
-) -> Result<Vec<Output>, String> {
-    let file = files.first().ok_or("eval_outputs: no files")?;
+) -> Result<Vec<Output>, Box<Diag>> {
+    let file = files.first().ok_or_else(|| {
+        Box::new(
+            Diag::new(mimz_core::span::Span::default(), "eval_outputs: no files")
+                .with_code("S0230"),
+        )
+    })?;
     let m = value::pick_module(file, module)?;
 
     // 1. Reject anything sequential / structural — this is the comb slice.
     for it in &m.items {
         match it {
-            ModuleItem::Reg { .. } => {
-                return Err(
-                    "module has `reg` state — the combinational evaluator does not run \
-                            clocked logic yet (that is the Phase 1.5 simulator)"
-                        .into(),
-                );
+            ModuleItem::Reg { name, .. } => {
+                return Err(Box::new(
+                    Diag::new(
+                        name.span,
+                        "module has `reg` state — the combinational evaluator does not run \
+                         clocked logic yet (that is the Phase 1.5 simulator)",
+                    )
+                    .with_code("S0231"),
+                ));
             }
-            ModuleItem::On(_) => {
-                return Err("module has an `on` block — combinational evaluation only; \
-                            clocked behavior is Phase 1.5"
-                    .into());
+            ModuleItem::On(on) => {
+                return Err(Box::new(
+                    Diag::new(
+                        on.span,
+                        "module has an `on` block — combinational evaluation only; \
+                         clocked behavior is Phase 1.5",
+                    )
+                    .with_code("S0232"),
+                ));
             }
-            ModuleItem::Inst(_) => {
-                return Err(
-                    "module instantiates a sub-module — the evaluator does not elaborate \
-                            instances yet (single-module, combinational only)"
-                        .into(),
-                );
+            ModuleItem::Inst(inst) => {
+                return Err(Box::new(
+                    Diag::new(
+                        inst.span,
+                        "module instantiates a sub-module — the evaluator does not elaborate \
+                         instances yet (single-module, combinational only)",
+                    )
+                    .with_code("S0233"),
+                ));
             }
-            ModuleItem::Repeat(_) => {
-                return Err(
-                    "module uses `repeat` — unrolling is not supported by the evaluator yet".into(),
-                );
+            ModuleItem::Repeat(r) => {
+                return Err(Box::new(
+                    Diag::new(
+                        r.span,
+                        "module uses `repeat` — unrolling is not supported by the evaluator yet",
+                    )
+                    .with_code("S0234"),
+                ));
             }
-            ModuleItem::SyncLoop(_) => {
-                return Err(
-                    "module uses `sync loop` — clocked, multi-cycle evaluation is not \
-                     supported by the combinational-only evaluator; use the real simulator \
-                     (`mimz sim`/`mimz test`) instead"
-                        .into(),
-                );
+            ModuleItem::SyncLoop(sl) => {
+                return Err(Box::new(
+                    Diag::new(
+                        sl.name.span,
+                        "module uses `sync loop` — clocked, multi-cycle evaluation is not \
+                         supported by the combinational-only evaluator; use the real simulator \
+                         (`mimz sim`/`mimz test`) instead",
+                    )
+                    .with_code("S0235"),
+                ));
             }
             _ => {}
         }
@@ -175,9 +199,15 @@ pub fn eval_outputs(
             None => match &p.default {
                 Some(d) => value::const_eval(d, &ints)?,
                 None => {
-                    return Err(format!(
-                        "parameter `{}` has no default — pass it with --param {}=<n>",
-                        p.name.name, p.name.name
+                    return Err(Box::new(
+                        Diag::new(
+                            p.name.span,
+                            format!(
+                                "parameter `{}` has no default — pass it with --param {}=<n>",
+                                p.name.name, p.name.name
+                            ),
+                        )
+                        .with_code("S0121"),
                     ));
                 }
             },
@@ -206,14 +236,14 @@ pub fn eval_outputs(
     for it in flat_items.iter().copied() {
         match it {
             ModuleItem::Port { dir, name, ty } => {
-                let (w, s) = value::type_width(ty, &ints)?;
+                let (w, s) = value::type_width(ty, &ints, name.span)?;
                 sig_ty.insert(name.name.clone(), (w, s));
                 if *dir == Dir::Out {
                     out_order.push((name.name.clone(), w, s));
                 }
             }
             ModuleItem::Wire { name, ty, init } => {
-                let (w, s) = value::type_width(ty, &ints)?;
+                let (w, s) = value::type_width(ty, &ints, name.span)?;
                 sig_ty.insert(name.name.clone(), (w, s));
                 drivers.insert(name.name.clone(), init.clone());
             }
@@ -224,9 +254,15 @@ pub fn eval_outputs(
                 Some((idx, None)) => {
                     let bit = value::const_eval(idx, &ints)?;
                     if !(0..128).contains(&bit) {
-                        return Err(format!(
-                            "bit index {bit} driving `{}` is out of range (0..128)",
-                            lhs.base.name
+                        return Err(Box::new(
+                            Diag::new(
+                                idx.span,
+                                format!(
+                                    "bit index {bit} driving `{}` is out of range (0..128)",
+                                    lhs.base.name
+                                ),
+                            )
+                            .with_code("S0134"),
                         ));
                     }
                     bit_drives
@@ -238,16 +274,28 @@ pub fn eval_outputs(
                     let hi = value::const_eval(hi_e, &ints)?;
                     let lo = value::const_eval(lo_e, &ints)?;
                     if !(0..128).contains(&hi) || !(0..128).contains(&lo) {
-                        return Err(format!(
-                            "slice bound driving `{}` is out of range (0..128)",
-                            lhs.base.name
+                        return Err(Box::new(
+                            Diag::new(
+                                hi_e.span.join(lo_e.span),
+                                format!(
+                                    "slice bound driving `{}` is out of range (0..128)",
+                                    lhs.base.name
+                                ),
+                            )
+                            .with_code("S0135"),
                         ));
                     }
                     if hi < lo {
-                        return Err(format!(
-                            "slice bounds driving `{}` are reversed (write `[hi:lo]`, \
-                             most significant bit first)",
-                            lhs.base.name
+                        return Err(Box::new(
+                            Diag::new(
+                                hi_e.span.join(lo_e.span),
+                                format!(
+                                    "slice bounds driving `{}` are reversed (write `[hi:lo]`, \
+                                     most significant bit first)",
+                                    lhs.base.name
+                                ),
+                            )
+                            .with_code("S0136"),
                         ));
                     }
                     let span = rhs.span;
@@ -300,15 +348,23 @@ pub fn eval_outputs(
         }
     }
     for (sig, bits) in bit_drives {
-        let width = sig_ty
-            .get(&sig)
-            .map(|(w, _)| *w)
-            .ok_or_else(|| format!("bit-driven signal `{sig}` has no declaration"))?;
+        let width = sig_ty.get(&sig).map(|(w, _)| *w).ok_or_else(|| {
+            Box::new(
+                Diag::new(
+                    m.span,
+                    format!("bit-driven signal `{sig}` has no declaration"),
+                )
+                .with_code("S0129"),
+            )
+        })?;
         let mut parts = Vec::with_capacity(width as usize);
         for b in (0..width).rev() {
-            let e = bits
-                .get(&b)
-                .ok_or_else(|| format!("signal `{sig}` bit {b} is not driven"))?;
+            let e = bits.get(&b).ok_or_else(|| {
+                Box::new(
+                    Diag::new(m.span, format!("signal `{sig}` bit {b} is not driven"))
+                        .with_code("S0130"),
+                )
+            })?;
             parts.push(e.clone());
         }
         let span = parts.first().map(|e| e.span).unwrap_or(m.span);
@@ -337,9 +393,15 @@ pub fn eval_outputs(
         {
             let (w, s) = sig_ty[&name.name];
             let raw = inputs.get(&name.name).cloned().ok_or_else(|| {
-                format!(
-                    "missing value for input `{}` — pass it with --in {}=<n>",
-                    name.name, name.name
+                Box::new(
+                    Diag::new(
+                        name.span,
+                        format!(
+                            "missing value for input `{}` — pass it with --in {}=<n>",
+                            name.name, name.name
+                        ),
+                    )
+                    .with_code("S0236"),
                 )
             })?;
             let val = match raw {
@@ -379,19 +441,30 @@ struct Env<'a> {
 impl Env<'_> {
     /// Resolve a signal's value, evaluating (and memoizing) its driver on first
     /// use. A signal seen twice on the active stack is a combinational cycle.
-    fn resolve(&mut self, name: &str) -> Result<Val, String> {
+    fn resolve(&mut self, name: &str) -> Result<Val, Box<Diag>> {
         if let Some(v) = self.memo.get(name) {
             return Ok(v.clone());
         }
         if self.in_progress.iter().any(|n| n == name) {
-            return Err(format!(
-                "combinational cycle through `{name}` — feedback must pass through a register"
+            return Err(Box::new(
+                Diag::new(
+                    mimz_core::span::Span::default(),
+                    format!(
+                        "combinational cycle through `{name}` — feedback must pass through a register"
+                    ),
+                )
+                .with_code("S0238"),
             ));
         }
-        let driver = self
-            .drivers
-            .get(name)
-            .ok_or_else(|| format!("signal `{name}` is never driven"))?;
+        let driver = self.drivers.get(name).ok_or_else(|| {
+            Box::new(
+                Diag::new(
+                    mimz_core::span::Span::default(),
+                    format!("signal `{name}` is never driven"),
+                )
+                .with_code("S0237"),
+            )
+        })?;
         self.in_progress.push(name.to_string());
         // The signal's declared width is known up front (independent of
         // evaluating `driver`) — feed it in as context so a `<<`/`>>` in the
@@ -413,7 +486,7 @@ impl Env<'_> {
 impl Resolver for Env<'_> {
     fn signal(&mut self, name: &str) -> Result<Val, String> {
         if self.sig_ty.contains_key(name) || self.drivers.contains_key(name) {
-            self.resolve(name)
+            self.resolve(name).map_err(|e| e.msg)
         } else if let Some(v) = self.ints.get(name) {
             Ok(Val::from_int(*v))
         } else {
@@ -482,7 +555,7 @@ mod tests {
             &BTreeMap::new(),
         )
         .unwrap_err();
-        assert!(err.contains("no elements to index"), "got: {err}");
+        assert!(err.msg.contains("no elements to index"), "got: {}", err.msg);
     }
 
     #[test]
@@ -608,8 +681,9 @@ mod tests {
         );
         let err = eval_outputs(&[f], None, &ins(&[]), &BTreeMap::new()).unwrap_err();
         assert!(
-            err.contains("reg"),
-            "expected a clear reg rejection, got: {err}"
+            err.msg.contains("reg"),
+            "expected a clear reg rejection, got: {}",
+            err.msg
         );
     }
 
@@ -617,7 +691,11 @@ mod tests {
     fn reports_missing_input() {
         let f = parse("module A {\n  in a: bits[8]\n  out y: bits[8]\n  y = a\n}\n");
         let err = eval_outputs(&[f], None, &ins(&[]), &BTreeMap::new()).unwrap_err();
-        assert!(err.contains("missing value for input `a`"), "got: {err}");
+        assert!(
+            err.msg.contains("missing value for input `a`"),
+            "got: {}",
+            err.msg
+        );
     }
 
     #[test]

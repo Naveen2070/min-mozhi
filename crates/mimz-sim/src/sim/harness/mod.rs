@@ -26,7 +26,9 @@
 use std::collections::BTreeMap;
 
 use mimz_core::ast::{self, BinOp, Expr, ExprKind, TestDecl, TestStmt};
+use mimz_core::span::Span;
 
+use super::Diag;
 use super::elaborate::{Signal, SimMode, Width, elaborate_project_with_mode};
 use super::host::{Direction, EmulationHost};
 use super::kernel::Sim;
@@ -129,7 +131,7 @@ pub fn run_test(
     live: bool,
     step: bool,
     trace: bool,
-) -> Result<Outcome, String> {
+) -> Result<Outcome, Box<Diag>> {
     run_test_with_mode(files, src, decl, host, live, step, trace, SimMode::Warn)
 }
 
@@ -145,7 +147,7 @@ pub fn run_test_with_mode(
     step: bool,
     trace: bool,
     mode: SimMode,
-) -> Result<Outcome, String> {
+) -> Result<Outcome, Box<Diag>> {
     let params = params(decl)?;
     let design = elaborate_project_with_mode(files, Some(&decl.module.name.name), &params, mode)?;
 
@@ -200,7 +202,9 @@ pub fn run_test_with_mode(
         trace,
     };
     if run.trace {
-        run.capture()?; // the initial (pre-tick) state
+        // the initial (pre-tick) state
+        run.capture()
+            .map_err(|msg| Box::new(Diag::new(decl.span, msg)))?;
     }
 
     let (result, quit_from_exec) = match run.exec(&decl.body) {
@@ -217,7 +221,10 @@ pub fn run_test_with_mode(
     // block). For a live host this also runs the final "press Enter to
     // continue, q to quit" dismiss screen (unless the run already quit
     // mid-step), returning whether the user quit there.
-    let quit_from_finish = run.host.finish()?;
+    let quit_from_finish = run
+        .host
+        .finish()
+        .map_err(|msg| Box::new(Diag::new(decl.span, msg)))?;
     let quit = quit_from_exec || quit_from_finish;
 
     Ok(Outcome {
@@ -250,7 +257,7 @@ fn has_sim_block(body: &[TestStmt]) -> bool {
 
 /// Fold a test's `(NAME: expr, …)` parameters to integers; a later parameter may
 /// reference an earlier one.
-fn params(decl: &TestDecl) -> Result<BTreeMap<String, i128>, String> {
+fn params(decl: &TestDecl) -> Result<BTreeMap<String, i128>, Box<Diag>> {
     let mut m = BTreeMap::new();
     for a in &decl.args {
         let v = value::const_eval(&a.value, &m)?;
@@ -265,9 +272,20 @@ fn params(decl: &TestDecl) -> Result<BTreeMap<String, i128>, String> {
 /// `q` mid-`--step` (the whole run is aborted).
 enum Stop {
     Fail(String),
-    Err(String),
+    Err(Box<Diag>),
     Skip(String),
     Quit,
+}
+
+/// Wrap a `String` error from this crate's own harness-internal
+/// `Result<_, String>` helpers (drive/notify/capture, `EmulationHost`
+/// hooks) into an uncoded `Diag` at `span` — the best span available
+/// at the enclosing statement, since none of these carry a sharper one
+/// of their own. `S04xx`-coding the peripheral-hook ones is Task 4.1's
+/// job; this only moves the TYPE onto `Diag` now, since `Stop::Err` is
+/// a single Rust variant and can't stay partially `String`.
+fn stop_at(span: Span, msg: String) -> Stop {
+    Stop::Err(Box::new(Diag::new(span, msg)))
 }
 
 /// The registered peripherals' real-world clock rate for the test's `sim`
@@ -337,9 +355,12 @@ impl Run<'_> {
                 }
                 TestStmt::Tick { clock, count } => {
                     if !self.clocks.iter().any(|c| c == &clock.name) {
-                        return Err(Stop::Err(format!(
-                            "`{}` is not a clock of `{}`",
-                            clock.name, self.module
+                        return Err(Stop::Err(Box::new(
+                            Diag::new(
+                                clock.span,
+                                format!("`{}` is not a clock of `{}`", clock.name, self.module),
+                            )
+                            .with_code("S0301"),
                         )));
                     }
                     // A `sim` block's binds are still constructed/validated
@@ -351,10 +372,16 @@ impl Run<'_> {
                     }
                     let n = match count {
                         Some(e) => {
-                            let v =
-                                require_i128(self.sim.eval(e).map_err(Stop::Err)?, "tick count")?;
+                            let v = require_i128(
+                                self.sim.eval(e).map_err(Stop::Err)?,
+                                "tick count",
+                                e.span,
+                            )?;
                             if v < 0 {
-                                return Err(Stop::Err(format!("tick count {v} is negative")));
+                                return Err(Stop::Err(Box::new(
+                                    Diag::new(e.span, format!("tick count {v} is negative"))
+                                        .with_code("S0302"),
+                                )));
                             }
                             v as u64
                         }
@@ -370,8 +397,12 @@ impl Run<'_> {
                         } else {
                             limit.to_string()
                         };
-                        return Err(Stop::Err(format!(
-                            "test exceeds the {limit_str}-cycle simulation limit"
+                        return Err(Stop::Err(Box::new(
+                            Diag::new(
+                                clock.span,
+                                format!("test exceeds the {limit_str}-cycle simulation limit"),
+                            )
+                            .with_code("S0303"),
                         )));
                     }
                     let batched = self.live && self.active_sim.is_some();
@@ -384,19 +415,26 @@ impl Run<'_> {
                         for batch in batch_sizes(n, batch_size) {
                             let started = std::time::Instant::now();
                             for _ in 0..batch {
-                                self.drive_peripherals().map_err(Stop::Err)?;
+                                self.drive_peripherals()
+                                    .map_err(|msg| stop_at(clock.span, msg))?;
                                 self.sim.tick(&clock.name).map_err(Stop::Err)?;
                                 self.cycle += 1;
                                 if self.trace && self.cycle <= 1_000_000 {
-                                    self.capture().map_err(Stop::Err)?;
+                                    self.capture().map_err(|msg| stop_at(clock.span, msg))?;
                                 }
-                                self.notify_on_tick().map_err(Stop::Err)?;
+                                self.notify_on_tick()
+                                    .map_err(|msg| stop_at(clock.span, msg))?;
                             }
-                            self.notify_peripherals().map_err(Stop::Err)?;
+                            self.notify_peripherals()
+                                .map_err(|msg| stop_at(clock.span, msg))?;
                             // `frame` returns `true` only when the user quit
                             // at a `--step` pause — abort the whole run, as
                             // the pre-refactor `wait_for_step` path did.
-                            if self.host.frame(self.cycle).map_err(Stop::Err)? {
+                            if self
+                                .host
+                                .frame(self.cycle)
+                                .map_err(|msg| stop_at(clock.span, msg))?
+                            {
                                 return Err(Stop::Quit);
                             }
                             if !self.stepping
@@ -412,7 +450,7 @@ impl Run<'_> {
                             self.sim.tick(&clock.name).map_err(Stop::Err)?;
                             self.cycle += 1;
                             if self.trace && self.cycle <= 1_000_000 {
-                                self.capture().map_err(Stop::Err)?;
+                                self.capture().map_err(|msg| stop_at(clock.span, msg))?;
                             }
                         }
                     }
@@ -442,11 +480,18 @@ impl Run<'_> {
                 TestStmt::Sim(block) => {
                     let speed_hz = match &block.speed {
                         Some(e) => {
-                            let v =
-                                require_i128(self.sim.eval(e).map_err(Stop::Err)?, "sim speed")?;
+                            let v = require_i128(
+                                self.sim.eval(e).map_err(Stop::Err)?,
+                                "sim speed",
+                                e.span,
+                            )?;
                             if v <= 0 {
-                                return Err(Stop::Err(format!(
-                                    "sim block's speed must be positive, got {v}"
+                                return Err(Stop::Err(Box::new(
+                                    Diag::new(
+                                        e.span,
+                                        format!("sim block's speed must be positive, got {v}"),
+                                    )
+                                    .with_code("S0304"),
                                 )));
                             }
                             Some(v as u64)
@@ -459,41 +504,64 @@ impl Run<'_> {
                             Some(Direction::Output) => match self.port_width(&b.port.name) {
                                 Some(w) => w,
                                 None => {
-                                    let msg = if self.input_width(&b.port.name).is_some() {
-                                        format!(
-                                            "`{}` binds to an output port, but `{}` is an input",
-                                            b.peripheral.name, b.port.name
+                                    if self.input_width(&b.port.name).is_some() {
+                                        return Err(Stop::Err(Box::new(
+                                            Diag::new(
+                                                b.span,
+                                                format!(
+                                                    "`{}` binds to an output port, but `{}` is an input",
+                                                    b.peripheral.name, b.port.name
+                                                ),
+                                            )
+                                            .with_code("S0402"),
+                                        )));
+                                    }
+                                    return Err(Stop::Err(Box::new(
+                                        Diag::new(
+                                            b.span,
+                                            format!(
+                                                "`{}` has no output port `{}` to bind",
+                                                self.module, b.port.name
+                                            ),
                                         )
-                                    } else {
-                                        format!(
-                                            "`{}` has no output port `{}` to bind",
-                                            self.module, b.port.name
-                                        )
-                                    };
-                                    return Err(Stop::Err(msg));
+                                        .with_code("S0403"),
+                                    )));
                                 }
                             },
                             Some(Direction::Input) => match self.input_width(&b.port.name) {
                                 Some(w) => w,
                                 None => {
-                                    let msg = if self.port_width(&b.port.name).is_some() {
-                                        format!(
-                                            "`{}` binds to an input port, but `{}` is an output",
-                                            b.peripheral.name, b.port.name
+                                    if self.port_width(&b.port.name).is_some() {
+                                        return Err(Stop::Err(Box::new(
+                                            Diag::new(
+                                                b.span,
+                                                format!(
+                                                    "`{}` binds to an input port, but `{}` is an output",
+                                                    b.peripheral.name, b.port.name
+                                                ),
+                                            )
+                                            .with_code("S0402"),
+                                        )));
+                                    }
+                                    return Err(Stop::Err(Box::new(
+                                        Diag::new(
+                                            b.span,
+                                            format!(
+                                                "`{}` has no input port `{}` to bind",
+                                                self.module, b.port.name
+                                            ),
                                         )
-                                    } else {
-                                        format!(
-                                            "`{}` has no input port `{}` to bind",
-                                            self.module, b.port.name
-                                        )
-                                    };
-                                    return Err(Stop::Err(msg));
+                                        .with_code("S0403"),
+                                    )));
                                 }
                             },
                             None => {
-                                return Err(Stop::Err(format!(
-                                    "unknown peripheral `{}`",
-                                    b.peripheral.name
+                                return Err(Stop::Err(Box::new(
+                                    Diag::new(
+                                        b.span,
+                                        format!("unknown peripheral `{}`", b.peripheral.name),
+                                    )
+                                    .with_code("S0401"),
                                 )));
                             }
                         };
@@ -505,7 +573,9 @@ impl Run<'_> {
                                 &b.args,
                                 speed_hz,
                             )
-                            .map_err(Stop::Err)?;
+                            .map_err(|msg| {
+                                Stop::Err(Box::new(Diag::new(b.span, msg).with_code("S0404")))
+                            })?;
                         bound.push(b.port.name.clone());
                     }
                     self.active_sim = Some(ActiveSim { speed_hz, bound });
@@ -565,7 +635,7 @@ impl Run<'_> {
             else {
                 continue;
             };
-            let raw = self.sim.peek(port)?;
+            let raw = self.sim.peek(port).map_err(|e| e.msg)?;
             let v = match raw {
                 value::Bits::Small(b) if width.bits <= 128 => Val::new(b, width.bits, width.signed),
                 value::Bits::Small(b) => Val::new_wide(
@@ -599,7 +669,7 @@ impl Run<'_> {
                 .find(|s| &s.name == port)
                 .map(|s| s.width);
             let Some(width) = width else { continue };
-            let raw = self.sim.peek(port)?;
+            let raw = self.sim.peek(port).map_err(|e| e.msg)?;
             let v = match raw {
                 value::Bits::Small(b) if width.bits <= 128 => Val::new(b, width.bits, width.signed),
                 value::Bits::Small(b) => Val::new_wide(
@@ -631,7 +701,9 @@ impl Run<'_> {
             }
         }
         for (port, bit) in sets {
-            self.sim.set(&port, value::Bits::Small(bit as u128))?;
+            self.sim
+                .set(&port, value::Bits::Small(bit as u128))
+                .map_err(|e| e.msg)?;
         }
         Ok(())
     }
@@ -645,7 +717,8 @@ impl Run<'_> {
     fn capture(&mut self) -> Result<(), String> {
         let values = self
             .sim
-            .snapshot()?
+            .snapshot()
+            .map_err(|e| e.msg)?
             .into_iter()
             .map(|(name, v, _)| (name, v))
             .collect();
@@ -699,11 +772,17 @@ fn is_cmp(op: BinOp) -> bool {
 /// count or Hz value in the millions, not the millions-of-bits range), but
 /// this project's discipline is a clean `Err` on adversarial input rather
 /// than a panic, even for cases this unlikely.
-fn require_i128(v: Val, what: &str) -> Result<i128, Stop> {
+fn require_i128(v: Val, what: &str, span: Span) -> Result<i128, Stop> {
     if v.is_wide() {
-        return Err(Stop::Err(format!(
-            "{what} must fit a normal integer, got a {}-bit value",
-            v.width
+        return Err(Stop::Err(Box::new(
+            Diag::new(
+                span,
+                format!(
+                    "{what} must fit a normal integer, got a {}-bit value",
+                    v.width
+                ),
+            )
+            .with_code("S0305"),
         )));
     }
     Ok(v.as_i128())

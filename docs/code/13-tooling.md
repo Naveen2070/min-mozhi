@@ -161,18 +161,19 @@ the combinational evaluator behind `mimz eval`, the event-driven kernel behind
 `mimz sim` / `mimz test`, VCD + console-trace output, and the `test`-block
 runner. The `crates/mimz-sim/src/sim/` directory:
 
-| File           | Owns                                                                                                                                   |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.rs`       | the module tree + the shared overview                                                                                                  |
-| `value.rs`     | the 2-state value model + expression evaluator (a `Resolver` trait both engines implement)                                             |
-| `comb.rs`      | the combinational evaluator (`eval_outputs`) behind `mimz eval`                                                                        |
-| `elaborate.rs` | `elaborate_project` flattening (instances, `repeat`, enums) + the `Rw` rewriter → a `Design`                                           |
-| `kernel.rs`    | the event-driven, two-phase commit kernel that interprets a `Design`                                                                   |
-| `run.rs`       | the default stimulus + `comb_run` per-vector settle; the `MAX_SIM_CYCLES`/`MAX_SWEEP_VECTORS` bounds                                   |
-| `vcd.rs`       | the hand-written 2-state VCD writer                                                                                                    |
-| `trace.rs`     | the console trace table (`--trace` / `--trace=changes`)                                                                                |
-| `harness.rs`   | the `test`-block runner (`drive`/`tick`/`expect`/`if`) behind `mimz test`                                                              |
-| `host.rs`      | `EmulationHost` trait — the abstract seam to `src/emulate/`'s peripherals (see [`14-hardware-emulation.md`](14-hardware-emulation.md)) |
+| File         | Owns                                                                                                                                                                                                                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`     | the module tree + the shared overview                                                                                                                                                                                                                                                                                                                   |
+| `diag.rs`    | the `S0xxx` runtime-diagnostic code catalog (`ALL_SIM_CODES`) — see below                                                                                                                                                                                                                                                                               |
+| `value/`     | the 2-state value model + expression evaluator (a `Resolver` trait both engines implement); split into `mod.rs` (the evaluator itself), `binary.rs` (binary-op semantics), `fn_eval.rs` (user-defined `fn` calls)                                                                                                                                       |
+| `comb.rs`    | the combinational evaluator (`eval_outputs`) behind `mimz eval`                                                                                                                                                                                                                                                                                         |
+| `elaborate/` | `elaborate_project` flattening (instances, `repeat`, enums) + the `Rw` rewriter → a `Design`; split into `mod.rs` (entry points + `Design`), `module.rs` (per-module worklist), `instance.rs` (`flatten_instance`), `registry.rs` (module/bundle/enum/func lookup), `rewrite.rs` (`Rw`, enum/bundle-field rewriting), `bundle.rs` (bundle-type helpers) |
+| `kernel.rs`  | the event-driven, two-phase commit kernel that interprets a `Design`                                                                                                                                                                                                                                                                                    |
+| `run.rs`     | the default stimulus + `comb_run` per-vector settle; the `MAX_SIM_CYCLES`/`MAX_SWEEP_VECTORS` bounds                                                                                                                                                                                                                                                    |
+| `vcd.rs`     | the hand-written 2-state VCD writer                                                                                                                                                                                                                                                                                                                     |
+| `trace.rs`   | the console trace table (`--trace` / `--trace=changes`)                                                                                                                                                                                                                                                                                                 |
+| `harness/`   | the `test`-block runner (`drive`/`tick`/`expect`/`if`) behind `mimz test`; `mod.rs` (the runner) + `tests.rs`                                                                                                                                                                                                                                           |
+| `host.rs`    | `EmulationHost` trait — the abstract seam to `src/emulate/`'s peripherals (see [`14-hardware-emulation.md`](14-hardware-emulation.md))                                                                                                                                                                                                                  |
 
 - **`mimz eval` (`comb`).** `sim::comb::eval_outputs` interprets a single
   **combinational** module: given a value per input, it computes the outputs by
@@ -209,6 +210,130 @@ runner. The `crates/mimz-sim/src/sim/` directory:
   (`tests/icarus.rs::our_simulator_matches_icarus_bit_for_bit`) pits this
   simulator (engine AND VCD waveform) against Icarus bit-for-bit across the whole
   single-file corpus (21 examples).
+
+### `S0xxx` — runtime diagnostic codes (R2, `docs/audit/review-2026-07-17.md`)
+
+A DIFFERENT catalog from the checker's `E0xxx` codes
+([`11-checker.md`](11-checker.md)): a checker code fires at COMPILE time,
+before a design ever runs; an `S0xxx` code fires at ELABORATION or
+EXECUTION time — `mimz sim`/`mimz eval`/`mimz test` gate on the checker
+first (the A2 fix), but the simulator's own elaboration and expression
+evaluation are unchecked passes over the raw parse tree in their own
+right (used directly by the playground/WASM single-source path, and by
+anything that calls `mimz-sim`'s API without a `Project`), so they carry
+their own stable, spanned, coded diagnostics too. Same stability
+contract as `E0xxx`: never renumber, append-only. The catalog constant
+(`ALL_SIM_CODES`) lives in `crates/mimz-sim/src/sim/diag.rs`, not
+`mimz-core` — `Diag` itself stays a generic, crate-agnostic type; only
+the catalog of which codes exist is sim-specific. Every code is
+exercised by a fixture in `crates/mimz-sim/tests/sim_errors.rs` (a
+completeness guard, `every_sim_code_has_a_fixture_above`, fails if any
+code lacks one) — see that test file's own module doc comment for why
+it calls straight into `mimz-sim`'s public API instead of mirroring
+`tests/errors.rs`'s real-binary-per-fixture shape (most `S0xxx`
+conditions are ALSO checker-rejected, so routing a fixture through the
+checker gate first would never reach the code it's meant to exercise).
+
+Four ranges by category:
+
+| Range           | Category                  | Fires in                                              |
+| --------------- | ------------------------- | ----------------------------------------------------- |
+| `S0101`–`S0139` | elaboration/wiring        | `sim/elaborate/*.rs`, `runner.rs`'s import resolution |
+| `S0201`–`S0239` | expression evaluation     | `sim/value/*.rs`, `sim/comb.rs`, `sim/kernel.rs`      |
+| `S0301`–`S0305` | test-harness control flow | `sim/harness/mod.rs`'s `Run::exec`                    |
+| `S0401`–`S0404` | peripheral bind errors    | `sim/harness/mod.rs`'s `TestStmt::Sim` handling       |
+
+| Code  | Meaning                                                                       |
+| ----- | ----------------------------------------------------------------------------- |
+| S0101 | unknown module reference (see the known-gap note below — dead code)           |
+| S0102 | ambiguous bare reference (module/extern-module/bundle)                        |
+| S0103 | qualified reference's path doesn't match any `import`                         |
+| S0104 | qualified reference resolved to an import lacking the name                    |
+| S0105 | unknown module/extern-module reference (combined lookup miss)                 |
+| S0106 | unknown bundle reference                                                      |
+| S0109 | instance parameter has no value (no arg, no default)                          |
+| S0112 | instance input port not connected                                             |
+| S0113 | extern-module instance has no simulation model (strict mode)                  |
+| S0115 | unknown enum reference (construct/field/pattern)                              |
+| S0116 | enum has no such variant (construct/field/pattern)                            |
+| S0117 | bundle literal in an unsupported expression position                          |
+| S0119 | instance nesting exceeds the max recursion depth                              |
+| S0121 | module parameter has no default and no override was given                     |
+| S0122 | unknown enum type in a declared signal's type                                 |
+| S0123 | memory has a non-positive depth                                               |
+| S0124 | `repeat` would unroll past the repeat budget                                  |
+| S0125 | nested `repeat` is not supported                                              |
+| S0126 | a `repeat` body item is neither an instance nor a drive                       |
+| S0127 | bundle destructure in a module body is not yet supported                      |
+| S0128 | a flattened instance signal collides with an existing signal                  |
+| S0129 | a bit-driven signal has no declaration                                        |
+| S0130 | a bit-driven signal's bit position is never driven                            |
+| S0131 | no files to elaborate (defensive; unreachable via real callers)               |
+| S0133 | a clock/reset connection is not a plain signal name                           |
+| S0134 | a bit-indexed drive's index is out of range (0..128)                          |
+| S0135 | a slice-indexed drive's bound is out of range (0..128)                        |
+| S0136 | a slice-indexed drive's bounds are reversed                                   |
+| S0137 | std import path must be exactly `std.<module>` (two segments)                 |
+| S0138 | unknown standard library module                                               |
+| S0139 | `import` of a non-std module unsupported in single-source mode                |
+| S0201 | unknown signal reference (`Resolver::signal`/`mem_read` boundary)             |
+| S0202 | no `match` arm matched the value                                              |
+| S0203 | concatenation/replication exceeds the max width                               |
+| S0204 | replication count must be at least 1                                          |
+| S0205 | array has no elements to index                                                |
+| S0206 | memory read failed (`Resolver::mem_read` boundary)                            |
+| S0207 | a bit index or slice bound is out of range for the value's width              |
+| S0208 | slice bounds reversed (write `[hi:lo]`, msb first)                            |
+| S0209 | enum-variant / instance-port access not supported by the evaluator            |
+| S0210 | `BundleLit` reached the value evaluator unexpanded                            |
+| S0211 | array literal only valid as a `fn` argument or `let` binding                  |
+| S0212 | `EnumConstruct` reached the value evaluator unexpanded                        |
+| S0213 | signal of enum type — not modeled by the simulator                            |
+| S0214 | `Type::Bundle` reached `type_width` unflattened                               |
+| S0215 | `Type::Array` reached `type_width` unexpanded                                 |
+| S0216 | width must be at least 1                                                      |
+| S0217 | width exceeds the shared maximum                                              |
+| S0218 | no module with the given name in this file                                    |
+| S0219 | file defines no module                                                        |
+| S0220 | file defines multiple modules — none picked                                   |
+| S0221 | a shift amount cannot be `signed`                                             |
+| S0222 | `??` reached `binary_known` unlowered (see the known-gap note below)          |
+| S0223 | function table unavailable in this evaluation context                         |
+| S0224 | undefined function                                                            |
+| S0225 | array parameter has an invalid (non-positive) length                          |
+| S0226 | function called with too few arguments                                        |
+| S0227 | `loop` would unroll past the repeat budget                                    |
+| S0228 | `extend` target narrower than the value's own width                           |
+| S0229 | `clog2` is compile-time only                                                  |
+| S0230 | `eval_outputs`: no files (defensive; unreachable via real callers)            |
+| S0231 | module has `reg` state — unsupported by the combinational evaluator           |
+| S0232 | module has an `on` block — unsupported by the combinational evaluator         |
+| S0233 | module instantiates a sub-module — unsupported by the combinational evaluator |
+| S0234 | module uses `repeat` — unsupported by the combinational evaluator             |
+| S0235 | module uses `sync loop` — unsupported by the combinational evaluator          |
+| S0236 | missing value for a declared input                                            |
+| S0237 | signal is never driven                                                        |
+| S0238 | combinational cycle through a signal (see the known-gap note below)           |
+| S0239 | `Sim::set`: name is not a drivable input/clock/reset                          |
+| S0301 | `tick(clk, ...)`: `clk` is not a declared clock of this module                |
+| S0302 | `tick(clk, n)`: `n` evaluated negative                                        |
+| S0303 | a tick would exceed the (headless) simulation cycle limit                     |
+| S0304 | `sim { speed ... }`: the rate evaluated to zero or negative                   |
+| S0305 | a `tick`/`speed` expression is wider than a plain integer                     |
+| S0401 | `bind port -> peripheral(...)`: unknown peripheral kind                       |
+| S0402 | bind direction mismatch (port exists, wrong direction)                        |
+| S0403 | no port of the needed direction with that name on the design                  |
+| S0404 | the peripheral itself rejected the bind (host-specific reason)                |
+
+**Two known catalog gaps** (`docs/audit/bugs.md` BUG-26/BUG-27, filed
+2026-07-31, not yet fixed): `S0101`'s own "unknown module" arm is dead
+code (its only caller always pre-checks the registry before calling it,
+so a genuinely unknown bare module reference reports through `S0105`
+instead); `S0238`'s own combinational-cycle `Diag` never survives to a
+caller intact (it's only detectable on a re-entrant call that always
+crosses the `Resolver` trait boundary, which re-codes it as `S0201`).
+Both conditions still fire correctly with an accurate message — only the
+specific CODE is affected.
 
 ### Known deferred
 
