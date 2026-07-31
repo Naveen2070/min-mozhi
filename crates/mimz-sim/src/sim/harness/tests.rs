@@ -58,7 +58,11 @@ impl EmulationHost for NullHost {
     }
 }
 
-fn run_test_headless(files: &[ast::File], src: &str, decl: &TestDecl) -> Result<Outcome, String> {
+fn run_test_headless(
+    files: &[ast::File],
+    src: &str,
+    decl: &TestDecl,
+) -> Result<Outcome, Box<Diag>> {
     run_test(files, src, decl, Box::new(NullHost), false, false, true)
 }
 
@@ -311,7 +315,7 @@ fn an_unknown_clock_is_an_error() {
         })
         .unwrap();
     let err = run_test_headless(std::slice::from_ref(&f), &src, decl).unwrap_err();
-    assert!(err.contains("not a clock"), "got: {err}");
+    assert!(err.msg.contains("not a clock"), "got: {}", err.msg);
 }
 
 #[test]
@@ -376,7 +380,7 @@ fn sim_block_with_unknown_peripheral_errors() {
         })
         .unwrap();
     let err = run_test_headless(std::slice::from_ref(&f), src, decl).unwrap_err();
-    assert!(err.contains("unknown peripheral"), "got: {err}");
+    assert!(err.msg.contains("unknown peripheral"), "got: {}", err.msg);
 }
 
 #[test]
@@ -393,7 +397,7 @@ fn sim_block_with_unknown_port_errors() {
         })
         .unwrap();
     let err = run_test_headless(std::slice::from_ref(&f), src, decl).unwrap_err();
-    assert!(err.contains("nope"), "got: {err}");
+    assert!(err.msg.contains("nope"), "got: {}", err.msg);
 }
 
 #[test]
@@ -415,7 +419,11 @@ fn sim_block_binding_an_input_to_an_output_peripheral_errors() {
     // (which would also happen to contain "output port" and "start",
     // so asserting on the specific phrase is what proves the
     // mismatch was actually detected, not coincidental).
-    assert!(err.contains("binds to an output port, but"), "got: {err}");
+    assert!(
+        err.msg.contains("binds to an output port, but"),
+        "got: {}",
+        err.msg
+    );
 }
 
 #[test]
@@ -435,7 +443,11 @@ fn sim_block_binding_an_output_to_an_input_peripheral_errors() {
     // Mirror of the test above: `playing` genuinely exists as an output
     // — this must produce the direction-aware message, not the generic
     // "no such port" one.
-    assert!(err.contains("binds to an input port, but"), "got: {err}");
+    assert!(
+        err.msg.contains("binds to an input port, but"),
+        "got: {}",
+        err.msg
+    );
 }
 
 #[test]

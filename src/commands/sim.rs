@@ -97,7 +97,10 @@ pub(crate) fn sim_file(
         match elaborate::elaborate_project_with_mode(&asts, module.as_deref(), &params, mode) {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("error: {e}");
+                eprint!(
+                    "{}",
+                    project::render_diags_lang(std::slice::from_ref(e.as_ref()), &files, flavor)
+                );
                 return ExitCode::FAILURE;
             }
         };

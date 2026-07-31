@@ -108,7 +108,10 @@ pub(crate) fn eval_file(
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error: {e}");
+            eprint!(
+                "{}",
+                diag::render_lang(std::slice::from_ref(e.as_ref()), &src, &path_str, flavor)
+            );
             ExitCode::FAILURE
         }
     }

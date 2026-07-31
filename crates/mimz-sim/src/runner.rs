@@ -264,8 +264,13 @@ pub fn run_command(source: &str, command: &str, argv: &[&str]) -> Result<String,
 
 /// Lex + parse an already-NFC-normalized source into one file, rendering any
 /// lexer/parser diagnostics to text on failure.
-fn parse_source(src: &str) -> Result<Vec<mimz_core::project::LoadedFile>, String> {
-    let render = |d: Vec<diag::Diag>| diag::render(&d, src, NAME);
+fn parse_source(src: &str) -> Result<Vec<mimz_core::project::LoadedFile>, Box<crate::sim::Diag>> {
+    let render = |d: Vec<diag::Diag>| {
+        Box::new(crate::sim::Diag::new(
+            mimz_core::span::Span::default(),
+            diag::render(&d, src, NAME),
+        ))
+    };
     let toks = lexer::lex(src).map_err(render)?;
     let root_ast = parser::parse(toks).map_err(render)?;
 
@@ -287,10 +292,14 @@ fn parse_source(src: &str) -> Result<Vec<mimz_core::project::LoadedFile>, String
                 .first()
                 .is_some_and(|seg| mimz_core::stdlib::is_std_namespace(&seg.name));
             if is_std && imp.path.len() != 2 {
-                return Err(
-                    "a standard-library import must be `std.<module>` (exactly two segments)"
-                        .to_string(),
-                );
+                return Err(Box::new(
+                    crate::sim::Diag::new(
+                        imp.span,
+                        "a standard-library import must be `std.<module>` (exactly two segments)"
+                            .to_string(),
+                    )
+                    .with_code("S0137"),
+                ));
             } else if is_std {
                 let ns = &imp.path[0].name;
                 let mod_name = &imp.path[1].name;
@@ -299,10 +308,18 @@ fn parse_source(src: &str) -> Result<Vec<mimz_core::project::LoadedFile>, String
                         idx
                     } else {
                         let std_src = m.source(v);
-                        let std_toks =
-                            lexer::lex(std_src).map_err(|d| diag::render(&d, std_src, mod_name))?;
-                        let std_ast = parser::parse(std_toks)
-                            .map_err(|d| diag::render(&d, std_src, mod_name))?;
+                        let std_toks = lexer::lex(std_src).map_err(|d| {
+                            Box::new(crate::sim::Diag::new(
+                                imp.span,
+                                diag::render(&d, std_src, mod_name),
+                            ))
+                        })?;
+                        let std_ast = parser::parse(std_toks).map_err(|d| {
+                            Box::new(crate::sim::Diag::new(
+                                imp.span,
+                                diag::render(&d, std_src, mod_name),
+                            ))
+                        })?;
                         let idx = files.len();
                         loaded_stems.insert(m.stem, idx);
                         files.push(mimz_core::project::LoadedFile {
@@ -314,15 +331,25 @@ fn parse_source(src: &str) -> Result<Vec<mimz_core::project::LoadedFile>, String
                     };
                     target_indices.push(target_idx);
                 } else {
-                    return Err(format!("unknown standard library module `{ns}.{mod_name}`"));
+                    return Err(Box::new(
+                        crate::sim::Diag::new(
+                            imp.span,
+                            format!("unknown standard library module `{ns}.{mod_name}`"),
+                        )
+                        .with_code("S0138"),
+                    ));
                 }
             } else {
-                return Err(
-                    "`import` is not supported when compiling a single in-memory source — \
+                return Err(Box::new(
+                    crate::sim::Diag::new(
+                        imp.span,
+                        "`import` is not supported when compiling a single in-memory source — \
                      the in-browser compiler resolves no files. Paste the imported modules \
                      into this source (only standard library imports like `std.uart_tx` are supported)."
-                        .to_string(),
-                );
+                            .to_string(),
+                    )
+                    .with_code("S0139"),
+                ));
             }
         }
         for (imp, &idx) in files[i].ast.imports.iter().zip(&target_indices) {
@@ -345,7 +372,7 @@ fn flag_value<'a>(argv: &'a [&'a str], i: &mut usize, flag: &str) -> Result<&'a 
 
 /// `check` — lex, parse, and run the full safety checker; no output written.
 fn check(src: &str, _argv: &[&str]) -> Result<String, String> {
-    let files = parse_source(src)?;
+    let files = parse_source(src).map_err(|e| e.msg)?;
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     if let Err(d) = checker::check(&asts) {
         return Err(mimz_core::project::render_diags(&d, &files));
@@ -357,7 +384,7 @@ fn check(src: &str, _argv: &[&str]) -> Result<String, String> {
 /// in-memory). This is the one compile implementation; [`crate::compile_string`]
 /// is a thin wrapper over it.
 fn compile(src: &str, _argv: &[&str]) -> Result<String, String> {
-    let files = parse_source(src)?;
+    let files = parse_source(src).map_err(|e| e.msg)?;
     let render = |d: Vec<diag::Diag>| mimz_core::project::render_diags(&d, &files);
     let mut asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     checker::check(&asts).map_err(render)?;
@@ -382,7 +409,7 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
         }
     }
 
-    let files = parse_source(src)?;
+    let files = parse_source(src).map_err(|e| e.msg)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
@@ -393,14 +420,16 @@ fn eval(src: &str, argv: &[&str]) -> Result<String, String> {
     // Elaborate purely to learn each input port's declared width, so `--in`
     // can be parsed width-aware (BUG-13 layer 1 part 5) — `eval_outputs`
     // below does its own lighter, comb-only evaluation of the same ASTs.
-    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
+    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)
+        .map_err(|e| mimz_core::project::render_diags(std::slice::from_ref(e.as_ref()), &files))?;
     let widths: BTreeMap<String, u32> = design
         .inputs
         .iter()
         .map(|s| (s.name.clone(), s.width.bits))
         .collect();
     let inputs = parse_bits_bindings(inputs_s, &widths)?;
-    let outputs = comb::eval_outputs(&asts, module.as_deref(), &inputs, &params)?;
+    let outputs = comb::eval_outputs(&asts, module.as_deref(), &inputs, &params)
+        .map_err(|e| mimz_core::project::render_diags(std::slice::from_ref(e.as_ref()), &files))?;
     let mut out = String::new();
     for o in outputs {
         let kind = if o.signed { "signed" } else { "bits" };
@@ -439,10 +468,11 @@ fn ports(src: &str, argv: &[&str]) -> Result<String, String> {
         }
     }
 
-    let files = parse_source(src)?;
+    let files = parse_source(src).map_err(|e| e.msg)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
-    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
+    let design =
+        elaborate::elaborate_project(&asts, module.as_deref(), &params).map_err(|e| e.msg)?;
 
     let join =
         |sigs: &[elaborate::Signal]| sigs.iter().map(signal_json).collect::<Vec<_>>().join(",");
@@ -515,14 +545,15 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
         return Err(format!("--cycles must be between 1 and {MAX_SIM_CYCLES}"));
     }
 
-    let files = parse_source(src)?;
+    let files = parse_source(src).map_err(|e| e.msg)?;
     let params = parse_bindings(param_s, |s| parse_u128(s).map(|v| v as i128))?;
 
     let asts: Vec<_> = files.iter().map(|f| f.ast.clone()).collect();
     // A2 (docs/audit/review-2026-07-17.md §3.1): same checker gate as `compile`
     // and `eval` above — `sim` must not simulate unchecked semantics.
     checker::check(&asts).map_err(|d| mimz_core::project::render_diags(&d, &files))?;
-    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)?;
+    let design = elaborate::elaborate_project(&asts, module.as_deref(), &params)
+        .map_err(|e| mimz_core::project::render_diags(std::slice::from_ref(e.as_ref()), &files))?;
     // Input port widths, so `--in`/`--sweep`/`--steps` parse width-aware
     // (BUG-13 layer 1 part 5) — looked up BEFORE the design is moved below.
     let widths: BTreeMap<String, u32> = design
@@ -649,7 +680,7 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
         }
     }
 
-    let files = parse_source(src)?;
+    let files = parse_source(src).map_err(|e| e.msg)?;
     let file = &files[0].ast;
     let decls: Vec<&ast::TestDecl> = file
         .items
@@ -701,7 +732,11 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
             },
             Err(e) => {
                 failed += 1;
-                out.push_str(&format!("error in test \"{}\": {e}\n", decl.name));
+                out.push_str(&format!("error in test \"{}\":\n", decl.name));
+                out.push_str(&mimz_core::project::render_diags(
+                    std::slice::from_ref(e.as_ref()),
+                    &files,
+                ));
             }
         }
     }

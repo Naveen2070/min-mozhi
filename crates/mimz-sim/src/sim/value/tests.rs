@@ -1,5 +1,12 @@
 use super::*;
 use crate::sim::value::binary::{binary_ctx, binary_known, cmp_eq, unary};
+use mimz_core::span::Span;
+
+/// Dummy span for unit tests exercising `binary_ctx`/`binary_known` directly
+/// (no real source expression to point at here).
+fn sp() -> Span {
+    Span::default()
+}
 
 #[test]
 fn bitand_widens_a_narrower_literal_operand() {
@@ -11,7 +18,7 @@ fn bitand_widens_a_narrower_literal_operand() {
     // wrap/bitwise arms must widen it themselves before combining.
     let l = Val::new(0b1010, 4, false); // a 4-bit signal
     let r = Val::new(1, 1, false); // the literal `1`, its own minimal width
-    let result = binary_known(BinOp::BitAnd, l, r, None).unwrap();
+    let result = binary_known(BinOp::BitAnd, l, r, None, sp()).unwrap();
     assert_eq!(result.width, 4);
     assert_eq!(result.masked(), 0b1010 & 1);
 }
@@ -28,7 +35,7 @@ fn shl_self_determined_preserves_left_operand_width() {
     // see `shl_widens_to_context_like_verilog` below).
     let l = Val::from_int(1); // width 1
     let r = Val::from_int(2);
-    let res = binary_ctx(BinOp::Shl, l, r, None).unwrap();
+    let res = binary_ctx(BinOp::Shl, l, r, None, sp()).unwrap();
     assert_eq!(res.masked(), 0); // 4 & mask(1) == 0
     assert_eq!(res.width, 1);
 }
@@ -44,7 +51,7 @@ fn shl_widens_to_context_like_verilog() {
     // not truncated-then-extended after.
     let l = Val::from_int(1); // width 1
     let r = Val::from_int(2);
-    let res = binary_ctx(BinOp::Shl, l, r, Some(8)).unwrap();
+    let res = binary_ctx(BinOp::Shl, l, r, Some(8), sp()).unwrap();
     assert_eq!(res.width, 8);
     assert_eq!(res.masked(), 4); // 1 << 2, no bits lost once widened first
 
@@ -53,7 +60,7 @@ fn shl_widens_to_context_like_verilog() {
     // truncated-into-8-bits would wrongly give if extension happened
     // AFTER the shift instead of before).
     let din = Val::new(7, 4, false);
-    let shifted = binary_ctx(BinOp::Shl, din, Val::from_int(2), Some(8)).unwrap();
+    let shifted = binary_ctx(BinOp::Shl, din, Val::from_int(2), Some(8), sp()).unwrap();
     assert_eq!(shifted.width, 8);
     assert_eq!(shifted.masked(), 28);
 }
@@ -62,10 +69,11 @@ fn shl_widens_to_context_like_verilog() {
 fn shl_rejects_a_signed_shift_amount() {
     let l = Val::new(1, 8, false);
     let r = Val::new(2, 3, true); // signed amount — spec/02 section 3 forbids this
-    let err = binary_known(BinOp::Shl, l, r, None).unwrap_err();
+    let err = binary_known(BinOp::Shl, l, r, None, sp()).unwrap_err();
     assert!(
-        err.contains("signed"),
-        "expected an error mentioning `signed`, got: {err}"
+        err.msg.contains("signed"),
+        "expected an error mentioning `signed`, got: {}",
+        err.msg
     );
 }
 
@@ -77,7 +85,7 @@ fn sub_of_two_unsigned_values_is_unsigned() {
     // bits[M] is unsigned bits[N.max(M)+1]).
     let l = Val::new(0, 4, false);
     let r = Val::new(0, 4, false);
-    let result = binary_known(BinOp::Sub, l, r, None).unwrap();
+    let result = binary_known(BinOp::Sub, l, r, None, sp()).unwrap();
     assert!(!result.signed, "expected an unsigned result, got signed");
     assert_eq!(result.width, 5);
 }
@@ -86,7 +94,7 @@ fn sub_of_two_unsigned_values_is_unsigned() {
 fn sub_of_two_signed_values_is_signed() {
     let l = Val::new(0, 4, true);
     let r = Val::new(0, 4, true);
-    let result = binary_known(BinOp::Sub, l, r, None).unwrap();
+    let result = binary_known(BinOp::Sub, l, r, None, sp()).unwrap();
     assert!(result.signed, "expected a signed result");
     assert_eq!(result.width, 5);
 }
@@ -100,9 +108,10 @@ fn shl_chain_stays_at_shared_context_width() {
     // fix) lets an intermediate carry stray high bits into the second
     // shift that a real 8-bit-wide Verilog computation never has.
     let a = Val::new(255, 8, false);
-    let shifted_left = binary_ctx(BinOp::Shl, a, Val::from_int(2), Some(8)).unwrap();
+    let shifted_left = binary_ctx(BinOp::Shl, a, Val::from_int(2), Some(8), sp()).unwrap();
     assert_eq!(shifted_left.width, 8);
-    let shifted_right = binary_ctx(BinOp::Shr, shifted_left, Val::from_int(2), Some(8)).unwrap();
+    let shifted_right =
+        binary_ctx(BinOp::Shr, shifted_left, Val::from_int(2), Some(8), sp()).unwrap();
     assert_eq!(shifted_right.masked(), 63); // NOT 255 — this was BUG-11
 }
 
@@ -265,7 +274,7 @@ fn fn_loop_over_budget_errors_in_sim() {
         &BTreeMap::new(),
     );
     let err = result.expect_err("over-budget `loop` must error, not hang or overflow");
-    assert!(err.contains("`loop` would unroll"), "got: {err}");
+    assert!(err.msg.contains("`loop` would unroll"), "got: {}", err.msg);
 }
 
 #[test]
@@ -312,7 +321,7 @@ fn fn_foreach_elements_form_no_match_falls_through_in_sim() {
 fn unknown_val_taints_binary_ops() {
     let u = Val::unknown(4, false);
     let known = Val::new(3, 4, false);
-    let r = binary_ctx(BinOp::Add, u, known, None).unwrap();
+    let r = binary_ctx(BinOp::Add, u, known, None, sp()).unwrap();
     assert!(
         r.unknown,
         "adding an unknown operand must produce an unknown result"
@@ -334,7 +343,11 @@ fn known_vals_are_never_tainted() {
     let a = Val::new(1, 4, false);
     let b = Val::new(2, 4, false);
     assert!(!a.unknown && !b.unknown);
-    assert!(!binary_ctx(BinOp::Add, a.clone(), b, None).unwrap().unknown);
+    assert!(
+        !binary_ctx(BinOp::Add, a.clone(), b, None, sp())
+            .unwrap()
+            .unknown
+    );
     assert!(!unary(UnOp::BitNot, a).unknown);
 }
 
@@ -373,7 +386,7 @@ fn wide_unsigned_add_carries_past_128_bits() {
     // this task (a 129-bit-wide RESULT from two Small operands).
     let a = Val::new(u128::MAX, 128, false);
     let b = Val::new(1, 128, false);
-    let sum = binary_known(BinOp::Add, a, b, None).unwrap();
+    let sum = binary_known(BinOp::Add, a, b, None, sp()).unwrap();
     assert_eq!(sum.width, 129);
     assert!(sum.is_wide());
 }
@@ -382,7 +395,7 @@ fn wide_unsigned_add_carries_past_128_bits() {
 fn wide_bitand_of_two_512_bit_values() {
     let a = Val::new_wide(wide::from_u128(0b1100, 512), 512, false);
     let b = Val::new_wide(wide::from_u128(0b1010, 512), 512, false);
-    let result = binary_known(BinOp::BitAnd, a, b, None).unwrap();
+    let result = binary_known(BinOp::BitAnd, a, b, None, sp()).unwrap();
     assert!(result.is_wide());
     assert!(wide::bit_at(&result.to_limbs(), 3));
     assert!(!wide::bit_at(&result.to_limbs(), 1));
@@ -391,7 +404,7 @@ fn wide_bitand_of_two_512_bit_values() {
 #[test]
 fn wide_shl_crosses_a_limb_boundary_in_a_512_bit_context() {
     let l = Val::new(1, 8, false);
-    let shifted = binary_ctx(BinOp::Shl, l, Val::from_int(70), Some(512)).unwrap();
+    let shifted = binary_ctx(BinOp::Shl, l, Val::from_int(70), Some(512), sp()).unwrap();
     assert_eq!(shifted.width, 512);
     assert!(wide::bit_at(&shifted.to_limbs(), 70));
 }
@@ -400,7 +413,7 @@ fn wide_shl_crosses_a_limb_boundary_in_a_512_bit_context() {
 fn wide_eq_compares_two_equal_512_bit_values() {
     let a = Val::new_wide(wide::from_u128(42, 512), 512, false);
     let b = Val::new_wide(wide::from_u128(42, 512), 512, false);
-    let eq = binary_known(BinOp::Eq, a, b, None).unwrap();
+    let eq = binary_known(BinOp::Eq, a, b, None, sp()).unwrap();
     assert_eq!(eq.masked(), 1);
 }
 
@@ -408,7 +421,7 @@ fn wide_eq_compares_two_equal_512_bit_values() {
 fn wide_lt_compares_signed_512_bit_values() {
     let neg = Val::new_wide(wide::neg(&wide::from_u128(1, 512), 512), 512, true);
     let pos = Val::new_wide(wide::from_u128(1, 512), 512, true);
-    let lt = binary_known(BinOp::Lt, neg, pos, None).unwrap();
+    let lt = binary_known(BinOp::Lt, neg, pos, None, sp()).unwrap();
     assert_eq!(lt.masked(), 1);
 }
 
@@ -427,7 +440,7 @@ fn wide_extend_builtin_widens_past_128_bits() {
     let mut ints = std::collections::BTreeMap::new();
     ints.insert("W".to_string(), 512i128);
     // extend(1, W) with W bound to 512 in the const env.
-    let n = checked_width(512).unwrap();
+    let n = checked_width(512, sp()).unwrap();
     let v = Val::from_int(1);
     let extended = Val::new_wide(
         wide::extend(&v.to_limbs(), v.width, n, v.signed),
@@ -440,8 +453,8 @@ fn wide_extend_builtin_widens_past_128_bits() {
 
 #[test]
 fn checked_width_accepts_up_to_the_shared_max_width() {
-    assert!(checked_width(1_000_000).is_ok());
-    assert!(checked_width(1_000_001).is_err());
+    assert!(checked_width(1_000_000, sp()).is_ok());
+    assert!(checked_width(1_000_001, sp()).is_err());
 }
 
 #[test]
@@ -473,9 +486,8 @@ fn pattern_matches_handles_wide_value_no_saturation() {
         value: u128::MAX.into(),
         raw: String::new(),
     };
-    assert_eq!(
-        pattern_matches(&p_not_max, &s),
-        Ok(false),
+    assert!(
+        !pattern_matches(&p_not_max, &s),
         "saturation must not cause false match"
     );
     // A pattern matching the low bits (0) should match:
@@ -483,7 +495,7 @@ fn pattern_matches_handles_wide_value_no_saturation() {
         value: 0u128.into(),
         raw: String::new(),
     };
-    assert_eq!(pattern_matches(&p_zero, &s), Ok(true));
+    assert!(pattern_matches(&p_zero, &s));
 }
 
 #[test]

@@ -27,6 +27,8 @@ use mimz_core::ast::{
 
 use super::value::{const_eval, const_eval_wide, pick_module, type_width};
 
+use crate::sim::Diag;
+
 use bundle::{bundle_field_expr, bundle_type_info, is_bundle_ty};
 use instance::{Flat, flatten_instance};
 use module::elaborate_module;
@@ -194,7 +196,7 @@ pub fn elaborate(
     file: &ast::File,
     module: Option<&str>,
     params: &BTreeMap<String, i128>,
-) -> Result<Design, String> {
+) -> Result<Design, Box<Diag>> {
     elaborate_with_mode(file, module, params, SimMode::Warn)
 }
 
@@ -206,7 +208,7 @@ pub fn elaborate_with_mode(
     module: Option<&str>,
     params: &BTreeMap<String, i128>,
     mode: SimMode,
-) -> Result<Design, String> {
+) -> Result<Design, Box<Diag>> {
     elaborate_project_with_mode(std::slice::from_ref(file), module, params, mode)
 }
 
@@ -221,7 +223,7 @@ pub fn elaborate_project(
     files: &[ast::File],
     module: Option<&str>,
     params: &BTreeMap<String, i128>,
-) -> Result<Design, String> {
+) -> Result<Design, Box<Diag>> {
     elaborate_project_with_mode(files, module, params, SimMode::Warn)
 }
 
@@ -233,13 +235,24 @@ pub fn elaborate_project_with_mode(
     module: Option<&str>,
     params: &BTreeMap<String, i128>,
     mode: SimMode,
-) -> Result<Design, String> {
+) -> Result<Design, Box<Diag>> {
     let reg = build_registry(files);
     let extern_reg = build_extern_registry(files);
     let func_reg = build_func_registry(files);
     let bundle_reg = build_bundle_registry(files);
     let enum_reg = build_enum_registry(files);
-    let entry = files.first().ok_or("no files to elaborate")?;
+    // No source position to point at (there is no file at all) — a
+    // defensive, essentially unreachable-in-practice case (every real
+    // caller has already loaded at least the entry file).
+    let entry = files.first().ok_or_else(|| {
+        Box::new(
+            Diag::new(
+                mimz_core::span::Span { start: 0, end: 0 },
+                "no files to elaborate",
+            )
+            .with_code("S0131"),
+        )
+    })?;
     let m = pick_module(entry, module)?;
     elaborate_module(
         &reg,
@@ -256,10 +269,16 @@ pub fn elaborate_project_with_mode(
 }
 
 /// A clock/reset connection must be a plain signal name.
-fn conn_signal_name(e: &Expr) -> Result<String, String> {
+fn conn_signal_name(e: &Expr) -> Result<String, Box<Diag>> {
     match &e.kind {
         ExprKind::Ident(n) => Ok(n.clone()),
-        _ => Err("a clock/reset connection must be a plain signal name".into()),
+        _ => Err(Box::new(
+            Diag::new(
+                e.span,
+                "a clock/reset connection must be a plain signal name",
+            )
+            .with_code("S0133"),
+        )),
     }
 }
 

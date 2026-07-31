@@ -1,4 +1,5 @@
 use super::*;
+use crate::sim::Diag;
 
 pub(super) fn build_registry(files: &[ast::File]) -> Registry<'_> {
     let mut reg: Registry<'_> = HashMap::new();
@@ -22,27 +23,46 @@ pub(super) fn build_registry(files: &[ast::File]) -> Registry<'_> {
 /// ambiguous reference is a real, reachable outcome here, so it gets its
 /// own error instead of emit_verilog's "unreachable in practice, checker
 /// already rejected it" `None`.
+///
+/// `Box<Diag>` (not a bare `Diag`): `Diag` is 128+ bytes (spans, an owned
+/// `msg: String`, `Vec<(&str, String)>` args), so `Result<T, Diag>` trips
+/// clippy's `result_large_err` on every one of these hot, frequently-`?`'d
+/// resolution functions — `Diag` itself is fine staying an owned value for
+/// the checker's own `Vec<Diag>` accumulation style, but a `?`-propagated
+/// single-error return type wants a pointer-sized `Err`.
 pub(super) fn resolve_module<'a>(
     reg: &Registry<'a>,
     imports: &[ast::Import],
     q: &ast::QualIdent,
-) -> Result<(&'a ast::File, &'a ast::Module), String> {
+) -> Result<(&'a ast::File, &'a ast::Module), Box<Diag>> {
     let candidates = reg.get(&q.name.name).ok_or_else(|| {
-        format!(
-            "uses unknown module `{}` — is the file that defines it imported?",
-            q.name.name
+        Box::new(
+            Diag::new(
+                q.span,
+                format!(
+                    "uses unknown module `{}` — is the file that defines it imported?",
+                    q.name.name
+                ),
+            )
+            .with_code("S0101"),
         )
     })?;
     if q.is_bare() {
         match candidates.as_slice() {
             [(_, f, m)] => Ok((f, m)),
             [] => unreachable!("empty Vec is never inserted"),
-            _ => Err(format!(
-                "uses module `{}`, which is ambiguous — declared in {} different \
-                 files; qualify with the import path to pick one (e.g. `a.b.{}`)",
-                q.name.name,
-                candidates.len(),
-                q.name.name
+            _ => Err(Box::new(
+                Diag::new(
+                    q.span,
+                    format!(
+                        "uses module `{}`, which is ambiguous — declared in {} different \
+                         files; qualify with the import path to pick one (e.g. `a.b.{}`)",
+                        q.name.name,
+                        candidates.len(),
+                        q.name.name
+                    ),
+                )
+                .with_code("S0102"),
             )),
         }
     } else {
@@ -53,16 +73,27 @@ pub(super) fn resolve_module<'a>(
         // too. Mirrors `checker::names::resolve`'s identical step.
         q.resolve_via_imports(imports);
         let target = q.resolved_file.get().ok_or_else(|| {
-            format!(
-                "the path in `{}` doesn't match any `import` in this file",
-                q.to_dotted()
+            Box::new(
+                Diag::new(
+                    q.span,
+                    format!(
+                        "the path in `{}` doesn't match any `import` in this file",
+                        q.to_dotted()
+                    ),
+                )
+                .with_code("S0103"),
             )
         })?;
         candidates
             .iter()
             .find(|&&(f, _, _)| f == target)
             .map(|&(_, f, m)| (f, m))
-            .ok_or_else(|| format!("uses unknown module `{}`", q.name.name))
+            .ok_or_else(|| {
+                Box::new(
+                    Diag::new(q.span, format!("uses unknown module `{}`", q.name.name))
+                        .with_code("S0104"),
+                )
+            })
     }
 }
 
@@ -100,41 +131,67 @@ pub(super) fn resolve_target<'a>(
     extern_reg: &ExternRegistry<'a>,
     imports: &[ast::Import],
     q: &ast::QualIdent,
-) -> Result<(Option<&'a ast::File>, ast::ModuleTarget<'a>), String> {
+) -> Result<(Option<&'a ast::File>, ast::ModuleTarget<'a>), Box<Diag>> {
     if reg.contains_key(&q.name.name) {
         let (f, m) = resolve_module(reg, imports, q)?;
         return Ok((Some(f), ast::ModuleTarget::Real(m)));
     }
     let candidates = extern_reg.get(&q.name.name).ok_or_else(|| {
-        format!(
-            "uses unknown module `{}` — is the file that defines it imported?",
-            q.name.name
+        Box::new(
+            Diag::new(
+                q.span,
+                format!(
+                    "uses unknown module `{}` — is the file that defines it imported?",
+                    q.name.name
+                ),
+            )
+            .with_code("S0105"),
         )
     })?;
     if q.is_bare() {
         match candidates.as_slice() {
             [(_, em)] => Ok((None, ast::ModuleTarget::Extern(em))),
             [] => unreachable!("empty Vec is never inserted"),
-            _ => Err(format!(
-                "uses extern module `{}`, which is ambiguous — declared in {} \
-                 different files; qualify with the import path to pick one",
-                q.name.name,
-                candidates.len()
+            _ => Err(Box::new(
+                Diag::new(
+                    q.span,
+                    format!(
+                        "uses extern module `{}`, which is ambiguous — declared in {} \
+                         different files; qualify with the import path to pick one",
+                        q.name.name,
+                        candidates.len()
+                    ),
+                )
+                .with_code("S0102"),
             )),
         }
     } else {
         q.resolve_via_imports(imports);
         let target_file = q.resolved_file.get().ok_or_else(|| {
-            format!(
-                "the path in `{}` doesn't match any `import` in this file",
-                q.to_dotted()
+            Box::new(
+                Diag::new(
+                    q.span,
+                    format!(
+                        "the path in `{}` doesn't match any `import` in this file",
+                        q.to_dotted()
+                    ),
+                )
+                .with_code("S0103"),
             )
         })?;
         candidates
             .iter()
             .find(|&&(f, _)| f == target_file)
             .map(|&(_, em)| (None, ast::ModuleTarget::Extern(em)))
-            .ok_or_else(|| format!("uses unknown extern module `{}`", q.name.name))
+            .ok_or_else(|| {
+                Box::new(
+                    Diag::new(
+                        q.span,
+                        format!("uses unknown extern module `{}`", q.name.name),
+                    )
+                    .with_code("S0104"),
+                )
+            })
     }
 }
 
@@ -181,36 +238,53 @@ pub(super) fn resolve_bundle<'a>(
     bundles: &BundleRegistry<'a>,
     imports: &[ast::Import],
     q: &ast::QualIdent,
-) -> Result<&'a ast::BundleDecl, String> {
-    let candidates = bundles
-        .get(&q.name.name)
-        .ok_or_else(|| format!("unknown bundle `{}`", q.name.name))?;
+) -> Result<&'a ast::BundleDecl, Box<Diag>> {
+    let candidates = bundles.get(&q.name.name).ok_or_else(|| {
+        Box::new(Diag::new(q.span, format!("unknown bundle `{}`", q.name.name)).with_code("S0106"))
+    })?;
     if q.is_bare() {
         match candidates.as_slice() {
             [(_, only)] => Ok(*only),
             [] => unreachable!("empty Vec is never inserted"),
-            _ => Err(format!(
-                "bundle `{}` is ambiguous — declared in {} different files; \
-                 qualify with the import path to pick one (e.g. `a.b.{}`)",
-                q.name.name,
-                candidates.len(),
-                q.name.name
+            _ => Err(Box::new(
+                Diag::new(
+                    q.span,
+                    format!(
+                        "bundle `{}` is ambiguous — declared in {} different files; \
+                         qualify with the import path to pick one (e.g. `a.b.{}`)",
+                        q.name.name,
+                        candidates.len(),
+                        q.name.name
+                    ),
+                )
+                .with_code("S0102"),
             )),
         }
     } else {
         // Same "no checker pass gating this" reasoning as `resolve_module`.
         q.resolve_via_imports(imports);
         let target = q.resolved_file.get().ok_or_else(|| {
-            format!(
-                "the path in `{}` doesn't match any `import` in this file",
-                q.to_dotted()
+            Box::new(
+                Diag::new(
+                    q.span,
+                    format!(
+                        "the path in `{}` doesn't match any `import` in this file",
+                        q.to_dotted()
+                    ),
+                )
+                .with_code("S0103"),
             )
         })?;
         candidates
             .iter()
             .find(|&&(f, _)| f == target)
             .map(|&(_, b)| b)
-            .ok_or_else(|| format!("unknown bundle `{}`", q.name.name))
+            .ok_or_else(|| {
+                Box::new(
+                    Diag::new(q.span, format!("unknown bundle `{}`", q.name.name))
+                        .with_code("S0104"),
+                )
+            })
     }
 }
 
@@ -224,7 +298,7 @@ pub(super) fn resolve_bundle_fields_sim(
     bname: &ast::QualIdent,
     args: &[NamedArg],
     consts: &BTreeMap<String, i128>,
-) -> Result<Vec<(String, Width)>, String> {
+) -> Result<Vec<(String, Width)>, Box<Diag>> {
     let bdecl = resolve_bundle(bundles, imports, bname)?;
     // Build a merged const env: module consts + bundle param defaults + call-site overrides.
     let mut merged = consts.clone();
@@ -240,13 +314,15 @@ pub(super) fn resolve_bundle_fields_sim(
             merged.insert(a.name.name.clone(), v);
         }
     }
-    let bname = &bname.name.name;
+    let bname_str = &bname.name.name;
     bdecl
         .fields
         .iter()
         .map(|f| {
-            let (bits, signed) = type_width(&f.ty, &merged)
-                .map_err(|e| format!("bundle `{bname}` field `{}`: {e}", f.name.name))?;
+            let (bits, signed) = type_width(&f.ty, &merged, f.span).map_err(|mut e| {
+                e.msg = format!("bundle `{bname_str}` field `{}`: {}", f.name.name, e.msg);
+                e
+            })?;
             Ok((f.name.name.clone(), Width { bits, signed }))
         })
         .collect()

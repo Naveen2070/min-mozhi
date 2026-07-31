@@ -110,12 +110,13 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
 
     let mut sim = Sim::new(design);
     for (name, value) in &opts.inputs {
-        sim.set(name, value.clone())?; // an unknown input name is a clean error
+        sim.set(name, value.clone()).map_err(|e| e.msg)?; // an unknown input name is a clean error
     }
 
     // The signal list is stable across the run — take it once.
     let signals: Vec<Signal> = sim
-        .snapshot()?
+        .snapshot()
+        .map_err(|e| e.msg)?
         .into_iter()
         .map(|(name, _, width)| Signal { name, width })
         .collect();
@@ -124,22 +125,22 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
     for cycle in 0..opts.cycles {
         let rst = Bits::Small((cycle < opts.reset_cycles) as u128);
         for r in &resets {
-            sim.set(r, rst.clone())?;
+            sim.set(r, rst.clone()).map_err(|e| e.msg)?;
         }
         // Rising edge: clock high, apply posedge updates, capture the settled
         // frame. Like the differential testbench, sample AFTER the posedge but
         // BEFORE the negedge — so `on fall` registers update half a period later
         // (visible next cycle), matching Verilog bit-for-bit.
-        sim.set(&clock, Bits::Small(1))?;
-        sim.tick_edge(&clock, Edge::Rise)?;
+        sim.set(&clock, Bits::Small(1)).map_err(|e| e.msg)?;
+        sim.tick_edge(&clock, Edge::Rise).map_err(|e| e.msg)?;
         frames.push(Frame {
             time: cycle * PERIOD,
             cycle: Some(cycle),
             values: values(&sim)?,
         });
         // Falling edge: clock low, apply negedge updates.
-        sim.set(&clock, Bits::Small(0))?;
-        sim.tick_edge(&clock, Edge::Fall)?;
+        sim.set(&clock, Bits::Small(0)).map_err(|e| e.msg)?;
+        sim.tick_edge(&clock, Edge::Fall).map_err(|e| e.msg)?;
         frames.push(Frame {
             time: cycle * PERIOD + HALF,
             cycle: None,
@@ -171,7 +172,8 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, Bits>]) -> Result<Ti
 
     // The signal list is stable across the run — take it once.
     let signals: Vec<Signal> = sim
-        .snapshot()?
+        .snapshot()
+        .map_err(|e| e.msg)?
         .into_iter()
         .map(|(name, _, width)| Signal { name, width })
         .collect();
@@ -187,7 +189,7 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, Bits>]) -> Result<Ti
     let mut frames = Vec::new();
     for (i, vec) in vectors.iter().enumerate() {
         for (name, value) in vec {
-            sim.set(name, value.clone())?; // an unknown input name is a clean error
+            sim.set(name, value.clone()).map_err(|e| e.msg)?; // an unknown input name is a clean error
         }
         frames.push(Frame {
             time: i as u64 * PERIOD,
@@ -206,7 +208,8 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, Bits>]) -> Result<Ti
 /// timeline already carries in `signals`).
 fn values(sim: &Sim) -> Result<BTreeMap<String, Bits>, String> {
     Ok(sim
-        .snapshot()?
+        .snapshot()
+        .map_err(|e| e.msg)?
         .into_iter()
         .map(|(name, value, _)| (name, value))
         .collect())

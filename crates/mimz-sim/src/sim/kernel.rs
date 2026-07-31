@@ -23,6 +23,7 @@ use mimz_core::ast::{Edge, Expr, FuncDecl, SeqStmt};
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
 use super::wide;
+use crate::sim::Diag;
 
 /// Re-mask `v`'s raw bits to width `w` (with `signed`) — a pure reinterpret
 /// (truncate/zero-pad the limbs), NOT a sign-extending resize. Mirrors the
@@ -135,7 +136,7 @@ impl Sim {
 
     /// Drive a leaf signal (an input, clock, or reset) to `value`, masked to its
     /// declared width. Errors if `name` is not a drivable leaf.
-    pub fn set(&mut self, name: &str, value: value::Bits) -> Result<(), String> {
+    pub fn set(&mut self, name: &str, value: value::Bits) -> Result<(), Box<Diag>> {
         match self.widths.get(name) {
             Some(w) if self.leaves.contains_key(name) => {
                 let val = match value {
@@ -148,16 +149,22 @@ impl Sim {
                 self.leaves.insert(name.to_string(), val);
                 Ok(())
             }
-            _ => Err(format!(
-                "`{name}` is not a drivable input/clock/reset of `{}`",
-                self.design.module
+            _ => Err(Box::new(
+                Diag::new(
+                    mimz_core::span::Span::default(),
+                    format!(
+                        "`{name}` is not a drivable input/clock/reset of `{}`",
+                        self.design.module
+                    ),
+                )
+                .with_code("S0239"),
             )),
         }
     }
 
     /// Read the current value of any signal — a leaf (input/clock/reset), a
     /// register, or a combinational wire/output (settled on demand).
-    pub fn peek(&self, name: &str) -> Result<value::Bits, String> {
+    pub fn peek(&self, name: &str) -> Result<value::Bits, Box<Diag>> {
         if let Some(v) = self.leaves.get(name) {
             return Ok(v.bits_masked());
         }
@@ -165,7 +172,10 @@ impl Sim {
             return Ok(v.bits_masked());
         }
         let mut env = self.comb_env();
-        Ok(env.signal(name)?.bits_masked())
+        Ok(env
+            .signal(name)
+            .map_err(|msg| Box::new(Diag::new(mimz_core::span::Span::default(), msg)))?
+            .bits_masked())
     }
 
     /// Advance one full period of `clock`: the rising edge, then the falling
@@ -173,7 +183,7 @@ impl Sim {
     /// pure-`rise` design behaves exactly as before (the fall phase is a no-op);
     /// a mixed design sees `posedge` regs update before `negedge` regs within the
     /// period, matching Verilog (and the Icarus differential).
-    pub fn tick(&mut self, clock: &str) -> Result<(), String> {
+    pub fn tick(&mut self, clock: &str) -> Result<(), Box<Diag>> {
         self.tick_edge(clock, Edge::Rise)?;
         self.tick_edge(clock, Edge::Fall)?;
         Ok(())
@@ -184,7 +194,7 @@ impl Sim {
     /// holds. Synchronous active-high reset wins over the `on`-block result.
     /// Public within the sim so [`super::run`] can sample BETWEEN the rising and
     /// falling edges (matching the Verilog testbench's mid-cycle sample point).
-    pub(super) fn tick_edge(&mut self, clock: &str, edge: Edge) -> Result<(), String> {
+    pub(super) fn tick_edge(&mut self, clock: &str, edge: Edge) -> Result<(), Box<Diag>> {
         let reset_now = self
             .design
             .resets
@@ -241,7 +251,7 @@ impl Sim {
     /// be snapshotted without panicking — `Frame.values`' own element type
     /// (`run.rs`, Task 8) and `Val::bits_masked`'s "both `Small` and `Wide`"
     /// contract, mirroring `Sim::peek` immediately above.
-    pub fn snapshot(&self) -> Result<Vec<(String, value::Bits, Width)>, String> {
+    pub fn snapshot(&self) -> Result<Vec<(String, value::Bits, Width)>, Box<Diag>> {
         let mut out = Vec::new();
         for (name, v) in &self.leaves {
             out.push((name.clone(), v.bits_masked(), self.widths[name]));
@@ -251,7 +261,9 @@ impl Sim {
         }
         let mut env = self.comb_env();
         for name in self.design.comb.keys().chain(&self.design.unknown_signals) {
-            let v = env.signal(name)?;
+            let v = env
+                .signal(name)
+                .map_err(|msg| Box::new(Diag::new(mimz_core::span::Span::default(), msg)))?;
             let w = self.widths.get(name).copied().unwrap_or(Width {
                 bits: v.width,
                 signed: v.signed,
@@ -264,7 +276,7 @@ impl Sim {
     /// Evaluate an expression against the current state — settling the
     /// combinational layer on demand. The test harness (B6) uses this for
     /// `expect`/`if` conditions, input drives, and `tick` counts.
-    pub(super) fn eval(&self, e: &Expr) -> Result<Val, String> {
+    pub(super) fn eval(&self, e: &Expr) -> Result<Val, Box<Diag>> {
         value::eval(&mut self.comb_env(), e)
     }
 
@@ -297,7 +309,7 @@ fn run_seq(
     next: &mut BTreeMap<String, Val>,
     next_mems: &mut BTreeMap<(String, u128), Val>,
     widths: &BTreeMap<String, Width>,
-) -> Result<(), String> {
+) -> Result<(), Box<Diag>> {
     // D-DEFAULT-3: defaults first so conditional assigns override them
     for s in body {
         if let SeqStmt::Default { name, val, .. } = s {
@@ -360,7 +372,9 @@ fn run_seq(
                     Some((idx_or_hi, lo)) => {
                         let base = match next.get(&lhs.base.name) {
                             Some(v) => v.clone(),
-                            None => env.signal(&lhs.base.name)?,
+                            None => env.signal(&lhs.base.name).map_err(|msg| {
+                                Box::new(Diag::new(lhs.base.span, msg).with_code("S0201"))
+                            })?,
                         };
                         let v = value::eval(env, rhs)?;
                         // Dispatch on `base.width`, not `base.is_wide()` (the
@@ -376,6 +390,7 @@ fn run_seq(
                                         value::const_eval(idx_or_hi, env.ints())?,
                                         base.width,
                                         "bit index",
+                                        idx_or_hi.span,
                                     )?;
                                     (base.masked() & !(1u128 << i)) | (v.lsb() << i)
                                 }
@@ -384,17 +399,22 @@ fn run_seq(
                                         value::const_eval(idx_or_hi, env.ints())?,
                                         base.width,
                                         "slice high bound",
+                                        idx_or_hi.span,
                                     )?;
                                     let lo = value::checked_index(
                                         value::const_eval(lo_expr, env.ints())?,
                                         base.width,
                                         "slice low bound",
+                                        lo_expr.span,
                                     )?;
                                     if hi < lo {
-                                        return Err(
-                                            "slice bounds reversed (write `[hi:lo]`, msb first)"
-                                                .into(),
-                                        );
+                                        return Err(Box::new(
+                                            Diag::new(
+                                                idx_or_hi.span.join(lo_expr.span),
+                                                "slice bounds reversed (write `[hi:lo]`, msb first)",
+                                            )
+                                            .with_code("S0136"),
+                                        ));
                                     }
                                     let w = hi - lo + 1;
                                     let clear = value::mask(w) << lo;
@@ -410,6 +430,7 @@ fn run_seq(
                                         value::const_eval(idx_or_hi, env.ints())?,
                                         base.width,
                                         "bit index",
+                                        idx_or_hi.span,
                                     )?;
                                     let bit_mask =
                                         wide::shl(&wide::from_u128(1, base.width), i, base.width);
@@ -426,17 +447,22 @@ fn run_seq(
                                         value::const_eval(idx_or_hi, env.ints())?,
                                         base.width,
                                         "slice high bound",
+                                        idx_or_hi.span,
                                     )?;
                                     let lo = value::checked_index(
                                         value::const_eval(lo_expr, env.ints())?,
                                         base.width,
                                         "slice low bound",
+                                        lo_expr.span,
                                     )?;
                                     if hi < lo {
-                                        return Err(
-                                            "slice bounds reversed (write `[hi:lo]`, msb first)"
-                                                .into(),
-                                        );
+                                        return Err(Box::new(
+                                            Diag::new(
+                                                idx_or_hi.span.join(lo_expr.span),
+                                                "slice bounds reversed (write `[hi:lo]`, msb first)",
+                                            )
+                                            .with_code("S0136"),
+                                        ));
                                     }
                                     let w = hi - lo + 1;
                                     // An exact w-bit all-ones mask, zero-extended
@@ -480,14 +506,24 @@ fn run_seq(
             }
             SeqStmt::Default { .. } => {} // already processed above
             SeqStmt::Loop {
-                var, lo, hi, body, ..
+                var,
+                lo,
+                hi,
+                body,
+                span,
             } => {
                 let lo_v = value::eval(env, lo)?.masked() as i128;
                 let hi_v = value::eval(env, hi)?.masked() as i128;
                 let count = (hi_v - lo_v).max(0);
                 if count > REPEAT_BUDGET {
-                    return Err(format!(
-                        "`loop` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                    return Err(Box::new(
+                        Diag::new(
+                            *span,
+                            format!(
+                                "`loop` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                            ),
+                        )
+                        .with_code("S0227"),
                     ));
                 }
                 // Bind the loop variable into `known` (owned, mutable leaf
@@ -599,7 +635,7 @@ impl Resolver for CombEnv<'_> {
             // Target width known up front — feed it in as context so a
             // `<<`/`>>` in `driver` sees its real consuming width (BUG-11).
             let target_w = self.widths.get(name).map(|w| w.bits);
-            let v = value::eval_ctx(self, driver, target_w)?;
+            let v = value::eval_ctx(self, driver, target_w).map_err(|e| e.msg)?;
             self.stack.pop();
             let v = match self.widths.get(name) {
                 // `Val::new` always clears `unknown` — re-widthing a driver's
@@ -675,10 +711,15 @@ mod tests {
             .expect("parses");
         let err = elaborate_with_mode(&f, None, &BTreeMap::new(), SimMode::Strict)
             .expect_err("strict mode must reject an extern instance before any cycle runs");
-        assert!(err.contains('u'), "error should name the instance: {err}");
         assert!(
-            err.contains("Pll"),
-            "error should name the extern module: {err}"
+            err.msg.contains('u'),
+            "error should name the instance: {}",
+            err.msg
+        );
+        assert!(
+            err.msg.contains("Pll"),
+            "error should name the extern module: {}",
+            err.msg
         );
     }
 
@@ -963,7 +1004,7 @@ mod tests {
         let err = s
             .tick("clk")
             .expect_err("over-budget loop must error, not hang or overflow");
-        assert!(err.contains("`loop` would unroll"), "got: {err}");
+        assert!(err.msg.contains("`loop` would unroll"), "got: {}", err.msg);
     }
 
     #[test]
@@ -991,7 +1032,11 @@ mod tests {
             "module Cyc {\n  out y: bits[8]\n  wire a: bits[8] = b\n  wire b: bits[8] = a\n  y = a\n}\n",
         );
         let err = s.peek("y").unwrap_err();
-        assert!(err.contains("cycle"), "expected a cycle error, got: {err}");
+        assert!(
+            err.msg.contains("cycle"),
+            "expected a cycle error, got: {}",
+            err.msg
+        );
     }
 
     #[test]

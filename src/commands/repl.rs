@@ -140,7 +140,7 @@ pub(crate) fn repl(
                             println!("  {} = {value}  ({kind}[{}])", o.name, o.width);
                         }
                     }
-                    Err(e) => eprintln!("error: {e}"),
+                    Err(e) => eprintln!("error: {}", e.msg),
                 }
             }
             Err(e) => eprintln!("error: {e}"),

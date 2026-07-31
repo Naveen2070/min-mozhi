@@ -24,6 +24,7 @@
 pub mod value;
 
 pub mod comb;
+pub mod diag;
 pub mod elaborate;
 pub mod harness;
 pub mod host;
@@ -33,5 +34,10 @@ pub mod trace;
 pub mod vcd;
 pub mod wide;
 
+pub use diag::ALL_SIM_CODES;
 pub use host::{Direction, EmulationHost};
 pub use value::Val;
+
+/// Re-exported so downstream `mimz-sim` modules construct diagnostics
+/// without needing to know `Diag` itself lives in `mimz-core`.
+pub use mimz_core::diag::{Diag, Severity};

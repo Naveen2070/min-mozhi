@@ -1,6 +1,7 @@
 use super::module::elaborate_module;
 use super::registry::resolve_target;
 use super::*;
+use crate::sim::Diag;
 
 /// The flat pieces one instance contributes to its parent.
 #[derive(Default)]
@@ -31,6 +32,14 @@ impl Flat {
 /// are driven by their connection expressions, and child clock/reset map to the
 /// connected parent signals. Mirrors the Verilog emitter's instance lowering so
 /// the simulator agrees bit-for-bit.
+///
+/// Every callee still returning a bare `String` (`const_eval`,
+/// `elaborate_module`, `Rw::expr`/`seq` — not yet converted; later Phase-1
+/// tasks own them) is wrapped here with `inst.span`, the best span available
+/// at this level — a later task that converts one of those callees directly
+/// will naturally sharpen the span/code without needing to touch this file
+/// again (see the `resolve_target` call below, which already preserves its
+/// OWN span/code from Task 1.2 rather than collapsing to `inst.span`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn flatten_instance(
     reg: &Registry,
@@ -47,33 +56,47 @@ pub(super) fn flatten_instance(
     iname: &str,
     depth: u32,
     mode: SimMode,
-) -> Result<Flat, String> {
-    let (cfile, cm) = match resolve_target(reg, extern_reg, parent_imports, &inst.module)
-        .map_err(|e| format!("instance `{}` {e}", inst.name.name))?
-    {
-        (Some(f), ast::ModuleTarget::Real(m)) => (f, m),
-        (None, ast::ModuleTarget::Extern(em)) => {
-            return flatten_extern_instance(em, parent_consts, inst, iname, mode);
-        }
-        (_, target) => unreachable!(
-            "resolve_target always pairs ModuleTarget::Real with Some(file) and \
+) -> Result<Flat, Box<Diag>> {
+    let (cfile, cm) =
+        match resolve_target(reg, extern_reg, parent_imports, &inst.module).map_err(|mut e| {
+            e.msg = format!("instance `{}` {}", inst.name.name, e.msg);
+            e
+        })? {
+            (Some(f), ast::ModuleTarget::Real(m)) => (f, m),
+            (None, ast::ModuleTarget::Extern(em)) => {
+                return flatten_extern_instance(em, parent_consts, inst, iname, mode);
+            }
+            (_, target) => unreachable!(
+                "resolve_target always pairs ModuleTarget::Real with Some(file) and \
              ModuleTarget::Extern with None — got is_extern={}",
-            target.is_extern()
-        ),
-    };
+                target.is_extern()
+            ),
+        };
 
     // Child parameter bindings: an explicit `arg` (evaluated in the PARENT's
     // consts) wins; otherwise the child default (in the child's own consts).
     let mut cp: BTreeMap<String, i128> = BTreeMap::new();
     for p in &cm.params {
         let v = if let Some(a) = inst.args.iter().find(|a| a.name.name == p.name.name) {
-            const_eval(&a.value, parent_consts)?
+            const_eval(&a.value, parent_consts).map_err(|mut e| {
+                e.msg = format!("instance `{}`: {}", inst.name.name, e.msg);
+                e
+            })?
         } else if let Some(d) = &p.default {
-            const_eval(d, &cp)?
+            const_eval(d, &cp).map_err(|mut e| {
+                e.msg = format!("instance `{}`: {}", inst.name.name, e.msg);
+                e
+            })?
         } else {
-            return Err(format!(
-                "instance `{}`: parameter `{}` has no value",
-                inst.name.name, p.name.name
+            return Err(Box::new(
+                Diag::new(
+                    inst.span,
+                    format!(
+                        "instance `{}`: parameter `{}` has no value",
+                        inst.name.name, p.name.name
+                    ),
+                )
+                .with_code("S0109"),
             ));
         };
         cp.insert(p.name.name.clone(), v);
@@ -90,7 +113,11 @@ pub(super) fn flatten_instance(
         &cp,
         depth + 1,
         mode,
-    )?;
+    )
+    .map_err(|mut e| {
+        e.msg = format!("instance `{}`: {}", inst.name.name, e.msg);
+        e
+    })?;
     let pfx = format!("{iname}_");
 
     // Parent-context rewriter for connection expressions: folds the `repeat`
@@ -146,7 +173,7 @@ pub(super) fn flatten_instance(
             .conns
             .iter()
             .find(|cn| cn.port.name == *c)
-            .map(|cn| conn_signal_name(&prw.expr(&cn.signal)?))
+            .map(|cn| prw.expr(&cn.signal).and_then(|e| conn_signal_name(&e)))
             .transpose()?
             .unwrap_or_else(|| c.clone());
         subst.insert(c.clone(), ident_expr(parent.clone(), inst.span));
@@ -169,9 +196,15 @@ pub(super) fn flatten_instance(
             .iter()
             .find(|cn| cn.port.name == s.name)
             .ok_or_else(|| {
-                format!(
-                    "instance `{}`: input `{}` of `{}` is not connected",
-                    inst.name.name, s.name, cm.name.name
+                Box::new(
+                    Diag::new(
+                        inst.span,
+                        format!(
+                            "instance `{}`: input `{}` of `{}` is not connected",
+                            inst.name.name, s.name, cm.name.name
+                        ),
+                    )
+                    .with_code("S0112"),
                 )
             })?;
         flat.wires.push(Signal {
@@ -257,13 +290,19 @@ fn flatten_extern_instance(
     inst: &ast::Inst,
     iname: &str,
     mode: SimMode,
-) -> Result<Flat, String> {
+) -> Result<Flat, Box<Diag>> {
     if mode == SimMode::Strict {
-        return Err(format!(
-            "instance `{}` instantiates extern module `{}` — no simulation model; \
-             extern modules are Verilog-emission only (pass a `warn`-mode config to \
-             simulate around it)",
-            inst.name.name, em.name.name
+        return Err(Box::new(
+            Diag::new(
+                inst.span,
+                format!(
+                    "instance `{}` instantiates extern module `{}` — no simulation model; \
+                     extern modules are Verilog-emission only (pass a `warn`-mode config to \
+                     simulate around it)",
+                    inst.name.name, em.name.name
+                ),
+            )
+            .with_code("S0113"),
         ));
     }
     eprintln!(
@@ -279,13 +318,25 @@ fn flatten_extern_instance(
     let mut cp: BTreeMap<String, i128> = BTreeMap::new();
     for p in &em.params {
         let v = if let Some(a) = inst.args.iter().find(|a| a.name.name == p.name.name) {
-            const_eval(&a.value, parent_consts)?
+            const_eval(&a.value, parent_consts).map_err(|mut e| {
+                e.msg = format!("instance `{}`: {}", inst.name.name, e.msg);
+                e
+            })?
         } else if let Some(d) = &p.default {
-            const_eval(d, &cp)?
+            const_eval(d, &cp).map_err(|mut e| {
+                e.msg = format!("instance `{}`: {}", inst.name.name, e.msg);
+                e
+            })?
         } else {
-            return Err(format!(
-                "instance `{}`: parameter `{}` has no value",
-                inst.name.name, p.name.name
+            return Err(Box::new(
+                Diag::new(
+                    inst.span,
+                    format!(
+                        "instance `{}`: parameter `{}` has no value",
+                        inst.name.name, p.name.name
+                    ),
+                )
+                .with_code("S0109"),
             ));
         };
         cp.insert(p.name.name.clone(), v);
@@ -304,7 +355,7 @@ fn flatten_extern_instance(
             ty,
         } = it
         {
-            let (bits, signed) = type_width(ty, &cp)?;
+            let (bits, signed) = type_width(ty, &cp, name.span)?;
             let flat_name = format!("{pfx}{}", name.name);
             flat.wires.push(Signal {
                 name: flat_name.clone(),
