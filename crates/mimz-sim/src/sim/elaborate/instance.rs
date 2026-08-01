@@ -51,6 +51,7 @@ pub(super) fn flatten_instance(
     parent_consts: &BTreeMap<String, i128>,
     parent_insts: &HashSet<String>,
     parent_enums: &HashMap<String, &ast::EnumDecl>,
+    parent_bundle_sigs: &HashSet<String>,
     parent_subst: &HashMap<String, Expr>,
     inst: &ast::Inst,
     iname: &str,
@@ -121,16 +122,21 @@ pub(super) fn flatten_instance(
     let pfx = format!("{iname}_");
 
     // Parent-context rewriter for connection expressions: folds the `repeat`
-    // loop var and resolves nested `arr[i-1].port` reads.
-    // Empty bundle_sigs: the child's own signals are already flattened to
-    // scalars by this point, so there's no dot-access left to rewrite.
-    let no_bundle_sigs: HashSet<String> = HashSet::new();
+    // loop var, resolves nested `arr[i-1].port` reads, and — BUG-15 — flattens
+    // a bundle-typed connection signal's `.field` access via `bundle_sigs`
+    // (real PARENT bundle signals here, unlike `crw` below: a connection
+    // expression lives in the PARENT's own scope, so a synthesized
+    // `bundle_field_expr` field-access on it must resolve against the
+    // PARENT's bundle-typed wires/ports, not an empty set).
     let prw = Rw {
         insts: parent_insts,
         enums: parent_enums,
-        bundle_sigs: &no_bundle_sigs,
+        bundle_sigs: parent_bundle_sigs,
         consts: parent_consts,
         subst: parent_subst,
+        func_reg,
+        bundle_reg,
+        imports: parent_imports,
     };
 
     // The child body is already flat (no `Field`/enum nodes survive its own
@@ -180,39 +186,101 @@ pub(super) fn flatten_instance(
         clock_map.insert(c.clone(), parent);
     }
 
+    // Child body Field nodes are already gone (resolved by the child's OWN
+    // `rw0()` during its own elaboration above), so `crw` needs no bundle_sigs
+    // of its own — unlike `prw` above, which processes connection
+    // expressions living in the PARENT's still-unflattened scope.
+    let no_bundle_sigs: HashSet<String> = HashSet::new();
     let crw = Rw {
         insts: &no_insts,
         enums: &no_enums,
         bundle_sigs: &no_bundle_sigs,
         consts: &child.consts,
         subst: &subst,
+        func_reg,
+        bundle_reg,
+        imports: &cfile.imports,
     };
     let mut flat = Flat::default();
 
-    // Child inputs: a parent wire driven by the (required) connection.
+    // BUG-15: a bundle-typed INPUT port has no memory, by the time we get
+    // `child.inputs`, of which flattened `port_field` scalar came from which
+    // ORIGINAL bundle-typed port declaration — `elaborate_module` already
+    // flattened it away. Rebuild that map from the child's own declared
+    // ports (mirrors the emitter's `instances.rs::instance()`, which walks
+    // `target.items()` for the exact same reason) so a single user-written
+    // connection (`req: sig`) can be resolved per field. Output ports need no
+    // such map: they're driven internally by the child (no connection to
+    // resolve), so `child.outputs`' already-flattened `port_field` wires work
+    // unchanged, same as before this fix.
+    let mut cm_enums: HashMap<String, &ast::EnumDecl> = enum_reg.clone();
+    for it in &cm.items {
+        if let ModuleItem::Enum(e) = it {
+            cm_enums.insert(e.name.name.clone(), e);
+        }
+    }
+    let mut flat_in_source: HashMap<String, (String, Option<String>)> = HashMap::new();
+    for it in &cm.items {
+        if let ModuleItem::Port {
+            dir: Dir::In,
+            name,
+            ty,
+        } = it
+        {
+            match bundle_type_info(ty, bundle_reg, &cm_enums) {
+                Some((bname, bargs)) => {
+                    let fields =
+                        resolve_bundle_fields_sim(bundle_reg, &cfile.imports, &bname, &bargs, &cp)?;
+                    for (fname, _) in fields {
+                        flat_in_source.insert(
+                            format!("{}_{fname}", name.name),
+                            (name.name.clone(), Some(fname)),
+                        );
+                    }
+                }
+                None => {
+                    flat_in_source.insert(name.name.clone(), (name.name.clone(), None));
+                }
+            }
+        }
+    }
+
+    // Child inputs: a parent wire driven by the (required) connection. A
+    // bundle-typed port's connection is looked up by its ORIGINAL (pre-
+    // flatten) name and expanded per field via `bundle_field_expr` — same
+    // per-field extraction `??`'s OR-mux form and the Wire/Drive bundle
+    // paths already use.
     for s in &child.inputs {
+        let (port_name, field) = flat_in_source
+            .get(&s.name)
+            .cloned()
+            .unwrap_or_else(|| (s.name.clone(), None));
         let conn = inst
             .conns
             .iter()
-            .find(|cn| cn.port.name == s.name)
+            .find(|cn| cn.port.name == port_name)
             .ok_or_else(|| {
                 Box::new(
                     Diag::new(
                         inst.span,
                         format!(
                             "instance `{}`: input `{}` of `{}` is not connected",
-                            inst.name.name, s.name, cm.name.name
+                            inst.name.name, port_name, cm.name.name
                         ),
                     )
                     .with_code("S0112"),
                 )
             })?;
+        let driver = match &field {
+            Some(fname) => bundle_field_expr(&conn.signal, fname, inst.span),
+            None => conn.signal.clone(),
+        };
         flat.wires.push(Signal {
             name: format!("{pfx}{}", s.name),
             width: s.width,
         });
         flat.comb
-            .push((format!("{pfx}{}", s.name), prw.expr(&conn.signal)?));
+            .push((format!("{pfx}{}", s.name), prw.expr(&driver)?));
     }
     // Child outputs + wires: a parent wire driven by the child's (rewritten) logic.
     // A child wire/output with no `comb` driver is, by construction, one the

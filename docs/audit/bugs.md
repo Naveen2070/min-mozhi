@@ -727,7 +727,7 @@ bundle-lookup path any user bundle already used.
 elaborate.rs`) exercise a `bit?`/`bits[N]?`-typed wire end-to-end through
 the simulator; they would fail with the pre-fix "unknown bundle" error.
 
-## BUG-15 (MEDIUM, OPEN) — `mimz-sim` has no bundle-field-expansion baseline for instance ports or `fn` call arguments
+## BUG-15 (MEDIUM, FIXED 2026-08-01) — `mimz-sim` has no bundle-field-expansion baseline for instance ports or `fn` call arguments
 
 **What.** A bundle-typed module-instantiation port connection or a
 bundle-typed `fn` call argument is completely unsupported in the
@@ -759,16 +759,53 @@ sites in the simulator as a direct, scoped-out consequence (`§1.12a`
 correctly does not list them as supported combinations); `mimz-core`'s
 emitter is unaffected and supports OR-mux at all four sites.
 
-**Fix (Pending).** Give `mimz-sim` the same foundational bundle-field-
-expansion baseline `mimz-core`'s emitter already has for instance ports
-and `fn` call arguments, then `??`'s OR-mux form (or any other bundle-
-typed value) can reach those two sites the same way it already reaches
-wire-init and `Drive`. Filed as a follow-up, not part of this feature's
-scope.
+**Fix — instance ports (2026-08-01).** `flatten_instance`
+(`crates/mimz-sim/src/sim/elaborate/instance.rs`) rebuilds, from the
+child's own declared ports (`cm.items`), a map from each flattened
+`port_field` scalar name back to its ORIGINAL `(port, field)` pair —
+`elaborate_module` had already flattened a bundle-typed port to its
+per-field `Signal`s by the time `child.inputs` reaches this function, so
+that mapping (which the user's single `port: signal` connection needs to
+resolve at all) no longer existed anywhere. Each bundle-typed input's
+connection is then expanded per field via `bundle_field_expr` (the same
+helper the `??` OR-mux form and Wire/Drive bundle paths already use) and
+rewritten through `Rw` — which needed its `bundle_sigs` set fixed from an
+always-empty placeholder to the PARENT's real bundle-signal set,
+since a connection expression lives in the parent's own (still
+unflattened) scope, unlike the child body `Rw` also builds here.
 
-**Test.** None yet (gap is open, pre-existing, and out of this feature's
-scope) — Task 10's probe tests confirmed the gap empirically but were not
-committed as permanent regression coverage for a known-unsupported path.
+**Fix — `fn` call arguments (2026-08-01).** Two-sided, since the
+CALL SITE and the CALLEE's own body both reference the bundle value by
+its single pre-flattening name. (1) `Rw::expr`'s `FnCall` arm
+(`rewrite.rs`) now expands a bundle-typed argument into one sub-expression
+per field — keyed by the CALLEE's _declared parameter type_, not the
+argument's own inferred type (mirroring the emitter's identical BUG-10
+call-site convention), via a new `expand_fn_call_args` method requiring
+`Rw` to carry `func_reg`/`bundle_reg`/`imports` (threaded through all four
+`Rw` construction sites: `module.rs`'s `build_rw`, `instance.rs`'s `prw`/
+`crw`, and `rewrite.rs`'s own nested match-arm `ext_rw`). (2) A NEW
+`flatten_bundle_params_in_func` (`bundle.rs`) pre-expands each `FuncDecl`
+with a bundle-typed parameter into N flat scalar params (`<param>_<field>`,
+folded to a concrete literal width — a `fn`'s own const environment is
+file-scope only, so nothing may stay symbolic) and rewrites every
+`param.field` body reference to the matching flat name, run ONCE when
+`Elaboration::new` builds its `funcs` map from `func_reg` — so
+`eval_fn_call`'s own runtime param-binding loop (`value/fn_eval.rs`) needed
+NO bundle-awareness added at all: by the time it runs, both the expanded
+call-site argument list and the callee's own expanded parameter list
+already agree on field count, order, and flat names. This also means the
+`Resolver` trait needed no new method — the entire fix lives at
+elaboration time, never at runtime.
+
+**Test.** `bundle_typed_instance_input_port_connection_flattens_per_field`,
+`bundle_typed_fn_call_argument_expands_to_one_arg_per_field`
+(`crates/mimz-sim/src/sim/elaborate/tests.rs`) — both drive a real
+`kernel::Sim` end-to-end (not just structural `Design` assertions) through
+a `bundle Handshake(W: int = 8) { valid: bit, data: bits[W] }` connected
+to, respectively, a child instance's bundle-typed input port and a `fn`'s
+bundle-typed parameter, confirming the correct field routes through in
+both the `valid`-true and `valid`-false cases. Full workspace 1115/1115
+(1113 pre-fix baseline + these 2), clippy/fmt clean.
 
 ## BUG-16 (MEDIUM, FIXED 2026-07-18) — `mimz-sim` never resolved file-scoped `enum` declarations
 
