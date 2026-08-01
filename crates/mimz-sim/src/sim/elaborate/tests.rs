@@ -524,3 +524,64 @@ fn sync_loop_in_const_if_losing_branch_is_not_lowered() {
     assert!(d.wires.iter().any(|w| w.name == "w"));
     assert!(d.regs.iter().all(|r| r.name != "s_cnt"));
 }
+
+// ---- BUG-15: bundle-field expansion at instance ports / fn call args ----
+
+#[test]
+fn bundle_typed_instance_input_port_connection_flattens_per_field() {
+    // A bundle-typed wire connected to a bundle-typed instance input port
+    // used to fail entirely: the child's flattened field names
+    // (`req_valid`/`req_data`) never matched the user-written connection's
+    // port name (`req`), so the "input is not connected" error always fired.
+    use super::super::value::Bits;
+    let mut s = super::super::kernel::Sim::new(
+        elaborate(
+            &parse(
+                "bundle Handshake(W: int = 8) {\n  valid: bit\n  data: bits[W]\n}\n\
+                 module Child {\n  in req: Handshake(W: 8)\n  out y: bits[8]\n  \
+                 y = if req.valid { req.data } else { 0 }\n}\n\
+                 module Parent {\n  in v: bit\n  in d: bits[8]\n  out y: bits[8]\n  \
+                 wire req: Handshake(W: 8) = { valid: v, data: d }\n  \
+                 let c = Child() { req: req }\n  y = c.y\n}\n",
+            ),
+            Some("Parent"),
+            &BTreeMap::new(),
+        )
+        .expect("bundle-typed instance connection elaborates"),
+    );
+    s.set("v", Bits::Small(1)).unwrap();
+    s.set("d", Bits::Small(42)).unwrap();
+    assert_eq!(s.peek("y").unwrap(), Bits::Small(42));
+    s.set("v", Bits::Small(0)).unwrap();
+    assert_eq!(s.peek("y").unwrap(), Bits::Small(0));
+}
+
+#[test]
+fn bundle_typed_fn_call_argument_expands_to_one_arg_per_field() {
+    // A bundle-typed value passed whole as a `fn` call argument used to
+    // reach the evaluator as a single unresolvable identifier — the
+    // callee's declared param has no bundle case in `eval_fn_call`'s
+    // binding loop, and the caller's own bundle-typed signal was never
+    // split into its constituent fields at the call site.
+    use super::super::value::Bits;
+    let mut s = super::super::kernel::Sim::new(
+        elaborate(
+            &parse(
+                "bundle Handshake(W: int = 8) {\n  valid: bit\n  data: bits[W]\n}\n\
+                 fn pick(req: Handshake(W: 8)) -> bits[8] {\n  \
+                 if req.valid { return req.data }\n  0\n}\n\
+                 module M {\n  in v: bit\n  in d: bits[8]\n  out y: bits[8]\n  \
+                 wire req: Handshake(W: 8) = { valid: v, data: d }\n  \
+                 y = pick(req)\n}\n",
+            ),
+            None,
+            &BTreeMap::new(),
+        )
+        .expect("bundle-typed fn call argument elaborates"),
+    );
+    s.set("v", Bits::Small(1)).unwrap();
+    s.set("d", Bits::Small(7)).unwrap();
+    assert_eq!(s.peek("y").unwrap(), Bits::Small(7));
+    s.set("v", Bits::Small(0)).unwrap();
+    assert_eq!(s.peek("y").unwrap(), Bits::Small(0));
+}

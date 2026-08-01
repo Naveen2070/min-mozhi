@@ -18,6 +18,17 @@ pub(super) struct Rw<'d, 's> {
     pub(super) bundle_sigs: &'d HashSet<String>,
     pub(super) consts: &'d BTreeMap<String, i128>,
     pub(super) subst: &'s HashMap<String, Expr>,
+    /// Function table, consulted only by `expand_fn_call_args` to look up a
+    /// callee's declared parameter types (BUG-15: a bundle-typed `fn` call
+    /// argument expands here the same way an instance's bundle-typed input
+    /// port does — by the CALLEE's declared field names, not the argument's
+    /// own inferred type, mirroring the emitter's own call-site expansion).
+    pub(super) func_reg: &'d FuncRegistry<'d>,
+    pub(super) bundle_reg: &'d BundleRegistry<'d>,
+    /// The file whose `import`s a bundle name in a `fn` param type resolves
+    /// against — the CALLEE's own file, not necessarily the caller's (see
+    /// each construction site's own comment for which file that is).
+    pub(super) imports: &'d [ast::Import],
 }
 
 impl<'d, 's> Rw<'d, 's> {
@@ -112,6 +123,9 @@ impl<'d, 's> Rw<'d, 's> {
                                 bundle_sigs: self.bundle_sigs,
                                 consts: self.consts,
                                 subst: &ext_subst,
+                                func_reg: self.func_reg,
+                                bundle_reg: self.bundle_reg,
+                                imports: self.imports,
                             };
                             ext_rw.expr(&a.value)?
                         };
@@ -160,13 +174,12 @@ impl<'d, 's> Rw<'d, 's> {
                     .collect::<Result<_, _>>()?,
             },
             // Pass FnCall through with args rewritten (const-folded, signal-names
-            // substituted). The runtime evaluator handles the call.
+            // substituted, and — BUG-15 — a bundle-typed argument expanded to
+            // one sub-expression per field). The runtime evaluator handles
+            // the call itself; `eval_fn_call` never sees a bundle-typed arg.
             ExprKind::FnCall { name, args } => ExprKind::FnCall {
                 name: name.clone(),
-                args: args
-                    .iter()
-                    .map(|a| self.expr(a))
-                    .collect::<Result<_, _>>()?,
+                args: self.expand_fn_call_args(name, args)?,
             },
             ExprKind::BundleLit(_) => {
                 return Err(Box::new(
@@ -187,6 +200,57 @@ impl<'d, 's> Rw<'d, 's> {
             } => return self.enum_construct(enum_name, variant, args, e.span),
         };
         Ok(Expr { kind, span: e.span })
+    }
+
+    /// Expand any bundle-typed argument in a `fn` call's arg list to one
+    /// sub-expression per field, keyed by the CALLEE's declared parameter
+    /// type — not the argument's own inferred type, so a differently-named
+    /// but structurally-compatible argument still resolves correctly
+    /// (mirrors the emitter's own call-site expansion, BUG-10's fix, and
+    /// `flatten_instance`'s bundle-typed input-port connections, BUG-15's
+    /// other half). Every non-bundle-typed arg (scalar, array, or an
+    /// `ArrayLit`) is rewritten 1:1, unchanged from before this method
+    /// existed — `eval_fn_call`'s own array-argument flattening happens
+    /// later, at call time, since an `ArrayLit` is already N sub-expressions
+    /// in the source.
+    fn expand_fn_call_args(
+        &self,
+        name: &ast::Ident,
+        args: &[Expr],
+    ) -> Result<Vec<Expr>, Box<Diag>> {
+        let Some(f) = self.func_reg.get(&name.name) else {
+            // Unknown function: `eval_fn_call` reports "undefined function"
+            // (S0224) at runtime with a real span — don't duplicate that
+            // check here, just rewrite each arg as-is.
+            return args.iter().map(|a| self.expr(a)).collect();
+        };
+        let mut out = Vec::with_capacity(args.len());
+        for (arg, param) in args.iter().zip(f.params.iter()) {
+            match bundle_type_info(&param.ty, self.bundle_reg, self.enums) {
+                Some((bname, bargs)) => {
+                    let fields = resolve_bundle_fields_sim(
+                        self.bundle_reg,
+                        self.imports,
+                        &bname,
+                        &bargs,
+                        self.consts,
+                    )?;
+                    for (fname, _) in fields {
+                        out.push(self.expr(&bundle_field_expr(arg, &fname, arg.span))?);
+                    }
+                }
+                None => out.push(self.expr(arg)?),
+            }
+        }
+        // A call-site arity mismatch is normally checker-rejected (E0413/
+        // E0803) before this evaluator ever runs, but it also runs directly
+        // on unchecked ASTs (fuzzing, bare `mimz sim`) — pass any extra arg
+        // through unchanged rather than silently dropping it; `eval_fn_call`
+        // itself reports the mismatch cleanly.
+        for arg in args.iter().skip(f.params.len()) {
+            out.push(self.expr(arg)?);
+        }
+        Ok(out)
     }
 
     /// Lowers `ExprKind::EnumConstruct` into the same tag+payload bit

@@ -29,7 +29,7 @@ use super::value::{const_eval, const_eval_wide, pick_module, type_width};
 
 use crate::sim::Diag;
 
-use bundle::{bundle_field_expr, bundle_type_info, is_bundle_ty};
+use bundle::{bundle_field_expr, bundle_type_info, flatten_bundle_params_in_func, is_bundle_ty};
 use instance::{Flat, flatten_instance};
 use module::elaborate_module;
 use registry::{

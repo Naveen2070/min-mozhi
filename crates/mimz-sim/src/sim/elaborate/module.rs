@@ -3,12 +3,16 @@ use crate::sim::Diag;
 
 /// Builds an [`Rw`] from individual field borrows (not a `&self` method) so
 /// callers can hold it alongside `&mut self.comb` in one statement.
+#[allow(clippy::too_many_arguments)]
 fn build_rw<'x>(
     insts: &'x HashSet<String>,
     enums: &'x HashMap<String, &'x ast::EnumDecl>,
     bundle_sigs: &'x HashSet<String>,
     consts: &'x BTreeMap<String, i128>,
     subst: &'x HashMap<String, Expr>,
+    func_reg: &'x FuncRegistry<'x>,
+    bundle_reg: &'x BundleRegistry<'x>,
+    imports: &'x [ast::Import],
 ) -> Rw<'x, 'x> {
     Rw {
         insts,
@@ -16,6 +20,9 @@ fn build_rw<'x>(
         bundle_sigs,
         consts,
         subst,
+        func_reg,
+        bundle_reg,
+        imports,
     }
 }
 
@@ -125,10 +132,19 @@ impl<'a> Elaboration<'a> {
         // User-defined functions from ALL project files (D3: functions are
         // project-wide) — collected from `func_reg` so the kernel's expression
         // evaluator can call any fn regardless of which imported file defines it.
+        // A bundle-typed parameter is pre-flattened here, ONCE, into one
+        // scalar param per field (BUG-15) — see
+        // `flatten_bundle_params_in_func`'s own doc for why this is done
+        // once at registry-build time rather than by teaching the runtime
+        // evaluator (`eval_fn_call`) about bundles directly.
         let funcs: HashMap<String, FuncDecl> = func_reg
             .values()
-            .map(|f| (f.name.name.clone(), (*f).clone()))
-            .collect();
+            .map(|f| {
+                let flat =
+                    flatten_bundle_params_in_func(f, bundle_reg, enum_reg, &file.imports, &consts)?;
+                Ok((flat.name.name.clone(), flat))
+            })
+            .collect::<Result<_, Box<Diag>>>()?;
 
         // Enums visible to this module: file-scoped ones from `enum_reg` (spec/02
         // §1.5b — `enum Name { ... }` declared alongside the module, not inside
@@ -207,6 +223,9 @@ impl<'a> Elaboration<'a> {
             &self.bundle_sigs,
             &self.consts,
             &self.no_subst,
+            self.func_reg,
+            self.bundle_reg,
+            &self.file.imports,
         )
     }
 
@@ -440,6 +459,9 @@ impl<'a> Elaboration<'a> {
                                     &self.bundle_sigs,
                                     &self.consts,
                                     &self.no_subst,
+                                    self.func_reg,
+                                    self.bundle_reg,
+                                    &self.file.imports,
                                 ),
                                 &self.consts,
                                 &mut self.comb,
@@ -456,6 +478,9 @@ impl<'a> Elaboration<'a> {
                                 &self.bundle_sigs,
                                 &self.consts,
                                 &self.no_subst,
+                                self.func_reg,
+                                self.bundle_reg,
+                                &self.file.imports,
                             ),
                             &self.consts,
                             &mut self.comb,
@@ -513,6 +538,7 @@ impl<'a> Elaboration<'a> {
                         &self.consts,
                         &self.insts,
                         &self.enums,
+                        &self.bundle_sigs,
                         &self.no_subst,
                         inst,
                         &inst.name.name,
@@ -542,8 +568,16 @@ impl<'a> Elaboration<'a> {
                         let mut ci = self.consts.clone();
                         ci.insert(r.var.name.clone(), iv);
                         let subst = HashMap::from([(r.var.name.clone(), int_expr(iv, r.span))]);
-                        let rwi =
-                            build_rw(&self.insts, &self.enums, &self.bundle_sigs, &ci, &subst);
+                        let rwi = build_rw(
+                            &self.insts,
+                            &self.enums,
+                            &self.bundle_sigs,
+                            &ci,
+                            &subst,
+                            self.func_reg,
+                            self.bundle_reg,
+                            &self.file.imports,
+                        );
                         for body_it in &r.items {
                             match body_it {
                                 ModuleItem::Inst(inst) => {
@@ -561,6 +595,7 @@ impl<'a> Elaboration<'a> {
                                         &ci,
                                         &self.insts,
                                         &self.enums,
+                                        &self.bundle_sigs,
                                         &subst,
                                         inst,
                                         &iname,
