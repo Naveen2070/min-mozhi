@@ -16,10 +16,15 @@
 
 /// Every stable `mimz-sim` runtime error code. Grows as later tasks
 /// convert `Result<_, String>` sites to `Result<_, Box<mimz_core::diag::Diag>>`.
-pub const ALL_SIM_CODES: [&str; 79] = [
+///
+/// `S0101` was retired 2026-08-01 (BUG-26): `resolve_module`'s own
+/// "unknown module" arm was dead code (its only caller always pre-checks
+/// the same lookup first), so the append-only stability contract never
+/// applied to it — nothing could have observed it firing, since it never
+/// did.
+pub const ALL_SIM_CODES: [&str; 78] = [
     // S01xx — elaboration/wiring (sim/elaborate/registry.rs, instance.rs,
     // mod.rs, module.rs, rewrite.rs).
-    "S0101", // unknown module reference
     "S0102", // ambiguous bare reference (module/extern-module/bundle)
     "S0103", // qualified reference's path doesn't match any `import`
     "S0104", // qualified reference resolved to an import lacking the name
@@ -100,7 +105,11 @@ pub const ALL_SIM_CODES: [&str; 79] = [
     "S0236", // missing value for a declared input
     "S0237", // signal is never driven
     "S0238", // combinational cycle through a signal
-    // S02xx — the event-driven kernel (sim/kernel.rs).
+    // S02xx — the event-driven kernel (sim/kernel.rs). S0238 is REUSED here
+    // too (`CombEnv::signal`'s own cycle detection, BUG-27 fix) — the
+    // structurally-identical condition, just checked in the real
+    // multi-module simulator's per-cycle resolver instead of `mimz eval`'s
+    // single-module one.
     "S0239", // `Sim::set`: name is not a drivable input/clock/reset
     // S03xx — test-harness control flow (sim/harness/mod.rs's `Run::exec`).
     // The peripheral-bind-validation `Stop::Err` sites in the same match arm
@@ -121,3 +130,48 @@ pub const ALL_SIM_CODES: [&str; 79] = [
     "S0403", // no port of the needed direction with that name on the design
     "S0404", // the peripheral itself rejected the bind (host-specific reason)
 ];
+
+/// Delimiter used by [`bridge_code`]/[`diag_from_bridged`] to smuggle a
+/// `Diag`'s own `code` through the `Resolver` trait's fixed `Result<_,
+/// String>` boundary (Phase 2 of the R2 design deliberately never threads
+/// `Span`/`Diag` through that trait's signature — see
+/// `docs/superpowers/plans/2026-07-30-sim-runtime-diagnostics-r2.local.md`'s
+/// "leave the trait alone" note). BUG-27: without this, a `Resolver::
+/// signal`/`mem_read` impl's own already-coded `Diag` (e.g. `Env::resolve`'s
+/// `S0238` combinational-cycle error) is unconditionally REPLACED by the
+/// boundary's generic fallback code (`S0201`/`S0206`) the moment it's
+/// bridged down to a plain `String` — a control character that can never
+/// appear in a real diagnostic message, so a plain (non-bridged) string —
+/// the common case, from a `Resolver` with no code of its own to preserve
+/// — is never misread as carrying one.
+const BRIDGE_MARKER: char = '\0';
+
+/// Write side of the code-smuggling in [`BRIDGE_MARKER`]'s doc comment.
+/// Call this INSTEAD OF bridging a `Resolver::signal`/`mem_read` impl's own
+/// already-coded `Diag` down to a plain `.msg` string.
+pub(super) fn bridge_code(code: &'static str, msg: impl AsRef<str>) -> String {
+    format!("{BRIDGE_MARKER}{code}{BRIDGE_MARKER}{}", msg.as_ref())
+}
+
+/// Read side: build a `Diag` from a bridged `Resolver::signal`/`mem_read`
+/// error, recovering the ORIGINAL code [`bridge_code`] embedded (validated
+/// against [`ALL_SIM_CODES`] — an unrecognized or absent marker never
+/// fabricates a bogus code), else falling back to `default_code` (the
+/// boundary's own generic code — `S0201` for `signal`, `S0206` for
+/// `mem_read`).
+pub(super) fn diag_from_bridged(
+    span: mimz_core::span::Span,
+    msg: String,
+    default_code: &'static str,
+) -> Box<mimz_core::diag::Diag> {
+    if let Some(rest) = msg.strip_prefix(BRIDGE_MARKER)
+        && let Some((code, real_msg)) = rest.split_once(BRIDGE_MARKER)
+        && let Some(&known) = ALL_SIM_CODES.iter().find(|c| **c == code)
+    {
+        return Box::new(mimz_core::diag::Diag {
+            code: Some(known),
+            ..mimz_core::diag::Diag::new(span, real_msg)
+        });
+    }
+    Box::new(mimz_core::diag::Diag::new(span, msg).with_code(default_code))
+}
