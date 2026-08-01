@@ -149,13 +149,11 @@ impl Resolver for TestResolver {
 // S01xx — elaboration/wiring (sim/elaborate/*.rs).
 // ---------------------------------------------------------------------
 
-// S0101 (`resolve_module`'s own "unknown module" arm) has no live fixture
-// here — see `every_sim_code_has_a_fixture_above`'s `known_gaps` comment for
-// why: its only caller (`resolve_target`) always pre-checks
-// `reg.contains_key` before ever calling `resolve_module`, so that arm is
-// unreachable through any real instantiation path in the current code, and
-// `resolve_module` itself is `pub(super)` (unreachable from this external
-// test crate) to call directly.
+// S0101 was retired 2026-08-01 (BUG-26): `resolve_module`'s own "unknown
+// module" arm was dead code (its only caller, `resolve_target`, always
+// pre-checks the same `reg.contains_key` lookup first), so there was never
+// a real condition to fixture here — see `sim/diag.rs`'s `ALL_SIM_CODES`
+// doc comment.
 
 #[test]
 fn s0102_ambiguous_bare_reference() {
@@ -1023,30 +1021,26 @@ fn s0237_signal_is_never_driven() {
 }
 
 #[test]
-fn s0238_combinational_cycle_condition_fires_recoded_as_s0201() {
-    // `Env::resolve`'s own `S0238` Diag is constructed correctly (see the
-    // message asserted below), but a cycle can only ever be DETECTED on a
-    // re-entrant `resolve()` call, and every re-entrant call is reached
-    // through `Env::signal` (the `Resolver` trait boundary) — which, by
-    // Phase 2's own "leave the trait alone" design, always bridges its
-    // result down to a plain `String` (`.map_err(|e| e.msg)`) and lets the
-    // OUTER `eval_ctx` Ident-read re-wrap it as `S0201`
-    // (`Diag::new(e.span, msg).with_code("S0201")`), discarding whatever
-    // code the inner error actually had. `Env::resolve`'s own `S0238`
-    // therefore has no call path that preserves it intact — see
-    // `every_sim_code_has_a_fixture_above`'s `known_gaps` comment. The
-    // CONDITION still fires correctly (asserted by message text below); a
-    // real fix would need Phase 2's Resolver-boundary bridging pattern
-    // itself revisited, out of scope for this test-only task.
+fn s0238_combinational_cycle_fires_with_its_own_code() {
+    // BUG-27 (FIXED): a cycle can only ever be DETECTED on a re-entrant
+    // `resolve()` call, and every re-entrant call is reached through
+    // `Env::signal` (the `Resolver` trait boundary) — which, by Phase 2's
+    // own "leave the trait alone" design, still bridges its result down to
+    // a plain `String`. `Env::signal` now smuggles `resolve`'s own code
+    // through that bridge (`sim::diag::bridge_code`) instead of discarding
+    // it, and `eval_ctx`'s Ident-read recovers it (`diag_from_bridged`)
+    // instead of always re-coding to the generic `S0201`.
     let f = parse("module M {\n  out y: bit\n  wire a: bit = b\n  wire b: bit = a\n  y = a\n}\n");
-    let err = comb::eval_outputs(
-        std::slice::from_ref(&f),
-        None,
-        &BTreeMap::new(),
-        &empty_params(),
-    )
-    .expect_err("a combinational cycle must fail");
-    assert!(err.msg.contains("combinational cycle"), "got: {}", err.msg);
+    assert_code(
+        "S0238",
+        "S0238",
+        comb::eval_outputs(
+            std::slice::from_ref(&f),
+            None,
+            &BTreeMap::new(),
+            &empty_params(),
+        ),
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -1249,25 +1243,11 @@ fn every_sim_code_has_a_fixture_above() {
     // Codes intentionally not covered by their OWN dedicated fixture above,
     // with why:
     let known_gaps: &[&str] = &[
-        // `resolve_module`'s own "unknown module" arm — its only caller
-        // (`resolve_target`) always pre-checks `reg.contains_key` before
-        // calling it, so the arm is unreachable via any real instance-
-        // resolution path today, and `resolve_module` is `pub(super)`
-        // (unreachable from this external test crate) to call directly.
-        // A pre-existing Task-1.2-era catalog quirk, not this task's to fix.
-        "S0101",
         // Fire correctly (verified by message text in their own fixtures
         // above) but their `.code` isn't observable through any PUBLIC API:
         // every caller of the private `parse_source` bridges its `Diag`
         // down to a flat `.msg` string (Task 1.5's deliberate decision).
         "S0137", "S0138", "S0139",
-        // `Env::resolve`'s own cycle-detection Diag — condition fires
-        // (verified by message text), but every re-entrant path that could
-        // detect it crosses the `Resolver::signal` trait boundary, which
-        // always re-codes the error as S0201 (Phase 2's "leave the trait
-        // alone" design) before it can ever escape with S0238 intact.
-        // See this code's own fixture's doc comment above.
-        "S0238",
     ];
     let covered: &[&str] = &[
         "S0102", "S0103", "S0104", "S0105", "S0106", "S0109", "S0112", "S0113", "S0115", "S0116",
@@ -1276,8 +1256,8 @@ fn every_sim_code_has_a_fixture_above() {
         "S0204", "S0205", "S0206", "S0207", "S0208", "S0209", "S0210", "S0211", "S0212", "S0213",
         "S0214", "S0215", "S0216", "S0217", "S0218", "S0219", "S0220", "S0221", "S0222", "S0223",
         "S0224", "S0225", "S0226", "S0227", "S0228", "S0229", "S0230", "S0231", "S0232", "S0233",
-        "S0234", "S0235", "S0236", "S0237", "S0239", "S0301", "S0302", "S0303", "S0304", "S0305",
-        "S0401", "S0402", "S0403", "S0404",
+        "S0234", "S0235", "S0236", "S0237", "S0238", "S0239", "S0301", "S0302", "S0303", "S0304",
+        "S0305", "S0401", "S0402", "S0403", "S0404",
     ];
     let missing: Vec<&str> = ALL_SIM_CODES
         .iter()

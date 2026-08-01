@@ -627,8 +627,16 @@ impl Resolver for CombEnv<'_> {
         }
         if let Some(driver) = self.comb.get(name) {
             if self.stack.iter().any(|n| n == name) {
-                return Err(format!(
-                    "combinational cycle through `{name}` — feedback must pass through a register"
+                // BUG-27: reuses `S0238` (`sim/comb.rs`'s own combinational-
+                // cycle code — structurally the same condition, just
+                // checked here in the real multi-module simulator's
+                // per-cycle resolver) via the same bridge `eval_ctx`'s
+                // `Ident` arm recovers.
+                return Err(crate::sim::diag::bridge_code(
+                    "S0238",
+                    format!(
+                        "combinational cycle through `{name}` — feedback must pass through a register"
+                    ),
                 ));
             }
             self.stack.push(name.to_string());

@@ -486,7 +486,14 @@ impl Env<'_> {
 impl Resolver for Env<'_> {
     fn signal(&mut self, name: &str) -> Result<Val, String> {
         if self.sig_ty.contains_key(name) || self.drivers.contains_key(name) {
-            self.resolve(name).map_err(|e| e.msg)
+            // BUG-27: preserve `resolve`'s own code (e.g. `S0238`,
+            // combinational cycle) across the `Resolver::signal` boundary
+            // instead of always discarding it down to a plain message —
+            // `eval_ctx`'s `Ident` arm recovers it via `diag_from_bridged`.
+            self.resolve(name).map_err(|e| match e.code {
+                Some(code) => crate::sim::diag::bridge_code(code, &e.msg),
+                None => e.msg,
+            })
         } else if let Some(v) = self.ints.get(name) {
             Ok(Val::from_int(*v))
         } else {
