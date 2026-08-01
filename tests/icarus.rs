@@ -76,7 +76,7 @@ const SHOWCASE_TESTBENCHES: [(&str, &str); 5] = [
 /// their English counterparts, instantiated through the romanized Tamil port
 /// names (clk=katikai, rst=miill, …). Proves the transliterated Verilog
 /// simulates correctly, not just that it elaborates.
-const PURE_TESTBENCHES: [(&str, &str); 12] = [
+const PURE_TESTBENCHES: [(&str, &str); 16] = [
     ("kanakki_tb.v", "tamil-pure/kanakki.mimz"),
     ("cimitti_tb.v", "tamil-pure/cimitti.mimz"),
     ("oppidi_tb.v", "tamil-pure/oppidi.mimz"),
@@ -89,6 +89,18 @@ const PURE_TESTBENCHES: [(&str, &str); 12] = [
     ("minukki_tb.v", "tamil-pure/minukki.mimz"),
     ("varisai_tb.v", "tamil-pure/varisai.mimz"),
     ("anuppi_tb.v", "tamil-pure/anuppi.mimz"),
+    // T1 tamil-pure gap (docs/audit/review-2026-07-17.md, closed 2026-08-01):
+    // these 3 mirror TESTBENCHES' own fn_array_search/fn_return_guard/
+    // tagged_packet entries — english itself only has Layer 2 (hand
+    // testbench) coverage for these constructs too, so this gives tamil-pure
+    // parity with english's own coverage tier, not more.
+    ("theeti_tb.v", "tamil-pure/fn_array_search.mimz"),
+    ("kanntupitippaan_tb.v", "tamil-pure/fn_return_guard.mimz"),
+    ("pothivaasi_tb.v", "tamil-pure/sirappu_pothi.mimz"),
+    (
+        "kathirparimaarra_tb.v",
+        "tamil-pure/bundle_passthrough.mimz",
+    ),
 ];
 
 /// Parse the Icarus major version from `iverilog -V` output.
@@ -417,6 +429,15 @@ fn sync_loop_search_timing_matches_icarus() {
     run_self_checking(
         &bin,
         &[("sync_loop_search_tb.v", "english/sync_loop_search.mimz")],
+    );
+    // T1 tamil-pure gap (docs/audit/review-2026-07-17.md, closed 2026-08-01):
+    // the romanized twin, same timing coverage — kept in this same test
+    // (not `PURE_TESTBENCHES`) for the same reason the English original
+    // isn't in the main `TESTBENCHES` array either (see this fn's own doc
+    // comment above).
+    run_self_checking(
+        &bin,
+        &[("oththisaitheeti_tb.v", "tamil-pure/sync_loop_search.mimz")],
     );
 }
 
@@ -866,4 +887,24 @@ fn our_simulator_matches_icarus_bit_for_bit() {
     differential(&bin, "english/pulse_gen.mimz", &[], &[("start", 1)], 8);
     // Inline `test` block coexisting with the module it targets.
     differential(&bin, "english/tested_adder.mimz", &[], &[], 8);
+
+    // T1 tamil-pure gap (docs/audit/review-2026-07-17.md, closed 2026-08-01):
+    // 2 of the 7 uncovered tamil-pure examples are plain combinational
+    // designs whose english twins are already differential-covered above —
+    // straightforward `differential()` calls, same as every other tamil-pure
+    // entry earlier in this test. `bundle_passthrough`'s tamil twin is NOT
+    // here (see `PURE_TESTBENCHES` instead): its bundle-typed port flattens
+    // to a synthetic `port_field` signal name built from the SOURCE (Tamil)
+    // identifiers, which `interface_name_map` (this file, below) never
+    // learns to romanize — `differential`'s generated testbench would emit
+    // raw Tamil UTF-8 as a Verilog identifier, which Icarus rejects. A real,
+    // separate gap surfaced by adding this coverage, not fixed here (out of
+    // this narrow task's scope — would need `interface_name_map` taught
+    // about bundle registries). The other 4 (bundle/`fn`/`sync loop`
+    // constructs needing hand-picked scenarios or affected by the gap above)
+    // get Layer 2 coverage instead (`PURE_TESTBENCHES`/
+    // `sync_loop_search_timing_matches_icarus`), matching the coverage TIER
+    // english itself has for those same constructs.
+    differential(&bin, "tamil-pure/kootu.mimz", &[], &[], 8);
+    differential(&bin, "tamil-pure/tested_kuutti.mimz", &[], &[], 8);
 }
