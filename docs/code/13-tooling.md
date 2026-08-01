@@ -238,14 +238,13 @@ Four ranges by category:
 
 | Range           | Category                  | Fires in                                              |
 | --------------- | ------------------------- | ----------------------------------------------------- |
-| `S0101`–`S0139` | elaboration/wiring        | `sim/elaborate/*.rs`, `runner.rs`'s import resolution |
+| `S0102`–`S0139` | elaboration/wiring        | `sim/elaborate/*.rs`, `runner.rs`'s import resolution |
 | `S0201`–`S0239` | expression evaluation     | `sim/value/*.rs`, `sim/comb.rs`, `sim/kernel.rs`      |
 | `S0301`–`S0305` | test-harness control flow | `sim/harness/mod.rs`'s `Run::exec`                    |
 | `S0401`–`S0404` | peripheral bind errors    | `sim/harness/mod.rs`'s `TestStmt::Sim` handling       |
 
 | Code  | Meaning                                                                       |
 | ----- | ----------------------------------------------------------------------------- |
-| S0101 | unknown module reference (see the known-gap note below — dead code)           |
 | S0102 | ambiguous bare reference (module/extern-module/bundle)                        |
 | S0103 | qualified reference's path doesn't match any `import`                         |
 | S0104 | qualified reference resolved to an import lacking the name                    |
@@ -313,7 +312,7 @@ Four ranges by category:
 | S0235 | module uses `sync loop` — unsupported by the combinational evaluator          |
 | S0236 | missing value for a declared input                                            |
 | S0237 | signal is never driven                                                        |
-| S0238 | combinational cycle through a signal (see the known-gap note below)           |
+| S0238 | combinational cycle through a signal (also reused by `sim/kernel.rs`)         |
 | S0239 | `Sim::set`: name is not a drivable input/clock/reset                          |
 | S0301 | `tick(clk, ...)`: `clk` is not a declared clock of this module                |
 | S0302 | `tick(clk, n)`: `n` evaluated negative                                        |
@@ -325,15 +324,18 @@ Four ranges by category:
 | S0403 | no port of the needed direction with that name on the design                  |
 | S0404 | the peripheral itself rejected the bind (host-specific reason)                |
 
-**Two known catalog gaps** (`docs/audit/bugs.md` BUG-26/BUG-27, filed
-2026-07-31, not yet fixed): `S0101`'s own "unknown module" arm is dead
-code (its only caller always pre-checks the registry before calling it,
-so a genuinely unknown bare module reference reports through `S0105`
-instead); `S0238`'s own combinational-cycle `Diag` never survives to a
-caller intact (it's only detectable on a re-entrant call that always
-crosses the `Resolver` trait boundary, which re-codes it as `S0201`).
-Both conditions still fire correctly with an accurate message — only the
-specific CODE is affected.
+**Two catalog gaps found and fixed 2026-08-01** (`docs/audit/bugs.md`
+BUG-26/BUG-27, filed 2026-07-31): `S0101`'s own "unknown module" arm was
+dead code (its only caller always pre-checked the registry before calling
+it) — retired from the catalog rather than given an artificial live path,
+since a genuinely unknown bare module reference correctly reports through
+`S0105` regardless. `S0238`'s own combinational-cycle `Diag` used to lose
+its code crossing the `Resolver::signal` trait boundary (re-coded as the
+generic `S0201`) — fixed by smuggling the original code through the
+bridged `String` (`sim::diag::bridge_code`/`diag_from_bridged`), which
+also let `sim/kernel.rs`'s own (previously uncoded) cycle-detection error
+reuse `S0238` for the identical condition in the real multi-module
+simulator.
 
 ### Known deferred
 

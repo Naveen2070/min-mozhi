@@ -337,7 +337,7 @@ pub(super) fn eval_ctx<R: Resolver>(
         ExprKind::Bool(b) => Ok(Val::new(*b as u128, 1, false)),
         ExprKind::Ident(n) => r
             .signal(n)
-            .map_err(|msg| Box::new(Diag::new(e.span, msg).with_code("S0201"))),
+            .map_err(|msg| crate::sim::diag::diag_from_bridged(e.span, msg, "S0201")),
         ExprKind::Unary { op, expr } => Ok(unary(*op, eval(r, expr)?)),
         ExprKind::Binary { op, lhs, rhs } => {
             let shift_ctx = matches!(op, BinOp::Shl | BinOp::Shr);
@@ -466,8 +466,9 @@ pub(super) fn eval_ctx<R: Resolver>(
                 if let Some(len) = r.array_len(name) {
                     let elems: Vec<Val> = (0..len)
                         .map(|i| {
-                            r.signal(&format!("{name}_{i}"))
-                                .map_err(|msg| Box::new(Diag::new(e.span, msg).with_code("S0201")))
+                            r.signal(&format!("{name}_{i}")).map_err(|msg| {
+                                crate::sim::diag::diag_from_bridged(e.span, msg, "S0201")
+                            })
                         })
                         .collect::<Result<_, _>>()?;
                     // A zero-length array is rejected by the checker (E0412)
@@ -491,7 +492,7 @@ pub(super) fn eval_ctx<R: Resolver>(
                     let addr = eval(r, index)?;
                     return r
                         .mem_read(name, addr.bits_small_or_zero())
-                        .map_err(|msg| Box::new(Diag::new(e.span, msg).with_code("S0206")));
+                        .map_err(|msg| crate::sim::diag::diag_from_bridged(e.span, msg, "S0206"));
                 }
             }
             let b = eval(r, base)?;

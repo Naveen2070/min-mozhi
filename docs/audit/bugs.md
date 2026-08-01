@@ -1748,7 +1748,7 @@ pretty-print → re-parse → emit both sides → `assert_eq!`), matching
 
 ---
 
-## BUG-26 (LOW, OPEN) — `mimz-sim`'s `resolve_module`'s own "unknown module" branch is dead code
+## BUG-26 (LOW, FIXED 2026-08-01) — `mimz-sim`'s `resolve_module`'s own "unknown module" branch is dead code
 
 **What.** `sim/elaborate/registry.rs`'s `resolve_module` has its own
 "uses unknown module `{name}`" error, coded `S0101` (the sim-runtime
@@ -1777,25 +1777,24 @@ well-spanned error (`S0105`, worded identically to `S0101`'s own
 message), just under the "wrong" of two codes that were meant to mean
 slightly different things. No wrong behavior, no missed rejection.
 
-**Fix (Pending).** Either delete `resolve_module`'s own dead `S0101`
-arm (and its `ALL_SIM_CODES` entry) since `resolve_target` already
-covers the case end-to-end, or restructure `resolve_target` so a bare
-reference that exists in NEITHER registry reports through
-`resolve_module` when the name was expected to be a real module —
-whichever reads more clearly once someone is looking directly at both
-functions together. Filed as a follow-up; out of scope for the test
-that found it (Task 5.4 of the R2 plan is "add a contract test", not
-"redesign registry resolution").
+**Fix (2026-08-01).** Deleted the dead arm rather than manufacturing an
+artificial reachable path for it: `resolve_module`'s `reg.get(...)` now
+`.expect()`s the invariant its only caller already guarantees
+(`resolve_target`'s `reg.contains_key` pre-check), and `S0101` was
+retired from `ALL_SIM_CODES` entirely (79 → 78 entries) — the
+append-only stability contract never applied to a code that could never
+fire in the first place, so nothing observable changes for any real
+caller (`resolve_target`'s own combined-lookup miss still reports
+`S0105`, exactly as it always did).
 
-**Test.** None yet — `sim_errors.rs`'s `every_sim_code_has_a_fixture_above`
-lists `S0101` in its `known_gaps` with a comment pointing at this entry,
-so the coverage check doesn't silently regress once this is fixed
-(removing the code, or making it reachable, both require touching that
-list, not just this file).
+**Test.** `sim_errors.rs`'s `every_sim_code_has_a_fixture_above` no
+longer lists `S0101` anywhere (removed from `known_gaps`, not moved to
+`covered`) — the coverage check now simply has one fewer code to
+account for. Full workspace 1115/1115, clippy/fmt clean.
 
 ---
 
-## BUG-27 (LOW, OPEN) — `mimz-sim`'s combinational-cycle diagnostic always loses its own code to `S0201`
+## BUG-27 (LOW, FIXED 2026-08-01) — `mimz-sim`'s combinational-cycle diagnostic always loses its own code to `S0201`
 
 **What.** `sim/comb.rs`'s `Env::resolve` constructs a well-worded,
 correctly-coded `S0238` ("combinational cycle through {name} — feedback
@@ -1829,16 +1828,33 @@ just can't be filtered/matched on the more specific `S0238` code the
 catalog documents for it, since that code never actually reaches a
 caller.
 
-**Fix (Pending).** Would need Phase 2's Resolver-boundary bridging
-pattern itself revisited — e.g. encoding a code prefix into the bridged
-`String` for `Env`'s own internal errors and having `eval_ctx`'s
-`Ident`/`Index` arms preserve it when present, or some other mechanism
-that doesn't require threading a `Span`/`Diag` through the `Resolver`
-trait's signature. Filed as a follow-up; out of scope for the test that
-found it, same reasoning as BUG-26.
+**Fix (2026-08-01).** Exactly the mechanism this entry's own "Fix
+(Pending)" note anticipated: a code-prefix marker
+(`sim::diag::BRIDGE_MARKER`, `bridge_code`/`diag_from_bridged`,
+`crates/mimz-sim/src/sim/diag.rs`) — `Env::signal` (`comb.rs`) now
+smuggles `resolve`'s own `Diag.code` through the bridged `String` instead
+of unconditionally discarding it (`.map_err(|e| e.msg)` → matches on
+`e.code` first), and `eval_ctx`'s `Ident`/`Index`/mem-read arms
+(`value/mod.rs`) recover it via `diag_from_bridged` (validated against
+`ALL_SIM_CODES`, so a plain non-bridged string — the common case, from a
+`Resolver` with no code to preserve — is never misread as carrying one)
+instead of always re-coding to the generic `S0201`/`S0206`. The
+`Resolver` trait's own `Result<_, String>` signature is untouched, per
+Phase 2's original design constraint.
 
-**Test.** None yet — `sim_errors.rs`'s
-`s0238_combinational_cycle_condition_fires_recoded_as_s0201` fixture
-asserts the CONDITION and message text (not the code), and
-`every_sim_code_has_a_fixture_above` lists `S0238` in its `known_gaps`
-with a comment pointing at this entry.
+**Found and fixed the same class in `sim/kernel.rs` too** (not part of
+this bug's original filed scope, but the identical condition): `CombEnv::
+signal`'s own combinational-cycle detection (the REAL multi-module
+simulator's per-cycle resolver, used by `mimz sim`/`mimz test` — distinct
+from `comb.rs`'s single-file `mimz eval` evaluator this bug was filed
+against) built its cycle message as a bare `String` with no `Diag`/code
+at all, so it ALSO always surfaced as `S0201`. Now constructs the same
+bridged message reusing `S0238` (same reuse precedent as every other
+structurally-identical condition shared across `elaborate/module.rs` and
+`comb.rs` in this catalog).
+
+**Test.** `sim_errors.rs`'s `s0238_combinational_cycle_fires_with_its_own_code`
+(renamed from `..._condition_fires_recoded_as_s0201`) now asserts the
+CODE via `assert_code`, not just message text; moved from `known_gaps` to
+`covered` in `every_sim_code_has_a_fixture_above`. Full workspace
+1115/1115, clippy/fmt clean.

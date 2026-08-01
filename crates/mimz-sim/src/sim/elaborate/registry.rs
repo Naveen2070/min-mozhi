@@ -35,18 +35,13 @@ pub(super) fn resolve_module<'a>(
     imports: &[ast::Import],
     q: &ast::QualIdent,
 ) -> Result<(&'a ast::File, &'a ast::Module), Box<Diag>> {
-    let candidates = reg.get(&q.name.name).ok_or_else(|| {
-        Box::new(
-            Diag::new(
-                q.span,
-                format!(
-                    "uses unknown module `{}` — is the file that defines it imported?",
-                    q.name.name
-                ),
-            )
-            .with_code("S0101"),
-        )
-    })?;
+    // BUG-26 (fixed): this function's only caller, `resolve_target`, always
+    // checks `reg.contains_key` before ever calling here — a miss can never
+    // reach this point, so there is no meaningful diagnostic to construct
+    // for it (the retired `S0101` code covered exactly this dead arm).
+    let candidates = reg
+        .get(&q.name.name)
+        .expect("resolve_target already confirmed this name is in `reg`");
     if q.is_bare() {
         match candidates.as_slice() {
             [(_, f, m)] => Ok((f, m)),
