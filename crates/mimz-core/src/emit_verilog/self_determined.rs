@@ -43,17 +43,53 @@ pub(crate) fn verilog_self_determined_kind(
                 })
             }
         },
-        ExprKind::Call {
-            func: Builtin::SignedCast | Builtin::UnsignedCast,
-            args,
-        } => {
+        // BUG-28/BUG-29 (docs/audit/bugs.md): this match must stay
+        // exhaustive over `Builtin` — a new builtin silently inheriting
+        // a wildcard `None` here is exactly how `extend`/`abs` shipped a
+        // silent miscompile (sim passes, real hardware wrong, no
+        // diagnostic). A new variant now fails the build until it is
+        // classified here.
+        ExprKind::Call { func, args } => match func {
+            // `extend(x, N)` renders as bare `(x)` — Verilog gives it the
+            // ARGUMENT's width in a self-determined position, never N.
+            // Report that so the caller sees the mismatch against mimz's
+            // `Kind{N}` and hoists to `wire [N-1:0] __mimz_sub_k`.
+            Builtin::Extend => Some(Kind {
+                width: self_determined_operand_width(&args[0], decls),
+                signed: infer_kind(expr, decls).signed,
+            }),
+            // Renders to a ternary: Verilog sizes it at
+            // `max(operand widths)`, not mimz's grown `N+1` result.
+            Builtin::Abs => Some(Kind {
+                width: self_determined_operand_width(&args[0], decls),
+                signed: infer_kind(expr, decls).signed,
+            }),
+            // `trunc` renders as an explicit part-select `x[N-1:0]` —
+            // already exactly N bits in Verilog. `min`/`max` render to a
+            // ternary whose operands are same-width by the checker's own
+            // rule, so `max(operand widths) == N`. Reductions are 1-bit
+            // on both sides. No mismatch possible for any of these.
+            Builtin::Trunc
+            | Builtin::Min
+            | Builtin::Max
+            | Builtin::Nand
+            | Builtin::Nor
+            | Builtin::Xnor => None,
             // `$signed`/`$unsigned`'s argument is self-determined at its
             // own width (confirmed empirically during BUG-18/19/20/21's
             // investigations) — same width mimz's own model gives, UNLESS
             // the argument is itself a mismatched sub-expression, which
             // is caught by recursing into it, not by this call site.
-            verilog_self_determined_kind(&args[0], decls)
-        }
+            Builtin::SignedCast | Builtin::UnsignedCast => {
+                verilog_self_determined_kind(&args[0], decls)
+            }
+            // Const-folded before emit — never reaches a rendered
+            // self-determined position as a runtime expression.
+            Builtin::Clog2 => None,
+            // Lowered to items (registers/always blocks) before emit —
+            // never appears as an inline self-determined operand.
+            Builtin::SyncDoubleFlop | Builtin::SyncPulse => None,
+        },
         _ => None,
     }
 }
