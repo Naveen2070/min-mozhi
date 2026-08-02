@@ -1,7 +1,8 @@
 // Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): parameterized shift register.
-// `<<` shifts in zeros from the right; `|` merges in the new low bit
-// every clock edge. `din` is 1 bit and `sr` is WIDTH bits — widths never
-// match implicitly, so `extend(din, WIDTH)` makes the resize visible.
+// `<<` shifts in zeros from the right and GROWS by the shift amount, so
+// `trunc` drops the bit that falls off the top. `|` merges in the new low
+// bit every clock edge. `din` is 1 bit and `sr` is WIDTH bits — widths
+// never match implicitly, so `extend(din, WIDTH)` makes the resize visible.
 
 module ShiftRegister(WIDTH: int = 8) {
   thudippu clk
@@ -13,7 +14,7 @@ module ShiftRegister(WIDTH: int = 8) {
   பதிவேடு sr: bits[WIDTH] = 0
 
   on yetram(clk) {
-    sr <- (sr << 1) | extend(din, WIDTH)
+    sr <- trunc(sr << 1, WIDTH) | extend(din, WIDTH)
   }
 
   dout = sr

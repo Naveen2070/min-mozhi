@@ -498,9 +498,16 @@ fn combine_wrap(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
     }
 }
 
-/// Shift: LHS keeps its own width AND kind (per spec/02 section 3, shift
-/// preserves the left operand's type outright — `shift_ty`'s `Ty::Bit |
-/// Ty::Bits(_) | Ty::Signed(_) => lt` arm); RHS is a separate, small (1-5
+/// Shift: `>>` keeps LHS's own width AND kind unchanged (right-shifting
+/// only ever reduces magnitude, so the left operand's own width already
+/// bounds it). `<<` GROWS instead (BUG-30, `docs/audit/bugs.md`) — the
+/// amount here is always wrapped in `extend(shamt_v, shamt_w)`, which the
+/// checker treats as a genuine SIZED `bits[shamt_w]` value (`extend(x, N)`
+/// is the established idiom for giving a literal a fixed, non-adapting
+/// width — `checker::widths::ops::builtins::call_ty`'s `Ty::CtInt(v)`
+/// arm), not a compile-time constant the shift can grow by exactly — so
+/// growth is the amount's own worst case, `2^shamt_w - 1`, same as any
+/// other runtime `bits[shamt_w]` amount. RHS is a separate, small (1-5
 /// bit) fragment, always freshly generated as an unsigned literal — never
 /// derived from an existing (possibly signed) `Frag` — since a shift
 /// amount can never be `signed` (E0403, `shift_ty`'s `Ty::Signed(_)` arm
@@ -508,8 +515,13 @@ fn combine_wrap(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
 fn combine_shift(rng: &mut Rng, a: Frag) -> Frag {
     let shamt_w = (rng.next_range(5) + 1) as u32;
     let shamt_v = rng.next_u64() & support::mask(shamt_w) as u64;
-    let op = if rng.next_range(2) == 0 { "<<" } else { ">>" };
-    let width = a.width;
+    let is_left = rng.next_range(2) == 0;
+    let op = if is_left { "<<" } else { ">>" };
+    let width = if is_left {
+        a.width + ((1u32 << shamt_w) - 1)
+    } else {
+        a.width
+    };
     let signed = a.signed;
     Frag {
         text: format!("({} {op} extend({shamt_v}, {shamt_w}))", a.text),

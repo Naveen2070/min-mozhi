@@ -299,39 +299,16 @@ pub trait Resolver {
     }
 }
 
-/// Evaluate `e` against `r` with no target-width context (self-determined —
-/// the right call for conditions, indices, loop bounds, and anywhere else
-/// Verilog itself doesn't propagate an enclosing width inward). Most callers
-/// want this. See `eval_ctx` for context-determined positions (an
-/// assignment RHS, `extend`'s argument) where a shift's real result depends
-/// on the width it's eventually consumed at (BUG-11). `pub` since
-/// `mimz-core`'s `width_rules_conformance` test (Stage 4 T3) drives this
-/// directly to check the simulator's own evaluator against the shared
-/// `width_rules::shift_result` and the checker's `Ty`-level inference.
+/// Evaluate `e` against `r`. Every position is self-determined now — `<<`
+/// GROWS instead of threading an enclosing target width in (BUG-30,
+/// `docs/audit/bugs.md`, superseding BUG-11's context-threading fix: the
+/// declared type already bounds the true value, so no ambient width needs
+/// to reach a shift from an assignment target, `extend`'s argument, or a
+/// branch). `pub` since `mimz-core`'s `width_rules_conformance` test
+/// (Stage 4 T3) drives this directly to check the simulator's own
+/// evaluator against the shared `width_rules::shift_result` and the
+/// checker's `Ty`-level inference.
 pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
-    eval_ctx(r, e, None)
-}
-
-/// Evaluate `e` against `r`, threading `expected_width` — the width of the
-/// enclosing context (an assignment target, `extend`'s target width) — into
-/// every CONTEXT-DETERMINED position. The single source of Min-Mozhi's
-/// expression semantics for both the combinational evaluator and the kernel.
-///
-/// Verilog's `<<`/`>>` are context-determined on their LEFT operand (the
-/// shift amount is always self-determined): `assign wide = (narrow << k)`
-/// widens `narrow` to `wide`'s width BEFORE shifting, not after — ground-
-/// truthed against `iverilog` (BUG-11's fix). Only `Shl`/`Shr` use
-/// `expected_width` here; every other binary operator's own width rule is
-/// unchanged (deliberately scoped — see `docs/plan/phase-2-correctness-
-/// consolidation.local.md` Stage 1 for the rest of this operator family).
-/// `if`/`match` propagate the SAME `expected_width` into every branch
-/// (Verilog's ternary/case are likewise context-determined), so a shift
-/// nested in a branch still sees the real target width.
-pub(super) fn eval_ctx<R: Resolver>(
-    r: &mut R,
-    e: &Expr,
-    expected_width: Option<u32>,
-) -> Result<Val, Box<Diag>> {
     match &e.kind {
         ExprKind::Int { value, .. } => Ok(Val::from_literal(value)),
         ExprKind::Bool(b) => Ok(Val::new(*b as u128, 1, false)),
@@ -340,16 +317,25 @@ pub(super) fn eval_ctx<R: Resolver>(
             .map_err(|msg| crate::sim::diag::diag_from_bridged(e.span, msg, "S0201")),
         ExprKind::Unary { op, expr } => Ok(unary(*op, eval(r, expr)?)),
         ExprKind::Binary { op, lhs, rhs } => {
-            let shift_ctx = matches!(op, BinOp::Shl | BinOp::Shr);
-            let l = eval_ctx(r, lhs, if shift_ctx { expected_width } else { None })?;
-            let rr = eval(r, rhs)?; // shift amount (or any other RHS) is self-determined
-            binary_ctx(*op, l, rr, expected_width, e.span)
+            let l = eval(r, lhs)?;
+            let rr = eval(r, rhs)?;
+            // `<<`'s growth needs to know whether `rhs` is a compile-time
+            // constant (grows by exactly that value) or a genuine runtime
+            // signal (grows by its own worst case) — mirrors the
+            // emitter's `kinds::shift_const_amount`, generalized to also
+            // resolve module `int` parameters via `r.ints()` (the
+            // simulator, unlike the emitter, has them bound already).
+            let const_amount = matches!(op, BinOp::Shl | BinOp::Shr)
+                .then(|| const_eval(rhs, r.ints()).ok())
+                .flatten()
+                .and_then(|v| u128::try_from(v).ok());
+            binary_ctx(*op, l, rr, const_amount, e.span)
         }
         ExprKind::IfExpr { cond, then, els } => {
             if eval(r, cond)?.lsb() == 1 {
-                eval_ctx(r, then, expected_width)
+                eval(r, then)
             } else {
-                eval_ctx(r, els, expected_width)
+                eval(r, els)
             }
         }
         ExprKind::Match { scrutinee, arms } => {
@@ -357,7 +343,7 @@ pub(super) fn eval_ctx<R: Resolver>(
             for arm in arms {
                 for p in &arm.patterns {
                     if pattern_matches(p, &s) {
-                        return eval_ctx(r, &arm.value, expected_width);
+                        return eval(r, &arm.value);
                     }
                 }
             }

@@ -10,7 +10,7 @@ module UartEcho #(
 );
     wire [7:0] __mimz_sub_1;
     assign __mimz_sub_1 = (shift >> 1);
-    wire [7:0] __mimz_sub_2;
+    wire [14:0] __mimz_sub_2;
     assign __mimz_sub_2 = ((rx) << 7);
     localparam [1:0] RXSTATE_IDLE = 0;
     localparam [1:0] RXSTATE_START = 1;
@@ -69,7 +69,7 @@ module UartEcho #(
                         baud_cnt <= (baud_cnt + 1);
                         if ((baud_cnt == (CLKS_PER_BIT - 1))) begin
                             baud_cnt <= 0;
-                            shift <= (__mimz_sub_1 | __mimz_sub_2);
+                            shift <= (__mimz_sub_1 | __mimz_sub_2[(8)-1:0]);
                             bit_idx <= (bit_idx + 1);
                             if ((bit_idx == 7)) begin
                                 rx_state <= RXSTATE_STOP;

@@ -10,7 +10,7 @@ module ethiroli #(
 );
     wire [7:0] __mimz_sub_1;
     assign __mimz_sub_1 = (nakarvu >> 1);
-    wire [7:0] __mimz_sub_2;
+    wire [14:0] __mimz_sub_2;
     assign __mimz_sub_2 = ((vaangki) << 7);
     localparam [1:0] VAANGKINILAI_SEYALARRRRA = 0;
     localparam [1:0] VAANGKINILAI_THOTAKKAM = 1;
@@ -69,7 +69,7 @@ module ethiroli #(
                         veeka_ennnnikkai <= (veeka_ennnnikkai + 1);
                         if ((veeka_ennnnikkai == (CLKS_PER_BIT - 1))) begin
                             veeka_ennnnikkai <= 0;
-                            nakarvu <= (__mimz_sub_1 | __mimz_sub_2);
+                            nakarvu <= (__mimz_sub_1 | __mimz_sub_2[(8)-1:0]);
                             thunnmi_kurriyiitu <= (thunnmi_kurriyiitu + 1);
                             if ((thunnmi_kurriyiitu == 7)) begin
                                 nilai_pathivu <= VAANGKINILAI_NIRRUTHTHAM;

@@ -435,8 +435,13 @@ fn bug_24_shl_under_sibling_add_matches_icarus() {
     // as a direct operand of the sibling `+` gets silently re-widened by
     // Verilog's own context propagation instead of staying pinned at its
     // own natural (14-bit) width, changing the shifted value.
+    // Declared width is signed[33] — BUG-30 (`docs/audit/bugs.md`) makes
+    // `<<` grow: `p1 << extend(3, 4)` grows by `extend`'s declared
+    // `bits[4]` worst case (2^4 - 1 = 15) to signed[29]; `+` with `p1*p1`
+    // (signed[28]) grows to signed[30]; `>> extend(0, 4)` doesn't grow;
+    // the outer `<< extend(3, 2)` grows by 2^2 - 1 = 3 more, to signed[33].
     let src = "module Fuzz {\n  in p0: signed[12]\n  in p1: signed[14]\n  \
-                out y: signed[29]\n  \
+                out y: signed[33]\n  \
                 y = ((((p1 * p1) + (p1 << extend(3, 4))) >> extend(0, 4)) << extend(3, 2))\n}\n";
     // p0=2024, p1=13855 — the exact vector BUG-24's filing used.
     differential(src, &[("p0", 2024), ("p1", 13855)]);
@@ -695,4 +700,54 @@ fn matrix_signed_unsigned_cast_roundtrip_in_concat_matches_icarus() {
                 y = { b, unsigned(signed(a)) }\n}\n";
     // a=0b1011 (11), b=0b0101 (5). y = (5<<4)|11 = 91.
     differential(src, &[("a", 0b1011), ("b", 0b0101)]);
+}
+
+#[test]
+fn bug_30_extend_of_a_shift_matches_a_named_wire_of_it() {
+    // BUG-30's own filed repro (`docs/audit/bugs.md`): `extend(din << 2,
+    // 8)` and a named `wire w: bits[N] = din << 2; extend(w, 8)` used to
+    // produce DIFFERENT values from the IDENTICAL declared type `bits[4]`
+    // — naming a subexpression silently changed the answer. Fixed by
+    // making `<<` grow (Chisel's rule): `din << 2` is now `bits[6]`, wide
+    // enough to hold every possible result, so both spellings agree
+    // everywhere, matching the referential-transparency spec/01 promises.
+    let src = "module Fuzz {\n  in din: bits[4]\n  \
+                out direct: bits[8]\n  out named: bits[8]\n  \
+                wire w: bits[6] = din << 2\n  \
+                direct = extend(din << 2, 8)\n  \
+                named  = extend(w, 8)\n}\n";
+    let tokens = lexer::lex(src).unwrap_or_else(|e| panic!("unlexable: {e:?}"));
+    let file = parser::parse(tokens).unwrap_or_else(|e| panic!("unparsable: {e:?}"));
+    checker::check(std::slice::from_ref(&file)).unwrap_or_else(|e| {
+        panic!(
+            "checker rejected:\n{src}\n{}",
+            diag::render(&e, src, "test")
+        )
+    });
+    // din = 15 — BUG-30's own exact repro value (15 << 2 = 60, a 6-bit
+    // value that BUG-30's old `bits[4]`-typed shift could not hold).
+    let inputs: BTreeMap<String, mimz::sim::value::Bits> =
+        [("din".to_string(), mimz::sim::value::Bits::Small(15))]
+            .into_iter()
+            .collect();
+    let outputs = comb::eval_outputs(std::slice::from_ref(&file), None, &inputs, &BTreeMap::new())
+        .unwrap_or_else(|e| panic!("our kernel rejected this program:\n{src}\n{}", e.msg));
+    let row: BTreeMap<String, u128> = outputs
+        .into_iter()
+        .map(|o| {
+            let v = match o.value {
+                mimz::sim::value::Bits::Small(v) => v,
+                mimz::sim::value::Bits::Wide(_) => unreachable!("narrow-width repro"),
+            };
+            (o.name, v)
+        })
+        .collect();
+    assert_eq!(row["direct"], 60, "direct = extend(din << 2, 8)");
+    assert_eq!(
+        row["direct"], row["named"],
+        "naming `din << 2` as `w` must not change the value (BUG-30)"
+    );
+
+    // Real hardware agrees too — same fixture, run through Icarus.
+    differential(src, &[("din", 15)]);
 }

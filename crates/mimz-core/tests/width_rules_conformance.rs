@@ -19,6 +19,10 @@ struct Case {
     expect: Option<Kind>,
 }
 
+// `amount` is always a genuine runtime `in` port in this harness (never a
+// compile-time constant), so every `Some` expectation below is the
+// DYNAMIC growth formula (BUG-30, `docs/audit/bugs.md`):
+// `lhs.width + (2^amount.width - 1)`.
 const CASES: &[Case] = &[
     // Unsigned LHS, unsigned amount — the common case.
     Case {
@@ -31,11 +35,11 @@ const CASES: &[Case] = &[
             signed: false,
         },
         expect: Some(Kind {
-            width: 8,
+            width: 8 + 7, // 2^3 - 1
             signed: false,
         }),
     },
-    // Signed LHS preserves its own kind.
+    // Signed LHS keeps its own signedness while growing.
     Case {
         lhs: Kind {
             width: 16,
@@ -46,7 +50,7 @@ const CASES: &[Case] = &[
             signed: false,
         },
         expect: Some(Kind {
-            width: 16,
+            width: 16 + 15, // 2^4 - 1
             signed: true,
         }),
     },
@@ -61,7 +65,7 @@ const CASES: &[Case] = &[
             signed: false,
         },
         expect: Some(Kind {
-            width: 1,
+            width: 1 + 1, // 2^1 - 1
             signed: false,
         }),
     },
@@ -82,7 +86,7 @@ const CASES: &[Case] = &[
 #[test]
 fn shift_result_matches_the_table() {
     for (i, case) in CASES.iter().enumerate() {
-        let got = shift_result(case.lhs, case.amount).ok();
+        let got = shift_result(case.lhs, case.amount, None, true).ok();
         assert_eq!(
             got, case.expect,
             "case {i}: width_rules::shift_result({:?}, {:?}) = {got:?}, expected {:?}",
@@ -96,7 +100,9 @@ fn shift_result_matches_the_table() {
 /// the checker's own type inference (`checker::check`'s pass/fail IS
 /// the checker's `Ty`-level answer for this table: `Some` when it
 /// accepts the program, `None` when the case is meant to be rejected).
-fn checker_agrees(lhs: Kind, amount: Kind) -> bool {
+/// `expect` sizes `y` — when `None` (the case is meant to be rejected),
+/// `y`'s own width is irrelevant, so `lhs`'s is used as a placeholder.
+fn checker_agrees(lhs: Kind, amount: Kind, expect: Option<Kind>) -> bool {
     let ty = |k: Kind| {
         if k.signed {
             format!("signed[{}]", k.width)
@@ -108,7 +114,7 @@ fn checker_agrees(lhs: Kind, amount: Kind) -> bool {
         "module Fuzz {{\n  in lhs: {}\n  in amount: {}\n  out y: {}\n  y = lhs << amount\n}}\n",
         ty(lhs),
         ty(amount),
-        ty(lhs), // shift preserves lhs's kind — the declared `y` matches lhs exactly when the case is valid
+        ty(expect.unwrap_or(lhs)),
     );
     let tokens = lexer::lex(&src).expect("generated source always lexes");
     let file = parser::parse(tokens).expect("generated source always parses");
@@ -177,7 +183,7 @@ fn checker_and_simulator_agree_with_the_table() {
     for (i, case) in CASES.iter().enumerate() {
         let should_succeed = case.expect.is_some();
         assert_eq!(
-            checker_agrees(case.lhs, case.amount),
+            checker_agrees(case.lhs, case.amount, case.expect),
             should_succeed,
             "case {i}: checker disagreed with the table for lhs={:?} amount={:?}",
             case.lhs,

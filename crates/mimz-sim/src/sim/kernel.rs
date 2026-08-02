@@ -313,10 +313,10 @@ fn run_seq(
     // D-DEFAULT-3: defaults first so conditional assigns override them
     for s in body {
         if let SeqStmt::Default { name, val, .. } = s {
-            // Target width is known up front — feed it in as context so a
-            // `<<`/`>>` in `val` sees its real consuming width (BUG-11).
-            let target_w = widths.get(&name.name).map(|w| w.bits);
-            let v = value::eval_ctx(env, val, target_w)?;
+            // `<<` self-determines its own (grown) width now (BUG-30,
+            // `docs/audit/bugs.md`) — `remask_to_width` below still
+            // reconciles the result against the declared width.
+            let v = value::eval(env, val)?;
             let w = widths.get(&name.name).copied().unwrap_or(Width {
                 bits: v.width,
                 signed: v.signed,
@@ -330,11 +330,9 @@ fn run_seq(
                 match &lhs.index {
                     // Whole-register update.
                     None => {
-                        // Target width known up front — feed it in as
-                        // context so a `<<`/`>>` in `rhs` sees its real
-                        // consuming width (BUG-11).
-                        let target_w = widths.get(&lhs.base.name).map(|w| w.bits);
-                        let v = value::eval_ctx(env, rhs, target_w)?;
+                        // `<<` self-determines its own (grown) width now
+                        // (BUG-30, `docs/audit/bugs.md`).
+                        let v = value::eval(env, rhs)?;
                         let w = widths.get(&lhs.base.name).copied().unwrap_or(Width {
                             bits: v.width,
                             signed: v.signed,
@@ -347,7 +345,7 @@ fn run_seq(
                     Some((addr_expr, None)) if env.is_mem(&lhs.base.name) => {
                         let info = env.mem_info(&lhs.base.name);
                         let addr = value::eval(env, addr_expr)?.bits_small_or_zero();
-                        let v = value::eval_ctx(env, rhs, info.as_ref().map(|i| i.width.bits))?;
+                        let v = value::eval(env, rhs)?;
                         // A write past the end is dropped (matches Verilog).
                         if let Some(info) = info
                             && addr < info.depth
@@ -630,7 +628,7 @@ impl Resolver for CombEnv<'_> {
                 // BUG-27: reuses `S0238` (`sim/comb.rs`'s own combinational-
                 // cycle code — structurally the same condition, just
                 // checked here in the real multi-module simulator's
-                // per-cycle resolver) via the same bridge `eval_ctx`'s
+                // per-cycle resolver) via the same bridge `eval`'s
                 // `Ident` arm recovers.
                 return Err(crate::sim::diag::bridge_code(
                     "S0238",
@@ -640,10 +638,9 @@ impl Resolver for CombEnv<'_> {
                 ));
             }
             self.stack.push(name.to_string());
-            // Target width known up front — feed it in as context so a
-            // `<<`/`>>` in `driver` sees its real consuming width (BUG-11).
-            let target_w = self.widths.get(name).map(|w| w.bits);
-            let v = value::eval_ctx(self, driver, target_w).map_err(|e| e.msg)?;
+            // `<<` self-determines its own (grown) width now (BUG-30,
+            // `docs/audit/bugs.md`).
+            let v = value::eval(self, driver).map_err(|e| e.msg)?;
             self.stack.pop();
             let v = match self.widths.get(name) {
                 // `Val::new` always clears `unknown` — re-widthing a driver's

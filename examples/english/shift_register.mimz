@@ -1,7 +1,10 @@
 // Min-Mozhi example: parameterized shift register.
-// `<<` shifts in zeros from the right; `|` merges in the new low bit
-// every clock edge. `din` is 1 bit and `sr` is WIDTH bits — widths never
-// match implicitly, so `extend(din, WIDTH)` makes the resize visible.
+// `<<` shifts in zeros from the right and GROWS by the shift amount
+// (`sr << 1` is WIDTH+1 bits, so nothing is silently lost) — `trunc`
+// drops the bit that falls off the top, same as real shift-register
+// hardware. `|` merges in the new low bit every clock edge. `din` is 1
+// bit and `sr` is WIDTH bits — widths never match implicitly, so
+// `extend(din, WIDTH)` makes the resize visible.
 
 module ShiftRegister(WIDTH: int = 8) {
   clock clk
@@ -13,7 +16,7 @@ module ShiftRegister(WIDTH: int = 8) {
   reg sr: bits[WIDTH] = 0
 
   on rise(clk) {
-    sr <- (sr << 1) | extend(din, WIDTH)
+    sr <- trunc(sr << 1, WIDTH) | extend(din, WIDTH)
   }
 
   dout = sr
