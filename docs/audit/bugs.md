@@ -1980,9 +1980,10 @@ rather than left to a wildcard so the reasoning is recorded at the site.
 `bug_28_extend_in_replication_matches_icarus`
 (`tests/self_determined_regression.rs`) — both repros above, exact vectors,
 run against real `iverilog`/`vvp`. Watched both fail first (kernel 2575/51 vs
-Icarus 175/15, matching this entry's own numbers) before the fix. The full
-`Builtin` × 5-position matrix (GAP-5's second ask) is **not** included here —
-larger scope than this bugfix, tracked separately.
+Icarus 175/15, matching this entry's own numbers) before the fix. The static
+half of the `Builtin` × position matrix (GAP-5's second ask) landed in the
+same branch, same day — see GAP-5's own entry for what it covers and what it
+deliberately doesn't (the fuzzer's own generator extension).
 
 ---
 
@@ -2054,8 +2055,10 @@ this entry's own numbers). A planned 4th test (`abs` under a bare top-level
 fix, since `$unsigned`'s argument self-determines correctly on its own
 regardless of the classification gap; the mismatch only bites once the result
 is embedded in another self-determined position, which the concat repro
-already covers. The full `Builtin` × 5-position matrix (GAP-5's second ask) is
-not included here — larger scope than this bugfix, tracked separately.
+already covers. The static half of the `Builtin` × position matrix (GAP-5's
+second ask) landed in the same branch, same day — see GAP-5's own entry for
+what it covers and what it deliberately doesn't (the fuzzer's own generator
+extension).
 
 ---
 
