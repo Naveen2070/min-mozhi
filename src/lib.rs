@@ -1,7 +1,7 @@
 //! mimz — the Min-Mozhi (மின்மொழி) compiler, as a library.
 //!
 //! Phase 1 pipeline (docs/architecture.md):
-//! lexer → parser → AST → checker (six passes) → Verilog emitter.
+//! lexer → parser → AST → checker (nine passes) → Verilog emitter.
 //! The `mimz` binary (`main.rs`) is a thin CLI over this crate; the
 //! LSP server and future tooling (`translate`, the simulator, the
 //! npm/PyPI wrappers) consume the same API — the lib/bin split exists
@@ -35,7 +35,7 @@
 //! | [`pretty`]      | mimz-core  | AST → source pretty-printer (`mimz translate --order`)     |
 //! | [`morph`]       | mimz-core  | Error-language selection + Tamil case-suffix inflection    |
 //! | [`analysis`]    | mimz-core  | Editor symbol index + offset→definition / completion (LSP) |
-//! | [`sim`]         | mimz-sim   | Combinational evaluator (`mimz eval`) — Phase 1.5 slice    |
+//! | [`sim`]         | mimz-sim   | Event-driven simulator + combinational evaluator (`mimz eval`/`sim`/`test`) |
 //! | [`config`]      | mimz (shell) | `mimz.toml` project defaults for CLI flags (CLI overrides) |
 //! | [`stdlib`]      | mimz-core  | Embedded standard library (`import std.*`) — catalog + eject |
 //! | [`version`]     | mimz-core  | The compiler-version vs language-edition axes + history    |

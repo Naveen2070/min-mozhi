@@ -182,7 +182,7 @@ through this one). Four decisions worth recording:
   direction — one shared type instead of one new arm per pass.
 - **Coarse whole-value `unknown` taint on `Val`, not true four-state
   simulation or emulation-host wiring.** `mimz-sim`'s `Val`
-  (`crates/mimz-sim/src/sim/value.rs`) is a 2-state bit-vector; real
+  (`crates/mimz-sim/src/sim/value/`) is a 2-state bit-vector; real
   per-bit X-propagation would be a simulator-wide rework (every
   operator, the VCD writer, the Icarus differential suite) — its own
   project, not scoped to one feature. Rewiring the hardware-emulation

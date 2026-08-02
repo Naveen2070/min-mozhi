@@ -72,7 +72,7 @@ disjoint.
 - If the construct can't be emitted correctly yet: `self.err(span, msg,
 help)` and emit nothing. Errors, never guesses.
 - Mind the auto-wire naming contract: instance outputs are
-  `{instance}_{port}`, created in `module.rs::instance` AND assumed in
+  `{instance}_{port}`, created in `module/instances.rs::instance` AND assumed in
   `expr.rs` field rendering. Change both or neither.
 - Add an integration test in `tests/examples.rs` asserting on the output
   text — the Icarus suite (`tests/icarus.rs`) then judges it with a real

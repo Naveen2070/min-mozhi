@@ -7,12 +7,28 @@ ASTs + project symbol table → one Verilog-2005 source string.
 | File                 | Owns                                                                                                                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `mod.rs`             | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`)                           |
-| `module.rs`          | Module shells, ports, declarations, instances, always-blocks, `build_decls`/`hoist_if_needed`/`hoist_slice_base_if_needed`            |
+| `module/`            | Module shells, ports, declarations, instances, always-blocks — split by concern, see the sub-table below                              |
 | `expr.rs`            | Expression rendering (incl. `match` → ternary chains); self-determined-position hoist call sites                                      |
 | `kinds.rs`           | `infer_kind` — mimz's own width/signedness for an expression, computed straight from the AST (Stage 4, Phase A1b)                     |
 | `self_determined.rs` | `verilog_self_determined_kind` — what real Verilog would compute for an expression in a self-determined position (Stage 4, Phase A1b) |
 | `testbench.rs`       | Inline `test` blocks → Verilog testbench wrappers (`_tb.v`)                                                                           |
 | `translit.rs`        | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)                                    |
+| `tests/`             | Unit tests, split by topic — see [`10-test-map.md`](10-test-map.md)                                                                   |
+
+`module.rs` outgrew the ~600-line rule (07-decisions) and became a
+directory module on 2026-07-26 — same pattern one level down, `mod.rs`
+keeps the entry point and the siblings hold one concern each:
+
+| File in `module/`  | Owns                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`           | The `module()` entry and the item dispatch loop                                                                                 |
+| `ports.rs`         | Port/parameter lists, `build_decls`, width folding (`width`/`width_resolved`/`width_subst`), the two `hoist_*_if_needed` hoists |
+| `drives.rs`        | Combinational `assign` emission (`emit_drives`)                                                                                 |
+| `seq.rs`           | `on`-block bodies (`seq_stmts`) — statement `if`, `default`, `loop` unroll inside a clocked block                               |
+| `instances.rs`     | `repeat` flattening, per-item const folding, instance auto-wiring (`emit_instances`)                                            |
+| `funcs.rs`         | `fn` declaration inlining: body substitution, `loop` unroll with `return` short-circuit                                         |
+| `bundle_fields.rs` | Bundle-field expansion — a `bus.field` read/write resolves to the flattened `bus_field` wire, incl. across instance ports       |
+| `tests.rs`         | Unit tests for the above                                                                                                        |
 
 Same module-scoping pattern as the parser: state and shared helpers in
 `mod.rs`, the other files are `impl Emitter` blocks entered via
@@ -62,7 +78,7 @@ Corollary: **parenthesize everything**. Every compound expression renders
 wrapped in `(...)`. Ugly, unambiguous, correct — prettiness is a future
 emitter's job, correctness is this one's.
 
-## How a module is emitted (`module.rs`)
+## How a module is emitted (`module/`)
 
 Source order inside a `.mimz` module body is free; output is regrouped
 into conventional Verilog order:
@@ -337,9 +353,9 @@ The emitter's rule for unimplemented features: **error, never guess.**
 
 ## Known performance notes
 
-| Location                       | Issue                       | Why it stays                                                                |
-| ------------------------------ | --------------------------- | --------------------------------------------------------------------------- |
-| `module.rs` `collect_assigned` | O(n²) `Vec::contains` dedup | on-blocks are small (<10 stmts typical); not worth the `HashSet` allocation |
+| Location                             | Issue                       | Why it stays                                                                |
+| ------------------------------------ | --------------------------- | --------------------------------------------------------------------------- |
+| `module/funcs.rs` `collect_assigned` | O(n²) `Vec::contains` dedup | on-blocks are small (<10 stmts typical); not worth the `HashSet` allocation |
 
 ## Testing
 

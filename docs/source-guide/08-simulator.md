@@ -1,8 +1,36 @@
-# 8 — The Simulator (9 Files)
+# 8 — The Simulator
 
 This is a full event-driven simulator that runs Min-Mozhi designs **without** any Verilog tools. It produces VCD waveforms (viewable in GTKWave) and console traces.
 
-## `crates/mimz-sim/src/sim/value.rs` — The Value Model
+Eleven files directly under `crates/mimz-sim/src/sim/`, plus three folders
+that outgrew a single file: `elaborate/` (7), `value/` (4), `harness/` (2).
+One more file sits beside them at the crate root — `runner.rs`, the
+filesystem-free command engine the browser playground drives.
+
+| File / folder | Role                                                                         |
+| ------------- | ---------------------------------------------------------------------------- |
+| `value/`      | The `Val` type and THE expression evaluator both back ends share             |
+| `elaborate/`  | AST + concrete parameters → a flat `Design`                                  |
+| `kernel.rs`   | The event-driven, two-phase engine that runs a `Design` over cycles          |
+| `comb.rs`     | The clockless single-frame evaluator behind `mimz eval`                      |
+| `run.rs`      | Default stimulus and timeline capture                                        |
+| `harness/`    | `test`-block execution, `sim {}` blocks, peripheral binding                  |
+| `trace.rs`    | Console trace rendering (`table` / `changes`)                                |
+| `vcd.rs`      | The hand-written 2-state VCD writer                                          |
+| `host.rs`     | The `EmulationHost` trait — the seam real peripherals plug into              |
+| `diag.rs`     | The `S0xxx` runtime diagnostic catalog (`ALL_SIM_CODES`) and the code bridge |
+| `wide.rs`     | A thin re-export of `mimz_core::wide` so sim code has one import path        |
+| `mod.rs`      | Module wiring and the public surface                                         |
+
+> **Why the simulator has its OWN error codes.** A checker `E0xxx` fires
+> before a design ever runs. An `S0xxx` fires at elaboration or execution
+> time, after the checker already accepted the program — which matters
+> because the simulator is also reachable WITHOUT the checker (the browser
+> playground, and any embedder calling the `mimz-sim` API directly). Same
+> stability contract: append-only, never renumbered. Catalog in
+> [`docs/code/13-tooling.md`](../code/13-tooling.md).
+
+## `crates/mimz-sim/src/sim/value/` — The Value Model
 
 **`Val`** — a bit-vector value: `bits: Bits` (see [`02-foundations.md`](02-foundations.md) for the `Small`/`Wide` split backing widths past 128 bits), `width: u32`, `signed: bool`, plus a coarse `unknown` taint flag. Two-state model only (no `X` or `Z` — Min-Mozhi doesn't have them in v0.1). `Val` is `Clone` but not `Copy` — a `Wide` value's `Vec<u64>` can't be a bitwise copy, so every caller needs an explicit `.clone()`.
 
@@ -27,7 +55,7 @@ behavior for free, and `FnStmt::ForEach` lowers on the spot via
 
 Rejects designs with registers, `on` blocks, instances, or repeat (with clear messages).
 
-## `crates/mimz-sim/src/sim/elaborate.rs` — Flattening the Design
+## `crates/mimz-sim/src/sim/elaborate/` — Flattening the Design
 
 **`elaborate_project(files, module, params)`** — turns an AST module with concrete parameter values into a flat `Design`:
 
@@ -55,7 +83,7 @@ Rejects designs with registers, `on` blocks, instances, or repeat (with clear me
 **Memory**: sparse cell storage (only written cells are tracked), init value for unwritten cells, reads during a cycle see the OLD value (non-blocking write behavior).
 
 **`loop`/`suzhal`**: an on-block `SeqStmt::Loop` (what's left after `sync
-loop`/`foreach` are pre-lowered in `elaborate.rs`) unrolls right here, at
+loop`/`foreach` are pre-lowered in `elaborate/`) unrolls right here, at
 process-execution time each cycle — not folded away during elaboration like
 `repeat`.
 
@@ -67,7 +95,7 @@ process-execution time each cycle — not folded away during elaboration like
 
 **`MAX_SIM_CYCLES = 1_000_000`** — prevents OOM on adversarial input.
 
-## `crates/mimz-sim/src/sim/harness.rs` — Test Block Runner
+## `crates/mimz-sim/src/sim/harness/` — Test Block Runner
 
 **`run_test(files, src, decl)`** — runs one `test "name" for M(args) { body }`:
 

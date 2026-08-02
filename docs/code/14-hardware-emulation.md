@@ -23,7 +23,7 @@ workspace split) — no ratatui, no crossterm, no cpal. But the dashboard,
 LED colors, and audio playback are exactly those dependencies. The fix is
 dependency inversion, not a feature-gated `cfg` sprinkled through the
 simulator: `mimz-sim` defines a narrow trait, `EmulationHost`
-(`crates/mimz-sim/src/sim/host.rs`), and the harness (`sim/harness.rs`)
+(`crates/mimz-sim/src/sim/host.rs`), and the harness (`sim/harness/mod.rs`)
 knows only `Option<Box<dyn EmulationHost>>` — `None` is today's headless
 degrade path, unchanged. The shell crate implements the trait
 (`src/emulate/host.rs::EmulateHost`) and owns every ratatui/cpal type. No
@@ -125,7 +125,7 @@ find nothing (a real bug this design specifically guards against — see
 either one (with a real terminal) sets `live = true`. `--step` additionally
 sets `stepping = true` on `EmulateHost`, which pauses the dashboard after
 every single-cycle `frame()` for a keypress (Enter to advance, `q` to
-quit) — `harness.rs` checks `frame`'s return value and aborts the test loop
+quit) — `harness/mod.rs` checks `frame`'s return value and aborts the test loop
 early if the user quit. Piped/non-tty output degrades silently to the
 non-live path regardless of the flags (no hang waiting for a terminal that
 isn't there); `test --emulate | tee log` behaves exactly like plain
@@ -134,7 +134,7 @@ isn't there); `test --emulate | tee log` behaves exactly like plain
 `MAX_SIM_CYCLES` (`crates/mimz-sim/src/sim/run.rs`, 500M) bounds a
 **headless** `tick(clk, N)` — a runaway-loop guard against an untrusted
 test hanging the tool. A **live** (`--emulate`/`--step`) run lifts that cap
-entirely (`harness.rs` uses `u64::MAX` when `self.live`), since a real
+entirely (`harness/mod.rs` uses `u64::MAX` when `self.live`), since a real
 multi-hundred-million-cycle emulated tick (a melody at a real audio clock
 rate) is throttled by `speed` anyway and is expected to take real wall-clock
 time. VCD capture is separately capped at 1M frames to bound memory on a

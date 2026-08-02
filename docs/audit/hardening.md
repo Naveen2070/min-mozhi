@@ -63,24 +63,84 @@ lowers to `-2¹²⁷` instead of overflow-panicking the negation. See SEC-6 in
 
 ---
 
+## Hardening recommended (open)
+
+Preventive measures the 2026-08-02 CTO review
+([`review-2026-08-02.md`](review-2026-08-02.md)) identified as missing. Not
+defects — nothing here is broken today; each closes a class rather than an
+instance. Listed with the same HARD numbering so they slot into "Hardening
+added" once landed.
+
+### HARD-7 (OPEN) — `#![forbid(unsafe_code)]` on every crate, not just `mimz-core`
+
+`crates/mimz-core/src/lib.rs:6` carries `#![forbid(unsafe_code)]`. The workspace
+split (2026-07) moved the simulator into `crates/mimz-sim` and left the shell
+(fs, CLI, LSP, hw-emulation) in the root crate — **neither carries the
+attribute**, so HARD-1's guarantee now covers only part of the codebase it was
+written for.
+
+This matters more, not less, after the split: the shell crate is the one that
+links `cpal`/`crossterm`/`notify`, i.e. the only crate with a plausible reason
+for someone to reach for `unsafe` later.
+
+**Action.** Add `#![forbid(unsafe_code)]` to `crates/mimz-sim/src/lib.rs` and
+`src/lib.rs` + `src/main.rs`. Zero cost today (none exists); permanently locks
+the guarantee, same reasoning as HARD-1.
+
+### HARD-8 (OPEN) — Dependency-advisory scanning in CI
+
+CI gates `fmt`, `clippy -D warnings`, `rustdoc -D warnings`, full workspace tests
+with `REQUIRE_IVERILOG=1`, and pins every GitHub Action to a full commit SHA —
+good supply-chain hygiene on the _workflow_ side. But there is **no
+`cargo-deny` / `cargo-audit` step**, so a published RUSTSEC advisory against the
+dependency tree would not be surfaced.
+
+The tree is not trivial: `tokio`, `tower-lsp`, `ratatui`, `crossterm`, `cpal`,
+`notify`, `clap`, `serde`, `toml` and their transitives.
+
+**Action.** Add a `cargo-deny check advisories bans licenses sources` step to the
+`check` job. Start non-gating if the initial run is noisy, then gate. `bans` also
+catches duplicate-version drift, and `licenses` protects the MIT/Apache-2.0 dual
+license the Constitution commits to forever.
+
+### HARD-9 (OPEN) — Fuzz target for the checker → emitter path
+
+The four existing `cargo-fuzz` targets (`lex_parse_compile`, `lex_parse_eval`,
+`pretty_roundtrip`, `translate_roundtrip`) cover lex/parse/eval and two
+round-trip properties. The **checker's width rules and the emitter's
+self-determined-position logic have no fuzz target** — only hand-written tests
+and the random-program differential fuzzer, whose generator gap is exactly what
+let BUG-28/BUG-29 through (see [`gaps.md`](gaps.md) GAP-5).
+
+**Action.** Add a fifth target driving `checker::check` → `emit_verilog::emit`
+over generated-but-plausible ASTs, asserting the two invariants that must always
+hold:
+
+1. Checker-accepted input **never panics** the emitter (the SEC-10 class).
+2. Emitted Verilog **always elaborates** under `iverilog -t null`.
+
+Wire it into both the per-PR and weekly CI fuzz jobs, same as the existing four.
+
+---
+
 ## Checked and found safe (no change needed)
 
 The audit produced several initial "critical" claims that **did not survive
 verification against the code**. Recording them so they are not re-investigated:
 
-| Area                                   | Why it is safe                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Checker width arithmetic               | `MAX_WIDTH = 1_000_000` is enforced (`checker/widths/mod.rs`) before any width `+`/`*`/concat-sum, so u128 cannot overflow in practice.                                                                                                                                                                                                                                                                                                                 |
-| `repeat` unrolling                     | Capped at `REPEAT_BUDGET = 4096` in **both** the checker (`drivers.rs`) and the emitter (`emit_verilog/mod.rs`). Not a bomb.                                                                                                                                                                                                                                                                                                                            |
-| Import cycles                          | Detected via a canonicalized `visited` set (`project.rs`) — no infinite loop. (It silently skips a cycle rather than emitting an error — cosmetic.)                                                                                                                                                                                                                                                                                                     |
-| Import path traversal                  | Import segments are XID identifiers; `..` and `/` are not expressible, so `import ../../etc/x` cannot be written. Symlink escape needs local write access.                                                                                                                                                                                                                                                                                              |
-| Import file count                      | Each import must resolve to a real on-disk file, so loading is **linear in attacker-created files** — no amplification (no zip-bomb analogue).                                                                                                                                                                                                                                                                                                          |
-| Panics / `unwrap` on input             | No `unwrap`/`expect`/`panic!` reachable from input in `src/` (outside tests).                                                                                                                                                                                                                                                                                                                                                                           |
-| Checker cycle walk                     | Combinational-cycle detection uses an explicit stack (`drivers.rs`), not recursion — cannot stack-overflow.                                                                                                                                                                                                                                                                                                                                             |
-| `comb::mask`, runtime shifts (initial) | Already shift-guarded (`if w >= 128`, `checked_shl`, `.min(127)`) before first pass — only `const_eval`'s shifts were raw (fixed, SEC-2). Second pass (2026-06-20) found `Shl` used bare `r.bits as u32` (silently truncating when bit ≥ 32 was set, admitted by the initial review's too-broad claim). **Re-fixed:** both `Shl` and `Shr` now guard with `if r.bits >= 128 { 0 } else { … }` — correct semantics (shift-by-128 → 0, not shift-by-127). |
-| Sim frame-time `cycle * PERIOD`        | Flagged as a u64-overflow "high", but **unreachable**: the cap (HARD-5) bounds `cycle ≤ 1_000_000`, so the product is ≤ 10^7. The loop could never complete ~10^18 iterations anyway — bounding the loop subsumes it. No checked-mul added (would be dead code).                                                                                                                                                                                        |
-| Sim concat `as u32` cast (`value.rs`)  | Guarded by the `total > 128` check immediately above it — the cast is never reached with an out-of-range value.                                                                                                                                                                                                                                                                                                                                         |
-| Thamizh-order flip recursion           | All five clause flips (incl. `seq_if_thamizh`, `if_expr_thamizh`) route through the SEC-1 `enter()`/`leave()` depth guard — no new unguarded neck.                                                                                                                                                                                                                                                                                                      |
+| Area                                   | Why it is safe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checker width arithmetic               | `MAX_WIDTH = 1_000_000` is enforced (`checker/widths/mod.rs`) before any width `+`/`*`/concat-sum, so u128 cannot overflow in practice.                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `repeat` unrolling                     | Capped at `REPEAT_BUDGET = 4096` in **both** the checker (`drivers.rs`) and the emitter (`emit_verilog/mod.rs`). Not a bomb.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Import cycles                          | Detected via a canonicalized `visited` set (`project.rs`) — no infinite loop. (It silently skips a cycle rather than emitting an error — cosmetic.)                                                                                                                                                                                                                                                                                                                                                                                             |
+| Import path traversal                  | Import segments are XID identifiers; `..` and `/` are not expressible, so `import ../../etc/x` cannot be written. Symlink escape needs local write access.                                                                                                                                                                                                                                                                                                                                                                                      |
+| Import file count                      | Each import must resolve to a real on-disk file, so loading is **linear in attacker-created files** — no amplification (no zip-bomb analogue).                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Panics / `unwrap` on input             | No `unwrap`/`expect`/`panic!` reachable from input in `src/` (outside tests). **Partial correction (2026-08-02):** still true of `src/`, but the workspace split moved the emitter into `crates/mimz-core/`, where `emit_verilog/kinds.rs:52` carries a `panic!` guarded only by a cross-file `kind_is_inferrable` convention. No reproducer found in ~20 targeted probes (latent, not live) — filed as SEC-10 in [`security.md`](security.md) with the durable fix (`Option<Kind>`). Re-scope this row to the whole workspace once that lands. |
+| Checker cycle walk                     | Combinational-cycle detection uses an explicit stack (`drivers.rs`), not recursion — cannot stack-overflow.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `comb::mask`, runtime shifts (initial) | Already shift-guarded (`if w >= 128`, `checked_shl`, `.min(127)`) before first pass — only `const_eval`'s shifts were raw (fixed, SEC-2). Second pass (2026-06-20) found `Shl` used bare `r.bits as u32` (silently truncating when bit ≥ 32 was set, admitted by the initial review's too-broad claim). **Re-fixed:** both `Shl` and `Shr` now guard with `if r.bits >= 128 { 0 } else { … }` — correct semantics (shift-by-128 → 0, not shift-by-127).                                                                                         |
+| Sim frame-time `cycle * PERIOD`        | Flagged as a u64-overflow "high", but **unreachable**: the cap (HARD-5) bounds `cycle ≤ 1_000_000`, so the product is ≤ 10^7. The loop could never complete ~10^18 iterations anyway — bounding the loop subsumes it. No checked-mul added (would be dead code).                                                                                                                                                                                                                                                                                |
+| Sim concat `as u32` cast (`value.rs`)  | Guarded by the `total > 128` check immediately above it — the cast is never reached with an out-of-range value.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Thamizh-order flip recursion           | All five clause flips (incl. `seq_if_thamizh`, `if_expr_thamizh`) route through the SEC-1 `enter()`/`leave()` depth guard — no new unguarded neck.                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -124,6 +184,22 @@ verification against the code**. Recording them so they are not re-investigated:
 
 This audit hardens the compiler against **malicious input** (crashes, overflow,
 exhaustion). The **correctness** of emitted hardware — that _valid_ input
-produces correct, safe Verilog — is the job of the checker's seven passes (E0xxx)
+produces correct, safe Verilog — is the job of the checker's nine passes (E0xxx)
 and the golden / Icarus differential tests, which already exist and are
 unchanged by this work.
+
+**Correction (2026-08-02).** Two amendments to the sentence above, both from
+[`review-2026-08-02.md`](review-2026-08-02.md):
+
+1. **Pass count.** The checker runs **nine** passes, not seven
+   (`crates/mimz-core/src/checker/mod.rs:36`): symbols, extern-module ports,
+   `fn` cycles, `fn` unreachable-code, consts, names, widths, drivers, clocks.
+   Corrected in place above.
+2. **The boundary is not as clean as this paragraph implies.** BUG-28/BUG-29
+   ([`bugs.md`](bugs.md)) are **invalid HDL generation from valid input** — a
+   silent miscompile that the golden and Icarus differential tests do not catch,
+   because every existing oracle compares simulator-vs-Verilog and none compares
+   declared-type-vs-produced-value ([`gaps.md`](gaps.md) GAP-5). "Never silently
+   miscompute" is listed in this audit's own opening threat statement, so that
+   class belongs inside this scope, not outside it. HARD-9 above is the
+   preventive measure for it.
