@@ -32,10 +32,11 @@ use crate::width_rules::Kind;
 ///
 /// Only handles the `ExprKind`s that can actually reach a Verilog
 /// self-determined position (per mimz's own type rules): literals,
-/// identifiers, unary, binary, concat, replicate, slice, the four
-/// builtins. Bundles/enums/memories/arrays/match/`??` never appear
-/// inside a concat/replicate/comparison/cast/slice-base position, so
-/// this function does not need to handle them.
+/// identifiers, unary, binary, concat, replicate, slice, the five
+/// builtins (`extend`/`trunc`/`signed`/`unsigned`/`abs`).
+/// Bundles/enums/memories/arrays/match/`??` never appear inside a
+/// concat/replicate/comparison/cast/slice-base position, so this
+/// function does not need to handle them.
 ///
 pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Kind {
     match &expr.kind {
@@ -213,6 +214,14 @@ fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Ki
         Builtin::UnsignedCast => Kind {
             width: infer_kind(&args[0], decls).width,
             signed: false,
+        },
+        // `abs(x)` for `x: signed[N]` is `signed[N+1]` — lossless like
+        // unary `-`, the extra bit covers `abs(MIN)`. Matches the
+        // checker's own rule (`checker/widths/ops/builtins.rs`,
+        // `Builtin::Abs => Ty::Signed(n + 1)`).
+        Builtin::Abs => Kind {
+            width: infer_kind(&args[0], decls).width + 1,
+            signed: true,
         },
         other => panic!(
             "emit_verilog::kinds::infer_call: {other:?} cannot appear in a \

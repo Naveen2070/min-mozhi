@@ -467,6 +467,46 @@ fn bug_24_regression_shift_in_if_branch_stays_unhoisted() {
 }
 
 #[test]
+fn bug_28_extend_in_concat_matches_icarus() {
+    // docs/audit/bugs.md BUG-28, Repro A: `extend(x, N)` renders as bare
+    // `(x)` in Verilog — it relies entirely on the enclosing assignment's
+    // context width to zero/sign-extend. A concat member has no such
+    // context, so the padding bits are never materialized and every field
+    // to the left silently shifts down. `self_determined.rs`'s exhaustive
+    // `Builtin` match now reports `extend`'s own self-determined width
+    // (the ARGUMENT's width, not N), so the emitter hoists it into a
+    // `wire [N-1:0]` first.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[12]\n  \
+                y = { b, extend(a, 8) }\n}\n";
+    // a=0b1111, b=0b1010 — the exact vector BUG-28's filing used.
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_28_extend_in_replication_matches_icarus() {
+    // docs/audit/bugs.md BUG-28, Repro B: same root cause as the concat
+    // case, but in a replication body — another self-determined position.
+    let src = "module Fuzz {\n  in a: bits[2]\n  out y: bits[8]\n  \
+                y = {2{ extend(a, 4) }}\n}\n";
+    // a=0b11 — the exact vector BUG-28's filing used.
+    differential(src, &[("a", 0b11)]);
+}
+
+#[test]
+fn bug_29_abs_in_concat_matches_icarus() {
+    // docs/audit/bugs.md BUG-29: `abs(x)` renders to a ternary, which
+    // Verilog self-determines at `max(operand widths)` — not at mimz's
+    // grown `N+1` result. `Builtin::Abs` was entirely unclassified in
+    // three places (`kind_is_inferrable`, `infer_call`, and this file's
+    // `verilog_self_determined_kind`), so no hoist was ever attempted.
+    let src = "module Fuzz {\n  in a: signed[4]\n  in b: bits[4]\n  out y: bits[9]\n  \
+                y = { b, unsigned(abs(a)) }\n}\n";
+    // a=-8 (raw 4-bit two's complement 0b1000), b=0b1010 — the exact
+    // vector BUG-29's filing used.
+    differential(src, &[("a", 0b1000), ("b", 0b1010)]);
+}
+
+#[test]
 fn bug_24_regression_nested_shift_lhs_of_shift_stays_unhoisted() {
     // Regression guard for the other exclusion the over-broad BUG-24 fix
     // missed: when a shift's LEFT OPERAND is itself another shift,
