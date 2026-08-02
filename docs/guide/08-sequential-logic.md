@@ -194,4 +194,83 @@ If a design has more than one clock, Min-Mozhi tracks which clock owns each
 register and rejects reading a register from one domain inside another's logic
 (`E0701`) — a real source of metastability bugs, caught at compile time.
 
+Why it matters: a flip-flop needs its input to be stable for a short window
+around the clock edge. A signal arriving from a DIFFERENT clock has no such
+guarantee — it can change exactly at the edge, and the flip-flop can settle to
+neither 0 nor 1 for a while. That is **metastability**, and it produces bugs
+that appear once an hour on real silicon and never in simulation. So the
+compiler refuses the read rather than letting you find out the hard way.
+
+## Crossing a clock domain on purpose: `sync.*`
+
+Sometimes you genuinely need a signal to travel between domains. Min-Mozhi
+gives you two built-in synchronizers, and they are the only sanctioned way
+across:
+
+### `sync.double_flop` — carry a LEVEL across
+
+Use this when the signal is a steady state ("the button is held", "the FIFO
+is empty"). It passes the value through two registers clocked by the
+destination clock, which gives any metastable state a full cycle to settle:
+
+```mimz
+module Crossing {
+  clock clk_fast
+  clock clk_slow
+  reset rst
+
+  in  flag_fast: bit
+  out flag_slow: bit
+
+  reg src:  bit = 0
+  reg dest: bit = 0
+
+  on rise(clk_fast) {
+    src <- flag_fast
+  }
+
+  on rise(clk_slow) {
+    dest <- sync.double_flop(src, clk_fast, clk_slow)
+  }
+
+  flag_slow = dest
+}
+```
+
+Read the call as: "take `src`, which belongs to `clk_fast`, and make it safe
+to use in `clk_slow`." The value shows up in the destination domain **two
+destination-clock cycles later**.
+
+### `sync.pulse` — carry an EVENT across
+
+Use this when the signal is a one-cycle strobe ("a byte arrived"). A level
+synchronizer would miss a fast pulse entirely, or stretch it; `sync.pulse`
+converts it to a toggle, crosses that, and rebuilds a single one-cycle pulse
+on the far side:
+
+```mimz
+wire got_it: bit = sync.pulse(tick_fast, clk_fast, clk_slow)
+```
+
+### The rules the compiler enforces
+
+Both primitives lower to ordinary registers — there is no magic Verilog
+construct behind them — but they only work if used exactly right, so the
+checker is strict about it:
+
+| Rule                                                                                                                                       | Code    |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| the two clocks must be two DIFFERENT declared `clock`s                                                                                     | `E0702` |
+| the signal must be exactly 1 bit — multi-bit crossing is not provided yet                                                                  | `E0703` |
+| the signal must really belong to the source clock's domain                                                                                 | `E0704` |
+| `double_flop` must be the direct `<-` right-hand side in the destination clock's `on` block; `pulse` must be a `wire`'s direct initializer | `E0705` |
+
+The last rule looks fussy but is the point: a synchronizer buried inside a
+larger expression is not a synchronizer, it is a race condition with extra
+steps.
+
+> **Still crossing?** These two cover control signals. Multi-bit data across
+> domains wants a FIFO — see [`std.fifo`](stdlib/fifo.md), where the crossing
+> is handled inside a tested module instead of by hand.
+
 Next: [modules and reuse](09-modules-and-reuse.md).

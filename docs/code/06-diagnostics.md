@@ -69,6 +69,21 @@ will key off them — never renumber.
 | E11xx       | parser                  | below                            |
 | E12xx       | loader                  | below                            |
 | E1301–E1302 | checker (extern module) | [`11-checker.md`](11-checker.md) |
+| W000x       | lint / flavor mixing    | below (§Warnings)                |
+| S01xx–S04xx | simulator runtime       | [`13-tooling.md`](13-tooling.md) |
+
+**How to read a code at a glance** — the first digit pair says WHICH
+stage rejected your program, so you know what kind of mistake it is
+before reading the message:
+
+| Prefix                   | Stage that raised it | What it means for you                                                            |
+| ------------------------ | -------------------- | -------------------------------------------------------------------------------- |
+| `E00xx`–`E09xx`, `E13xx` | checker              | The text parsed fine; the _hardware rules_ were broken (widths, drivers, clocks) |
+| `E10xx`                  | lexer                | The characters could not be turned into words — a typo at the character level    |
+| `E11xx`                  | parser               | The words could not be arranged into a program — a typo at the grammar level     |
+| `E12xx`                  | loader               | An `import` could not be resolved to a file                                      |
+| `W000x`                  | lint / flavor        | Advisory only — the build still succeeds                                         |
+| `S0xxx`                  | simulator            | The program compiled; something went wrong while RUNNING it                      |
 
 `mimz-sim`'s own runtime diagnostics (`S01xx`–`S04xx`) are a SEPARATE
 catalog — fires at elaboration/execution time, after the checker has
@@ -99,12 +114,27 @@ not here — `ALL_SIM_CODES` lives in `crates/mimz-sim`, not `mimz-core`.
 | E1110 | call errors (not a builtin, wrong arity)                            |
 | E1111 | parameter/const type is not `int`/`bool`                            |
 | E1112 | unknown `syntax` profile (only `thamizh` is valid)                  |
+| E1113 | nested too deeply to parse safely (the anti-stack-overflow guard)   |
+| E1114 | `sim` block syntax (`speed`/`bind` clause is malformed)             |
+| E1115 | `??` applied to an already-optional type (`bits[8]??`)              |
+| E1116 | unknown `sync.*` method (only `double_flop`/`pulse` exist)          |
 | E1201 | imported file does not exist                                        |
 | E1202 | bad standard-library import (`std.<module>` shape / unknown module) |
 
 Grouping rule: E1101 deliberately covers the whole expected/found
 family — those messages share one translation shape; the codes that
 stand alone are the TEACHING errors whose catalogs differ.
+
+`E1113` is a **safety guard, not a language rule**: the recursive-descent
+parser counts nesting depth (`parser::MAX_DEPTH`) and bails with one
+clean diagnostic rather than letting adversarial input abort the process
+with a stack overflow. It is latched, so a 2000-deep expression produces
+exactly one E1113, not 2000.
+
+Not every code has a long-form `mimz explain` entry yet: `E1112`,
+`E1113` and `W0001` are message-only today. `E0904` is a parser code
+that this page's numbering scheme would put in the checker block — see
+the note in [`11-checker.md`](11-checker.md#error-code-catalog).
 
 ## The `--json` wire format
 
@@ -140,12 +170,23 @@ build; a **warning** is advisory — `check`/`compile`/`eval` print it (rendered
 `DiagnosticSeverity::WARNING` (a yellow squiggle, not red). Warnings are opt-in
 via `Diag::as_warning`; almost every diagnostic is an error.
 
-W-codes are NOT in `ALL_CHECKER_CODES` (that list is checker errors, locked to
-the table above and required to have an error-fixture). Current warnings:
+Current warnings — two sources, one severity:
 
-| Code  | Fires when                                                                                                                                                                                                  |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| W0001 | a file mixes **Tamil** keywords with English/Tanglish ones — English+Tanglish share code order (SVO) and mix freely, but Tamil reads differently; run `mimz fmt` to normalize (`morph::flavor_mix_warning`) |
+| Code  | Raised by                               | Fires when                                                                                                                                                                    |
+| ----- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W0001 | `morph::flavor_mix_warning` (always on) | a file mixes **Tamil** keywords with English/Tanglish ones — English+Tanglish share code order (SVO) and mix freely, but Tamil reads differently; run `mimz fmt` to normalize |
+| W0002 | `lint` (`mimz lint`)                    | a signal name is not `snake_case`                                                                                                                                             |
+| W0003 | `lint` (`mimz lint`)                    | a module name is not `PascalCase`                                                                                                                                             |
+| W0004 | `lint` (`mimz lint`)                    | a signal is declared but never read — prefix with `_` to suppress                                                                                                             |
+
+Only `W0001` rides the normal `check`/`compile` path; `W0002`–`W0004`
+live in the separate `lint.rs` pass and surface only through `mimz lint`
+(never fail a build, additive by design — a new lint can never break an
+existing program).
+
+`W0001` IS a member of `ALL_CHECKER_CODES` (it ships with an error
+fixture like every checker code); `W0002`–`W0004` are not, since that
+list is the fixture-backed checker contract.
 
 ## Known limitations / planned evolution
 
@@ -154,7 +195,7 @@ the table above and required to have an error-fixture). Current warnings:
   keyed off the codes above; `morph::localized_msg` looks one up per code and
   flavor and interpolates the offending identifier (Tamil case-inflected) plus
   structured args (`{expected}/{found}/{op}/{lhs}/{rhs}/{first}/{second}/{type}`).
-  **33 of 73 checker codes** (`diag::ALL_CHECKER_CODES`) are localized — E0403/E0404/E0405
+  **33 of 74 checker codes** (`diag::ALL_CHECKER_CODES`) are localized — E0403/E0404/E0405
   stay English-only (each emits many distinct shapes; the Tamil drafts are preserved as
   comments in `lang/messages.toml`). Any code with no template renders the English `msg` verbatim,
   so uncovered codes are byte-identical across flavors. JSON diagnostics stay

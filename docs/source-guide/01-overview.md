@@ -11,7 +11,7 @@ The compiler itself is written in **Rust** with a strict `#![forbid(unsafe_code)
 Here's the big picture of how source code flows through the system:
 
 ```
-Your Code (.mimz) → Lexer → Parser → AST → Checker (7 safety passes)
+Your Code (.mimz) → Lexer → Parser → AST → Checker (9 safety passes)
                   → Verilog Output   OR   Interactive Simulator
 ```
 
@@ -36,7 +36,7 @@ crates/mimz-core/src/     # pure frontend + middle + emit — no optional deps
 ├── morph.rs                  # Picking error language + Tamil grammar helpers
 ├── project.rs                # LoadedFile + render_diags (the pure half; fs I/O stays in root project.rs)
 ├── translate.rs              # Switching keywords between English/Tanglish/Tamil
-├── pretty.rs                 # Turning the AST back into readable source
+├── pretty/                   # Turning the AST back into readable source
 ├── explain.rs                # Long-form explanations for error codes
 ├── version.rs                # Compiler version + language edition
 ├── lint.rs                   # Style/hygiene lints (W0002 snake_case, W0003 PascalCase)
@@ -46,14 +46,14 @@ crates/mimz-core/src/     # pure frontend + middle + emit — no optional deps
 ├── stdlib.rs                 # Embedded standard library (seg7/pwm/fifo/uart_tx/debouncer)
 ├── analysis.rs               # Editor symbol index + offset→definition / completion (LSP)
 ├── lexer/                    # The tokenizer (4 files)
-├── parser/                   # Tokens → structured tree (11 files)
+├── parser/                   # Tokens → structured tree (11 files + tests/, 13 files)
 ├── ast/                      # The tree itself (6 files)
-├── checker/                  # Safety checks — 7 passes + extern-module (13 files)
-└── emit_verilog/             # Verilog code generator (7 files)
+├── checker/                  # Safety checks — 9 pass calls (8 files + names/ 7, widths/ 11, tests/ 11)
+└── emit_verilog/             # Verilog code generator (6 files + module/ 8, tests/ 11)
 
 crates/mimz-sim/src/      # event-driven simulator — depends only on mimz-core
 ├── runner.rs                 # Running commands in memory (powers the web playground)
-└── sim/                      # Event-driven simulator + EmulationHost trait (10 files)
+└── sim/                      # Event-driven simulator + EmulationHost trait (11 files + elaborate/ 7, value/ 4, harness/ 2)
 
 src/                       # shell crate — CLI, fs I/O, LSP, hw-emulation
 ├── main.rs                   # The front door — CLI that reads your commands
@@ -71,11 +71,11 @@ Now let's walk through each piece, one at a time. The rest of this guide is spli
 | ----------------------------- | ----------------------------------------------------------------------------------------------- |
 | [02](02-foundations.md)       | span, diag, morph, config, project, runner, stdlib, bits/wide/width_rules — the support modules |
 | [03](03-lexer.md)             | The lexer (tokenizer) — all 4 files                                                             |
-| [04](04-parser.md)            | The parser — all 11 files                                                                       |
+| [04](04-parser.md)            | The parser — all 11 files (plus the 13-file `tests/` split)                                     |
 | [05](05-ast.md)               | The Abstract Syntax Tree — all 6 files                                                          |
-| [06](06-checker.md)           | Seven safety passes + extern-module — all 13 files                                              |
-| [07](07-verilog-emitter.md)   | Verilog code generator — all 7 files                                                            |
-| [08](08-simulator.md)         | Event-driven simulator — all 9 files                                                            |
+| [06](06-checker.md)           | Nine safety pass calls across 8 files, plus `names/`, `widths/`, `tests/`                       |
+| [07](07-verilog-emitter.md)   | Verilog code generator — 6 files plus the 8-file `module/` split                                |
+| [08](08-simulator.md)         | Event-driven simulator — 11 files plus `elaborate/`, `value/`, `harness/`                       |
 | [09](09-tooling-and-entry.md) | CLI commands, main.rs, lib.rs, translate, pretty, explain, version, analysis.rs, lsp.rs         |
 | [10](10-ecosystem.md)         | LSP, WASM, VS Code, benchmarks, fuzzing, tests, CI, examples, demos, lang, spec, site           |
 
@@ -91,5 +91,5 @@ These eight principles guide every decision in the codebase. Keep them in mind a
 4. **Multi-error reporting** — no pass stops at the first error; all diagnostics are collected
 5. **Stable E-codes** — error codes are never renumbered; `mimz explain` covers them permanently
 6. **Teaching errors** — every error has a help line; long-form explanations live in `explain.rs`
-7. **Shared expression semantics** — `sim/value.rs` has the single evaluator used by both the comb evaluator and the event-driven kernel
+7. **Shared expression semantics** — `sim/value/` has the single evaluator used by both the comb evaluator and the event-driven kernel
 8. **Dumb emitter** — Verilog emission is deliberately naive, preserving symbolic widths and parenthesizing everything for correctness

@@ -88,7 +88,7 @@ in what they return:
 `parse_recover` is the **only** source of `Error` nodes — `parse` returns
 `Err` on the same input, so codegen never sees one. `Parser::span_since`
 sizes each placeholder; every consumer (`checker/`, `emit_verilog/`,
-`sim/`, `pretty.rs`) handles the variants (the checker skips them with no
+`sim/`, `pretty/`) handles the variants (the checker skips them with no
 cascade; the codegen stages treat them as documented unreachable no-ops).
 Expression-level recovery (`ExprKind::Error`) is deferred — an error-expr
 has no width/type, so it would need an "unknown" path through width/type

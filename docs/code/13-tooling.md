@@ -84,7 +84,7 @@ names }`, `romanized → original Tamil`, capturing the `_2`/`_3` uniquing).
   exits non-zero, still writing the fix. Word-ORDER reformatting stays with
   `--order` (the `pretty` path) — it is not lossless, so `fmt` does not use it.
 
-## `pretty` (`crates/mimz-core/src/pretty.rs`) — `mimz translate --order code|thamizh`
+## `pretty` (`crates/mimz-core/src/pretty/`) — `mimz translate --order code|thamizh`
 
 The word-ORDER half of `translate` (`spec/04` section 3, Phase 1.8). Where `translate`
 re-spells keyword tokens, `pretty` re-emits the **AST** as Min-Mozhi source, so
@@ -141,7 +141,7 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
 - **Native-speaker-authored (decision C3 ratified, 2026-06-15).** The localized
   catalog (`MESSAGES`, loaded once via `LazyLock` from `lang/messages.toml`) and the
   sandhi rules in `lang/case_suffixes.toml` came from native-speaker review — no longer
-  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 73 checker codes**
+  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 74 checker codes**
   (`diag::ALL_CHECKER_CODES`); E0403/E0404/E0405 are deferred (each emits many distinct message shapes — English
   kept, the Tamil drafts preserved as comments in `lang/messages.toml`). Templates also
   interpolate **structured args** the checker attaches via `Diag::with_arg`
@@ -339,9 +339,9 @@ simulator.
 
 ### Known deferred
 
-| Location                                                      | Issue                                                                         | Why it stays                                                                                                                                                                                                                                       |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `elaborate.rs:465` — `const_eval(cond, &consts).unwrap_or(0)` | If `const_eval` fails (non-const condition), silently takes the `then` branch | Protected by E0811 in practice — the checker rejects non-const `const if` conditions. If the simulator ever runs standalone without the checker, a non-const condition is a latent mis-evaluation. Fix: propagate the error instead of defaulting. |
+| Location                                                         | Issue                                                                         | Why it stays                                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elaborate/module.rs` — `const_eval(cond, &consts).unwrap_or(0)` | If `const_eval` fails (non-const condition), silently takes the `then` branch | Protected by E0811 in practice — the checker rejects non-const `const if` conditions. If the simulator ever runs standalone without the checker, a non-const condition is a latent mis-evaluation. Fix: propagate the error instead of defaulting. |
 
 ## `config` (`src/config.rs`) — `mimz.toml` project defaults
 
@@ -492,7 +492,7 @@ Most of these grow incrementally: `explain` grows one code at a time,
 `translate`/`pretty` cover keyword flavor and all five landed word-order flips
 (clocked block, conditional, if-expression, match, test header), and `morph`
 ships the selection + inflection mechanism with the native-authored catalog
-(33 of 73 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
+(33 of 74 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
 feature-complete (the combinational `comb`, the event-driven kernel, VCD/trace,
 and `mimz test`). Each documents its own limits in its module header so the
 honesty rule (spec/01) holds for the tooling too.

@@ -24,12 +24,34 @@ chapters — the safety rules are where Min-Mozhi differs most.
 | 5   | [Operators](05-operators.md)                                  | Lossless vs wrapping math, shifts, bitwise, comparisons, slicing                                                                           |
 | 6   | [Built-in functions](06-builtins.md)                          | `extend`, `trunc`, `signed`/`unsigned`, `min`/`max`/`abs`, `nand`/`nor`/`xnor`                                                             |
 | 7   | [Expressions and control flow](07-expressions-and-control.md) | `if` expressions, `match`, statement-level `if`/`else`                                                                                     |
-| 8   | [Sequential logic](08-sequential-logic.md)                    | Clocks, resets, `on rise`, registers, finite-state machines                                                                                |
+| 8   | [Sequential logic](08-sequential-logic.md)                    | Clocks, resets, `on rise`, registers, FSMs, `sync loop`, crossing clock domains with `sync.*`                                              |
 | 9   | [Modules and reuse](09-modules-and-reuse.md)                  | Parameters, instances, imports, `repeat`, instance arrays, `const`                                                                         |
 | 10  | [Natural word order (thamizh)](10-word-order-thamizh.md)      | Reading code in Tamil SOV order with `syntax thamizh`                                                                                      |
 | 11  | [The toolchain](11-toolchain.md)                              | `mimz init`/`check`/`compile`/`eval`/`sim`/`test`/`lint`/`repl`/`explain`/`translate`/`fmt`/`doctor`/`completions`/`eject`/`lsp`, `--lang` |
 | 12  | [Cheat sheet](12-cheatsheet.md)                               | Every keyword (×3 flavors), operator, builtin, and error code                                                                              |
 | 13  | [Hardware emulation](13-hardware-emulation.md)                | `sim` blocks: `--emulate`, the LED/speaker/UART peripherals, watching a design run live                                                    |
+
+## Words this guide uses (read this once)
+
+Hardware has its own vocabulary. Here is the whole of it you need before
+chapter 1 — everything else is explained where it first appears.
+
+| Word              | Plain meaning                                                                                                                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HDL**           | Hardware Description Language. You describe a circuit; the compiler turns it into a form a chip factory (or an FPGA) can build.               |
+| **module**        | One reusable block of circuitry, with named inputs and outputs. The nearest software analogy is a function, but it exists all at once.        |
+| **signal**        | A wire carrying a value. Every signal has a fixed WIDTH in bits, decided at compile time.                                                     |
+| **combinational** | Logic with no memory: outputs are a pure function of inputs, recomputed continuously. Written with `=`.                                       |
+| **sequential**    | Logic with memory: values held in registers and updated on a clock edge. Written with `<-` inside `on rise(clk)`.                             |
+| **register**      | A one-value memory cell that updates on a clock edge (`reg`). Verilog people say "flip-flop".                                                 |
+| **clock**         | A signal that alternates 0/1 forever; every register in a design updates on its edges.                                                        |
+| **reset**         | A signal that forces every register back to its declared starting value — the known power-on state.                                           |
+| **synthesis**     | Turning your description into actual gates. "Synthesizable" means a real tool can build it.                                                   |
+| **latch**         | An accidental memory element created by an incomplete `if`. Almost always a bug — Min-Mozhi rejects the patterns that cause one.              |
+| **Verilog**       | The industry-standard HDL Min-Mozhi compiles TO. You do not need to know it, but every tool downstream speaks it.                             |
+| **testbench**     | A throwaway circuit that drives your design and checks its outputs. `mimz test` runs one in-process; `--emit-testbench` writes a Verilog one. |
+| **flavor**        | Which keyword spelling a file uses: English, Tanglish (Tamil in Latin letters), or Tamil script. All three compile identically.               |
+| **E-code**        | A stable error number like `E0501`. Run `mimz explain E0501` for the long version of any of them.                                             |
 
 ## Standard library
 

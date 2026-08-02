@@ -11,31 +11,58 @@ table below is the honest status of what remains.
 
 ## File layout
 
-| File                 | Owns                                                                                                 |
-| -------------------- | ---------------------------------------------------------------------------------------------------- |
-| `mod.rs`             | `check()` entry, the `Checker` state, the `err()` plumbing                                           |
-| `symbols.rs`         | Pass 1 — per-file module/enum/bundle tables, project-wide funcs + E0001/E0002/E0801/E0802/E0909      |
-| `funcs.rs`           | Pass 2 — call-graph cycle detection (E0805), unreachable-after-return (E0812)                        |
-| `consteval.rs`       | Pass 3 — file consts + the `eval()` engine for const positions                                       |
-| `names.rs`           | Pass 4 — module scopes, name resolution, structure rules, E0302                                      |
-| `extern_module.rs`   | `extern module` port-type validation — scalar-only ports (E1302)                                     |
-| `widths/mod.rs`      | Pass 5 — the `Ty` model, `Wcx`, config worklist, module walk                                         |
-| `widths/expr.rs`     | Pass 5 — bidirectional typing engine (check/infer, lvalues)                                          |
-| `widths/ops.rs`      | Pass 5 — operators, shifts, concat, the four builtins                                                |
-| `widths/insts.rs`    | Pass 5 — instantiation bindings + connection widths                                                  |
-| `widths/patterns.rs` | Pass 5 — `match` patterns + exhaustiveness (E0601/E0602)                                             |
-| `drivers.rs`         | Pass 6 — single-driver, coverage, comb-cycle (DAG), `=` vs `<-`                                      |
-| `clocks.rs`          | Pass 7 — clock-domain ownership, cross-domain reads (E0701); `sync.*` domain/placement (E0704/E0705) |
-| `tests/`             | Unit tests, split by topic — one per error code, plus clean-pass cases                               |
+**Nine pass calls, eight files.** `check()` (`mod.rs`) invokes them in
+this fixed order — the numbering used throughout this page:
+
+| #   | Call in `check()`          | File               | Owns                                                                                                  |
+| --- | -------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
+| 1   | `build_symbols()`          | `symbols.rs`       | Per-file module/enum/bundle/extern tables, project-wide funcs + E0001/E0002/E0801/E0802/E0909/E1301   |
+| 2   | `check_extern_modules()`   | `extern_module.rs` | `extern module` port-type validation — scalar-only ports (E1302)                                      |
+| 3   | `check_func_cycles()`      | `funcs.rs`         | Call-graph cycle detection — direct and mutual recursion (E0805)                                      |
+| 4   | `check_func_unreachable()` | `funcs.rs`         | Dead code after `return` in a `fn` body (E0812)                                                       |
+| 5   | `eval_consts()`            | `consteval.rs`     | File-level consts, top to bottom + the `eval()` engine every const position calls (E0004/E0201/E0202) |
+| 6   | `resolve_names()`          | `names/`           | Module scopes, name resolution, structure rules, E0302 — see the sub-table below                      |
+| 7   | `check_widths()`           | `widths/`          | Type + width rules and `match` exhaustiveness — see the sub-table below                               |
+| 8   | `check_drivers()`          | `drivers.rs`       | Single-driver, output coverage, comb-cycle (DAG), `=` vs `<-` (E05xx)                                 |
+| 9   | `check_clocks()`           | `clocks.rs`        | Clock-domain ownership, cross-domain reads (E0701); `sync.*` domain/placement (E0704/E0705)           |
+
+Plus `mod.rs` (the `check()` entry, the `Checker` state, the `err()`
+plumbing) and `tests/` (unit tests, split by topic — one per error code,
+plus clean-pass cases).
+
+Two passes outgrew the ~600-line rule (07-decisions) and became directory
+modules — same pattern one level down, `mod.rs` owns the shared state,
+siblings hold one concern each:
+
+| File in `names/` | Owns                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `mod.rs`         | `Scope` construction, the per-module walk, E0003                                           |
+| `items.rs`       | Module-item walk, `on`-block statements, `repeat` declaration ban (E0303), const positions |
+| `exprs.rs`       | Expression/lvalue name resolution (E0101/E0105/E0108)                                      |
+| `insts.rs`       | Instantiation + `test`-header checks, `inst.port` reads (E0102/E0104/E0106/E0107/E0302)    |
+| `funcs.rs`       | `fn`-body name scoping, array/bundle field-type validation (E0411/E0416/E0807)             |
+| `resolve.rs`     | Bare-vs-qualified symbol lookup across files (E0110/E0111)                                 |
+| `tests.rs`       | Unit tests for the above                                                                   |
+
+| File in `widths/` | Owns                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `mod.rs`          | The `Ty` model, `Wcx`, the configuration worklist, the module walk                     |
+| `sigs.rs`         | Signal-table collection, `Type` → `Ty` resolution, width/depth/array-length evaluation |
+| `expr/mod.rs`     | The bidirectional typing engine (`check_expr` pushes down, `infer_ty` synthesizes up)  |
+| `expr/lvalue.rs`  | Lvalue typing, index/slice/memory-address range checks (E0406/E0415)                   |
+| `ops/mod.rs`      | Operators, shifts, `{...}` concat, replication                                         |
+| `ops/builtins.rs` | The builtin call table (`extend`/`trunc`/`signed`/`min`/`clog2`/…)                     |
+| `stmts.rs`        | Module-item and `on`-block statement widths, enum tag/payload widths                   |
+| `insts.rs`        | Instantiation bindings + connection widths                                             |
+| `patterns.rs`     | `match` patterns + exhaustiveness (E0601/E0602)                                        |
+| `funcs.rs`        | `fn` body/return typing, OR-arm binding injection (E0803/E0804/E0813)                  |
+| `bundles.rs`      | Bundle field resolution, structural shape matching, bundle literals (E09xx)            |
 
 Same module pattern as the parser (03): `mod.rs` owns the struct and the
 diagnostic plumbing; each pass is an `impl` block in its own file behind
-`pub(super)`. Pass 4 outgrew the ~600-line rule (07-decisions) and split
-into its own directory module on 2026-06-12 — same pattern one level
-down: `widths/mod.rs` owns the shared `Ty`/`Wcx` state, siblings hold
-one concern each. Pass 3 stores each module's scope on the `Checker`
-(`scopes`), and passes 4 and 5 resolve against those same tables instead
-of rebuilding them (pass 6 works straight off the AST — domain coloring
+`pub(super)`. Pass 6 stores each module's scope on the `Checker`
+(`scopes`), and passes 7 and 8 resolve against those same tables instead
+of rebuilding them (pass 9 works straight off the AST — domain coloring
 needs only reg/wire/drive structure).
 
 ## The contract
@@ -72,7 +99,7 @@ under a **concrete parameter binding**:
   (memoized; capped at 1000 configurations to terminate pathological
   recursive instantiation). A module whose params lack defaults is
   therefore checked exactly as instantiated; if it is never
-  instantiated, its internals are skipped (passes 1–3 still ran).
+  instantiated, its internals are skipped (passes 1–5 still ran).
 
 Compile-time integers (literals, consts, params, `repeat` vars) are
 **polymorphic** (`Ty::CtInt`): they adapt to any sized context they fit
@@ -181,10 +208,30 @@ Numbering scheme:
 - E13xx — `extern module` / Verilog FFI.
 
 (Lexer E10xx, parser E11xx, and loader E12xx codes live in
-docs/code/06 — retrofit completed 2026-06-12.) Claim a block when a new
-pass lands, and add the rows in the same commit.
+docs/code/06; simulator runtime S0xxx codes live in docs/code/13 —
+they are a separate catalog with their own list, `ALL_SIM_CODES`.)
+Claim a block when a new pass lands, and add the rows in the same commit.
 
-## How the OR-arm binding intersection pass works (pass 3)
+**Two rows above are not checker codes, and the `tests/errors.rs`
+completeness guard therefore does not cover them:**
+
+| Code            | Where it really comes from                                                          | Consequence                                                                                                                                         |
+| --------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E0904`         | the PARSER (`parser/items/module.rs`) — `let { f: alias }` never builds an AST node | not in `ALL_CHECKER_CODES`, no `tests/fixtures/errors/` fixture, and `mimz explain E0904` has no entry; covered by `parser::tests::bundles` instead |
+| `E0905`/`E0908` | never assigned — gaps left when neighbouring codes were split out                   | `mimz explain` returns nothing; do not reuse them                                                                                                   |
+
+Conversely, `W0001` (mixed-flavor file) IS a member of
+`ALL_CHECKER_CODES` even though it is a warning, because it ships with a
+fixture like every other entry. The remaining warnings (`W0002`–`W0004`)
+come from the separate `lint` pass — see docs/code/06 §Warnings.
+
+Reverse index — which numbers exist in `ALL_CHECKER_CODES` today: 74
+entries, `E0001`–`E0004`, `E0101`–`E0111`, `E0201`–`E0202`,
+`E0301`–`E0303`, `E0401`–`E0417`, `E0501`–`E0505`, `E0601`–`E0602`,
+`E0701`–`E0705`, `E0801`–`E0813`, `E0901`–`E0903`, `E0906`–`E0907`,
+`E0909`–`E0912`, `E1301`–`E1302`, `W0001`.
+
+## How the OR-arm binding intersection pass works (pass 6)
 
 When a match arm lists multiple patterns separated by `,` (OR-patterns), each
 sub-pattern may introduce payload bindings. After the individual sub-patterns are
@@ -202,11 +249,11 @@ resolved, `names.rs` runs a five-phase intersection check:
 
 `_` wildcards contribute an empty binding map; `A(x), _ => x` is E0808 because
 the wildcard alternative satisfies no binding. The pass lives entirely in
-`crates/mimz-core/src/checker/names.rs` and runs during Pass 3 (module scope / name resolution),
+`crates/mimz-core/src/checker/names/` and runs during pass 6 (module scope / name resolution),
 after individual OR-sub-pattern binding but before the width pass sees the arm
 body.
 
-## How exhaustiveness works (in pass 4)
+## How exhaustiveness works (in pass 7)
 
 `check_patterns` already holds the scrutinee's type and every validated
 pattern, so coverage is counted in the same walk: enum matches must name
@@ -221,7 +268,7 @@ pattern already drew a type error (one mistake, one diagnostic), and
 `wire`-driving `if` needs no checker rule — the parser already refuses
 an expression `if` without `else`.
 
-## How the clock pass works (pass 6)
+## How the clock pass works (pass 9)
 
 Modules with fewer than two clocks skip instantly. Otherwise: each reg
 is colored with its `on` block's clock; each wire/out gets the UNION of
@@ -231,7 +278,7 @@ domain set contains any other clock is E0701, as is a wire whose own
 set holds two domains. Instance outputs contribute no domain —
 cross-instance tracking is a deferred row.
 
-## How the driver pass works (pass 5)
+## How the driver pass works (pass 8)
 
 One analysis per module (driver structure is parameter-independent; the
 default binding supplies constant index values). Each drive records an
@@ -266,10 +313,10 @@ itself to the language's own honesty rule.
 | Rule                                                  | Blocked on / planned with                                                                                                                                                                                                                                    |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `repeat` unrolling (elaboration)                      | widths/drivers check per-iteration; unrolling is emitter work                                                                                                                                                                                                |
-| Cross-INSTANCE clock-domain tracking                  | pass 7 (`clocks.rs`) is module-local; instance outputs carry no domain                                                                                                                                                                                       |
+| Cross-INSTANCE clock-domain tracking                  | pass 9 (`clocks.rs`) is module-local; instance outputs carry no domain                                                                                                                                                                                       |
 | Cross-clock reads allowed via `sync`                  | the Phase 2 multi-clock construct relaxes E0701 explicitly                                                                                                                                                                                                   |
 | Instance-array output widths via the `repeat` var     | read outside the loop falls back to param defaults                                                                                                                                                                                                           |
-| Defaultless-param module never instantiated           | internals skipped silently (passes 1–3 still ran)                                                                                                                                                                                                            |
+| Defaultless-param module never instantiated           | internals skipped silently (passes 1–5 still ran)                                                                                                                                                                                                            |
 | Driver COVERAGE under non-default bindings            | upgrade path: reuse widths' per-instantiation config set                                                                                                                                                                                                     |
 | Recursive instantiation                               | comb summary comes back empty (no through-paths seen); no cycle invented                                                                                                                                                                                     |
 | Unevaluable instance-array index in a read            | the comb edge is skipped (under-approximation; elaboration closes it)                                                                                                                                                                                        |
@@ -285,9 +332,9 @@ routing through existing passes and existing codes, the same way `foreach`
 routes to `E0417` plus whatever the lowered `Repeat`/`Loop` triggers:
 
 - **`SeqStmt::Loop`/`FnStmt::Loop`** (`loop`/`suzhal`, inside an `on` block
-  or `fn` body): pass 3 (`names.rs`) const-evaluates the bounds the same
+  or `fn` body): pass 6 (`names/`) const-evaluates the bounds the same
   way `Repeat`'s are (non-const bounds are `E0201`, same as `Repeat`);
-  pass 5 (`widths/mod.rs`) width-checks the loop body per iteration —
+  pass 7 (`widths/`) width-checks the loop body per iteration —
   ordinary `E04xx` codes fire on a bad drive/expression inside, exactly as
   they would outside a loop. The loop variable is scoped strictly to the
   body in both passes (leaks are a bug, not a diagnosable user error).
@@ -295,19 +342,19 @@ routes to `E0417` plus whatever the lowered `Repeat`/`Loop` triggers:
   the checker runs before `ast::sync_loop_lower`'s desugaring into
   `Port`/`Reg`/`On`/`Drive` primitives (see
   [`docs/source-guide/05-ast.md`](../source-guide/05-ast.md)):
-  - `names.rs` (pass 4) declares the loop's 4 generated signals
+  - `names/` (pass 6) declares the loop's 4 generated signals
     (`<name>_start`/`_done`/`_result`/the counter) so a collision with a
     user-declared signal reuses **E0003**; its `on rise(...)`/`on
 fall(...)` clock clause reuses **E0109** if the name isn't a real
     clock (`b.what()` names what it actually is).
-  - `widths/mod.rs` (pass 5) width-checks the `result_ty`/`result_init`
+  - `widths/` (pass 7) width-checks the `result_ty`/`result_init`
     pair and the `lo`/`hi` bounds through the same machinery as any other
     typed declaration and const position — no new codes.
-  - `drivers.rs` (pass 6) treats the sync loop's body exactly like an
+  - `drivers.rs` (pass 8) treats the sync loop's body exactly like an
     `on`-block body (`self.on_block(dcx, sl.span.start, &sl.body)`), so
     single-driver/coverage/`=`-vs-`<-` rules (**E0501–E0505**) apply
     unchanged.
-  - `clocks.rs` (pass 7) colors the generated result register with the
+  - `clocks.rs` (pass 9) colors the generated result register with the
     sync loop's own clock, exactly like a normal `reg` — **E0701**
     applies if it's read across a domain elsewhere.
 
