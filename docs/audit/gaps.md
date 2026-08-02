@@ -243,7 +243,10 @@ the checker and a large drop in allocator pressure.
 
 ## GAP-5 (HIGH, testing) — No declared-type-vs-produced-value oracle; self-determined positions ungenerated
 
-**Status:** OPEN. Filed 2026-08-02.
+**Status:** PARTIALLY ADDRESSED 2026-08-02 (branch
+`bug-28-29-self-determined-extend-abs`). Direction 2's static matrix is landed;
+direction 1 (the width-conformance fuzzer property) and the fuzzer's own
+position-aware generation are still open.
 
 **What.** The test architecture is strong — Icarus differential in two layers,
 `REQUIRE_IVERILOG=1` so it can never silently skip, a 1003-line random-program
@@ -282,6 +285,25 @@ But **every oracle compares simulator vs. Verilog.** There is no oracle assertin
    Drive the matrix off the `Builtin` enum so a newly added builtin **fails the
    build** until it is classified. This catches the entire BUG-28/29 class and
    prevents its recurrence.
+
+   **Landed (static matrix half only).** `tests/self_determined_regression.rs`
+   gained `matrix_shape` — an exhaustive match over `Builtin` (no wildcard; a
+   14th variant is a compile error until classified there) plus one
+   differential test per testable variant. Tracing the actual call graph while
+   fixing BUG-29 found the "5 positions" framing overstates the real
+   dimensionality: `verilog_self_determined_kind`, `kind_is_inferrable`, and
+   `hoist_if_needed` are pure functions of the expression alone and are the
+   _exact same three functions_ at every call site (`Concat`/`Replicate` share
+   one code path byte-for-byte; a comparison operand and a `$signed`/
+   `$unsigned` argument are two more, already exercised) — so one test per
+   builtin at one position (a `Concat` member) exercises the whole shared
+   mechanism, and a replication COUNT can never carry a runtime builtin call
+   at all (`replicate_ty` requires it compile-time-constant, and it folds to
+   a literal before emit ever reaches this code). The fuzzer's own generator
+   extension (placing RANDOM programs, not hand-picked ones, into these
+   positions) is not done — still open, and is where BUG-28/29-_shaped_ bugs
+   in operators (not builtins) would be caught. Direction 1
+   (width-conformance property, BUG-30's own oracle gap) is also still open.
 
 ---
 

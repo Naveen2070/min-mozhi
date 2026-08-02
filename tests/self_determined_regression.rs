@@ -530,3 +530,169 @@ fn bug_24_regression_nested_shift_lhs_of_shift_stays_unhoisted() {
     // numeric divergence from Icarus (20 vs 4).
     differential(src, &[("p0", 5)]);
 }
+
+// ---------------------------------------------------------------------
+// GAP-5's "position matrix" (docs/audit/gaps.md): every `Builtin`
+// classified for its self-determined-position behavior, so a 14th builtin
+// fails to compile here until classified — not just inside
+// `self_determined.rs` itself.
+//
+// Architecture note, found while fixing BUG-29: `verilog_self_determined_
+// kind`, `kind_is_inferrable`, and `hoist_if_needed` are pure functions of
+// the EXPRESSION alone, and are the exact same three functions at every
+// call site (`Concat`, `Replicate`, a comparison operand, a `$signed`/
+// `$unsigned` argument) — there is one gate and one classifier, not five.
+// So the real risk for a new builtin is "was it classified at all in these
+// three places" (BUG-29's own gap — `self_determined.rs` alone was NOT
+// sufficient), not "was it tested in enough AST positions." One
+// differential test per testable builtin, at the simplest position to
+// construct (a `Concat` member), exercises the full shared mechanism.
+// Replication's body uses the byte-identical code path (`expr.rs`'s
+// `Concat`/`Replicate` arms are the same two calls in the same order) —
+// already cross-checked for `extend`/`abs` by the BUG-28/29 tests above.
+// A replication COUNT never carries a runtime builtin call at all:
+// `replicate_ty` requires it compile-time-constant, and `index_expr`'s
+// `consteval::eval` short-circuit folds it straight to a literal before
+// emit ever reaches this code path — untestable by construction, for any
+// builtin.
+// ---------------------------------------------------------------------
+
+/// One `Builtin`'s operand shape, for building a minimal legal `Concat`
+/// member around it. Each variant's own doc comment on `matrix_shape`
+/// records the specific reasoning; this type only distinguishes the
+/// shapes that need a differently-arity handwritten test below from the
+/// ones that can never reach a rendered self-determined position at all.
+enum MatrixShape {
+    /// One `bits`/`signed` operand (`extend`/`trunc`/`signed`/`unsigned`/
+    /// `abs`/`nand`/`nor`/`xnor`).
+    Unary,
+    /// Two same-width, same-kind operands (`min`/`max`).
+    Binary,
+    /// Never reaches a rendered self-determined position as a live
+    /// sub-expression at all — compile-time-only, or lowered to items
+    /// before emit.
+    NotApplicable,
+}
+
+/// Exhaustive over `Builtin` (no wildcard arm) — a 14th variant is a
+/// compile error here until classified.
+fn matrix_shape(b: ast::Builtin) -> MatrixShape {
+    use ast::Builtin::*;
+    match b {
+        Extend | Trunc | SignedCast | UnsignedCast | Abs | Nand | Nor | Xnor => MatrixShape::Unary,
+        Min | Max => MatrixShape::Binary,
+        // Compile-time only — the checker rejects it in a runtime value
+        // position (`checker/widths/ops/builtins.rs`, E0407).
+        Clog2 => MatrixShape::NotApplicable,
+        // Lowered to items (registers/always blocks) before emit — never
+        // an inline sub-expression.
+        SyncDoubleFlop | SyncPulse => MatrixShape::NotApplicable,
+    }
+}
+
+/// Every `Builtin` variant, by name — what the test below iterates.
+/// `matrix_shape`'s own exhaustive match is the actual build-time guard;
+/// this array is a second, independent check that nothing was classified
+/// there but forgotten here.
+const ALL_BUILTINS: &[ast::Builtin] = &[
+    ast::Builtin::Extend,
+    ast::Builtin::Trunc,
+    ast::Builtin::SignedCast,
+    ast::Builtin::UnsignedCast,
+    ast::Builtin::Min,
+    ast::Builtin::Max,
+    ast::Builtin::Abs,
+    ast::Builtin::Nand,
+    ast::Builtin::Nor,
+    ast::Builtin::Xnor,
+    ast::Builtin::Clog2,
+    ast::Builtin::SyncDoubleFlop,
+    ast::Builtin::SyncPulse,
+];
+
+#[test]
+fn every_builtin_is_classified_in_the_matrix() {
+    assert_eq!(
+        ALL_BUILTINS.len(),
+        13,
+        "a Builtin variant was added or removed without updating this matrix \
+         (docs/audit/gaps.md GAP-5)"
+    );
+    for b in ALL_BUILTINS {
+        let _ = matrix_shape(*b);
+    }
+}
+
+#[test]
+fn matrix_trunc_in_concat_matches_icarus() {
+    // `trunc` renders as an explicit part-select `x[N-1:0]` — already
+    // exactly N bits in Verilog, so `self_determined.rs` classifies it
+    // `None` (no mismatch possible). This pins that classification against
+    // real Icarus rather than leaving it as review-only prose.
+    let src = "module Fuzz {\n  in a: bits[6]\n  in b: bits[4]\n  out y: bits[6]\n  \
+                y = { b, trunc(a, 2) }\n}\n";
+    // a=0b101011 (43): trunc to 2 bits keeps the low 2 (0b11=3). b=0b1010 (10).
+    differential(src, &[("a", 0b101011), ("b", 0b1010)]);
+}
+
+#[test]
+fn matrix_min_in_concat_matches_icarus() {
+    // `min`/`max` render to a ternary whose operands are same-width by the
+    // checker's own rule, so `max(operand widths) == N` — classified
+    // `None`. Pinned against Icarus.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  in c: bits[4]\n  \
+                out y: bits[8]\n  y = { c, min(a, b) }\n}\n";
+    // a=5, b=9, c=10: min(5,9)=5. y = (10<<4)|5.
+    differential(src, &[("a", 5), ("b", 9), ("c", 10)]);
+}
+
+#[test]
+fn matrix_max_in_concat_matches_icarus() {
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  in c: bits[4]\n  \
+                out y: bits[8]\n  y = { c, max(a, b) }\n}\n";
+    // a=5, b=9, c=10: max(5,9)=9. y = (10<<4)|9.
+    differential(src, &[("a", 5), ("b", 9), ("c", 10)]);
+}
+
+#[test]
+fn matrix_nand_in_concat_matches_icarus() {
+    // Reductions are 1-bit on both sides regardless of operand width —
+    // classified `None`. Pinned against Icarus.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[5]\n  \
+                y = { b, nand(a) }\n}\n";
+    // a=0b1111: and-reduce=1, nand=0. b=0b1010 (10). y = (10<<1)|0 = 20.
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn matrix_nor_in_concat_matches_icarus() {
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[5]\n  \
+                y = { b, nor(a) }\n}\n";
+    // a=0b0000: or-reduce=0, nor=1. b=0b1010 (10). y = (10<<1)|1 = 21.
+    differential(src, &[("a", 0b0000), ("b", 0b1010)]);
+}
+
+#[test]
+fn matrix_xnor_in_concat_matches_icarus() {
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[5]\n  \
+                y = { b, xnor(a) }\n}\n";
+    // a=0b1010: xor-reduce=1^0^1^0=0, xnor=1. b=0b0101 (5). y = (5<<1)|1 = 11.
+    differential(src, &[("a", 0b1010), ("b", 0b0101)]);
+}
+
+#[test]
+fn matrix_signed_unsigned_cast_roundtrip_in_concat_matches_icarus() {
+    // `$signed`/`$unsigned`'s argument is self-determined at its own width
+    // — same as mimz's own model — UNLESS the argument is itself a
+    // mismatched sub-expression, caught by recursion rather than at this
+    // arm. Nesting `unsigned(signed(a))` around a plain identifier (which
+    // is never mismatched — `Ident` is the recursion's base case) confirms
+    // the recursion through both cast arms stays a no-op when there is
+    // nothing underneath to hoist, i.e. that widening `kind_is_inferrable`
+    // to admit `Abs` didn't spuriously start hoisting this unrelated,
+    // already-correct shape.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[8]\n  \
+                y = { b, unsigned(signed(a)) }\n}\n";
+    // a=0b1011 (11), b=0b0101 (5). y = (5<<4)|11 = 91.
+    differential(src, &[("a", 0b1011), ("b", 0b0101)]);
+}
