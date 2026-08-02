@@ -2062,7 +2062,7 @@ extension).
 
 ---
 
-## BUG-30 (HIGH, OPEN) — A shift's declared type does not bound its value; naming an intermediate changes the result
+## BUG-30 (HIGH, FIXED 2026-08-02) — A shift's declared type does not bound its value; naming an intermediate changes the result
 
 **What.** Two expressions with the **identical declared type** `bits[4]` produce
 different values, and the simulator and real Icarus both agree on the
@@ -2105,23 +2105,69 @@ but:
   wire silently changes behavior. That is exactly the Verilog wart the language
   exists to remove, and the single hardest thing to explain to a beginner.
 
-**Fix (decision required — do not leave the semantics split).**
+**Fix (landed 2026-08-02, branch `bug-30-self-determined-shifts`).** Chose
+**(b) growing shifts**, not (a)'s self-determined-truncating option — real
+Verilog's own `<<` already grows via context (ground-truthed by BUG-11), and
+every peer HDL built specifically to fix Verilog's footguns (Chisel,
+SpinalHDL, Bluespec) also grows rather than truncates; truncating would mean
+`extend(din << 2, 8)` silently drops bits, the exact "dropped-carry" class
+spec/01's "safe by default" claim exists to prevent. `<<` now grows: a
+constant shift amount grows by exactly that amount; a runtime signal grows by
+its own worst case (`2^width(amount) - 1`, Chisel's own rule). `>>` is
+unchanged (`grows: false`) — right-shifting only ever reduces magnitude, so
+it was never wrong.
 
-- **(a) Self-determined shifts, enforced (recommended).** `bits[W] << k` is
-  `bits[W]`, and the emitter hoists every shift into a `wire [W-1:0]` before use.
-  Predictable, teachable, declared type matches the value everywhere. Cost:
-  `extend(din << 2, 8)` now yields 12, so widening requires
-  `extend(din, 8) << 2` — more honest, and the checker can suggest exactly that
-  rewrite in the diagnostic. Smaller diff: the hoisting machinery is the same
-  machinery BUG-28 needs.
-- **(b) Growing shifts.** `bits[W] << const k` is `bits[W+k]`; reject
-  non-constant shift amounts in a widening position, or grow by
-  `2^width(amount) - 1`. Matches the value; costs bits on dynamic shifts.
+- `width_rules::shift_result` gained `const_amount`/`grows` parameters
+  (`crates/mimz-core/src/width_rules.rs`).
+- The checker's `shift_ty` needed no width-rule change (it already typed
+  shifts as self-determined) — just wiring the new parameters through
+  (`crates/mimz-core/src/checker/widths/ops/mod.rs`).
+- The emitter's `infer_binary` (`emit_verilog/kinds.rs`) computes
+  `const_amount` from a bare literal shift amount; everywhere else the
+  EXISTING BUG-24 hoist scoping (`hoist_width_effect_operand`'s `allow_shift`)
+  turned out to already classify every position correctly for growing
+  semantics too — self-determined positions (concat/replicate members, a
+  non-shift sibling operator) already hoisted, and the context-determined
+  positions it deliberately left un-hoisted (`extend`'s argument, `if`/`match`
+  branches, a shift's own LHS when the outer op is also a shift) are provably
+  harmless under growing (extra ambient width beyond the safe minimum is pure
+  zero/sign-extension of an already-lossless value — no truncation-then-
+  extend ordering bug is reachable anymore).
+- The simulator's BUG-11 context-threading (`eval_ctx`, `expected_width`
+  through `binary_ctx`/`binary_known`/`shl`/`shr`) became entirely dead once
+  growing removed the need for it — deleted; `eval_ctx` collapsed back into
+  plain `eval` (`crates/mimz-sim/src/sim/value/{mod,binary}.rs`).
+- Found along the way: a directly-compiled parametric module (`reg sr:
+bits[WIDTH]`) was silently absent from the emitter's own `decls` map
+  (`resolved_kind` needs a concrete width; `self.env` never had `WIDTH`
+  bound outside an instantiation), so hoisting silently never fired for any
+  parametric-width signal — invisible until growing-shift's new hoist need
+  exposed it (`trunc(sr << 1, WIDTH)` rendered as an illegal Verilog
+  part-select of a compound expression). Fixed by binding each parameter's
+  own default value into `self.env` for the duration of `build_decls` only
+  (`emit_verilog/module/mod.rs`) — real per-instance Verilog overrides still
+  render symbolically everywhere else. Known residual gap: the hoisted
+  wire's width is the parameter's DEFAULT, not a per-instantiation override,
+  so a real Verilog-level `#(.WIDTH(16))` override on a module whose default
+  differs would size the hoisted wire wrong — pre-existing (every earlier
+  hoist fix had the same silent-no-op gap for parametric widths, just never
+  exercised until now), not newly introduced, and out of this fix's scope
+  (needs symbolic-width-aware hoisting, GAP-1-adjacent).
+- The classic shift-register idiom (`sr <- (sr << 1) | extend(din, WIDTH)`)
+  now needs an explicit `trunc`: `sr <- trunc(sr << 1, WIDTH) | extend(din,
+WIDTH)` — updated in `examples/*/shift_register.mimz` (5 flavors) and
+  `showcase/*/uart_echo.mimz` (5 flavors), goldens regenerated.
 
-**Test to land with the fix.** The `Ref` module above as a golden + Icarus
-differential fixture, plus the width-conformance property described in
-[`gaps.md`](gaps.md) GAP-5 (assert every simulated `Val` fits its declared
-width), which catches this entire class rather than this one instance.
+**Test.** `tests/self_determined_regression.rs`'s
+`bug_30_extend_of_a_shift_matches_a_named_wire_of_it` — the `Ref` module
+above (wire retyped `bits[6]`, matching the new grown type) as both a direct
+kernel assertion (`direct == named == 60`) and an Icarus differential
+fixture. `width_rules.rs`/`value/tests.rs` gained unit coverage for the
+growth formula (constant vs. dynamic amount, signedness, `MAX_WIDTH`
+overflow). The width-conformance property described in [`gaps.md`](gaps.md)
+GAP-5 (assert every simulated `Val` fits its declared width) remains open —
+this fix's own targeted tests cover BUG-30 specifically, not that broader
+class.
 
 ---
 

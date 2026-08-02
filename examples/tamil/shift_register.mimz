@@ -1,7 +1,8 @@
 // Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): parameterized shift register.
-// `<<` shifts in zeros from the right; `|` merges in the new low bit
-// every clock edge. `din` is 1 bit and `sr` is WIDTH bits — widths never
-// match implicitly, so `extend(din, WIDTH)` makes the resize visible.
+// `<<` shifts in zeros from the right and GROWS by the shift amount, so
+// `trunc` drops the bit that falls off the top. `|` merges in the new low
+// bit every clock edge. `din` is 1 bit and `sr` is WIDTH bits — widths
+// never match implicitly, so `extend(din, WIDTH)` makes the resize visible.
 
 தொகுதி ShiftRegister(WIDTH: int = 8) {
   துடிப்பு clk
@@ -13,7 +14,7 @@
   பதிவேடு sr: bits[WIDTH] = 0
 
   போது ஏற்றம்(clk) {
-    sr <- (sr << 1) | extend(din, WIDTH)
+    sr <- trunc(sr << 1, WIDTH) | extend(din, WIDTH)
   }
 
   dout = sr

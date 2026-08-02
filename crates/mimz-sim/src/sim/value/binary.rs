@@ -96,18 +96,18 @@ fn unary_known(op: UnOp, v: Val) -> Val {
 }
 
 /// Evaluate a binary operator over two already-evaluated operands.
-/// `expected_width` is the enclosing context's width (an assignment target,
-/// `extend`'s target) — only `Shl`/`Shr` use it; pass `None` for a
-/// self-determined position (see [`eval_ctx`]'s doc comment).
+/// `const_amount` is `Shl`/`Shr`'s compile-time shift amount, if the
+/// source expression had one (see [`eval`]'s `Binary` arm) — every other
+/// operator ignores it; pass `None` when there is none.
 pub(super) fn binary_ctx(
     op: BinOp,
     l: Val,
     r: Val,
-    expected_width: Option<u32>,
+    const_amount: Option<u128>,
     span: mimz_core::span::Span,
 ) -> Result<Val, Box<Diag>> {
     let unknown = l.unknown || r.unknown;
-    binary_known(op, l, r, expected_width, span).map(|mut v| {
+    binary_known(op, l, r, const_amount, span).map(|mut v| {
         if unknown {
             v.unknown = true;
         }
@@ -377,13 +377,45 @@ fn bitxor(l: Val, r: Val) -> Val {
 // context, standalone). `ctx_w` is `l`'s own width when no context
 // is known (self-determined fallback — e.g. a bare test/eval
 // expression with no assignment target).
+/// Maps `width_rules::shift_result`'s `Err` to a `Diag` — shared by `shl`/
+/// `shr` since both call the same shared rule.
+fn shift_rule_err(
+    err: mimz_core::width_rules::RuleError,
+    span: mimz_core::span::Span,
+) -> Box<Diag> {
+    match err {
+        mimz_core::width_rules::RuleError::ShiftAmountSigned => {
+            Box::new(Diag::new(span, "a shift amount cannot be `signed`").with_code("S0221"))
+        }
+        mimz_core::width_rules::RuleError::ShiftGrowthTooWide { lhs, growth } => Box::new(
+            Diag::new(
+                span,
+                format!(
+                    "shifting bits[{}] wider by {growth} bits exceeds the \
+                     {}-bit width limit",
+                    lhs.width,
+                    mimz_core::width_rules::MAX_WIDTH
+                ),
+            )
+            .with_code("S0222"),
+        ),
+        _ => unreachable!("shift_result never returns any other RuleError variant"),
+    }
+}
+
+/// `<<`: BUG-30 (`docs/audit/bugs.md`) — grows so the result always holds
+/// every value it could possibly produce, matching `width_rules::shift_result`
+/// exactly (Chisel's rule: exact growth for a compile-time `const_amount`,
+/// worst-case `2^width(r) - 1` growth for a genuine runtime `r`). No
+/// enclosing context is needed anymore — the grown width IS the correct
+/// width in every position, self-determined or not.
 fn shl(
     l: Val,
     r: Val,
-    expected_width: Option<u32>,
+    const_amount: Option<u128>,
     span: mimz_core::span::Span,
 ) -> Result<Val, Box<Diag>> {
-    let base = mimz_core::width_rules::shift_result(
+    let result = mimz_core::width_rules::shift_result(
         mimz_core::width_rules::Kind {
             width: l.width,
             signed: l.signed,
@@ -392,36 +424,32 @@ fn shl(
             width: r.width,
             signed: r.signed,
         },
+        const_amount,
+        true,
     )
-    .map_err(|_| {
-        Box::new(Diag::new(span, "a shift amount cannot be `signed`").with_code("S0221"))
-    })?;
-    let ctx_w = expected_width
-        .map(|w| w.max(base.width))
-        .unwrap_or(base.width);
-    Ok(if !l.is_wide() && ctx_w <= 128 {
-        let widened = extend_bits(l, ctx_w);
+    .map_err(|e| shift_rule_err(e, span))?;
+    let w = result.width;
+    Ok(if !l.is_wide() && w <= 128 {
+        let widened = extend_bits(l, w);
         let shift = r.bits_small_or_zero();
         let bits = if shift >= 128 {
             0
         } else {
             widened.checked_shl(shift as u32).unwrap_or(0)
         };
-        Val::new(bits, ctx_w, base.signed)
+        Val::new(bits, w, result.signed)
     } else {
-        let widened = wide::extend(&l.to_limbs(), l.width, ctx_w, l.signed);
-        let shift = r.bits_small_or_zero().min(ctx_w as u128) as u32;
-        Val::new_wide(wide::shl(&widened, shift, ctx_w), ctx_w, base.signed)
+        let widened = wide::extend(&l.to_limbs(), l.width, w, l.signed);
+        let shift = r.bits_small_or_zero().min(w as u128) as u32;
+        Val::new_wide(wide::shl(&widened, shift, w), w, result.signed)
     })
 }
 
-fn shr(
-    l: Val,
-    r: Val,
-    expected_width: Option<u32>,
-    span: mimz_core::span::Span,
-) -> Result<Val, Box<Diag>> {
-    let base = mimz_core::width_rules::shift_result(
+/// `>>`: right-shifting only ever reduces a value's magnitude, so the left
+/// operand's own width already bounds the result — unchanged by BUG-30
+/// (`grows: false`), no `const_amount` needed.
+fn shr(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
+    let result = mimz_core::width_rules::shift_result(
         mimz_core::width_rules::Kind {
             width: l.width,
             signed: l.signed,
@@ -430,25 +458,23 @@ fn shr(
             width: r.width,
             signed: r.signed,
         },
+        None,
+        false,
     )
-    .map_err(|_| {
-        Box::new(Diag::new(span, "a shift amount cannot be `signed`").with_code("S0221"))
-    })?;
-    let ctx_w = expected_width
-        .map(|w| w.max(base.width))
-        .unwrap_or(base.width);
-    Ok(if !l.is_wide() && ctx_w <= 128 {
-        let widened = extend_bits(l, ctx_w);
+    .map_err(|e| shift_rule_err(e, span))?;
+    let w = result.width;
+    Ok(if !l.is_wide() && w <= 128 {
+        let widened = extend_bits(l, w);
         let bits = if r.bits_small_or_zero() >= 128 {
             0
         } else {
             widened >> (r.bits_small_or_zero() as u32)
         };
-        Val::new(bits, ctx_w, base.signed)
+        Val::new(bits, w, result.signed)
     } else {
-        let widened = wide::extend(&l.to_limbs(), l.width, ctx_w, l.signed);
-        let shift = r.bits_small_or_zero().min(ctx_w as u128) as u32;
-        Val::new_wide(wide::shr(&widened, shift), ctx_w, base.signed)
+        let widened = wide::extend(&l.to_limbs(), l.width, w, l.signed);
+        let shift = r.bits_small_or_zero().min(w as u128) as u32;
+        Val::new_wide(wide::shr(&widened, shift), w, result.signed)
     })
 }
 
@@ -456,7 +482,7 @@ pub(super) fn binary_known(
     op: BinOp,
     l: Val,
     r: Val,
-    expected_width: Option<u32>,
+    const_amount: Option<u128>,
     span: mimz_core::span::Span,
 ) -> Result<Val, Box<Diag>> {
     Ok(match op {
@@ -469,8 +495,8 @@ pub(super) fn binary_known(
         BinOp::BitAnd => bitand(l, r),
         BinOp::BitOr => bitor(l, r),
         BinOp::BitXor => bitxor(l, r),
-        BinOp::Shl => return shl(l, r, expected_width, span),
-        BinOp::Shr => return shr(l, r, expected_width, span),
+        BinOp::Shl => return shl(l, r, const_amount, span),
+        BinOp::Shr => return shr(l, r, span),
         BinOp::Eq => Val::new(cmp_eq(l, r) as u128, 1, false),
         BinOp::Ne => Val::new(!cmp_eq(l, r) as u128, 1, false),
         BinOp::Lt => Val::new(cmp_lt(l, r) as u128, 1, false),

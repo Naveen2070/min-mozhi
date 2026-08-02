@@ -59,21 +59,55 @@ pub enum RuleError {
     /// for the caller to determine by comparing `a`/`b`'s own fields —
     /// no message text here, same pattern as every other variant.
     KindMismatch { a: Kind, b: Kind },
+    /// `<<`'s grown width (`lhs.width + growth`) exceeds `MAX_WIDTH` —
+    /// same ceiling every other width-producing rule enforces, just
+    /// reached through shift growth instead of a literal or a `+`/`*`
+    /// chain.
+    ShiftGrowthTooWide { lhs: Kind, growth: u128 },
 }
 
-/// `<<`/`>>`: the result keeps the LEFT operand's kind (spec/02 section
-/// 3 — a STATIC type-system invariant, not a claim about the runtime
-/// value Verilog computes once that type flows into a wider context via
-/// an explicit `extend()`; see `docs/audit/bugs.md`'s BUG-11 for why
-/// those are deliberately different rules at different levels). The
-/// simulator layers its own additional context-width growth on top of
-/// this result — see `sim/value.rs`'s `Shl`/`Shr` arms — that part is
-/// simulator-specific value-flow behavior, not a shared static rule.
-pub fn shift_result(lhs: Kind, amount: Kind) -> Result<Kind, RuleError> {
+/// `<<`: BUG-30 (`docs/audit/bugs.md`) — the old rule ("keeps the LEFT
+/// operand's kind, full stop") was a STATIC claim the RUNTIME value
+/// didn't honor: real Verilog's `<<` is context-determined, so the same
+/// `din << 2` computed a different number depending only on whether it
+/// sat in an 8-bit `extend()` or a bare `bits[4]` wire — naming a
+/// subexpression silently changed the answer. Fixed by adopting Chisel's
+/// rule instead of chasing Verilog's: `<<` GROWS, so the declared type
+/// always already bounds the true value, no context needed anywhere.
+/// `const_amount` is `Some(k)` when the shift amount is a compile-time
+/// constant (grows by exactly `k`); `None` for a genuine runtime signal
+/// (grows by the worst case its OWN width can hold, `2^width - 1`).
+///
+/// `>>`: right-shifting only ever REDUCES a value's magnitude, so the
+/// left operand's own width already bounds the result — `grows: false`
+/// keeps the original "preserves the left operand's kind" rule, which
+/// was never wrong for `>>` (BUG-30's repro only ever used `<<`).
+pub fn shift_result(
+    lhs: Kind,
+    amount: Kind,
+    const_amount: Option<u128>,
+    grows: bool,
+) -> Result<Kind, RuleError> {
     if amount.signed {
         return Err(RuleError::ShiftAmountSigned);
     }
-    Ok(lhs)
+    if !grows {
+        return Ok(lhs);
+    }
+    let growth = const_amount.unwrap_or_else(|| {
+        1u128
+            .checked_shl(amount.width)
+            .map(|p| p - 1)
+            .unwrap_or(u128::MAX)
+    });
+    let width = (lhs.width as u128).saturating_add(growth);
+    if width == 0 || width > MAX_WIDTH as u128 {
+        return Err(RuleError::ShiftGrowthTooWide { lhs, growth });
+    }
+    Ok(Kind {
+        width: width as u32,
+        signed: lhs.signed,
+    })
 }
 
 /// `[hi:lo]`, both bounds inclusive, `0 <= lo <= hi < base_width`.
@@ -142,7 +176,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn shift_result_preserves_lhs_kind() {
+    fn shr_preserves_lhs_kind() {
         let lhs = Kind {
             width: 8,
             signed: false,
@@ -151,11 +185,11 @@ mod tests {
             width: 3,
             signed: false,
         };
-        assert_eq!(shift_result(lhs, amount), Ok(lhs));
+        assert_eq!(shift_result(lhs, amount, None, false), Ok(lhs));
     }
 
     #[test]
-    fn shift_result_preserves_signed_lhs() {
+    fn shr_preserves_signed_lhs() {
         let lhs = Kind {
             width: 16,
             signed: true,
@@ -164,7 +198,7 @@ mod tests {
             width: 4,
             signed: false,
         };
-        assert_eq!(shift_result(lhs, amount), Ok(lhs));
+        assert_eq!(shift_result(lhs, amount, None, false), Ok(lhs));
     }
 
     #[test]
@@ -177,7 +211,91 @@ mod tests {
             width: 3,
             signed: true,
         };
-        assert_eq!(shift_result(lhs, amount), Err(RuleError::ShiftAmountSigned));
+        assert_eq!(
+            shift_result(lhs, amount, None, false),
+            Err(RuleError::ShiftAmountSigned)
+        );
+        assert_eq!(
+            shift_result(lhs, amount, None, true),
+            Err(RuleError::ShiftAmountSigned)
+        );
+    }
+
+    #[test]
+    fn shl_with_a_constant_amount_grows_by_exactly_that_amount() {
+        // BUG-30's own repro: `din: bits[4] << 2` must be wide enough to
+        // hold every possible result (up to 15 << 2 == 60, which needs 6
+        // bits) — not stay at `din`'s own 4 bits.
+        let lhs = Kind {
+            width: 4,
+            signed: false,
+        };
+        let amount = Kind {
+            width: 2,
+            signed: false,
+        };
+        assert_eq!(
+            shift_result(lhs, amount, Some(2), true),
+            Ok(Kind {
+                width: 6,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn shl_with_a_dynamic_amount_grows_by_the_amounts_own_worst_case() {
+        // No compile-time value for the amount — it could be anything up
+        // to `2^width - 1` at runtime, so growth must cover THAT worst
+        // case (Chisel's own rule for a hardware shift amount).
+        let lhs = Kind {
+            width: 4,
+            signed: false,
+        };
+        let amount = Kind {
+            width: 3,
+            signed: false,
+        };
+        assert_eq!(
+            shift_result(lhs, amount, None, true),
+            Ok(Kind {
+                width: 4 + 7, // 2^3 - 1 == 7
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn shl_preserves_signedness_while_growing() {
+        let lhs = Kind {
+            width: 8,
+            signed: true,
+        };
+        let amount = Kind {
+            width: 2,
+            signed: false,
+        };
+        assert_eq!(
+            shift_result(lhs, amount, Some(3), true),
+            Ok(Kind {
+                width: 11,
+                signed: true
+            })
+        );
+    }
+
+    #[test]
+    fn shl_growth_past_max_width_is_an_error() {
+        let lhs = Kind {
+            width: 8,
+            signed: false,
+        };
+        let amount = Kind {
+            width: 8,
+            signed: false,
+        };
+        let err = shift_result(lhs, amount, Some(MAX_WIDTH as u128), true).unwrap_err();
+        assert!(matches!(err, RuleError::ShiftGrowthTooWide { .. }));
     }
 
     #[test]

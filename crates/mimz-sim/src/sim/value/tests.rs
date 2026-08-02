@@ -24,45 +24,30 @@ fn bitand_widens_a_narrower_literal_operand() {
 }
 
 #[test]
-fn shl_self_determined_preserves_left_operand_width() {
-    // No context (bare `binary()`, matching a condition/index/loop-bound
-    // position, or a raw compile-time literal with nothing sizing it) —
-    // Verilog's shift is self-determined here: the result stays exactly
-    // `l`'s own width, truncating what doesn't fit. `1 << 2` with `1` at
-    // its minimal width (1 bit) masks the whole result away — that's
-    // correct self-determined behavior, not BUG-6 (BUG-6 was reachable
-    // through `extend(1 << 2, N)`, which now threads `N` in as context —
-    // see `shl_widens_to_context_like_verilog` below).
-    let l = Val::from_int(1); // width 1
-    let r = Val::from_int(2);
-    let res = binary_ctx(BinOp::Shl, l, r, None, sp()).unwrap();
-    assert_eq!(res.masked(), 0); // 4 & mask(1) == 0
-    assert_eq!(res.width, 1);
+fn shl_with_a_constant_amount_grows_by_exactly_that_amount() {
+    // BUG-30 (`docs/audit/bugs.md`): `<<` GROWS now, so its declared type
+    // always already bounds the true value — no ambient context is
+    // threaded in anymore (`binary_ctx`'s 4th argument is `const_amount`,
+    // the shift's OWN compile-time amount, not a target width). `din`
+    // (4-bit) `<< 2` grows to 6 bits, matching BUG-30's own repro:
+    // `direct = extend(din << 2, 8)` and `named = extend(w, 8)` (`w: bits[6]
+    // = din << 2`) now compute the SAME value either way.
+    let din = Val::new(15, 4, false); // BUG-30's repro value
+    let shifted = binary_ctx(BinOp::Shl, din, Val::from_int(2), Some(2), sp()).unwrap();
+    assert_eq!(shifted.width, 6);
+    assert_eq!(shifted.masked(), 60); // 15 << 2, no bits lost
 }
 
 #[test]
-fn shl_widens_to_context_like_verilog() {
-    // BUG-11 (supersedes the BUG-6 fix the old version of this test
-    // asserted — growing the result by the shift amount, unconditionally
-    // — that broke real signal shifts, see `shl_chain_stays_at_shared_
-    // context_width` below). Ground-truthed against `iverilog`: `<<`'s
-    // left operand is CONTEXT-DETERMINED — it widens to the enclosing
-    // width (an assignment target, `extend`'s target) BEFORE the shift,
-    // not truncated-then-extended after.
+fn shl_with_a_dynamic_amount_grows_by_the_amounts_own_worst_case() {
+    // No compile-time amount (`const_amount: None`) — grows by the
+    // worst case the amount's OWN width can hold (`2^width - 1`), same
+    // as `width_rules::shift_result`'s own rule.
     let l = Val::from_int(1); // width 1
-    let r = Val::from_int(2);
-    let res = binary_ctx(BinOp::Shl, l, r, Some(8), sp()).unwrap();
-    assert_eq!(res.width, 8);
-    assert_eq!(res.masked(), 4); // 1 << 2, no bits lost once widened first
-
-    // review-2026-07-17.md's exact repro: din (4-bit) << 2 into an 8-bit
-    // context. iverilog: 28, NOT 12 (12 is what self-determined-then-
-    // truncated-into-8-bits would wrongly give if extension happened
-    // AFTER the shift instead of before).
-    let din = Val::new(7, 4, false);
-    let shifted = binary_ctx(BinOp::Shl, din, Val::from_int(2), Some(8), sp()).unwrap();
-    assert_eq!(shifted.width, 8);
-    assert_eq!(shifted.masked(), 28);
+    let r = Val::new(2, 2, false); // a 2-bit runtime amount, value 2
+    let res = binary_ctx(BinOp::Shl, l, r, None, sp()).unwrap();
+    assert_eq!(res.width, 1 + 3); // 2^2 - 1 == 3
+    assert_eq!(res.masked(), 4); // 1 << 2, no bits lost
 }
 
 #[test]
@@ -100,19 +85,22 @@ fn sub_of_two_signed_values_is_signed() {
 }
 
 #[test]
-fn shl_chain_stays_at_shared_context_width() {
-    // BUG-11's own reproduction: `(a << 2) >> 2` for `a: bits[8]`
-    // assigned to `y: bits[8]` — iverilog says 63, not 255. The context
-    // (8) must be threaded into BOTH shifts, not just the first: a
-    // width that only grows by the shift amount at each step (the old
-    // fix) lets an intermediate carry stray high bits into the second
-    // shift that a real 8-bit-wide Verilog computation never has.
+fn shl_then_shr_loses_no_bits_once_shl_grows() {
+    // BUG-11's own reproduction was `(a << 2) >> 2` for `a: bits[8]`
+    // truncating to 63 instead of 255 — a width that only grows-then-
+    // truncates loses the bits `<<` pushed past the original width.
+    // BUG-30's fix (`docs/audit/bugs.md`) makes this a non-issue
+    // structurally: `<<` grows FIRST (no truncation ever happens), so
+    // chaining `>>` afterward (which never grows, never needs to) always
+    // recovers the original value exactly — no shared/threaded context
+    // required anywhere.
     let a = Val::new(255, 8, false);
-    let shifted_left = binary_ctx(BinOp::Shl, a, Val::from_int(2), Some(8), sp()).unwrap();
-    assert_eq!(shifted_left.width, 8);
-    let shifted_right =
-        binary_ctx(BinOp::Shr, shifted_left, Val::from_int(2), Some(8), sp()).unwrap();
-    assert_eq!(shifted_right.masked(), 63); // NOT 255 — this was BUG-11
+    let shifted_left = binary_ctx(BinOp::Shl, a, Val::from_int(2), Some(2), sp()).unwrap();
+    assert_eq!(shifted_left.width, 10); // 8 + 2, no bits lost
+    assert_eq!(shifted_left.masked(), 1020); // 255 << 2
+    let shifted_right = binary_ctx(BinOp::Shr, shifted_left, Val::from_int(2), None, sp()).unwrap();
+    assert_eq!(shifted_right.width, 10); // `>>` never grows or shrinks
+    assert_eq!(shifted_right.masked(), 255); // exact round-trip, not 63
 }
 
 #[test]
@@ -402,9 +390,13 @@ fn wide_bitand_of_two_512_bit_values() {
 }
 
 #[test]
-fn wide_shl_crosses_a_limb_boundary_in_a_512_bit_context() {
+fn wide_shl_crosses_a_limb_boundary_in_a_512_bit_result() {
+    // `const_amount: Some(504)` grows an 8-bit `l` to 512 bits (BUG-30,
+    // `docs/audit/bugs.md`) — exercising `shl`'s wide (>128-bit) limb
+    // path, independent of the actual shift-by-70 amount below, which
+    // crosses a 64-bit limb boundary.
     let l = Val::new(1, 8, false);
-    let shifted = binary_ctx(BinOp::Shl, l, Val::from_int(70), Some(512), sp()).unwrap();
+    let shifted = binary_ctx(BinOp::Shl, l, Val::from_int(70), Some(504), sp()).unwrap();
     assert_eq!(shifted.width, 512);
     assert!(wide::bit_at(&shifted.to_limbs(), 70));
 }

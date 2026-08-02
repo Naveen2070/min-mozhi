@@ -138,12 +138,34 @@ fn const_fold(expr: &Expr) -> u32 {
     }
 }
 
+/// `<<`'s growth (`width_rules::shift_result`) needs to know whether the
+/// shift amount is a compile-time constant (grow by exactly that value)
+/// or a genuine runtime signal (grow by its worst case). A bare literal
+/// is the only shape this function recognizes as constant — anything
+/// else reaching `infer_kind` (an `Ident`) is, by `kind_is_inferrable`'s
+/// own gating, a real declared signal in `decls`, never a module `int`
+/// parameter (those are excluded from `decls` by design — see this
+/// file's own module doc comment — so an expression naming one never
+/// reaches here at all, safely falling back to unhoisted rendering,
+/// where real Verilog's own context growth is harmless: BUG-30,
+/// `docs/audit/bugs.md`, "over-growth is always safe once the base
+/// growth is already lossless").
+fn shift_const_amount(amount: &Expr) -> Option<u128> {
+    match &amount.kind {
+        ExprKind::Int {
+            value: crate::bits::Bits::Small(v),
+            ..
+        } => Some(*v),
+        _ => None,
+    }
+}
+
 fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>) -> Kind {
     let l = infer_kind(lhs, decls);
     match op {
         BinOp::Shl | BinOp::Shr => {
             let r = infer_kind(rhs, decls);
-            crate::width_rules::shift_result(l, r)
+            crate::width_rules::shift_result(l, r, shift_const_amount(rhs), op == BinOp::Shl)
                 .expect("checker already validated this shift's operand kinds")
         }
         BinOp::Add | BinOp::Sub => {
