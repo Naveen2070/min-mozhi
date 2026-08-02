@@ -84,7 +84,9 @@ fn kind_is_inferrable(expr: &Expr, decls: &HashMap<String, crate::width_rules::K
             Builtin::Extend | Builtin::Trunc => {
                 matches!(args[1].kind, ExprKind::Int { .. }) && kind_is_inferrable(&args[0], decls)
             }
-            Builtin::SignedCast | Builtin::UnsignedCast => kind_is_inferrable(&args[0], decls),
+            Builtin::SignedCast | Builtin::UnsignedCast | Builtin::Abs => {
+                kind_is_inferrable(&args[0], decls)
+            }
             _ => false,
         },
         _ => false,
