@@ -1861,7 +1861,7 @@ CODE via `assert_code`, not just message text; moved from `known_gaps` to
 
 ---
 
-## BUG-28 (CRITICAL, OPEN) — `extend()` in a Verilog self-determined position emits an unsized operand → silent miscompile
+## BUG-28 (CRITICAL, FIXED 2026-08-02) — `extend()` in a Verilog self-determined position emits an unsized operand → silent miscompile
 
 **What.** A checker-clean, simulator-green program whose emitted Verilog computes
 a **different value** under real Icarus. `extend(x, N)` is rendered as the bare
@@ -1938,8 +1938,11 @@ self-determined one, which the generator never produces. See
 verifies green in simulation and is wrong in silicon, with no diagnostic. It
 survives `mimz check`, `mimz test`, the Icarus example suite, and the fuzzer.
 
-**Fix (proposed, not yet landed).** Make the `Call` arm exhaustive so a new
-builtin cannot silently inherit `None`:
+**Fix (landed 2026-08-02, branch `bug-28-29-self-determined-extend-abs`).**
+The `Call` arm is now exhaustive over `Builtin`, exactly as proposed below —
+`extend`'s own two upstream gates (`kind_is_inferrable`, `infer_call`) already
+classified it, so this one file was sufficient for `extend` specifically
+(BUG-29's writeup below covers why `abs` needed two more files):
 
 ```rust
 // crates/mimz-core/src/emit_verilog/self_determined.rs
@@ -1973,16 +1976,17 @@ ExprKind::Call { func, args } => match func {
 (`y = { b, min(a, b) }` matches Icarus exactly); they are listed explicitly
 rather than left to a wildcard so the reasoning is recorded at the site.
 
-**Test to land with the fix.** Add to `tests/self_determined_regression.rs` a
-case per `Builtin` variant × each of the five self-determined positions (concat
-member, replication body, replication count, comparison operand,
-`$signed`/`$unsigned` argument), driven off the `Builtin` enum so a newly added
-builtin **fails the build** until it is classified. Both repros above become
-Icarus differential fixtures.
+**Test (landed).** `bug_28_extend_in_concat_matches_icarus` and
+`bug_28_extend_in_replication_matches_icarus`
+(`tests/self_determined_regression.rs`) — both repros above, exact vectors,
+run against real `iverilog`/`vvp`. Watched both fail first (kernel 2575/51 vs
+Icarus 175/15, matching this entry's own numbers) before the fix. The full
+`Builtin` × 5-position matrix (GAP-5's second ask) is **not** included here —
+larger scope than this bugfix, tracked separately.
 
 ---
 
-## BUG-29 (CRITICAL, OPEN) — `abs()` in a Verilog self-determined position emits an unsized ternary → silent miscompile
+## BUG-29 (CRITICAL, FIXED 2026-08-02) — `abs()` in a Verilog self-determined position emits an unsized ternary → silent miscompile
 
 **What.** Same class and same root cause as BUG-28, different builtin. `abs(x)`
 on a `signed[N]` has result type `signed[N+1]` in mimz, but renders to a Verilog
@@ -2016,9 +2020,42 @@ argument, but that argument is a `Call`, which returns `None` too.
 **Severity.** CRITICAL — same reasoning as BUG-28. Silent, simulation-green,
 hardware-wrong.
 
-**Fix.** Same patch as BUG-28 (the `Builtin::Abs` arm above); land both together.
+**Fix (landed 2026-08-02, branch `bug-28-29-self-determined-extend-abs`).**
+The review's proposed `Builtin::Abs` arm in `self_determined.rs` (BUG-28's
+entry) turned out to be **necessary but not sufficient** — traced the call
+chain by hand before touching code and found two more gates that never knew
+`Abs` existed:
 
-**Test.** Covered by the same `Builtin` × position matrix described in BUG-28.
+- `emit_verilog/expr.rs::kind_is_inferrable` — the pre-check every hoist call
+  site runs _before_ ever calling `hoist_if_needed`. Its `Call` arm allowed
+  only `Extend|Trunc|SignedCast|UnsignedCast`; `Abs` fell to `_ => false`. This
+  means `hoist_if_needed` was **never invoked for `abs(...)` at all**,
+  regardless of what `self_determined.rs` said — patching that file alone is
+  dead code for this builtin. Fixed by adding `Builtin::Abs` to the arm.
+- `emit_verilog/kinds.rs::infer_call` — computes mimz's own `Kind` for the
+  whole `abs(...)` expression (needed as the `mimz_kind` side of the mismatch
+  comparison inside `hoist_if_needed`). Its `other => panic!(...)` catchall
+  didn't handle `Abs` either — would have panicked the moment the gate above
+  opened. Fixed by adding
+  `Builtin::Abs => Kind { width: infer_kind(&args[0], decls).width + 1, signed: true }`,
+  matching the checker's own rule (`checker/widths/ops/builtins.rs`,
+  `Ty::Signed(n) → Ty::Signed(n + 1)`).
+
+With all three gates agreeing, `abs`'s own render arm (`expr.rs:922-927`)
+needed no change — the hoist happens one level up, in whichever caller
+(`Concat`, `Replicate`, the `$signed`/`$unsigned` arm) embeds the rendered
+ternary text.
+
+**Test (landed).** `bug_29_abs_in_concat_matches_icarus`
+(`tests/self_determined_regression.rs`) — the repro above, exact vector, real
+`iverilog`/`vvp`. Watched it fail first (kernel 328 vs Icarus 168, matching
+this entry's own numbers). A planned 4th test (`abs` under a bare top-level
+`$unsigned`, no concat) was written and dropped — it passed even _before_ the
+fix, since `$unsigned`'s argument self-determines correctly on its own
+regardless of the classification gap; the mismatch only bites once the result
+is embedded in another self-determined position, which the concat repro
+already covers. The full `Builtin` × 5-position matrix (GAP-5's second ask) is
+not included here — larger scope than this bugfix, tracked separately.
 
 ---
 
