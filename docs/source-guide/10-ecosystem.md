@@ -78,7 +78,9 @@ This is a standalone dev helper that runs the full test suite and prints a per-b
 cargo test-summary [args]
 ```
 
-It's registered as a cargo alias in `.cargo/config.toml`. The output looks like:
+It's registered as a cargo alias in `.cargo/config.toml`. The output looks
+like this (numbers illustrative — the real run prints a row per binary and
+totals 1115):
 
 ```
 ================ test summary ================
@@ -114,7 +116,25 @@ Three workflows keep the repo healthy:
 
 ## `tests/` — Making Sure Everything Works (23 Test Files)
 
-The test suite is thorough:
+**1115 tests** in total across the workspace, as of 2026-08-02. Run them
+all with `cargo test --workspace` — the `--workspace` flag is NOT optional
+(the root `Cargo.toml` sets `default-members = ["."]`, so a bare
+`cargo test` silently skips `mimz-core` and `mimz-sim`, hiding 845 of
+them). `cargo test-summary --workspace` prints the same run as a
+per-binary table. The per-test ledger, one row per test with what it
+locks in, is [`docs/code/10-test-map.md`](../code/10-test-map.md).
+
+Two more integration suites live beside the crates they test rather than
+in the top-level `tests/` folder:
+
+- **`crates/mimz-sim/tests/sim_errors.rs`** — 79 tests, one per live
+  `S0xxx` runtime code plus a completeness guard, so a new simulator error
+  code cannot ship without a fixture that fires it
+- **`crates/mimz-core/tests/width_rules_conformance.rs`** — 2 tests
+  replaying a shared operator table through BOTH the checker and the
+  simulator, demanding the same width from each
+
+The top-level suite:
 
 - **`errors.rs`** — for every E-code in `ALL_CHECKER_CODES`, loads the corresponding fixture from `tests/fixtures/errors/` and asserts it produces exactly that code
 - **`examples.rs`** — loads every example in all five flavor directories and runs check + compile, verifying they produce no errors
@@ -136,20 +156,25 @@ The test suite is thorough:
 - **`wasm_parity.rs`** — checks that the WASM commands produce the same output as the native CLI
 - **`extern.rs`** — `extern module` (Verilog FFI) end-to-end CLI coverage: `verilog_files`/`--extern-src` union, `extern_sim`/`--extern-sim` mode selection
 - **`packages.rs`** — proves qualified references (`a.b.Name`) disambiguate two files' same-named module through the real `mimz` binary and loader, not a hand-wired unit-test fixture
-- **`self_determined_regression.rs`** — regression tests for BUG-19/BUG-20 (self-determined-position and non-identifier-slice emitter hoisting bugs)
+- **`self_determined_regression.rs`** — regression tests for BUG-19/BUG-20/BUG-23/BUG-24 (self-determined-position, non-identifier-slice, wrap-operand, and shift hoisting bugs), most judged by real Icarus rather than by asserting on text
 - **`showcase.rs`** — mirrors `examples.rs` but over `showcase/`, the designs used by the web playground and doc site
 - **`differential_fuzz.rs`** — random-program differential fuzzing against the simulator (combinational + clocked designs)
 
 **Fixtures:**
 
-- `tests/fixtures/errors/` — 117 `.mimz` files, one per error code (checker + parser/lexer)
+- `tests/fixtures/errors/` — 117 `.mimz` files; every code in `ALL_CHECKER_CODES` has at least one, and several have more than one (different ways to trigger the same rule)
 - `tests/fixtures/grammar/` — 8 grammar conformance examples
+- `tests/fixtures/extern/` and `tests/fixtures/packages/` — 3 files each, for the Verilog-FFI and qualified-reference suites
 - `tests/golden/` — 70 golden Verilog outputs + 17 testbench goldens + 1 VCD trace
-- `tests/icarus/` — 45 Icarus Verilog testbenches
+- `tests/icarus/` — 50 hand-written, self-checking Icarus Verilog testbenches
 
 ## `examples/` — Designs in All Five Flavors
 
-The `examples/` directory has the same 39 designs (plus 5 stdlib modules and 1 lib module) in **four** keyword flavors — English, Tanglish, Tamil, and mixed — plus a **fifth** `tamil-pure/` showcase (20 designs) with Tamil keywords AND identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
+The `examples/` directory holds 39 top-level designs plus 5 stdlib modules (`std/`) and 1 shared library module (`lib/`) — 45 files — in **four** keyword flavors: English, Tanglish, Tamil, and mixed (`mixed/` has 44; one design has no mixed twin). A **fifth** folder, `tamil-pure/`, holds 20 designs written with Tamil keywords AND Tamil identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
+
+The tests iterate two tables in `tests/examples.rs`: `BASE_EXAMPLES` (43 designs that exist in all four flavors, checked byte-identical after reskin) and `PURE_TAMIL` (16 pure-Tamil twins, exempt from byte-identity and instead proven equivalent by canonical renaming). Adding a row to either table extends coverage without adding a `#[test]`.
+
+A parallel `showcase/` directory holds the smaller curated set the web playground and doc site use, covered by `tests/showcase.rs`.
 
 Designs include: adders, counters, FSMs (traffic light, blinker), comparators, multiplexers, shift registers, memories, stdlib modules (seg7, PWM, FIFO, UART, debouncer), and more.
 
@@ -169,7 +194,7 @@ These TOML files are the project's **authoritative data**. The native-speaker pa
 
 **`keywords.toml`** — every keyword has three spellings (English, Tanglish, Tamil) plus optional alias lists per column. A `version` field at the root is cross-checked against `version.rs`. Reserved words for future features are listed at the bottom.
 
-**`messages.toml`** — localized error templates for 33 of 44 checker E-codes (coverage growing), in both Tamil and Tanglish. Each template uses `{name}`, `{name.acc}`, `{name.dat}`, etc. for identifier interpolation.
+**`messages.toml`** — localized error templates for 33 of the 74 checker E-codes (coverage growing), in both Tamil and Tanglish. Each template uses `{name}`, `{name.acc}`, `{name.dat}`, etc. for identifier interpolation.
 
 **`case_suffixes.toml`** — the four Tamil case suffixes (accusative, dative, locative, instrumental) in both Tamil script and Tanglish romanization.
 
@@ -228,5 +253,5 @@ A few important ones at the project root:
 4. **Multi-error reporting** — no pass stops at the first error; all diagnostics are collected
 5. **Stable E-codes** — error codes are never renumbered; `mimz explain` covers them permanently
 6. **Teaching errors** — every error has a help line; long-form explanations live in `explain.rs`
-7. **Shared expression semantics** — `sim/value.rs` has the single evaluator used by both the comb evaluator and the event-driven kernel
+7. **Shared expression semantics** — `sim/value/` has the single evaluator used by both the comb evaluator and the event-driven kernel
 8. **Dumb emitter** — Verilog emission is deliberately naive, preserving symbolic widths and parenthesizing everything for correctness

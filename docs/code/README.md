@@ -77,10 +77,12 @@ both under the same `mimz::…` paths as before the split (see
 `docs/architecture.md` §3 and `src/lib.rs`'s crate-map table):
 
 - `explain` — long-form text per E/W-code, `mimz explain`.
-- `lint` — style and hygiene warnings (`mimz lint`): naming conventions,
-  unused-signal detection, additive and always warning-only.
-- `repl` — interactive read-eval-print loop (`mimz repl`): parses a file
-  once, then evaluates input bindings from stdin on every line.
+- `lint` — style and hygiene warnings (`mimz lint`): naming conventions
+  (W0002/W0003), unused-signal detection (W0004), additive and always
+  warning-only.
+- `stdlib` — the embedded standard library behind `import std.*`: the
+  module catalog, alias routing (English stem vs pure-Tamil twin), and
+  `mimz eject std` vendoring.
 - `translate` — keyword-flavor reskin, `mimz translate --to`.
 - `pretty` — the AST → source pretty-printer behind
   `mimz translate --order code|thamizh`.
@@ -108,8 +110,28 @@ both under the same `mimz::…` paths as before the split (see
 Plus a handful of **operational** commands (bin-only, in `src/commands/`, not
 lib modules — they touch the OS, not the pipeline; page 13): `mimz init`
 (scaffold a project), `mimz doctor`/`env` (toolchain & environment report),
-`mimz completions <shell>` (shell tab-completion), and `mimz check --watch`
-(re-check on save).
+`mimz completions <shell>` (shell tab-completion), `mimz repl` (interactive
+read-eval-print loop — parses a file once, then evaluates input bindings
+from stdin per line), `mimz eject std` (vendor the embedded standard
+library into the project), and `mimz check --watch` (re-check on save).
+
+## Vocabulary — words this folder uses precisely
+
+| Term                         | Means here                                                                                                                                   |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **flavor**                   | A keyword spelling: `english`, `tanglish` (Tamil words in Latin letters), or `tamil` (Tamil script). All three lex to the SAME token.        |
+| **thamizh order**            | Tamil's natural subject-object-verb clause order, enabled per file by `syntax thamizh`. It changes the GRAMMAR, not the keywords.            |
+| **pass**                     | One numbered step inside the checker. Nine of them run in a fixed order (page 11); each collects errors and never stops the others.          |
+| **lowering**                 | Rewriting a convenience construct into primitives the back ends already handle (`foreach` → `repeat`, `sync loop` → registers + FSM).        |
+| **elaboration**              | Turning a parametric AST into a concrete flat design: widths folded to numbers, instances inlined, `repeat` unrolled. Simulator-side.        |
+| **emission**                 | Turning the checked AST into Verilog-2005 text. Compiler-side counterpart of elaboration.                                                    |
+| **self-determined position** | A spot where Verilog computes a subexpression's width by its OWN rule, not the surrounding context (page 5).                                 |
+| **span**                     | A byte range into the NFC-normalized source. Every token and AST node carries one, which is why every error can point at real code.          |
+| **diagnostic**               | An error or warning VALUE (`Diag`), collected and rendered once at the end. Nothing in the pipeline prints or panics mid-pass.               |
+| **E-code / W-code / S-code** | Stable diagnostic identifiers: `E` = compile error, `W` = warning, `S` = simulator runtime error. Never renumbered.                          |
+| **golden file**              | A committed expected output that a test byte-compares against (`tests/golden/`). Regenerate deliberately, review the diff.                   |
+| **differential test**        | Running the same design two ways and demanding identical results — usually our simulator vs. real `iverilog`.                                |
+| **Icarus**                   | [Icarus Verilog](https://steveicarus.github.io/iverilog/) (`iverilog`/`vvp`) — the independent Verilog simulator we check ourselves against. |
 
 ## Keeping these docs honest
 
@@ -120,7 +142,37 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-07-27 (full docs audit across `docs/code/`,
+_Last synced with the code: 2026-08-02 (full docs audit across `docs/code/`,
+`docs/guide/`, and `docs/source-guide/`. **Test count corrected 1034 → 1115**
+(`cargo test --workspace --all-features -- --list`) and `10-test-map.md`'s
+master breakdown rebuilt as a per-binary table; a **Legend** section was
+added to that page (lib unit vs integration vs differential, golden,
+fixture, completeness guard, parametrized loop, flavor, E/W/S-code, Icarus
+Layer 1/2/3). Sections were added for suites the page had never listed —
+`crates/mimz-sim/tests/sim_errors.rs` (79), `tests/self_determined_regression.rs`
+(12), `tests/differential_fuzz.rs` (4), `tests/extern.rs` (5),
+`crates/mimz-core/tests/width_rules_conformance.rs` (2), `bits`/`wide`/
+`width_rules` (50), the AST lowering passes (21), `pretty` (8), `stdlib` (5),
+`runner` (13), `src/emulate/` (42), and the checker's internal pockets
+(`consteval`/`drivers`/`names`, 11). Stale per-section counts were corrected
+(`comb` 18→20, `value` 9→34, `elaborate` 22→24, `kernel` 16→25, run/vcd/trace
+14→16, `harness` 6→25, sim integration 10→17, eval integration 10→15,
+translate integration 13→15, config unit 7→8, config integration 5→7); the
+emitter section was restructured from one file into the `emit_verilog/tests/`
+topic split (28 → 68 across five locations). Fixture counts refreshed (error
+106→117, `_tb.v` 14→17, Icarus TBs 45→50). `11-checker.md`'s file-layout
+table was rebuilt for the nine-call pass order and the `names/`+`widths/`
+directory splits, its section pass-numbers renumbered to match, and the
+`E0904`/`E0905`/`E0908`/`W0001` catalog exceptions documented.
+`05-emit-verilog.md` gained the `module/` sub-table (`module.rs` → 8 files).
+`06-diagnostics.md` gained `E1113`–`E1116`, the `W0002`–`W0004` lint rows,
+a prefix legend, and the corrected localization count (33 of 73 → 33 of 74).
+`docs/source-guide/` chapters were resynced for the `names/`, `widths/`,
+`module/`, `elaborate/`, `value/`, `harness/`, `pretty/` directory splits
+and the checker's seven→nine pass count. `docs/guide/08-sequential-logic.md`
+gained a clock-domain-crossing section (`sync.double_flop`/`sync.pulse` were
+undocumented for users), and `docs/guide/README.md` a glossary.) Prior:
+2026-07-27 (full docs audit across `docs/code/`,
 `docs/guide/`, `docs/source-guide/`, `docs/how-the-compiler-works.md`, and
 `docs/BUILD.md`, prompted by the `oversized-test-file-split` branch: test
 count corrected 765→1034 (`cargo test-summary --workspace`); `10-test-map.md`

@@ -1,6 +1,12 @@
-# 7 — The Verilog Emitter (7 Files)
+# 7 — The Verilog Emitter
 
 This takes the checked AST and turns it into synthesizable Verilog-2005 text.
+
+Six top-level files plus a `module/` folder (8 files, the module body) and a
+`tests/` folder (11 files). The one job of every file here is TEXT: by the
+time the emitter runs, the checker has already proven the design is legal,
+so nothing in this stage decides whether a program is correct — only how it
+is spelled in Verilog.
 
 ## `crates/mimz-core/src/emit_verilog/mod.rs` — The Big Picture
 
@@ -12,9 +18,23 @@ This takes the checked AST and turns it into synthesizable Verilog-2005 text.
 
 **`REPEAT_BUDGET = 4096`** — maximum unroll iterations. Prevents a malicious file from producing gigabytes of Verilog.
 
-## `crates/mimz-core/src/emit_verilog/module.rs` — Module Shell
+## `crates/mimz-core/src/emit_verilog/module/` — Module Shell (8 Files)
 
-Generates:
+This grew past the ~600-line house limit and became a folder. `mod.rs` keeps
+the entry point and the item-dispatch loop; each sibling owns one concern:
+
+| File               | Owns                                                                        |
+| ------------------ | --------------------------------------------------------------------------- |
+| `mod.rs`           | The `module()` entry and the item dispatch loop                             |
+| `ports.rs`         | Port/parameter lists, declarations, width folding, the two hoist helpers    |
+| `drives.rs`        | Combinational `assign` lines                                                |
+| `seq.rs`           | `on`-block bodies — statement `if`, `default`, `loop` unrolling             |
+| `instances.rs`     | `repeat` flattening, per-item const folding, instance auto-wiring           |
+| `funcs.rs`         | `fn` inlining: body substitution and `loop` unrolling with `return` cut-off |
+| `bundle_fields.rs` | Bundle-field expansion — `bus.field` resolves to the flattened `bus_field`  |
+| `tests.rs`         | Unit tests for the above                                                    |
+
+Together they generate:
 
 ```
 module Name #(parameter W = 8) (input wire clk, output reg [W-1:0] y);
@@ -45,7 +65,7 @@ already have failed the build.
 **`sync loop`** (`ModuleItem::SyncLoop`) is different: `crate::ast::lower_sync_loop`
 rewrites it into real `Port`/`Reg`/`On`/`Drive` items (an index register plus
 a `start`/`done` handshake FSM) BEFORE this module's normal item-emission
-loop runs, so by the time `module.rs` sees it, it's indistinguishable from
+loop runs, so by the time `module/mod.rs` sees it, it's indistinguishable from
 hand-written primitives — there is no dedicated `SyncLoop`-shaped Verilog
 output at all.
 

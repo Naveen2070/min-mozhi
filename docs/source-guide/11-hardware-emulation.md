@@ -17,7 +17,7 @@ real-world clock rate.
 split) — no ratatui, no crossterm, no cpal. But peripherals need exactly
 those. The fix: `mimz-sim` defines a trait, `EmulationHost`, and never
 imports anything ratatui/cpal-flavored itself. The harness
-(`sim/harness.rs`) holds `Option<Box<dyn EmulationHost>>` — `None` means
+(`sim/harness/mod.rs`) holds `Option<Box<dyn EmulationHost>>` — `None` means
 "no host, run headless like always."
 
 **`Direction`** — `Input` (the peripheral drives the sim, like `uart_rx`)

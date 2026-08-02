@@ -159,7 +159,7 @@ the language has none).
 **`width_rules.rs`** holds `MAX_WIDTH` (1,000,000 — the ceiling every pass
 enforces) and `Kind` (width + signedness), plus the width/signedness
 inference rules themselves (`shift_result` and friends). The checker's
-`widths` pass and the simulator's `sim/value.rs` each used to compute these
+`widths` pass and the simulator's `sim/value/` each used to compute these
 independently — two copies of the same rule can drift, which is exactly
 how BUG-21 happened (the simulator's slice evaluator disagreed with the
 checker's own `slice_ty` on signedness). This module holds one

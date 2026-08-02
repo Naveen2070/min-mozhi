@@ -1858,3 +1858,367 @@ structurally-identical condition shared across `elaborate/module.rs` and
 CODE via `assert_code`, not just message text; moved from `known_gaps` to
 `covered` in `every_sim_code_has_a_fixture_above`. Full workspace
 1115/1115, clippy/fmt clean.
+
+---
+
+## BUG-28 (CRITICAL, OPEN) — `extend()` in a Verilog self-determined position emits an unsized operand → silent miscompile
+
+**What.** A checker-clean, simulator-green program whose emitted Verilog computes
+a **different value** under real Icarus. `extend(x, N)` is rendered as the bare
+`(x)`, relying entirely on the enclosing assignment's context width to
+zero/sign-extend. A concat member and a replication body are
+**self-determined** positions with no such context, so the padding bits are never
+materialized and every field to the left shifts down.
+
+**Repro A — concat.**
+
+```mimz
+module CC { in a: bits[4]  in b: bits[4]  out y: bits[12]
+  y = { b, extend(a, 8) } }
+
+test "concat with extend" for CC { a = 0b1111  b = 0b1010
+  expect y == 0b1010_0000_1111 }
+```
+
+```text
+mimz test  → ok (1 passed)
+emitted    → assign y = {b, (a)};
+iverilog   → y = 000010101111     ✗  (expected 101000001111)
+```
+
+**Repro B — replication.**
+
+```mimz
+module R { in a: bits[2]  out y: bits[8]
+  y = {2{ extend(a, 4) }} }
+
+test "rep" for R { a = 0b11  expect y == 0b0011_0011 }
+```
+
+```text
+mimz test  → ok (1 passed)
+emitted    → assign y = {2{(a)}};
+iverilog   → y = 00001111         ✗  (expected 00110011)
+```
+
+**Cause.** `crates/mimz-core/src/emit_verilog/self_determined.rs:22`.
+`verilog_self_determined_kind` models Verilog's self-determined width for
+`ExprKind::Binary` and for `$signed`/`$unsigned`, then falls through with
+`_ => None` — documented as _"no Verilog-specific rule differs from mimz's own
+here."_ `Builtin::Extend` lands in that arm, but its rule **does** differ:
+Verilog gives the rendered `(x)` the **argument's own width**, never `N`.
+
+The hoisting machinery that fixes this already exists (`hoist_if_needed`,
+`__mimz_sub_N` in `emit_verilog/module/ports.rs:266`) and works correctly for
+binary operators and for `if`/`match` branches — verified during the review:
+
+```text
+y = { b, a + b }   →   wire [4:0] __mimz_sub_1;
+                       assign __mimz_sub_1 = (a + b);
+                       assign y = {b, __mimz_sub_1};      ✓ matches iverilog
+```
+
+**This is BUG-19's fix, landed for operators and never extended to the builtin
+table.** Same LRM rule (Verilog-2005 §5.4.1), same mechanism, uncovered case.
+
+**How found.** CTO Architectural Review 2026-08-02
+([`review-2026-08-02.md`](review-2026-08-02.md) F-1), by hand-probing every
+`Builtin` in each self-determined position against `iverilog`/`vvp`.
+
+**Why the existing oracles missed it.** Every differential oracle in the suite
+compares **simulator vs. Verilog on generated programs**. The random-program
+fuzzer's generator is documented as checker-clean _"by construction — every
+combine step unifies operand widths via `extend()`"_
+(`tests/differential_fuzz.rs:8`), which keeps every `extend` in a
+**context-determined** position. The broken case only appears in a
+self-determined one, which the generator never produces. See
+[`gaps.md`](gaps.md) GAP-5.
+
+**Severity.** CRITICAL — the worst failure mode an HDL compiler has. The design
+verifies green in simulation and is wrong in silicon, with no diagnostic. It
+survives `mimz check`, `mimz test`, the Icarus example suite, and the fuzzer.
+
+**Fix (proposed, not yet landed).** Make the `Call` arm exhaustive so a new
+builtin cannot silently inherit `None`:
+
+```rust
+// crates/mimz-core/src/emit_verilog/self_determined.rs
+ExprKind::Call { func, args } => match func {
+    // `extend(x, N)` renders as bare `(x)` — Verilog gives it the
+    // ARGUMENT's width in a self-determined position, never N. Report
+    // that so the caller sees the mismatch against mimz's Kind{N} and
+    // hoists to `wire [N-1:0] __mimz_sub_k`.
+    Builtin::Extend => Some(Kind {
+        width: self_determined_operand_width(&args[0], decls),
+        signed: infer_kind(expr, decls).signed,
+    }),
+    Builtin::Abs => Some(Kind {          // BUG-29
+        width: self_determined_operand_width(&args[0], decls),
+        signed: infer_kind(expr, decls).signed,
+    }),
+    // `trunc` renders as an explicit part-select `x[N-1:0]` — already
+    // exactly N bits in Verilog. Min/Max render to a ternary whose
+    // operands are same-width by the checker's own rule, so max() == N.
+    // Reductions are 1-bit on both sides. No mismatch possible.
+    Builtin::Trunc | Builtin::Min | Builtin::Max
+    | Builtin::Nand | Builtin::Nor | Builtin::Xnor => None,
+    Builtin::SignedCast | Builtin::UnsignedCast =>
+        verilog_self_determined_kind(&args[0], decls),
+    Builtin::Clog2 => None,  // const-folded before emit
+    Builtin::SyncDoubleFlop | Builtin::SyncPulse => None, // lowered to items
+},
+```
+
+`Min`/`Max` were empirically confirmed correct-as-is during the review
+(`y = { b, min(a, b) }` matches Icarus exactly); they are listed explicitly
+rather than left to a wildcard so the reasoning is recorded at the site.
+
+**Test to land with the fix.** Add to `tests/self_determined_regression.rs` a
+case per `Builtin` variant × each of the five self-determined positions (concat
+member, replication body, replication count, comparison operand,
+`$signed`/`$unsigned` argument), driven off the `Builtin` enum so a newly added
+builtin **fails the build** until it is classified. Both repros above become
+Icarus differential fixtures.
+
+---
+
+## BUG-29 (CRITICAL, OPEN) — `abs()` in a Verilog self-determined position emits an unsized ternary → silent miscompile
+
+**What.** Same class and same root cause as BUG-28, different builtin. `abs(x)`
+on a `signed[N]` has result type `signed[N+1]` in mimz, but renders to a Verilog
+ternary, which Verilog self-determines at `max(operand widths)` = `N` — one bit
+short.
+
+**Repro.**
+
+```mimz
+module Q { in a: signed[4]  in b: bits[4]  out y: bits[9]
+  y = { b, unsigned(abs(a)) } }
+
+test "abs concat" for Q { a = -8  b = 0b1010
+  expect y == 0b1010_01000 }
+```
+
+```text
+mimz test  → ok (1 passed)
+emitted    → assign y = {b, $unsigned(((a < 0) ? (-a) : (a)))};
+iverilog   → y = 010101000        ✗  (expected 101001000)
+```
+
+**Cause.** `crates/mimz-core/src/emit_verilog/self_determined.rs:22`,
+`Builtin::Abs` falls into the `_ => None` arm. Note the `$unsigned(...)` wrapper
+does **not** save it: `verilog_self_determined_kind` recurses into the cast's
+argument, but that argument is a `Call`, which returns `None` too.
+
+**How found.** CTO Architectural Review 2026-08-02
+([`review-2026-08-02.md`](review-2026-08-02.md) F-1 Repro C).
+
+**Severity.** CRITICAL — same reasoning as BUG-28. Silent, simulation-green,
+hardware-wrong.
+
+**Fix.** Same patch as BUG-28 (the `Builtin::Abs` arm above); land both together.
+
+**Test.** Covered by the same `Builtin` × position matrix described in BUG-28.
+
+---
+
+## BUG-30 (HIGH, OPEN) — A shift's declared type does not bound its value; naming an intermediate changes the result
+
+**What.** Two expressions with the **identical declared type** `bits[4]` produce
+different values, and the simulator and real Icarus both agree on the
+difference — so it is the _type_ that is wrong, not either evaluator.
+
+```mimz
+module Ref { in din: bits[4]
+  out direct: bits[8]   out named: bits[8]
+  wire w: bits[4] = din << 2
+  direct = extend(din << 2, 8)
+  named  = extend(w, 8) }
+```
+
+```text
+mimz test  → FAIL: direct = 60, named = 12
+iverilog   → direct = 60, named = 12      (simulator and hardware agree)
+```
+
+`din << 2` is typed `bits[4]`, which claims the value is at most 15. With
+`din = 15` it is 60 — a 6-bit value.
+
+**Cause.** This is BUG-11's residue. BUG-11's fix threaded a real context width
+through `Shl`/`Shr` so the simulator matches Verilog's context-determined shift
+semantics — correct as far as it goes — but left the checker's `shift_ty`
+asserting a width the value provably exceeds.
+`crates/mimz-core/src/width_rules.rs:64` documents the split as intentional:
+
+> a STATIC type-system invariant, not a claim about the runtime value
+
+**How found.** CTO Architectural Review 2026-08-02
+([`review-2026-08-02.md`](review-2026-08-02.md) F-2).
+
+**Severity.** HIGH — not a wrong-value bug on its own (both evaluators agree),
+but:
+
+- `spec/01` sells "safe by default" and `spec/02 §1.1` sells _"the type system
+  catches the classic dropped-carry bug."_ A width type that does not bound the
+  value is not a safety property — it is a naming convention.
+- It **breaks referential transparency**: extracting a subexpression into a named
+  wire silently changes behavior. That is exactly the Verilog wart the language
+  exists to remove, and the single hardest thing to explain to a beginner.
+
+**Fix (decision required — do not leave the semantics split).**
+
+- **(a) Self-determined shifts, enforced (recommended).** `bits[W] << k` is
+  `bits[W]`, and the emitter hoists every shift into a `wire [W-1:0]` before use.
+  Predictable, teachable, declared type matches the value everywhere. Cost:
+  `extend(din << 2, 8)` now yields 12, so widening requires
+  `extend(din, 8) << 2` — more honest, and the checker can suggest exactly that
+  rewrite in the diagnostic. Smaller diff: the hoisting machinery is the same
+  machinery BUG-28 needs.
+- **(b) Growing shifts.** `bits[W] << const k` is `bits[W+k]`; reject
+  non-constant shift amounts in a widening position, or grow by
+  `2^width(amount) - 1`. Matches the value; costs bits on dynamic shifts.
+
+**Test to land with the fix.** The `Ref` module above as a golden + Icarus
+differential fixture, plus the width-conformance property described in
+[`gaps.md`](gaps.md) GAP-5 (assert every simulated `Val` fits its declared
+width), which catches this entire class rather than this one instance.
+
+---
+
+## BUG-31 (MEDIUM, OPEN) — `E0403` emits the clock/reset help line for an enum used as data
+
+**What.** The inline `= help:` line is unrelated to the error being reported.
+
+```text
+error[E0403]: enum `S` is not data
+  --> p.mimz:9:12
+   |
+  9 |   y = { a, s }
+   |            ^
+   = help: clocks and resets only appear in `on rise(clk)` and module connections
+           — they never enter expressions (spec/02 section 1.2)
+```
+
+The user wrote an enum in a concat. The help talks about clocks and resets.
+
+**Cause.** `Checker::not_data` (`crates/mimz-core/src/checker/widths/mod.rs:429`)
+is documented as the shared _"clocks/resets are not data"_ helper and hardcodes
+that one help string, but it is also reached for enum-typed operands.
+
+`mimz explain E0403` gives the correct three-case text (signed/bits mixing, enum
+as number, clock/reset as data) — but the inline line is what users actually
+read.
+
+**How found.** CTO Architectural Review 2026-08-02
+([`review-2026-08-02.md`](review-2026-08-02.md) F-7).
+
+**Severity.** MEDIUM — no wrong hardware, but it actively misdirects a learner,
+which is a direct hit on G1 (teaching diagnostics). The affected path is also the
+one users hit while looking for the missing enum→bits cast
+([`gaps.md`](gaps.md) GAP-7), so the wrong help compounds a real expressiveness
+gap.
+
+**Fix.** Branch the help on the `Ty` variant inside `not_data`:
+
+- Enum → _"an enum is a symbolic state, not a number; match on it, or add an
+  explicit encoding."_
+- Clock/reset → existing text.
+
+**Test.** Extend the E0403 fixture set with an enum-in-concat case asserting the
+enum-specific help string, alongside the existing clock/reset case.
+
+---
+
+## BUG-32 (MEDIUM, OPEN) — `mem` lowers to an `initial` block: FPGA-only, not ASIC-synthesizable, and unresettable
+
+**What.** `examples/english/regfile.mimz` emits:
+
+```verilog
+reg [(8)-1:0] m [0:(4)-1];
+integer __mimz_m_i;
+initial for (__mimz_m_i = 0; __mimz_m_i < (4); __mimz_m_i = __mimz_m_i + 1) m[__mimz_m_i] = 0;
+```
+
+`initial` is inferred by Vivado/Quartus into BRAM init contents. It is **ignored
+by every ASIC synthesis flow** (Genus, Design Compiler) — the array powers up
+undefined.
+
+**Cause.** Memory initialization has exactly one lowering, chosen for FPGA
+inference, with no target awareness and no alternative.
+
+**How found.** CTO Architectural Review 2026-08-02
+([`review-2026-08-02.md`](review-2026-08-02.md) F-5).
+
+**Severity.** MEDIUM — correct on the primary target (FPGA, per `spec/01`
+_"for digital circuits (FPGAs first)"_), silently wrong elsewhere. The severity
+is driven by the **documentation claim**, not the lowering: the language's stated
+"no uninitialized state" guarantee evaporates on ASIC, and
+`examples/english/regfile.mimz`'s own comment — _"there is no reset line because a
+memory initializes itself"_ — is true on FPGA and false on ASIC.
+
+**Related gaps.** No way to express a memory reset; no memory-style attribute
+(`(* ram_style = "block" *)` / `ramstyle`); no init-from-file (`$readmemh`); no
+explicit dual-port or read-during-write policy. The inference outcome is
+therefore entirely at the vendor's discretion and unspecifiable from source. See
+[`gaps.md`](gaps.md) GAP-8b.
+
+**Fix.**
+
+1. Emit a synthesis-flow note in the generated header comment when any `mem` is
+   present, and document the ASIC caveat in `docs/guide/` and in the `regfile`
+   example's comment. **(Do this first — it is the honest-framing fix and it is
+   nearly free.)**
+2. Add an optional memory-attribute syntax that lowers to the vendor pragma.
+3. Long-term: model memories as an IR node ([`gaps.md`](gaps.md) GAP-1) with an
+   explicit read-during-write policy, so the emitter picks a correct template per
+   target rather than hoping the vendor infers one.
+
+**Test.** A golden test asserting the header note appears when a `mem` is
+present; a docs-sync assertion tying the guide's memory chapter to the emitted
+form.
+
+---
+
+## BUG-33 (LOW, OPEN) — Perf test asserts an absolute throughput floor; the repo is red on slower machines and the failure masks 880 tests
+
+**What.** `tests/sim.rs:221` asserts a hardcoded simulator throughput floor.
+On the review machine:
+
+```text
+counter kernel: 641750 cycle-events/sec (best of 5, debug=false)
+
+thread 'the_counter_kernel_clears_the_perf_baseline' panicked at tests\sim.rs:221:5:
+counter kernel too slow: best 641750 cycle-events/sec < 1000000
+
+test result: FAILED. 16 passed; 1 failed
+```
+
+**Cause.** An absolute constant (`1_000_000`) is used as a pass/fail gate. It
+fails on any slower machine, any shared CI runner under load, any laptop on
+battery, and every contributor whose box is slower than the author's.
+
+**How found.** CTO Architectural Review 2026-08-02
+([`review-2026-08-02.md`](review-2026-08-02.md) F-9) — first `cargo test` run on
+a clean checkout of `bb79838`.
+
+**Severity.** LOW on correctness, **MEDIUM on contributor experience**, because
+of a secondary effect: `cargo test` stops after the first failing binary unless
+`--no-fail-fast` is passed, so this one failure **masks 13 suites / 880 tests**
+locally.
+
+```text
+cargo test --workspace --release                  → 22 suites,  234 passed, 1 failed
+cargo test --workspace --release --no-fail-fast   → 35 suites, 1114 passed, 1 failed
+```
+
+A first-time contributor sees a red repo and an incomplete run.
+
+**Note on precedent.** The project already made the opposite (correct) call in
+CI, which runs `cargo bench --no-run` with the comment _"microbench timings on
+shared runners are too noisy to gate on."_ This test contradicts that reasoning.
+
+**Fix.** Move it behind `#[ignore]` plus an explicit `--ignored` perf job, or
+gate on `MIMZ_PERF_GATE=1`, and track the number as a **trend** in the existing
+`bench-history.jsonl` instead of asserting a constant. Optionally add
+`--no-fail-fast` to the documented local test command in `docs/BUILD.md` so a
+single failure never hides the rest of the suite.

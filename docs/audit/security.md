@@ -378,3 +378,73 @@ its own terms, it's just no longer reachable from genuinely untrusted
 (checker-rejected) input. A1 (Stage 4, shared `width_rules` module) is
 the mitigation for the divergence half, and Stage 4 is done as of
 2026-07-20.
+
+---
+
+## SEC-10 (MEDIUM, OPEN) — `panic!` in the emitter's kind inference is a compiler-crash primitive
+
+**What.** The emitter's own width/signedness inference aborts the process on an
+identifier it cannot resolve:
+
+```rust
+// crates/mimz-core/src/emit_verilog/kinds.rs:52
+ExprKind::Ident(name) => *decls.get(name)
+    .unwrap_or_else(|| panic!("emit_verilog::kinds::infer_kind: `{name}` not in decls")),
+```
+
+A `panic!` here is a hard crash from the user's point of view — no diagnostic, no
+span, no error code, non-zero abort. It is reachable from `mimz compile`, which
+is the primary command.
+
+**Cause.** `decls` is the per-module map of `Port`/`Wire`/`Reg` names to resolved
+`Kind`, built once per module by `build_decls`. Any expression form whose
+identifiers are **not** module signals — module parameters, file consts, enum
+values, `fn` parameters, bundle fields, `foreach` loop variables — would miss the
+map. The invariant that keeps this safe is a `kind_is_inferrable` pre-check
+performed **at the call sites**, in a different file. That is an invariant
+enforced by convention across module boundaries, not by types.
+
+**Reachability (measured).** **Not reachable at HEAD.** Roughly 20 targeted
+probes during the 2026-08-02 review — module parameters in concats and
+comparisons, file consts in self-determined positions, enum values in concats,
+`fn` parameters, bundle fields — were all correctly rejected by an earlier pass
+or handled before reaching `infer_kind`. This is therefore **latent**, not live.
+
+**Severity.** MEDIUM. Not an input-triggered crash today (no reproducer found),
+but it is a standing crash primitive on the untrusted-input path, and it is
+guarded only by a cross-file convention. Every new expression form re-tests the
+invariant by hand. That is exactly the shape of defect this audit exists to
+retire preemptively — the same reasoning that produced SEC-1's depth cap and
+HARD-2's `overflow-checks`.
+
+Note that `#![forbid(unsafe_code)]` (HARD-1) does **not** cover this class: the
+crash is a controlled Rust panic, not memory unsafety.
+
+**How found.** CTO Architectural Review 2026-08-02
+([`review-2026-08-02.md`](review-2026-08-02.md) F-8), source read plus targeted
+probing.
+
+**Fix (proposed, not yet landed).** Change the signature to
+`fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind>` and
+treat `None` at the call sites as _"cannot analyze → hoist conservatively."_
+
+The conservative branch is **safe by construction**: emitting an extra
+`wire [N-1:0] __mimz_sub_k` for an expression that did not strictly need one is
+always correct Verilog, only marginally more verbose. So there is no correctness
+argument for keeping the panic.
+
+This also removes the need for `kind_is_inferrable` to stay in sync at every call
+site — the check becomes the return value rather than a separate contract, which
+is the durable fix rather than another convention.
+
+**Related.** The `_ => None` wildcard in the sibling module
+`emit_verilog/self_determined.rs` is the _opposite_ failure of the same design
+weakness — there, an unhandled case silently produces wrong Verilog instead of
+crashing (BUG-28/BUG-29 in [`bugs.md`](bugs.md)). Both arms of that module pair
+should become exhaustive matches in the same change.
+
+**Test.** A unit test per non-signal identifier form (module parameter, file
+const, enum value, `fn` parameter, bundle field, `foreach` variable) asserting
+`infer_kind` returns `None` rather than panicking, plus an end-to-end assertion
+that each such program either compiles or produces a real diagnostic — never an
+abort.
