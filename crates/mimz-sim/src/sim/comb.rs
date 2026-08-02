@@ -466,11 +466,11 @@ impl Env<'_> {
             )
         })?;
         self.in_progress.push(name.to_string());
-        // The signal's declared width is known up front (independent of
-        // evaluating `driver`) — feed it in as context so a `<<`/`>>` in the
-        // driver expression sees its real consuming width (BUG-11).
-        let target_w = self.sig_ty.get(name).map(|(w, _)| *w);
-        let v = value::eval_ctx(self, driver, target_w)?;
+        // `<<` self-determines its own (grown) width now (BUG-30,
+        // `docs/audit/bugs.md`) — no target width needs to reach `driver`,
+        // the `remask_to_width` below still reconciles the result against
+        // the signal's declared width either way.
+        let v = value::eval(self, driver)?;
         self.in_progress.pop();
         let (w, s) = self
             .sig_ty
@@ -723,27 +723,39 @@ mod tests {
 
     #[test]
     fn shift_left_max_width() {
+        // BUG-30 (`docs/audit/bugs.md`): `<<` now grows by the amount's own
+        // worst case when the amount is a genuine runtime signal — a
+        // `bits[128]` amount could hold anything up to `2^128 - 1`, so
+        // growing to guarantee no bits are lost is impossible under
+        // `MAX_WIDTH`. This is a clean, honest rejection (`S0222`)
+        // replacing what used to be a silently-computed value.
         let f = parse(
             "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
         );
-        // 127 = valid shift within 128-bit value
-        assert_eq!(
-            small(&one(&f, &[("a", 1), ("s", 127)])[0].value),
-            1u128 << 127
-        );
+        let err =
+            eval_outputs(&[f], None, &ins(&[("a", 1), ("s", 127)]), &BTreeMap::new()).unwrap_err();
+        assert!(err.msg.contains("width limit"), "got: {}", err.msg);
     }
 
     #[test]
     fn shift_left_exceeding_width_is_zero() {
+        // BUG-30: a `bits[128]`-wide dynamic shift amount is now rejected
+        // outright (see `shift_left_max_width` above) rather than silently
+        // computing anything — the old "yields 0 for an oversized shift"
+        // behavior no longer applies once `<<` grows by default.
         let f = parse(
             "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
         );
-        // Shift by 128, 200, and all-ones must all yield 0 (regression: the bug
-        // where `as u32` truncated `r.bits` when bit≥32 was set, producing a wrong
-        // non-zero result instead of 0).
-        assert_eq!(small(&one(&f, &[("a", 1), ("s", 128)])[0].value), 0);
-        assert_eq!(small(&one(&f, &[("a", 1), ("s", 200)])[0].value), 0);
-        assert_eq!(small(&one(&f, &[("a", 1), ("s", u128::MAX)])[0].value), 0);
+        for amt in [128u128, 200, u128::MAX] {
+            let err = eval_outputs(
+                std::slice::from_ref(&f),
+                None,
+                &ins(&[("a", 1), ("s", amt)]),
+                &BTreeMap::new(),
+            )
+            .unwrap_err();
+            assert!(err.msg.contains("width limit"), "got: {}", err.msg);
+        }
     }
 
     #[test]
@@ -758,13 +770,26 @@ mod tests {
 
     #[test]
     fn shift_left_bit_32_set_in_amt() {
-        // The bug: when bit ≥ 32 was set in the shift amount, `as u32` silently
-        // truncated, turning what should be a zero-producing oversize shift into
-        // a small shift. Verify that 1 << (1 << 32) correctly yields 0.
+        // Originally guarded a bug where bit ≥ 32 set in a shift amount hit
+        // an `as u32` truncation in the raw arithmetic. BUG-30 (`docs/audit/
+        // bugs.md`) makes that precondition unreachable through any valid
+        // module: an amount value with bit 32 set needs a >=33-bit-wide
+        // signal to hold it, and growing by that signal's own worst case
+        // (`2^33 - 1`) already exceeds `MAX_WIDTH` — rejected before the
+        // arithmetic ever runs (same `S0222` as `shift_left_max_width`).
+        // `shift_right_bit_32_set_in_amt` below covers `>>`, which never
+        // grows and so still reaches the raw arithmetic this guarded.
         let f = parse(
             "module S {\n  in a: bits[128]\n  in s: bits[128]\n  out y: bits[128]\n  y = a << s\n}\n",
         );
-        assert_eq!(small(&one(&f, &[("a", 1), ("s", 1u128 << 32)])[0].value), 0);
+        let err = eval_outputs(
+            &[f],
+            None,
+            &ins(&[("a", 1), ("s", 1u128 << 32)]),
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(err.msg.contains("width limit"), "got: {}", err.msg);
     }
 
     #[test]
