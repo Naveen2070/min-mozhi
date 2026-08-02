@@ -6,13 +6,15 @@ module ShiftRegister #(
     input wire din,
     output wire [(WIDTH)-1:0] dout
 );
+    wire [8:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (sr << 1);
     reg [(WIDTH)-1:0] sr;
     assign dout = sr;
     always @(posedge clk) begin
         if (rst) begin
             sr <= 0;
         end else begin
-            sr <= ((sr << 1) | (din));
+            sr <= (__mimz_sub_1[(WIDTH)-1:0] | (din));
         end
     end
 endmodule

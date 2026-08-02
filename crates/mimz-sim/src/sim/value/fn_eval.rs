@@ -158,12 +158,13 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, Box<Diag>>
                 // emitter's own array-`let` lowering, Task 8). `inferred_width`
                 // is the ELEMENT width for an array `let` (checker's width pass).
                 if let ExprKind::ArrayLit(elems) = &local.value.kind {
-                    // `inferred_width` is also this let's real context width
-                    // (BUG-11) — feed it into evaluating each element too, not
-                    // just the post-hoc re-mask.
+                    // `<<` self-determines its own (grown) width now
+                    // (BUG-30, `docs/audit/bugs.md`) — the post-hoc
+                    // re-mask below still reconciles against the let's
+                    // declared width.
                     let ctx_w = local.inferred_width.get();
                     for (i, el) in elems.iter().enumerate() {
-                        let v = eval_ctx(env, el, ctx_w)?;
+                        let v = eval(env, el)?;
                         let v = match ctx_w {
                             Some(w) => remask_to_width(v, w),
                             None => v,
@@ -175,7 +176,7 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, Box<Diag>>
                     continue;
                 }
                 let ctx_w = local.inferred_width.get();
-                let v = eval_ctx(env, &local.value, ctx_w)?;
+                let v = eval(env, &local.value)?;
                 let v = match ctx_w {
                     Some(w) => remask_to_width(v, w),
                     None => v, // checker not run (e.g. bare sim test); trust the Val width
@@ -333,11 +334,11 @@ pub(super) fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Resu
     match func {
         Builtin::Extend => {
             let n = checked_width(const_eval(&args[1], r.ints())?, args[1].span)?;
-            // `n` is `extend`'s own target width — feed it in as context so a
-            // shift inside the argument (`extend(din << 2, 8)`) sees its real
-            // consuming width, matching what the emitter's own no-op-extend
-            // optimization relies on Verilog to compute (BUG-11).
-            let v = eval_ctx(r, &args[0], Some(n))?;
+            // `<<` self-determines its own (grown) width now (BUG-30,
+            // `docs/audit/bugs.md`) — `args[0]` already evaluates to a
+            // value wide enough to hold everything it could produce, so
+            // no target width needs to reach it here anymore.
+            let v = eval(r, &args[0])?;
             if n < v.width {
                 return Err(Box::new(
                     Diag::new(

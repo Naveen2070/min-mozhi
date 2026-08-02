@@ -185,7 +185,7 @@ impl<'a> Checker<'a> {
             Add | Sub | Mul => self.lossless_ty(cx, e, op, (lhs, lt), (rhs, rt)),
             AddWrap | SubWrap | MulWrap => self.matched_ty(cx, op_text(op), (lhs, lt), (rhs, rt)),
             BitAnd | BitOr | BitXor => self.matched_ty(cx, op_text(op), (lhs, lt), (rhs, rt)),
-            Shl | Shr => self.shift_ty(cx, (lhs, lt), (rhs, rt)),
+            Shl | Shr => self.shift_ty(cx, op, (lhs, lt), (rhs, rt)),
             Eq | Ne => {
                 if let (Ty::Enum(a), Ty::Enum(b)) = (&lt, &rt) {
                     if a.name.name != b.name.name {
@@ -559,19 +559,24 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// `<<`/`>>`: the result keeps the LEFT operand's type; the amount is
-    /// a compile-time value or an unsigned signal. The actual width/kind
-    /// rule is shared with the simulator via `width_rules::shift_result`
-    /// (Stage 4, A1a) — see that function's doc comment for why the
-    /// checker's static rule and the simulator's runtime rule (BUG-11)
-    /// are deliberately different beyond this shared floor.
+    /// `<<`/`>>`: the amount is a compile-time value or an unsigned
+    /// signal. The actual width/kind rule is shared with the simulator
+    /// and the emitter via `width_rules::shift_result` (BUG-30,
+    /// `docs/audit/bugs.md`): `<<` grows so its declared type always
+    /// bounds the true value; `>>` keeps the left operand's own kind,
+    /// which was never wrong (right-shifting only ever shrinks).
     fn shift_ty(
         &mut self,
         cx: &mut Wcx<'a>,
+        op: BinOp,
         (lhs, lt): (&'a Expr, Ty<'a>),
         (rhs, rt): (&'a Expr, Ty<'a>),
     ) -> Ty<'a> {
-        match rt {
+        // `(const_amount, amount_width)`: `const_amount` is `Some(k)` for a
+        // compile-time amount (grows by exactly `k`); `amount_width` is
+        // only meaningful for a runtime signal (`const_amount: None`,
+        // growth then covers its worst case, `2^amount_width - 1`).
+        let (const_amount, amount_width): (Option<u128>, u32) = match rt {
             Ty::CtInt(v) if v.is_negative() => {
                 self.err(
                     cx.file,
@@ -582,7 +587,9 @@ impl<'a> Checker<'a> {
                 );
                 return Ty::Unknown;
             }
-            Ty::CtInt(_) | Ty::Bit | Ty::Bits(_) => {}
+            Ty::CtInt(v) => (Some(v.to_i128_saturating() as u128), 0),
+            Ty::Bit => (None, 1),
+            Ty::Bits(n) => (None, width_u32(n)),
             Ty::Signed(_) => {
                 self.err(
                     cx.file,
@@ -603,7 +610,7 @@ impl<'a> Checker<'a> {
                 );
                 return Ty::Unknown;
             }
-        }
+        };
         let lhs_kind = match lt {
             Ty::Bit => crate::width_rules::Kind {
                 width: 1,
@@ -630,17 +637,33 @@ impl<'a> Checker<'a> {
             }
             other => return self.not_numeric(cx, lhs.span, &other, "a shift"),
         };
-        // `rt` is already known non-signed (every branch above that could
-        // make it signed already returned) — the amount side of
-        // `shift_result` can never fire here.
+        // The amount is already known non-signed (every branch above that
+        // could make it signed already returned), so only
+        // `ShiftGrowthTooWide` can fire here.
         match crate::width_rules::shift_result(
             lhs_kind,
             crate::width_rules::Kind {
-                width: 0,
+                width: amount_width,
                 signed: false,
             },
+            const_amount,
+            op == BinOp::Shl,
         ) {
             Ok(k) => kind_to_ty(k),
+            Err(crate::width_rules::RuleError::ShiftGrowthTooWide { lhs, growth }) => {
+                self.err(
+                    cx.file,
+                    rhs.span,
+                    "E0405",
+                    format!(
+                        "shifting bits[{}] wider by {growth} bits exceeds the {MAX_WIDTH}-bit \
+                         width limit",
+                        lhs.width
+                    ),
+                    "narrow the operand, or shift by a smaller amount",
+                );
+                Ty::Unknown
+            }
             Err(_) => unreachable!("amount signedness already checked above"),
         }
     }

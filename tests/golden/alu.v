@@ -6,7 +6,11 @@ module Alu #(
     input wire [(2)-1:0] op,
     output wire [(WIDTH)-1:0] y
 );
-    assign y = (((op == 'b00)) ? ((a + b)) : (((op == 'b01)) ? ((a - b)) : (((op == 'b10)) ? ((a & b)) : ((a | b)))));
+    wire [7:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (a + b);
+    wire [7:0] __mimz_sub_2;
+    assign __mimz_sub_2 = (a - b);
+    assign y = (((op == 'b00)) ? (__mimz_sub_1) : (((op == 'b01)) ? (__mimz_sub_2) : (((op == 'b10)) ? ((a & b)) : ((a | b)))));
 endmodule
 
 module Top (

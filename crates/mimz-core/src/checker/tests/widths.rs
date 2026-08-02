@@ -405,8 +405,22 @@ fn a_memory_inside_repeat_is_e0303() {
 
 #[test]
 fn extend_of_a_bit_into_bitwise_passes() {
-    let src = "module Sr(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  in din: bit\n  out dout: bits[WIDTH]\n  reg sr: bits[WIDTH] = 0\n  on rise(clk) {\n    sr <- (sr << 1) | extend(din, WIDTH)\n  }\n  dout = sr\n}\n";
+    // BUG-30 (`docs/audit/bugs.md`): `<<` now GROWS by its shift amount
+    // (here, `sr << 1` is `bits[WIDTH + 1]`, not `bits[WIDTH]`), so the
+    // classic shift-register idiom needs an explicit `trunc` to drop the
+    // bit that falls off the top — same as a real shift register's own
+    // hardware behavior, just spelled out instead of implicit.
+    let src = "module Sr(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  in din: bit\n  out dout: bits[WIDTH]\n  reg sr: bits[WIDTH] = 0\n  on rise(clk) {\n    sr <- trunc(sr << 1, WIDTH) | extend(din, WIDTH)\n  }\n  dout = sr\n}\n";
     check_one(src).expect("the shift-register shape, widths made explicit");
+}
+
+#[test]
+fn shift_register_without_the_trunc_no_longer_matches_widths() {
+    // BUG-30: `sr << 1` is now `bits[WIDTH + 1]`, one bit wider than
+    // `extend(din, WIDTH)`'s `bits[WIDTH]` — the naive pre-fix idiom is a
+    // real width mismatch now, not a silent truncation.
+    let src = "module Sr(WIDTH: int = 8) {\n  clock clk\n  reset rst\n  in din: bit\n  out dout: bits[WIDTH]\n  reg sr: bits[WIDTH] = 0\n  on rise(clk) {\n    sr <- (sr << 1) | extend(din, WIDTH)\n  }\n  dout = sr\n}\n";
+    first_err(src, "E0402");
 }
 
 #[test]

@@ -37,7 +37,30 @@ impl Emitter<'_> {
         // here (not per-expression) and read via `self.cur_decls` —
         // mirrors `bundle_sigs`' own "populate from flat items once,
         // reset per module" convention a few lines below.
+        //
+        // A parametric width (`reg sr: bits[WIDTH]`) is otherwise absent
+        // from `self.env` when this module compiles directly (not as a
+        // sub-instance) — every parameter is deliberately kept symbolic
+        // in the EMITTED TEXT (real per-instance overrides), but that
+        // left `sr` entirely out of `cur_decls` (`resolved_kind` needs a
+        // concrete width), silently disabling every hoist a `<<` growth
+        // now needs (BUG-30, `docs/audit/bugs.md` — `trunc(sr << 1,
+        // WIDTH)` rendered as an illegal Verilog part-select of a
+        // compound expression instead of hoisting to a wire first).
+        // Binding each parameter's own DEFAULT value gives `build_decls`
+        // a concrete representative width; restoring `self.env`
+        // immediately after keeps every other render (which must stay
+        // symbolic) unaffected.
+        let params_env = self.env.clone();
+        for p in &m.params {
+            if let Some(d) = &p.default
+                && let Ok(v) = consteval::eval(d, &self.env)
+            {
+                self.env.insert(p.name.name.clone(), v);
+            }
+        }
         self.cur_decls = self.build_decls(&flat);
+        self.env = params_env;
 
         // Parameters. The Verilog identifier is the bare name, UNLESS
         // another file also declares a module of this name — the
