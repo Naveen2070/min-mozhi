@@ -66,7 +66,9 @@ jobs:
       - name: Tests
         # REQUIRE_IVERILOG turns a missing Icarus install into a hard
         # failure — CI must never silently skip the differential tests.
-        # --workspace: see Clippy step above.
+        # --workspace: see Clippy step above. MIMZ_PERF_GATE is deliberately
+        # NOT set here — the counter-kernel throughput floor is too noisy for
+        # a shared PR runner (BUG-33); it's enforced in `nightly-bench` only.
         run: cargo test --workspace --all-targets
         env:
           REQUIRE_IVERILOG: "1"
@@ -139,6 +141,15 @@ jobs:
         # Appends one line to the tracked bench-history.jsonl (present from the
         # checkout, or created on the first run).
         run: cargo run --release --bin mimz-bench -- --no-cov --iterations 500
+
+      - name: Perf-baseline gate
+        # The counter-kernel 1M cycle-events/sec floor (tests/sim.rs) is too
+        # noisy to assert on every PR's shared runner, so `check` runs it
+        # ungated. This dedicated perf job is the one place it's enforced —
+        # same MIMZ_PERF_GATE opt-in-hard-fail convention as REQUIRE_IVERILOG.
+        run: cargo test --release --test sim the_counter_kernel_clears_the_perf_baseline -- --nocapture
+        env:
+          MIMZ_PERF_GATE: "1"
 
       - name: Commit history to develop branch
         # `[skip ci]` so this bot push does NOT re-trigger the workflow.

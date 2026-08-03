@@ -173,9 +173,16 @@ fn a_combinational_module_writes_a_vcd() {
 /// Phase 1.5 B8 perf baseline: the event-driven kernel must clear **1M
 /// cycle-events/sec** on the counter in release. Each `tick` is one clock cycle
 /// = several signal events (clock edge, register commit, combinational settle),
-/// so cycles/sec is the conservative (lower) bound on cycle-events/sec. The hard
-/// gate applies in release; a debug build only checks a low sanity floor (it runs
-/// ~10× slower, so the 1M bar would be a false alarm).
+/// so cycles/sec is the conservative (lower) bound on cycle-events/sec.
+///
+/// BUG-33: an absolute throughput floor fails on any slower machine, a loaded
+/// shared CI runner, or a laptop on battery — and unlike a microbench, this is
+/// a `#[test]` that gates `cargo test`'s exit code, so one slow machine turns
+/// the whole suite red (masking every other test behind cargo's fail-fast).
+/// The rate is always printed; the hard floor only gates the run when
+/// `MIMZ_PERF_GATE=1` is set (same opt-in-hard-fail convention as
+/// `REQUIRE_IVERILOG`), so it can still be enforced in a dedicated perf job
+/// without failing a normal `cargo test` on a slow box.
 #[test]
 fn the_counter_kernel_clears_the_perf_baseline() {
     use std::collections::BTreeMap;
@@ -218,10 +225,17 @@ fn the_counter_kernel_clears_the_perf_baseline() {
     } else {
         1_000_000.0 // the B8 baseline
     };
-    assert!(
-        best >= floor,
-        "counter kernel too slow: best {best:.0} cycle-events/sec < {floor:.0}"
-    );
+    if std::env::var("MIMZ_PERF_GATE").is_ok() {
+        assert!(
+            best >= floor,
+            "counter kernel too slow: best {best:.0} cycle-events/sec < {floor:.0}"
+        );
+    } else if best < floor {
+        eprintln!(
+            "warning: counter kernel below the {floor:.0} cycle-events/sec baseline \
+             (best {best:.0}) — not failing since MIMZ_PERF_GATE is unset"
+        );
+    }
 }
 
 /// Byte-for-byte golden lock on the VCD our writer emits (complements the
