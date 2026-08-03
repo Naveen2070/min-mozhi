@@ -81,6 +81,57 @@ fn bits_to_limbs(b: &mimz::sim::value::Bits, width: u32) -> Vec<u64> {
     }
 }
 
+/// GAP-5 direction 1 (docs/audit/gaps.md): after every simulator evaluation,
+/// assert the produced `Bits` fits the width the SIMULATOR ITSELF resolved
+/// for that signal — `Output::width` (from `comb::eval_outputs`) and
+/// `Timeline::signals` (from `run`) both come from elaboration, which folds
+/// the checker-validated AST type, not from anything this fuzzer's own
+/// generator tracks. This is the oracle BUG-30 fell through: two
+/// independent authorities agreeing on width is exactly what a checker
+/// Ty-vs-simulator-Val divergence would break. `mimz-sim`'s kernel already
+/// masks every stored value to its signal's width by construction, so this
+/// should never fire today — it exists to catch a FUTURE regression in that
+/// invariant (a `Val`/`Bits` construction site that skips the mask), which
+/// is exactly the shape of bug BUG-11/BUG-13's fix-forward note already
+/// found once in kernel.rs.
+fn assert_bits_fit_width(ctx: &str, value: &mimz::sim::value::Bits, width: u32) {
+    use mimz::sim::value::Bits;
+    match value {
+        Bits::Small(v) => {
+            if width < 128 {
+                let mask = (1u128 << width) - 1;
+                assert_eq!(
+                    v & !mask,
+                    0,
+                    "{ctx}: value {v:#x} has a bit set above its declared width {width}"
+                );
+            }
+            // width >= 128: every bit of a Small value is legitimately in range.
+        }
+        Bits::Wide(limbs) => {
+            for (i, limb) in limbs.iter().enumerate() {
+                let limb_lo = i as u32 * 64;
+                if limb_lo >= width {
+                    assert_eq!(
+                        *limb, 0,
+                        "{ctx}: limb {i} ({limb:#x}) is entirely above declared width {width}"
+                    );
+                    continue;
+                }
+                let valid_bits = width - limb_lo;
+                if valid_bits < 64 {
+                    let mask = (1u64 << valid_bits) - 1;
+                    assert_eq!(
+                        limb & !mask,
+                        0,
+                        "{ctx}: limb {i} ({limb:#x}) has a bit set above declared width {width}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// One input port (or, in the v3 clocked generator, one register):
 /// `(name, width, signed)`.
 type Port = (String, u32, bool);
@@ -839,6 +890,13 @@ fn differential_fuzz_matches_icarus() {
                     e.msg
                 )
             });
+            for o in &outputs {
+                assert_bits_fit_width(
+                    &format!("seed {seed}: output `{}`", o.name),
+                    &o.value,
+                    o.width,
+                );
+            }
             let row: BTreeMap<String, mimz::sim::value::Bits> =
                 outputs.into_iter().map(|o| (o.name, o.value)).collect();
             kernel_rows.push(row);
@@ -968,6 +1026,22 @@ fn differential_fuzz_clocked_matches_icarus() {
                  program:\n{src}\n{e}"
             )
         });
+
+        // GAP-5 width-conformance oracle: every signal (registers included,
+        // not just `y`) at every captured instant must fit the width the
+        // kernel itself resolved for it during elaboration.
+        for sig in &tl.signals {
+            for f in &tl.frames {
+                let Some(v) = f.values.get(&sig.name) else {
+                    continue;
+                };
+                assert_bits_fit_width(
+                    &format!("seed {seed}: signal `{}` at time {}", sig.name, f.time),
+                    v,
+                    sig.width.bits,
+                );
+            }
+        }
 
         // A real temp file on disk, since `compile_example` shells out to
         // the real `mimz compile` binary.

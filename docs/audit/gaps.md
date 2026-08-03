@@ -248,6 +248,20 @@ the checker and a large drop in allocator pressure.
 direction 1 (the width-conformance fuzzer property) and the fuzzer's own
 position-aware generation are still open.
 
+**Update 2026-08-03 (branch `bug-33-gap-5-perf-and-width-oracle`).**
+Direction 1's width-conformance assertion landed in
+`tests/differential_fuzz.rs` (`assert_bits_fit_width`): after every kernel
+evaluation (both the combinational and clocked differential tests), every
+signal's produced `Bits` is checked against the width the SIMULATOR itself
+resolved during elaboration (`comb::Output::width`, `Timeline::signals`) —
+an independent authority from the fuzzer's own generator bookkeeping. No
+generator change was needed, as GAP-5's own direction predicted. Running the
+now-instrumented fuzzer at deeper `N` (validating the new assertion) found
+zero width-conformance violations but surfaced an unrelated, real
+kernel-vs-Icarus divergence at `N=100` — filed as [BUG-34](bugs.md)
+(chained shifts on a signed operand). The fuzzer's own position-aware
+generation (the other open half of Direction 2) remains open.
+
 **What.** The test architecture is strong — Icarus differential in two layers,
 `REQUIRE_IVERILOG=1` so it can never silently skip, a 1003-line random-program
 differential fuzzer, 4 libFuzzer targets, docs/grammar sync tests, WASM parity.
