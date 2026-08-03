@@ -853,6 +853,26 @@ module M {\n\
     }
 
     #[test]
+    fn chained_signed_shift_context_extends_before_the_shift() {
+        // BUG-34 (docs/audit/bugs.md): a `>>` immediately consumed by an
+        // outer `<<`, with no `extend()`/named wire between them, must
+        // sign-extend its SIGNED left operand to the FINAL enclosing width
+        // BEFORE either shift runs — the same BUG-11 "shift operands are
+        // context-determined" rule, which BUG-30 only re-applied to `<<`'s
+        // own growth, not to a `>>` feeding one. Verified against real
+        // `iverilog` on this exact source: `p2 = -9563` (raw 55973 as
+        // signed[16]), `y = (p2 >> 4) << 7` computes -76544 (pattern
+        // 8312064), not 447744 (`>>`'s self-determined-at-16-bits logical
+        // shift result, re-extended too late by the outer `<<`).
+        let f = parse(
+            "module Fuzz {\n  in p2: signed[16]\n  out y: signed[23]\n  y = ((p2 >> 4) << 7)\n}\n",
+        );
+        let out = one(&f, &[("p2", 55973)]);
+        assert_eq!(out[0].width, 23);
+        assert_eq!(small(&out[0].value), 8312064); // -76544 as a 23-bit pattern
+    }
+
+    #[test]
     fn eval_outputs_handles_a_wide_input() {
         let src =
             "module M(WIDTH: int = 200) {\n  in a: bits[WIDTH]\n  out b: bits[WIDTH]\n  b = a\n}\n";

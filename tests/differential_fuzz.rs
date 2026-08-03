@@ -598,6 +598,109 @@ fn combine_concat(a: Frag, b: Frag) -> Frag {
     }
 }
 
+/// Wrap `f` in a randomly chosen `Builtin` call, producing a new
+/// composite (non-atomic) fragment whose width/kind follow the exact
+/// checker rule for that builtin (`crates/mimz-core/src/checker/widths/
+/// ops/builtins.rs::call_ty`). GAP-5 direction 2 (docs/audit/gaps.md,
+/// the fuzzer's own position-aware generation): this is what makes a
+/// BUILTIN call (not just a plain operator) reachable inside a
+/// self-determined position — a concat member via `combine_concat`, a
+/// comparison operand via `combine_same_width`'s `ToBit` ops, or a
+/// `signed`/`unsigned` cast argument via `cast_to` — through ordinary
+/// composition. No separate per-position wiring is needed: those three
+/// call sites already accept any non-atomic `Frag` as an operand, so once
+/// a builtin-wrapped fragment exists in the pool `gen_expr` draws from,
+/// it lands in every position those call sites already reach — exactly
+/// how BUG-28/BUG-29 (an `extend`/`abs` call in a concat member) would
+/// have been found by RANDOM generation instead of only the hand-picked
+/// static matrix (`tests/self_determined_regression.rs`).
+///
+/// `Min`/`Max`/`Nand`/`Nor`/`Xnor` pass `f` as their own second operand
+/// where one is needed (`min(f, f)`) rather than generating an
+/// independent partner — a deliberate simplification: it still exercises
+/// the exact call-site code path GAP-5 cares about (the SHAPE of the
+/// call, and the mismatch between mimz's `Kind` and Verilog's own
+/// self-determined width for it); an independent second operand would
+/// only add corpus diversity, not new position coverage. `Clog2`/
+/// `SyncDoubleFlop`/`SyncPulse` are never picked — `NotApplicable` in
+/// `tests/self_determined_regression.rs`'s own matrix (compile-time-only
+/// / lowered to items before emit), for the identical reasons documented
+/// there.
+fn wrap_builtin(rng: &mut Rng, f: Frag) -> Frag {
+    // Candidates valid for `f`'s CURRENT kind (`SignedCast`/`Abs` need
+    // unsigned/signed respectively; `UnsignedCast` the reverse; `Nand`/
+    // `Nor`/`Xnor` reject `signed` per `call_ty`). `Trunc` only when
+    // there's something to drop.
+    let mut candidates: Vec<u32> = vec![0]; // Extend: valid on any kind
+    if f.width > 1 {
+        candidates.push(1); // Trunc
+    }
+    candidates.push(4); // Min/Max: valid on any kind (matched against itself)
+    if f.signed {
+        candidates.push(2); // UnsignedCast
+        candidates.push(3); // Abs
+    } else {
+        candidates.push(5); // SignedCast
+        candidates.push(6); // Nand/Nor/Xnor
+    }
+    match candidates[rng.next_range(candidates.len() as u64) as usize] {
+        0 => {
+            let target = (f.width + (rng.next_range(8) + 1) as u32).min(MAX_WIDTH);
+            Frag {
+                text: format!("extend({}, {target})", f.text),
+                width: target,
+                signed: f.signed,
+                atomic: false,
+            }
+        }
+        1 => {
+            let target = 1 + rng.next_range((f.width - 1) as u64) as u32;
+            Frag {
+                text: format!("trunc({}, {target})", f.text),
+                width: target,
+                signed: f.signed,
+                atomic: false,
+            }
+        }
+        2 => Frag {
+            text: format!("unsigned({})", f.text),
+            width: f.width,
+            signed: false,
+            atomic: false,
+        },
+        3 => Frag {
+            text: format!("abs({})", f.text), // `Signed(n) -> Signed(n+1)`, lossless like unary `-`.
+            width: (f.width + 1).min(MAX_WIDTH),
+            signed: true,
+            atomic: false,
+        },
+        4 => {
+            let name = if rng.next_range(2) == 0 { "min" } else { "max" };
+            Frag {
+                text: format!("{name}({}, {})", f.text, f.text),
+                width: f.width,
+                signed: f.signed,
+                atomic: false,
+            }
+        }
+        5 => Frag {
+            text: format!("signed({})", f.text),
+            width: f.width,
+            signed: true,
+            atomic: false,
+        },
+        _ => {
+            let name = ["nand", "nor", "xnor"][rng.next_range(3) as usize];
+            Frag {
+                text: format!("{name}({})", f.text), // negated reduction: always 1-bit unsigned.
+                width: 1,
+                signed: false,
+                atomic: false,
+            }
+        }
+    }
+}
+
 /// A random sub-range read of an existing input port: `port[hi:lo]`,
 /// `0 <= lo <= hi < port_width`. `None` if there are no ports (never
 /// happens in practice — `gen_module` always creates 2-4 — but kept total
@@ -635,7 +738,7 @@ fn gen_expr(rng: &mut Rng, ports: &[Port], depth: u32, cap: u32) -> Frag {
     let raw = if depth == 0 || rng.next_range(6) == 0 {
         gen_leaf(rng, ports)
     } else {
-        match rng.next_range(6) {
+        match rng.next_range(7) {
             0 => {
                 let a = gen_expr(rng, ports, depth - 1, cap);
                 let b = gen_expr(rng, ports, depth - 1, cap);
@@ -659,6 +762,14 @@ fn gen_expr(rng: &mut Rng, ports: &[Port], depth: u32, cap: u32) -> Frag {
                 let a = gen_expr(rng, ports, depth - 1, cap);
                 let b = gen_expr(rng, ports, depth - 1, cap);
                 combine_wrap(rng, a, b)
+            }
+            // GAP-5 direction 2 (docs/audit/gaps.md): a builtin call, not
+            // just a plain operator, as the fragment about to be combined
+            // further up the tree — see `wrap_builtin`'s own doc comment
+            // for why no separate per-position wiring is needed.
+            5 => {
+                let a = gen_expr(rng, ports, depth - 1, cap);
+                wrap_builtin(rng, a)
             }
             _ => gen_slice(rng, ports).unwrap_or_else(|| gen_leaf(rng, ports)),
         }
