@@ -55,8 +55,11 @@ type model:
 **Why it matters.** This is the documented structural cause of the project's
 largest recurring bug family. BUG-11, 18, 19, 20, 21, 22, 23, 24 in
 [`bugs.md`](bugs.md) are all _"two implementations of one width rule disagreed."_
-So are BUG-28/29 (F-1) and BUG-30 (F-2). Every future operator or builtin
-re-opens the same three-way drift surface.
+So are BUG-28/29 (F-1), BUG-30 (F-2), and BUG-34 (a fused shift chain's
+context-widening rule, found 2026-08-03 while validating GAP-5's own
+width-conformance oracle — the ninth instance of this exact family since
+BUG-11). Every future operator or builtin re-opens the same three-way drift
+surface.
 
 **Evidence.** `emit_verilog/kinds.rs:6` states the duplication is deliberate —
 `foreach`/`sync_loop` lowering produces fresh `Expr` trees at ~6 call sites, so an
@@ -243,10 +246,12 @@ the checker and a large drop in allocator pressure.
 
 ## GAP-5 (HIGH, testing) — No declared-type-vs-produced-value oracle; self-determined positions ungenerated
 
-**Status:** PARTIALLY ADDRESSED 2026-08-02 (branch
-`bug-28-29-self-determined-extend-abs`). Direction 2's static matrix is landed;
-direction 1 (the width-conformance fuzzer property) and the fuzzer's own
-position-aware generation are still open.
+**Status:** INFRASTRUCTURE COMPLETE 2026-08-03; ACTIVE FINDINGS OPEN
+(BUG-35, BUG-36). Both directions' testing infrastructure now exist
+(static matrix, width-conformance property, randomized position-aware
+generation) — this entry stays open only because what that infrastructure
+found (BUG-35, BUG-36, and BUG-34 before it) isn't all fixed yet, not
+because more oracle-building work remains.
 
 **Update 2026-08-03 (branch `bug-33-gap-5-perf-and-width-oracle`).**
 Direction 1's width-conformance assertion landed in
@@ -258,9 +263,31 @@ an independent authority from the fuzzer's own generator bookkeeping. No
 generator change was needed, as GAP-5's own direction predicted. Running the
 now-instrumented fuzzer at deeper `N` (validating the new assertion) found
 zero width-conformance violations but surfaced an unrelated, real
-kernel-vs-Icarus divergence at `N=100` — filed as [BUG-34](bugs.md)
-(chained shifts on a signed operand). The fuzzer's own position-aware
-generation (the other open half of Direction 2) remains open.
+kernel-vs-Icarus divergence at `N=100` — filed and fixed as
+[BUG-34](bugs.md) (chained shifts on a signed operand).
+
+**Update 2026-08-03 (branch `bug-34-chained-signed-shifts`, same day).**
+Direction 2's fuzzer generator extension landed too — GAP-5 is now FULLY
+addressed at the infrastructure level (both static matrix and randomized
+generation exist; what remains is fixing what they find). `wrap_builtin`
+(`tests/differential_fuzz.rs`) wraps a randomly generated fragment in a
+randomly chosen `Builtin` call (`Extend`/`Trunc`/`SignedCast`/
+`UnsignedCast`/`Abs`/`Min`/`Max`/`Nand`/`Nor`/`Xnor` — the same set
+`tests/self_determined_regression.rs`'s static matrix classifies),
+following the exact width/kind rule each builtin's `call_ty` uses. Wired
+into `gen_expr`'s dispatch as a new combinator, it needed no separate
+per-position wiring: `combine_concat`, `combine_same_width`'s comparison
+operators, and `cast_to` already accept any composite fragment as an
+operand, so a builtin-wrapped fragment reaches the concat-member,
+comparison-operand, and `signed`/`unsigned`-argument self-determined
+positions purely through the generator's existing composition. Running it
+at `N=300` immediately found two NEW, real, previously-unknown bugs
+(exactly what this direction was for) — filed as [BUG-35](bugs.md) (a
+shift whose left operand is a builtin call isn't hoisted in a
+self-determined position) and [BUG-36](bugs.md) (`trunc()` of a
+non-identifier expression emits an invalid Verilog part-select — BUG-20's
+own class, reopened through a different call site). Both left OPEN,
+deliberately out of scope for the branch that found them.
 
 **What.** The test architecture is strong — Icarus differential in two layers,
 `REQUIRE_IVERILOG=1` so it can never silently skip, a 1003-line random-program
