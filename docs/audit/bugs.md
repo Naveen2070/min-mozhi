@@ -2265,7 +2265,7 @@ form.
 
 ---
 
-## BUG-33 (LOW, OPEN) — Perf test asserts an absolute throughput floor; the repo is red on slower machines and the failure masks 880 tests
+## BUG-33 (LOW, FIXED 2026-08-03) — Perf test asserts an absolute throughput floor; the repo is red on slower machines and the failure masks 880 tests
 
 **What.** `tests/sim.rs:221` asserts a hardcoded simulator throughput floor.
 On the review machine:
@@ -2303,8 +2303,91 @@ A first-time contributor sees a red repo and an incomplete run.
 CI, which runs `cargo bench --no-run` with the comment _"microbench timings on
 shared runners are too noisy to gate on."_ This test contradicts that reasoning.
 
-**Fix.** Move it behind `#[ignore]` plus an explicit `--ignored` perf job, or
-gate on `MIMZ_PERF_GATE=1`, and track the number as a **trend** in the existing
-`bench-history.jsonl` instead of asserting a constant. Optionally add
-`--no-fail-fast` to the documented local test command in `docs/BUILD.md` so a
-single failure never hides the rest of the suite.
+**Fix (2026-08-03).** The hard assert now only runs when `MIMZ_PERF_GATE=1` is
+set (mirrors `REQUIRE_IVERILOG`'s opt-in-hard-fail convention); ungated, the
+rate is still printed but a below-floor result is a warning, not a failure.
+CI's PR-facing `check` job runs it ungated (matches `cargo bench --no-run`'s
+existing "too noisy for a shared runner" stance); `nightly-bench` sets
+`MIMZ_PERF_GATE=1` so the floor is still enforced somewhere
+(`.github/workflows/ci.yml`). Trending the number in `bench-history.jsonl`
+was not done — out of scope for the XS-effort fix; `mimz-bench`'s own
+history mechanism is a separate harness from this test.
+
+**Test.** No new test — the fix is to the gate itself; `tests/sim.rs`'s
+existing perf test now demonstrates both branches (verified manually: ungated
+passes on this machine's ~640k cycle-events/sec result; `MIMZ_PERF_GATE=1` in
+release still hard-fails on the same machine, exactly reproducing this
+entry's own repro number).
+
+---
+
+## BUG-34 (HIGH, OPEN) — Chained shifts (`(x >> a) << b`) diverge from Verilog when the inner operand is signed
+
+**What.** A right-shift immediately consumed by an outer left-shift, with no
+`extend()` between them, computes a different value than real Verilog when
+the shifted operand is `signed`. Minimal repro (verified directly against
+`iverilog`/`vvp`, not just the fuzzer's own harness):
+
+```mimz
+module Fuzz {
+  in p2: signed[16]
+  out y: signed[23]
+  y = ((p2 >> extend(4, 5)) << extend(7, 3))
+}
+```
+
+```text
+p2 = -9563 (raw 55973)
+mimz eval  → y = 447744
+iverilog   → y = -76544   (bit pattern 8312064)
+```
+
+**Cause (hypothesis, not yet root-caused in the simulator's own code).**
+Matches the same class of divergence BUG-11 first characterized: real
+Verilog context-extends a shift's left operand to the _enclosing_ width
+**before** either shift executes — since `p2` is signed, that context
+extension is a sign extension. BUG-30's "growing shifts" fix
+(`width_rules::shift_result`) computes bottom-up instead: the inner
+`p2 >> 4` resolves at `p2`'s own self-determined 16-bit width first (a
+LOGICAL, zero-fill shift, since it's `>>` not `>>>` — confirmed correct in
+isolation, see the single-shift check below), and only widens _after_,
+once the outer `<< 7` consumes it. For a single shift this bottom-up order
+is indistinguishable from Verilog's top-down context propagation — BUG-30's
+own regression tests are single-shift and stayed green — but for a
+**chained** shift-of-shift with no intervening `extend()`, the two orders
+diverge: sign-extending `p2` to 23 bits _before_ the first shift (real
+Verilog) is not the same value as shifting `p2` at 16 bits _then_
+sign-extending the result to 23 bits (what growing-shifts currently does).
+
+Isolated single-shift sanity check (matches expectation, not itself broken):
+
+```verilog
+reg signed [7:0] x = -8;
+x >> 1    // 124  (logical, zero-fill — correct, `>>` is never arithmetic)
+x >>> 1   // -4   (arithmetic, sign-fill — correct, `>>>` on a signed operand)
+```
+
+**How found.** `tests/differential_fuzz.rs`'s existing kernel-vs-Icarus
+differential (`differential_fuzz_matches_icarus`), run at `MIMZ_DIFF_FUZZ_N
+= 100` (seed 12648521, i=35) while validating GAP-5's new width-conformance
+assertion — past the default `N=20` CI runs, so this was never caught by
+any default `cargo test`. Not a false positive from the new width-
+conformance oracle itself (that assertion never fired on any of the 35
+prior iterations); this is the pre-existing kernel-vs-Icarus `assert_eq!`
+catching a genuine divergence.
+
+**Severity.** HIGH — silent miscompile of the same "simulator passes,
+hardware disagrees" shape as BUG-11/BUG-28/BUG-29, on a construct
+(chained shifts on a signed value with no `extend()` between them) that is
+unremarkable, not adversarial input.
+
+**Fix.** Not yet attempted — needs the same care BUG-11/BUG-30 took
+(empirically verify any prescribed fix against real `iverilog` before
+landing; a plausible-sounding "just thread context through the chain"
+patch has burned this exact area twice before). Left open, deliberately
+out of scope for the branch that found it
+(`bug-33-gap-5-perf-and-width-oracle`), which is scoped to BUG-33 and
+GAP-5 only.
+
+**Test.** None yet — the repro above is a candidate first regression test
+once this is picked up.
