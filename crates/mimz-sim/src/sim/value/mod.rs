@@ -316,20 +316,20 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
             .signal(n)
             .map_err(|msg| crate::sim::diag::diag_from_bridged(e.span, msg, "S0201")),
         ExprKind::Unary { op, expr } => Ok(unary(*op, eval(r, expr)?)),
+        // BUG-34 (docs/audit/bugs.md): a fused `Shl`/`Shr` chain must be
+        // evaluated as one unit (`binary::eval_shift_chain`), not per-node
+        // — see that function's doc comment for why. This also covers a
+        // LONE shift (chain-of-one), so `shl`/`shr` are never reached from
+        // here directly; they stay as directly-callable primitives for
+        // callers (and tests) that already have both operands as `Val`s.
+        ExprKind::Binary {
+            op: BinOp::Shl | BinOp::Shr,
+            ..
+        } => binary::eval_shift_chain(r, e),
         ExprKind::Binary { op, lhs, rhs } => {
             let l = eval(r, lhs)?;
             let rr = eval(r, rhs)?;
-            // `<<`'s growth needs to know whether `rhs` is a compile-time
-            // constant (grows by exactly that value) or a genuine runtime
-            // signal (grows by its own worst case) — mirrors the
-            // emitter's `kinds::shift_const_amount`, generalized to also
-            // resolve module `int` parameters via `r.ints()` (the
-            // simulator, unlike the emitter, has them bound already).
-            let const_amount = matches!(op, BinOp::Shl | BinOp::Shr)
-                .then(|| const_eval(rhs, r.ints()).ok())
-                .flatten()
-                .and_then(|v| u128::try_from(v).ok());
-            binary_ctx(*op, l, rr, const_amount, e.span)
+            binary_ctx(*op, l, rr, None, e.span)
         }
         ExprKind::IfExpr { cond, then, els } => {
             if eval(r, cond)?.lsb() == 1 {

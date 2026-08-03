@@ -103,6 +103,15 @@ fn shl_then_shr_loses_no_bits_once_shl_grows() {
     assert_eq!(shifted_right.masked(), 255); // exact round-trip, not 63
 }
 
+// BUG-34's own regression test lives in `sim::comb::tests`
+// (`chained_signed_shift_context_extends_before_the_shift`) — it needs a
+// real parsed `Expr` tree through `eval()`/`eval_shift_chain`, not just
+// two hand-chained `binary_ctx` calls: calling `shr`/`shl` directly here,
+// as this file's other tests do, exercises exactly the per-node primitives
+// that stay correct and unchanged (`eval_shift_chain` calls the very same
+// `shr`/`shl` internally, just after extending the base operand first) —
+// so a hand-chained version of this test can't observe BUG-34 at all.
+
 #[test]
 fn fn_call_arity_mismatch_is_err_not_panic() {
     // Fuzz find: `eval_fn_call` is reachable directly on a parsed-but-

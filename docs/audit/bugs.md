@@ -2321,7 +2321,7 @@ entry's own repro number).
 
 ---
 
-## BUG-34 (HIGH, OPEN) — Chained shifts (`(x >> a) << b`) diverge from Verilog when the inner operand is signed
+## BUG-34 (HIGH, FIXED 2026-08-03) — Chained shifts (`(x >> a) << b`) diverge from Verilog when the inner operand is signed
 
 **What.** A right-shift immediately consumed by an outer left-shift, with no
 `extend()` between them, computes a different value than real Verilog when
@@ -2342,11 +2342,10 @@ mimz eval  → y = 447744
 iverilog   → y = -76544   (bit pattern 8312064)
 ```
 
-**Cause (hypothesis, not yet root-caused in the simulator's own code).**
-Matches the same class of divergence BUG-11 first characterized: real
-Verilog context-extends a shift's left operand to the _enclosing_ width
-**before** either shift executes — since `p2` is signed, that context
-extension is a sign extension. BUG-30's "growing shifts" fix
+**Cause (confirmed).** Matches the same class of divergence BUG-11 first
+characterized: real Verilog context-extends a shift's left operand to the
+_enclosing_ width **before** either shift executes — since `p2` is signed,
+that context extension is a sign extension. BUG-30's "growing shifts" fix
 (`width_rules::shift_result`) computes bottom-up instead: the inner
 `p2 >> 4` resolves at `p2`'s own self-determined 16-bit width first (a
 LOGICAL, zero-fill shift, since it's `>>` not `>>>` — confirmed correct in
@@ -2357,7 +2356,7 @@ own regression tests are single-shift and stayed green — but for a
 **chained** shift-of-shift with no intervening `extend()`, the two orders
 diverge: sign-extending `p2` to 23 bits _before_ the first shift (real
 Verilog) is not the same value as shifting `p2` at 16 bits _then_
-sign-extending the result to 23 bits (what growing-shifts currently does).
+sign-extending the result to 23 bits (what growing-shifts did pre-fix).
 
 Isolated single-shift sanity check (matches expectation, not itself broken):
 
@@ -2366,6 +2365,17 @@ reg signed [7:0] x = -8;
 x >> 1    // 124  (logical, zero-fill — correct, `>>` is never arithmetic)
 x >>> 1   // -4   (arithmetic, sign-fill — correct, `>>>` on a signed operand)
 ```
+
+**Confirmed NOT a referential-transparency loophole in Verilog's favor.**
+Materializing the inner shift into a named wire first —
+`wire w: signed[16] = p2 >> 4; y = w << 7` — was checked directly against
+`iverilog` too: it gives `447744` (the OLD, pre-fix kernel value), not
+`-76544`. So real Verilog itself treats a FUSED shift chain differently
+from the same shift split across a named signal — an inherent Verilog
+subtlety, not a mimz language-design question. BUG-34's fix only needed to
+make the simulator replicate Verilog's own fused-expression sizing
+faithfully; it does not touch (and should not touch) the named-wire case,
+which both the simulator and real Verilog already agree on.
 
 **How found.** `tests/differential_fuzz.rs`'s existing kernel-vs-Icarus
 differential (`differential_fuzz_matches_icarus`), run at `MIMZ_DIFF_FUZZ_N
@@ -2381,13 +2391,162 @@ hardware disagrees" shape as BUG-11/BUG-28/BUG-29, on a construct
 (chained shifts on a signed value with no `extend()` between them) that is
 unremarkable, not adversarial input.
 
-**Fix.** Not yet attempted — needs the same care BUG-11/BUG-30 took
-(empirically verify any prescribed fix against real `iverilog` before
-landing; a plausible-sounding "just thread context through the chain"
-patch has burned this exact area twice before). Left open, deliberately
-out of scope for the branch that found it
-(`bug-33-gap-5-perf-and-width-oracle`), which is scoped to BUG-33 and
-GAP-5 only.
+**Fix (2026-08-03, branch `bug-34-chained-signed-shifts`).** A scoped
+revival of BUG-11's context-threading, deliberately narrow (not the full
+general mechanism BUG-30 deleted — see `docs/audit/bugs.md` BUG-30's own
+note on why that was removed): `crates/mimz-sim/src/sim/value/binary.rs`
+gained `collect_shift_chain` (walks an expression's left spine through
+consecutive `Shl`/`Shr` nodes, returning the non-shift BASE expression plus
+the ordered `(op, amount)` chain, innermost-first) and `eval_shift_chain`
+(resolves each step's `Kind` bottom-up first — identical rule the old
+per-node dispatch already used, purely to learn the chain's FINAL width —
+then extends the BASE operand to that final width ONCE, sign-extending iff
+signed, and folds every step as a plain logical shift at that fixed width).
+`crates/mimz-sim/src/sim/value/mod.rs`'s `eval()` routes every `Shl`/`Shr`
+AST node through this new path instead of the old per-node
+`eval(lhs)? then binary_ctx`; a lone shift (chain-of-one) is not a special
+case — extending a value to its own unchanged width is a no-op, so it's
+byte-identical to the old behavior. The low-level `shl`/`shr` primitives
+themselves are unchanged (still directly callable, still correct — they're
+what `eval_shift_chain` calls internally after the base is pre-extended),
+so nothing outside the AST-driven evaluator's dispatch needed to change.
 
-**Test.** None yet — the repro above is a candidate first regression test
-once this is picked up.
+**Test.** `chained_signed_shift_context_extends_before_the_shift`
+(`crates/mimz-sim/src/sim/comb.rs`) — an integration-level test through
+`eval_outputs` on real parsed source (a unit test hand-chaining `binary_ctx`
+calls, tried first, can't observe this bug at all: it exercises exactly the
+per-node primitives that stay correct and unchanged). Watched fail
+(`447744`) against the pre-fix code first, green (`8312064`) after. Full
+`mimz-sim` unit suite (158 tests) and the full workspace
+(`cargo test --workspace --all-targets --release`) both green; the
+differential fuzzer re-run at `MIMZ_DIFF_FUZZ_N`/`MIMZ_DIFF_FUZZ_CLOCKED_N
+= 200` (past BUG-34's own discovery seed at i=35) is clean. Verified
+end-to-end via the CLI too: `mimz eval` on this entry's own repro now
+prints `y = -76544`, matching `iverilog` exactly.
+
+---
+
+## BUG-35 (HIGH, OPEN) — A shift whose left operand is a builtin call is not hoisted in a self-determined (concat) position
+
+**What.** `nand(p1) << extend(5, 3)` — a shift whose LEFT OPERAND is a
+builtin call, not a plain identifier or arithmetic expression — sitting
+directly inside a concat member is not hoisted into its own
+`__mimz_sub_N` wire, so the emitted Verilog computes it self-determined at
+1 bit (the width of `nand(p1)` alone) instead of mimz's own declared
+growth width. Minimal repro (verified directly against `iverilog`, not
+just the fuzzer's own harness):
+
+```mimz
+module Fuzz {
+  in p0: bits[7]
+  in p1: bits[9]
+  out y: bits[1]
+  y = (extend(15736, 15) <= {((p0 *% p0) | extend(p1[8:7], 7)), (nand(p1) << extend(5, 3))})
+}
+```
+
+```text
+p0 = 55, p1 = 110
+mimz eval  → y = 1
+iverilog   → y = 0
+```
+
+Emitted Verilog for the offending member: `((~&(p1)) << 3'd5)` — bare,
+un-hoisted, sitting directly in the concat literal. The sibling member
+(`p0 *% p0`) DOES get hoisted (`__mimz_sub_2`), confirming the hoist
+mechanism runs at this call site in general; it specifically fails for
+this shift.
+
+**Cause (hypothesis, not yet root-caused).** Same class as BUG-19/BUG-24
+(a self-determined-position shift that should be hoisted but isn't) and
+the same underlying mechanism BUG-28/29 fixed for `extend`/`abs` — but
+those fixes were about the SHIFT/BUILTIN ITSELF being unclassified in
+`self_determined.rs`'s exhaustive match. Here the shift operator IS
+classified (an ordinary `<<`, already correctly hoisted in every prior
+test case, including the differential fuzzer's own pre-existing
+`combine_shift` outputs). The new element is specifically the LEFT
+OPERAND being a builtin call (`nand(p1)`) rather than a plain identifier
+or arithmetic expression — `kind_is_inferrable`/`infer_call`
+(`crates/mimz-core/src/emit_verilog/{expr,kinds}.rs`) likely fail to
+correctly propagate an inferable `Kind` through a `Nand`/`Nor`/`Xnor`
+(or more generally, some subset of builtins) argument position when that
+builtin's OWN result then feeds a shift's hoist-eligibility check,
+causing `hoist_if_needed` to silently skip it.
+
+**How found.** GAP-5 direction 2's fuzzer position-aware generation
+(`tests/differential_fuzz.rs`'s new `wrap_builtin`, this session) — the
+first random-generation pass to place a builtin call as a shift's own
+left operand, inside a self-determined (concat) position. Not reachable
+by the pre-existing generator (which only ever shifted a plain port
+reference or a same-width-combinator result, never a builtin call).
+
+**Severity.** HIGH — silent miscompile of the same "simulator passes,
+hardware disagrees" shape as BUG-11/BUG-19/BUG-24/BUG-28/BUG-29.
+
+**Fix.** Not yet attempted — needs tracing `kind_is_inferrable`'s exact
+handling of a builtin-call operand feeding a shift, then verifying any
+fix against real `iverilog` (this area's established discipline). Left
+open, out of scope for the branch that found it
+(`bug-34-chained-signed-shifts`).
+
+**Test.** None yet — the repro above is a candidate first regression
+test once this is picked up.
+
+---
+
+## BUG-36 (HIGH, OPEN) — `trunc()` of a non-identifier expression emits an invalid Verilog part-select
+
+**What.** `trunc({p0, extend(39, 7)}, 15)` — `Builtin::Trunc` applied to
+a CONCAT expression rather than a bare identifier — is accepted by the
+checker but emits `{p0, __mimz_sub_1}[(15)-1:0]`: a Verilog part-select
+(`[hi:lo]`) applied directly to a `{...}` concatenation literal, which
+`iverilog` rejects outright:
+
+```text
+error: syntax error in continuous assignment
+```
+
+(reproduced live: the full source is
+`module Fuzz { clock clk  reset rst  in p0: bits[11]  in p1: bits[13]
+in p2: bits[15]  reg r0: bits[5] = 0  out y: bits[15]  on rise(clk) {
+r0 <- unsigned(signed(extend(6, 5))) }  y = trunc({p0, extend(39, 7)}, 15)
+}` — `iverilog` fails to elaborate the emitted Verilog at all, a hard
+compile failure, not a value mismatch).
+
+**Cause.** This is **BUG-20's own class** (`docs/audit/bugs.md`,
+FIXED for the raw-slice/`clamp()`-fallback case): Verilog's part-select
+grammar only accepts an identifier before `[...]`, not an arbitrary
+expression. `Builtin::Trunc`'s codegen renders as an explicit part-select
+`x[N-1:0]` (`self_determined.rs`'s own doc comment: _"already exactly N
+bits in Verilog"_) — correct when `x` is a plain identifier, but this
+codegen path has no guard for `x` being a compound expression (a concat,
+in this repro) needing hoisting into a named wire FIRST, the same way
+`p0 *% p0` in BUG-35's own repro gets hoisted before use. BUG-20's
+original fix covered the checker/emitter's generic slice (`ExprKind::
+Slice`) path; `Builtin::Trunc`'s OWN separate codegen site was never
+updated to match.
+
+**How found.** GAP-5 direction 2's fuzzer position-aware generation
+(`tests/differential_fuzz.rs`'s new `wrap_builtin`), same session as
+BUG-35 — `wrap_builtin`'s `Trunc` candidate can pick ANY fragment from
+the pool as its argument, including a `combine_concat` result, which the
+pre-existing generator's own `clamp()` fallback was already careful to
+avoid (`clamp`'s doc comment explicitly documents BUG-20 and only ever
+slices a bare port identifier) — `wrap_builtin` reopened the same class
+through a different call site (`trunc()` itself, not a raw slice).
+
+**Severity.** HIGH — hard compile failure (not silent miscompile) for a
+checker-accepted program; `mimz check`/`mimz test` pass clean, `mimz
+compile`'s own output fails to elaborate under any real Verilog
+toolchain.
+
+**Fix.** Not yet attempted — the emitter's `Trunc` codegen site
+(`crates/mimz-core/src/emit_verilog/`) needs the same
+hoist-non-identifier-bases-first treatment BUG-20's fix already applies
+to the generic slice path, or should route through the SAME hoisting
+helper (`hoist_if_needed`) instead of a separate ad hoc part-select
+render. Left open, out of scope for the branch that found it
+(`bug-34-chained-signed-shifts`).
+
+**Test.** None yet — the repro above is a candidate first regression
+test once this is picked up.

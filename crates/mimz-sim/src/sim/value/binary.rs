@@ -366,17 +366,19 @@ fn bitxor(l: Val, r: Val) -> Val {
     }
 }
 
-// `<<`/`>>` are context-determined on their left operand in real
-// Verilog (ground-truthed against `iverilog`, BUG-11): the operand
-// widens to the ENCLOSING width before the shift, not after —
-// growing by the shift amount (the old fix here) or truncating to
-// `l.width` unconditionally (the naive "spec says width preserved"
-// fix) are both wrong in general; only "widen to the real
-// context, then shift, keeping that width" matches Icarus for
-// every case tried (same-width chain, narrower-operand-into-wider-
-// context, standalone). `ctx_w` is `l`'s own width when no context
-// is known (self-determined fallback — e.g. a bare test/eval
-// expression with no assignment target).
+// `<<`/`>>` are context-determined on their left operand in real Verilog
+// (ground-truthed against `iverilog`, BUG-11): the operand widens to the
+// ENCLOSING width before the shift, not after. BUG-30 replaced full
+// context-threading with per-node growth (`<<` grows, `>>` doesn't) — right
+// for a LONE shift (its declared type already bounds the value, no ambient
+// context needed), but BUG-34 (`docs/audit/bugs.md`) found this loses the
+// original context-widening for a FUSED chain (`(a >> b) << c`, no named
+// intermediate): `>>` alone doesn't grow, so its self-determined result is
+// too narrow, and the outer `<<`'s later re-extension of that
+// already-computed value is too late to recover the right fill bits.
+// `eval_shift_chain` below is the scoped revival — walks a whole fused
+// shift chain, widens the BASE operand ONCE to the chain's final width,
+// then folds each shift at that fixed width, matching Icarus exactly.
 /// Maps `width_rules::shift_result`'s `Err` to a `Diag` — shared by `shl`/
 /// `shr` since both call the same shared rule.
 fn shift_rule_err(
@@ -476,6 +478,76 @@ fn shr(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
         let shift = r.bits_small_or_zero().min(w as u128) as u32;
         Val::new_wide(wide::shr(&widened, shift), w, result.signed)
     })
+}
+
+/// Walks down `e`'s left spine through consecutive `Shl`/`Shr` nodes,
+/// returning the first non-shift BASE expression and the ordered chain of
+/// `(op, amount-expr)` from innermost to outermost. A lone shift (nothing
+/// nested on its own left operand) returns a one-entry chain — not a
+/// special case, just the chain-of-one case `eval_shift_chain` below
+/// still has to handle correctly (and does, identically to plain `shl`/
+/// `shr`, since extending a value to its own unchanged width is a no-op).
+fn collect_shift_chain(e: &Expr) -> (&Expr, Vec<(BinOp, &Expr)>) {
+    if let ExprKind::Binary { op, lhs, rhs } = &e.kind
+        && matches!(op, BinOp::Shl | BinOp::Shr)
+    {
+        let (base, mut chain) = collect_shift_chain(lhs);
+        chain.push((*op, rhs.as_ref()));
+        return (base, chain);
+    }
+    (e, Vec::new())
+}
+
+/// BUG-34: evaluate a whole fused `Shl`/`Shr` chain as one unit instead of
+/// per-node. Pass 1 resolves each step's `Kind` bottom-up (the exact rule
+/// `shl`/`shr` already apply per-node) purely to learn the chain's FINAL
+/// width/signedness up front. Pass 2 extends the base operand to that
+/// final width ONCE — sign-extending iff the base is signed — then folds
+/// every step as a plain logical shift at that fixed width, matching how
+/// real Verilog sizes a fused shift expression (ground-truthed against
+/// `iverilog` on BUG-34's own repro: `(p2 >> 4) << 7` for `p2:
+/// signed[16] = -9563` gives `-76544`, not the per-node result `447744`).
+pub(super) fn eval_shift_chain<R: super::Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
+    let (base_expr, chain) = collect_shift_chain(e);
+    let base = super::eval(r, base_expr)?;
+
+    let mut width = base.width;
+    let mut signed = base.signed;
+    let mut unknown = base.unknown;
+    let mut steps: Vec<(BinOp, Val)> = Vec::with_capacity(chain.len());
+    for &(op, rhs_expr) in &chain {
+        let rv = super::eval(r, rhs_expr)?;
+        unknown |= rv.unknown;
+        let const_amount = super::const_eval(rhs_expr, r.ints())
+            .ok()
+            .and_then(|v| u128::try_from(v).ok());
+        let k = mimz_core::width_rules::shift_result(
+            mimz_core::width_rules::Kind { width, signed },
+            mimz_core::width_rules::Kind {
+                width: rv.width,
+                signed: rv.signed,
+            },
+            const_amount,
+            matches!(op, BinOp::Shl),
+        )
+        .map_err(|err| shift_rule_err(err, e.span))?;
+        width = k.width;
+        signed = k.signed;
+        steps.push((op, rv));
+    }
+
+    let mut limbs = wide::extend(&base.to_limbs(), base.width, width, base.signed);
+    for (op, rv) in &steps {
+        let shift = rv.bits_small_or_zero().min(width as u128) as u32;
+        limbs = match op {
+            BinOp::Shl => wide::shl(&limbs, shift, width),
+            BinOp::Shr => wide::shr(&limbs, shift),
+            _ => unreachable!("collect_shift_chain only ever collects Shl/Shr"),
+        };
+    }
+    let mut result = Val::new_wide(limbs, width, signed);
+    result.unknown = unknown;
+    Ok(result)
 }
 
 pub(super) fn binary_known(
