@@ -84,8 +84,20 @@ fn kind_is_inferrable(expr: &Expr, decls: &HashMap<String, crate::width_rules::K
             Builtin::Extend | Builtin::Trunc => {
                 matches!(args[1].kind, ExprKind::Int { .. }) && kind_is_inferrable(&args[0], decls)
             }
-            Builtin::SignedCast | Builtin::UnsignedCast | Builtin::Abs => {
-                kind_is_inferrable(&args[0], decls)
+            Builtin::SignedCast
+            | Builtin::UnsignedCast
+            | Builtin::Abs
+            | Builtin::Nand
+            | Builtin::Nor
+            | Builtin::Xnor => kind_is_inferrable(&args[0], decls),
+            // BUG-35 (docs/audit/bugs.md): these five builtins fell through
+            // to `_ => false` below, so ANY expression containing one as a
+            // sub-part (e.g. a shift whose left operand is `nand(x)`) was
+            // silently untouchable by the hoist machinery — not just
+            // unclassified for its own sake. `infer_call` (kinds.rs) now
+            // has real arms for all five, so this can ask them for real.
+            Builtin::Min | Builtin::Max => {
+                kind_is_inferrable(&args[0], decls) && kind_is_inferrable(&args[1], decls)
             }
             _ => false,
         },
@@ -900,6 +912,23 @@ impl Emitter<'_> {
                     let decls = self.cur_decls.clone();
                     let x = self.expr_subst(&args[0], subst, arrays);
                     let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    // BUG-36 (docs/audit/bugs.md): `trunc` renders as an
+                    // explicit part-select `x[N-1:0]` — the same BUG-20
+                    // grammar constraint as `ExprKind::Slice`: Verilog's
+                    // part-select only accepts a plain identifier as its
+                    // base. `hoist_width_effect_operand` above only hoists
+                    // a width-effect-binop/shift base (BUG-23/24's concern,
+                    // value correctness); it left a non-identifier base of
+                    // any OTHER shape (a concat, here) untouched. Hoist
+                    // unconditionally on shape, mirroring `ExprKind::Slice`'s
+                    // own `hoist_slice_base_if_needed` call exactly.
+                    let x = if kind_is_inferrable(&args[0], &decls) {
+                        let base_width =
+                            crate::emit_verilog::kinds::infer_kind(&args[0], &decls).width;
+                        self.hoist_slice_base_if_needed(x, base_width, false)
+                    } else {
+                        x
+                    };
                     let n = self.expr_subst(&args[1], subst, arrays);
                     format!("{x}[({n})-1:0]")
                 }

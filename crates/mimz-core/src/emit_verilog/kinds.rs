@@ -118,6 +118,31 @@ fn is_bare_int(kind: &ExprKind) -> bool {
     matches!(kind, ExprKind::Int { .. })
 }
 
+/// Same idea as `is_bare_int`, widened to also recognize a NEGATED
+/// literal (`-128`, `ExprKind::Unary { op: Neg, expr: Int }`) — needed
+/// specifically for `min`/`max` (BUG-35, `docs/audit/bugs.md`): unlike
+/// `AddWrap`/`BitAnd`'s narrower caller, `min(-128, x)` is real, shipped
+/// code (`showcase/pid_controller.mimz`'s `max(-128, min(total, 127))`),
+/// not a hypothetical — the checker's own `infer_ty` keeps a negated
+/// literal as the untyped `Ty::CtInt` too (its `Unary::Neg` arm negates a
+/// `CtInt` in place, never promoting it to a sized type), so `matched_ty`
+/// lets it adapt to `total`'s `signed[16]` the same way a bare `127`
+/// does. `infer_kind`'s own `Unary` arm ignores `op` entirely and just
+/// forwards `inner`'s `Kind` (an existing approximation, unrelated to
+/// this fix) — which is exactly why a negated literal's `Kind` here is
+/// its UNSIGNED inner literal's width, not a sign-aware one; this
+/// function only needs to recognize the SHAPE, not compute its value.
+fn is_ct_int_like(kind: &ExprKind) -> bool {
+    match kind {
+        ExprKind::Int { .. } => true,
+        ExprKind::Unary {
+            op: crate::ast::UnOp::Neg,
+            expr,
+        } => matches!(expr.kind, ExprKind::Int { .. }),
+        _ => false,
+    }
+}
+
 /// Fold a compile-time-constant expression (a slice bound, a replication
 /// count) to its `u32` value. Slice bounds/replication counts are
 /// guaranteed compile-time constant by the checker (`slice_ty`/
@@ -245,6 +270,32 @@ fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Ki
             width: infer_kind(&args[0], decls).width + 1,
             signed: true,
         },
+        // Reductions collapse to one bit, unsigned — matches the checker's
+        // own rule (`checker/widths/ops/builtins.rs`, `Ty::Bit | Ty::Bits(_)
+        // => Ty::Bit`). BUG-35 (docs/audit/bugs.md): missing here entirely
+        // before this fix, which — via `kind_is_inferrable`'s matching
+        // `_ => false` gap in `expr.rs` — made any expression wrapping one
+        // of these untouchable by the hoist machinery, not just
+        // unclassified for its own sake.
+        Builtin::Nand | Builtin::Nor | Builtin::Xnor => Kind {
+            width: 1,
+            signed: false,
+        },
+        // "A literal (or negated literal) adapts to its sized sibling"
+        // rule — matches the checker's own `matched_ty` call for
+        // `min`/`max` (`checker/widths/ops/builtins.rs`). Uses
+        // `is_ct_int_like`, not `infer_binary`'s narrower `is_bare_int`
+        // above — see that function's own doc comment for why.
+        Builtin::Min | Builtin::Max => {
+            let l = infer_kind(&args[0], decls);
+            let r = infer_kind(&args[1], decls);
+            match (is_ct_int_like(&args[0].kind), is_ct_int_like(&args[1].kind)) {
+                (true, false) => r,
+                (false, true) => l,
+                _ => crate::width_rules::matched_result(l, r)
+                    .expect("checker already validated this operator's operand kinds"),
+            }
+        }
         other => panic!(
             "emit_verilog::kinds::infer_call: {other:?} cannot appear in a \
              self-determined position"
