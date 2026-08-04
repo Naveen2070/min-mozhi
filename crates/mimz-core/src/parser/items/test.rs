@@ -58,6 +58,7 @@ impl Parser {
                 span,
                 "E1107",
                 "expected a test name in quotes, e.g. `test \"counter counts\" for ...`",
+                "a test's name is a double-quoted string: `test \"name\" for Module { ... }`",
             );
             None
         }
@@ -98,7 +99,12 @@ impl Parser {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "E1101", "test block is missing its closing `}`");
+                    self.error(
+                        span,
+                        "E1101",
+                        "test block is missing its closing `}`",
+                        "add a closing `}` after the last statement — every `test` block must be closed",
+                    );
                     break span;
                 }
                 TokKind::Kw(Kw::Tick) => {
@@ -146,7 +152,12 @@ impl Parser {
                 other => {
                     let found = kind_name(&other);
                     let span = self.peek().span;
-                    self.error(span, "E1107", format!("expected `tick`, `expect`, an input drive, or `if` in the test body, found {found}"));
+                    self.error(
+                        span,
+                        "E1107",
+                        format!("expected `tick`, `expect`, an input drive, or `if` in the test body, found {found}"),
+                        "a test body statement is `tick(clk)`, `expect <expr>`, an input drive (`name = expr`), `if`, or `sim { ... }`",
+                    );
                     self.sync_to_newline();
                     stmts.push(TestStmt::Error(self.span_since(start)));
                 }
@@ -216,7 +227,12 @@ impl Parser {
                 },
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "E1114", "sim block is missing its closing `}`");
+                    self.error(
+                        span,
+                        "E1114",
+                        "sim block is missing its closing `}`",
+                        "add a closing `}` after the last `bind`/`speed` line — every `sim` block must be closed",
+                    );
                     break span;
                 }
                 other => {
@@ -226,6 +242,7 @@ impl Parser {
                         span,
                         "E1114",
                         format!("expected `speed` or `bind` in the sim block, found {found}"),
+                        "a `sim` block only contains an optional `speed <freq>` line followed by `bind` lines",
                     );
                     self.sync_to_sim_close();
                     return None;
@@ -268,6 +285,7 @@ impl Parser {
                     unit_span,
                     "E1114",
                     format!("expected `hz`, `khz`, or `mhz`, found `{other}`"),
+                    "frequency units are `hz`, `khz`, or `mhz`, e.g. `speed mhz(50)`",
                 );
                 return None;
             }
@@ -323,6 +341,7 @@ impl Parser {
                                 "E1114",
                                 "this config value is too large (peripheral config \
                                  values fit in 128 bits)",
+                                "peripheral config values must fit in 128 bits — use a smaller literal",
                             );
                             return None;
                         }
@@ -334,6 +353,7 @@ impl Parser {
                         arg_start,
                         "E1114",
                         format!("expected a config value, found {found}"),
+                        "a config value is a string, an identifier, or an integer literal",
                     );
                     return None;
                 }

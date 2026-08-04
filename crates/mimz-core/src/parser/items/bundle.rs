@@ -50,6 +50,7 @@ impl Parser {
                         span,
                         "E1101",
                         format!("bundle `{}` is missing its closing `}}`", name.name),
+                        "add a closing `}` after the last field — every `bundle` block must be closed",
                     );
                     break span;
                 }

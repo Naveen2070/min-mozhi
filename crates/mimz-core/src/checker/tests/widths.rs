@@ -215,6 +215,32 @@ fn clock_in_a_data_expression_is_e0403() {
     let src = "module M {\n  clock clk\n  in x: bit\n  out y: bit\n  y = clk & x\n}\n";
     let d = first_err(src, "E0403");
     assert!(d.msg.contains("not data"));
+    assert!(
+        d.help.as_ref().unwrap().contains("clocks and resets"),
+        "clock/reset E0403 keeps its own help: {:?}",
+        d.help
+    );
+}
+
+#[test]
+fn enum_in_concat_is_e0403_with_enum_specific_help() {
+    // BUG-31: `not_data`'s help used to hardcode the clock/reset text even
+    // when the operand was an enum (or any other non-clock/reset "not data"
+    // type) — actively misdirecting a learner. The help must name the
+    // actual problem, not clocks/resets.
+    let src = "enum S { A, B }\n\
+               module M {\n  in a: bit\n  in s: S\n  out y: bits[2]\n  y = { a, s }\n}\n";
+    let d = first_err(src, "E0403");
+    assert!(d.msg.contains("enum"), "message: {:?}", d.msg);
+    let help = d.help.as_ref().unwrap();
+    assert!(
+        !help.contains("clocks and resets"),
+        "enum E0403 must not reuse the clock/reset help: {help:?}"
+    );
+    assert!(
+        help.contains("symbolic"),
+        "enum E0403 help should explain enums are symbolic, not numeric: {help:?}"
+    );
 }
 
 #[test]

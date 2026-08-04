@@ -255,6 +255,7 @@ impl Parser {
                     first.span,
                     "E1101",
                     "foreach's element-form source must be a plain name (e.g. `foreach x in my_array`), not an expression",
+                    "the elements form iterates a declared array/mem directly by name; to iterate a range use `foreach i in lo..hi` instead",
                 );
                 return None;
             };
@@ -289,7 +290,12 @@ impl Parser {
                 }
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "E1101", "block is missing its closing `}`");
+                    self.error(
+                        span,
+                        "E1101",
+                        "block is missing its closing `}`",
+                        "add a closing `}` after the last statement — every `fn` block must be closed",
+                    );
                     break;
                 }
                 _ => {
@@ -313,6 +319,7 @@ impl Parser {
                                     format!(
                                         "expected `let`, `if`, or `return` inside the `fn` block, found {found}"
                                     ),
+                                    "a `fn` body statement is `let`, `if`, `loop`, `foreach`, or `return`",
                                 );
                                 None
                             }
@@ -328,6 +335,7 @@ impl Parser {
                             format!(
                                 "expected `let`, `if`, or `return` inside the `fn` block, found {found}"
                             ),
+                            "a `fn` body statement is `let`, `if`, `loop`, `foreach`, or `return`",
                         );
                         None
                     };

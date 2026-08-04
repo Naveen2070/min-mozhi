@@ -28,8 +28,6 @@ impl Parser {
                 span,
                 "E1112",
                 format!("unknown syntax profile: expected `thamizh`, found {found}"),
-            );
-            self.help(
                 "`syntax thamizh` selects natural Tamil word order; omit the directive for the default code order (spec/04)",
             );
             self.sync_to_newline();
@@ -101,6 +99,7 @@ impl Parser {
                         span,
                         "E1102",
                         format!("expected `module`, `import`, `const`, `enum`, `fn`, `bundle`, `extern`, or `test` at file level, found {found}"),
+                        "a file-level item is `import`, `const`, `enum`, `fn`, `bundle`, `extern module`, `module`, or `test` — see spec/02 section 5",
                     );
                     // Always make progress. `sync_to_newline` STOPS at `}`
                     // without consuming it (it is a block terminator inside
@@ -165,6 +164,7 @@ impl Parser {
                     format!(
                         "parameters and constants are compile-time `int` or `bool`, not `{other}`"
                     ),
+                    format!("only `int` and `bool` are valid for parameters/consts — `{other}` is not a compile-time type"),
                 );
                 None
             }
@@ -195,6 +195,10 @@ impl Parser {
                         "E1113",
                         format!(
                             "empty payload list — use `{}` not `{}()` for a tag-only variant",
+                            vname.name, vname.name
+                        ),
+                        format!(
+                            "drop the parens for a tag-only variant: `{}` instead of `{}()`",
                             vname.name, vname.name
                         ),
                     );
@@ -241,7 +245,12 @@ impl Parser {
             }
         };
         if variants.is_empty() {
-            self.error(name.span, "E1103", "an enum needs at least one variant");
+            self.error(
+                name.span,
+                "E1103",
+                "an enum needs at least one variant",
+                "add at least one variant, e.g. `enum State { Idle, Running }`",
+            );
             return None;
         }
         Some(EnumDecl {
