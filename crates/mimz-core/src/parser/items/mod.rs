@@ -58,8 +58,8 @@ impl Parser {
                     span,
                     "E1101",
                     "the left of `<-` must be a register name, optionally indexed",
+                    "for example: `value <- value +% 1` or `bus[0] <- bit`",
                 );
-                self.help("for example: `value <- value +% 1` or `bus[0] <- bit`");
                 None
             }
         }
@@ -70,7 +70,12 @@ impl Parser {
         match e.kind {
             ExprKind::Ident(name) => Some(Ident { name, span: e.span }),
             _ => {
-                self.error(e.span, "E1101", "the indexed thing must be a register name");
+                self.error(
+                    e.span,
+                    "E1101",
+                    "the indexed thing must be a register name",
+                    "index/slice only a bare signal name, e.g. `arr[i]` — index the result afterward if you need to index a computed value",
+                );
                 None
             }
         }
@@ -204,8 +209,8 @@ impl Parser {
                 span,
                 "E1115",
                 "`??` is not valid here — a valid-bundle type cannot itself be made optional",
+                "use a single `?`, e.g. `bits[8]?`",
             );
-            self.help("use a single `?`, e.g. `bits[8]?`");
             return ty;
         }
         if !self.at(&TokKind::Question) {
@@ -263,7 +268,12 @@ impl Parser {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "E1101", "`repeat` block is missing its closing `}`");
+                    self.error(
+                        span,
+                        "E1101",
+                        "`repeat` block is missing its closing `}`",
+                        "add a closing `}` after the last item — every `repeat` block must be closed",
+                    );
                     break span;
                 }
                 _ => {
@@ -312,6 +322,7 @@ impl Parser {
                     first.span,
                     "E1101",
                     "foreach's element-form source must be a plain name (e.g. `foreach x in my_array`), not an expression",
+                    "the elements form iterates a declared array/mem directly by name; to iterate a range use `foreach i in lo..hi` instead",
                 );
                 return None;
             };
@@ -328,7 +339,12 @@ impl Parser {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "E1101", "`foreach` block is missing its closing `}`");
+                    self.error(
+                        span,
+                        "E1101",
+                        "`foreach` block is missing its closing `}`",
+                        "add a closing `}` after the last item — every `foreach` block must be closed",
+                    );
                     break span;
                 }
                 _ => {

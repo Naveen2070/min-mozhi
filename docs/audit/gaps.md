@@ -26,7 +26,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
 | [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                         | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
 | [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)               | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                              | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | OPEN   |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                              | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
 | [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                               | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
 | [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated) | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
 | [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                              | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | OPEN   |
@@ -152,7 +152,7 @@ not before it — otherwise the X rules get written twice.
 
 ## GAP-3 (MEDIUM) — Parser violates the project's own mandatory-help contract
 
-**Status:** OPEN. Filed 2026-08-02.
+**Status:** CLOSED 2026-08-04. Filed 2026-08-02.
 
 **What.** `Checker::err` (`crates/mimz-core/src/checker/mod.rs:109`) takes `help`
 as a **required** parameter — _"the teaching contract (spec/01 G1) is not
@@ -206,6 +206,19 @@ covered. G1 ("beginner-first, measurably") is a stated constitutional goal.
 2. Fill in all 60 sites.
 3. Add a test asserting every `E11xx` fixture renders a `= help:` line, the same
    way `tests/errors.rs` already guards the `E0xxx` catalog.
+
+**Fix.** `Parser::error`'s signature now requires `help: impl Into<String>`
+(`crates/mimz-core/src/parser/mod.rs`) — byte-for-byte the drafted signature
+above, mirroring `Checker::err`. All 60 call sites across `mod.rs`, `expr.rs`,
+and the 8 `items/*.rs` files filled with a construct-specific teaching help
+line; the 14 sites with a separate opt-in `self.help(...)` had it folded into
+the `error()` call, and `help()` itself deleted (no longer reachable).
+Test: `every_parse_error_carries_a_help_line`
+(`crates/mimz-core/src/parser/tests/safety_and_precedence.rs`) sweeps a
+broken-source case per `E11xx` code (in-crate, mirroring the existing
+`every_parse_error_carries_a_code` structural test, rather than a new
+fixtures-directory + CLI subprocess suite — the same contract, smaller
+surface). Watched it fail (`garbage here` / E1102 had no help) before the fix.
 
 ---
 

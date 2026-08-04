@@ -425,15 +425,34 @@ impl<'a> Checker<'a> {
         };
     }
 
-    /// Shared "clocks/resets are not data" error. Returns `Unknown`.
+    /// Shared "this is not a plain data value" error (BUG-31: the help is
+    /// branched per `Ty` variant — a learner who wrote an enum in a concat
+    /// must not be told about clocks and resets). Returns `Unknown`.
     fn not_data(&mut self, cx: &mut Wcx<'a>, span: Span, t: &Ty<'a>) -> Ty<'a> {
+        let help = match t {
+            Ty::Enum(_) => {
+                "an enum is a symbolic state, not a number — match on it, or add an \
+                 explicit encoding if you need its bits"
+            }
+            Ty::Memory { .. } | Ty::Array { .. } => {
+                "this is a whole memory/array, not a single value — index it \
+                 (`m[addr]`) to get one element"
+            }
+            Ty::Bundle { .. } => {
+                "this is a whole bundle, not a single value — access one field \
+                 (`bus.field`) to get data"
+            }
+            _ => {
+                "clocks and resets only appear in `on rise(clk)` and module \
+                 connections — they never enter expressions (spec/02 section 1.2)"
+            }
+        };
         self.err(
             cx.file,
             span,
             "E0403",
             format!("{} is not data", show(t)),
-            "clocks and resets only appear in `on rise(clk)` and module \
-             connections — they never enter expressions (spec/02 section 1.2)",
+            help,
         );
         Ty::Unknown
     }

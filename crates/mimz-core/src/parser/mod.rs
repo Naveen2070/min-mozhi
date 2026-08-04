@@ -159,17 +159,18 @@ impl Parser {
         }
     }
 
-    /// Record one parse error. The code is mandatory (same discipline as
-    /// `Checker::err`) — the E11xx catalog lives in docs/code/06.
-    fn error(&mut self, span: Span, code: &'static str, msg: impl Into<String>) {
-        self.diags.push(Diag::new(span, msg).with_code(code));
-    }
-
-    /// Attach a help line to the most recent error.
-    fn help(&mut self, help: impl Into<String>) {
-        if let Some(d) = self.diags.last_mut() {
-            d.help = Some(help.into());
-        }
+    /// Record one parse error. Code AND help are mandatory (same discipline
+    /// as `Checker::err` — GAP-3: the teaching contract, spec/01 G1, is not
+    /// optional). The E11xx catalog lives in docs/code/06.
+    fn error(
+        &mut self,
+        span: Span,
+        code: &'static str,
+        msg: impl Into<String>,
+        help: impl Into<String>,
+    ) {
+        self.diags
+            .push(Diag::new(span, msg).with_code(code).with_help(help));
     }
 
     /// Enter one level of recursive descent. Returns `None` (after recording
@@ -182,10 +183,14 @@ impl Parser {
         if self.depth >= MAX_DEPTH {
             if !self.too_deep {
                 let span = self.peek().span;
-                self.error(span, "E1113", "nested too deeply to parse safely");
-                self.help(format!(
-                    "Min-Mozhi limits nesting to {MAX_DEPTH} levels so the parser stays within its stack — flatten the expression or split it into named wires/consts"
-                ));
+                self.error(
+                    span,
+                    "E1113",
+                    "nested too deeply to parse safely",
+                    format!(
+                        "Min-Mozhi limits nesting to {MAX_DEPTH} levels so the parser stays within its stack — flatten the expression or split it into named wires/consts"
+                    ),
+                );
                 self.too_deep = true;
             }
             return None;
@@ -205,7 +210,14 @@ impl Parser {
         } else {
             let found = kind_name(self.peek_kind());
             let span = self.peek().span;
-            self.error(span, "E1101", format!("expected {what}, found {found}"));
+            self.error(
+                span,
+                "E1101",
+                format!("expected {what}, found {found}"),
+                format!(
+                    "check the syntax immediately before this point — {what} was expected here (spec/02-syntax-and-grammar.md)"
+                ),
+            );
             None
         }
     }
@@ -216,7 +228,14 @@ impl Parser {
         } else {
             let found = kind_name(self.peek_kind());
             let span = self.peek().span;
-            self.error(span, "E1101", format!("expected {what}, found {found}"));
+            self.error(
+                span,
+                "E1101",
+                format!("expected {what}, found {found}"),
+                format!(
+                    "check the syntax immediately before this point — {what} was expected here (spec/02-syntax-and-grammar.md)"
+                ),
+            );
             None
         }
     }
@@ -231,7 +250,14 @@ impl Parser {
         } else {
             let found = kind_name(self.peek_kind());
             let span = self.peek().span;
-            self.error(span, "E1101", format!("expected {what}, found {found}"));
+            self.error(
+                span,
+                "E1101",
+                format!("expected {what}, found {found}"),
+                format!(
+                    "check the syntax immediately before this point — {what} was expected here (spec/02-syntax-and-grammar.md)"
+                ),
+            );
             None
         }
     }
@@ -278,6 +304,7 @@ impl Parser {
             span,
             "E1101",
             format!("expected end of line after statement, found {found}"),
+            "each statement ends at a newline (or right before `}` / end of file) — a missing operator, stray token, or unterminated expression on this line is a common cause",
         );
         self.sync_to_newline();
     }

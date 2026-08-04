@@ -29,6 +29,7 @@ impl Parser {
                     format!(
                         "expected a string literal naming the real Verilog module after `=`, found {found}"
                     ),
+                    "name the real Verilog module in quotes, e.g. `extern module Foo = \"real_verilog_name\" { ... }`",
                 );
                 return None;
             }
@@ -77,6 +78,7 @@ impl Parser {
                     span,
                     "E1101",
                     format!("expected a string literal after `doc:`, found {found}"),
+                    "the documentation string must be quoted: `doc: \"a description\"`",
                 );
                 return None;
             };
@@ -96,6 +98,7 @@ impl Parser {
                         span,
                         "E1101",
                         format!("extern module `{}` is missing its closing `}}`", name.name),
+                        "add a closing `}` after the last port/clock/reset line — every `extern module` block must be closed",
                     );
                     break span;
                 }
@@ -128,6 +131,7 @@ impl Parser {
                              declarations — there is no body for `wire`/`reg`/`on`/etc. \
                              to belong to, found {found}"
                         ),
+                        "extern modules only declare their Verilog interface (`in`/`out`/`clock`/`reset`) — behavior lives in the real Verilog file, not here",
                     );
                     return None;
                 }

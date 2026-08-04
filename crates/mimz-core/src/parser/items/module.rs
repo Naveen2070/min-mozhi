@@ -50,6 +50,7 @@ impl Parser {
                     span,
                     "E1101",
                     format!("module `{}` is missing its closing `}}`", name.name),
+                    "add a closing `}` after the last item — every `module` block must be closed",
                 );
                 break span;
             }
@@ -129,8 +130,6 @@ impl Parser {
                         span,
                         "E1104",
                         format!("register `{}` has no reset value", name.name),
-                    );
-                    self.help(
                         "every reg declares its reset value: `reg name: type = 0` — no uninitialized state (spec/02 section 1.2)",
                     );
                     return None;
@@ -164,6 +163,7 @@ impl Parser {
                                 "memory `{}` is missing its depth — memories are written `mem m: type[DEPTH] = 0`",
                                 name.name
                             ),
+                            "memories need an explicit depth suffix: `mem m: bits[8][256] = 0`",
                         );
                         (
                             other,
@@ -183,8 +183,6 @@ impl Parser {
                         span,
                         "E1104",
                         format!("memory `{}` has no init value", name.name),
-                    );
-                    self.help(
                         "every mem declares its init value: `mem m: bits[8][256] = 0` — every cell is initialized at power-on (spec/02 section 1.2)",
                     );
                     return None;
@@ -238,6 +236,10 @@ impl Parser {
                                      use dot access instead: `wire alias = bus.{}`",
                                     bname.name, bname.name
                                 ),
+                                format!(
+                                    "bundle destructure binds fields under their own names; give the wire its own name with `wire alias = bus.{}` instead",
+                                    bname.name
+                                ),
                             );
                             return None;
                         }
@@ -284,8 +286,6 @@ impl Parser {
                         span,
                         "E1105",
                         "`<-` is only for registers inside an `on` block",
-                    );
-                    self.help(
                         "combinational drives use `=`; sequential updates use `<-` inside `on rise(clk) { ... }` (spec/02 section 1.2)",
                     );
                     return None;
@@ -304,6 +304,7 @@ impl Parser {
                     format!(
                         "expected a declaration or assignment in the module body, found {found}"
                     ),
+                    "a module body item is a port (`in`/`out`), a declaration (`wire`/`reg`/`mem`/`const`/`enum`), an instance (`let`), or a drive (`name = expr`) — see spec/02 section 5",
                 );
                 None
             }
@@ -348,6 +349,7 @@ impl Parser {
                         span,
                         "E1101",
                         format!("{ctx} block is missing its closing `}}`"),
+                        format!("add a closing `}}` after the last item — every {ctx} block must be closed"),
                     );
                     break;
                 }
