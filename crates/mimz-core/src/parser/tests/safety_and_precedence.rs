@@ -249,3 +249,42 @@ fn every_parse_error_carries_a_code() {
         }
     }
 }
+
+#[test]
+fn every_parse_error_carries_a_help_line() {
+    // GAP-3: the parser's `error()` must make a help line as mandatory as
+    // `Checker::err` does (spec/01 G1 — the teaching contract is not
+    // optional). Sweeps every E11xx code (docs/code/06-diagnostics.md).
+    let broken = [
+        "module M {\n  out y: bit\n  y = if y { 1 }\n}\n", // E1101/E1108
+        "garbage here\n",                                  // E1102
+        "module M {\n  out y: bit\n  enum E {\n  }\n  y = 0\n}\n", // E1103
+        "module M {\n  clock clk\n  reset rst\n  reg v: bits[8]\n}\n", // E1104
+        "module M {\n  clock clk\n  reset rst\n  reg v: bits[8] = 0\n  on rise(clk) {\n    v = 1\n  }\n}\n", // E1106
+        "test \"t\" for M { bogus }\n", // E1107
+        "module M {\n  in a: bit\n  out y: bit\n  y = a < a > a\n}\n", // E1109
+        "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = min(a)\n}\n", // E1110
+        "module M(W: bits[4]) {\n  out y: bit\n}\n", // E1111
+        "syntax wibble\nmodule M {\n  in a: bit\n}\n", // E1112
+        &format!(
+            "module M {{\n  out y: bit\n  y = {}1{}\n}}\n",
+            "(".repeat(2000),
+            ")".repeat(2000)
+        ), // E1113
+        "module M {\n  in a: bit\n  out y: bit\n  sim { bogus }\n}\n", // E1114
+        "module M {\n  in a: bits[8]??\n  out o: bit\n}\n", // E1115
+        "module M {\n  in a: bit\n  clock clk\n  out y: bit\n  on rise(clk) {\n    y <- sync.nonsense(a, clk, clk)\n  }\n}\n", // E1116
+    ];
+    for src in broken {
+        let d = parse_err(src);
+        assert!(!d.is_empty(), "expected a parse error for {src:?}");
+        for e in d {
+            assert!(
+                e.help.is_some(),
+                "{} ({:?}) reported without a help line",
+                e.msg,
+                e.code
+            );
+        }
+    }
+}

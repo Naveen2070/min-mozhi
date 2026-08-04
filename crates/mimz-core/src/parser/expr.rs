@@ -96,8 +96,6 @@ impl Parser {
                 span,
                 "E1108",
                 "this `if` drives a value, so `else` is mandatory",
-            );
-            self.help(
                 "without `else` the wire would be undriven in some cycles — that is how latches are born (spec/02 section 1.3)",
             );
             return None;
@@ -153,8 +151,6 @@ impl Parser {
                 span,
                 "E1108",
                 "this `if` drives a value, so `else` is mandatory",
-            );
-            self.help(
                 "without `else` the wire would be undriven in some cycles — that is how latches are born (spec/02 section 1.3)",
             );
             return None;
@@ -219,7 +215,12 @@ impl Parser {
             }
             if let TokKind::Eof = self.peek_kind() {
                 let span = self.peek().span;
-                self.error(span, "E1101", "`match` is missing its closing `}`");
+                self.error(
+                    span,
+                    "E1101",
+                    "`match` is missing its closing `}`",
+                    "add a closing `}` after the last arm — every `match` block must be closed",
+                );
                 break span;
             }
             match self.arm() {
@@ -313,6 +314,7 @@ impl Parser {
                     span,
                     "E1101",
                     format!("expected a pattern (number, `Enum.Variant`, or `_`), found {found}"),
+                    "match arms are a number, `true`/`false`, `_` (wildcard), or `Enum.Variant` (with optional bindings) — see spec/02 section 3",
                 );
                 None
             }
@@ -402,8 +404,8 @@ impl Parser {
                 chain_start,
                 "E1109",
                 "`==`/`!=` cannot be part of a comparison chain",
+                "compare equality on its own, e.g. `(a == b) && (b < c)`",
             );
-            self.help("compare equality on its own, e.g. `(a == b) && (b < c)`");
             return None;
         }
         let first_dir = dir(ops[0]);
@@ -412,8 +414,8 @@ impl Parser {
                 chain_start,
                 "E1109",
                 "a comparison chain must point in one direction",
+                "keep one direction, e.g. `0 <= x <= 100` — or split with `&&`",
             );
-            self.help("keep one direction, e.g. `0 <= x <= 100` — or split with `&&`");
             return None;
         }
 
@@ -528,6 +530,7 @@ impl Parser {
                             e.span,
                             "E1101",
                             "`Enum.Variant(...)` requires a simple enum name before `.`",
+                            "write the enum name directly before `.Variant(...)`, e.g. `State.Red(1)` — a computed or indexed expression can't stand in for the enum name",
                         );
                         return None;
                     };
@@ -730,6 +733,7 @@ impl Parser {
                     span,
                     "E1101",
                     "in thamizh order the condition comes first: `<cond> enil { … }` — parenthesize if you need it as a value",
+                    "thamizh word order puts the clause head after its operand — see spec/04",
                 );
                 None
             }
@@ -739,6 +743,7 @@ impl Parser {
                     span,
                     "E1101",
                     "in thamizh order the scrutinee comes first: `<expr> thernthedu { … }` — parenthesize if you need it as a value",
+                    "thamizh word order puts the clause head after its operand — see spec/04",
                 );
                 None
             }
@@ -762,6 +767,7 @@ impl Parser {
                     span,
                     "E1101",
                     format!("expected a value here, found {found}"),
+                    "a value is a number, `true`/`false`, an identifier, `(expr)`, `{...}` (concat/replicate/bundle), `[...]` (array), or `if`/`match`",
                 );
                 None
             }
@@ -799,6 +805,9 @@ impl Parser {
                     id.span.join(t.span),
                     "E1110",
                     format!("`{name}` takes {arity} argument(s), got {}", args.len()),
+                    format!(
+                        "`{name}` always takes exactly {arity} argument(s) — check the call against its signature (docs/guide or spec/02)"
+                    ),
                 );
                 return None;
             }
@@ -839,6 +848,7 @@ impl Parser {
                     "unknown `sync.` method `{}` — expected `double_flop` or `pulse`",
                     method.name
                 ),
+                "the only `sync.` CDC primitives are `double_flop` and `pulse` — see spec/05 (CDC) for their signatures",
             );
             return None;
         };
@@ -864,6 +874,10 @@ impl Parser {
                     "`sync.{}` takes {arity} argument(s), got {}",
                     method.name,
                     args.len()
+                ),
+                format!(
+                    "`sync.{}` always takes exactly {arity} argument(s) — see spec/05 (CDC) for its signature",
+                    method.name
                 ),
             );
             return None;

@@ -2171,7 +2171,7 @@ class.
 
 ---
 
-## BUG-31 (MEDIUM, OPEN) — `E0403` emits the clock/reset help line for an enum used as data
+## BUG-31 (MEDIUM, FIXED 2026-08-04) — `E0403` emits the clock/reset help line for an enum used as data
 
 **What.** The inline `= help:` line is unrelated to the error being reported.
 
@@ -2204,14 +2204,19 @@ one users hit while looking for the missing enum→bits cast
 ([`gaps.md`](gaps.md) GAP-7), so the wrong help compounds a real expressiveness
 gap.
 
-**Fix.** Branch the help on the `Ty` variant inside `not_data`:
+**Fix.** Branched the help on the `Ty` variant inside `not_data`
+(`crates/mimz-core/src/checker/widths/mod.rs`): `Enum` → "an enum is a
+symbolic state, not a number — match on it, or add an explicit encoding if
+you need its bits"; `Memory`/`Array` → "index it (`m[addr]`) to get one
+element"; `Bundle` → "access one field (`bus.field`) to get data"; everything
+else (`Clock`/`Reset`) keeps the original text, now correctly scoped to its
+own case.
 
-- Enum → _"an enum is a symbolic state, not a number; match on it, or add an
-  explicit encoding."_
-- Clock/reset → existing text.
-
-**Test.** Extend the E0403 fixture set with an enum-in-concat case asserting the
-enum-specific help string, alongside the existing clock/reset case.
+**Test.** `enum_in_concat_is_e0403_with_enum_specific_help`
+(`crates/mimz-core/src/checker/tests/widths.rs`) — watched it fail against the
+old hardcoded text, then pass; `clock_in_a_data_expression_is_e0403` extended
+with its own help-content assertion so the clock/reset case can't silently
+regress.
 
 ---
 

@@ -55,8 +55,8 @@ impl Parser {
                 span,
                 "E1101",
                 "expected `rise` or `fall` for the clock edge",
+                "a sequential block is `on rise(clk) { … }` or `on fall(clk) { … }`",
             );
-            self.help("a sequential block is `on rise(clk) { … }` or `on fall(clk) { … }`");
             None
         }
     }
@@ -81,7 +81,12 @@ impl Parser {
                 TokKind::RBrace => break self.bump().span,
                 TokKind::Eof => {
                     let span = self.peek().span;
-                    self.error(span, "E1101", "block is missing its closing `}`");
+                    self.error(
+                        span,
+                        "E1101",
+                        "block is missing its closing `}`",
+                        "add a closing `}` after the last statement — every `on`/sequential block must be closed",
+                    );
                     break span;
                 }
                 _ => {
@@ -129,8 +134,10 @@ impl Parser {
             let lhs = self.lvalue()?;
             if self.at(&TokKind::Assign) {
                 let span = self.peek().span;
-                self.error(span, "E1106", "`=` is only for wires, outside `on` blocks");
-                self.help(
+                self.error(
+                    span,
+                    "E1106",
+                    "`=` is only for wires, outside `on` blocks",
                     "registers update with `<-` inside `on` blocks: `value <- value +% 1` (spec/02 section 1.2)",
                 );
                 return None;
@@ -146,6 +153,7 @@ impl Parser {
             span,
             "E1101",
             format!("expected a register update or `if` inside the `on` block, found {found}"),
+            "inside an `on` block, each statement is a register update (`name <- expr`), `if`, `loop`, `foreach`, or `default` — see spec/02 section 1.2",
         );
         None
     }
@@ -237,6 +245,7 @@ impl Parser {
                     first.span,
                     "E1101",
                     "foreach's element-form source must be a plain name (e.g. `foreach x in my_array`), not an expression",
+                    "the elements form iterates a declared array/mem directly by name; to iterate a range use `foreach i in lo..hi` instead",
                 );
                 return None;
             };
@@ -287,8 +296,10 @@ impl Parser {
         }
         if self.at(&TokKind::Assign) {
             let span = self.peek().span;
-            self.error(span, "E1106", "`=` is only for wires, outside `on` blocks");
-            self.help(
+            self.error(
+                span,
+                "E1106",
+                "`=` is only for wires, outside `on` blocks",
                 "registers update with `<-` inside `on` blocks: `value <- value +% 1` (spec/02 section 1.2)",
             );
             return None;
