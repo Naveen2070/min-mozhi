@@ -751,3 +751,40 @@ fn bug_30_extend_of_a_shift_matches_a_named_wire_of_it() {
     // Real hardware agrees too — same fixture, run through Icarus.
     differential(src, &[("din", 15)]);
 }
+
+#[test]
+fn bug_35_shift_with_a_builtin_call_left_operand_in_a_concat_matches_icarus() {
+    // BUG-35's own filed repro (`docs/audit/bugs.md`): a shift whose LEFT
+    // OPERAND is a builtin call (`nand(p1)`), sitting inside a concat
+    // member, was never hoisted — `nand`/`nor`/`xnor`/`min`/`max` fell
+    // through `kind_is_inferrable`'s `_ => false` arm (and `infer_call`'s
+    // matching `panic!` arm), so the ENCLOSING shift was treated as
+    // "can't analyze" and skipped the hoist entirely, letting Verilog
+    // compute it self-determined at `nand(p1)`'s own 1-bit width instead
+    // of mimz's declared growth width.
+    let src = "module Fuzz {\n  in p0: bits[7]\n  in p1: bits[9]\n  out y: bits[1]\n  \
+                y = (extend(15736, 15) <= {((p0 *% p0) | extend(p1[8:7], 7)), \
+                (nand(p1) << extend(5, 3))})\n}\n";
+    // p0=55, p1=110 — the exact vector BUG-35's filing used (kernel said
+    // y=1, real Icarus said y=0 before this fix).
+    differential(src, &[("p0", 55), ("p1", 110)]);
+}
+
+#[test]
+fn bug_36_trunc_of_a_concat_hoists_the_base_first() {
+    // BUG-36's own filed repro shape (`docs/audit/bugs.md`, simplified —
+    // the clock/reset/reg machinery in the original filing was incidental,
+    // not load-bearing): `Builtin::Trunc` renders as an explicit
+    // part-select `x[N-1:0]`, but only ever hoisted `x` when it was a
+    // width-effect-binop/shift base (BUG-23/24's concern) — a concat base
+    // rendered ungrouped as `{p0, extend(39, 7)}[(15)-1:0]`, which real
+    // Verilog rejects outright (part-select only accepts a plain
+    // identifier, the same BUG-20 grammar constraint `ExprKind::Slice`
+    // already had to solve). `mimz check`/`mimz test` passed clean;
+    // `mimz compile`'s own output failed to elaborate under `iverilog`.
+    let src = "module Fuzz {\n  in p0: bits[11]\n  out y: bits[15]\n  \
+                y = trunc({p0, extend(39, 7)}, 15)\n}\n";
+    // p0 = 0b101_0101_0101 (1365) — any value exercises the syntax fix;
+    // the value itself just needs to round-trip through both judges.
+    differential(src, &[("p0", 0b101_0101_0101)]);
+}

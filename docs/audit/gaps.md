@@ -28,7 +28,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)               | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
 | [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                              | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | OPEN   |
 | [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                               | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated) | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | OPEN   |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated) | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
 | [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                              | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | OPEN   |
 | [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                             | No enum↔bits cast                                                       | MEDIUM     | OPEN   |
 | [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                     | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
@@ -246,12 +246,14 @@ the checker and a large drop in allocator pressure.
 
 ## GAP-5 (HIGH, testing) — No declared-type-vs-produced-value oracle; self-determined positions ungenerated
 
-**Status:** INFRASTRUCTURE COMPLETE 2026-08-03; ACTIVE FINDINGS OPEN
-(BUG-35, BUG-36). Both directions' testing infrastructure now exist
-(static matrix, width-conformance property, randomized position-aware
-generation) — this entry stays open only because what that infrastructure
-found (BUG-35, BUG-36, and BUG-34 before it) isn't all fixed yet, not
-because more oracle-building work remains.
+**Status:** CLOSED 2026-08-04. Both directions' testing infrastructure
+landed 2026-08-03 (static matrix, width-conformance property, randomized
+position-aware generation), and everything that infrastructure found
+(BUG-34, BUG-35, BUG-36) is now fixed — see `bugs.md` for each. The
+oracle gap itself (the actual subject of this entry) is closed: the
+fuzzer now asserts width-conformance on every run, and its generator now
+reaches every self-determined position with random `Builtin`-wrapped
+fragments, not just hand-picked ones.
 
 **Update 2026-08-03 (branch `bug-33-gap-5-perf-and-width-oracle`).**
 Direction 1's width-conformance assertion landed in
