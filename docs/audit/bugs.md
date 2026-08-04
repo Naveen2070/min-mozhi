@@ -2426,7 +2426,7 @@ prints `y = -76544`, matching `iverilog` exactly.
 
 ---
 
-## BUG-35 (HIGH, OPEN) — A shift whose left operand is a builtin call is not hoisted in a self-determined (concat) position
+## BUG-35 (HIGH, FIXED 2026-08-04) — A shift whose left operand is a builtin call is not hoisted in a self-determined (concat) position
 
 **What.** `nand(p1) << extend(5, 3)` — a shift whose LEFT OPERAND is a
 builtin call, not a plain identifier or arithmetic expression — sitting
@@ -2483,18 +2483,53 @@ reference or a same-width-combinator result, never a builtin call).
 **Severity.** HIGH — silent miscompile of the same "simulator passes,
 hardware disagrees" shape as BUG-11/BUG-19/BUG-24/BUG-28/BUG-29.
 
-**Fix.** Not yet attempted — needs tracing `kind_is_inferrable`'s exact
-handling of a builtin-call operand feeding a shift, then verifying any
-fix against real `iverilog` (this area's established discipline). Left
-open, out of scope for the branch that found it
-(`bug-34-chained-signed-shifts`).
+**Fix (2026-08-04).** Confirmed the hypothesis exactly: `kind_is_inferrable`
+(`crates/mimz-core/src/emit_verilog/expr.rs`) and `infer_call`
+(`crates/mimz-core/src/emit_verilog/kinds.rs`) both had no arm for
+`Nand`/`Nor`/`Xnor`/`Min`/`Max` — the former fell to `_ => false`, the
+latter to `other => panic!(...)`. `self_determined.rs`'s own exhaustive
+`Builtin` match already classified all five correctly (`None` — reductions
+are 1-bit in both models, `min`/`max` render to a same-width ternary in
+both), so no bug lived there; the gap was purely on the mimz-side
+inference, which made the ENCLOSING expression (the shift, here)
+"un-analyzable" and skip the hoist machinery entirely — not because the
+existing hoist logic was wrong, but because it never ran. Added real
+`infer_call` arms: reductions → `Kind{width:1,signed:false}` (matches the
+checker's own `Ty::Bit` rule); `min`/`max` → the same "a literal adapts to
+its sized sibling" rule `infer_binary`'s `AddWrap`/`BitAnd` arm already
+uses, mirroring the checker's own `matched_ty` call for these two. Added
+matching `kind_is_inferrable` arms (single-arg recursion for the three
+reductions, both-args for `min`/`max`). This alone unblocks the
+already-correct `hoist_width_effect_operand`/`hoist_if_needed` mechanism
+for the shift — no change needed to either.
 
-**Test.** None yet — the repro above is a candidate first regression
-test once this is picked up.
+Fixing `min`/`max`'s literal-adapts check surfaced a second, real bug along
+the way: reusing `infer_binary`'s existing `is_bare_int` helper (which
+deliberately does NOT recognize a negated literal — see its own doc
+comment, scoped to that one caller's own repro) broke a real, shipped
+example — `showcase/pid_controller.mimz`'s `max(-128, min(total, 127))` —
+panicking on a `Kind` mismatch (`Kind{8,false}` vs `Kind{16,true}`) the
+checker never considered one (`-128` parses as `Unary{Neg, Int(128)}`, not
+a bare `Int`). Added `is_ct_int_like` (recognizes a literal OR a negated
+literal), scoped to the `Min`/`Max` arm only — `AddWrap`/`BitAnd`'s
+narrower `is_bare_int` is untouched, per its own documented scoping.
+
+**Test.** `bug_35_shift_with_a_builtin_call_left_operand_in_a_concat_matches_icarus`
+(`tests/self_determined_regression.rs`) — BUG-35's own filed repro and
+vector, watched fail against real Icarus first (kernel says 1, Icarus says
+0, matching the filing) via a temporary `git stash` of the fix, then pass
+after. The full workspace suite (`cargo test --workspace --all-targets
+--no-fail-fast`, `REQUIRE_IVERILOG=1`) stayed green, including the
+pre-existing `matrix_min_in_concat_matches_icarus`/`matrix_max_in_concat_matches_icarus`/
+`matrix_nand_in_concat_matches_icarus`/`matrix_nor_in_concat_matches_icarus`/
+`matrix_xnor_in_concat_matches_icarus` GAP-5 position-matrix tests, and
+`showcase_emitted_verilog_matches_goldens`/`showcase_pure_tamil_match_goldens`
+after regenerating the two goldens this fix legitimately changed (see
+BUG-36's own entry below — same root fix, same side effect).
 
 ---
 
-## BUG-36 (HIGH, OPEN) — `trunc()` of a non-identifier expression emits an invalid Verilog part-select
+## BUG-36 (HIGH, FIXED 2026-08-04) — `trunc()` of a non-identifier expression emits an invalid Verilog part-select
 
 **What.** `trunc({p0, extend(39, 7)}, 15)` — `Builtin::Trunc` applied to
 a CONCAT expression rather than a bare identifier — is accepted by the
@@ -2540,13 +2575,47 @@ checker-accepted program; `mimz check`/`mimz test` pass clean, `mimz
 compile`'s own output fails to elaborate under any real Verilog
 toolchain.
 
-**Fix.** Not yet attempted — the emitter's `Trunc` codegen site
-(`crates/mimz-core/src/emit_verilog/`) needs the same
-hoist-non-identifier-bases-first treatment BUG-20's fix already applies
-to the generic slice path, or should route through the SAME hoisting
-helper (`hoist_if_needed`) instead of a separate ad hoc part-select
-render. Left open, out of scope for the branch that found it
-(`bug-34-chained-signed-shifts`).
+**Fix (2026-08-04).** `Builtin::Trunc`'s codegen
+(`crates/mimz-core/src/emit_verilog/expr.rs`) gained the exact same
+hoist-non-identifier-bases-first treatment `ExprKind::Slice`'s BUG-20 fix
+already applies: after `hoist_width_effect_operand`'s existing
+width-effect-binop/shift check (BUG-23/24's own, unrelated concern — value
+correctness, not part-select grammar), the base is additionally passed
+through `hoist_slice_base_if_needed` (guarded by `kind_is_inferrable`, to
+avoid panicking on a `fn`-body/testbench base outside `decls`) — the same
+unconditional-on-shape check `ExprKind::Slice` uses, since a Verilog
+part-select only ever accepts a plain identifier regardless of what Kind
+mismatch analysis would say.
 
-**Test.** None yet — the repro above is a candidate first regression
-test once this is picked up.
+**Side effect, not a regression.** This fix also corrected a
+previously-undetected instance of the SAME bug in two shipped showcase
+examples, reached through a different shape than the filed repro:
+`pid_controller.mimz`/`pid_kattu.mimz`'s
+`control = trunc(max(-128, min(total, 127)), 8)` — a ternary base, not a
+concat — was already emitting `(cond ? a : b)[(8)-1:0]` directly. Confirmed
+with a standalone minimal repro that real `iverilog` already rejected this
+exact shape (`syntax error in continuous assignment`) BEFORE this fix too —
+it had simply never been caught, since neither example is in the
+Icarus-differential-tested list (`tests/icarus.rs`), only the
+checker-clean/compiles-without-erroring one (`tests/showcase.rs`'s
+`showcase_every_example_compiles`, which never invokes `iverilog` at all).
+This bug therefore didn't need `kind_is_inferrable`'s Min/Max-argument
+change (BUG-35's own fix) to be _reachable_ — a ternary base was always a
+non-identifier shape — but it DID need it to be _caught by this fix_: the
+Trunc codegen's new `kind_is_inferrable(&args[0], &decls)` guard was
+`false` for `max(...)` before BUG-35's fix (falling through `_ => false`),
+so the hoist would have silently skipped it exactly as before. Fixing both
+bugs together is what makes this example correct.
+`tests/golden/showcase_pid_controller.v` and
+`tests/golden/showcase_tamil_pure_pid_kattu.v` regenerated
+(`MIMZ_UPDATE_GOLDENS=1`); the diff is exactly the expected extra
+`__mimz_sub_N` hoist wire (renumbering every later one), confirmed to
+elaborate clean under `iverilog -t null` afterward.
+
+**Test.** `bug_36_trunc_of_a_concat_hoists_the_base_first`
+(`tests/self_determined_regression.rs`) — a simplified concat-base repro
+(the filed repro's clock/reset/reg machinery was incidental, not
+load-bearing), watched fail against real `iverilog` first (the exact
+"syntax error in continuous assignment" the filing reported) via a
+temporary `git stash` of the fix, then pass after. Full workspace green
+per BUG-35's entry above (same fix, same verification pass).
