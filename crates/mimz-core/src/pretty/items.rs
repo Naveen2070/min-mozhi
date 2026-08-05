@@ -338,6 +338,7 @@ impl Pretty {
                 let s = format!("{} = {}", self.lvalue(lhs, ind), self.expr(rhs, ind));
                 self.line(&s);
             }
+            ModuleItem::Assert(a) => self.assert_stmt(a),
             ModuleItem::Repeat(r) => self.repeat(r),
             ModuleItem::ForEach(fe) => self.foreach(fe),
             ModuleItem::SyncLoop(sl) => self.sync_loop(sl),
@@ -413,6 +414,18 @@ impl Pretty {
             inst.name.name,
             inst.module.to_dotted()
         );
+        self.line(&s);
+    }
+
+    /// `assert(cond)` / `assert(cond, "msg")` — shared by the module-item
+    /// and seq-statement printers (`pretty/seq.rs` calls this too).
+    pub(super) fn assert_stmt(&mut self, a: &AssertStmt) {
+        let kw = self.kw(Kw::Assert);
+        let cond = self.expr(&a.cond, self.indent);
+        let s = match &a.msg {
+            Some(m) => format!("{kw}({cond}, {m:?})"),
+            None => format!("{kw}({cond})"),
+        };
         self.line(&s);
     }
 

@@ -426,7 +426,8 @@ pub(super) fn collect_assigned(
                     collect_assigned(&lowered, out, module_items);
                 }
             }
-            SeqStmt::Error(_) => {} // unreachable on the codegen path
+            SeqStmt::Assert(_) => {} // assigns no reg
+            SeqStmt::Error(_) => {}  // unreachable on the codegen path
         }
     }
 }

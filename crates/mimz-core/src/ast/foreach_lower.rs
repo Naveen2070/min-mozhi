@@ -13,8 +13,9 @@
 //! `None`.
 
 use super::{
-    Arm, Conn, ConstDecl, Expr, ExprKind, FieldInit, FnParam, FnStmt, ForEach, ForEachSource,
-    Ident, Inst, LocalLet, ModuleItem, NamedArg, OnBlock, Pattern, Repeat, SeqStmt, SyncLoop, Type,
+    Arm, AssertStmt, Conn, ConstDecl, Expr, ExprKind, FieldInit, FnParam, FnStmt, ForEach,
+    ForEachSource, Ident, Inst, LocalLet, ModuleItem, NamedArg, OnBlock, Pattern, Repeat, SeqStmt,
+    SyncLoop, Type,
 };
 use crate::span::Span;
 use std::cell::Cell;
@@ -314,6 +315,11 @@ fn subst_seq_stmt(s: &SeqStmt, target: &str, replacement: &Expr) -> SeqStmt {
             },
             span: *span,
         },
+        SeqStmt::Assert(a) => SeqStmt::Assert(AssertStmt {
+            cond: subst_expr(&a.cond, target, replacement),
+            msg: a.msg.clone(),
+            span: a.span,
+        }),
         SeqStmt::Error(sp) => SeqStmt::Error(*sp),
     }
 }
@@ -502,6 +508,11 @@ fn subst_module_item(it: &ModuleItem, target: &str, replacement: &Expr) -> Modul
             expr: subst_expr(expr, target, replacement),
             span: *span,
         },
+        ModuleItem::Assert(a) => ModuleItem::Assert(AssertStmt {
+            cond: subst_expr(&a.cond, target, replacement),
+            msg: a.msg.clone(),
+            span: a.span,
+        }),
         ModuleItem::Error(sp) => ModuleItem::Error(*sp),
     }
 }

@@ -29,7 +29,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                              | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
 | [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                               | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
 | [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated) | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                              | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | OPEN   |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                              | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
 | [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                             | No enum↔bits cast                                                       | MEDIUM     | OPEN   |
 | [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                     | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
 | [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                           | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
@@ -365,7 +365,7 @@ But **every oracle compares simulator vs. Verilog.** There is no oracle assertin
 
 ## GAP-6 (MEDIUM, language) — No assertions (`assert`/`assume`/`cover`)
 
-**Status:** OPEN. Filed 2026-08-02.
+**Status:** CLOSED 2026-08-05. Filed 2026-08-02.
 
 **What.** There is no `assert`, `assume`, or `cover` construct. A `grep` over
 `spec/02-syntax-and-grammar.md` finds no assertion syntax; the only verification
@@ -392,6 +392,43 @@ surface is the `test` block, which checks port values at cycle boundaries.
 
 **Effort:** medium. **Value:** highest capability-per-effort of any item in this
 file.
+
+**Fix.** `assert(cond)` / `assert(cond, "msg")` landed exactly as directed,
+1–3 above, in a 13-task branch: new keyword `assert`/`valiyuruthu`/
+`வலியுறுத்து` (PROVISIONAL Tanglish/Tamil, pending native review); one
+shared `AssertStmt` AST payload reused by `ModuleItem::Assert` and
+`SeqStmt::Assert` (module-item level: checked every settled comb state;
+inside `on rise(clk) { }`: checked once per triggering edge); the checker
+reuses its existing `check_cond` (E0404, the same rule `if`/`&&`/`test`'s
+`expect` already use) and classifies `assert` as read-only (no driver) in
+every exhaustive-match pass; the emitter renders a
+`` `ifndef SYNTHESIS ``-guarded `$display`/`$fatal(1)` block at both sites
+(synthesis no-op by construction); the simulator evaluates it natively
+from the two places state is known consistent (`Sim::tick_edge` for every
+clocked entry point, `comb_run`'s per-vector loop for the clockless
+path), failing immediately with a new **`S0501`** diagnostic (opening the
+`S05xx` family, direction 3's ask — landed as its own dedicated code
+rather than reusing `S03xx`, since it's a distinct failure category, not
+a test-harness control-flow error). `cover(cond)`, `assume`, and SVA
+sequence emission (direction 4) remain deliberately out of scope, as
+directed.
+
+**Test.** TDD throughout (13 tasks, each its own failing-test-first
+checkpoint): lexer keyword test, pretty-printer round-trip, parser tests
+(both grammar sites, both word orders), checker E0404 test + clean-pass
+tests, emitter golden-string tests (both sites), a `mimz-sim` catalog
+test (`S0501` in `ALL_SIM_CODES`), an elaborator collection test, kernel
+tests (`assert` fires / never fires), a `comb_run` failure test, an
+Icarus differential proving a fired clocked `assert` actually halts real
+`iverilog`/`vvp` (`$fatal`'s non-zero exit code), and 10 new examples (5
+flavors × comb/clocked). 1156 tests passing (workspace, `REQUIRE_IVERILOG=1`),
+clippy clean. Two real, independent bugs were caught and fixed along the
+way (both outside `assert` itself): T1's new keyword wasn't propagated to
+`editors/vscode/syntaxes/mimz.tmLanguage.json` or
+`spec/03-keywords-trilingual.md` (the standing `grammar_sync.rs` doc-sync
+contract caught it); `comb_run`'s `Result<Timeline, String>` boundary
+silently drops a `Diag`'s `.code`, discovered while writing T10's own test
+(fixed the test's assertion to check message text, documented why).
 
 ---
 

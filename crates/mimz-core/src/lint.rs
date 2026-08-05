@@ -237,6 +237,7 @@ fn collect_item(
         ast::ModuleItem::BundleDestructure { expr, .. } => {
             collect_expr_names(expr, referenced);
         }
+        ast::ModuleItem::Assert(a) => collect_expr_names(&a.cond, referenced),
     }
 }
 
@@ -359,6 +360,7 @@ fn collect_seq_names(stmt: &ast::SeqStmt, names: &mut HashSet<String>) {
                 collect_seq_names(s, names);
             }
         }
+        ast::SeqStmt::Assert(a) => collect_expr_names(&a.cond, names),
         ast::SeqStmt::Error(_) => {}
     }
 }

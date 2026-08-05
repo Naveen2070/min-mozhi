@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mimz_core::REPEAT_BUDGET;
-use mimz_core::ast::{Edge, Expr, FuncDecl, SeqStmt};
+use mimz_core::ast::{AssertStmt, Edge, Expr, FuncDecl, SeqStmt};
 
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
@@ -239,6 +239,21 @@ impl Sim {
         self.regs = next;
         if has_mems {
             self.mems = next_mems;
+        }
+        self.check_comb_asserts()?;
+        Ok(())
+    }
+
+    /// Evaluate every combinational `assert` (GAP-6) against the current
+    /// settled state. Called from `tick_edge` (every clocked path) and
+    /// from `comb_run`'s per-vector loop (the one clockless path) — those
+    /// are the two points state is known consistent.
+    pub fn check_comb_asserts(&self) -> Result<(), Box<Diag>> {
+        let mut env = self.comb_env();
+        for a in &self.design.asserts {
+            if value::eval(&mut env, &a.cond)?.lsb() != 1 {
+                return Err(Box::new(assert_failed_diag(a)));
+            }
         }
         Ok(())
     }
@@ -550,12 +565,29 @@ fn run_seq(
             SeqStmt::ForEach { .. } => unreachable!(
                 "ForEach is lowered before Rw::seq/assigns/run_seq ever run — see elaborate_module's ModuleItem::On arm"
             ),
+            SeqStmt::Assert(a) => {
+                if value::eval(env, &a.cond)?.lsb() != 1 {
+                    return Err(Box::new(assert_failed_diag(a)));
+                }
+            }
             // Unreachable: the kernel runs on a strict-parsed tree, which
             // carries no `Error` placeholder.
             SeqStmt::Error(_) => {}
         }
     }
     Ok(())
+}
+
+/// Build the `S0501` diagnostic for a failed `assert` — GAP-6. `a.msg`
+/// falls back to `None` (the caller renders `a.cond`'s own text instead)
+/// exactly the way the emitter's default message does
+/// (`emit_verilog/module/mod.rs`/`seq.rs`).
+fn assert_failed_diag(a: &AssertStmt) -> Diag {
+    let msg = match &a.msg {
+        Some(m) => format!("assertion failed: {m}"),
+        None => "assertion failed".to_string(),
+    };
+    Diag::new(a.span, msg).with_code("S0501")
 }
 
 /// Resolver over a frozen state: `known` (regs + leaves) are leaf values;
@@ -683,6 +715,31 @@ mod tests {
         let f =
             mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
         Sim::new(elaborate(&f, None, &BTreeMap::new()).expect("elaborates"))
+    }
+
+    #[test]
+    fn a_clocked_assert_that_fires_stops_the_tick_with_s0501() {
+        let mut k = sim(
+            "module M {\n  clock clk\n  out y: bit\n  reg r: bit = 0\n  \
+             on rise(clk) {\n    assert(r == 0)\n    r <- 1\n  }\n  y = r\n}\n",
+        );
+        k.tick("clk")
+            .expect("first tick: r is still 0, assert holds");
+        let err = k
+            .tick("clk")
+            .expect_err("second tick: r is 1, assert must fire");
+        assert_eq!(err.code, Some("S0501"));
+    }
+
+    #[test]
+    fn a_clocked_assert_that_never_fires_never_fails() {
+        let mut k = sim(
+            "module M {\n  clock clk\n  out y: bit\n  reg r: bit = 0\n  \
+             on rise(clk) {\n    assert(r == r)\n    r <- 1\n  }\n  y = r\n}\n",
+        );
+        for _ in 0..5 {
+            k.tick("clk").expect("assert(r == r) can never fire");
+        }
     }
 
     const EXTERN_PLL_SRC: &str = "extern module Pll {\n  in clk_in: bit\n  out locked: bit\n}\n\

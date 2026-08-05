@@ -1231,6 +1231,19 @@ fn s0404_peripheral_itself_rejects_the_bind() {
 }
 
 // ---------------------------------------------------------------------
+// S05xx — assertion failures (sim/kernel.rs, sim/run.rs; GAP-6).
+// ---------------------------------------------------------------------
+
+#[test]
+fn s0501_clocked_assert_fires() {
+    let src = "module M {\n  clock clk\n  out y: bit\n  reg r: bit = 0\n  \
+               on rise(clk) {\n    assert(r == 0)\n    r <- 1\n  }\n  y = r\n}\n\
+               test \"t\" for M {\n  tick(clk, 2)\n}\n";
+    let f = parse(src);
+    assert_code("S0501", "S0501", run_test_headless(&f, src));
+}
+
+// ---------------------------------------------------------------------
 // Coverage: every code in `ALL_SIM_CODES` must have fired above at least
 // once. This list is maintained by hand alongside the fixtures above —
 // deliberately, not auto-collected across independently-run `#[test]`
@@ -1257,7 +1270,7 @@ fn every_sim_code_has_a_fixture_above() {
         "S0214", "S0215", "S0216", "S0217", "S0218", "S0219", "S0220", "S0221", "S0222", "S0223",
         "S0224", "S0225", "S0226", "S0227", "S0228", "S0229", "S0230", "S0231", "S0232", "S0233",
         "S0234", "S0235", "S0236", "S0237", "S0238", "S0239", "S0301", "S0302", "S0303", "S0304",
-        "S0305", "S0401", "S0402", "S0403", "S0404",
+        "S0305", "S0401", "S0402", "S0403", "S0404", "S0501",
     ];
     let missing: Vec<&str> = ALL_SIM_CODES
         .iter()

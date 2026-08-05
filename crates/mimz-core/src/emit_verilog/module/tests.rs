@@ -38,6 +38,36 @@ fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
 }
 
 #[test]
+fn comb_assert_emits_a_guarded_always_block() {
+    let v = emit_src("module M {\n  in a: bit\n  out y: bit\n  assert(a)\n  y = a\n}\n");
+    assert!(v.contains("`ifndef SYNTHESIS"), "got:\n{v}");
+    assert!(v.contains("always @(*)"), "got:\n{v}");
+    assert!(v.contains("if (!(a)) begin"), "got:\n{v}");
+    assert!(v.contains("$fatal(1)"), "got:\n{v}");
+    assert!(v.contains("`endif"), "got:\n{v}");
+}
+
+#[test]
+fn comb_assert_with_a_message_embeds_it() {
+    let v = emit_src(
+        "module M {\n  in a: bit\n  out y: bit\n  assert(a, \"a must be set\")\n  y = a\n}\n",
+    );
+    assert!(v.contains("a must be set"), "got:\n{v}");
+}
+
+#[test]
+fn clocked_assert_emits_inline_in_the_posedge_block() {
+    let v = emit_src(
+        "module M {\n  clock clk\n  in a: bit\n  out y: bit\n  reg r: bit = 0\n  \
+         on rise(clk) {\n    assert(a)\n    r <- a\n  }\n  y = r\n}\n",
+    );
+    assert!(v.contains("always @(posedge clk)"), "got:\n{v}");
+    assert!(v.contains("`ifndef SYNTHESIS"), "got:\n{v}");
+    assert!(v.contains("if (!(a)) begin"), "got:\n{v}");
+    assert!(v.contains("$fatal(1)"), "got:\n{v}");
+}
+
+#[test]
 fn sync_double_flop_emits_a_plain_reg_chain() {
     let src = "module M {\n\
              clock clk_src\n\

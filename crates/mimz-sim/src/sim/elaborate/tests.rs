@@ -8,6 +8,13 @@ fn design(src: &str) -> Design {
     elaborate(&parse(src), None, &BTreeMap::new()).expect("elaborates")
 }
 
+#[test]
+fn a_module_body_assert_is_collected_into_design_asserts() {
+    let f = parse("module M {\n  in a: bit\n  out y: bit\n  assert(a)\n  y = a\n}\n");
+    let design = elaborate(&f, None, &BTreeMap::new()).expect("elaborates");
+    assert_eq!(design.asserts.len(), 1);
+}
+
 const COUNTER: &str = "module Counter(WIDTH: int = 8) {\n  \
         clock clk\n  reset rst\n  out count: bits[WIDTH]\n  \
         reg value: bits[WIDTH] = 0\n  on rise(clk) { value <- value +% 1 }\n  \
