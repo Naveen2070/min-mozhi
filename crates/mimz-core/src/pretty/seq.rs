@@ -109,9 +109,15 @@ impl Pretty {
         let args = self.named_args(&t.args);
         let head = match self.order {
             // code-order:    test "name" for M(args) {
-            Order::Code => format!("{test_kw} {:?} {for_kw} {module}{args} {{", t.name),
+            Order::Code => format!(
+                "{test_kw} {} {for_kw} {module}{args} {{",
+                self.quote(&t.name)
+            ),
             // thamizh-order: M(args) kaaga "name" sodhanai {
-            Order::Thamizh => format!("{module}{args} {for_kw} {:?} {test_kw} {{", t.name),
+            Order::Thamizh => format!(
+                "{module}{args} {for_kw} {} {test_kw} {{",
+                self.quote(&t.name)
+            ),
         };
         self.line(&head);
         self.indent += 1;
@@ -195,7 +201,7 @@ impl Pretty {
                         .map(|a| {
                             let v = match &a.value {
                                 BindArgValue::Ident(s) => s.clone(),
-                                BindArgValue::Str(s) => format!("{s:?}"),
+                                BindArgValue::Str(s) => self.quote(s),
                                 BindArgValue::Int(n) => n.to_string(),
                             };
                             format!("{}: {}", a.name.name, v)
