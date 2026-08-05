@@ -101,6 +101,41 @@ impl Parser {
         Some(LValue { base, index, span })
     }
 
+    /// `assertStmt = "assert" "(" expr [ "," string ] ")"` — shared by the
+    /// module-item site (`items/module.rs`) and the seq-block site
+    /// (`items/seq.rs`); GAP-6.
+    pub(super) fn assert_stmt(&mut self) -> Option<AssertStmt> {
+        let start = self.bump().span; // assert
+        self.expect(TokKind::LParen, "`(` to start the assert's condition")?;
+        let cond = self.expr()?;
+        let msg = if self.eat(&TokKind::Comma) {
+            if let TokKind::Str(s) = self.peek_kind().clone() {
+                self.bump();
+                Some(s)
+            } else {
+                let found = kind_name(self.peek_kind());
+                let span = self.peek().span;
+                self.error(
+                    span,
+                    "E1101",
+                    format!("expected a string literal for assert's message, found {found}"),
+                    "assert's optional message is a plain string, e.g. `assert(cond, \"why it matters\")` — not a general expression",
+                );
+                return None;
+            }
+        } else {
+            None
+        };
+        let end = self
+            .expect(TokKind::RParen, "`)` to close the assert")?
+            .span;
+        Some(AssertStmt {
+            cond,
+            msg,
+            span: start.join(end),
+        })
+    }
+
     /// `type = arrayType | scalarType`
     /// `arrayType = scalarType { "[" expr "]" }` — one or more trailing
     /// `[N]` suffixes wrap the preceding type in `Type::Array`, so

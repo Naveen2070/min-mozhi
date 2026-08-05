@@ -56,6 +56,7 @@ impl Pretty {
                     }
                 }
             }
+            SeqStmt::Assert(a) => self.assert_stmt(a),
             SeqStmt::Default { name, val, .. } => {
                 let kw = self.kw(Kw::Default);
                 let v = self.expr(val, ind);

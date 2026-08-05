@@ -97,6 +97,21 @@ impl Emitter<'_> {
                         self.seq_stmts(&lowered, depth, module_items);
                     }
                 }
+                SeqStmt::Assert(a) => {
+                    let cond = self.expr(&a.cond);
+                    let msg = match &a.msg {
+                        Some(m) => m.replace('"', "\\\""),
+                        None => cond.replace('"', "\\\""),
+                    };
+                    self.out.push_str(&format!("{pad}`ifndef SYNTHESIS\n"));
+                    self.out.push_str(&format!("{pad}if (!({cond})) begin\n"));
+                    self.out.push_str(&format!(
+                        "{pad}    $display(\"ASSERTION FAILED: {msg}\");\n"
+                    ));
+                    self.out.push_str(&format!("{pad}    $fatal(1);\n"));
+                    self.out.push_str(&format!("{pad}end\n"));
+                    self.out.push_str(&format!("{pad}`endif\n"));
+                }
                 // Unreachable on the codegen path: `parse` rejects a tree with
                 // any `Error` node, so emission never sees one.
                 SeqStmt::Error(_) => {}

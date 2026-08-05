@@ -273,4 +273,47 @@ steps.
 > domains wants a FIFO — see [`std.fifo`](stdlib/fifo.md), where the crossing
 > is handled inside a tested module instead of by hand.
 
+## Guarding invariants: `assert`
+
+A register that should never exceed a bound, an input that should never be
+zero, a state that should never repeat — `assert` checks a hard invariant
+and teaches it at the exact moment it breaks, instead of hiding in a
+comment:
+
+```mimz
+module Divider {
+  in a: bits[8]
+  in b: bits[8]
+  out q: bits[8]
+
+  assert(b != 0, "division by zero")
+  q = a
+}
+```
+
+`assert(cond)` / `assert(cond, "msg")` works in two places:
+
+- **In the module body** — checked every settled combinational state, like
+  `Divider`'s above.
+- **Inside `on rise(clk) { }`** — checked once per triggering edge:
+
+```mimz
+on rise(clk) {
+  assert(count_r < 15, "counter must never exceed its declared width")
+  count_r <- count_r +% 1
+}
+```
+
+`cond` must be a single `bit` (the same rule `if`/`&&` follow); `msg` is a
+plain string, not a general expression — it falls back to `cond`'s own
+source text when omitted.
+
+`assert` never reaches real hardware: the emitted Verilog wraps it in an
+`` `ifndef SYNTHESIS `` guard, so a synthesis tool strips it entirely.
+It **does** run in `mimz sim`/`mimz test`/the playground — a failing
+assert stops the run immediately with the reason, right where it broke.
+
+> `assume`/`cover`/SVA-style sequence assertions aren't in the language
+> yet — `assert` is the first piece of a larger verification story.
+
 Next: [modules and reuse](09-modules-and-reuse.md).

@@ -234,7 +234,7 @@ it calls straight into `mimz-sim`'s public API instead of mirroring
 conditions are ALSO checker-rejected, so routing a fixture through the
 checker gate first would never reach the code it's meant to exercise).
 
-Four ranges by category:
+Five ranges by category:
 
 | Range           | Category                  | Fires in                                              |
 | --------------- | ------------------------- | ----------------------------------------------------- |
@@ -242,6 +242,7 @@ Four ranges by category:
 | `S0201`–`S0239` | expression evaluation     | `sim/value/*.rs`, `sim/comb.rs`, `sim/kernel.rs`      |
 | `S0301`–`S0305` | test-harness control flow | `sim/harness/mod.rs`'s `Run::exec`                    |
 | `S0401`–`S0404` | peripheral bind errors    | `sim/harness/mod.rs`'s `TestStmt::Sim` handling       |
+| `S0501`         | assertion failures        | `sim/kernel.rs`, `sim/run.rs` (GAP-6)                 |
 
 | Code  | Meaning                                                                       |
 | ----- | ----------------------------------------------------------------------------- |
@@ -323,6 +324,7 @@ Four ranges by category:
 | S0402 | bind direction mismatch (port exists, wrong direction)                        |
 | S0403 | no port of the needed direction with that name on the design                  |
 | S0404 | the peripheral itself rejected the bind (host-specific reason)                |
+| S0501 | `assert(cond)` / `assert(cond, "msg")` evaluated false (GAP-6)                |
 
 **Two catalog gaps found and fixed 2026-08-01** (`docs/audit/bugs.md`
 BUG-26/BUG-27, filed 2026-07-31): `S0101`'s own "unknown module" arm was

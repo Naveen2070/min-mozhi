@@ -103,6 +103,68 @@ const PURE_TESTBENCHES: [(&str, &str); 16] = [
     ),
 ];
 
+/// GAP-6: a compiled clocked `assert` must actually halt real `iverilog`/
+/// `vvp` when it fires — mirrors this project's standing "verify against
+/// real hardware" discipline (docs/audit/bugs.md, throughout). Uses a
+/// hand-written testbench + direct `iverilog`/`vvp` invocation (not
+/// `run_vvp`, which asserts SUCCESS — the opposite of what this test
+/// needs): a `$fatal` aborts simulation with a non-zero `vvp` exit code.
+#[test]
+fn clocked_assert_halts_real_iverilog_when_it_fires() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    let src = "module M {\n  clock clk\n  reset rst\n  out y: bit\n  reg r: bit = 0\n  \
+               on rise(clk) {\n    assert(r == 0)\n    r <- 1\n  }\n  y = r\n}\n";
+    let src_path = std::env::temp_dir().join("mimz_gap6_t11_assert_src.mimz");
+    std::fs::write(&src_path, src).unwrap();
+    let design_v = compile_example(&src_path);
+
+    // Two rising edges: the first holds (r starts at 0, assert(r==0) passes,
+    // then r <- 1); the second fires (r is now 1, assert(r==0) fails).
+    let tb = "module tb;\n  \
+              reg clk = 0;\n  reg rst = 0;\n  wire y;\n  \
+              M uut (.clk(clk), .rst(rst), .y(y));\n  \
+              initial begin\n    \
+                #5 clk = 1; #5 clk = 0;\n    \
+                #5 clk = 1; #5 clk = 0;\n    \
+                $display(\"SHOULD NOT REACH: assert did not halt simulation\");\n    \
+                $finish;\n  \
+              end\nendmodule\n";
+    let tb_path = std::env::temp_dir().join("mimz_gap6_t11_assert_tb.v");
+    std::fs::write(&tb_path, tb).unwrap();
+    let vvp_out = std::env::temp_dir().join("mimz_gap6_t11_assert.vvp");
+
+    let build = tool(&bin, "iverilog")
+        .arg("-o")
+        .arg(&vvp_out)
+        .args(["-s", "tb"])
+        .arg(&tb_path)
+        .arg(&design_v)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "iverilog failed to build the GAP-6 T11 assert testbench:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+    let stdout = String::from_utf8_lossy(&sim.stdout);
+    assert!(
+        !sim.status.success(),
+        "vvp did not report a $fatal — the assert should have halted simulation:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("ASSERTION FAILED"),
+        "vvp halted but didn't print the assert's message:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("SHOULD NOT REACH"),
+        "simulation ran past the second clock edge — the assert never fired:\n{stdout}"
+    );
+}
+
 /// Parse the Icarus major version from `iverilog -V` output.
 /// `None` means parsing failed (conservatively assume recent enough).
 fn icarus_major_version(bin: &Path) -> Option<u32> {

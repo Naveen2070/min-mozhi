@@ -22,7 +22,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mimz_core::ast::{
-    self, BinOp, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg, SeqStmt, UnOp,
+    self, AssertStmt, BinOp, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg, SeqStmt,
+    UnOp,
 };
 
 use super::value::{const_eval, const_eval_wide, pick_module, type_width};
@@ -186,6 +187,11 @@ pub struct Design {
     /// is no body to derive a driver from) — the kernel resolves a name in
     /// this set straight to `Val::unknown`, bypassing `comb` entirely.
     pub unknown_signals: HashSet<String>,
+    /// Combinational `assert`s (module-item form) — checked every settled
+    /// comb state (GAP-6). `on`-block asserts need no separate field: they
+    /// live inline in each `Process.body`, exactly like every other
+    /// `SeqStmt`.
+    pub asserts: Vec<AssertStmt>,
 }
 
 /// Elaborate `module` (or the file's only module when `module` is `None`) into a
@@ -358,6 +364,7 @@ fn assigns(body: &[SeqStmt], name: &str) -> bool {
         SeqStmt::ForEach { .. } => unreachable!(
             "ForEach is lowered before Rw::seq/assigns/run_seq ever run — see elaborate_module's ModuleItem::On arm"
         ),
+        SeqStmt::Assert(_) => false, // assigns no reg
         SeqStmt::Error(_) => false,
     })
 }

@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use super::{
-    Arm, BinOp, Builtin, Dir, Expr, ExprKind, FieldInit, ForEachSource, Ident, LValue, ModuleItem,
-    OnBlock, Pattern, SeqStmt, SyncLoop, Type,
+    Arm, AssertStmt, BinOp, Builtin, Dir, Expr, ExprKind, FieldInit, ForEachSource, Ident, LValue,
+    ModuleItem, OnBlock, Pattern, SeqStmt, SyncLoop, Type,
 };
 
 /// Lower one `sync loop` instance into 12 synthesized items, in this order:
@@ -277,6 +277,11 @@ fn rename_seq_stmt(s: &SeqStmt, rename: &HashMap<String, String>) -> SeqStmt {
                 span: *span,
             }
         }
+        SeqStmt::Assert(a) => SeqStmt::Assert(AssertStmt {
+            cond: rename_expr(&a.cond, rename),
+            msg: a.msg.clone(),
+            span: a.span,
+        }),
         SeqStmt::Error(sp) => SeqStmt::Error(*sp),
     }
 }

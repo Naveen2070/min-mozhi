@@ -1,0 +1,23 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a
+// clocked assert — the Tamil twin of english/assert_clocked.mimz. This file
+// uses `இலக்கணம் தமிழ்` to enable natural SOV (postpositional) word order,
+// same convention as கணக்கி (kanakki.mimz). Stripped from synthesis
+// (`ifndef SYNTHESIS` in the emitted Verilog); active in simulation.
+
+இலக்கணம் தமிழ்
+
+தொகுதி வலியுறுத்தும்கணக்கி {
+  துடிப்பு கடிகை
+  மீட்டமை மீள்
+
+  வெளியீடு எண்ணிக்கை: bits[4]
+
+  பதிவேடு மதிப்பு: bits[4] = 0
+
+  ஏற்றம்(கடிகை) போது {
+    வலியுறுத்து(மதிப்பு < 15, "counter must never exceed its declared width")
+    மதிப்பு <- மதிப்பு +% 1
+  }
+
+  எண்ணிக்கை = மதிப்பு
+}

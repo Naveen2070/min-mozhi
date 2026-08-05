@@ -115,6 +115,9 @@ impl Parser {
         if self.at_kw(Kw::If) {
             return self.seq_if();
         }
+        if self.at_kw(Kw::Assert) {
+            return self.assert_stmt().map(SeqStmt::Assert);
+        }
         if self.at_kw(Kw::Loop) {
             return self.seq_loop();
         }
@@ -270,6 +273,11 @@ impl Parser {
     /// assignment (the head is reinterpreted as the lvalue), `=` → the teaching
     /// error.
     fn seq_stmt_thamizh(&mut self) -> Option<SeqStmt> {
+        // `assert` is keyword-first regardless of word-order profile, same
+        // as `loop`/`default` below.
+        if self.at_kw(Kw::Assert) {
+            return self.assert_stmt().map(SeqStmt::Assert);
+        }
         // `loop` is keyword-first regardless of word-order profile, same as
         // `default` just below.
         if self.at_kw(Kw::Loop) {

@@ -62,6 +62,8 @@ struct Elaboration<'a> {
     /// whole-signal Concat driver after the loop.
     bit_drives: BTreeMap<String, BTreeMap<u32, Expr>>,
     flat: Flat,
+    /// Combinational `assert`s (module-item form) — see [`Design::asserts`].
+    asserts: Vec<AssertStmt>,
 }
 
 impl<'a> Elaboration<'a> {
@@ -212,6 +214,7 @@ impl<'a> Elaboration<'a> {
             resets: Vec::new(),
             bit_drives: BTreeMap::new(),
             flat: Flat::default(),
+            asserts: Vec::new(),
         })
     }
 
@@ -673,6 +676,9 @@ impl<'a> Elaboration<'a> {
                         .with_code("S0127"),
                     ));
                 }
+                ModuleItem::Assert(a) => {
+                    self.asserts.push(a.clone());
+                }
             }
         }
         Ok(())
@@ -695,6 +701,7 @@ impl<'a> Elaboration<'a> {
             resets,
             bit_drives,
             flat,
+            asserts,
             ..
         } = self;
 
@@ -789,6 +796,7 @@ impl<'a> Elaboration<'a> {
             resets,
             funcs,
             unknown_signals,
+            asserts,
         })
     }
 }

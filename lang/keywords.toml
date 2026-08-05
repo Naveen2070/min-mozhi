@@ -264,6 +264,14 @@ en = "bundle"
 tanglish = "kattai" # PROVISIONAL — pending native review
 tamil = "கட்டை"     # PROVISIONAL — pending native review
 
+# Hard runtime invariant (module body / on rise(clk); GAP-6, 2026-08-05).
+# Tanglish/Tamil are PROVISIONAL, pending native-speaker review, same
+# status as default/fall/bundle/return before their own review.
+[keywords.assert]
+en = "assert"
+tanglish = "valiyuruthu" # PROVISIONAL — pending native review
+tamil = "வலியுறுத்து"     # PROVISIONAL — pending native review
+
 # Function return statement (Phase 2 statement-based fn bodies). Tanglish/Tamil
 # spellings are PROVISIONAL dev/testing placeholders — `thirumbu`/`திரும்பு`
 # — pending native-speaker review (R9/R11). Maintainer-authorized 2026-07-03
