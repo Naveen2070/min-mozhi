@@ -230,7 +230,7 @@ impl Pretty {
     /// renders correctly).
     fn extern_module(&mut self, em: &ExternModule) {
         let alias = match &em.verilog_name {
-            Some(v) => format!(" = {v:?}"),
+            Some(v) => format!(" = {}", self.quote(v)),
             None => String::new(),
         };
         let params = if em.params.is_empty() {
@@ -253,7 +253,7 @@ impl Pretty {
         self.line(&head);
         self.indent += 1;
         if let Some(doc) = &em.doc {
-            let s = format!("doc: {doc:?}");
+            let s = format!("doc: {}", self.quote(doc));
             self.line(&s);
         }
         for it in &em.items {
@@ -423,7 +423,7 @@ impl Pretty {
         let kw = self.kw(Kw::Assert);
         let cond = self.expr(&a.cond, self.indent);
         let s = match &a.msg {
-            Some(m) => format!("{kw}({cond}, {m:?})"),
+            Some(m) => format!("{kw}({cond}, {})", self.quote(m)),
             None => format!("{kw}({cond})"),
         };
         self.line(&s);

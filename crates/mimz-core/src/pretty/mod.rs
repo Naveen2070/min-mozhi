@@ -105,6 +105,24 @@ impl Pretty {
         self.out.push('\n');
     }
 
+    /// Render a string LITERAL VALUE (already lexed from a `.mimz` `TokKind
+    /// ::Str` token — `assert`/`cover`'s message/label, `test`'s name, a
+    /// `sim { bind }` string arg, `extern module`'s alias/`doc:`) back into
+    /// source text. Wraps in plain double quotes — NOT `format!("{s:?}")`
+    /// (Rust's `Debug` escaping) — because the lexer's own string grammar
+    /// (`lexer/mod.rs`'s `string()`) has no escape-sequence support at all:
+    /// it reads raw characters verbatim until an unescaped `"`, so a
+    /// successfully-lexed `Str` token is guaranteed (by construction) to
+    /// never contain `"` or `\n`, and `\`-escaping it on the way back out
+    /// is never necessary — the value round-trips exactly as plain text.
+    /// Doing this the `{:?}` way instead is what a real fuzz crash found:
+    /// a control byte gets escaped to `\u{4}` on the way out, then the
+    /// lexer (which doesn't decode `\u{...}`) reads those 6 characters back
+    /// literally on the way in, silently changing the string's content.
+    fn quote(&self, s: &str) -> String {
+        format!("\"{s}\"")
+    }
+
     // ---------- types / lvalues ----------
 }
 
