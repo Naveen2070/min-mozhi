@@ -191,6 +191,7 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, Bits>]) -> Result<Ti
         for (name, value) in vec {
             sim.set(name, value.clone()).map_err(|e| e.msg)?; // an unknown input name is a clean error
         }
+        sim.check_comb_asserts().map_err(|e| e.msg)?;
         frames.push(Frame {
             time: i as u64 * PERIOD,
             cycle: Some(i as u64),
@@ -287,6 +288,19 @@ mod tests {
 
     const ADDER: &str =
         "module Adder { in a: bits[8]\n  in b: bits[8]\n  out sum: bits[9]\n  sum = a + b\n}\n";
+
+    #[test]
+    fn a_comb_assert_that_fires_fails_comb_run_with_s0501() {
+        let d = design("module M {\n  in a: bit\n  out y: bit\n  assert(!a)\n  y = a\n}\n");
+        let mut vec1 = BTreeMap::new();
+        vec1.insert("a".to_string(), Bits::Small(1));
+        let err = comb_run(d, std::slice::from_ref(&vec1)).unwrap_err();
+        // `comb_run` returns a flat `String` (`.msg`, via `map_err`) — the
+        // `S0501` code itself isn't carried through this boundary, so check
+        // the message text instead (case-insensitive: the kernel's own
+        // message is lowercase "assertion failed").
+        assert!(err.to_lowercase().contains("assertion"), "got: {err}");
+    }
 
     #[test]
     fn comb_run_settles_one_frame_per_vector() {

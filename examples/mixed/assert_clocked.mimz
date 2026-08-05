@@ -1,0 +1,17 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): clocked assert — a hard invariant checked once per triggering edge.
+// Stripped from synthesis (`ifndef SYNTHESIS` in the emitted Verilog); active in simulation.
+
+module AssertCounter {
+  clock clk
+  meettamai rst
+  out count: bits[4]
+
+  reg count_r: bits[4] = 0
+
+  on rise(clk) {
+    வலியுறுத்து(count_r < 15, "counter must never exceed its declared width")
+    count_r <- count_r +% 1
+  }
+
+  count = count_r
+}

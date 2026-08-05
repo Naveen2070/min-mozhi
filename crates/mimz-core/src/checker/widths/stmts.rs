@@ -325,6 +325,9 @@ impl<'a> Checker<'a> {
                     let _ = self.infer_ty(cx, expr);
                     let _ = span; // span available for future E0907-on-destructure diagnostics
                 }
+                ModuleItem::Assert(a) => {
+                    self.check_cond(cx, &a.cond);
+                }
             }
         }
     }
@@ -438,6 +441,9 @@ impl<'a> Checker<'a> {
                         }
                     }
                 },
+                SeqStmt::Assert(a) => {
+                    self.check_cond(cx, &a.cond);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }

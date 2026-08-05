@@ -1,4 +1,46 @@
 #[test]
+fn assert_stmt_round_trips_in_a_module_body() {
+    use crate::ast::{AssertStmt, Dir, Ident, Module, ModuleItem, Type};
+    use crate::span::Span;
+
+    let f = crate::ast::File {
+        imports: vec![],
+        items: vec![crate::ast::TopItem::Module(Module {
+            name: Ident {
+                name: "M".to_string(),
+                span: Span::default(),
+            },
+            params: vec![],
+            items: vec![
+                ModuleItem::Port {
+                    dir: Dir::In,
+                    name: Ident {
+                        name: "a".to_string(),
+                        span: Span::default(),
+                    },
+                    ty: Type::Bit,
+                },
+                ModuleItem::Assert(AssertStmt {
+                    cond: crate::ast::Expr {
+                        kind: crate::ast::ExprKind::Ident("a".to_string()),
+                        span: Span::default(),
+                    },
+                    msg: None,
+                    span: Span::default(),
+                }),
+            ],
+            span: Span::default(),
+        })],
+    };
+    let out = crate::pretty::pretty_print(
+        &f,
+        crate::lexer::token::Flavor::English,
+        crate::pretty::Order::Code,
+    );
+    assert!(out.contains("assert(a)"), "got:\n{out}");
+}
+
+#[test]
 fn qualified_reference_round_trips_through_pretty_print() {
     let src = "module M {\n  let x = a.b.Foo() { }\n}\n";
     let toks = crate::lexer::lex(src).unwrap();

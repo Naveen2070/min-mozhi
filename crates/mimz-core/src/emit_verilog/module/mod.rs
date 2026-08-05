@@ -332,6 +332,29 @@ impl Emitter<'_> {
             }
         }
 
+        // Combinational `assert`s: one guarded `always @(*)` per statement,
+        // checked every settled comb state (GAP-6). Placed after the
+        // clocked always-blocks so a design's `on`-block output stays
+        // textually first, matching this emitter's existing item-order
+        // convention.
+        for item in flat.iter() {
+            if let ModuleItem::Assert(a) = item {
+                let cond = self.expr(&a.cond);
+                let msg = match &a.msg {
+                    Some(m) => m.replace('"', "\\\""),
+                    None => cond.replace('"', "\\\""),
+                };
+                self.out.push_str("    `ifndef SYNTHESIS\n");
+                self.out
+                    .push_str(&format!("    always @(*) if (!({cond})) begin\n"));
+                self.out
+                    .push_str(&format!("        $display(\"ASSERTION FAILED: {msg}\");\n"));
+                self.out.push_str("        $fatal(1);\n");
+                self.out.push_str("    end\n");
+                self.out.push_str("    `endif\n");
+            }
+        }
+
         // Inject the clog2 helper (if any body width needed it) followed by
         // any user-defined functions used by this module (in topological order:
         // callees before callers, so each function is declared before use).

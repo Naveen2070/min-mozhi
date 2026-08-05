@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.27.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.28.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -1135,6 +1135,38 @@ fn sum8(values: bits[8][8], acc: bits[11]) -> bits[11] {
   array/`mem` type** — E0417 if it doesn't (an undeclared name, a scalar
   signal, or a `fn` parameter that isn't array-typed).
 
+### 1.17 `assert` — hard runtime invariants
+
+```
+module Divider {
+  in a: bits[8]
+  in b: bits[8]
+  out q: bits[8]
+
+  assert(b != 0, "division by zero")
+  q = a
+}
+```
+
+- `assert(cond)` / `assert(cond, "msg")` (GAP-6) checks a hard invariant.
+  Valid in two placements, sharing one grammar production:
+  - **Module-item level** — checked every settled combinational state.
+  - **Inside `on rise(clk) { }`** — checked once per triggering edge.
+- `cond` must be a single `bit` — the same rule `if`/`&&`/`test`'s `expect`
+  already follow (E0404 on a mismatch).
+- `msg` is a **string literal only**, never a general expression. It falls
+  back to `cond`'s own source text when omitted.
+- `assert` drives nothing — it declares no signal and owns no reg.
+- **Synthesis-safe by construction**: the emitted Verilog wraps every
+  assert in `` `ifndef SYNTHESIS `` / `` `endif ``, so it is a no-op for a
+  real FPGA/ASIC build and active only in simulation (`$display` +
+  `$fatal(1)` on failure).
+- **Simulator-native**: the event-driven kernel evaluates every assert
+  directly — a clocked assert fails the triggering `tick`, a
+  combinational one fails the settling step — reported as `S0501`.
+- `assume`/`cover`/SVA-style sequence assertions are explicitly deferred
+  (see `docs/audit/gaps.md`, GAP-6's own direction).
+
 ---
 
 ## 2. Lexical Rules
@@ -1231,7 +1263,8 @@ param       = IDENT ":" ( "int" | "bool" ) [ "=" constExpr ] ;
 
 moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
             | constDecl | enumDecl | instDecl | onBlock | driveStmt
-            | repeatBlock | bundleDestructure | syncLoopBlock | foreachBlock ;
+            | repeatBlock | bundleDestructure | syncLoopBlock | foreachBlock
+            | assertStmt ;
 
 bundleDestructure = "let" "{" IDENT { "," IDENT } "}" "=" expr NEWLINE ;
 
@@ -1265,9 +1298,15 @@ syncLoopBlock = "sync" "loop" IDENT "on" ( "rise" | "fall" ) "(" IDENT ")"
                 "->" IDENT ":" type "=" constExpr seqBlock ;
                 (* cycle-iterating FSM form, section 1.15b — NOT unrolled *)
 
+assertStmt  = "assert" "(" expr [ "," STRING ] ")" NEWLINE ;
+              (* hard runtime invariant, section 1.17 — GAP-6. Valid at
+                 module-item level (checked every settled comb state) and
+                 inside a seqBlock (checked once per triggering edge); same
+                 production, two placements, like repeatBlock/seqLoop. *)
+
 onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
-seqStmt     = regAssign | seqIf | seqLoop | seqForeach ;
+seqStmt     = regAssign | seqIf | seqLoop | seqForeach | assertStmt ;
 regAssign   = lvalue "<-" expr NEWLINE ;
 seqIf       = "if" expr seqBlock [ "else" ( seqIf | seqBlock ) ] ;
 seqLoop     = "loop" IDENT ":" constExpr ".." constExpr seqBlock ;
@@ -1515,6 +1554,21 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.28 (2026-08-05):** **`assert` — hard runtime invariants** (new
+  section 1.17, placed directly after `foreach`'s section 1.16; GAP-6,
+  `docs/audit/gaps.md`). New keyword `assert`/`valiyuruthu`/`வலியுறுத்து`
+  (PROVISIONAL Tanglish/Tamil, pending native review, same status as
+  `default`/`bundle`/`return` before their own review). One shared
+  `assertStmt` production, two placements: module-item level (checked
+  every settled comb state) and inside `on rise(clk) { }` (checked once
+  per triggering edge) — `moduleItem`/`seqStmt` both gain it. `cond` must
+  be a single `bit` (E0404, the same rule `if`/`&&`/`test`'s `expect`
+  already follow); `msg` is a string literal only, never a general
+  expression. Lowers to a `` `ifndef SYNTHESIS ``-guarded `$display`/
+  `$fatal(1)` guard in the emitted Verilog (synthesis no-op by
+  construction); the simulator evaluates it natively, failing with the new
+  `S0501` diagnostic. `assume`/`cover`/SVA sequence assertions are
+  explicitly deferred.
 - **v0.2.27 (2026-07-21):** **Clock-domain-crossing synchronizer primitives
   `sync.double_flop`/`sync.pulse`** (new section 1.2b, placed directly after
   `1.2`'s counter example). Reuses the existing `sync` token — disambiguated

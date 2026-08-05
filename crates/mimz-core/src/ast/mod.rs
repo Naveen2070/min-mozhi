@@ -494,6 +494,22 @@ pub enum Dir {
     Out,
 }
 
+/// `assert(cond)` / `assert(cond, "msg")` — a hard runtime invariant.
+/// Valid in a module body (checked every settled comb state, `ModuleItem::
+/// Assert`) and inside `on rise(clk) { }` (checked once per triggering
+/// edge, `SeqStmt::Assert`) — same payload, two positions (GAP-6).
+#[derive(Clone, Debug)]
+pub struct AssertStmt {
+    /// The condition; must be a single `bit` (checker-enforced, same rule
+    /// as `if`/`&&`/`test`'s `expect`).
+    pub cond: Expr,
+    /// Optional user message — a string literal only, never a general
+    /// expression. `None` falls back to rendering `cond`'s own text.
+    pub msg: Option<String>,
+    /// Source span of the whole `assert(...)` statement.
+    pub span: Span,
+}
+
 /// Anything that may appear in a module body. Declaration order is free —
 /// the emitter regroups (ports, declarations, instances, assigns, always).
 #[derive(Clone, Debug)]
@@ -600,6 +616,9 @@ pub enum ModuleItem {
         /// Source span of the whole destructuring statement.
         span: Span,
     },
+    /// `assert(cond)` / `assert(cond, "msg")` inside a module body —
+    /// checked every settled comb state. See [`AssertStmt`].
+    Assert(AssertStmt),
     /// A module-body item that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.
@@ -822,6 +841,9 @@ pub enum SeqStmt {
         /// Source span of the whole `foreach` statement.
         span: Span,
     },
+    /// `assert(cond)` / `assert(cond, "msg")` inside an `on` block —
+    /// checked once per triggering edge. See [`AssertStmt`].
+    Assert(AssertStmt),
     /// A sequential statement that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.

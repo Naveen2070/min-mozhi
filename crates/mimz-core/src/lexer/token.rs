@@ -105,6 +105,11 @@ pub enum Kw {
     /// Verilog module living outside Min-Mozhi (Verilog FFI). PROVISIONAL
     /// Tanglish/Tamil spellings, see `keywords.toml`.
     Extern,
+    /// `assert` / `valiyuruthu` / `வலியுறுத்து` — a hard runtime invariant.
+    /// Usable in a module body (checked every settled comb state) and
+    /// inside `on rise(clk) { }` (checked once per triggering edge).
+    /// PROVISIONAL Tanglish/Tamil spellings, see `keywords.toml`.
+    Assert,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).

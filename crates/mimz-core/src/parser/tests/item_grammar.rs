@@ -58,6 +58,70 @@ fn array_type_parses_in_a_fn_param() {
 }
 
 #[test]
+fn assert_parses_in_a_module_body() {
+    let f = parse_ok("module M {\n  in a: bit\n  out y: bit\n  assert(a)\n  y = a\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    // items: [0] in a, [1] out y, [2] assert(a), [3] y = a
+    assert!(matches!(&m.items[2], ModuleItem::Assert(_)));
+}
+
+#[test]
+fn assert_with_a_message_parses_in_a_module_body() {
+    let f = parse_ok(
+        "module M {\n  in a: bit\n  out y: bit\n  assert(a, \"a must be set\")\n  y = a\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Assert(a) = &m.items[2] else {
+        panic!("expected ModuleItem::Assert")
+    };
+    assert_eq!(a.msg.as_deref(), Some("a must be set"));
+}
+
+#[test]
+fn assert_message_must_be_a_string_literal() {
+    let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  assert(a, a)\n}\n");
+    assert_eq!(d[0].code, Some("E1101"));
+    assert!(d[0].help.is_some());
+}
+
+#[test]
+fn assert_parses_inside_an_on_block() {
+    let f = parse_ok(
+        "module M {\n  clock clk\n  in a: bit\n  out y: bit\n  reg r: bit = 0\n  \
+         on rise(clk) {\n    assert(a)\n    r <- a\n  }\n  y = r\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    // items: [0] clock, [1] in a, [2] out y, [3] reg r, [4] on-block, [5] y = r
+    let ModuleItem::On(on) = &m.items[4] else {
+        panic!("expected the on-block")
+    };
+    assert!(matches!(&on.body[0], SeqStmt::Assert(_)));
+}
+
+#[test]
+fn assert_parses_inside_an_on_block_thamizh_order() {
+    // `assert` is keyword-first in BOTH word orders (like `loop`/`default`/
+    // `foreach`) — not a clause head, so no SOV flip is needed.
+    let f = parse_ok(
+        "ilakkanam thamizh\nthoguthi M {\n  thudippu clk\n  ulleedu a: bit\n  veliyeedu y: bit\n  pathivedu r: bit = 0\n  \
+         yetram(clk) pothu {\n    assert(a)\n    r <- a\n  }\n  y = r\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::On(on) = &m.items[4] else {
+        panic!("expected the on-block")
+    };
+    assert!(matches!(&on.body[0], SeqStmt::Assert(_)));
+}
+
+#[test]
 fn nested_array_type_parses_two_brackets_deep() {
     // The grammar doesn't reject this (nested arrays are a NON-goal
     // rejected by the CHECKER, not the parser — matches this project's

@@ -496,7 +496,8 @@ fn body_targets(body: &[SeqStmt], out: &mut Vec<String>) {
             // `checker/drivers.rs`'s `on_block` `ForEach` arm (which is
             // this exact function's `Dcx`-side sibling).
             SeqStmt::ForEach { body, .. } => body_targets(body, out),
-            SeqStmt::Error(_) => {} // parse-recovery placeholder
+            SeqStmt::Assert(_) => {} // drives nothing
+            SeqStmt::Error(_) => {}  // parse-recovery placeholder
         }
     }
 }
@@ -557,6 +558,7 @@ fn body_reads(body: &[SeqStmt], module_items: &[ModuleItem], out: &mut Vec<(Stri
                 // silently skip, same "reported once upstream" precedent
                 // used throughout this task.
             }
+            SeqStmt::Assert(a) => expr_reads(&a.cond, out),
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }
@@ -772,6 +774,7 @@ fn collect_all_sync_prim_calls(items: &[ModuleItem], out: &mut Vec<Span>) {
                     walk_seq_stmt(s, out);
                 }
             }
+            SeqStmt::Assert(a) => walk_expr(&a.cond, out),
             SeqStmt::Error(_) => {}
         }
     }
@@ -824,6 +827,7 @@ fn collect_all_sync_prim_calls(items: &[ModuleItem], out: &mut Vec<Span>) {
                     walk_seq_stmt(s, out);
                 }
             }
+            ModuleItem::Assert(a) => walk_expr(&a.cond, out),
         }
     }
 }

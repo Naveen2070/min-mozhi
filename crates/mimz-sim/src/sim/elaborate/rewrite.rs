@@ -613,6 +613,13 @@ impl<'d, 's> Rw<'d, 's> {
             SeqStmt::ForEach { .. } => unreachable!(
                 "ForEach is lowered before Rw::seq/assigns/run_seq ever run — see elaborate_module's ModuleItem::On arm"
             ),
+            // No assignment target to rename — `cond` still needs the same
+            // instance-inlining rewrite as any other read (GAP-6).
+            SeqStmt::Assert(a) => SeqStmt::Assert(ast::AssertStmt {
+                cond: self.expr(&a.cond)?,
+                msg: a.msg.clone(),
+                span: a.span,
+            }),
             // Unreachable on the sim path (strict-parsed tree); pass through.
             SeqStmt::Error(sp) => SeqStmt::Error(*sp),
         })

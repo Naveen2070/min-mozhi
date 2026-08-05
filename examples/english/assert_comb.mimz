@@ -1,0 +1,11 @@
+// Min-Mozhi example: combinational assert — a hard invariant checked every settled state.
+// Stripped from synthesis (`ifndef SYNTHESIS` in the emitted Verilog); active in simulation.
+
+module Divider {
+  in a: bits[8]
+  in b: bits[8]
+  out q: bits[8]
+
+  assert(b != 0, "division by zero")
+  q = a
+}

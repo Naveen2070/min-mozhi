@@ -259,6 +259,7 @@ fn push_module_items(
             | ModuleItem::Error(_)
             | ModuleItem::SyncLoop(_) => {} // body is Vec<SeqStmt>, not more ModuleItems
             ModuleItem::BundleDestructure { .. } => {} // not yet indexed for LSP
+            ModuleItem::Assert(_) => {}                // declares no name, nothing to index
         }
     }
 }
@@ -520,6 +521,7 @@ fn collect_item_refs(item: &ModuleItem, module_idx: Option<usize>, refs: &mut Ve
         ModuleItem::BundleDestructure { expr, .. } => {
             collect_expr_refs(expr, module_idx, refs);
         }
+        ModuleItem::Assert(a) => collect_expr_refs(&a.cond, module_idx, refs),
     }
 }
 
@@ -575,6 +577,7 @@ fn collect_seq_refs(s: &SeqStmt, module_idx: Option<usize>, refs: &mut Vec<Ref>)
                 collect_seq_refs(s, module_idx, refs);
             }
         }
+        SeqStmt::Assert(a) => collect_expr_refs(&a.cond, module_idx, refs),
         SeqStmt::Error(_) => {}
     }
 }

@@ -22,7 +22,7 @@
 /// the same lookup first), so the append-only stability contract never
 /// applied to it — nothing could have observed it firing, since it never
 /// did.
-pub const ALL_SIM_CODES: [&str; 78] = [
+pub const ALL_SIM_CODES: [&str; 79] = [
     // S01xx — elaboration/wiring (sim/elaborate/registry.rs, instance.rs,
     // mod.rs, module.rs, rewrite.rs).
     "S0102", // ambiguous bare reference (module/extern-module/bundle)
@@ -129,6 +129,8 @@ pub const ALL_SIM_CODES: [&str; 78] = [
     "S0402", // bind direction mismatch (port exists, wrong direction)
     "S0403", // no port of the needed direction with that name on the design
     "S0404", // the peripheral itself rejected the bind (host-specific reason)
+    // S05xx — assertion failures (sim/kernel.rs, sim/run.rs; GAP-6).
+    "S0501", // `assert(cond)` / `assert(cond, "msg")` evaluated false
 ];
 
 /// Delimiter used by [`bridge_code`]/[`diag_from_bridged`] to smuggle a

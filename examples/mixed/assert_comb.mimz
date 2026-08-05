@@ -1,0 +1,11 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): combinational assert — a hard invariant checked every settled state.
+// Stripped from synthesis (`ifndef SYNTHESIS` in the emitted Verilog); active in simulation.
+
+module Divider {
+  in a: bits[8]
+  ulleedu b: bits[8]
+  வெளியீடு q: bits[8]
+
+  assert(b != 0, "division by zero")
+  q = a
+}

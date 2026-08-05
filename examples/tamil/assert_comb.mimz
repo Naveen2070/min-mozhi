@@ -1,0 +1,11 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): combinational assert — a hard invariant checked every settled state.
+// Stripped from synthesis (`ifndef SYNTHESIS` in the emitted Verilog); active in simulation.
+
+தொகுதி Divider {
+  உள்ளீடு a: bits[8]
+  உள்ளீடு b: bits[8]
+  வெளியீடு q: bits[8]
+
+  வலியுறுத்து(b != 0, "division by zero")
+  q = a
+}
