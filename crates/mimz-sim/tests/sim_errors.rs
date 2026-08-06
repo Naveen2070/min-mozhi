@@ -1062,6 +1062,25 @@ fn s0239_sim_set_not_a_drivable_signal() {
     );
 }
 
+#[test]
+fn s0240_add_operands_disagree_on_signedness() {
+    // The checker always rejects this (E0220-class mixed-signedness check),
+    // so this fixture — like s0221/s0222 above — goes through
+    // `comb::eval_outputs` directly to exercise `binary.rs`'s own
+    // defense-in-depth check on an un-checked AST (BUG-37: this used to be
+    // an `.expect()` that panicked instead of returning a `Diag`).
+    let f =
+        parse("module M {\n  in a: bits[8]\n  in b: signed[8]\n  out y: bits[8]\n  y = a + b\n}\n");
+    let mut inputs = BTreeMap::new();
+    inputs.insert("a".to_string(), value::Bits::Small(1));
+    inputs.insert("b".to_string(), value::Bits::Small(2));
+    assert_code(
+        "S0240",
+        "S0240",
+        comb::eval_outputs(std::slice::from_ref(&f), None, &inputs, &empty_params()),
+    );
+}
+
 // ---------------------------------------------------------------------
 // S03xx — test-harness control flow (sim/harness/mod.rs's `Run::exec`).
 // ---------------------------------------------------------------------
@@ -1269,8 +1288,8 @@ fn every_sim_code_has_a_fixture_above() {
         "S0204", "S0205", "S0206", "S0207", "S0208", "S0209", "S0210", "S0211", "S0212", "S0213",
         "S0214", "S0215", "S0216", "S0217", "S0218", "S0219", "S0220", "S0221", "S0222", "S0223",
         "S0224", "S0225", "S0226", "S0227", "S0228", "S0229", "S0230", "S0231", "S0232", "S0233",
-        "S0234", "S0235", "S0236", "S0237", "S0238", "S0239", "S0301", "S0302", "S0303", "S0304",
-        "S0305", "S0401", "S0402", "S0403", "S0404", "S0501",
+        "S0234", "S0235", "S0236", "S0237", "S0238", "S0239", "S0240", "S0301", "S0302", "S0303",
+        "S0304", "S0305", "S0401", "S0402", "S0403", "S0404", "S0501",
     ];
     let missing: Vec<&str> = ALL_SIM_CODES
         .iter()
