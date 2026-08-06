@@ -123,6 +123,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         hoist_counter: 0,
         hoisted_decls: String::new(),
         cur_decls: HashMap::new(),
+        cover_ordinals: HashMap::new(),
     };
 
     em.out.push_str(&format!(

@@ -13,6 +13,66 @@ mod instances;
 mod ports;
 mod seq;
 
+/// Every `cover` statement reachable from `items` — module-item level
+/// directly (`ModuleItem::Cover`), `on`-block level recursed through
+/// `on.body` (and any nested `if`/`loop`/`foreach` inside it) via
+/// `collect_seq_covers`. Used once, up front, to declare every clocked
+/// cover's hidden counter register before the `posedge` block that
+/// increments it (GAP-6 follow-up) — the comb form declares its own
+/// counter inline (Task 6) and never reaches this list.
+fn collect_on_block_covers(items: &[ModuleItem]) -> Vec<&CoverStmt> {
+    let mut out = Vec::new();
+    for item in items {
+        if let ModuleItem::On(on) = item {
+            collect_seq_covers(&on.body, &mut out);
+        }
+    }
+    out
+}
+
+fn collect_seq_covers<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a CoverStmt>) {
+    for s in stmts {
+        match s {
+            SeqStmt::Cover(c) => out.push(c),
+            SeqStmt::If { then, els, .. } => {
+                collect_seq_covers(then, out);
+                if let Some(e) = els {
+                    collect_seq_covers(e, out);
+                }
+            }
+            SeqStmt::Loop { body, .. } => collect_seq_covers(body, out),
+            SeqStmt::ForEach { body, .. } => collect_seq_covers(body, out),
+            _ => {}
+        }
+    }
+}
+
+/// Every `cover`'s `span.start -> ordinal rank by source position`, across
+/// BOTH the module-item and `on`-block forms combined — used to name each
+/// hidden hit-counter register `__cover_{ordinal}_count` instead of
+/// `__cover_{span.start}_count` (GAP-6 follow-up, found via
+/// `tests/translate.rs`'s pretty-print round-trip test): a raw byte offset
+/// shifts on ANY reformat (pretty-print, `mimz translate`, keyword reskin)
+/// even when the statement's relative position among covers is unchanged,
+/// so it is not a stable register name across a semantically-identical
+/// re-emit. An ordinal rank is — pretty-printing never reorders statements.
+fn build_cover_ordinals(items: &[ModuleItem]) -> HashMap<usize, usize> {
+    let mut starts: Vec<usize> = items
+        .iter()
+        .filter_map(|it| match it {
+            ModuleItem::Cover(c) => Some(c.span.start),
+            _ => None,
+        })
+        .collect();
+    starts.extend(collect_on_block_covers(items).iter().map(|c| c.span.start));
+    starts.sort_unstable();
+    starts
+        .into_iter()
+        .enumerate()
+        .map(|(i, start)| (start, i))
+        .collect()
+}
+
 impl Emitter<'_> {
     /// Emit one complete Verilog module. Source order inside the module
     /// body is free; output is regrouped into the conventional Verilog
@@ -61,6 +121,7 @@ impl Emitter<'_> {
         }
         self.cur_decls = self.build_decls(&flat);
         self.env = params_env;
+        self.cover_ordinals = build_cover_ordinals(&flat);
 
         // Parameters. The Verilog identifier is the bare name, UNLESS
         // another file also declares a module of this name — the
@@ -213,6 +274,17 @@ impl Emitter<'_> {
             }
         }
 
+        // Clocked `cover`s: declare each hit-counter register up front
+        // (before the `posedge` block below references it) — the comb
+        // form declares its own counter inline (Task 6), this is only for
+        // covers found inside an `on` block. GAP-6 follow-up.
+        for c in collect_on_block_covers(&flat) {
+            let name = format!("__cover_{}_count", self.cover_ordinals[&c.span.start]);
+            self.out.push_str("    `ifndef SYNTHESIS\n");
+            self.out.push_str(&format!("    reg [31:0] {name} = 0;\n"));
+            self.out.push_str("    `endif\n");
+        }
+
         // Power-on init: seed every cell of each memory to its init value
         // (mirrors the simulator, which initializes all cells at construction).
         // Mandatory init value → no uninitialized state, without a per-cycle
@@ -351,6 +423,29 @@ impl Emitter<'_> {
                     .push_str(&format!("        $display(\"ASSERTION FAILED: {msg}\");\n"));
                 self.out.push_str("        $fatal(1);\n");
                 self.out.push_str("    end\n");
+                self.out.push_str("    `endif\n");
+            }
+        }
+
+        // Combinational `cover`s: a hidden hit-counter register, sensitized
+        // on the condition wire only (never on the counter itself — a
+        // naive `always @(*)` self-references its own write on the RHS of
+        // `count + 1`, which pulls `count` into `@*`'s implicit sensitivity
+        // list and creates a self-triggering reactive loop). GAP-6
+        // follow-up. Synthesis-stripped, same convention `assert` uses.
+        for item in flat.iter() {
+            if let ModuleItem::Cover(c) = item {
+                let ord = self.cover_ordinals[&c.span.start];
+                let name = format!("__cover_{ord}_count");
+                let cond_name = format!("__cover_{ord}_cond");
+                let cond = self.expr(&c.cond);
+                self.out.push_str("    `ifndef SYNTHESIS\n");
+                self.out
+                    .push_str(&format!("    wire {cond_name} = ({cond});\n"));
+                self.out.push_str(&format!("    reg [31:0] {name} = 0;\n"));
+                self.out.push_str(&format!(
+                    "    always @({cond_name}) if ({cond_name}) {name} = {name} + 1;\n"
+                ));
                 self.out.push_str("    `endif\n");
             }
         }

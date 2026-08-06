@@ -225,6 +225,9 @@ impl<'a> Checker<'a> {
                 ModuleItem::Assert(a) => {
                     self.expr(file, sc, env, &a.cond);
                 }
+                ModuleItem::Cover(c) => {
+                    self.expr(file, sc, env, &c.cond);
+                }
             }
         }
     }
@@ -330,6 +333,9 @@ impl<'a> Checker<'a> {
                 SeqStmt::Assert(a) => {
                     self.expr(file, sc, env, &a.cond);
                 }
+                SeqStmt::Cover(c) => {
+                    self.expr(file, sc, env, &c.cond);
+                }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }
         }
@@ -352,6 +358,7 @@ impl<'a> Checker<'a> {
                 | ModuleItem::SyncLoop(_)
                 | ModuleItem::ConstIf { .. }
                 | ModuleItem::Assert(_)
+                | ModuleItem::Cover(_)
                 | ModuleItem::Error(_) => continue,
                 ModuleItem::Port { name, .. } => (name.span, "an input/output port"),
                 ModuleItem::Wire { name, .. } => (name.span, "a wire"),

@@ -40,6 +40,48 @@ fn assert_stmt_round_trips_in_a_module_body() {
     assert!(out.contains("assert(a)"), "got:\n{out}");
 }
 
+#[test]
+fn cover_stmt_round_trips_in_a_module_body() {
+    use crate::ast::{CoverStmt, Dir, Ident, Module, ModuleItem, Type};
+    use crate::span::Span;
+
+    let f = crate::ast::File {
+        imports: vec![],
+        items: vec![crate::ast::TopItem::Module(Module {
+            name: Ident {
+                name: "M".to_string(),
+                span: Span::default(),
+            },
+            params: vec![],
+            items: vec![
+                ModuleItem::Port {
+                    dir: Dir::In,
+                    name: Ident {
+                        name: "a".to_string(),
+                        span: Span::default(),
+                    },
+                    ty: Type::Bit,
+                },
+                ModuleItem::Cover(CoverStmt {
+                    cond: crate::ast::Expr {
+                        kind: crate::ast::ExprKind::Ident("a".to_string()),
+                        span: Span::default(),
+                    },
+                    label: None,
+                    span: Span::default(),
+                }),
+            ],
+            span: Span::default(),
+        })],
+    };
+    let out = crate::pretty::pretty_print(
+        &f,
+        crate::lexer::token::Flavor::English,
+        crate::pretty::Order::Code,
+    );
+    assert!(out.contains("cover(a)"), "got:\n{out}");
+}
+
 /// Regression for a real `pretty_roundtrip` fuzz crash (2026-08-05,
 /// artifact `crash-584b58e21628765f4798fe285c32ffd5c0775dac`): an
 /// `assert`'s message containing a raw control byte (`\u{4}` here, a

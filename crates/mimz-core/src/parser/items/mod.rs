@@ -136,6 +136,40 @@ impl Parser {
         })
     }
 
+    /// `coverStmt = "cover" "(" expr [ "," string ] ")"` — shared by the
+    /// module-item site (`items/module.rs`) and the seq-block site
+    /// (`items/seq.rs`); GAP-6 follow-up. Structurally identical to
+    /// `assert_stmt`, different keyword and field name (`label`, not `msg`).
+    pub(super) fn cover_stmt(&mut self) -> Option<CoverStmt> {
+        let start = self.bump().span; // cover
+        self.expect(TokKind::LParen, "`(` to start the cover's condition")?;
+        let cond = self.expr()?;
+        let label = if self.eat(&TokKind::Comma) {
+            if let TokKind::Str(s) = self.peek_kind().clone() {
+                self.bump();
+                Some(s)
+            } else {
+                let found = kind_name(self.peek_kind());
+                let span = self.peek().span;
+                self.error(
+                    span,
+                    "E1101",
+                    format!("expected a string literal for cover's label, found {found}"),
+                    "cover's optional label is a plain string, e.g. `cover(cond, \"why it matters\")` — not a general expression",
+                );
+                return None;
+            }
+        } else {
+            None
+        };
+        let end = self.expect(TokKind::RParen, "`)` to close the cover")?.span;
+        Some(CoverStmt {
+            cond,
+            label,
+            span: start.join(end),
+        })
+    }
+
     /// `type = arrayType | scalarType`
     /// `arrayType = scalarType { "[" expr "]" }` — one or more trailing
     /// `[N]` suffixes wrap the preceding type in `Type::Array`, so

@@ -427,6 +427,7 @@ pub(super) fn collect_assigned(
                 }
             }
             SeqStmt::Assert(_) => {} // assigns no reg
+            SeqStmt::Cover(_) => {}  // assigns no reg
             SeqStmt::Error(_) => {}  // unreachable on the codegen path
         }
     }

@@ -64,6 +64,8 @@ struct Elaboration<'a> {
     flat: Flat,
     /// Combinational `assert`s (module-item form) — see [`Design::asserts`].
     asserts: Vec<AssertStmt>,
+    /// Combinational `cover`s (module-item form) — see [`Design::covers`].
+    covers: Vec<CoverStmt>,
 }
 
 impl<'a> Elaboration<'a> {
@@ -215,6 +217,7 @@ impl<'a> Elaboration<'a> {
             bit_drives: BTreeMap::new(),
             flat: Flat::default(),
             asserts: Vec::new(),
+            covers: Vec::new(),
         })
     }
 
@@ -679,6 +682,9 @@ impl<'a> Elaboration<'a> {
                 ModuleItem::Assert(a) => {
                     self.asserts.push(a.clone());
                 }
+                ModuleItem::Cover(c) => {
+                    self.covers.push(c.clone());
+                }
             }
         }
         Ok(())
@@ -702,6 +708,7 @@ impl<'a> Elaboration<'a> {
             bit_drives,
             flat,
             asserts,
+            covers,
             ..
         } = self;
 
@@ -797,6 +804,7 @@ impl<'a> Elaboration<'a> {
             funcs,
             unknown_signals,
             asserts,
+            covers,
         })
     }
 }

@@ -118,6 +118,9 @@ impl Parser {
         if self.at_kw(Kw::Assert) {
             return self.assert_stmt().map(SeqStmt::Assert);
         }
+        if self.at_kw(Kw::Cover) {
+            return self.cover_stmt().map(SeqStmt::Cover);
+        }
         if self.at_kw(Kw::Loop) {
             return self.seq_loop();
         }
@@ -277,6 +280,9 @@ impl Parser {
         // as `loop`/`default` below.
         if self.at_kw(Kw::Assert) {
             return self.assert_stmt().map(SeqStmt::Assert);
+        }
+        if self.at_kw(Kw::Cover) {
+            return self.cover_stmt().map(SeqStmt::Cover);
         }
         // `loop` is keyword-first regardless of word-order profile, same as
         // `default` just below.

@@ -328,6 +328,9 @@ impl<'a> Checker<'a> {
                 ModuleItem::Assert(a) => {
                     self.check_cond(cx, &a.cond);
                 }
+                ModuleItem::Cover(c) => {
+                    self.check_cond(cx, &c.cond);
+                }
             }
         }
     }
@@ -443,6 +446,9 @@ impl<'a> Checker<'a> {
                 },
                 SeqStmt::Assert(a) => {
                     self.check_cond(cx, &a.cond);
+                }
+                SeqStmt::Cover(c) => {
+                    self.check_cond(cx, &c.cond);
                 }
                 SeqStmt::Error(_) => {} // parse-recovery placeholder
             }

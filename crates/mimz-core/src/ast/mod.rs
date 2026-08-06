@@ -510,6 +510,25 @@ pub struct AssertStmt {
     pub span: Span,
 }
 
+/// `cover(cond)` / `cover(cond, "label")` — a functional-coverage hit
+/// counter (GAP-6 follow-up). Valid in a module body (checked every
+/// settled comb state, `ModuleItem::Cover`) and inside `on rise(clk) { }`
+/// (checked once per triggering edge, `SeqStmt::Cover`) — same
+/// two-placement shape `AssertStmt` uses. Unlike `assert`, `cover` never
+/// fails a run — it only counts.
+#[derive(Clone, Debug)]
+pub struct CoverStmt {
+    /// The condition; must be a single `bit` (checker-enforced, same rule
+    /// `AssertStmt::cond` follows).
+    pub cond: Expr,
+    /// Optional label for reporting — a string literal only, never a
+    /// general expression. `None` falls back to the statement's own
+    /// source location in the printed report.
+    pub label: Option<String>,
+    /// Source span of the whole `cover(...)` statement.
+    pub span: Span,
+}
+
 /// Anything that may appear in a module body. Declaration order is free —
 /// the emitter regroups (ports, declarations, instances, assigns, always).
 #[derive(Clone, Debug)]
@@ -619,6 +638,9 @@ pub enum ModuleItem {
     /// `assert(cond)` / `assert(cond, "msg")` inside a module body —
     /// checked every settled comb state. See [`AssertStmt`].
     Assert(AssertStmt),
+    /// `cover(cond)` / `cover(cond, "label")` inside a module body —
+    /// checked every settled comb state. See [`CoverStmt`].
+    Cover(CoverStmt),
     /// A module-body item that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.
@@ -844,6 +866,9 @@ pub enum SeqStmt {
     /// `assert(cond)` / `assert(cond, "msg")` inside an `on` block —
     /// checked once per triggering edge. See [`AssertStmt`].
     Assert(AssertStmt),
+    /// `cover(cond)` / `cover(cond, "label")` inside an `on` block —
+    /// checked once per triggering edge. See [`CoverStmt`].
+    Cover(CoverStmt),
     /// A sequential statement that failed to parse. Produced ONLY by
     /// `parser::parse_recover`; see [`TopItem::Error`]. The span covers the
     /// skipped source.

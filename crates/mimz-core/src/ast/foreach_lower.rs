@@ -13,9 +13,9 @@
 //! `None`.
 
 use super::{
-    Arm, AssertStmt, Conn, ConstDecl, Expr, ExprKind, FieldInit, FnParam, FnStmt, ForEach,
-    ForEachSource, Ident, Inst, LocalLet, ModuleItem, NamedArg, OnBlock, Pattern, Repeat, SeqStmt,
-    SyncLoop, Type,
+    Arm, AssertStmt, Conn, ConstDecl, CoverStmt, Expr, ExprKind, FieldInit, FnParam, FnStmt,
+    ForEach, ForEachSource, Ident, Inst, LocalLet, ModuleItem, NamedArg, OnBlock, Pattern, Repeat,
+    SeqStmt, SyncLoop, Type,
 };
 use crate::span::Span;
 use std::cell::Cell;
@@ -320,6 +320,11 @@ fn subst_seq_stmt(s: &SeqStmt, target: &str, replacement: &Expr) -> SeqStmt {
             msg: a.msg.clone(),
             span: a.span,
         }),
+        SeqStmt::Cover(c) => SeqStmt::Cover(CoverStmt {
+            cond: subst_expr(&c.cond, target, replacement),
+            label: c.label.clone(),
+            span: c.span,
+        }),
         SeqStmt::Error(sp) => SeqStmt::Error(*sp),
     }
 }
@@ -512,6 +517,11 @@ fn subst_module_item(it: &ModuleItem, target: &str, replacement: &Expr) -> Modul
             cond: subst_expr(&a.cond, target, replacement),
             msg: a.msg.clone(),
             span: a.span,
+        }),
+        ModuleItem::Cover(c) => ModuleItem::Cover(CoverStmt {
+            cond: subst_expr(&c.cond, target, replacement),
+            label: c.label.clone(),
+            span: c.span,
         }),
         ModuleItem::Error(sp) => ModuleItem::Error(*sp),
     }

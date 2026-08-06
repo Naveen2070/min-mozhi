@@ -272,6 +272,15 @@ en = "assert"
 tanglish = "valiyuruthu" # PROVISIONAL — pending native review
 tamil = "வலியுறுத்து"     # PROVISIONAL — pending native review
 
+# Functional-coverage hit counter (module body / on rise(clk); GAP-6
+# follow-up, 2026-08-05). Never fails a run — pure observation. Tanglish/
+# Tamil are PROVISIONAL, pending native-speaker review, same status as
+# assert before its own review.
+[keywords.cover]
+en = "cover"
+tanglish = "alavidu" # PROVISIONAL — pending native review
+tamil = "அளவிடு"     # PROVISIONAL — pending native review
+
 # Function return statement (Phase 2 statement-based fn bodies). Tanglish/Tamil
 # spellings are PROVISIONAL dev/testing placeholders — `thirumbu`/`திரும்பு`
 # — pending native-speaker review (R9/R11). Maintainer-authorized 2026-07-03

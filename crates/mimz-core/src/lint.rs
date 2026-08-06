@@ -238,6 +238,7 @@ fn collect_item(
             collect_expr_names(expr, referenced);
         }
         ast::ModuleItem::Assert(a) => collect_expr_names(&a.cond, referenced),
+        ast::ModuleItem::Cover(c) => collect_expr_names(&c.cond, referenced),
     }
 }
 
@@ -361,6 +362,7 @@ fn collect_seq_names(stmt: &ast::SeqStmt, names: &mut HashSet<String>) {
             }
         }
         ast::SeqStmt::Assert(a) => collect_expr_names(&a.cond, names),
+        ast::SeqStmt::Cover(c) => collect_expr_names(&c.cond, names),
         ast::SeqStmt::Error(_) => {}
     }
 }
