@@ -239,7 +239,7 @@ Five ranges by category:
 | Range           | Category                  | Fires in                                              |
 | --------------- | ------------------------- | ----------------------------------------------------- |
 | `S0102`–`S0139` | elaboration/wiring        | `sim/elaborate/*.rs`, `runner.rs`'s import resolution |
-| `S0201`–`S0239` | expression evaluation     | `sim/value/*.rs`, `sim/comb.rs`, `sim/kernel.rs`      |
+| `S0201`–`S0240` | expression evaluation     | `sim/value/*.rs`, `sim/comb.rs`, `sim/kernel.rs`      |
 | `S0301`–`S0305` | test-harness control flow | `sim/harness/mod.rs`'s `Run::exec`                    |
 | `S0401`–`S0404` | peripheral bind errors    | `sim/harness/mod.rs`'s `TestStmt::Sim` handling       |
 | `S0501`         | assertion failures        | `sim/kernel.rs`, `sim/run.rs` (GAP-6)                 |
@@ -315,6 +315,7 @@ Five ranges by category:
 | S0237 | signal is never driven                                                        |
 | S0238 | combinational cycle through a signal (also reused by `sim/kernel.rs`)         |
 | S0239 | `Sim::set`: name is not a drivable input/clock/reset                          |
+| S0240 | `+`/`-`/`*` operands disagree on signedness                                   |
 | S0301 | `tick(clk, ...)`: `clk` is not a declared clock of this module                |
 | S0302 | `tick(clk, n)`: `n` evaluated negative                                        |
 | S0303 | a tick would exceed the (headless) simulation cycle limit                     |
