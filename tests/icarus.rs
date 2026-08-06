@@ -165,6 +165,88 @@ fn clocked_assert_halts_real_iverilog_when_it_fires() {
     );
 }
 
+/// GAP-6 follow-up: a compiled clocked `cover`'s hidden counter register
+/// must actually count real clock edges under `iverilog`/`vvp` — read
+/// back via a hierarchical reference from a hand-written testbench, the
+/// same "verify against real hardware" discipline `assert`'s own T11 used
+/// (a $fatal exit code there; a register's final value here).
+#[test]
+fn clocked_cover_counts_real_edges_under_iverilog() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    let src = "module M {\n  clock clk\n  reset rst\n  out y: bit\n  reg r: bit = 0\n  \
+               on rise(clk) {\n    cover(r == 0)\n    r <- 1\n  }\n  y = r\n}\n";
+    let src_path = std::env::temp_dir().join("mimz_gap6_cover_t11_src.mimz");
+    std::fs::write(&src_path, src).unwrap();
+    let design_v = compile_example(&src_path);
+
+    // `reg r` is a real, uninitialized Verilog register — it starts `'x'`,
+    // not `0`, until reset actually asserts (`cover`'s emitted `if (cond)`
+    // treats `'x'` as falsy, same as real hardware; a testbench that never
+    // pulses `rst` would give `cover(r == 0)` no real edge to count on).
+    // Edge 1 (`rst = 1`): the reset branch runs, `r <= 0`; `cover` sits in
+    // the ELSE branch, so it is not evaluated during a reset edge either.
+    // Edge 2 (`rst = 0`, `r` now definitely 0): `cover(r == 0)` hits, then
+    // `r <= 1`. Edge 3 (`rst = 0`, `r` now 1): no hit. Exactly 1 hit total.
+    let tb = "module tb;\n  \
+              reg clk = 0;\n  reg rst = 1;\n  wire y;\n  \
+              M uut (.clk(clk), .rst(rst), .y(y));\n  \
+              initial begin\n    \
+                #5 clk = 1; #5 clk = 0;\n    \
+                rst = 0;\n    \
+                #5 clk = 1; #5 clk = 0;\n    \
+                #5 clk = 1; #5 clk = 0;\n    \
+                $display(\"HITS %0d\", uut.__cover_%COVER_KEY%_count);\n    \
+                $finish;\n  \
+              end\nendmodule\n";
+    // The counter's name is derived from the cover's byte-span start —
+    // resolve it by scanning the compiled Verilog for the one `reg [31:0]
+    // __cover_<N>_count` declaration line, rather than hand-computing the
+    // source byte offset (fragile against any whitespace change above).
+    let compiled = std::fs::read_to_string(&design_v).unwrap();
+    let cover_reg = compiled
+        .lines()
+        .find_map(|l| {
+            let l = l.trim();
+            l.strip_prefix("reg [31:0] ")
+                .and_then(|rest| rest.strip_suffix(" = 0;"))
+        })
+        .expect("compiled Verilog must declare exactly one cover counter reg");
+    let tb = tb.replace("__cover_%COVER_KEY%_count", cover_reg);
+
+    let tb_path = std::env::temp_dir().join("mimz_gap6_cover_t11_tb.v");
+    std::fs::write(&tb_path, &tb).unwrap();
+    let vvp_out = std::env::temp_dir().join("mimz_gap6_cover_t11.vvp");
+
+    let build = tool(&bin, "iverilog")
+        .arg("-o")
+        .arg(&vvp_out)
+        .args(["-s", "tb"])
+        .arg(&tb_path)
+        .arg(&design_v)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "iverilog failed to build the GAP-6-cover T11 testbench:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+    assert!(
+        sim.status.success(),
+        "vvp failed: {}",
+        String::from_utf8_lossy(&sim.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&sim.stdout);
+    assert!(
+        stdout.contains("HITS 1"),
+        "expected exactly 1 hit (r==0 only on the very first edge, before \
+         r <- 1 takes effect); got:\n{stdout}"
+    );
+}
+
 /// Parse the Icarus major version from `iverilog -V` output.
 /// `None` means parsing failed (conservatively assume recent enough).
 fn icarus_major_version(bin: &Path) -> Option<u32> {

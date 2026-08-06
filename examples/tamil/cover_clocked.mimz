@@ -1,0 +1,17 @@
+// Min-Mozhi example (Tamil flavor — same grammar, only the keywords change): clocked cover — a functional-coverage hit counter checked once per triggering edge.
+// Stripped from synthesis (`ifndef SYNTHESIS` in the emitted Verilog); active in simulation.
+
+தொகுதி CoverCounter {
+  துடிப்பு clk
+  மீட்டமை rst
+  வெளியீடு count: bits[4]
+
+  பதிவேடு count_r: bits[4] = 0
+
+  போது ஏற்றம்(clk) {
+    அளவிடு(count_r == 15, "counter reached its max value")
+    count_r <- count_r +% 1
+  }
+
+  count = count_r
+}

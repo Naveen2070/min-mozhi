@@ -89,6 +89,36 @@ fn assert_message_must_be_a_string_literal() {
 }
 
 #[test]
+fn cover_parses_in_a_module_body() {
+    let f = parse_ok("module M {\n  in a: bit\n  out y: bit\n  cover(a)\n  y = a\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    // items: [0] in a, [1] out y, [2] cover(a), [3] y = a
+    assert!(matches!(&m.items[2], ModuleItem::Cover(_)));
+}
+
+#[test]
+fn cover_with_a_label_parses_in_a_module_body() {
+    let f =
+        parse_ok("module M {\n  in a: bit\n  out y: bit\n  cover(a, \"a was high\")\n  y = a\n}\n");
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::Cover(c) = &m.items[2] else {
+        panic!("expected ModuleItem::Cover")
+    };
+    assert_eq!(c.label.as_deref(), Some("a was high"));
+}
+
+#[test]
+fn cover_label_must_be_a_string_literal() {
+    let d = parse_err("module M {\n  in a: bit\n  out y: bit\n  cover(a, a)\n}\n");
+    assert_eq!(d[0].code, Some("E1101"));
+    assert!(d[0].help.is_some());
+}
+
+#[test]
 fn assert_parses_inside_an_on_block() {
     let f = parse_ok(
         "module M {\n  clock clk\n  in a: bit\n  out y: bit\n  reg r: bit = 0\n  \
@@ -119,6 +149,39 @@ fn assert_parses_inside_an_on_block_thamizh_order() {
         panic!("expected the on-block")
     };
     assert!(matches!(&on.body[0], SeqStmt::Assert(_)));
+}
+
+#[test]
+fn cover_parses_inside_an_on_block() {
+    let f = parse_ok(
+        "module M {\n  clock clk\n  in a: bit\n  out y: bit\n  reg r: bit = 0\n  \
+         on rise(clk) {\n    cover(a)\n    r <- a\n  }\n  y = r\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    // items: [0] clock, [1] in a, [2] out y, [3] reg r, [4] on-block, [5] y = r
+    let ModuleItem::On(on) = &m.items[4] else {
+        panic!("expected the on-block")
+    };
+    assert!(matches!(&on.body[0], SeqStmt::Cover(_)));
+}
+
+#[test]
+fn cover_parses_inside_an_on_block_thamizh_order() {
+    // `cover` is keyword-first in BOTH word orders (like `assert`/`loop`/
+    // `default`/`foreach`) — not a clause head, so no SOV flip is needed.
+    let f = parse_ok(
+        "ilakkanam thamizh\nthoguthi M {\n  thudippu clk\n  ulleedu a: bit\n  veliyeedu y: bit\n  pathivedu r: bit = 0\n  \
+         yetram(clk) pothu {\n    cover(a)\n    r <- a\n  }\n  y = r\n}\n",
+    );
+    let TopItem::Module(m) = &f.items[0] else {
+        panic!()
+    };
+    let ModuleItem::On(on) = &m.items[4] else {
+        panic!("expected the on-block")
+    };
+    assert!(matches!(&on.body[0], SeqStmt::Cover(_)));
 }
 
 #[test]

@@ -313,7 +313,47 @@ source text when omitted.
 It **does** run in `mimz sim`/`mimz test`/the playground — a failing
 assert stops the run immediately with the reason, right where it broke.
 
-> `assume`/`cover`/SVA-style sequence assertions aren't in the language
-> yet — `assert` is the first piece of a larger verification story.
+> `assume`/SVA-style sequence assertions aren't in the language yet —
+> `assert` and `cover` (next) are the first pieces of a larger
+> verification story.
+
+## Counting how often something happens: `cover`
+
+`assert` halts a run the moment something breaks. `cover` is the opposite
+in spirit — it never halts anything, it just counts. Use it to confirm a
+tricky branch, an edge value, or an interesting combination actually gets
+exercised, without turning that observation into a hard failure:
+
+```mimz
+module Divider {
+  in a: bits[8]
+  in b: bits[8]
+  out q: bits[8]
+
+  cover(b == 0, "divisor was zero")
+  q = a
+}
+```
+
+`cover(cond)` / `cover(cond, "label")` works in the same two places
+`assert` does — the module body (checked every settled combinational
+state) and inside `on rise(clk) { }` (checked once per triggering edge):
+
+```mimz
+on rise(clk) {
+  cover(count_r == 15, "counter reached its max value")
+  count_r <- count_r +% 1
+}
+```
+
+`cond` must be a single `bit`, same rule as `assert`'s own condition;
+`label` is a plain string, not a general expression — it falls back to
+the statement's own source location when omitted.
+
+Unlike `assert`, **`cover` never fails a run** — no exit code, no
+diagnostic, no matter how many (or how few) times it hits. Like `assert`,
+it never reaches real hardware (the same `` `ifndef SYNTHESIS `` guard
+strips it for synthesis). Hit counts print in a summary at the end of
+`mimz test`, `mimz sim`, and the WASM playground.
 
 Next: [modules and reuse](09-modules-and-reuse.md).

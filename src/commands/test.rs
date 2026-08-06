@@ -169,6 +169,16 @@ pub(crate) fn test_file(
                         }
                     }
                 }
+                for c in &o.timeline.covers {
+                    let label = match &c.label {
+                        Some(l) => l.clone(),
+                        None => {
+                            let (line, col) = c.span.line_col(&src);
+                            format!("{}:{line}:{col}", path.display())
+                        }
+                    };
+                    println!("     cover {label}: {} hit(s)", c.hits);
+                }
                 // Per-test console trace (opt-in).
                 if let Some(style) = &trace_style {
                     let all: Vec<String> =

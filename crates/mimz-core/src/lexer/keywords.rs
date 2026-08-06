@@ -116,11 +116,11 @@ impl KeywordTable {
 /// Without this list, DELETING a `[keywords.*]` entry would silently
 /// demote that keyword to a plain identifier (the unknown-key panic only
 /// guards the other direction). Update together with [`Kw`] and the TOML.
-const REQUIRED_KEYS: [&str; 43] = [
+const REQUIRED_KEYS: [&str; 44] = [
     "module", "in", "out", "wire", "reg", "mem", "clock", "reset", "async", "on", "rise", "fall",
     "if", "else", "match", "enum", "let", "const", "repeat", "import", "true", "false", "test",
     "for", "tick", "expect", "and", "or", "not", "syntax", "thamizh", "fn", "default", "bundle",
-    "return", "loop", "sync", "sim", "bind", "speed", "foreach", "extern", "assert",
+    "return", "loop", "sync", "sim", "bind", "speed", "foreach", "extern", "assert", "cover",
 ];
 
 /// The parsed, validated `keywords.toml` table — loaded once, lazily, on
@@ -232,6 +232,7 @@ fn kw_for_key(key: &str) -> Option<Kw> {
         "speed" => Kw::Speed,
         "foreach" => Kw::Foreach,
         "assert" => Kw::Assert,
+        "cover" => Kw::Cover,
         _ => return None,
     })
 }
@@ -384,10 +385,20 @@ mod tests {
     }
 
     #[test]
+    fn kw_cover_is_recognized() {
+        // Tanglish/Tamil spellings are PROVISIONAL pending native review, same
+        // pattern as `assert`/`default`/`fall`/`bundle`/`return`.
+        assert!(!TABLE.is_reserved("cover"));
+        assert_eq!(TABLE.lookup("cover").unwrap().0, Kw::Cover);
+        assert_eq!(TABLE.lookup("alavidu").unwrap().0, Kw::Cover);
+        assert_eq!(TABLE.lookup("அளவிடு").unwrap().0, Kw::Cover);
+    }
+
+    #[test]
     fn canonical_spellings_lists_every_keyword_in_a_flavor() {
         let en = TABLE.canonical_spellings(Flavor::English);
-        // One spelling per keyword (REQUIRED_KEYS has 43).
-        assert_eq!(en.len(), 43);
+        // One spelling per keyword (REQUIRED_KEYS has 44).
+        assert_eq!(en.len(), 44);
         assert!(en.contains(&"module"));
         assert!(en.contains(&"reg"));
         // Tamil column gives the Tamil spellings, never the English ones.

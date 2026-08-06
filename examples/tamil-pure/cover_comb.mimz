@@ -1,0 +1,13 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): a
+// combinational cover — the Tamil twin of english/cover_comb.mimz.
+// Stripped from synthesis (`ifndef SYNTHESIS` in the emitted Verilog);
+// active in simulation. Abstract operands use Tamil letters (அ, ஆ).
+
+தொகுதி அளவீட்டுவகுத்தல் {
+  உள்ளீடு அ: bits[8]
+  உள்ளீடு ஆ: bits[8]
+  வெளியீடு ஈவு: bits[8]
+
+  அளவிடு(ஆ == 0, "divisor was zero")
+  ஈவு = அ
+}

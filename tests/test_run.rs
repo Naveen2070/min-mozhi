@@ -43,6 +43,19 @@ fn a_passing_test_exits_zero() {
 }
 
 #[test]
+fn mimz_test_prints_a_coverage_summary() {
+    let src = "module M {\n  clock clk\n  reset rst\n  out y: bit\n  reg r: bit = 0\n  \
+               cover(r == 0)\n  \
+               on rise(clk) {\n    r <- 1\n  }\n  y = r\n}\n\
+               test \"t\" for M {\n  tick(clk, 2)\n}\n";
+    let p = temp_mimz(src);
+    let out = mimz().args(["test"]).arg(&p).output().unwrap();
+    assert!(out.status.success(), "test should pass: {:?}", out);
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("cover"), "no cover line:\n{s}");
+}
+
+#[test]
 fn a_tick_count_over_the_cycle_limit_errors_fast_not_hangs() {
     // SEC: `tick(clk, n)` with n past MAX_SIM_CYCLES must fail fast with a
     // clean error, NEVER loop n times pushing frames (untrusted-input DoS).

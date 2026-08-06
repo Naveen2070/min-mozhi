@@ -19,6 +19,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use mimz_core::REPEAT_BUDGET;
 use mimz_core::ast::{AssertStmt, Edge, Expr, FuncDecl, SeqStmt};
+use mimz_core::span::Span;
 
 use super::elaborate::{Design, Width};
 use super::value::{self, Resolver, Val};
@@ -52,6 +53,11 @@ pub struct Sim {
     mems: BTreeMap<(String, u128), Val>,
     /// Per-memory metadata for the resolver (element width, init, depth).
     mem_meta: BTreeMap<String, MemInfo>,
+    /// Hit counts for every `cover`, keyed by `CoverStmt.span.start` (a
+    /// stable, unique key per source occurrence — no separate id-assignment
+    /// pass needed, mirrors the emitter's own span-derived counter naming,
+    /// GAP-6 follow-up).
+    cover_hits: BTreeMap<usize, u64>,
 }
 
 /// What the resolver and writer need to know about a memory without scanning
@@ -131,6 +137,7 @@ impl Sim {
             regs,
             mems: BTreeMap::new(),
             mem_meta,
+            cover_hits: BTreeMap::new(),
         }
     }
 
@@ -223,6 +230,13 @@ impl Sim {
                 }
             }
         } else {
+            // `cover_hits` is tallied into a local map, not `self.cover_hits`
+            // directly — `env` (below) holds an immutable borrow of `self`
+            // for this whole loop (needed to evaluate every proc's `cond`s
+            // against the same settled state), so a simultaneous `&mut
+            // self.cover_hits` would conflict with it. Merged into the real
+            // field once `env`'s borrow ends.
+            let mut new_hits: BTreeMap<usize, u64> = BTreeMap::new();
             let mut env = self.comb_env();
             for proc in &self.design.procs {
                 if proc.clock == clock && proc.edge == edge {
@@ -232,8 +246,13 @@ impl Sim {
                         &mut next,
                         &mut next_mems,
                         &self.widths,
+                        &mut new_hits,
                     )?;
                 }
+            }
+            drop(env);
+            for (span_start, hits) in new_hits {
+                *self.cover_hits.entry(span_start).or_insert(0) += hits;
             }
         }
         self.regs = next;
@@ -241,6 +260,7 @@ impl Sim {
             self.mems = next_mems;
         }
         self.check_comb_asserts()?;
+        self.tally_comb_covers()?;
         Ok(())
     }
 
@@ -256,6 +276,48 @@ impl Sim {
             }
         }
         Ok(())
+    }
+
+    /// Tally every combinational `cover` (GAP-6 follow-up) against the
+    /// current settled state — same two call sites `check_comb_asserts`
+    /// uses (`tick_edge`'s tail, `comb_run`'s per-vector loop), since those
+    /// are the two points state is known consistent. Never returns an
+    /// `Err` for a `cover` itself (it can't fail) — the `Result` exists
+    /// only because evaluating `cond` can (the same reason
+    /// `check_comb_asserts` returns one).
+    pub fn tally_comb_covers(&mut self) -> Result<(), Box<Diag>> {
+        // Same borrow-splitting reason as `tick_edge`'s own cover tally:
+        // `env` holds an immutable borrow of `self` for this whole loop, so
+        // hits accumulate into a local map first, merged into the real
+        // field once that borrow ends.
+        let mut new_hits: Vec<usize> = Vec::new();
+        {
+            let mut env = self.comb_env();
+            for c in &self.design.covers {
+                if value::eval(&mut env, &c.cond)?.lsb() == 1 {
+                    new_hits.push(c.span.start);
+                }
+            }
+        }
+        for span_start in new_hits {
+            *self.cover_hits.entry(span_start).or_insert(0) += 1;
+        }
+        Ok(())
+    }
+
+    /// Current hit counts, keyed by `CoverStmt.span.start`. Read by
+    /// `cover_report` (below) and by `mimz test`/`mimz sim`/the playground
+    /// (Task 10) to build the printed summary.
+    pub fn cover_hits(&self) -> &BTreeMap<usize, u64> {
+        &self.cover_hits
+    }
+
+    /// The elaborated design this simulation is running — needed by callers
+    /// that build a [`cover_report`] after `design` has been moved into
+    /// [`Sim::new`] (GAP-6 follow-up: `run`/`comb_run`/`run_test_with_mode`
+    /// all construct their `Timeline`/`Outcome` after that move).
+    pub fn design(&self) -> &Design {
+        &self.design
     }
 
     /// A snapshot of every signal's current value (low bits) with its width —
@@ -324,6 +386,7 @@ fn run_seq(
     next: &mut BTreeMap<String, Val>,
     next_mems: &mut BTreeMap<(String, u128), Val>,
     widths: &BTreeMap<String, Width>,
+    cover_hits: &mut BTreeMap<usize, u64>,
 ) -> Result<(), Box<Diag>> {
     // D-DEFAULT-3: defaults first so conditional assigns override them
     for s in body {
@@ -512,9 +575,9 @@ fn run_seq(
             }
             SeqStmt::If { cond, then, els } => {
                 if value::eval(env, cond)?.lsb() == 1 {
-                    run_seq(env, then, next, next_mems, widths)?;
+                    run_seq(env, then, next, next_mems, widths, cover_hits)?;
                 } else if let Some(e) = els {
-                    run_seq(env, e, next, next_mems, widths)?;
+                    run_seq(env, e, next, next_mems, widths, cover_hits)?;
                 }
             }
             SeqStmt::Default { .. } => {} // already processed above
@@ -547,7 +610,7 @@ fn run_seq(
                 let mut i = lo_v;
                 while i < hi_v {
                     let shadowed = env.known.insert(var.name.clone(), Val::from_int(i));
-                    run_seq(env, body, next, next_mems, widths)?;
+                    run_seq(env, body, next, next_mems, widths, cover_hits)?;
                     match shadowed {
                         Some(v) => {
                             env.known.insert(var.name.clone(), v);
@@ -570,6 +633,11 @@ fn run_seq(
                     return Err(Box::new(assert_failed_diag(a)));
                 }
             }
+            SeqStmt::Cover(c) => {
+                if value::eval(env, &c.cond)?.lsb() == 1 {
+                    *cover_hits.entry(c.span.start).or_insert(0) += 1;
+                }
+            }
             // Unreachable: the kernel runs on a strict-parsed tree, which
             // carries no `Error` placeholder.
             SeqStmt::Error(_) => {}
@@ -588,6 +656,68 @@ fn assert_failed_diag(a: &AssertStmt) -> Diag {
         None => "assertion failed".to_string(),
     };
     Diag::new(a.span, msg).with_code("S0501")
+}
+
+/// One `cover`'s reporting shape — paired with its final hit count.
+/// Produced by [`cover_report`], consumed by `mimz test`/`mimz sim`/the
+/// playground (Task 10) to print the end-of-run summary.
+#[derive(Clone, Debug)]
+pub struct CoverHit {
+    /// The user-given label, if any — `None` means the caller should fall
+    /// back to `span`'s own source location.
+    pub label: Option<String>,
+    /// Source span of the `cover(...)` statement.
+    pub span: Span,
+    /// How many times `cond` was true across the whole run.
+    pub hits: u64,
+}
+
+/// Every `cover` in `design` — module-item form (`design.covers` directly)
+/// plus `on`-block form (recursed through every `Process.body`) — paired
+/// with its final hit count from `hit_counts` (0 if the map has no entry,
+/// meaning it was evaluated but never true, or never evaluated at all).
+/// GAP-6 follow-up.
+pub fn cover_report(design: &Design, hit_counts: &BTreeMap<usize, u64>) -> Vec<CoverHit> {
+    let mut out: Vec<CoverHit> = design
+        .covers
+        .iter()
+        .map(|c| CoverHit {
+            label: c.label.clone(),
+            span: c.span,
+            hits: hit_counts.get(&c.span.start).copied().unwrap_or(0),
+        })
+        .collect();
+    for proc in &design.procs {
+        collect_seq_cover_hits(&proc.body, hit_counts, &mut out);
+    }
+    out
+}
+
+fn collect_seq_cover_hits(
+    stmts: &[SeqStmt],
+    hit_counts: &BTreeMap<usize, u64>,
+    out: &mut Vec<CoverHit>,
+) {
+    for s in stmts {
+        match s {
+            SeqStmt::Cover(c) => out.push(CoverHit {
+                label: c.label.clone(),
+                span: c.span,
+                hits: hit_counts.get(&c.span.start).copied().unwrap_or(0),
+            }),
+            SeqStmt::If { then, els, .. } => {
+                collect_seq_cover_hits(then, hit_counts, out);
+                if let Some(e) = els {
+                    collect_seq_cover_hits(e, hit_counts, out);
+                }
+            }
+            SeqStmt::Loop { body, .. } => collect_seq_cover_hits(body, hit_counts, out),
+            SeqStmt::ForEach { .. } => unreachable!(
+                "ForEach is lowered before run_seq ever runs — see elaborate_module's ModuleItem::On arm"
+            ),
+            _ => {}
+        }
+    }
 }
 
 /// Resolver over a frozen state: `known` (regs + leaves) are leaf values;
@@ -740,6 +870,28 @@ mod tests {
         for _ in 0..5 {
             k.tick("clk").expect("assert(r == r) can never fire");
         }
+    }
+
+    #[test]
+    fn a_clocked_cover_tallies_one_hit_per_true_edge() {
+        let mut k = sim(
+            "module M {\n  clock clk\n  out y: bit\n  reg r: bit = 0\n  \
+             on rise(clk) {\n    cover(r == 0)\n    r <- 1\n  }\n  y = r\n}\n",
+        );
+        k.tick("clk").expect("first tick: r is 0, cover hits");
+        k.tick("clk")
+            .expect("second tick: r is 1, cover doesn't hit");
+        let hits: u64 = k.cover_hits().values().sum();
+        assert_eq!(hits, 1, "cover(r == 0) must have hit exactly once");
+    }
+
+    #[test]
+    fn a_comb_cover_tallies_once_per_settle() {
+        let mut k = sim("module M {\n  in a: bit\n  out y: bit\n  cover(a)\n  y = a\n}\n");
+        k.tally_comb_covers().expect("tallies");
+        k.tally_comb_covers().expect("tallies again");
+        let hits: u64 = k.cover_hits().values().sum();
+        assert_eq!(hits, 0, "a starts at 0 — cover(a) must not have hit yet");
     }
 
     const EXTERN_PLL_SRC: &str = "extern module Pll {\n  in clk_in: bit\n  out locked: bit\n}\n\

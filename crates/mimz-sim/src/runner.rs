@@ -607,6 +607,18 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
         return Ok(vcd::to_vcd(&timeline));
     }
 
+    let mut cover_lines = String::new();
+    for c in &timeline.covers {
+        let label = match &c.label {
+            Some(l) => l.clone(),
+            None => {
+                let (line, col) = c.span.line_col(src);
+                format!("{line}:{col}")
+            }
+        };
+        cover_lines.push_str(&format!("cover {label}: {} hit(s)\n", c.hits));
+    }
+
     if let Some(style) = &trace_style {
         let all_names: Vec<String> = timeline.signals.iter().map(|s| s.name.clone()).collect();
         let default: Vec<String> = in_names
@@ -615,7 +627,10 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
             .chain(reg_names)
             .collect();
         let scope = trace_scope(&all_names, &default, verbose, &signals, &timeline.module)?;
-        Ok(trace::render(&timeline, style, &scope))
+        Ok(format!(
+            "{cover_lines}{}",
+            trace::render(&timeline, style, &scope)
+        ))
     } else {
         let unit = if clocked {
             "cycle(s)"
@@ -623,7 +638,7 @@ fn sim(src: &str, argv: &[&str]) -> Result<String, String> {
             "input vector(s)"
         };
         Ok(format!(
-            "simulated {steps} {unit} of `{}` — add --trace for a console trace\n",
+            "{cover_lines}simulated {steps} {unit} of `{}` — add --trace for a console trace\n",
             timeline.module
         ))
     }
@@ -713,23 +728,35 @@ fn test(src: &str, argv: &[&str]) -> Result<String, String> {
             false,
             false,
         ) {
-            Ok(o) => match o.result {
-                crate::sim::harness::TestResult::Pass => {
-                    passed += 1;
-                    let s = if o.checks == 1 { "check" } else { "checks" };
-                    out.push_str(&format!("ok   {} ({} {s})\n", o.name, o.checks));
-                }
-                crate::sim::harness::TestResult::Fail(msg) => {
-                    failed += 1;
-                    out.push_str(&format!("FAIL {}\n", o.name));
-                    for line in msg.lines() {
-                        out.push_str(&format!("       {line}\n"));
+            Ok(o) => {
+                match &o.result {
+                    crate::sim::harness::TestResult::Pass => {
+                        passed += 1;
+                        let s = if o.checks == 1 { "check" } else { "checks" };
+                        out.push_str(&format!("ok   {} ({} {s})\n", o.name, o.checks));
+                    }
+                    crate::sim::harness::TestResult::Fail(msg) => {
+                        failed += 1;
+                        out.push_str(&format!("FAIL {}\n", o.name));
+                        for line in msg.lines() {
+                            out.push_str(&format!("       {line}\n"));
+                        }
+                    }
+                    crate::sim::harness::TestResult::Skipped(reason) => {
+                        out.push_str(&format!("SKIP {} — {reason}\n", o.name));
                     }
                 }
-                crate::sim::harness::TestResult::Skipped(reason) => {
-                    out.push_str(&format!("SKIP {} — {reason}\n", o.name));
+                for c in &o.timeline.covers {
+                    let label = match &c.label {
+                        Some(l) => l.clone(),
+                        None => {
+                            let (line, col) = c.span.line_col(src);
+                            format!("{line}:{col}")
+                        }
+                    };
+                    out.push_str(&format!("     cover {label}: {} hit(s)\n", c.hits));
                 }
-            },
+            }
             Err(e) => {
                 failed += 1;
                 out.push_str(&format!("error in test \"{}\":\n", decl.name));
@@ -827,6 +854,20 @@ mod tests {
         assert!(
             out.contains("count"),
             "trace should name the output, got: {out}"
+        );
+    }
+
+    #[test]
+    fn playground_test_reports_cover_hits() {
+        let src = "module M {\n  clock clk\n  reset rst\n  out y: bit\n  reg r: bit = 0\n  \
+                   cover(r == 0)\n  \
+                   on rise(clk) {\n    r <- 1\n  }\n  y = r\n}\n\
+                   test \"t\" for M {\n  tick(clk, 2)\n}\n";
+        let out = run_command(src, "test", &[]).unwrap();
+        assert!(out.contains("cover"), "got:\n{out}");
+        assert!(
+            out.contains("1"),
+            "expected a hit count of 1 somewhere:\n{out}"
         );
     }
 

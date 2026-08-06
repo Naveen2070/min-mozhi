@@ -34,6 +34,7 @@ fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
         hoist_counter: 0,
         hoisted_decls: String::new(),
         cur_decls: HashMap::new(),
+        cover_ordinals: HashMap::new(),
     }
 }
 
@@ -53,6 +54,38 @@ fn comb_assert_with_a_message_embeds_it() {
         "module M {\n  in a: bit\n  out y: bit\n  assert(a, \"a must be set\")\n  y = a\n}\n",
     );
     assert!(v.contains("a must be set"), "got:\n{v}");
+}
+
+#[test]
+fn comb_cover_emits_a_sensitized_counter() {
+    let v = emit_src("module M {\n  in a: bit\n  out y: bit\n  cover(a)\n  y = a\n}\n");
+    assert!(v.contains("`ifndef SYNTHESIS"), "got:\n{v}");
+    assert!(v.contains("reg [31:0]"), "got:\n{v}");
+    assert!(
+        v.contains(" = 0;"),
+        "counter must be zero-initialized:\n{v}"
+    );
+    assert!(
+        v.contains("if (") && v.contains("count = ") && v.contains("+ 1"),
+        "got:\n{v}"
+    );
+    assert!(v.contains("`endif"), "got:\n{v}");
+}
+
+#[test]
+fn clocked_cover_emits_an_inline_increment() {
+    let v = emit_src(
+        "module M {\n  clock clk\n  in a: bit\n  out y: bit\n  reg r: bit = 0\n  \
+         on rise(clk) {\n    cover(a)\n    r <- a\n  }\n  y = r\n}\n",
+    );
+    assert!(v.contains("always @(posedge clk)"), "got:\n{v}");
+    assert!(v.contains("`ifndef SYNTHESIS"), "got:\n{v}");
+    assert!(v.contains("reg [31:0]"), "got:\n{v}");
+    assert!(
+        v.contains("<= ") && v.contains("count") && v.contains("+ 1"),
+        "got:\n{v}"
+    );
+    assert!(v.contains("`endif"), "got:\n{v}");
 }
 
 #[test]

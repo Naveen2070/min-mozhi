@@ -63,7 +63,7 @@
     "keywords-control": {
       "comment": "control-flow keywords, all flavors",
       "name": "keyword.control.mimz",
-      "match": "(?<![\\p{L}\\p{N}_])(if|enil|எனில்|else|illaiyenil|இல்லையெனில்|match|thernthedu|தேர்ந்தெடு|on|pothu|போது|rise|yetram|ஏற்றம்|fall|irakkam|இறக்கம்|repeat|meendum|மீண்டும்|default|iyalbu|இயல்பு|syntax|ilakkanam|இலக்கணம்|thamizh|தமிழ்|return|thirumbu|திரும்பு|loop|suzhal|சுழல்|foreach|ovvondraga|ஒவ்வொன்றாக|assert|valiyuruthu|வலியுறுத்து)(?![\\p{L}\\p{N}_])"
+      "match": "(?<![\\p{L}\\p{N}_])(if|enil|எனில்|else|illaiyenil|இல்லையெனில்|match|thernthedu|தேர்ந்தெடு|on|pothu|போது|rise|yetram|ஏற்றம்|fall|irakkam|இறக்கம்|repeat|meendum|மீண்டும்|default|iyalbu|இயல்பு|syntax|ilakkanam|இலக்கணம்|thamizh|தமிழ்|return|thirumbu|திரும்பு|loop|suzhal|சுழல்|foreach|ovvondraga|ஒவ்வொன்றாக|assert|valiyuruthu|வலியுறுத்து|cover|alavidu|அளவிடு)(?![\\p{L}\\p{N}_])"
     },
     "keywords-constant": {
       "name": "constant.language.mimz",
