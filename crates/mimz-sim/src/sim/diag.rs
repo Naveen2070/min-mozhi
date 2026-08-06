@@ -22,7 +22,7 @@
 /// the same lookup first), so the append-only stability contract never
 /// applied to it — nothing could have observed it firing, since it never
 /// did.
-pub const ALL_SIM_CODES: [&str; 79] = [
+pub const ALL_SIM_CODES: [&str; 80] = [
     // S01xx — elaboration/wiring (sim/elaborate/registry.rs, instance.rs,
     // mod.rs, module.rs, rewrite.rs).
     "S0102", // ambiguous bare reference (module/extern-module/bundle)
@@ -111,6 +111,7 @@ pub const ALL_SIM_CODES: [&str; 79] = [
     // multi-module simulator's per-cycle resolver instead of `mimz eval`'s
     // single-module one.
     "S0239", // `Sim::set`: name is not a drivable input/clock/reset
+    "S0240", // `+`/`-`/`*` operands disagree on signedness
     // S03xx — test-harness control flow (sim/harness/mod.rs's `Run::exec`).
     // The peripheral-bind-validation `Stop::Err` sites in the same match arm
     // (unknown peripheral / direction mismatch / no such port) are Task

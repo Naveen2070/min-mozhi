@@ -121,7 +121,16 @@ pub(super) fn binary_ctx(
 // unsigned operands `as_i128` is the plain magnitude, so this is
 // identical to a raw-bit add/mul. (The wrapping family below keeps the
 // operand width, where the raw-bit op is already correct mod 2^width.)
-fn add(l: Val, r: Val) -> Val {
+fn math_rule_err(err: mimz_core::width_rules::RuleError, span: mimz_core::span::Span) -> Box<Diag> {
+    match err {
+        mimz_core::width_rules::RuleError::KindMismatch { .. } => {
+            Box::new(Diag::new(span, "cannot mix signed and unsigned operands").with_code("S0240"))
+        }
+        _ => unreachable!("lossless_result never returns other RuleError variants"),
+    }
+}
+
+fn add(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
     let k = mimz_core::width_rules::lossless_result(
         mimz_core::width_rules::Kind {
             width: l.width,
@@ -133,20 +142,24 @@ fn add(l: Val, r: Val) -> Val {
         },
         false,
     )
-    .expect("checker already rejected mixed signed/unsigned operands");
+    .map_err(|e| math_rule_err(e, span))?;
     if !l.is_wide() && !r.is_wide() && k.width <= 128 {
-        Val::new(
+        Ok(Val::new(
             l.as_i128().wrapping_add(r.as_i128()) as u128,
             k.width,
             k.signed,
-        )
+        ))
     } else {
         let (lw, rw) = wide_operands(l, r, k.width);
-        Val::new_wide(wide::add(&lw, &rw, k.width), k.width, k.signed)
+        Ok(Val::new_wide(
+            wide::add(&lw, &rw, k.width),
+            k.width,
+            k.signed,
+        ))
     }
 }
 
-fn sub(l: Val, r: Val) -> Val {
+fn sub(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
     let k = mimz_core::width_rules::lossless_result(
         mimz_core::width_rules::Kind {
             width: l.width,
@@ -158,20 +171,24 @@ fn sub(l: Val, r: Val) -> Val {
         },
         false,
     )
-    .expect("checker already rejected mixed signed/unsigned operands");
+    .map_err(|e| math_rule_err(e, span))?;
     if !l.is_wide() && !r.is_wide() && k.width <= 128 {
-        Val::new(
+        Ok(Val::new(
             l.as_i128().wrapping_sub(r.as_i128()) as u128,
             k.width,
             k.signed,
-        )
+        ))
     } else {
         let (lw, rw) = wide_operands(l, r, k.width);
-        Val::new_wide(wide::sub(&lw, &rw, k.width), k.width, k.signed)
+        Ok(Val::new_wide(
+            wide::sub(&lw, &rw, k.width),
+            k.width,
+            k.signed,
+        ))
     }
 }
 
-fn mul(l: Val, r: Val) -> Val {
+fn mul(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
     let k = mimz_core::width_rules::lossless_result(
         mimz_core::width_rules::Kind {
             width: l.width,
@@ -183,16 +200,20 @@ fn mul(l: Val, r: Val) -> Val {
         },
         true,
     )
-    .expect("checker already rejected mixed signed/unsigned operands");
+    .map_err(|e| math_rule_err(e, span))?;
     if !l.is_wide() && !r.is_wide() && k.width <= 128 {
-        Val::new(
+        Ok(Val::new(
             l.as_i128().wrapping_mul(r.as_i128()) as u128,
             k.width,
             k.signed,
-        )
+        ))
     } else {
         let (lw, rw) = wide_operands(l, r, k.width);
-        Val::new_wide(wide::mul(&lw, &rw, k.width), k.width, k.signed)
+        Ok(Val::new_wide(
+            wide::mul(&lw, &rw, k.width),
+            k.width,
+            k.signed,
+        ))
     }
 }
 
@@ -558,9 +579,9 @@ pub(super) fn binary_known(
     span: mimz_core::span::Span,
 ) -> Result<Val, Box<Diag>> {
     Ok(match op {
-        BinOp::Add => add(l, r),
-        BinOp::Sub => sub(l, r),
-        BinOp::Mul => mul(l, r),
+        BinOp::Add => add(l, r, span)?,
+        BinOp::Sub => sub(l, r, span)?,
+        BinOp::Mul => mul(l, r, span)?,
         BinOp::AddWrap => add_wrap(l, r),
         BinOp::SubWrap => sub_wrap(l, r),
         BinOp::MulWrap => mul_wrap(l, r),
