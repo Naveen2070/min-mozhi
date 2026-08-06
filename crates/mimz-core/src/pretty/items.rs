@@ -339,6 +339,7 @@ impl Pretty {
                 self.line(&s);
             }
             ModuleItem::Assert(a) => self.assert_stmt(a),
+            ModuleItem::Cover(c) => self.cover_stmt(c),
             ModuleItem::Repeat(r) => self.repeat(r),
             ModuleItem::ForEach(fe) => self.foreach(fe),
             ModuleItem::SyncLoop(sl) => self.sync_loop(sl),
@@ -424,6 +425,18 @@ impl Pretty {
         let cond = self.expr(&a.cond, self.indent);
         let s = match &a.msg {
             Some(m) => format!("{kw}({cond}, {})", self.quote(m)),
+            None => format!("{kw}({cond})"),
+        };
+        self.line(&s);
+    }
+
+    /// `cover(cond)` / `cover(cond, "label")` — shared by the module-item
+    /// and seq-statement printers (`pretty/seq.rs` calls this too).
+    pub(super) fn cover_stmt(&mut self, c: &CoverStmt) {
+        let kw = self.kw(Kw::Cover);
+        let cond = self.expr(&c.cond, self.indent);
+        let s = match &c.label {
+            Some(l) => format!("{kw}({cond}, {})", self.quote(l)),
             None => format!("{kw}({cond})"),
         };
         self.line(&s);

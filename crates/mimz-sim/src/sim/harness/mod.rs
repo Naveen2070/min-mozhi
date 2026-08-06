@@ -31,7 +31,7 @@ use mimz_core::span::Span;
 use super::Diag;
 use super::elaborate::{Signal, SimMode, Width, elaborate_project_with_mode};
 use super::host::{Direction, EmulationHost};
-use super::kernel::Sim;
+use super::kernel::{self, Sim};
 use super::run::{Frame, MAX_SIM_CYCLES, Timeline};
 use super::value::{self, Val};
 
@@ -236,6 +236,7 @@ pub fn run_test_with_mode(
             module,
             signals,
             frames: run.frames,
+            covers: kernel::cover_report(run.sim.design(), run.sim.cover_hits()),
         },
         default_scope,
     })

@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use mimz_core::ast::Edge;
 
 use super::elaborate::{Design, Signal};
-use super::kernel::Sim;
+use super::kernel::{self, CoverHit, Sim};
 use super::value::Bits;
 
 /// How to drive a `mimz sim` run.
@@ -51,6 +51,9 @@ pub struct Timeline {
     pub signals: Vec<Signal>,
     /// The per-instant snapshots, in time order.
     pub frames: Vec<Frame>,
+    /// Every `cover`'s final hit count (GAP-6 follow-up) — empty if the
+    /// design has none.
+    pub covers: Vec<CoverHit>,
 }
 
 /// Half-period and period, in `$timescale` units, for the rendered clock.
@@ -147,10 +150,12 @@ pub fn run(design: Design, opts: &SimOpts) -> Result<Timeline, String> {
             values: values(&sim)?,
         });
     }
+    let covers = kernel::cover_report(sim.design(), sim.cover_hits());
     Ok(Timeline {
         module,
         signals,
         frames,
+        covers,
     })
 }
 
@@ -192,16 +197,19 @@ pub fn comb_run(design: Design, vectors: &[BTreeMap<String, Bits>]) -> Result<Ti
             sim.set(name, value.clone()).map_err(|e| e.msg)?; // an unknown input name is a clean error
         }
         sim.check_comb_asserts().map_err(|e| e.msg)?;
+        sim.tally_comb_covers().map_err(|e| e.msg)?;
         frames.push(Frame {
             time: i as u64 * PERIOD,
             cycle: Some(i as u64),
             values: values(&sim)?,
         });
     }
+    let covers = kernel::cover_report(sim.design(), sim.cover_hits());
     Ok(Timeline {
         module,
         signals,
         frames,
+        covers,
     })
 }
 
@@ -310,6 +318,16 @@ mod tests {
         let tl = comb_run(design(ADDER), std::slice::from_ref(&v)).expect("runs");
         assert_eq!(tl.frames.len(), 1);
         assert_eq!(tl.frames[0].values["sum"], Bits::Small(300)); // lossless 9-bit add
+    }
+
+    #[test]
+    fn a_comb_cover_that_hits_is_reported_in_the_timeline() {
+        let d = design("module M {\n  in a: bit\n  out y: bit\n  cover(a)\n  y = a\n}\n");
+        let mut vec1 = BTreeMap::new();
+        vec1.insert("a".to_string(), Bits::Small(1));
+        let tl = comb_run(d, std::slice::from_ref(&vec1)).expect("runs");
+        assert_eq!(tl.covers.len(), 1);
+        assert_eq!(tl.covers[0].hits, 1);
     }
 
     #[test]

@@ -266,6 +266,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::Drive { .. } | ModuleItem::Error(_) => {}
                 ModuleItem::BundleDestructure { .. } => {} // checker stub (T5)
                 ModuleItem::Assert(_) => {}                // declares nothing
+                ModuleItem::Cover(_) => {}                 // declares nothing
             }
         }
     }

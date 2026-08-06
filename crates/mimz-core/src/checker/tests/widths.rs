@@ -22,6 +22,26 @@ fn a_well_typed_assert_inside_an_on_block_checks_clean() {
     check_one(src).expect("a single-bit assert condition inside on rise(clk) must pass");
 }
 
+#[test]
+fn cover_condition_must_be_a_single_bit() {
+    let src = "module M {\n  in a: bits[4]\n  out y: bit\n  cover(a)\n  y = 0\n}\n";
+    let d = first_err(src, "E0404");
+    assert!(d.help.is_some());
+}
+
+#[test]
+fn a_well_typed_cover_in_a_module_body_checks_clean() {
+    let src = "module M {\n  in a: bit\n  out y: bit\n  cover(a)\n  y = a\n}\n";
+    check_one(src).expect("a single-bit cover condition must pass");
+}
+
+#[test]
+fn a_well_typed_cover_inside_an_on_block_checks_clean() {
+    let src = "module M {\n  clock clk\n  reset rst\n  in a: bit\n  out y: bit\n  reg r: bit = 0\n  \
+               on rise(clk) {\n    cover(a)\n    r <- a\n  }\n  y = r\n}\n";
+    check_one(src).expect("a single-bit cover condition inside on rise(clk) must pass");
+}
+
 // ---- Pass 4: widths (E0401–E0410) ------------------------------------
 
 #[test]

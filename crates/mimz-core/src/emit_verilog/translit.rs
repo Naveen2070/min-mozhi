@@ -393,6 +393,7 @@ fn module_items(items: &mut [ModuleItem], visit: &mut dyn FnMut(&mut String)) {
             // `msg` is a user-facing string literal, not an identifier — not
             // subject to keyword-flavor translation.
             ModuleItem::Assert(a) => expr(&mut a.cond, visit),
+            ModuleItem::Cover(c) => expr(&mut c.cond, visit),
         }
     }
 }
@@ -458,6 +459,7 @@ fn seq_stmts(stmts: &mut [SeqStmt], visit: &mut dyn FnMut(&mut String)) {
                 seq_stmts(body, visit);
             }
             SeqStmt::Assert(a) => expr(&mut a.cond, visit),
+            SeqStmt::Cover(c) => expr(&mut c.cond, visit),
             SeqStmt::Error(_) => {} // unreachable on the codegen path
         }
     }

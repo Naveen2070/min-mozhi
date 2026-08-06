@@ -110,6 +110,12 @@ pub enum Kw {
     /// inside `on rise(clk) { }` (checked once per triggering edge).
     /// PROVISIONAL Tanglish/Tamil spellings, see `keywords.toml`.
     Assert,
+    /// `cover` / `alavidu` / `அளவிடு` — a functional-coverage hit counter.
+    /// Usable in a module body (checked every settled comb state) and
+    /// inside `on rise(clk) { }` (checked once per triggering edge). Never
+    /// fails a run — pure observation. PROVISIONAL Tanglish/Tamil
+    /// spellings, see `keywords.toml`.
+    Cover,
 }
 
 /// Which keyword skin a spelling came from (spec/03 Layer 1).

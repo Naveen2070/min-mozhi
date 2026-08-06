@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.28.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.29.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -1164,8 +1164,49 @@ module Divider {
 - **Simulator-native**: the event-driven kernel evaluates every assert
   directly — a clocked assert fails the triggering `tick`, a
   combinational one fails the settling step — reported as `S0501`.
-- `assume`/`cover`/SVA-style sequence assertions are explicitly deferred
-  (see `docs/audit/gaps.md`, GAP-6's own direction).
+- `assume`/SVA-style sequence assertions are explicitly deferred (see
+  `docs/audit/gaps.md`, GAP-6's own direction); `cover` — a functional-
+  coverage hit counter, not a halt — shipped as GAP-6's own follow-up,
+  see section 1.18 below.
+
+### 1.18 `cover` — functional-coverage hit counters
+
+```
+module Divider {
+  in a: bits[8]
+  in b: bits[8]
+  out q: bits[8]
+
+  cover(b == 0, "divisor was zero")
+  q = a
+}
+```
+
+- `cover(cond)` / `cover(cond, "label")` (GAP-6 follow-up) counts a hit
+  every time `cond` is true. Valid in the same two placements as `assert`,
+  sharing one grammar production:
+  - **Module-item level** — checked every settled combinational state.
+  - **Inside `on rise(clk) { }`** — checked once per triggering edge.
+- `cond` must be a single `bit` — the same rule `assert`'s own condition
+  follows (E0404 on a mismatch).
+- `label` is a **string literal only**, never a general expression. It
+  falls back to the statement's own source location when omitted.
+- `cover` drives nothing — it declares no signal and owns no reg.
+- **Never fails a run** — this is the one place its design diverges from
+  `assert`: a `cover` never affects `Err`/`ExitCode::FAILURE`, no matter
+  how many (or how few) times it hits. There is no `S0xxx` diagnostic
+  code for it, because there is no failure mode to report.
+- **Synthesis-safe by construction**: the emitted Verilog wraps every
+  cover's hidden hit-counter register in `` `ifndef SYNTHESIS `` /
+  `` `endif ``, so it is a no-op for a real FPGA/ASIC build and active
+  only in simulation.
+- **Simulator-native**: the event-driven kernel tallies every cover
+  directly, from the same two points state is known consistent a
+  combinational `assert` uses (`tick_edge`'s tail, `comb_run`'s per-vector
+  loop). Final hit counts print in a summary at the end of `mimz test`,
+  `mimz sim`, and the WASM playground.
+- `assume`, SVA sequence coverage, cross-coverage/bins, a `--coverage`
+  flag, and a JSON/LCOV-style report file remain explicitly deferred.
 
 ---
 
@@ -1264,7 +1305,7 @@ param       = IDENT ":" ( "int" | "bool" ) [ "=" constExpr ] ;
 moduleItem  = portDecl | clockDecl | resetDecl | wireDecl | regDecl | memDecl
             | constDecl | enumDecl | instDecl | onBlock | driveStmt
             | repeatBlock | bundleDestructure | syncLoopBlock | foreachBlock
-            | assertStmt ;
+            | assertStmt | coverStmt ;
 
 bundleDestructure = "let" "{" IDENT { "," IDENT } "}" "=" expr NEWLINE ;
 
@@ -1304,9 +1345,14 @@ assertStmt  = "assert" "(" expr [ "," STRING ] ")" NEWLINE ;
                  inside a seqBlock (checked once per triggering edge); same
                  production, two placements, like repeatBlock/seqLoop. *)
 
+coverStmt   = "cover" "(" expr [ "," STRING ] ")" NEWLINE ;
+              (* functional-coverage hit counter, section 1.18 — GAP-6
+                 follow-up. Same two placements as assertStmt, never fails
+                 a run. *)
+
 onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
-seqStmt     = regAssign | seqIf | seqLoop | seqForeach | assertStmt ;
+seqStmt     = regAssign | seqIf | seqLoop | seqForeach | assertStmt | coverStmt ;
 regAssign   = lvalue "<-" expr NEWLINE ;
 seqIf       = "if" expr seqBlock [ "else" ( seqIf | seqBlock ) ] ;
 seqLoop     = "loop" IDENT ":" constExpr ".." constExpr seqBlock ;
@@ -1569,6 +1615,24 @@ because the `_` alternative provides no binding for `x`.
   construction); the simulator evaluates it natively, failing with the new
   `S0501` diagnostic. `assume`/`cover`/SVA sequence assertions are
   explicitly deferred.
+- **v0.2.29 (2026-08-06):** **`cover` — functional-coverage hit counters**
+  (new section 1.18, placed directly after `assert`'s section 1.17; GAP-6
+  follow-up, `docs/audit/gaps.md`'s Direction step 4). New keyword
+  `cover`/`alavidu`/`அளவிடு` (PROVISIONAL Tanglish/Tamil, pending native
+  review, same status `assert` carried before its own review). One shared
+  `coverStmt` production, the same two placements `assertStmt` uses —
+  `moduleItem`/`seqStmt` both gain it. `cond` must be a single `bit`
+  (E0404, `assert`'s own rule); `label` is a string literal only, never a
+  general expression. Lowers to a hidden, `` `ifndef SYNTHESIS ``-guarded
+  hit-counter register (synthesis no-op by construction, named by ordinal
+  rank among a module's own covers — not by raw source offset, which
+  isn't stable across a pretty-print/`translate` reformat); the simulator
+  tallies it natively from the two points state is known consistent.
+  **Never fails a run** — the one place its design diverges from
+  `assert`; no `S0xxx` code exists for it, since there is no failure mode.
+  Hit counts print in a summary at the end of `mimz test`/`mimz sim`/the
+  WASM playground. `assume`, SVA sequence coverage, cross-coverage/bins, a
+  `--coverage` flag, and a JSON/LCOV-style report file remain deferred.
 - **v0.2.27 (2026-07-21):** **Clock-domain-crossing synchronizer primitives
   `sync.double_flop`/`sync.pulse`** (new section 1.2b, placed directly after
   `1.2`'s counter example). Reuses the existing `sync` token — disambiguated

@@ -497,6 +497,7 @@ fn body_targets(body: &[SeqStmt], out: &mut Vec<String>) {
             // this exact function's `Dcx`-side sibling).
             SeqStmt::ForEach { body, .. } => body_targets(body, out),
             SeqStmt::Assert(_) => {} // drives nothing
+            SeqStmt::Cover(_) => {}  // drives nothing
             SeqStmt::Error(_) => {}  // parse-recovery placeholder
         }
     }
@@ -559,6 +560,7 @@ fn body_reads(body: &[SeqStmt], module_items: &[ModuleItem], out: &mut Vec<(Stri
                 // used throughout this task.
             }
             SeqStmt::Assert(a) => expr_reads(&a.cond, out),
+            SeqStmt::Cover(c) => expr_reads(&c.cond, out),
             SeqStmt::Error(_) => {} // parse-recovery placeholder
         }
     }
@@ -775,6 +777,7 @@ fn collect_all_sync_prim_calls(items: &[ModuleItem], out: &mut Vec<Span>) {
                 }
             }
             SeqStmt::Assert(a) => walk_expr(&a.cond, out),
+            SeqStmt::Cover(c) => walk_expr(&c.cond, out),
             SeqStmt::Error(_) => {}
         }
     }
@@ -828,6 +831,7 @@ fn collect_all_sync_prim_calls(items: &[ModuleItem], out: &mut Vec<Span>) {
                 }
             }
             ModuleItem::Assert(a) => walk_expr(&a.cond, out),
+            ModuleItem::Cover(c) => walk_expr(&c.cond, out),
         }
     }
 }

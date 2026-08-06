@@ -329,6 +329,7 @@ impl<'a> Checker<'a> {
                 | ModuleItem::Error(_) => {}
                 ModuleItem::BundleDestructure { .. } => {} // checker stub (T5)
                 ModuleItem::Assert(_) => {} // drives nothing; no driver edge to record
+                ModuleItem::Cover(_) => {}  // drives nothing; no driver edge to record
             }
         }
     }
@@ -469,6 +470,7 @@ impl<'a> Checker<'a> {
                     self.on_block(dcx, block_id, body);
                 }
                 SeqStmt::Assert(_) => {} // no assignment target, no block-ownership bookkeeping
+                SeqStmt::Cover(_) => {}  // no assignment target, no block-ownership bookkeeping
                 SeqStmt::Error(_) => {}  // parse-recovery placeholder
             }
         }

@@ -277,6 +277,7 @@ impl Parser {
                 self.sync_loop_block(start)
             }
             TokKind::Kw(Kw::Assert) => self.assert_stmt().map(ModuleItem::Assert),
+            TokKind::Kw(Kw::Cover) => self.cover_stmt().map(ModuleItem::Cover),
             TokKind::Kw(Kw::Repeat) => self.repeat_block(),
             TokKind::Kw(Kw::Foreach) => self.foreach_block(),
             TokKind::Ident(_) => {

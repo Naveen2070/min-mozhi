@@ -167,6 +167,19 @@ pub(crate) fn sim_file(
     };
     let steps = timeline.frames.iter().filter(|f| f.cycle.is_some()).count();
 
+    if !quiet {
+        for c in &timeline.covers {
+            let label = match &c.label {
+                Some(l) => l.clone(),
+                None => {
+                    let (line, col) = c.span.line_col(&files[0].src);
+                    format!("{}:{line}:{col}", path.display())
+                }
+            };
+            println!("cover {label}: {} hit(s)", c.hits);
+        }
+    }
+
     // VCD waveform — only when `-o` is given.
     if let Some(dest) = &output {
         if let Err(e) = std::fs::write(dest, vcd::to_vcd(&timeline)) {

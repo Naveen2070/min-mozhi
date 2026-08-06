@@ -1,0 +1,11 @@
+// Min-Mozhi example (mixed flavors — English, Tanglish, and Tamil keywords in one file; mixing freely is the migration path): combinational cover — a functional-coverage hit counter checked every settled state.
+// Stripped from synthesis (`ifndef SYNTHESIS` in the emitted Verilog); active in simulation.
+
+module Divider {
+  ulleedu a: bits[8]
+  in b: bits[8]
+  வெளியீடு q: bits[8]
+
+  alavidu(b == 0, "divisor was zero")
+  q = a
+}

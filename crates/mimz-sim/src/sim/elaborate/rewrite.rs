@@ -620,6 +620,11 @@ impl<'d, 's> Rw<'d, 's> {
                 msg: a.msg.clone(),
                 span: a.span,
             }),
+            SeqStmt::Cover(c) => SeqStmt::Cover(ast::CoverStmt {
+                cond: self.expr(&c.cond)?,
+                label: c.label.clone(),
+                span: c.span,
+            }),
             // Unreachable on the sim path (strict-parsed tree); pass through.
             SeqStmt::Error(sp) => SeqStmt::Error(*sp),
         })
