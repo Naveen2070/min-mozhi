@@ -71,7 +71,13 @@ defects — nothing here is broken today; each closes a class rather than an
 instance. Listed with the same HARD numbering so they slot into "Hardening
 added" once landed.
 
-### HARD-7 (OPEN) — `#![forbid(unsafe_code)]` on every crate, not just `mimz-core`
+### HARD-7 (PARTIALLY DONE) — `#![forbid(unsafe_code)]` on every crate, not just `mimz-core`
+
+**Status update 2026-08-07** ([`review-2026-08-07.md`](review-2026-08-07.md)):
+`crates/mimz-sim/src/lib.rs:7` and `crates/mimz-wasm/src/lib.rs:11` now carry the
+attribute. **The shell crate (`src/lib.rs`, `src/main.rs`) still does not** — and
+that is the crate this entry singled out as mattering most, since it is the one
+linking `cpal`/`crossterm`/`notify`. Remaining action is the shell crate only.
 
 `crates/mimz-core/src/lib.rs:6` carries `#![forbid(unsafe_code)]`. The workspace
 split (2026-07) moved the simulator into `crates/mimz-sim` and left the shell
@@ -87,7 +93,13 @@ for someone to reach for `unsafe` later.
 `src/lib.rs` + `src/main.rs`. Zero cost today (none exists); permanently locks
 the guarantee, same reasoning as HARD-1.
 
-### HARD-8 (OPEN) — Dependency-advisory scanning in CI
+### HARD-8 (DONE) — Dependency-advisory scanning in CI
+
+**Status update 2026-08-07** ([`review-2026-08-07.md`](review-2026-08-07.md)):
+closed — `.github/workflows/ci.yml:245` runs a dedicated `audit` job
+(`cargo install cargo-audit --locked` + `cargo audit`). `cargo-deny`'s `bans` /
+`licenses` / `sources` checks are still not run; tracked as the remaining scope
+below rather than as a separate ID.
 
 CI gates `fmt`, `clippy -D warnings`, `rustdoc -D warnings`, full workspace tests
 with `REQUIRE_IVERILOG=1`, and pins every GitHub Action to a full commit SHA —

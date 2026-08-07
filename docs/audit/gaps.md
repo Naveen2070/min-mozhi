@@ -22,18 +22,20 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## Index
 
-| ID                                                                                                            | Gap                                                                     | Severity   | Status |
-| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
-| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                         | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
-| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)               | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                              | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
-| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                               | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated) | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                              | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                             | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
-| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                     | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
-| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                           | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
-| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                           | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
+| ID                                                                                                                    | Gap                                                                     | Severity   | Status |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
+| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                 | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
+| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                       | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                      | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
+| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                       | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)         | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                      | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                     | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
+| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                             | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
+| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
+| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
+| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | OPEN   |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | OPEN   |
 
 ---
 
@@ -605,3 +607,87 @@ the differential fuzzer (whose generator gap is
    always elaborates under `iverilog -t null`_.
 
 **See also.** [HARD-9](hardening.md) tracks 10b as a recommended hardening item.
+
+## GAP-11 (MEDIUM, testing) — The width-conformance oracle is vacuous, and CI fuzzes at a depth that finds nothing
+
+**Status:** OPEN. Filed 2026-08-07. Source:
+[`review-2026-08-07.md`](review-2026-08-07.md).
+
+**What.** Two separate holes in the oracle work that closed
+[GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)
+on paper.
+
+**(a) The oracle is nearly tautological.** The recommendation was: _after every
+simulator evaluation, assert the produced `Val` fits the checker's declared width
+**for that expression**._ What shipped (`assert_bits_fit_width`,
+`tests/differential_fuzz.rs:97`) checks only top-level **signals** — ports,
+registers, `Timeline::signals`. Its own doc comment is candid:
+
+> `mimz-sim`'s kernel already masks every stored value to its signal's width by
+> construction, so this should never fire today
+
+It cannot catch the BUG-30 class it was written for: BUG-30's defect was an
+_intermediate_ (`din << 2` typed `bits[4]`, valued 60) whose value lands in a
+`bits[8]` output and fits. It equally cannot catch [BUG-43](bugs.md), whose
+wrong value also fits. The oracle has to run at every sub-expression and compare
+against the **checker's** `Ty`, not against the kernel's own resolved signal
+width — two independent authorities is the entire point of an oracle.
+
+**(b) CI fuzzes 20 seeds.** `MIMZ_DIFF_FUZZ_N` and `MIMZ_DIFF_FUZZ_CLOCKED_N`
+default to 20 and CI does not raise them. At 400 each the run takes **55
+seconds** and finds two live miscompiles ([BUG-42](bugs.md),
+[BUG-44](bugs.md)).
+
+**Why it matters.** The single highest correctness-per-line-changed action
+available to this project right now is one environment variable in `ci.yml`.
+
+**Direction.**
+
+1. Raise the per-PR default to a few hundred seeds; add a nightly run in the
+   thousands, printing the failing seed.
+2. Keep a `tests/fixtures/fuzz-seeds/` corpus of every seed that ever failed and
+   replay it on every run — a fuzzer without a regression corpus re-finds the
+   same bug and loses the old ones.
+3. Rewrite `assert_bits_fit_width` to walk sub-expressions and compare against
+   `checker::infer_ty`, not against `Timeline::signals`.
+
+---
+
+## GAP-12 (MEDIUM, performance) — `mimz compile` is superlinear in module size
+
+**Status:** OPEN. Filed 2026-08-07. Source:
+[`review-2026-08-07.md`](review-2026-08-07.md).
+
+**What.** Measured on one module of N 8-bit registers, release build:
+
+| regs  | source lines | `mimz compile` |
+| ----- | ------------ | -------------- |
+| 1,000 | 2,010        | 0.43 s         |
+| 2,000 | 4,010        | 1.00 s         |
+| 4,000 | 8,010        | 3.51 s         |
+| 8,000 | 16,010       | 10.57 s        |
+
+4x the input costs roughly **10x** the time. `mimz check` on the same inputs
+stays linear (0.35 s -> 0.87 s for 4x input), so this is the **emitter**, not
+the checker — which revises `review-2026-08-02.md`'s "scaling is roughly linear"
+finding for the compile path specifically (that review measured `compile` at one
+size only).
+
+**Evidence.** `crates/mimz-core/src/emit_verilog/expr.rs` contains **22**
+`self.cur_decls.clone()` calls, each a full `HashMap<String, Kind>` clone of
+every declaration in the module, executed **per expression node visited**. With
+8,000 declarations and 8,000 assignments that is on the order of 64M entry
+clones. Most of these call sites were added by the hoisting work (BUG-19 through
+BUG-36).
+
+**Why it matters.** The stated ceiling for this project is a soft CPU plus
+peripherals — 50-200k lines of generated RTL. At the current curve that is
+minutes, not seconds, and it arrives as a wall.
+
+**Direction.** Local fix, no IR dependency: hold `cur_decls` behind an `Rc`, or
+restructure the borrow so the map is passed by reference rather than cloned per
+node. Bundles naturally with
+[GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)
+(interning) but does not depend on it.
+
+---
