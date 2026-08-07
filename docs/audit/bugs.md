@@ -2856,3 +2856,252 @@ Full workspace green (1188/1188, `REQUIRE_IVERILOG=1`), `fmt`/`clippy -D
 warnings` clean.
 
 ---
+
+## BUG-41 (CRITICAL, OPEN) — The self-determined hoist gate is not exhaustive: BUG-28/29 reopen through `fn` calls, instance ports, `if`, `match` and `mem` reads
+
+**What.** `extend()`/`abs()`/lossless arithmetic in a Verilog self-determined
+position emit unsized operands again — the exact BUG-28/BUG-29 failure, with
+byte-identical wrong Verilog — whenever the operand contains a `fn` call, an
+instance port, an `if`/`match` expression, or a `mem` read. Simulator green,
+hardware wrong, no diagnostic.
+
+Five reproductions, each `mimz test` ok and each wrong under `iverilog 12.0`:
+
+```text
+① y = { b, ident4(a) + a }        emitted {b, (ident4(a) + a)}      iv 010101110    vs sim 101011110
+② y = { b, s.q + a }              emitted {b, (s_q + a)}            iv 010101110    vs sim 101011110
+③ y = { b, (if s { a } else { b }) + a }
+                                  emitted {b, (((s)?(a):(b)) + a)}  iv 010101110    vs sim 101011110
+④ y = { b, m[raddr] + m[raddr] }  emitted {b, (m[raddr]+m[raddr])}  iv 010101110    vs sim 101011110
+⑤ y = { b, extend(ident4(a), 8) } emitted {b, (ident4(a))}          iv 000010101111 vs sim 101000001111
+```
+
+⑤ is byte-identical to BUG-28's original Repro A output. `extend` of an instance
+port is the same; `abs` of an `if` expression reproduces BUG-29's `010101000`.
+A shift in the same position (`{ b, ident4(a) << 1 }`) is equally broken.
+
+**Cause.** `crates/mimz-core/src/emit_verilog/expr.rs:59` `kind_is_inferrable`
+is the gate every hoist call site runs before `hoist_if_needed`, and therefore
+before `verilog_self_determined_kind` is ever consulted. It ends in two
+wildcards — `_ => false` at `:103` (over `Builtin`) and `:105` (over
+`ExprKind`). The second swallows `FnCall`, `Field`, `IfExpr`, `Match`, `Index`,
+`BundleLit`, `ArrayLit` and `EnumConstruct`, so any expression _containing_ one
+is declared non-inferrable and the hoist silently never fires. BUG-28/29's fix
+made the **classifier** (`self_determined.rs`) exhaustive; the **gate** was left
+non-exhaustive, and BUG-35 already proved once that the gate alone is sufficient
+to cause the miscompile.
+
+Comparison operands and `$signed`/`$unsigned` arguments survive by accident —
+Verilog's context-determination leaks a width in from the sibling or the
+assignment target. The damage is concentrated in concat members and replication
+bodies, the two positions with no context to leak.
+
+**How found.** CTO review 2026-08-07, sweeping every `ExprKind` shape through
+every self-determined position rather than every `Builtin` through one position.
+Pre-existing, not a regression: `git show bb79838:.../expr.rs` has the same two
+wildcards.
+
+**Severity.** CRITICAL. Silent miscompile of ordinary RTL (a `fn` call or a
+module instance inside an arithmetic expression inside a concat). Survives
+`mimz check`, `mimz test`, the Icarus example suite, and the differential
+fuzzer.
+
+**Fix (proposed).** Make `kind_is_inferrable` exhaustive over both `ExprKind`
+and `Builtin`, with no wildcard. The correct answer for a shape that cannot be
+analyzed is not "skip the hoist" but "hoist conservatively" — an extra
+`__mimz_sub_N` wire is always safe. That is the same change
+[SEC-10](security.md) asks for (`infer_kind` -> `Option<Kind>`, `None` means
+hoist), so doing both together removes the class instead of the instances.
+
+**Test (required).** Extend `tests/self_determined_regression.rs`'s matrix with
+its missing second axis: every `ExprKind` shape (`FnCall`, `Field`, `IfExpr`,
+`Match`, `Index`, ...) in a self-determined position, driven off an exhaustive
+match so a new expression form fails the build until classified — mirroring what
+`matrix_shape` already does for `Builtin`.
+
+---
+
+## BUG-42 (CRITICAL, OPEN) — `min`/`max` misclassified as "no mismatch possible" in `verilog_self_determined_kind`
+
+**What.** `min`/`max` whose operand is itself a width-mismatched sub-expression
+emit an unsized ternary, so Verilog self-determines it at the _rendered_ operand
+width rather than at mimz's result width.
+
+```mimz
+module MM {
+  in p: signed[6]
+  out y: bits[11]
+  y = unsigned(min(extend(p, 11), extend(p, 11)))
+}
+```
+
+```text
+emitted    assign y = $unsigned((((p) < (p)) ? ((p)) : ((p))));
+mimz eval  y = 2039   (0b11111110111, sign-extended — correct)
+iverilog   y = 55     (0b00000110111, zero-extended — wrong)
+```
+
+**Cause.** `crates/mimz-core/src/emit_verilog/self_determined.rs:72` classifies
+`Min | Max => None` on the reasoning that "min/max render to a ternary whose
+operands are same-width by the checker's own rule, so max(operand widths) == N."
+That is true of **mimz's** widths and false of **Verilog's self-determined**
+widths — the exact distinction the file exists to model. `extend(p, 11)` renders
+as the bare `(p)`, i.e. 6 bits, not 11. The `SignedCast`/`UnsignedCast` arm
+handles this correctly by recursing into the argument; `Min`/`Max` does not.
+
+This is the third instance of the BUG-28/BUG-29 class, and it was introduced
+**by their fix** — the recommended patch in `review-2026-08-02.md` listed
+`Min | Max` under the "no mismatch possible" arm, and it was implemented
+verbatim, comment included.
+
+**How found.** The project's own differential fuzzer, at `MIMZ_DIFF_FUZZ_N=400`
+(CI default is 20): `differential_fuzz_matches_icarus`, seed 12648675, vector 0
+— kernel `y=82574208`, Icarus `y=2579328`. Minimized by hand to the module
+above.
+
+**Severity.** CRITICAL. Silent miscompile; `min`/`max` over an `extend`ed
+operand is the standard clamp idiom.
+
+**Fix (proposed).**
+
+```rust
+Builtin::Min | Builtin::Max => Some(Kind {
+    width: self_determined_operand_width(&args[0], decls)
+        .max(self_determined_operand_width(&args[1], decls)),
+    signed: infer_kind(expr, decls).signed,
+}),
+```
+
+Then re-audit `Trunc`/`Nand`/`Nor`/`Xnor`/`Encoding` under the corrected
+question — "is this argument's _rendered_ width necessarily its mimz width?" —
+not "is this operator's _result_ width necessarily its mimz width?" `Trunc`
+survives (explicit part-select, exactly N bits, base already hoisted by BUG-36),
+the reductions survive (1 bit both sides), `Encoding` survives by recursion.
+
+**Test (required).** The existing `matrix_min_in_concat_matches_icarus` /
+`matrix_max_in_concat_matches_icarus` pass a _bare identifier_ operand, which is
+why they miss this. Add the mismatched-operand form (`min(extend(p, N), ...)`)
+and make the matrix cover a non-trivial operand for every builtin, not only a
+port name.
+
+---
+
+## BUG-43 (CRITICAL, OPEN) — A negative literal is evaluated at its own natural width, so the simulator disagrees with the hardware
+
+**What.** The simulator evaluates `-N` inside `natural_width(N)` bits, producing
+a small **positive** value that then zero-extends into its signed destination.
+The emitter is correct, so this is a straight simulator-vs-hardware divergence.
+
+On a `signed[6]` port:
+
+| source | simulator | correct |
+| ------ | --------- | ------- |
+| `-1`   | 1         | 63      |
+| `-3`   | 1         | 61      |
+| `-5`   | 3         | 59      |
+| `-9`   | 7         | 55      |
+| `-16`  | 16        | 48      |
+| `-17`  | 15        | 47      |
+
+The rule is `-n` becomes `2^natural_width(n) - n`; it is correct only when
+`natural_width(n)` equals the target width, which is why BUG-29's Repro C
+(`a = -8` on `signed[4]`) passed by coincidence.
+
+End-to-end:
+
+```mimz
+wire w: signed[8] = -1
+b = unsigned(w)
+```
+
+```text
+emitted   assign w = (-1);  assign b = $unsigned(w);
+mimz test FAIL: b = 1
+iverilog  b = 255                    <- correct
+```
+
+Realistic clamp idiom (the shape `showcase/pid_controller.mimz` ships, with
+different constants), `x = -1000`:
+
+```text
+y = max(-100, min(x, 100))
+mimz eval  y = 28     WRONG
+iverilog   y = -100   correct
+```
+
+A comparison against a negative literal is silently false: `q == -9` with
+`q = -9` gives `0` in the simulator and `1` in Verilog.
+
+**Cause.** `crates/mimz-sim/src/sim/value/binary.rs:55`:
+
+```rust
+UnOp::Neg => {
+    let bits = v.as_i128().wrapping_neg() as u128;
+    Val::new(bits, v.width, true)      // v.width = the LITERAL's natural width
+}
+```
+
+`Val::from_int(9)` carries `width = 4`, so `-9` is negated inside 4 bits and
+becomes `0b0111 = 7`. `Val` has no unsized (`Ty::CtInt`-equivalent)
+representation, so the literal cannot adapt to its context the way the checker's
+own `Unary::Neg` arm lets a `CtInt` adapt.
+
+**How found.** CTO review 2026-08-07, while minimizing a fuzz divergence; the
+`signed[6]` port sweep above pins the rule exactly.
+
+**Severity.** CRITICAL, and broader than BUG-28/29: those broke a syntactic
+position, this breaks a _value_ wherever it appears — wire initializers,
+comparisons, `min`/`max` bounds, `fn` arguments, `test` stimulus. `reg` reset
+values happen to be correct (width-aware path), which is why it has gone
+unnoticed: the most visible use of a negative constant is the one that works.
+
+**Fix (proposed).** Size a negated integer literal from its destination, not
+from `natural_width` — either by keeping it unsized until context is known
+(mirroring the checker's `Ty::CtInt`) or, as a narrower fix, by widening by one
+bit before negating in the literal path in `sim/elaborate`.
+
+**Test (required).** A `signed[W]` x negative-literal matrix through `mimz test`
+and Icarus, covering `W > natural_width(|v|)`; plus the clamp idiom above. Add
+the case to the width-conformance oracle once GAP-11 makes it non-vacuous.
+
+---
+
+## BUG-44 (HIGH, OPEN) — Second differential-fuzz divergence, clocked generator (unminimized)
+
+**What.** `MIMZ_DIFF_FUZZ_CLOCKED_N=400`,
+`differential_fuzz_clocked_matches_icarus`, seed 202427830, cycle 1: kernel
+`y=13806`, Icarus `y=13726` (delta 80).
+
+```mimz
+module Fuzz {
+  clock clk
+  reset rst
+  in p0: bits[9]
+  in p1: bits[11]
+  reg r0: signed[8] = 0
+  out y: bits[14]
+  on rise(clk) { r0 <- signed(extend(236, 8)) }
+  y = ((unsigned((signed(extend(3, 3)) * trunc(r0, 3)))
+       - (min(extend(3, 3), extend(3, 3)) * {extend(3, 3), extend(63, 7)}))
+       *% extend(p1[4:3], 14))
+}
+```
+
+**Cause.** Not determined. Contains `min(extend(...), extend(...))`, so BUG-42
+is a candidate, but it also contains `signed(extend(236, 8))` as a `reg` reset
+and a `*` under `unsigned(...)`. Recorded as a distinct open divergence rather
+than folded into BUG-42 on a guess.
+
+**How found.** CTO review 2026-08-07, extended fuzz run (400 seeds, 54.81 s).
+
+**Severity.** HIGH — a confirmed sim-vs-Icarus divergence; severity will be
+re-rated once minimized.
+
+**Fix.** Minimize first. Re-run with
+`MIMZ_DIFF_FUZZ_CLOCKED_N=400 cargo test --release --test differential_fuzz`.
+
+**Test.** Add the minimized module to `tests/self_determined_regression.rs` (or
+wherever the root cause lands) and add seed 202427830 to a replayed seed corpus
+(see [GAP-11](gaps.md)).
+
+---
