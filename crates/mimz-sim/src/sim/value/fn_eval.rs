@@ -382,6 +382,15 @@ pub(super) fn call<R: Resolver>(r: &mut R, func: Builtin, args: &[Expr]) -> Resu
             let v = eval(r, &args[0])?;
             Ok(Val { signed: false, ..v })
         }
+        Builtin::Encoding => {
+            // An enum's runtime value is already plain bits by the time
+            // `eval` sees it (mimz-sim resolves enum construction/field
+            // access to numeric operations at elaboration time — there is
+            // no separate runtime enum representation to strip away).
+            // Identical to `UnsignedCast` immediately above.
+            let v = eval(r, &args[0])?;
+            Ok(Val { signed: false, ..v })
+        }
         Builtin::Min => {
             let a = eval(r, &args[0])?;
             let b = eval(r, &args[1])?;

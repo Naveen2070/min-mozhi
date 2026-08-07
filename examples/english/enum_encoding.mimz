@@ -1,0 +1,39 @@
+// Min-Mozhi example: expose an enum's on-wire bit pattern with `encoding`.
+// A debug/bring-up port that shows the current FSM state as a plain
+// number — the single most common real-world need for enum->bits: routing
+// state to LEDs, a logic-analyzer header, or a host-readable status
+// register without attaching a full debugger.
+
+module StateDebug {
+  clock clk
+  reset rst
+
+  out state_bits: bits[2]
+
+  enum Light { Red, Green, Blue }
+
+  reg state: Light = Light.Red
+
+  on rise(clk) {
+    state <- match state {
+      Light.Red   => Light.Green
+      Light.Green => Light.Blue
+      Light.Blue  => Light.Red
+    }
+  }
+
+  state_bits = encoding(state)
+}
+
+test "state_bits tracks the FSM's encoding" for StateDebug {
+  rst = 1
+  tick(clk)
+  rst = 0
+  expect state_bits == 0
+  tick(clk)
+  expect state_bits == 1
+  tick(clk)
+  expect state_bits == 2
+  tick(clk)
+  expect state_bits == 0
+}

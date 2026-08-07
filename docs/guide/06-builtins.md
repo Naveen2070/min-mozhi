@@ -2,7 +2,7 @@
 
 Built-ins (and since v0.2.14, user-defined combinational functions) are the
 call syntax in the language. Their names are **universal**: spelled the same
-in every flavor. There are eleven built-ins.
+in every flavor. There are twelve built-ins.
 
 ## Width casts and conversions
 
@@ -98,6 +98,44 @@ parameter override. `clog2(PARAM)` in a **port** width is a compile error
 (`E0407`) — a port's width has to be known before the body exists to inject
 anything into. `clog2` of a plain literal always folds at compile time in
 either position.
+
+## Enum→bits: `encoding`
+
+An `enum` is a symbolic type — you can `match` on it, but you can't otherwise
+treat it as a number. `encoding(e)` is the one deliberate escape hatch: it
+reads out an enum value's stable on-wire bit pattern as plain unsigned
+`bits[N]`, the same bits the compiler already assigns as `localparam`s
+internally.
+
+The most common reason to reach for it is a debug or bring-up port — showing
+an FSM's current state on LEDs or a logic-analyzer header without attaching a
+full debugger:
+
+```mimz
+enum Light { Red, Green, Blue }
+
+reg state: Light = Light.Red
+out state_bits: bits[2]
+
+state_bits = encoding(state)
+```
+
+For a plain, tag-only enum like `Light` (3 variants), `N` is just the tag
+width, `clog2(3) = 2`. For a **tagged union** with payload fields, `N` is the
+enum's FULL width — tag plus the largest payload — the exact same total
+`inferred_total_width` the emitter already sizes the signal at. There's no
+way to get just the tag out of a payload-carrying enum via `encoding` alone;
+slice the result yourself (`encoding(pkt)[hi:lo]`) if that's what you need.
+
+There is deliberately **no reverse cast** (`bits` → `enum`). An unchecked
+integer-to-enum conversion would let an arbitrary bit pattern claim to be a
+declared enum value — exactly the invalid-state class the enum type exists
+to rule out at compile time.
+
+Every OTHER built-in on this page rejects an enum argument (`E0403`/`E0407`);
+`encoding` is the one built-in that requires one — anything else is `E0418`.
+
+See the full runnable example: `examples/english/enum_encoding.mimz`.
 
 ## Combinational functions: `fn`
 

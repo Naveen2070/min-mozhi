@@ -151,6 +151,12 @@ tanglish = "`{op}` iyakkikku samamaana agalangal thevai, aanaal {lhs} mattrum {r
 tamil = "நிபந்தனைக் கிளையின் முடிவுகள் மாறுபடுகின்றன: {first} மற்றும் {second}"
 tanglish = "Nibandhanai kilaiyin mudivugal maarubadugindrana: {first} mattrum {second}"
 
+[message.E0418]
+# PROVISIONAL — pending native-speaker review, same status the new-keyword
+# spellings elsewhere in this file carry.
+tamil = "`encoding`க்கு enum மதிப்பு தேவை, ஆனால் {found} கிடைத்தது"
+tanglish = "`encoding`kku enum madhippu thevai, aanaal {found} kidaithathu"
+
 [message.E0601]
 tamil = "தேர்ந்தெடு கூற்று {type} வகையின் அனைத்து மதிப்புகளையும் உள்ளடக்கவில்லை"
 tanglish = "Thernthedu kootru {type} vagaiyin anaithu madhippugalaiyum ulladakkavillai"

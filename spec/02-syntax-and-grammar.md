@@ -491,10 +491,19 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
   - `abs(x)` takes a `signed[N]` and returns `signed[N+1]` (room for `abs(MIN)`).
   - `nand(x)` / `nor(x)` / `xnor(x)` are the negated bit-reductions (one bit out),
     the dictionary spellings of `~&x` / `~|x` / `~^x`.
+  - `encoding(e)` (added v0.2.30) takes an **enum** value and returns its
+    stable on-wire bit pattern as plain unsigned `bits[N]` — `N` is the enum's
+    FULL width (tag, or tag+max-payload for a tagged union), the same total
+    `clog2(variant count)` + payload sizing the compiler already assigns as
+    `localparam`s. This is the only builtin that requires an enum argument;
+    every other builtin rejects one (E0403/E0407). There is no reverse cast
+    (`bits` → `enum`) — an unchecked int→enum cast would reintroduce the
+    invalid-state class the enum type exists to prevent.
 
   They lower to plain Verilog-2005 (a `?:` for min/max/abs, the negated reduction
-  operators for nand/nor/xnor) — no SystemVerilog. Like `extend`/`trunc`, they are
-  runtime built-ins, not compile-time constant folders.
+  operators for nand/nor/xnor, `$unsigned(...)` for encoding) — no
+  SystemVerilog. Like `extend`/`trunc`, they are runtime built-ins, not
+  compile-time constant folders.
 
 - **Compile-time built-in** `clog2(n)` (added v0.2.13) — the one **compile-time**
   built-in, the inverse of the runtime ones above. It takes a single constant
@@ -1403,7 +1412,7 @@ fieldInit     = IDENT ":" expr ;
 arrayLiteral  = "[" [ expr { "," expr } ] "]" ;   (* fn param/local array value *)
 replication = "{" expr "{" expr { "," expr } "}" "}" ;
 callExpr    = ( "extend" | "trunc" ) "(" expr "," constExpr ")"
-            | ( "signed" | "unsigned" | "abs"
+            | ( "signed" | "unsigned" | "abs" | "encoding"
               | "nand" | "nor" | "xnor" ) "(" expr ")"
             | ( "min" | "max" ) "(" expr "," expr ")" ;
 
@@ -1600,6 +1609,20 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.30 (2026-08-07):** **`encoding(e)` — enum→bits cast** added
+  (section 1.8; GAP-7, `docs/audit/gaps.md`). Reads out an enum value's
+  stable on-wire bit pattern (tag, or tag+max-payload for a tagged union)
+  as plain unsigned `bits[N]`. A plain identifier joining
+  `extend`/`trunc`/`signed`/`unsigned`/`min`/`max`/`abs`/`nand`/`nor`/
+  `xnor`/`clog2` in the existing builtin-call table — NOT a keyword, no
+  Tanglish/Tamil spelling needed. Every other builtin rejects an enum
+  argument; `encoding` is the one that requires one, everything else is
+  the new **`E0418`** (next free slot in the `E04xx` family, `E0401`–
+  `E0417` already used). Lowers to `$unsigned(...)`, reusing
+  `unsigned(x)`'s own emitter/simulator mechanism byte-for-byte. The
+  reverse cast (`bits` → `enum`) remains permanently unsupported — an
+  unchecked int→enum cast would reintroduce the invalid-state class the
+  enum type exists to prevent. Additive.
 - **v0.2.28 (2026-08-05):** **`assert` — hard runtime invariants** (new
   section 1.17, placed directly after `foreach`'s section 1.16; GAP-6,
   `docs/audit/gaps.md`). New keyword `assert`/`valiyuruthu`/`வலியுறுத்து`
