@@ -2758,3 +2758,101 @@ suite, asserting successful elaboration and the correct initial bit
 pattern (tag + zero-padded/literal payload).
 
 ---
+
+## BUG-40 (MEDIUM, FIXED 2026-08-07) — `pattern_matches`'s `unreachable!()` fires on a raw `Pattern::Variant`, crashing CI's fuzz job
+
+**What.** The weekly/PR `lex_parse_eval` fuzz job crashed with a deadly
+signal:
+
+```text
+internal error: entered unreachable code: Pattern::Variant is lowered to
+IntMask during elaboration — raw variants should not reach pattern_matches
+```
+
+The reported artifact is a byte-mutated (`ShuffleBytes-CMP-CopyPart`)
+version of `examples/english/priority.mimz` (the don't-care/`casez`
+match-pattern showcase). The mutation garbled the match block's arm text
+so badly that it no longer resembles the original `0b1??`/`_` patterns at
+all — but it still **lexes and parses cleanly** (the fuzz harness returns
+early on any lex/parse failure, so it must), because the parser only
+checks pattern _syntax_, not whether a name after a dot resolves to
+anything real.
+
+**Cause.** The mangled text parsed into a single match arm whose pattern
+is `Pattern::Variant { enum_name: "s", variant: "_" }` — i.e. `s._`,
+referencing an enum `s` that is declared nowhere in the file. That is
+exactly the kind of error only the **checker** (E0101/E0103, "unknown
+name"/"unknown enum") is supposed to catch — and `mimz_sim::sim::
+comb::eval_outputs`, the standalone combinational-only evaluator the fuzz
+harness calls **directly**, deliberately never runs the checker (that is
+the fuzz target's own stated purpose: prove raw, untrusted,
+checker-unchecked input can never panic it).
+
+Tracing the two elaboration paths side by side:
+
+- The **clocked/general** path (`crates/mimz-sim/src/sim/elaborate/
+module.rs` → `rewrite.rs`) always lowers every `Pattern::Variant` to a
+  plain `Pattern::IntMask` before evaluation, and `rewrite.rs`'s own
+  `pattern()` function validates the enum name exists first (`self.enums.
+get(...)`, erroring `S0115` if not).
+- `crates/mimz-sim/src/sim/comb.rs` — a second, standalone comb-only
+  evaluator (its own doc-comment precedent: "there is no existing
+  single-call helper of this exact shape anywhere in the suite") — has
+  **no such lowering pass at all**. It assumes every pattern reaching it
+  is already an `IntMask`, true for every hand-written or
+  generator-produced input, but not for arbitrary fuzzed bytes.
+
+So a `Pattern::Variant` reaches `pattern_matches`
+(`crates/mimz-sim/src/sim/value/mod.rs`) completely unlowered, hitting an
+`unreachable!()` whose invariant only actually holds on the clocked path
+— the same "two implementations of one rule disagreed" shape as GAP-1's
+own width/kind-duplication family (`docs/audit/gaps.md`), here for pattern
+lowering rather than an operator rule. Related but distinct from
+[BUG-38](#bug-38-medium-open--mimz-sims-combinational-only-kernel-rejects-every-enum-typed-signal-port-or-wire)/
+[BUG-39](#bug-39-medium-open--a-regs-reset-value-cannot-be-a-payload-carrying-enumconstruct-expression)
+(also `comb.rs`/enum gaps found the same day, but about enum _types_, not
+match _patterns_) — filed separately since the crash mechanism and fix
+site are unrelated.
+
+**How found.** CI's scheduled/per-PR `fuzz-nightly`/`fuzz` job on
+`lex_parse_eval` (`fuzz/fuzz_targets/lex_parse_eval.rs`). Reproduced
+locally (Windows dev box has no nightly libFuzzer toolchain, so
+`cargo fuzz run` isn't available here) by decoding the crash artifact's
+byte dump and replaying the fuzz harness's exact call sequence (lex →
+parse → `comb::eval_outputs` with empty/seeded/edge-case inputs) in a
+throwaway `cargo test`, which hit the identical panic at the identical
+line.
+
+**Severity.** MEDIUM — a clean CI-blocking crash on malformed input, not a
+silent miscompile or a reachable-by-a-real-user path (the CLI's
+`mimz test`/`mimz sim`/`mimz compile` all run the checker first, which
+would reject an unknown enum name with E0101 long before this code runs).
+Still a real "no crash on any input" violation of this audit's own threat
+model, and it blocks the CI fuzz job from passing.
+
+**Fix.** `pattern_matches`'s `Pattern::Variant` arm
+(`crates/mimz-sim/src/sim/value/mod.rs`) no longer panics — it returns
+`false` (never matches) instead of `unreachable!()`. Minimal, targeted fix
+over the alternative (teaching `comb.rs` a full enum-pattern lowering
+pass): `comb.rs` is a narrow, special-purpose evaluator never meant to
+support real enum matching, so the safety-net fix (never panic on
+unchecked input) is the right-sized one, not a feature port. It also
+matches this exact code's own pre-existing sibling error message
+one arm down — `S0202`, "no `match` arm matched the value (**enum
+patterns are not evaluated yet**)" — which already anticipated precisely
+this case in its wording.
+
+**Test.** `pattern_matches_never_panics_on_an_unlowered_variant`
+(`crates/mimz-sim/src/sim/value/tests.rs`) — a direct unit test
+constructing a `Pattern::Variant` for a nonexistent enum and asserting
+`pattern_matches` returns `false` rather than panicking, watched fail
+against the real `unreachable!()` first. `match_pattern_referencing_an_
+unknown_enum_is_a_clean_err_not_a_panic` (`crates/mimz-sim/src/sim/
+comb.rs`) — the full end-to-end path, right alongside the file's own
+existing `zero_length_array_param_index_is_a_clean_err_not_a_panic` (same
+"fuzz: lex_parse_eval" regression class): a single-arm match with no
+wildcard fallback, asserting a clean `S0202` error rather than a crash.
+Full workspace green (1188/1188, `REQUIRE_IVERILOG=1`), `fmt`/`clippy -D
+warnings` clean.
+
+---
