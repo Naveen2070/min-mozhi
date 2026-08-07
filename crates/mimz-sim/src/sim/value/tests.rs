@@ -557,3 +557,76 @@ fn builtin_trunc_wide_limb_count() {
         panic!("expected Wide bits");
     }
 }
+
+// ---------------------------------------------------------------------
+// BUG-43 (docs/audit/bugs.md): a negative literal is a CONSTANT, not an
+// operation applied to its magnitude. `Val::from_literal(9)` is 4 bits
+// unsigned, so negating "in place" wrapped -9 into 4 bits and produced
+// +7 — a small POSITIVE value that then zero-extends into whatever
+// signed slot it lands in. The emitter renders `(-9)` and lets Verilog
+// size it from context, so this was a straight simulator-vs-hardware
+// divergence for every `-n` whose magnitude does not already fill its
+// destination width.
+// ---------------------------------------------------------------------
+
+/// The exact table from BUG-43's filing: `-n` on a `signed[6]`
+/// destination. `negated_literal` produces the value at
+/// `natural_width(n) + 1` bits signed, which sign-extends correctly into
+/// any wider signed slot; the third column is what a 6-bit two's
+/// complement must hold.
+#[test]
+fn negated_literal_sign_extends_into_a_wider_signed_slot() {
+    for (mag, expected_in_6_bits) in [
+        (1u128, 63u128),
+        (2, 62),
+        (3, 61),
+        (4, 60),
+        (5, 59),
+        (8, 56),
+        (9, 55),
+        (16, 48),
+        (17, 47),
+        (32, 32),
+    ] {
+        let v = Val::negated_literal(&mimz_core::bits::Bits::Small(mag));
+        assert!(v.signed, "-{mag} must be signed");
+        // Widening to the destination is the assignment's job; what this
+        // asserts is that the value SURVIVES that widening as -mag.
+        let widened = Val::new_wide(wide::extend(&v.to_limbs(), v.width, 6, v.signed), 6, true);
+        assert_eq!(
+            widened.masked(),
+            expected_in_6_bits,
+            "-{mag} in signed[6]: got {:#b}, want {expected_in_6_bits:#b}",
+            widened.masked()
+        );
+    }
+}
+
+/// The narrowest case worth pinning separately: `-1` was the worst of
+/// the family (`natural_width(1) == 1`, so it negated inside ONE bit and
+/// came out as `+1`), and `-1` is the single most common negative
+/// constant in real RTL (an all-ones sentinel).
+#[test]
+fn negated_literal_minus_one_is_all_ones_not_one() {
+    let v = Val::negated_literal(&mimz_core::bits::Bits::Small(1));
+    assert!(v.signed);
+    assert_eq!(v.as_i128(), -1, "-1 must evaluate to -1, not +1");
+}
+
+/// A magnitude that needs more than 128 bits still negates correctly —
+/// `from_literal`'s own `BUG-13 layer 2` wide path, which `from_int`
+/// (`i128`-only) cannot serve.
+#[test]
+fn negated_literal_handles_a_wide_magnitude() {
+    // 2^130, natural width 131 -> negated at 132 bits.
+    let mut limbs = vec![0u64; wide::limb_count(131)];
+    limbs[2] = 1 << (130 - 128);
+    let mag = mimz_core::bits::Bits::Wide(limbs);
+    let v = Val::negated_literal(&mag);
+    assert!(v.signed);
+    assert_eq!(v.width, 132);
+    assert_eq!(
+        wide::to_decimal_string(&v.to_limbs(), v.width, true),
+        "-1361129467683753853853498429727072845824"
+    );
+}

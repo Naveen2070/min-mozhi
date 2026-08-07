@@ -17,20 +17,13 @@ use std::collections::{BTreeMap, HashMap};
 
 use mimz_core::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 
-use super::value::{self, Resolver, Val};
-use super::wide;
+// BUG-43 (docs/audit/bugs.md): this file used to carry its own
+// byte-identical copy of a zero-padding `remask_to_width`. The one rule
+// now lives at `value::resize_to_width`, which sign-extends a signed
+// source instead of dropping its sign — three copies of one resize rule
+// was the same drift surface GAP-1 describes.
+use super::value::{self, Resolver, Val, resize_to_width};
 use crate::sim::Diag;
-
-/// Re-mask `v`'s raw bits to width `w` (with `signed`) — a pure reinterpret
-/// (truncate/zero-pad the limbs), NOT a sign-extending resize. Mirrors the
-/// exact "reinterpret the same raw bits" semantics `Val::new(v.bits, w, s)`
-/// had before `Bits` gained a `Wide` variant (Task 2's Copy-loss fallout,
-/// Task 7); same pattern as `value.rs`'s own (private) `remask_to_width`.
-fn remask_to_width(v: Val, w: u32, signed: bool) -> Val {
-    let mut limbs = v.to_limbs();
-    limbs.resize(wide::limb_count(w), 0);
-    Val::new_wide(limbs, w, signed)
-}
 
 /// Flatten `const if` nodes in `items`, evaluating conditions against `ints`.
 /// Items from winning branches replace the ConstIf node; losing branches drop.
@@ -477,7 +470,7 @@ impl Env<'_> {
             .get(name)
             .copied()
             .unwrap_or((v.width, v.signed));
-        let v = remask_to_width(v, w, s); // mask to the declared width
+        let v = resize_to_width(v, w, s); // mask to the declared width
         self.memo.insert(name.to_string(), v.clone());
         Ok(v)
     }
@@ -912,7 +905,7 @@ module M {\n\
         let mut inputs = std::collections::BTreeMap::new();
         inputs.insert(
             "a".to_string(),
-            super::value::Bits::Wide(super::wide::from_u128(123, 200)),
+            super::value::Bits::Wide(crate::sim::wide::from_u128(123, 200)),
         );
         let outputs = eval_outputs(&[f], Some("M"), &inputs, &std::collections::BTreeMap::new())
             .expect("eval_outputs");
@@ -922,7 +915,7 @@ module M {\n\
             .expect("declares b");
         assert_eq!(
             b.value,
-            super::value::Bits::Wide(super::wide::from_u128(123, 200))
+            super::value::Bits::Wide(crate::sim::wide::from_u128(123, 200))
         );
     }
 }

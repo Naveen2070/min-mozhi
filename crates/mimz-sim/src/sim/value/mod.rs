@@ -112,6 +112,39 @@ impl Val {
         let limbs = mimz_core::bits::to_limbs(value, width);
         Val::new_wide(limbs, width, false)
     }
+    /// A NEGATED source integer literal (`-9`), given its magnitude.
+    ///
+    /// BUG-43 (`docs/audit/bugs.md`): `-n` is a **constant**, not `Neg`
+    /// applied to an n-bit value. Evaluating it as the latter negated
+    /// inside `from_literal`'s unsigned `natural_width(n)` bits — which
+    /// cannot hold `-n` — so `-9` wrapped to `+7` and `-1` to `+1`, and
+    /// the resulting small POSITIVE value then zero-extended into
+    /// whatever signed slot it landed in. The emitter renders `(-9)` and
+    /// lets Verilog size it from context, so the two disagreed for every
+    /// `-n` whose magnitude does not already fill its destination width.
+    ///
+    /// One extra bit is exactly what a two's-complement negation needs
+    /// (`natural_width(9) == 4`, and `-9` needs 5), matching
+    /// [`Val::from_int`]'s own `129 - leading_ones` rule — but computed
+    /// over `Bits`, so an arbitrarily-wide literal (BUG-13 layer 2,
+    /// beyond `i128`) is served too, which `from_int` cannot do.
+    ///
+    /// Signed, so the assignment/comparison that consumes it
+    /// sign-extends rather than zero-extends. Widening to the
+    /// destination stays the consumer's job, exactly as for
+    /// `from_literal`.
+    pub fn negated_literal(value: &mimz_core::bits::Bits) -> Val {
+        // Saturating at MAX_WIDTH rather than growing past it: a literal
+        // already at the width ceiling has nowhere to put the sign bit,
+        // and negating in place there is strictly better than panicking
+        // on a width the checker would have rejected anyway.
+        let width = mimz_core::bits::natural_width(value)
+            .max(1)
+            .saturating_add(1)
+            .min(mimz_core::width_rules::MAX_WIDTH as u32);
+        let limbs = mimz_core::bits::to_limbs(value, width);
+        Val::new_wide(wide::neg(&limbs, width), width, true)
+    }
     /// `true` if this value is on the wide (>128-bit) slow path.
     pub fn is_wide(&self) -> bool {
         matches!(self.bits, Bits::Wide(_))
@@ -251,16 +284,33 @@ pub(super) fn from_const_at_width(
     Val::new_wide(limbs, width, signed)
 }
 
-/// Reinterpret `v`'s raw bit pattern at a new width `w` — a pure re-mask
-/// (truncating if `w < v.width`, zero-padding if `w > v.width`), NOT a
-/// sign-extending resize (that's `extend_bits`/`wide::extend`). Used by
-/// `eval_fn_stmts`'s `Let` handling to re-mask a local to its checker-
-/// inferred width, mirroring the exact "reinterpret the same raw bits"
-/// semantics the pre-`Bits`-enum code had via `Val::new(v.bits, w, ...)`.
-fn remask_to_width(v: Val, w: u32) -> Val {
-    let mut limbs = v.to_limbs();
-    limbs.resize(wide::limb_count(w), 0);
-    Val::new_wide(limbs, w, v.signed)
+/// Fit `v`'s bit pattern into width `w`, tagging the result `signed`.
+///
+/// Truncates when `w <= v.width`. When `w > v.width` the fill depends on
+/// the SOURCE's own signedness: sign-extend a signed `v`, zero-pad an
+/// unsigned one — the same rule `wide::extend` implements and the same
+/// one Verilog applies when a value reaches a wider context.
+///
+/// BUG-43 (`docs/audit/bugs.md`): this used to zero-pad unconditionally,
+/// documented as "a pure reinterpret, NOT a sign-extending resize". That
+/// was harmless while the only sub-width values reaching it were
+/// unsigned literals — but a negative literal is a narrow SIGNED value
+/// (`Val::negated_literal`), and zero-padding it dropped the sign, so
+/// `-1` in a `signed[8]` wire read back as 3 instead of 255 while the
+/// emitted Verilog said 255.
+///
+/// Single definition on purpose: `comb.rs` and `kernel.rs` each carried
+/// a byte-identical private copy of the old zero-padding version, and
+/// `value.rs` a third — three copies of one resize rule is the same
+/// drift surface [`GAP-1`](../../../../docs/audit/gaps.md) describes, and
+/// fixing one copy would have left the other two wrong.
+pub(super) fn resize_to_width(v: Val, w: u32, signed: bool) -> Val {
+    if w <= v.width {
+        let mut limbs = v.to_limbs();
+        limbs.resize(wide::limb_count(w), 0);
+        return Val::new_wide(limbs, w, signed);
+    }
+    Val::new_wide(wide::extend(&v.to_limbs(), v.width, w, v.signed), w, signed)
 }
 
 /// Resolves names while an expression is evaluated: a signal/reg/wire to its
@@ -315,6 +365,23 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
         ExprKind::Ident(n) => r
             .signal(n)
             .map_err(|msg| crate::sim::diag::diag_from_bridged(e.span, msg, "S0201")),
+        // BUG-43 (docs/audit/bugs.md): `-<literal>` is a CONSTANT, folded
+        // here, not `Neg` applied to the magnitude's own unsigned
+        // `natural_width` bits — which cannot hold the result, so `-9`
+        // wrapped to `+7`. Matched on shape before the general `Unary`
+        // arm below, so a negated literal never reaches `unary` at all.
+        // Also covers `elaborate::int_expr`'s reconstruction of a
+        // negative flattened const, which builds this exact
+        // `Neg(Int(magnitude))` shape.
+        ExprKind::Unary {
+            op: UnOp::Neg,
+            expr,
+        } if matches!(expr.kind, ExprKind::Int { .. }) => {
+            let ExprKind::Int { value, .. } = &expr.kind else {
+                unreachable!("guarded by the `matches!` above")
+            };
+            Ok(Val::negated_literal(value))
+        }
         ExprKind::Unary { op, expr } => Ok(unary(*op, eval(r, expr)?)),
         // BUG-34 (docs/audit/bugs.md): a fused `Shl`/`Shr` chain must be
         // evaluated as one unit (`binary::eval_shift_chain`), not per-node
