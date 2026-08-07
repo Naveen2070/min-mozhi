@@ -51,7 +51,7 @@ siblings hold one concern each:
 | `expr/mod.rs`     | The bidirectional typing engine (`check_expr` pushes down, `infer_ty` synthesizes up)  |
 | `expr/lvalue.rs`  | Lvalue typing, index/slice/memory-address range checks (E0406/E0415)                   |
 | `ops/mod.rs`      | Operators, shifts, `{...}` concat, replication                                         |
-| `ops/builtins.rs` | The builtin call table (`extend`/`trunc`/`signed`/`min`/`clog2`/…)                     |
+| `ops/builtins.rs` | The builtin call table (`extend`/`trunc`/`signed`/`min`/`clog2`/`encoding`/…)          |
 | `stmts.rs`        | Module-item and `on`-block statement widths, enum tag/payload widths                   |
 | `insts.rs`        | Instantiation bindings + connection widths                                             |
 | `patterns.rs`     | `match` patterns + exhaustiveness (E0601/E0602)                                        |
@@ -155,6 +155,7 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0415 | compile-time array index out of range                                                                                                                                                                                                                   | indices run `0..=len-1`; a runtime index passes unchecked                                                                                                 |
 | E0416 | port/wire/register declared with an array type                                                                                                                                                                                                          | arrays are only supported for `fn` parameters in v0.2                                                                                                     |
 | E0417 | `foreach` element-form source is not an array or `mem` type                                                                                                                                                                                             | `y` in `foreach x in y` must be a declared array/mem signal; use `foreach i in lo..hi` for a range instead                                                |
+| E0418 | `encoding()` called on a non-enum value                                                                                                                                                                                                                 | pass a value whose type is a declared `enum`                                                                                                              |
 | E0501 | more than one driver (2nd drive, drive-to-wire, overlapping bit ranges)                                                                                                                                                                                 | one `=` per signal; `if`/`match` exprs choose; disjoint bits OK                                                                                           |
 | E0502 | output never driven, or driven on only some bits                                                                                                                                                                                                        | drive it; names the first undriven bit                                                                                                                    |
 | E0503 | reg assigned from zero or several `on` blocks, or memory written from several `on` blocks                                                                                                                                                               | exactly one `on` block owns each reg or memory                                                                                                            |
@@ -225,9 +226,9 @@ Conversely, `W0001` (mixed-flavor file) IS a member of
 fixture like every other entry. The remaining warnings (`W0002`–`W0004`)
 come from the separate `lint` pass — see docs/code/06 §Warnings.
 
-Reverse index — which numbers exist in `ALL_CHECKER_CODES` today: 74
+Reverse index — which numbers exist in `ALL_CHECKER_CODES` today: 75
 entries, `E0001`–`E0004`, `E0101`–`E0111`, `E0201`–`E0202`,
-`E0301`–`E0303`, `E0401`–`E0417`, `E0501`–`E0505`, `E0601`–`E0602`,
+`E0301`–`E0303`, `E0401`–`E0418`, `E0501`–`E0505`, `E0601`–`E0602`,
 `E0701`–`E0705`, `E0801`–`E0813`, `E0901`–`E0903`, `E0906`–`E0907`,
 `E0909`–`E0912`, `E1301`–`E1302`, `W0001`.
 

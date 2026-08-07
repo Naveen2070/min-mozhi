@@ -83,6 +83,10 @@ pub(crate) fn verilog_self_determined_kind(
             Builtin::SignedCast | Builtin::UnsignedCast => {
                 verilog_self_determined_kind(&args[0], decls)
             }
+            // Renders as `$unsigned(...)`, exactly like `UnsignedCast` —
+            // same reasoning: the cast doesn't change the argument's own
+            // self-determined width, so recurse into it.
+            Builtin::Encoding => verilog_self_determined_kind(&args[0], decls),
             // Const-folded before emit — never reaches a rendered
             // self-determined position as a runtime expression.
             Builtin::Clog2 => None,

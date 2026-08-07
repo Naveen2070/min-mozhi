@@ -461,6 +461,35 @@ fn fn_let_shadowing_a_param_at_a_different_width_is_e0813() {
     );
 }
 
+// ---- encoding(e): enum bit-pattern cast (GAP-7) ----------------------------
+
+#[test]
+fn encoding_of_tag_only_enum_is_bits_of_tag_width() {
+    // 3 variants -> tag width clog2(3) = 2, no payload -> total width 2.
+    let src = "enum Light { Red, Green, Blue }\n\
+               module M {\n  in a: Light\n  out y: bits[2]\n  y = encoding(a)\n}\n";
+    check_one(src).expect("encoding() of a tag-only enum must be bits[tag_width]");
+}
+
+#[test]
+fn encoding_of_payload_enum_is_bits_of_tag_plus_payload_width() {
+    // 2 variants -> tag width 1; max payload 8 -> total width 9.
+    let src = "enum Packet { Ctrl(k: bits[4]), Data(v: bits[8]) }\n\
+               module M {\n  in a: Packet\n  out y: bits[9]\n  y = encoding(a)\n}\n";
+    check_one(src).expect("encoding() of a payload enum must be bits[tag+max_payload]");
+}
+
+#[test]
+fn encoding_of_non_enum_is_e0418() {
+    let src = "module M {\n  in a: bits[8]\n  out y: bits[8]\n  y = encoding(a)\n}\n";
+    let d = first_err(src, "E0418");
+    assert!(
+        d.msg.contains("enum"),
+        "error names what encoding() needs: {}",
+        d.msg
+    );
+}
+
 #[test]
 fn or_arm_wildcard_not_binding_e0808() {
     let src = format!(

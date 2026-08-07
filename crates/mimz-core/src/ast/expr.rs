@@ -290,6 +290,15 @@ pub enum Builtin {
     Nor,
     /// `xnor(x)` — negated xor-reduction (`~^x`)
     Xnor,
+    /// `encoding(e)` — an enum value's on-wire bit pattern (tag, or
+    /// tag+payload for a tagged union — the exact bits `EnumDecl.
+    /// inferred_total_width` already sizes), as plain unsigned `bits[N]`.
+    /// A plain identifier like every other builtin here (`from_name`), NOT
+    /// a keyword — no trilingual spelling needed (docs/audit/gaps.md
+    /// GAP-7). The reverse cast (`bits` -> `enum`) does not exist and never
+    /// will: an unchecked int->enum cast would reintroduce the
+    /// invalid-state class the enum type exists to prevent.
+    Encoding,
     /// `clog2(n)` — the one COMPILE-TIME builtin: folds to the bits needed to
     /// address `n` items. Valid only where a constant is (widths, consts,
     /// parameter defaults); the checker rejects it in a runtime value position.
@@ -321,6 +330,7 @@ impl Builtin {
             "nand" => Some((Builtin::Nand, 1)),
             "nor" => Some((Builtin::Nor, 1)),
             "xnor" => Some((Builtin::Xnor, 1)),
+            "encoding" => Some((Builtin::Encoding, 1)),
             "clog2" => Some((Builtin::Clog2, 1)),
             _ => None,
         }
@@ -338,5 +348,15 @@ impl Builtin {
             "pulse" => Some((Builtin::SyncPulse, 3)),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_name_recognizes_encoding() {
+        assert_eq!(Builtin::from_name("encoding"), Some((Builtin::Encoding, 1)));
     }
 }

@@ -262,6 +262,10 @@ fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Ki
             width: infer_kind(&args[0], decls).width,
             signed: false,
         },
+        Builtin::Encoding => Kind {
+            width: infer_kind(&args[0], decls).width,
+            signed: false,
+        },
         // `abs(x)` for `x: signed[N]` is `signed[N+1]` — lossless like
         // unary `-`, the extra bit covers `abs(MIN)`. Matches the
         // checker's own rule (`checker/widths/ops/builtins.rs`,
@@ -458,5 +462,31 @@ mod tests {
         };
         assert_eq!(infer_kind(&lit_rhs, &decls), expected);
         assert_eq!(infer_kind(&lit_lhs, &decls), expected);
+    }
+
+    #[test]
+    fn encoding_kind_matches_its_argument_width_unsigned() {
+        let mut decls = HashMap::new();
+        decls.insert(
+            "state".to_string(),
+            Kind {
+                width: 2,
+                signed: false,
+            },
+        );
+        let e = Expr {
+            kind: ExprKind::Call {
+                func: Builtin::Encoding,
+                args: vec![ident("state")],
+            },
+            span: Span::new(0, 0),
+        };
+        assert_eq!(
+            infer_kind(&e, &decls),
+            Kind {
+                width: 2,
+                signed: false
+            }
+        );
     }
 }

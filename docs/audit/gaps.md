@@ -30,7 +30,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                               | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
 | [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated) | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
 | [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                              | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                             | No enum↔bits cast                                                       | MEDIUM     | OPEN   |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                             | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
 | [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                     | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
 | [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                           | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
 | [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                           | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
@@ -434,7 +434,7 @@ silently drops a `Diag`'s `.code`, discovered while writing T10's own test
 
 ## GAP-7 (MEDIUM, language) — No enum↔bits cast
 
-**Status:** OPEN. Filed 2026-08-02.
+**Status:** CLOSED 2026-08-07. Filed 2026-08-02.
 
 **What.** There is no way to obtain an enum value's bit encoding.
 `unsigned(enumval)` is rejected; an enum in a concat produces E0403.
@@ -463,6 +463,33 @@ would reintroduce the invalid-state class the enum type exists to prevent.
 
 **See also.** [BUG-31](bugs.md) — the diagnostic a user currently hits when they
 try this is actively misleading.
+
+**Fix.** Landed the explicit `encoding(e)` builtin, exactly as this entry's
+own Direction recommended over overloading `unsigned(x)`. `Builtin::Encoding`
+joins the existing plain-identifier builtin table (`from_name`) — not a
+keyword, so no `lang/keywords.toml`/trilingual work at all, unlike GAP-6.
+The checker requires `Ty::Enum` and returns `bits(en.inferred_total_width)`
+— the FULL tag+max-payload width for a tagged union, not just the tag;
+everything else is a brand-new **`E0418`** (next free `E04xx` slot), never a
+reuse of `E0407`, per this project's one-code-per-rule catalog policy. The
+emitter and simulator needed no enum-specific logic at all: an enum-typed
+signal is already tracked as a generic `Kind{width, signed}` at that layer,
+so `encoding` reuses `unsigned(x)`'s exact mechanism (self-determined-
+position classification, hoisting, `$unsigned(...)` codegen, runtime eval)
+byte-for-byte in every exhaustive `Builtin` table it joins. GAP-5's own
+position-matrix (`tests/self_determined_regression.rs`) gained `Encoding`'s
+classification plus two Icarus differential tests (tag-only and
+payload-carrying enum) — found and worked around two separate, narrow,
+pre-existing `mimz-sim` bugs along the way (`comb::eval_outputs` doesn't
+model any enum signal yet, filed as [BUG-38](bugs.md); a `reg`'s reset
+value can't be a payload-carrying `EnumConstruct` expression, filed as
+[BUG-39](bugs.md)), neither fixed here, both filed for a future branch.
+Five new examples (`enum_encoding.mimz` × english/tanglish/tamil/
+mixed/tamil-pure) exercise the motivating "expose FSM state on a debug port"
+use case this entry's own Why-it-matters described. The reverse direction
+(`bits` → `enum`) stays permanently unsupported, as this entry's own Related
+note specified — not deferred, rejected. Full workspace green throughout,
+`fmt`/`clippy -D warnings` clean.
 
 ---
 

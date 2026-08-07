@@ -1,0 +1,42 @@
+// Min-Mozhi pure-Tamil showcase (keywords AND identifiers are Tamil): expose
+// an enum's on-wire bit pattern with `encoding` — the Tamil twin of
+// english/enum_encoding.mimz. A debug/bring-up port that shows the current
+// FSM state as a plain number. `encoding` itself stays English — it is a
+// plain builtin identifier (`Builtin::from_name`), not a keyword, so it has
+// no trilingual spelling (docs/audit/gaps.md GAP-7). Identifier choices
+// (நிலைக்காட்டி, நிலைமதிப்பு) are PROVISIONAL, pending native-speaker review,
+// same status new Tamil content elsewhere in this repo carries.
+
+தொகுதி நிலைக்காட்டி {
+  துடிப்பு கடிகை
+  மீட்டமை மீள்
+
+  வெளியீடு நிலைமதிப்பு: bits[2]
+
+  வகை நிறம் { சிவப்பு, பச்சை, நீலம் }
+
+  பதிவேடு நடப்பு: நிறம் = நிறம்.சிவப்பு
+
+  போது ஏற்றம்(கடிகை) {
+    நடப்பு <- தேர்ந்தெடு நடப்பு {
+      நிறம்.சிவப்பு => நிறம்.பச்சை
+      நிறம்.பச்சை   => நிறம்.நீலம்
+      நிறம்.நீலம்   => நிறம்.சிவப்பு
+    }
+  }
+
+  நிலைமதிப்பு = encoding(நடப்பு)
+}
+
+சோதனை "நிலைமதிப்பு நடப்பு நிலையின் குறியீட்டைப் பின்தொடர்கிறது" க்காக நிலைக்காட்டி {
+  மீள் = 1
+  கணம்(கடிகை)
+  மீள் = 0
+  உறுதிசெய் நிலைமதிப்பு == 0
+  கணம்(கடிகை)
+  உறுதிசெய் நிலைமதிப்பு == 1
+  கணம்(கடிகை)
+  உறுதிசெய் நிலைமதிப்பு == 2
+  கணம்(கடிகை)
+  உறுதிசெய் நிலைமதிப்பு == 0
+}
