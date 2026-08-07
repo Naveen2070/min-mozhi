@@ -566,6 +566,37 @@ mod tests {
     }
 
     #[test]
+    fn match_pattern_referencing_an_unknown_enum_is_a_clean_err_not_a_panic() {
+        // BUG-40 (docs/audit/bugs.md): same "fuzz: lex_parse_eval" class as
+        // the zero-length-array test above. The parser accepts
+        // `EnumName.variant` pattern syntax without checking `EnumName` is
+        // a real declared enum (that's the checker's job) — a raw fuzzed
+        // `.mimz` file can put one in a match arm and reach this
+        // checker-bypassing evaluator directly. Used to panic
+        // (`pattern_matches`'s `unreachable!()`, which only actually holds
+        // on the clocked elaboration path) on the FIRST pattern check, before
+        // ever considering any later arm — deliberately no wildcard arm here
+        // so a correct fix falls through to the ordinary "no arm matched"
+        // error instead, rather than happening to succeed via a trailing `_`.
+        let f = parse(
+            "module M {\n  in req: bits[3]\n  out grant: bits[2]\n  \
+             grant = match req {\n    Bogus.X => 0b01\n  }\n}\n",
+        );
+        let err = eval_outputs(
+            std::slice::from_ref(&f),
+            None,
+            &ins(&[("req", 1)]),
+            &BTreeMap::new(),
+        )
+        .unwrap_err();
+        assert!(
+            err.msg.contains("no `match` arm matched"),
+            "got: {}",
+            err.msg
+        );
+    }
+
+    #[test]
     fn adder_grows_losslessly() {
         let f = parse(
             "module Adder(W: int = 8) {\n  in a: bits[W]\n  in b: bits[W]\n  out sum: bits[W+1]\n  sum = a + b\n}\n",
