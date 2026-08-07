@@ -602,11 +602,19 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> bool {
         }
         Pattern::IntMask { value, mask: m, .. } => (low128(s) & *m) == (*value & *m),
         Pattern::Bool(b) => s.lsb() == (*b as u128),
-        Pattern::Variant { .. } => {
-            unreachable!(
-                "Pattern::Variant is lowered to IntMask during elaboration — raw variants should not reach pattern_matches"
-            )
-        }
+        // BUG-40 (docs/audit/bugs.md): true ONLY on the clocked path
+        // (`elaborate/rewrite.rs`, which always lowers a `Pattern::Variant`
+        // to `IntMask` first, after validating the enum name is real).
+        // `comb::eval_outputs` — the standalone combinational-only
+        // evaluator the fuzz harness and `differential()`
+        // (tests/self_determined_regression.rs) call directly, deliberately
+        // bypassing the checker — has no such lowering pass, so a
+        // syntactically-legal `EnumName.variant` pattern referencing a name
+        // that isn't a real enum (the parser never checks that; only the
+        // checker does) can reach here unlowered. Never match rather than
+        // panic — the sibling S0202 "no match arm matched" error already
+        // anticipates exactly this ("enum patterns are not evaluated yet").
+        Pattern::Variant { .. } => false,
     }
 }
 

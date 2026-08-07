@@ -1,5 +1,6 @@
 use super::*;
 use crate::sim::value::binary::{binary_ctx, binary_known, cmp_eq, unary};
+use mimz_core::ast::Ident;
 use mimz_core::span::Span;
 
 /// Dummy span for unit tests exercising `binary_ctx`/`binary_known` directly
@@ -497,6 +498,35 @@ fn pattern_matches_handles_wide_value_no_saturation() {
         raw: String::new(),
     };
     assert!(pattern_matches(&p_zero, &s));
+}
+
+#[test]
+fn pattern_matches_never_panics_on_an_unlowered_variant() {
+    // BUG-40 (docs/audit/bugs.md): `comb::eval_outputs` — the standalone
+    // combinational-only evaluator the fuzz harness and `differential()`
+    // (tests/self_determined_regression.rs) both call directly, bypassing
+    // the checker entirely — has no `Pattern::Variant` -> `IntMask`
+    // lowering pass (unlike the clocked path's `elaborate/rewrite.rs`,
+    // which always lowers first and validates the enum name exists).
+    // A syntactically-legal `EnumName.variant` pattern referencing a name
+    // that resolves to nothing real (the parser never checks — that's the
+    // checker's job) therefore used to reach this `unreachable!()`. It
+    // must instead just not match, exactly as the sibling S0202 error
+    // ("no match arm matched ... enum patterns are not evaluated yet")
+    // already anticipates.
+    let p = Pattern::Variant {
+        enum_name: Ident {
+            name: "Bogus".to_string(),
+            span: Span::default(),
+        },
+        variant: Ident {
+            name: "X".to_string(),
+            span: Span::default(),
+        },
+        bindings: vec![],
+    };
+    let s = Val::new(1, 3, false);
+    assert!(!pattern_matches(&p, &s));
 }
 
 #[test]
