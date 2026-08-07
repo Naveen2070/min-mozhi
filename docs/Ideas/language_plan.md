@@ -531,6 +531,16 @@ Hardware engineering is ultimately constrained by clock speed (Fmax), security (
   }
   ```
 
+- **Status (2026-08-06):** the runtime half shipped as `docs/audit/gaps.md`
+  GAP-6 — `assert(cond)`/`assert(cond, "msg")` (2026-08-05) and
+  `cover(cond)`/`cover(cond, "label")` (2026-08-06), both simulation-only
+  (`` `ifndef SYNTHESIS ``-guarded in the emitted Verilog, native in
+  `mimz-sim`). **Remaining, deliberately deferred by GAP-6's own direction:**
+  `assume`, SVA sequence/property emission, and the formal (`prove`/
+  SymbiYosys) bridge this section describes — none have AST/checker/emit
+  support yet. `prove` stays reserved-keyword-only per section 10's gap
+  table.
+
 ### 6.4 Time-Travel Debugging (Simulation Tooling)
 
 - **Explanation:** When a standard Verilog simulation fails, engineers must dig through massive, visually noisy waveform files (VCDs) to find the root cause. Min-Mozhi's `mimz sim` tool treats simulations like a modern software debugger.
