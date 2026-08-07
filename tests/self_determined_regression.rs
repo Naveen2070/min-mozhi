@@ -57,6 +57,24 @@ fn module_ports(file: &ast::File) -> (PortList, PortList) {
                     .expect("literal width")
                     .to_i128_saturating()
                     as u32,
+                // An enum-typed port's Verilog width is its total on-wire
+                // size (tag + max payload) — the checker (already run by
+                // `differential`, before this function is called) sets
+                // `inferred_total_width` on the SAME `EnumDecl` this file's
+                // own `TopItem::Enum` holds, via interior mutability.
+                ast::Type::Named(qi) => file
+                    .items
+                    .iter()
+                    .find_map(|i| match i {
+                        TopItem::Enum(en) if en.name.name == qi.name.name => {
+                            en.inferred_total_width.get()
+                        }
+                        _ => None,
+                    })
+                    .expect(
+                        "module_ports: named port type must be a file-scope enum \
+                             the checker has already sized",
+                    ),
                 other => panic!("module_ports: unsupported port type {other:?}"),
             };
             match dir {
@@ -584,7 +602,9 @@ enum MatrixShape {
 fn matrix_shape(b: ast::Builtin) -> MatrixShape {
     use ast::Builtin::*;
     match b {
-        Extend | Trunc | SignedCast | UnsignedCast | Abs | Nand | Nor | Xnor => MatrixShape::Unary,
+        Extend | Trunc | SignedCast | UnsignedCast | Encoding | Abs | Nand | Nor | Xnor => {
+            MatrixShape::Unary
+        }
         Min | Max => MatrixShape::Binary,
         // Compile-time only — the checker rejects it in a runtime value
         // position (`checker/widths/ops/builtins.rs`, E0407).
@@ -613,13 +633,14 @@ const ALL_BUILTINS: &[ast::Builtin] = &[
     ast::Builtin::Clog2,
     ast::Builtin::SyncDoubleFlop,
     ast::Builtin::SyncPulse,
+    ast::Builtin::Encoding,
 ];
 
 #[test]
 fn every_builtin_is_classified_in_the_matrix() {
     assert_eq!(
         ALL_BUILTINS.len(),
-        13,
+        14,
         "a Builtin variant was added or removed without updating this matrix \
          (docs/audit/gaps.md GAP-5)"
     );
@@ -638,6 +659,53 @@ fn matrix_trunc_in_concat_matches_icarus() {
                 y = { b, trunc(a, 2) }\n}\n";
     // a=0b101011 (43): trunc to 2 bits keeps the low 2 (0b11=3). b=0b1010 (10).
     differential(src, &[("a", 0b101011), ("b", 0b1010)]);
+}
+
+#[test]
+fn matrix_encoding_of_tag_only_enum_in_concat_matches_icarus() {
+    // `encoding(e)` renders as `$unsigned(...)`, exactly like `unsigned` —
+    // classified `None` (no mismatch possible, same reasoning). `Light` has
+    // 3 variants -> tag width clog2(3) = 2, no payload.
+    //
+    // An enum can only be exercised through the CLOCKED kernel path here —
+    // `comb::eval_outputs` (what `differential` above uses) does not model
+    // any enum-typed signal at all yet, port or wire (a separate,
+    // pre-existing limitation, out of GAP-7's scope); the clocked path
+    // (`elaborate_project`/`run`, what `differential_clocked` uses) already
+    // handles an enum `reg` correctly — this is exactly
+    // `examples/*/traffic_light.mimz`'s own working shape, with its state
+    // additionally exposed via `encoding`.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in b: bits[4]\n  out y: bits[6]\n  \
+                enum Light { Red, Green, Blue }\n  \
+                reg state: Light = Light.Red\n  \
+                on rise(clk) {\n    state <- match state {\n      \
+                Light.Red => Light.Green\n      Light.Green => Light.Blue\n      \
+                Light.Blue => Light.Red\n    }\n  }\n  \
+                y = { b, encoding(state) }\n}\n";
+    differential_clocked(src, &[("b", 0b1010)]);
+}
+
+#[test]
+fn matrix_encoding_of_payload_enum_in_concat_matches_icarus() {
+    // `Packet` has 2 variants -> tag width 1; max payload 8 -> total 9. The
+    // full tag+payload width is what `encoding` returns, not just the tag.
+    // Same clocked-only reasoning as the tag-only case above; `p` toggles
+    // between the two variants every cycle so both are exercised across
+    // `differential_clocked`'s 8-cycle run.
+    // `p` is a `wire`, not a `reg`: `consteval::eval` (the elaborator's
+    // reg-reset-value folder) does not yet fold an `EnumConstruct`
+    // expression, even with all-literal args, so `reg p: Packet =
+    // Packet.Ctrl(0)` fails elaboration with "not a compile-time constant"
+    // — a separate, narrow pre-existing gap, out of GAP-7's scope. A
+    // combinational `wire` needs no reset value and sidesteps it entirely.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  \
+                in k: bits[4]\n  in v: bits[8]\n  in b: bits[4]\n  out y: bits[13]\n  \
+                enum Packet { Ctrl(k: bits[4]), Data(v: bits[8]) }\n  \
+                reg toggle: bit = 0\n  \
+                on rise(clk) {\n    toggle <- toggle +% 1\n  }\n  \
+                wire p: Packet = if toggle == 0 { Packet.Ctrl(k) } else { Packet.Data(v) }\n  \
+                y = { b, encoding(p) }\n}\n";
+    differential_clocked(src, &[("k", 0b0101), ("v", 0b00101101), ("b", 0b0110)]);
 }
 
 #[test]

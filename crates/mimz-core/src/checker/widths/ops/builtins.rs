@@ -293,6 +293,25 @@ impl<'a> Checker<'a> {
                     other => self.not_numeric(cx, x.span, &other, name),
                 }
             }
+            Builtin::Encoding => match xt {
+                Ty::Enum(en) => bits(en.inferred_total_width.get().expect(
+                    "checker sets every enum's inferred_total_width in a \
+                     pre-pass before checking any module body \
+                     (checker/widths/mod.rs's TopItem::Enum loop)",
+                ) as u128),
+                other => {
+                    self.err_args(
+                        cx.file,
+                        e.span,
+                        "E0418",
+                        format!("`encoding` needs an enum value, found {}", show(&other)),
+                        "`encoding(e)` reads out an enum's bit pattern — pass a value \
+                         whose type is a declared `enum`",
+                        vec![("found", show(&other))],
+                    );
+                    Ty::Unknown
+                }
+            },
         }
     }
 }

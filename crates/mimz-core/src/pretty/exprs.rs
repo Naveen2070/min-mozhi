@@ -261,6 +261,7 @@ fn builtin(b: Builtin) -> &'static str {
         Builtin::Nand => "nand",
         Builtin::Nor => "nor",
         Builtin::Xnor => "xnor",
+        Builtin::Encoding => "encoding",
         Builtin::Clog2 => "clog2",
         // CDC sync primitives: dot-namespaced calls require "sync." prefix
         Builtin::SyncDoubleFlop => "sync.double_flop",

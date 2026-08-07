@@ -342,6 +342,14 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: point `foreach` at a declared array/mem signal, or switch to the\n\
          range form (`foreach i in lo..hi`).",
     ),
+    (
+        "E0418",
+        "E0418 — `encoding` needs an enum value\n\n\
+         `encoding(e)` reads out an enum's stable on-wire bit pattern — the\n\
+         same bits the emitter already assigns as `localparam`s. It only\n\
+         makes sense for an actual enum value.\n\n\
+         Fix: pass a value whose type is a declared `enum`.",
+    ),
     // ----- E05xx: drivers & cycles -----
     (
         "E0501",

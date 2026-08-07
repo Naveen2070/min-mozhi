@@ -1,0 +1,39 @@
+// Min-Mozhi example: expose an enum's on-wire bit pattern with `encoding`.
+// A debug/bring-up port that shows the current FSM state as a plain
+// number — the single most common real-world need for enum->bits: routing
+// state to LEDs, a logic-analyzer header, or a host-readable status
+// register without attaching a full debugger.
+
+தொகுதி StateDebug {
+  துடிப்பு clk
+  மீட்டமை rst
+
+  வெளியீடு state_bits: bits[2]
+
+  வகை Light { Red, Green, Blue }
+
+  பதிவேடு state: Light = Light.Red
+
+  போது ஏற்றம்(clk) {
+    state <- தேர்ந்தெடு state {
+      Light.Red   => Light.Green
+      Light.Green => Light.Blue
+      Light.Blue  => Light.Red
+    }
+  }
+
+  state_bits = encoding(state)
+}
+
+சோதனை "state_bits tracks the FSM's encoding" க்காக StateDebug {
+  rst = 1
+  கணம்(clk)
+  rst = 0
+  உறுதிசெய் state_bits == 0
+  கணம்(clk)
+  உறுதிசெய் state_bits == 1
+  கணம்(clk)
+  உறுதிசெய் state_bits == 2
+  கணம்(clk)
+  உறுதிசெய் state_bits == 0
+}

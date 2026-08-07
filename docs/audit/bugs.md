@@ -2624,3 +2624,137 @@ load-bearing), watched fail against real `iverilog` first (the exact
 "syntax error in continuous assignment" the filing reported) via a
 temporary `git stash` of the fix, then pass after. Full workspace green
 per BUG-35's entry above (same fix, same verification pass).
+
+---
+
+## BUG-38 (MEDIUM, OPEN) — `mimz-sim`'s combinational-only kernel rejects every enum-typed signal, port or wire
+
+**What.** The checker fully accepts an enum-typed module port or wire (e.g.
+`examples/english/tagged_packet.mimz`'s `in bus: Packet`, or a plain
+`wire state: Light = ...`), and the CLOCKED simulator path already handles
+an enum `reg` correctly (`examples/*/traffic_light.mimz`'s own
+`reg state: State`, run daily via `mimz test`). But the STANDALONE
+combinational-only kernel (`mimz_sim::sim::comb::eval_outputs`) rejects
+**any** enum-typed signal outright:
+
+```text
+signal of enum type `Light` — the simulator does not model enum signals yet
+```
+
+This fires for a port AND for a plain internal `wire`, with no way around
+it in the comb-only entry point.
+
+**Cause.** `crates/mimz-sim/src/sim/value/mod.rs`'s `type_width` explicitly
+errors on `Type::Named` (an enum) — a deliberate, documented stub, not an
+accident. The general/clocked elaborator
+(`crates/mimz-sim/src/sim/elaborate/module.rs`) never calls `type_width`
+directly for a signal's type: it wraps every call through its own
+`width_of()` (`module.rs:246-275`), which special-cases `Type::Named` FIRST
+(resolving the enum's `inferred_total_width`, tag+payload, from the
+checker) and only falls through to `type_width` for every other type.
+`crates/mimz-sim/src/sim/comb.rs` — a separate, standalone comb-only
+elaborator, built for fast differential testing
+(`tests/self_determined_regression.rs`'s own doc comment: "there is no
+existing single-call helper of this exact shape anywhere in the suite") —
+calls `value::type_width` **directly** for both `Port` (`comb.rs:239`) and
+`Wire` (`comb.rs:246`) declarations, missing the `width_of()`-style enum
+wrapper entirely. This is an incomplete port of `elaborate/module.rs`'s own
+enum-handling to the second, parallel elaboration path `comb.rs`
+represents — the same "two implementations of one rule disagreed" shape as
+GAP-1's own width/kind-duplication family, just for signal WIDTH
+RESOLUTION rather than an operator rule.
+
+**How found.** Writing GAP-7's (`encoding(e)` enum→bits cast,
+`docs/audit/gaps.md`) Icarus differential tests in
+`tests/self_determined_regression.rs`: an enum-typed port, then an
+enum-typed `wire`, both driven through `differential()` (which calls
+`comb::eval_outputs`), both rejected identically. Switching to
+`differential_clocked()` (`elaborate_project`/`run`, the general path)
+worked immediately with no other change beyond the entry point.
+
+**Severity.** MEDIUM — no silent miscompile (a clean, named error, not a
+crash or a wrong value), but it blocks a checker-accepted, spec-legal
+program from running through half of `mimz-sim`'s own public API
+surface. Anything built on `comb::eval_outputs` (this test file today;
+potentially a future `mimz eval`-style comb-only tool) cannot exercise
+enum signals at all.
+
+**Fix.** Give `comb.rs` the same `width_of()`-style `Type::Named` wrapper
+`elaborate/module.rs` already has — ideally by extracting `width_of()` into
+a shared helper both elaborators call, rather than duplicating the
+enum-resolution logic a second time (the GAP-1 lesson: a third copy of the
+same rule is a third place for it to drift).
+
+**Test.** A `comb::eval_outputs` unit/integration test driving an
+enum-typed port and an enum-typed wire directly (no clock), asserting a
+successful evaluation with the expected bit pattern — the comb-only
+counterpart to `traffic_light.mimz`'s existing clocked coverage.
+
+---
+
+## BUG-39 (MEDIUM, OPEN) — A `reg`'s reset value cannot be a payload-carrying `EnumConstruct` expression
+
+**What.** `reg p: Packet = Packet.Ctrl(0)` — a `reg` reset value calling a
+payload-carrying enum variant's constructor, even with an all-literal
+argument — fails elaboration:
+
+```text
+this expression is not a compile-time constant
+```
+
+A **tag-only** variant reset (`reg state: Light = Light.Red`,
+`examples/*/traffic_light.mimz`'s own working pattern) is unaffected —
+only a variant that takes arguments hits this.
+
+**Cause.** `crates/mimz-sim/src/sim/elaborate/module.rs`'s `Reg` arm
+(`module.rs:392-402`) first rewrites the reset expression through
+`self.rw0().expr(reset)` — which lowers any `ExprKind::EnumConstruct` via
+`rewrite.rs`'s `enum_construct()` (documented there: "Produces a plain
+`ExprKind::Int` for a tag-only (zero-arg) variant, or an `ExprKind::Concat`
+otherwise — both already fully evaluated by `crate::sim::value`, so no new
+interpreter code is needed") — then passes the REWRITTEN expression to
+`const_eval_wide`, which calls straight into
+`mimz_core::checker::consteval::eval` (the compile-time-only constant
+folder shared with the checker). That folder has no `ExprKind::Concat` arm
+at all (confirmed: no match on it in `consteval.rs`), so it falls through
+to the generic `_ => not_const(...)` catch-all — even though, in this
+case, every part of the concat (the tag index, the argument) is itself a
+literal. The doc comment on `enum_construct()`'s own rewrite is candid
+about the mismatch: it was written assuming the RUNTIME evaluator
+(`crate::sim::value::eval`, which DOES handle `Concat`) would consume the
+result, not the narrower, reset-value-only `consteval::eval` path — reg
+resets are the one place in the pipeline that specifically needs the
+latter, and nothing routes an `EnumConstruct`'s rewritten `Concat` back
+through it.
+
+**How found.** Same GAP-7 differential-test work as BUG-38, same session
+— `reg p: Packet = Packet.Ctrl(0)` was the first, more natural design for
+a payload-enum clocked test (toggling `p` between two constructed variants
+every cycle); worked around by making `p` a combinational `wire` instead
+(no reset value needed) rather than fixing this.
+
+**Severity.** MEDIUM — again a clean, named error rather than a silent
+miscompile, but it blocks a checker-accepted, spec-legal declaration
+(nothing in `spec/02`'s enum-construction rules requires the reset
+argument to be anything other than a compile-time constant, which `0`
+plainly is) from ever reaching the simulator. Any design using a
+payload-carrying enum as register state — the natural "current
+transaction" idiom a tagged union exists for — cannot declare a reset
+value for it without this workaround.
+
+**Fix.** Teach `consteval::eval` (or a `mimz-sim`-local wrapper around it,
+scoped to reg/mem reset values specifically, if extending the shared
+`mimz-core` function is out of bounds for its own "plain `int`/`bool`
+values" contract) to fold an all-constant `ExprKind::Concat` — recursively
+const-evaluating each part and bit-packing the results, mirroring exactly
+what the runtime evaluator already does for the same node shape. This
+would also transitively make a tag-only variant reset expressed with
+explicit call syntax (`Light.Red()`) constant-foldable if it isn't
+already, for the same reason.
+
+**Test.** A reg-reset-with-payload-enum-constructor case
+(`reg p: Packet = Packet.Ctrl(0)`) added to `mimz-sim`'s elaboration test
+suite, asserting successful elaboration and the correct initial bit
+pattern (tag + zero-padded/literal payload).
+
+---

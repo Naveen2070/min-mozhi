@@ -86,6 +86,7 @@ fn kind_is_inferrable(expr: &Expr, decls: &HashMap<String, crate::width_rules::K
             }
             Builtin::SignedCast
             | Builtin::UnsignedCast
+            | Builtin::Encoding
             | Builtin::Abs
             | Builtin::Nand
             | Builtin::Nor
@@ -808,6 +809,22 @@ impl Emitter<'_> {
                     // `UnsignedCast` arguments are always evaluated by
                     // `eval_ctx`'s `Call` arm with plain `eval` (see
                     // `call`'s own match arms).
+                    let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
+                    let hoisted = if kind_is_inferrable(&args[0], &decls) {
+                        self.hoist_if_needed(&args[0], text, &decls)
+                    } else {
+                        text
+                    };
+                    format!("$unsigned({hoisted})")
+                }
+                Builtin::Encoding => {
+                    let decls = self.cur_decls.clone();
+                    let text = self.expr_subst(&args[0], subst, arrays);
+                    // `allow_shift: true` — mirrors `SignedCast`/
+                    // `UnsignedCast` immediately above: this builtin's
+                    // argument is always evaluated by plain `eval`, never
+                    // `eval_ctx`, so a shift argument here is
+                    // self-determined.
                     let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
                     let hoisted = if kind_is_inferrable(&args[0], &decls) {
                         self.hoist_if_needed(&args[0], text, &decls)
