@@ -2986,7 +2986,7 @@ port name.
 
 ---
 
-## BUG-43 (CRITICAL, OPEN) — A negative literal is evaluated at its own natural width, so the simulator disagrees with the hardware
+## BUG-43 (CRITICAL, FIXED 2026-08-07) — A negative literal is evaluated at its own natural width, so the simulator disagrees with the hardware
 
 **What.** The simulator evaluates `-N` inside `natural_width(N)` bits, producing
 a small **positive** value that then zero-extends into its signed destination.
@@ -3055,14 +3055,67 @@ comparisons, `min`/`max` bounds, `fn` arguments, `test` stimulus. `reg` reset
 values happen to be correct (width-aware path), which is why it has gone
 unnoticed: the most visible use of a negative constant is the one that works.
 
-**Fix (proposed).** Size a negated integer literal from its destination, not
-from `natural_width` — either by keeping it unsized until context is known
-(mirroring the checker's `Ty::CtInt`) or, as a narrower fix, by widening by one
-bit before negating in the literal path in `sim/elaborate`.
+**Fix.** Three sites, not one — the filing pinned the first, and the other two
+only became visible once the value stopped being wrong at the source.
 
-**Test (required).** A `signed[W]` x negative-literal matrix through `mimz test`
-and Icarus, covering `W > natural_width(|v|)`; plus the clamp idiom above. Add
-the case to the width-conformance oracle once GAP-11 makes it non-vacuous.
+1. **`crates/mimz-sim/src/sim/value/mod.rs`** — `-<literal>` is folded as a
+   constant in `eval`, matched on shape before the general `Unary` arm, via a
+   new `Val::negated_literal`. It builds the value at `natural_width(n) + 1`
+   bits, signed: one extra bit is exactly what a two's-complement negation
+   needs, matching `Val::from_int`'s own `129 - leading_ones` rule but computed
+   over `Bits`, so an arbitrarily-wide literal (BUG-13 layer 2, past `i128`) is
+   served too. The runtime `-x` path is deliberately unchanged —
+   `signed[N] -> signed[N]` matches Verilog, and `abs`'s explicit `N -> N+1`
+   growth shows the language already made that call.
+2. **`value::resize_to_width`, replacing three copies.** With the value now
+   correctly a narrow SIGNED `Val`, the consumer dropped the sign:
+   `wire w: signed[8] = -1` read back as 3 while the emitted Verilog said 255.
+   `remask_to_width` existed three times — `comb.rs`, `kernel.rs`, and
+   `value/mod.rs` — each documented as _"a pure reinterpret, NOT a
+   sign-extending resize"_. Now one function: truncate when `w <= v.width`,
+   otherwise fill from the SOURCE's signedness via `wide::extend`. Both
+   duplicate copies deleted. Zero-padding was harmless only while every
+   sub-width value reaching it was an unsigned literal, and the checker enforces
+   exact width matching everywhere except literals — so the widening path _is_
+   the literal path. Fixing one copy would have left the other two wrong.
+3. **`Sim::set_val`** (`crates/mimz-sim/src/sim/kernel.rs`), used by
+   `TestStmt::Drive` (`sim/harness/mod.rs`). `mimz test` still drove the wrong
+   stimulus after both fixes above: the harness evaluated the expression to a
+   `Val` and then handed `Sim::set` a raw `v.bits_masked()` pattern, destroying
+   the width and signedness before `set` could act on them. `set` cannot be
+   fixed in place — with only a raw pattern there is no source width to extend
+   from — so the typed path is a separate entry point, and `set` keeps its
+   raw-`Bits` signature for peripherals and clock/reset toggles.
+
+**Test.** Eight, across the three layers the three sites live in:
+
+- `crates/mimz-sim/src/sim/value/tests.rs` —
+  `negated_literal_sign_extends_into_a_wider_signed_slot` (the exact
+  `signed[6]` table from this filing),
+  `negated_literal_minus_one_is_all_ones_not_one`, and
+  `negated_literal_handles_a_wide_magnitude` (>128 bits, which `from_int`
+  cannot serve).
+- `tests/self_determined_regression.rs` — four Icarus differentials
+  (`bug_43_negative_literal_in_a_wire_matches_icarus`,
+  `..._comparison_...`, `..._clamp_idiom_...`, and
+  `..._in_a_reg_reset_...`). The last pins the path that was **already
+  correct** so the fix cannot regress it. A sim-only test cannot prove this
+  bug fixed: the emitter was right all along and only the simulator moved.
+- `tests/test_run.rs` —
+  `a_negative_test_input_drives_its_twos_complement_pattern`, the whole table
+  through the real binary, since site 3 was in the harness's drive path
+  specifically.
+
+Verified against the filing's own reproductions: `max(-100, min(x, 100))` with
+`x = -1000` now gives `-100` (was 28), `unsigned(w)` for
+`wire w: signed[8] = -1` now gives 255 (was 1), and `q == -9` with `q = -9` is
+now true (was false) — each matching Icarus. Full workspace green (1196/1196,
+35 suites, `REQUIRE_IVERILOG=1`), `fmt`/`clippy -D warnings` clean.
+
+Still to do, tracked elsewhere: add this case to the width-conformance oracle
+once [GAP-11](gaps.md) makes it non-vacuous — the current oracle checks only
+top-level signal widths, and this bug's wrong value fits its declared width, so
+the oracle would not have caught it.
 
 ---
 

@@ -26,16 +26,12 @@ use super::value::{self, Resolver, Val};
 use super::wide;
 use crate::sim::Diag;
 
-/// Re-mask `v`'s raw bits to width `w` (with `signed`) — a pure reinterpret
-/// (truncate/zero-pad the limbs), NOT a sign-extending resize. Mirrors the
-/// exact "reinterpret the same raw bits" semantics `Val::new(v.bits, w, s)`
-/// had before `Bits` gained a `Wide` variant (Task 2's Copy-loss fallout,
-/// Task 7); same pattern as `value.rs`'s own (private) `remask_to_width`.
-fn remask_to_width(v: Val, w: u32, signed: bool) -> Val {
-    let mut limbs = v.to_limbs();
-    limbs.resize(super::wide::limb_count(w), 0);
-    Val::new_wide(limbs, w, signed)
-}
+// BUG-43 (docs/audit/bugs.md): this file used to carry its own
+// byte-identical copy of a zero-padding `remask_to_width`. The one rule
+// now lives at `value::resize_to_width`, which sign-extends a signed
+// source instead of dropping its sign — three copies of one resize rule
+// was the same drift surface GAP-1 describes.
+use super::value::resize_to_width as remask_to_width;
 
 /// A running simulation of one elaborated [`Design`].
 pub struct Sim {
@@ -141,8 +137,34 @@ impl Sim {
         }
     }
 
+    /// Drive a leaf signal (an input, clock, or reset) from an already-typed
+    /// [`Val`], RESIZING it to the signal's declared width — sign-extending
+    /// when the source is signed.
+    ///
+    /// BUG-43 (`docs/audit/bugs.md`): [`Sim::set`] cannot do this. It takes a
+    /// raw `Bits` pattern with no source width or signedness, so a caller that
+    /// evaluates an expression and hands over `v.bits_masked()` has already
+    /// destroyed the sign — a test block's `p = -9` arrived as the 5-bit
+    /// pattern `0b10111` and zero-padded into `signed[6]` as 23 instead of 55.
+    /// Callers holding a `Val` must use this; callers holding a raw
+    /// bit pattern (peripherals, clock/reset toggles) keep using `set`.
+    pub fn set_val(&mut self, name: &str, value: Val) -> Result<(), Box<Diag>> {
+        match self.widths.get(name) {
+            Some(w) if self.leaves.contains_key(name) => {
+                let val = remask_to_width(value, w.bits, w.signed);
+                self.leaves.insert(name.to_string(), val);
+                Ok(())
+            }
+            _ => Err(self.not_a_leaf(name)),
+        }
+    }
+
     /// Drive a leaf signal (an input, clock, or reset) to `value`, masked to its
     /// declared width. Errors if `name` is not a drivable leaf.
+    ///
+    /// `value` is a raw bit pattern already in the signal's own encoding —
+    /// there is no source width to extend from, so this masks/zero-pads. Use
+    /// [`Sim::set_val`] when the value came from evaluating an expression.
     pub fn set(&mut self, name: &str, value: value::Bits) -> Result<(), Box<Diag>> {
         match self.widths.get(name) {
             Some(w) if self.leaves.contains_key(name) => {
@@ -156,17 +178,22 @@ impl Sim {
                 self.leaves.insert(name.to_string(), val);
                 Ok(())
             }
-            _ => Err(Box::new(
-                Diag::new(
-                    mimz_core::span::Span::default(),
-                    format!(
-                        "`{name}` is not a drivable input/clock/reset of `{}`",
-                        self.design.module
-                    ),
-                )
-                .with_code("S0239"),
-            )),
+            _ => Err(self.not_a_leaf(name)),
         }
+    }
+
+    /// The shared `S0239` for `set`/`set_val` — one message, two callers.
+    fn not_a_leaf(&self, name: &str) -> Box<Diag> {
+        Box::new(
+            Diag::new(
+                mimz_core::span::Span::default(),
+                format!(
+                    "`{name}` is not a drivable input/clock/reset of `{}`",
+                    self.design.module
+                ),
+            )
+            .with_code("S0239"),
+        )
     }
 
     /// Read the current value of any signal — a leaf (input/clock/reset), a

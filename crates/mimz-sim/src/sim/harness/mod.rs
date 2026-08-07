@@ -350,9 +350,12 @@ impl Run<'_> {
             match stmt {
                 TestStmt::Drive { name, value } => {
                     let v = self.sim.eval(value).map_err(Stop::Err)?;
-                    self.sim
-                        .set(&name.name, v.bits_masked())
-                        .map_err(Stop::Err)?;
+                    // BUG-43 (docs/audit/bugs.md): `set_val`, not
+                    // `set(v.bits_masked())` — the raw-pattern path has no
+                    // source width to sign-extend from, so `p = -9` on a
+                    // `signed[6]` port zero-padded the 5-bit pattern into 23
+                    // instead of 55, and `mimz test` drove the wrong stimulus.
+                    self.sim.set_val(&name.name, v).map_err(Stop::Err)?;
                 }
                 TestStmt::Tick { clock, count } => {
                     if !self.clocks.iter().any(|c| c == &clock.name) {
