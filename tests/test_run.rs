@@ -163,3 +163,39 @@ fn a_thamizh_order_test_header_runs_like_its_code_order_twin() {
     assert!(s.contains("ok"), "no ok line:\n{s}");
     assert!(s.contains("1 passed, 0 failed"), "no summary:\n{s}");
 }
+
+// BUG-43 (docs/audit/bugs.md): a `test` block's `p = -9` was evaluated to
+// a narrow SIGNED `Val` and then handed to `Sim::set` as a raw
+// `bits_masked()` pattern — losing the sign, so the port was driven with
+// 23 instead of 55 and every negative-stimulus test silently checked the
+// wrong input. Drives the whole `signed[6]` table from the filing through
+// the real binary, since the defect was in the harness's drive path
+// specifically, not in the value model (which `crates/mimz-sim/src/sim/
+// value/tests.rs` covers) nor in the emitter (which the Icarus
+// differentials in `tests/self_determined_regression.rs` cover).
+#[test]
+fn a_negative_test_input_drives_its_twos_complement_pattern() {
+    for (written, expected) in [
+        (-1i32, 63u32),
+        (-3, 61),
+        (-5, 59),
+        (-9, 55),
+        (-16, 48),
+        (-17, 47),
+        (-32, 32),
+    ] {
+        let src = format!(
+            "module NG {{\n  in p: signed[6]\n  out u: bits[6]\n  u = unsigned(p)\n}}\n\n\
+             test \"drives {written}\" for NG {{\n  p = {written}\n  \
+             expect u == {expected}\n}}\n"
+        );
+        let p = temp_mimz(&src);
+        let out = mimz().args(["test"]).arg(&p).output().unwrap();
+        assert!(
+            out.status.success(),
+            "`p = {written}` must drive {expected} on a signed[6] port:\n{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+    }
+}

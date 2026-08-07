@@ -856,3 +856,58 @@ fn bug_36_trunc_of_a_concat_hoists_the_base_first() {
     // the value itself just needs to round-trip through both judges.
     differential(src, &[("p0", 0b101_0101_0101)]);
 }
+
+// ---------------------------------------------------------------------
+// BUG-43 (docs/audit/bugs.md): a negative literal evaluated at its
+// magnitude's own natural width. Not a self-determined-POSITION bug, but
+// the same judge pair this file exists to run (our kernel vs. real
+// Icarus on the emitted Verilog) is exactly what the fix has to satisfy
+// — the emitter was already correct here and only the simulator moved,
+// so a sim-only unit test (`crates/mimz-sim/src/sim/value/tests.rs`)
+// cannot prove the two now agree.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_43_negative_literal_in_a_wire_matches_icarus() {
+    // `-1` is the worst case of the family (`natural_width(1) == 1`, so
+    // it negated inside ONE bit and came out `+1`) and the most common
+    // negative constant in real RTL. Emitted as `assign w = (-1);`,
+    // which Verilog sizes from the 8-bit context -> 255.
+    let src = "module Fuzz {\n  in a: bits[8]\n  out y: bits[8]\n  \
+               wire w: signed[8] = -1\n  y = unsigned(w) & a\n}\n";
+    differential(src, &[("a", 0xFF)]);
+}
+
+#[test]
+fn bug_43_negative_literal_comparison_matches_icarus() {
+    // `q == -9` was silently FALSE in the simulator (it compared against
+    // +7) and true in Verilog. `q` holds -9's 6-bit two's complement.
+    let src = "module Fuzz {\n  in q: signed[6]\n  out y: bits[1]\n  \
+               y = if q == -9 { 1 } else { 0 }\n}\n";
+    differential(src, &[("q", 0b110111)]);
+}
+
+#[test]
+fn bug_43_negative_literal_clamp_idiom_matches_icarus() {
+    // The shape `showcase/pid_controller.mimz` ships (`max(-128,
+    // min(total, 127))`), with a NON-power-of-two bound so the buggy
+    // `2^natural_width(n) - n` rule and the correct value differ:
+    // `natural_width(100) == 7`, so `-100` evaluated as `128 - 100 = 28`.
+    let src = "module Fuzz {\n  in x: signed[16]\n  out y: signed[16]\n  \
+               y = max(-100, min(x, 100))\n}\n";
+    // x = -1000 (0xFC18): below the clamp floor, so the result is the
+    // floor itself — the operand that was wrong.
+    differential(src, &[("x", 0xFC18)]);
+}
+
+#[test]
+fn bug_43_negative_literal_in_a_reg_reset_matches_icarus() {
+    // Reset values happened to be CORRECT before the fix (they take a
+    // width-aware path), which is exactly why the bug went unnoticed —
+    // the most visible use of a negative constant is the one that worked.
+    // Pinned so the fix does not regress the path that was already right.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[8]\n  \
+               out y: bits[8]\n  reg r: signed[8] = -1\n  \
+               on rise(clk) {\n    r <- r\n  }\n  y = unsigned(r) & a\n}\n";
+    differential_clocked(src, &[("a", 0xFF)]);
+}

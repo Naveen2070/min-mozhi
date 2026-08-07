@@ -1,5 +1,5 @@
 use super::binary::{cmp_lt, extend_bits};
-use super::remask_to_width;
+use super::resize_to_width;
 use super::*;
 
 use crate::sim::Diag;
@@ -166,7 +166,10 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, Box<Diag>>
                     for (i, el) in elems.iter().enumerate() {
                         let v = eval(env, el)?;
                         let v = match ctx_w {
-                            Some(w) => remask_to_width(v, w),
+                            Some(w) => {
+                                let sg = v.signed;
+                                resize_to_width(v, w, sg)
+                            }
                             None => v,
                         };
                         env.locals.insert(format!("{}_{i}", local.name.name), v);
@@ -178,7 +181,10 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, Box<Diag>>
                 let ctx_w = local.inferred_width.get();
                 let v = eval(env, &local.value)?;
                 let v = match ctx_w {
-                    Some(w) => remask_to_width(v, w),
+                    Some(w) => {
+                        let sg = v.signed;
+                        resize_to_width(v, w, sg)
+                    }
                     None => v, // checker not run (e.g. bare sim test); trust the Val width
                 };
                 env.locals.insert(local.name.name.clone(), v);
