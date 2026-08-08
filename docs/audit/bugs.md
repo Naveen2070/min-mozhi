@@ -3158,3 +3158,132 @@ wherever the root cause lands) and add seed 202427830 to a replayed seed corpus
 (see [GAP-11](gaps.md)).
 
 ---
+
+## BUG-45 (HIGH, FIXED 2026-08-08) — Hoisted wires spliced in before the `reg`/`wire`/`mem`/instance declarations they reference
+
+**What.** Every hoisted `wire __mimz_sub_N` / `assign` pair (BUG-19/20/23/28/
+29/36/41's shared mechanism) is spliced into the module body at `fn_pos` —
+right after the port list, before enum localparams, `wire`/`reg`/`mem`
+declarations, and instances. Any hoist whose rendered text references a
+`reg`, a plain `wire`, a memory, or an instance's auto-wired output port
+(`{inst}_{port}`) therefore forward-references a declaration that appears
+_later_ in the file. Icarus Verilog 14.0 rejects this outright:
+
+```text
+error: Unable to bind wire/reg/memory `r0' in `diff_tb.uut'
+      : A symbol with that name was declared here. Check for declaration after use.
+error: Unable to elaborate r-value: (11'd1)-(r0)
+```
+
+Confirmed byte-for-byte pre-existing: reproduced on an unmodified checkout
+(`git stash` before any BUG-41 work), and hit by content nobody was
+touching — the shipped `examples/english/shift_register.mimz` example, a
+random `differential_fuzz_clocked` seed (202427634), and this repo's own
+pre-existing `bug_23_wrap_under_sibling_add_inside_a_concat_matches_icarus`
+regression test all fail the identical way. Icarus 12.0 (this project's own
+audit baseline) evidently tolerates the ordering; 14.0 does not — nothing
+about the emitted Verilog's _meaning_ depends on declaration order (Verilog
+module items are order-independent by the language spec), only this
+specific tool's strictness.
+
+**Cause.** `emit_verilog/module/mod.rs`'s `module()`: `fn_pos` is captured
+immediately after the port-list header, then a single `inject` string
+(the `clog2` helper, injected user `fn` bodies, and `self.hoisted_decls`)
+is spliced there at the end — before wire/reg/mem declarations and before
+`emit_instances` ever run, even though hoisting itself only happens later,
+during `emit_drives`/`seq_stmts`' expression rendering.
+
+**How found.** Discovered verifying BUG-41's fix in this environment
+(Icarus 14.0) — 2 of 5 new BUG-41 regression tests (instance-port operand,
+memory-read operand) and 4 pre-existing tests/examples failed this way,
+none related to BUG-41's own classification logic.
+
+**Severity.** HIGH — silently breaks compilation (not simulation) of any
+design where a hoist happens to reference a `reg`/`wire`/`mem`/instance
+port, which is the ordinary case, not a corner one; masked wherever the
+toolchain's Icarus build tolerates forward references.
+
+**Fix.** A second insertion point, `hoist_pos`, captured right after
+`emit_instances(&m.items)` (i.e. after every `wire`/`reg`/`mem` declaration
+and every instance's auto-wired output). `self.hoisted_decls` is spliced
+there instead of at `fn_pos`; the `clog2`/user-`fn` injection stays at
+`fn_pos` (function declarations and call sites are not order-sensitive in
+Verilog, confirmed empirically — no test regressed). The two `insert_str`
+calls run in `hoist_pos` order first, `fn_pos` second, since `fn_pos <
+hoist_pos` and inserting at the larger offset first leaves the smaller one
+valid.
+
+**Test.** `tests/self_determined_regression.rs`'s
+`bug_41_instance_port_operand_of_add_in_concat_matches_icarus` and
+`..._mem_read_operand_...` now pass; the pre-existing `bug_23_wrap_under_
+sibling_add_inside_a_concat_matches_icarus` and `differential_fuzz_clocked_
+matches_icarus` (seed 202427634) regressions are unblocked; `examples/
+english/shift_register.mimz` and `showcase/*/pid_controller.mimz`
+(all 4 language flavors) compile and elaborate clean. Full workspace green
+(`REQUIRE_IVERILOG=1 cargo test --workspace --release --no-fail-fast`),
+`fmt`/`clippy -D warnings` clean. Goldens regenerated
+(`MIMZ_UPDATE_GOLDENS=1`) and `crates/mimz-wasm/pkg` rebuilt
+(`wasm-pack build crates/mimz-wasm --target web --release`) to match the
+new (cosmetic-only) declaration order.
+
+**Note.** Fixing this unmasked two unrelated, independently pre-existing
+bugs in hand-written self-checking testbenches (never reached before
+because elaboration always failed first in this environment) — see the
+`sc_pid_controller_tb.v` and `sc_vga_pattern_tb.v` fixes in the same commit
+(wrong hand-calculated expected values / an off-by-one tick count; the
+design and emitter were both already correct) — and surfaced a third,
+separate, still-open emitter defect, filed as [BUG-46](#bug-46-medium-open--truncs-base-hoist-does-not-cover-a-module-parameter-so-the-part-select-lands-on-a-composite-expression).
+
+---
+
+## BUG-46 (MEDIUM, OPEN) — `Trunc`'s base-hoist does not cover a module parameter, so the part-select lands on a composite expression
+
+**What.** `showcase/english/melody_player.mimz` emits:
+
+```verilog
+dur_cnt <= ((dur) * TICK)[(32)-1:0];
+```
+
+a Verilog part-select (`[...]`) applied directly to a parenthesized `*`
+expression — a syntax error in any Icarus version (`Malformed statement`),
+unlike [BUG-45](#bug-45-high-fixed-2026-08-08--hoisted-wires-spliced-in-before-the-regwirememinstance-declarations-they-reference)'s version-sensitive strictness. `TICK` is a module
+`parameter (TICK = 50000)`.
+
+**Cause.** `Builtin::Trunc`'s base-hoist (`emit_verilog/expr.rs`, BUG-36's
+own fix) only unconditionally hoists a non-identifier base when
+`kinds::infer_kind` can resolve its `Kind` (needed to size the hoisted
+wire). Module parameters are deliberately excluded from `cur_decls`/
+`build_decls` (kept symbolic, per that function's own doc — a real
+per-instance override, not a fixed width), so `infer_kind(dur * TICK,
+decls)` is `None` (`TICK` unresolvable), and the hoist that BUG-20/36
+otherwise guarantee for a composite `Slice`/`Trunc` base never fires here.
+
+**How found.** Discovered as a side effect of fixing BUG-45 (the ordering
+bug) — this file's `self_checking_showcase_testbenches_pass` test never
+reached this line before because Icarus errored on an earlier, unrelated
+declaration-order issue first. Confirmed byte-for-byte pre-existing on an
+unmodified checkout (`git stash`) — unrelated to BUG-41/BUG-45 or anything
+else touched on this branch.
+
+**Severity.** MEDIUM — breaks compilation (a clear, loud failure, not a
+silent miscompile) of any design that truncates/slices a width-effect
+expression involving a module parameter; `melody_player.mimz` is the first
+shipped example to do so.
+
+**Fix.** Not implemented. `hoist_slice_base_if_needed`'s two callers
+(`ExprKind::Slice`, `Builtin::Trunc`) need to hoist unconditionally on
+shape even when `infer_kind` returns `None`, the same way BUG-20's fix
+already treats a composite base as always needing a wire regardless of
+width — but the wire declaration needs _some_ width text, and a
+parameter-involving expression has no fixed numeric one, only a symbolic
+Verilog expression (the same "hoist to a symbolically-sized wire" idea
+recorded as future work for BUG-41's own Task 2: `wire [(WIDTH)-1:0]
+__mimz_sub_N;`, mirroring how a port's own width already renders
+symbolically via `width_subst`).
+
+**Test.** None yet. Once fixed: `melody_player.mimz`'s
+`self_checking_showcase_testbenches_pass` (`tests/icarus.rs`) should pass,
+plus a minimal regression in `tests/self_determined_regression.rs`
+(`trunc((x * PARAM), N)` inside a `reg`'s next-state expression).
+
+---

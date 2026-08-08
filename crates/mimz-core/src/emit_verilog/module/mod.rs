@@ -311,6 +311,20 @@ impl Emitter<'_> {
         self.repeat_budget = REPEAT_BUDGET;
         self.emit_instances(&m.items);
 
+        // Insertion point for every hoisted `wire`/`assign` pair
+        // (`self.hoisted_decls`, filled in below by the drives/seq-block
+        // rendering that follows) — BUG-44 (docs/audit/bugs.md): a hoisted
+        // wire can reference a `reg`/`wire`/`mem` (declared just above) or
+        // an instance's output wire (declared by `emit_instances`, just
+        // above too), so it must land AFTER both, not at `fn_pos` (right
+        // after the port list, before either). Icarus Verilog 14 rejects
+        // forward references to those with "declaration after use" —
+        // 12.0 (this codebase's own audit baseline) did not catch it,
+        // which is how this went unnoticed even though the underlying
+        // shape (`bug_23_wrap_under_sibling_add_inside_a_concat_matches_icarus`)
+        // was already a passing, shipped regression test.
+        let hoist_pos = self.out.len();
+
         // Combinational drives (unrolling `repeat` the same way).
         // Pre-populate bundle_sigs so emit_drives can flatten bundle assignments.
         // Repeat-body bundle wires aren't tracked in bundle_sigs — moot for
@@ -467,7 +481,12 @@ impl Emitter<'_> {
             inject.push_str(CLOG2_FN);
         }
         inject.push_str(&user_fn_inject);
-        inject.push_str(&self.hoisted_decls);
+        // `hoist_pos` insertion FIRST — it sits after `fn_pos` in `self.out`,
+        // so inserting there does not shift `fn_pos` itself; inserting in
+        // the other order would silently move `hoist_pos` out from under us.
+        if !self.hoisted_decls.is_empty() {
+            self.out.insert_str(hoist_pos, &self.hoisted_decls);
+        }
         if !inject.is_empty() {
             self.out.insert_str(fn_pos, &inject);
         }
