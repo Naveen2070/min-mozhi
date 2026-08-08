@@ -3232,11 +3232,11 @@ because elaboration always failed first in this environment) — see the
 `sc_pid_controller_tb.v` and `sc_vga_pattern_tb.v` fixes in the same commit
 (wrong hand-calculated expected values / an off-by-one tick count; the
 design and emitter were both already correct) — and surfaced a third,
-separate, still-open emitter defect, filed as [BUG-46](#bug-46-medium-open--truncs-base-hoist-does-not-cover-a-module-parameter-so-the-part-select-lands-on-a-composite-expression).
+separate emitter defect, filed and later fixed as [BUG-46](#bug-46-medium-fixed-2026-08-08--truncs-base-hoist-does-not-cover-a-module-parameter-so-the-part-select-lands-on-a-composite-expression).
 
 ---
 
-## BUG-46 (MEDIUM, OPEN) — `Trunc`'s base-hoist does not cover a module parameter, so the part-select lands on a composite expression
+## BUG-46 (MEDIUM, FIXED 2026-08-08) — `Trunc`'s base-hoist does not cover a module parameter, so the part-select lands on a composite expression
 
 **What.** `showcase/english/melody_player.mimz` emits:
 
@@ -3270,20 +3270,40 @@ silent miscompile) of any design that truncates/slices a width-effect
 expression involving a module parameter; `melody_player.mimz` is the first
 shipped example to do so.
 
-**Fix.** Not implemented. `hoist_slice_base_if_needed`'s two callers
-(`ExprKind::Slice`, `Builtin::Trunc`) need to hoist unconditionally on
-shape even when `infer_kind` returns `None`, the same way BUG-20's fix
-already treats a composite base as always needing a wire regardless of
-width — but the wire declaration needs _some_ width text, and a
-parameter-involving expression has no fixed numeric one, only a symbolic
-Verilog expression (the same "hoist to a symbolically-sized wire" idea
-recorded as future work for BUG-41's own Task 2: `wire [(WIDTH)-1:0]
-__mimz_sub_N;`, mirroring how a port's own width already renders
-symbolically via `width_subst`).
+**Fix.** Not the symbolic-wire approach originally sketched above —
+`kinds::infer_kind` now resolves a module-parameter `Ident` after all,
+rather than teaching its callers to hoist without a `Kind`. A bare `Ident`
+absent from `decls` is, by construction (this file's own module doc: only
+module-body expressions ever reach `kinds.rs`), a module `int` parameter —
+the checker's own `ident_ty` types it `Ty::CtInt`, exactly like a bare
+integer literal, so it already had a rule to adapt to a sized sibling
+operand's `Kind` rather than carry its own (`checker::widths::ops::
+adapt_lossless`/`matched_ty`). New `adapts_to_sibling` recognizes both
+shapes (bare literal OR unresolvable `Ident`); new `adapted_lossless_
+operands` resolves such an operand to its sibling's own `Kind` for the
+lossless family (`Add`/`Sub`/`Mul`), mirroring `adapt_lossless`'s growth
+rule (`other.width.max(v)`, simplified to `other.width` — sound whenever
+the parameter's value fits the sibling's width, true for every real
+parameter used as a multiplier/addend against an already-sized signal).
+The pre-existing `is_bare_int`-only check in the `AddWrap`/`BitAnd`-family
+arm is widened to `adapts_to_sibling` for the same reason, matching
+`matched_ty`'s handling exactly (no growth). `dur * TICK` (`dur: bits[8]`,
+`TICK` defaulted to 50000) now resolves to a 64-bit `Kind`
+(`lossless_result(Kind{32}, Kind{32}, is_mul=true)`, after `extend(dur,
+32)`), which is enough to hoist `__mimz_sub_1` and slice it — verified
+against Icarus directly (`wire [63:0] __mimz_sub_1; assign __mimz_sub_1 =
+((dur) * TICK); ... dur_cnt <= __mimz_sub_1[(32)-1:0];`). Shift amounts
+(`Shl`/`Shr`) are deliberately left unresolvable for a parameter — real
+Verilog's own context growth is harmless there (BUG-30) and doesn't need
+this.
 
-**Test.** None yet. Once fixed: `melody_player.mimz`'s
-`self_checking_showcase_testbenches_pass` (`tests/icarus.rs`) should pass,
-plus a minimal regression in `tests/self_determined_regression.rs`
-(`trunc((x * PARAM), N)` inside a `reg`'s next-state expression).
+**Test.** `lossless_mul_with_a_module_parameter_adapts_to_the_sized_operand`
+(`emit_verilog/kinds.rs` unit test). `melody_player.mimz`'s
+`self_checking_showcase_testbenches_pass` (`tests/icarus.rs`) now passes;
+full workspace green (`REQUIRE_IVERILOG=1 cargo test --workspace --release
+--no-fail-fast`) after regenerating goldens (`MIMZ_UPDATE_GOLDENS=1`) and
+rebuilding `crates/mimz-wasm/pkg` — both `melody_player` and the
+`tamil-pure` showcase's `isai` (same `TICK`-multiply shape) picked up the
+new hoisted wire.
 
 ---
