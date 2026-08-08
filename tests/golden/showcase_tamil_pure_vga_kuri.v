@@ -12,10 +12,6 @@ module VgaKuri (
     output wire [(4)-1:0] frame_cnt_result,
     output wire frame_cnt_running
 );
-    wire [9:0] __mimz_sub_1;
-    assign __mimz_sub_1 = (h_cnt >> 7);
-    wire [5:0] __mimz_sub_2;
-    assign __mimz_sub_2 = (16 - 1);
     reg [(10)-1:0] h_cnt;
     reg [(10)-1:0] v_cnt;
     wire hsync;
@@ -29,6 +25,10 @@ module VgaKuri (
     reg frame_cnt_running_r;
     reg [(4)-1:0] frame_cnt_acc;
     reg frame_cnt_done_r;
+    wire [9:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (h_cnt >> 7);
+    wire [5:0] __mimz_sub_2;
+    assign __mimz_sub_2 = (16 - 1);
     assign hsync = ((((h_cnt >= (640 + 16)) && (h_cnt < ((640 + 16) + 96)))) ? (0) : (1));
     assign vsync = ((((v_cnt >= (480 + 10)) && (v_cnt < ((480 + 10) + 2)))) ? (1) : (0));
     assign h_active = (h_cnt < 640);

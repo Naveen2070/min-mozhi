@@ -165,39 +165,166 @@ impl Emitter<'_> {
     ///
     /// Task 6 adds the real caller (`module()`'s own `self.cur_decls`
     /// assignment, above).
+    ///
+    /// BUG-41 (docs/audit/bugs.md): also inserts every fact
+    /// `kinds::infer_kind`'s `Index`/`FnCall`/`Field` arms need but cannot
+    /// reach through `decls`' plain namespace alone — a memory's element
+    /// `Kind` (under `kinds::mem_elem_decl_key`), a non-array instance's
+    /// output-port `Kind`s (under the exact `{inst}_{port}` name
+    /// `expr.rs`'s own `Field` rendering already produces — no reserved
+    /// prefix needed, a real Verilog signal is never ALSO named that by
+    /// coincidence any more than it collides with an existing hoisted
+    /// `__mimz_sub_N` wire), and every `fn`'s declared return `Kind`
+    /// (under `kinds::fn_ret_decl_key`, independent of any one call's
+    /// arguments). Keeping `infer_kind`'s own signature at `(expr, decls)`
+    /// — no second map, no `&Project` parameter — means every caller in
+    /// `expr.rs` stays exactly as simple as it already was.
     pub(super) fn build_decls(
         &self,
         flat: &[ModuleItem],
     ) -> HashMap<String, crate::width_rules::Kind> {
+        use crate::emit_verilog::kinds::{fn_ret_decl_key, mem_elem_decl_key};
+
         let mut decls = HashMap::new();
         for item in flat {
-            let (name, ty) = match item {
-                ModuleItem::Port { name, ty, .. } => (name, ty),
-                ModuleItem::Wire { name, ty, .. } => (name, ty),
-                ModuleItem::Reg { name, ty, .. } => (name, ty),
-                _ => continue,
-            };
-            let bundle_fields = match ty {
-                Type::Bundle {
-                    name: bname,
-                    args: bargs,
-                } => Some(self.resolve_bundle_fields(bname, bargs)),
-                Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
-                    Some(self.resolve_bundle_fields(id, &[]))
+            match item {
+                ModuleItem::Port { name, ty, .. }
+                | ModuleItem::Wire { name, ty, .. }
+                | ModuleItem::Reg { name, ty, .. } => {
+                    self.insert_signal_kind(&mut decls, name, ty);
                 }
-                _ => None,
-            };
-            if let Some(fields) = bundle_fields {
-                for (fname, fty) in &fields {
-                    if let Some(k) = self.resolved_kind(fty) {
-                        decls.insert(format!("{}_{}", name.name, fname), k);
+                ModuleItem::Mem { name, ty, .. } => {
+                    if let Some(k) = self.scalar_kind_in_env(ty, &self.env) {
+                        decls.insert(mem_elem_decl_key(&name.name), k);
                     }
                 }
-            } else if let Some(k) = self.resolved_kind(ty) {
-                decls.insert(name.name.clone(), k);
+                // Array instances (`let fa[i] = ...` inside `repeat`) render
+                // a `Field` access through `Index`, a different shape than
+                // `infer_kind`'s own `Field` arm handles — out of this
+                // task's scope (same "not handled here" fallback every
+                // other unresolved shape gets, never a regression: these
+                // were just as unresolvable before this task).
+                ModuleItem::Inst(inst) if inst.index.is_none() => {
+                    self.insert_instance_output_kinds(&mut decls, inst);
+                }
+                _ => {}
+            }
+        }
+        for (fname, decl) in &self.project.funcs {
+            if let Some(k) = self.scalar_kind_in_env(&decl.ret, &self.env) {
+                decls.insert(fn_ret_decl_key(fname), k);
             }
         }
         decls
+    }
+
+    /// The bundle-or-scalar `Port`/`Wire`/`Reg` insertion `build_decls`
+    /// used to do inline, factored out unchanged so `build_decls` itself
+    /// can also handle `Mem`/`Inst` items without the loop body growing a
+    /// second incompatible shape.
+    fn insert_signal_kind(
+        &self,
+        decls: &mut HashMap<String, crate::width_rules::Kind>,
+        name: &Ident,
+        ty: &Type,
+    ) {
+        let bundle_fields = match ty {
+            Type::Bundle {
+                name: bname,
+                args: bargs,
+            } => Some(self.resolve_bundle_fields(bname, bargs)),
+            Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                Some(self.resolve_bundle_fields(id, &[]))
+            }
+            _ => None,
+        };
+        if let Some(fields) = bundle_fields {
+            for (fname, fty) in &fields {
+                if let Some(k) = self.resolved_kind(fty) {
+                    decls.insert(format!("{}_{}", name.name, fname), k);
+                }
+            }
+        } else if let Some(k) = self.resolved_kind(ty) {
+            decls.insert(name.name.clone(), k);
+        }
+    }
+
+    /// Every output port `Kind` of a non-array-instance `inst`, keyed
+    /// `{inst_name}_{port_name}` (matching `expr.rs::Field`'s own
+    /// rendering) — BUG-41's instance-port case. Resolves the child's
+    /// width expressions against an env layering the child's OWN file/
+    /// module consts (`self.module_envs`, the same source `instance()`
+    /// itself uses) under THIS instance's actual parameter arguments
+    /// (folded against the CURRENT module's `self.env`) — best-effort:
+    /// an argument or child const that doesn't fold to a literal here
+    /// (a genuinely symbolic parametric width) just means that one port
+    /// stays absent from `decls`, the same safe "not resolvable" outcome
+    /// as every other shape this module's facts can't cover. Skips a
+    /// `Bundle`-typed output port — `scalar_kind_in_env` returns `None`
+    /// for it, same as any other unresolvable type.
+    fn insert_instance_output_kinds(
+        &self,
+        decls: &mut HashMap<String, crate::width_rules::Kind>,
+        inst: &Inst,
+    ) {
+        let Some((child_file, target)) = self.project.resolve_target_with_file(&inst.module) else {
+            return;
+        };
+        let mut env: Env = self
+            .module_envs
+            .get(&(child_file, target.name().name.clone()))
+            .cloned()
+            .unwrap_or_default();
+        for a in &inst.args {
+            if let Ok(v) = consteval::eval(&a.value, &self.env) {
+                env.insert(a.name.name.clone(), v);
+            }
+        }
+        for item in target.items() {
+            if let ModuleItem::Port {
+                dir: Dir::Out,
+                name,
+                ty,
+            } = item
+                && let Some(k) = self.scalar_kind_in_env(ty, &env)
+            {
+                decls.insert(format!("{}_{}", inst.name.name, name.name), k);
+            }
+        }
+    }
+
+    /// Like `resolved_kind`, but against an EXPLICIT env instead of
+    /// `self.env`, and returns `None` (rather than panicking) for
+    /// `Bundle`/`Array` — `resolved_kind`'s own panics assume its only
+    /// caller (`build_decls`'s bundle-flattening loop) never hands it a
+    /// bundle/array type directly, an invariant that does NOT hold for a
+    /// `fn`'s declared return type or an instance's port type (both can
+    /// legitimately be `Bundle`-typed in the source, unlike an
+    /// already-flattened `Port`/`Wire`/`Reg` field).
+    fn scalar_kind_in_env(&self, ty: &Type, env: &Env) -> Option<crate::width_rules::Kind> {
+        use crate::width_rules::Kind;
+        match ty {
+            Type::Bit => Some(Kind {
+                width: 1,
+                signed: false,
+            }),
+            Type::Bits(e) => Some(Kind {
+                width: consteval::eval(e, env).ok()?.to_i128_saturating() as u32,
+                signed: false,
+            }),
+            Type::Signed(e) => Some(Kind {
+                width: consteval::eval(e, env).ok()?.to_i128_saturating() as u32,
+                signed: true,
+            }),
+            Type::Named(id) => {
+                let en = self.project.resolve_enum(id)?;
+                Some(Kind {
+                    width: en.inferred_total_width.get()?,
+                    signed: false,
+                })
+            }
+            Type::Bundle { .. } | Type::Array { .. } => None,
+        }
     }
 
     /// Resolve a scalar (never `Bundle`/`Array` — `build_decls` above
@@ -260,13 +387,19 @@ impl Emitter<'_> {
     /// Returns `rendered_text` unchanged when there is no mismatch (the
     /// common case — no new wire, no behavior change).
     ///
-    /// Callers (`expr.rs`) must only reach this when `expr::kind_is_inferrable`
-    /// has already confirmed `infer_kind` can resolve `expr` against `decls`
-    /// without panicking — this function does not re-check that itself.
+    /// Callers (`expr.rs`) must only reach this with the `Kind`
+    /// `kinds::infer_kind(expr, decls)` already returned `Some` of — BUG-41
+    /// (`docs/audit/bugs.md`): `infer_kind` itself is now the one and only
+    /// gate (no separate `kind_is_inferrable` to keep in sync by hand), so
+    /// every call site matches on its `Option` first and only reaches this
+    /// function in the `Some` arm, passing that same `Kind` through as
+    /// `mimz_kind` instead of making this function re-derive (and
+    /// potentially re-fail to derive) it.
     pub(in crate::emit_verilog) fn hoist_if_needed(
         &mut self,
         expr: &Expr,
         rendered_text: String,
+        mimz_kind: crate::width_rules::Kind,
         decls: &HashMap<String, crate::width_rules::Kind>,
     ) -> String {
         // Same early-return `hoist_slice_base_if_needed` already uses: a
@@ -284,10 +417,8 @@ impl Emitter<'_> {
         if super::expr::is_plain_identifier(&rendered_text) {
             return rendered_text;
         }
-        use crate::emit_verilog::kinds::infer_kind;
         use crate::emit_verilog::self_determined::verilog_self_determined_kind;
 
-        let mimz_kind = infer_kind(expr, decls);
         let Some(verilog_kind) = verilog_self_determined_kind(expr, decls) else {
             return rendered_text;
         };

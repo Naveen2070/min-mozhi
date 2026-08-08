@@ -31,80 +31,13 @@ fn field_expr(base: &Expr, field_name: &str) -> Expr {
     }
 }
 
-/// True iff `kinds::infer_kind` can resolve `expr`'s `Kind` against `decls`
-/// WITHOUT panicking — the pre-check every hoist call site below runs
-/// before ever calling `Emitter::hoist_if_needed` (which calls `infer_kind`
-/// unconditionally, first thing, with no such check of its own).
-///
-/// Mirrors `infer_kind`'s own traversal shape (same `ExprKind`s, same
-/// eagerness — e.g. a `Binary`'s `lhs` is checked even for `Eq`/`Ne`, since
-/// `infer_kind`'s `l = infer_kind(lhs, decls)` runs before it looks at
-/// `op`) and `kinds::const_fold`'s literal-only requirement for slice
-/// bounds/extend-trunc widths, without ever panicking itself.
-///
-/// This exists because `decls` (`Emitter::cur_decls`, built once per
-/// module from its own Port/Wire/Reg declarations) is deliberately NOT a
-/// complete symbol table: a `fn` body's own params/`let`s, a module
-/// `parameter` (kept symbolic by design — see `build_decls`'s own doc),
-/// and the testbench emitter's signals (which never populate `cur_decls`
-/// at all — the testbench `Emitter` never calls `module()`) are all real
-/// `Ident`s `expr_subst` renders through the exact same Concat/Replicate/
-/// Binary/Slice/Cast arms this task wires hoisting into, and none of them
-/// are ever keys in `decls`. Without this guard, `hoist_if_needed` would
-/// panic compiling any of those — a testbench `expect sum == 15`, a `fn`
-/// body's own arithmetic, or a port width like `bits[W + 1]` — instead of
-/// just rendering them exactly as before this task (the correct behavior:
-/// hoisting is only ever needed for the module-body value expressions
-/// BUG-19/BUG-20 are about).
-fn kind_is_inferrable(expr: &Expr, decls: &HashMap<String, crate::width_rules::Kind>) -> bool {
-    match &expr.kind {
-        ExprKind::Int { .. } | ExprKind::Bool(_) => true,
-        ExprKind::Ident(name) => decls.contains_key(name),
-        ExprKind::Unary { expr: inner, .. } => kind_is_inferrable(inner, decls),
-        // `infer_kind`'s `Binary` arm computes `l = infer_kind(lhs, decls)`
-        // unconditionally before it even looks at `op` (and `r` too, for
-        // every arm but `Eq`/`Ne`/`Lt`/`Le`/`Gt`/`Ge`/`LogicAnd`/`LogicOr`)
-        // — checking both sides regardless of `op` is conservative (may
-        // skip a hoist that would have been safe) but never wrong.
-        ExprKind::Binary { lhs, rhs, .. } => {
-            kind_is_inferrable(lhs, decls) && kind_is_inferrable(rhs, decls)
-        }
-        ExprKind::Concat(parts) | ExprKind::Replicate { parts, .. } => {
-            parts.iter().all(|p| kind_is_inferrable(p, decls))
-        }
-        // `infer_kind`'s `Slice` arm never looks at `base` at all — only
-        // `hi`/`lo`, via `const_fold`, which panics on anything but a
-        // literal `Int` node (NOT just "constant-foldable": `W - 1` is
-        // compile-time-constant but is a `Binary` node, not an `Int` one,
-        // and `const_fold` does not evaluate it).
-        ExprKind::Slice { hi, lo, .. } => {
-            matches!(hi.kind, ExprKind::Int { .. }) && matches!(lo.kind, ExprKind::Int { .. })
-        }
-        ExprKind::Call { func, args } => match func {
-            Builtin::Extend | Builtin::Trunc => {
-                matches!(args[1].kind, ExprKind::Int { .. }) && kind_is_inferrable(&args[0], decls)
-            }
-            Builtin::SignedCast
-            | Builtin::UnsignedCast
-            | Builtin::Encoding
-            | Builtin::Abs
-            | Builtin::Nand
-            | Builtin::Nor
-            | Builtin::Xnor => kind_is_inferrable(&args[0], decls),
-            // BUG-35 (docs/audit/bugs.md): these five builtins fell through
-            // to `_ => false` below, so ANY expression containing one as a
-            // sub-part (e.g. a shift whose left operand is `nand(x)`) was
-            // silently untouchable by the hoist machinery — not just
-            // unclassified for its own sake. `infer_call` (kinds.rs) now
-            // has real arms for all five, so this can ask them for real.
-            Builtin::Min | Builtin::Max => {
-                kind_is_inferrable(&args[0], decls) && kind_is_inferrable(&args[1], decls)
-            }
-            _ => false,
-        },
-        _ => false,
-    }
-}
+// BUG-41 (docs/audit/bugs.md): the hand-maintained `kind_is_inferrable`
+// gate that used to live here is retired — `kinds::infer_kind` now
+// returns `Option<Kind>` directly (`None` where this used to say
+// `false`), so every call site below matches on it once instead of
+// checking a separate, easy-to-drift function first. See `kinds.rs`'s
+// own module doc for why keeping the gate and the classifier in sync by
+// hand was the defect generator in the first place.
 
 /// True iff `kind`'s own top-level operator is one whose spec-defined
 /// result depends on the width it was originally evaluated at — lossless
@@ -260,11 +193,19 @@ impl Emitter<'_> {
     ) -> String {
         let hoistable =
             is_width_effect_binop(&child.kind) || (allow_shift && is_shift_binop(&child.kind));
-        if hoistable && kind_is_inferrable(child, decls) {
-            let kind = crate::emit_verilog::kinds::infer_kind(child, decls);
-            self.hoist_slice_base_if_needed(text, kind.width, kind.signed)
-        } else {
-            text
+        // `None` (Kind unresolvable — a `fn`-body local, a module
+        // `parameter`, a testbench signal, or a symbolic parametric width;
+        // BUG-41's own remaining, pre-existing residue, `docs/audit/bugs.md`)
+        // leaves `text` unchanged: a wire declaration needs a CONCRETE
+        // width, which is exactly the one thing this branch doesn't have —
+        // the same, already-correct fallback these shapes had before this
+        // task (`kind_is_inferrable`'s own retired doc comment).
+        match hoistable
+            .then(|| crate::emit_verilog::kinds::infer_kind(child, decls))
+            .flatten()
+        {
+            Some(kind) => self.hoist_slice_base_if_needed(text, kind.width, kind.signed),
+            None => text,
         }
     }
 
@@ -408,18 +349,16 @@ impl Emitter<'_> {
                     let decls = self.cur_decls.clone();
                     let l = {
                         let text = self.expr_subst(lhs, subst, arrays);
-                        if kind_is_inferrable(lhs, &decls) {
-                            self.hoist_if_needed(lhs, text, &decls)
-                        } else {
-                            text
+                        match crate::emit_verilog::kinds::infer_kind(lhs, &decls) {
+                            Some(k) => self.hoist_if_needed(lhs, text, k, &decls),
+                            None => text,
                         }
                     };
                     let r = {
                         let text = self.expr_subst(rhs, subst, arrays);
-                        if kind_is_inferrable(rhs, &decls) {
-                            self.hoist_if_needed(rhs, text, &decls)
-                        } else {
-                            text
+                        match crate::emit_verilog::kinds::infer_kind(rhs, &decls) {
+                            Some(k) => self.hoist_if_needed(rhs, text, k, &decls),
+                            None => text,
                         }
                     };
                     (l, r)
@@ -595,10 +534,9 @@ impl Emitter<'_> {
                         // plain `eval` (`expected_width: None`), so a
                         // shift part here is self-determined.
                         let text = self.hoist_width_effect_operand(p, text, &decls, true);
-                        if kind_is_inferrable(p, &decls) {
-                            self.hoist_if_needed(p, text, &decls)
-                        } else {
-                            text
+                        match crate::emit_verilog::kinds::infer_kind(p, &decls) {
+                            Some(k) => self.hoist_if_needed(p, text, k, &decls),
+                            None => text,
                         }
                     })
                     .collect();
@@ -616,10 +554,9 @@ impl Emitter<'_> {
                         // plain `eval` (`expected_width: None`), so a
                         // shift part here is self-determined.
                         let text = self.hoist_width_effect_operand(p, text, &decls, true);
-                        if kind_is_inferrable(p, &decls) {
-                            self.hoist_if_needed(p, text, &decls)
-                        } else {
-                            text
+                        match crate::emit_verilog::kinds::infer_kind(p, &decls) {
+                            Some(k) => self.hoist_if_needed(p, text, k, &decls),
+                            None => text,
                         }
                     })
                     .collect();
@@ -670,19 +607,17 @@ impl Emitter<'_> {
                 // Verilog, not just a width mismatch, so this hoists
                 // unconditionally on shape (`is_plain_identifier`, inside
                 // `hoist_slice_base_if_needed`) rather than on a Kind
-                // mismatch. `kind_is_inferrable` still guards the
-                // `infer_kind` call needed to size the hoisted wire — a
+                // mismatch. `infer_kind` returning `None` still guards the
+                // width it needs to size the hoisted wire — a
                 // `fn`-body/testbench/width slice base is left exactly as
                 // before this task. Always `false` for `signed` — a
                 // part-select's result is unsigned regardless of the
                 // base's own declared signedness.
                 let b = self.expr_subst(base, subst, arrays);
                 let decls = self.cur_decls.clone();
-                let b = if kind_is_inferrable(base, &decls) {
-                    let base_width = crate::emit_verilog::kinds::infer_kind(base, &decls).width;
-                    self.hoist_slice_base_if_needed(b, base_width, false)
-                } else {
-                    b
+                let b = match crate::emit_verilog::kinds::infer_kind(base, &decls) {
+                    Some(k) => self.hoist_slice_base_if_needed(b, k.width, false),
+                    None => b,
                 };
                 let h = self.index_expr(hi, subst, arrays);
                 let l = self.index_expr(lo, subst, arrays);
@@ -795,10 +730,9 @@ impl Emitter<'_> {
                     // `eval_ctx`'s `Call` arm with plain `eval` (see
                     // `call`'s own match arms).
                     let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
-                    let hoisted = if kind_is_inferrable(&args[0], &decls) {
-                        self.hoist_if_needed(&args[0], text, &decls)
-                    } else {
-                        text
+                    let hoisted = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
+                        Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
+                        None => text,
                     };
                     format!("$signed({hoisted})")
                 }
@@ -810,10 +744,9 @@ impl Emitter<'_> {
                     // `eval_ctx`'s `Call` arm with plain `eval` (see
                     // `call`'s own match arms).
                     let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
-                    let hoisted = if kind_is_inferrable(&args[0], &decls) {
-                        self.hoist_if_needed(&args[0], text, &decls)
-                    } else {
-                        text
+                    let hoisted = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
+                        Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
+                        None => text,
                     };
                     format!("$unsigned({hoisted})")
                 }
@@ -826,10 +759,9 @@ impl Emitter<'_> {
                     // `eval_ctx`, so a shift argument here is
                     // self-determined.
                     let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
-                    let hoisted = if kind_is_inferrable(&args[0], &decls) {
-                        self.hoist_if_needed(&args[0], text, &decls)
-                    } else {
-                        text
+                    let hoisted = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
+                        Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
+                        None => text,
                     };
                     format!("$unsigned({hoisted})")
                 }
@@ -939,12 +871,9 @@ impl Emitter<'_> {
                     // any OTHER shape (a concat, here) untouched. Hoist
                     // unconditionally on shape, mirroring `ExprKind::Slice`'s
                     // own `hoist_slice_base_if_needed` call exactly.
-                    let x = if kind_is_inferrable(&args[0], &decls) {
-                        let base_width =
-                            crate::emit_verilog::kinds::infer_kind(&args[0], &decls).width;
-                        self.hoist_slice_base_if_needed(x, base_width, false)
-                    } else {
-                        x
+                    let x = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
+                        Some(k) => self.hoist_slice_base_if_needed(x, k.width, false),
+                        None => x,
                     };
                     let n = self.expr_subst(&args[1], subst, arrays);
                     format!("{x}[({n})-1:0]")

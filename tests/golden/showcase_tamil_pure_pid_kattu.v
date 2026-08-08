@@ -6,6 +6,12 @@ module PidKattu (
     output wire signed [(8)-1:0] kattuppaatu,
     output wire nirraivu
 );
+    reg signed [(16)-1:0] thokaiyiitu;
+    reg signed [(8)-1:0] munthaiya_pizhai;
+    wire signed [(9)-1:0] pizhai;
+    wire signed [(10)-1:0] vikitha_urruppu;
+    wire signed [(10)-1:0] vikitha_veerrupaatu;
+    wire signed [(16)-1:0] moththam;
     wire signed [9:0] __mimz_sub_1;
     assign __mimz_sub_1 = ((ilakku_mathippu) - (allavitappattathu));
     wire signed [10:0] __mimz_sub_2;
@@ -20,12 +26,6 @@ module PidKattu (
     assign __mimz_sub_6 = (((-128) < ((moththam < 127) ? (moththam) : (127))) ? (((moththam < 127) ? (moththam) : (127))) : ((-128)));
     wire signed [16:0] __mimz_sub_7;
     assign __mimz_sub_7 = (thokaiyiitu + (pizhai));
-    reg signed [(16)-1:0] thokaiyiitu;
-    reg signed [(8)-1:0] munthaiya_pizhai;
-    wire signed [(9)-1:0] pizhai;
-    wire signed [(10)-1:0] vikitha_urruppu;
-    wire signed [(10)-1:0] vikitha_veerrupaatu;
-    wire signed [(16)-1:0] moththam;
     assign pizhai = __mimz_sub_1[(9)-1:0];
     assign vikitha_urruppu = __mimz_sub_2[(10)-1:0];
     assign vikitha_veerrupaatu = __mimz_sub_3[(10)-1:0];

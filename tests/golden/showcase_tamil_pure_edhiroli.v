@@ -8,10 +8,6 @@ module ethiroli #(
     output wire nerukkam,
     output wire [(8)-1:0] perrrrathu
 );
-    wire [7:0] __mimz_sub_1;
-    assign __mimz_sub_1 = (nakarvu >> 1);
-    wire [14:0] __mimz_sub_2;
-    assign __mimz_sub_2 = ((vaangki) << 7);
     localparam [1:0] VAANGKINILAI_SEYALARRRRA = 0;
     localparam [1:0] VAANGKINILAI_THOTAKKAM = 1;
     localparam [1:0] VAANGKINILAI_THARAVU = 2;
@@ -27,6 +23,10 @@ module ethiroli #(
     wire anuppi_nikazhvu_tx;
     wire anuppi_nikazhvu_busy;
     UartTx #(.CLKS_PER_BIT(CLKS_PER_BIT)) anuppi_nikazhvu (.clk(clk), .rst(rst), .start(anuppi_thotakkam), .data(ethiroli_ennnnezhuththu), .tx(anuppi_nikazhvu_tx), .busy(anuppi_nikazhvu_busy));
+    wire [7:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (nakarvu >> 1);
+    wire [14:0] __mimz_sub_2;
+    assign __mimz_sub_2 = ((vaangki) << 7);
     assign anuppi = anuppi_nikazhvu_tx;
     assign nerukkam = (((nilai_pathivu == VAANGKINILAI_SEYALARRRRA)) ? (anuppi_nikazhvu_busy) : (1));
     assign perrrrathu = vaangki_ennnnezhuththu;

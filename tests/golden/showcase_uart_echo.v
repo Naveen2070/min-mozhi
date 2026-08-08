@@ -8,10 +8,6 @@ module UartEcho #(
     output wire busy,
     output wire [(8)-1:0] received
 );
-    wire [7:0] __mimz_sub_1;
-    assign __mimz_sub_1 = (shift >> 1);
-    wire [14:0] __mimz_sub_2;
-    assign __mimz_sub_2 = ((rx) << 7);
     localparam [1:0] RXSTATE_IDLE = 0;
     localparam [1:0] RXSTATE_START = 1;
     localparam [1:0] RXSTATE_DATA = 2;
@@ -27,6 +23,10 @@ module UartEcho #(
     wire tx_inst_tx;
     wire tx_inst_busy;
     UartTx #(.CLKS_PER_BIT(CLKS_PER_BIT)) tx_inst (.clk(clk), .rst(rst), .start(tx_start), .data(echo_byte), .tx(tx_inst_tx), .busy(tx_inst_busy));
+    wire [7:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (shift >> 1);
+    wire [14:0] __mimz_sub_2;
+    assign __mimz_sub_2 = ((rx) << 7);
     assign tx = tx_inst_tx;
     assign busy = (((rx_state == RXSTATE_IDLE)) ? (tx_inst_busy) : (1));
     assign received = rx_byte;
