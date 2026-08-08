@@ -415,6 +415,22 @@ impl Emitter<'_> {
         // `hoist_width_effect_operand` and this function run on the same
         // operand — see BUG-23's double-hoist finding (docs/audit/bugs.md).
         if super::expr::is_plain_identifier(&rendered_text) {
+            // Position-matrix invariant (Task 4, `docs/plan/v0.2-
+            // correctness-remediation.local.md`): this doc comment's own
+            // claim — a bare identifier's DECLARED `Kind` (when it names a
+            // real signal; a previously hoisted `__mimz_sub_N` wire is
+            // absent from `decls` and passes trivially) equals what the
+            // caller computed as `mimz_kind` for this position — used to
+            // go unverified. Checking it here turns every example,
+            // regression, and fuzz run that touches a bare-identifier
+            // self-determined operand into a free assertion against a
+            // future `infer_kind`/`build_decls` drift, the same class of
+            // defect BUG-41/BUG-42 shipped as a silent miscompile instead.
+            debug_assert!(
+                decls.get(&rendered_text).is_none_or(|k| *k == mimz_kind),
+                "hoist_if_needed: `{rendered_text}` declared as {:?} but caller computed {mimz_kind:?}",
+                decls.get(&rendered_text),
+            );
             return rendered_text;
         }
         use crate::emit_verilog::self_determined::verilog_self_determined_kind;
