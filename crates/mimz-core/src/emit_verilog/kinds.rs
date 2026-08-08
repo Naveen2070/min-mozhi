@@ -241,6 +241,64 @@ fn is_ct_int_like(kind: &ExprKind) -> bool {
     }
 }
 
+/// True iff `kind` should ADAPT to its sibling operand's `Kind` rather than
+/// contributing an independent one of its own — a bare integer literal
+/// (`is_bare_int`) or a plain `Ident` naming a module `int` parameter.
+/// `kinds.rs` only ever runs on MODULE-BODY value expressions (never a
+/// `fn` body, a testbench signal, or a `repeat` variable — this file's own
+/// module doc), so within that domain a bare `Ident` absent from `decls`
+/// is, by construction, a module parameter: the checker's own `ident_ty`
+/// (`checker/widths/expr/mod.rs`) resolves every other legal name
+/// (port/wire/reg/mem/instance) through the same signal table
+/// `build_decls` mirrors, and would already have rejected an unknown name
+/// before this code ever runs. A module `int` parameter is exactly
+/// `Ty::CtInt` at the checker too (`ident_ty`'s `cx.env.get(name)`
+/// branch) — untyped, adapting to its sized sibling via `adapt_lossless`/
+/// `matched_ty` rather than carrying its own width — so treating it
+/// identically to a bare literal here mirrors the checker's own rule.
+///
+/// BUG-46 (docs/audit/bugs.md): `extend(dur, 32) * TICK` (`TICK` a module
+/// `int` parameter) used to be entirely unresolvable — `TICK` has no
+/// `Kind` of its own and nothing let it defer to `dur`'s — so the whole
+/// `Mul` was undecidable, the `Trunc` wrapping it never hoisted its base,
+/// and Icarus rejected the resulting `(...)[(32)-1:0]` part-select on a
+/// composite expression.
+fn adapts_to_sibling(kind: &ExprKind, decls: &HashMap<String, Kind>) -> bool {
+    is_bare_int(kind) || matches!(kind, ExprKind::Ident(name) if !decls.contains_key(name))
+}
+
+/// `lhs`/`rhs`'s `Kind`s for a LOSSLESS operator (`+`/`-`/`*`), with a
+/// sibling-adapting operand (`adapts_to_sibling`) resolved to the OTHER
+/// side's own `Kind` rather than attempted independently — mirroring the
+/// checker's own `adapt_lossless` (`checker/widths/ops/mod.rs`), which
+/// sizes a `Ty::CtInt` operand to `other.width.max(v's natural width)`;
+/// this simplifies that to just `other.width` (dropping the `v`-exceeds-
+/// `other` case), the same simplifying assumption the width-matching
+/// family's existing bare-literal handling already makes. Sound whenever
+/// the adapting side's actual value fits in `other`'s width — true for
+/// every real module parameter used as a multiplier/addend against an
+/// already-sized signal, which is the only shape this closes (BUG-46).
+fn adapted_lossless_operands(
+    lhs: &Expr,
+    rhs: &Expr,
+    decls: &HashMap<String, Kind>,
+) -> Option<(Kind, Kind)> {
+    match (
+        adapts_to_sibling(&lhs.kind, decls),
+        adapts_to_sibling(&rhs.kind, decls),
+    ) {
+        (true, false) => {
+            let r = infer_kind(rhs, decls)?;
+            Some((r, r))
+        }
+        (false, true) => {
+            let l = infer_kind(lhs, decls)?;
+            Some((l, l))
+        }
+        _ => Some((infer_kind(lhs, decls)?, infer_kind(rhs, decls)?)),
+    }
+}
+
 /// Fold a compile-time-constant expression (a slice bound, a replication
 /// count) to its `u32` value. Slice bounds/replication counts are
 /// guaranteed compile-time constant by the checker (`slice_ty`/
@@ -260,15 +318,14 @@ fn const_fold(expr: &Expr) -> Option<u32> {
 /// `<<`'s growth (`width_rules::shift_result`) needs to know whether the
 /// shift amount is a compile-time constant (grow by exactly that value)
 /// or a genuine runtime signal (grow by its worst case). A bare literal
-/// is the only shape this function recognizes as constant — anything
-/// else reaching `infer_kind` (an `Ident`) is, by `kind_is_inferrable`'s
-/// own gating, a real declared signal in `decls`, never a module `int`
-/// parameter (those are excluded from `decls` by design — see this
-/// file's own module doc comment — so an expression naming one never
-/// reaches here at all, safely falling back to unhoisted rendering,
-/// where real Verilog's own context growth is harmless: BUG-30,
-/// `docs/audit/bugs.md`, "over-growth is always safe once the base
-/// growth is already lossless").
+/// is the only shape this function recognizes as constant — a module
+/// `int` parameter used as a shift amount is NOT treated as one (unlike
+/// `adapts_to_sibling`'s lossless/wrap-family handling): its own value is
+/// not generally knowable here without threading `self.env` through, so
+/// `infer_kind(Ident(param))` still returns `None` for it, and the shift
+/// safely falls back to unhoisted rendering — real Verilog's own context
+/// growth is harmless there (BUG-30, `docs/audit/bugs.md`, "over-growth
+/// is always safe once the base growth is already lossless").
 fn shift_const_amount(amount: &Expr) -> Option<u128> {
     match &amount.kind {
         ExprKind::Int {
@@ -296,13 +353,11 @@ fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>
             crate::width_rules::shift_result(l, r, shift_const_amount(rhs), op == BinOp::Shl).ok()
         }
         BinOp::Add | BinOp::Sub => {
-            let l = infer_kind(lhs, decls)?;
-            let r = infer_kind(rhs, decls)?;
+            let (l, r) = adapted_lossless_operands(lhs, rhs, decls)?;
             crate::width_rules::lossless_result(l, r, false).ok()
         }
         BinOp::Mul => {
-            let l = infer_kind(lhs, decls)?;
-            let r = infer_kind(rhs, decls)?;
+            let (l, r) = adapted_lossless_operands(lhs, rhs, decls)?;
             crate::width_rules::lossless_result(l, r, true).ok()
         }
         BinOp::AddWrap
@@ -311,18 +366,22 @@ fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>
         | BinOp::BitAnd
         | BinOp::BitOr
         | BinOp::BitXor => {
-            // A bare integer literal is the checker's `Ty::CtInt` — untyped,
-            // adapting to a sized sibling operand's width/signedness rather
-            // than carrying its own minimal natural width (`checker::widths::
-            // ops::matched_ty`'s `(Ty::CtInt(v), t) | (t, Ty::CtInt(v))`
-            // arms, which return the SIZED side's type unconditionally, no
+            // A bare integer literal OR a module `int` parameter reference
+            // is the checker's `Ty::CtInt` — untyped, adapting to a sized
+            // sibling operand's width/signedness rather than carrying its
+            // own minimal natural width (`checker::widths::ops::
+            // matched_ty`'s `(Ty::CtInt(v), t) | (t, Ty::CtInt(v))` arms,
+            // which return the SIZED side's type unconditionally, no
             // equality check). `infer_kind`'s own `Int` arm has no such
             // context, so without this, `cnt +% 1` (`cnt: bits[26]`) — a
             // perfectly ordinary, checker-valid program — infers the
             // literal `1` at its own 1-bit width and mismatches the
             // `matched_result` fallback below on a mismatch the checker
             // never considered one.
-            match (is_bare_int(&lhs.kind), is_bare_int(&rhs.kind)) {
+            match (
+                adapts_to_sibling(&lhs.kind, decls),
+                adapts_to_sibling(&rhs.kind, decls),
+            ) {
                 (true, false) => infer_kind(rhs, decls),
                 (false, true) => infer_kind(lhs, decls),
                 _ => {
@@ -587,6 +646,38 @@ mod tests {
         });
         assert_eq!(infer_kind(&lit_rhs, &decls), expected);
         assert_eq!(infer_kind(&lit_lhs, &decls), expected);
+    }
+
+    #[test]
+    fn lossless_mul_with_a_module_parameter_adapts_to_the_sized_operand() {
+        // BUG-46 (docs/audit/bugs.md): `dur * TICK` (`TICK` a module `int`
+        // parameter, absent from `decls` by design) used to make the whole
+        // `Mul` unresolvable, so `Trunc`'s base-hoist never fired and
+        // Icarus rejected the resulting part-select on a composite
+        // expression. `TICK` must adapt to `dur`'s `Kind` instead.
+        let mut decls = HashMap::new();
+        decls.insert(
+            "dur".to_string(),
+            Kind {
+                width: 32,
+                signed: false,
+            },
+        );
+        let e = Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::Mul,
+                lhs: Box::new(ident("dur")),
+                rhs: Box::new(ident("TICK")),
+            },
+            span: Span::new(0, 0),
+        };
+        assert_eq!(
+            infer_kind(&e, &decls),
+            Some(Kind {
+                width: 64,
+                signed: false
+            })
+        );
     }
 
     #[test]

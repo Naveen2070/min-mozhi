@@ -381,7 +381,7 @@ the mitigation for the divergence half, and Stage 4 is done as of
 
 ---
 
-## SEC-10 (MEDIUM, OPEN) — `panic!` in the emitter's kind inference is a compiler-crash primitive
+## SEC-10 (MEDIUM, FIXED 2026-08-08) — `panic!` in the emitter's kind inference is a compiler-crash primitive
 
 **What.** The emitter's own width/signedness inference aborts the process on an
 identifier it cannot resolve:
@@ -424,27 +424,32 @@ crash is a controlled Rust panic, not memory unsafety.
 ([`review-2026-08-02.md`](review-2026-08-02.md) F-8), source read plus targeted
 probing.
 
-**Fix (proposed, not yet landed).** Change the signature to
-`fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind>` and
-treat `None` at the call sites as _"cannot analyze → hoist conservatively."_
+**Fix.** Landed as part of `docs/plan/v0.2-correctness-remediation.local.md`
+Task 2 (BUG-41). `infer_kind`'s signature is now exactly the proposed
+`fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind>`;
+the `Ident` arm is `decls.get(name).copied()` — a plain lookup, no
+`unwrap_or_else(|| panic!(...))` left anywhere in the function. Every call
+site treats `None` as "cannot analyze → don't hoist" (never a crash); the
+`kind_is_inferrable` pre-check this entry names as the fragile cross-file
+convention has been deleted outright — the check is the return value now,
+not a separate contract callers could drift out of sync with. A module
+parameter, previously one of the identifier forms this entry worried about,
+is no longer even a `None` case in the common arithmetic shapes (BUG-46,
+[`bugs.md`](bugs.md)); enum values, `fn` params, bundle fields, and
+`foreach` variables still correctly resolve to `None` rather than panicking
+where `infer_kind` cannot classify them.
 
-The conservative branch is **safe by construction**: emitting an extra
-`wire [N-1:0] __mimz_sub_k` for an expression that did not strictly need one is
-always correct Verilog, only marginally more verbose. So there is no correctness
-argument for keeping the panic.
+This also closed the **Related** concern below: `self_determined.rs`'s
+`verilog_self_determined_kind` is now an exhaustive match (BUG-28/BUG-29),
+propagating `infer_kind`'s `Option` rather than a `_ => false`/wildcard
+default.
 
-This also removes the need for `kind_is_inferrable` to stay in sync at every call
-site — the check becomes the return value rather than a separate contract, which
-is the durable fix rather than another convention.
-
-**Related.** The `_ => None` wildcard in the sibling module
-`emit_verilog/self_determined.rs` is the _opposite_ failure of the same design
-weakness — there, an unhandled case silently produces wrong Verilog instead of
-crashing (BUG-28/BUG-29 in [`bugs.md`](bugs.md)). Both arms of that module pair
-should become exhaustive matches in the same change.
-
-**Test.** A unit test per non-signal identifier form (module parameter, file
-const, enum value, `fn` parameter, bundle field, `foreach` variable) asserting
-`infer_kind` returns `None` rather than panicking, plus an end-to-end assertion
-that each such program either compiles or produces a real diagnostic — never an
-abort.
+**Test.** `emit_verilog/kinds.rs` unit tests exercise the non-signal
+identifier forms directly (`ident_not_in_decls_is_none`,
+`concat_with_an_unresolvable_part_is_none`,
+`index_on_an_unknown_name_is_none`, `if_expr_is_none_when_neither_branch_
+resolves`, plus BUG-46's own
+`lossless_mul_with_a_module_parameter_adapts_to_the_sized_operand`); five
+Icarus differentials in `tests/self_determined_regression.rs`
+(`bug_41_*`) assert the end-to-end path compiles and matches real Verilog
+rather than crashing or mis-emitting.
