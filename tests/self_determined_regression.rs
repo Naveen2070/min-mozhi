@@ -735,6 +735,25 @@ fn matrix_max_in_concat_matches_icarus() {
 }
 
 #[test]
+fn bug_42_min_max_mismatched_operand_matches_icarus() {
+    // BUG-42 (docs/audit/bugs.md): `min`/`max` was classified `None` in
+    // `verilog_self_determined_kind` on the reasoning that both operands
+    // are same-width by the checker's own rule — true of mimz's widths,
+    // false of Verilog's SELF-DETERMINED widths when an operand itself
+    // renders as a mismatched sub-expression. `extend(p, 11)` renders as
+    // the bare `(p)` (6 bits), not 11, so the ternary Verilog emits for
+    // `min` self-determines to 6 bits, not mimz's 11 bits — Verilog then
+    // zero-extends that narrower value into `y`'s 11 bits (0b110111 = 55)
+    // instead of sign-extending mimz's own correct 11-bit result
+    // (0b11111110111 = 2039).
+    let src = "module Fuzz {\n  in p: signed[6]\n  out y: bits[11]\n  \
+                y = unsigned(min(extend(p, 11), extend(p, 11)))\n}\n";
+    // p = 0b110111 (-9 as signed[6]): min(-9, -9) sign-extended to 11
+    // bits = 0b11111110111 = 2039.
+    differential(src, &[("p", 0b110111)]);
+}
+
+#[test]
 fn matrix_nand_in_concat_matches_icarus() {
     // Reductions are 1-bit on both sides regardless of operand width —
     // classified `None`. Pinned against Icarus.
