@@ -564,93 +564,45 @@ fn bug_24_regression_nested_shift_lhs_of_shift_stays_unhoisted() {
 // `self_determined.rs` itself.
 //
 // Architecture note, found while fixing BUG-29: `verilog_self_determined_
-// kind`, `kind_is_inferrable`, and `hoist_if_needed` are pure functions of
-// the EXPRESSION alone, and are the exact same three functions at every
-// call site (`Concat`, `Replicate`, a comparison operand, a `$signed`/
-// `$unsigned` argument) — there is one gate and one classifier, not five.
-// So the real risk for a new builtin is "was it classified at all in these
-// three places" (BUG-29's own gap — `self_determined.rs` alone was NOT
-// sufficient), not "was it tested in enough AST positions." One
-// differential test per testable builtin, at the simplest position to
-// construct (a `Concat` member), exercises the full shared mechanism.
-// Replication's body uses the byte-identical code path (`expr.rs`'s
-// `Concat`/`Replicate` arms are the same two calls in the same order) —
-// already cross-checked for `extend`/`abs` by the BUG-28/29 tests above.
-// A replication COUNT never carries a runtime builtin call at all:
-// `replicate_ty` requires it compile-time-constant, and `index_expr`'s
-// `consteval::eval` short-circuit folds it straight to a literal before
-// emit ever reaches this code path — untestable by construction, for any
-// builtin.
+// kind` (`self_determined.rs`) and `infer_kind`/`infer_call` (`kinds.rs`)
+// are pure functions of the EXPRESSION alone, and are the exact same
+// functions at every call site (`Concat`, `Replicate`, a comparison
+// operand, a `$signed`/`$unsigned` argument) — there is one gate-and-
+// classifier pair, not five. So the real risk for a new builtin is "was
+// it classified at all in these two places" (BUG-29's own gap —
+// `self_determined.rs` alone was NOT sufficient; BUG-41/BUG-42 are two
+// further instances of the same class), not "was it tested in enough AST
+// positions." One differential test per testable builtin, at the
+// simplest position to construct (a `Concat` member), exercises the full
+// shared mechanism. Replication's body uses the byte-identical code path
+// (`expr.rs`'s `Concat`/`Replicate` arms are the same two calls in the
+// same order) — already cross-checked for `extend`/`abs` by the
+// BUG-28/29 tests above. A replication COUNT never carries a runtime
+// builtin call at all: `replicate_ty` requires it compile-time-constant,
+// and `index_expr`'s `consteval::eval` short-circuit folds it straight to
+// a literal before emit ever reaches this code path — untestable by
+// construction, for any builtin.
+//
+// Task 4 (`docs/plan/v0.2-correctness-remediation.local.md`): this file
+// used to keep a SECOND, hand-maintained exhaustive match over `Builtin`
+// here (`matrix_shape`/`ALL_BUILTINS`) purely to assert "every builtin
+// was classified" — a parallel copy of the real gate-and-classifier
+// match's own exhaustiveness (they are already `#[non_exhaustive]`-free,
+// wildcard-free matches; the compiler already refuses to build on a
+// 14th unclassified variant). It caught nothing that match doesn't
+// already catch, and — being a shape descriptor, not a live check
+// against `self_determined.rs`'s actual per-builtin RESULT — it could not
+// have caught BUG-42 either: `Min`/`Max` were correctly bucketed
+// `MatrixShape::Binary`, "expected" to need only a differential test, no
+// closer to the real per-operand recursion bug than the classification
+// this file already knew was fine. Deleted outright, along with the
+// `ALL_BUILTINS.len() == 14` assert (the same "lying about coverage"
+// problem GAP-5 already named for the position axis, now retired for the
+// builtin axis too). The individual `matrix_*_in_concat_matches_icarus`
+// tests below are the actual coverage and are unaffected — each pins one
+// builtin's real classification against real Icarus, which no exhaustive-
+// match assertion, past or present, could ever substitute for.
 // ---------------------------------------------------------------------
-
-/// One `Builtin`'s operand shape, for building a minimal legal `Concat`
-/// member around it. Each variant's own doc comment on `matrix_shape`
-/// records the specific reasoning; this type only distinguishes the
-/// shapes that need a differently-arity handwritten test below from the
-/// ones that can never reach a rendered self-determined position at all.
-enum MatrixShape {
-    /// One `bits`/`signed` operand (`extend`/`trunc`/`signed`/`unsigned`/
-    /// `abs`/`nand`/`nor`/`xnor`).
-    Unary,
-    /// Two same-width, same-kind operands (`min`/`max`).
-    Binary,
-    /// Never reaches a rendered self-determined position as a live
-    /// sub-expression at all — compile-time-only, or lowered to items
-    /// before emit.
-    NotApplicable,
-}
-
-/// Exhaustive over `Builtin` (no wildcard arm) — a 14th variant is a
-/// compile error here until classified.
-fn matrix_shape(b: ast::Builtin) -> MatrixShape {
-    use ast::Builtin::*;
-    match b {
-        Extend | Trunc | SignedCast | UnsignedCast | Encoding | Abs | Nand | Nor | Xnor => {
-            MatrixShape::Unary
-        }
-        Min | Max => MatrixShape::Binary,
-        // Compile-time only — the checker rejects it in a runtime value
-        // position (`checker/widths/ops/builtins.rs`, E0407).
-        Clog2 => MatrixShape::NotApplicable,
-        // Lowered to items (registers/always blocks) before emit — never
-        // an inline sub-expression.
-        SyncDoubleFlop | SyncPulse => MatrixShape::NotApplicable,
-    }
-}
-
-/// Every `Builtin` variant, by name — what the test below iterates.
-/// `matrix_shape`'s own exhaustive match is the actual build-time guard;
-/// this array is a second, independent check that nothing was classified
-/// there but forgotten here.
-const ALL_BUILTINS: &[ast::Builtin] = &[
-    ast::Builtin::Extend,
-    ast::Builtin::Trunc,
-    ast::Builtin::SignedCast,
-    ast::Builtin::UnsignedCast,
-    ast::Builtin::Min,
-    ast::Builtin::Max,
-    ast::Builtin::Abs,
-    ast::Builtin::Nand,
-    ast::Builtin::Nor,
-    ast::Builtin::Xnor,
-    ast::Builtin::Clog2,
-    ast::Builtin::SyncDoubleFlop,
-    ast::Builtin::SyncPulse,
-    ast::Builtin::Encoding,
-];
-
-#[test]
-fn every_builtin_is_classified_in_the_matrix() {
-    assert_eq!(
-        ALL_BUILTINS.len(),
-        14,
-        "a Builtin variant was added or removed without updating this matrix \
-         (docs/audit/gaps.md GAP-5)"
-    );
-    for b in ALL_BUILTINS {
-        let _ = matrix_shape(*b);
-    }
-}
 
 #[test]
 fn matrix_trunc_in_concat_matches_icarus() {
