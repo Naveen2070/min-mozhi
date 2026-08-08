@@ -15,6 +15,8 @@ module isai #(
     reg [(20)-1:0] ilakku;
     wire [(20)-1:0] suruthi;
     wire [(8)-1:0] kaalam;
+    wire [63:0] __mimz_sub_1;
+    assign __mimz_sub_1 = ((kaalam) * TICK);
     assign suruthi = (((mukavari == 0)) ? (75758) : (((mukavari == 1)) ? (75758) : (((mukavari == 2)) ? (71633) : (((mukavari == 3)) ? (63776) : (((mukavari == 4)) ? (63776) : (((mukavari == 5)) ? (71633) : (((mukavari == 6)) ? (75758) : (((mukavari == 7)) ? (85034) : (((mukavari == 8)) ? (95420) : (((mukavari == 9)) ? (95420) : (((mukavari == 10)) ? (85034) : (((mukavari == 11)) ? (75758) : (((mukavari == 12)) ? (85034) : (((mukavari == 13)) ? (85034) : (((mukavari == 14)) ? (95420) : (0))))))))))))))));
     assign kaalam = (((mukavari == 0)) ? (10) : (((mukavari == 1)) ? (10) : (((mukavari == 2)) ? (10) : (((mukavari == 3)) ? (15) : (((mukavari == 4)) ? (10) : (((mukavari == 5)) ? (10) : (((mukavari == 6)) ? (15) : (((mukavari == 7)) ? (10) : (((mukavari == 8)) ? (15) : (((mukavari == 9)) ? (10) : (((mukavari == 10)) ? (10) : (((mukavari == 11)) ? (10) : (((mukavari == 12)) ? (5) : (((mukavari == 13)) ? (5) : (((mukavari == 14)) ? (20) : (1))))))))))))))));
     assign oli = maarrrru;
@@ -39,7 +41,7 @@ module isai #(
             if (seyalil) begin
                 if ((kaala_ennnnikkai == 0)) begin
                     ilakku <= suruthi;
-                    kaala_ennnnikkai <= ((kaalam) * TICK)[(32)-1:0];
+                    kaala_ennnnikkai <= __mimz_sub_1[(32)-1:0];
                     mukavari <= (mukavari + 1);
                     if ((mukavari == 15)) begin
                         seyalil <= 0;

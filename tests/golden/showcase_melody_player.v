@@ -15,6 +15,8 @@ module MelodyPlayer #(
     reg [(20)-1:0] target;
     wire [(20)-1:0] pitch;
     wire [(8)-1:0] dur;
+    wire [63:0] __mimz_sub_1;
+    assign __mimz_sub_1 = ((dur) * TICK);
     assign pitch = (((addr == 0)) ? (75758) : (((addr == 1)) ? (75758) : (((addr == 2)) ? (71633) : (((addr == 3)) ? (63776) : (((addr == 4)) ? (63776) : (((addr == 5)) ? (71633) : (((addr == 6)) ? (75758) : (((addr == 7)) ? (85034) : (((addr == 8)) ? (95420) : (((addr == 9)) ? (95420) : (((addr == 10)) ? (85034) : (((addr == 11)) ? (75758) : (((addr == 12)) ? (85034) : (((addr == 13)) ? (85034) : (((addr == 14)) ? (95420) : (0))))))))))))))));
     assign dur = (((addr == 0)) ? (10) : (((addr == 1)) ? (10) : (((addr == 2)) ? (10) : (((addr == 3)) ? (15) : (((addr == 4)) ? (10) : (((addr == 5)) ? (10) : (((addr == 6)) ? (15) : (((addr == 7)) ? (10) : (((addr == 8)) ? (15) : (((addr == 9)) ? (10) : (((addr == 10)) ? (10) : (((addr == 11)) ? (10) : (((addr == 12)) ? (5) : (((addr == 13)) ? (5) : (((addr == 14)) ? (20) : (1))))))))))))))));
     assign audio = toggle;
@@ -39,7 +41,7 @@ module MelodyPlayer #(
             if (active) begin
                 if ((dur_cnt == 0)) begin
                     target <= pitch;
-                    dur_cnt <= ((dur) * TICK)[(32)-1:0];
+                    dur_cnt <= __mimz_sub_1[(32)-1:0];
                     addr <= (addr + 1);
                     if ((addr == 15)) begin
                         active <= 0;
