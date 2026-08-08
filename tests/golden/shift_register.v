@@ -6,9 +6,9 @@ module ShiftRegister #(
     input wire din,
     output wire [(WIDTH)-1:0] dout
 );
+    reg [(WIDTH)-1:0] sr;
     wire [8:0] __mimz_sub_1;
     assign __mimz_sub_1 = (sr << 1);
-    reg [(WIDTH)-1:0] sr;
     assign dout = sr;
     always @(posedge clk) begin
         if (rst) begin

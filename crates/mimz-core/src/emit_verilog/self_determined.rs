@@ -35,11 +35,11 @@ pub(crate) fn verilog_self_determined_kind(
             // takes the max — the exact "matched" rule, applied
             // uniformly, not just to the width-matching family.
             _ => {
-                let l = self_determined_operand_width(lhs, decls);
-                let r = self_determined_operand_width(rhs, decls);
+                let l = self_determined_operand_width(lhs, decls)?;
+                let r = self_determined_operand_width(rhs, decls)?;
                 Some(Kind {
                     width: l.max(r),
-                    signed: infer_kind(expr, decls).signed,
+                    signed: infer_kind(expr, decls)?.signed,
                 })
             }
         },
@@ -55,14 +55,14 @@ pub(crate) fn verilog_self_determined_kind(
             // Report that so the caller sees the mismatch against mimz's
             // `Kind{N}` and hoists to `wire [N-1:0] __mimz_sub_k`.
             Builtin::Extend => Some(Kind {
-                width: self_determined_operand_width(&args[0], decls),
-                signed: infer_kind(expr, decls).signed,
+                width: self_determined_operand_width(&args[0], decls)?,
+                signed: infer_kind(expr, decls)?.signed,
             }),
             // Renders to a ternary: Verilog sizes it at
             // `max(operand widths)`, not mimz's grown `N+1` result.
             Builtin::Abs => Some(Kind {
-                width: self_determined_operand_width(&args[0], decls),
-                signed: infer_kind(expr, decls).signed,
+                width: self_determined_operand_width(&args[0], decls)?,
+                signed: infer_kind(expr, decls)?.signed,
             }),
             // `trunc` renders as an explicit part-select `x[N-1:0]` —
             // already exactly N bits in Verilog. `min`/`max` render to a
@@ -100,11 +100,16 @@ pub(crate) fn verilog_self_determined_kind(
 
 /// A single operand's OWN self-determined width, ignoring any
 /// surrounding context — recurses through the same binary-operator rule
-/// so a NESTED mismatch is visible to the caller's `l.max(r)` too.
-fn self_determined_operand_width(expr: &Expr, decls: &HashMap<String, Kind>) -> u32 {
-    verilog_self_determined_kind(expr, decls)
-        .unwrap_or_else(|| infer_kind(expr, decls))
-        .width
+/// so a NESTED mismatch is visible to the caller's `l.max(r)` too. `None`
+/// when neither Verilog's rule nor mimz's own can resolve `expr` (BUG-41,
+/// `docs/audit/bugs.md`) — propagated by every caller, same convention
+/// as `infer_kind` itself.
+fn self_determined_operand_width(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<u32> {
+    let k = match verilog_self_determined_kind(expr, decls) {
+        Some(k) => k,
+        None => infer_kind(expr, decls)?,
+    };
+    Some(k.width)
 }
 
 #[cfg(test)]

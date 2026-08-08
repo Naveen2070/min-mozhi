@@ -18,45 +18,90 @@
 //! implementation of them. Only `concat`/`replicate` get their own
 //! logic here, since those stay checker-only (no simulator counterpart
 //! to unify against, so no Class-A drift risk either way).
-
+//!
+//! BUG-41 (docs/audit/bugs.md): this used to panic on anything but a
+//! fixed set of `ExprKind`s, so its ONLY caller (`expr::kind_is_inferrable`,
+//! now retired) had to keep a matching, hand-maintained wildcard —
+//! silently disabling every hoist an expression wrapping one of those
+//! "unhandled" shapes (a `fn` call, an instance port, an `if`, a `match`,
+//! a memory read) needed, reopening BUG-28/29's exact defect through a
+//! different AST shape. `infer_kind` now returns `None` for anything it
+//! cannot resolve — no separate gate to keep in sync, and no panic
+//! surface (closes SEC-10's adjacent concern too): a caller either gets
+//! a real `Kind` or gets nothing, and reacts safely to the second case
+//! (never hoists — see each `expr.rs` call site). `FnCall`/`Field`
+//! (instance-port read)/`IfExpr`/`Match`/`Index` (bit-select or memory
+//! read) are now classified: `build_decls` (`module/ports.rs`)
+//! precomputes every fact these need (an instance's output-port `Kind`,
+//! a memory's element `Kind`, a `fn`'s declared return `Kind`) into this
+//! same `decls` map under a few reserved keys (see `mem_elem_decl_key`/
+//! `fn_ret_decl_key` below and instance-port's plain `{inst}_{port}`
+//! key, which already matches `expr.rs`'s own `Field` rendering) — so
+//! this function's own signature never needed to grow a second
+//! parameter.
 use std::collections::HashMap;
 
 use crate::ast::{BinOp, Builtin, Expr, ExprKind};
 use crate::width_rules::Kind;
 
+/// Reserved `decls` key for a memory `name`'s ELEMENT `Kind` — inserted by
+/// `build_decls`, read by this file's own `Index` arm. A memory's bare
+/// name is never a valid scalar `Ident` reference on its own (the checker
+/// rejects it, mirroring `Bind::Inst`'s "not a value" diagnostic), so
+/// reusing `decls`' plain namespace for the memory's OWN name would be
+/// safe too, but keying it separately keeps `Index`'s two cases (a bit-
+/// select on an ordinary vector vs. a memory read) unambiguous without
+/// having to ask "is this name a memory" through some other channel.
+pub(crate) fn mem_elem_decl_key(name: &str) -> String {
+    format!("__mimz_mem_elem__{name}")
+}
+
+/// Reserved `decls` key for a `fn` named `name`'s declared RETURN `Kind` —
+/// inserted by `build_decls` once per module (independent of any
+/// particular call's arguments — a `fn`'s return type never depends on
+/// them), read by this file's own `FnCall` arm.
+pub(crate) fn fn_ret_decl_key(name: &str) -> String {
+    format!("__mimz_fnret__{name}")
+}
+
 /// mimz's own width/signedness for `expr`, computed directly from the
-/// AST. `decls` maps every signal name declared in the CURRENT module
-/// (port/wire/register) to its already-resolved `Kind` — built once per
-/// module by `build_decls` (Task 2), reused across every expression in
-/// that module's body.
+/// AST, or `None` if it cannot be resolved from `decls` alone (a `fn`
+/// body's own params/`let`s, a module `parameter`, a testbench signal,
+/// or a symbolic parametric width — none of these are keys in `decls`,
+/// by `build_decls`'s own design). `decls` maps every signal name
+/// declared in the CURRENT module (port/wire/register) to its
+/// already-resolved `Kind`, PLUS the reserved instance-port/memory-
+/// element/fn-return facts described above — built once per module by
+/// `build_decls`, reused across every expression in that module's body.
 ///
-/// Only handles the `ExprKind`s that can actually reach a Verilog
-/// self-determined position (per mimz's own type rules): literals,
-/// identifiers, unary, binary, concat, replicate, slice, the five
-/// builtins (`extend`/`trunc`/`signed`/`unsigned`/`abs`).
-/// Bundles/enums/memories/arrays/match/`??` never appear inside a
-/// concat/replicate/comparison/cast/slice-base position, so this
-/// function does not need to handle them.
-///
-pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Kind {
+/// Every caller must treat `None` as "cannot safely reason about this
+/// expression's width here" and skip whatever hoist/mismatch check it
+/// was about to run — never as license to guess a width, and never by
+/// re-adding a `kind_is_inferrable`-style shape gate that has to be kept
+/// in sync with this function by hand (that hand-sync is exactly what
+/// caused BUG-41).
+pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind> {
     match &expr.kind {
-        ExprKind::Int { value, .. } => Kind {
+        ExprKind::Int { value, .. } => Some(Kind {
             width: min_width_for(value),
             signed: false,
-        },
-        ExprKind::Bool(_) => Kind {
+        }),
+        ExprKind::Bool(_) => Some(Kind {
             width: 1,
             signed: false,
-        },
-        ExprKind::Ident(name) => *decls
-            .get(name)
-            .unwrap_or_else(|| panic!("emit_verilog::kinds::infer_kind: `{name}` not in decls")),
+        }),
+        ExprKind::Ident(name) => decls.get(name).copied(),
         ExprKind::Unary { op: _, expr: inner } => infer_kind(inner, decls),
         ExprKind::Binary { op, lhs, rhs } => infer_binary(*op, lhs, rhs, decls),
-        ExprKind::Concat(parts) => Kind {
-            width: parts.iter().map(|p| infer_kind(p, decls).width).sum(),
-            signed: false,
-        },
+        ExprKind::Concat(parts) => {
+            let width = parts
+                .iter()
+                .try_fold(0u32, |acc, p| Some(acc + infer_kind(p, decls)?.width))?;
+            Some(Kind {
+                width,
+                signed: false,
+            })
+        }
         ExprKind::Replicate { count: _, parts } => {
             // `count` is always a compile-time constant per the checker's
             // own `replicate_ty` — this function only needs the INNER
@@ -67,10 +112,13 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Kind {
             // concat's per-iteration width, matching what a caller needs
             // when checking a replication's REPEATED PART, not the whole
             // replication's total width.
-            Kind {
-                width: parts.iter().map(|p| infer_kind(p, decls).width).sum(),
+            let width = parts
+                .iter()
+                .try_fold(0u32, |acc, p| Some(acc + infer_kind(p, decls)?.width))?;
+            Some(Kind {
+                width,
                 signed: false,
-            }
+            })
         }
         ExprKind::Slice { hi, lo, .. } => {
             // Slice bounds are always compile-time constant per the
@@ -81,16 +129,66 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Kind {
             // call site doesn't need to re-validate (the checker already
             // did) — pass `u32::MAX` as a base_width wide enough that
             // the out-of-range branch never fires here.
-            let hi_v = const_fold(hi);
-            let lo_v = const_fold(lo);
-            crate::width_rules::slice_result(u32::MAX, hi_v, lo_v)
-                .expect("checker already validated this slice's bounds")
+            let hi_v = const_fold(hi)?;
+            let lo_v = const_fold(lo)?;
+            crate::width_rules::slice_result(u32::MAX, hi_v, lo_v).ok()
         }
         ExprKind::Call { func, args } => infer_call(*func, args, decls),
-        other => panic!(
-            "emit_verilog::kinds::infer_kind: {other:?} cannot appear in a \
-             self-determined position (mimz's own type rules forbid it there)"
-        ),
+        // BUG-41 (docs/audit/bugs.md): the five shapes below used to fall
+        // through the retired `kind_is_inferrable`'s own wildcard.
+        ExprKind::Index { base, .. } => {
+            // A memory read (`m[addr]`) yields the element `Kind`
+            // `build_decls` precomputed under `mem_elem_decl_key`; anything
+            // else reaching `Index` is a bit-select on a plain vector —
+            // always exactly 1 bit, regardless of the vector's own width
+            // (a module-level array is rejected by the checker outside a
+            // `fn` parameter, and a `fn` parameter's own array is never in
+            // `decls` either way, so that shape never reaches here).
+            let ExprKind::Ident(name) = &base.kind else {
+                return None;
+            };
+            if let Some(k) = decls.get(&mem_elem_decl_key(name)) {
+                Some(*k)
+            } else if decls.contains_key(name) {
+                Some(Kind {
+                    width: 1,
+                    signed: false,
+                })
+            } else {
+                None
+            }
+        }
+        ExprKind::FnCall { name, .. } => decls.get(&fn_ret_decl_key(&name.name)).copied(),
+        ExprKind::Field { base, field } => {
+            // Instance-port read (`inst.port`) — `build_decls` precomputes
+            // every non-array instance's output-port `Kind` under the exact
+            // name `expr.rs`'s own `Field` rendering already produces
+            // (`{inst}_{port}`), so this is a plain `decls` lookup, same as
+            // an `Ident`. An enum-variant reference, a bundle field, and an
+            // array-instance's `inst[i].port` are not handled here (`None`
+            // — same, pre-existing, safe fallback as everything else this
+            // function cannot resolve).
+            let ExprKind::Ident(base_name) = &base.kind else {
+                return None;
+            };
+            decls.get(&format!("{base_name}_{}", field.name)).copied()
+        }
+        ExprKind::IfExpr { then, els, .. } => {
+            // Either branch — the checker guarantees both arms the same
+            // `Ty`, so whichever one resolves is `expr`'s own Kind too.
+            infer_kind(then, decls).or_else(|| infer_kind(els, decls))
+        }
+        ExprKind::Match { arms, .. } => {
+            // Same reasoning as `IfExpr`: the checker guarantees every arm
+            // the same `Ty`, so the first arm that resolves is enough.
+            arms.iter().find_map(|a| infer_kind(&a.value, decls))
+        }
+        // Bundles/enums/`??`/array literals never appear inside a
+        // concat/replicate/comparison/cast/slice-base position (mimz's own
+        // type rules forbid it), so `None` here is never a missed case —
+        // it is the same "cannot appear here" fact the retired
+        // `kind_is_inferrable` encoded as `false`.
+        _ => None,
     }
 }
 
@@ -149,17 +247,13 @@ fn is_ct_int_like(kind: &ExprKind) -> bool {
 /// `replicate_ty`) before this code ever runs, so only the literal case
 /// needs handling — anything else is a structurally-impossible input at
 /// this call site.
-fn const_fold(expr: &Expr) -> u32 {
+fn const_fold(expr: &Expr) -> Option<u32> {
     match &expr.kind {
-        ExprKind::Int { value, .. } => match value {
+        ExprKind::Int { value, .. } => Some(match value {
             crate::bits::Bits::Small(v) => *v as u32,
             crate::bits::Bits::Wide(limbs) => limbs.first().copied().unwrap_or(0) as u32,
-        },
-        other => panic!(
-            "emit_verilog::kinds::const_fold: {other:?} is not a literal — \
-             the checker guarantees slice bounds/replication counts are \
-             compile-time constant before emission"
-        ),
+        }),
+        _ => None,
     }
 }
 
@@ -185,23 +279,31 @@ fn shift_const_amount(amount: &Expr) -> Option<u128> {
     }
 }
 
-fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>) -> Kind {
-    let l = infer_kind(lhs, decls);
+/// Unlike the retired `kind_is_inferrable`, which eagerly required BOTH
+/// operands resolvable for EVERY `op` (including comparisons, which
+/// never actually consult either operand's `Kind` — see the doc on its
+/// own `Binary` arm, "conservative... never wrong"), this only demands
+/// what each arm actually uses: a comparison/logic result is always
+/// exactly 1 bit by mimz's own rule regardless of either operand, so it
+/// resolves unconditionally — strictly more permissive than before
+/// (never wrong, since `verilog_self_determined_kind`'s own comparison
+/// arm agrees no Verilog-specific rule ever differs here either).
+fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind> {
     match op {
         BinOp::Shl | BinOp::Shr => {
-            let r = infer_kind(rhs, decls);
-            crate::width_rules::shift_result(l, r, shift_const_amount(rhs), op == BinOp::Shl)
-                .expect("checker already validated this shift's operand kinds")
+            let l = infer_kind(lhs, decls)?;
+            let r = infer_kind(rhs, decls)?;
+            crate::width_rules::shift_result(l, r, shift_const_amount(rhs), op == BinOp::Shl).ok()
         }
         BinOp::Add | BinOp::Sub => {
-            let r = infer_kind(rhs, decls);
-            crate::width_rules::lossless_result(l, r, false)
-                .expect("checker already validated this operator's operand kinds")
+            let l = infer_kind(lhs, decls)?;
+            let r = infer_kind(rhs, decls)?;
+            crate::width_rules::lossless_result(l, r, false).ok()
         }
         BinOp::Mul => {
-            let r = infer_kind(rhs, decls);
-            crate::width_rules::lossless_result(l, r, true)
-                .expect("checker already validated this operator's operand kinds")
+            let l = infer_kind(lhs, decls)?;
+            let r = infer_kind(rhs, decls)?;
+            crate::width_rules::lossless_result(l, r, true).ok()
         }
         BinOp::AddWrap
         | BinOp::SubWrap
@@ -209,7 +311,6 @@ fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>
         | BinOp::BitAnd
         | BinOp::BitOr
         | BinOp::BitXor => {
-            let r = infer_kind(rhs, decls);
             // A bare integer literal is the checker's `Ty::CtInt` — untyped,
             // adapting to a sized sibling operand's width/signedness rather
             // than carrying its own minimal natural width (`checker::widths::
@@ -218,62 +319,68 @@ fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>
             // equality check). `infer_kind`'s own `Int` arm has no such
             // context, so without this, `cnt +% 1` (`cnt: bits[26]`) — a
             // perfectly ordinary, checker-valid program — infers the
-            // literal `1` at its own 1-bit width and panics the
+            // literal `1` at its own 1-bit width and mismatches the
             // `matched_result` fallback below on a mismatch the checker
             // never considered one.
             match (is_bare_int(&lhs.kind), is_bare_int(&rhs.kind)) {
-                (true, false) => r,
-                (false, true) => l,
-                _ => crate::width_rules::matched_result(l, r)
-                    .expect("checker already validated this operator's operand kinds"),
+                (true, false) => infer_kind(rhs, decls),
+                (false, true) => infer_kind(lhs, decls),
+                _ => {
+                    let l = infer_kind(lhs, decls)?;
+                    let r = infer_kind(rhs, decls)?;
+                    crate::width_rules::matched_result(l, r).ok()
+                }
             }
         }
-        BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => Kind {
+        BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => Some(Kind {
             width: 1,
             signed: false,
-        },
-        BinOp::LogicAnd | BinOp::LogicOr => Kind {
+        }),
+        BinOp::LogicAnd | BinOp::LogicOr => Some(Kind {
             width: 1,
             signed: false,
-        },
-        BinOp::Coalesce => {
-            panic!(
-                "emit_verilog::kinds::infer_binary: `??` cannot appear in a self-determined position"
-            )
-        }
+        }),
+        // `??` cannot appear in a self-determined position (mimz's own
+        // type rules forbid it there) — same "cannot appear here" `None`
+        // as everything else this function does not classify.
+        BinOp::Coalesce => None,
     }
 }
 
-fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Kind {
+/// Exhaustive over `Builtin`, no wildcard arm — matches
+/// `self_determined.rs`'s own `verilog_self_determined_kind` convention
+/// (BUG-28/29's doc there): a 15th variant fails the build here too,
+/// instead of silently inheriting `None`.
+fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Option<Kind> {
     match func {
         Builtin::Extend | Builtin::Trunc => {
-            let n = const_fold(&args[1]);
-            let base_signed = infer_kind(&args[0], decls).signed;
-            Kind {
+            let n = const_fold(&args[1])?;
+            let base_signed = infer_kind(&args[0], decls)?.signed;
+            Some(Kind {
                 width: n,
                 signed: base_signed,
-            }
+            })
         }
-        Builtin::SignedCast => Kind {
-            width: infer_kind(&args[0], decls).width,
+        Builtin::SignedCast => Some(Kind {
+            width: infer_kind(&args[0], decls)?.width,
             signed: true,
-        },
-        Builtin::UnsignedCast => Kind {
-            width: infer_kind(&args[0], decls).width,
+        }),
+        Builtin::UnsignedCast => Some(Kind {
+            width: infer_kind(&args[0], decls)?.width,
             signed: false,
-        },
-        Builtin::Encoding => Kind {
-            width: infer_kind(&args[0], decls).width,
+        }),
+        Builtin::Encoding => Some(Kind {
+            width: infer_kind(&args[0], decls)?.width,
             signed: false,
-        },
+        }),
         // `abs(x)` for `x: signed[N]` is `signed[N+1]` — lossless like
         // unary `-`, the extra bit covers `abs(MIN)`. Matches the
         // checker's own rule (`checker/widths/ops/builtins.rs`,
         // `Builtin::Abs => Ty::Signed(n + 1)`).
-        Builtin::Abs => Kind {
-            width: infer_kind(&args[0], decls).width + 1,
+        Builtin::Abs => Some(Kind {
+            width: infer_kind(&args[0], decls)?.width + 1,
             signed: true,
-        },
+        }),
         // Reductions collapse to one bit, unsigned — matches the checker's
         // own rule (`checker/widths/ops/builtins.rs`, `Ty::Bit | Ty::Bits(_)
         // => Ty::Bit`). BUG-35 (docs/audit/bugs.md): missing here entirely
@@ -281,29 +388,31 @@ fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Ki
         // `_ => false` gap in `expr.rs` — made any expression wrapping one
         // of these untouchable by the hoist machinery, not just
         // unclassified for its own sake.
-        Builtin::Nand | Builtin::Nor | Builtin::Xnor => Kind {
+        Builtin::Nand | Builtin::Nor | Builtin::Xnor => Some(Kind {
             width: 1,
             signed: false,
-        },
+        }),
         // "A literal (or negated literal) adapts to its sized sibling"
         // rule — matches the checker's own `matched_ty` call for
         // `min`/`max` (`checker/widths/ops/builtins.rs`). Uses
         // `is_ct_int_like`, not `infer_binary`'s narrower `is_bare_int`
         // above — see that function's own doc comment for why.
         Builtin::Min | Builtin::Max => {
-            let l = infer_kind(&args[0], decls);
-            let r = infer_kind(&args[1], decls);
             match (is_ct_int_like(&args[0].kind), is_ct_int_like(&args[1].kind)) {
-                (true, false) => r,
-                (false, true) => l,
-                _ => crate::width_rules::matched_result(l, r)
-                    .expect("checker already validated this operator's operand kinds"),
+                (true, false) => infer_kind(&args[1], decls),
+                (false, true) => infer_kind(&args[0], decls),
+                _ => {
+                    let l = infer_kind(&args[0], decls)?;
+                    let r = infer_kind(&args[1], decls)?;
+                    crate::width_rules::matched_result(l, r).ok()
+                }
             }
         }
-        other => panic!(
-            "emit_verilog::kinds::infer_call: {other:?} cannot appear in a \
-             self-determined position"
-        ),
+        // Const-folded before emit (`Clog2`) or lowered to registers/always
+        // blocks before emit (`SyncDoubleFlop`/`SyncPulse`) — never reaches
+        // a rendered self-determined position as a runtime expression,
+        // same reasoning as `self_determined.rs`'s own matching arm.
+        Builtin::Clog2 | Builtin::SyncDoubleFlop | Builtin::SyncPulse => None,
     }
 }
 
@@ -342,11 +451,17 @@ mod tests {
         let e = ident("p0");
         assert_eq!(
             infer_kind(&e, &decls),
-            Kind {
+            Some(Kind {
                 width: 8,
                 signed: false
-            }
+            })
         );
+    }
+
+    #[test]
+    fn ident_not_in_decls_is_none() {
+        let decls = HashMap::new();
+        assert_eq!(infer_kind(&ident("nope"), &decls), None);
     }
 
     #[test]
@@ -354,17 +469,17 @@ mod tests {
         let decls = HashMap::new();
         assert_eq!(
             infer_kind(&int(3), &decls),
-            Kind {
+            Some(Kind {
                 width: 2,
                 signed: false
-            }
+            })
         );
         assert_eq!(
             infer_kind(&int(0), &decls),
-            Kind {
+            Some(Kind {
                 width: 1,
                 signed: false
-            }
+            })
         );
     }
 
@@ -378,11 +493,21 @@ mod tests {
         // int(3) -> width 2, int(1) -> width 1, sum = 3
         assert_eq!(
             infer_kind(&e, &decls),
-            Kind {
+            Some(Kind {
                 width: 3,
                 signed: false
-            }
+            })
         );
+    }
+
+    #[test]
+    fn concat_with_an_unresolvable_part_is_none() {
+        let decls = HashMap::new();
+        let e = Expr {
+            kind: ExprKind::Concat(vec![int(3), ident("unknown")]),
+            span: Span::new(0, 0),
+        };
+        assert_eq!(infer_kind(&e, &decls), None);
     }
 
     #[test]
@@ -412,10 +537,10 @@ mod tests {
         };
         assert_eq!(
             infer_kind(&e, &decls),
-            Kind {
+            Some(Kind {
                 width: 9,
                 signed: false
-            }
+            })
         );
     }
 
@@ -456,10 +581,10 @@ mod tests {
             },
             span: Span::new(0, 0),
         };
-        let expected = Kind {
+        let expected = Some(Kind {
             width: 26,
             signed: false,
-        };
+        });
         assert_eq!(infer_kind(&lit_rhs, &decls), expected);
         assert_eq!(infer_kind(&lit_lhs, &decls), expected);
     }
@@ -483,10 +608,165 @@ mod tests {
         };
         assert_eq!(
             infer_kind(&e, &decls),
-            Kind {
+            Some(Kind {
                 width: 2,
                 signed: false
-            }
+            })
         );
+    }
+
+    fn index(base: &str, idx: u128) -> Expr {
+        Expr {
+            kind: ExprKind::Index {
+                base: Box::new(ident(base)),
+                index: Box::new(int(idx)),
+            },
+            span: Span::new(0, 0),
+        }
+    }
+
+    #[test]
+    fn index_on_a_plain_vector_is_one_bit() {
+        let mut decls = HashMap::new();
+        decls.insert(
+            "p0".to_string(),
+            Kind {
+                width: 8,
+                signed: false,
+            },
+        );
+        assert_eq!(
+            infer_kind(&index("p0", 3), &decls),
+            Some(Kind {
+                width: 1,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn index_on_a_memory_yields_the_element_kind() {
+        // BUG-41 (docs/audit/bugs.md): a memory read must NOT collapse to
+        // 1 bit like an ordinary bit-select.
+        let mut decls = HashMap::new();
+        decls.insert(
+            mem_elem_decl_key("m"),
+            Kind {
+                width: 8,
+                signed: false,
+            },
+        );
+        assert_eq!(
+            infer_kind(&index("m", 0), &decls),
+            Some(Kind {
+                width: 8,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn index_on_an_unknown_name_is_none() {
+        let decls = HashMap::new();
+        assert_eq!(infer_kind(&index("nope", 0), &decls), None);
+    }
+
+    #[test]
+    fn fn_call_resolves_from_the_reserved_return_kind_key() {
+        let mut decls = HashMap::new();
+        decls.insert(
+            fn_ret_decl_key("ident4"),
+            Kind {
+                width: 4,
+                signed: false,
+            },
+        );
+        let e = Expr {
+            kind: ExprKind::FnCall {
+                name: crate::ast::Ident {
+                    name: "ident4".to_string(),
+                    span: Span::new(0, 0),
+                },
+                args: vec![ident("a")],
+            },
+            span: Span::new(0, 0),
+        };
+        assert_eq!(
+            infer_kind(&e, &decls),
+            Some(Kind {
+                width: 4,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn field_on_an_instance_resolves_from_the_mangled_port_key() {
+        let mut decls = HashMap::new();
+        decls.insert(
+            "s_q".to_string(),
+            Kind {
+                width: 4,
+                signed: false,
+            },
+        );
+        let e = Expr {
+            kind: ExprKind::Field {
+                base: Box::new(ident("s")),
+                field: crate::ast::Ident {
+                    name: "q".to_string(),
+                    span: Span::new(0, 0),
+                },
+            },
+            span: Span::new(0, 0),
+        };
+        assert_eq!(
+            infer_kind(&e, &decls),
+            Some(Kind {
+                width: 4,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn if_expr_resolves_from_either_branch() {
+        let mut decls = HashMap::new();
+        decls.insert(
+            "a".to_string(),
+            Kind {
+                width: 4,
+                signed: false,
+            },
+        );
+        let e = Expr {
+            kind: ExprKind::IfExpr {
+                cond: Box::new(ident("cond")),
+                then: Box::new(ident("a")),
+                els: Box::new(ident("a")),
+            },
+            span: Span::new(0, 0),
+        };
+        assert_eq!(
+            infer_kind(&e, &decls),
+            Some(Kind {
+                width: 4,
+                signed: false
+            })
+        );
+    }
+
+    #[test]
+    fn if_expr_is_none_when_neither_branch_resolves() {
+        let decls = HashMap::new();
+        let e = Expr {
+            kind: ExprKind::IfExpr {
+                cond: Box::new(ident("cond")),
+                then: Box::new(ident("unknown_a")),
+                els: Box::new(ident("unknown_b")),
+            },
+            span: Span::new(0, 0),
+        };
+        assert_eq!(infer_kind(&e, &decls), None);
     }
 }

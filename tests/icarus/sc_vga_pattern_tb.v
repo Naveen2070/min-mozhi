@@ -32,8 +32,10 @@ module sc_vga_pattern_tb;
             $finish;
         end
 
-        // Wait until pixel 656 where hsync goes low (H_VISIBLE+H_FRONT = 640+16)
-        repeat (655) tick();
+        // Wait until pixel 656 where hsync goes low (H_VISIBLE+H_FRONT = 640+16).
+        // h_cnt is 0 at the cyc-1 check above, so 656 MORE ticks are needed to
+        // reach h_cnt=656 (off-by-one: 655 ticks only reaches h_cnt=655).
+        repeat (656) tick();
         if (vga_hsync !== 0) begin
             $display("FAIL: pixel 656 hsync=%b expected 0 (vga_red=%b grn=%b blu=%b)",
                 vga_hsync, vga_red, vga_green, vga_blue);

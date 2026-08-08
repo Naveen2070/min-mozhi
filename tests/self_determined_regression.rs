@@ -180,7 +180,10 @@ fn differential(src: &str, inputs: &[(&str, u128)]) {
 /// existing single-call clocked-fixed-vector helper anywhere in the suite
 /// either, exactly like `differential` above. Skips (does not fail) when
 /// Icarus isn't installed.
-fn differential_clocked(src: &str, held_inputs: &[(&str, u128)]) {
+/// `module`: which module in `src` is the simulation top — required when
+/// `src` declares more than one (`elaborate_project` cannot guess), `None`
+/// for the (common) single-module case.
+fn differential_clocked(src: &str, module: Option<&str>, held_inputs: &[(&str, u128)]) {
     let Some(bin) = support::require_iverilog() else {
         return;
     };
@@ -204,7 +207,7 @@ fn differential_clocked(src: &str, held_inputs: &[(&str, u128)]) {
         .map(|(n, v)| (n.to_string(), *v))
         .collect();
 
-    let design = elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
+    let design = elaborate_project(std::slice::from_ref(&file), module, &BTreeMap::new())
         .unwrap_or_else(|e| panic!("our kernel failed to elaborate:\n{src}\n{}", e.msg));
     assert_eq!(
         held.len(),
@@ -371,7 +374,7 @@ fn bug_23_wrap_under_sibling_add_inside_a_concat_matches_icarus() {
                 on rise(clk) {\n    r0 <- extend(287, 11)\n    r1 <- extend(5643, 13)\n  }\n  \
                 y = {(extend(1524, 14) | {r1, p0}), (p0[0:0] + (extend(extend(1, 1), 11) -% r0))}\n}\n";
     // held inputs p0=0, p1=7, p2=24 — the exact vector BUG-23's filing used.
-    differential_clocked(src, &[("p0", 0), ("p1", 7), ("p2", 24)]);
+    differential_clocked(src, None, &[("p0", 0), ("p1", 7), ("p2", 24)]);
 }
 
 #[test]
@@ -682,7 +685,7 @@ fn matrix_encoding_of_tag_only_enum_in_concat_matches_icarus() {
                 Light.Red => Light.Green\n      Light.Green => Light.Blue\n      \
                 Light.Blue => Light.Red\n    }\n  }\n  \
                 y = { b, encoding(state) }\n}\n";
-    differential_clocked(src, &[("b", 0b1010)]);
+    differential_clocked(src, None, &[("b", 0b1010)]);
 }
 
 #[test]
@@ -705,7 +708,11 @@ fn matrix_encoding_of_payload_enum_in_concat_matches_icarus() {
                 on rise(clk) {\n    toggle <- toggle +% 1\n  }\n  \
                 wire p: Packet = if toggle == 0 { Packet.Ctrl(k) } else { Packet.Data(v) }\n  \
                 y = { b, encoding(p) }\n}\n";
-    differential_clocked(src, &[("k", 0b0101), ("v", 0b00101101), ("b", 0b0110)]);
+    differential_clocked(
+        src,
+        None,
+        &[("k", 0b0101), ("v", 0b00101101), ("b", 0b0110)],
+    );
 }
 
 #[test]
@@ -900,6 +907,79 @@ fn bug_43_negative_literal_clamp_idiom_matches_icarus() {
     differential(src, &[("x", 0xFC18)]);
 }
 
+// ---------------------------------------------------------------------
+// BUG-41 (docs/audit/bugs.md): `kind_is_inferrable`'s own wildcard
+// (`expr.rs`) swallowed `FnCall`/`Field`/`IfExpr`/`Match`/`Index`, so the
+// exhaustive `Builtin` classifier above (`self_determined.rs`) never even
+// ran for an expression CONTAINING one of them as an operand — reopening
+// BUG-28's exact defect through a different AST shape. Each test below is
+// one of the review's filed reproductions
+// (docs/audit/review-2026-08-07.md, Part 3, BUG-41).
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_41_fn_call_operand_of_add_in_concat_matches_icarus() {
+    // Repro ①: a `fn` call as an operand of a lossless `+` sitting as a
+    // concat member. `ident4`'s return `Kind` used to be entirely
+    // unclassified, so the enclosing `+` was declared "can't analyze" and
+    // never hoisted, letting Verilog self-determine it at 4 bits instead
+    // of mimz's grown 5.
+    let src = "fn ident4(x: bits[4]) -> bits[4] {\n  x\n}\n\n\
+                module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[9]\n  \
+                y = { b, ident4(a) + a }\n}\n";
+    // a=0b1111 (15), b=0b1010 (10) — the exact vector the review used.
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_41_instance_port_operand_of_add_in_concat_matches_icarus() {
+    // Repro ②: an instance output port (`s.q`) as an operand of the same
+    // lossless `+` — same root cause, different unclassified shape.
+    // `comb::eval_outputs` (`differential`, above) explicitly rejects any
+    // module that instantiates a sub-module ("the evaluator does not
+    // elaborate instances yet") — this needs the real engine
+    // (`differential_clocked`), even though the design itself has no
+    // registers of its own.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  let s = Sub() { x: a }\n  \
+                y = { b, s.q + a }\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_41_if_expr_operand_of_add_in_concat_matches_icarus() {
+    // Repro ③: an `if`/`else` expression as an operand of the same `+`.
+    let src = "module Fuzz {\n  in cond: bit\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  \
+                y = { b, (if cond { a } else { b }) + a }\n}\n";
+    differential(src, &[("cond", 1), ("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_41_mem_read_operand_of_add_in_concat_matches_icarus() {
+    // Repro ④: a memory read (`m[addr]`) as an operand of the same `+`.
+    // `m[0]` is written to its max 4-bit value on the first rising edge so
+    // the growth bit the outer `+` needs is actually exercised (0+0 would
+    // "match" trivially regardless of the bug).
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in raddr: bits[2]\n  \
+                in b: bits[4]\n  out y: bits[9]\n  mem m: bits[4][4] = 0\n  \
+                on rise(clk) {\n    m[0] <- 15\n  }\n  \
+                y = { b, m[raddr] + m[raddr] }\n}\n";
+    differential_clocked(src, None, &[("raddr", 0), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_41_extend_of_a_fn_call_in_concat_matches_icarus() {
+    // Repro ⑤: BUG-28 verbatim, reached through a `fn` call instead of a
+    // bare identifier — the review found this reproduces the ORIGINAL
+    // bug's exact wrong emission byte-for-byte.
+    let src = "fn ident4(x: bits[4]) -> bits[4] {\n  x\n}\n\n\
+                module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[12]\n  \
+                y = { b, extend(ident4(a), 8) }\n}\n";
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
 #[test]
 fn bug_43_negative_literal_in_a_reg_reset_matches_icarus() {
     // Reset values happened to be CORRECT before the fix (they take a
@@ -909,5 +989,5 @@ fn bug_43_negative_literal_in_a_reg_reset_matches_icarus() {
     let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[8]\n  \
                out y: bits[8]\n  reg r: signed[8] = -1\n  \
                on rise(clk) {\n    r <- r\n  }\n  y = unsigned(r) & a\n}\n";
-    differential_clocked(src, &[("a", 0xFF)]);
+    differential_clocked(src, None, &[("a", 0xFF)]);
 }

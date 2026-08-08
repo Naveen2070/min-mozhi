@@ -6,6 +6,12 @@ module PidController (
     output wire signed [(8)-1:0] control,
     output wire saturated
 );
+    reg signed [(16)-1:0] integral;
+    reg signed [(8)-1:0] prev_error;
+    wire signed [(9)-1:0] error;
+    wire signed [(10)-1:0] p_term;
+    wire signed [(10)-1:0] d_diff;
+    wire signed [(16)-1:0] total;
     wire signed [9:0] __mimz_sub_1;
     assign __mimz_sub_1 = ((setpoint) - (measured));
     wire signed [10:0] __mimz_sub_2;
@@ -20,12 +26,6 @@ module PidController (
     assign __mimz_sub_6 = (((-128) < ((total < 127) ? (total) : (127))) ? (((total < 127) ? (total) : (127))) : ((-128)));
     wire signed [16:0] __mimz_sub_7;
     assign __mimz_sub_7 = (integral + (error));
-    reg signed [(16)-1:0] integral;
-    reg signed [(8)-1:0] prev_error;
-    wire signed [(9)-1:0] error;
-    wire signed [(10)-1:0] p_term;
-    wire signed [(10)-1:0] d_diff;
-    wire signed [(16)-1:0] total;
     assign error = __mimz_sub_1[(9)-1:0];
     assign p_term = __mimz_sub_2[(10)-1:0];
     assign d_diff = __mimz_sub_3[(10)-1:0];
