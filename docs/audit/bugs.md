@@ -2921,7 +2921,7 @@ match so a new expression form fails the build until classified — mirroring wh
 
 ---
 
-## BUG-42 (CRITICAL, OPEN) — `min`/`max` misclassified as "no mismatch possible" in `verilog_self_determined_kind`
+## BUG-42 (CRITICAL, FIXED 2026-08-08) — `min`/`max` misclassified as "no mismatch possible" in `verilog_self_determined_kind`
 
 **What.** `min`/`max` whose operand is itself a width-mismatched sub-expression
 emit an unsized ternary, so Verilog self-determines it at the _rendered_ operand
@@ -2962,27 +2962,35 @@ above.
 **Severity.** CRITICAL. Silent miscompile; `min`/`max` over an `extend`ed
 operand is the standard clamp idiom.
 
-**Fix (proposed).**
+**Fix.** `Min | Max` now recurses into both operands exactly like
+`SignedCast`/`UnsignedCast` already did, taking `max` of their own
+self-determined widths (mirroring how the generic binary-operator arm
+above it already handles every other operator):
 
 ```rust
 Builtin::Min | Builtin::Max => Some(Kind {
-    width: self_determined_operand_width(&args[0], decls)
-        .max(self_determined_operand_width(&args[1], decls)),
-    signed: infer_kind(expr, decls).signed,
+    width: self_determined_operand_width(&args[0], decls)?
+        .max(self_determined_operand_width(&args[1], decls)?),
+    signed: infer_kind(expr, decls)?.signed,
 }),
 ```
 
-Then re-audit `Trunc`/`Nand`/`Nor`/`Xnor`/`Encoding` under the corrected
-question — "is this argument's _rendered_ width necessarily its mimz width?" —
-not "is this operator's _result_ width necessarily its mimz width?" `Trunc`
-survives (explicit part-select, exactly N bits, base already hoisted by BUG-36),
-the reductions survive (1 bit both sides), `Encoding` survives by recursion.
+Re-audited `Trunc`/`Nand`/`Nor`/`Xnor`/`Encoding`/`SignedCast`/
+`UnsignedCast` under the corrected question — "is this argument's
+_rendered_ width necessarily its mimz width?", not "is this operator's
+_result_ width necessarily its mimz width?" All survive unchanged:
+`Trunc` (explicit part-select, exactly N bits, base already hoisted by
+BUG-36), the reductions (1 bit both sides), `Encoding`/`SignedCast`/
+`UnsignedCast` (already recurse). The corrected question is now recorded
+in the file's own module doc comment so the next builtin is classified
+against it, not the one that shipped this bug.
 
-**Test (required).** The existing `matrix_min_in_concat_matches_icarus` /
-`matrix_max_in_concat_matches_icarus` pass a _bare identifier_ operand, which is
-why they miss this. Add the mismatched-operand form (`min(extend(p, N), ...)`)
-and make the matrix cover a non-trivial operand for every builtin, not only a
-port name.
+**Test.** `bug_42_min_max_mismatched_operand_matches_icarus`
+(`tests/self_determined_regression.rs`) — the exact repro above, watched
+fail against the pre-fix code (kernel 2039, Icarus 55) before
+implementing. Full workspace green (`REQUIRE_IVERILOG=1 cargo test
+--workspace --release --no-fail-fast`, 1212 tests); `fmt`/
+`clippy -D warnings` clean.
 
 ---
 

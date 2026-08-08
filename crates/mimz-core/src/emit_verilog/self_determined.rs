@@ -7,6 +7,18 @@
 //! NOT mimz's own semantics (that's `kinds::infer_kind`). Confirmed
 //! empirically against real `iverilog`, matching this codebase's
 //! existing convention for BUG-18/19/20/21's own investigations.
+//!
+//! Classifying a new `Builtin` arm here: ask "is this argument's
+//! RENDERED width necessarily its mimz width?", never "is this
+//! operator's RESULT width necessarily its mimz width?" — the second
+//! question is about mimz's own semantics (already guaranteed by the
+//! checker) and says nothing about what Verilog does with the literal
+//! text this file's emitter produces. BUG-42 shipped from answering the
+//! wrong question: `min`/`max`'s two operands ARE same-width under
+//! mimz's own rule, which was mistaken for "so no mismatch is possible"
+//! — but an operand can still each independently render as a narrower
+//! mismatched sub-expression (`extend(p, N)` renders as the bare `(p)`),
+//! which only the first question catches.
 
 use std::collections::HashMap;
 
@@ -64,17 +76,29 @@ pub(crate) fn verilog_self_determined_kind(
                 width: self_determined_operand_width(&args[0], decls)?,
                 signed: infer_kind(expr, decls)?.signed,
             }),
+            // `min`/`max` render to a ternary — `(a < b) ? a : b` — whose
+            // OWN self-determined width is `max` of the two RENDERED
+            // operand widths, same as any other binary-shaped construct
+            // (BUG-42, `docs/audit/bugs.md`). Recurse into each operand,
+            // same as `SignedCast`/`UnsignedCast` below: same-width by the
+            // checker's own rule is a fact about mimz's widths, not about
+            // what each operand renders as. `extend(p, 11)` renders as the
+            // bare `(p)` — self-determined at `p`'s own 6 bits, not 11 —
+            // so `min(extend(p, 11), extend(p, 11))` self-determines to 6
+            // bits, not mimz's 11; the mismatch this now exposes is what
+            // makes the caller hoist.
+            Builtin::Min | Builtin::Max => Some(Kind {
+                width: self_determined_operand_width(&args[0], decls)?
+                    .max(self_determined_operand_width(&args[1], decls)?),
+                signed: infer_kind(expr, decls)?.signed,
+            }),
             // `trunc` renders as an explicit part-select `x[N-1:0]` —
-            // already exactly N bits in Verilog. `min`/`max` render to a
-            // ternary whose operands are same-width by the checker's own
-            // rule, so `max(operand widths) == N`. Reductions are 1-bit
-            // on both sides. No mismatch possible for any of these.
-            Builtin::Trunc
-            | Builtin::Min
-            | Builtin::Max
-            | Builtin::Nand
-            | Builtin::Nor
-            | Builtin::Xnor => None,
+            // already exactly N bits in Verilog regardless of the base
+            // (BUG-36 already hoists a composite base to a named wire, so
+            // the base's own rendered width can never leak through).
+            // Reductions are 1-bit on both sides regardless of operand
+            // width. No mismatch possible for either.
+            Builtin::Trunc | Builtin::Nand | Builtin::Nor | Builtin::Xnor => None,
             // `$signed`/`$unsigned`'s argument is self-determined at its
             // own width (confirmed empirically during BUG-18/19/20/21's
             // investigations) — same width mimz's own model gives, UNLESS
