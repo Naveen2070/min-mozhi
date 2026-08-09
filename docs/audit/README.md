@@ -21,12 +21,13 @@ locks it). New audits append here; nothing is deleted.
 Full-project reviews (each one a dated snapshot that files its findings into the
 four tables above):
 
-| Review                                         | Scope                                                                                 |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [`review-2026-07-03.md`](review-2026-07-03.md) | First full review — 14 findings                                                       |
-| [`review-2026-07-17.md`](review-2026-07-17.md) | Full CTO review — filed BUG-11 (escalated with proof), corrected BUG-12               |
-| [`review-2026-08-02.md`](review-2026-08-02.md) | Full CTO review — filed BUG-28…33, SEC-10, HARD-7…9, GAP-1…10; headline defect BUG-28 |
-| [`review-2026-08-07.md`](review-2026-08-07.md) | v0.2 release-readiness re-verification — **do-not-ship**; filed BUG-41…44, GAP-11/12  |
+| Review                                         | Scope                                                                                                             |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| [`review-2026-07-03.md`](review-2026-07-03.md) | First full review — 14 findings                                                                                   |
+| [`review-2026-07-17.md`](review-2026-07-17.md) | Full CTO review — filed BUG-11 (escalated with proof), corrected BUG-12                                           |
+| [`review-2026-08-02.md`](review-2026-08-02.md) | Full CTO review — filed BUG-28…33, SEC-10, HARD-7…9, GAP-1…10; headline defect BUG-28                             |
+| [`review-2026-08-07.md`](review-2026-08-07.md) | v0.2 release-readiness re-verification — **do-not-ship**; filed BUG-41…44, GAP-11/12                              |
+| [`review-2026-08-09.md`](review-2026-08-09.md) | v0.2 release-readiness round 3 — **do-not-ship**; BUG-41…44/GAP-11/12 all verified fixed, filed BUG-48/49, GAP-13 |
 
 ## Audit log
 
