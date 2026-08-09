@@ -871,12 +871,42 @@ impl Emitter<'_> {
                     // any OTHER shape (a concat, here) untouched. Hoist
                     // unconditionally on shape, mirroring `ExprKind::Slice`'s
                     // own `hoist_slice_base_if_needed` call exactly.
-                    let x = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
+                    let base_kind = crate::emit_verilog::kinds::infer_kind(&args[0], &decls);
+                    let x = match base_kind {
                         Some(k) => self.hoist_slice_base_if_needed(x, k.width, false),
                         None => x,
                     };
                     let n = self.expr_subst(&args[1], subst, arrays);
-                    format!("{x}[({n})-1:0]")
+                    let sel = format!("{x}[({n})-1:0]");
+                    // BUG-44 (docs/audit/bugs.md): `trunc` KEEPS its operand's
+                    // signedness — the checker (`widths/ops/builtins.rs`:
+                    // `Ty::Signed(_) => Ty::Signed(n)`), the simulator
+                    // (`value/fn_eval.rs`: `Val::new(.., v.signed)`) and
+                    // `kinds.rs`'s own `signed: base_signed` all agree. The
+                    // part-select above does NOT: a part-select is
+                    // unconditionally unsigned in Verilog-2005 (IEEE 1364-2005
+                    // section 5.1.7) even off a `signed` wire. Unwrapped, the
+                    // lost signedness both mis-extends into a wider signed
+                    // target AND demotes any surrounding arithmetic to
+                    // unsigned (mixing one unsigned operand makes the whole
+                    // expression unsigned), discarding a sibling's `$signed`
+                    // too — the shape the fuzz seed took.
+                    //
+                    // `ExprKind::Slice` deliberately needs no such wrap:
+                    // `width_rules::slice_result` types a slice `signed:
+                    // false` (BUG-21), which is exactly Verilog's own rule.
+                    // `trunc` is the one construct where a mimz-signed value
+                    // renders as an always-unsigned Verilog construct.
+                    //
+                    // An unresolvable `base_kind` keeps the pre-existing
+                    // unsigned rendering — the same "leave the text as it
+                    // was" residue every other `infer_kind` call site here
+                    // already accepts, not a new failure mode.
+                    if base_kind.is_some_and(|k| k.signed) {
+                        format!("$signed({sel})")
+                    } else {
+                        sel
+                    }
                 }
                 Builtin::Min => {
                     let decls = self.cur_decls.clone();

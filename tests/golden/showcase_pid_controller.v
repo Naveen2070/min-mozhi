@@ -21,16 +21,16 @@ module PidController (
     wire signed [16:0] __mimz_sub_4;
     assign __mimz_sub_4 = ((p_term) + integral);
     wire signed [16:0] __mimz_sub_5;
-    assign __mimz_sub_5 = (__mimz_sub_4[(16)-1:0] + (d_diff));
+    assign __mimz_sub_5 = ($signed(__mimz_sub_4[(16)-1:0]) + (d_diff));
     wire [15:0] __mimz_sub_6;
     assign __mimz_sub_6 = (((-128) < ((total < 127) ? (total) : (127))) ? (((total < 127) ? (total) : (127))) : ((-128)));
     wire signed [16:0] __mimz_sub_7;
     assign __mimz_sub_7 = (integral + (error));
-    assign error = __mimz_sub_1[(9)-1:0];
-    assign p_term = __mimz_sub_2[(10)-1:0];
-    assign d_diff = __mimz_sub_3[(10)-1:0];
-    assign total = __mimz_sub_5[(16)-1:0];
-    assign control = __mimz_sub_6[(8)-1:0];
+    assign error = $signed(__mimz_sub_1[(9)-1:0]);
+    assign p_term = $signed(__mimz_sub_2[(10)-1:0]);
+    assign d_diff = $signed(__mimz_sub_3[(10)-1:0]);
+    assign total = $signed(__mimz_sub_5[(16)-1:0]);
+    assign control = $signed(__mimz_sub_6[(8)-1:0]);
     assign saturated = ((total < (-128)) || (total > 127));
     always @(posedge clk) begin
         if (rst) begin
@@ -38,8 +38,8 @@ module PidController (
             prev_error <= 0;
         end else begin
             integral <= integral;
-            integral <= __mimz_sub_7[(16)-1:0];
-            prev_error <= error[(8)-1:0];
+            integral <= $signed(__mimz_sub_7[(16)-1:0]);
+            prev_error <= $signed(error[(8)-1:0]);
         end
     end
 endmodule
