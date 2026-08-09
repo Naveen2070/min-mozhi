@@ -6,8 +6,12 @@ module Shift #(
     output wire [(8)-1:0] param_shift,
     output wire [(8)-1:0] var_shift
 );
-    assign literal_shift = ((1 << 3));
+    wire [3:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (1 << 3);
+    wire [5:0] __mimz_sub_2;
+    assign __mimz_sub_2 = (din << 2);
+    assign literal_shift = (__mimz_sub_1);
     assign param_shift = ((3 << AMOUNT));
-    assign var_shift = ((din << 2));
+    assign var_shift = (__mimz_sub_2);
 endmodule
 

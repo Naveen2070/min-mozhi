@@ -832,22 +832,41 @@ impl Emitter<'_> {
                         _ => {
                             let text = self.expr_subst(&args[0], subst, arrays);
                             let decls = Rc::clone(&self.cur_decls);
-                            // `allow_shift: false` (BUG-24 regression fix,
-                            // docs/audit/bugs.md): `call`'s `Builtin::Extend`
-                            // arm explicitly threads THIS extend's own
-                            // target width `n` into evaluating its argument
-                            // (`eval_ctx(r, &args[0], Some(n))`, doc'd there
-                            // as BUG-11's fix — "a shift inside the argument
-                            // sees its real consuming width") — a shift
-                            // argument here is context-determined, not
-                            // self-determined, so hoisting it would compute
-                            // a value different from the simulator's
-                            // reference semantics (this exact case is
-                            // `examples/english/shift.mimz`'s BUG-6 guard:
-                            // `extend(1 << 3, 8)` must stay 8, not collapse
-                            // to a bottom-up-inferred 0).
+                            // `allow_shift: true` — BUG-47 (docs/audit/bugs.md).
+                            //
+                            // This was `false`, justified by the simulator
+                            // threading THIS extend's own target width `n`
+                            // into evaluating its argument via
+                            // `eval_ctx(r, &args[0], Some(n))` — under which a
+                            // shift argument really was context-determined in
+                            // mimz's own model, and hoisting it would have
+                            // disagreed with the reference semantics.
+                            //
+                            // That function no longer exists. BUG-34's
+                            // fused-shift rework replaced it: a shift is now
+                            // evaluated by `binary::eval_shift_chain`, which
+                            // resolves the chain's own bottom-up width and
+                            // never consults an ambient expected width. The
+                            // guard outlived its reason, and what it left
+                            // behind is a silent miscompile —
+                            // `extend(p1 >> 2, 20)` with `p1: signed[4]` =
+                            // `0b1111` is 3 in mimz (the shift happens within
+                            // 4 bits) and 262143 in Verilog, which sign-
+                            // extends `p1` to the surrounding 20 bits first.
+                            //
+                            // BUG-6's own guard (`examples/english/shift.mimz`:
+                            // `extend(1 << 3, 8)` must stay 8, not collapse to
+                            // 0) still holds through the hoist — `infer_kind`
+                            // gives `1 << 3` a grown width of its own, so the
+                            // hoisted wire is wide enough to hold 8.
+                            //
+                            // A shift as the LHS of ANOTHER shift stays
+                            // un-hoisted: that position is gated separately by
+                            // `allow_shift_lhs` in the `Binary` arm above and
+                            // is a genuine fused-chain case (BUG-24/BUG-34),
+                            // unlike this one.
                             let text =
-                                self.hoist_width_effect_operand(&args[0], text, &decls, false);
+                                self.hoist_width_effect_operand(&args[0], text, &decls, true);
                             format!("({text})")
                         }
                     }
