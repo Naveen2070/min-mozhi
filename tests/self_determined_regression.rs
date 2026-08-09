@@ -1002,6 +1002,83 @@ fn bug_44_trunc_of_a_signed_value_as_a_multiply_operand() {
     differential(src, &[("a", 236)]);
 }
 
+// ---------------------------------------------------------------------
+// BUG-48 (`docs/audit/bugs.md`) — `kinds::infer_kind` is now the SOLE
+// gate (BUG-41 collapsed the old two-match hand-sync into one), but it
+// still ends `_ => None`, and two of the arms BUG-41's fix added take an
+// early `return None` for shapes narrower than what the checker actually
+// accepts: `Field` only resolves a `Ident.field` base, not
+// `Index.field` (an array-instance output port); `Slice` only
+// const-folds a literal bound, not a `const`-valued one. Both are
+// ordinary, already-shipped syntax (`examples/english/ripple_adder.mimz`
+// uses `fa[i - 1].cout`) — same "unclassified shape -> silently skip the
+// hoist" root cause as BUG-41, same surface, third round running.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_48_array_instance_port_operand_of_add_in_concat_matches_icarus() {
+    // `s[0].q` is `Field { base: Index { base: Ident("s"), index: 0 } }` —
+    // `infer_kind`'s `Field` arm required `base.kind == Ident` and
+    // returned `None` for anything else, so the enclosing `+` was
+    // declared "can't analyze" and never hoisted.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  repeat i: 0..1 {\n    let s[i] = Sub() { x: a }\n  }\n  \
+                y = { b, s[0].q + a }\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_48_extend_of_an_array_instance_port_in_concat_matches_icarus() {
+    // BUG-28 verbatim, reached through an array-instance port instead of
+    // a bare identifier — byte-identical wrong emission to round 1's
+    // Repro A and round 2's BUG-41 repro (5).
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  repeat i: 0..1 {\n    let s[i] = Sub() { x: a }\n  }\n  \
+                y = { b, extend(s[0].q, 8) }\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_48_const_bounded_slice_operand_of_add_in_concat_matches_icarus() {
+    // `a[HI:0]` folds fine in the EMITTED TEXT (`a[3:0]`) — the checker's
+    // own `slice_ty` already const-evaluates `HI` to accept the program —
+    // but `infer_kind`'s `Slice` arm used the literal-only `const_fold`,
+    // which sees an `Ident` for `HI` and returns `None`.
+    let src = "module Fuzz {\n  const HI: int = 3\n  in a: bits[8]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  y = { b, a[HI:0] + a[HI:0] }\n}\n";
+    differential(src, &[("a", 0b00001111), ("b", 0b1010)]);
+}
+
+// ---------------------------------------------------------------------
+// BUG-49 (`docs/audit/bugs.md`) — the same `infer_kind` residue as
+// BUG-48, reached through the OTHER hoist BUG-41's fix left gated on it
+// (BUG-36's "hoist a composite `trunc` base to a named wire", since
+// Verilog's part-select grammar only accepts an identifier). `mimz
+// check`/`mimz test` both pass; `mimz compile` emits a part-select on a
+// COMPOSITE expression, which Icarus rejects with a syntax error rather
+// than a wrong value — `differential`/`differential_clocked`'s own
+// iverilog BUILD step (not the value comparison after it) is the
+// assertion here.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_49_trunc_of_an_array_instance_port_sum_elaborates() {
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  \
+                out y: bits[3]\n  repeat i: 0..1 {\n    let s[i] = Sub() { x: a }\n  }\n  \
+                y = trunc(s[0].q + a, 3)\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111)]);
+}
+
+#[test]
+fn bug_49_trunc_of_a_const_bounded_slice_sum_elaborates() {
+    let src = "module Fuzz {\n  const HI: int = 3\n  in a: bits[8]\n  \
+                out y: bits[3]\n  y = trunc(a[HI:0] + a[HI:0], 3)\n}\n";
+    differential(src, &[("a", 0b00001111)]);
+}
+
 #[test]
 fn bug_47_signed_right_shift_into_a_wider_assignment() {
     // BUG-47 (`docs/audit/bugs.md`), minimized from clocked-fuzz seed

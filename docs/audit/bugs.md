@@ -3500,7 +3500,7 @@ pinned as its own regression test.
 
 ---
 
-## BUG-48 (CRITICAL, OPEN) — Two more `ExprKind` shapes fall through `infer_kind`, reopening BUG-28/29 with byte-identical output
+## BUG-48 (CRITICAL, FIXED 2026-08-09) — Two more `ExprKind` shapes fall through `infer_kind`, reopening BUG-28/29 with byte-identical output
 
 **What.** `extend()`/lossless arithmetic in a Verilog self-determined position
 emit unsized operands again — BUG-28/BUG-29/BUG-41's exact failure, with
@@ -3544,23 +3544,51 @@ returns `None` for, rather than the shapes previously filed. `fa[i - 1].cout` in
 check`, `mimz test`, the Icarus example suite, and the differential fuzzer at
 `N=2000` (whose generator emits neither shape).
 
-**Fix (proposed).**
+**Fix (2026-08-09, `docs/plan/v0.2-class-closure-round3.local.md` Task 1).**
+Both shapes classified, plus a real gap the `Field` fix exposed: `build_decls`
+never populated a KEY for an array-instance's output port at all (its own
+comment said so — "out of this task's scope", from BUG-41's fix) — the
+`Field` arm couldn't resolve `s[0].q` no matter how it matched, because
+`decls` had nothing under `s__0_q` to find. `build_decls`
+(`crates/mimz-core/src/emit_verilog/module/ports.rs`) gained
+`insert_repeat_instance_output_kinds`, unrolling each `ModuleItem::Repeat`
+body the same way real emission does (`mod.rs`'s own `unroll`, `lo`/`hi`
+folded via `consteval::eval`) and inserting every iteration's instance
+output ports under `{inst}__{n}_{port}` — the exact key `expr.rs:280`
+already renders. The existing plain-instance path was refactored into the
+same shared `insert_instance_output_kinds_keyed` rather than duplicated.
+`infer_kind`'s `Field` arm now looks up that key when `base` is
+`Index { Ident(arr), idx }` and `idx` const-folds. `Slice`'s `hi`/`lo` now
+fold through a new `slice_bound_fold` (`consteval::eval` against the module
+env, superseding the literal-only `const_fold` for this one call site) — the
+same authority `checker::widths::slice_ty` already used to accept the
+program, so this can never admit a width the checker rejected.
 
-- `Field`: add an `else if` for `base.kind == Index { Ident(arr), idx }` with a
-  const-folding `idx`, looking up the same `{arr}__{n}_{field}` key `expr.rs`
-  already renders.
-- `Slice`: fold `hi`/`lo` through `consteval::eval` against the module env — the
-  same authority `checker::widths::slice_ty` used to accept the program.
+Both new folds needed `env: &Env` reachable from `infer_kind`, which a
+`Slice` can appear under anywhere in the expression tree — so `env` threads
+through the whole call graph it was missing from: `infer_binary`,
+`infer_call`, `adapted_lossless_operands`, and `self_determined.rs`'s own
+`verilog_self_determined_kind`/`self_determined_operand_width` (both call
+`infer_kind`). Every call site in `expr.rs`/`module/ports.rs` now passes
+`&self.env`, already on hand at each one.
 
-Neither closes the class. The class needs [GAP-13](gaps.md).
-
-**Test (required).** Both shapes as Icarus differentials in
-`tests/self_determined_regression.rs`, plus [GAP-13](gaps.md)'s exhaustive
-`ExprKind` match so the next expression form fails the build until classified.
+**Test.** `bug_48_array_instance_port_operand_of_add_in_concat_matches_icarus`,
+`bug_48_extend_of_an_array_instance_port_in_concat_matches_icarus`,
+`bug_48_const_bounded_slice_operand_of_add_in_concat_matches_icarus`
+(`tests/self_determined_regression.rs`) — watched fail (kernel/Icarus
+mismatch, matching the filing's own numbers) before the fix, pass after.
+Revert-checked each arm independently (`if false &&` on the `Field`
+array-instance branch; literal-only `const_fold` swapped back in for
+`Slice`): each disables exactly its own 1–2 tests and nothing else — the two
+fixes are load-bearing and independent. Full workspace green throughout
+(`REQUIRE_IVERILOG=1 cargo test --workspace --no-fail-fast`), `fmt`/`clippy
+-D warnings` clean. [GAP-13](gaps.md) (the `ExprKind` axis that would have
+caught this class before a third round found it by hand) remains open —
+this fix closes the two live instances, not the structural gap.
 
 ---
 
-## BUG-49 (HIGH, OPEN) — The same residue emits invalid Verilog: a part-select on a composite base
+## BUG-49 (HIGH, FIXED 2026-08-09) — The same residue emits invalid Verilog: a part-select on a composite base
 
 **What.** `mimz check` and `mimz test` pass; `mimz compile` emits Verilog that
 does not parse.
@@ -3580,7 +3608,7 @@ emitted   assign y = (s__0_q + a)[(3)-1:0];
 iverilog  syntax error / Syntax error in continuous assignment   (exit 2)
 ```
 
-**Cause.** Same `infer_kind` → `None` residue as [BUG-48](#bug-48-critical-open--two-more-exprkind-shapes-fall-through-infer_kind-reopening-bug-2829-with-byte-identical-output).
+**Cause.** Same `infer_kind` → `None` residue as [BUG-48](#bug-48-critical-fixed-2026-08-09--two-more-exprkind-shapes-fall-through-infer_kind-reopening-bug-2829-with-byte-identical-output).
 BUG-36 established that `trunc`'s base must be hoisted to a named wire because
 Verilog's part-select grammar accepts only an identifier; BUG-46 extended that to
 module parameters. Both hoists are gated on `infer_kind(base)`
@@ -3594,6 +3622,17 @@ module parameters. Both hoists are gated on `infer_kind(base)`
 which is weaker than the guarantee the project states wherever it mentions the
 Icarus differential.
 
-**Fix.** Falls out of BUG-48's fix. Add an `iverilog -t null` **elaboration**
-assertion to the trunc/slice-base regression tests, which currently only compare
-values and so cannot fail on unparseable output.
+**Fix (2026-08-09, `docs/plan/v0.2-class-closure-round3.local.md` Task 2).**
+Fell out of [BUG-48](#bug-48-critical-fixed-2026-08-09--two-more-exprkind-shapes-fall-through-infer_kind-reopening-bug-2829-with-byte-identical-output)'s
+fix exactly as expected — no separate emitter change. A dedicated elaboration
+assertion turned out unnecessary: `differential`/`differential_clocked`'s own
+`iverilog` BUILD step (`support::run_vvp`) already asserts
+`build.status.success()` before any value is ever compared, so a syntax error
+fails the test there, not silently.
+
+**Test.** `bug_49_trunc_of_an_array_instance_port_sum_elaborates`,
+`bug_49_trunc_of_a_const_bounded_slice_sum_elaborates`
+(`tests/self_determined_regression.rs`) — revert-checked one (the
+array-instance shape): disabling BUG-48's `Field` fix reproduces the filed
+`iverilog` syntax error exactly, confirming this is the same residue, not a
+coincidence.

@@ -42,6 +42,7 @@
 use std::collections::HashMap;
 
 use crate::ast::{BinOp, Builtin, Expr, ExprKind};
+use crate::checker::consteval::{self, Env};
 use crate::width_rules::Kind;
 
 /// Reserved `decls` key for a memory `name`'s ELEMENT `Kind` — inserted by
@@ -80,7 +81,7 @@ pub(crate) fn fn_ret_decl_key(name: &str) -> String {
 /// re-adding a `kind_is_inferrable`-style shape gate that has to be kept
 /// in sync with this function by hand (that hand-sync is exactly what
 /// caused BUG-41).
-pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind> {
+pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>, env: &Env) -> Option<Kind> {
     match &expr.kind {
         ExprKind::Int { value, .. } => Some(Kind {
             width: min_width_for(value),
@@ -91,12 +92,12 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<K
             signed: false,
         }),
         ExprKind::Ident(name) => decls.get(name).copied(),
-        ExprKind::Unary { op: _, expr: inner } => infer_kind(inner, decls),
-        ExprKind::Binary { op, lhs, rhs } => infer_binary(*op, lhs, rhs, decls),
+        ExprKind::Unary { op: _, expr: inner } => infer_kind(inner, decls, env),
+        ExprKind::Binary { op, lhs, rhs } => infer_binary(*op, lhs, rhs, decls, env),
         ExprKind::Concat(parts) => {
             let width = parts
                 .iter()
-                .try_fold(0u32, |acc, p| Some(acc + infer_kind(p, decls)?.width))?;
+                .try_fold(0u32, |acc, p| Some(acc + infer_kind(p, decls, env)?.width))?;
             Some(Kind {
                 width,
                 signed: false,
@@ -114,7 +115,7 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<K
             // replication's total width.
             let width = parts
                 .iter()
-                .try_fold(0u32, |acc, p| Some(acc + infer_kind(p, decls)?.width))?;
+                .try_fold(0u32, |acc, p| Some(acc + infer_kind(p, decls, env)?.width))?;
             Some(Kind {
                 width,
                 signed: false,
@@ -129,11 +130,19 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<K
             // call site doesn't need to re-validate (the checker already
             // did) — pass `u32::MAX` as a base_width wide enough that
             // the out-of-range branch never fires here.
-            let hi_v = const_fold(hi)?;
-            let lo_v = const_fold(lo)?;
+            //
+            // BUG-48 (`docs/audit/bugs.md`): a bound folds fine in the
+            // EMITTED TEXT (`a[3:0]`) even when it's a `const`/parameter
+            // reference, not a bare literal — the checker's own
+            // `slice_ty` already const-evaluates it that way to accept
+            // the program. `const_fold` only recognized a literal `Int`,
+            // so a symbolic-but-constant bound fell through to `None`
+            // here even though it was never actually unresolvable.
+            let hi_v = slice_bound_fold(hi, env)?;
+            let lo_v = slice_bound_fold(lo, env)?;
             crate::width_rules::slice_result(u32::MAX, hi_v, lo_v).ok()
         }
-        ExprKind::Call { func, args } => infer_call(*func, args, decls),
+        ExprKind::Call { func, args } => infer_call(*func, args, decls, env),
         // BUG-41 (docs/audit/bugs.md): the five shapes below used to fall
         // through the retired `kind_is_inferrable`'s own wildcard.
         ExprKind::Index { base, .. } => {
@@ -164,24 +173,38 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<K
             // every non-array instance's output-port `Kind` under the exact
             // name `expr.rs`'s own `Field` rendering already produces
             // (`{inst}_{port}`), so this is a plain `decls` lookup, same as
-            // an `Ident`. An enum-variant reference, a bundle field, and an
-            // array-instance's `inst[i].port` are not handled here (`None`
-            // — same, pre-existing, safe fallback as everything else this
-            // function cannot resolve).
-            let ExprKind::Ident(base_name) = &base.kind else {
-                return None;
-            };
-            decls.get(&format!("{base_name}_{}", field.name)).copied()
+            // an `Ident`.
+            if let ExprKind::Ident(base_name) = &base.kind {
+                return decls.get(&format!("{base_name}_{}", field.name)).copied();
+            }
+            // Array-instance output (`s[i].port`) — BUG-48
+            // (`docs/audit/bugs.md`): same shape `expr.rs`'s own `Field`
+            // rendering handles (`{arr}__{n}_{port}`), so `build_decls`
+            // now precomputes the identical key for every `repeat`-body
+            // instance (`insert_repeat_instance_output_kinds`); this arm
+            // just needs the same `n` `expr.rs` renders — the index must
+            // const-fold, same authority the checker used to accept it.
+            // An enum-variant reference and a bundle field are still not
+            // handled here (`None` — same, pre-existing, safe fallback).
+            if let ExprKind::Index { base: arr, index } = &base.kind
+                && let ExprKind::Ident(arr_name) = &arr.kind
+                && let Some(n) = slice_bound_fold(index, env)
+            {
+                return decls
+                    .get(&format!("{arr_name}__{n}_{}", field.name))
+                    .copied();
+            }
+            None
         }
         ExprKind::IfExpr { then, els, .. } => {
             // Either branch — the checker guarantees both arms the same
             // `Ty`, so whichever one resolves is `expr`'s own Kind too.
-            infer_kind(then, decls).or_else(|| infer_kind(els, decls))
+            infer_kind(then, decls, env).or_else(|| infer_kind(els, decls, env))
         }
         ExprKind::Match { arms, .. } => {
             // Same reasoning as `IfExpr`: the checker guarantees every arm
             // the same `Ty`, so the first arm that resolves is enough.
-            arms.iter().find_map(|a| infer_kind(&a.value, decls))
+            arms.iter().find_map(|a| infer_kind(&a.value, decls, env))
         }
         // Bundles/enums/`??`/array literals never appear inside a
         // concat/replicate/comparison/cast/slice-base position (mimz's own
@@ -282,20 +305,21 @@ fn adapted_lossless_operands(
     lhs: &Expr,
     rhs: &Expr,
     decls: &HashMap<String, Kind>,
+    env: &Env,
 ) -> Option<(Kind, Kind)> {
     match (
         adapts_to_sibling(&lhs.kind, decls),
         adapts_to_sibling(&rhs.kind, decls),
     ) {
         (true, false) => {
-            let r = infer_kind(rhs, decls)?;
+            let r = infer_kind(rhs, decls, env)?;
             Some((r, r))
         }
         (false, true) => {
-            let l = infer_kind(lhs, decls)?;
+            let l = infer_kind(lhs, decls, env)?;
             Some((l, l))
         }
-        _ => Some((infer_kind(lhs, decls)?, infer_kind(rhs, decls)?)),
+        _ => Some((infer_kind(lhs, decls, env)?, infer_kind(rhs, decls, env)?)),
     }
 }
 
@@ -313,6 +337,18 @@ fn const_fold(expr: &Expr) -> Option<u32> {
         }),
         _ => None,
     }
+}
+
+/// Fold a slice bound against `env` — subsumes `const_fold`'s literal-only
+/// case (a literal folds through `consteval::eval` too) and additionally
+/// resolves a `const`/module-parameter reference, the same authority the
+/// checker's own `slice_ty` already used to accept the program (BUG-48,
+/// `docs/audit/bugs.md`) — so this can never admit a width the checker
+/// rejected.
+fn slice_bound_fold(expr: &Expr, env: &Env) -> Option<u32> {
+    consteval::eval(expr, env)
+        .ok()
+        .map(|v| v.to_i128_saturating() as u32)
 }
 
 /// `<<`'s growth (`width_rules::shift_result`) needs to know whether the
@@ -345,19 +381,25 @@ fn shift_const_amount(amount: &Expr) -> Option<u128> {
 /// resolves unconditionally — strictly more permissive than before
 /// (never wrong, since `verilog_self_determined_kind`'s own comparison
 /// arm agrees no Verilog-specific rule ever differs here either).
-fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind> {
+fn infer_binary(
+    op: BinOp,
+    lhs: &Expr,
+    rhs: &Expr,
+    decls: &HashMap<String, Kind>,
+    env: &Env,
+) -> Option<Kind> {
     match op {
         BinOp::Shl | BinOp::Shr => {
-            let l = infer_kind(lhs, decls)?;
-            let r = infer_kind(rhs, decls)?;
+            let l = infer_kind(lhs, decls, env)?;
+            let r = infer_kind(rhs, decls, env)?;
             crate::width_rules::shift_result(l, r, shift_const_amount(rhs), op == BinOp::Shl).ok()
         }
         BinOp::Add | BinOp::Sub => {
-            let (l, r) = adapted_lossless_operands(lhs, rhs, decls)?;
+            let (l, r) = adapted_lossless_operands(lhs, rhs, decls, env)?;
             crate::width_rules::lossless_result(l, r, false).ok()
         }
         BinOp::Mul => {
-            let (l, r) = adapted_lossless_operands(lhs, rhs, decls)?;
+            let (l, r) = adapted_lossless_operands(lhs, rhs, decls, env)?;
             crate::width_rules::lossless_result(l, r, true).ok()
         }
         BinOp::AddWrap
@@ -382,11 +424,11 @@ fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>
                 adapts_to_sibling(&lhs.kind, decls),
                 adapts_to_sibling(&rhs.kind, decls),
             ) {
-                (true, false) => infer_kind(rhs, decls),
-                (false, true) => infer_kind(lhs, decls),
+                (true, false) => infer_kind(rhs, decls, env),
+                (false, true) => infer_kind(lhs, decls, env),
                 _ => {
-                    let l = infer_kind(lhs, decls)?;
-                    let r = infer_kind(rhs, decls)?;
+                    let l = infer_kind(lhs, decls, env)?;
+                    let r = infer_kind(rhs, decls, env)?;
                     crate::width_rules::matched_result(l, r).ok()
                 }
             }
@@ -410,26 +452,31 @@ fn infer_binary(op: BinOp, lhs: &Expr, rhs: &Expr, decls: &HashMap<String, Kind>
 /// `self_determined.rs`'s own `verilog_self_determined_kind` convention
 /// (BUG-28/29's doc there): a 15th variant fails the build here too,
 /// instead of silently inheriting `None`.
-fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Option<Kind> {
+fn infer_call(
+    func: Builtin,
+    args: &[Expr],
+    decls: &HashMap<String, Kind>,
+    env: &Env,
+) -> Option<Kind> {
     match func {
         Builtin::Extend | Builtin::Trunc => {
             let n = const_fold(&args[1])?;
-            let base_signed = infer_kind(&args[0], decls)?.signed;
+            let base_signed = infer_kind(&args[0], decls, env)?.signed;
             Some(Kind {
                 width: n,
                 signed: base_signed,
             })
         }
         Builtin::SignedCast => Some(Kind {
-            width: infer_kind(&args[0], decls)?.width,
+            width: infer_kind(&args[0], decls, env)?.width,
             signed: true,
         }),
         Builtin::UnsignedCast => Some(Kind {
-            width: infer_kind(&args[0], decls)?.width,
+            width: infer_kind(&args[0], decls, env)?.width,
             signed: false,
         }),
         Builtin::Encoding => Some(Kind {
-            width: infer_kind(&args[0], decls)?.width,
+            width: infer_kind(&args[0], decls, env)?.width,
             signed: false,
         }),
         // `abs(x)` for `x: signed[N]` is `signed[N+1]` — lossless like
@@ -437,7 +484,7 @@ fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Op
         // checker's own rule (`checker/widths/ops/builtins.rs`,
         // `Builtin::Abs => Ty::Signed(n + 1)`).
         Builtin::Abs => Some(Kind {
-            width: infer_kind(&args[0], decls)?.width + 1,
+            width: infer_kind(&args[0], decls, env)?.width + 1,
             signed: true,
         }),
         // Reductions collapse to one bit, unsigned — matches the checker's
@@ -458,11 +505,11 @@ fn infer_call(func: Builtin, args: &[Expr], decls: &HashMap<String, Kind>) -> Op
         // above — see that function's own doc comment for why.
         Builtin::Min | Builtin::Max => {
             match (is_ct_int_like(&args[0].kind), is_ct_int_like(&args[1].kind)) {
-                (true, false) => infer_kind(&args[1], decls),
-                (false, true) => infer_kind(&args[0], decls),
+                (true, false) => infer_kind(&args[1], decls, env),
+                (false, true) => infer_kind(&args[0], decls, env),
                 _ => {
-                    let l = infer_kind(&args[0], decls)?;
-                    let r = infer_kind(&args[1], decls)?;
+                    let l = infer_kind(&args[0], decls, env)?;
+                    let r = infer_kind(&args[1], decls, env)?;
                     crate::width_rules::matched_result(l, r).ok()
                 }
             }
@@ -509,7 +556,7 @@ mod tests {
         );
         let e = ident("p0");
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 8,
                 signed: false
@@ -520,21 +567,21 @@ mod tests {
     #[test]
     fn ident_not_in_decls_is_none() {
         let decls = HashMap::new();
-        assert_eq!(infer_kind(&ident("nope"), &decls), None);
+        assert_eq!(infer_kind(&ident("nope"), &decls, &Env::new()), None);
     }
 
     #[test]
     fn literal_gets_its_minimal_width() {
         let decls = HashMap::new();
         assert_eq!(
-            infer_kind(&int(3), &decls),
+            infer_kind(&int(3), &decls, &Env::new()),
             Some(Kind {
                 width: 2,
                 signed: false
             })
         );
         assert_eq!(
-            infer_kind(&int(0), &decls),
+            infer_kind(&int(0), &decls, &Env::new()),
             Some(Kind {
                 width: 1,
                 signed: false
@@ -551,7 +598,7 @@ mod tests {
         };
         // int(3) -> width 2, int(1) -> width 1, sum = 3
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 3,
                 signed: false
@@ -566,7 +613,7 @@ mod tests {
             kind: ExprKind::Concat(vec![int(3), ident("unknown")]),
             span: Span::new(0, 0),
         };
-        assert_eq!(infer_kind(&e, &decls), None);
+        assert_eq!(infer_kind(&e, &decls, &Env::new()), None);
     }
 
     #[test]
@@ -595,7 +642,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 9,
                 signed: false
@@ -644,8 +691,8 @@ mod tests {
             width: 26,
             signed: false,
         });
-        assert_eq!(infer_kind(&lit_rhs, &decls), expected);
-        assert_eq!(infer_kind(&lit_lhs, &decls), expected);
+        assert_eq!(infer_kind(&lit_rhs, &decls, &Env::new()), expected);
+        assert_eq!(infer_kind(&lit_lhs, &decls, &Env::new()), expected);
     }
 
     #[test]
@@ -672,7 +719,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 64,
                 signed: false
@@ -698,7 +745,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 2,
                 signed: false
@@ -727,7 +774,7 @@ mod tests {
             },
         );
         assert_eq!(
-            infer_kind(&index("p0", 3), &decls),
+            infer_kind(&index("p0", 3), &decls, &Env::new()),
             Some(Kind {
                 width: 1,
                 signed: false
@@ -748,7 +795,7 @@ mod tests {
             },
         );
         assert_eq!(
-            infer_kind(&index("m", 0), &decls),
+            infer_kind(&index("m", 0), &decls, &Env::new()),
             Some(Kind {
                 width: 8,
                 signed: false
@@ -759,7 +806,7 @@ mod tests {
     #[test]
     fn index_on_an_unknown_name_is_none() {
         let decls = HashMap::new();
-        assert_eq!(infer_kind(&index("nope", 0), &decls), None);
+        assert_eq!(infer_kind(&index("nope", 0), &decls, &Env::new()), None);
     }
 
     #[test]
@@ -783,7 +830,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 4,
                 signed: false
@@ -812,7 +859,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 4,
                 signed: false
@@ -839,7 +886,7 @@ mod tests {
             span: Span::new(0, 0),
         };
         assert_eq!(
-            infer_kind(&e, &decls),
+            infer_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 4,
                 signed: false
@@ -858,6 +905,6 @@ mod tests {
             },
             span: Span::new(0, 0),
         };
-        assert_eq!(infer_kind(&e, &decls), None);
+        assert_eq!(infer_kind(&e, &decls, &Env::new()), None);
     }
 }
