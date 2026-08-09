@@ -1,0 +1,8 @@
+# Every clocked fuzz seed that has ever failed (GAP-11).
+#
+# `differential_fuzz_clocked_matches_icarus` replays these BEFORE its fresh
+# `0xC10CCED + i` seeds. Same contract as comb.txt — see its header.
+
+202427630  # i=1    BUG-23  clocked repro of the lost own-width truncation
+202427830  # i=201  BUG-44  trunc of a signed value rendered as an unsigned part-select
+202428133  # i=504  BUG-21  slice-read wrongly inherited the base's signedness

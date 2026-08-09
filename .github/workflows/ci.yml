@@ -72,6 +72,14 @@ jobs:
         run: cargo test --workspace --all-targets
         env:
           REQUIRE_IVERILOG: "1"
+          # GAP-11: the differential fuzzers' in-source default is deliberately
+          # shallow (20) so a local `cargo test` doesn't pay 3 process spawns
+          # per seed. 400 is the depth that actually found BUG-42 (i=245) and
+          # BUG-44 (i=201) — measured 76.9 s for the pair in debug, run
+          # concurrently with the rest of the suite. `fuzz-nightly` goes deeper.
+          # The ever-failed seed corpus replays at every depth regardless.
+          MIMZ_DIFF_FUZZ_N: "400"
+          MIMZ_DIFF_FUZZ_CLOCKED_N: "400"
 
       - name: Build
         run: cargo build --workspace
@@ -213,7 +221,9 @@ jobs:
     name: fuzz (weekly extended)
     runs-on: ubuntu-latest
     # Weekly cron above, plus manual dispatch. Longer per-target budget than the
-    # per-PR smoke; same crash-is-a-finding contract.
+    # per-PR smoke; same crash-is-a-finding contract. Also carries the deep
+    # kernel-vs-Icarus differential (GAP-11) — the only place seed depth goes
+    # past the per-PR default.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 1')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -228,6 +238,16 @@ jobs:
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
 
+      - name: Install Icarus Verilog
+        # For the differential-fuzz step below. The libFuzzer targets do not
+        # need it; the kernel-vs-Icarus differential does.
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      - name: Install ALSA dev headers
+        # cpal (hw-emulation feature, speaker peripheral) links against ALSA
+        # on Linux; alsa-sys's build script needs alsa.pc via pkg-config.
+        run: sudo apt-get install -y libasound2-dev
+
       - name: Seed corpus from examples
         run: |
           for t in lex_parse_eval lex_parse_compile pretty_roundtrip translate_roundtrip; do
@@ -241,6 +261,21 @@ jobs:
           cargo fuzz run lex_parse_compile -- -max_total_time=600 -rss_limit_mb=2048
           cargo fuzz run pretty_roundtrip -- -max_total_time=600 -rss_limit_mb=2048
           cargo fuzz run translate_roundtrip -- -max_total_time=600 -rss_limit_mb=2048
+
+      - name: Deep differential fuzz (kernel vs Icarus, 5000 seeds each)
+        # GAP-11: the `check` job sets 400 each (the depth that found BUG-42
+        # and BUG-44); this is the pass that reaches past it. --release because
+        # 5000 x 2 seeds is dominated by compile+vvp, not by rustc's -O.
+        # --nocapture so the failing seed reaches the log even though the
+        # assert message already names it — the seed is the whole reproducer,
+        # and it goes straight into tests/fixtures/fuzz-seeds/.
+        run: >
+          cargo test --release --test differential_fuzz matches_icarus
+          -- --nocapture --test-threads 2
+        env:
+          REQUIRE_IVERILOG: "1"
+          MIMZ_DIFF_FUZZ_N: "5000"
+          MIMZ_DIFF_FUZZ_CLOCKED_N: "5000"
 
   audit:
     name: cargo audit (advisory gate)

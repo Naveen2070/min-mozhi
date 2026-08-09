@@ -22,20 +22,20 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## Index
 
-| ID                                                                                                                    | Gap                                                                     | Severity   | Status |
-| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
-| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                 | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
-| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                       | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                      | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
-| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                       | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)         | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                      | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                     | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
-| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                             | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
-| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
-| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
-| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | OPEN   |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | OPEN   |
+| ID                                                                                                                    | Gap                                                                     | Severity   | Status  |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------- |
+| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                 | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN    |
+| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                       | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN    |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                      | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED  |
+| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                       | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN    |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)         | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED  |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                      | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED  |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                     | No enum↔bits cast                                                       | MEDIUM     | CLOSED  |
+| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                             | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN    |
+| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN    |
+| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN    |
+| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | PARTIAL |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | OPEN    |
 
 ---
 
@@ -610,8 +610,8 @@ the differential fuzzer (whose generator gap is
 
 ## GAP-11 (MEDIUM, testing) — The width-conformance oracle is vacuous, and CI fuzzes at a depth that finds nothing
 
-**Status:** OPEN. Filed 2026-08-07. Source:
-[`review-2026-08-07.md`](review-2026-08-07.md).
+**Status:** PARTIALLY CLOSED 2026-08-09 — **(b) fixed**, (a) still open. Filed
+2026-08-07. Source: [`review-2026-08-07.md`](review-2026-08-07.md).
 
 **What.** Two separate holes in the oracle work that closed
 [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)
@@ -651,6 +651,36 @@ available to this project right now is one environment variable in `ci.yml`.
    same bug and loses the old ones.
 3. Rewrite `assert_bits_fit_width` to walk sub-expressions and compare against
    `checker::infer_ty`, not against `Timeline::signals`.
+
+### (b) resolved 2026-08-09 — depth moved to CI, corpus made depth-independent
+
+Directions 1 and 2 are done; direction 3 (the (a) half) is untouched and GAP-11
+stays open on it.
+
+**Depth now lives where a long run is free**, not in the source default:
+
+| where                              | seeds per generator | cost                |
+| ---------------------------------- | ------------------- | ------------------- |
+| in-source `DEFAULT_FUZZ_N`         | 20                  | 5.8 s (with corpus) |
+| `ci.yml` → `check` (per-PR)        | 400                 | 76.9 s, debug       |
+| `ci.yml` → `fuzz-nightly` (weekly) | 5000                | release             |
+
+The first draft of this fix raised the **in-source** default to 400 and was
+wrong: every seed shells out to `mimz compile` plus `iverilog` plus `vvp`, so
+depth is paid in ~3 process spawns per seed per generator, and an in-source
+default charges that to every unrelated local `cargo test`. "Per-PR" in
+direction 1 means the CI job, not the constant. `fuzz-nightly` had to grow an
+`iverilog` install — it previously ran libFuzzer targets only.
+
+**The corpus is the depth-independent half.** `tests/fixtures/fuzz-seeds/`
+holds every seed that has ever failed — `comb.txt` (7: BUG-18, 19 ×2, 23, 24,
+34, 42) and `clocked.txt` (3: BUG-21, 23, 44) — replayed _before_ the fresh
+seeds at every depth, including `N=0`. This matters more than the number in the
+table: fresh seeds are `base + i`, so without a corpus, changing the depth
+silently changes which historical bugs are still covered, and lowering it drops
+them. Four of the ten sit past the per-PR depth and are reachable only from the
+corpus. An empty or all-commented corpus file now asserts rather than passing
+vacuously — silent coverage loss is the failure mode a corpus exists to prevent.
 
 ---
 
