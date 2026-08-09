@@ -15,4 +15,5 @@
 12648521  # i=91   BUG-34  chained shifts diverge when the inner operand is signed
 12648524  # i=94   BUG-19  all-unsigned repro (also cited by BUG-23)
 12648537  # i=107  BUG-24  shift under a sibling op excluded from the width-effect hoist
+12648671  # i=241  BUG-44  trunc of a signed value, caught at intermediate y3 (GAP-11(a))
 12648675  # i=245  BUG-42  min/max misclassified "no mismatch possible"
