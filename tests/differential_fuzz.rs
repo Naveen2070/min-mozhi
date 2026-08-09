@@ -263,6 +263,7 @@ impl Rng {
 /// `cast_to` (`signed(x)`/`unsigned(x)`) never touches width, so it
 /// preserves `atomic` either way — a reinterpretation cast doesn't depend
 /// on context regardless of what's underneath it.
+#[derive(Clone)]
 struct Frag {
     text: String,
     width: u32,
@@ -453,7 +454,16 @@ fn clamp(rng: &mut Rng, ports: &[Port], f: Frag, cap: u32) -> Frag {
 /// unconditionally, even when eventually cast) — so a signed literal leaf
 /// needs the outer `signed(...)` reinterpretation cast, not a different
 /// `extend` argument.
-fn gen_leaf(rng: &mut Rng, ports: &[Port]) -> Frag {
+/// GAP-13 direction 2 (`docs/audit/gaps.md`): `special` is the pool
+/// `gen_special_leaves` built — a `fn` call, an instance-port read, etc.
+/// — each a fully pre-rendered `Frag`. Drawn from on the same footing as
+/// an ordinary port: about 1 time in 4 when the pool is non-empty, matching
+/// the existing 1-in-3 port bias below closely enough that these shapes
+/// show up often without dominating every generated program.
+fn gen_leaf(rng: &mut Rng, ports: &[Port], special: &[Frag]) -> Frag {
+    if !special.is_empty() && rng.next_range(4) == 0 {
+        return special[rng.next_range(special.len() as u64) as usize].clone();
+    }
     if !ports.is_empty() && rng.next_range(3) != 0 {
         let (name, w, signed) = &ports[rng.next_range(ports.len() as u64) as usize];
         Frag {
@@ -648,6 +658,76 @@ fn combine_shift(rng: &mut Rng, a: Frag) -> Frag {
         text: format!("({} {op} extend({shamt_v}, {shamt_w}))", a.text),
         width,
         signed,
+        atomic: false,
+    }
+}
+
+/// GAP-13 direction 2 (`docs/audit/gaps.md`): a fresh 1-bit `if`
+/// condition — two operands unified and compared with `!=`, reusing
+/// `combine_same_width`'s own cast+widen machinery but pinned to a
+/// `ToBit` result instead of picking an operator at random (an `if`
+/// condition must be exactly 1 bit — `checker::widths`' own rule).
+fn gen_cond(rng: &mut Rng, a: Frag, b: Frag) -> Frag {
+    let target_signed = if rng.next_range(2) == 0 {
+        a.signed
+    } else {
+        b.signed
+    };
+    let a = cast_to(a, target_signed);
+    let b = cast_to(b, target_signed);
+    let w = a.width.max(b.width);
+    let a = widen(rng, a, w);
+    let b = widen(rng, b, w);
+    Frag {
+        text: format!("({} != {})", a.text, b.text),
+        width: 1,
+        signed: false,
+        atomic: false,
+    }
+}
+
+/// `if cond { a } else { b }` — BUG-41's repro ③ shape, never generated
+/// randomly before this (only hand-picked, `tests/self_determined_
+/// regression.rs`). Both branches must share exactly one `Ty` (the
+/// checker's own rule), so reuse the same cast+widen unification every
+/// other same-typed combinator here does.
+fn combine_if(rng: &mut Rng, cond: Frag, a: Frag, b: Frag) -> Frag {
+    let target_signed = a.signed;
+    let a = cast_to(a, target_signed);
+    let b = cast_to(b, target_signed);
+    let w = a.width.max(b.width);
+    let a = widen(rng, a, w);
+    let b = widen(rng, b, w);
+    Frag {
+        text: format!("(if {} {{ {} }} else {{ {} }})", cond.text, a.text, b.text),
+        width: w,
+        signed: target_signed,
+        atomic: false,
+    }
+}
+
+/// `match sel { 0 => a  1 => b  _ => c }` — three arms, exhaustive via
+/// the wildcard regardless of `sel`'s own width or kind, unified the
+/// same way `combine_if`'s two branches are. Never generated randomly
+/// before this either (the only `Match` differential,
+/// `shape_match_operand_of_add_in_concat_matches_icarus`, was hand-
+/// written building GAP-13's own axis).
+fn combine_match(rng: &mut Rng, sel: Frag, a: Frag, b: Frag, c: Frag) -> Frag {
+    let target_signed = a.signed;
+    let a = cast_to(a, target_signed);
+    let b = cast_to(b, target_signed);
+    let c = cast_to(c, target_signed);
+    let w = a.width.max(b.width).max(c.width);
+    let a = widen(rng, a, w);
+    let b = widen(rng, b, w);
+    let c = widen(rng, c, w);
+    Frag {
+        text: format!(
+            "(match {} {{\n    0 => {}\n    1 => {}\n    _ => {}\n  }})",
+            sel.text, a.text, b.text, c.text
+        ),
+        width: w,
+        signed: target_signed,
         atomic: false,
     }
 }
@@ -859,39 +939,42 @@ impl Subs {
 const MAX_SUB_OUTPUTS: usize = 8;
 
 /// [`gen_expr`], additionally recording every internal node into `subs`.
+/// `special` is the pool `gen_special_leaves` built for this module — see
+/// `gen_leaf`'s own doc comment.
 fn gen_expr_collecting(
     rng: &mut Rng,
     ports: &[Port],
+    special: &[Frag],
     depth: u32,
     cap: u32,
     subs: &mut Subs,
 ) -> Frag {
     let raw = if depth == 0 || rng.next_range(6) == 0 {
-        gen_leaf(rng, ports)
+        gen_leaf(rng, ports, special)
     } else {
-        match rng.next_range(7) {
+        match rng.next_range(9) {
             0 => {
-                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
-                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
                 combine_same_width(rng, a, b)
             }
             1 => {
-                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
                 combine_shift(rng, a)
             }
             2 => {
-                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
-                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
                 combine_concat(a, b)
             }
             3 => {
-                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
-                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
                 combine_lossless(rng, a, b)
             }
             4 => {
-                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
-                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
                 combine_wrap(rng, a, b)
             }
             // GAP-5 direction 2 (docs/audit/gaps.md): a builtin call, not
@@ -899,10 +982,29 @@ fn gen_expr_collecting(
             // further up the tree — see `wrap_builtin`'s own doc comment
             // for why no separate per-position wiring is needed.
             5 => {
-                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
                 wrap_builtin(rng, a)
             }
-            _ => gen_slice(rng, ports).unwrap_or_else(|| gen_leaf(rng, ports)),
+            // GAP-13 direction 2 (docs/audit/gaps.md): `if`/`match` as a
+            // combinator, not just a hand-picked shape — BUG-41's repro
+            // ③ and the axis's own `Match` gap were both unreachable by
+            // random generation before this.
+            6 => {
+                let x = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let y = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let cond = gen_cond(rng, x, y);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                combine_if(rng, cond, a, b)
+            }
+            7 => {
+                let sel = cast_to(gen_leaf(rng, ports, special), false);
+                let a = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                let c = gen_expr_collecting(rng, ports, special, depth - 1, cap, subs);
+                combine_match(rng, sel, a, b, c)
+            }
+            _ => gen_slice(rng, ports).unwrap_or_else(|| gen_leaf(rng, ports, special)),
         }
     };
     let out = clamp(rng, ports, raw, cap);
@@ -912,6 +1014,133 @@ fn gen_expr_collecting(
         subs.push(&out);
     }
     out
+}
+
+/// GAP-13 direction 2 (`docs/audit/gaps.md`): the shapes the generator
+/// could never emit before this — a `fn` call, a plain instance-port
+/// read, an array-instance-port read, a `mem` read, and a `const`-
+/// bounded slice. Round 3's own finding was that 2,000 fresh seeds ran
+/// clean while BUG-41 and BUG-48 both sat at HEAD — not because depth
+/// was too shallow, but because the generator's VOCABULARY never reached
+/// those shapes at all. Computed ONCE per module, before
+/// `gen_expr_collecting` runs, exactly like `ports`/`regs` already are.
+///
+/// Returns `(file_scope_prelude, body_prelude, mem_write_stmts, leaves)`:
+/// the first two are spliced into the generated source at fixed points,
+/// the third only used by the clocked generator (inside `on rise`), and
+/// the fourth is a pool `gen_leaf` draws from on the same footing as an
+/// ordinary port — each a fully pre-rendered `Frag` with known
+/// width/kind/atomicity.
+///
+/// Instance-port and `mem` leaves are gated on `clocked`: `comb::
+/// eval_outputs` (the kernel behind the v1/v2 comb differential) does
+/// not elaborate instances at all — confirmed live, the same reason
+/// `tests/self_determined_regression.rs`'s own `bug_41_instance_port_
+/// operand_of_add_in_concat_matches_icarus` needs `differential_clocked`
+/// instead of `differential` even though its design has no registers.
+/// `fn`-call and `const`-bounded-slice leaves need no such gate — both
+/// are exercised through `differential` (not `_clocked`) in that same
+/// file, confirming the comb kernel supports them directly.
+fn gen_special_leaves(
+    rng: &mut Rng,
+    ports: &[Port],
+    clocked: bool,
+) -> (String, String, Vec<String>, Vec<Frag>) {
+    let mut prelude = String::new();
+    let mut body = String::new();
+    let mut mem_writes = Vec::new();
+    let mut leaves = Vec::new();
+
+    let pick =
+        |rng: &mut Rng| -> Port { ports[rng.next_range(ports.len() as u64) as usize].clone() };
+    let arg_of = |name: &str, signed: bool| -> String {
+        if signed {
+            format!("unsigned({name})")
+        } else {
+            name.to_string()
+        }
+    };
+
+    // fn call — BUG-41 repro ①/⑤'s shape.
+    {
+        let (name, w, signed) = pick(rng);
+        prelude += &format!("fn ident{w}(x: bits[{w}]) -> bits[{w}] {{\n  x\n}}\n\n");
+        leaves.push(Frag {
+            text: format!("ident{w}({})", arg_of(&name, signed)),
+            width: w,
+            signed: false,
+            atomic: false,
+        });
+    }
+
+    // const-bounded slice — BUG-48's own `Slice` shape.
+    {
+        let (name, w, _signed) = pick(rng);
+        let hi = if w > 1 {
+            1 + rng.next_range((w - 1) as u64) as u32
+        } else {
+            1
+        };
+        body += &format!("  const HI: int = {}\n", hi - 1);
+        leaves.push(Frag {
+            text: format!("{name}[HI:0]"),
+            width: hi,
+            signed: false,
+            atomic: true,
+        });
+    }
+
+    if clocked {
+        // Plain instance port — BUG-41 repro ②'s shape. `s.q` flattens to
+        // the plain Verilog identifier `s_q` (`expr.rs`'s `Field`
+        // rendering), so this leaf genuinely is atomic, the same reason
+        // `gen_slice`'s port-slice leaf already is.
+        let sub_decl = |w: u32| {
+            format!("module Sub{w} {{\n  in x: bits[{w}]\n  out q: bits[{w}]\n  q = x\n}}\n\n")
+        };
+        let (name, w, signed) = pick(rng);
+        prelude += &sub_decl(w);
+        body += &format!("  let s = Sub{w}() {{ x: {} }}\n", arg_of(&name, signed));
+        leaves.push(Frag {
+            text: "s.q".to_string(),
+            width: w,
+            signed: false,
+            atomic: true,
+        });
+
+        // Array instance port — BUG-48's own `Field { base: Index }`
+        // shape, the one that reopened BUG-28/41 with byte-identical
+        // wrong output. `sa[0].q` flattens to `sa__0_q`, same reasoning.
+        let (name2, w2, signed2) = pick(rng);
+        if w2 != w {
+            prelude += &sub_decl(w2);
+        }
+        body += &format!(
+            "  repeat i: 0..1 {{\n    let sa[i] = Sub{w2}() {{ x: {} }}\n  }}\n",
+            arg_of(&name2, signed2)
+        );
+        leaves.push(Frag {
+            text: "sa[0].q".to_string(),
+            width: w2,
+            signed: false,
+            atomic: true,
+        });
+
+        // `mem` read — BUG-41 repro ④'s shape. One write so the read
+        // isn't trivially always the reset value.
+        let mw = (rng.next_range(8) + 1) as u32;
+        let init = rng.next_u64() & support::mask(mw) as u64;
+        body += &format!("  mem m: bits[{mw}][4] = 0\n");
+        mem_writes.push(format!("    m[0] <- {init}\n"));
+        leaves.push(Frag {
+            text: format!("m[{}]", rng.next_range(4)),
+            width: mw,
+            signed: false,
+            atomic: true,
+        });
+    }
+
+    (prelude, body, mem_writes, leaves)
 }
 
 /// Generate one random valid combinational `.mimz` module as source text.
@@ -929,13 +1158,16 @@ fn gen_module(seed: u64) -> (String, Vec<Port>, u32, Vec<Port>) {
         })
         .collect();
     let depth = (rng.next_range(3) + 2) as u32; // 2..=4
+    let (prelude, body_prelude, _mem_writes, special) = gen_special_leaves(&mut rng, &ports, false);
     let mut subs = Subs::new();
-    let body = gen_expr_collecting(&mut rng, &ports, depth, MAX_WIDTH, &mut subs);
+    let body = gen_expr_collecting(&mut rng, &ports, &special, depth, MAX_WIDTH, &mut subs);
 
-    let mut src = String::from("module Fuzz {\n");
+    let mut src = prelude;
+    src += "module Fuzz {\n";
     for (name, w, signed) in &ports {
         src += &format!("  in {name}: {}\n", ty_str(*w, *signed));
     }
+    src += &body_prelude;
     src += &format!("  out y: {}\n", ty_str(body.width, body.signed));
     // GAP-11(a): one extra output per internal node, declared at the width
     // and kind the generator built it at. ADDITIVE — `y` below still renders
@@ -1034,14 +1266,20 @@ fn gen_clocked_module(
     // one combined leaf pool serves both the next-state and output exprs.
     let leaves: Vec<Port> = ports.iter().chain(regs.iter()).cloned().collect();
     let depth = (rng.next_range(3) + 2) as u32; // 2..=4
+    // GAP-13 direction 2 (docs/audit/gaps.md): the clocked generator gets
+    // every special leaf, including the instance/mem shapes the comb
+    // generator can't run (`gen_special_leaves`'s own doc comment).
+    let (prelude, body_prelude, mem_writes, special) = gen_special_leaves(&mut rng, &leaves, true);
 
-    let mut src = String::from("module Fuzz {\n  clock clk\n  reset rst\n");
+    let mut src = prelude;
+    src += "module Fuzz {\n  clock clk\n  reset rst\n";
     for (name, w, signed) in &ports {
         src += &format!("  in {name}: {}\n", ty_str(*w, *signed));
     }
     for (name, w, signed) in &regs {
         src += &format!("  reg {name}: {} = 0\n", ty_str(*w, *signed));
     }
+    src += &body_prelude;
 
     // GAP-11(a), clocked half: collect the internal nodes of the output
     // expression AND of every register's next-state expression. A
@@ -1049,12 +1287,12 @@ fn gen_clocked_module(
     // this generator root-only would keep the weaker oracle on the half
     // that has historically found the most.
     let mut subs = Subs::new();
-    let out_body = gen_expr_collecting(&mut rng, &leaves, depth, MAX_WIDTH, &mut subs);
+    let out_body = gen_expr_collecting(&mut rng, &leaves, &special, depth, MAX_WIDTH, &mut subs);
     src += &format!("  out y: {}\n", ty_str(out_body.width, out_body.signed));
 
     let mut next_states: Vec<String> = Vec::new();
     for (_, w, signed) in &regs {
-        let next = gen_expr_collecting(&mut rng, &leaves, depth, *w, &mut subs);
+        let next = gen_expr_collecting(&mut rng, &leaves, &special, depth, *w, &mut subs);
         let next = force_width(&mut rng, next, *w, *signed);
         next_states.push(next.text);
     }
@@ -1078,6 +1316,9 @@ fn gen_clocked_module(
     src += "  on rise(clk) {\n";
     for ((name, _, _), next) in regs.iter().zip(&next_states) {
         src += &format!("    {name} <- {next}\n");
+    }
+    for w in &mem_writes {
+        src += w;
     }
     src += "  }\n";
     for ((name, _, _), f) in sub_ports.iter().zip(&subs.frags) {
@@ -1332,7 +1573,12 @@ fn differential_fuzz_clocked_matches_icarus() {
             );
         }
 
-        let design = elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
+        // GAP-13 direction 2 (docs/audit/gaps.md): the generator can now
+        // emit companion `Sub{w}` modules (instance-port special leaves)
+        // alongside `Fuzz`, so the top module must be named explicitly —
+        // `elaborate_project`'s own `None` case only works for a
+        // single-module file.
+        let design = elaborate_project(std::slice::from_ref(&file), Some("Fuzz"), &BTreeMap::new())
             .unwrap_or_else(|e| {
                 panic!(
                     "seed {seed}: our kernel failed to elaborate its own generated \
