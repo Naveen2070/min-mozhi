@@ -3127,7 +3127,7 @@ the oracle would not have caught it.
 
 ---
 
-## BUG-44 (HIGH, OPEN) — Second differential-fuzz divergence, clocked generator (unminimized)
+## BUG-44 (HIGH, FIXED 2026-08-08) — `trunc` of a `signed` value renders as an always-unsigned Verilog part-select
 
 **What.** `MIMZ_DIFF_FUZZ_CLOCKED_N=400`,
 `differential_fuzz_clocked_matches_icarus`, seed 202427830, cycle 1: kernel
@@ -3148,22 +3148,78 @@ module Fuzz {
 }
 ```
 
-**Cause.** Not determined. Contains `min(extend(...), extend(...))`, so BUG-42
-is a candidate, but it also contains `signed(extend(236, 8))` as a `reg` reset
-and a `*` under `unsigned(...)`. Recorded as a distinct open divergence rather
-than folded into BUG-42 on a guess.
+**Cause.** `trunc(x, N)` **keeps** its operand's signedness. Three independent
+authorities agree on that:
+
+| Authority | Site                                      | Rule                             |
+| --------- | ----------------------------------------- | -------------------------------- |
+| checker   | `checker/widths/ops/builtins.rs`          | `Ty::Signed(_) => Ty::Signed(n)` |
+| simulator | `sim/value/fn_eval.rs` (`Builtin::Trunc`) | `Val::new(.., v.signed)`         |
+| emitter   | `emit_verilog/kinds.rs` (`infer_call`)    | `signed: base_signed`            |
+
+The emitted **text** does not. `trunc` renders as an explicit part-select
+`x[(N)-1:0]` (BUG-36's own fix), and a part-select is unconditionally
+**unsigned** in Verilog-2005 (IEEE 1364-2005 section 5.1.7) even off a
+`signed` wire. So the one thing that actually reaches Icarus disagrees with all
+three.
+
+Two distinct consequences, both live:
+
+1. **Mis-extension.** Into a wider signed target the value zero-extends where
+   mimz sign-extends.
+2. **Demotion of the surrounding expression.** Verilog makes an arithmetic
+   expression unsigned if _any_ operand is unsigned, so the unsigned
+   part-select also discards a sibling operand's own `$signed`. This is the
+   shape the fuzz seed took, and the one that produced the reported delta.
+
+Walking the filed seed confirms it exactly: `r0` is `signed[8] = -20`
+(`0b11101100`), so `trunc(r0, 3)` is `0b100` — `-4` to mimz, `+4` to Verilog.
+`3 * -4 = -12` (`unsigned` -> 52) against Verilog's `3 * 4 = 12`; `52 - 1341 =
+-1289` -> 15095 against `12 - 1341 = -1329` -> 15055; `* 2 mod 2^14` gives
+**13806** against **13726**. BUG-42 was a candidate but is not the cause — the
+divergence survives its fix, and `min`/`extend` are not on the path.
+
+`ExprKind::Slice` deliberately needs no such treatment:
+`width_rules::slice_result` types a slice `signed: false` (BUG-21), which is
+precisely Verilog's own rule. `trunc` is the **only** construct in the emitter
+where a mimz-signed value renders as an always-unsigned Verilog construct.
+
+**Why the position matrix missed it.** `self_determined.rs` classifies
+`Builtin::Trunc => None` ("no mismatch possible"), and Task 3's re-audit
+(`docs/plan/v0.2-correctness-remediation.local.md`) explicitly re-confirmed
+that arm: _"an explicit part-select is exactly N bits regardless of the base."_
+True — of `width`. But `Kind` carries **`width` and `signed`**, and every arm in
+that table was re-audited on the width half alone. Same
+two-implementations-of-one-rule family as BUG-41/BUG-42, one field over.
+Task 4's `debug_assert!` cannot see it either: it checks a bare identifier's
+`decls` entry against the caller's `mimz_kind`, never a rendered construct's
+kind against the mimz kind it claims to represent.
 
 **How found.** CTO review 2026-08-07, extended fuzz run (400 seeds, 54.81 s).
+Minimized 2026-08-08 by back-solving the reported delta to the single
+sub-term that could produce it, then confirming against the emitted Verilog —
+`assign y = (a[(3)-1:0]);` for a `signed[8] -> signed[6]` truncation.
 
-**Severity.** HIGH — a confirmed sim-vs-Icarus divergence; severity will be
-re-rated once minimized.
+**Severity.** HIGH, confirmed on minimization — a silent miscompile of ordinary
+code (any `trunc` of a `signed` value), and it was **miscompiling a shipped
+showcase**: `showcase/english/pid_controller.mimz` emitted
+`(__mimz_sub_4[(16)-1:0] + (d_diff))`, where the unsigned part-select demoted
+the whole add and zero-extended the signed derivative term. Not fuzz-only.
 
-**Fix.** Minimize first. Re-run with
-`MIMZ_DIFF_FUZZ_CLOCKED_N=400 cargo test --release --test differential_fuzz`.
+**Fix.** Wrap the rendered part-select in `$signed(...)` when the truncated
+operand's own `Kind` is signed (`emit_verilog/expr.rs`, `Builtin::Trunc`) — the
+emitted text then carries the signedness all three authorities already assign
+it. An unresolvable base `Kind` keeps the previous unsigned rendering, the same
+accepted residue every other `infer_kind` call site there already has.
 
-**Test.** Add the minimized module to `tests/self_determined_regression.rs` (or
-wherever the root cause lands) and add seed 202427830 to a replayed seed corpus
-(see [GAP-11](gaps.md)).
+**Test.** `bug_44_trunc_of_a_signed_value_stays_signed_in_verilog` (the
+minimal mis-extension: `extend(trunc(a, 3), 6)`, `a = 236` — kernel 60 vs
+Icarus 4 pre-fix) and
+`bug_44_trunc_of_a_signed_value_as_a_multiply_operand` (the demotion the seed
+took: kernel 52 vs Icarus 12 pre-fix), both in
+`tests/self_determined_regression.rs`, both watched fail before the fix. Seed
+202427830 passes; both fuzzers green at `N=400`. Seed 202427830 still belongs
+in the replayed corpus of [GAP-11](gaps.md) (Task 5).
 
 ---
 

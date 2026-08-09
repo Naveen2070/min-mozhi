@@ -962,3 +962,42 @@ fn bug_43_negative_literal_in_a_reg_reset_matches_icarus() {
                on rise(clk) {\n    r <- r\n  }\n  y = unsigned(r) & a\n}\n";
     differential_clocked(src, None, &[("a", 0xFF)]);
 }
+
+#[test]
+fn bug_44_trunc_of_a_signed_value_stays_signed_in_verilog() {
+    // BUG-44 (`docs/audit/bugs.md`), minimized from clocked-fuzz seed
+    // 202427830. `trunc(x, N)` KEEPS its operand's signedness — the
+    // checker (`widths/ops/builtins.rs`: `Ty::Signed(_) => Ty::Signed(n)`),
+    // the simulator (`value/fn_eval.rs`: `Val::new(.., v.signed)`) and the
+    // emitter's own classifier (`kinds.rs`: `signed: base_signed`) all say
+    // so. But it RENDERS as a Verilog part-select `x[N-1:0]`, and a
+    // part-select is unconditionally UNSIGNED in Verilog-2005 (IEEE 1364-
+    // 2005 section 5.1.7) even off a `signed` wire — so the emitted text
+    // disagrees with all three. This is the same disagreement-between-two-
+    // implementations-of-one-rule family as BUG-41/42, on the `signed`
+    // half of `Kind` rather than the `width` half (which is why Task 3's
+    // re-audit — reasoning only about width — kept `Trunc` as "no
+    // mismatch possible").
+    //
+    // a = 236 = 0b11101100 (signed[8] = -20). trunc(a, 3) = 0b100, which
+    // as signed[3] is -4; sign-extended to signed[6] that is 0b111100 =
+    // 60. Zero-extending it instead (the pre-fix emission) gives 4.
+    let src = "module Fuzz {\n  in a: signed[8]\n  out y: signed[6]\n  \
+                y = extend(trunc(a, 3), 6)\n}\n";
+    differential(src, &[("a", 236)]);
+}
+
+#[test]
+fn bug_44_trunc_of_a_signed_value_as_a_multiply_operand() {
+    // The shape the fuzz seed actually took: the lost signedness does not
+    // just mis-extend, it makes the WHOLE surrounding Verilog expression
+    // unsigned — mixing one unsigned operand into `*` demotes the multiply
+    // (IEEE 1364-2005 section 5.1.7), so the sibling's own `$signed` is
+    // discarded too.
+    //
+    // signed(extend(3, 3)) = 3, trunc(a, 3) = -4 -> 3 * -4 = -12, which as
+    // bits[6] is 52. Pre-fix Verilog computed 3 * 4 = 12.
+    let src = "module Fuzz {\n  in a: signed[8]\n  out y: bits[6]\n  \
+                y = unsigned(signed(extend(3, 3)) * trunc(a, 3))\n}\n";
+    differential(src, &[("a", 236)]);
+}
