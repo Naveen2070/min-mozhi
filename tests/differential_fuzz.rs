@@ -16,6 +16,7 @@
 //! per register (v3).
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use mimz::sim::comb;
 use mimz::sim::elaborate::elaborate_project;
@@ -23,6 +24,75 @@ use mimz::sim::run::{SimOpts, run};
 use mimz::{checker, diag, lexer, parser};
 
 mod support;
+
+/// Seed base for the combinational generator.
+const COMB_SEED_BASE: u64 = 0xC0FFEE;
+/// Seed base for the clocked generator — deliberately disjoint from
+/// `COMB_SEED_BASE` so the two generators' seed spaces never alias.
+const CLOCKED_SEED_BASE: u64 = 0xC10CCED;
+/// Fresh-seed depth when neither `MIMZ_DIFF_FUZZ_N` nor
+/// `MIMZ_DIFF_FUZZ_CLOCKED_N` is set — i.e. a plain local `cargo test`.
+///
+/// Deliberately small, and NOT the depth that finds bugs. Each seed shells out
+/// to `mimz compile` plus `iverilog` plus `vvp`, so depth is paid in process
+/// spawns (~3 per seed, per generator); on Windows that is far more expensive
+/// than on CI's Linux runner, and it is charged to every unrelated `cargo test`
+/// a developer runs. Depth is a *discovery* tool and belongs where a long run
+/// is free — `ci.yml` sets 400 for the per-PR `check` job and 5000 for the
+/// weekly `fuzz-nightly` job (GAP-11).
+///
+/// Regression protection does not depend on this number: the corpus below is
+/// replayed unconditionally, at every depth including 0.
+const DEFAULT_FUZZ_N: u64 = 20;
+
+/// Every seed that has ever failed, from `tests/fixtures/fuzz-seeds/{kind}.txt`.
+///
+/// Plain newline-delimited decimal seeds, `#` starts a comment. A fuzzer
+/// without a regression corpus re-finds the same bug and loses the old ones
+/// (GAP-11) — and since the fresh seeds are `base + i`, changing the depth
+/// silently changes which historical bugs are still covered. Replaying the
+/// corpus explicitly decouples the two.
+fn corpus_seeds(kind: &str) -> Vec<u64> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/fuzz-seeds")
+        .join(format!("{kind}.txt"));
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("fuzz-seed corpus {} is unreadable: {e}", path.display()));
+    let seeds: Vec<u64> = text
+        .lines()
+        .filter_map(|l| {
+            let l = l.split('#').next().unwrap_or("").trim();
+            (!l.is_empty()).then(|| {
+                l.parse().unwrap_or_else(|e| {
+                    panic!("{}: {l:?} is not a decimal seed: {e}", path.display())
+                })
+            })
+        })
+        .collect();
+    // An empty corpus is silent data loss, not an empty test: it would sail
+    // through at any depth while covering nothing. Fail loudly instead.
+    assert!(
+        !seeds.is_empty(),
+        "{} parsed to zero seeds — the regression corpus is the only depth-independent \
+         coverage these fuzzers have",
+        path.display()
+    );
+    seeds
+}
+
+/// The regression corpus first, then `n` fresh seeds from `base` — the seed
+/// list both Icarus differentials iterate. Corpus-first so a reintroduced bug
+/// fails before a long fresh run has to finish.
+fn fuzz_seeds(kind: &str, env_var: &str, base: u64) -> Vec<u64> {
+    let n: u64 = std::env::var(env_var)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_FUZZ_N);
+    corpus_seeds(kind)
+        .into_iter()
+        .chain((0..n).map(|i| base.wrapping_add(i)))
+        .collect()
+}
 
 /// Parse `DIFF <step> name=<raw binary> …` into `step -> {name: raw string}`
 /// — the wide-value counterpart of `support::parse_icarus` (which parses
@@ -924,8 +994,10 @@ fn differential_fuzz_generates_checker_valid_programs() {
 }
 
 /// The real differential: our own kernel vs. real Icarus Verilog, on
-/// `MIMZ_DIFF_FUZZ_N` (default 20) randomly generated combinational
-/// programs. Gated by `require_iverilog()` exactly like every other
+/// `MIMZ_DIFF_FUZZ_N` (default `DEFAULT_FUZZ_N`) randomly generated
+/// combinational programs, plus every seed in
+/// `tests/fixtures/fuzz-seeds/comb.txt` that has ever failed (see
+/// `fuzz_seeds`). Gated by `require_iverilog()` exactly like every other
 /// Icarus differential test (`tests/icarus.rs`) — skips locally without
 /// Icarus, hard-fails in CI (`REQUIRE_IVERILOG=1`, already set in
 /// `.github/workflows/ci.yml`).
@@ -938,13 +1010,7 @@ fn differential_fuzz_matches_icarus() {
     let Some(bin) = support::require_iverilog() else {
         return;
     };
-    let n: u64 = std::env::var("MIMZ_DIFF_FUZZ_N")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(20);
-
-    for i in 0..n {
-        let seed = 0xC0FFEE_u64.wrapping_add(i);
+    for seed in fuzz_seeds("comb", "MIMZ_DIFF_FUZZ_N", COMB_SEED_BASE) {
         let (src, ports, out_width) = gen_module(seed);
 
         // Parse + check in-memory — the exact object our kernel will run.
@@ -1067,8 +1133,10 @@ fn differential_fuzz_clocked_generates_checker_valid_programs() {
 /// v3's real differential, clocked counterpart to
 /// `differential_fuzz_matches_icarus`: our own kernel (`elaborate_project`
 /// and `run`, the exact engine behind `mimz sim`/`test`) vs. real Icarus
-/// Verilog, over `MIMZ_DIFF_FUZZ_CLOCKED_N` (default 20) randomly
-/// generated clocked programs, each run for a fixed number of cycles with
+/// Verilog, over `MIMZ_DIFF_FUZZ_CLOCKED_N` (default `DEFAULT_FUZZ_N`)
+/// randomly generated clocked programs plus every ever-failing seed in
+/// `tests/fixtures/fuzz-seeds/clocked.txt` (see `fuzz_seeds`), each run for
+/// a fixed number of cycles with
 /// held (constant) input values and one reset cycle — the same default
 /// clocked stimulus `tests/icarus.rs`'s own differential already uses.
 /// Gated by `require_iverilog()` exactly like every other Icarus
@@ -1082,17 +1150,10 @@ fn differential_fuzz_clocked_matches_icarus() {
     let Some(bin) = support::require_iverilog() else {
         return;
     };
-    let n: u64 = std::env::var("MIMZ_DIFF_FUZZ_CLOCKED_N")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(20);
     const CYCLES: u64 = 8;
     const RESET_CYCLES: u64 = 1;
 
-    for i in 0..n {
-        // A separate seed space from the combinational generator
-        // (`0xC0FFEE`) so the two never accidentally alias.
-        let seed = 0xC10CCED_u64.wrapping_add(i);
+    for seed in fuzz_seeds("clocked", "MIMZ_DIFF_FUZZ_CLOCKED_N", CLOCKED_SEED_BASE) {
         let (src, ports, held, out_width, _out_signed) = gen_clocked_module(seed);
 
         let tokens = lexer::lex(&src).unwrap_or_else(|e| {

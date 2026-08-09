@@ -1,0 +1,18 @@
+# Every combinational fuzz seed that has ever failed (GAP-11).
+#
+# `differential_fuzz_matches_icarus` replays these BEFORE its fresh
+# `0xC0FFEE + i` seeds, so a fixed bug can never silently come back and a
+# raised/lowered `MIMZ_DIFF_FUZZ_N` can never drop one. Several are past the
+# per-PR default depth and are only ever reached from here.
+#
+# One decimal seed per line; `#` starts a comment. Append on every new find —
+# a fuzzer without a regression corpus re-finds the same bug and loses the old
+# ones. Details for each: docs/audit/bugs.md.
+
+12648432  # i=2    BUG-18  extend() of a literal lost its width in a self-determined position
+12648435  # i=5    BUG-23  wrapping op under a sibling context-determined op lost its truncation
+12648451  # i=21   BUG-19  width-changing op got the wrong value once extend() crossed back wider
+12648521  # i=91   BUG-34  chained shifts diverge when the inner operand is signed
+12648524  # i=94   BUG-19  all-unsigned repro (also cited by BUG-23)
+12648537  # i=107  BUG-24  shift under a sibling op excluded from the width-effect hoist
+12648675  # i=245  BUG-42  min/max misclassified "no mismatch possible"
