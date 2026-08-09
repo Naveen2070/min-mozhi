@@ -27,6 +27,7 @@ absence, not the compiler.
 | Section      | Metrics                                                                                                                                                                     | Source of truth                                                          |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | **Speed**    | per-phase wall time (load+parse / check / emit) per base example, **median** of N iterations (`--iterations`, default 5; one untimed warm-up first); total LOC/s throughput | the lib pipeline, timed with `std::time::Instant`                        |
+| **Scaling**  | emit time for one synthetic module at 250 / 500 / 1,000 registers, and the **cost ratio per size doubling** (~2.0 = linear)                                                 | generated in memory by `metrics/scaling.rs`, no corpus file involved     |
 | **Memory**   | peak process RSS (MB) observed while compiling the whole corpus in one pass — coarse high-water mark, not a per-allocation heap figure                                      | `memory-stats` (no allocator swap, so it rides a normal run)             |
 | **Accuracy** | golden-file match rate, 4-flavor byte-identity rate, `iverilog -t null` accept rate, self-checking testbench PASS rate                                                      | `tests/golden/`, `tests/icarus/` (Icarus skipped gracefully if missing)  |
 | **Safety**   | error-fixture rate (each fixture's diagnostics contain its declared E-code **with** a help line), false-positive rate (every example must check clean)                      | `tests/fixtures/errors/`, `mimz::diag::ALL_CHECKER_CODES`                |
@@ -36,6 +37,34 @@ The harness **re-measures what the test suite asserts**: `cargo test`
 answers pass/fail; `mimz-bench` answers _how fast, how complete, and is
 it trending the right way_ — and renders it for humans.
 
+### Why Scaling is its own section
+
+Every other section samples one workload size, which is exactly how
+[GAP-12](../audit/gaps.md) (`mimz compile` superlinear in module size)
+shipped and went undetected. An absolute millisecond figure moves with the
+machine, so a trend over a single point cannot tell "slower runner" from
+"worse complexity". The **ratio between adjacent doublings** can: ~2.0 for a
+linear emitter on any hardware, unbounded growth for a superlinear one.
+
+The workload shape is load-bearing. GAP-12's own stated benchmark — N
+registers chained `r_i <- r_{i-1}` — does **not** exhibit the gap: a bare
+identifier right-hand side never enters a hoist path, so it never reaches the
+per-expression cost. Measured across the fix, that shape is flat (0.36 s vs
+0.33 s at N=8,000). `scaling.rs` therefore drives every register through
+`trunc(extend(r_i, 16) * extend(3, 16), 8)`, so declaration count and
+hoist-site count both scale with N. Validated by running the section against
+the pre-fix emitter:
+
+| emitter         | 250     | 500     | 1,000    | worst ratio |
+| --------------- | ------- | ------- | -------- | ----------- |
+| before (GAP-12) | 22.8 ms | 82.3 ms | 372.2 ms | **x4.52**   |
+| after (`Rc`)    | 3.6 ms  | 7.7 ms  | 18.0 ms  | **x2.33**   |
+
+Run-to-run spread on the ratio is about ±0.3, so the two are far apart — but
+it is **reported, never gated**, on the same reasoning as `MIMZ_PERF_GATE`
+(BUG-33): a hard threshold on a shared CI runner would flap. If you change
+the emitter's hot path, read this number.
+
 ## Outputs
 
 `bench-report.html` / `bench-report.json` are gitignored — regenerate any time.
@@ -43,11 +72,11 @@ it trending the right way_ — and renders it for humans.
 appends a point and commits it back to the repo, so the trend is the canonical,
 shared performance record.
 
-| File                  | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bench-report.html`   | The graph report, in two bands. **This run:** verdict banner, summary cards (golden, flavor identity, fixtures, testbenches, peak RSS, line + function coverage), stacked per-example timing bars, rate bars, and a line/function/region coverage breakdown (corpus-completeness doughnut when llvm-cov is skipped). **Across runs:** four trend charts — validation rates (golden, fixtures, flavor identity, no-false-positives, help lines, line coverage on one 0–105 % axis), pipeline time (ms), throughput (LOC/s), peak memory (MB) — plus a run-details table |
-| `bench-report.json`   | The full `BenchReport`, machine-readable (same data the HTML embeds)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `bench-history.jsonl` | One JSON line per run (timestamp, git rev, `total_ms`, `loc_per_sec`, the validation rates — `golden_pct`, `fixture_pct`, `flavor_identity_pct`, `clean_pct`, `help_pct` — `llvm_line_pct`, `peak_rss_mb`) — feeds the trend charts. **Tracked in git**; the CI perf batch commits a point per run. New fields are `#[serde(default)]`, so older lines still parse and simply show as gaps                                                                                                                                                                             |
+| File                  | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bench-report.html`   | The graph report, in two bands. **This run:** verdict banner, summary cards (golden, flavor identity, fixtures, testbenches, peak RSS, line + function coverage), stacked per-example timing bars, rate bars, and a line/function/region coverage breakdown (corpus-completeness doughnut when llvm-cov is skipped). **Across runs:** five trend charts — validation rates (golden, fixtures, flavor identity, no-false-positives, help lines, line coverage on one 0–105 % axis), pipeline time (ms), throughput (LOC/s), emit complexity (x per doubling), peak memory (MB) — plus a run-details table |
+| `bench-report.json`   | The full `BenchReport`, machine-readable (same data the HTML embeds)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `bench-history.jsonl` | One JSON line per run (timestamp, git rev, `total_ms`, `loc_per_sec`, the validation rates — `golden_pct`, `fixture_pct`, `flavor_identity_pct`, `clean_pct`, `help_pct` — `llvm_line_pct`, `peak_rss_mb`, plus `worst_doubling_ratio` and `scaling_ms`) — feeds the trend charts. **Tracked in git**; the CI perf batch commits a point per run. New fields are `#[serde(default)]`, so older lines still parse and simply show as gaps                                                                                                                                                                 |
 
 The HTML pulls Chart.js from the jsDelivr CDN (user decision
 2026-06-12): the file is a single portable page, but drawing the charts
@@ -80,9 +109,9 @@ test suite** — minutes, not seconds; `--no-cov` skips it.
 | `html.rs`  | `BenchReport` + history → the single-file Chart.js report                                                              |
 
 `metrics/` splits by measurement phase: `metrics/mod.rs` (report structs +
-shared helpers + `collect_meta`), then one file each for `speed`, `memory`,
-`accuracy` (incl. iverilog layers), `safety`, and `coverage` — re-exported
-from `mod.rs` so callers see the same paths.
+shared helpers + `collect_meta`), then one file each for `speed`, `scaling`,
+`memory`, `accuracy` (incl. iverilog layers), `safety`, and `coverage` —
+re-exported from `mod.rs` so callers see the same paths.
 
 Corpus constants (`BASE_EXAMPLES`, `TESTBENCHES`, the fixture-header
 convention, iverilog detection) intentionally mirror
