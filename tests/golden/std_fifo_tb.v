@@ -73,10 +73,10 @@ module fifo_round_trips_a_byte_tb;
     push = 0;
     pop = 0;
     din = 0;
-    push = 1;
-    din = 'hA5;
+    push <= 1;
+    din <= 'hA5;
     repeat (1) @(posedge clk);
-    push = 0;
+    push <= 0;
     if (!((dout == 'hA5))) begin
       $display("FAIL: expect %0s failed", "(dout == 'hA5)");
       $finish;
@@ -121,8 +121,8 @@ module fifo_fills_up_tb;
     push = 0;
     pop = 0;
     din = 0;
-    push = 1;
-    din = 1;
+    push <= 1;
+    din <= 1;
     repeat (4) @(posedge clk);
     if (!((full == 1))) begin
       $display("FAIL: expect %0s failed", "(full == 1)");

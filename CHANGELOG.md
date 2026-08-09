@@ -114,6 +114,22 @@ in values`, its bound taken from the source's own declared length, never
   diagnostics E0911 (left operand isn't a valid-bundle) and E0912 (right
   operand doesn't match the left's `data` type exactly).
 
+### Changed
+
+- **BREAKING:** `<<` is now lossless, like `+`/`-`/`*`: `bits[W] << k`
+  (constant `k`) is `bits[W+k]`, and a runtime shift amount grows by its
+  own worst case (`2^N - 1` for a `bits[N]` amount) — the declared type
+  now bounds every value the shift could produce, matching the language's
+  "safe by default" rule for every other lossless operator. Previously
+  `<<` silently kept its left operand's width, which could drop the very
+  bits real Verilog's own `<<` produces (BUG-30/BUG-11,
+  `docs/audit/bugs.md`). `>>` is unchanged — right-shifting only ever
+  reduces magnitude, so it never needed to grow. A shift-register/
+  barrel-shifter idiom that re-shifts a value repeatedly now needs an
+  explicit `trunc` back down at each use; the E0401 diagnostic and
+  `docs/guide/05-operators.md` §Shifts both explain the growth rule at
+  the point of failure.
+
 ---
 
 ## [0.1.0] — 2026-06-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`

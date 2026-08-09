@@ -26,6 +26,7 @@ module Fifo #(
     reg [(clog2(DEPTH))-1:0] head;
     reg [(clog2(DEPTH))-1:0] tail;
     reg [((clog2(DEPTH) + 1))-1:0] count;
+    // NOTE: the `initial` memory-init loop(s) below are simulation/FPGA-only — an ASIC flow has no defined power-on RAM content and will not honor them. Add an explicit clocked load/reset path if this design targets ASIC.
     integer __mimz_data_i;
     initial for (__mimz_data_i = 0; __mimz_data_i < (DEPTH); __mimz_data_i = __mimz_data_i + 1) data[__mimz_data_i] = 0;
     assign dout = data[head];

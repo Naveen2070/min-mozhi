@@ -26,6 +26,7 @@ module varisai #(
     reg [(clog2(aazham))-1:0] mun;
     reg [(clog2(aazham))-1:0] pin;
     reg [((clog2(aazham) + 1))-1:0] thokai;
+    // NOTE: the `initial` memory-init loop(s) below are simulation/FPGA-only — an ASIC flow has no defined power-on RAM content and will not honor them. Add an explicit clocked load/reset path if this design targets ASIC.
     integer __mimz_kallam_i;
     initial for (__mimz_kallam_i = 0; __mimz_kallam_i < (aazham); __mimz_kallam_i = __mimz_kallam_i + 1) kallam[__mimz_kallam_i] = 0;
     assign vellitharavu = kallam[mun];
