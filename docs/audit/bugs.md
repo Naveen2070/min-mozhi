@@ -3636,3 +3636,77 @@ fails the test there, not silently.
 array-instance shape): disabling BUG-48's `Field` fix reproduces the filed
 `iverilog` syntax error exactly, confirming this is the same residue, not a
 coincidence.
+
+---
+
+## BUG-50 (CRITICAL, FIXED 2026-08-09) — `infer_kind`'s `Replicate` arm returned a too-narrow width, hoisting a replication into an under-sized wire
+
+**What.** `trunc({2{p0}}, N)` (a replication used as a nested operand, not
+the outer self-determined container) hoists correctly — BUG-36's
+composite-base rule fires, and `mimz check`/`mimz test` both pass — but the
+hoisted wire is declared at the wrong width, one `count`-th of the real
+one:
+
+```mimz
+module Fuzz { in p0: bits[3]  out y: bits[5]  y = trunc({2{p0}}, 5) }
+```
+
+```verilog
+wire [2:0] __mimz_sub_1;        // should be [5:0] — {2{p0}} is 6 bits
+assign __mimz_sub_1 = {2{p0}};  // legal, but only the low 3 bits have anywhere to live
+assign y = __mimz_sub_1[(5)-1:0];
+```
+
+`iverilog`/`vvp`: `y = xx101` — the top 2 bits of the 5-bit slice read as
+`x` (undriven), not a wrong-but-defined value. `mimz eval`/`mimz test` both
+report the correct value throughout, since the simulator evaluates the
+replication directly from the AST and never goes through `infer_kind` at
+all — a third variant of the "checker/simulator agree, `mimz compile`
+alone is wrong" class BUG-6/11/16/17/28/29/41/48 all belong to, found via
+a wrong-not-missing `Kind` rather than a `None`.
+
+**Cause.** `kinds::infer_kind`'s `ExprKind::Replicate` arm computed only
+the inner concat's PER-ITERATION width (`parts`' own summed width),
+documented as intentional: _"the multiplier itself isn't needed for this
+phase's self-determined check... matching what a caller needs when
+checking a replication's REPEATED PART, not the whole replication's total
+width."_ That reasoning describes a caller that does not exist — every
+existing site that cares about a replication's repeated PART walks
+`parts` directly (`expr.rs`'s own rendering code, `hoist_width_effect_
+operand` per element), never through `infer_kind` on the `Replicate` node
+itself. The one caller that DOES ask `infer_kind` about the `Replicate`
+node as a whole — `Builtin::Trunc`'s BUG-36 base-hoist, or any other
+self-determined position a `Replicate` could sit in as an operand — got
+back `Kind{width: per_iter}` instead of `Kind{width: per_iter * count}`,
+the actual width of the value the wire is declared to hold.
+
+**How found.** Building [GAP-13](gaps.md)'s `ExprKind` axis
+(`tests/self_determined_regression.rs`'s `expr_kind_self_determined_
+coverage`, Task 3 of `docs/plan/v0.2-class-closure-round3.local.md`) —
+every existing `Replicate` test used it as the OUTER self-determined
+container (`bug_28_extend_in_replication_matches_icarus`), mirroring
+BUG-36's own `Concat`-as-nested-operand shape for `Replicate` was the one
+combination nothing had written. The axis is exactly what GAP-13 argued
+for: it does not just fill in an `ExprKind` row, writing the genuinely
+missing test found a genuinely live bug the row was there to catch.
+
+**Severity.** CRITICAL — silent miscompile, narrower blast radius than
+BUG-48 (needs a `Replicate` as a nested self-determined operand, not just
+anywhere), but the same class: green `mimz check`/`mimz test`, wrong
+hardware, no diagnostic.
+
+**Fix.** `count` is always a compile-time constant per the checker's own
+`replicate_ty` (same guarantee `Slice`'s bounds have) — folded through the
+same `slice_bound_fold` BUG-48 added, multiplied into the per-iteration
+width. No other `infer_kind` arm needed a matching audit: `Concat`'s own
+arm already summed real widths (never had a multiplier to get wrong), and
+this is the only arm whose stated design intentionally returned a smaller
+number than the expression's own value.
+
+**Test.** `shape_replicate_nested_in_trunc_hoists_the_base`
+(`tests/self_determined_regression.rs`) — watched fail (the emitted
+Verilog's `X` bits break `support::parse_icarus`'s binary parse, a blunter
+failure than a value mismatch but unambiguous) before the fix, pass after.
+Revert-checked (forcing the multiplier to `1`): reproduces the identical
+parse failure. Full workspace green throughout, `fmt`/`clippy -D warnings`
+clean.

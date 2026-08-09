@@ -21,7 +21,7 @@
 
 use std::collections::BTreeMap;
 
-use mimz::ast::{self, TopItem};
+use mimz::ast::{self, ExprKind, TopItem};
 use mimz::checker::consteval;
 use mimz::sim::comb;
 use mimz::sim::elaborate::elaborate_project;
@@ -1147,4 +1147,141 @@ fn bug_47_unsigned_right_shift_and_left_shift_stay_unhoisted() {
     let src = "module Fuzz {\n  in p1: signed[4]\n  out y: signed[20]\n  \
                 y = extend((p1 << extend(2, 2)), 20)\n}\n";
     differential(src, &[("p1", 15)]);
+}
+
+// ---------------------------------------------------------------------
+// GAP-13 (`docs/audit/gaps.md`) — the position matrix has a `Builtin`
+// axis (`self_determined.rs`'s own exhaustive match, plus the deleted-
+// but-still-enforced `matrix_*` tests below) and no `ExprKind` axis. The
+// gate that decides whether a hoist even runs (`kinds::infer_kind`) is
+// not wildcard-free over `ExprKind` — round 3 found two shapes (BUG-48)
+// that fell through it by hand, three rounds after BUG-41 found the
+// first five the same way. These two tests close the only gaps THIS
+// axis's own table (below) found that no existing test already covered
+// — `Match` had no differential at all, and `Replicate` was only ever
+// exercised as the OUTER container (its own body as the self-determined
+// position), never as a NESTED operand needing `infer_kind` itself
+// (mirroring BUG-36's `Concat`-in-`trunc` shape exactly).
+// ---------------------------------------------------------------------
+
+#[test]
+fn shape_match_operand_of_add_in_concat_matches_icarus() {
+    // `Match` is classified in `infer_kind` (the first arm to resolve
+    // wins, same reasoning as `IfExpr`) but had no differential proving
+    // it — the round-3 review swept it by hand and found it correct, but
+    // nothing pinned that. Same shape as `bug_41_if_expr_operand_of_add`.
+    let src = "module Fuzz {\n  in sel: bit\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  \
+                y = { b, (match sel {\n    true => a\n    false => b\n  }) + a }\n}\n";
+    differential(src, &[("sel", 1), ("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn shape_replicate_nested_in_trunc_hoists_the_base() {
+    // `Replicate` as a NESTED operand (not the outer self-determined
+    // container itself) — mirrors `bug_36_trunc_of_a_concat_hoists_the_
+    // base_first` exactly, one `ExprKind` over: `Builtin::Trunc`'s base
+    // must be a plain identifier in Verilog's part-select grammar, so a
+    // replication base needs the same hoist a concat base does.
+    let src = "module Fuzz {\n  in p0: bits[3]\n  out y: bits[5]\n  \
+                y = trunc({2{p0}}, 5)\n}\n";
+    differential(src, &[("p0", 0b101)]);
+}
+
+/// GAP-13's own axis — exhaustive over `ExprKind`, no wildcard. Never
+/// called (a compile-time-only property): its only job is that adding an
+/// `ExprKind` variant without a line here fails the build, the same
+/// enforcement the now-deleted `matrix_shape`/`ALL_BUILTINS` gave the
+/// `Builtin` axis (Task 4 of `docs/plan/v0.2-correctness-remediation.
+/// local.md` deleted those on the correct reasoning that the REAL
+/// matches (`self_determined.rs`, `kinds::infer_call`) are themselves
+/// wildcard-free over `Builtin` — this axis needs its own copy because
+/// `kinds::infer_kind`'s real match is NOT wildcard-free over `ExprKind`
+/// (`_ => None` at the end), so nothing else in the compiled program
+/// enforces it. Each arm names either the test(s) that differentially
+/// prove the shape hoists (or correctly doesn't) in a self-determined
+/// position, or the reason it structurally cannot appear there at all.
+#[allow(dead_code)]
+fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
+    match kind {
+        ExprKind::Int { .. } => {
+            "NotApplicable: bare literal — self_determined.rs's own \
+             `Int => None` arm; Verilog's self-determined width for an \
+             unsized literal already equals mimz's, nothing to compare"
+        }
+        ExprKind::Bool(_) => "NotApplicable: same reasoning as Int — `Bool => None`",
+        ExprKind::Ident(_) => {
+            "NotApplicable: a signal's declared width IS its Verilog \
+             self-determined width, by definition — `Ident => None`"
+        }
+        ExprKind::Field { .. } => {
+            "covered by bug_41_instance_port_operand_of_add_in_concat_matches_icarus \
+             (plain instance) and bug_48_array_instance_port_operand_of_add_in_concat_matches_icarus \
+             (array instance — the shape BUG-48 found unclassified)"
+        }
+        ExprKind::Unary { .. } => {
+            "NotApplicable: every UnOp self-determines identically in mimz \
+             and Verilog — operand-width for Neg/BitNot/LogicNot, always \
+             exactly 1 bit for the three reductions (RedAnd/RedOr/RedXor), \
+             in every context — self_determined.rs's own catch-all confirms \
+             no arm ever differs. (kinds.rs's own Unary arm forwards the \
+             inner Kind unchanged regardless of `op`, which is imprecise \
+             for a reduction's width specifically — but since this arm \
+             here is never compared against anything, that imprecision \
+             is dead weight, not a reachable defect.)"
+        }
+        ExprKind::Binary { .. } => {
+            "covered by bug_19_lossless_sub_in_a_concat_matches_icarus and \
+             the wider bug_19/23/24/30/35/42/47 family"
+        }
+        ExprKind::IfExpr { .. } => {
+            "covered by bug_41_if_expr_operand_of_add_in_concat_matches_icarus"
+        }
+        ExprKind::Match { .. } => "covered by shape_match_operand_of_add_in_concat_matches_icarus",
+        ExprKind::Concat(_) => {
+            "covered by bug_36_trunc_of_a_concat_hoists_the_base_first \
+             (Concat as a NESTED operand, not the outer container)"
+        }
+        ExprKind::Replicate { .. } => {
+            "covered by bug_28_extend_in_replication_matches_icarus (as the \
+             outer self-determined container) and \
+             shape_replicate_nested_in_trunc_hoists_the_base (as a nested operand)"
+        }
+        ExprKind::Index { .. } => {
+            "covered by bug_41_mem_read_operand_of_add_in_concat_matches_icarus \
+             (the mem-read branch — the interesting one, since it carries a \
+             real element Kind); the plain bit-select branch is always \
+             exactly 1 bit in both mimz and Verilog, so no mismatch is \
+             possible there and no separate test is needed for it"
+        }
+        ExprKind::Slice { .. } => {
+            "covered by bug_20_slice_of_a_composite_expression_matches_icarus \
+             (literal bounds) and bug_48_const_bounded_slice_operand_of_add_in_concat_matches_icarus \
+             (const-valued bounds — the shape BUG-48 found unclassified)"
+        }
+        ExprKind::Call { .. } => {
+            "covered by the matrix_* family (one differential per Builtin) \
+             plus self_determined.rs's own exhaustive Builtin match, which \
+             fails the build on an unclassified Builtin independently of \
+             this axis"
+        }
+        ExprKind::FnCall { .. } => {
+            "covered by bug_41_fn_call_operand_of_add_in_concat_matches_icarus \
+             and bug_41_extend_of_a_fn_call_in_concat_matches_icarus"
+        }
+        ExprKind::BundleLit(_) => {
+            "NotApplicable: bundle-typed — never legal as a concat/\
+             arithmetic/comparison/cast operand (not a `bits` type); the \
+             checker rejects it upstream"
+        }
+        ExprKind::ArrayLit(_) => {
+            "NotApplicable: array-typed — same reasoning as BundleLit, \
+             checker-rejected upstream"
+        }
+        ExprKind::EnumConstruct { .. } => {
+            "NotApplicable: an enum-typed value in a concat is rejected \
+             outright by the checker (E0403, docs/audit/bugs.md BUG-31) \
+             before this code ever runs"
+        }
+    }
 }

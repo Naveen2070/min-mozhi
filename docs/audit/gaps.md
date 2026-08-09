@@ -22,20 +22,21 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## Index
 
-| ID                                                                                                                    | Gap                                                                     | Severity   | Status |
-| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
-| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                 | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
-| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                       | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                      | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
-| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                       | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)         | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                      | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                     | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
-| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                             | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
-| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
-| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
-| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
+| ID                                                                                                                                | Gap                                                                     | Severity   | Status       |
+| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------------ |
+| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                             | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN         |
+| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                                   | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN         |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                                  | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED       |
+| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                                   | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN         |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)                     | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED       |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                                  | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED       |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                                 | No enum↔bits cast                                                       | MEDIUM     | CLOSED       |
+| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                                         | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN         |
+| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                               | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN         |
+| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                               | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN         |
+| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)             | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED       |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                  | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED       |
+| [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted) | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED (1/3) |
 
 ---
 
@@ -839,8 +840,11 @@ would have caught it now exists.
 
 ## GAP-13 (MEDIUM, testing) — The position matrix has no `ExprKind` axis, and the only structural coverage assertion was deleted
 
-**Status:** OPEN. Filed 2026-08-09. Source:
-[`review-2026-08-09.md`](review-2026-08-09.md).
+**Status:** CLOSED (direction 1) 2026-08-09. Filed 2026-08-09. Source:
+[`review-2026-08-09.md`](review-2026-08-09.md). Directions 2 (fuzz generator
+vocabulary) and 3 (elaboration assertion — done separately as part of
+[BUG-49](bugs.md)'s own fix) tracked in `docs/plan/v0.2-class-closure-
+round3.local.md` Tasks 4 and 2.
 
 **What.** [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)'s
 position matrix covers every `Builtin`. It covers no `ExprKind`. The gate that
@@ -882,3 +886,40 @@ a sixth shape is caught by nothing. Two such shapes are filed as BUG-48.
 3. Add an `iverilog -t null` **elaboration** assertion to the trunc/slice-base
    tests, which today compare values only and so cannot fail on output that does
    not parse ([BUG-49](bugs.md)).
+
+### Direction 1 resolved 2026-08-09 — the axis exists, and it found a live bug
+
+`expr_kind_self_determined_coverage` (`tests/self_determined_regression.rs`)
+is exactly the recommended shape: an exhaustive `match` over `ExprKind`, one
+arm per variant, each naming either the differential test(s) that cover the
+shape or a reasoned `NotApplicable` (a bare literal/identifier — nothing for
+Verilog to differ on, matching `self_determined.rs`'s own `_ => None`; a
+bundle/array/enum literal — checker-rejected upstream, never reaches a
+self-determined position). No wildcard arm — a new `ExprKind` variant fails
+to compile the test file until classified.
+
+**The exercise of actually writing one differential per shape — not just
+citing an existing test — found a genuine, previously-unknown CRITICAL
+defect.** Every prior `Replicate` test used it as the OUTER self-determined
+container; nothing had tried `Replicate` as a NESTED operand (mirroring
+BUG-36's own `Concat`-as-nested-operand shape). `trunc({2{p0}}, N)` hoisted
+into a wire declared at only `1/count` of the value's real width, reading
+back partially `x` (undriven) — filed and fixed same day as
+[BUG-50](bugs.md). This is direct evidence for the gap's own thesis: an axis
+with a `CoveredBy("existing test name")` arm only proves what the cited test
+actually exercises, and "a `Replicate` appears somewhere in this file" was
+not the same claim as "a `Replicate` as a nested operand is correct."
+
+`kinds::infer_kind`'s own match (the actual gate, not just the test file's
+copy of it) was also made exhaustive over `ExprKind` in the same pass —
+`_ => None` replaced with three explicit arms (`BundleLit`/`ArrayLit`/
+`EnumConstruct`, each `None` with its own reason). A new `ExprKind` variant
+now fails the BUILD, not just this one test file, matching what
+`self_determined.rs`'s own exhaustive `Builtin` match already gives that
+axis.
+
+**Still open:** directions 2 (fuzz generator vocabulary — `docs/plan/v0.2-
+class-closure-round3.local.md` Task 4) and 3 (elaboration assertion — landed
+already, folded into [BUG-49](bugs.md)'s own fix rather than as a separate
+step, since `differential`/`differential_clocked`'s existing `iverilog`
+build-step assert already provided it).
