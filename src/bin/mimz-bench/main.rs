@@ -61,6 +61,9 @@ fn main() -> ExitCode {
     );
     let speed = metrics::measure_speed(cli.iterations);
 
+    println!("mimz-bench: measuring scaling (emit cost per module-size doubling)...");
+    let scaling = metrics::measure_scaling(cli.iterations);
+
     println!("mimz-bench: measuring memory (peak RSS over the corpus)...");
     let memory = metrics::measure_memory();
 
@@ -83,6 +86,7 @@ fn main() -> ExitCode {
     let report = metrics::BenchReport {
         meta: metrics::collect_meta(cli.iterations),
         speed,
+        scaling,
         memory,
         accuracy,
         safety,
@@ -158,6 +162,23 @@ fn print_summary(report: &metrics::BenchReport, cli: &Cli) {
         "  peak RSS over corpus               {:.1} MB",
         report.memory.peak_rss_mb
     );
+    // The complexity axis (GAP-12). ~2.0 per doubling is linear; the
+    // pre-`Rc` emitter sat at 5.20 and climbing. Reported, never gated —
+    // same reasoning as MIMZ_PERF_GATE (BUG-33): a shared runner's noise
+    // would make a hard threshold flap.
+    {
+        let sizes: Vec<String> = report
+            .scaling
+            .points
+            .iter()
+            .map(|p| format!("{}={:.1}ms", p.regs, p.emit_ms))
+            .collect();
+        println!(
+            "  emit scaling ({})   x{:.2} per doubling",
+            sizes.join(" "),
+            report.scaling.worst_doubling_ratio
+        );
+    }
     rate("golden-file match", &report.accuracy.golden);
     rate("flavor byte-identity", &report.accuracy.flavor_identity);
     match &report.accuracy.iverilog_syntax {

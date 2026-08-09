@@ -239,6 +239,7 @@ const TEMPLATE: &str = r##"<!doctype html>
   <div class="chart-box wide"><canvas id="trend"></canvas></div>
   <div class="chart-box wide"><canvas id="time-trend"></canvas></div>
   <div class="chart-box wide"><canvas id="speed"></canvas></div>
+  <div class="chart-box wide"><canvas id="scaling"></canvas></div>
   <div class="chart-box wide"><canvas id="memory"></canvas></div>
 </div>
 
@@ -420,6 +421,28 @@ new Chart(document.getElementById("speed"), {
   },
 });
 
+// Line: complexity trend (GAP-12). Emit cost per module-size doubling —
+// ~2.0 is linear, and unlike an absolute time it is comparable across
+// machines, so this is the series that can actually show a complexity
+// regression rather than a slower runner. Older history lines without the
+// field are null and Chart.js leaves a gap.
+new Chart(document.getElementById("scaling"), {
+  type: "line",
+  data: {
+    labels: runLabels,
+    datasets: [
+      { label: "Worst cost per doubling (x)", data: DATA.history.map(h => h.worst_doubling_ratio ?? null),
+        borderColor: C.red, backgroundColor: C.red, pointRadius: 3, tension: 0.2, spanGaps: true },
+    ],
+  },
+  options: {
+    plugins: { title: { display: true, text: "Emit complexity trend (x cost per module-size doubling; 2.0 = linear)" } },
+    scales: {
+      y: { type: "linear", beginAtZero: true, title: { display: true, text: "ratio" } },
+    },
+  },
+});
+
 // Line: peak-RSS trend (MB). Older history lines without the field are null
 // and Chart.js simply leaves a gap.
 new Chart(document.getElementById("memory"), {
@@ -490,6 +513,22 @@ mod tests {
                 total_loc: 12,
                 total_ms: 6.0,
                 loc_per_sec: 2000.0,
+            },
+            scaling: Scaling {
+                points: vec![
+                    ScalingPoint {
+                        regs: 250,
+                        loc: 510,
+                        emit_ms: 1.0,
+                    },
+                    ScalingPoint {
+                        regs: 500,
+                        loc: 1010,
+                        emit_ms: 2.0,
+                    },
+                ],
+                ratios: vec![2.0],
+                worst_doubling_ratio: 2.0,
             },
             memory: Memory { peak_rss_mb: 12.5 },
             accuracy: Accuracy {

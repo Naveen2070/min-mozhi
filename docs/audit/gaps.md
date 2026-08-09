@@ -35,7 +35,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN    |
 | [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN    |
 | [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | PARTIAL |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | PARTIAL |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED  |
 
 ---
 
@@ -753,8 +753,31 @@ measured something other than the 22 clone sites named as its own evidence; its
 absolute figures were never reproducible here, and only the hoist-heavy shape
 exhibits the curve the evidence describes.
 
-**Still open:** the second half of the direction — `mimz-bench` samples exactly
-one module size, so no trend line it records can detect a complexity regression.
-That is what let this ship.
+### Detection added 2026-08-09 — `mimz-bench` now has a size axis
+
+The second half. `mimz-bench` sampled exactly one module size, so no trend it
+recorded could distinguish a complexity regression from a slower runner — which
+is what let this ship in the first place.
+
+`metrics/scaling.rs` emits one synthetic module at 250 / 500 / 1,000 registers
+and records the **cost ratio per doubling**. The ratio, not the absolute time, is
+the metric that trends: ~2.0 means linear on any machine. It lands in
+`bench-history.jsonl` as `worst_doubling_ratio` (plus `scaling_ms` for the raw
+points) and gets its own trend chart in the HTML report.
+
+Validated by running the new section against the pre-`Rc` emitter — a detector
+that never fires is the same mistake one layer up:
+
+| emitter         | 250     | 500     | 1,000    | worst ratio |
+| --------------- | ------- | ------- | -------- | ----------- |
+| before (GAP-12) | 22.8 ms | 82.3 ms | 372.2 ms | **x4.52**   |
+| after (`Rc`)    | 3.6 ms  | 7.7 ms  | 18.0 ms  | **x2.33**   |
+
+Run-to-run spread is about ±0.3, so the separation is wide. Reported, never
+gated — same reasoning as `MIMZ_PERF_GATE` (BUG-33): a hard threshold on a
+shared runner would flap.
+
+**Status: CLOSED.** Both halves done — the cost removed, and the instrument that
+would have caught it now exists.
 
 ---
