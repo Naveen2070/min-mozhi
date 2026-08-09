@@ -23,6 +23,7 @@
 use std::collections::HashMap;
 
 use crate::ast::{BinOp, Builtin, Expr, ExprKind};
+use crate::checker::consteval::Env;
 use crate::width_rules::Kind;
 
 use super::kinds::infer_kind;
@@ -34,6 +35,7 @@ use super::kinds::infer_kind;
 pub(crate) fn verilog_self_determined_kind(
     expr: &Expr,
     decls: &HashMap<String, Kind>,
+    env: &Env,
 ) -> Option<Kind> {
     match &expr.kind {
         ExprKind::Ident(_) | ExprKind::Int { .. } | ExprKind::Bool(_) => None,
@@ -47,11 +49,11 @@ pub(crate) fn verilog_self_determined_kind(
             // takes the max — the exact "matched" rule, applied
             // uniformly, not just to the width-matching family.
             _ => {
-                let l = self_determined_operand_width(lhs, decls)?;
-                let r = self_determined_operand_width(rhs, decls)?;
+                let l = self_determined_operand_width(lhs, decls, env)?;
+                let r = self_determined_operand_width(rhs, decls, env)?;
                 Some(Kind {
                     width: l.max(r),
-                    signed: infer_kind(expr, decls)?.signed,
+                    signed: infer_kind(expr, decls, env)?.signed,
                 })
             }
         },
@@ -67,14 +69,14 @@ pub(crate) fn verilog_self_determined_kind(
             // Report that so the caller sees the mismatch against mimz's
             // `Kind{N}` and hoists to `wire [N-1:0] __mimz_sub_k`.
             Builtin::Extend => Some(Kind {
-                width: self_determined_operand_width(&args[0], decls)?,
-                signed: infer_kind(expr, decls)?.signed,
+                width: self_determined_operand_width(&args[0], decls, env)?,
+                signed: infer_kind(expr, decls, env)?.signed,
             }),
             // Renders to a ternary: Verilog sizes it at
             // `max(operand widths)`, not mimz's grown `N+1` result.
             Builtin::Abs => Some(Kind {
-                width: self_determined_operand_width(&args[0], decls)?,
-                signed: infer_kind(expr, decls)?.signed,
+                width: self_determined_operand_width(&args[0], decls, env)?,
+                signed: infer_kind(expr, decls, env)?.signed,
             }),
             // `min`/`max` render to a ternary — `(a < b) ? a : b` — whose
             // OWN self-determined width is `max` of the two RENDERED
@@ -88,9 +90,9 @@ pub(crate) fn verilog_self_determined_kind(
             // bits, not mimz's 11; the mismatch this now exposes is what
             // makes the caller hoist.
             Builtin::Min | Builtin::Max => Some(Kind {
-                width: self_determined_operand_width(&args[0], decls)?
-                    .max(self_determined_operand_width(&args[1], decls)?),
-                signed: infer_kind(expr, decls)?.signed,
+                width: self_determined_operand_width(&args[0], decls, env)?
+                    .max(self_determined_operand_width(&args[1], decls, env)?),
+                signed: infer_kind(expr, decls, env)?.signed,
             }),
             // `trunc` renders as an explicit part-select `x[N-1:0]` —
             // already exactly N bits in Verilog regardless of the base
@@ -105,12 +107,12 @@ pub(crate) fn verilog_self_determined_kind(
             // the argument is itself a mismatched sub-expression, which
             // is caught by recursing into it, not by this call site.
             Builtin::SignedCast | Builtin::UnsignedCast => {
-                verilog_self_determined_kind(&args[0], decls)
+                verilog_self_determined_kind(&args[0], decls, env)
             }
             // Renders as `$unsigned(...)`, exactly like `UnsignedCast` —
             // same reasoning: the cast doesn't change the argument's own
             // self-determined width, so recurse into it.
-            Builtin::Encoding => verilog_self_determined_kind(&args[0], decls),
+            Builtin::Encoding => verilog_self_determined_kind(&args[0], decls, env),
             // Const-folded before emit — never reaches a rendered
             // self-determined position as a runtime expression.
             Builtin::Clog2 => None,
@@ -128,10 +130,14 @@ pub(crate) fn verilog_self_determined_kind(
 /// when neither Verilog's rule nor mimz's own can resolve `expr` (BUG-41,
 /// `docs/audit/bugs.md`) — propagated by every caller, same convention
 /// as `infer_kind` itself.
-fn self_determined_operand_width(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<u32> {
-    let k = match verilog_self_determined_kind(expr, decls) {
+fn self_determined_operand_width(
+    expr: &Expr,
+    decls: &HashMap<String, Kind>,
+    env: &Env,
+) -> Option<u32> {
+    let k = match verilog_self_determined_kind(expr, decls, env) {
         Some(k) => k,
-        None => infer_kind(expr, decls)?,
+        None => infer_kind(expr, decls, env)?,
     };
     Some(k.width)
 }
@@ -152,7 +158,10 @@ mod tests {
     #[test]
     fn plain_identifier_has_no_verilog_specific_rule() {
         let decls = HashMap::new();
-        assert_eq!(verilog_self_determined_kind(&ident("p0"), &decls), None);
+        assert_eq!(
+            verilog_self_determined_kind(&ident("p0"), &decls, &Env::new()),
+            None
+        );
     }
 
     #[test]
@@ -184,7 +193,7 @@ mod tests {
         // lossless_result, which would say 16) — this is BUG-19's exact
         // mismatch, now representable and detectable.
         assert_eq!(
-            verilog_self_determined_kind(&e, &decls),
+            verilog_self_determined_kind(&e, &decls, &Env::new()),
             Some(Kind {
                 width: 15,
                 signed: false
@@ -217,6 +226,6 @@ mod tests {
             },
             span: Span::new(0, 0),
         };
-        assert_eq!(verilog_self_determined_kind(&e, &decls), None);
+        assert_eq!(verilog_self_determined_kind(&e, &decls, &Env::new()), None);
     }
 }
