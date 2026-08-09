@@ -3371,3 +3371,67 @@ rebuilding `crates/mimz-wasm/pkg` — both `melody_player` and the
 new hoisted wire.
 
 ---
+
+## BUG-47 (HIGH, OPEN) — A shift's left operand is not pinned to its mimz width, so a wider assignment context re-widens it
+
+**Status:** OPEN. Filed 2026-08-09 by the v0.2 release gate (gates 2 and 5).
+
+**Repro** — four lines, no fuzzer needed:
+
+```mimz
+module Fuzz {
+  in p1: signed[4]
+  out y: signed[20]
+  y = extend((p1 >> extend(18, 5)), 20)
+}
+```
+
+| authority           | `p1 = 4'b1111` (-1) |
+| ------------------- | ------------------- |
+| `mimz eval`         | **y = 0**           |
+| Icarus (`iverilog`) | **y = 3**           |
+
+**Cause.** The emitted Verilog is:
+
+```verilog
+output wire signed [(20)-1:0] y
+assign y = ((p1 >> 5'd18));
+```
+
+mimz types `p1 >> 18` at the shift's own left-operand width — `signed[4]` — so
+shifting right by 18 discards every bit and the result is 0. Verilog gives the
+whole right-hand side the **assignment's** 20-bit context, so `p1` is
+sign-extended to 20 bits _before_ the shift, and `>> 18` leaves `20'b11` = 3.
+
+A shift's left operand is a width-effect position and must be hoisted to a wire
+of its own mimz width so the surrounding context cannot re-widen it. Here it
+never is — `p1` renders bare. The same shape drives the fuzz repro, where
+`extend(p0, 4)` likewise renders as bare `(p0)` inside a 41-bit assignment:
+
+```verilog
+assign y = ((((p1 ^ (p0)) >> 5'd18)) << 5'd15);
+```
+
+**How found.** The v0.2 release gate, `MIMZ_DIFF_FUZZ_CLOCKED_N=1000` — clocked
+seed **202428271** (i=642), cycle 0: kernel `y=0` against Icarus
+`00011111111111111111111111000000000000000`. Past the per-PR depth of 400,
+which is why only a gate run at 1000 reached it.
+
+**Not an artifact of the GAP-11(a) sub-expression ports.** Re-run with
+`MAX_SUB_OUTPUTS = 0` reproduces the divergence identically at the root `y`, so
+this is a pre-existing miscompile that deeper fuzzing exposed, not something the
+new materialized outputs introduced.
+
+**Family.** [GAP-1](gaps.md) — "two implementations of one width rule
+disagreed", now the seventeenth instance. Closest relatives are BUG-24 (a shift
+nested under a sibling operator losing its width-effect hoist) and BUG-34
+(chained shifts with a signed inner operand); both were fixed for their own
+shapes without covering a shift whose left operand simply sits under a wider
+assignment context.
+
+**Severity.** HIGH — silent miscompile. Simulation passes, real hardware is
+wrong, no diagnostic.
+
+**Not fixed.** Filed only. Seed 202428271 is deliberately **not** in
+`tests/fixtures/fuzz-seeds/clocked.txt` yet: the corpus replays at every depth
+and would turn the suite red. Add it as part of the fix.
