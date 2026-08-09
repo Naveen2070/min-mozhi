@@ -6,8 +6,12 @@ module nakarththi #(
     output wire [(8)-1:0] allavunakarvu,
     output wire [(8)-1:0] maarrinakarvu
 );
-    assign maarrilinakarvu = ((1 << 3));
+    wire [3:0] __mimz_sub_1;
+    assign __mimz_sub_1 = (1 << 3);
+    wire [5:0] __mimz_sub_2;
+    assign __mimz_sub_2 = (tharavu << 2);
+    assign maarrilinakarvu = (__mimz_sub_1);
     assign allavunakarvu = ((3 << allavu));
-    assign maarrinakarvu = ((tharavu << 2));
+    assign maarrinakarvu = (__mimz_sub_2);
 endmodule
 

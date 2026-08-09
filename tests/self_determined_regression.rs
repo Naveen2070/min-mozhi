@@ -1001,3 +1001,73 @@ fn bug_44_trunc_of_a_signed_value_as_a_multiply_operand() {
                 y = unsigned(signed(extend(3, 3)) * trunc(a, 3))\n}\n";
     differential(src, &[("a", 236)]);
 }
+
+#[test]
+fn bug_47_signed_right_shift_into_a_wider_assignment() {
+    // BUG-47 (`docs/audit/bugs.md`), minimized from clocked-fuzz seed
+    // 202428271, found by the v0.2 release gate at N=1000.
+    //
+    // Every prior hoist in this file guards a SELF-DETERMINED position
+    // (concat member, comparison operand, `$signed`/`$unsigned` argument).
+    // This one is CONTEXT-determined: the top level of an assignment RHS,
+    // where Verilog widens the operand to the target's width BEFORE
+    // evaluating. `expr.rs`'s own comment asserts that needs no hoist —
+    // "a bare top-level `y = a -% b` needs no hoist, the assignment
+    // target's own declared width already pins it correctly" — which holds
+    // for every operator whose value depends only on its low bits, and
+    // fails for `>>`, where the operand's WIDTH changes the VALUE: sign
+    // extension shifts real bits down into the result.
+    //
+    // p1 = 0b1111 = -1 as signed[4]. mimz shifts within 4 bits:
+    // 0b1111 >> 2 = 0b0011 = 3. Verilog sign-extends p1 to the assignment's
+    // 20 bits first (0xFFFFF) and shifts that: 0x3FFFF = 262143.
+    let src = "module Fuzz {\n  in p1: signed[4]\n  out y: signed[20]\n  \
+                y = extend((p1 >> extend(2, 5)), 20)\n}\n";
+    differential(src, &[("p1", 15)]);
+}
+
+#[test]
+fn bug_47_signed_right_shift_with_a_composite_left_operand() {
+    // Same defect with a composite left operand rather than a bare port —
+    // pinned separately because the composite case is NOT hoisted either
+    // (`assign y = (((p1 ^ p2) >> 5'd2));`), and because it very nearly
+    // read as a passing case during diagnosis: with p2 = 8 the operand
+    // `p1 ^ p2` is 0b0111 = +7, so sign extension adds zeros and both
+    // sides agree. It only diverges once the operand is negative.
+    //
+    // p1 = 15 (-1), p2 = 0 -> p1 ^ p2 = 0b1111 = -1. mimz: 3. Verilog:
+    // 262143.
+    let src = "module Fuzz {\n  in p1: signed[4]\n  in p2: signed[4]\n  \
+                out y: signed[20]\n  y = extend(((p1 ^ p2) >> extend(2, 5)), 20)\n}\n";
+    differential(src, &[("p1", 15), ("p2", 0)]);
+}
+
+#[test]
+fn bug_47_signed_right_shift_by_a_port_amount() {
+    // The shift AMOUNT being a runtime port rather than a literal changes
+    // nothing about the cause — the defect is the left operand's width, not
+    // the right's. Kept because a fix that special-cases a constant shift
+    // amount would pass the two tests above and still miss this.
+    //
+    // p1 = -1, shift by 8: mimz shifts 4 bits by 8 = 0. Verilog shifts the
+    // sign-extended 20-bit 0xFFFFF by 8 = 0xFFF = 4095.
+    let src = "module Fuzz {\n  in p1: signed[4]\n  in p2: signed[4]\n  \
+                out y: signed[20]\n  y = extend((p1 >> unsigned(p2)), 20)\n}\n";
+    differential(src, &[("p1", 15), ("p2", 8)]);
+}
+
+#[test]
+fn bug_47_unsigned_right_shift_and_left_shift_stay_unhoisted() {
+    // The other half of the boundary, pinned so a fix cannot over-reach.
+    // An UNSIGNED right shift is safe (context extension is zero-fill, so
+    // no new bits shift down) and a LEFT shift is safe (mimz grows the
+    // width too, and the low bits agree). Both must keep matching — and
+    // ideally without a hoisted wire, which is why `emit_verilog`'s own
+    // golden files are the second half of this guard.
+    let src = "module Fuzz {\n  in p1: signed[4]\n  out y: bits[20]\n  \
+                y = extend((unsigned(p1) >> extend(2, 5)), 20)\n}\n";
+    differential(src, &[("p1", 15)]);
+    let src = "module Fuzz {\n  in p1: signed[4]\n  out y: signed[20]\n  \
+                y = extend((p1 << extend(2, 2)), 20)\n}\n";
+    differential(src, &[("p1", 15)]);
+}

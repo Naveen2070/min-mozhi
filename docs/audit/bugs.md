@@ -3372,9 +3372,10 @@ new hoisted wire.
 
 ---
 
-## BUG-47 (HIGH, OPEN) — A shift's left operand is not pinned to its mimz width, so a wider assignment context re-widens it
+## BUG-47 (HIGH, FIXED 2026-08-09) — A stale `allow_shift: false` left a shift under `extend()` un-pinned, so a wider context re-widened it
 
-**Status:** OPEN. Filed 2026-08-09 by the v0.2 release gate (gates 2 and 5).
+**Status:** FIXED 2026-08-09. Filed the same day by the v0.2 release gate
+(gates 2 and 5); both gates now pass at `N=1000`.
 
 **Repro** — four lines, no fuzzer needed:
 
@@ -3432,6 +3433,67 @@ assignment context.
 **Severity.** HIGH — silent miscompile. Simulation passes, real hardware is
 wrong, no diagnostic.
 
-**Not fixed.** Filed only. Seed 202428271 is deliberately **not** in
-`tests/fixtures/fuzz-seeds/clocked.txt` yet: the corpus replays at every depth
-and would turn the suite red. Add it as part of the fix.
+### Root cause — a guard that outlived its reason
+
+The symptom above is "the shift is not pinned". The **cause** is one boolean.
+`Builtin::Extend`'s codegen passed `allow_shift: false` to
+`hoist_width_effect_operand`, deliberately suppressing the hoist for a shift
+argument. Its comment justified that precisely:
+
+> `call`'s `Builtin::Extend` arm explicitly threads THIS extend's own target
+> width `n` into evaluating its argument (`eval_ctx(r, &args[0], Some(n))`) — a
+> shift argument here is context-determined, not self-determined, so hoisting it
+> would compute a value different from the simulator's reference semantics.
+
+**`eval_ctx` no longer exists.** BUG-34's fused-shift rework replaced it: a
+shift is now evaluated by `binary::eval_shift_chain`, which resolves the chain's
+own bottom-up width and never consults an ambient expected width. The
+justification was deleted; the guard was not. Nothing in the emitter or the
+simulator threads a context width into an `extend` argument any more, so the
+suppression stopped protecting anything and started hiding a divergence.
+
+Fix: `allow_shift: true`. Two goldens changed (`shift.v` and its Tamil-pure
+twin `tamil_pure_nakartthi.v`) — the only shipped examples with a shift under
+`extend()`.
+
+BUG-6's own guard still holds through the hoist:
+`examples/english/shift.mimz`'s `extend(1 << 3, 8)` now emits
+`wire [3:0] __mimz_sub_1; assign __mimz_sub_1 = (1 << 3);` — 8 in 4 bits, not
+the 0 that bug was about. Its self-checking test (`expect literal_shift == 8`)
+passes.
+
+A shift as the LHS of **another** shift stays un-hoisted, gated separately by
+`allow_shift_lhs` in the `Binary` arm. That one is a genuine threaded-width
+case (BUG-24/BUG-34's fused chain), and it matters — see the false start below.
+
+### False start worth recording
+
+The first fix hoisted any signed `>>` from inside the `Binary` arm itself,
+unconditionally. All 43 regression tests passed, including every BUG-24/BUG-34
+shift test — and it was still wrong. The differential fuzzer caught it at comb
+seed **12648749**: `(p0 >> 10) << 1`, a shift as the direct left operand of
+another shift, which the fused-chain semantics require be left un-hoisted.
+Confirmed by reverting just that change and re-running (comb clean at `N=1000`).
+
+The lesson is the same one this file keeps recording: a fix rendered from inside
+a node cannot see the position the node sits in. The position is the parent's
+knowledge, which is exactly why `allow_shift` is a parameter and not a property
+of the shift.
+
+**Test.** `bug_47_signed_right_shift_into_a_wider_assignment`,
+`bug_47_signed_right_shift_with_a_composite_left_operand`,
+`bug_47_signed_right_shift_by_a_port_amount`, and the boundary guard
+`bug_47_unsigned_right_shift_and_left_shift_stay_unhoisted`
+(`tests/self_determined_regression.rs`), all watched fail before the fix except
+the boundary case, which had to keep passing. Seed 202428271 added to
+`tests/fixtures/fuzz-seeds/clocked.txt`. Both fuzzers green at `N=1000` each
+plus corpus (155 s); full workspace green; `fmt`/`clippy -D warnings` clean.
+
+**Diagnosis method.** A 21-case matrix over operator x signedness x context
+width, each run through `mimz eval` and Icarus, established the boundary before
+any code changed: only `Shr` with a signed left operand diverges;
+`+%`/`-%`/`*%`/`^`/`&`/`+`/`*`, unsigned `>>`, and `<<` all match. One case in
+that matrix (`(p1 ^ p2) >> 2`) initially read as passing and was a false
+negative — `p1 ^ p2` happened to be positive for the chosen inputs, so
+sign extension added zeros. It diverges once the operand is negative, and is now
+pinned as its own regression test.
