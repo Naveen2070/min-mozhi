@@ -22,21 +22,21 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## Index
 
-| ID                                                                                                                                | Gap                                                                     | Severity   | Status       |
-| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------------ |
-| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                             | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN         |
-| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                                   | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN         |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                                  | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED       |
-| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                                   | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN         |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)                     | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED       |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                                  | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED       |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                                 | No enum↔bits cast                                                       | MEDIUM     | CLOSED       |
-| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                                         | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN         |
-| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                               | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN         |
-| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                               | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN         |
-| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)             | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED       |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                  | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED       |
-| [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted) | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED (1/3) |
+| ID                                                                                                                                | Gap                                                                     | Severity   | Status |
+| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
+| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                             | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
+| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                                   | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                                  | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
+| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                                   | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)                     | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                                  | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                                 | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
+| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                                         | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
+| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                               | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
+| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                               | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
+| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)             | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                  | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
+| [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted) | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED |
 
 ---
 
@@ -840,11 +840,10 @@ would have caught it now exists.
 
 ## GAP-13 (MEDIUM, testing) — The position matrix has no `ExprKind` axis, and the only structural coverage assertion was deleted
 
-**Status:** CLOSED (direction 1) 2026-08-09. Filed 2026-08-09. Source:
-[`review-2026-08-09.md`](review-2026-08-09.md). Directions 2 (fuzz generator
-vocabulary) and 3 (elaboration assertion — done separately as part of
-[BUG-49](bugs.md)'s own fix) tracked in `docs/plan/v0.2-class-closure-
-round3.local.md` Tasks 4 and 2.
+**Status:** CLOSED 2026-08-09. Filed 2026-08-09. Source:
+[`review-2026-08-09.md`](review-2026-08-09.md). All three directions done —
+1 and 3 the same day it was filed, 2 (fuzz generator vocabulary) same day
+too, `docs/plan/v0.2-class-closure-round3.local.md` Task 4.
 
 **What.** [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)'s
 position matrix covers every `Builtin`. It covers no `ExprKind`. The gate that
@@ -918,8 +917,53 @@ now fails the BUILD, not just this one test file, matching what
 `self_determined.rs`'s own exhaustive `Builtin` match already gives that
 axis.
 
-**Still open:** directions 2 (fuzz generator vocabulary — `docs/plan/v0.2-
-class-closure-round3.local.md` Task 4) and 3 (elaboration assertion — landed
-already, folded into [BUG-49](bugs.md)'s own fix rather than as a separate
+**Still open:** nothing — direction 3 (elaboration assertion) had already
+landed, folded into [BUG-49](bugs.md)'s own fix rather than as a separate
 step, since `differential`/`differential_clocked`'s existing `iverilog`
-build-step assert already provided it).
+build-step assert already provided it.
+
+### Direction 2 resolved 2026-08-09 — the generator can now emit every shape, and finds BUG-48 unassisted
+
+`gen_special_leaves` (`tests/differential_fuzz.rs`) precomputes, once per
+module exactly like `ports`/`regs` already are: a `fn`-call leaf, a
+`const`-bounded slice leaf (both generators), and — clocked only, since
+`comb::eval_outputs` does not elaborate instances at all — a plain
+instance-port leaf, an array-instance-port leaf, and a `mem`-read leaf.
+`if`/`match` landed as two new recursive combinator arms in
+`gen_expr_collecting` itself (`combine_if`/`combine_match`), needing no
+auxiliary declarations at all, unlike the other five shapes.
+
+**Acceptance test, run for real (the plan's own "done when"): with
+[BUG-48](bugs.md)'s fix reverted (`kinds.rs`'s `Field` array-instance arm
+and `Slice`'s `slice_bound_fold`, the same two spots the fix itself
+touches), the fuzzer catches it — at the very first fresh seed, in BOTH
+generators, well inside the per-PR depth of 400:**
+
+```text
+comb    seed 12648435 (i=0): kernel y=890590     Icarus y=689886
+        y4 = (signed(extend(6, 6)) +% extend(signed(p1[HI:0]), 6))
+clocked seed 202427629 (i=0): kernel y=115539590 Icarus y=110100010111111111010000110
+```
+
+`p1[HI:0]` — a const-bounded slice inside a self-determined position — is
+exactly BUG-48's own `Slice` shape, reached by random generation for the
+first time. With the fix restored, both generators are green at `N=400`
+(69 s), and the full workspace suite passes throughout.
+
+**A real side effect worth recording, not swept under the "done" claim:**
+extending `gen_leaf`/`gen_expr_collecting`'s own dispatch (a new
+unconditional draw for the special-leaf pool, and the combinator-arm
+divisor going from 7 to 9) changes which `rng.next_range` calls happen for
+EVERY leaf and EVERY combinator choice — so a seed number that used to
+generate one specific historical repro (e.g. `comb.txt`'s own
+`12648435 # i=5 BUG-23`) now generates a **different program** under the
+new generator, coincidentally the same number that surfaced BUG-48's shape
+above. The regression corpus (`tests/fixtures/fuzz-seeds/`) still passes
+in full — every entry's CURRENT program (whatever it is now) still matches
+Icarus — but a seed's comment naming a specific historical bug is no
+longer a live guarantee that replaying it still exercises that exact
+shape after a generator vocabulary change. This is inherent to a
+probabilistic generator, not a bug in this change, and not new: any prior
+vocabulary change (GAP-5's `wrap_builtin`, v3's clocked leaves) had the
+identical effect and was never flagged. Worth a maintainer's note the next
+time the corpus is touched, not a fix here.
