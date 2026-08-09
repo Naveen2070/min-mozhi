@@ -119,7 +119,7 @@ impl Emitter<'_> {
                 self.env.insert(p.name.name.clone(), v);
             }
         }
-        self.cur_decls = self.build_decls(&flat);
+        self.cur_decls = Rc::new(self.build_decls(&flat));
         self.env = params_env;
         self.cover_ordinals = build_cover_ordinals(&flat);
 
