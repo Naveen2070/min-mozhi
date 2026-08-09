@@ -63,6 +63,25 @@ width-conformance oracle — the ninth instance of this exact family since
 BUG-11). Every future operator or builtin re-opens the same three-way drift
 surface.
 
+**Count as of 2026-08-09: seventeen.** BUG-11, 18–24, 28, 29, 30, 34, 35, 36,
+41–44, 47. The v0.2 remediation added four of them (41–44 were found by it,
+47 by the oracle it built), which is the argument for this gap rather than
+against it: the count is climbing because detection improved, not because the
+code got worse.
+
+BUG-47 also surfaced a **third failure mode** for this family, distinct from
+the usual two. The first two are a missing case (BUG-41: a gate that never ran
+the classifier) and a wrong case (BUG-42: `min`/`max` classified "no mismatch
+possible"). BUG-47 was neither — it was a **correct case whose justification had
+been deleted**: `Builtin::Extend`'s `allow_shift: false` was right when written
+and documented in detail, and BUG-34's own rework removed the simulator function
+(`eval_ctx`) the whole comment depended on, leaving a guard that no longer
+guarded anything. Exhaustiveness checking cannot see this: the match was
+exhaustive, the arm reachable, the comment precise, and every word of it about
+code that no longer existed. A typed IR removes the failure mode entirely by
+making the width rule singular; short of that, the only detector is an external
+oracle, which is what found it.
+
 **Evidence.** `emit_verilog/kinds.rs:6` states the duplication is deliberate —
 `foreach`/`sync_loop` lowering produces fresh `Expr` trees at ~6 call sites, so an
 annotation set by one pass cannot reach another. The constraint is real; the
