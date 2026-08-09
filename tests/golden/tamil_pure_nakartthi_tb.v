@@ -16,7 +16,7 @@ module _________________________________tb;
     $dumpfile("_________________________________tb.vcd");
     $dumpvars(0, _________________________________tb);
     tharavu = 0;
-    tharavu = 3;
+    tharavu <= 3;
     if (!((maarrilinakarvu == 8))) begin
       $display("FAIL: expect %0s failed", "(maarrilinakarvu == 8)");
       $finish;

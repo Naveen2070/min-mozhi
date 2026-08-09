@@ -19,7 +19,7 @@ module debouncer_settles_after_a_steady_input_tb;
     $dumpvars(0, debouncer_settles_after_a_steady_input_tb);
     rst = 0;
     raw = 0;
-    raw = 1;
+    raw <= 1;
     repeat (8) @(posedge clk);
     if (!((stable == 1))) begin
       $display("FAIL: expect %0s failed", "(stable == 1)");
@@ -51,9 +51,9 @@ module debouncer_rejects_a_short_glitch_tb;
     $dumpvars(0, debouncer_rejects_a_short_glitch_tb);
     rst = 0;
     raw = 0;
-    raw = 1;
+    raw <= 1;
     repeat (2) @(posedge clk);
-    raw = 0;
+    raw <= 0;
     repeat (8) @(posedge clk);
     if (!((stable == 0))) begin
       $display("FAIL: expect %0s failed", "(stable == 0)");

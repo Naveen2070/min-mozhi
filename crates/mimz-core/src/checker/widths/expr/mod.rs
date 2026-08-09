@@ -150,11 +150,28 @@ impl<'a> Checker<'a> {
                         ..
                     }
                 );
+                // BUG-30 (docs/audit/bugs.md), Task 6 of docs/plan/v0.2-
+                // class-closure-round3.local.md: `<<` grows just like
+                // `+`/`-`, and hitting the generic "widths must match"
+                // text here — with no mention of WHY a shift's width
+                // changed — was the diagnostic-side half of the same gap
+                // the guide's own `<<` section had (round 2 asked for
+                // both, only the guide half had landed).
+                let is_shift_left = matches!(&e.kind, ExprKind::Binary { op: BinOp::Shl, .. });
                 let help = if is_add_sub && grew_by_one {
                     "`+`/`-` are lossless — the result grows one bit so the \
                      carry is never dropped. For same-width wrap-around use \
                      `+%`/`-%`; to keep the carry, widen the target by one bit \
                      (spec/02 section 1.2)"
+                        .to_string()
+                } else if is_shift_left {
+                    "`<<` is lossless too — a constant shift amount grows the \
+                     result by exactly that amount, a runtime amount by its \
+                     own worst case (2^N - 1), so no bit the shift produces \
+                     is ever silently dropped. Widen the target to match, or \
+                     wrap in `trunc(x, N)` to intentionally discard the high \
+                     bits (spec/02 section 1.8); `>>` does not grow — only \
+                     `<<` does"
                         .to_string()
                 } else {
                     format!(

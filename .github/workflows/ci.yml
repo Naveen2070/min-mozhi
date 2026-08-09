@@ -9,10 +9,15 @@ on:
   # Manual "run the perf batch" button (Actions tab → CI → Run workflow).
   workflow_dispatch:
   schedule:
-    # Weekly extended fuzz run (Mon 04:00 UTC) — drives `fuzz-nightly` only.
-    - cron: "0 4 * * 1"
+    # Nightly extended fuzz run (04:00 UTC) — drives `fuzz-nightly` only.
+    # Was weekly (`0 4 * * 1`) until v0.2 round-3 Task 5: BUG-47 was found
+    # at i=642, past the per-PR depth of 400, by a manual gate run — the
+    # job that would have caught it before the gate did ran 52 times a
+    # year. "Every deeper run on 2026-08-09 found something" is the
+    # argument for daily (docs/audit/gaps.md GAP-13).
+    - cron: "0 4 * * *"
     # Nightly perf batch schedule at (03:00 UTC);
-    # `nightly-bench` is gated on exactly this cron so the weekly fuzz
+    # `nightly-bench` is gated on exactly this cron so the daily fuzz
     # schedule above never triggers the perf batch.
     - cron: "0 3 * * *"
 
@@ -122,7 +127,7 @@ jobs:
     name: perf batch (manual / nightly)
     runs-on: ubuntu-latest
     # Manual dispatch, plus the perf cron IF re-enabled above. Gated on the exact
-    # perf cron so the weekly fuzz schedule never triggers the perf batch.
+    # perf cron so the daily fuzz schedule never triggers the perf batch.
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *')
     # Needed so the bot can commit the appended history back to the repo.
     permissions:
@@ -210,7 +215,7 @@ jobs:
         # Run from the repo root — cargo-fuzz finds the ./fuzz crate itself.
         # Bounded so it gates PRs without dominating CI. A reproducer for any
         # crash is written under fuzz/artifacts/ and the non-zero exit fails the
-        # job. The weekly `fuzz-nightly` job runs a longer batch.
+        # job. The nightly `fuzz-nightly` job runs a longer batch.
         run: |
           cargo fuzz run lex_parse_eval -- -max_total_time=60 -rss_limit_mb=2048
           cargo fuzz run lex_parse_compile -- -max_total_time=60 -rss_limit_mb=2048
@@ -218,13 +223,13 @@ jobs:
           cargo fuzz run translate_roundtrip -- -max_total_time=60 -rss_limit_mb=2048
 
   fuzz-nightly:
-    name: fuzz (weekly extended)
+    name: fuzz (nightly extended)
     runs-on: ubuntu-latest
-    # Weekly cron above, plus manual dispatch. Longer per-target budget than the
+    # Nightly cron above, plus manual dispatch. Longer per-target budget than the
     # per-PR smoke; same crash-is-a-finding contract. Also carries the deep
     # kernel-vs-Icarus differential (GAP-11) — the only place seed depth goes
     # past the per-PR default.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 1')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 4 * * *')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

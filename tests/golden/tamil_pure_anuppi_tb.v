@@ -63,8 +63,8 @@ module ______________________________________________tb;
     miill = 0;
     thotangku = 0;
     tharavu = 0;
-    thotangku = 1;
-    tharavu = 'h55;
+    thotangku <= 1;
+    tharavu <= 'h55;
     repeat (1) @(posedge katikai);
     if (!((veelai == 1))) begin
       $display("FAIL: expect %0s failed", "(veelai == 1)");
@@ -105,10 +105,10 @@ module __________________________________________tb;
     miill = 0;
     thotangku = 0;
     tharavu = 0;
-    thotangku = 1;
-    tharavu = 'h55;
+    thotangku <= 1;
+    tharavu <= 'h55;
     repeat (1) @(posedge katikai);
-    thotangku = 0;
+    thotangku <= 0;
     repeat (24) @(posedge katikai);
     if (!((veelai == 0))) begin
       $display("FAIL: expect %0s failed", "(veelai == 0)");

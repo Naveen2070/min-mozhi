@@ -43,9 +43,27 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
     for stmt in stmts {
         match stmt {
             TestStmt::Drive { name, value } => {
+                // Non-blocking, not `=`: found live while verifying Task 8
+                // (docs/plan/v0.2-class-closure-round3.local.md) — a
+                // blocking drive changing `rst`/an input right after
+                // `repeat(N) @(posedge clk)` resumes races the DUT's own
+                // `always @(posedge clk)` block reading that SAME signal
+                // for the SAME edge (both are active-region processes
+                // triggered by the identical event; their relative order
+                // is implementation-defined). Confirmed live against real
+                // `iverilog`: a `reg` reset asserted for exactly one tick
+                // then deasserted with `=` left the register `x` forever
+                // — not "eventually correct," genuinely never reset,
+                // because the DUT sometimes saw `rst` already deasserted
+                // on the very edge that should have caught it high. `<=`
+                // defers the actual update to the NBA region, so an
+                // active-region reader — the DUT's own synchronous logic
+                // — is guaranteed to see the PRE-drive value for the
+                // edge that just occurred, the standard, textbook fix for
+                // this exact race class.
                 let val_str = em.expr(value);
                 em.out.push_str(&format!(
-                    "{}{} = {};\n",
+                    "{}{} <= {};\n",
                     indent,
                     sanitize_verilog_ident(&name.name),
                     val_str
@@ -337,6 +355,55 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         emit_test_stmts(&mut em, &test.body, "    ");
 
         em.out.push_str("    $display(\"PASS\");\n");
+        // Task 8 #2 (docs/plan/v0.2-class-closure-round3.local.md): the
+        // DUT's `__cover_N_count` registers were incremented and read by
+        // nothing — print each one's final hit count here, the one place
+        // that actually knows the simulation is about to end (a DUT
+        // module has no Verilog-2005-legal hook for that on its own; see
+        // `module/mod.rs`'s own note on why `final` isn't it). Read via a
+        // hierarchical reference through `_dut_inst`, same convention
+        // `tests/icarus.rs`'s own cover tests already use to verify these
+        // registers from outside the DUT.
+        let mut all_covers: Vec<&crate::ast::CoverStmt> = dut
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                ModuleItem::Cover(c) => Some(c),
+                _ => None,
+            })
+            .collect();
+        all_covers.extend(crate::emit_verilog::module::collect_on_block_covers(
+            &dut.items,
+        ));
+        if !all_covers.is_empty() {
+            let ordinals = crate::emit_verilog::module::build_cover_ordinals(&dut.items);
+            em.out.push_str("    `ifndef SYNTHESIS\n");
+            // A cover counter's own increment (`always @(cond)` for the
+            // comb form, an NBA `<=` inside `on rise` for the clocked
+            // form) is not guaranteed visible to a same-time-step read —
+            // confirmed live against real `iverilog`: even a read a full
+            // clock period after the triggering edge raced and saw 0, not
+            // 1, with only `#0` in between (a `reg` written by a
+            // DIFFERENT process's NBA is not guaranteed settled just
+            // because simulation time has since advanced — a same-delta
+            // race, not a same-time one). A real delay, not a zero one,
+            // is what settles it.
+            em.out.push_str("    #1;\n");
+            em.out
+                .push_str("    $display(\"---- cover summary ----\");\n");
+            for c in &all_covers {
+                let ord = ordinals[&c.span.start];
+                let label = c
+                    .label
+                    .clone()
+                    .unwrap_or_else(|| format!("cover@{}", c.span.start));
+                let label = label.replace('\\', "\\\\").replace('"', "\\\"");
+                em.out.push_str(&format!(
+                    "    $display(\"  {label}: %0d\", _dut_inst.__cover_{ord}_count);\n"
+                ));
+            }
+            em.out.push_str("    `endif\n");
+        }
         em.out.push_str("    $finish;\n");
         em.out.push_str("  end\n");
         em.out.push_str("endmodule\n\n");
