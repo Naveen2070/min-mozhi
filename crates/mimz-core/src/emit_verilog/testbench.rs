@@ -122,7 +122,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         bundle_sigs: HashMap::new(),
         hoist_counter: 0,
         hoisted_decls: String::new(),
-        cur_decls: HashMap::new(),
+        cur_decls: Default::default(),
         cover_ordinals: HashMap::new(),
     };
 
