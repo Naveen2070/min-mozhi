@@ -103,21 +103,33 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>, env: &Env) 
                 signed: false,
             })
         }
-        ExprKind::Replicate { count: _, parts } => {
-            // `count` is always a compile-time constant per the checker's
-            // own `replicate_ty` — this function only needs the INNER
-            // concat's width times some multiplier; the multiplier
-            // itself isn't needed for this phase's self-determined check
-            // (replication's own count position is checked separately,
-            // see `self_determined.rs`), so this returns the inner
-            // concat's per-iteration width, matching what a caller needs
-            // when checking a replication's REPEATED PART, not the whole
-            // replication's total width.
-            let width = parts
+        ExprKind::Replicate { count, parts } => {
+            // GAP-13 (`docs/audit/gaps.md`) axis exercise found this arm
+            // used to return the inner concat's PER-ITERATION width
+            // (undocumented rationale: no caller was believed to ask for
+            // the Replicate node's own total width, only its repeated
+            // PART's — which is checked separately, via `parts` rendered
+            // individually in `expr.rs`, never through this arm at all).
+            // That belief was wrong the moment a caller asks `infer_kind`
+            // about the Replicate node ITSELF — `Builtin::Trunc`'s
+            // BUG-36-style base-hoist does exactly that
+            // (`shape_replicate_nested_in_trunc_hoists_the_base`,
+            // `tests/self_determined_regression.rs`) — and got back a
+            // width 1/`count` too narrow, hoisting `{2{p0}}` into a wire
+            // sized for one copy instead of both: the top copy read back
+            // as `x` (undriven), a silent CRITICAL miscompile invisible
+            // to `mimz check`/`mimz test` (the simulator evaluates the
+            // AST directly, never through this function). `count` is
+            // always a compile-time constant per the checker's own
+            // `replicate_ty` — fold it the same way `Slice`'s bounds do
+            // and multiply, matching what every other `infer_kind` arm
+            // means by "this expression's own `Kind`": its real width.
+            let per_iter = parts
                 .iter()
                 .try_fold(0u32, |acc, p| Some(acc + infer_kind(p, decls, env)?.width))?;
+            let n = slice_bound_fold(count, env)?;
             Some(Kind {
-                width,
+                width: per_iter * n,
                 signed: false,
             })
         }
@@ -206,12 +218,27 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>, env: &Env) 
             // the same `Ty`, so the first arm that resolves is enough.
             arms.iter().find_map(|a| infer_kind(&a.value, decls, env))
         }
-        // Bundles/enums/`??`/array literals never appear inside a
-        // concat/replicate/comparison/cast/slice-base position (mimz's own
-        // type rules forbid it), so `None` here is never a missed case —
-        // it is the same "cannot appear here" fact the retired
-        // `kind_is_inferrable` encoded as `false`.
-        _ => None,
+        // GAP-13 (`docs/audit/gaps.md`): this match used to end `_ =>
+        // None`, the exact surface BUG-48 fell through twice and BUG-50
+        // (a wrong-not-missing `Kind` for `Replicate`, found building
+        // this axis) shows a wildcard can hide more than a missing case.
+        // Exhaustive over `ExprKind` now — no wildcard, so a new variant
+        // fails the build here until classified, matching what
+        // `self_determined.rs`'s own exhaustive `Builtin` match already
+        // does for that axis. Each arm below states WHY it is `None`,
+        // the same discipline as every classified arm above.
+        //
+        // Bundle/array literals and an enum construction never appear
+        // inside a concat/replicate/comparison/cast/slice-base position —
+        // none of them is a `bits`-typed value, and mimz's own type rules
+        // (the checker, ahead of this code) forbid a non-`bits` value in
+        // any of the five self-determined positions (an enum specifically
+        // via E0403, BUG-31). `tests/self_determined_regression.rs`'s own
+        // `expr_kind_self_determined_coverage` pins this reasoning as its
+        // own exhaustive, test-file-side copy of this axis.
+        ExprKind::BundleLit(_) => None,
+        ExprKind::ArrayLit(_) => None,
+        ExprKind::EnumConstruct { .. } => None,
     }
 }
 
