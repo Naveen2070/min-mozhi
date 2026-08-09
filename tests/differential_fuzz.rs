@@ -804,33 +804,94 @@ fn gen_slice(rng: &mut Rng, ports: &[Port]) -> Option<Frag> {
 /// just "under some generous ceiling" — reusing the same recursion with a
 /// tighter `cap` guarantees that by construction rather than needing a
 /// separate narrowing pass after the fact.
-fn gen_expr(rng: &mut Rng, ports: &[Port], depth: u32, cap: u32) -> Frag {
+/// Every INTERNAL node of one generated expression, in construction order,
+/// each with the width and kind the generator built it at.
+///
+/// GAP-11(a). The old width-conformance oracle compared a top-level signal's
+/// value against the width `mimz-sim` itself resolved for that signal — the
+/// kernel masks every stored value to exactly that width by construction, so
+/// the check could not fail, and its own doc comment said so. It therefore
+/// could not catch the class it was written for: BUG-30's wrong value was an
+/// *intermediate* (`din << 2` typed `bits[4]`, valued 60) that still fit the
+/// `bits[8]` output it landed in. BUG-42 and BUG-44 were the same shape.
+///
+/// The fix is to give every intermediate its own declared, checked home.
+/// Each collected fragment becomes a real `out` port typed from the
+/// generator's own model, so:
+///
+/// * the **checker** endorses that width by accepting the program at all
+///   (the generator is checker-clean by construction, so a declaration it
+///   would reject is a generator bug that surfaces immediately), and
+/// * the **simulator** and **Icarus** each produce a value for it, compared
+///   against each other and against the declared width.
+///
+/// That is the two-independent-authorities property the oracle was supposed
+/// to have. Leaves are deliberately skipped — a bare port reference or a
+/// sized literal has no width rule worth testing.
+struct Subs {
+    frags: Vec<Frag>,
+}
+
+impl Subs {
+    fn new() -> Self {
+        Subs { frags: Vec::new() }
+    }
+
+    /// Record one internal node. Cloning the text duplicates that subtree
+    /// into its own port, which is the point: the sub-expression is emitted
+    /// exactly as it renders inside the root, on the same code path.
+    fn push(&mut self, f: &Frag) {
+        if self.frags.len() < MAX_SUB_OUTPUTS {
+            self.frags.push(Frag {
+                text: f.text.clone(),
+                width: f.width,
+                signed: f.signed,
+                atomic: f.atomic,
+            });
+        }
+    }
+}
+
+/// Ceiling on materialized sub-expression ports per module. Each one
+/// duplicates its whole subtree into the source and adds a column to every
+/// testbench row, so an uncapped depth-4 tree would bloat both the generated
+/// program and the Icarus run for diminishing returns.
+const MAX_SUB_OUTPUTS: usize = 8;
+
+/// [`gen_expr`], additionally recording every internal node into `subs`.
+fn gen_expr_collecting(
+    rng: &mut Rng,
+    ports: &[Port],
+    depth: u32,
+    cap: u32,
+    subs: &mut Subs,
+) -> Frag {
     let raw = if depth == 0 || rng.next_range(6) == 0 {
         gen_leaf(rng, ports)
     } else {
         match rng.next_range(7) {
             0 => {
-                let a = gen_expr(rng, ports, depth - 1, cap);
-                let b = gen_expr(rng, ports, depth - 1, cap);
+                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
                 combine_same_width(rng, a, b)
             }
             1 => {
-                let a = gen_expr(rng, ports, depth - 1, cap);
+                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
                 combine_shift(rng, a)
             }
             2 => {
-                let a = gen_expr(rng, ports, depth - 1, cap);
-                let b = gen_expr(rng, ports, depth - 1, cap);
+                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
                 combine_concat(a, b)
             }
             3 => {
-                let a = gen_expr(rng, ports, depth - 1, cap);
-                let b = gen_expr(rng, ports, depth - 1, cap);
+                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
                 combine_lossless(rng, a, b)
             }
             4 => {
-                let a = gen_expr(rng, ports, depth - 1, cap);
-                let b = gen_expr(rng, ports, depth - 1, cap);
+                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
+                let b = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
                 combine_wrap(rng, a, b)
             }
             // GAP-5 direction 2 (docs/audit/gaps.md): a builtin call, not
@@ -838,20 +899,26 @@ fn gen_expr(rng: &mut Rng, ports: &[Port], depth: u32, cap: u32) -> Frag {
             // further up the tree — see `wrap_builtin`'s own doc comment
             // for why no separate per-position wiring is needed.
             5 => {
-                let a = gen_expr(rng, ports, depth - 1, cap);
+                let a = gen_expr_collecting(rng, ports, depth - 1, cap, subs);
                 wrap_builtin(rng, a)
             }
             _ => gen_slice(rng, ports).unwrap_or_else(|| gen_leaf(rng, ports)),
         }
     };
-    clamp(rng, ports, raw, cap)
+    let out = clamp(rng, ports, raw, cap);
+    // Record the CLAMPED fragment — that is the text and width that actually
+    // reaches the parent, so it is the one whose declaration must hold.
+    if depth > 0 {
+        subs.push(&out);
+    }
+    out
 }
 
 /// Generate one random valid combinational `.mimz` module as source text.
 /// Returns `(source, input_ports, output_width)` — the caller needs
 /// `input_ports` to build stimulus vectors and a matching Verilog
 /// testbench, and `output_width` to declare the testbench's `y` wire.
-fn gen_module(seed: u64) -> (String, Vec<Port>, u32) {
+fn gen_module(seed: u64) -> (String, Vec<Port>, u32, Vec<Port>) {
     let mut rng = Rng::new(seed);
     let n_ports = (rng.next_range(3) + 2) as usize; // 2..=4
     let ports: Vec<Port> = (0..n_ports)
@@ -862,16 +929,36 @@ fn gen_module(seed: u64) -> (String, Vec<Port>, u32) {
         })
         .collect();
     let depth = (rng.next_range(3) + 2) as u32; // 2..=4
-    let body = gen_expr(&mut rng, &ports, depth, MAX_WIDTH);
+    let mut subs = Subs::new();
+    let body = gen_expr_collecting(&mut rng, &ports, depth, MAX_WIDTH, &mut subs);
 
     let mut src = String::from("module Fuzz {\n");
     for (name, w, signed) in &ports {
         src += &format!("  in {name}: {}\n", ty_str(*w, *signed));
     }
     src += &format!("  out y: {}\n", ty_str(body.width, body.signed));
+    // GAP-11(a): one extra output per internal node, declared at the width
+    // and kind the generator built it at. ADDITIVE — `y` below still renders
+    // the whole expression inline, on the original code path. That matters:
+    // BUG-30 was "naming an intermediate changes the result", so replacing
+    // the root with references to these ports would test a different program
+    // than the one the differential is supposed to cover.
+    // The outermost internal node IS the body, so materializing it would
+    // duplicate the whole expression into a second identical port.
+    subs.frags.retain(|f| f.text != body.text);
+    let sub_ports: Vec<Port> = subs
+        .frags
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (format!("y{i}"), f.width, f.signed))
+        .collect();
+    for ((name, w, signed), f) in sub_ports.iter().zip(&subs.frags) {
+        src += &format!("  out {name}: {}\n", ty_str(*w, *signed));
+        src += &format!("  {name} = {}\n", f.text);
+    }
     src += &format!("  y = {}\n", body.text);
     src += "}\n";
-    (src, ports, body.width)
+    (src, ports, body.width, sub_ports)
 }
 
 /// Generate one random valid CLOCKED `.mimz` module as source text (v3): a
@@ -905,7 +992,17 @@ fn gen_module(seed: u64) -> (String, Vec<Port>, u32) {
 /// kernel's `SimOpts.inputs` (which holds every input constant for the
 /// whole run, `crates/mimz-sim/src/sim/run.rs`) and the Verilog
 /// testbench's held `reg` initializers from the exact same vector.
-fn gen_clocked_module(seed: u64) -> (String, Vec<Port>, BTreeMap<String, u128>, u32, bool) {
+#[allow(clippy::type_complexity)]
+fn gen_clocked_module(
+    seed: u64,
+) -> (
+    String,
+    Vec<Port>,
+    BTreeMap<String, u128>,
+    u32,
+    bool,
+    Vec<Port>,
+) {
     let mut rng = Rng::new(seed);
 
     let n_ports = (rng.next_range(3) + 1) as usize; // 1..=3
@@ -946,20 +1043,50 @@ fn gen_clocked_module(seed: u64) -> (String, Vec<Port>, BTreeMap<String, u128>, 
         src += &format!("  reg {name}: {} = 0\n", ty_str(*w, *signed));
     }
 
-    let out_body = gen_expr(&mut rng, &leaves, depth, MAX_WIDTH);
+    // GAP-11(a), clocked half: collect the internal nodes of the output
+    // expression AND of every register's next-state expression. A
+    // next-state sub-expression is exactly where BUG-44 lived, so leaving
+    // this generator root-only would keep the weaker oracle on the half
+    // that has historically found the most.
+    let mut subs = Subs::new();
+    let out_body = gen_expr_collecting(&mut rng, &leaves, depth, MAX_WIDTH, &mut subs);
     src += &format!("  out y: {}\n", ty_str(out_body.width, out_body.signed));
 
-    src += "  on rise(clk) {\n";
-    for (name, w, signed) in &regs {
-        let next = gen_expr(&mut rng, &leaves, depth, *w);
+    let mut next_states: Vec<String> = Vec::new();
+    for (_, w, signed) in &regs {
+        let next = gen_expr_collecting(&mut rng, &leaves, depth, *w, &mut subs);
         let next = force_width(&mut rng, next, *w, *signed);
-        src += &format!("    {name} <- {}\n", next.text);
+        next_states.push(next.text);
+    }
+
+    // Each materialized intermediate becomes a combinational output, read
+    // from the SAME leaf pool (ports + current register values) the
+    // expression was built from. Additive: `y` and every `<-` below still
+    // render their whole expression inline, on the original code path.
+    subs.frags
+        .retain(|f| f.text != out_body.text && !next_states.contains(&f.text));
+    let sub_ports: Vec<Port> = subs
+        .frags
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (format!("y{i}"), f.width, f.signed))
+        .collect();
+    for (name, w, signed) in &sub_ports {
+        src += &format!("  out {name}: {}\n", ty_str(*w, *signed));
+    }
+
+    src += "  on rise(clk) {\n";
+    for ((name, _, _), next) in regs.iter().zip(&next_states) {
+        src += &format!("    {name} <- {next}\n");
     }
     src += "  }\n";
+    for ((name, _, _), f) in sub_ports.iter().zip(&subs.frags) {
+        src += &format!("  {name} = {}\n", f.text);
+    }
     src += &format!("  y = {}\n", out_body.text);
     src += "}\n";
 
-    (src, ports, held, out_body.width, out_body.signed)
+    (src, ports, held, out_body.width, out_body.signed, sub_ports)
 }
 
 /// Fast, Icarus-independent: every generated program must pass
@@ -971,7 +1098,7 @@ fn gen_clocked_module(seed: u64) -> (String, Vec<Port>, BTreeMap<String, u128>, 
 #[test]
 fn differential_fuzz_generates_checker_valid_programs() {
     for seed in 0..1000u64 {
-        let (src, _, _) = gen_module(0xC0FFEE_u64.wrapping_add(seed));
+        let (src, _, _, _) = gen_module(0xC0FFEE_u64.wrapping_add(seed));
         let tokens = lexer::lex(&src).unwrap_or_else(|e| {
             panic!(
                 "seed {seed} produced an unlexable program:\n{src}\n{}",
@@ -1011,7 +1138,7 @@ fn differential_fuzz_matches_icarus() {
         return;
     };
     for seed in fuzz_seeds("comb", "MIMZ_DIFF_FUZZ_N", COMB_SEED_BASE) {
-        let (src, ports, out_width) = gen_module(seed);
+        let (src, ports, out_width, sub_ports) = gen_module(seed);
 
         // Parse + check in-memory — the exact object our kernel will run.
         let tokens = lexer::lex(&src).unwrap_or_else(|e| {
@@ -1045,6 +1172,13 @@ fn differential_fuzz_matches_icarus() {
             ports.iter().map(|(n, w, _)| (n.clone(), *w)).collect();
         let vectors = support::gen_vectors(&inputs_meta, 8);
 
+        // Every output this module declares — the root plus one per
+        // materialized internal node (GAP-11(a)) — at the width the
+        // generator built it at.
+        let declared_widths: BTreeMap<&str, u32> = std::iter::once(("y", out_width))
+            .chain(sub_ports.iter().map(|(n, w, _)| (n.as_str(), *w)))
+            .collect();
+
         // Our own kernel, one row per input vector. Values stay `Bits`
         // (Small or Wide) — comparison against Icarus normalizes both to
         // limbs (`bits_to_limbs`/`limbs_from_binary`) so a >128-bit output
@@ -1068,6 +1202,21 @@ fn differential_fuzz_matches_icarus() {
                 )
             });
             for o in &outputs {
+                // GAP-11(a) authority 1: the width the GENERATOR built this
+                // expression at, which the checker endorsed by accepting the
+                // declaration. Comparing the simulator's independently
+                // resolved width against it is the non-tautological half —
+                // `assert_bits_fit_width` below only ever sees the kernel's
+                // own number, which the kernel masks to by construction.
+                let declared = declared_widths.get(o.name.as_str());
+                if let Some(&w) = declared {
+                    assert_eq!(
+                        o.width, w,
+                        "seed {seed}: output `{}` — the simulator resolved width {} but the \
+                         generator declared (and the checker accepted) {w}\nsource:\n{src}",
+                        o.name, o.width
+                    );
+                }
                 assert_bits_fit_width(
                     &format!("seed {seed}: output `{}`", o.name),
                     &o.value,
@@ -1081,7 +1230,13 @@ fn differential_fuzz_matches_icarus() {
 
         // Real Icarus.
         let design_v = support::compile_example(&path);
-        let outputs_meta = vec![("y".to_string(), out_width)];
+        // The root AND every materialized internal node. Comparing each
+        // intermediate is the point of GAP-11(a): BUG-30, BUG-42 and BUG-44
+        // were all wrong at a sub-expression, and a root-only differential
+        // sees that only when the error happens to survive to the top.
+        let outputs_meta: Vec<(String, u32)> = std::iter::once(("y".to_string(), out_width))
+            .chain(sub_ports.iter().map(|(n, w, _)| (n.clone(), *w)))
+            .collect();
         let tb = support::comb_testbench("Fuzz", &[], &inputs_meta, &outputs_meta, &vectors);
         let stdout = support::run_vvp(&bin, &format!("fuzz seed {seed}"), &design_v, &tb);
         let icarus = parse_icarus_raw(&stdout);
@@ -1090,14 +1245,16 @@ fn differential_fuzz_matches_icarus() {
             let icarus_row = icarus
                 .get(&(idx as u64))
                 .unwrap_or_else(|| panic!("seed {seed}: Icarus produced no row for vector {idx}"));
-            let kernel_y = bits_to_limbs(&kernel_row["y"], out_width);
-            let icarus_y = limbs_from_binary(&icarus_row["y"], out_width);
-            assert_eq!(
-                kernel_y, icarus_y,
-                "seed {seed}, vector {idx}: our kernel y={:?} but Icarus y={:?}\n\
-                 source:\n{src}\nvector: {:?}",
-                kernel_row["y"], icarus_row["y"], vectors[idx]
-            );
+            for (name, width) in &outputs_meta {
+                let kernel_v = bits_to_limbs(&kernel_row[name], *width);
+                let icarus_v = limbs_from_binary(&icarus_row[name], *width);
+                assert_eq!(
+                    kernel_v, icarus_v,
+                    "seed {seed}, vector {idx}: our kernel {name}={:?} but Icarus {name}={:?}\n\
+                     source:\n{src}\nvector: {:?}",
+                    kernel_row[name], icarus_row[name], vectors[idx]
+                );
+            }
         }
     }
 }
@@ -1108,7 +1265,7 @@ fn differential_fuzz_matches_icarus() {
 #[test]
 fn differential_fuzz_clocked_generates_checker_valid_programs() {
     for seed in 0..1000u64 {
-        let (src, ..) = gen_clocked_module(0xC10CCED_u64.wrapping_add(seed));
+        let (src, ..) = gen_clocked_module(CLOCKED_SEED_BASE.wrapping_add(seed));
         let tokens = lexer::lex(&src).unwrap_or_else(|e| {
             panic!(
                 "seed {seed} produced an unlexable clocked program:\n{src}\n{}",
@@ -1154,7 +1311,7 @@ fn differential_fuzz_clocked_matches_icarus() {
     const RESET_CYCLES: u64 = 1;
 
     for seed in fuzz_seeds("clocked", "MIMZ_DIFF_FUZZ_CLOCKED_N", CLOCKED_SEED_BASE) {
-        let (src, ports, held, out_width, _out_signed) = gen_clocked_module(seed);
+        let (src, ports, held, out_width, _out_signed, sub_ports) = gen_clocked_module(seed);
 
         let tokens = lexer::lex(&src).unwrap_or_else(|e| {
             panic!(
@@ -1225,7 +1382,10 @@ fn differential_fuzz_clocked_matches_icarus() {
             .iter()
             .map(|(n, w, _)| (n.clone(), *w, held[n]))
             .collect();
-        let outputs_meta = vec![("y".to_string(), out_width)];
+        // GAP-11(a): the root plus every materialized intermediate.
+        let outputs_meta: Vec<(String, u32)> = std::iter::once(("y".to_string(), out_width))
+            .chain(sub_ports.iter().map(|(n, w, _)| (n.clone(), *w)))
+            .collect();
         let tb = support::clocked_testbench(
             "Fuzz",
             &[],
@@ -1245,16 +1405,18 @@ fn differential_fuzz_clocked_matches_icarus() {
             let icarus_row = icarus
                 .get(&cyc)
                 .unwrap_or_else(|| panic!("seed {seed}: Icarus produced no row for cycle {cyc}"));
-            let kernel_y = f.values["y"].clone();
-            let kernel_limbs = bits_to_limbs(&kernel_y, out_width);
-            let icarus_limbs = limbs_from_binary(&icarus_row["y"], out_width);
-            assert_eq!(
-                kernel_limbs, icarus_limbs,
-                "seed {seed}, cycle {cyc}: our kernel y={kernel_y:?} but Icarus y={}\n\
-                 source:\n{src}\nheld inputs: {held:?}",
-                icarus_row["y"]
-            );
-            compared += 1;
+            for (name, width) in &outputs_meta {
+                let kernel_v = f.values[name].clone();
+                let kernel_limbs = bits_to_limbs(&kernel_v, *width);
+                let icarus_limbs = limbs_from_binary(&icarus_row[name], *width);
+                assert_eq!(
+                    kernel_limbs, icarus_limbs,
+                    "seed {seed}, cycle {cyc}: our kernel {name}={kernel_v:?} but Icarus \
+                     {name}={}\nsource:\n{src}\nheld inputs: {held:?}",
+                    icarus_row[name]
+                );
+                compared += 1;
+            }
         }
         assert!(compared > 0, "seed {seed}: nothing was compared");
     }

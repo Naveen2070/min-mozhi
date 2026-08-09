@@ -22,20 +22,20 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## Index
 
-| ID                                                                                                                    | Gap                                                                     | Severity   | Status  |
-| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------- |
-| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                 | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN    |
-| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                       | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN    |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                      | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED  |
-| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                       | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN    |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)         | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED  |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                      | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED  |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                     | No enum↔bits cast                                                       | MEDIUM     | CLOSED  |
-| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                             | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN    |
-| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN    |
-| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN    |
-| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | PARTIAL |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED  |
+| ID                                                                                                                    | Gap                                                                     | Severity   | Status |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
+| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                 | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
+| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                       | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                      | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
+| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                       | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)         | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                      | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                     | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
+| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                             | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
+| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
+| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
+| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
 
 ---
 
@@ -610,8 +610,8 @@ the differential fuzzer (whose generator gap is
 
 ## GAP-11 (MEDIUM, testing) — The width-conformance oracle is vacuous, and CI fuzzes at a depth that finds nothing
 
-**Status:** PARTIALLY CLOSED 2026-08-09 — **(b) fixed**, (a) still open. Filed
-2026-08-07. Source: [`review-2026-08-07.md`](review-2026-08-07.md).
+**Status:** CLOSED 2026-08-09 — both halves. Filed 2026-08-07. Source:
+[`review-2026-08-07.md`](review-2026-08-07.md).
 
 **What.** Two separate holes in the oracle work that closed
 [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)
@@ -776,6 +776,42 @@ that never fires is the same mistake one layer up:
 Run-to-run spread is about ±0.3, so the separation is wide. Reported, never
 gated — same reasoning as `MIMZ_PERF_GATE` (BUG-33): a hard threshold on a
 shared runner would flap.
+
+### (a) resolved 2026-08-09 — every intermediate gets a declared, checked home
+
+The oracle could not walk sub-expressions because neither authority is reachable
+from `tests/`: the checker's `Ty` and `infer_ty` are private by design (_"Lives
+only inside this pass — the AST stays untyped"_) and the emitter's `infer_kind`
+is `pub(crate)`. Rather than punch a public hole in the checker for a test, the
+fuzz generator **materializes** each internal node of every expression it builds
+as its own `out` port, declared at the width and kind the generator constructed
+it at (`MAX_SUB_OUTPUTS = 8` per module, both the combinational and clocked
+generators). That yields the two independent authorities directly:
+
+- the **checker** endorses each width by accepting the program at all — the
+  generator is checker-clean by construction, so a width it would reject fails
+  the 1,000-seed validity test immediately;
+- the **simulator** and **Icarus** each produce a value per intermediate, now
+  compared against each other and against the declared width.
+
+Additive, never substitutive: `y` and every `<-` still render their whole
+expression inline. BUG-30 was _"naming an intermediate changes the result"_, so
+rewriting the root to reference these ports would test a different program than
+the one the differential exists to cover.
+
+**Validated by A/B, with BUG-44's fix reverted, over 400 combinational seeds:**
+
+| configuration                  | result                                 |
+| ------------------------------ | -------------------------------------- |
+| sub-expression outputs **on**  | **FAILS** — seed 12648671, output `y3` |
+| sub-expression outputs **off** | passes — blind                         |
+
+The old root-only oracle cannot see a real, shipped miscompile that the new one
+catches — and catches it in the _combinational_ generator, which never found
+BUG-44 at all (it took the clocked generator at i=201). Seed 12648671 is pinned
+in the corpus. `assert_bits_fit_width` is kept, now backed by an explicit
+declared-vs-resolved width assertion; on its own it remains tautological, which
+was the original finding.
 
 **Status: CLOSED.** Both halves done — the cost removed, and the instrument that
 would have caught it now exists.
