@@ -198,14 +198,17 @@ impl Emitter<'_> {
                         decls.insert(mem_elem_decl_key(&name.name), k);
                     }
                 }
-                // Array instances (`let fa[i] = ...` inside `repeat`) render
-                // a `Field` access through `Index`, a different shape than
-                // `infer_kind`'s own `Field` arm handles — out of this
-                // task's scope (same "not handled here" fallback every
-                // other unresolved shape gets, never a regression: these
-                // were just as unresolvable before this task).
                 ModuleItem::Inst(inst) if inst.index.is_none() => {
                     self.insert_instance_output_kinds(&mut decls, inst);
+                }
+                // Array instances (`let s[i] = Sub() { ... }` inside
+                // `repeat`) — BUG-48 (`docs/audit/bugs.md`): `s[0].q`
+                // renders through `Field { base: Index }`, a shape
+                // `infer_kind`'s `Field` arm now also resolves, but only
+                // if `decls` actually holds the key it looks up. This was
+                // the missing half.
+                ModuleItem::Repeat(r) => {
+                    self.insert_repeat_instance_output_kinds(&mut decls, r);
                 }
                 _ => {}
             }
@@ -267,6 +270,62 @@ impl Emitter<'_> {
         decls: &mut HashMap<String, crate::width_rules::Kind>,
         inst: &Inst,
     ) {
+        self.insert_instance_output_kinds_keyed(decls, inst, &self.env, &inst.name.name);
+    }
+
+    /// Every output port `Kind` of one `repeat`-body instance PER
+    /// iteration, keyed `{inst}__{n}_{port}` — matching `expr.rs`'s own
+    /// array-instance `Field` rendering (`fa[i].port` → `fa__<i>_port`)
+    /// — BUG-48's fix. `lo`/`hi` must fold against `self.env` the same
+    /// way `unroll` (`mod.rs`) folds them for real emission; an
+    /// unfoldable bound just leaves these entries absent, the same
+    /// best-effort fallback every other `build_decls` fact uses. Caps at
+    /// the checker-enforced `repeat` bound already validated before this
+    /// (an already-checked program), so no separate budget guard is
+    /// needed here the way `unroll` needs one for its own error path.
+    fn insert_repeat_instance_output_kinds(
+        &self,
+        decls: &mut HashMap<String, crate::width_rules::Kind>,
+        r: &Repeat,
+    ) {
+        let Some(lo) = consteval::eval(&r.lo, &self.env)
+            .ok()
+            .map(|v| v.to_i128_saturating())
+        else {
+            return;
+        };
+        let Some(hi) = consteval::eval(&r.hi, &self.env)
+            .ok()
+            .map(|v| v.to_i128_saturating())
+        else {
+            return;
+        };
+        let mut i = lo;
+        while i < hi {
+            let mut env = self.env.clone();
+            env.insert(r.var.name.clone(), consteval::ConstVal::from_i128(i));
+            for item in &r.items {
+                if let ModuleItem::Inst(inst) = item {
+                    let key = format!("{}__{i}", inst.name.name);
+                    self.insert_instance_output_kinds_keyed(decls, inst, &env, &key);
+                }
+            }
+            i += 1;
+        }
+    }
+
+    /// Shared by both callers above: every output port `Kind` of `inst`,
+    /// resolved against `parent_env` (the instantiating scope's own env —
+    /// `self.env` for a plain instance, one `repeat` iteration's env with
+    /// the loop var bound for an array element), stored under
+    /// `{key_prefix}_{port}`.
+    fn insert_instance_output_kinds_keyed(
+        &self,
+        decls: &mut HashMap<String, crate::width_rules::Kind>,
+        inst: &Inst,
+        parent_env: &Env,
+        key_prefix: &str,
+    ) {
         let Some((child_file, target)) = self.project.resolve_target_with_file(&inst.module) else {
             return;
         };
@@ -276,7 +335,7 @@ impl Emitter<'_> {
             .cloned()
             .unwrap_or_default();
         for a in &inst.args {
-            if let Ok(v) = consteval::eval(&a.value, &self.env) {
+            if let Ok(v) = consteval::eval(&a.value, parent_env) {
                 env.insert(a.name.name.clone(), v);
             }
         }
@@ -288,7 +347,7 @@ impl Emitter<'_> {
             } = item
                 && let Some(k) = self.scalar_kind_in_env(ty, &env)
             {
-                decls.insert(format!("{}_{}", inst.name.name, name.name), k);
+                decls.insert(format!("{key_prefix}_{}", name.name), k);
             }
         }
     }
@@ -435,7 +494,7 @@ impl Emitter<'_> {
         }
         use crate::emit_verilog::self_determined::verilog_self_determined_kind;
 
-        let Some(verilog_kind) = verilog_self_determined_kind(expr, decls) else {
+        let Some(verilog_kind) = verilog_self_determined_kind(expr, decls, &self.env) else {
             return rendered_text;
         };
         if mimz_kind == verilog_kind {

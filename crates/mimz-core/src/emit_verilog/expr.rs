@@ -201,7 +201,7 @@ impl Emitter<'_> {
         // the same, already-correct fallback these shapes had before this
         // task (`kind_is_inferrable`'s own retired doc comment).
         match hoistable
-            .then(|| crate::emit_verilog::kinds::infer_kind(child, decls))
+            .then(|| crate::emit_verilog::kinds::infer_kind(child, decls, &self.env))
             .flatten()
         {
             Some(kind) => self.hoist_slice_base_if_needed(text, kind.width, kind.signed),
@@ -349,14 +349,14 @@ impl Emitter<'_> {
                     let decls = Rc::clone(&self.cur_decls);
                     let l = {
                         let text = self.expr_subst(lhs, subst, arrays);
-                        match crate::emit_verilog::kinds::infer_kind(lhs, &decls) {
+                        match crate::emit_verilog::kinds::infer_kind(lhs, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(lhs, text, k, &decls),
                             None => text,
                         }
                     };
                     let r = {
                         let text = self.expr_subst(rhs, subst, arrays);
-                        match crate::emit_verilog::kinds::infer_kind(rhs, &decls) {
+                        match crate::emit_verilog::kinds::infer_kind(rhs, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(rhs, text, k, &decls),
                             None => text,
                         }
@@ -534,7 +534,7 @@ impl Emitter<'_> {
                         // plain `eval` (`expected_width: None`), so a
                         // shift part here is self-determined.
                         let text = self.hoist_width_effect_operand(p, text, &decls, true);
-                        match crate::emit_verilog::kinds::infer_kind(p, &decls) {
+                        match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
                             None => text,
                         }
@@ -554,7 +554,7 @@ impl Emitter<'_> {
                         // plain `eval` (`expected_width: None`), so a
                         // shift part here is self-determined.
                         let text = self.hoist_width_effect_operand(p, text, &decls, true);
-                        match crate::emit_verilog::kinds::infer_kind(p, &decls) {
+                        match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
                             None => text,
                         }
@@ -615,7 +615,7 @@ impl Emitter<'_> {
                 // base's own declared signedness.
                 let b = self.expr_subst(base, subst, arrays);
                 let decls = Rc::clone(&self.cur_decls);
-                let b = match crate::emit_verilog::kinds::infer_kind(base, &decls) {
+                let b = match crate::emit_verilog::kinds::infer_kind(base, &decls, &self.env) {
                     Some(k) => self.hoist_slice_base_if_needed(b, k.width, false),
                     None => b,
                 };
@@ -730,10 +730,11 @@ impl Emitter<'_> {
                     // `eval_ctx`'s `Call` arm with plain `eval` (see
                     // `call`'s own match arms).
                     let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
-                    let hoisted = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
-                        Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
-                        None => text,
-                    };
+                    let hoisted =
+                        match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
+                            Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
+                            None => text,
+                        };
                     format!("$signed({hoisted})")
                 }
                 Builtin::UnsignedCast => {
@@ -744,10 +745,11 @@ impl Emitter<'_> {
                     // `eval_ctx`'s `Call` arm with plain `eval` (see
                     // `call`'s own match arms).
                     let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
-                    let hoisted = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
-                        Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
-                        None => text,
-                    };
+                    let hoisted =
+                        match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
+                            Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
+                            None => text,
+                        };
                     format!("$unsigned({hoisted})")
                 }
                 Builtin::Encoding => {
@@ -759,10 +761,11 @@ impl Emitter<'_> {
                     // `eval_ctx`, so a shift argument here is
                     // self-determined.
                     let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
-                    let hoisted = match crate::emit_verilog::kinds::infer_kind(&args[0], &decls) {
-                        Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
-                        None => text,
-                    };
+                    let hoisted =
+                        match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
+                            Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
+                            None => text,
+                        };
                     format!("$unsigned({hoisted})")
                 }
                 // Extension is context-automatic in Verilog assignments:
@@ -890,7 +893,8 @@ impl Emitter<'_> {
                     // any OTHER shape (a concat, here) untouched. Hoist
                     // unconditionally on shape, mirroring `ExprKind::Slice`'s
                     // own `hoist_slice_base_if_needed` call exactly.
-                    let base_kind = crate::emit_verilog::kinds::infer_kind(&args[0], &decls);
+                    let base_kind =
+                        crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env);
                     let x = match base_kind {
                         Some(k) => self.hoist_slice_base_if_needed(x, k.width, false),
                         None => x,
