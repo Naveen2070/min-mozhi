@@ -290,7 +290,7 @@ impl Emitter<'_> {
             }
             ExprKind::Unary { op, expr: inner } => {
                 let x = self.expr_subst(inner, subst, arrays);
-                let decls = self.cur_decls.clone();
+                let decls = Rc::clone(&self.cur_decls);
                 let x = self.hoist_width_effect_operand(inner, x, &decls, true);
                 let sym = match op {
                     UnOp::Neg => "-",
@@ -346,7 +346,7 @@ impl Emitter<'_> {
                     op,
                     BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
                 ) {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let l = {
                         let text = self.expr_subst(lhs, subst, arrays);
                         match crate::emit_verilog::kinds::infer_kind(lhs, &decls) {
@@ -394,7 +394,7 @@ impl Emitter<'_> {
                     // matching that threaded semantics instead of freezing
                     // it at the wrong (bottom-up, context-free) width.
                     let allow_shift_lhs = !matches!(op, BinOp::Shl | BinOp::Shr);
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let l = {
                         let text = self.expr_subst(lhs, subst, arrays);
                         self.hoist_width_effect_operand(lhs, text, &decls, allow_shift_lhs)
@@ -447,7 +447,7 @@ impl Emitter<'_> {
                         self.expr_subst(els, subst, arrays)
                     };
                 }
-                let decls = self.cur_decls.clone();
+                let decls = Rc::clone(&self.cur_decls);
                 let c = self.expr_subst(cond, subst, arrays);
                 // `allow_shift: false` (BUG-24 regression fix): `eval_ctx`'s
                 // `IfExpr` arm (`mimz-sim/src/sim/value.rs`) propagates the
@@ -479,7 +479,7 @@ impl Emitter<'_> {
                     }
 
                     let v = self.expr_subst(&arm.value, &arm_subst, arrays);
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     // `allow_shift: false` — same reason as `IfExpr` above:
                     // `eval_ctx`'s `Match` arm propagates the SAME
                     // `expected_width` into `arm.value`, so a shift arm
@@ -524,7 +524,7 @@ impl Emitter<'_> {
                 format!("({out})")
             }
             ExprKind::Concat(parts) => {
-                let decls = self.cur_decls.clone();
+                let decls = Rc::clone(&self.cur_decls);
                 let ps: Vec<String> = parts
                     .iter()
                     .map(|p| {
@@ -543,7 +543,7 @@ impl Emitter<'_> {
                 format!("{{{}}}", ps.join(", "))
             }
             ExprKind::Replicate { count, parts } => {
-                let decls = self.cur_decls.clone();
+                let decls = Rc::clone(&self.cur_decls);
                 let c = self.index_expr(count, subst, arrays);
                 let ps: Vec<String> = parts
                     .iter()
@@ -593,7 +593,7 @@ impl Emitter<'_> {
                     return chain;
                 }
                 let b = self.expr_subst(base, subst, arrays);
-                let decls = self.cur_decls.clone();
+                let decls = Rc::clone(&self.cur_decls);
                 // `allow_shift: true` — `eval_ctx`'s `Index` arm evaluates
                 // `base` with plain `eval` (self-determined).
                 let b = self.hoist_width_effect_operand(base, b, &decls, true);
@@ -614,7 +614,7 @@ impl Emitter<'_> {
                 // part-select's result is unsigned regardless of the
                 // base's own declared signedness.
                 let b = self.expr_subst(base, subst, arrays);
-                let decls = self.cur_decls.clone();
+                let decls = Rc::clone(&self.cur_decls);
                 let b = match crate::emit_verilog::kinds::infer_kind(base, &decls) {
                     Some(k) => self.hoist_slice_base_if_needed(b, k.width, false),
                     None => b,
@@ -714,7 +714,7 @@ impl Emitter<'_> {
                             // hoc, not threaded into evaluation, so a shift
                             // argument here is self-determined.
                             let text = self.expr_subst(a, subst, arrays);
-                            let decls = self.cur_decls.clone();
+                            let decls = Rc::clone(&self.cur_decls);
                             args_str.push(self.hoist_width_effect_operand(a, text, &decls, true));
                         }
                     }
@@ -723,7 +723,7 @@ impl Emitter<'_> {
             }
             ExprKind::Call { func, args } => match func {
                 Builtin::SignedCast => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let text = self.expr_subst(&args[0], subst, arrays);
                     // `allow_shift: true` — `Builtin::SignedCast`/
                     // `UnsignedCast` arguments are always evaluated by
@@ -737,7 +737,7 @@ impl Emitter<'_> {
                     format!("$signed({hoisted})")
                 }
                 Builtin::UnsignedCast => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let text = self.expr_subst(&args[0], subst, arrays);
                     // `allow_shift: true` — `Builtin::SignedCast`/
                     // `UnsignedCast` arguments are always evaluated by
@@ -751,7 +751,7 @@ impl Emitter<'_> {
                     format!("$unsigned({hoisted})")
                 }
                 Builtin::Encoding => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let text = self.expr_subst(&args[0], subst, arrays);
                     // `allow_shift: true` — mirrors `SignedCast`/
                     // `UnsignedCast` immediately above: this builtin's
@@ -831,7 +831,7 @@ impl Emitter<'_> {
                         }
                         _ => {
                             let text = self.expr_subst(&args[0], subst, arrays);
-                            let decls = self.cur_decls.clone();
+                            let decls = Rc::clone(&self.cur_decls);
                             // `allow_shift: false` (BUG-24 regression fix,
                             // docs/audit/bugs.md): `call`'s `Builtin::Extend`
                             // arm explicitly threads THIS extend's own
@@ -858,7 +858,7 @@ impl Emitter<'_> {
                 // argument(s) with plain `eval`, never `eval_ctx`, so a
                 // shift argument is always self-determined here.
                 Builtin::Trunc => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let x = self.expr_subst(&args[0], subst, arrays);
                     let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
                     // BUG-36 (docs/audit/bugs.md): `trunc` renders as an
@@ -909,7 +909,7 @@ impl Emitter<'_> {
                     }
                 }
                 Builtin::Min => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let a = self.expr_subst(&args[0], subst, arrays);
                     let a = self.hoist_width_effect_operand(&args[0], a, &decls, true);
                     let b = self.expr_subst(&args[1], subst, arrays);
@@ -917,7 +917,7 @@ impl Emitter<'_> {
                     format!("(({a} < {b}) ? ({a}) : ({b}))")
                 }
                 Builtin::Max => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let a = self.expr_subst(&args[0], subst, arrays);
                     let a = self.hoist_width_effect_operand(&args[0], a, &decls, true);
                     let b = self.expr_subst(&args[1], subst, arrays);
@@ -927,26 +927,26 @@ impl Emitter<'_> {
                 // Result is `signed[N+1]`; the assignment context sign-extends
                 // both ternary arms (the operand is declared `signed`).
                 Builtin::Abs => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let x = self.expr_subst(&args[0], subst, arrays);
                     let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
                     format!("(({x} < 0) ? (-{x}) : ({x}))")
                 }
                 // Verilog-2005 negated reduction operators — one bit out.
                 Builtin::Nand => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let x = self.expr_subst(&args[0], subst, arrays);
                     let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
                     format!("(~&({x}))")
                 }
                 Builtin::Nor => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let x = self.expr_subst(&args[0], subst, arrays);
                     let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
                     format!("(~|({x}))")
                 }
                 Builtin::Xnor => {
-                    let decls = self.cur_decls.clone();
+                    let decls = Rc::clone(&self.cur_decls);
                     let x = self.expr_subst(&args[0], subst, arrays);
                     let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
                     format!("(~^({x}))")
@@ -1078,7 +1078,7 @@ impl Emitter<'_> {
                             // width context (each field is separately
                             // masked to its own `field_w` right here).
                             let text = self.expr_subst(a, subst, arrays);
-                            let decls = self.cur_decls.clone();
+                            let decls = Rc::clone(&self.cur_decls);
                             self.hoist_width_effect_operand(a, text, &decls, true)
                         }
                     });

@@ -30,6 +30,7 @@ pub(crate) use translit::romanize;
 pub use translit::transliterate;
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::ast::*;
 use crate::checker::consteval::{self, Env};
@@ -429,7 +430,7 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
         bundle_sigs: HashMap::new(),
         hoist_counter: 0,
         hoisted_decls: String::new(),
-        cur_decls: HashMap::new(),
+        cur_decls: Rc::default(),
         cover_ordinals: HashMap::new(),
     };
     em.out.push_str(&format!(
@@ -562,7 +563,19 @@ struct Emitter<'a> {
     /// emitter never calls `module()`, so it never gains signal `Kind`s —
     /// see `expr::kind_is_inferrable`'s doc for why an empty map here is
     /// exactly the right "don't hoist" answer there, not a bug).
-    cur_decls: HashMap<String, crate::width_rules::Kind>,
+    ///
+    /// `Rc` for a borrow reason, not a sharing one (GAP-12). Every hoist site
+    /// in `expr.rs` needs `&self.cur_decls` live across a `&mut self` call
+    /// (`expr_subst`, `hoist_if_needed`), which the borrow checker forbids, so
+    /// all 22 of them snapshot it first. As a bare `HashMap` that snapshot was
+    /// a full deep clone **per expression node** — on the order of 64M entry
+    /// clones for a module of 8,000 declarations and 8,000 assignments, and
+    /// the reason `mimz compile` measured superlinear in module size. `Rc`
+    /// makes the snapshot a refcount bump while keeping the semantics
+    /// identical: the map is replaced wholesale per module (below) and never
+    /// mutated in place, so a snapshot could never observe a later write
+    /// either way.
+    cur_decls: Rc<HashMap<String, crate::width_rules::Kind>>,
     /// Every `cover(...)` statement in the CURRENT module (module-item AND
     /// `on`-block form combined), mapped `span.start -> ordinal rank by
     /// source position`. Names each hidden hit-counter `__cover_{ordinal}_

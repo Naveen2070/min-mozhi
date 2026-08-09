@@ -33,7 +33,7 @@ fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
         bundle_sigs: HashMap::new(),
         hoist_counter: 0,
         hoisted_decls: String::new(),
-        cur_decls: HashMap::new(),
+        cur_decls: Default::default(),
         cover_ordinals: HashMap::new(),
     }
 }

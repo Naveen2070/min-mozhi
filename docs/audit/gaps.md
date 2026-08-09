@@ -35,7 +35,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                   | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN    |
 | [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                   | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN    |
 | [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing) | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | PARTIAL |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | OPEN    |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                      | `mimz compile` is superlinear in module size                            | MEDIUM     | PARTIAL |
 
 ---
 
@@ -720,5 +720,41 @@ restructure the borrow so the map is passed by reference rather than cloned per
 node. Bundles naturally with
 [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)
 (interning) but does not depend on it.
+
+### Fixed 2026-08-09 — `cur_decls` is an `Rc<HashMap<String, Kind>>`
+
+The field type changed; the 22 call sites became `Rc::clone(&self.cur_decls)`, an
+O(1) refcount bump. Semantics are unchanged — the map is replaced wholesale per
+module and never mutated in place, so a snapshot could never observe a later
+write under either type. Every golden is byte-identical and the full suite is
+green (1213 passed).
+
+**Measured, same machine, best of 3 per point:**
+
+| regs  | before | after  | speedup |
+| ----- | ------ | ------ | ------- |
+| 500   | 0.14 s | 0.04 s | 3.5x    |
+| 1,000 | 0.37 s | 0.07 s | 5.3x    |
+| 2,000 | 1.46 s | 0.13 s | 11x     |
+| 4,000 | 7.59 s | 0.28 s | 27x     |
+
+Cost per doubling went **2.71 / 3.90 / 5.20 → 1.63 / 1.85 / 2.09**: superlinear
+(worse than quadratic, and degrading) to linear. The speedup grows with size,
+which is the signature of removing a per-node O(declarations) copy.
+
+**The original workload does not reproduce this gap, and that matters for
+whoever re-measures.** A module of N registers wired `r_i <- r_{i-1}` compiles in
+0.36 s at N=8,000 both before and after — a bare `Ident` right-hand side never
+enters a hoist path, so it never reaches a `cur_decls` snapshot at all. The
+numbers in the table above come from drives carrying `trunc(extend(r_i, 16) *
+extend(3, 16), 8)`, where declaration count and hoisting expression count both
+scale with N. The table at the top of this entry (0.43 → 10.57 s) therefore
+measured something other than the 22 clone sites named as its own evidence; its
+absolute figures were never reproducible here, and only the hoist-heavy shape
+exhibits the curve the evidence describes.
+
+**Still open:** the second half of the direction — `mimz-bench` samples exactly
+one module size, so no trend line it records can detect a complexity regression.
+That is what let this ship.
 
 ---
