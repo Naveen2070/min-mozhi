@@ -674,16 +674,16 @@ available to this project right now is one environment variable in `ci.yml`.
 
 ### (b) resolved 2026-08-09 — depth moved to CI, corpus made depth-independent
 
-Directions 1 and 2 are done; direction 3 (the (a) half) is untouched and GAP-11
-stays open on it.
+Directions 1 and 2 are done — direction 3 (the (a) half) is covered by the
+`(a) resolved` section below this one.
 
 **Depth now lives where a long run is free**, not in the source default:
 
-| where                              | seeds per generator | cost                |
-| ---------------------------------- | ------------------- | ------------------- |
-| in-source `DEFAULT_FUZZ_N`         | 20                  | 5.8 s (with corpus) |
-| `ci.yml` → `check` (per-PR)        | 400                 | 76.9 s, debug       |
-| `ci.yml` → `fuzz-nightly` (weekly) | 5000                | release             |
+| where                                                                                 | seeds per generator | cost                |
+| ------------------------------------------------------------------------------------- | ------------------- | ------------------- |
+| in-source `DEFAULT_FUZZ_N`                                                            | 20                  | 5.8 s (with corpus) |
+| `ci.yml` → `check` (per-PR)                                                           | 400                 | 76.9 s, debug       |
+| `ci.yml` → `fuzz-nightly` (nightly, was weekly — Task 5, `v0.2-class-closure-round3`) | 5000                | release             |
 
 The first draft of this fix raised the **in-source** default to 400 and was
 wrong: every seed shells out to `mimz compile` plus `iverilog` plus `vvp`, so
@@ -706,7 +706,8 @@ vacuously — silent coverage loss is the failure mode a corpus exists to preven
 
 ## GAP-12 (MEDIUM, performance) — `mimz compile` is superlinear in module size
 
-**Status:** OPEN. Filed 2026-08-07. Source:
+**Status:** CLOSED 2026-08-09 (measured — see the `Fixed`/`Detection added`
+sections below). Filed 2026-08-07. Source:
 [`review-2026-08-07.md`](review-2026-08-07.md).
 
 **What.** Measured on one module of N 8-bit registers, release build:
@@ -835,6 +836,25 @@ was the original finding.
 
 **Status: CLOSED.** Both halves done — the cost removed, and the instrument that
 would have caught it now exists.
+
+**Residual, decided rather than omitted (Task 9,
+`docs/plan/v0.2-class-closure-round3.local.md`).** `assert_bits_fit_width`
+staying tautological means the shape it can't catch — an intermediate whose
+VALUE exceeds its DECLARED width where sim and Verilog agree with each other
+and both disagree with the type (F-2's exact shape) — has no oracle.
+Materializing such an intermediate as a declared-width port makes both
+engines truncate it identically, so the differential agrees and the assert
+passes; nothing structurally prevents the next BUG-30-shaped defect from
+hiding the same way. Two options were on the table: (a) a `#[cfg(test)]`
+accessor exposing the checker's private `infer_ty` for one expression, or
+(b) fold it into [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times) —
+once there is one width per IR node, the oracle becomes "walk the IR."
+**Decision: (b).** A test-only hole in the checker's own type boundary is
+exactly the kind of narrow, single-purpose special case GAP-1's whole
+argument is against — building it now would mean building it again,
+differently, once the IR lands. Deferred, not dropped; this residual is the
+concrete reason GAP-1's typed-IR oracle should include a width-conformance
+walk on day one, not as a later addition.
 
 ---
 

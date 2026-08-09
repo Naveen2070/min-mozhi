@@ -294,7 +294,12 @@ module Divider {
 `assert(cond)` / `assert(cond, "msg")` works in two places:
 
 - **In the module body** — checked every settled combinational state, like
-  `Divider`'s above.
+  `Divider`'s above. This is **immediate and unclocked**: it re-checks
+  continuously, including while a design's own reset is still asserted and
+  its registers haven't reached a meaningful state yet — an invariant that
+  only holds once reset has released will fire spuriously here. If the
+  invariant is about a REGISTER's value (not a combinational input), put
+  the `assert` inside `on rise(clk) { }` instead — see below.
 - **Inside `on rise(clk) { }`** — checked once per triggering edge:
 
 ```mimz

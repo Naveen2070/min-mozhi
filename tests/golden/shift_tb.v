@@ -16,7 +16,7 @@ module shift_widens_past_the_operand_width_tb;
     $dumpfile("shift_widens_past_the_operand_width_tb.vcd");
     $dumpvars(0, shift_widens_past_the_operand_width_tb);
     din = 0;
-    din = 3;
+    din <= 3;
     if (!((literal_shift == 8))) begin
       $display("FAIL: expect %0s failed", "(literal_shift == 8)");
       $finish;

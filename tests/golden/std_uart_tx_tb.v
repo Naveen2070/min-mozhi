@@ -63,8 +63,8 @@ module uart_begins_a_frame_on_start_tb;
     rst = 0;
     start = 0;
     data = 0;
-    start = 1;
-    data = 'h55;
+    start <= 1;
+    data <= 'h55;
     repeat (1) @(posedge clk);
     if (!((busy == 1))) begin
       $display("FAIL: expect %0s failed", "(busy == 1)");
@@ -105,10 +105,10 @@ module uart_returns_to_idle_after_a_frame_tb;
     rst = 0;
     start = 0;
     data = 0;
-    start = 1;
-    data = 'h55;
+    start <= 1;
+    data <= 'h55;
     repeat (1) @(posedge clk);
-    start = 0;
+    start <= 0;
     repeat (24) @(posedge clk);
     if (!((busy == 0))) begin
       $display("FAIL: expect %0s failed", "(busy == 0)");

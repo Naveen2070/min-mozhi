@@ -16,11 +16,16 @@ mod seq;
 /// Every `cover` statement reachable from `items` — module-item level
 /// directly (`ModuleItem::Cover`), `on`-block level recursed through
 /// `on.body` (and any nested `if`/`loop`/`foreach` inside it) via
-/// `collect_seq_covers`. Used once, up front, to declare every clocked
-/// cover's hidden counter register before the `posedge` block that
-/// increments it (GAP-6 follow-up) — the comb form declares its own
-/// counter inline (Task 6) and never reaches this list.
-fn collect_on_block_covers(items: &[ModuleItem]) -> Vec<&CoverStmt> {
+/// `collect_seq_covers`. Used up front, to declare every clocked cover's
+/// hidden counter register before the `posedge` block that increments it
+/// (GAP-6 follow-up) — the comb form declares its own counter inline
+/// (Task 6) and never reaches this list. `pub(super)` since Task 8
+/// (`docs/plan/v0.2-class-closure-round3.local.md`): `testbench.rs`
+/// reuses it to print each cover's final hit count — the DUT module
+/// itself has no Verilog-2005-legal "simulation just ended" hook, but the
+/// `--emit-testbench` output's own `initial` block, ending in `$finish`,
+/// does.
+pub(super) fn collect_on_block_covers(items: &[ModuleItem]) -> Vec<&CoverStmt> {
     let mut out = Vec::new();
     for item in items {
         if let ModuleItem::On(on) = item {
@@ -56,7 +61,7 @@ fn collect_seq_covers<'a>(stmts: &'a [SeqStmt], out: &mut Vec<&'a CoverStmt>) {
 /// even when the statement's relative position among covers is unchanged,
 /// so it is not a stable register name across a semantically-identical
 /// re-emit. An ordinal rank is — pretty-printing never reorders statements.
-fn build_cover_ordinals(items: &[ModuleItem]) -> HashMap<usize, usize> {
+pub(super) fn build_cover_ordinals(items: &[ModuleItem]) -> HashMap<usize, usize> {
     let mut starts: Vec<usize> = items
         .iter()
         .filter_map(|it| match it {
@@ -289,11 +294,31 @@ impl Emitter<'_> {
         // (mirrors the simulator, which initializes all cells at construction).
         // Mandatory init value → no uninitialized state, without a per-cycle
         // reset (the `reset` line clears registers only).
+        //
+        // BUG-32 (docs/audit/bugs.md), Task 8 of docs/plan/v0.2-class-
+        // closure-round3.local.md: this `initial` seed is simulation- and
+        // FPGA-block-RAM-only — a real ASIC has no defined power-on RAM
+        // content, and an ASIC synthesis flow will not honor it. Note this
+        // once, right above the first `mem`'s init, rather than silently
+        // implying the value is universal (`docs/guide/04-signals.md`'s
+        // own `mem` section carries the same caveat for the reader who
+        // never opens the generated Verilog).
+        let mut mem_note_emitted = false;
         for item in flat.iter() {
             if let ModuleItem::Mem {
                 name, depth, init, ..
             } = item
             {
+                if !mem_note_emitted {
+                    self.out.push_str(
+                        "    // NOTE: the `initial` memory-init loop(s) below are \
+                         simulation/FPGA-only — an ASIC flow has no defined \
+                         power-on RAM content and will not honor them. Add an \
+                         explicit clocked load/reset path if this design \
+                         targets ASIC.\n",
+                    );
+                    mem_note_emitted = true;
+                }
                 let d = self.expr(depth);
                 let v = self.expr(init);
                 let iv = format!("__mimz_{}_i", name.name);
@@ -423,6 +448,21 @@ impl Emitter<'_> {
         // clocked always-blocks so a design's `on`-block output stays
         // textually first, matching this emitter's existing item-order
         // convention.
+        //
+        // ponytail: Task 8 #4 (docs/plan/v0.2-class-closure-round3.local.
+        // md) — `self.expr(&a.cond)` below can hoist a width-mismatched
+        // sub-expression into `self.hoisted_decls`, which splices in at
+        // `hoist_pos` UNCONDITIONALLY (every hoist in the module shares
+        // one buffer, one insertion point, no per-hoist provenance) — so
+        // a wire that exists ONLY to feed an assert/cover condition sits
+        // outside the `ifndef SYNTHESIS` guard the assert itself gets,
+        // becoming dead logic in a synthesis build. Real synthesizers
+        // prune unreferenced-by-hardware nets, so this is noise, not a
+        // miscompile — fixing it for real means giving `hoisted_decls`
+        // per-hoist provenance (which construct asked for it), a bigger
+        // change than this ceiling justifies today. Upgrade path: thread
+        // a `synthesis_gated: bool` through the hoist call chain if this
+        // ever needs to stop being cosmetic.
         for item in flat.iter() {
             if let ModuleItem::Assert(a) = item {
                 let cond = self.expr(&a.cond);
@@ -447,6 +487,17 @@ impl Emitter<'_> {
         // `count + 1`, which pulls `count` into `@*`'s implicit sensitivity
         // list and creates a self-triggering reactive loop). GAP-6
         // follow-up. Synthesis-stripped, same convention `assert` uses.
+        //
+        // Task 8 #1 (docs/plan/v0.2-class-closure-round3.local.md):
+        // round 2's review claimed this "misses time zero" (a condition
+        // true from the start, never toggling, never counted) — checked
+        // against real `iverilog`/`vvp` before acting on it, and the claim
+        // does not hold: a net's first x -> value transition (computed at
+        // time 0) IS itself a change, so `always @(cond_name)` already
+        // fires once. A naive `initial #0` sibling sample was tried and
+        // reverted — it DOUBLE-counted the same time-0 hit. No code
+        // change; pinned as `comb_cover_counts_a_condition_true_from_
+        // time_zero_exactly_once` (`tests/icarus.rs`) instead.
         for item in flat.iter() {
             if let ModuleItem::Cover(c) = item {
                 let ord = self.cover_ordinals[&c.span.start];
@@ -463,6 +514,18 @@ impl Emitter<'_> {
                 self.out.push_str("    `endif\n");
             }
         }
+
+        // Task 8 #2 (docs/plan/v0.2-class-closure-round3.local.md):
+        // `__cover_N_count` was incremented and read by nothing.
+        // `final` (the natural "simulation just ended" hook) is IEEE
+        // 1364-2001/SystemVerilog, not legal in the Verilog-2005 this
+        // project targets throughout — confirmed the hard way, `iverilog`
+        // (default, no `-g2005` even needed) rejects it outright. A DUT
+        // module has no portable Verilog-2005 hook for "print when an
+        // EXTERNAL testbench calls `$finish`" — the only place that
+        // moment is actually known is wherever `$finish` itself is
+        // written, i.e. `--emit-testbench`'s own generated `initial`
+        // block, which already ends in one (`testbench.rs`).
 
         // Inject the clog2 helper (if any body width needed it) followed by
         // any user-defined functions used by this module (in topological order:

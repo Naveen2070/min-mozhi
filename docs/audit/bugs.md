@@ -2857,7 +2857,7 @@ warnings` clean.
 
 ---
 
-## BUG-41 (CRITICAL, OPEN) — The self-determined hoist gate is not exhaustive: BUG-28/29 reopen through `fn` calls, instance ports, `if`, `match` and `mem` reads
+## BUG-41 (CRITICAL, FIXED 2026-08-08) — The self-determined hoist gate is not exhaustive: BUG-28/29 reopen through `fn` calls, instance ports, `if`, `match` and `mem` reads
 
 **What.** `extend()`/`abs()`/lossless arithmetic in a Verilog self-determined
 position emit unsized operands again — the exact BUG-28/BUG-29 failure, with
@@ -2906,18 +2906,36 @@ module instance inside an arithmetic expression inside a concat). Survives
 `mimz check`, `mimz test`, the Icarus example suite, and the differential
 fuzzer.
 
-**Fix (proposed).** Make `kind_is_inferrable` exhaustive over both `ExprKind`
-and `Builtin`, with no wildcard. The correct answer for a shape that cannot be
-analyzed is not "skip the hoist" but "hoist conservatively" — an extra
-`__mimz_sub_N` wire is always safe. That is the same change
-[SEC-10](security.md) asks for (`infer_kind` -> `Option<Kind>`, `None` means
-hoist), so doing both together removes the class instead of the instances.
+**Fix (2026-08-08).** Landed differently from the proposal above, and for a
+stated reason: the two hand-synced matches (`kind_is_inferrable`'s gate and
+`kinds::infer_kind`'s classifier) collapsed into ONE — `infer_kind` itself
+now returns `Option<Kind>` directly, `kind_is_inferrable` deleted outright
+rather than made exhaustive alongside it, so there is nothing left to
+hand-sync. `Index`/`FnCall`/`Field`/`IfExpr`/`Match` now resolve through
+`decls` (`build_decls` precomputes an instance-port/memory-element/`fn`-
+return `Kind` under reserved keys). The "hoist conservatively" half of the
+proposal was explicitly declined — a `wire` declaration needs a concrete
+width, which `None` by definition doesn't have — so `None` still means
+"skip the hoist," a deliberate choice (`kinds.rs`'s own doc comment) whose
+consequence is [BUG-48](#bug-48-critical-fixed-2026-08-09--two-more-exprkind-shapes-fall-through-infer_kind-reopening-bug-2829-with-byte-identical-output):
+`infer_kind` collapsing the SYNC-failure surface from two matches to one
+did not, on its own, make the remaining one exhaustive. `SEC-10` closed in
+the same change — `infer_kind`'s `panic!` is gone with `kind_is_inferrable`.
 
-**Test (required).** Extend `tests/self_determined_regression.rs`'s matrix with
-its missing second axis: every `ExprKind` shape (`FnCall`, `Field`, `IfExpr`,
-`Match`, `Index`, ...) in a self-determined position, driven off an exhaustive
-match so a new expression form fails the build until classified — mirroring what
-`matrix_shape` already does for `Builtin`.
+**Test.** All five filed reproductions as Icarus differentials in
+`tests/self_determined_regression.rs`:
+`bug_41_fn_call_operand_of_add_in_concat_matches_icarus`,
+`bug_41_instance_port_operand_of_add_in_concat_matches_icarus`,
+`bug_41_if_expr_operand_of_add_in_concat_matches_icarus`,
+`bug_41_mem_read_operand_of_add_in_concat_matches_icarus`,
+`bug_41_extend_of_a_fn_call_in_concat_matches_icarus`. Revert-checked
+(`review-2026-08-09.md`): disabling the five classified arms with
+`#[cfg(any())]`, falling back to `_ => None` (the retired gate's own
+behavior), reproduces real Icarus differentials on exactly those five
+tests and nothing else. `matrix_shape`'s own exhaustive-`Builtin`
+enforcement (the proposal's second half, for the OTHER axis) is unrelated
+scope — see [GAP-13](gaps.md) for the `ExprKind` axis this fix still
+lacked, closed 2026-08-09.
 
 ---
 
@@ -3710,3 +3728,100 @@ failure than a value mismatch but unambiguous) before the fix, pass after.
 Revert-checked (forcing the multiplier to `1`): reproduces the identical
 parse failure. Full workspace green throughout, `fmt`/`clippy -D warnings`
 clean.
+
+---
+
+## BUG-51 (HIGH, FIXED 2026-08-09) — `--emit-testbench`'s reset-deassert races the DUT's own synchronous reset check, silently skipping it
+
+**What.** A clocked design's `test` block that follows the ordinary
+`rst = 1; tick(clk); rst = 0; …` idiom can have its reset **silently
+skipped** — a register that should power up at its declared reset value
+instead stays `x` (undefined) for the entire run, and the test's own
+`expect` can still report `PASS` if nothing downstream happens to notice.
+
+```mimz
+module Latch {
+  clock clk
+  reset rst
+  out y: bits[4]
+  reg r: bits[4] = 5
+  on rise(clk) { r <- r }
+  y = r
+}
+
+test "reset value survives exactly one tick" for Latch {
+  rst = 1
+  tick(clk)
+  rst = 0
+  tick(clk)
+  expect y == 5
+}
+```
+
+Under real `iverilog`/`vvp`, `r` never becomes `5` — it stays `x` for the
+whole run. `y == 5` reads `x == 5`, which is `x` (falsy), so the `expect`
+correctly fails here — but a design whose downstream logic happens not to
+be sensitive to the specific reset value (or whose `expect` doesn't check
+until several cycles later, by which point an UNRELATED write has already
+overwritten the register) can pass while its reset was never actually
+applied.
+
+**Cause.** `TestStmt::Drive`'s codegen (`emit_verilog/testbench.rs`) wrote
+every stimulus change — `rst = 0;`, `a = 3;`, etc. — with **blocking**
+assignment (`=`). `rst = 0;` is the statement immediately following
+`repeat(N) @(posedge clk);` in the generated testbench, so it executes in
+the SAME simulation time step as the edge the testbench just waited for —
+racing the DUT's own `always @(posedge clk) begin if (rst) … end`, which
+is ALSO an active-region process triggered by the identical event. Per
+IEEE 1364, the relative execution order of two active-region processes
+triggered by the same event is **implementation-defined** — so whether the
+DUT's own `if (rst)` check sees the OLD value (`1`, correct) or the NEW
+one (`0`, the testbench's about-to-happen deassert, wrong) is a coin flip
+the language does not resolve. Confirmed live: `iverilog` consistently
+resolved it the wrong way for `rst`, silently steering every reset-edge
+tick to the DUT's `else` branch instead of its reset branch.
+
+**How found.** Verifying Task 8 #2 (`docs/plan/v0.2-class-closure-round3.
+local.md`, the `cover` hit-count summary) against real `iverilog` — a
+clocked cover expected to fire exactly once, on the first post-reset edge,
+consistently read 0. Tracing why (not accepting the first plausible
+explanation) found the register the cover's own condition depended on had
+never actually been reset at all.
+
+**Severity.** HIGH, not CRITICAL — `--emit-testbench` is a secondary
+verification path (the primary `mimz test`/`mimz sim` interpreter has its
+own, unaffected reset implementation, `crates/mimz-sim`), but it is the
+ONE place this project's own "verify against real hardware" discipline
+runs `mimz`-authored `test` blocks through actual Icarus, and this defect
+made that verification silently unreliable for any design whose behavior
+happens to be sensitive to its own first post-reset cycle — which is
+precisely the cycle a reset exists to guarantee. Compounded by a real gap
+in the test suite itself: `every_emitted_testbench_passes_iverilog`
+(`tests/icarus.rs`, pre-existing) only proves an emitted testbench
+**elaborates** (`iverilog -t null`) — nothing in the suite had ever
+actually RUN a `--emit-testbench` output through `vvp` and checked its
+verdict, so this race was invisible to the whole test suite until checked
+by hand.
+
+**Fix.** `TestStmt::Drive` now emits every stimulus write with
+non-blocking assignment (`<=`) instead of `=` — the standard, textbook fix
+for exactly this race class: a non-blocking assignment defers the actual
+value change to the NBA region, which runs strictly AFTER every
+active-region process (including the DUT's own synchronous logic) has
+read the signal for that time step, so the DUT is now GUARANTEED to see
+the pre-drive value for the edge that just occurred, regardless of
+scheduling order. All testbench goldens regenerated (`MIMZ_UPDATE_
+GOLDENS=1`); every changed line is exactly `=` -> `<=` on a stimulus
+drive, confirmed by inspection.
+
+**Test.** Two new Icarus-backed tests in `tests/icarus.rs`:
+`emitted_testbench_reset_deassert_does_not_race_the_dut` (the exact repro
+above, run for real, asserting `PASS`) and `emitted_testbench_prints_the_
+cover_summary` (Task 8 #2's own feature, which incidentally exercises this
+fix too — a clocked cover's first-edge hit count depends on the SAME
+reset timing). Both watched fail before the fix (the first: `FAIL`
+printed instead of `PASS`; the second: a clocked hit count of `0` instead
+of `1`), pass after. `every_emitted_testbench_passes_iverilog`'s own gap
+(elaboration-only, never actually running `vvp`) is unchanged — these two
+new tests are the first in the suite to run a `--emit-testbench` output
+to completion and check its verdict, not just its syntax.

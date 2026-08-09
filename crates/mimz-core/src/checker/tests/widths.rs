@@ -65,6 +65,43 @@ fn plus_into_same_width_target_teaches_wrap_in_e0401() {
 }
 
 #[test]
+fn shift_left_into_same_width_target_teaches_growth_in_e0401() {
+    // BUG-30 (docs/audit/bugs.md), Task 6 of docs/plan/v0.2-class-closure-
+    // round3.local.md: `<<` grows just like `+`/`-` — landing on the
+    // generic "widths must match" text here, with no mention of WHY,
+    // left a learner with no explanation from either the diagnostic or
+    // the guide (the guide's own half of this gap was fixed the same
+    // task, `docs/guide/05-operators.md`).
+    let src = "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = a << 2\n}\n";
+    let d = first_err(src, "E0401");
+    let help = d.help.unwrap();
+    assert!(help.contains("<<"), "must name the shift operator: {help}");
+    assert!(
+        help.contains("grow") || help.contains("grows"),
+        "must explain that `<<` grows: {help}"
+    );
+    assert!(
+        help.contains("trunc"),
+        "must teach the intentional-discard escape hatch: {help}"
+    );
+}
+
+#[test]
+fn shift_right_width_mismatch_uses_the_generic_help_not_the_growth_one() {
+    // `>>` never grows (`shift_result`'s own `grows: false` for `Shr`) —
+    // a width mismatch on a right shift is some OTHER cause (e.g. a
+    // signed/unsigned mix elsewhere), so it must NOT get the `<<`-specific
+    // growth explanation, which would be actively misleading here.
+    let src = "module M {\n  in a: bits[8]\n  out y: bits[4]\n  y = a >> 2\n}\n";
+    let d = first_err(src, "E0401");
+    let help = d.help.unwrap();
+    assert!(
+        !help.contains("grows by"),
+        "a `>>` mismatch must not claim shift growth caused it: {help}"
+    );
+}
+
+#[test]
 fn connection_width_mismatch_is_e0401_naming_the_port() {
     let src = "module Child {\n  in a: bits[8]\n  out z: bits[8]\n  z = a\n}\nmodule M {\n  in x: bits[4]\n  out y: bits[8]\n  let c = Child() { a: x }\n  y = c.z\n}\n";
     let d = first_err(src, "E0401");

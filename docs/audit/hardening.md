@@ -71,27 +71,16 @@ defects — nothing here is broken today; each closes a class rather than an
 instance. Listed with the same HARD numbering so they slot into "Hardening
 added" once landed.
 
-### HARD-7 (PARTIALLY DONE) — `#![forbid(unsafe_code)]` on every crate, not just `mimz-core`
+### HARD-7 (DONE) — `#![forbid(unsafe_code)]` on every crate, not just `mimz-core`
 
-**Status update 2026-08-07** ([`review-2026-08-07.md`](review-2026-08-07.md)):
-`crates/mimz-sim/src/lib.rs:7` and `crates/mimz-wasm/src/lib.rs:11` now carry the
-attribute. **The shell crate (`src/lib.rs`, `src/main.rs`) still does not** — and
-that is the crate this entry singled out as mattering most, since it is the one
-linking `cpal`/`crossterm`/`notify`. Remaining action is the shell crate only.
-
-`crates/mimz-core/src/lib.rs:6` carries `#![forbid(unsafe_code)]`. The workspace
-split (2026-07) moved the simulator into `crates/mimz-sim` and left the shell
-(fs, CLI, LSP, hw-emulation) in the root crate — **neither carries the
-attribute**, so HARD-1's guarantee now covers only part of the codebase it was
-written for.
-
-This matters more, not less, after the split: the shell crate is the one that
-links `cpal`/`crossterm`/`notify`, i.e. the only crate with a plausible reason
-for someone to reach for `unsafe` later.
-
-**Action.** Add `#![forbid(unsafe_code)]` to `crates/mimz-sim/src/lib.rs` and
-`src/lib.rs` + `src/main.rs`. Zero cost today (none exists); permanently locks
-the guarantee, same reasoning as HARD-1.
+**Status update 2026-08-09** (Task 7, `docs/plan/v0.2-class-closure-
+round3.local.md`): confirmed done, not just partially — `src/lib.rs:52` and
+`src/main.rs:9` both carry the attribute, closing the gap this entry's
+2026-08-07 update said was the remaining action. Every crate in the
+workspace now carries `#![forbid(unsafe_code)]`: `mimz-core`,
+`mimz-sim`, `mimz-wasm`, and the shell crate (`src`, the one linking
+`cpal`/`crossterm`/`notify` — the crate this entry singled out as
+mattering most).
 
 ### HARD-8 (DONE) — Dependency-advisory scanning in CI
 

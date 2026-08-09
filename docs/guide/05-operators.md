@@ -45,7 +45,35 @@ a << 1     // shift left (zeros in from the right)
 a >> 1     // shift right
 ```
 
-A shift keeps the width of its left operand.
+`<<` is **lossless**, the same principle as `+`/`-`/`*`: the declared type
+must be wide enough to hold every bit the shift could produce, so `<<`
+**grows**. For a constant shift amount `k`, `bits[W] << k` is `bits[W+k]` —
+exactly the room the shifted-in bits need:
+
+```mimz
+in a: bits[4]
+out y: bits[6]   // a << 2 grows 4 -> 6 bits: up to 15 << 2 = 60, needs 6 bits
+
+y = a << 2
+```
+
+```mimz
+// out y: bits[4] = a << 2    // ERROR E0401: a << 2 is bits[6]
+```
+
+For a runtime shift amount, the compiler cannot know the exact value ahead
+of time, so it grows by the amount's own worst case: a `bits[N]` shift
+amount can be as large as `2^N - 1`, so the result grows by that much.
+
+`>>` does **not** grow — right-shifting only ever reduces magnitude, so the
+left operand's own width already bounds every possible result.
+
+The cost: a shift-register/barrel-shifter idiom that re-shifts a value
+repeatedly grows one declared width at a time and needs an explicit
+`trunc` back down at each use — the same trade every lossless operator
+makes, applied to `<<` for the first time in v0.2 (before that, `<<` quietly
+kept its left operand's width, which could silently drop the shifted-out
+bits a real Verilog `<<` never drops).
 
 ## Bitwise operators
 

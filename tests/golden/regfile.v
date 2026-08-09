@@ -7,6 +7,7 @@ module RegFile (
     output wire [(8)-1:0] rdata
 );
     reg [(8)-1:0] m [0:(4)-1];
+    // NOTE: the `initial` memory-init loop(s) below are simulation/FPGA-only — an ASIC flow has no defined power-on RAM content and will not honor them. Add an explicit clocked load/reset path if this design targets ASIC.
     integer __mimz_m_i;
     initial for (__mimz_m_i = 0; __mimz_m_i < (4); __mimz_m_i = __mimz_m_i + 1) m[__mimz_m_i] = 0;
     assign rdata = m[raddr];

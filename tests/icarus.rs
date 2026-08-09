@@ -247,6 +247,80 @@ fn clocked_cover_counts_real_edges_under_iverilog() {
     );
 }
 
+/// Task 8 #1 of `docs/plan/v0.2-class-closure-round3.local.md`: round 2's
+/// review claimed a combinational `cover`'s `always @(cond)`-sensitized
+/// counter (`module/mod.rs`) "misses time zero" — a condition true from
+/// the start, never toggling, would never be counted — on the reasoning
+/// that `@(cond)` only fires on a CHANGE. Verified against real
+/// `iverilog`/`vvp` before acting on it (this codebase's own standing
+/// discipline): the claim does **not** hold. A net's very first
+/// evaluation (the x -> its real value transition, computed during
+/// initialization) IS itself a change under IEEE 1364-2005, so
+/// `always @(cond)` fires once at time 0 for a condition true from the
+/// start — confirmed here, and by hand adding a naive `initial #0 if
+/// (cond) count = count + 1;` sibling and observing it DOUBLE-count
+/// (`count=2`, not the expected 1) before reverting that change. Pinned
+/// as a regression so a future attempt at the same "fix" fails loudly
+/// instead of silently landing a double-count bug.
+#[test]
+fn comb_cover_counts_a_condition_true_from_time_zero_exactly_once() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    let src = "module M {\n  in a: bits[4]\n  out y: bits[4]\n  cover(a == a)\n  y = a\n}\n";
+    let src_path = std::env::temp_dir().join("mimz_task8_comb_cover_t0_src.mimz");
+    std::fs::write(&src_path, src).unwrap();
+    let design_v = compile_example(&src_path);
+
+    let compiled = std::fs::read_to_string(&design_v).unwrap();
+    let cover_reg = compiled
+        .lines()
+        .find_map(|l| {
+            let l = l.trim();
+            l.strip_prefix("reg [31:0] ")
+                .and_then(|rest| rest.strip_suffix(" = 0;"))
+        })
+        .expect("compiled Verilog must declare exactly one cover counter reg");
+
+    let tb = format!(
+        "module tb;\n  reg [3:0] a = 5;\n  wire [3:0] y;\n  \
+         M uut (.a(a), .y(y));\n  initial begin\n    #1;\n    \
+         $display(\"HITS %0d\", uut.{cover_reg});\n    $finish;\n  end\nendmodule\n"
+    );
+    let tb_path = std::env::temp_dir().join("mimz_task8_comb_cover_t0_tb.v");
+    std::fs::write(&tb_path, &tb).unwrap();
+    let vvp_out = std::env::temp_dir().join("mimz_task8_comb_cover_t0.vvp");
+
+    let build = tool(&bin, "iverilog")
+        .arg("-o")
+        .arg(&vvp_out)
+        .args(["-s", "tb"])
+        .arg(&tb_path)
+        .arg(&design_v)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "iverilog failed to build the comb-cover-time-zero testbench:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+
+    let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+    assert!(
+        sim.status.success(),
+        "vvp failed: {}",
+        String::from_utf8_lossy(&sim.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&sim.stdout);
+    assert!(
+        stdout.contains("HITS 1"),
+        "expected exactly 1 hit (the x -> value transition at time 0 IS a \
+         change, so `always @(cond)` already fires once — this must never \
+         become 0 [round 2's claimed bug] or 2 [double-counted by a naive \
+         `initial` fix]); got:\n{stdout}"
+    );
+}
+
 /// Parse the Icarus major version from `iverilog -V` output.
 /// `None` means parsing failed (conservatively assume recent enough).
 fn icarus_major_version(bin: &Path) -> Option<u32> {
@@ -370,6 +444,131 @@ fn every_emitted_testbench_passes_iverilog() {
     assert!(
         checked >= 5,
         "expected at least the tested examples to have testbenches, found {checked}"
+    );
+}
+
+/// BUG-51 (docs/audit/bugs.md), found verifying Task 8 of `docs/plan/v0.2-
+/// class-closure-round3.local.md`: `--emit-testbench`'s `TestStmt::Drive`
+/// used blocking `=` for every stimulus write, including `rst = 0;` right
+/// after `repeat(N) @(posedge clk)` resumes — racing the DUT's own
+/// `always @(posedge clk)` block reading that SAME signal for the SAME
+/// edge (both active-region processes triggered by the identical event;
+/// their relative order is implementation-defined). Confirmed live: a
+/// register reset-asserted for exactly one tick then deasserted with `=`
+/// stayed `x` forever, not eventually-correct — the DUT sometimes saw
+/// `rst` already low on the very edge that should have caught it high.
+///
+/// This is exactly the gap `every_emitted_testbench_passes_iverilog`
+/// (Layer 1.5, above) does not close: it only proves the emitted
+/// testbench ELABORATES, never that it produces the right verdict — so
+/// this race went undetected by the whole suite until checked directly.
+/// This test is Layer 2 for `--emit-testbench` specifically: build a
+/// design whose correctness depends on the value written on the very
+/// first post-reset edge (the exact window BUG-51 broke), emit its
+/// testbench, and run it for real.
+#[test]
+fn emitted_testbench_reset_deassert_does_not_race_the_dut() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    let src = "module Latch {\n  clock clk\n  reset rst\n  out y: bits[4]\n  \
+                reg r: bits[4] = 5\n  on rise(clk) {\n    r <- r\n  }\n  y = r\n}\n\n\
+                test \"reset value survives exactly one tick\" for Latch {\n  \
+                rst = 1\n  tick(clk)\n  rst = 0\n  tick(clk)\n  expect y == 5\n}\n";
+    let path = std::env::temp_dir().join("mimz_bug51_reset_race.mimz");
+    std::fs::write(&path, src).unwrap();
+    let Some((v, tb)) = compile_example_tb(&path) else {
+        panic!("expected a testbench for a file with a `test` block");
+    };
+
+    let tb_module = "reset_value_survives_exactly_one_tick_tb";
+    let vvp_out = std::env::temp_dir().join("mimz_bug51_reset_race.vvp");
+    let build = tool(&bin, "iverilog")
+        .arg("-o")
+        .arg(&vvp_out)
+        .args(["-s", tb_module])
+        .arg(&tb)
+        .arg(&v)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "iverilog failed to build the BUG-51 testbench:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+    assert!(sim.status.success(), "vvp failed to run");
+    let stdout = String::from_utf8_lossy(&sim.stdout);
+    assert!(
+        stdout.contains("PASS"),
+        "expected PASS (r correctly reset to 5, then held) — a regression \
+         here means the reset-deassert race is back:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("FAIL"),
+        "the reset value did not survive — the deassert race regressed:\n{stdout}"
+    );
+}
+
+/// Task 8 #2 (`docs/plan/v0.2-class-closure-round3.local.md`): a `cover`
+/// counter was incremented and read by nothing. `--emit-testbench` now
+/// prints each cover's final hit count before `$finish`. Verified against
+/// real `iverilog`/`vvp` on both cover forms in the SAME design — also
+/// exercises BUG-51's fix (the clocked cover's own edge depends on the
+/// same reset-deassert timing).
+#[test]
+fn emitted_testbench_prints_the_cover_summary() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    // The comb cover's condition is a bare literal (`true`), not derived
+    // from any signal that changes over the run — a condition built from
+    // a changing signal (even one that stays logically true throughout,
+    // like `a == a` or `r == r`) was tried first and found `always
+    // @(cond)` firing MORE THAN ONCE under real `iverilog`: a redundant
+    // re-drive of a wire to the SAME value still triggers the
+    // sensitivity list, a real simulator subtlety unrelated to Task 8's
+    // fix. Avoided here rather than chased further; the clocked cover
+    // below already exercises BUG-51's own fix.
+    let src = "module Cov {\n  clock clk\n  reset rst\n  out y: bit\n  \
+                reg r: bit = 0\n  cover(true, \"comb always true\")\n  \
+                on rise(clk) {\n    cover(r == 0, \"clocked first edge\")\n    r <- 1\n  }\n  \
+                y = r\n}\n\ntest \"drive one cycle\" for Cov {\n  \
+                rst = 1\n  tick(clk)\n  rst = 0\n  tick(clk)\n  tick(clk)\n  \
+                expect y == 1\n}\n";
+    let path = std::env::temp_dir().join("mimz_task8_cover_summary.mimz");
+    std::fs::write(&path, src).unwrap();
+    let Some((v, tb)) = compile_example_tb(&path) else {
+        panic!("expected a testbench for a file with a `test` block");
+    };
+
+    let tb_module = "drive_one_cycle_tb";
+    let vvp_out = std::env::temp_dir().join("mimz_task8_cover_summary.vvp");
+    let build = tool(&bin, "iverilog")
+        .arg("-o")
+        .arg(&vvp_out)
+        .args(["-s", tb_module])
+        .arg(&tb)
+        .arg(&v)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "iverilog failed to build the cover-summary testbench:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+    assert!(sim.status.success(), "vvp failed to run");
+    let stdout = String::from_utf8_lossy(&sim.stdout);
+    assert!(stdout.contains("PASS"), "test itself must pass:\n{stdout}");
+    assert!(
+        stdout.contains("comb always true: 1"),
+        "comb cover must report exactly 1 hit:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("clocked first edge: 1"),
+        "clocked cover must report exactly 1 hit (the reset-then-first-edge \
+         window BUG-51 broke):\n{stdout}"
     );
 }
 

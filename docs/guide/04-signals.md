@@ -71,6 +71,15 @@ Like a `reg`, a memory must declare its init value — leaving it off is an erro
 (`E1104`) — because every cell powers up in a known state; a memory needs no
 separate reset line.
 
+> **ASIC caveat.** The init value is emitted as an `initial`-block seed loop,
+> which simulators and most FPGA synthesis tools honor directly — but a real
+> ASIC has no defined power-on RAM content, and an ASIC synthesis flow will
+> not honor an `initial` value the way FPGA block RAM does (BUG-32,
+> `docs/audit/bugs.md`). If a design targets ASIC, add an explicit clocked
+> load/reset path for anything that must start in a known state, rather than
+> relying on `mem`'s own init value. `mimz compile` notes this in the
+> generated Verilog's header whenever a `mem` is present.
+
 Access a `mem` by index. Writes happen on the clock (with `<-`, inside an `on`
 block); reads are combinational (with `=`):
 
