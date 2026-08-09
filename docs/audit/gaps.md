@@ -836,3 +836,49 @@ was the original finding.
 would have caught it now exists.
 
 ---
+
+## GAP-13 (MEDIUM, testing) — The position matrix has no `ExprKind` axis, and the only structural coverage assertion was deleted
+
+**Status:** OPEN. Filed 2026-08-09. Source:
+[`review-2026-08-09.md`](review-2026-08-09.md).
+
+**What.** [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)'s
+position matrix covers every `Builtin`. It covers no `ExprKind`. The gate that
+decides whether the hoist runs (`kinds::infer_kind`, since BUG-41 the only one)
+matches on `ExprKind`, not on `Builtin`, and that match is **not** wildcard-free:
+`_ => None` at `kinds.rs:191`, plus early `return None` inside the `Field` and
+`Slice` arms. [BUG-48](bugs.md) and [BUG-49](bugs.md) are the two live
+consequences.
+
+**Cause.** Two decisions, each locally reasonable:
+
+1. `matrix_shape` / `ALL_BUILTINS` were deleted in Task 4 of the v0.2
+   remediation, on the correct reasoning that the real matches are already
+   wildcard-free so the compiler enforces the `Builtin` axis by itself. That
+   removed the file's only structural coverage assertion of any kind, and
+   nothing replaced it for the axis where the match is still **not**
+   wildcard-free.
+2. `tests/self_determined_regression.rs:566-584`'s comment block — "one
+   gate-and-classifier pair, not five, so shape coverage is redundant" — is
+   about **positions** and is correct about positions. It is silent about
+   **shapes**, and has been read as covering both for three rounds.
+
+**Measurement.** Disabling the five `ExprKind` arms BUG-41's fix added
+(`#[cfg(any())]`, falling through to `_ => None`) fails **exactly five tests, all
+five of them the hand-written repro for that exact shape**. Nothing generalises;
+a sixth shape is caught by nothing. Two such shapes are filed as BUG-48.
+
+**Direction.**
+
+1. An exhaustive `match` over `ExprKind` in `tests/self_determined_regression.rs`,
+   each arm yielding either a `.mimz` source that puts that shape in a concat
+   member, or an explicit `NotApplicable(reason)`. A new variant then fails the
+   build until classified — what `matrix_shape` did for `Builtin`, aimed at the
+   axis that still needs it.
+2. Teach the differential-fuzz generator the shapes it cannot currently emit:
+   `fn` call, instance port (plain **and** array), `if`/`match`, `mem` read, and
+   a `const`-bounded slice. The generator's expression vocabulary — not its seed
+   depth — is why 2,000 seeds cannot reach BUG-41 or BUG-48.
+3. Add an `iverilog -t null` **elaboration** assertion to the trunc/slice-base
+   tests, which today compare values only and so cannot fail on output that does
+   not parse ([BUG-49](bugs.md)).

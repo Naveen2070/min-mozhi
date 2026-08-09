@@ -3497,3 +3497,103 @@ that matrix (`(p1 ^ p2) >> 2`) initially read as passing and was a false
 negative — `p1 ^ p2` happened to be positive for the chosen inputs, so
 sign extension added zeros. It diverges once the operand is negative, and is now
 pinned as its own regression test.
+
+---
+
+## BUG-48 (CRITICAL, OPEN) — Two more `ExprKind` shapes fall through `infer_kind`, reopening BUG-28/29 with byte-identical output
+
+**What.** `extend()`/lossless arithmetic in a Verilog self-determined position
+emit unsized operands again — BUG-28/BUG-29/BUG-41's exact failure, with
+byte-identical wrong Verilog — whenever the operand contains an **array-instance
+output port** (`s[0].q`) or a **slice whose bounds are a `const`/parameter**
+rather than a literal. Simulator green, hardware wrong, no diagnostic.
+
+```text
+A  y = { b, s[0].q + a }          emitted {b, (s__0_q + a)}    iv 010101110    vs sim 101011110
+A' y = { b, extend(s[0].q, 8) }   emitted {b, (s__0_q)}        iv 000010101111 vs sim 101000001111
+B  y = { b, a[HI:0] + a[HI:0] }   emitted {b, (a[3:0]+a[3:0])} iv 010101110    vs sim 101011110
+```
+
+`A'`'s output is byte-identical to BUG-28's original Repro A and to BUG-41's
+repro ⑤. `A`'s is byte-identical to BUG-41's repro ②.
+
+**Cause.** `crates/mimz-core/src/emit_verilog/kinds.rs::infer_kind` is now the
+single gate (BUG-41's fix retired `kind_is_inferrable`), and it is exhaustive
+over `Builtin` but **not** over `ExprKind`. Two of the arms BUG-41's own fix
+added take an early `return None`:
+
+- `:171` — `Field` requires `base.kind` to be `Ident`. An array instance is
+  `Field { base: Index { Ident(arr), i } }`, which `expr.rs:280` renders as
+  `{arr}__{n}_{field}` — a name `build_decls` does put in `decls`, just not
+  under a key this arm ever asks for.
+- `:132` — `Slice` folds `hi`/`lo` with the literal-only `const_fold`. A
+  `const`/parameter bound folds fine in the emitted _text_ (`a[3:0]`) but the
+  AST still holds an `Ident`, so `const_fold` returns `None`.
+
+Plus the surviving `_ => None` at `:191`. Every one of those `None`s reaches
+`expr.rs`'s hoist call sites, which respond by **skipping the hoist** — the same
+unsafe default that caused BUG-41. Round 2's recommended "non-analyzable → hoist
+conservatively" was declined (correctly, on the grounds that a `wire`
+declaration needs a concrete width) but the consequence was not carried through.
+
+**How found.** CTO review 2026-08-09, sweeping the shapes `infer_kind` still
+returns `None` for, rather than the shapes previously filed. `fa[i - 1].cout` in
+`examples/english/ripple_adder.mimz:22` is the same AST shape in shipped code.
+
+**Severity.** CRITICAL. Silent miscompile of ordinary RTL. Survives `mimz
+check`, `mimz test`, the Icarus example suite, and the differential fuzzer at
+`N=2000` (whose generator emits neither shape).
+
+**Fix (proposed).**
+
+- `Field`: add an `else if` for `base.kind == Index { Ident(arr), idx }` with a
+  const-folding `idx`, looking up the same `{arr}__{n}_{field}` key `expr.rs`
+  already renders.
+- `Slice`: fold `hi`/`lo` through `consteval::eval` against the module env — the
+  same authority `checker::widths::slice_ty` used to accept the program.
+
+Neither closes the class. The class needs [GAP-13](gaps.md).
+
+**Test (required).** Both shapes as Icarus differentials in
+`tests/self_determined_regression.rs`, plus [GAP-13](gaps.md)'s exhaustive
+`ExprKind` match so the next expression form fails the build until classified.
+
+---
+
+## BUG-49 (HIGH, OPEN) — The same residue emits invalid Verilog: a part-select on a composite base
+
+**What.** `mimz check` and `mimz test` pass; `mimz compile` emits Verilog that
+does not parse.
+
+```mimz
+module B { in a: bits[4]  out y: bits[3]
+  repeat i: 0..1 { let s[i] = Sub() { x: a } }
+  y = trunc(s[0].q + a, 3) }
+
+module D { const HI: int = 3  in a: bits[8]  out y: bits[3]
+  y = trunc(a[HI:0] + a[HI:0], 3) }
+```
+
+```text
+emitted   assign y = (s__0_q + a)[(3)-1:0];
+          assign y = (a[3:0] + a[3:0])[(3)-1:0];
+iverilog  syntax error / Syntax error in continuous assignment   (exit 2)
+```
+
+**Cause.** Same `infer_kind` → `None` residue as [BUG-48](#bug-48-critical-open--two-more-exprkind-shapes-fall-through-infer_kind-reopening-bug-2829-with-byte-identical-output).
+BUG-36 established that `trunc`'s base must be hoisted to a named wire because
+Verilog's part-select grammar accepts only an identifier; BUG-46 extended that to
+module parameters. Both hoists are gated on `infer_kind(base)`
+(`expr.rs:893`, `:618`), so both fail open on the two shapes above.
+
+**How found.** CTO review 2026-08-09, elaborating the sweep's output under
+`iverilog -g2005 -t null`.
+
+**Severity.** HIGH, not CRITICAL — it is loud rather than silent. But it means
+`mimz compile`'s output is not guaranteed to be syntactically valid Verilog,
+which is weaker than the guarantee the project states wherever it mentions the
+Icarus differential.
+
+**Fix.** Falls out of BUG-48's fix. Add an `iverilog -t null` **elaboration**
+assertion to the trunc/slice-base regression tests, which currently only compare
+values and so cannot fail on unparseable output.
