@@ -17,12 +17,14 @@ mod accuracy;
 mod coverage;
 mod memory;
 mod safety;
+mod scaling;
 mod speed;
 
 pub use accuracy::{iverilog_bin, measure_accuracy};
 pub use coverage::measure_coverage;
 pub use memory::measure_memory;
 pub use safety::measure_safety;
+pub use scaling::measure_scaling;
 pub use speed::measure_speed;
 
 /// The flavor folders under examples/ (same as tests/examples.rs).
@@ -78,6 +80,7 @@ pub fn repo() -> PathBuf {
 pub struct BenchReport {
     pub meta: Meta,
     pub speed: Speed,
+    pub scaling: Scaling,
     pub memory: Memory,
     pub accuracy: Accuracy,
     pub safety: Safety,
@@ -128,6 +131,29 @@ pub struct Speed {
     /// Sum of the per-example median pipeline times.
     pub total_ms: f64,
     pub loc_per_sec: f64,
+}
+
+/// Emit cost of one synthetic module at several sizes — the complexity
+/// axis. See `scaling.rs` for why this exists separately from `Speed` (that
+/// one samples fixed example files, so it can only ever be one point on this
+/// curve) and why the workload shape matters.
+#[derive(Serialize)]
+pub struct Scaling {
+    /// One row per size, ascending.
+    pub points: Vec<ScalingPoint>,
+    /// Cost of each doubling: `points[i+1].emit_ms / points[i].emit_ms`.
+    pub ratios: Vec<f64>,
+    /// The largest of `ratios` — the single number worth trending. ~2.0 means
+    /// linear; the pre-`Rc` emitter measured 5.20 here (GAP-12).
+    pub worst_doubling_ratio: f64,
+}
+
+#[derive(Serialize)]
+pub struct ScalingPoint {
+    /// Registers in the generated module (also its hoisting-drive count).
+    pub regs: usize,
+    pub loc: usize,
+    pub emit_ms: f64,
 }
 
 #[derive(Serialize)]
@@ -223,6 +249,17 @@ pub struct HistoryEntry {
     pub clean_pct: Option<f64>,
     #[serde(default)]
     pub help_pct: Option<f64>,
+    /// Worst adjacent-doubling emit cost ratio (GAP-12). This, not
+    /// `total_ms`, is the complexity signal: absolute times move with the
+    /// runner, but ~2.0-means-linear holds on any machine. `#[serde(default)]`
+    /// so history written before the scaling section existed still parses.
+    #[serde(default)]
+    pub worst_doubling_ratio: Option<f64>,
+    /// Emit milliseconds at each size in `scaling::SIZES`, ascending — the
+    /// raw points behind the ratio, kept so a regression can be read as
+    /// "which size did it start at".
+    #[serde(default)]
+    pub scaling_ms: Option<Vec<f64>>,
 }
 
 impl HistoryEntry {
@@ -239,6 +276,8 @@ impl HistoryEntry {
             flavor_identity_pct: Some(r.accuracy.flavor_identity.percent()),
             clean_pct: Some(r.safety.clean_examples.percent()),
             help_pct: Some(r.safety.help_lines.percent()),
+            worst_doubling_ratio: Some(r.scaling.worst_doubling_ratio),
+            scaling_ms: Some(r.scaling.points.iter().map(|p| p.emit_ms).collect()),
         }
     }
 }
