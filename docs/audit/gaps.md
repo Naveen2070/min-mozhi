@@ -635,8 +635,9 @@ width — two independent authorities is the entire point of an oracle.
 
 **(b) CI fuzzes 20 seeds.** `MIMZ_DIFF_FUZZ_N` and `MIMZ_DIFF_FUZZ_CLOCKED_N`
 default to 20 and CI does not raise them. At 400 each the run takes **55
-seconds** and finds two live miscompiles ([BUG-42](bugs.md),
-[BUG-44](bugs.md)).
+seconds** and found two live miscompiles ([BUG-42](bugs.md),
+[BUG-44](bugs.md)) — both since fixed, which is the argument for the depth,
+not against it: neither was reachable at 20 seeds.
 
 **Why it matters.** The single highest correctness-per-line-changed action
 available to this project right now is one environment variable in `ci.yml`.
