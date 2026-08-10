@@ -3825,3 +3825,281 @@ of `1`), pass after. `every_emitted_testbench_passes_iverilog`'s own gap
 (elaboration-only, never actually running `vvp`) is unchanged — these two
 new tests are the first in the suite to run a `--emit-testbench` output
 to completion and check its verdict, not just its syntax.
+
+---
+
+## BUG-52 (CRITICAL, FIXED) — `verilog_self_determined_kind`'s `ExprKind` wildcard: an `if`/`match`/unary in a self-determined position never gets a hoist
+
+**What.** An `if`/`match` expression, or a unary operator, sitting directly in a
+self-determined position (concat member, replication body) and wrapping a
+sub-expression whose Verilog rendering is narrower than its mimz width, is
+emitted without the hoist that BUG-19/BUG-28's mechanism exists to apply.
+`mimz check` passes, `mimz eval`/`mimz test` give the right answer, and real
+Icarus gives a different one. Four reproductions (`a = 0b1111`, `b = 0b1010`,
+`s = 1`):
+
+```mimz
+out y: bits[12]   y = { b, if s { extend(a, 8) } else { extend(a, 8) } }
+  emitted   assign y = {b, ((s) ? ((a)) : ((a)))};
+  mimz 2575     iverilog 175    x
+
+out y: bits[12]   y = { b, match s { true => extend(a,8), false => extend(a,8) } }
+  emitted   assign y = {b, (((s == 1'b1)) ? ((a)) : ((a)))};
+  mimz 2575     iverilog 175    x
+
+out y: bits[12]   y = { b, ~extend(a, 8) }
+  emitted   assign y = {b, (~(a))};
+  mimz 2800     iverilog 160    x
+
+out y: bits[16]   y = {2{ if s { extend(a,8) } else { extend(a,8) } }}
+  emitted   assign y = {2{((s) ? ((a)) : ((a)))}};
+  mimz 3855     iverilog 255    x
+```
+
+Repro 1's wrong emission is the same eight bytes as BUG-28's Repro A, BUG-41's
+repro 5 and BUG-48's repro 2 — the `extend`'s padding bits are never
+materialized and every field to its left shifts down.
+
+**Cause.** `emit_verilog/self_determined.rs`'s `verilog_self_determined_kind`
+ends `_ => None`, so `IfExpr`, `Match`, `Unary` (and `Concat`/`Replicate`/
+`Slice`/`Index`/`Field`/`FnCall`) are declared "Verilog agrees with mimz here"
+with no reasoning written or checked. `hoist_if_needed`
+(`emit_verilog/module/ports.rs:497`) reads that `None` as **skip the hoist** —
+the identical unsafe default the round-3 plan named as this class's
+one-sentence problem, in the one match of the gate/classifier pair that Task 3
+did not make exhaustive. The gate (`kinds::infer_kind`) became exhaustive over
+`ExprKind` in Task 3; the classifier never did.
+
+**How found.** v0.2 release-readiness round 4
+([`review-2026-08-10.md`](review-2026-08-10.md)), sweeping the _reasoning_ at
+each arm of both authorities rather than its presence. Independently
+corroborated by the project's own deep fuzz at `MIMZ_DIFF_FUZZ_CLOCKED_N=2000`:
+clocked seed **202428078** (fresh index 449) fails with kernel 16358 vs Icarus
+102 on an `if`-as-concat-member, minimized to 10 lines.
+
+**Why the existing tests missed it.** `expr_kind_self_determined_coverage`'s
+`IfExpr`/`Match` arms cite
+`bug_41_if_expr_operand_of_add_in_concat_matches_icarus` and
+`shape_match_operand_of_add_in_concat_matches_icarus`, both of which place the
+`if`/`match` as an **operand of `+`** inside a concat — a position where the
+enclosing `+` triggers the hoist and masks this. Neither places it as the concat
+member itself. Its `Unary` arm marks the shape `NotApplicable` because
+"`self_determined.rs`'s own catch-all confirms no arm ever differs"; a catch-all
+confirms nothing. The axis's own doc comment is also stale — it says
+`infer_kind` is not wildcard-free, which Task 3's stretch goal made false, while
+never asking the question of `verilog_self_determined_kind`.
+
+**Severity.** CRITICAL. Silent wrong hardware from ordinary syntax, invisible to
+every `mimz` command a user runs, on the exact class the v0.2 release note
+claims is closed.
+
+**Fix (landed — round-4 plan Task 2).** Three arms in
+`verilog_self_determined_kind`, mirroring `Min`/`Max` (already the same
+ternary rendering), then `_ => None` deleted so the classifier axis is
+exhaustive too:
+
+- `IfExpr` → `max(self_determined_operand_width(then), ...(els))`, signedness
+  from `infer_kind`
+- `Match` → `max` over every arm's value, same shape
+- `Unary` → `None` for `RedAnd`/`RedOr`/`RedXor` (1 bit in both models),
+  otherwise the operand's own self-determined width
+- every remaining `ExprKind` variant given its own explicit reasoned `None`
+  arm (`Concat`/`Replicate`: each member is hoisted at its own position
+  first; `Slice`/`Index`/`Field`/`FnCall`: rendered width already equals
+  mimz's; `BundleLit`/`ArrayLit`/`EnumConstruct`: checker-rejected upstream)
+
+**Test-first, watched fail before implementing.** 4 new differentials in
+`tests/self_determined_regression.rs` (`bug_52_if_expr_as_a_concat_member_…`,
+`_match_as_a_concat_member_…`, `_unary_not_of_an_extend_in_a_concat_…`,
+`_if_expr_in_a_replication_body_…`), each placing the shape as the
+concat/replication member itself rather than as an operand of `+`. Against
+pre-fix HEAD all four failed at the exact filed values (2575/175, 2575/175,
+2800/160, 3855/255); with the fix, all four pass. The fuzz-found clocked
+instance (seed 202428078) is deliberately **not** hand-minimized into its own
+test — it is a large multi-output generated program, and the four hand
+repros already isolate each of the three new arms independently; it is
+covered instead by the corpus-seed append (round-4 plan Task 7, after this
+fix and BUG-55's both land).
+
+**Build enforcement confirmed.** Deleting any one `ExprKind` arm (verified
+with the `BundleLit`/`ArrayLit`/`EnumConstruct` line) fails the build with
+`error[E0004]`, exit 101 — the classifier axis is now exhaustive, closing the
+last cell of the gate/classifier × `Builtin`/`ExprKind` grid.
+
+Full verification: `REQUIRE_IVERILOG=1 cargo test --workspace --release
+--no-fail-fast` → **1233 passed / 0 failed** (1229 + the 4 new tests), 35
+suites (including `bug_24_regression_shift_in_if_branch_stays_unhoisted` and
+every emit golden, unmoved); `cargo fmt --check` clean; `cargo clippy
+--workspace --all-targets -D warnings` clean (the one reported warning is the
+build script's own git-hooks notice, same as round 4's baseline).
+
+---
+
+## BUG-53 (HIGH, OPEN) — array-instance `decls` keys are built from the `repeat` loop counter, not the rendered index
+
+**What.** An array instance whose index expression is not the bare loop
+variable, or which sits inside a nested `repeat` or a `const if` inside a
+`repeat`, is emitted with the correct Verilog instance name but is absent from
+`build_decls`' key map — so `infer_kind`'s `Field` arm returns `None` and the
+hoist BUG-48 added is silently skipped again. Three reproductions
+(`a = 0b1111`, `b = 0b1010`; declared `out y: bits[9]`, mimz's own type gives
+350):
+
+```mimz
+repeat i: 0..1 { let s[i + 1] = Sub() { x: a } }      y = { b, s[1].q + a }
+repeat i: 0..1 { repeat j: 0..1 { let s[j] = ... } }  y = { b, s[0].q + a }
+repeat i: 0..1 { const if (DEBUG) { let s[i] = ... } } y = { b, s[0].q + a }
+```
+
+All three emit `assign y = {b, (s__N_q + a)};` with **no hoisted wire**, and
+Icarus returns **174** where the declared `bits[9]` requires 350.
+
+Control case that pins the diagnosis: `repeat i: 1..2 { let s[i] = ... }`
+reading `s[1].q` — index expression equal to the loop counter, at a non-zero
+base — hoists correctly and Icarus agrees at 350. `s[1]` is not the problem; the
+counter-vs-index divergence is.
+
+**Cause.** `insert_repeat_instance_output_kinds`
+(`emit_verilog/module/ports.rs:286`) keys each `repeat`-body instance port as
+`{inst}__{i}_{port}` where `i` is the **loop counter**, and scans only `r.items`
+for a direct `ModuleItem::Inst`. `inst_name` (`emit_verilog/mod.rs:678`) renders
+the instance as `{inst}__{eval_const(inst.index)}` — the **folded index
+expression** — and `emit_instances` (`emit_verilog/module/instances.rs:71`)
+recurses into nested `Repeat`/`ConstIf`/`ForEach` bodies via `unroll`. The two
+disagree wherever `inst.index` is not the loop variable, or the instance is more
+than one level deep. Same "arm present, data source under-populated" shape as
+BUG-48 itself: BUG-48's fix covered exactly the shape its three repros used.
+
+`examples/english/ripple_adder.mimz` is not affected — it writes `let fa[i]`
+(bare loop variable, one level) and only the _read_ side uses `fa[i - 1]`, which
+folds correctly through `slice_bound_fold`.
+
+**How found.** v0.2 round 4, checking whether the mid-Task-1 `decls` population
+covers every place an array-instance port can be referenced or only the ones
+Task 1's three repros exercised.
+
+**Severity.** HIGH, not CRITICAL — all three shapes are unsimulatable, so the
+`check -> test -> compile` workflow hits a hard error before the wrong Verilog:
+
+| shape                  | `mimz check` | `mimz sim`                                                          | `mimz compile`        |
+| ---------------------- | ------------ | ------------------------------------------------------------------- | --------------------- |
+| offset index           | OK           | `error: unknown signal s__1_q`                                      | exit 0, wrong Verilog |
+| nested `repeat`        | OK           | `error[S0125]: nested repeat is not supported by the simulator yet` | exit 0, wrong Verilog |
+| `const if` in `repeat` | OK           | `error[S0126]: a repeat body may only contain instances and drives` | exit 0, wrong Verilog |
+
+That table is a second finding in its own right: three components disagree about
+whether these programs exist. Either the checker should reject them (and then the
+offset-index case's `unknown signal s__1_q` is an internal error leaking to a
+user), or the simulator and emitter should both support them.
+
+**Fix.** Key from the same folded `inst.index` expression `inst_name` uses, not
+the loop counter, and recurse into nested `Repeat`/`ConstIf`/`ForEach` the way
+`emit_instances` already does — ideally by sharing one walk between the two, so
+they cannot drift again.
+
+---
+
+## BUG-54 (HIGH, OPEN) — `--emit-testbench`'s `expect` reports PASS on an `x`-valued comparison
+
+**What.** A generated testbench prints `PASS` when its `expect` condition
+evaluates to `x`. A design that never resets, never drives an output, or holds
+`x` for any other reason passes its own testbench.
+
+`emit_test_stmts` (`emit_verilog/testbench.rs`) renders an `expect` as:
+
+```verilog
+if (!((y == 5))) begin
+  $display("FAIL: expect %0s failed", "(y == 5)");
+  $finish;
+end
+$display("PASS");
+```
+
+With any operand `x`/`z`, `y == 5` is `x`, `!(x)` is `x`, and Verilog's `if`
+treats `x` as false — the FAIL branch is skipped and PASS is printed.
+
+**Cause.** `!` plus a truthiness `if` is not a decision procedure over
+four-valued logic. Verilog-2005 provides `===`/`!==` precisely for this.
+
+**How found.** v0.2 round 4, while independently reproducing BUG-51: with the
+blocking-assignment race reintroduced, `y` is `xxxx` at the expect point,
+`(y == 5)` evaluates to `x`, and the testbench prints `PASS`. Instrumented with
+`$monitor`/`$display` at `t=14`:
+
+| drive style               | `y` at the expect point | `(y == 5)` | verdict printed |
+| ------------------------- | ----------------------- | ---------- | --------------- |
+| `<=` (HEAD)               | `0101`                  | `1`        | PASS            |
+| `=` (BUG-51 reintroduced) | `xxxx`                  | `x`        | **PASS**        |
+
+**Consequence.** `emitted_testbench_reset_deassert_does_not_race_the_dut`
+(`tests/icarus.rs`) asserts `contains("PASS")` and `!contains("FAIL")`, so it
+**cannot fail** on the BUG-51 regression it was written to catch — verified by
+running the pre-fix emission and observing PASS. The sibling test
+`emitted_testbench_prints_the_cover_summary` _is_ load-bearing (it asserts
+`clocked first edge: 1`, which reads `0` with BUG-51 back). BUG-51's own entry
+above also states that the `expect` "correctly fails here" for an `x` compare;
+it does not.
+
+**Severity.** HIGH. A false PASS is the worst failure mode a verification
+feature has, and it has already silently disarmed one regression test.
+
+**Fix.** `if (((cond)) !== 1'b1)` — case-inequality, so `x` and `z` both fail.
+Legal Verilog-2005, one-token change. Optionally also `$display` a distinct
+"unknown value" message so a user can tell an `x` from a wrong value.
+
+---
+
+## BUG-55 (CRITICAL, OPEN) — a signed `>>` inside an `if`/`match` branch escapes BUG-47's context hoist
+
+**What.** BUG-47's defect — a signed right shift whose left operand real Verilog
+context-extends to the assignment's width _before_ shifting, so sign bits shift
+down into the result — is still live when the shift sits inside an `if`/`match`
+branch instead of at the assignment's top level. Minimized to nine lines:
+
+```mimz
+module Fuzz {
+  in p0: signed[14]
+  in p3: signed[4]
+  out y: signed[16]
+  y = extend((match unsigned(p3) {
+    0 => signed(extend(22, 14))
+    1 => signed(extend(22, 14))
+    _ => (p0 >> extend(14, 4))
+  }), 16)
+}
+```
+
+```verilog
+assign y = ((($unsigned(p3) == 0)) ? ($signed(__mimz_sub_1))
+          : ((($unsigned(p3) == 1)) ? ($signed(__mimz_sub_2))
+          : ((p0 >> 4'd14))));
+```
+
+`p0 = 14429` (`-1955` as `signed[14]`), `p3 = 2` selects the `_` arm.
+`mimz eval` says **y = 0**; `iverilog` + `vvp` say **y = 3**.
+
+**Cause.** Two mechanisms both correctly decline to act, and nothing else does.
+BUG-47's fix hoists a signed `>>` at the assignment's top level;
+`hoist_width_effect_operand` deliberately does **not** treat an `if`/`match`
+branch as self-determined (a branch genuinely inherits the outer context — see
+`bug_24_regression_shift_in_if_branch_stays_unhoisted`, which must stay green);
+and `verilog_self_determined_kind` has no `Match` arm to report the mismatch
+(BUG-52). `>>` is the one operator whose _value_ depends on the width it is
+evaluated at, so a branch is exactly where its own width has to be pinned even
+though every other operator's branch correctly must not be.
+
+**How found.** The project's own deep differential fuzz at
+`MIMZ_DIFF_FUZZ_N=2000`, comb seed **12649355** (fresh index 925 — past the
+per-PR depth of 400, inside the nightly depth of 5000). Not found by inspection
+in round 4's hand sweep.
+
+**Severity.** CRITICAL. Silent wrong hardware; and it is a **previously fixed
+bug still reachable one AST node deeper**, which is the sharpest available
+evidence for GAP-1.
+
+**Fix.** Narrower than "hoist branches": recurse BUG-47's signed-`>>` context
+hoist into `IfExpr`/`Match` branch values specifically, leaving every other
+operator's branch untouched so `bug_24_regression_shift_in_if_branch_stays_unhoisted`
+and `examples/*/shift.mimz`'s goldens stay as they are. BUG-52's own three-arm
+fix does **not** cover this — verified: with BUG-52 fixed, the clocked fuzz goes
+green at 1000 seeds while comb seed 12649355 still fails.
