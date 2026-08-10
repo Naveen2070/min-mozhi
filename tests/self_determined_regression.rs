@@ -1188,6 +1188,65 @@ fn shape_replicate_nested_in_trunc_hoists_the_base() {
     differential(src, &[("p0", 0b101)]);
 }
 
+// ---------------------------------------------------------------------
+// BUG-52 (`docs/audit/bugs.md`) — `verilog_self_determined_kind`
+// (`self_determined.rs`), the CLASSIFIER half of the gate/classifier
+// pair, ended `_ => None` over `ExprKind`. `kinds::infer_kind` (the
+// GATE) became exhaustive in Task 3 of round 3's plan, but the
+// classifier never did — every test above that places an `if`/`match`/
+// unary shape inside a concat puts it as an operand of `+` first
+// (`bug_41_if_expr_operand_of_add_in_concat_matches_icarus`,
+// `shape_match_operand_of_add_in_concat_matches_icarus`), where the
+// enclosing `+` triggers its OWN hoist and masks this entirely. These
+// four place the shape as the concat/replication member ITSELF, the
+// position the classifier is actually asked about.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_52_if_expr_as_a_concat_member_matches_icarus() {
+    // `if s { extend(a,8) } else { extend(a,8) } }` renders each branch
+    // as the bare `(a)` (4 bits), not mimz's grown 8 — byte-identical
+    // wrong emission to BUG-28's Repro A, BUG-41's repro (5) and
+    // BUG-48's repro 2, this time reached through a ternary instead of
+    // a bare identifier/instance-port/fn-call.
+    let src = "module Fuzz {\n  in s: bit\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  \
+                y = { b, if s { extend(a, 8) } else { extend(a, 8) } }\n}\n";
+    differential(src, &[("s", 1), ("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_52_match_as_a_concat_member_matches_icarus() {
+    // Same shape, through `match` instead of `if`/`else` — Verilog
+    // renders a `match` as a chain of ternaries, same self-determined
+    // rule as `IfExpr`.
+    let src = "module Fuzz {\n  in s: bit\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  \
+                y = { b, (match s {\n    true => extend(a,8)\n    false => extend(a,8)\n  }) }\n}\n";
+    differential(src, &[("s", 1), ("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_52_unary_not_of_an_extend_in_a_concat_matches_icarus() {
+    // `~extend(a, 8)` renders as `(~(a))` — the bitwise-not of the bare
+    // 4-bit `a`, not mimz's grown 8-bit value.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  y = { b, ~extend(a, 8) }\n}\n";
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_52_if_expr_in_a_replication_body_matches_icarus() {
+    // Same defect, self-determined position is a REPLICATION body
+    // instead of a concat member — the classifier's `IfExpr` arm has to
+    // cover both, since `verilog_self_determined_kind` is called from
+    // every self-determined position, not just `Concat`.
+    let src = "module Fuzz {\n  in s: bit\n  in a: bits[4]\n  \
+                out y: bits[16]\n  \
+                y = {2{ if s { extend(a,8) } else { extend(a,8) } }}\n}\n";
+    differential(src, &[("s", 1), ("a", 0b1111)]);
+}
+
 /// GAP-13's own axis — exhaustive over `ExprKind`, no wildcard. Never
 /// called (a compile-time-only property): its only job is that adding an
 /// `ExprKind` variant without a line here fails the build, the same
