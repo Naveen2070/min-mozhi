@@ -22,7 +22,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, Builtin, Expr, ExprKind};
+use crate::ast::{BinOp, Builtin, Expr, ExprKind, UnOp};
 use crate::checker::consteval::Env;
 use crate::width_rules::Kind;
 
@@ -120,7 +120,63 @@ pub(crate) fn verilog_self_determined_kind(
             // never appears as an inline self-determined operand.
             Builtin::SyncDoubleFlop | Builtin::SyncPulse => None,
         },
-        _ => None,
+        // BUG-52 (docs/audit/bugs.md): a ternary's own self-determined
+        // width is max of its RENDERED branch widths — same rule and
+        // same rendering as `Min`/`Max` above (BUG-42's own lesson:
+        // "same-width by mimz's rule" says nothing about what each
+        // branch RENDERS as). `{b, if s { extend(a,8) } else {
+        // extend(a,8) }}` renders each branch as the bare `(a)`, self-
+        // determined at `a`'s own width, not mimz's grown one.
+        ExprKind::IfExpr { then, els, .. } => Some(Kind {
+            width: self_determined_operand_width(then, decls, env)?
+                .max(self_determined_operand_width(els, decls, env)?),
+            signed: infer_kind(expr, decls, env)?.signed,
+        }),
+        // Same reasoning as `IfExpr`, over every arm instead of two
+        // branches — Verilog renders a `match` as a chain of ternaries.
+        ExprKind::Match { arms, .. } => {
+            let mut w = 0u32;
+            for a in arms {
+                w = w.max(self_determined_operand_width(&a.value, decls, env)?);
+            }
+            Some(Kind {
+                width: w,
+                signed: infer_kind(expr, decls, env)?.signed,
+            })
+        }
+        // A reduction (`&`/`|`/`^` prefix) is exactly 1 bit in BOTH
+        // models — nothing to compare. Every other unary op renders its
+        // operand unchanged, so recurse the same way `SignedCast` does.
+        ExprKind::Unary { op, expr: inner } => match op {
+            UnOp::RedAnd | UnOp::RedOr | UnOp::RedXor => None,
+            _ => Some(Kind {
+                width: self_determined_operand_width(inner, decls, env)?,
+                signed: infer_kind(expr, decls, env)?.signed,
+            }),
+        },
+        // Each member is hoisted at its OWN position first (this
+        // module's own recursion into every operand), so by the time a
+        // concat/replicate is itself examined, its rendered width
+        // already equals mimz's — nothing left to mismatch.
+        ExprKind::Concat(_) | ExprKind::Replicate { .. } => None,
+        // A part-select is exactly `hi-lo+1` bits in Verilog, and BUG-20
+        // already forces a non-identifier base to a named wire first —
+        // the rendered width can never disagree with mimz's.
+        ExprKind::Slice { .. } => None,
+        // A bit-select is 1 bit in both models; a `mem` read renders as
+        // the declared element width, which is mimz's own width too.
+        ExprKind::Index { .. } => None,
+        // An instance port or enum field renders as a real `wire` of
+        // its declared width (round 3 Task 1's `decls` fix is what
+        // makes mimz's own inference agree with it).
+        ExprKind::Field { .. } => None,
+        // The emitted Verilog function declares its own return width
+        // (`function automatic [(N)-1:0]`) — that IS mimz's width.
+        ExprKind::FnCall { .. } => None,
+        // Not a `bits` value; the checker rejects any of these in a
+        // self-determined position upstream (E0403 for enum specifically,
+        // BUG-31).
+        ExprKind::BundleLit(_) | ExprKind::ArrayLit(_) | ExprKind::EnumConstruct { .. } => None,
     }
 }
 

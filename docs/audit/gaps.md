@@ -37,6 +37,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)             | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED |
 | [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                  | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
 | [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted) | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED |
+| [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)              | Release gate scored at 400 seeds while CI is configured for 5000        | MEDIUM     | OPEN   |
 
 ---
 
@@ -987,3 +988,67 @@ probabilistic generator, not a bug in this change, and not new: any prior
 vocabulary change (GAP-5's `wrap_builtin`, v3's clocked leaves) had the
 identical effect and was never flagged. Worth a maintainer's note the next
 time the corpus is touched, not a fix here.
+
+---
+
+## GAP-14 (MEDIUM, process) — The release gate is scored at a shallower fuzz depth than the project's own CI runs
+
+**Status:** OPEN. Filed 2026-08-10. Source:
+[`review-2026-08-10.md`](review-2026-08-10.md).
+
+**What.** The v0.2 release gate's "no new instance of the F-1/F-2 pattern" check
+is scored from a differential-fuzz run at the **per-PR** depth
+(`MIMZ_DIFF_FUZZ_N=400`, `MIMZ_DIFF_FUZZ_CLOCKED_N=400`), while
+`.github/workflows/ci.yml`'s `fuzz-nightly` job is configured for **5000/5000**.
+Two live CRITICALs sat at HEAD in the band between the two depths:
+
+| bug               | generator | seed      | fresh index |
+| ----------------- | --------- | --------- | ----------- |
+| [BUG-52](bugs.md) | clocked   | 202428078 | **449**     |
+| [BUG-55](bugs.md) | comb      | 12649355  | **925**     |
+
+Both were found by a plain `MIMZ_DIFF_FUZZ_N=2000
+MIMZ_DIFF_FUZZ_CLOCKED_N=2000` run during round 4. Neither is reachable at 400.
+
+**Cause.** [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted)'s
+Task 4 acceptance criterion is deliberately scoped to the per-PR depth ("with
+Task 1 reverted, the fuzzer must find BUG-48 from a fresh seed within the per-PR
+depth") — which is the right criterion for _that_ question, since it measures
+whether the generator's vocabulary reaches the shape at all. It was then reused
+as the _gate's_ evidence, where the question is different: "is anything live?"
+That question is bounded by whatever depth the project is willing to run, and the
+project had, in the very same plan (round-3 Task 5), just committed to 5000
+nightly.
+
+**Why it matters more than a procedural nit.** This is the second consecutive
+round with the identical miss. Round 3 recorded it in its own words: _"BUG-47 was
+found at i=642, past the per-PR depth of 400, by a manual gate run"_ — and used
+that as the argument for making the deep job daily. Task 5 changed the cron and
+nothing changed the gate procedure, so the next release-readiness pass scored
+gate 5 at 400 again and shipped two CRITICALs into a review. The project's own
+note — _"every deeper run on 2026-08-09 found something"_ — held on 2026-08-10
+too, untested.
+
+**Fix.**
+
+1. The release-gate checklist runs the differential fuzz at the **nightly** depth
+   (5000/5000), not the per-PR depth. Gate 5 must not be scorable from a 400-seed
+   run.
+2. Append every new find to the corpus, so a fixed bug past the per-PR depth is
+   still covered at depth 0:
+
+   ```text
+   comb.txt     12649355   # i=925  BUG-55  signed >> inside a match arm escaped BUG-47's context hoist
+   clocked.txt  202428078  # i=449  BUG-52  if-expression as a concat member skipped the hoist
+   ```
+
+3. Record the depth a gate was scored at, next to the result, so a future round
+   can tell "clean at 5000" from "clean at 400" — the two currently read the same
+   in every prior review's gate table.
+
+**Not a criticism of Task 4.** The extended generator vocabulary is what made
+both seeds reachable at all — `combine_if`/`combine_match`
+(`tests/differential_fuzz.rs:992-1006`) are real combinators over arbitrary
+generated sub-expressions, not fixed leaves, so they can and did produce a branch
+that renders narrower than its mimz width. Round 3's generator could not have
+emitted either program. The instrument works; the procedure did not use it.
