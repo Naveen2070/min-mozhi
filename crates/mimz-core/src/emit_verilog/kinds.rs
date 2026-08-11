@@ -228,14 +228,22 @@ pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>, env: &Env) 
         // does for that axis. Each arm below states WHY it is `None`,
         // the same discipline as every classified arm above.
         //
-        // Bundle/array literals and an enum construction never appear
-        // inside a concat/replicate/comparison/cast/slice-base position —
-        // none of them is a `bits`-typed value, and mimz's own type rules
-        // (the checker, ahead of this code) forbid a non-`bits` value in
-        // any of the five self-determined positions (an enum specifically
-        // via E0403, BUG-31). `tests/self_determined_regression.rs`'s own
-        // `expr_kind_self_determined_coverage` pins this reasoning as its
-        // own exhaustive, test-file-side copy of this axis.
+        // None of these three is a `bits`-typed value, so none belongs in a
+        // concat/replicate/comparison/cast/slice-base position — but round-4
+        // plan Task 4 checked each's OWN reason separately rather than
+        // trusting the shared "checker forbids it" prose for all three:
+        // `BundleLit`'s `Type { .. }` literal syntax is PARSER-restricted to
+        // a `Wire` init/`Drive` RHS, so it cannot reach here as a
+        // sub-expression; `EnumConstruct` IS checker-rejected here
+        // specifically (E0403, BUG-31); `ArrayLit` is neither — the checker
+        // currently accepts `[a,a,a][0]`, and the EMITTER (not this GATE)
+        // panics rendering it (BUG-57, docs/audit/bugs.md) — this arm still
+        // returns `None` correctly (this function alone cannot resolve an
+        // array literal's own `Kind`; whether the emitter can RENDER one is
+        // a separate question this file's own module doc already commits to
+        // leaving to `expr.rs`). `tests/self_determined_regression.rs`'s own
+        // `expr_kind_self_determined_coverage` pins each of the three
+        // reasons individually.
         ExprKind::BundleLit(_) => None,
         ExprKind::ArrayLit(_) => None,
         ExprKind::EnumConstruct { .. } => None,

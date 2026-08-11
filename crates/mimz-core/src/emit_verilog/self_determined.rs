@@ -30,8 +30,20 @@ use super::kinds::infer_kind;
 
 /// What Verilog would compute as `expr`'s width in a self-determined
 /// position. `None` means "no Verilog-specific rule differs from
-/// mimz's own here" (a plain identifier, an explicitly-sized literal) —
-/// nothing for the caller to compare against.
+/// mimz's own here" (a plain identifier, a `Bool` literal — always sized,
+/// `1'b1`/`1'b0`) — nothing for the caller to compare against.
+///
+/// `Int` is grouped here too but the claim is narrower than it looks: it
+/// only holds when the checker's own concat-typing rule
+/// (`checker/widths/ops/mod.rs`, E0405) has already rejected the literal as
+/// a DIRECT concat/replicate member. Nested one level under an
+/// adapt-to-sibling operator (`a & 15` as the member), `verilog_literal`
+/// (`emit_verilog/mod.rs`) still renders an UNSIZED token, and real Icarus
+/// refuses to elaborate it inside `{...}` — BUG-56 (docs/audit/bugs.md,
+/// OPEN, found auditing this exact claim per round-4 plan Task 4). Left
+/// grouped with `Ident`/`Bool` rather than split out because the FIX
+/// belongs in `verilog_literal` (always emit a sized literal), not here —
+/// splitting this arm would not change what it returns.
 pub(crate) fn verilog_self_determined_kind(
     expr: &Expr,
     decls: &HashMap<String, Kind>,
@@ -173,9 +185,17 @@ pub(crate) fn verilog_self_determined_kind(
         // The emitted Verilog function declares its own return width
         // (`function automatic [(N)-1:0]`) — that IS mimz's width.
         ExprKind::FnCall { .. } => None,
-        // Not a `bits` value; the checker rejects any of these in a
-        // self-determined position upstream (E0403 for enum specifically,
-        // BUG-31).
+        // Not a `bits` value in a self-determined position — but the THREE
+        // reasons differ (round-4 plan Task 4 checked each): `BundleLit`'s
+        // `Type { .. }` literal syntax is PARSER-restricted to a `Wire`
+        // init/`Drive` RHS, so it cannot reach here as a sub-expression at
+        // all; `EnumConstruct` is checker-rejected here specifically
+        // (E0403, BUG-31); `ArrayLit` is neither — the checker currently
+        // accepts `[a,a,a][0]` and the EMITTER panics rendering it
+        // (`unreachable!` a few match arms up, in `expr_subst` — BUG-56's
+        // sibling, BUG-57, docs/audit/bugs.md), at every position, not
+        // specifically a self-determined one, which is why `None` is still
+        // correct here (nothing ever renders to compare against).
         ExprKind::BundleLit(_) | ExprKind::ArrayLit(_) | ExprKind::EnumConstruct { .. } => None,
     }
 }
