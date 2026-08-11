@@ -21,7 +21,7 @@ module ___________________________________________tb;
     katamai = 0;
     katamai <= 0;
     repeat (6) @(posedge katikai);
-    if (!((alai == 0))) begin
+    if (((alai == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(alai == 0)");
       $finish;
     end
@@ -52,7 +52,7 @@ module ____________________________________________tb;
     miill = 0;
     katamai = 0;
     katamai <= 8;
-    if (!((alai == 1))) begin
+    if (((alai == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(alai == 1)");
       $finish;
     end

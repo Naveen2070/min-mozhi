@@ -24,11 +24,11 @@ module uart_idles_high_tb;
     rst = 0;
     start = 0;
     data = 0;
-    if (!((tx == 1))) begin
+    if (((tx == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(tx == 1)");
       $finish;
     end
-    if (!((busy == 0))) begin
+    if (((busy == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(busy == 0)");
       $finish;
     end
@@ -66,11 +66,11 @@ module uart_begins_a_frame_on_start_tb;
     start <= 1;
     data <= 'h55;
     repeat (1) @(posedge clk);
-    if (!((busy == 1))) begin
+    if (((busy == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(busy == 1)");
       $finish;
     end
-    if (!((tx == 0))) begin
+    if (((tx == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(tx == 0)");
       $finish;
     end
@@ -110,11 +110,11 @@ module uart_returns_to_idle_after_a_frame_tb;
     repeat (1) @(posedge clk);
     start <= 0;
     repeat (24) @(posedge clk);
-    if (!((busy == 0))) begin
+    if (((busy == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(busy == 0)");
       $finish;
     end
-    if (!((tx == 1))) begin
+    if (((tx == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(tx == 1)");
       $finish;
     end

@@ -21,7 +21,7 @@ module debouncer_settles_after_a_steady_input_tb;
     raw = 0;
     raw <= 1;
     repeat (8) @(posedge clk);
-    if (!((stable == 1))) begin
+    if (((stable == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(stable == 1)");
       $finish;
     end
@@ -55,7 +55,7 @@ module debouncer_rejects_a_short_glitch_tb;
     repeat (2) @(posedge clk);
     raw <= 0;
     repeat (8) @(posedge clk);
-    if (!((stable == 0))) begin
+    if (((stable == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(stable == 0)");
       $finish;
     end

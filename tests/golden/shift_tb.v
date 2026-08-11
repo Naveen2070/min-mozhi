@@ -17,15 +17,15 @@ module shift_widens_past_the_operand_width_tb;
     $dumpvars(0, shift_widens_past_the_operand_width_tb);
     din = 0;
     din <= 3;
-    if (!((literal_shift == 8))) begin
+    if (((literal_shift == 8)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(literal_shift == 8)");
       $finish;
     end
-    if (!((param_shift == 12))) begin
+    if (((param_shift == 12)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(param_shift == 12)");
       $finish;
     end
-    if (!((var_shift == 12))) begin
+    if (((var_shift == 12)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(var_shift == 12)");
       $finish;
     end

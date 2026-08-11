@@ -3935,7 +3935,7 @@ build script's own git-hooks notice, same as round 4's baseline).
 
 ---
 
-## BUG-53 (HIGH, OPEN) — array-instance `decls` keys are built from the `repeat` loop counter, not the rendered index
+## BUG-53 (HIGH, FIXED 2026-08-11) — array-instance `decls` keys are built from the `repeat` loop counter, not the rendered index
 
 **What.** An array instance whose index expression is not the bare loop
 variable, or which sits inside a nested `repeat` or a `const if` inside a
@@ -3997,9 +3997,31 @@ the loop counter, and recurse into nested `Repeat`/`ConstIf`/`ForEach` the way
 `emit_instances` already does — ideally by sharing one walk between the two, so
 they cannot drift again.
 
+**Fixed 2026-08-11.** `insert_repeat_instance_output_kinds`
+(`emit_verilog/module/ports.rs`) is now three functions: the original entry
+point, `insert_repeat_instance_output_kinds_in` (folds one `repeat` level
+against an `Env`, recurses), and `insert_array_instance_output_kinds` (walks
+`ModuleItem`s, keying each `Inst` by its own folded `index` expression exactly
+as `inst_name` does, and recursing into nested `Repeat`, evaluated `ConstIf`
+branches, and lowered `ForEach` bodies) — mirroring `emit_instances`'s own
+traversal instead of diverging from it. Four new tests in
+`tests/self_determined_regression.rs` (`bug_53_offset_array_instance_index_matches_icarus`,
+`bug_53_nested_repeat_array_instance_matches_icarus`,
+`bug_53_const_if_in_repeat_array_instance_matches_icarus`, plus the control-case
+guard `bug_53_control_case_non_zero_base_identity_index_still_hoists`) cover the
+three filed shapes and the non-regression case, via a new `emitter_only_clocked_check`
+helper (bypasses the kernel — `mimz sim` still rejects all three shapes per the
+table above — and instead checks the emitted Verilog directly against real
+Icarus). Watched all three fail pre-fix at the exact filed values (Icarus 174,
+declared 350) via `git stash` of just the emitter change, then pass restored.
+Full workspace suite green (only the 2 known pre-existing `wasm_parity`
+failures remain); `fmt`/`clippy -D warnings` clean. The check/sim/emit
+disagreement table above is **not** resolved by this fix — that gap is tracked
+separately (round-4 plan Task 8).
+
 ---
 
-## BUG-54 (HIGH, OPEN) — `--emit-testbench`'s `expect` reports PASS on an `x`-valued comparison
+## BUG-54 (HIGH, FIXED 2026-08-11) — `--emit-testbench`'s `expect` reports PASS on an `x`-valued comparison
 
 **What.** A generated testbench prints `PASS` when its `expect` condition
 evaluates to `x`. A design that never resets, never drives an output, or holds
@@ -4046,6 +4068,20 @@ feature has, and it has already silently disarmed one regression test.
 **Fix.** `if (((cond)) !== 1'b1)` — case-inequality, so `x` and `z` both fail.
 Legal Verilog-2005, one-token change. Optionally also `$display` a distinct
 "unknown value" message so a user can tell an `x` from a wrong value.
+
+**Fixed 2026-08-11.** `emit_test_stmts`'s `Expect` arm
+(`emit_verilog/testbench.rs`) now renders `if ((cond) !== 1'b1) begin ... end`
+instead of `if (!(cond))`. New unit test
+`expect_guard_uses_case_inequality_not_plain_negation` (same file) pins the
+emitted text directly and was watched fail against the pre-fix rendering
+before being restored. `emitted_testbench_reset_deassert_does_not_race_the_dut`
+(`tests/icarus.rs`) — previously vacuous per this bug's own "Consequence"
+above — was re-verified: reintroducing BUG-51 (`<=` → `=`) now correctly
+prints `FAIL` and fails the test, where before this fix it printed `PASS`
+either way. 14 testbench goldens regenerated (`tests/golden/*_tb.v`) —
+diffs are exactly and only the guard-shape change. Workspace suite green
+(the 2 `wasm_parity` failures are the pre-existing, unrelated stale-WASM
+issue). fmt/clippy clean.
 
 ---
 

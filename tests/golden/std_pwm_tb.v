@@ -21,7 +21,7 @@ module pwm_holds_low_at_zero_duty_tb;
     duty = 0;
     duty <= 0;
     repeat (6) @(posedge clk);
-    if (!((pwm == 0))) begin
+    if (((pwm == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(pwm == 0)");
       $finish;
     end
@@ -52,7 +52,7 @@ module pwm_leads_each_period_high_for_non_zero_duty_tb;
     rst = 0;
     duty = 0;
     duty <= 8;
-    if (!((pwm == 1))) begin
+    if (((pwm == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(pwm == 1)");
       $finish;
     end

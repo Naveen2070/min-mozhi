@@ -21,7 +21,7 @@ module ___________________________tb;
     muulam = 0;
     muulam <= 1;
     repeat (8) @(posedge katikai);
-    if (!((thellivu == 1))) begin
+    if (((thellivu == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(thellivu == 1)");
       $finish;
     end
@@ -55,7 +55,7 @@ module ___________________________________tb;
     repeat (2) @(posedge katikai);
     muulam <= 0;
     repeat (8) @(posedge katikai);
-    if (!((thellivu == 0))) begin
+    if (((thellivu == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(thellivu == 0)");
       $finish;
     end

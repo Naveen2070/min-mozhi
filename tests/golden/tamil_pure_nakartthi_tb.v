@@ -17,15 +17,15 @@ module _________________________________tb;
     $dumpvars(0, _________________________________tb);
     tharavu = 0;
     tharavu <= 3;
-    if (!((maarrilinakarvu == 8))) begin
+    if (((maarrilinakarvu == 8)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(maarrilinakarvu == 8)");
       $finish;
     end
-    if (!((allavunakarvu == 12))) begin
+    if (((allavunakarvu == 12)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(allavunakarvu == 12)");
       $finish;
     end
-    if (!((maarrinakarvu == 12))) begin
+    if (((maarrinakarvu == 12)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(maarrinakarvu == 12)");
       $finish;
     end

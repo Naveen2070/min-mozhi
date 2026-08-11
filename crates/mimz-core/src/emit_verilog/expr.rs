@@ -209,6 +209,160 @@ impl Emitter<'_> {
         }
     }
 
+    /// Render `child` at a position that is (`allow_shift: true`) or is
+    /// not (`false`) self-determined for shift purposes — the same
+    /// distinction `hoist_width_effect_operand`'s own `allow_shift` makes,
+    /// but applied at RENDER time rather than only to the post-hoc hoist.
+    ///
+    /// BUG-55 (docs/audit/bugs.md): `eval_ctx`'s `IfExpr`/`Match` arms
+    /// propagate the SAME `expected_width` they themselves received into
+    /// EVERY branch/arm. So when `child` is itself an `if`/`match` sitting
+    /// in a self-determined position (a concat member, `extend()`'s
+    /// argument, a `min`/`max`/`abs`/cast operand, …), its branches are
+    /// self-determined too — the default rendering `if_expr_subst`/
+    /// `match_subst` give an `if`/`match` (`allow_shift: false`, correct
+    /// for the ordinary context-determined case BUG-24 pinned) is wrong
+    /// here, the exact same context-escape BUG-47 fixed for `extend()`'s
+    /// own direct shift argument, one AST node deeper. Every call site
+    /// that already passes `allow_shift: true` to `hoist_width_effect_operand`
+    /// should render its child through this function instead of
+    /// `expr_subst` directly, so a shift hiding inside an `if`/`match`
+    /// branch there gets the same hoist a bare shift child already does.
+    fn render_shift_ctx_operand(
+        &mut self,
+        child: &Expr,
+        subst: &HashMap<&str, &Expr>,
+        arrays: &ArrayScope,
+        allow_shift: bool,
+    ) -> String {
+        let text = if allow_shift {
+            match &child.kind {
+                ExprKind::IfExpr { cond, then, els } => {
+                    self.if_expr_subst(cond, then, els, subst, arrays, true)
+                }
+                ExprKind::Match { scrutinee, arms } => {
+                    self.match_subst(scrutinee, arms, subst, arrays, true)
+                }
+                _ => self.expr_subst(child, subst, arrays),
+            }
+        } else {
+            self.expr_subst(child, subst, arrays)
+        };
+        let decls = Rc::clone(&self.cur_decls);
+        self.hoist_width_effect_operand(child, text, &decls, allow_shift)
+    }
+
+    /// `ExprKind::IfExpr`'s own rendering, factored out so
+    /// `render_shift_ctx_operand` (BUG-55) can re-enter it with
+    /// `allow_shift: true` when the whole `if` sits in a self-determined
+    /// position. `expr_subst`'s own dispatch calls this with `false` — the
+    /// ordinary context-determined case (BUG-24).
+    fn if_expr_subst(
+        &mut self,
+        cond: &Expr,
+        then: &Expr,
+        els: &Expr,
+        subst: &HashMap<&str, &Expr>,
+        arrays: &ArrayScope,
+        allow_shift: bool,
+    ) -> String {
+        // A condition that folds at compile time (typically on a `repeat`
+        // variable) collapses to the taken branch — this is what keeps
+        // `if i == 0 { cin } else { fa[i-1].cout }` from emitting the dead
+        // `fa[-1]` arm at i == 0.
+        if let Ok(c) = consteval::eval(cond, &self.env) {
+            return if !c.is_zero() {
+                self.expr_subst(then, subst, arrays)
+            } else {
+                self.expr_subst(els, subst, arrays)
+            };
+        }
+        let decls = Rc::clone(&self.cur_decls);
+        let c = self.expr_subst(cond, subst, arrays);
+        // `allow_shift` (BUG-24's fix, BUG-55's correction): `eval_ctx`'s
+        // `IfExpr` arm propagates the SAME `expected_width` the `IfExpr`
+        // itself received into BOTH `then`/`els` — a shift branch here is
+        // self-determined exactly when the `if` itself is, so this must
+        // mirror the caller's own position instead of hardcoding `false`.
+        // See `tests/self_determined_regression.rs` for proving cases on
+        // both sides of that distinction.
+        let t = self.expr_subst(then, subst, arrays);
+        let t = self.hoist_width_effect_operand(then, t, &decls, allow_shift);
+        let f = self.expr_subst(els, subst, arrays);
+        let f = self.hoist_width_effect_operand(els, f, &decls, allow_shift);
+        format!("(({c}) ? ({t}) : ({f}))")
+    }
+
+    /// `ExprKind::Match`'s own rendering, factored out for the same reason
+    /// as `if_expr_subst` immediately above — see its doc comment.
+    fn match_subst(
+        &mut self,
+        scrutinee: &Expr,
+        arms: &[crate::ast::Arm],
+        subst: &HashMap<&str, &Expr>,
+        arrays: &ArrayScope,
+        allow_shift: bool,
+    ) -> String {
+        // Nested ternaries; the final arm becomes the default.
+        let s = self.expr_subst(scrutinee, subst, arrays);
+        let mut out = String::new();
+        let mut closing = 0usize;
+        for (arm_idx, arm) in arms.iter().enumerate() {
+            // For tagged enum patterns with payload bindings, build a
+            // substitution map: binding_name → scrutinee[hi:lo] slice expr.
+            // These are merged into `subst` when rendering the arm value.
+            let binding_exprs: Vec<(String, Expr)> = self.arm_binding_exprs(arm, scrutinee);
+            let mut arm_subst: HashMap<&str, &Expr> = subst.clone();
+            for (name, expr) in &binding_exprs {
+                arm_subst.insert(name.as_str(), expr);
+            }
+
+            let v = self.expr_subst(&arm.value, &arm_subst, arrays);
+            let decls = Rc::clone(&self.cur_decls);
+            // `allow_shift` — same reason as `IfExpr` above: `eval_ctx`'s
+            // `Match` arm propagates the SAME `expected_width` into
+            // `arm.value`, so a shift arm here is self-determined exactly
+            // when the `match` itself is (BUG-55).
+            let v = self.hoist_width_effect_operand(&arm.value, v, &decls, allow_shift);
+            let is_last = arm_idx == arms.len() - 1;
+            let is_wild = arm.patterns.iter().any(|p| matches!(p, Pattern::Wildcard));
+            if is_last || is_wild {
+                out.push_str(&v);
+                break;
+            }
+            let conds: Vec<String> = arm
+                .patterns
+                .iter()
+                .map(|p| match p {
+                    Pattern::Int { value, raw } => {
+                        format!("({s} == {})", verilog_literal(value, raw))
+                    }
+                    Pattern::IntMask {
+                        value, mask, width, ..
+                    } => {
+                        // `(s & 'bMASK) == 'bVALUE`, both sized to the
+                        // pattern width (don't-care bits are 0 in both).
+                        let w = *width as usize;
+                        format!("(({s} & 'b{:0w$b}) == 'b{:0w$b})", mask, value, w = w)
+                    }
+                    Pattern::Bool(b) => {
+                        format!("({s} == {})", if *b { "1'b1" } else { "1'b0" })
+                    }
+                    Pattern::Variant {
+                        enum_name,
+                        variant,
+                        bindings: _,
+                    } => self.variant_cond(&s, &enum_name.name, &variant.name),
+                    Pattern::Wildcard => "1'b1".to_string(),
+                })
+                .collect();
+            out.push_str(&format!("({}) ? ({v}) : (", conds.join(" || ")));
+            closing += 1;
+        }
+        out.push_str(&")".repeat(closing));
+        format!("({out})")
+    }
+
     /// Render an index or slice bound. A non-literal that folds at compile
     /// time — a `repeat` variable or arithmetic over one, like `i + 1` —
     /// collapses to its decimal value (`sum[i] → sum[2]`); plain literals
@@ -289,9 +443,7 @@ impl Emitter<'_> {
                 "0".into()
             }
             ExprKind::Unary { op, expr: inner } => {
-                let x = self.expr_subst(inner, subst, arrays);
-                let decls = Rc::clone(&self.cur_decls);
-                let x = self.hoist_width_effect_operand(inner, x, &decls, true);
+                let x = self.render_shift_ctx_operand(inner, subst, arrays, true);
                 let sym = match op {
                     UnOp::Neg => "-",
                     UnOp::BitNot => "~",
@@ -394,15 +546,8 @@ impl Emitter<'_> {
                     // matching that threaded semantics instead of freezing
                     // it at the wrong (bottom-up, context-free) width.
                     let allow_shift_lhs = !matches!(op, BinOp::Shl | BinOp::Shr);
-                    let decls = Rc::clone(&self.cur_decls);
-                    let l = {
-                        let text = self.expr_subst(lhs, subst, arrays);
-                        self.hoist_width_effect_operand(lhs, text, &decls, allow_shift_lhs)
-                    };
-                    let r = {
-                        let text = self.expr_subst(rhs, subst, arrays);
-                        self.hoist_width_effect_operand(rhs, text, &decls, true)
-                    };
+                    let l = self.render_shift_ctx_operand(lhs, subst, arrays, allow_shift_lhs);
+                    let r = self.render_shift_ctx_operand(rhs, subst, arrays, true);
                     (l, r)
                 };
                 // Wrapping ops: hoisted above (BUG-23) whenever they are
@@ -435,105 +580,29 @@ impl Emitter<'_> {
                 };
                 format!("({l} {sym} {r})")
             }
+            // Factored into `if_expr_subst`/`match_subst` (BUG-55,
+            // docs/audit/bugs.md) so `render_shift_ctx_operand` can
+            // re-enter either with `allow_shift: true` when the whole
+            // `if`/`match` sits in a self-determined position. `false`
+            // here is the ordinary context-determined case (BUG-24).
             ExprKind::IfExpr { cond, then, els } => {
-                // A condition that folds at compile time (typically on a
-                // `repeat` variable) collapses to the taken branch — this
-                // is what keeps `if i == 0 { cin } else { fa[i-1].cout }`
-                // from emitting the dead `fa[-1]` arm at i == 0.
-                if let Ok(c) = consteval::eval(cond, &self.env) {
-                    return if !c.is_zero() {
-                        self.expr_subst(then, subst, arrays)
-                    } else {
-                        self.expr_subst(els, subst, arrays)
-                    };
-                }
-                let decls = Rc::clone(&self.cur_decls);
-                let c = self.expr_subst(cond, subst, arrays);
-                // `allow_shift: false` (BUG-24 regression fix): `eval_ctx`'s
-                // `IfExpr` arm (`mimz-sim/src/sim/value.rs`) propagates the
-                // SAME `expected_width` the `IfExpr` itself received into
-                // BOTH `then`/`els` — a shift branch here is context-
-                // determined, not self-determined, so hoisting it to
-                // `infer_kind`'s bottom-up width would compute a value
-                // different from the simulator's reference semantics. See
-                // `tests/self_determined_regression.rs` for a proving case.
-                let t = self.expr_subst(then, subst, arrays);
-                let t = self.hoist_width_effect_operand(then, t, &decls, false);
-                let f = self.expr_subst(els, subst, arrays);
-                let f = self.hoist_width_effect_operand(els, f, &decls, false);
-                format!("(({c}) ? ({t}) : ({f}))")
+                self.if_expr_subst(cond, then, els, subst, arrays, false)
             }
             ExprKind::Match { scrutinee, arms } => {
-                // Nested ternaries; the final arm becomes the default.
-                let s = self.expr_subst(scrutinee, subst, arrays);
-                let mut out = String::new();
-                let mut closing = 0usize;
-                for (arm_idx, arm) in arms.iter().enumerate() {
-                    // For tagged enum patterns with payload bindings, build a
-                    // substitution map: binding_name → scrutinee[hi:lo] slice expr.
-                    // These are merged into `subst` when rendering the arm value.
-                    let binding_exprs: Vec<(String, Expr)> = self.arm_binding_exprs(arm, scrutinee);
-                    let mut arm_subst: HashMap<&str, &Expr> = subst.clone();
-                    for (name, expr) in &binding_exprs {
-                        arm_subst.insert(name.as_str(), expr);
-                    }
-
-                    let v = self.expr_subst(&arm.value, &arm_subst, arrays);
-                    let decls = Rc::clone(&self.cur_decls);
-                    // `allow_shift: false` — same reason as `IfExpr` above:
-                    // `eval_ctx`'s `Match` arm propagates the SAME
-                    // `expected_width` into `arm.value`, so a shift arm
-                    // here is context-determined, not self-determined.
-                    let v = self.hoist_width_effect_operand(&arm.value, v, &decls, false);
-                    let is_last = arm_idx == arms.len() - 1;
-                    let is_wild = arm.patterns.iter().any(|p| matches!(p, Pattern::Wildcard));
-                    if is_last || is_wild {
-                        out.push_str(&v);
-                        break;
-                    }
-                    let conds: Vec<String> = arm
-                        .patterns
-                        .iter()
-                        .map(|p| match p {
-                            Pattern::Int { value, raw } => {
-                                format!("({s} == {})", verilog_literal(value, raw))
-                            }
-                            Pattern::IntMask {
-                                value, mask, width, ..
-                            } => {
-                                // `(s & 'bMASK) == 'bVALUE`, both sized to the
-                                // pattern width (don't-care bits are 0 in both).
-                                let w = *width as usize;
-                                format!("(({s} & 'b{:0w$b}) == 'b{:0w$b})", mask, value, w = w)
-                            }
-                            Pattern::Bool(b) => {
-                                format!("({s} == {})", if *b { "1'b1" } else { "1'b0" })
-                            }
-                            Pattern::Variant {
-                                enum_name,
-                                variant,
-                                bindings: _,
-                            } => self.variant_cond(&s, &enum_name.name, &variant.name),
-                            Pattern::Wildcard => "1'b1".to_string(),
-                        })
-                        .collect();
-                    out.push_str(&format!("({}) ? ({v}) : (", conds.join(" || ")));
-                    closing += 1;
-                }
-                out.push_str(&")".repeat(closing));
-                format!("({out})")
+                self.match_subst(scrutinee, arms, subst, arrays, false)
             }
             ExprKind::Concat(parts) => {
                 let decls = Rc::clone(&self.cur_decls);
                 let ps: Vec<String> = parts
                     .iter()
                     .map(|p| {
-                        let text = self.expr_subst(p, subst, arrays);
                         // `allow_shift: true` — `eval_ctx`'s `Concat`/
                         // `Replicate` arms always evaluate a part with
                         // plain `eval` (`expected_width: None`), so a
-                        // shift part here is self-determined.
-                        let text = self.hoist_width_effect_operand(p, text, &decls, true);
+                        // shift part here is self-determined — and so is
+                        // an `if`/`match` part's own branches (BUG-55),
+                        // which `render_shift_ctx_operand` also handles.
+                        let text = self.render_shift_ctx_operand(p, subst, arrays, true);
                         match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
                             None => text,
@@ -548,12 +617,13 @@ impl Emitter<'_> {
                 let ps: Vec<String> = parts
                     .iter()
                     .map(|p| {
-                        let text = self.expr_subst(p, subst, arrays);
                         // `allow_shift: true` — `eval_ctx`'s `Concat`/
                         // `Replicate` arms always evaluate a part with
                         // plain `eval` (`expected_width: None`), so a
-                        // shift part here is self-determined.
-                        let text = self.hoist_width_effect_operand(p, text, &decls, true);
+                        // shift part here is self-determined — and so is
+                        // an `if`/`match` part's own branches (BUG-55),
+                        // which `render_shift_ctx_operand` also handles.
+                        let text = self.render_shift_ctx_operand(p, subst, arrays, true);
                         match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
                             None => text,
@@ -592,11 +662,9 @@ impl Emitter<'_> {
                     }
                     return chain;
                 }
-                let b = self.expr_subst(base, subst, arrays);
-                let decls = Rc::clone(&self.cur_decls);
                 // `allow_shift: true` — `eval_ctx`'s `Index` arm evaluates
                 // `base` with plain `eval` (self-determined).
-                let b = self.hoist_width_effect_operand(base, b, &decls, true);
+                let b = self.render_shift_ctx_operand(base, subst, arrays, true);
                 let i = self.index_expr(index, subst, arrays);
                 format!("{b}[{i}]")
             }
@@ -713,9 +781,7 @@ impl Emitter<'_> {
                             // AFTER (`extend_bits`); the extension is post-
                             // hoc, not threaded into evaluation, so a shift
                             // argument here is self-determined.
-                            let text = self.expr_subst(a, subst, arrays);
-                            let decls = Rc::clone(&self.cur_decls);
-                            args_str.push(self.hoist_width_effect_operand(a, text, &decls, true));
+                            args_str.push(self.render_shift_ctx_operand(a, subst, arrays, true));
                         }
                     }
                 }
@@ -724,12 +790,11 @@ impl Emitter<'_> {
             ExprKind::Call { func, args } => match func {
                 Builtin::SignedCast => {
                     let decls = Rc::clone(&self.cur_decls);
-                    let text = self.expr_subst(&args[0], subst, arrays);
                     // `allow_shift: true` — `Builtin::SignedCast`/
                     // `UnsignedCast` arguments are always evaluated by
                     // `eval_ctx`'s `Call` arm with plain `eval` (see
                     // `call`'s own match arms).
-                    let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
+                    let text = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     let hoisted =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
@@ -739,12 +804,11 @@ impl Emitter<'_> {
                 }
                 Builtin::UnsignedCast => {
                     let decls = Rc::clone(&self.cur_decls);
-                    let text = self.expr_subst(&args[0], subst, arrays);
                     // `allow_shift: true` — `Builtin::SignedCast`/
                     // `UnsignedCast` arguments are always evaluated by
                     // `eval_ctx`'s `Call` arm with plain `eval` (see
                     // `call`'s own match arms).
-                    let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
+                    let text = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     let hoisted =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
@@ -754,13 +818,12 @@ impl Emitter<'_> {
                 }
                 Builtin::Encoding => {
                     let decls = Rc::clone(&self.cur_decls);
-                    let text = self.expr_subst(&args[0], subst, arrays);
                     // `allow_shift: true` — mirrors `SignedCast`/
                     // `UnsignedCast` immediately above: this builtin's
                     // argument is always evaluated by plain `eval`, never
                     // `eval_ctx`, so a shift argument here is
                     // self-determined.
-                    let text = self.hoist_width_effect_operand(&args[0], text, &decls, true);
+                    let text = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     let hoisted =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
@@ -833,8 +896,6 @@ impl Emitter<'_> {
                             )
                         }
                         _ => {
-                            let text = self.expr_subst(&args[0], subst, arrays);
-                            let decls = Rc::clone(&self.cur_decls);
                             // `allow_shift: true` — BUG-47 (docs/audit/bugs.md).
                             //
                             // This was `false`, justified by the simulator
@@ -868,8 +929,14 @@ impl Emitter<'_> {
                             // `allow_shift_lhs` in the `Binary` arm above and
                             // is a genuine fused-chain case (BUG-24/BUG-34),
                             // unlike this one.
-                            let text =
-                                self.hoist_width_effect_operand(&args[0], text, &decls, true);
+                            //
+                            // BUG-55 (docs/audit/bugs.md): this argument can
+                            // itself be an `if`/`match` wrapping a shift one
+                            // level deeper (`extend(match s {..., _ => p0 >>
+                            // k}, N)`) — `render_shift_ctx_operand` recurses
+                            // into that branch with the same self-determined
+                            // treatment, not just this direct-child check.
+                            let text = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                             format!("({text})")
                         }
                     }
@@ -881,8 +948,7 @@ impl Emitter<'_> {
                 // shift argument is always self-determined here.
                 Builtin::Trunc => {
                     let decls = Rc::clone(&self.cur_decls);
-                    let x = self.expr_subst(&args[0], subst, arrays);
-                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     // BUG-36 (docs/audit/bugs.md): `trunc` renders as an
                     // explicit part-select `x[N-1:0]` — the same BUG-20
                     // grammar constraint as `ExprKind::Slice`: Verilog's
@@ -932,46 +998,32 @@ impl Emitter<'_> {
                     }
                 }
                 Builtin::Min => {
-                    let decls = Rc::clone(&self.cur_decls);
-                    let a = self.expr_subst(&args[0], subst, arrays);
-                    let a = self.hoist_width_effect_operand(&args[0], a, &decls, true);
-                    let b = self.expr_subst(&args[1], subst, arrays);
-                    let b = self.hoist_width_effect_operand(&args[1], b, &decls, true);
+                    let a = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
+                    let b = self.render_shift_ctx_operand(&args[1], subst, arrays, true);
                     format!("(({a} < {b}) ? ({a}) : ({b}))")
                 }
                 Builtin::Max => {
-                    let decls = Rc::clone(&self.cur_decls);
-                    let a = self.expr_subst(&args[0], subst, arrays);
-                    let a = self.hoist_width_effect_operand(&args[0], a, &decls, true);
-                    let b = self.expr_subst(&args[1], subst, arrays);
-                    let b = self.hoist_width_effect_operand(&args[1], b, &decls, true);
+                    let a = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
+                    let b = self.render_shift_ctx_operand(&args[1], subst, arrays, true);
                     format!("(({a} < {b}) ? ({b}) : ({a}))")
                 }
                 // Result is `signed[N+1]`; the assignment context sign-extends
                 // both ternary arms (the operand is declared `signed`).
                 Builtin::Abs => {
-                    let decls = Rc::clone(&self.cur_decls);
-                    let x = self.expr_subst(&args[0], subst, arrays);
-                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     format!("(({x} < 0) ? (-{x}) : ({x}))")
                 }
                 // Verilog-2005 negated reduction operators — one bit out.
                 Builtin::Nand => {
-                    let decls = Rc::clone(&self.cur_decls);
-                    let x = self.expr_subst(&args[0], subst, arrays);
-                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     format!("(~&({x}))")
                 }
                 Builtin::Nor => {
-                    let decls = Rc::clone(&self.cur_decls);
-                    let x = self.expr_subst(&args[0], subst, arrays);
-                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     format!("(~|({x}))")
                 }
                 Builtin::Xnor => {
-                    let decls = Rc::clone(&self.cur_decls);
-                    let x = self.expr_subst(&args[0], subst, arrays);
-                    let x = self.hoist_width_effect_operand(&args[0], x, &decls, true);
+                    let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
                     format!("(~^({x}))")
                 }
                 // `clog2(n)` folds to a literal when `n` is a constant (a literal
@@ -1100,9 +1152,7 @@ impl Emitter<'_> {
                             // is evaluated independently of any enclosing
                             // width context (each field is separately
                             // masked to its own `field_w` right here).
-                            let text = self.expr_subst(a, subst, arrays);
-                            let decls = Rc::clone(&self.cur_decls);
-                            self.hoist_width_effect_operand(a, text, &decls, true)
+                            self.render_shift_ctx_operand(a, subst, arrays, true)
                         }
                     });
                 }
