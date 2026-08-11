@@ -4085,7 +4085,7 @@ issue). fmt/clippy clean.
 
 ---
 
-## BUG-55 (CRITICAL, OPEN) — a signed `>>` inside an `if`/`match` branch escapes BUG-47's context hoist
+## BUG-55 (CRITICAL, FIXED 2026-08-11) — a signed `>>` inside an `if`/`match` branch escapes BUG-47's context hoist
 
 **What.** BUG-47's defect — a signed right shift whose left operand real Verilog
 context-extends to the assignment's width _before_ shifting, so sign bits shift
@@ -4139,3 +4139,179 @@ operator's branch untouched so `bug_24_regression_shift_in_if_branch_stays_unhoi
 and `examples/*/shift.mimz`'s goldens stay as they are. BUG-52's own three-arm
 fix does **not** cover this — verified: with BUG-52 fixed, the clocked fuzz goes
 green at 1000 seeds while comb seed 12649355 still fails.
+
+**Fixed 2026-08-11.** `IfExpr`/`Match` rendering (`emit_verilog/expr.rs`)
+always hoisted branch shifts with `allow_shift: false`, correct only when the
+`if`/`match` itself sits at a context-determined top level (BUG-24) — wrong
+whenever it sits in a self-determined position instead, since `eval_ctx`
+propagates the same `expected_width` into every branch/arm regardless. Fixed
+by factoring `if_expr_subst`/`match_subst` (new `allow_shift` param) plus a
+`render_shift_ctx_operand` helper that every self-determined call site (~20)
+now routes its child through, instead of `expr_subst` directly. New
+differential `bug_55_signed_shift_right_inside_match_wildcard_arm_matches_icarus`
+watched fail (kernel 0, Icarus 3 — the exact filed values), then pass.
+`bug_24_regression_shift_in_if_branch_stays_unhoisted` — the guard this fix
+must not break — stays green: its `if` sits at a bare top-level assignment
+RHS, a position the new call sites never touch. `self_determined_regression`
+55/55; full workspace 1234/1234 (2 pre-existing `wasm_parity` failures,
+reproduced identically on unmodified HEAD, unrelated). fmt/clippy clean.
+
+---
+
+## BUG-56 (HIGH, OPEN) — a bare integer literal renders unsized, so Icarus refuses any concat/replicate member that nests one
+
+**What.** Found auditing `verilog_self_determined_kind`'s `Int`/`Bool` arms
+(round-4 plan Task 4, `docs/plan/v0.2-class-closure-round4.local.md`) — the
+arm's own claim, "Verilog's self-determined width for an unsized literal
+already equals mimz's, nothing to compare," is false whenever the literal is
+nested (not the direct member) inside a concat or replication body:
+
+```mimz
+module M {
+  in a: bits[4]
+  in b: bits[4]
+  out y: bits[8]
+  y = { b, a & 15 }
+}
+```
+
+```verilog
+assign y = {b, (a & 15)};
+```
+
+`iverilog -g2005` refuses to elaborate this — not a silent miscompile, a hard
+error:
+
+```text
+lit_test4.v:8: error: Concatenation operand "(a)&('sd15)" has indefinite width.
+lit_test4.v:8: error: Unable to elaborate r-value: {b, (a)&('sd15)}
+```
+
+Same failure one level further in, inside a replication body:
+`y = {2{ a & 15 }}` → `error: Concatenation operand "(a)&('sd15)" has
+indefinite width.` `mimz check`/`mimz compile` both accept the source and
+exit 0; the wrong Verilog is only caught by real Icarus, exactly the
+BUG-49 shape (unparseable output, not a wrong value) rather than BUG-52's.
+
+**Cause.** `verilog_literal` (`emit_verilog/mod.rs`) never emits a sized
+Verilog literal: a `0b`/`0x`-prefixed source literal renders as bare
+`'b<digits>`/`'h<digits>` (no size before the tick), and a plain decimal
+literal renders as a bare number (`bits_to_decimal_string` returns just the
+digits, no size prefix either) — both are Verilog's "unsized" literal forms,
+whose width the LRM leaves implementation-defined, and which real Icarus
+explicitly refuses inside a `{...}` once one is nested under an operator
+(directly bare, `{b, 15}`, IS caught pre-emit: the checker's own concat-typing
+rule, `checker/widths/ops/mod.rs:697`, rejects a concat member whose `Ty`
+resolves to the untyped `Ty::CtInt` with E0405 — "a bare literal has no width
+inside `{...}`"). `a & 15` does not hit that rule: `BitAnd`'s own type rule
+lets the bare literal _adapt_ to `a`'s sibling type (`Ty::Bits(4)`), so the
+concat member's own `Ty` is `Bits(4)`, not `CtInt` — checker-legal. But that
+adaptation lives only in the type checker's/gate's `Kind` computation
+(`infer_kind`'s `BitAnd` arm already resolves this correctly to `Kind{4}`);
+nothing propagates it into how `verilog_literal` prints the literal TOKEN
+itself, which stays the bare, unsized form regardless of what the enclosing
+expression adapted it to.
+
+**How found.** Round-4 plan Task 4 (`docs/plan/v0.2-class-closure-round4.local.md`)
+— verifying the `Int`/`Bool` arms' "nothing to compare" claim as a checkable
+fact rather than accepting the prose, per that task's own rule ("an arm may
+not cite the absence of a rule as evidence for the rule"). Confirmed against
+real `iverilog -g2005` + `vvp` (both the concat-member and replication-body
+shapes above).
+
+**Severity.** HIGH, not CRITICAL — same reasoning as BUG-49: the failure is a
+loud Icarus elaboration error a user hits at `mimz compile`'s Icarus-backed
+CI step (or any downstream synthesis/simulation tool), not a silent wrong
+value. Not yet checked whether a synthesis tool other than Icarus accepts this
+Verilog and, if so, what width it assumes — the LRM leaves the choice
+implementation-defined, so a silent divergence on some other toolchain is not
+ruled out.
+
+**Not yet checked.** Whether the same nesting reaches a comparison operand or
+a `$signed`/`$unsigned` argument without erroring (both tested bare and were
+fine — Icarus's "indefinite width" restriction is specific to `{...}`
+contexts per the LRM) — likely benign there since neither BUG-52's ternary
+family nor a plain comparison requires a _definite_ self-determined width the
+way a concat/replication member does, but not independently confirmed for
+every such position. Also not yet checked: whether every arithmetic/logical
+operator that lets a bare literal adapt to a sibling (not just `BitAnd`) hits
+the same nested-in-concat shape — `AddWrap`/`SubWrap`/`MulWrap`/`BitOr`/
+`BitXor` share `BitAnd`'s exact adapt-to-sibling rule in both the checker and
+`infer_kind`, so the same repro shape almost certainly reproduces for each,
+untested individually.
+
+**Fix (not yet implemented — Task 4 is an audit, not a fix pass).** Make
+`verilog_literal` always emit a _sized_ literal (`{width}'b...`/`{width}'h...`/
+`{width}'d...`), with `width` computed the same way `infer_kind`'s own `Int`
+arm already does (`min_width_for`/`natural_width`) — so the emitted token's
+own Verilog self-determined width is equal to mimz's by construction, the
+same invariant the `Int`/`Bool` arms' `None` claim already assumes but never
+enforces. Needs care at literal sites that currently rely on the bare/wide
+form on purpose (a `parameter` default, a `localparam`, a bit-index) —
+audit those call sites before changing the shared helper. Precedent already
+in the codebase: `ExprKind::EnumConstruct` rendering (`emit_verilog/expr.rs`,
+~line 1098) already documents and avoids this exact class ("inside a `{}`
+concatenation an unsized decimal literal defaults to 32 bits... which would
+corrupt the tag/field/padding boundaries") by rendering every constant
+payload argument as a sized literal (`{field_w}'d{value}`) instead of
+`expr_subst`'s ordinary unsized form — the fix shape above generalizes that
+existing, working pattern to every literal, not a new idea.
+
+---
+
+## BUG-57 (MEDIUM, OPEN) — indexing an array literal panics instead of erroring: `unreachable!("Task 8 or Task 9 wires this up")`
+
+**What.** Found continuing Task 4's audit while checking `ExprKind::ArrayLit`'s
+"the checker rejects it upstream" claim (`docs/plan/v0.2-class-closure-round4.local.md`,
+same task as BUG-56). The claim is false — `mimz check` accepts an array
+literal indexed by a constant, and `mimz compile` panics rendering it, in
+ANY position (not specific to a self-determined one):
+
+```mimz
+module M {
+  in a: bits[4]
+  out z: bits[4]
+  z = [a,a,a][0]
+}
+```
+
+```text
+thread 'main' panicked at crates\mimz-core\src\emit_verilog\expr.rs:1067:38:
+internal error: entered unreachable code: Task 8 or Task 9 wires this up
+```
+
+`mimz check` on the same source: `OK: ... — 1 module(s), 0 test(s), 1 file(s)`.
+
+**Cause.** `emit_verilog/expr.rs`'s `ExprKind::ArrayLit(_)` arm is
+`unreachable!("Task 8 or Task 9 wires this up")` — a deliberate placeholder
+for array-literal rendering, not yet implemented (the module doc's `ExprKind::
+ArrayLit => unreachable!("Task 8 or Task 9 wires this up")` line names the
+future work it is waiting on). The checker does not yet reject the shape
+that reaches it — `Index` on a freshly-constructed `ArrayLit` (rather than a
+named array `let`/param) round-trips through width-checking without
+complaint, so a source program can reach the placeholder directly.
+
+**How found.** Round-4 plan Task 4, verifying `expr_kind_self_determined_
+coverage`'s `ArrayLit` citation ("not a `bits` value; the checker rejects it
+upstream") as a checkable fact — it turned out false in a different way than
+expected: not "the checker accepts it and the emitter miscompiles it
+silently," but "the checker accepts it and the emitter crashes."
+
+**Severity.** MEDIUM — same bar as BUG-40 (a `pattern_matches` `unreachable!()`
+firing on a raw `Pattern::Variant`): a panic reachable from checker-accepted
+source is a robustness defect (an ungraceful crash where a diagnostic
+belongs), not a silent miscompile or a memory-safety issue. Not self-
+determined-position-specific — it fires at the bare top-level assignment too,
+so it sits outside this plan's own scope (the position-matrix class) even
+though the audit that found it is in scope.
+
+**Fix (not yet implemented — Task 4 is an audit, not a fix pass).** Either
+(a) the checker gains a rule rejecting `Index` directly on an `ArrayLit`
+(the array-literal-then-immediately-indexed shape has no named binding to
+optimize away, so this may be intentionally out of the supported surface —
+same "pick one, deliberately" framing as Task 8's check/sim/emit split), or
+(b) the emitter actually implements it (the array literal's elements are
+known statically, so `[a,a,a][0]` can constant-fold the INDEX the same way
+`Index` on a named array does, or at minimum render the ternary-chain mux
+`Index` already generates for a named array-typed `let`). (a) is the
+smaller, more honest change if this shape isn't meant to be supported yet.
