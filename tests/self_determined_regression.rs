@@ -749,6 +749,24 @@ fn matrix_signed_unsigned_cast_roundtrip_in_concat_matches_icarus() {
 }
 
 #[test]
+fn matrix_signed_unsigned_cast_recursion_catches_a_mismatched_operand_matches_icarus() {
+    // Task 4 (round-4 plan, `docs/plan/v0.2-class-closure-round4.local.md`):
+    // the test above's own comment admits it only proves the recursion is a
+    // NO-OP when nothing underneath is mismatched — it never proved the
+    // recursion actually CATCHES a real one, the exact gap BUG-42 shipped
+    // from for `min`/`max`. `extend(a, 8)` renders as bare `(a)` (4 bits),
+    // not 8, three levels under two casts — if either `SignedCast`'s or
+    // `UnsignedCast`'s arm failed to recurse, this would render 4 bits
+    // where mimz expects 8 and silently miscompile the same way BUG-52's
+    // repros did.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[12]\n  \
+                y = { b, unsigned(signed(extend(a, 8))) }\n}\n";
+    // a=0b1011 (11), b=0b0101 (5): extend/signed/unsigned round-trip 11
+    // unchanged at 8 bits. y = (5<<8)|11 = 1291.
+    differential(src, &[("a", 0b1011), ("b", 0b0101)]);
+}
+
+#[test]
 fn bug_30_extend_of_a_shift_matches_a_named_wire_of_it() {
     // BUG-30's own filed repro (`docs/audit/bugs.md`): `extend(din << 2,
     // 8)` and a named `wire w: bits[N] = din << 2; extend(w, 8)` used to
@@ -1322,6 +1340,46 @@ fn shape_replicate_nested_in_trunc_hoists_the_base() {
     differential(src, &[("p0", 0b101)]);
 }
 
+#[test]
+fn shape_concat_operand_of_extend_in_a_concat_matches_icarus() {
+    // Task 4 (round-4 plan, `docs/plan/v0.2-class-closure-round4.local.md`):
+    // `bug_36_trunc_of_a_concat_hoists_the_base_first` — the coverage doc's
+    // prior citation for `ExprKind::Concat`'s classifier arm — actually
+    // exercises `Builtin::Trunc`'s OWN unconditional-`None` arm and its
+    // separate `hoist_width_effect_operand` base-hoist, never
+    // `verilog_self_determined_kind`'s `Concat => None` arm itself (that
+    // arm is only reached via `self_determined_operand_width`'s recursion,
+    // which `Trunc`'s arm never calls). This is the same "citation doesn't
+    // exercise the claimed position" gap BUG-52 found for `IfExpr`/`Match`.
+    // `extend(...)`'s argument DOES recurse via `self_determined_operand_
+    // width`, so a concat as extend's argument is the position that
+    // actually asks the `Concat` arm the question: does `{a,b}`'s own
+    // self-determined width (8, the definite sum of its members — each
+    // already hoisted independently, same reasoning `Min`/`Max` rely on)
+    // equal mimz's own `Kind` for the same node? It does — Verilog
+    // self-determines a concat's width as the exact sum of its members
+    // regardless of context, so the mismatch this test proves is only
+    // against `extend`'s wider target (12), which correctly still hoists.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  in c: bits[4]\n  \
+                out y: bits[16]\n  y = { c, extend({a, b}, 12) }\n}\n";
+    // a=0b1111, b=0b0101, c=0b1010: {a,b}=0xF5 (8 bits), zero-extended to
+    // 12 bits, prefixed with c -> 0xA0F5 (16 bits) = 41205.
+    differential(src, &[("a", 0b1111), ("b", 0b0101), ("c", 0b1010)]);
+}
+
+#[test]
+fn shape_replicate_operand_of_extend_in_a_concat_matches_icarus() {
+    // Same fix as `shape_concat_operand_of_extend_in_a_concat_matches_icarus`,
+    // for `ExprKind::Replicate`'s classifier arm — `shape_replicate_nested_
+    // in_trunc_hoists_the_base` has the identical citation gap (exercises
+    // `Trunc`'s own arm, not `Replicate`'s, since `Trunc` never recurses).
+    let src = "module Fuzz {\n  in a: bits[3]\n  in c: bits[4]\n  \
+                out y: bits[16]\n  y = { c, extend({2{a}}, 12) }\n}\n";
+    // a=0b101: {2{a}}=0b101101 (0x2D, 6 bits), zero-extended to 12 bits,
+    // prefixed with c=0b1010 -> 0xA02D (16 bits) = 41005.
+    differential(src, &[("a", 0b101), ("c", 0b1010)]);
+}
+
 // ---------------------------------------------------------------------
 // BUG-52 (`docs/audit/bugs.md`) — `verilog_self_determined_kind`
 // (`self_determined.rs`), the CLASSIFIER half of the gate/classifier
@@ -1433,11 +1491,27 @@ fn bug_55_signed_shift_right_inside_match_wildcard_arm_matches_icarus() {
 fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
     match kind {
         ExprKind::Int { .. } => {
-            "NotApplicable: bare literal — self_determined.rs's own \
-             `Int => None` arm; Verilog's self-determined width for an \
-             unsized literal already equals mimz's, nothing to compare"
+            "PARTIAL, BUG-56 (docs/audit/bugs.md, OPEN): true only when the \
+             literal is the DIRECT concat/replicate member — the checker's \
+             own concat-typing rule (`checker/widths/ops/mod.rs:697`, \
+             E0405) rejects that shape pre-emit, so `self_determined.rs`'s \
+             `Int => None` never actually has to answer for it. FALSE when \
+             a literal is nested one level under an adapt-to-sibling \
+             operator (`a & 15` as the concat member): `verilog_literal` \
+             (`emit_verilog/mod.rs`) always renders an UNSIZED token \
+             (`'b1111`/bare `15`), and real Icarus refuses to elaborate an \
+             unsized-literal-bearing operand inside `{...}` — 'Concatenation \
+             operand ... has indefinite width'. Confirmed against real \
+             iverilog for both a concat member and a replication body; not \
+             yet fixed or given its own differential (BUG-56's own fix task)."
         }
-        ExprKind::Bool(_) => "NotApplicable: same reasoning as Int — `Bool => None`",
+        ExprKind::Bool(_) => {
+            "NotApplicable, verified — unlike `Int`, `expr.rs`'s own `Bool` \
+             arm always renders a SIZED 1-bit literal (`1'b1`/`1'b0`, \
+             `emit_verilog/expr.rs`'s `ExprKind::Bool` case), so BUG-56's \
+             unsized-literal defect does not apply here; `Bool => None` \
+             stands"
+        }
         ExprKind::Ident(_) => {
             "NotApplicable: a signal's declared width IS its Verilog \
              self-determined width, by definition — `Ident => None`"
@@ -1482,13 +1556,26 @@ fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
              as `IfExpr` immediately above (BUG-52, docs/audit/bugs.md)"
         }
         ExprKind::Concat(_) => {
-            "covered by bug_36_trunc_of_a_concat_hoists_the_base_first \
-             (Concat as a NESTED operand, not the outer container)"
+            "covered by shape_concat_operand_of_extend_in_a_concat_matches_icarus \
+             (Concat as a NESTED self-determined operand — recurses through \
+             `self_determined_operand_width`, the position this arm's `None` \
+             actually claims) — NOT bug_36_trunc_of_a_concat_hoists_the_base_first, \
+             this arm's citation before round-4 Task 4's audit: that test \
+             exercises `Builtin::Trunc`'s own unconditional-`None` arm and its \
+             separate base-hoist mechanism, which never calls \
+             `self_determined_operand_width` on the Concat at all, so it never \
+             actually asked THIS arm anything (same wrong-position class BUG-52 \
+             found for `IfExpr`/`Match`)"
         }
         ExprKind::Replicate { .. } => {
             "covered by bug_28_extend_in_replication_matches_icarus (as the \
              outer self-determined container) and \
-             shape_replicate_nested_in_trunc_hoists_the_base (as a nested operand)"
+             shape_replicate_operand_of_extend_in_a_concat_matches_icarus (as a \
+             NESTED operand, recursing through `self_determined_operand_width`) \
+             — NOT shape_replicate_nested_in_trunc_hoists_the_base, this arm's \
+             citation before round-4 Task 4's audit for the nested case: same \
+             wrong-position gap as Concat's arm immediately above (Trunc's own \
+             arm never recurses into its base via `self_determined_operand_width`)"
         }
         ExprKind::Index { .. } => {
             "covered by bug_41_mem_read_operand_of_add_in_concat_matches_icarus \
@@ -1506,25 +1593,457 @@ fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
             "covered by the matrix_* family (one differential per Builtin) \
              plus self_determined.rs's own exhaustive Builtin match, which \
              fails the build on an unclassified Builtin independently of \
-             this axis"
+             this axis. Round-4 Task 4: the RECURSING arms specifically \
+             (`SignedCast`/`UnsignedCast`/`Encoding`, which forward to their \
+             own argument's classification rather than answering \
+             unconditionally) had only ever been proven a no-op over an \
+             already-matching operand — matrix_signed_unsigned_cast_\
+             recursion_catches_a_mismatched_operand_matches_icarus now also \
+             proves the recursion CATCHES a real one (an `extend` nested \
+             three levels under both casts), the same class BUG-42 shipped \
+             from for `min`/`max`. `Encoding`'s own recursion is the \
+             identical mechanism, closed WITHOUT a differential (structural \
+             reasoning, checked, not assumed): its argument is always \
+             enum-typed, and no enum-typed sub-expression can itself render \
+             narrower than its own fixed width the way `extend(a,8)` does \
+             for a `bits` value — `Ident`/`Field` render at a declared \
+             wire's own width, `EnumConstruct` explicitly pads every field \
+             with a SIZED literal to the enum's full tag+payload width \
+             (`emit_verilog/expr.rs`, ~line 1098 — the same padding \
+             discipline BUG-56's own fix generalizes), and an `IfExpr`/ \
+             `Match` over the same enum `Ty` is already `IfExpr`/`Match`'s \
+             own arm's concern (BUG-52). No shape exists to build the \
+             `extend`-style mismatch `SignedCast` needed a test for."
         }
         ExprKind::FnCall { .. } => {
             "covered by bug_41_fn_call_operand_of_add_in_concat_matches_icarus \
              and bug_41_extend_of_a_fn_call_in_concat_matches_icarus"
         }
         ExprKind::BundleLit(_) => {
-            "NotApplicable: bundle-typed — never legal as a concat/\
-             arithmetic/comparison/cast operand (not a `bits` type); the \
-             checker rejects it upstream"
+            "NotApplicable, verified — stronger than 'checker-rejected': \
+             the `Type { field: val, ... }` literal syntax is PARSER- \
+             restricted to a `Wire` init/`Drive` RHS (`ast`'s grammar), so \
+             `ExprKind::BundleLit` cannot appear as a general sub- \
+             expression at all — confirmed by 3 independent parse failures \
+             (bare, parenthesized, and as a fn-call argument, all E1101) \
+             during round-4 Task 4's audit. `expr.rs`'s own `BundleLit => \
+             \"0\".into()` fallback for 'reached anyway' is accordingly \
+             dead code for any parseable source, not merely checker-guarded."
         }
         ExprKind::ArrayLit(_) => {
-            "NotApplicable: array-typed — same reasoning as BundleLit, \
-             checker-rejected upstream"
+            "NotApplicable for THIS axis, but the prior claim ('the checker \
+             rejects it upstream') was false, not merely imprecise — found \
+             during round-4 Task 4's audit and filed as BUG-56's sibling, \
+             BUG-57 (docs/audit/bugs.md, OPEN): `mimz check` accepts \
+             `[a,a,a][0]`, and `mimz compile` PANICS rendering it \
+             (`unreachable!(\"Task 8 or Task 9 wires this up\")`) — at ANY \
+             position, not specifically a self-determined one, which is why \
+             this axis still reads NotApplicable rather than needing its \
+             own differential here (there is nothing to hoist toward: \
+             nothing renders, ever, self-determined position or not)."
         }
         ExprKind::EnumConstruct { .. } => {
             "NotApplicable: an enum-typed value in a concat is rejected \
              outright by the checker (E0403, docs/audit/bugs.md BUG-31) \
              before this code ever runs"
+        }
+    }
+}
+
+/// Round-4 plan Task 4's second coverage doc — the `Builtin` axis of the
+/// CLASSIFIER (`self_determined::verilog_self_determined_kind`'s own `Call`
+/// sub-match), exhaustive over `Builtin`, no wildcard. Same purpose and same
+/// discipline as `expr_kind_self_determined_coverage` above: exhaustiveness
+/// (already build-enforced independently, both here and in the real match)
+/// proves a NEW builtin cannot ship unclassified — it says nothing about
+/// whether an EXISTING arm's classification is actually correct, which is
+/// what BUG-42 (`min`/`max`) shipped from and what this doc records the
+/// proof of, one builtin at a time. A citation must exercise the position
+/// the arm claims (BUG-52's own lesson) and, for a RECURSING arm
+/// (`SignedCast`/`UnsignedCast`/`Encoding`), must additionally prove the
+/// recursion CATCHES a real mismatch, not just that it's a no-op when
+/// nothing is mismatched (BUG-42's own lesson, re-found for these three
+/// arms during round-4 Task 4 — see `matrix_signed_unsigned_cast_
+/// recursion_catches_a_mismatched_operand_matches_icarus`'s own doc comment).
+#[allow(dead_code)]
+fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
+    use ast::Builtin;
+    match builtin {
+        Builtin::Extend => {
+            "covered by bug_28_extend_in_concat_matches_icarus (outer \
+             container) and bug_28_extend_in_replication_matches_icarus \
+             (replication body) — both place `extend(x, N)` directly as the \
+             self-determined member, the position `Extend`'s arm's claim \
+             (renders as bare `(x)`, self-determined at `x`'s own width) is \
+             about"
+        }
+        Builtin::Abs => {
+            "covered by bug_29_abs_in_concat_matches_icarus — direct concat \
+             member, the position `Abs`'s ternary-rendering claim is about"
+        }
+        Builtin::Min | Builtin::Max => {
+            "covered by matrix_min_in_concat_matches_icarus/matrix_max_in_\
+             concat_matches_icarus (direct concat member, no mismatch — the \
+             `None`-shaped case) AND bug_42_min_max_mismatched_operand_\
+             matches_icarus (an `extend`-wrapped operand — the RECURSION \
+             actually catching a mismatch, BUG-42's own fix and the \
+             differential that proves it, not just the classification)"
+        }
+        Builtin::Trunc => {
+            "covered by matrix_trunc_in_concat_matches_icarus — direct \
+             concat member; `trunc` renders an explicit `x[N-1:0]` \
+             part-select, already exactly N bits regardless of position, so \
+             `None` needs no recursion proof the way `Min`/`Max` did"
+        }
+        Builtin::Nand | Builtin::Nor | Builtin::Xnor => {
+            "covered by matrix_nand_in_concat_matches_icarus/matrix_nor_.../\
+             matrix_xnor_... — direct concat member; a reduction is exactly \
+             1 bit in both models regardless of operand width, so `None` \
+             needs no recursion proof either"
+        }
+        Builtin::SignedCast | Builtin::UnsignedCast => {
+            "covered by matrix_signed_unsigned_cast_roundtrip_in_concat_\
+             matches_icarus (recursion is a correct no-op over an \
+             already-matching plain-`Ident` operand) AND, as of round-4 \
+             Task 4, matrix_signed_unsigned_cast_recursion_catches_a_\
+             mismatched_operand_matches_icarus (an `extend` nested three \
+             levels under both casts — the recursion actually CATCHES a \
+             real mismatch, the proof the first test alone never gave, the \
+             same gap class BUG-42 shipped from for `min`/`max`)"
+        }
+        Builtin::Encoding => {
+            "covered by matrix_encoding_of_tag_only_enum_in_concat_matches_\
+             icarus/matrix_encoding_of_payload_enum_in_concat_matches_icarus \
+             (direct concat member) for the `None`-shaped no-mismatch case. \
+             The recursion-catches-a-mismatch proof `SignedCast`/`UnsignedCast` \
+             needed is NotApplicable here WITHOUT a differential — checked, \
+             not assumed: `Encoding`'s argument is always enum-typed, and no \
+             enum-typed sub-expression can itself render narrower than its \
+             own fixed width the way `extend(a,8)` does for a `bits` value \
+             (`Ident`/`Field` render at a declared wire's width; \
+             `EnumConstruct` pads every field with a SIZED literal to the \
+             enum's full fixed width, `emit_verilog/expr.rs` ~line 1098; an \
+             `IfExpr`/`Match` branch is that arm's own concern, BUG-52) — \
+             there is no shape here to build the `extend`-style mismatch \
+             `SignedCast` needed a test for"
+        }
+        Builtin::Clog2 => {
+            "NotApplicable, verified as a fact (round-4 Task 4): the \
+             checker rejects `clog2` in any VALUE position with E0407 \
+             (`checker/widths/ops/builtins.rs`, \"clog2 is a compile-time \
+             built-in and has no value here\") — the only emit path that \
+             ever renders a runtime `clog2(...)` call (a module-parameter \
+             argument, `emit_verilog/expr.rs`) is width-specifier \
+             evaluation (`bits[clog2(DEPTH)]`), never `expr()`/`expr_subst`, \
+             the function every self-determined call site actually routes \
+             through — so this arm can never be reached from a value \
+             position `verilog_self_determined_kind` would ever be asked \
+             about"
+        }
+        Builtin::SyncDoubleFlop | Builtin::SyncPulse => {
+            "NotApplicable, verified as a fact (round-4 Task 4): grammar- \
+             restricted to the direct target of an `On` drive \
+             (`sync.double_flop`) or a `Wire` init (`sync.pulse`), and \
+             lowered by `ast::sync_prim_lower::expand_sync_prims` before the \
+             module body ever reaches `expr()` — backed by a load-bearing \
+             `unreachable!()` in `expr.rs` if that pre-pass ever stops \
+             covering every call site, so this is not merely documented but \
+             actively enforced at runtime"
+        }
+    }
+}
+
+/// Round-4 plan Task 4's third coverage doc — the GATE half of the pair
+/// (`kinds::infer_kind`'s own `ExprKind` match), exhaustive, no wildcard.
+/// Different risk profile than the CLASSIFIER's two docs above, and this
+/// doc says so per arm rather than assuming it: a wrong CLASSIFIER arm can
+/// silently skip a needed hoist (BUG-52's whole class) because the failure
+/// only shows up in the one narrow AST shape a self-determined-position
+/// mismatch requires. A wrong GATE arm has a much shorter blast radius to
+/// go unnoticed — `infer_kind`'s result sizes every hoisted wire directly
+/// AND is what the classifier is compared against, so a wrong width here
+/// tends to surface as a plain wrong VALUE in ANY differential/example/fuzz
+/// test that exercises the shape at all, self-determined position or not —
+/// which is why most arms below cite a direct unit test in `kinds.rs`
+/// itself (the most precise evidence) rather than a position-matrix
+/// differential; a few cite the self-determined suite where that's what
+/// actually exercises the shape.
+#[allow(dead_code)]
+fn expr_kind_infer_kind_coverage(kind: &ExprKind) -> &'static str {
+    match kind {
+        ExprKind::Int { .. } => {
+            "covered by kinds.rs's own literal_gets_its_minimal_width unit \
+             test — direct, in-isolation proof of `min_width_for`'s value \
+             on both a multi-bit and a single-bit (0) literal"
+        }
+        ExprKind::Bool(_) => {
+            "NotApplicable for a differential: fixed `Kind{width:1, \
+             signed:false}` unconditionally, no computation to get wrong; \
+             exercised structurally by every test using a `bit` value \
+             (e.g. bug_43_negative_literal_comparison_matches_icarus's own \
+             `if`condition)"
+        }
+        ExprKind::Ident(_) => {
+            "covered by kinds.rs's own ident_looks_up_declared_kind (found) \
+             and ident_not_in_decls_is_none (absent -> None, the module- \
+             parameter case `adapts_to_sibling` relies on) unit tests"
+        }
+        ExprKind::Unary { .. } => {
+            "NotApplicable for a differential: this arm ignores `op` \
+             entirely and forwards `inner`'s own `Kind` unchanged (a \
+             documented approximation — a negated literal's `Kind` is its \
+             UNSIGNED inner literal's width, not sign-aware, per this arm's \
+             own doc comment on `is_ct_int_like`); nothing to test beyond \
+             `inner`'s own arm, already covered independently"
+        }
+        ExprKind::Binary { .. } => {
+            "delegates to infer_binary, covered arm-by-arm below (this \
+             function's own `BinOp` sub-match, mirroring how `ExprKind::\
+             Call` delegates to `infer_call`/`builtin_infer_call_coverage`)"
+        }
+        ExprKind::Concat(_) => {
+            "covered by kinds.rs's own concat_sums_part_widths (values sum \
+             correctly) and concat_with_an_unresolvable_part_is_none (one \
+             unresolvable part poisons the whole sum to None, rather than \
+             silently treating it as zero-width) unit tests"
+        }
+        ExprKind::Replicate { .. } => {
+            "covered by the differential suite, not a kinds.rs unit test: \
+             BUG-50 (docs/audit/bugs.md) was exactly this arm returning a \
+             too-narrow width (the per-iteration width instead of the \
+             total), found building GAP-13's axis and fixed with \
+             shape_replicate_nested_in_trunc_hoists_the_base and \
+             bug_28_extend_in_replication_matches_icarus both depending on \
+             the corrected total"
+        }
+        ExprKind::Slice { .. } => {
+            "covered by bug_20_slice_of_a_composite_expression_matches_icarus \
+             (literal bounds) and bug_48_const_bounded_slice_operand_of_add_\
+             in_concat_matches_icarus (BUG-48: a `const`-valued bound must \
+             fold through `slice_bound_fold`, not just a bare `Int` literal, \
+             same class as BUG-56 for the opposite direction — a value that \
+             folds in the EMITTED text but wasn't recognized as constant \
+             here)"
+        }
+        ExprKind::Call { .. } => {
+            "delegates to infer_call, covered arm-by-arm in \
+             builtin_infer_call_coverage below"
+        }
+        ExprKind::Index { .. } => {
+            "covered by kinds.rs's own index_on_a_plain_vector_is_one_bit, \
+             index_on_a_memory_yields_the_element_kind (BUG-41: a mem read \
+             must NOT collapse to 1 bit like an ordinary bit-select — the \
+             two cases this arm must tell apart), and \
+             index_on_an_unknown_name_is_none unit tests"
+        }
+        ExprKind::FnCall { .. } => {
+            "covered by kinds.rs's own \
+             fn_call_resolves_from_the_reserved_return_kind_key unit test, \
+             plus bug_41_fn_call_operand_of_add_in_concat_matches_icarus \
+             end-to-end"
+        }
+        ExprKind::Field { .. } => {
+            "covered by kinds.rs's own \
+             field_on_an_instance_resolves_from_the_mangled_port_key unit \
+             test (plain-instance case) plus \
+             bug_48_array_instance_port_operand_of_add_in_concat_matches_icarus \
+             end-to-end (array-instance case — BUG-48's own unclassified \
+             shape, `decls` keyed identically to `expr.rs`'s own rendering \
+             as of BUG-53's fix)"
+        }
+        ExprKind::IfExpr { .. } => {
+            "covered by kinds.rs's own if_expr_resolves_from_either_branch \
+             and if_expr_is_none_when_neither_branch_resolves unit tests. \
+             The 'first resolvable branch wins' shortcut \
+             (`.or_else`) is sound only because the checker already \
+             guarantees both branches the SAME `Ty` — not independently \
+             re-verified this round (would need a case where two \
+             differently-SHAPED expressions of the same checker `Ty` \
+             produce different `infer_kind` results, which would be a \
+             checker/emitter width-model disagreement bigger than this \
+             axis, GAP-1's own territory)"
+        }
+        ExprKind::Match { .. } => {
+            "NotApplicable for a dedicated unit test (no direct kinds.rs \
+             test exists for this exact arm, unlike IfExpr's), but the same \
+             `.find_map`-over-first-resolvable-arm shortcut as `IfExpr`, \
+             same soundness argument, and exercised end-to-end by \
+             shape_match_operand_of_add_in_concat_matches_icarus and \
+             bug_52_match_as_a_concat_member_matches_icarus"
+        }
+        ExprKind::BundleLit(_) => {
+            "NotApplicable, verified (round-4 Task 4, same finding as the \
+             CLASSIFIER's identical arm above): the `Type { .. }` literal \
+             syntax is PARSER-restricted to a `Wire` init/`Drive` RHS, so \
+             `ExprKind::BundleLit` cannot appear as a general \
+             sub-expression `infer_kind` would ever be called on"
+        }
+        ExprKind::ArrayLit(_) => {
+            "`None` is correct regardless of BUG-57 (docs/audit/bugs.md): \
+             this GATE arm safely declines to resolve a bare array literal \
+             (`decls` has nothing to look an array literal's OWN `Kind` up \
+             under) — BUG-57 is an EMITTER panic rendering `Index` on an \
+             array literal, a different function entirely, not reachable \
+             through this arm's own `None`"
+        }
+        ExprKind::EnumConstruct { .. } => {
+            "NotApplicable: checker-rejected upstream in a `bits`-typed \
+             self-determined position (E0403, BUG-31) the same as the \
+             CLASSIFIER's identical arm; where it IS legal (a `reg`/`wire` \
+             init of the enum's own type), this GATE is never consulted — \
+             `build_decls` sizes the DECLARATION directly from the enum's \
+             own `inferred_total_width`, not through `infer_kind`"
+        }
+    }
+}
+
+/// Round-4 plan Task 4's fourth coverage doc — `infer_binary`'s own
+/// `BinOp` sub-match (`kinds.rs`), the GATE's other half of `ExprKind::
+/// Binary`'s delegation. Exhaustive over `BinOp` (20 variants), no
+/// wildcard — matching every other axis's own convention.
+#[allow(dead_code)]
+fn binop_infer_kind_coverage(op: &ast::BinOp) -> &'static str {
+    use ast::BinOp;
+    match op {
+        BinOp::Shl | BinOp::Shr => {
+            "covered end-to-end by the bug_24/bug_30/bug_34/bug_35 shift \
+             family (docs/audit/bugs.md) — delegates to `width_rules::\
+             shift_result`, this file's own module doc states it is a \
+             second CALL SITE into shared rules, not a second \
+             implementation, so a divergence here would be a shared-rule \
+             bug visible everywhere `shift_result` is used, not just here"
+        }
+        BinOp::Add | BinOp::Sub => {
+            "covered by kinds.rs's own lossless_add_grows_by_one_bit unit \
+             test (`Sub` shares the same `adapted_lossless_operands` call \
+             and `lossless_result` rule, not independently re-tested here) \
+             plus bug_19_lossless_sub_in_a_concat_matches_icarus end-to-end"
+        }
+        BinOp::Mul => {
+            "covered by kinds.rs's own \
+             lossless_mul_with_a_module_parameter_adapts_to_the_sized_operand \
+             unit test — BUG-46's own regression, a module `int` parameter \
+             operand must adapt to its sized sibling the same way a bare \
+             literal does"
+        }
+        BinOp::AddWrap
+        | BinOp::SubWrap
+        | BinOp::MulWrap
+        | BinOp::BitAnd
+        | BinOp::BitOr
+        | BinOp::BitXor => {
+            "covered by kinds.rs's own \
+             wrap_add_with_a_narrower_bare_literal_adapts_to_the_sized_operand \
+             unit test (literal on either side) — the other five in this \
+             group share the identical `adapts_to_sibling`/`matched_result` \
+             call, not independently re-tested here; end-to-end via \
+             bug_19_wrapping_sub_in_a_bitand_matches_icarus (BitAnd) and \
+             bug_23's own wrap family"
+        }
+        BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+            "NotApplicable for a differential: fixed `Kind{width:1, \
+             signed:false}` unconditionally regardless of either operand — \
+             this function's own doc comment notes the retired \
+             `kind_is_inferrable` used to eagerly require both operands \
+             resolvable here even though neither is ever consulted; \
+             exercised structurally by every comparison in the suite \
+             (e.g. bug_43_negative_literal_comparison_matches_icarus)"
+        }
+        BinOp::LogicAnd | BinOp::LogicOr => {
+            "NotApplicable for a differential: same fixed `Kind{width:1, \
+             signed:false}` as the comparison family, same reasoning"
+        }
+        BinOp::Coalesce => {
+            "NotApplicable, verified (round-4 Task 4): `??`'s result is \
+             `checker::widths::ops::mod::coalesce_ty`'s own bundle-shaped \
+             `Ty` (unwrap or OR-mux over a valid-bundle, per the \
+             valid-bundle-sugar design spec), never `bits`-typed — the \
+             checker forbids a non-`bits` value in any of the five \
+             self-determined positions the same way it does `BundleLit`, \
+             so this arm's own `None` (nothing to resolve, by design) can \
+             never actually be asked for in a position this axis cares \
+             about"
+        }
+    }
+}
+
+/// Round-4 plan Task 4's fifth and last coverage doc — `infer_call`'s own
+/// `Builtin` match (`kinds.rs`), the GATE's `Builtin` axis. Exhaustive,
+/// no wildcard. Same lower-risk profile as `expr_kind_infer_kind_coverage`
+/// above (a wrong GATE width tends to surface as a plain wrong value in
+/// any test exercising the shape, not just a self-determined-position
+/// one) — only `Encoding` has a dedicated `kinds.rs` unit test; every
+/// other arm's citation is the differential that exercises it end-to-end,
+/// which proves the GATE and the emitted VALUE agree, even without
+/// isolating `infer_call` the way a unit test would.
+#[allow(dead_code)]
+fn builtin_infer_call_coverage(builtin: &ast::Builtin) -> &'static str {
+    use ast::Builtin;
+    match builtin {
+        Builtin::Extend | Builtin::Trunc => {
+            "covered end-to-end by bug_28_extend_in_concat_matches_icarus/\
+             bug_28_extend_in_replication_matches_icarus (`Extend`) and \
+             matrix_trunc_in_concat_matches_icarus plus the bug_36/bug_44/\
+             bug_46/bug_49 `Trunc` family (docs/audit/bugs.md) — both share \
+             this one arm (`width = const_fold(args[1])`, `signed = \
+             infer_kind(args[0]).signed`), so a divergence would break both \
+             at once, not independently re-tested per-builtin here"
+        }
+        Builtin::SignedCast | Builtin::UnsignedCast => {
+            "covered end-to-end by \
+             matrix_signed_unsigned_cast_roundtrip_in_concat_matches_icarus \
+             and matrix_signed_unsigned_cast_recursion_catches_a_mismatched_\
+             operand_matches_icarus — both exercise this arm's `width = \
+             infer_kind(args[0]).width` alongside the CLASSIFIER's own \
+             recursion, since a wrong GATE width here would size the hoisted \
+             wire wrong even when the classifier correctly detects a \
+             mismatch"
+        }
+        Builtin::Encoding => {
+            "covered by kinds.rs's own \
+             encoding_kind_matches_its_argument_width_unsigned unit test — \
+             the one Builtin arm with a direct, in-isolation GATE test — \
+             plus matrix_encoding_of_tag_only_enum_in_concat_matches_icarus/\
+             matrix_encoding_of_payload_enum_in_concat_matches_icarus \
+             end-to-end"
+        }
+        Builtin::Abs => {
+            "covered by bug_29_abs_in_concat_matches_icarus — this arm's \
+             own `width = infer_kind(args[0]).width + 1` (BUG-29's own \
+             fix, matching the checker's identical `Ty::Signed(n+1)` rule, \
+             `checker/widths/ops/builtins.rs`) is what makes the ternary \
+             Verilog renders for `abs` mismatch mimz's grown width, which \
+             is the defect this test pins"
+        }
+        Builtin::Nand | Builtin::Nor | Builtin::Xnor => {
+            "covered by matrix_nand_in_concat_matches_icarus/matrix_nor_.../\
+             matrix_xnor_... — fixed `Kind{width:1, signed:false}` \
+             regardless of operand, BUG-35's own fix (these three were \
+             entirely unclassified before it, `kind_is_inferrable`'s \
+             matching gap making any expression wrapping one of them \
+             untouchable by the hoist machinery)"
+        }
+        Builtin::Min | Builtin::Max => {
+            "covered by matrix_min_in_concat_matches_icarus/matrix_max_in_\
+             concat_matches_icarus (no-mismatch case) and \
+             bug_42_min_max_mismatched_operand_matches_icarus (BUG-42's own \
+             fix — this arm's `adapts_to_sibling`/`is_ct_int_like` handling \
+             for a literal or negated-literal operand, matching the \
+             checker's own `matched_ty` call)"
+        }
+        Builtin::Clog2 => {
+            "NotApplicable, verified as a fact (round-4 Task 4, same \
+             finding as the CLASSIFIER's identical arm above): `clog2` is \
+             checker-rejected in any VALUE position (E0407); this GATE is \
+             never even invoked on a `Builtin::Clog2` call, since `infer_\
+             kind`/`infer_call` only ever run on module-body VALUE \
+             expressions the checker has already accepted"
+        }
+        Builtin::SyncDoubleFlop | Builtin::SyncPulse => {
+            "NotApplicable, verified as a fact (round-4 Task 4, same \
+             finding as the CLASSIFIER's identical arm above): lowered by \
+             `ast::sync_prim_lower::expand_sync_prims` before the module \
+             body is ever walked for `Kind` inference at all"
         }
     }
 }
