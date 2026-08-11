@@ -29,11 +29,11 @@ module ____________________tb;
     nuzhai = 0;
     niikku = 0;
     tharavu = 0;
-    if (!((kaali == 1))) begin
+    if (((kaali == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaali == 1)");
       $finish;
     end
-    if (!((nirraivu == 0))) begin
+    if (((nirraivu == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(nirraivu == 0)");
       $finish;
     end
@@ -77,11 +77,11 @@ module _____________________________________tb;
     tharavu <= 'hA5;
     repeat (1) @(posedge katikai);
     nuzhai <= 0;
-    if (!((vellitharavu == 'hA5))) begin
+    if (((vellitharavu == 'hA5)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(vellitharavu == 'hA5)");
       $finish;
     end
-    if (!((kaali == 0))) begin
+    if (((kaali == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaali == 0)");
       $finish;
     end
@@ -124,7 +124,7 @@ module ______________________________tb;
     nuzhai <= 1;
     tharavu <= 1;
     repeat (4) @(posedge katikai);
-    if (!((nirraivu == 1))) begin
+    if (((nirraivu == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(nirraivu == 1)");
       $finish;
     end

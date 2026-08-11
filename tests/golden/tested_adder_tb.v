@@ -17,7 +17,7 @@ module adder_works_tb;
     b = 0;
     a <= 5;
     b <= 10;
-    if (!((sum == 15))) begin
+    if (((sum == 15)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(sum == 15)");
       $finish;
     end
