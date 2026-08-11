@@ -5,5 +5,6 @@
 
 202427630  # i=1    BUG-23  clocked repro of the lost own-width truncation
 202427830  # i=201  BUG-44  trunc of a signed value rendered as an unsigned part-select
+202428078  # i=449  BUG-52  if-expression as a concat member skipped the hoist
 202428133  # i=504  BUG-21  slice-read wrongly inherited the base's signedness
 202428271  # i=642  BUG-47  signed >> re-widened by a wider assignment context

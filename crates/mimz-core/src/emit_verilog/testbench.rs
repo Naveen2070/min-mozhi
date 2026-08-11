@@ -91,8 +91,16 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
             }
             TestStmt::Expect(e) => {
                 let cond_str = em.expr(e);
+                // BUG-54 (docs/audit/bugs.md): `!(cond)` under plain `==`
+                // logical negation is `x` whenever `cond` itself is `x`
+                // (any operand unknown), and Verilog's `if` treats `x` as
+                // false — so an all-`x` design (a register that never got
+                // reset, an output that was never driven) silently prints
+                // PASS instead of FAIL. Case-INEQUALITY against `1'b1`
+                // (`!==`, 4-state comparison, never itself `x`) fails
+                // correctly on `x`/`z` as well as on a plain `0`.
                 em.out
-                    .push_str(&format!("{}if (!({})) begin\n", indent, cond_str));
+                    .push_str(&format!("{}if (({}) !== 1'b1) begin\n", indent, cond_str));
                 em.out.push_str(&format!(
                     "{}  $display(\"FAIL: expect %0s failed\", \"{}\");\n",
                     indent,
@@ -449,6 +457,47 @@ mod tests {
             })
             .collect();
         emit_testbench(&project, &tests)
+    }
+
+    /// BUG-54 (docs/audit/bugs.md): `expect`'s guard used to be
+    /// `if (!(cond)) FAIL`. Under Verilog's 4-state logic, `!(x)` is `x`,
+    /// and `if` treats `x` as false — so a design that never got reset or
+    /// never drove its output silently printed PASS. The fix compares
+    /// with case-inequality against `1'b1`, which is never itself `x`, so
+    /// it correctly fails on `x`/`z` as well as a plain `0`. Pins the
+    /// EMITTED TEXT directly (not a full Icarus round-trip — mimz's own
+    /// "every reg/mem has a mandatory init value" design makes a genuine
+    /// `x` at an `expect` point unreachable from valid source alone,
+    /// reachable in practice only through an emitter-level race like
+    /// BUG-51's; `tests/icarus.rs`'s
+    /// `emitted_testbench_reset_deassert_does_not_race_the_dut` is the
+    /// end-to-end proof that THIS fix makes it actually catch BUG-51's
+    /// class again instead of vacuously printing PASS either way).
+    #[test]
+    fn expect_guard_uses_case_inequality_not_plain_negation() {
+        let src = "\
+module Fuzz {
+  in a: bits[4]
+  out y: bits[4]
+  y = a
+}
+
+test \"expect guard shape\" for Fuzz {
+  a = 5
+  expect y == 5
+}
+";
+        let tb = compile_tb(src).unwrap_or_else(|d| panic!("expected this to compile: {d:?}"));
+        assert!(
+            tb.contains("!== 1'b1"),
+            "expected the `expect` guard to use case-inequality against \
+             1'b1 (fails correctly on x/z), got:\n{tb}"
+        );
+        assert!(
+            !tb.contains("if (!(("),
+            "the old plain-negation guard shape (`if (!(cond))`) must not \
+             reappear — it silently passes on an x-valued comparison:\n{tb}"
+        );
     }
 
     /// A test that doesn't override a module parameter must still resolve

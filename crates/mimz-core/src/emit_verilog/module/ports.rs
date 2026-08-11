@@ -283,18 +283,42 @@ impl Emitter<'_> {
     /// the checker-enforced `repeat` bound already validated before this
     /// (an already-checked program), so no separate budget guard is
     /// needed here the way `unroll` needs one for its own error path.
+    ///
+    /// BUG-53 (`docs/audit/bugs.md`): `n` must be the instance's own
+    /// `index` EXPRESSION, folded against this iteration's env — the same
+    /// authority `inst_name` (`emit_verilog/mod.rs`) uses to render the
+    /// real Verilog name — not the bare loop counter `i`. An offset index
+    /// (`let s[i + 1] = ...`) diverges from `i` the moment it isn't the
+    /// identity; using `i` directly keyed a `decls` entry `expr.rs` never
+    /// reads and left the one it DOES read absent. The walk also recurses
+    /// into nested `Repeat`/`ConstIf`/`ForEach` inside the body, mirroring
+    /// `emit_instances`'s own traversal (`module/instances.rs`) — the
+    /// original only scanned `r.items` one level deep, so a nested
+    /// `repeat`/`const if` instance was never keyed at all.
     fn insert_repeat_instance_output_kinds(
         &self,
         decls: &mut HashMap<String, crate::width_rules::Kind>,
         r: &Repeat,
     ) {
-        let Some(lo) = consteval::eval(&r.lo, &self.env)
+        self.insert_repeat_instance_output_kinds_in(decls, r, &self.env);
+    }
+
+    /// `insert_repeat_instance_output_kinds`'s actual body, taking the
+    /// enclosing scope's env explicitly so a NESTED `repeat`'s own bounds
+    /// fold against the outer loop variable, not just the module-level one.
+    fn insert_repeat_instance_output_kinds_in(
+        &self,
+        decls: &mut HashMap<String, crate::width_rules::Kind>,
+        r: &Repeat,
+        outer_env: &Env,
+    ) {
+        let Some(lo) = consteval::eval(&r.lo, outer_env)
             .ok()
             .map(|v| v.to_i128_saturating())
         else {
             return;
         };
-        let Some(hi) = consteval::eval(&r.hi, &self.env)
+        let Some(hi) = consteval::eval(&r.hi, outer_env)
             .ok()
             .map(|v| v.to_i128_saturating())
         else {
@@ -302,15 +326,67 @@ impl Emitter<'_> {
         };
         let mut i = lo;
         while i < hi {
-            let mut env = self.env.clone();
+            let mut env = outer_env.clone();
             env.insert(r.var.name.clone(), consteval::ConstVal::from_i128(i));
-            for item in &r.items {
-                if let ModuleItem::Inst(inst) = item {
-                    let key = format!("{}__{i}", inst.name.name);
-                    self.insert_instance_output_kinds_keyed(decls, inst, &env, &key);
-                }
-            }
+            self.insert_array_instance_output_kinds(decls, &r.items, &env);
             i += 1;
+        }
+    }
+
+    /// Walk `items` (one `repeat` iteration's body) keying every `Inst`
+    /// found by its own folded `index` against `env`, recursing into
+    /// nested `Repeat`/`ConstIf`/`ForEach` the same way `emit_instances`
+    /// (`module/instances.rs`) does for real emission — BUG-53's second
+    /// half. `Repeat`/`ConstIf` recurse directly; `ForEach` lowers first
+    /// (`ast::lower_foreach_item`, same call shape `emit_instances` uses,
+    /// `items` itself as the sibling context it needs) then recurses into
+    /// the result.
+    fn insert_array_instance_output_kinds(
+        &self,
+        decls: &mut HashMap<String, crate::width_rules::Kind>,
+        items: &[ModuleItem],
+        env: &Env,
+    ) {
+        for item in items {
+            match item {
+                ModuleItem::Inst(inst) => {
+                    let key = match &inst.index {
+                        Some(idx) => {
+                            let Some(n) = consteval::eval(idx, env)
+                                .ok()
+                                .map(|v| v.to_i128_saturating())
+                            else {
+                                continue;
+                            };
+                            format!("{}__{n}", inst.name.name)
+                        }
+                        None => inst.name.name.clone(),
+                    };
+                    self.insert_instance_output_kinds_keyed(decls, inst, env, &key);
+                }
+                ModuleItem::Repeat(nested) => {
+                    self.insert_repeat_instance_output_kinds_in(decls, nested, env);
+                }
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
+                    let val = consteval::eval(cond, env)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
+                    self.insert_array_instance_output_kinds(decls, branch, env);
+                }
+                ModuleItem::ForEach(fe) => {
+                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                        self.insert_array_instance_output_kinds(decls, &lowered, env);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 

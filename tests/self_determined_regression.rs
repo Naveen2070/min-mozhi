@@ -1051,6 +1051,140 @@ fn bug_48_const_bounded_slice_operand_of_add_in_concat_matches_icarus() {
     differential(src, &[("a", 0b00001111), ("b", 0b1010)]);
 }
 
+/// BUG-53's three shapes (`docs/audit/bugs.md`) are, per the review's own
+/// table, rejected by `mimz sim` today (`error: unknown signal`, `S0125`,
+/// `S0126`) even though `mimz check` accepts them — a SEPARATE, tracked
+/// check/sim/emit disagreement, not this fix's job to close. So unlike
+/// `differential_clocked` (which needs `elaborate_project`/`run` — our own
+/// kernel — to succeed first), this compiles straight to Verilog and checks
+/// ONE output value against real Icarus directly, the same "hand-computed
+/// expected value" proof `tests/icarus.rs`'s own hand differentials use.
+fn emitter_only_clocked_check(src: &str, held_inputs: &[(&str, u128)], expected: u128) {
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+
+    let tokens = lexer::lex(src)
+        .unwrap_or_else(|e| panic!("unlexable:\n{src}\n{}", diag::render(&e, src, "test")));
+    let file = parser::parse(tokens)
+        .unwrap_or_else(|e| panic!("unparsable:\n{src}\n{}", diag::render(&e, src, "test")));
+    if let Err(e) = checker::check(std::slice::from_ref(&file)) {
+        panic!(
+            "checker rejected:\n{src}\n{}",
+            diag::render(&e, src, "test")
+        );
+    }
+
+    let (ins, outs) = module_ports(&file);
+    let held: BTreeMap<String, u128> = held_inputs
+        .iter()
+        .map(|(n, v)| (n.to_string(), *v))
+        .collect();
+    assert_eq!(
+        held.len(),
+        ins.len(),
+        "every declared `in` port must have a value in `held_inputs`"
+    );
+    let inputs_meta: Vec<(String, u32, u128)> =
+        ins.iter().map(|(n, w)| (n.clone(), *w, held[n])).collect();
+
+    const CYCLES: u64 = 4;
+    const RESET_CYCLES: u64 = 1;
+
+    let tag = format!("{:x}", md5_ish(src));
+    let path = std::env::temp_dir().join(format!("mimz_bug53_{tag}.mimz"));
+    std::fs::write(&path, src).unwrap();
+    let design_v = support::compile_example(&path);
+
+    let tb = support::clocked_testbench(
+        "Fuzz",
+        &[],
+        "clk",
+        Some("rst"),
+        &inputs_meta,
+        &outs,
+        CYCLES,
+        RESET_CYCLES,
+    );
+    let example = format!("bug-53 emitter-only regression {tag}");
+    let stdout = support::run_vvp(&bin, &example, &design_v, &tb);
+    let icarus = support::parse_icarus(&stdout);
+    let last_cycle = *icarus.keys().max().expect("Icarus produced no rows");
+    let row = &icarus[&last_cycle];
+    let (out_name, _) = &outs[0];
+    assert_eq!(
+        row[out_name], expected,
+        "output `{out_name}` at cycle {last_cycle}: Icarus says {}, expected {expected}\nsource:\n{src}",
+        row[out_name]
+    );
+}
+
+#[test]
+fn bug_53_control_case_non_zero_base_identity_index_still_hoists() {
+    // The review's own control case, which is what pins the diagnosis on
+    // "offset vs. identity index", not "non-zero base": `s[i]` at a
+    // `repeat i: 1..2` (base 1, not 0) still has the index expression
+    // EQUAL to the loop counter — unlike `bug_53_offset_array_instance_
+    // index_matches_icarus`'s `s[i + 1]` — so this shape already hoisted
+    // correctly before this fix, and must keep doing so after it. Unlike
+    // the three BUG-53 repros above, `mimz sim` DOES elaborate this shape
+    // (only the offset/nested/const-if forms don't), so this uses the
+    // full kernel-vs-Icarus differential, not the emitter-only check.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  repeat i: 1..2 {\n    let s[i] = Sub() { x: a }\n  }\n  \
+                y = { b, s[1].q + a }\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_53_offset_array_instance_index_matches_icarus() {
+    // `insert_repeat_instance_output_kinds` used to key every element by
+    // the `repeat` LOOP COUNTER (`i`), not the instance's own `index`
+    // EXPRESSION folded the same way `inst_name` (`emit_verilog/mod.rs`)
+    // renders it — `s[i + 1]` diverges from `i` the moment the index isn't
+    // the identity, so `decls` never had the key `s__1_q` that
+    // `infer_kind`'s `Field` arm looked up, and the enclosing `+` was
+    // never hoisted. `a = 0b1111`, `b = 0b1010` → 350 (`{b, a+a}`).
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  repeat i: 0..1 {\n    let s[i + 1] = Sub() { x: a }\n  }\n  \
+                y = { b, s[1].q + a }\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    emitter_only_clocked_check(src, &[("a", 0b1111), ("b", 0b1010)], 350);
+}
+
+#[test]
+fn bug_53_nested_repeat_array_instance_matches_icarus() {
+    // `insert_repeat_instance_output_kinds` only scanned `r.items` for a
+    // direct `ModuleItem::Inst` — an instance one level deeper, inside a
+    // NESTED `repeat`, was never keyed into `decls` at all, same missing-
+    // recursion gap as `Concat as a NESTED operand, not the outer
+    // container` elsewhere in this file, this time on the declaration
+    // side rather than the render side.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[9]\n  repeat i: 0..1 {\n    repeat j: 0..1 {\n      \
+                let s[j] = Sub() { x: a }\n    }\n  }\n  \
+                y = { b, s[0].q + a }\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    emitter_only_clocked_check(src, &[("a", 0b1111), ("b", 0b1010)], 350);
+}
+
+#[test]
+fn bug_53_const_if_in_repeat_array_instance_matches_icarus() {
+    // Same missing-recursion gap as the nested-`repeat` case above, this
+    // time through a `const if` wrapping the instance instead of another
+    // loop — `emit_instances` (real emission) already walks both shapes;
+    // `insert_repeat_instance_output_kinds` (the `decls`-populating side)
+    // did not.
+    let src = "module Fuzz {\n  const DEBUG: int = 1\n  clock clk\n  reset rst\n  \
+                in a: bits[4]\n  in b: bits[4]\n  out y: bits[9]\n  \
+                repeat i: 0..1 {\n    const if (DEBUG) {\n      \
+                let s[i] = Sub() { x: a }\n    }\n  }\n  \
+                y = { b, s[0].q + a }\n}\n\n\
+                module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
+    emitter_only_clocked_check(src, &[("a", 0b1111), ("b", 0b1010)], 350);
+}
+
 // ---------------------------------------------------------------------
 // BUG-49 (`docs/audit/bugs.md`) — the same `infer_kind` residue as
 // BUG-48, reached through the OTHER hoist BUG-41's fix left gated on it
@@ -1247,6 +1381,27 @@ fn bug_52_if_expr_in_a_replication_body_matches_icarus() {
     differential(src, &[("s", 1), ("a", 0b1111)]);
 }
 
+#[test]
+fn bug_55_signed_shift_right_inside_match_wildcard_arm_matches_icarus() {
+    // Minimized from the deep-fuzz find (comb seed 12649355, index 925,
+    // docs/audit/bugs.md BUG-55): a signed `>>` sitting in a `match`
+    // arm, itself wrapped by `extend(...)` — a self-determined position
+    // for the WHOLE match (BUG-52's own fix), but `p0 >> extend(14, 4)`
+    // is BUG-47's exact defect one AST node deeper: without
+    // `render_shift_ctx_operand` recursing into the match arm, Verilog
+    // context-extends `p0` to the outer 16-bit assignment BEFORE
+    // shifting, sign bits shift down, and Icarus disagrees with mimz's
+    // own kernel (3 vs the correct 0 for this input). `p0 = 14429`
+    // (signed[14], negative), `p3 = 2` (signed[4]) selects the `_` arm.
+    let src = "module Fuzz {\n  in p0: signed[14]\n  in p3: signed[4]\n  \
+                out y: signed[16]\n  \
+                y = extend((match unsigned(p3) {\n    \
+                0 => signed(extend(22, 14))\n    \
+                1 => signed(extend(22, 14))\n    \
+                _ => (p0 >> extend(14, 4))\n  }), 16)\n}\n";
+    differential(src, &[("p0", 14429), ("p3", 2)]);
+}
+
 /// GAP-13's own axis — exhaustive over `ExprKind`, no wildcard. Never
 /// called (a compile-time-only property): its only job is that adding an
 /// `ExprKind` variant without a line here fails the build, the same
@@ -1254,12 +1409,26 @@ fn bug_52_if_expr_in_a_replication_body_matches_icarus() {
 /// `Builtin` axis (Task 4 of `docs/plan/v0.2-correctness-remediation.
 /// local.md` deleted those on the correct reasoning that the REAL
 /// matches (`self_determined.rs`, `kinds::infer_call`) are themselves
-/// wildcard-free over `Builtin` — this axis needs its own copy because
-/// `kinds::infer_kind`'s real match is NOT wildcard-free over `ExprKind`
-/// (`_ => None` at the end), so nothing else in the compiled program
-/// enforces it. Each arm names either the test(s) that differentially
-/// prove the shape hoists (or correctly doesn't) in a self-determined
-/// position, or the reason it structurally cannot appear there at all.
+/// wildcard-free over `Builtin`).
+///
+/// As of round 4 (BUG-52, docs/audit/bugs.md), BOTH real `ExprKind`
+/// matches — `kinds::infer_kind` (Task 3, round 3) and
+/// `self_determined::verilog_self_determined_kind` (Task 2, round 4) —
+/// are themselves wildcard-free too, so in principle this axis could go
+/// the way `matrix_shape`/`ALL_BUILTINS` did. It stays for now because
+/// exhaustiveness alone does not prove an EXISTING arm's reasoning is
+/// correct (Part 4 of `review-2026-08-10.md`: BUG-42/48/49/50/52 were all
+/// an arm that was present but wrong, not missing) — this axis is where
+/// each arm's own differential proof (or structural `NotApplicable`
+/// reason) lives, one test per shape, independently of whether the
+/// compiled match happens to be exhaustive today. Each arm below names
+/// either the test(s) that differentially prove the shape hoists (or
+/// correctly doesn't) in a self-determined position, or the reason it
+/// structurally cannot appear there at all — and, per round 4's own
+/// finding, that citation must name a test that actually exercises the
+/// CLAIMED shape/position, not just any test with a superficially similar
+/// name (`IfExpr`/`Match`/`Unary` below were wrong on exactly this point
+/// through round 4).
 #[allow(dead_code)]
 fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
     match kind {
@@ -1279,24 +1448,39 @@ fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
              (array instance — the shape BUG-48 found unclassified)"
         }
         ExprKind::Unary { .. } => {
-            "NotApplicable: every UnOp self-determines identically in mimz \
-             and Verilog — operand-width for Neg/BitNot/LogicNot, always \
-             exactly 1 bit for the three reductions (RedAnd/RedOr/RedXor), \
-             in every context — self_determined.rs's own catch-all confirms \
-             no arm ever differs. (kinds.rs's own Unary arm forwards the \
-             inner Kind unchanged regardless of `op`, which is imprecise \
-             for a reduction's width specifically — but since this arm \
-             here is never compared against anything, that imprecision \
-             is dead weight, not a reachable defect.)"
+            "covered by bug_52_unary_not_of_an_extend_in_a_concat_matches_icarus \
+             (BUG-52, docs/audit/bugs.md) — a non-reduction unary op's \
+             operand genuinely CAN differ: `~extend(a, 8)` renders as \
+             `(~(a))`, self-determined at `a`'s bare 4 bits, not mimz's \
+             grown 8. This arm previously read `NotApplicable`, citing \
+             `self_determined.rs`'s own catch-all as confirmation — a \
+             catch-all confirms nothing, it is the absence of an answer, \
+             and that stale claim is exactly what let BUG-52 ship. The \
+             three reductions (RedAnd/RedOr/RedXor) ARE always exactly 1 \
+             bit in both mimz and Verilog regardless of operand, so no \
+             mismatch is possible there and no separate test is needed \
+             for that half."
         }
         ExprKind::Binary { .. } => {
             "covered by bug_19_lossless_sub_in_a_concat_matches_icarus and \
              the wider bug_19/23/24/30/35/42/47 family"
         }
         ExprKind::IfExpr { .. } => {
-            "covered by bug_41_if_expr_operand_of_add_in_concat_matches_icarus"
+            "covered by bug_52_if_expr_as_a_concat_member_matches_icarus and \
+             bug_52_if_expr_in_a_replication_body_matches_icarus — NOT \
+             bug_41_if_expr_operand_of_add_in_concat_matches_icarus, this \
+             arm's citation through round 4 (BUG-52, docs/audit/bugs.md): \
+             that test places the `if` as an operand of `+` inside a \
+             concat, a position where the enclosing `+`'s own hoist masks \
+             this exact defect — it exercises `Binary`'s coverage above, \
+             not `IfExpr`'s own, despite the name."
         }
-        ExprKind::Match { .. } => "covered by shape_match_operand_of_add_in_concat_matches_icarus",
+        ExprKind::Match { .. } => {
+            "covered by bug_52_match_as_a_concat_member_matches_icarus — \
+             NOT shape_match_operand_of_add_in_concat_matches_icarus, this \
+             arm's citation through round 4 — same wrong-position problem \
+             as `IfExpr` immediately above (BUG-52, docs/audit/bugs.md)"
+        }
         ExprKind::Concat(_) => {
             "covered by bug_36_trunc_of_a_concat_hoists_the_base_first \
              (Concat as a NESTED operand, not the outer container)"

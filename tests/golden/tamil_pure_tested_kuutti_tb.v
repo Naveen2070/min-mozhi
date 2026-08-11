@@ -17,7 +17,7 @@ module ______________________tb;
     aa = 0;
     a <= 5;
     aa <= 10;
-    if (!((kuuttu == 15))) begin
+    if (((kuuttu == 15)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kuuttu == 15)");
       $finish;
     end

@@ -13,7 +13,7 @@ module ________3______________tb;
     $dumpvars(0, ________3______________tb);
     ilakkam = 0;
     ilakkam <= 3;
-    if (!((kaatsi == 'h4F))) begin
+    if (((kaatsi == 'h4F)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaatsi == 'h4F)");
       $finish;
     end
@@ -37,7 +37,7 @@ module _8_______________________________________tb;
     $dumpvars(0, _8_______________________________________tb);
     ilakkam = 0;
     ilakkam <= 8;
-    if (!((kaatsi == 'h7F))) begin
+    if (((kaatsi == 'h7F)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaatsi == 'h7F)");
       $finish;
     end
@@ -61,7 +61,7 @@ module _______________________________________tb;
     $dumpvars(0, _______________________________________tb);
     ilakkam = 0;
     ilakkam <= 'hF;
-    if (!((kaatsi == 'h00))) begin
+    if (((kaatsi == 'h00)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaatsi == 'h00)");
       $finish;
     end

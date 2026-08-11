@@ -24,11 +24,11 @@ module _______________tb;
     miill = 0;
     thotangku = 0;
     tharavu = 0;
-    if (!((vari == 1))) begin
+    if (((vari == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(vari == 1)");
       $finish;
     end
-    if (!((veelai == 0))) begin
+    if (((veelai == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(veelai == 0)");
       $finish;
     end
@@ -66,11 +66,11 @@ module ______________________________________________tb;
     thotangku <= 1;
     tharavu <= 'h55;
     repeat (1) @(posedge katikai);
-    if (!((veelai == 1))) begin
+    if (((veelai == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(veelai == 1)");
       $finish;
     end
-    if (!((vari == 0))) begin
+    if (((vari == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(vari == 0)");
       $finish;
     end
@@ -110,11 +110,11 @@ module __________________________________________tb;
     repeat (1) @(posedge katikai);
     thotangku <= 0;
     repeat (24) @(posedge katikai);
-    if (!((veelai == 0))) begin
+    if (((veelai == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(veelai == 0)");
       $finish;
     end
-    if (!((vari == 1))) begin
+    if (((vari == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(vari == 1)");
       $finish;
     end
