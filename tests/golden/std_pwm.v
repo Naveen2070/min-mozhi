@@ -12,7 +12,7 @@ module Pwm #(
         if (rst) begin
             counter <= 0;
         end else begin
-            counter <= (counter + 1);
+            counter <= (counter + 8'd1);
         end
     end
 endmodule

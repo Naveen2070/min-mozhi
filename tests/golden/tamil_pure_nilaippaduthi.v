@@ -28,7 +28,7 @@ module nilaippatuththi #(
                     eerrpu <= oththupin;
                     ennnni <= 0;
                 end else begin
-                    ennnni <= (ennnni + 1);
+                    ennnni <= (ennnni + 3'd1);
                 end
             end
         end

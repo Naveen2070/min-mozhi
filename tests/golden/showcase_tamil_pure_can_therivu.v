@@ -33,16 +33,16 @@ module CanTherivu (
                 satta_pathiveetu <= inam;
                 if (eerrpu) begin
                     vati_pathiveetu <= 1;
-                    sari_pathiveetu <= (sari_pathiveetu + 1);
+                    sari_pathiveetu <= (sari_pathiveetu + 4'd1);
                 end
                 if ((inam == 0)) begin
-                    tharavu_ennnnikkai <= (tharavu_ennnnikkai + 1);
+                    tharavu_ennnnikkai <= (tharavu_ennnnikkai + 4'd1);
                 end
                 if ((inam == 1)) begin
-                    tholai_ennnnikkai <= (tholai_ennnnikkai + 1);
+                    tholai_ennnnikkai <= (tholai_ennnnikkai + 4'd1);
                 end
                 if ((inam == 2)) begin
-                    pizhai_ennnnikkai <= (pizhai_ennnnikkai + 1);
+                    pizhai_ennnnikkai <= (pizhai_ennnnikkai + 4'd1);
                 end
             end
         end

@@ -4158,7 +4158,7 @@ reproduced identically on unmodified HEAD, unrelated). fmt/clippy clean.
 
 ---
 
-## BUG-56 (HIGH, OPEN) — a bare integer literal renders unsized, so Icarus refuses any concat/replicate member that nests one
+## BUG-56 (HIGH, FIXED 2026-08-12) — a bare integer literal renders unsized, so Icarus refuses any concat/replicate member that nests one
 
 **What.** Found auditing `verilog_self_determined_kind`'s `Int`/`Bool` arms
 (round-4 plan Task 4, `docs/plan/v0.2-class-closure-round4.local.md`) — the
@@ -4257,9 +4257,43 @@ payload argument as a sized literal (`{field_w}'d{value}`) instead of
 `expr_subst`'s ordinary unsized form — the fix shape above generalizes that
 existing, working pattern to every literal, not a new idea.
 
+**Fix (2026-08-12) — narrower than the shape above, on purpose.** The
+blanket "make `verilog_literal` always sized" version was implemented first,
+then reverted: it also re-sizes every width specifier, `parameter` default,
+and bit-index that happens to be a literal (all of these route through the
+same `ExprKind::Int` arm), breaking ~9 unrelated exact-text golden/unit
+assertions elsewhere in the suite — exactly the risk this bug's own filing
+flagged ("needs care at literal sites that currently rely on the bare form
+on purpose — audit those call sites before changing the shared helper") and
+underestimated. Landed instead as a new `verilog_literal_sized(value, raw,
+width)` helper, called ONLY from `ExprKind::Binary`'s non-comparison arm
+(`emit_verilog/expr.rs`) when `op` is one of the adapt-to-sibling family
+(`BitAnd`/`BitOr`/`BitXor`/`AddWrap`/`SubWrap`/`MulWrap`) and one operand is
+a bare `ExprKind::Int` — sized to the OTHER operand's `infer_kind` width
+(the width the literal checker-legally adapted to), falling back to the
+original unsized rendering when that's unresolvable. `verilog_literal`
+itself is untouched. 2 new Icarus differentials
+(`bug_56_literal_nested_under_bitand_in_a_concat_matches_icarus`,
+`..._in_a_replication_body_matches_icarus`), watched fail at the exact
+filed elaboration error (`git stash` of just the fix) before passing after.
+14 showcase/example goldens regenerated (each diff exactly the new
+`{width}'d1` in a wrap-add's literal operand — e.g. `mathippu <= (mathippu +
+1)` → `(mathippu + 8'd1)`); WASM package rebuilt (`wasm-pack build
+crates/mimz-wasm --target web --release`) to keep `wasm_parity` in sync,
+same pre-existing staleness class GAP-7 already noted. Full workspace
+**1244/1244**, `fmt`/`clippy -D warnings` clean. The filing's own "untested
+but almost certainly reproduces" list (`AddWrap`/`SubWrap`/`MulWrap`/
+`BitOr`/`BitXor`) is covered by the fix's own scoping, not independently
+re-minimized per-operator — all five share `BitAnd`'s exact code path in
+both the checker and this fix, the same "one shared function, no per-op
+branching" argument round-4 Task 4 already verified for these six operators
+elsewhere in this series. Whether lossless `Add`/`Sub`/`Mul` (which also let
+a bare literal adapt to a sibling, via `adapted_lossless_operands`) hit the
+same shape is a separate, unfiled question — out of this bug's own scope.
+
 ---
 
-## BUG-57 (MEDIUM, OPEN) — indexing an array literal panics instead of erroring: `unreachable!("Task 8 or Task 9 wires this up")`
+## BUG-57 (MEDIUM, FIXED 2026-08-12) — indexing an array literal panics instead of erroring: `unreachable!("Task 8 or Task 9 wires this up")`
 
 **What.** Found continuing Task 4's audit while checking `ExprKind::ArrayLit`'s
 "the checker rejects it upstream" claim (`docs/plan/v0.2-class-closure-round4.local.md`,
@@ -4315,3 +4349,162 @@ known statically, so `[a,a,a][0]` can constant-fold the INDEX the same way
 `Index` on a named array does, or at minimum render the ternary-chain mux
 `Index` already generates for a named array-typed `let`). (a) is the
 smaller, more honest change if this shape isn't meant to be supported yet.
+
+**Fix (2026-08-12) — chose (a).** `checker/widths/expr/mod.rs`'s `Index`
+arm, inside its existing `Ty::Array` branch: if `base.kind` is
+`ExprKind::ArrayLit(_)` (not a named `Ident`/`Field`/etc. that happens to
+carry an array `Ty`), reject with a new code, **E0419**, before the
+element-type/range-check logic runs at all — so a named array (a `fn`
+parameter, still the only way to bind one) is completely unaffected; only
+the literal-then-immediately-indexed shape is rejected. Verified the
+suggested workaround (`let vals = [a, b, c]` inside a `fn` body, then
+`vals[0]`) actually compiles end-to-end (checker + emitter) before writing
+it into the diagnostic's own help text — the same "don't assert a fix
+without running it" discipline this bug's own filing was about. Added to
+the E-code catalog throughout: `ALL_CHECKER_CODES` (`diag.rs`, 74 → 75
+entries), `explain.rs`'s long-form entry, `docs/code/11-checker.md`'s table
+
+- reverse-index, and `tests/fixtures/errors/e0419_index_into_array_literal.mimz`
+  (the mandatory end-to-end fixture `tests/errors.rs`'s own corpus-coverage
+  check demands). 2 new checker unit tests
+  (`indexing_an_array_literal_directly_is_e0419`, watched fail pre-fix —
+  `mimz check` accepted the source with zero diagnostics; and
+  `indexing_a_named_array_still_works_after_e0419`, the regression guard for
+  the exact narrowing this fix depends on). Full workspace **1246/1246**,
+  `fmt`/`clippy -D warnings` clean. The `unreachable!` panic itself is left in
+  place, deliberately — it is now unreachable from any checker-accepted
+  source for THIS shape, but stays as the load-bearing backstop for whatever
+  other path might still reach `ArrayLit` rendering, the same reasoning
+  BUG-40's own `unreachable!()` (pattern_matches) was kept for.
+
+---
+
+## BUG-58 (CRITICAL, FIXED 2026-08-12) — the kernel's `UnOp::Neg` never grows by the checker's own promised carry bit, so negating a `signed[N]` MIN value silently overflows
+
+**What.** Found continuing Task 4's audit
+(`docs/plan/v0.2-class-closure-round4.local.md`), while checking whether
+`kinds.rs`'s `infer_kind` GATE arm for `ExprKind::Unary` (`op: _, expr: inner
+=> infer_kind(inner, ...)` — forwards `inner`'s `Kind` unchanged, ignoring
+`op` entirely) could mask an emitter divergence the way BUG-52's wildcard did.
+It cannot — `verilog_self_determined_kind`'s own `Unary` arm (Task 2's fix)
+computes the SAME (inner-width) answer for `Neg`, and Verilog's own unary
+minus is genuinely self-determined at the operand's width, so GATE and
+CLASSIFIER agree with real Icarus in a self-determined position. But the
+GATE's approximation turned out to match a real, unaudited assumption
+underneath it: the KERNEL's runtime `-x`.
+
+The checker's own `unary_ty` (`checker/widths/ops/mod.rs:105-106`) types `-x`
+for `x: signed[N]` as `Ty::Signed(N+1)` — lossless growth, the same "room for
+the MIN-value carry bit" rule `abs` already gets, and it is enforced: `mimz
+check` requires the target of a bare `-a` assignment to be exactly `N+1` bits
+wide, not `N` (confirmed: `z: signed[8] = -a` for `a: signed[8]` is rejected;
+`z: signed[9]` is required). But the runtime never performs that growth:
+
+```mimz
+module Fuzz {
+  in a: signed[8]
+  out z: signed[9]
+  z = -a
+}
+```
+
+```text
+mimz check    OK
+mimz eval -i "a=0x80"    z = -128   (signed[9])     WRONG
+iverilog+vvp  a=-128  ->  z=128                     correct
+```
+
+`a = -128` (`signed[8]`'s minimum) negates to the mathematically correct
+`+128`, which fits losslessly in the `signed[9]` the checker required
+specifically to hold it. Real Icarus gets this right for free — the
+assignment is a CONTEXT-DETERMINED position, so Verilog sign-extends `a` to
+the 9-bit context _before_ negating, and `-128` sign-extended to 9 bits then
+negated is `128`. The kernel does not: it negates within the SOURCE's 8 bits
+and only then hands the (already-wrapped, still `-128`) result to the
+9-bit-wide `Val`, so the "extra room" the checker's type promised is never
+used to hold anything.
+
+**Cause.** `crates/mimz-sim/src/sim/value/binary.rs:55-62`:
+
+```rust
+UnOp::Neg => {
+    if narrow {
+        let bits = v.as_i128().wrapping_neg() as u128;
+        Val::new(bits, v.width, true)   // v.width — the OPERAND's width, not +1
+    } else {
+        Val::new_wide(wide::neg(&v.to_limbs(), v.width), v.width, true)
+    }
+}
+```
+
+Contrast `Builtin::Abs` (`crates/mimz-sim/src/sim/value/fn_eval.rs:410-415`,
+BUG-35's own fix), which gets exactly this right: `Val::new(m & mask(v.width +
+1), v.width + 1, true)`, with the comment "signed magnitude into width+1 (room
+for abs(MIN))". `UnOp::Neg` needs the identical `+1` and never received it.
+
+This is a **reopening of BUG-43's own closing note**, not a new question:
+BUG-43's fix explicitly left `UnOp::Neg`'s runtime path unchanged, on the
+stated reasoning "`signed[N] -> signed[N]` matches Verilog, and `abs`'s
+explicit `N -> N+1` growth shows the language already made that call." That
+claim is true for a SELF-DETERMINED position (Verilog's own unary minus does
+not grow there either, which is why BUG-43's fix — and this filing's own first
+check, `unsigned(-a)` inside a concat member — see no divergence: GATE,
+CLASSIFIER and real Icarus all agree at the operand's own width). It was never
+checked against a CONTEXT-DETERMINED position, where Verilog's context
+propagation sign-extends the operand before negating and Icarus's answer
+depends on the _destination_ width — exactly the position BUG-43's own
+reasoning does not cover, and exactly the failure mode this whole round's
+Task 4 exists to catch ("a citation must exercise the position the arm
+claims, not a neighbouring one").
+
+**How found.** Round-4 plan Task 4, auditing `infer_kind`'s `Unary` arm
+against the same question BUG-52 asked of the classifier's. The GATE/
+CLASSIFIER pair is sound (verified above); the deeper assumption both rest on
+— that the kernel's own `-x` needs no `+1` bit outside a literal — was not.
+
+**Severity.** CRITICAL, same bar as BUG-43: a silent wrong VALUE from the
+reference simulator itself on ordinary, checker-accepted code, not a
+position-matrix emitter defect (the emitted Verilog is correct here — this is
+the mirror image of every other bug in this series, where the KERNEL is
+wrong and Icarus is right). Reachable by any design that negates a `signed`
+value which can legitimately reach its type's minimum and stores the result
+correctly per the checker's own required width — the checker's exact-width
+rule makes the wider destination all but mandatory the moment `-x` is used at
+all, so this is not a narrow corner.
+
+**Not affected (verified, bounded blast radius):** a negated _literal_
+(BUG-43, already fixed — folds through `Val::negated_literal` before ever
+reaching this `Unary` arm); `Builtin::Abs` (already grows correctly,
+BUG-35); `-x` in a genuinely self-determined position (`unsigned(-a)` inside
+a concat member — GATE, CLASSIFIER and Icarus all agree at the operand's own
+width, confirmed by hand with real Icarus in this filing).
+
+**Fix (not yet implemented — Task 4 is an audit, not a fix pass; filed per
+this task's own rule that an audit finding gets its own bug and its own fix).**
+Mirror `Builtin::Abs`'s shape in `unary_known`'s `UnOp::Neg` arm: grow to
+`v.width + 1` (both the narrow and wide branches), signed. This is the
+runtime counterpart to a checker rule that already exists and is already
+enforced at compile time — the fix makes the kernel actually deliver what the
+checker's own type promises, nothing more.
+
+**Fix (2026-08-12) — exactly the shape proposed above.**
+`unary_known`'s `UnOp::Neg` arm now computes `out_width = v.width + 1`
+before dispatching: the narrow path keeps `v.as_i128().wrapping_neg()`
+(already correct at `i128` precision — the negation math was never the
+problem, only the width the result was DECLARED at) but declares the
+result at `out_width`; the wide path now sign-extends `v` to `out_width`
+via `wide::extend` BEFORE negating (`wide::neg`), rather than negating at
+the original width the way the wrapping-family binary operators
+deliberately do (this is `-x`'s own lossless rule, not a shared "wrapping
+arithmetic" one). New differential
+`bug_58_negating_the_signed_minimum_matches_icarus` (`tests/
+self_determined_regression.rs`) watched fail pre-fix at the exact filed
+values (kernel `384` — `-128`'s raw 9-bit pattern — vs Icarus `128`), passes
+after. The two existing wide-path `UnOp::Neg` unit tests
+(`wide_neg_of_a_512_bit_value`, `builtin_abs_wide_negative`) both stay green
+unmodified — neither's assertion depends on the exact width `Neg` declares,
+only on the VALUE decoding correctly at the width each test itself chooses
+to decode at, which the `+1` growth doesn't disturb. Full workspace
+**1247/1247**, `fmt`/`clippy -D warnings` clean. `Builtin::Abs` and a
+negated literal (BUG-43) were already correct and are untouched by this
+fix, confirmed by the full suite staying green.

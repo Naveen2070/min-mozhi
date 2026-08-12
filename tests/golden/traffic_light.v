@@ -22,7 +22,7 @@ module TrafficLight (
                 state <= (((state == STATE_RED)) ? (STATE_GREEN) : (((state == STATE_GREEN)) ? (STATE_YELLOW) : (STATE_RED)));
                 timer <= (((state == STATE_RED)) ? (50) : (((state == STATE_GREEN)) ? (40) : (10)));
             end else begin
-                timer <= (timer - 1);
+                timer <= (timer - 8'd1);
             end
         end
     end

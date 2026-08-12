@@ -9,7 +9,7 @@ module ACounter (
         if (rst) begin
             value <= 0;
         end else begin
-            value <= (value + 1);
+            value <= (value + 8'd1);
         end
     end
 endmodule

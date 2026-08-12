@@ -42,16 +42,16 @@ module isai #(
                 if ((kaala_ennnnikkai == 0)) begin
                     ilakku <= suruthi;
                     kaala_ennnnikkai <= __mimz_sub_1[(32)-1:0];
-                    mukavari <= (mukavari + 1);
+                    mukavari <= (mukavari + 4'd1);
                     if ((mukavari == 15)) begin
                         seyalil <= 0;
                     end
                     suram_ennnnikkai <= 0;
                     maarrrru <= 0;
                 end else begin
-                    kaala_ennnnikkai <= (kaala_ennnnikkai - 1);
+                    kaala_ennnnikkai <= (kaala_ennnnikkai - 32'd1);
                     if ((ilakku != 0)) begin
-                        suram_ennnnikkai <= (suram_ennnnikkai + 1);
+                        suram_ennnnikkai <= (suram_ennnnikkai + 20'd1);
                         if ((suram_ennnnikkai == ilakku)) begin
                             suram_ennnnikkai <= 0;
                             maarrrru <= (~maarrrru);

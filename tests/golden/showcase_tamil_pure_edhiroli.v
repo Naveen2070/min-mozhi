@@ -53,7 +53,7 @@ module ethiroli #(
             end else begin
                 if ((nilai_pathivu == VAANGKINILAI_THOTAKKAM)) begin
                     thunnmi_kurriyiitu <= 0;
-                    veeka_ennnnikkai <= (veeka_ennnnikkai + 1);
+                    veeka_ennnnikkai <= (veeka_ennnnikkai + 16'd1);
                     if ((veeka_ennnnikkai == (CLKS_PER_BIT - 1))) begin
                         veeka_ennnnikkai <= 0;
                         if ((vaangki == 0)) begin
@@ -66,11 +66,11 @@ module ethiroli #(
                     end
                 end else begin
                     if ((nilai_pathivu == VAANGKINILAI_THARAVU)) begin
-                        veeka_ennnnikkai <= (veeka_ennnnikkai + 1);
+                        veeka_ennnnikkai <= (veeka_ennnnikkai + 16'd1);
                         if ((veeka_ennnnikkai == (CLKS_PER_BIT - 1))) begin
                             veeka_ennnnikkai <= 0;
                             nakarvu <= (__mimz_sub_1 | __mimz_sub_2[(8)-1:0]);
-                            thunnmi_kurriyiitu <= (thunnmi_kurriyiitu + 1);
+                            thunnmi_kurriyiitu <= (thunnmi_kurriyiitu + 3'd1);
                             if ((thunnmi_kurriyiitu == 7)) begin
                                 nilai_pathivu <= VAANGKINILAI_NIRRUTHTHAM;
                             end else begin
@@ -81,7 +81,7 @@ module ethiroli #(
                         end
                     end else begin
                         thunnmi_kurriyiitu <= 0;
-                        veeka_ennnnikkai <= (veeka_ennnnikkai + 1);
+                        veeka_ennnnikkai <= (veeka_ennnnikkai + 16'd1);
                         if ((veeka_ennnnikkai == (CLKS_PER_BIT - 1))) begin
                             veeka_ennnnikkai <= 0;
                             if ((vaangki == 1)) begin
@@ -144,7 +144,7 @@ module UartTx #(
                         clk_count <= 0;
                         state <= STATE_DATA;
                     end else begin
-                        clk_count <= (clk_count + 1);
+                        clk_count <= (clk_count + 16'd1);
                     end
                 end else begin
                     if ((state == STATE_DATA)) begin
@@ -155,17 +155,17 @@ module UartTx #(
                                 bit_index <= 0;
                                 state <= STATE_STOP;
                             end else begin
-                                bit_index <= (bit_index + 1);
+                                bit_index <= (bit_index + 3'd1);
                             end
                         end else begin
-                            clk_count <= (clk_count + 1);
+                            clk_count <= (clk_count + 16'd1);
                         end
                     end else begin
                         if ((clk_count == (CLKS_PER_BIT - 1))) begin
                             clk_count <= 0;
                             state <= STATE_IDLE;
                         end else begin
-                            clk_count <= (clk_count + 1);
+                            clk_count <= (clk_count + 16'd1);
                         end
                     end
                 end
