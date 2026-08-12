@@ -53,7 +53,7 @@ module UartEcho #(
             end else begin
                 if ((rx_state == RXSTATE_START)) begin
                     bit_idx <= 0;
-                    baud_cnt <= (baud_cnt + 1);
+                    baud_cnt <= (baud_cnt + 16'd1);
                     if ((baud_cnt == (CLKS_PER_BIT - 1))) begin
                         baud_cnt <= 0;
                         if ((rx == 0)) begin
@@ -66,11 +66,11 @@ module UartEcho #(
                     end
                 end else begin
                     if ((rx_state == RXSTATE_DATA)) begin
-                        baud_cnt <= (baud_cnt + 1);
+                        baud_cnt <= (baud_cnt + 16'd1);
                         if ((baud_cnt == (CLKS_PER_BIT - 1))) begin
                             baud_cnt <= 0;
                             shift <= (__mimz_sub_1 | __mimz_sub_2[(8)-1:0]);
-                            bit_idx <= (bit_idx + 1);
+                            bit_idx <= (bit_idx + 3'd1);
                             if ((bit_idx == 7)) begin
                                 rx_state <= RXSTATE_STOP;
                             end else begin
@@ -81,7 +81,7 @@ module UartEcho #(
                         end
                     end else begin
                         bit_idx <= 0;
-                        baud_cnt <= (baud_cnt + 1);
+                        baud_cnt <= (baud_cnt + 16'd1);
                         if ((baud_cnt == (CLKS_PER_BIT - 1))) begin
                             baud_cnt <= 0;
                             if ((rx == 1)) begin
@@ -144,7 +144,7 @@ module UartTx #(
                         clk_count <= 0;
                         state <= STATE_DATA;
                     end else begin
-                        clk_count <= (clk_count + 1);
+                        clk_count <= (clk_count + 16'd1);
                     end
                 end else begin
                     if ((state == STATE_DATA)) begin
@@ -155,17 +155,17 @@ module UartTx #(
                                 bit_index <= 0;
                                 state <= STATE_STOP;
                             end else begin
-                                bit_index <= (bit_index + 1);
+                                bit_index <= (bit_index + 3'd1);
                             end
                         end else begin
-                            clk_count <= (clk_count + 1);
+                            clk_count <= (clk_count + 16'd1);
                         end
                     end else begin
                         if ((clk_count == (CLKS_PER_BIT - 1))) begin
                             clk_count <= 0;
                             state <= STATE_IDLE;
                         end else begin
-                            clk_count <= (clk_count + 1);
+                            clk_count <= (clk_count + 16'd1);
                         end
                     end
                 end

@@ -1460,6 +1460,55 @@ fn bug_55_signed_shift_right_inside_match_wildcard_arm_matches_icarus() {
     differential(src, &[("p0", 14429), ("p3", 2)]);
 }
 
+#[test]
+fn bug_56_literal_nested_under_bitand_in_a_concat_matches_icarus() {
+    // BUG-56's own filed repro (docs/audit/bugs.md): `a & 15` as a concat
+    // member is checker-legal (the bare `15` adapts to `a`'s sibling type,
+    // `Ty::Bits(4)`, so the member's own `Ty` is `Bits(4)`, not the
+    // untyped `Ty::CtInt` the checker's E0405 rejects directly). But
+    // `verilog_literal` used to render every literal token UNSIZED
+    // (`'d15`/bare `15`), and real Icarus refuses to elaborate an
+    // unsized-literal-bearing operand once it's nested inside `{...}` —
+    // "Concatenation operand ... has indefinite width" — a hard
+    // elaboration failure `differential`'s own Icarus-build-step assert
+    // catches, the same class BUG-49 was.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[8]\n  \
+                y = { b, a & 15 }\n}\n";
+    // a=0b1011 (11), b=0b0101 (5): 11 & 15 = 11. y = (5<<4)|11 = 91.
+    differential(src, &[("a", 0b1011), ("b", 0b0101)]);
+}
+
+#[test]
+fn bug_56_literal_nested_under_bitand_in_a_replication_body_matches_icarus() {
+    // Same defect, one level further in — BUG-56's own filing pins this
+    // shape too: `{2{ a & 15 }}` hits the identical "indefinite width"
+    // Icarus error inside a replication body, not just a plain concat.
+    let src = "module Fuzz {\n  in a: bits[4]\n  out y: bits[8]\n  \
+                y = {2{ a & 15 }}\n}\n";
+    // a=0b1010 (10): 10 & 15 = 10. y = (10<<4)|10 = 170.
+    differential(src, &[("a", 0b1010)]);
+}
+
+#[test]
+fn bug_58_negating_the_signed_minimum_matches_icarus() {
+    // BUG-58's own filed repro (docs/audit/bugs.md): `-a` for `a:
+    // signed[8]` is checker-typed `signed[9]` (`unary_ty`'s own lossless
+    // `Signed(N+1)` rule, same "room for the MIN-value carry bit" `abs`
+    // already gets) — the checker REQUIRES the wider destination, but the
+    // kernel's `UnOp::Neg` used to keep `v.width` unchanged, so negating
+    // `a`'s own minimum (`-128`) wrapped right back to `-128` instead of
+    // the mathematically correct `128`. This is a CONTEXT-DETERMINED
+    // position (a bare top-level assignment, not a concat member), so
+    // real Icarus gets it right for free — `a` sign-extends to the 9-bit
+    // destination BEFORE negating — and only the kernel disagreed with
+    // its own type system.
+    let src = "module Fuzz {\n  in a: signed[8]\n  out z: signed[9]\n  \
+                z = -a\n}\n";
+    // a = -128 (0x80 as an 8-bit two's-complement pattern): -(-128) = 128,
+    // representable losslessly in signed[9] (range -256..255).
+    differential(src, &[("a", 0x80)]);
+}
+
 /// GAP-13's own axis — exhaustive over `ExprKind`, no wildcard. Never
 /// called (a compile-time-only property): its only job is that adding an
 /// `ExprKind` variant without a line here fails the build, the same
@@ -1789,12 +1838,19 @@ fn expr_kind_infer_kind_coverage(kind: &ExprKind) -> &'static str {
              parameter case `adapts_to_sibling` relies on) unit tests"
         }
         ExprKind::Unary { .. } => {
-            "NotApplicable for a differential: this arm ignores `op` \
-             entirely and forwards `inner`'s own `Kind` unchanged (a \
-             documented approximation — a negated literal's `Kind` is its \
-             UNSIGNED inner literal's width, not sign-aware, per this arm's \
-             own doc comment on `is_ct_int_like`); nothing to test beyond \
-             `inner`'s own arm, already covered independently"
+            "Verified sound for THIS axis (round-4 Task 4, batch 6): this \
+             arm ignores `op` and forwards `inner`'s own `Kind` unchanged, \
+             which matches the CLASSIFIER's own `Unary` arm (Task 2) for \
+             every non-reduction op — Verilog's unary `-`/`~` really is \
+             self-determined at the operand's width, confirmed by hand \
+             against real Icarus. NOT the same claim as 'harmless': chasing \
+             why the approximation is safe here found it mirrors a real bug \
+             one layer down — the KERNEL's `UnOp::Neg` never applies the \
+             checker's own lossless `+1` growth outside a literal, filed as \
+             BUG-58 (docs/audit/bugs.md, OPEN) — so this arm is correct \
+             company for the wrong reason on `Neg` specifically; the GATE \
+             and the buggy kernel agree, not the GATE and the checker's own \
+             type rule"
         }
         ExprKind::Binary { .. } => {
             "delegates to infer_binary, covered arm-by-arm below (this \
@@ -1922,9 +1978,14 @@ fn binop_infer_kind_coverage(op: &ast::BinOp) -> &'static str {
         BinOp::Mul => {
             "covered by kinds.rs's own \
              lossless_mul_with_a_module_parameter_adapts_to_the_sized_operand \
-             unit test — BUG-46's own regression, a module `int` parameter \
-             operand must adapt to its sized sibling the same way a bare \
-             literal does"
+             unit test (BUG-46's own regression, a module `int` parameter \
+             operand adapting to its sized sibling) PLUS the ordinary \
+             (non-adapting) case, `p1 * p1` -> signed[28] inside \
+             bug_24_shl_under_sibling_add_matches_icarus's own width chain — \
+             not originally cited here (round-4 Task 4, batch 7): that test \
+             predates this coverage doc and was written for BUG-24's shift \
+             concern, but its own comment already states and verifies the \
+             `Mul` width the GATE must agree with Icarus on"
         }
         BinOp::AddWrap
         | BinOp::SubWrap

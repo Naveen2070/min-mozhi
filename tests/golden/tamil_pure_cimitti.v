@@ -15,9 +15,9 @@ module simitti #(
         end else begin
             if ((kannakku == varampu)) begin
                 kannakku <= 0;
-                nilaimai <= (nilaimai ^ 1);
+                nilaimai <= (nilaimai ^ 1'd1);
             end else begin
-                kannakku <= (kannakku + 1);
+                kannakku <= (kannakku + 26'd1);
             end
         end
     end

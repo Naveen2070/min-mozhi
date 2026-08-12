@@ -762,3 +762,35 @@ fn verilog_literal(value: &crate::bits::Bits, raw: &str) -> String {
         crate::bits::bits_to_decimal_string(value, width, false)
     }
 }
+
+/// Same idea as [`verilog_literal`], but SIZED at a caller-given `width`
+/// instead of Verilog's implementation-defined unsized-literal rule.
+/// BUG-56 (docs/audit/bugs.md): a bare literal ADAPTING to a sized sibling
+/// (`a & 15` for `a: bits[4]` — checker-legal, `Ty::Bits(4)`, not the
+/// untyped `Ty::CtInt` E0405 rejects) still renders as an unsized token —
+/// harmless standing alone, but real Icarus refuses it once nested inside a
+/// concat/replication member ("Concatenation operand ... has indefinite
+/// width"), a shape `mimz check`/`mimz compile` both accepted silently.
+/// Scoped narrowly to that one shape (the adapt-to-sibling `BinOp`
+/// family's literal operand, `expr.rs`'s own `Binary` arm) rather than
+/// making [`verilog_literal`] itself always-sized: that blanket version was
+/// tried and reverted — it also resizes every width specifier, parameter
+/// default, and bit-index that happens to be a literal, breaking dozens of
+/// exact-text golden/unit assertions elsewhere in the suite for call sites
+/// that were never broken. `raw`'s own digit string can carry more
+/// characters than `width` needs (a leading-zero literal like `0x0F`);
+/// harmless — `width` here is always at least the value's own natural
+/// width (the sibling never adapts DOWN, only up or equal), so any digits
+/// beyond it are necessarily zero.
+fn verilog_literal_sized(value: &crate::bits::Bits, raw: &str, width: u32) -> String {
+    if let Some(bin) = raw.strip_prefix("0b") {
+        format!("{width}'b{bin}")
+    } else if let Some(hex) = raw.strip_prefix("0x") {
+        format!("{width}'h{hex}")
+    } else {
+        format!(
+            "{width}'d{}",
+            crate::bits::bits_to_decimal_string(value, width, false)
+        )
+    }
+}

@@ -28,7 +28,7 @@ module Debouncer #(
                     out_q <= sync1;
                     cnt <= 0;
                 end else begin
-                    cnt <= (cnt + 1);
+                    cnt <= (cnt + 3'd1);
                 end
             end
         end

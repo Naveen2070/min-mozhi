@@ -53,11 +53,23 @@ fn unary_known(op: UnOp, v: Val) -> Val {
     let narrow = !v.is_wide() && v.width <= 128;
     match op {
         UnOp::Neg => {
+            // BUG-58 (docs/audit/bugs.md): `-x` for `x: signed[N]` is
+            // lossless — `checker/widths/ops/mod.rs`'s own `unary_ty` types
+            // it `Signed(N+1)`, the same "room for the MIN-value carry bit"
+            // rule `Builtin::Abs` already gets (`fn_eval.rs`'s own
+            // `width + 1`, BUG-35's fix). This arm used to keep `v.width`
+            // unchanged, so `-(-128)` for `a: signed[8]` wrapped right back
+            // to `-128` instead of the mathematically correct `+128` — real
+            // Icarus gets this right for free (a context-determined `-a`
+            // sign-extends `a` to the wider destination BEFORE negating),
+            // so only the kernel disagreed with its own type system.
+            let out_width = v.width + 1;
             if narrow {
                 let bits = v.as_i128().wrapping_neg() as u128;
-                Val::new(bits, v.width, true)
+                Val::new(bits, out_width, true)
             } else {
-                Val::new_wide(wide::neg(&v.to_limbs(), v.width), v.width, true)
+                let extended = wide::extend(&v.to_limbs(), v.width, out_width, v.signed);
+                Val::new_wide(wide::neg(&extended, out_width), out_width, true)
             }
         }
         UnOp::BitNot => {

@@ -38,7 +38,7 @@ module anuppi #(
                         ennnni <= 0;
                         natappu <= NILAI_THAKAVAL;
                     end else begin
-                        ennnni <= (ennnni + 1);
+                        ennnni <= (ennnni + 16'd1);
                     end
                 end else begin
                     if ((natappu == NILAI_THAKAVAL)) begin
@@ -49,17 +49,17 @@ module anuppi #(
                                 suttu <= 0;
                                 natappu <= NILAI_MUTIVU;
                             end else begin
-                                suttu <= (suttu + 1);
+                                suttu <= (suttu + 3'd1);
                             end
                         end else begin
-                            ennnni <= (ennnni + 1);
+                            ennnni <= (ennnni + 16'd1);
                         end
                     end else begin
                         if ((ennnni == (kannakku - 1))) begin
                             ennnni <= 0;
                             natappu <= NILAI_OOYVU;
                         end else begin
-                            ennnni <= (ennnni + 1);
+                            ennnni <= (ennnni + 16'd1);
                         end
                     end
                 end

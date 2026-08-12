@@ -55,10 +55,10 @@ module VgaPattern (
                 if ((v_cnt == (525 - 1))) begin
                     v_cnt <= 0;
                 end else begin
-                    v_cnt <= (v_cnt + 1);
+                    v_cnt <= (v_cnt + 10'd1);
                 end
             end else begin
-                h_cnt <= (h_cnt + 1);
+                h_cnt <= (h_cnt + 10'd1);
             end
         end
     end

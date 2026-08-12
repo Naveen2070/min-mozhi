@@ -402,6 +402,28 @@ impl<'a> Checker<'a> {
                     len,
                 } = bt
                 {
+                    // BUG-57 (docs/audit/bugs.md): a freshly-constructed
+                    // array literal indexed IN PLACE (`[a,a,a][0]`) has no
+                    // named binding for the emitter to optimize away — it
+                    // was never actually implemented end-to-end, and this
+                    // arm's own `Ty::Array` match can't tell that base
+                    // apart from a legitimate named array (a `fn` param),
+                    // so the checker accepted it and `emit_verilog/expr.rs`
+                    // PANICKED (`unreachable!("Task 8 or Task 9 wires this
+                    // up")`) instead. Reject at the source instead of
+                    // implementing the emitter side — this shape appears
+                    // nowhere in `examples/`/`showcase/`, and `spec/02`
+                    // does not promise it.
+                    if matches!(base.kind, ExprKind::ArrayLit(_)) {
+                        self.err(
+                            cx.file,
+                            base.span,
+                            "E0419",
+                            "an array literal cannot be indexed directly".to_string(),
+                            "bind it to a `let`/`fn` parameter first, then index that name",
+                        );
+                        return Ty::Unknown;
+                    }
                     // A constant index out of range is E0415 (mirrors mem's
                     // E0406 for an out-of-range compile-time memory address);
                     // a runtime index is allowed unchecked, same allowance

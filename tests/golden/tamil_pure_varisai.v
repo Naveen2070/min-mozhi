@@ -43,25 +43,25 @@ module varisai #(
                 if ((pin == (aazham - 1))) begin
                     pin <= 0;
                 end else begin
-                    pin <= (pin + 1);
+                    pin <= (pin + 2'd1);
                 end
                 if ((niikku && (thokai != 0))) begin
                     if ((mun == (aazham - 1))) begin
                         mun <= 0;
                     end else begin
-                        mun <= (mun + 1);
+                        mun <= (mun + 2'd1);
                     end
                 end else begin
-                    thokai <= (thokai + 1);
+                    thokai <= (thokai + 3'd1);
                 end
             end else begin
                 if ((niikku && (thokai != 0))) begin
                     if ((mun == (aazham - 1))) begin
                         mun <= 0;
                     end else begin
-                        mun <= (mun + 1);
+                        mun <= (mun + 2'd1);
                     end
-                    thokai <= (thokai - 1);
+                    thokai <= (thokai - 3'd1);
                 end
             end
         end
