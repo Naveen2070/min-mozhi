@@ -571,6 +571,25 @@ impl Emitter<'_> {
         use crate::emit_verilog::self_determined::verilog_self_determined_kind;
 
         let Some(verilog_kind) = verilog_self_determined_kind(expr, decls, &self.env) else {
+            // Round-4 plan Task 9: the classifier's own `None` here means
+            // "Verilog's rendered width already equals mimz's, nothing to
+            // hoist toward" — the SAME claim the bare-identifier branch
+            // above checks, just for a non-identifier shape. This function's
+            // own doc comment already states the caller contract this
+            // checks: `mimz_kind` must be the SAME `Kind` a fresh
+            // `infer_kind(expr, decls, env)` call would return, not a
+            // stale value threaded through from an earlier position. Firing
+            // on a genuinely mismatched `mimz_kind` is exactly BUG-41/
+            // BUG-42's silent-miscompile class, made loud instead — expect
+            // it to fire on plenty of LEGITIMATELY `None` shapes too (that's
+            // the point: a fresh check on every hoist-position call, not
+            // just this one path).
+            debug_assert!(
+                crate::emit_verilog::kinds::infer_kind(expr, decls, &self.env) == Some(mimz_kind),
+                "hoist_if_needed: classifier says nothing to compare for {expr:?}, but caller's \
+                 mimz_kind {mimz_kind:?} doesn't match a fresh infer_kind computation ({:?})",
+                crate::emit_verilog::kinds::infer_kind(expr, decls, &self.env),
+            );
             return rendered_text;
         };
         if mimz_kind == verilog_kind {

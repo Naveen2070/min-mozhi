@@ -359,14 +359,17 @@ fn s0124_repeat_would_unroll_past_budget() {
     );
 }
 
+// S0125 was retired 2026-08-12 (round-4 plan Task 8, BUG-53's own
+// check/sim/emit split): "nested `repeat` is not supported" was retired
+// because the FEATURE landed, not because the arm was dead — see
+// `sim/diag.rs`'s `ALL_SIM_CODES` doc comment. `nested_repeat_elaborates`
+// below is the replacement, positive coverage.
+
 #[test]
-fn s0125_nested_repeat_not_supported() {
+fn nested_repeat_elaborates() {
     let f = parse("module M {\n  repeat i: 0..2 {\n    repeat j: 0..2 {\n    }\n  }\n}\n");
-    assert_code(
-        "S0125",
-        "S0125",
-        elaborate::elaborate_project(std::slice::from_ref(&f), None, &empty_params()),
-    );
+    elaborate::elaborate_project(std::slice::from_ref(&f), None, &empty_params())
+        .expect("a nested `repeat` (even an empty one) elaborates now");
 }
 
 #[test]
@@ -1283,13 +1286,13 @@ fn every_sim_code_has_a_fixture_above() {
     ];
     let covered: &[&str] = &[
         "S0102", "S0103", "S0104", "S0105", "S0106", "S0109", "S0112", "S0113", "S0115", "S0116",
-        "S0117", "S0119", "S0121", "S0122", "S0123", "S0124", "S0125", "S0126", "S0127", "S0128",
-        "S0129", "S0130", "S0131", "S0133", "S0134", "S0135", "S0136", "S0201", "S0202", "S0203",
-        "S0204", "S0205", "S0206", "S0207", "S0208", "S0209", "S0210", "S0211", "S0212", "S0213",
-        "S0214", "S0215", "S0216", "S0217", "S0218", "S0219", "S0220", "S0221", "S0222", "S0223",
-        "S0224", "S0225", "S0226", "S0227", "S0228", "S0229", "S0230", "S0231", "S0232", "S0233",
-        "S0234", "S0235", "S0236", "S0237", "S0238", "S0239", "S0240", "S0301", "S0302", "S0303",
-        "S0304", "S0305", "S0401", "S0402", "S0403", "S0404", "S0501",
+        "S0117", "S0119", "S0121", "S0122", "S0123", "S0124", "S0126", "S0127", "S0128", "S0129",
+        "S0130", "S0131", "S0133", "S0134", "S0135", "S0136", "S0201", "S0202", "S0203", "S0204",
+        "S0205", "S0206", "S0207", "S0208", "S0209", "S0210", "S0211", "S0212", "S0213", "S0214",
+        "S0215", "S0216", "S0217", "S0218", "S0219", "S0220", "S0221", "S0222", "S0223", "S0224",
+        "S0225", "S0226", "S0227", "S0228", "S0229", "S0230", "S0231", "S0232", "S0233", "S0234",
+        "S0235", "S0236", "S0237", "S0238", "S0239", "S0240", "S0301", "S0302", "S0303", "S0304",
+        "S0305", "S0401", "S0402", "S0403", "S0404", "S0501",
     ];
     let missing: Vec<&str> = ALL_SIM_CODES
         .iter()
