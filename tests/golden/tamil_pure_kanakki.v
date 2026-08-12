@@ -11,7 +11,7 @@ module kannakki #(
         if (miill) begin
             mathippu <= 0;
         end else begin
-            mathippu <= (mathippu + 1);
+            mathippu <= (mathippu + 8'd1);
         end
     end
 endmodule

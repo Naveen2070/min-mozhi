@@ -1,0 +1,6 @@
+// expect: E0419
+module M {
+  in a: bits[4]
+  out z: bits[4]
+  z = [a, a, a][0]
+}

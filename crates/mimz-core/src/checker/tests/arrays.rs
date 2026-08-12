@@ -112,6 +112,29 @@ fn runtime_array_index_is_accepted() {
     assert!(check_one(src).is_ok(), "{:?}", errs(src));
 }
 
+// ---- indexing a bare array literal directly is rejected (E0419) -----------
+// BUG-57 (docs/audit/bugs.md): `[a,a,a][0]` used to be accepted here (an
+// array literal's own `Ty::Array` looks identical to a named array's to the
+// `Index` arm above) and PANIC in the emitter instead
+// (`unreachable!("Task 8 or Task 9 wires this up")`, `emit_verilog/expr.rs`)
+// — a literal-then-immediately-indexed array has no named binding to
+// optimize away and was never actually implemented end-to-end.
+
+#[test]
+fn indexing_an_array_literal_directly_is_e0419() {
+    let src = "module M {\n  in a: bits[4]\n  out z: bits[4]\n  z = [a, a, a][0]\n}\n";
+    assert!(any_code(src, "E0419"));
+}
+
+#[test]
+fn indexing_a_named_array_still_works_after_e0419() {
+    // Regression guard: E0419 must fire on the LITERAL shape only, not on
+    // every `Ty::Array`-typed `Index` — a named array (via a `fn` param)
+    // stays accepted.
+    let src = "fn f(vals: bits[8][4]) -> bits[8] {\n  vals[0]\n}\nmodule M {\n  out o: bits[8]\n  o = f([1, 2, 3, 4])\n}\n";
+    assert!(check_one(src).is_ok(), "{:?}", errs(src));
+}
+
 // ---- module-level array signals are rejected (E0416) ----------------------
 // Module-level port/wire/register arrays are an explicit non-goal (would need
 // per-element driver-uniqueness checking) — array types are only supported

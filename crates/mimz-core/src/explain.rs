@@ -350,6 +350,15 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          makes sense for an actual enum value.\n\n\
          Fix: pass a value whose type is a declared `enum`.",
     ),
+    (
+        "E0419",
+        "E0419 — an array literal cannot be indexed directly\n\n\
+         `[a, b, c][0]` builds an array out of thin air and reads one element\n\
+         back in the same breath — there is no named signal for the compiler\n\
+         to hold it in, so nothing here is actually addressable hardware.\n\n\
+         Fix: bind the literal to a `let`/`fn` parameter first, then index\n\
+         that name: `let vals = [a, b, c]` (inside a `fn`), then `vals[0]`.",
+    ),
     // ----- E05xx: drivers & cycles -----
     (
         "E0501",

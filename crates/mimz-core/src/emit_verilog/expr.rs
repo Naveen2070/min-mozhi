@@ -550,6 +550,47 @@ impl Emitter<'_> {
                     let r = self.render_shift_ctx_operand(rhs, subst, arrays, true);
                     (l, r)
                 };
+                // BUG-56 (docs/audit/bugs.md): a bare literal operand of
+                // one of the adapt-to-sibling operators renders as an
+                // unsized token above (`verilog_literal`, via `expr_subst`)
+                // — fine standing alone, but real Icarus refuses it once
+                // THIS WHOLE expression ends up nested inside a concat/
+                // replication member. Size it to the sibling's own
+                // resolved width (the width the literal checker-legally
+                // adapted to) whenever that's resolvable; unresolvable
+                // (`None`) leaves it exactly as rendered above — the same
+                // safe fallback every other GATE consumer in this file
+                // uses, not a new risk.
+                let (l, r) = if matches!(
+                    op,
+                    BinOp::BitAnd
+                        | BinOp::BitOr
+                        | BinOp::BitXor
+                        | BinOp::AddWrap
+                        | BinOp::SubWrap
+                        | BinOp::MulWrap
+                ) {
+                    let decls = Rc::clone(&self.cur_decls);
+                    let l = if let ExprKind::Int { value, raw } = &lhs.kind {
+                        match crate::emit_verilog::kinds::infer_kind(rhs, &decls, &self.env) {
+                            Some(k) => verilog_literal_sized(value, raw, k.width),
+                            None => l,
+                        }
+                    } else {
+                        l
+                    };
+                    let r = if let ExprKind::Int { value, raw } = &rhs.kind {
+                        match crate::emit_verilog::kinds::infer_kind(lhs, &decls, &self.env) {
+                            Some(k) => verilog_literal_sized(value, raw, k.width),
+                            None => r,
+                        }
+                    } else {
+                        r
+                    };
+                    (l, r)
+                } else {
+                    (l, r)
+                };
                 // Wrapping ops: hoisted above (BUG-23) whenever they are
                 // a direct operand of another operator; a bare top-level
                 // `y = a -% b` needs no hoist — the assignment target's

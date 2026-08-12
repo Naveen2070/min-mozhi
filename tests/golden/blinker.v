@@ -15,9 +15,9 @@ module Blinker #(
         end else begin
             if ((cnt == LIMIT)) begin
                 cnt <= 0;
-                state <= (state ^ 1);
+                state <= (state ^ 1'd1);
             end else begin
-                cnt <= (cnt + 1);
+                cnt <= (cnt + 26'd1);
             end
         end
     end

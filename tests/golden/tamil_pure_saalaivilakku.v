@@ -22,7 +22,7 @@ module saalaivillakku (
                 natappu <= (((natappu == NILAI_NIRRUTHTHU)) ? (NILAI_SEL) : (((natappu == NILAI_SEL)) ? (NILAI_ESSARI) : (NILAI_NIRRUTHTHU)));
                 neeram <= (((natappu == NILAI_NIRRUTHTHU)) ? (50) : (((natappu == NILAI_SEL)) ? (40) : (10)));
             end else begin
-                neeram <= (neeram - 1);
+                neeram <= (neeram - 8'd1);
             end
         end
     end

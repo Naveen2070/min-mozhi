@@ -42,16 +42,16 @@ module MelodyPlayer #(
                 if ((dur_cnt == 0)) begin
                     target <= pitch;
                     dur_cnt <= __mimz_sub_1[(32)-1:0];
-                    addr <= (addr + 1);
+                    addr <= (addr + 4'd1);
                     if ((addr == 15)) begin
                         active <= 0;
                     end
                     tone_cnt <= 0;
                     toggle <= 0;
                 end else begin
-                    dur_cnt <= (dur_cnt - 1);
+                    dur_cnt <= (dur_cnt - 32'd1);
                     if ((target != 0)) begin
-                        tone_cnt <= (tone_cnt + 1);
+                        tone_cnt <= (tone_cnt + 20'd1);
                         if ((tone_cnt == target)) begin
                             tone_cnt <= 0;
                             toggle <= (~toggle);

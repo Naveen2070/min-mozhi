@@ -12,7 +12,7 @@ module minukki #(
         if (miill) begin
             ennnni <= 0;
         end else begin
-            ennnni <= (ennnni + 1);
+            ennnni <= (ennnni + 8'd1);
         end
     end
 endmodule

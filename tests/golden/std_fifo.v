@@ -43,25 +43,25 @@ module Fifo #(
                 if ((tail == (DEPTH - 1))) begin
                     tail <= 0;
                 end else begin
-                    tail <= (tail + 1);
+                    tail <= (tail + 2'd1);
                 end
                 if ((pop && (count != 0))) begin
                     if ((head == (DEPTH - 1))) begin
                         head <= 0;
                     end else begin
-                        head <= (head + 1);
+                        head <= (head + 2'd1);
                     end
                 end else begin
-                    count <= (count + 1);
+                    count <= (count + 3'd1);
                 end
             end else begin
                 if ((pop && (count != 0))) begin
                     if ((head == (DEPTH - 1))) begin
                         head <= 0;
                     end else begin
-                        head <= (head + 1);
+                        head <= (head + 2'd1);
                     end
-                    count <= (count - 1);
+                    count <= (count - 3'd1);
                 end
             end
         end

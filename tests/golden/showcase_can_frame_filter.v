@@ -33,16 +33,16 @@ module CanFrameFilter (
                 frame_type_reg <= kind;
                 if (accept) begin
                     filter_out_reg <= 1;
-                    match_count_reg <= (match_count_reg + 1);
+                    match_count_reg <= (match_count_reg + 4'd1);
                 end
                 if ((kind == 0)) begin
-                    data_cnt <= (data_cnt + 1);
+                    data_cnt <= (data_cnt + 4'd1);
                 end
                 if ((kind == 1)) begin
-                    remote_cnt <= (remote_cnt + 1);
+                    remote_cnt <= (remote_cnt + 4'd1);
                 end
                 if ((kind == 2)) begin
-                    err_cnt <= (err_cnt + 1);
+                    err_cnt <= (err_cnt + 4'd1);
                 end
             end
         end
