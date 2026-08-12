@@ -167,7 +167,7 @@ impl<'a> Elaboration<'a> {
         // Instance names (top-level AND inside `repeat`), so `inst.port` and the
         // array form `arr[i].port` rewrite to their flat wire names.
         let mut insts: HashSet<String> = HashSet::new();
-        collect_inst_names(&m.items, &mut insts);
+        collect_inst_names(&m.items, &consts, &mut insts);
 
         // Bundle-typed signal names at this module level: used by `Rw::field` to
         // rewrite `req.valid` → `req_valid` (the flat scalar name).
@@ -301,6 +301,146 @@ impl<'a> Elaboration<'a> {
         collect_lowered_foreach(expanded_items, &self.consts, &mut lowered_foreach);
 
         (lowered_sync_loops, lowered_foreach)
+    }
+
+    /// Unroll one `repeat` block against `outer_consts` (the enclosing
+    /// scope's const env — the module's own top-level consts for a
+    /// top-level `repeat`, or the ENCLOSING repeat's own iteration env
+    /// when this one is nested, so a nested loop's bounds/body can see the
+    /// outer loop variable). Round-4 plan Task 8 (BUG-53's own check/sim/
+    /// emit split): a `repeat` body used to be walked by a SEPARATE,
+    /// hand-restricted loop that understood only `Inst`/`Drive` and
+    /// rejected `Repeat`/anything else with S0125/S0126 — even though the
+    /// checker's own `no_decls_in_repeat` (E0303) already treats nested
+    /// `repeat`/`const if` as legal hardware generation ("`repeat` may
+    /// only generate hardware... never declare it", explicitly naming
+    /// nested `repeat`s as allowed). This function and
+    /// [`Self::elaborate_repeat_body_item`] replace that restricted copy
+    /// with one recursive walk, so the simulator actually supports what
+    /// the checker's own design already committed to.
+    fn elaborate_repeat(
+        &mut self,
+        r: &'a ast::Repeat,
+        outer_consts: &BTreeMap<String, i128>,
+    ) -> Result<(), Box<Diag>> {
+        let lo = const_eval(&r.lo, outer_consts)?;
+        let hi = const_eval(&r.hi, outer_consts)?;
+        // `checked_sub`: extreme bounds (`hi - lo` past i128::MAX) must not
+        // overflow-panic — treat an out-of-range span as over-budget.
+        let count = hi.checked_sub(lo).unwrap_or(i128::MAX).max(0);
+        if count > REPEAT_BUDGET {
+            return Err(Box::new(
+                Diag::new(
+                    r.span,
+                    format!(
+                        "`repeat` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
+                    ),
+                )
+                .with_code("S0124"),
+            ));
+        }
+        for iv in lo..hi {
+            let mut ci = outer_consts.clone();
+            ci.insert(r.var.name.clone(), iv);
+            let subst = HashMap::from([(r.var.name.clone(), int_expr(iv, r.span))]);
+            for body_it in &r.items {
+                self.elaborate_repeat_body_item(body_it, &ci, &subst, r.span)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// One `repeat`-body item, against the current (possibly nested) loop
+    /// env `ci`/`subst`. `enclosing_span` is the nearest enclosing
+    /// `repeat`'s own span, used only for this function's own S0126 —
+    /// every OTHER item kind that could reach it is already rejected by
+    /// the checker's `no_decls_in_repeat` (E0303) before the simulator
+    /// ever runs, so a real per-item span here would be unreachable
+    /// dead code, same reasoning the `ConstIf` arm's own `unwrap_or(0)`
+    /// already documents for a non-const condition.
+    ///
+    /// `Inst`'s array-index naming folds `inst.index` against `ci` —
+    /// BUG-53's exact fix (`docs/audit/bugs.md`), mirrored here from the
+    /// emitter's own `inst_name` (`emit_verilog/mod.rs`) rather than the
+    /// pre-fix assumption that the index expression IS the loop counter
+    /// `iv`, which silently mis-keyed every array-instance whose index
+    /// wasn't the bare loop variable (an offset like `i + 1`, or a nested
+    /// loop's own variable) — the exact "offset index" shape BUG-53 filed.
+    fn elaborate_repeat_body_item(
+        &mut self,
+        body_it: &'a ModuleItem,
+        ci: &BTreeMap<String, i128>,
+        subst: &HashMap<String, Expr>,
+        enclosing_span: mimz_core::span::Span,
+    ) -> Result<(), Box<Diag>> {
+        match body_it {
+            ModuleItem::Inst(inst) => {
+                let iname = match &inst.index {
+                    Some(idx) => {
+                        let n = const_eval(idx, ci)?;
+                        format!("{}__{}", inst.name.name, n)
+                    }
+                    None => inst.name.name.clone(),
+                };
+                let f = flatten_instance(
+                    self.reg,
+                    self.extern_reg,
+                    self.func_reg,
+                    self.bundle_reg,
+                    self.enum_reg,
+                    &self.file.imports,
+                    ci,
+                    &self.insts,
+                    &self.enums,
+                    &self.bundle_sigs,
+                    subst,
+                    inst,
+                    &iname,
+                    self.depth,
+                    self.mode,
+                )?;
+                self.flat.absorb(f);
+            }
+            ModuleItem::Drive { lhs, rhs } => {
+                let rwi = build_rw(
+                    &self.insts,
+                    &self.enums,
+                    &self.bundle_sigs,
+                    ci,
+                    subst,
+                    self.func_reg,
+                    self.bundle_reg,
+                    &self.file.imports,
+                );
+                record_drive(lhs, rhs, &rwi, ci, &mut self.comb, &mut self.bit_drives)?;
+            }
+            ModuleItem::Repeat(nested) => self.elaborate_repeat(nested, ci)?,
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
+                let val = const_eval(cond, ci)?;
+                let branch: &'a [ModuleItem] = if val != 0 {
+                    then
+                } else {
+                    els.as_deref().unwrap_or(&[])
+                };
+                for it in branch {
+                    self.elaborate_repeat_body_item(it, ci, subst, enclosing_span)?;
+                }
+            }
+            _ => {
+                return Err(Box::new(
+                    Diag::new(
+                        enclosing_span,
+                        "a `repeat` body may only contain instances, drives, nested \
+                         `repeat`s, or `const if` — this item should already have been \
+                         rejected by the checker (E0303)",
+                    )
+                    .with_code("S0126"),
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Pops one `ModuleItem` at a time, folding it into the accumulators.
@@ -554,91 +694,8 @@ impl<'a> Elaboration<'a> {
                     self.flat.absorb(f);
                 }
                 ModuleItem::Repeat(r) => {
-                    let lo = const_eval(&r.lo, &self.consts)?;
-                    let hi = const_eval(&r.hi, &self.consts)?;
-                    // `checked_sub`: extreme bounds (`hi - lo` past i128::MAX) must not
-                    // overflow-panic — treat an out-of-range span as over-budget.
-                    let count = hi.checked_sub(lo).unwrap_or(i128::MAX).max(0);
-                    if count > REPEAT_BUDGET {
-                        return Err(Box::new(
-                            Diag::new(
-                                r.span,
-                                format!(
-                                    "`repeat` would unroll {count} times, over the limit of {REPEAT_BUDGET}"
-                                ),
-                            )
-                            .with_code("S0124"),
-                        ));
-                    }
-                    for iv in lo..hi {
-                        let mut ci = self.consts.clone();
-                        ci.insert(r.var.name.clone(), iv);
-                        let subst = HashMap::from([(r.var.name.clone(), int_expr(iv, r.span))]);
-                        let rwi = build_rw(
-                            &self.insts,
-                            &self.enums,
-                            &self.bundle_sigs,
-                            &ci,
-                            &subst,
-                            self.func_reg,
-                            self.bundle_reg,
-                            &self.file.imports,
-                        );
-                        for body_it in &r.items {
-                            match body_it {
-                                ModuleItem::Inst(inst) => {
-                                    let iname = match &inst.index {
-                                        Some(_) => format!("{}__{}", inst.name.name, iv),
-                                        None => inst.name.name.clone(),
-                                    };
-                                    let f = flatten_instance(
-                                        self.reg,
-                                        self.extern_reg,
-                                        self.func_reg,
-                                        self.bundle_reg,
-                                        self.enum_reg,
-                                        &self.file.imports,
-                                        &ci,
-                                        &self.insts,
-                                        &self.enums,
-                                        &self.bundle_sigs,
-                                        &subst,
-                                        inst,
-                                        &iname,
-                                        self.depth,
-                                        self.mode,
-                                    )?;
-                                    self.flat.absorb(f);
-                                }
-                                ModuleItem::Drive { lhs, rhs } => record_drive(
-                                    lhs,
-                                    rhs,
-                                    &rwi,
-                                    &ci,
-                                    &mut self.comb,
-                                    &mut self.bit_drives,
-                                )?,
-                                ModuleItem::Repeat(_) => {
-                                    return Err(Box::new(
-                                        Diag::new(
-                                            r.span,
-                                            "nested `repeat` is not supported by the simulator yet",
-                                        )
-                                        .with_code("S0125"),
-                                    ));
-                                }
-                                _ => {
-                                    return Err(Box::new(
-                                        Diag::new(
-                                            r.span,
-                                            "a `repeat` body may only contain instances and drives",
-                                        )
-                                        .with_code("S0126"),
-                                    ));
-                                }
-                            }
-                        }
-                    }
+                    let base = self.consts.clone();
+                    self.elaborate_repeat(r, &base)?;
                 }
                 ModuleItem::ConstIf {
                     cond, then, els, ..
@@ -854,15 +911,42 @@ pub(super) fn elaborate_module(
     e.finish()
 }
 
-/// Collect every instance name (top-level and inside `repeat`), so an
-/// instance-port read resolves whether the instance is plain or an array.
-fn collect_inst_names(items: &[ModuleItem], out: &mut HashSet<String>) {
+/// Collect every instance name (top-level, inside `repeat`, and inside a
+/// `const if` nested at any depth — round-4 plan Task 8, BUG-53's own
+/// check/sim/emit split: this used to recurse into `Repeat` but not
+/// `ConstIf`, so an array instance declared behind a `const if` inside a
+/// `repeat` was never registered here, and `Rw::field`/`Rw::index` — which
+/// consult this set to tell an instance-port read apart from an ordinary
+/// signal — fell through to a different, unrelated error path instead of
+/// resolving it), so an instance-port read resolves whether the instance is
+/// plain or an array. Mirrors `collect_lowered_sync_loops`'s own
+/// `const_eval(cond, consts)` resolution, so a branch that resolves one way
+/// there resolves the same way here.
+fn collect_inst_names(
+    items: &[ModuleItem],
+    consts: &BTreeMap<String, i128>,
+    out: &mut HashSet<String>,
+) {
     for it in items {
         match it {
             ModuleItem::Inst(i) => {
                 out.insert(i.name.name.clone());
             }
-            ModuleItem::Repeat(r) => collect_inst_names(&r.items, out),
+            ModuleItem::Repeat(r) => collect_inst_names(&r.items, consts, out),
+            ModuleItem::ConstIf {
+                cond, then, els, ..
+            } => {
+                // Same fallback as every other pre-worklist ConstIf scan in
+                // this file — the checker rejects a non-const condition
+                // (E0811) before this ever runs in practice.
+                let val = const_eval(cond, consts).unwrap_or(0);
+                let branch: &[ModuleItem] = if val != 0 {
+                    then
+                } else {
+                    els.as_deref().unwrap_or(&[])
+                };
+                collect_inst_names(branch, consts, out);
+            }
             _ => {}
         }
     }

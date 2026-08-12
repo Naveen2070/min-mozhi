@@ -4019,6 +4019,37 @@ failures remain); `fmt`/`clippy -D warnings` clean. The check/sim/emit
 disagreement table above is **not** resolved by this fix — that gap is tracked
 separately (round-4 plan Task 8).
 
+**Task 8 resolved (2026-08-12) — the simulator now supports all three
+shapes for real**, not by rejecting them. Reading the checker's own
+`no_decls_in_repeat` (E0303, `checker/names/items.rs`) turned up that its
+doc comment already names nested `repeat` as legal hardware generation —
+the table above was a simulator gap, not an intentionally-unsupported
+shape. `elaborate/module.rs`'s repeat-body loop was the same "arm present,
+data source under-populated" defect this bug's own `Cause` section
+describes, one layer below the emitter: it named an array-instance from
+the raw loop counter, not `inst.index` folded against the current env (so
+the exact "offset index" repro this bug filed), and rejected nested
+`Repeat`/anything-but-`Inst`/`Drive` outright (S0125/S0126) instead of
+recursing. Replaced with `elaborate_repeat`/`elaborate_repeat_body_item`,
+mirroring the emitter's own already-fixed `inst_name` for the index fold
+and `run_worklist`'s own `ConstIf` recursion for the shape gaps — one
+shared walk, not a second hand-synced copy. A sibling gap surfaced fixing
+this: `collect_inst_names` recursed into a nested `Repeat` but not a
+`ConstIf`, so an instance behind a `const if` inside a `repeat` was never
+registered as a known instance name, and the read side (`s[0].q`) failed
+with an unrelated "instance-port access is not supported" error — fixed
+alongside, same recursion added there too. All three of this bug's own
+filed repros now elaborate correctly through the real kernel, confirmed
+via `mimz sim` directly and upgraded from `emitter_only_clocked_check`
+(now deleted, dead) to the real `differential_clocked` in
+`tests/self_determined_regression.rs`. **S0125 retired** (`sim/diag.rs`'s
+`ALL_SIM_CODES`, same precedent as `S0101`) — nested `repeat` is
+supported now, so its only emission site is gone; `s0125_nested_repeat_
+not_supported` replaced with the positive `nested_repeat_elaborates`.
+S0126 stays reachable (a `Reg`/etc. inside `repeat`, when the checker
+hasn't run). Full workspace **1247/1247**, `fmt`/`clippy -D warnings`
+clean.
+
 ---
 
 ## BUG-54 (HIGH, FIXED 2026-08-11) — `--emit-testbench`'s `expect` reports PASS on an `x`-valued comparison

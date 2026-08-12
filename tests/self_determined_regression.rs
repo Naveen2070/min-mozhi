@@ -1069,74 +1069,6 @@ fn bug_48_const_bounded_slice_operand_of_add_in_concat_matches_icarus() {
     differential(src, &[("a", 0b00001111), ("b", 0b1010)]);
 }
 
-/// BUG-53's three shapes (`docs/audit/bugs.md`) are, per the review's own
-/// table, rejected by `mimz sim` today (`error: unknown signal`, `S0125`,
-/// `S0126`) even though `mimz check` accepts them — a SEPARATE, tracked
-/// check/sim/emit disagreement, not this fix's job to close. So unlike
-/// `differential_clocked` (which needs `elaborate_project`/`run` — our own
-/// kernel — to succeed first), this compiles straight to Verilog and checks
-/// ONE output value against real Icarus directly, the same "hand-computed
-/// expected value" proof `tests/icarus.rs`'s own hand differentials use.
-fn emitter_only_clocked_check(src: &str, held_inputs: &[(&str, u128)], expected: u128) {
-    let Some(bin) = support::require_iverilog() else {
-        return;
-    };
-
-    let tokens = lexer::lex(src)
-        .unwrap_or_else(|e| panic!("unlexable:\n{src}\n{}", diag::render(&e, src, "test")));
-    let file = parser::parse(tokens)
-        .unwrap_or_else(|e| panic!("unparsable:\n{src}\n{}", diag::render(&e, src, "test")));
-    if let Err(e) = checker::check(std::slice::from_ref(&file)) {
-        panic!(
-            "checker rejected:\n{src}\n{}",
-            diag::render(&e, src, "test")
-        );
-    }
-
-    let (ins, outs) = module_ports(&file);
-    let held: BTreeMap<String, u128> = held_inputs
-        .iter()
-        .map(|(n, v)| (n.to_string(), *v))
-        .collect();
-    assert_eq!(
-        held.len(),
-        ins.len(),
-        "every declared `in` port must have a value in `held_inputs`"
-    );
-    let inputs_meta: Vec<(String, u32, u128)> =
-        ins.iter().map(|(n, w)| (n.clone(), *w, held[n])).collect();
-
-    const CYCLES: u64 = 4;
-    const RESET_CYCLES: u64 = 1;
-
-    let tag = format!("{:x}", md5_ish(src));
-    let path = std::env::temp_dir().join(format!("mimz_bug53_{tag}.mimz"));
-    std::fs::write(&path, src).unwrap();
-    let design_v = support::compile_example(&path);
-
-    let tb = support::clocked_testbench(
-        "Fuzz",
-        &[],
-        "clk",
-        Some("rst"),
-        &inputs_meta,
-        &outs,
-        CYCLES,
-        RESET_CYCLES,
-    );
-    let example = format!("bug-53 emitter-only regression {tag}");
-    let stdout = support::run_vvp(&bin, &example, &design_v, &tb);
-    let icarus = support::parse_icarus(&stdout);
-    let last_cycle = *icarus.keys().max().expect("Icarus produced no rows");
-    let row = &icarus[&last_cycle];
-    let (out_name, _) = &outs[0];
-    assert_eq!(
-        row[out_name], expected,
-        "output `{out_name}` at cycle {last_cycle}: Icarus says {}, expected {expected}\nsource:\n{src}",
-        row[out_name]
-    );
-}
-
 #[test]
 fn bug_53_control_case_non_zero_base_identity_index_still_hoists() {
     // The review's own control case, which is what pins the diagnosis on
@@ -1164,11 +1096,19 @@ fn bug_53_offset_array_instance_index_matches_icarus() {
     // the identity, so `decls` never had the key `s__1_q` that
     // `infer_kind`'s `Field` arm looked up, and the enclosing `+` was
     // never hoisted. `a = 0b1111`, `b = 0b1010` → 350 (`{b, a+a}`).
+    //
+    // Round-4 plan Task 8 (BUG-53's own check/sim/emit split): this used
+    // `emitter_only_clocked_check` because `mimz sim` rejected the shape
+    // outright — `elaborate/module.rs`'s repeat-body loop keyed the
+    // array-instance's OWN NAME from the raw loop counter too, the exact
+    // same defect one layer down. Now that the simulator folds `inst.index`
+    // the same way, this runs through the REAL kernel via
+    // `differential_clocked`, not just the emitted text.
     let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
                 out y: bits[9]\n  repeat i: 0..1 {\n    let s[i + 1] = Sub() { x: a }\n  }\n  \
                 y = { b, s[1].q + a }\n}\n\n\
                 module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
-    emitter_only_clocked_check(src, &[("a", 0b1111), ("b", 0b1010)], 350);
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
 }
 
 #[test]
@@ -1179,12 +1119,18 @@ fn bug_53_nested_repeat_array_instance_matches_icarus() {
     // recursion gap as `Concat as a NESTED operand, not the outer
     // container` elsewhere in this file, this time on the declaration
     // side rather than the render side.
+    //
+    // Round-4 plan Task 8: `mimz sim` used to reject nested `repeat`
+    // outright (S0125) even though the checker's own `no_decls_in_repeat`
+    // (E0303) already treats it as legal. The simulator's repeat-body walk
+    // now recurses into a nested `Repeat` the same way the outer worklist
+    // already did, so this runs through the real kernel.
     let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
                 out y: bits[9]\n  repeat i: 0..1 {\n    repeat j: 0..1 {\n      \
                 let s[j] = Sub() { x: a }\n    }\n  }\n  \
                 y = { b, s[0].q + a }\n}\n\n\
                 module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
-    emitter_only_clocked_check(src, &[("a", 0b1111), ("b", 0b1010)], 350);
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
 }
 
 #[test]
@@ -1194,13 +1140,22 @@ fn bug_53_const_if_in_repeat_array_instance_matches_icarus() {
     // loop — `emit_instances` (real emission) already walks both shapes;
     // `insert_repeat_instance_output_kinds` (the `decls`-populating side)
     // did not.
+    //
+    // Round-4 plan Task 8: `mimz sim` used to reject this shape too (S0126,
+    // the repeat-body loop's catch-all) even though the checker already
+    // treats `const if` inside `repeat` as legal. Fixing the repeat-body
+    // walk alone surfaced a SECOND, sibling gap: `collect_inst_names`
+    // recursed into a nested `Repeat` but not a `ConstIf`, so `s` was never
+    // registered as a known instance name and the READ side (`s[0].q`)
+    // failed with an unrelated "instance-port access is not supported"
+    // error — fixed alongside, same recursion added there too.
     let src = "module Fuzz {\n  const DEBUG: int = 1\n  clock clk\n  reset rst\n  \
                 in a: bits[4]\n  in b: bits[4]\n  out y: bits[9]\n  \
                 repeat i: 0..1 {\n    const if (DEBUG) {\n      \
                 let s[i] = Sub() { x: a }\n    }\n  }\n  \
                 y = { b, s[0].q + a }\n}\n\n\
                 module Sub {\n  in x: bits[4]\n  out q: bits[4]\n  q = x\n}\n";
-    emitter_only_clocked_check(src, &[("a", 0b1111), ("b", 0b1010)], 350);
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
 }
 
 // ---------------------------------------------------------------------

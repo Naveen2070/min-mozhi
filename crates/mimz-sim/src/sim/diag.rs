@@ -22,7 +22,18 @@
 /// the same lookup first), so the append-only stability contract never
 /// applied to it — nothing could have observed it firing, since it never
 /// did.
-pub const ALL_SIM_CODES: [&str; 80] = [
+///
+/// `S0125` was retired 2026-08-12 (round-4 plan Task 8, BUG-53's own
+/// check/sim/emit split): "nested `repeat` is not supported" was a real,
+/// reachable condition, but the checker's own `no_decls_in_repeat`
+/// (E0303) already treats a nested `repeat` as legal hardware generation
+/// — the simulator's repeat-body walk was a separate, hand-restricted
+/// loop that hadn't caught up. That walk is now the same recursive one
+/// `run_worklist`'s own `ConstIf` arm already used, so nested `repeat`
+/// elaborates for real and this code's only emission site is gone — same
+/// "nothing could observe it firing" reasoning as `S0101`, just because
+/// the FEATURE landed rather than because the arm was always dead.
+pub const ALL_SIM_CODES: [&str; 79] = [
     // S01xx — elaboration/wiring (sim/elaborate/registry.rs, instance.rs,
     // mod.rs, module.rs, rewrite.rs).
     "S0102", // ambiguous bare reference (module/extern-module/bundle)
@@ -41,8 +52,7 @@ pub const ALL_SIM_CODES: [&str; 80] = [
     "S0122", // unknown enum type in a declared signal's type
     "S0123", // memory has a non-positive depth
     "S0124", // `repeat` would unroll past REPEAT_BUDGET
-    "S0125", // nested `repeat` is not supported
-    "S0126", // a `repeat` body item is neither an instance nor a drive
+    "S0126", // a `repeat` body item is neither an instance, a drive, a nested `repeat`, nor `const if`
     "S0127", // bundle destructure in a module body is not yet supported
     "S0128", // a flattened instance signal collides with an existing signal
     "S0129", // a bit-driven signal has no declaration
