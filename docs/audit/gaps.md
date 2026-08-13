@@ -38,6 +38,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                  | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
 | [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted) | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED |
 | [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)              | Release gate scored at 400 seeds while CI is configured for 5000        | MEDIUM     | CLOSED |
+| [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)                        | Per-arm reasoning audit has no independent party (single-author repo)   | MEDIUM     | CLOSED |
 
 ---
 
@@ -1068,3 +1069,166 @@ something. Fixed same day (`bugs.md`), corpus seed appended, and the gate
 cargo test --release --test differential_fuzz`). That re-run — not the
 procedure alone — is what actually closes this gap; a procedure that is
 never exercised is not evidence.
+
+**Mechanised (2026-08-13, round-5 plan Task 6).** The residual round 5's own
+review named: the rule lived in prose only, and the project's own 3-day gap
+between writing it and running it is the proof a prose rule survives exactly
+until the next handoff that doesn't remember it. Two changes, both XS:
+`tools/gate.sh` runs the fuzz at the mandated 5000/5000 and prints the depth
+and a CLEAN/FAILED banner in its own output — smoke-tested end-to-end at a
+reduced depth to confirm the pass/fail path and exit-code propagation both
+work, then restored to 5000. `.github/PULL_REQUEST_TEMPLATE.md` gained a
+"Release gate" section, scoped to PRs that restore/claim a release-readiness
+note, asking for `tools/gate.sh`'s output or a `fuzz-nightly` run URL pasted
+in — a checkbox with nothing to paste is visibly incomplete, which a prose
+convention never was.
+
+**Debug-reachable at the mandated depth (2026-08-13, round-5 plan Task 7).**
+A separate residual, found by the round-5 review: `hoist_if_needed`'s two
+`debug_assert!` self-checks (`emit_verilog/module/ports.rs:564`/`:587`,
+round-4 plan Task 9) are inert in every `--release` build, and every
+differential/gate run — including `fuzz-nightly`'s own 5000/5000 step and
+this gap's own `tools/gate.sh` — used `--release`. Checked, not assumed,
+whether dropping it would slow the deep run down: measured N=100 locally,
+25.7s debug vs 29.5s release for the identical test — debug is dominated by
+`iverilog`/`vvp` subprocess time, not `rustc`'s `-O`, matching `ci.yml`'s own
+pre-existing comment. Dropped `--release` from both `fuzz-nightly`'s deep
+step and `tools/gate.sh` — free, and it keeps the assert live at the one
+depth that has actually found a CRITICAL past the per-PR depth (BUG-59,
+index 2563). Proved the assert genuinely fires, not just compiles in:
+injected a deliberate one-line `Kind` mismatch into `kinds.rs`'s `Ident`
+arm, ran one debug-mode differential, got the exact panic —
+`hoist_if_needed: \`b\` declared as Some(Kind { width: 4, signed: false })
+but caller computed Kind { width: 5, signed: false }`at`ports.rs:564:13`
+— then reverted, confirmed clean by diff. Workspace 1259/1259 unchanged
+(CI/tooling-only), fmt/clippy clean.
+
+---
+
+## GAP-15 (MEDIUM, process) — The per-arm reasoning audit has no independent party, and cannot have one
+
+**Status:** CLOSED 2026-08-13 (round-5 plan Task 5). Filed 2026-08-13. Source:
+[`review-2026-08-13.md`](review-2026-08-13.md) (round 5).
+
+**What.** [Round 4](review-2026-08-10.md)'s stated closure condition for the
+self-determined-width class was, verbatim, one of:
+
+- **(a)** every arm of both matches, on both axes, carries a written reason that
+  has been checked against real Icarus **by someone other than its author** — a
+  bounded, one-time job of roughly 60 arms; or
+- **(b)** [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)
+  lands and the question stops existing.
+
+Round-4 plan Task 4 executed (a)'s _work_ across eight batches, thoroughly and
+in good faith — it produced [BUG-56](bugs.md), [BUG-57](bugs.md) and
+[BUG-58](bugs.md), corrected four miscalibrated citations, and replaced two
+approximate citations with new differentials that actually ask their arm its own
+question. It could not execute (a)'s _independence_ requirement:
+
+```console
+$ git log --format="%an" | sort | uniq -c | sort -rn
+     45 Naveen2070
+      5 github-actions[bot]
+```
+
+One human author, repo-wide. The same person wrote the arms, wrote the audit,
+wrote both coverage docs, and signed off the reasons. Condition (a) is not
+partially met — it is **unmeetable as stated** on a single-maintainer project.
+
+**Why it matters, and what it cost.** The independence clause was not
+decoration. Round 4 put it in because self-review is what produced BUG-42's
+wrong reasoning and the stale doc-comments in the first place. Round 5 found the
+sixth instance of the class within an hour, inside the audited surface, in an
+arm whose written reason says it is safe:
+
+- `expr_kind_self_determined_coverage`'s `Unary` arm, reduction half: _"no
+  mismatch is possible there and no separate test is needed for that half"_ —
+  reasoning about the operator's **result** width, which this module's own doc
+  comment forbids.
+- `builtin_self_determined_coverage`'s `Nand`/`Nor`/`Xnor` arm: the same claim,
+  cited to `matrix_nand_in_concat_matches_icarus`, whose operand is the bare
+  identifier `nand(a)` — a shape that cannot discriminate on "regardless of
+  operand width".
+
+Both became [BUG-60](bugs.md) (CRITICAL, five reproductions).
+
+The pattern is specific and repeatable: the audit applied the BUG-42 rule
+correctly to most arms, and slipped back to the result-width question on exactly
+the arms where the operator's result is _obviously_ the same width on both
+sides. "Obvious" is where a solo reviewer's attention is cheapest, which is where
+a second reader is worth most.
+
+**Restated closure condition (a′), which a solo maintainer can actually meet.**
+Replace the human-independence requirement with a mechanical one that does not
+depend on out-thinking one's own intuition. Every arm returning `None` must
+carry either:
+
+1. a differential whose operand **renders narrower than its mimz width** — an
+   `extend(x, N)` or equivalent, never a bare identifier, never a plain
+   instance port; or
+2. an explicit `NotApplicable` whose reason names a **checker rule, grammar
+   restriction, or lowering pass by code/identifier** (e.g. "E0403 rejects this
+   upstream", "parser-restricted to a `Wire` init") — never a property of the
+   operator itself.
+
+Both BUG-60 and BUG-61 fail this rule by inspection, without needing any Verilog
+knowledge at the point of review. Roughly a dozen arms across the four matches
+currently rest on some form of "no mismatch is possible", and each is a
+candidate.
+
+**Relationship to GAP-1.** (a′) is a mitigation, not a resolution. It makes the
+per-arm surface auditable by one person; it does not remove the surface. GAP-1
+remains the only option that makes the question stop existing, and BUG-60
+strengthens the case: it is the first member of the family that neither the
+classifier's width-mismatch check nor deeper fuzzing can reach, because both are
+width-based and this divergence is value-based at matching widths.
+
+**Fix.** Adopt (a′) as the project's stated closure condition in place of round
+4's (a); re-audit the "no mismatch is possible" arms against it; record the
+result so round 6 scores against a condition that is satisfiable.
+
+**Adopted (2026-08-13, round-5 plan Task 2).** Rule (a′) now lives where an
+arm's author actually reads it, not just in this file: `self_determined.rs`'s
+and `kinds.rs`'s module docs state it in full, and all five coverage docs in
+`tests/self_determined_regression.rs` (`expr_kind_self_determined_coverage`,
+`builtin_self_determined_coverage`, `expr_kind_infer_kind_coverage`,
+`binop_infer_kind_coverage`, `builtin_infer_call_coverage`) carry a pointer to
+it in their own header comment, phrased so "no mismatch is possible" alone,
+unattached to a narrow-operand differential or a named checker/grammar/
+lowering fact, is no longer an acceptable reason.
+
+**CLOSED (2026-08-13, round-5 plan Task 5).** Grepped both raw matches and
+all five coverage docs for "regardless", "always", "in both models", "no
+mismatch", "no test needed" and their paraphrases — every hit, not a sample.
+Most were already sound, backed by a checked code-level fact (round-4 batch
+8's variant-blind-by-construction arms; GATE arms whose text states what the
+function body literally does). Two were not yet checked against the exact
+position their claim needs:
+
+- **The comparison operand-hoist.** `expr.rs`'s comparison arm hoists `lhs`/
+  `rhs` independently at its own call site — real, but never proven by a
+  narrow-rendering differential. Checked by hand (`mimz compile` +
+  reading the emission) before adding a test — genuinely sound (`extend(a,8)
+== b` hoists into `wire [7:0] __mimz_sub_1`) — pinned as
+  `task5_comparison_operand_hoist_catches_a_mismatch_matches_icarus`.
+- **`Abs`/`Min`/`Max` at a plain top-level assignment.** Their render arms
+  embed the operand with no hoist call, the identical SHAPE BUG-60 needed a
+  hoist for — worth checking rather than assuming sound. It is sound, and
+  for a structural (LRM) reason rather than luck: a reduction's operand is
+  UNCONDITIONALLY self-determined regardless of context (BUG-60's actual
+  cause); a ternary's branches are self-determined only when the ternary
+  itself sits in a self-determined position (BUG-52), so at plain top level
+  they inherit the assignment's own context the same way BUG-24 established
+  for ordinary operators. Verified against real Icarus with the
+  widest-magnitude operand in each case (`abs(extend(a,8))`, `a=-8` →
+  8; `min(extend(p,11),extend(p,11))`, `p=-9` → -9) before writing the
+  differentials, not after — `task5_abs_operand_at_plain_top_level_
+matches_icarus`, `task5_min_max_operand_at_plain_top_level_matches_icarus`.
+
+No third instance found. Both checked claims were true; neither needed
+filing as a new bug — the sweep found gaps in the audit trail (untested
+positions), not gaps in the emitter. Workspace 1259/1259, fmt/clippy clean.
+Rule (a′) now stands on real per-position verification of every arm the
+"no mismatch is possible" grep surfaced, which is the bar round 4's
+condition (a) asked for in spirit — met here by a mechanical, repeatable
+check rather than a second human.

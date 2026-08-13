@@ -4668,3 +4668,206 @@ workspace **1248/1248**, `fmt`/`clippy -D warnings` clean. Corpus seed
 `comb.txt`'s `12650993` appended once the fix landed; [GAP-14](gaps.md)'s
 own 5000/5000 gate re-run after this fix is the actual closing evidence
 (see that entry).
+
+---
+
+## BUG-60 (CRITICAL, FIXED 2026-08-13) — a reduction's operand is a self-determined position that nothing analyses: `&extend(a, 8)` reduces over the bare operand
+
+**What.** Verilog self-determines a reduction operator's operand at its own
+width. mimz's emitter has **no hoist site for that position at all**, so an
+operand that renders narrower than its mimz width — canonically `extend(x, N)`,
+which renders as the bare `(x)` — is reduced over the wrong number of bits.
+`mimz check` passes, `mimz eval`/`mimz sim` give the right answer, and the
+emitted Verilog gives a different one.
+
+Five reproductions, all confirmed against real `iverilog -g2005` + `vvp`
+(`a = 0b1111`, `b = 0b1010`):
+
+| #   | source                                 | emitted                     | `mimz eval` | Icarus   |
+| --- | -------------------------------------- | --------------------------- | ----------- | -------- |
+| A   | `y = { b, &extend(a, 8) }` · `bits[5]` | `assign y = {b, (&(a))};`   | **20**      | **21** ✗ |
+| B   | `y = {3{ &extend(a, 8) }}` · `bits[3]` | `assign y = {3{(&(a))}};`   | **0**       | **7** ✗  |
+| C   | `y = &extend(a, 8)` · `bit`            | `assign y = (&(a));`        | **0**       | **1** ✗  |
+| D   | `y = nand(extend(a, 8))` · `bit`       | `assign y = (~&((a)));`     | **1**       | **0** ✗  |
+| E   | `y = or-reduce of ~extend(a, 8)`       | `assign y = (or-red ~(a));` | **1**       | **0** ✗  |
+
+(E is written `y = |(~extend(a, 8))` in source; the pipe is spelled out here to
+keep this table cell parseable.)
+
+**C, D and E are at a plain top-level assignment** — not a concat member, not a
+replication body, not any of the four self-determined positions this family has
+been about. The enclosing context is irrelevant, because the divergence is
+entirely inside the operand. That makes this the widest-blast-radius member of
+the class so far.
+
+**Cause.** Two separate things, both required:
+
+1. `hoist_if_needed` (`emit_verilog/module/ports.rs:533`) is wired at exactly
+   five call sites (`emit_verilog/expr.rs:532`/`:539` binary LHS/RHS, `:675`
+   concat members, `:696` replication members, `:868`/`:882`/`:897` the three
+   recursing `Call` args). A reduction's operand is not among them.
+   `hoist_width_effect_operand` **is** called at a `Unary`'s operand, but it
+   only fires on a lossless/wrap **arithmetic** child (`is_width_effect_binop`),
+   never on an `extend`.
+2. The classifier's two arms that would have exposed the mismatch both answer
+   the wrong question:
+
+   ```rust
+   // self_determined.rs — ExprKind::Unary
+   UnOp::RedAnd | UnOp::RedOr | UnOp::RedXor => None,   // "1 bit in BOTH models"
+   // self_determined.rs — ExprKind::Call
+   Builtin::Trunc | Builtin::Nand | Builtin::Nor | Builtin::Xnor => None,
+   //   "Reductions are 1-bit on both sides regardless of operand width."
+   ```
+
+   Both statements are true about the operator's **result** and irrelevant to
+   its **operand**. This is BUG-42's exact failure mode, and this module's own
+   doc comment forbids it in as many words: _"ask is this argument's RENDERED
+   width necessarily its mimz width?, never is this operator's RESULT width
+   necessarily its mimz width?"_
+
+**Which reduction forms diverge.** Zero-extension only perturbs an **and**-
+reduction directly (the padding zeros force mimz's result to 0 while Verilog
+reduces the bare, possibly all-ones operand). But `nand` is the negated
+and-reduction (D), and a `~` between the extend and the reduction turns the
+padding into ones, which flips the or- and xor-reductions too (E).
+Sign-extension of a signed operand perturbs all three. Every reduction form the
+language has is affected, not just `&`.
+
+**How found.** Round-5 review ([`review-2026-08-13.md`](review-2026-08-13.md)),
+checking round-4 plan Task 4's own arm reasoning against real Icarus _in the
+position the arm claims to cover_. The `Unary` arm's reduction half asserts
+"no mismatch is possible there and **no separate test is needed** for that
+half"; the `Nand`/`Nor`/`Xnor` arm asserts the same and cites
+`matrix_nand_in_concat_matches_icarus`, whose operand is the bare identifier
+`nand(a)` — a shape whose rendered width **is** its mimz width by definition, so
+the citation cannot discriminate on the "regardless of operand width" claim it
+is offered for. Same "citation exercises a different position from the claim"
+gap BUG-52 was filed for, still live, in an arm the Task 4 audit reviewed and
+signed off.
+
+**Why the fuzzer misses it — and why depth cannot fix it.** `wrap_builtin`
+(`tests/differential_fuzz.rs:842`) _can_ generate `nand(<any frag>)` over an
+`extend`-wrapped fragment, so the **shape** is reachable. The **value**
+divergence needs the source operand to be all ones (or all zeros after a `~`),
+and the harness drives random vectors into 6–14-bit ports. The per-seed
+probability is vanishing and does not improve with depth: both the team's
+5000/5000 gate run (2026-08-13) and the round-5 reviewer's independent
+5000/5000 run were **clean**. This is the first member of the family that more
+fuzzing would not have found — distinct from [GAP-14](gaps.md), which was "the
+instrument saw it and the procedure didn't look."
+
+**Severity.** CRITICAL: silent wrong Verilog on checker-accepted,
+`mimz test`-correct source, reachable from chapter-5 syntax
+([`docs/guide/05-operators.md`](../guide/05-operators.md) § Reductions teaches
+the three prefix reductions) applied to a chapter-6 builtin, at a plain
+assignment. No shipped example uses a reduction, which is why the golden suite
+never saw it.
+
+**Fix (2026-08-13, round-5 plan Task 1).** Treated a reduction's operand as a
+self-determined position and hoisted it exactly where round-5's own diagnosis
+said to: `emit_verilog/expr.rs`'s `ExprKind::Unary` render arm now routes
+`inner` through `infer_kind` + `hoist_if_needed` for `RedAnd`/`RedOr`/`RedXor`
+before applying the reduction, and `Builtin::Nand`/`Nor`/`Xnor` do the same for
+`args[0]` — the identical shape `SignedCast`/`UnsignedCast`/`Encoding` already
+use for their own argument, just gated to the reduction ops. The classifier
+arms (`self_determined.rs`) stay `None`, unchanged — the reduction's _result_
+genuinely is 1 bit in both models, exactly as they always claimed; only the
+render call site needed the hoist, not the classifier's own answer.
+
+6 new differentials in `tests/self_determined_regression.rs`
+(`bug_60_and_reduction_of_an_extend_in_a_concat_matches_icarus`,
+`..._in_a_replication_matches_icarus`, `..._at_top_level_matches_icarus`,
+`bug_60_and_reduction_of_a_bare_identifier_stays_unhoisted` (control),
+`bug_60_nand_of_an_extend_matches_icarus`,
+`bug_60_or_reduction_of_a_negated_extend_matches_icarus`), each an
+`extend`-wrapped (narrow-rendering) operand per round-5's own proposed rule
+(a′) rather than a bare identifier. Watched fail first: stashed the emitter
+change alone, re-ran — 5 of 6 failed at exactly the filed pre-fix values
+(the bare-identifier control passed regardless, as it must), restored and
+all 6 passed under real `iverilog`. Both coverage-doc citations
+(`expr_kind_self_determined_coverage`'s `Unary` arm,
+`builtin_self_determined_coverage`'s `Nand`/`Nor`/`Xnor` arm) rewritten to
+stop answering the result-width question and cite the new narrow-operand
+tests instead of `matrix_nand_in_concat_matches_icarus`'s bare identifier.
+Workspace **1254/1254** (35 suites, up from 1248 pre-fix), fmt/clippy clean.
+
+**Fuzz-hardened (2026-08-13, round-5 plan Task 4).** The differential fuzzer
+would not have found this bug at any depth — confirmed empirically, both the
+team's and the round-5 reviewer's independent 5000/5000 runs were clean. Two
+compounding gaps, found by disabling this fix and re-running the biased
+generator: (1) `support::gen_vectors`'s scramble essentially never lands on
+an all-ones/all-zeros/sign-boundary value — fixed by reserving the first
+three vector slots per port to those boundaries directly; (2)
+`wrap_builtin`'s `Nand`/`Nor`/`Xnor` candidate wraps whatever fragment it is
+given AS-IS, so it only reaches BUG-60's shape (a reduction over an
+`extend`) when a separate, earlier `wrap_builtin` pick had already produced
+one — empirically 0 of 10,000 generated programs contained a reduction over
+an `extend` before this fix. Fixed by forcing that position when the fed
+fragment is `atomic` (a bare port/literal, which never carries a
+self-determined mismatch on its own). With (1) alone, a 400- AND a
+5000-seed run both stayed clean with the real fix disabled. With (1)+(2),
+seed `12648489` failed at N=400 in 8.26s (`y1 = nand(extend(p1[HI:0], 12))`,
+kernel 1 vs Icarus 0) — restoring the real fix, the same biased run passes
+clean at N=400. Workspace 1256/1256, fmt/clippy clean.
+
+---
+
+## BUG-61 (HIGH, FIXED 2026-08-13) — `ExprKind::Index`'s base is never hoisted: a bit-select over a composite expression emits unparseable Verilog
+
+**What.** BUG-20 forces a non-identifier **slice** base to a named wire. Nothing
+does the same for a **bit-select** base, so `extend(a, 8)[7]` emits a bit-select
+applied directly to a parenthesized expression, which is not legal
+Verilog-2005.
+
+Two reproductions, both `mimz check`-clean and `mimz compile` exit 0:
+
+| source                | emitted                 | `iverilog -g2005`                                        |
+| --------------------- | ----------------------- | -------------------------------------------------------- |
+| `y = extend(a, 8)[7]` | `assign y = (a)[7];`    | `syntax error` · `Syntax error in continuous assignment` |
+| `y = {a, b}[3]`       | `assign y = {a, b}[3];` | `syntax error` · `Syntax error in continuous assignment` |
+
+`mimz eval` answers correctly (0 for the first, on `a = 0b1111`), so the checker
+and the kernel agree with each other and only the emitter is wrong — the same
+shape as BUG-49.
+
+**Control case, which pins the diagnosis.** The **slice** form of the identical
+expression, `extend(a, 8)[7:4]`, hoists correctly
+(`wire [7:0] __mimz_sub_1; assign y = __mimz_sub_1[7:4];`) and agrees with
+Icarus at 0. The machinery exists and is correct; `Index` was never wired into
+it.
+
+**Cause.** `ExprKind::Slice`'s render arm calls `hoist_slice_base_if_needed`;
+`ExprKind::Index`'s bit-select branch (`emit_verilog/expr.rs:703`) does not.
+The coverage axis's `Index` arm reads _"a bit-select is 1 bit in both models; a
+`mem` read renders as the declared element width"_ and cites
+`bug_41_mem_read_operand_of_add_in_concat_matches_icarus` — again a claim about
+the **result**, and a citation covering only the mem-read branch. The
+bit-select branch's **base** is unexamined in both the code and the Task 4
+audit.
+
+**How found.** Round-5 review ([`review-2026-08-13.md`](review-2026-08-13.md)),
+same sweep as BUG-60 — probing every classifier arm that returns `None` with an
+operand that renders narrower than its mimz width.
+
+**Severity.** HIGH, not CRITICAL — same reasoning as BUG-49: a loud Icarus
+elaboration failure at the user's first `iverilog` step, not a silent wrong
+value. Not ruled out: whether another synthesis toolchain accepts this text and
+assumes some width.
+
+**Fix (2026-08-13, round-5 plan Task 3).** Called the existing
+`hoist_slice_base_if_needed` from `ExprKind::Index`'s bit-select render arm,
+exactly as `ExprKind::Slice`'s arm already does a few lines away, same
+`signed: false` argument. 2 new differentials in
+`tests/self_determined_regression.rs`
+(`bug_61_bit_select_of_an_extend_hoists_the_base_and_matches_icarus`,
+`bug_61_bit_select_of_a_concat_hoists_the_base_and_matches_icarus`). Watched
+fail first: reverted just the new hoist call, both failed (real Icarus syntax
+error, matching the filed repro), restored, both pass. Coverage doc's `Index`
+arm (`expr_kind_self_determined_coverage`) rewritten to state the base is a
+separate self-determined position from the result the arm's own `None`
+answers, and to cite the new tests. Workspace **1256/1256** (35 suites),
+fmt/clippy clean.
+
+**Category** (round-4 taxonomy): _a fix that doesn't recurse into a nested
+position_ — BUG-20's slice-base hoist, never extended to the sibling node.

@@ -42,6 +42,15 @@
 - [ ] No E-code was renumbered or reused
 - [ ] No keyword was added without going through `lang/keywords.toml` + `spec/03` + TextMate grammar + lexer test
 
+### Release gate _(only if this PR restores/claims a release-readiness note, e.g. "v0.2 ships")_
+
+- [ ] Gate 5 scored at the nightly depth, not the per-PR depth (GAP-14,
+      `docs/audit/README.md` § Release-gate scoring convention) — ran
+      `tools/gate.sh` or dispatched `fuzz-nightly` and pasted the depth +
+      result below. **A 400/400-scored gate 5 does not count.**
+
+<!-- paste tools/gate.sh's output or the fuzz-nightly run URL here -->
+
 ---
 
 ## Impact analysis _(required for spec / grammar / safety-rule / keyword changes)_

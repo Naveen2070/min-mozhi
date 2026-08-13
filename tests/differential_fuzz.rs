@@ -841,8 +841,27 @@ fn wrap_builtin(rng: &mut Rng, f: Frag) -> Frag {
         },
         _ => {
             let name = ["nand", "nor", "xnor"][rng.next_range(3) as usize];
+            // Round-5 plan Task 4 (BUG-60, docs/audit/bugs.md): a
+            // reduction only exposes a self-determined mismatch when its
+            // operand RENDERS NARROWER than its mimz width — an already-
+            // `atomic` fragment (a bare port/literal, `gen_leaf`'s own
+            // definition) never does, so wrapping one directly here can
+            // never reach BUG-60's shape; it needed a SEPARATE, earlier
+            // `wrap_builtin` pick to have already produced an `extend(...)`
+            // for `f` to be. That double-pick is rare enough that 0 of
+            // 10,000 programs generated while testing this fix contained
+            // a reduction over an extend at all — depth cannot fix a shape
+            // the generator essentially never emits. Force exactly that
+            // position here when `f` doesn't already guarantee it, the
+            // same `extend`-wrap the `Extend` candidate above uses.
+            let arg = if f.atomic {
+                let target = (f.width + (rng.next_range(8) + 1) as u32).min(MAX_WIDTH);
+                format!("extend({}, {target})", f.text)
+            } else {
+                f.text
+            };
             Frag {
-                text: format!("{name}({})", f.text), // negated reduction: always 1-bit unsigned.
+                text: format!("{name}({arg})"), // negated reduction: always 1-bit unsigned.
                 width: 1,
                 signed: false,
                 atomic: false,

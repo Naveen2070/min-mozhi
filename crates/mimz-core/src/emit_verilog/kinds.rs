@@ -39,6 +39,21 @@
 //! key, which already matches `expr.rs`'s own `Field` rendering) — so
 //! this function's own signature never needed to grow a second
 //! parameter.
+//!
+//! Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2,
+//! `docs/plan/v0.2-class-closure-round5.local.md`) applies here too, not
+//! just to `self_determined.rs`'s classifier: an arm whose reason is "the
+//! approximation is harmless" needs a checked FACT behind that claim, not
+//! an assertion — `ExprKind::Unary` ignoring `op` and forwarding `inner`'s
+//! `Kind` unchanged looked safe on inspection, and chasing WHY it was safe
+//! (round-4 plan Task 4, batch 6) found it mirrored a real kernel bug one
+//! layer down (BUG-58: `UnOp::Neg` never applied the checker's own
+//! lossless `+1` growth). "Correct company for the wrong reason" is what
+//! an unchecked "harmless" claim buys; this file's own coverage doc
+//! (`tests/self_determined_regression.rs`'s `expr_kind_infer_kind_coverage`)
+//! is where each arm's checked reason — differential, unit test, or a
+//! named checker/grammar/lowering fact — is recorded, same bar as the
+//! classifier's own coverage docs.
 use std::collections::HashMap;
 
 use crate::ast::{BinOp, Builtin, Expr, ExprKind};
