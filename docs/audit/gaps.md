@@ -37,7 +37,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)             | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED |
 | [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                  | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
 | [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted) | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED |
-| [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)              | Release gate scored at 400 seeds while CI is configured for 5000        | MEDIUM     | OPEN   |
+| [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)              | Release gate scored at 400 seeds while CI is configured for 5000        | MEDIUM     | CLOSED |
 
 ---
 
@@ -993,8 +993,8 @@ time the corpus is touched, not a fix here.
 
 ## GAP-14 (MEDIUM, process) — The release gate is scored at a shallower fuzz depth than the project's own CI runs
 
-**Status:** OPEN. Filed 2026-08-10. Source:
-[`review-2026-08-10.md`](review-2026-08-10.md).
+**Status:** CLOSED 2026-08-13 (procedure enforced AND actually run clean).
+Filed 2026-08-10. Source: [`review-2026-08-10.md`](review-2026-08-10.md).
 
 **What.** The v0.2 release gate's "no new instance of the F-1/F-2 pattern" check
 is scored from a differential-fuzz run at the **per-PR** depth
@@ -1052,3 +1052,19 @@ both seeds reachable at all — `combine_if`/`combine_match`
 generated sub-expressions, not fixed leaves, so they can and did produce a branch
 that renders narrower than its mimz width. Round 3's generator could not have
 emitted either program. The instrument works; the procedure did not use it.
+
+**Closed (2026-08-13).** The procedure fix (item 1, 3 above) landed
+2026-08-10 (`docs/audit/README.md`'s "Release-gate scoring convention").
+The gate itself was not actually re-run at 5000/5000 until now — running
+it for the first time at this depth found a **third** live CRITICAL,
+[BUG-59](bugs.md) (comb seed `12650993`, index 2563: a fused shift chain
+inside an `if`/`match` branch, un-hoisted as an outer growing shift's own
+LHS, saw the wrong ambient width — a value mismatch despite BUG-52's own
+width-mismatch check agreeing on both sides). This is exactly what the
+gap predicted: a deeper run than the one that scored the gate finds
+something. Fixed same day (`bugs.md`), corpus seed appended, and the gate
+**re-run clean** at 5000/5000 after the fix (4/4 passed, ~1184s,
+`REQUIRE_IVERILOG=1 MIMZ_DIFF_FUZZ_N=5000 MIMZ_DIFF_FUZZ_CLOCKED_N=5000
+cargo test --release --test differential_fuzz`). That re-run — not the
+procedure alone — is what actually closes this gap; a procedure that is
+never exercised is not evidence.

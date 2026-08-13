@@ -1416,6 +1416,32 @@ fn bug_55_signed_shift_right_inside_match_wildcard_arm_matches_icarus() {
 }
 
 #[test]
+fn bug_59_fused_shift_chain_inside_an_if_branch_as_the_lhs_of_a_growing_shift_matches_icarus() {
+    // Minimized from GAP-14's own nightly-depth gate re-run (comb seed
+    // 12650993, index unrecorded — found running the 5000/5000 gate this
+    // plan's own Task 1 mandates, docs/audit/bugs.md BUG-59): distinct
+    // from BUG-52 (a width mismatch) and BUG-55 (a signed `>>` escaping
+    // its branch) — here mimz's `Kind` for the WHOLE `if` already agrees
+    // with Verilog's (`verilog_self_determined_kind`/`infer_kind` both
+    // say 11 bits), so neither prior fix's mismatch check fires. The
+    // VALUE still differs: mimz-sim's `eval_shift_chain` resolves the
+    // `then` branch's fused `(a << b) >> c` bottom-up, in isolation, with
+    // no ambient context (BUG-34's own design) — giving 384. Rendered
+    // inline as the OUTER `<<`'s own LHS (un-hoisted), real Verilog
+    // instead threads the outer assignment's full 14-bit grown context
+    // straight through the ternary into that same inner `>>`, which
+    // truncates differently at 14 bits than at 11 — giving 3968 for the
+    // branch, then `3968 << 3` overflows the 14-bit destination,
+    // wrapping to -1024 where the kernel computes 384 << 3 = 3072
+    // (confirmed against real Icarus by hand, `docs/audit/bugs.md`).
+    let src = "module Fuzz {\n  in s: bit\n  out y: signed[14]\n  \
+                y = (if s {\n    \
+                (signed(extend(12, 4)) << extend(7, 3)) >> extend(2, 3)\n  \
+                } else {\n    signed(extend(1029, 11))\n  }) << extend(3, 2)\n}\n";
+    differential(src, &[("s", 1)]);
+}
+
+#[test]
 fn bug_56_literal_nested_under_bitand_in_a_concat_matches_icarus() {
     // BUG-56's own filed repro (docs/audit/bugs.md): `a & 15` as a concat
     // member is checker-legal (the bare `15` adapts to `a`'s sibling type,
