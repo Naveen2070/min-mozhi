@@ -471,6 +471,30 @@ impl Emitter<'_> {
             }
             ExprKind::Unary { op, expr: inner } => {
                 let x = self.render_shift_ctx_operand(inner, subst, arrays, true);
+                // BUG-60 (docs/audit/bugs.md): a reduction's OPERAND is
+                // itself a self-determined position — Verilog computes
+                // `&x`/`|x`/`^x` over `x`'s own rendered width, never the
+                // reduction's (always 1-bit) RESULT width, which is all
+                // `verilog_self_determined_kind`'s `RedAnd|RedOr|RedXor`
+                // arm answers. `extend(a, 8)` renders as the bare `(a)`
+                // here exactly like everywhere else self-determined, so
+                // without this hoist the reduction silently runs over
+                // `a`'s narrower 4 bits instead of the zero/sign-extended
+                // 8. Same hoist shape `SignedCast`/`UnsignedCast`/
+                // `Encoding` already use for their own argument, just
+                // gated to the reduction ops — every other unary op
+                // (`-`/`~`/`!`) leaves its operand's rendered width
+                // unchanged, so nothing to hoist there.
+                let x = match op {
+                    UnOp::RedAnd | UnOp::RedOr | UnOp::RedXor => {
+                        let decls = Rc::clone(&self.cur_decls);
+                        match crate::emit_verilog::kinds::infer_kind(inner, &decls, &self.env) {
+                            Some(k) => self.hoist_if_needed(inner, x, k, &decls),
+                            None => x,
+                        }
+                    }
+                    _ => x,
+                };
                 let sym = match op {
                     UnOp::Neg => "-",
                     UnOp::BitNot => "~",
@@ -733,6 +757,21 @@ impl Emitter<'_> {
                 // `allow_shift: true` — `eval_ctx`'s `Index` arm evaluates
                 // `base` with plain `eval` (self-determined).
                 let b = self.render_shift_ctx_operand(base, subst, arrays, true);
+                // BUG-61 (docs/audit/bugs.md): Verilog's bit-select
+                // (`x[i]`) grammar only accepts a plain identifier as `x`,
+                // the identical BUG-20 constraint `ExprKind::Slice` already
+                // hoists for a few lines below — a composite base
+                // (`extend(a,8)[7]`, `{a,b}[3]`) is a SYNTAX error in real
+                // Verilog, not just a width mismatch, and nothing hoisted
+                // it here before this fix. Same unconditional-on-shape
+                // call `Slice`'s own arm uses; `false` for the same
+                // reason — a bit-select's result is unsigned regardless of
+                // the base's own declared signedness.
+                let decls = Rc::clone(&self.cur_decls);
+                let b = match crate::emit_verilog::kinds::infer_kind(base, &decls, &self.env) {
+                    Some(k) => self.hoist_slice_base_if_needed(b, k.width, false),
+                    None => b,
+                };
                 let i = self.index_expr(index, subst, arrays);
                 format!("{b}[{i}]")
             }
@@ -1082,16 +1121,41 @@ impl Emitter<'_> {
                     format!("(({x} < 0) ? (-{x}) : ({x}))")
                 }
                 // Verilog-2005 negated reduction operators — one bit out.
+                // BUG-60 (docs/audit/bugs.md): same operand hoist as
+                // `ExprKind::Unary`'s `RedAnd|RedOr|RedXor` above — a
+                // negated reduction's argument is self-determined at its
+                // own rendered width, not the 1-bit result width
+                // `verilog_self_determined_kind`'s `Nand|Nor|Xnor` arm
+                // answers. `nand(extend(a, 8))` renders `(a)` unhoisted
+                // without this, and-reduces over 4 bits instead of 8.
                 Builtin::Nand => {
                     let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
+                    let decls = Rc::clone(&self.cur_decls);
+                    let x =
+                        match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
+                            Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
+                            None => x,
+                        };
                     format!("(~&({x}))")
                 }
                 Builtin::Nor => {
                     let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
+                    let decls = Rc::clone(&self.cur_decls);
+                    let x =
+                        match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
+                            Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
+                            None => x,
+                        };
                     format!("(~|({x}))")
                 }
                 Builtin::Xnor => {
                     let x = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
+                    let decls = Rc::clone(&self.cur_decls);
+                    let x =
+                        match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
+                            Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
+                            None => x,
+                        };
                     format!("(~^({x}))")
                 }
                 // `clog2(n)` folds to a literal when `n` is a constant (a literal
