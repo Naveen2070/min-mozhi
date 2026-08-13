@@ -249,6 +249,33 @@ impl Emitter<'_> {
             self.expr_subst(child, subst, arrays)
         };
         let decls = Rc::clone(&self.cur_decls);
+        // BUG-59 (docs/audit/bugs.md): `!allow_shift` reaching THIS
+        // function only ever happens at one call site — a `Shl`/`Shr`'s
+        // own LHS (`allow_shift_lhs` below). If `child` is an `if`/`match`
+        // there, its branches can hide a fused shift chain
+        // (`eval_shift_chain`, BUG-34) that mimz-sim resolves BOTTOM-UP,
+        // in isolation, with no ambient context. Real Verilog's ternary is
+        // context-PROPAGATING though: rendered inline as this outer
+        // shift's own un-hoisted LHS, its branches get re-derived at the
+        // OUTER assignment's full (grown) width, and an inner `>>` inside
+        // a branch truncates DIFFERENTLY at that wider width than the
+        // kernel's isolated one does — a VALUE mismatch despite mimz's
+        // own `Kind` for the whole `if`/`match` already agreeing with
+        // Verilog's self-determined one (BUG-52/`hoist_if_needed`'s
+        // mismatch check would never fire here; both sides already say
+        // 11 bits, confirmed by hand against real Icarus). Deliberately
+        // NOT folded into `hoist_width_effect_operand` itself — that
+        // function is ALSO called from `if_expr_subst`/`match_subst`'s own
+        // branch rendering with `allow_shift: false` for the ordinary,
+        // already-correct nested-ternary case (BUG-24), where the same
+        // check would spuriously over-hoist (confirmed: broke two
+        // showcase goldens before this was scoped down to here).
+        if !allow_shift
+            && matches!(child.kind, ExprKind::IfExpr { .. } | ExprKind::Match { .. })
+            && let Some(kind) = crate::emit_verilog::kinds::infer_kind(child, &decls, &self.env)
+        {
+            return self.hoist_slice_base_if_needed(text, kind.width, kind.signed);
+        }
         self.hoist_width_effect_operand(child, text, &decls, allow_shift)
     }
 
