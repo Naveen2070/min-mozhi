@@ -1952,9 +1952,14 @@ fn binop_infer_kind_coverage(op: &ast::BinOp) -> &'static str {
         }
         BinOp::Add | BinOp::Sub => {
             "covered by kinds.rs's own lossless_add_grows_by_one_bit unit \
-             test (`Sub` shares the same `adapted_lossless_operands` call \
-             and `lossless_result` rule, not independently re-tested here) \
-             plus bug_19_lossless_sub_in_a_concat_matches_icarus end-to-end"
+             test, plus bug_19_lossless_sub_in_a_concat_matches_icarus \
+             end-to-end. `Sub` is PROVABLY variant-blind here, not just \
+             sharing a similar path (round-4 Task 4, batch 8): `infer_binary` \
+             has one arm for `Add | Sub` and `op` is never read inside its \
+             body — `adapted_lossless_operands(lhs, rhs, ..)` then \
+             `lossless_result(l, r, false)`, verified by reading \
+             kinds.rs:432-435 directly, so no `Sub`-specific divergence from \
+             `Add` can exist in this GATE arm regardless of input"
         }
         BinOp::Mul => {
             "covered by kinds.rs's own \
@@ -1976,11 +1981,20 @@ fn binop_infer_kind_coverage(op: &ast::BinOp) -> &'static str {
         | BinOp::BitXor => {
             "covered by kinds.rs's own \
              wrap_add_with_a_narrower_bare_literal_adapts_to_the_sized_operand \
-             unit test (literal on either side) — the other five in this \
-             group share the identical `adapts_to_sibling`/`matched_result` \
-             call, not independently re-tested here; end-to-end via \
+             unit test (literal on either side), end-to-end via \
              bug_19_wrapping_sub_in_a_bitand_matches_icarus (BitAnd) and \
-             bug_23's own wrap family"
+             bug_23's own wrap family. `SubWrap`/`MulWrap`/`BitOr`/`BitXor` \
+             are PROVABLY variant-blind here (round-4 Task 4, batch 8), the \
+             same upgrade `Sub`'s citation above just got: all six variants \
+             share ONE `infer_binary` arm and `op` is never read inside its \
+             body (kinds.rs:440-469) — `adapts_to_sibling` on each operand, \
+             then either a direct passthrough or `matched_result(l, r)`, \
+             identically regardless of which of the six operators is \
+             actually being classified. A variant-specific bug here is not \
+             merely untested, it is IMPOSSIBLE by construction — the only \
+             way any of these four could diverge from `AddWrap`/`BitAnd` is \
+             a bug in the shared function itself, which would show up in \
+             all six identically and IS covered"
         }
         BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
             "NotApplicable for a differential: fixed `Kind{width:1, \
@@ -2026,10 +2040,15 @@ fn builtin_infer_call_coverage(builtin: &ast::Builtin) -> &'static str {
             "covered end-to-end by bug_28_extend_in_concat_matches_icarus/\
              bug_28_extend_in_replication_matches_icarus (`Extend`) and \
              matrix_trunc_in_concat_matches_icarus plus the bug_36/bug_44/\
-             bug_46/bug_49 `Trunc` family (docs/audit/bugs.md) — both share \
-             this one arm (`width = const_fold(args[1])`, `signed = \
-             infer_kind(args[0]).signed`), so a divergence would break both \
-             at once, not independently re-tested per-builtin here"
+             bug_46/bug_49 `Trunc` family (docs/audit/bugs.md). PROVABLY \
+             variant-blind, not just sharing a similar path (round-4 Task 4, \
+             batch 8): `infer_call` has one arm for `Extend | Trunc` and \
+             `func` is never read inside its body (kinds.rs:497-504) — \
+             `width = const_fold(args[1])`, `signed = \
+             infer_kind(args[0]).signed`, identically regardless of which \
+             builtin is being classified — so a `Trunc`-specific divergence \
+             from `Extend` is impossible by construction here, only a \
+             shared-function bug is, which both citations above would catch"
         }
         Builtin::SignedCast | Builtin::UnsignedCast => {
             "covered end-to-end by \
