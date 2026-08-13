@@ -218,6 +218,19 @@ pub(crate) fn display_args(outputs: &[(String, u32)]) -> String {
 
 /// Deterministic pseudo-random input vectors, each value masked to its input's
 /// width — the same vectors fed to our kernel and the Verilog testbench.
+///
+/// Round-5 plan Task 4 (docs/plan/v0.2-class-closure-round5.local.md,
+/// BUG-60 docs/audit/bugs.md): the scrambled formula below reaches every
+/// generated SHAPE eventually, but a value divergence like BUG-60's — a
+/// reduction over a zero/sign-extended operand, wrong only when the source
+/// operand happens to be all-ones (or all-zeros after a `~`) — needs a
+/// specific VALUE, and a uniformly-scrambled vector on a 6-14 bit port
+/// essentially never lands there no matter how many seeds run (both the
+/// team's and the round-5 reviewer's clean 5000/5000 gate runs proved this
+/// empirically). Reserving the first three vector slots per port to the
+/// boundary values directly turns "eventually, maybe" into "every run that
+/// reaches the shape at all also reaches the value," at zero cost to the
+/// existing scramble for slot 3 onward.
 pub(crate) fn gen_vectors(inputs: &[(String, u32)], n: u64) -> Vec<BTreeMap<String, u128>> {
     (0..n)
         .map(|k| {
@@ -225,10 +238,19 @@ pub(crate) fn gen_vectors(inputs: &[(String, u32)], n: u64) -> Vec<BTreeMap<Stri
                 .iter()
                 .enumerate()
                 .map(|(j, (name, w))| {
-                    let raw = (k as u128)
-                        .wrapping_mul(2_654_435_761)
-                        .wrapping_add((j as u128 + 1).wrapping_mul(40_503));
-                    (name.clone(), raw & mask(*w))
+                    let m = mask(*w);
+                    let raw = match k {
+                        0 => m, // all ones
+                        1 => 0, // all zeros
+                        // sign bit only (the boundary a signed extend/negate
+                        // divergence needs) — 0 for a 0-width port, same as
+                        // every other slot's masked-to-nothing value.
+                        2 => 1u128.checked_shl(w.saturating_sub(1)).unwrap_or(0),
+                        _ => (k as u128)
+                            .wrapping_mul(2_654_435_761)
+                            .wrapping_add((j as u128 + 1).wrapping_mul(40_503)),
+                    };
+                    (name.clone(), raw & m)
                 })
                 .collect()
         })

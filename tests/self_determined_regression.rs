@@ -319,6 +319,23 @@ fn bug_19_wrapping_sub_in_a_bitand_matches_icarus() {
 }
 
 #[test]
+fn task5_comparison_operand_hoist_catches_a_mismatch_matches_icarus() {
+    // Round-5 plan Task 5 (docs/plan/v0.2-class-closure-round5.local.md):
+    // `self_determined.rs`'s `BinOp::Eq|Ne|Lt|Le|Gt|Ge => None` arm only
+    // ever claimed the comparison's own RESULT is 1 bit both sides — true,
+    // and not the same claim as "the operands need no test". The operands
+    // are hoisted at a SEPARATE call site (`expr.rs`'s comparison arm,
+    // both `lhs`/`rhs` individually) that had never been exercised by a
+    // narrow-rendering operand here. `extend(a, 8)` renders as the bare
+    // `(a)` (4 bits) — without the hoist, comparing it against `b`'s 8
+    // bits would silently compare the wrong value.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[8]\n  \
+                out y: bit\n  y = (extend(a, 8) == b)\n}\n";
+    // a=0b1111 (15), zero-extended to 8 bits = 15 = b: equal, y=1.
+    differential(src, &[("a", 0b1111), ("b", 15)]);
+}
+
+#[test]
 fn bug_20_slice_of_a_composite_expression_matches_icarus() {
     // docs/audit/bugs.md BUG-20's repro: slicing a non-identifier base —
     // Verilog's part-select grammar only accepts a plain signal name,
@@ -326,6 +343,27 @@ fn bug_20_slice_of_a_composite_expression_matches_icarus() {
     let src = "module Fuzz {\n  in p0: bits[4]\n  in p1: bits[4]\n  \
                 out y: bits[2]\n  y = (p0 & p1)[1:0]\n}\n";
     differential(src, &[("p0", 0b1010), ("p1", 0b1100)]);
+}
+
+#[test]
+fn bug_61_bit_select_of_an_extend_hoists_the_base_and_matches_icarus() {
+    // docs/audit/bugs.md BUG-61: a bit-select's base is a Verilog grammar
+    // constraint identical to BUG-20's slice base — `extend(a,8)[7]`
+    // rendered `(a)[7]` before this fix, a syntax error under real
+    // Verilog (`x[i]` only accepts a plain identifier). a=0b1111 (4 bits):
+    // `extend(a,8)` is 0b00001111, bit 7 is 0.
+    let src = "module Fuzz {\n  in a: bits[4]\n  out y: bit\n  y = extend(a, 8)[7]\n}\n";
+    differential(src, &[("a", 0b1111)]);
+}
+
+#[test]
+fn bug_61_bit_select_of_a_concat_hoists_the_base_and_matches_icarus() {
+    // Same defect, a `Concat` base instead of a `Call`. a=0b1010 (4 bits),
+    // b=0b0011 (4 bits): {a,b} = 0b10100011, bit 3 (0-indexed from the
+    // LSB) is 0.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bit\n  y = {a, b}[3]\n}\n";
+    differential(src, &[("a", 0b1010), ("b", 0b0011)]);
 }
 
 #[test]
@@ -530,6 +568,34 @@ fn bug_29_abs_in_concat_matches_icarus() {
     // a=-8 (raw 4-bit two's complement 0b1000), b=0b1010 — the exact
     // vector BUG-29's filing used.
     differential(src, &[("a", 0b1000), ("b", 0b1010)]);
+}
+
+#[test]
+fn task5_abs_operand_at_plain_top_level_matches_icarus() {
+    // Round-5 plan Task 5: `Abs`'s render arm embeds its operand with no
+    // hoist call, the same SHAPE BUG-60 needed a hoist for — checked
+    // whether it's the same bug (it is not, an LRM distinction: a
+    // ternary's branches are context-determined at plain top level,
+    // unlike a reduction's operand, which is unconditionally
+    // self-determined regardless of context). `a` is the widest-magnitude
+    // signed[4] value so a wrong (unextended) computation would show.
+    let src = "module Fuzz {\n  in a: signed[4]\n  out y: signed[9]\n  \
+                y = abs(extend(a, 8))\n}\n";
+    // a=-8 (min signed[4]): sign-extend to 8 bits = -8, abs = 8.
+    differential(src, &[("a", 0b1000)]);
+}
+
+#[test]
+fn task5_min_max_operand_at_plain_top_level_matches_icarus() {
+    // Same check as `task5_abs_operand_at_plain_top_level_matches_icarus`,
+    // for `Min`/`Max`'s identical ternary shape — the fresh-fuzz-found
+    // BUG-42 repro (`bug_42_min_max_mismatched_operand_matches_icarus`)
+    // places this INSIDE an `unsigned(...)` cast, not at a plain top-level
+    // assignment; this is the position that citation doesn't cover.
+    let src = "module Fuzz {\n  in p: signed[6]\n  out y: signed[11]\n  \
+                y = min(extend(p, 11), extend(p, 11))\n}\n";
+    // p=-9 (signed[6]): sign-extend to 11 bits = -9, min(-9,-9) = -9.
+    differential(src, &[("p", 0b110111)]);
 }
 
 #[test]
@@ -1383,6 +1449,70 @@ fn bug_52_unary_not_of_an_extend_in_a_concat_matches_icarus() {
 }
 
 #[test]
+fn bug_60_and_reduction_of_an_extend_in_a_concat_matches_icarus() {
+    // docs/audit/bugs.md BUG-60: a reduction's OPERAND is a self-determined
+    // position with no hoist site before this fix — `&extend(a, 8)` renders
+    // as `(&(a))`, and-reducing the bare 4-bit `a` instead of `a` zero-
+    // extended to 8. a=0b1111 (all ones — the divergence-triggering value),
+    // b=0b1010: and-reduce(zext(a,8)) = 1 (all 8 bits set), y = (10<<1)|1 =
+    // 21, not the pre-fix 20.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[5]\n  y = { b, &extend(a, 8) }\n}\n";
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_60_and_reduction_of_an_extend_in_a_replication_matches_icarus() {
+    // Same defect, self-determined position is a REPLICATION body instead
+    // of a concat member. a=0b1111: and-reduce(zext(a,8)) = 1, replicated
+    // 3 times = 0b111 = 7, not the pre-fix 0.
+    let src = "module Fuzz {\n  in a: bits[4]\n  \
+                out y: bits[3]\n  y = {3{ &extend(a, 8) }}\n}\n";
+    differential(src, &[("a", 0b1111)]);
+}
+
+#[test]
+fn bug_60_and_reduction_of_an_extend_at_top_level_matches_icarus() {
+    // BUG-60's sharpest repro: a PLAIN top-level assignment, no enclosing
+    // concat/replication at all — the mismatch is entirely inside the
+    // reduction's own operand. a=0b1111: and-reduce(zext(a,8)) = 1, not
+    // the pre-fix 0.
+    let src = "module Fuzz {\n  in a: bits[4]\n  out y: bit\n  y = &extend(a, 8)\n}\n";
+    differential(src, &[("a", 0b1111)]);
+}
+
+#[test]
+fn bug_60_and_reduction_of_a_bare_identifier_stays_unhoisted() {
+    // Control: an and-reduction of an ALREADY-matching-width operand (a
+    // bare identifier, not an `extend`) must NOT spuriously hoist — same
+    // shape as `matrix_nand_in_concat_matches_icarus`'s existing bare-`a`
+    // case, pinned here directly on the reduction rather than `nand`.
+    let src = "module Fuzz {\n  in a: bits[4]\n  out y: bit\n  y = &a\n}\n";
+    differential(src, &[("a", 0b1111)]);
+}
+
+#[test]
+fn bug_60_nand_of_an_extend_matches_icarus() {
+    // BUG-60's `Builtin::Nand` half — `nand` is the negated and-reduction,
+    // so it diverges the same way `&` does. a=0b1111: nand(zext(a,8)) = 0
+    // (all 8 bits set, and-reduce 1, negated 0), not the pre-fix 1.
+    let src = "module Fuzz {\n  in a: bits[4]\n  out y: bit\n  y = nand(extend(a, 8))\n}\n";
+    differential(src, &[("a", 0b1111)]);
+}
+
+#[test]
+fn bug_60_or_reduction_of_a_negated_extend_matches_icarus() {
+    // BUG-60's `~` + or-reduction repro: zero-padding flips to one-padding
+    // under `~`, which perturbs `|`/`^` reductions too, not just `&`/nand.
+    // a=0b1111: zext(a,8)=0b00001111, ~zext=0b11110000, or-reduce=1 — the
+    // correct (kernel) value. Pre-fix, `~extend(a,8)` rendered unhoisted as
+    // `(~(a))` over the bare 4-bit `a`: ~0b1111=0b0000, or-reduce=0. Icarus
+    // on the pre-fix emission gives 0, disagreeing with the kernel's 1.
+    let src = "module Fuzz {\n  in a: bits[4]\n  out y: bit\n  y = |(~extend(a, 8))\n}\n";
+    differential(src, &[("a", 0b1111)]);
+}
+
+#[test]
 fn bug_52_if_expr_in_a_replication_body_matches_icarus() {
     // Same defect, self-determined position is a REPLICATION body
     // instead of a concat member — the classifier's `IfExpr` arm has to
@@ -1517,6 +1647,18 @@ fn bug_58_negating_the_signed_minimum_matches_icarus() {
 /// CLAIMED shape/position, not just any test with a superficially similar
 /// name (`IfExpr`/`Match`/`Unary` below were wrong on exactly this point
 /// through round 4).
+///
+/// Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2): round
+/// 4's own audit applied the position-not-name rule above to nearly every
+/// arm and then, on `Unary`'s reduction half, slipped back to a claim
+/// about the operator's RESULT ("always exactly 1 bit ... no separate
+/// test is needed") — BUG-60. An arm's text below is only acceptable when
+/// it is EITHER a citation to a differential whose operand renders
+/// NARROWER than its mimz width (never a bare identifier), OR a
+/// `NotApplicable` naming a checker rule / grammar restriction / lowering
+/// pass by CODE. "No mismatch is possible" alone, unattached to either,
+/// is not a reason — see `Unary`'s and `Index`'s own entries below for
+/// what the corrected text looks like.
 #[allow(dead_code)]
 fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
     match kind {
@@ -1560,14 +1702,37 @@ fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
              `self_determined.rs`'s own catch-all as confirmation — a \
              catch-all confirms nothing, it is the absence of an answer, \
              and that stale claim is exactly what let BUG-52 ship. The \
-             three reductions (RedAnd/RedOr/RedXor) ARE always exactly 1 \
-             bit in both mimz and Verilog regardless of operand, so no \
-             mismatch is possible there and no separate test is needed \
-             for that half."
+             three reductions (RedAnd/RedOr/RedXor) really ARE exactly 1 \
+             bit in both mimz and Verilog — but round-5 review found this \
+             arm's own OLD text ('no mismatch is possible there and no \
+             separate test is needed') answered the RESULT-width question, \
+             which this axis's own module doc has forbidden since BUG-42: \
+             the reduction's OPERAND is a separate self-determined position \
+             with its own rendered width, and `&extend(a,8)` diverges there \
+             — BUG-60 (docs/audit/bugs.md, fixed). This arm's `None` for \
+             the reduction ops is still correct — the RESULT stays `None` \
+             — but the fix hoists the OPERAND at the render call site \
+             (`expr.rs`'s `ExprKind::Unary` arm, not here), proven by \
+             bug_60_and_reduction_of_an_extend_in_a_concat_matches_icarus \
+             (narrow-rendering operand, per rule (a′)) and \
+             bug_60_and_reduction_of_a_bare_identifier_stays_unhoisted \
+             (control: an already-matching-width operand)."
         }
         ExprKind::Binary { .. } => {
             "covered by bug_19_lossless_sub_in_a_concat_matches_icarus and \
-             the wider bug_19/23/24/30/35/42/47 family"
+             the wider bug_19/23/24/30/35/42/47 family for the general case. \
+             The COMPARISON sub-case (`Eq|Ne|Lt|Le|Gt|Ge`, this arm's own \
+             `None`) is a narrower claim — the result really is always 1 \
+             bit — that round-5 Task 5 found untested for the position it \
+             actually matters at: `expr.rs`'s comparison arm hoists EACH \
+             operand independently at its own render call site (not through \
+             this arm's own `None`), and nothing had ever proven that hoist \
+             catches a real mismatch rather than merely existing. Checked \
+             empirically (real `mimz compile` + hand-read emission) before \
+             adding a test — `extend(a,8) == b` correctly hoists into \
+             `wire [7:0] __mimz_sub_1; assign __mimz_sub_1 = (a); assign y \
+             = (__mimz_sub_1 == b);` — then pinned as \
+             task5_comparison_operand_hoist_catches_a_mismatch_matches_icarus"
         }
         ExprKind::IfExpr { .. } => {
             "covered by bug_52_if_expr_as_a_concat_member_matches_icarus and \
@@ -1610,9 +1775,19 @@ fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
         ExprKind::Index { .. } => {
             "covered by bug_41_mem_read_operand_of_add_in_concat_matches_icarus \
              (the mem-read branch — the interesting one, since it carries a \
-             real element Kind); the plain bit-select branch is always \
-             exactly 1 bit in both mimz and Verilog, so no mismatch is \
-             possible there and no separate test is needed for it"
+             real element Kind). The plain bit-select branch's RESULT is \
+             genuinely always exactly 1 bit in both mimz and Verilog, which \
+             this arm's `None` correctly answers — but round-5 review found \
+             this citation had the SAME gap BUG-60 found for `Unary`'s \
+             reduction arm: the bit-select's BASE is its own self-determined \
+             position, unexamined by both the code and this axis until \
+             BUG-61 (docs/audit/bugs.md, fixed) — `extend(a,8)[7]` rendered \
+             `(a)[7]`, a syntax error, because nothing hoisted the base the \
+             way `ExprKind::Slice` already did. Fixed by calling the same \
+             `hoist_slice_base_if_needed` `Slice` uses, from `Index`'s \
+             bit-select render arm too; proven by \
+             bug_61_bit_select_of_an_extend_hoists_the_base_and_matches_icarus \
+             and bug_61_bit_select_of_a_concat_hoists_the_base_and_matches_icarus"
         }
         ExprKind::Slice { .. } => {
             "covered by bug_20_slice_of_a_composite_expression_matches_icarus \
@@ -1695,6 +1870,17 @@ fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
 /// nothing is mismatched (BUG-42's own lesson, re-found for these three
 /// arms during round-4 Task 4 — see `matrix_signed_unsigned_cast_
 /// recursion_catches_a_mismatched_operand_matches_icarus`'s own doc comment).
+///
+/// Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2): the
+/// `Nand`/`Nor`/`Xnor` entry below made the identical BUG-52 mistake this
+/// doc's own header warns against — its citation
+/// (`matrix_nand_in_concat_matches_icarus`) places a BARE IDENTIFIER as
+/// the operand, which cannot discriminate a "regardless of operand
+/// width" claim by construction, since a bare identifier's rendered
+/// width IS its mimz width (BUG-60). A citation for a `None` arm here
+/// must be a differential whose operand renders NARROWER than its mimz
+/// width; a `NotApplicable` must name a checker/grammar/lowering fact by
+/// code, never a property of the operator.
 #[allow(dead_code)]
 fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
     use ast::Builtin;
@@ -1709,7 +1895,14 @@ fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
         }
         Builtin::Abs => {
             "covered by bug_29_abs_in_concat_matches_icarus — direct concat \
-             member, the position `Abs`'s ternary-rendering claim is about"
+             member, the position `Abs`'s ternary-rendering claim is about \
+             — AND (round-5 plan Task 5)
+             task5_abs_operand_at_plain_top_level_matches_icarus, the \
+             position `expr.rs`'s own render arm's missing hoist call \
+             looks structurally identical to BUG-60's; checked and found \
+             sound (an LRM distinction — ternary branches are \
+             context-determined at plain top level, unlike a reduction's \
+             unconditionally self-determined operand), not assumed"
         }
         Builtin::Min | Builtin::Max => {
             "covered by matrix_min_in_concat_matches_icarus/matrix_max_in_\
@@ -1717,7 +1910,11 @@ fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
              `None`-shaped case) AND bug_42_min_max_mismatched_operand_\
              matches_icarus (an `extend`-wrapped operand — the RECURSION \
              actually catching a mismatch, BUG-42's own fix and the \
-             differential that proves it, not just the classification)"
+             differential that proves it, not just the classification) AND \
+             (round-5 plan Task 5)
+             task5_min_max_operand_at_plain_top_level_matches_icarus (the \
+             plain-top-level position, same check and same reason it's \
+             sound as `Abs` above)"
         }
         Builtin::Trunc => {
             "covered by matrix_trunc_in_concat_matches_icarus — direct \
@@ -1727,9 +1924,17 @@ fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
         }
         Builtin::Nand | Builtin::Nor | Builtin::Xnor => {
             "covered by matrix_nand_in_concat_matches_icarus/matrix_nor_.../\
-             matrix_xnor_... — direct concat member; a reduction is exactly \
+             matrix_xnor_... for the bare-identifier (no-mismatch) case — \
+             but that citation alone was BUG-60's own gap (docs/audit/\
+             bugs.md, fixed): a bare identifier's rendered width IS its \
+             mimz width by definition, so it cannot discriminate a claim \
+             about 'regardless of operand width'. The RESULT is genuinely \
              1 bit in both models regardless of operand width, so `None` \
-             needs no recursion proof either"
+             is still correct here — but the OPERAND is its own \
+             self-determined position, hoisted at the render call site \
+             (`expr.rs`'s `Builtin::Nand|Nor|Xnor` arms), proven now by \
+             bug_60_nand_of_an_extend_matches_icarus (a narrow-rendering \
+             `extend`-wrapped operand, per rule (a′))"
         }
         Builtin::SignedCast | Builtin::UnsignedCast => {
             "covered by matrix_signed_unsigned_cast_roundtrip_in_concat_\
@@ -1798,6 +2003,12 @@ fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
 /// itself (the most precise evidence) rather than a position-matrix
 /// differential; a few cite the self-determined suite where that's what
 /// actually exercises the shape.
+///
+/// Rule (a′) applies here too (`kinds.rs`'s own module doc, GAP-15): an
+/// arm's text claiming an approximation is "safe"/"harmless" needs a
+/// checked fact behind it, not an assertion — `Unary`'s own entry below
+/// is the worked example (chasing why "ignores `op`" is safe found
+/// BUG-58 one layer down).
 #[allow(dead_code)]
 fn expr_kind_infer_kind_coverage(kind: &ExprKind) -> &'static str {
     match kind {
@@ -1937,7 +2148,12 @@ fn expr_kind_infer_kind_coverage(kind: &ExprKind) -> &'static str {
 /// Round-4 plan Task 4's fourth coverage doc — `infer_binary`'s own
 /// `BinOp` sub-match (`kinds.rs`), the GATE's other half of `ExprKind::
 /// Binary`'s delegation. Exhaustive over `BinOp` (20 variants), no
-/// wildcard — matching every other axis's own convention.
+/// wildcard — matching every other axis's own convention. Rule (a′)
+/// applies here too (`kinds.rs`'s own module doc, GAP-15) — round-4
+/// batch 8's "provably variant-blind by construction" arms below (`Add`/
+/// `Sub`, the six-way wrap group) already meet the bar: not "shares a
+/// path, untested," but "the code cannot see which variant it's
+/// classifying," checkable by reading `kinds.rs` directly.
 #[allow(dead_code)]
 fn binop_infer_kind_coverage(op: &ast::BinOp) -> &'static str {
     use ast::BinOp;
@@ -2031,7 +2247,12 @@ fn binop_infer_kind_coverage(op: &ast::BinOp) -> &'static str {
 /// one) — only `Encoding` has a dedicated `kinds.rs` unit test; every
 /// other arm's citation is the differential that exercises it end-to-end,
 /// which proves the GATE and the emitted VALUE agree, even without
-/// isolating `infer_call` the way a unit test would.
+/// isolating `infer_call` the way a unit test would. Rule (a′) applies
+/// here too (`kinds.rs`'s own module doc, GAP-15) — `Nand`/`Nor`/`Xnor`'s
+/// entry below is a fixed `Kind{width:1}` regardless of operand, which is
+/// a checked fact about THIS function's own code (`kinds.rs`'s arm body),
+/// not an inference about the operator — the form a′ asks every
+/// `NotApplicable`-shaped claim to take.
 #[allow(dead_code)]
 fn builtin_infer_call_coverage(builtin: &ast::Builtin) -> &'static str {
     use ast::Builtin;

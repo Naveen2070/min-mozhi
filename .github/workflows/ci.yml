@@ -269,13 +269,22 @@ jobs:
 
       - name: Deep differential fuzz (kernel vs Icarus, 5000 seeds each)
         # GAP-11: the `check` job sets 400 each (the depth that found BUG-42
-        # and BUG-44); this is the pass that reaches past it. --release because
-        # 5000 x 2 seeds is dominated by compile+vvp, not by rustc's -O.
+        # and BUG-44); this is the pass that reaches past it. Deliberately
+        # NOT --release (round-5 plan Task 7, docs/plan/v0.2-class-closure-
+        # round5.local.md): 5000 x 2 seeds is dominated by compile+vvp, not
+        # by rustc's -O — measured locally, N=100 was 25.7s in debug vs
+        # 29.5s in release, debug slightly FASTER — so a debug build costs
+        # nothing here and keeps `hoist_if_needed`'s two `debug_assert!`
+        # self-checks (`emit_verilog/module/ports.rs`) LIVE at the one depth
+        # that has actually found a CRITICAL past the per-PR depth (BUG-59,
+        # index 2563). They were previously inert at every depth that
+        # mattered, since every differential/gate run — including this
+        # job — used --release.
         # --nocapture so the failing seed reaches the log even though the
         # assert message already names it — the seed is the whole reproducer,
         # and it goes straight into tests/fixtures/fuzz-seeds/.
         run: >
-          cargo test --release --test differential_fuzz matches_icarus
+          cargo test --test differential_fuzz matches_icarus
           -- --nocapture --test-threads 2
         env:
           REQUIRE_IVERILOG: "1"

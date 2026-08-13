@@ -19,6 +19,35 @@
 //! — but an operand can still each independently render as a narrower
 //! mismatched sub-expression (`extend(p, N)` renders as the bare `(p)`),
 //! which only the first question catches.
+//!
+//! Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2,
+//! `docs/plan/v0.2-class-closure-round5.local.md`): round 4's own audit
+//! asked the BUG-42 question of ~60 arms and got it right on all but two
+//! — `ExprKind::Unary`'s `RedAnd|RedOr|RedXor` and
+//! `Builtin::Nand|Nor|Xnor` (BUG-60), both `None` arms whose written
+//! reason was a property of the OPERATOR ("a reduction is always 1 bit
+//! in both models") rather than a fact about a RENDERED position. That
+//! phrasing survived a careful solo audit because the operator's result
+//! genuinely IS the same width both sides — the intuitive question and
+//! the correct one look identical exactly there, which is where a
+//! single reviewer's guard is cheapest. Since this project has no second
+//! reviewer to catch that (GAP-15's own finding), the substitute is
+//! mechanical: an arm returning `None` here must carry EITHER
+//!
+//! - a differential whose operand **renders narrower than its mimz
+//!   width** — never a bare identifier, which cannot discriminate any
+//!   width-dependent claim (`matrix_nand_in_concat_matches_icarus`'s own
+//!   `nand(a)` was exactly this mistake, until BUG-60's fix added
+//!   `bug_60_nand_of_an_extend_matches_icarus` beside it); or
+//! - a `NotApplicable` naming a checker rule, grammar restriction, or
+//!   lowering pass **by code** (e.g. "rejected upstream via E0403",
+//!   "parser-restricted to a `Wire` init") — never a property of the
+//!   operator itself (e.g. "reductions are always 1 bit"), which is a
+//!   fact about the RESULT and answers nothing about the OPERAND this
+//!   file exists to classify.
+//!
+//! "No mismatch is possible" alone, with neither of the above, is not a
+//! reason — it is the sentence BUG-60 shipped from.
 
 use std::collections::HashMap;
 
@@ -53,8 +82,13 @@ pub(crate) fn verilog_self_determined_kind(
         ExprKind::Ident(_) | ExprKind::Int { .. } | ExprKind::Bool(_) => None,
         ExprKind::Binary { op, lhs, rhs } => match op {
             // Comparisons are always 1-bit self-determined regardless of
-            // operand kind — same as mimz's own rule, so no mismatch is
-            // possible; `None` (nothing to check).
+            // operand kind — same as mimz's own rule, so THIS arm has
+            // nothing to check (the RESULT). The OPERANDS are a separate
+            // self-determined position, hoisted individually at their own
+            // render call site (`expr.rs`'s comparison arm, not through
+            // this `None`) — round-5 plan Task 5 found that hoist had
+            // never been proven to catch a real mismatch; now pinned by
+            // `task5_comparison_operand_hoist_catches_a_mismatch_matches_icarus`.
             BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => None,
             // Every other binary operator: Verilog self-determines each
             // operand at its OWN width (no growth, no context), then
@@ -86,6 +120,31 @@ pub(crate) fn verilog_self_determined_kind(
             }),
             // Renders to a ternary: Verilog sizes it at
             // `max(operand widths)`, not mimz's grown `N+1` result.
+            //
+            // Round-5 plan Task 5: `expr.rs`'s own `Abs` render arm embeds
+            // `args[0]` directly with no operand hoist call at that site —
+            // the same SHAPE BUG-60 needed a hoist added for. Checked, not
+            // assumed, whether this is the same bug: it is NOT, and the
+            // reason is an LRM distinction, not luck. A reduction's
+            // operand is UNCONDITIONALLY self-determined (LRM 5.5.1)
+            // regardless of where the reduction sits — BUG-60's actual
+            // cause. A ternary's branches are self-determined only when
+            // the TERNARY ITSELF sits in a self-determined position
+            // (BUG-52's own finding, `{b, if s {...} else {...}}`) — at a
+            // plain top-level (context-determined) assignment, the ternary
+            // and its branches inherit the assignment's own context, the
+            // same propagation BUG-24 established for ordinary operators.
+            // Verified empirically: `y = abs(extend(a, 8))` at plain top
+            // level, `a = -8` (signed[4], the widest-magnitude value) —
+            // real Icarus gives `8`, matching mimz, with the operand
+            // rendered bare and UNHOISTED (`assign y = (((a) < 0) ?
+            // (-(a)) : ((a)));`). Pinned by
+            // `task5_abs_operand_at_plain_top_level_matches_icarus`. When
+            // Abs DOES sit in a genuinely self-determined position (a
+            // concat member), THIS arm's own recursive answer is what the
+            // caller compares against — `bug_29_abs_in_concat_matches_
+            // icarus` proves that path, a structurally different position
+            // from the one this note checks.
             Builtin::Abs => Some(Kind {
                 width: self_determined_operand_width(&args[0], decls, env)?,
                 signed: infer_kind(expr, decls, env)?.signed,
@@ -100,7 +159,10 @@ pub(crate) fn verilog_self_determined_kind(
             // bare `(p)` — self-determined at `p`'s own 6 bits, not 11 —
             // so `min(extend(p, 11), extend(p, 11))` self-determines to 6
             // bits, not mimz's 11; the mismatch this now exposes is what
-            // makes the caller hoist.
+            // makes the caller hoist. Same top-level check as `Abs` above,
+            // same reason it's sound (ternary, not reduction) — verified
+            // empirically, `task5_min_max_operand_at_plain_top_level_
+            // matches_icarus`.
             Builtin::Min | Builtin::Max => Some(Kind {
                 width: self_determined_operand_width(&args[0], decls, env)?
                     .max(self_determined_operand_width(&args[1], decls, env)?),
@@ -110,8 +172,14 @@ pub(crate) fn verilog_self_determined_kind(
             // already exactly N bits in Verilog regardless of the base
             // (BUG-36 already hoists a composite base to a named wire, so
             // the base's own rendered width can never leak through).
-            // Reductions are 1-bit on both sides regardless of operand
-            // width. No mismatch possible for either.
+            // Nand/Nor/Xnor's RESULT is 1-bit on both sides regardless of
+            // operand width — that's what `None` answers here. Their
+            // OPERAND is a separate self-determined position this arm
+            // does NOT cover (BUG-60, docs/audit/bugs.md): the caller
+            // must hoist `args[0]` itself before applying the negated
+            // reduction, which `expr.rs`'s `Builtin::Nand|Nor|Xnor` arms
+            // now do directly, the same way `SignedCast`/`UnsignedCast`
+            // hoist their own argument.
             Builtin::Trunc | Builtin::Nand | Builtin::Nor | Builtin::Xnor => None,
             // `$signed`/`$unsigned`'s argument is self-determined at its
             // own width (confirmed empirically during BUG-18/19/20/21's
@@ -156,9 +224,16 @@ pub(crate) fn verilog_self_determined_kind(
                 signed: infer_kind(expr, decls, env)?.signed,
             })
         }
-        // A reduction (`&`/`|`/`^` prefix) is exactly 1 bit in BOTH
-        // models — nothing to compare. Every other unary op renders its
-        // operand unchanged, so recurse the same way `SignedCast` does.
+        // A reduction's (`&`/`|`/`^` prefix) RESULT is exactly 1 bit in
+        // BOTH models — nothing to compare, that's what `None` answers.
+        // Its OPERAND is a separate self-determined position this arm
+        // does NOT cover (BUG-60, docs/audit/bugs.md): `expr.rs`'s
+        // `ExprKind::Unary` render arm hoists `inner` itself before
+        // applying the reduction, the same way `SignedCast` hoists its
+        // own argument — that call site, not this one, is what makes
+        // `&extend(a, 8)` agree with real Icarus. Every other unary op
+        // renders its operand unchanged, so recurse the same way
+        // `SignedCast` does.
         ExprKind::Unary { op, expr: inner } => match op {
             UnOp::RedAnd | UnOp::RedOr | UnOp::RedXor => None,
             _ => Some(Kind {
@@ -175,8 +250,16 @@ pub(crate) fn verilog_self_determined_kind(
         // already forces a non-identifier base to a named wire first —
         // the rendered width can never disagree with mimz's.
         ExprKind::Slice { .. } => None,
-        // A bit-select is 1 bit in both models; a `mem` read renders as
-        // the declared element width, which is mimz's own width too.
+        // A bit-select's RESULT is 1 bit in both models; a `mem` read
+        // renders as the declared element width, which is mimz's own
+        // width too — that's what `None` answers here. The bit-select's
+        // BASE is a separate self-determined position this arm does NOT
+        // cover (BUG-61, docs/audit/bugs.md): a composite base
+        // (`extend(a,8)[7]`) is a Verilog GRAMMAR error, not a width
+        // mismatch this Kind-comparison classifier would ever see —
+        // `expr.rs`'s `ExprKind::Index` render arm hoists the base
+        // unconditionally on shape, mirroring `ExprKind::Slice`'s own
+        // `hoist_slice_base_if_needed` call exactly.
         ExprKind::Index { .. } => None,
         // An instance port or enum field renders as a real `wire` of
         // its declared width (round 3 Task 1's `decls` fix is what
