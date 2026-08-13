@@ -4539,3 +4539,132 @@ to decode at, which the `+1` growth doesn't disturb. Full workspace
 **1247/1247**, `fmt`/`clippy -D warnings` clean. `Builtin::Abs` and a
 negated literal (BUG-43) were already correct and are untouched by this
 fix, confirmed by the full suite staying green.
+
+---
+
+## BUG-59 (CRITICAL, FIXED 2026-08-13) — a fused shift chain inside an `if`/`match` branch, un-hoisted as the LHS of an outer growing shift, sees the WRONG ambient width
+
+**What.** Found running [GAP-14](gaps.md)'s own mandated release-gate depth
+(`MIMZ_DIFF_FUZZ_N=5000 MIMZ_DIFF_FUZZ_CLOCKED_N=5000`, [round-4
+plan](../plan/v0.2-class-closure-round4.local.md) Task 1) for the first time
+since it landed — comb generator, fresh seed `12650993`, first vector.
+Clocked generator passed clean at 5000/5000.
+
+Minimized to nine lines:
+
+```mimz
+module Fuzz {
+  in s: bit
+  out y: signed[14]
+  y = (if s {
+    (signed(extend(12, 4)) << extend(7, 3)) >> extend(2, 3)
+  } else {
+    signed(extend(1029, 11))
+  }) << extend(3, 2)
+}
+```
+
+`mimz eval -i "s=1"` says **y = 3072**; `iverilog` + `vvp` say **y =
+-1024** (`15360` as the 14-bit unsigned bit pattern).
+
+**Distinct from both prior members of this family, confirmed by hand.**
+BUG-52 was a width MISMATCH the classifier's `_ => None` wildcard hid.
+BUG-55 was a signed `>>` escaping its own `if`/`match` branch into an
+un-hoisted outer context. Here, `infer_kind` (the GATE) and
+`verilog_self_determined_kind` (the CLASSIFIER, Task 2's own fix) **agree**
+on the whole `if`-expression's `Kind` — both say `signed[11]` — so
+`hoist_if_needed`'s mismatch check, which is what BUG-52's fix relies on,
+never fires. The VALUE still differs. Confirmed step by step against real
+Icarus (`docs/log/2026-08-13.md` has the full trace):
+
+| step                                                                      | expression                                             | kernel | Icarus    | agree?      |
+| ------------------------------------------------------------------------- | ------------------------------------------------------ | ------ | --------- | ----------- |
+| bare shift chain alone                                                    | `(signed(extend(12,4)) << extend(7,3)) >> extend(2,3)` | 384    | 384       | ✅          |
+| wrapped in the `if`, no outer shift                                       | same, `out y: signed[11]`                              | 384    | 384       | ✅          |
+| same ternary text assigned DIRECTLY to a wider (14-bit) wire              | —                                                      | —      | **3968**  | — (not 384) |
+| full repro (`if` as outer `<<`'s own un-hoisted LHS)                      | —                                                      | 3072   | **-1024** | ❌          |
+| same ternary manually hoisted into its own 11-bit wire FIRST, then `<< 3` | —                                                      | 3072   | **3072**  | ✅          |
+
+The third row is the diagnosis: assigning the _identical_ ternary text
+directly to a 14-bit wire (no shift involved at all) already gives 3968,
+not 384 — real Verilog's ternary operator is context-PROPAGATING, and once
+it sits at 14-bit context, its OWN inner `>>` (a genuinely bottom-up,
+truncating operator) recomputes at that wider width and keeps more bits
+than it does at 11. The fourth row is the bug in place: rendered inline as
+the outer `<<`'s own LHS (an un-hoisted position, `render_shift_ctx_
+operand`'s `allow_shift: false` case, `expr.rs`), Verilog reaches the
+ternary with the OUTER assignment's full grown (14-bit) context, giving
+3968 for the branch, and `3968 << 3` (`= 31744`) wraps mod `2^14` to
+`15360` (`-1024`) at the 14-bit destination. mimz-sim's own
+`eval_shift_chain` (BUG-34) resolves the SAME branch bottom-up, in
+isolation, with no ambient context at all — giving 384, then `384 << 3 =
+3072`, which fits the 14-bit destination without wrapping. The fifth row
+confirms the fix: forcing Verilog to compute the branch in an isolated
+wire FIRST (at its own natural 11-bit width, matching the kernel's own
+assumption) makes both sides agree at 3072.
+
+**Cause.** `crates/mimz-core/src/emit_verilog/expr.rs`'s `hoist_width_
+effect_operand` — the function `render_shift_ctx_operand` calls on every
+LHS/RHS of a non-comparison, non-width-effect `BinOp` — only ever checks
+whether `child`'s own TOP-LEVEL kind is a width-effect binop
+(`is_width_effect_binop`) or, when `allow_shift` is true, a shift binop
+(`is_shift_binop`). Neither pattern matches `ExprKind::IfExpr`/`Match`, so
+an `if`/`match` reaching this function — specifically as the LHS of an
+outer `Shl`/`Shr` (`allow_shift: false`, the position `is_shift_binop`'s
+own check is scoped to) — is never hoisted at all, and Verilog's own
+context-propagating ternary rule reaches straight through it into
+whatever fused shift chain its branches hide.
+
+**Severity.** CRITICAL: silent wrong Verilog on checker-accepted,
+`mimz test`-correct source, the fifth distinct root cause in this specific
+family (BUG-28/41/48/52/55/59, all "declared width bounds the value, but
+the emitted Verilog computes a different one"), reachable any time a
+fused shift chain (two or more nested `<<`/`>>`) sits inside an `if`/
+`match` branch that is itself the un-hoisted LHS of another `<<`/`>>`.
+
+**Not affected (verified):** the bare shift chain alone (row 1); the same
+`if`-expression with NO outer shift (row 2); the RHS of an outer shift
+(`allow_shift` is always `true` there, a different, already-covered
+position); any `if`/`match` in a genuinely self-determined position
+(concat member, `extend()` argument) — those already get BUG-52's
+`hoist_if_needed` treatment at their own call site, upstream of this
+function entirely.
+
+**Fix (2026-08-13).** New differential `bug_59_fused_shift_chain_inside_
+an_if_branch_as_the_lhs_of_a_growing_shift_matches_icarus` (`tests/
+self_determined_regression.rs`) watched fail at the exact filed values
+(kernel 3072, Icarus 15360) before any code change.
+
+First attempt put the check inside `hoist_width_effect_operand` itself
+(`!allow_shift && child is IfExpr/Match`, hoisting unconditionally on
+shape) — and broke two showcase goldens (`vga_pattern`,
+`tamil-pure/vga_kuri`), because that function is **also** called from
+`if_expr_subst`/`match_subst`'s own branch rendering with
+`allow_shift: false` for the ordinary, already-correct nested-ternary
+case (BUG-24) — a completely different meaning of the same flag at a
+different call site, and the check couldn't tell them apart. Caught by
+running the full suite before declaring done, not assumed clean from the
+one new test passing.
+
+Rescoped to the one call site that is actually the diagnosed position:
+`render_shift_ctx_operand` (`crates/mimz-core/src/emit_verilog/expr.rs`)
+is the only place `!allow_shift` ever reaches with a real `child` (a
+`Shl`/`Shr`'s own LHS, `allow_shift_lhs` in the `Binary` arm above it) —
+`if_expr_subst`/`match_subst`'s own calls to `hoist_width_effect_operand`
+never go through it. Added the check there instead, immediately after
+rendering `text`: when `child` is `IfExpr`/`Match` and `!allow_shift`,
+hoist unconditionally on shape via `hoist_slice_base_if_needed` — the
+same "hoist by shape, not by a `Kind` mismatch" treatment
+`is_width_effect_binop` already gets — using `infer_kind(child)`'s own
+width (which already agrees with Verilog's self-determined one; the
+point is ISOLATION, not correcting a width). `hoist_width_effect_operand`
+itself is unchanged.
+
+Re-verified: `bug_59_...` passes; `self_determined_regression` +
+`showcase` 72/72 (goldens back to matching, including the two the first
+attempt broke); `bug_24_regression_shift_in_if_branch_stays_unhoisted`
+and the rest of the shift-family regression tests stay green; full
+workspace **1248/1248**, `fmt`/`clippy -D warnings` clean. Corpus seed
+`comb.txt`'s `12650993` appended once the fix landed; [GAP-14](gaps.md)'s
+own 5000/5000 gate re-run after this fix is the actual closing evidence
+(see that entry).

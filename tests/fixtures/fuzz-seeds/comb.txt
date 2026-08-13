@@ -18,3 +18,4 @@
 12648671  # i=241  BUG-44  trunc of a signed value, caught at intermediate y3 (GAP-11(a))
 12648675  # i=245  BUG-42  min/max misclassified "no mismatch possible"
 12649355  # i=925  BUG-55  signed >> inside a match arm escaped BUG-47's context hoist
+12650993  # i=2563 BUG-59  fused shift chain in an if-branch, un-hoisted as an outer shift's LHS, saw the wrong ambient width
