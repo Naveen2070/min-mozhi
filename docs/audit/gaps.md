@@ -1232,3 +1232,98 @@ Rule (a′) now stands on real per-position verification of every arm the
 "no mismatch is possible" grep surfaced, which is the bar round 4's
 condition (a) asked for in spirit — met here by a mechanical, repeatable
 check rather than a second human.
+
+**Re-opened in substance by round 6 (2026-08-15), not re-opened as a status.**
+The sweep's own claim ("every hit, not a sample") is falsified by one hit:
+`builtin_self_determined_coverage`'s `Trunc` arm reads _"already exactly N bits
+**regardless of position**, so `None` **needs no** recursion proof"_ — two of
+this task's own keywords, on a `None` arm, cited to `trunc(a, 2)`, a **bare
+identifier**. It is also false: `trunc(extend(x,8), 2)` inside a `fn` body
+emits `(x)[(2)-1:0]`, an Icarus syntax error
+([BUG-62](bugs.md) ⑥). GAP-15 stays CLOSED because its own scope — the arms —
+was genuinely re-audited; the larger finding is that the scope was wrong, which
+is [GAP-17](#gap-17-medium-process--rule-a-audits-the-arms-the-defects-are-at-the-call-sites) below.
+
+---
+
+## GAP-16 (HIGH, architectural) — the self-determined hoist machinery is scoped to module bodies, and nothing states the scope
+
+**Status:** OPEN. Filed 2026-08-15. Source:
+[`review-2026-08-15.md`](review-2026-08-15.md) (round 6).
+
+**What.** `cur_decls` is built once per module (`emit_verilog/module/mod.rs:127`)
+and is `kinds::infer_kind`'s only data source. Every hoist call site is gated on
+`infer_kind` returning `Some` and renders the text **unchanged** otherwise.
+Three emitter contexts therefore run the entire width-agreement machinery with
+a `decls` map that cannot resolve the names in front of it: `fn` bodies
+(`module/funcs.rs` — parameters never inserted), testbench bodies
+(`testbench.rs:151` — `cur_decls: Default::default()`), and any expression whose
+width argument is a module `parameter` (`infer_call`'s `const_fold(&args[1])?`).
+
+Nothing in the code, the coverage docs, or the audit records that the machinery
+has a scope. `infer_kind`'s own doc comment lists the unresolvable shapes and
+`hoist_width_effect_operand`'s comment calls the fallback "already-correct" —
+the closest the codebase comes to naming the boundary, and it names it as safe.
+
+**Why it is a gap and not just BUG-62.** BUG-62 is the ten reproductions.
+The gap is that **twelve call sites share one silent branch with no test, no
+assert, and no written contract** — so the next context added (a `sim` block, a
+`cover`, a future `always` lowering) inherits the same hole by default, exactly
+as `fn` bodies and testbenches did. Every fix in the BUG-41/46/48/49 line
+removed one _source_ of `None`; none of them made _reaching_ the fallback
+observable.
+
+**Fix.** Make the fallback loud (debug assert at every hoist site; a real
+diagnostic where the position's grammar requires a named wire), give each
+emitter context a real `decls`, and state the invariant once, in
+`kinds.rs`'s module doc: _a hoist site may not silently do nothing when it
+cannot resolve a `Kind`._
+
+**Relationship to GAP-1.** A typed elaborated IR carries one width per node in
+every context, so "which `decls` is in scope here" stops being a question that
+can be answered wrong. This gap is the third distinct symptom of the same root
+(after the checker/emitter and kernel/emitter duplications).
+
+---
+
+## GAP-17 (MEDIUM, process) — rule (a′) audits the arms; the defects are at the call sites
+
+**Status:** OPEN. Filed 2026-08-15. Source:
+[`review-2026-08-15.md`](review-2026-08-15.md) (round 6).
+
+**What.** [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)'s
+rule (a′) constrains the written reason of every `None`/`NotApplicable` **arm**
+in `verilog_self_determined_kind`, `infer_kind`, and their sub-matches. Sorted
+by where the defect actually was, this family's instances since round 3 are:
+
+| in an arm's answer     | at a call site / in the plumbing                                               |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| BUG-48, BUG-50, BUG-52 | BUG-46, BUG-47, BUG-49, BUG-53, BUG-55, BUG-59, BUG-60, BUG-61, BUG-62, BUG-63 |
+
+**10 of 14 are call-site defects**, and the most recent arm defect is BUG-52,
+two rounds before this filing. Round 5's own BUG-60 fix states the point
+plainly: _"The classifier arms stay `None`, unchanged … only the render call
+site needed the hoist."_
+
+**Two secondary findings about the rule's text**, both from round 6's
+independent classification of six arms (four disagreements with the codebase's
+own verdicts):
+
+1. **(a′-2)'s enumeration is missing the category that matters.** It admits a
+   checker rule, a grammar restriction, or a lowering pass. It does not admit
+   _a checked fact about what the emitter renders_ — which is precisely the
+   question `self_determined.rs`'s module doc says to ask. Applied literally,
+   (a′) rejects `Ident` ("a signal's declared width IS its self-determined
+   width"), `Bool` (`expr.rs` always renders a SIZED `1'b1`) and `Encoding` —
+   all sound, and the first of them the axiom (a′-1) itself rests on.
+2. **A reason may not rest on a hoist without naming it.** `Trunc`'s arm is
+   sound only because BUG-36's base-hoist fires; its text claims a property of
+   the operator instead, and is false wherever that hoist does not fire
+   (BUG-62 ⑥). Any arm whose safety depends on a hoist must name the call site
+   and the condition under which it runs.
+
+**Fix.** Re-scope: every `hoist_*` call site — and specifically every `None`
+branch of one — needs the same written, checked reason (a′) demands of an arm,
+recorded in a coverage doc keyed by call site rather than by `ExprKind`
+variant. Amend (a′-2) with the fourth category and the no-implicit-hoist rule
+above.

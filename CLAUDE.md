@@ -100,7 +100,7 @@ min-mozhi/
 | `guide/` (README + 13 files, + stdlib/ subguide) | **Learn the language** — from-scratch book   |
 | `code/` (README + 14 files)                      | **Maintainer docs** — per-module internals   |
 | `source-guide/` (README + 11)                    | **Friendly code tour** — every Rust file     |
-| `audit/` (README + bugs)                         | Security & robustness audit                  |
+| `audit/` (README + `bugs/` + log + reviews)      | Security & robustness audit                  |
 | `Ideas/` (6 files)                               | Forward-looking plans, roadmaps              |
 | `plan/`                                          | Detailed per-phase execution plans           |
 | `log/` (dated logs)                              | Dev log — append-only decisions & progress   |
