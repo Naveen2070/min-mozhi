@@ -431,6 +431,7 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
         hoist_counter: 0,
         hoisted_decls: String::new(),
         cur_decls: Rc::default(),
+        in_fn_body: false,
         cover_ordinals: HashMap::new(),
     };
     em.out.push_str(&format!(
@@ -560,9 +561,11 @@ struct Emitter<'a> {
     /// module by `Emitter::build_decls` right after `flatten_items`
     /// (`module()`), same timing as `bundle_sigs` above. Stays at its
     /// default `HashMap::new()` for every OTHER `Emitter` (the testbench
-    /// emitter never calls `module()`, so it never gains signal `Kind`s —
-    /// see `expr::kind_is_inferrable`'s doc for why an empty map here is
-    /// exactly the right "don't hoist" answer there, not a bug).
+    /// emitter used to never gain signal `Kind`s this way — Task 2
+    /// (`docs/plan/v0.2-class-closure-round6.local.md`, BUG-62(a)) changed
+    /// that: `testbench.rs::emit_testbench` now installs the DUT module's
+    /// own `build_decls` result per test, replacing the always-empty
+    /// `Default::default()` every `expect`/`Drive` used to see.
     ///
     /// `Rc` for a borrow reason, not a sharing one (GAP-12). Every hoist site
     /// in `expr.rs` needs `&self.cur_decls` live across a `&mut self` call
@@ -576,6 +579,22 @@ struct Emitter<'a> {
     /// mutated in place, so a snapshot could never observe a later write
     /// either way.
     cur_decls: Rc<HashMap<String, crate::width_rules::Kind>>,
+    /// True while rendering a user `fn`'s body (`render_fn_decl`). Found
+    /// needed alongside Task 2 (`docs/plan/v0.2-class-closure-round6.local.md`,
+    /// BUG-62(a)/BUG-63): once a `fn` body has a real `cur_decls`, a hoist
+    /// can genuinely FIRE there for the first time — but `hoist_if_needed`/
+    /// `hoist_slice_base_if_needed` only know how to hoist into a MODULE-
+    /// scope `wire`/`assign` pair, which a Verilog-2005 `function
+    /// automatic` cannot legally reference forward (confirmed against real
+    /// `iverilog`: "Unable to bind wire ... declaration after use" — the
+    /// same class of error BUG-63 found through a different door). Rather
+    /// than silently emit that invalid Verilog, both hoist functions check
+    /// this flag and diagnose instead — `mimz compile` must not exit 0
+    /// having written text `iverilog` refuses to elaborate, the same
+    /// GAP-16 invariant Task 1's `hoist_unresolved` states for the `None`
+    /// case. Reg-based in-function hoisting is real future work, not done
+    /// here.
+    in_fn_body: bool,
     /// Every `cover(...)` statement in the CURRENT module (module-item AND
     /// `on`-block form combined), mapped `span.start -> ordinal rank by
     /// source position`. Names each hidden hit-counter `__cover_{ordinal}_

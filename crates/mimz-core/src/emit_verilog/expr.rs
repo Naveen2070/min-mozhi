@@ -110,6 +110,84 @@ impl Emitter<'_> {
         self.expr_subst(e, &HashMap::new(), &ArrayScope::new())
     }
 
+    /// Task 3 (BUG-62(b), GAP-16, `docs/plan/v0.2-class-closure-round6.local.md`):
+    /// tried from a self-determined-position call site's own `None` arm
+    /// (a concat/replicate member, a reduction/nand/nor/xnor operand, a
+    /// `$signed`/`$unsigned` cast operand — never a comparison or a slice/
+    /// bit-select/`trunc` BASE, see each call site's own comment) right
+    /// before it falls through to `hoist_unresolved`'s diagnostic.
+    ///
+    /// `infer_kind` can never resolve `extend(x, W)`'s own `Kind` when `W`
+    /// is a module `int` parameter rather than a literal — `infer_call`'s
+    /// `Extend` arm needs a folded `u32`. Every self-determined-position
+    /// caller used to render the UN-widened `x` in that case (BUG-62 ⑦⑧:
+    /// `{ b, extend(a, W) }` emitted `{b, (a)}`, silently dropping the
+    /// widening — the concat's own bit positions came out wrong). This
+    /// renders the widening explicitly instead — `{{(W-N){fill}}, x}` is
+    /// exactly W bits wherever it appears, in ANY position, no `Kind`
+    /// (and so no hoisted wire sized by one) required.
+    ///
+    /// Returns `None` (caller falls back to `hoist_unresolved`) when
+    /// `expr` isn't `extend(_, <symbolic>)`, or when `x`'s OWN `Kind` also
+    /// doesn't resolve — nothing to widen FROM either, a residual case
+    /// this doesn't attempt to close.
+    ///
+    /// Deliberately NOT folded into `Builtin::Extend`'s own render arm:
+    /// that arm runs for EVERY position (including an ordinary context-
+    /// determined operand, e.g. `sr <= old | extend(din, WIDTH)`), where
+    /// Verilog's own automatic widening already renders `(din)` correctly
+    /// — confirmed empirically (rendering the explicit form unconditionally
+    /// there changed nothing about correctness but needlessly rewrote an
+    /// already-correct shipped golden, `shift_register`'s).
+    ///
+    /// Ceiling (ponytail): if `W` folds to exactly `N` at some
+    /// instantiation, the replication count `(W)-(N)` is 0, which
+    /// Verilog-2005 (IEEE 1364-2005 §5.1.14) requires to be a POSITIVE
+    /// constant — `{0{...}}` is technically illegal there, though every
+    /// toolchain this project targets accepts it in practice. Not solved
+    /// here; would need a `generate`/conditional selection to close for
+    /// real.
+    fn try_widen_symbolic_extend(
+        &mut self,
+        expr: &Expr,
+        subst: &HashMap<&str, &Expr>,
+        arrays: &ArrayScope,
+    ) -> Option<String> {
+        let ExprKind::Call {
+            func: Builtin::Extend,
+            args,
+        } = &expr.kind
+        else {
+            return None;
+        };
+        if consteval::eval(&args[1], &self.env).is_ok() {
+            return None; // width folds — the ordinary path already handles it
+        }
+        let decls = Rc::clone(&self.cur_decls);
+        let k = crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env)?;
+        if k.width == 0 {
+            return None;
+        }
+        let text = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
+        let named = self.hoist_slice_base_if_needed(text, k.width, k.signed, args[0].span);
+        let w_text = self.expr_subst(&args[1], subst, arrays);
+        let fill = if k.signed {
+            format!("{named}[{}]", k.width - 1)
+        } else {
+            "1'b0".to_string()
+        };
+        let mut widened = String::from("{{(");
+        widened.push_str(&w_text);
+        widened.push_str(")-(");
+        widened.push_str(&k.width.to_string());
+        widened.push_str("){");
+        widened.push_str(&fill);
+        widened.push_str("}}, ");
+        widened.push_str(&named);
+        widened.push('}');
+        Some(widened)
+    }
+
     /// Try to resolve an expression to a constant integer value, seeing
     /// through `extend`/`trunc` that wrap a literal (BUG-18). `extend` widens
     /// without changing the value; `trunc` masks it to its low N bits. Returns
@@ -200,11 +278,30 @@ impl Emitter<'_> {
         // width, which is exactly the one thing this branch doesn't have —
         // the same, already-correct fallback these shapes had before this
         // task (`kind_is_inferrable`'s own retired doc comment).
-        match hoistable
-            .then(|| crate::emit_verilog::kinds::infer_kind(child, decls, &self.env))
-            .flatten()
-        {
-            Some(kind) => self.hoist_slice_base_if_needed(text, kind.width, kind.signed),
+        if !hoistable {
+            return text;
+        }
+        match crate::emit_verilog::kinds::infer_kind(child, decls, &self.env) {
+            Some(kind) => {
+                self.hoist_slice_base_if_needed(text, kind.width, kind.signed, child.span)
+            }
+            // NOT routed through `hoist_unresolved` (Task 1): unlike the
+            // `hoist_if_needed`-family call sites in this file, `None`
+            // here is not the "twelve call sites, one shared silent
+            // branch" GAP-16 was filed against — this is BUG-30's own,
+            // separately-documented safe case (`kinds.rs`'s
+            // `shift_const_amount` and `adapts_to_sibling` doc comments,
+            // cited there by bug number): a module `int` parameter inside
+            // a width-effect/shift child has no `Kind` by construction
+            // (mimz's own type system gives it none — it is `Ty::CtInt`,
+            // not `bits[N]`), and real Verilog's own context growth is
+            // harmless here once the base growth is already lossless —
+            // proven by `examples/*/shift.mimz`'s `extend(3 << AMOUNT,
+            // 8)`, a working, golden-verified shape this exact fallback
+            // has always covered. Asserting on it would be noise, not
+            // signal — Task 3 (BUG-62(b)) is the wider, separate parameter-
+            // width story (an `extend`/`trunc` WIDTH argument that
+            // silently drops the whole hoist), not this one.
             None => text,
         }
     }
@@ -274,7 +371,7 @@ impl Emitter<'_> {
             && matches!(child.kind, ExprKind::IfExpr { .. } | ExprKind::Match { .. })
             && let Some(kind) = crate::emit_verilog::kinds::infer_kind(child, &decls, &self.env)
         {
-            return self.hoist_slice_base_if_needed(text, kind.width, kind.signed);
+            return self.hoist_slice_base_if_needed(text, kind.width, kind.signed, child.span);
         }
         self.hoist_width_effect_operand(child, text, &decls, allow_shift)
     }
@@ -490,7 +587,16 @@ impl Emitter<'_> {
                         let decls = Rc::clone(&self.cur_decls);
                         match crate::emit_verilog::kinds::infer_kind(inner, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(inner, x, k, &decls),
-                            None => x,
+                            None => self
+                                .try_widen_symbolic_extend(inner, subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(
+                                        inner,
+                                        "Unary reduction operand",
+                                        x,
+                                        false,
+                                    )
+                                }),
                         }
                     }
                     _ => x,
@@ -554,6 +660,21 @@ impl Emitter<'_> {
                         let text = self.expr_subst(lhs, subst, arrays);
                         match crate::emit_verilog::kinds::infer_kind(lhs, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(lhs, text, k, &decls),
+                            // NOT routed through `hoist_unresolved` (Task 1):
+                            // a comparison's operands are self-determined
+                            // in the Verilog LRM sense of "evaluated
+                            // independently," but `==`/`<`/etc. auto-widen
+                            // the NARROWER operand to match before
+                            // comparing (LRM 5.5.1) — unlike a concat/
+                            // reduction/cast member, which uses the
+                            // operand's rendered bits AS-IS, a comparison
+                            // only needs the VALUE right, and an
+                            // un-hoisted parameter-driven operand (`x ==
+                            // (DEPTH - 1)`, `examples/*/std/fifo.mimz`, a
+                            // working golden shape) already gets that from
+                            // Verilog's own widening — no exact self-
+                            // determined width is required the way GAP-16's
+                            // twelve call sites need one.
                             None => text,
                         }
                     };
@@ -561,7 +682,7 @@ impl Emitter<'_> {
                         let text = self.expr_subst(rhs, subst, arrays);
                         match crate::emit_verilog::kinds::infer_kind(rhs, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(rhs, text, k, &decls),
-                            None => text,
+                            None => text, // see `lhs`'s arm immediately above
                         }
                     };
                     (l, r)
@@ -697,7 +818,11 @@ impl Emitter<'_> {
                         let text = self.render_shift_ctx_operand(p, subst, arrays, true);
                         match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
-                            None => text,
+                            None => self
+                                .try_widen_symbolic_extend(p, subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(p, "concat member", text, false)
+                                }),
                         }
                     })
                     .collect();
@@ -718,7 +843,11 @@ impl Emitter<'_> {
                         let text = self.render_shift_ctx_operand(p, subst, arrays, true);
                         match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
-                            None => text,
+                            None => self
+                                .try_widen_symbolic_extend(p, subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(p, "replicate member", text, false)
+                                }),
                         }
                     })
                     .collect();
@@ -769,8 +898,8 @@ impl Emitter<'_> {
                 // the base's own declared signedness.
                 let decls = Rc::clone(&self.cur_decls);
                 let b = match crate::emit_verilog::kinds::infer_kind(base, &decls, &self.env) {
-                    Some(k) => self.hoist_slice_base_if_needed(b, k.width, false),
-                    None => b,
+                    Some(k) => self.hoist_slice_base_if_needed(b, k.width, false, base.span),
+                    None => self.hoist_unresolved(base, "bit-select base", b, true),
                 };
                 let i = self.index_expr(index, subst, arrays);
                 format!("{b}[{i}]")
@@ -791,8 +920,8 @@ impl Emitter<'_> {
                 let b = self.expr_subst(base, subst, arrays);
                 let decls = Rc::clone(&self.cur_decls);
                 let b = match crate::emit_verilog::kinds::infer_kind(base, &decls, &self.env) {
-                    Some(k) => self.hoist_slice_base_if_needed(b, k.width, false),
-                    None => b,
+                    Some(k) => self.hoist_slice_base_if_needed(b, k.width, false, base.span),
+                    None => self.hoist_unresolved(base, "slice base", b, true),
                 };
                 let h = self.index_expr(hi, subst, arrays);
                 let l = self.index_expr(lo, subst, arrays);
@@ -905,7 +1034,16 @@ impl Emitter<'_> {
                     let hoisted =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
-                            None => text,
+                            None => self
+                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(
+                                        &args[0],
+                                        "signed-cast operand",
+                                        text,
+                                        false,
+                                    )
+                                }),
                         };
                     format!("$signed({hoisted})")
                 }
@@ -919,7 +1057,16 @@ impl Emitter<'_> {
                     let hoisted =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
-                            None => text,
+                            None => self
+                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(
+                                        &args[0],
+                                        "unsigned-cast operand",
+                                        text,
+                                        false,
+                                    )
+                                }),
                         };
                     format!("$unsigned({hoisted})")
                 }
@@ -934,7 +1081,11 @@ impl Emitter<'_> {
                     let hoisted =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
-                            None => text,
+                            None => self
+                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(&args[0], "encoding operand", text, false)
+                                }),
                         };
                     format!("$unsigned({hoisted})")
                 }
@@ -1002,6 +1153,21 @@ impl Emitter<'_> {
                                 crate::bits::bits_to_decimal_string(&v, vw, false)
                             )
                         }
+                        // `_` covers BOTH "width doesn't fold" (a module
+                        // `parameter`, Task 3/BUG-62(b)'s own case) and
+                        // "value doesn't fold" — the same context-
+                        // determined passthrough is correct for both here
+                        // at this call's OWN position: whichever position
+                        // actually NEEDS the width-symbolic widening made
+                        // explicit (a concat/reduction/cast/nand member —
+                        // a genuinely self-determined one) asks for it
+                        // itself, via `try_widen_symbolic_extend`, from
+                        // its OWN `None`-arm below, not from here — doing
+                        // it unconditionally at every position (including
+                        // an ordinary context-determined operand, e.g. `sr
+                        // <= old | extend(din, WIDTH)`) changed nothing
+                        // about correctness but needlessly rewrote already-
+                        // correct shipped goldens.
                         _ => {
                             // `allow_shift: true` — BUG-47 (docs/audit/bugs.md).
                             //
@@ -1069,8 +1235,8 @@ impl Emitter<'_> {
                     let base_kind =
                         crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env);
                     let x = match base_kind {
-                        Some(k) => self.hoist_slice_base_if_needed(x, k.width, false),
-                        None => x,
+                        Some(k) => self.hoist_slice_base_if_needed(x, k.width, false, args[0].span),
+                        None => self.hoist_unresolved(&args[0], "trunc base", x, true),
                     };
                     let n = self.expr_subst(&args[1], subst, arrays);
                     let sel = format!("{x}[({n})-1:0]");
@@ -1134,7 +1300,11 @@ impl Emitter<'_> {
                     let x =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
-                            None => x,
+                            None => self
+                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(&args[0], "nand operand", x, false)
+                                }),
                         };
                     format!("(~&({x}))")
                 }
@@ -1144,7 +1314,11 @@ impl Emitter<'_> {
                     let x =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
-                            None => x,
+                            None => self
+                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(&args[0], "nor operand", x, false)
+                                }),
                         };
                     format!("(~|({x}))")
                 }
@@ -1154,7 +1328,11 @@ impl Emitter<'_> {
                     let x =
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
-                            None => x,
+                            None => self
+                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .unwrap_or_else(|| {
+                                    self.hoist_unresolved(&args[0], "xnor operand", x, false)
+                                }),
                         };
                     format!("(~^({x}))")
                 }

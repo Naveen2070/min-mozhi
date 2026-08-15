@@ -1251,6 +1251,24 @@ is [GAP-17](#gap-17-medium-process--rule-a-audits-the-arms-the-defects-are-at-th
 **Status:** OPEN. Filed 2026-08-15. Source:
 [`review-2026-08-15.md`](review-2026-08-15.md) (round 6).
 
+**Status update (2026-08-15, same day, round-6 plan Tasks 1–3):** the core of
+this gap — a silent fallback, no test, no assert, no written contract — is
+closed. `hoist_unresolved` routes every `None` arm through one place; it
+`debug_assert!`s unconditionally and pushes a real `Diag` for the positions
+whose grammar needs a named wire. The invariant is now stated once, in
+`kinds.rs`'s module doc, replacing the "already-correct fallback" wording this
+gap quoted. `fn` bodies and testbench bodies now get a real `decls` (Task 2); a
+parameter-valued `extend` width no longer silently drops the hoist at the
+positions that need it (Task 3). **Narrower than "closed":** making the hoist
+itself possible inside a `fn` body (the actual `reg`-based mechanism BUG-63's
+fix shape describes) is still unstarted — that residual is now a clean
+diagnostic rather than a silent gap, which is what this filing asked for, but
+it is not the same as the machinery covering every context. See
+[`v0.2-class-closure-round6.local.md`](../plan/v0.2-class-closure-round6.local.md)'s
+Task 1–4 status notes for the full account, including a testbench-side flush
+bug (hoisted wires were never emitted into testbench text at all) found and
+fixed while closing this gap, not in the original filing.
+
 **What.** `cur_decls` is built once per module (`emit_verilog/module/mod.rs:127`)
 and is `kinds::infer_kind`'s only data source. Every hoist call site is gated on
 `infer_kind` returning `Some` and renders the text **unchanged** otherwise.

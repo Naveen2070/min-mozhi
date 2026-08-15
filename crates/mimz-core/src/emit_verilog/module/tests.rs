@@ -34,6 +34,7 @@ fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
         hoist_counter: 0,
         hoisted_decls: String::new(),
         cur_decls: Default::default(),
+        in_fn_body: false,
         cover_ordinals: HashMap::new(),
     }
 }

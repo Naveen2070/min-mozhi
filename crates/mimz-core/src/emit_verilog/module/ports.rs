@@ -164,7 +164,13 @@ impl Emitter<'_> {
     /// loops' own declarations already use for it.
     ///
     /// Task 6 adds the real caller (`module()`'s own `self.cur_decls`
-    /// assignment, above).
+    /// assignment, above). Task 2 (`docs/plan/v0.2-class-closure-round6.local.md`,
+    /// BUG-62(a)) adds a second: `testbench.rs::emit_testbench`, which was
+    /// installing `Default::default()` — an always-empty map — for every
+    /// `expect`/`Drive` in every test, so the same `None`-fallback fail-open
+    /// Task 1 makes loud fired on EVERY testbench expression touching a DUT
+    /// signal. `pub(in crate::emit_verilog)` (not `pub(super)`) so that
+    /// caller, a sibling of `module` rather than a descendant, can reach it.
     ///
     /// BUG-41 (docs/audit/bugs.md): also inserts every fact
     /// `kinds::infer_kind`'s `Index`/`FnCall`/`Field` arms need but cannot
@@ -179,7 +185,7 @@ impl Emitter<'_> {
     /// arguments). Keeping `infer_kind`'s own signature at `(expr, decls)`
     /// — no second map, no `&Project` parameter — means every caller in
     /// `expr.rs` stays exactly as simple as it already was.
-    pub(super) fn build_decls(
+    pub(in crate::emit_verilog) fn build_decls(
         &self,
         flat: &[ModuleItem],
     ) -> HashMap<String, crate::width_rules::Kind> {
@@ -225,7 +231,7 @@ impl Emitter<'_> {
     /// used to do inline, factored out unchanged so `build_decls` itself
     /// can also handle `Mem`/`Inst` items without the loop body growing a
     /// second incompatible shape.
-    fn insert_signal_kind(
+    pub(super) fn insert_signal_kind(
         &self,
         decls: &mut HashMap<String, crate::width_rules::Kind>,
         name: &Ident,
@@ -595,6 +601,29 @@ impl Emitter<'_> {
         if mimz_kind == verilog_kind {
             return rendered_text;
         }
+        // Task 4 (BUG-63, `docs/plan/v0.2-class-closure-round6.local.md`):
+        // Task 2 gives a `fn` body a real `cur_decls`, which means a real
+        // MISMATCH — and therefore a real hoist — can now fire inside one
+        // for the first time (`nand(extend(x, 8))`, a working example one
+        // screen up in that plan's own repro table). This function only
+        // knows how to hoist into a MODULE-scope `wire`/`assign` pair,
+        // which a `function automatic` cannot legally reference forward —
+        // confirmed against real `iverilog`. Diagnosing here, rather than
+        // emitting that invalid Verilog, is the same GAP-16 invariant
+        // Task 1's `hoist_unresolved` states for the `None` case, applied
+        // to the `Some`-but-can't-actually-hoist-HERE one. In-function
+        // `reg`-based hoisting is real follow-up work, not this task.
+        if self.in_fn_body {
+            self.err(
+                expr.span,
+                "this expression needs a helper wire to render correctly, but a value inside \
+                 a `fn` body cannot declare one yet"
+                    .to_string(),
+                "this is a compiler limitation (GAP-16/BUG-63); move the computation into the \
+                 caller (a module-body `let`/wire) instead of inside the `fn`",
+            );
+            return rendered_text;
+        }
         self.hoist_counter += 1;
         let name = format!("__mimz_sub_{}", self.hoist_counter);
         let ty = if mimz_kind.signed {
@@ -627,8 +656,27 @@ impl Emitter<'_> {
         rendered_text: String,
         width: u32,
         signed: bool,
+        span: crate::span::Span,
     ) -> String {
         if super::expr::is_plain_identifier(&rendered_text) {
+            return rendered_text;
+        }
+        // Task 4 (BUG-63) — same reasoning as `hoist_if_needed`'s own
+        // `in_fn_body` check immediately above: this is the grammar-
+        // required-wire family (a slice/bit-select/`trunc` base), so
+        // leaving `rendered_text` un-hoisted here isn't just a width risk,
+        // it's flatly unparseable — but hoisting INTO a `fn` body is
+        // exactly as illegal in real Verilog as `hoist_if_needed`'s own
+        // case, so this must diagnose rather than silently do either.
+        if self.in_fn_body {
+            self.err(
+                span,
+                "this expression needs a helper wire to render correctly, but a value inside \
+                 a `fn` body cannot declare one yet"
+                    .to_string(),
+                "this is a compiler limitation (GAP-16/BUG-63); move the computation into the \
+                 caller (a module-body `let`/wire) instead of inside the `fn`",
+            );
             return rendered_text;
         }
         self.hoist_counter += 1;
@@ -643,5 +691,89 @@ impl Emitter<'_> {
         self.hoisted_decls
             .push_str(&format!("    assign {name} = {rendered_text};\n"));
         name
+    }
+
+    /// Task 1 (`docs/plan/v0.2-class-closure-round6.local.md`, GAP-16): the
+    /// single routing point every hoist call site's `None` arm goes through
+    /// instead of returning `rendered_text` unchanged. `infer_kind` (or
+    /// `verilog_self_determined_kind`) returning `None` at a hoist position
+    /// used to be treated as "already correct, nothing to hoist toward" —
+    /// BUG-62 showed that's false for a `fn`-body local, a testbench
+    /// signal, or a symbolic parametric width: `decls` simply has no entry
+    /// for the name, and the fallback renders text whose width mimz never
+    /// checked, or — for `requires_named_wire` positions — text that
+    /// real Verilog's grammar rejects outright.
+    ///
+    /// Every legitimately-unresolvable shape is enumerated above (a
+    /// `fn`-body local, a module `parameter`, a testbench signal, a
+    /// symbolic parametric width) and Tasks 2/3 close them by giving those
+    /// contexts a real `decls`; after that lands this should never fire for
+    /// a module- or `fn`-body expression, so the `debug_assert!` is
+    /// unconditional rather than gated on a "we didn't expect this" guess —
+    /// silence here is the bug this task exists to end.
+    ///
+    /// `requires_named_wire` is the `hoist_slice_base_if_needed`-family
+    /// distinction: a slice/bit-select/`trunc` base whose Verilog grammar
+    /// only accepts a plain identifier. Leaving a composite expression
+    /// there unchanged doesn't just risk a wrong width, it can be
+    /// unparseable — `mimz compile` must not exit 0 having written invalid
+    /// Verilog, so this pushes a real `Diag` instead. A `hoist_if_needed`-
+    /// family caller's fallback text is still syntactically valid Verilog
+    /// (just possibly the wrong width), so it gets the assert only.
+    pub(in crate::emit_verilog) fn hoist_unresolved(
+        &mut self,
+        expr: &Expr,
+        site: &str,
+        rendered_text: String,
+        requires_named_wire: bool,
+    ) -> String {
+        // Mirrors `hoist_if_needed`/`hoist_slice_base_if_needed`'s own
+        // early return, one level up: a rendered text that is ALREADY a
+        // plain identifier needs no hoist regardless of whether `Kind`
+        // resolved — Verilog self-determines a named signal at its own
+        // declared width, and a bit-select/slice/`trunc` base's grammar
+        // only ever needed a bare identifier in the first place, whether
+        // or not `decls` happens to carry an entry for it. An array-typed
+        // `fn` param's element access (`vals[i]` -> `vals_3`, elaborated
+        // by `expr.rs`'s own `Index` arm before this is ever reached) is
+        // the common legitimate case this catches: `vals` is deliberately
+        // absent from `decls` (Task 2's own doc comment — it elaborates to
+        // scalars, never a single `Kind`), so `infer_kind` genuinely can't
+        // resolve it, but the text it already produced needs nothing more
+        // done to it. Without this, EVERY array-element comparison/hoist
+        // position in a `fn` body would assert, which is not what Task 1
+        // means by "reaching the fallback is a bug" — reaching it for a
+        // COMPOSITE (non-identifier) expression is.
+        if super::expr::is_plain_identifier(&rendered_text) {
+            return rendered_text;
+        }
+        // Task 3 (BUG-62(b)): a symbolic-width `extend(x, W)` reaching
+        // THIS point (rather than being widened explicitly) means every
+        // call site that knows how to do that (`try_widen_symbolic_extend`,
+        // `expr.rs`) either isn't this one or couldn't resolve `x`'s own
+        // `Kind` either — a residual case, not silently passed through
+        // here (that would re-emit the un-widened text this task exists
+        // to stop doing), so it falls through to the loud assert below
+        // like everything else.
+        debug_assert!(
+            false,
+            "hoist_unresolved: `infer_kind` returned None for {expr:?} at `{site}` \
+             (rendered as `{rendered_text}`) — GAP-16/BUG-62: a hoist site may not \
+             silently do nothing when it cannot resolve a Kind. If this shape is \
+             genuinely unresolvable, name it in this function's own doc comment \
+             instead of loosening the assert.",
+        );
+        if requires_named_wire {
+            self.err(
+                expr.span,
+                format!(
+                    "cannot determine `{rendered_text}`'s width here to hoist it into \
+                     a named wire — the emitted Verilog would not parse"
+                ),
+                "this is a compiler limitation (GAP-16); simplify the expression \
+                 or file a bug report",
+            );
+        }
+        rendered_text
     }
 }
