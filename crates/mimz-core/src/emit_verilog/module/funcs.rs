@@ -24,6 +24,20 @@ impl Emitter<'_> {
         // out of scope inside a `function automatic`, but file consts must
         // fold so uses like `a >> SCALE` emit correct literals.
         let saved_env = std::mem::replace(&mut self.env, file_env.clone());
+        // Task 2 (BUG-62(a), GAP-16, docs/plan/v0.2-class-closure-round6.local.md):
+        // `cur_decls` was left as the ENCLOSING MODULE's map for the whole
+        // body — a `fn`'s own params/`let`s were never in it, so every
+        // hoist call site's `infer_kind` saw `None` for a bare fn-body
+        // operand and silently rendered it unchanged (BUG-28's founding
+        // shape, alive inside a `fn` at round 6). A fresh, empty map here
+        // (not the module's own, and never merged with it — a `fn` cannot
+        // read a module signal at all, so a name resolving there would
+        // only ever be an accidental same-name collision, BUG-63's shape)
+        // gets filled in below and installed for the duration of this
+        // body; the module's own map is restored on exit exactly like
+        // `self.env` above.
+        let saved_decls = std::mem::replace(&mut self.cur_decls, std::rc::Rc::new(HashMap::new()));
+        let saved_in_fn_body = std::mem::replace(&mut self.in_fn_body, true);
 
         // Array-typed names in scope for this body: each param or `let`-bound
         // array maps to `(element_width_string, length)` so a call argument
@@ -57,6 +71,38 @@ impl Emitter<'_> {
                 arrays.insert(local.name.name.clone(), (ew, elems.len() as u128));
             }
         }
+
+        // Build this `fn`'s own `decls` — every param/`let` that
+        // `hoist_unresolved` (Task 1) can now resolve instead of asserting
+        // on. Array-typed params/`let`s are deliberately absent: they
+        // elaborate to `<name>_<i>` scalars via `arrays` above, never to a
+        // single `decls` entry an `Ident`/`Index` lookup would find.
+        let mut fn_decls: HashMap<String, crate::width_rules::Kind> = HashMap::new();
+        for param in &decl.params {
+            if matches!(param.ty, Type::Array { .. }) {
+                continue;
+            }
+            self.insert_signal_kind(&mut fn_decls, &param.name, &param.ty);
+        }
+        for local in fn_all_locals(&decl.stmts, &decl.params, &self.env) {
+            if matches!(local.value.kind, ExprKind::ArrayLit(_)) {
+                continue;
+            }
+            if let Some(w) = local.inferred_width.get() {
+                // `signed: false` matches the `reg` declaration loop below
+                // exactly — a fn-local `let` is never declared `signed`
+                // (only cast to `$signed` at use sites, same as `Trunc`'s
+                // own part-select, BUG-44's note).
+                fn_decls.insert(
+                    local.name.name.clone(),
+                    crate::width_rules::Kind {
+                        width: w,
+                        signed: false,
+                    },
+                );
+            }
+        }
+        self.cur_decls = std::rc::Rc::new(fn_decls);
 
         let ret_w = self.width(&decl.ret);
         let mut s = format!("    function automatic {ret_w}{};\n", decl.name.name);
@@ -158,6 +204,8 @@ impl Emitter<'_> {
         s.push_str("    endfunction\n");
 
         self.env = saved_env;
+        self.cur_decls = saved_decls;
+        self.in_fn_body = saved_in_fn_body;
         s
     }
 
