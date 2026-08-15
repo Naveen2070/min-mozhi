@@ -96,6 +96,19 @@ pub(crate) fn fn_ret_decl_key(name: &str) -> String {
 /// re-adding a `kind_is_inferrable`-style shape gate that has to be kept
 /// in sync with this function by hand (that hand-sync is exactly what
 /// caused BUG-41).
+///
+/// Task 1 (`docs/plan/v0.2-class-closure-round6.local.md`, GAP-16): "skip
+/// the check" used to mean silently returning the rendered text unchanged
+/// at every one of `expr.rs`'s hoist call sites — the same fallback for a
+/// genuinely-harmless shape (a bare identifier, already correct) and for
+/// a `fn`-body local / testbench signal / symbolic parametric width
+/// `decls` simply has no entry for (BUG-62: silently wrong hardware, or
+/// unparseable Verilog for a slice/bit-select/`trunc` base). **A hoist
+/// site may not silently do nothing when it cannot resolve a `Kind`** —
+/// every `None` arm at such a site must route through
+/// `module::ports::Emitter::hoist_unresolved`, which asserts in debug and
+/// diagnoses in release for the positions whose grammar demands a named
+/// wire.
 pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>, env: &Env) -> Option<Kind> {
     match &expr.kind {
         ExprKind::Int { value, .. } => Some(Kind {

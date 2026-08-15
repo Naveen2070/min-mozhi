@@ -149,6 +149,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         hoist_counter: 0,
         hoisted_decls: String::new(),
         cur_decls: Default::default(),
+        in_fn_body: false,
         cover_ordinals: HashMap::new(),
     };
 
@@ -239,6 +240,20 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
                 )),
             }
         }
+
+        // Task 2 (BUG-62(a), GAP-16, docs/plan/v0.2-class-closure-round6.local.md):
+        // `cur_decls` used to stay `Default::default()` — always empty —
+        // for the whole testbench, so every hoist call site's `infer_kind`
+        // saw `None` for a plain DUT signal in a `Drive`/`expect` and
+        // silently rendered it unchanged (`expect &extend(y, 8) == 0`
+        // rendered `(&(y))`, disagreeing with `mimz test`'s own verdict on
+        // the identical design). Installing the DUT's own decls, the same
+        // way `module()` installs a module's own, closes that gap; `env`
+        // is set to this test's resolved param env first so a parametric
+        // port width folds the same way the loop above already resolved it
+        // (`test_env`, not the otherwise-always-empty `em.env`).
+        em.env = test_env.clone();
+        em.cur_decls = std::rc::Rc::new(em.build_decls(&dut.items));
 
         let mut dut_connections = Vec::new();
 
@@ -337,6 +352,26 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         }
         em.out.push('\n');
 
+        // Found verifying Task 2/3 (docs/plan/v0.2-class-closure-round6.local.md):
+        // installing a real `cur_decls` above means a `Drive`/`expect`
+        // expression can genuinely hoist now (a reduction/concat/bit-
+        // select operand needing a named wire), pushed into
+        // `self.hoisted_decls` exactly like the module emitter does — but
+        // nothing here ever flushed that buffer, so every hoisted wire was
+        // silently DROPPED, leaving `__mimz_sub_N` referenced in the
+        // `expect` but never declared. Confirmed against real `iverilog`
+        // that this must be textual-order sensitive even at plain module
+        // scope (not just inside a `function`, `module()`'s own reason for
+        // its `insert_str` — a wire referenced from an `initial` block
+        // before its own declaration is ALSO "declaration after use" in
+        // practice): declared here, right before the `initial` block that
+        // is this hoist's only possible reader, via the same saved-
+        // position `insert_str` `module()` uses. Reset per test (not per
+        // whole `emit_testbench` call) so numbering restarts at
+        // `__mimz_sub_1` per test module, the same per-scope convention
+        // `module()` uses.
+        let hoist_pos = em.out.len();
+
         em.out.push_str("  initial begin\n");
         em.out
             .push_str(&format!("    $dumpfile(\"{}.vcd\");\n", tb_name));
@@ -414,6 +449,11 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         }
         em.out.push_str("    $finish;\n");
         em.out.push_str("  end\n");
+        if !em.hoisted_decls.is_empty() {
+            em.out.insert_str(hoist_pos, &em.hoisted_decls);
+            em.hoisted_decls.clear();
+        }
+        em.hoist_counter = 0;
         em.out.push_str("endmodule\n\n");
     }
 
