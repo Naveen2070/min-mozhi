@@ -19,8 +19,11 @@ module ___________________________________________tb;
     $dumpvars(0, ___________________________________________tb);
     miill = 0;
     katamai = 0;
+    #1;
     katamai <= 0;
+    #1;
     repeat (6) @(posedge katikai);
+    #1;
     if (((alai == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(alai == 0)");
       $finish;
@@ -51,7 +54,9 @@ module ____________________________________________tb;
     $dumpvars(0, ____________________________________________tb);
     miill = 0;
     katamai = 0;
+    #1;
     katamai <= 8;
+    #1;
     if (((alai == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(alai == 1)");
       $finish;

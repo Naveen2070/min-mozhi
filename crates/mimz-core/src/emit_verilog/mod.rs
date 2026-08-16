@@ -432,6 +432,9 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
         hoisted_decls: String::new(),
         cur_decls: Rc::default(),
         in_fn_body: false,
+        fn_hoist_counter: 0,
+        fn_hoisted_regs: String::new(),
+        fn_hoisted_stmts: Vec::new(),
         cover_ordinals: HashMap::new(),
     };
     em.out.push_str(&format!(
@@ -595,6 +598,26 @@ struct Emitter<'a> {
     /// case. Reg-based in-function hoisting is real future work, not done
     /// here.
     in_fn_body: bool,
+    /// Task 4 real fix (BUG-63, `docs/plan/v0.2-class-closure-round6.local.md`):
+    /// counter for `__mimz_fn_sub_N` names, the `fn`-body counterpart of
+    /// `hoist_counter` — a separate sequence so a hoist inside a `fn` never
+    /// shares numbering (or a buffer) with the enclosing module's own
+    /// `hoist_counter`/`hoisted_decls`. Reset per `fn` by `render_fn_decl`.
+    fn_hoist_counter: u32,
+    /// `reg [...] __mimz_fn_sub_N;` declaration lines for the CURRENT `fn`
+    /// body, spliced in before its `begin` (mirrors `hoisted_decls`' own
+    /// insert-at-saved-position trick, one level down). Reset per `fn`.
+    fn_hoisted_regs: String,
+    /// Blocking-assignment statements (`__mimz_fn_sub_N = <expr>;`, no
+    /// indent/trailing newline yet) a hoist produced while rendering the
+    /// operand currently in flight. Drained by `render_fn_operand` right
+    /// after the `expr_subst` call that may have pushed into it, and
+    /// prepended — correctly indented — immediately before the statement
+    /// that operand belongs to, so the assignment executes in the right
+    /// control-flow branch and before its own use, the way a `function
+    /// automatic`'s sequential body requires. Always empty between
+    /// `render_fn_operand` calls; never spans two statements.
+    fn_hoisted_stmts: Vec<String>,
     /// Every `cover(...)` statement in the CURRENT module (module-item AND
     /// `on`-block form combined), mapped `span.start -> ordinal rank by
     /// source position`. Names each hidden hit-counter `__cover_{ordinal}_

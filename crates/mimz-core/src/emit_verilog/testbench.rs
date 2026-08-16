@@ -68,6 +68,24 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
                     sanitize_verilog_ident(&name.name),
                     val_str
                 ));
+                // Task 5 (BUG-64, `docs/plan/v0.2-class-closure-round6.local.md`):
+                // a `Drive` not followed by a `Tick` (a comb-only test, or a
+                // stimulus change between ticks in a clocked one) leaves
+                // nothing to advance simulation time — without a real delay
+                // here, the very next statement (another `Drive`, or the
+                // `Expect` this stimulus exists to feed) reads the
+                // PRE-drive value, since `<=` only schedules the update into
+                // the NBA region. Unconditional, not gated on "does this
+                // test ever tick a clock": a `Drive` followed by a `Tick`
+                // just settles slightly earlier than it otherwise would —
+                // harmless, since the next clock edge is always a full
+                // period away. Confirmed against real `iverilog`:
+                // `shift`/`tested_adder`'s emitted testbenches (no `Tick` at
+                // all) reported FAIL on a correct design without this — the
+                // "vacuous PASS" variant (an `expect` that never observed
+                // the stimulus) is worse and is exactly what this closes,
+                // not just the loud FAIL case.
+                em.out.push_str(&format!("{indent}#1;\n"));
             }
             TestStmt::Tick { clock, count } => {
                 let count_val = count
@@ -88,6 +106,20 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
                     count_val,
                     sanitize_verilog_ident(&clock.name)
                 ));
+                // Task 5 (BUG-64): `repeat (n) @(posedge clk)` RESUMES in
+                // the same active region as the DUT's own `always
+                // @(posedge clk)` block firing for that identical edge —
+                // and an NBA (`<=`, what every `on rise` reg write lowers
+                // to) never lands until the active region for this time
+                // step is entirely done, regardless of relative ordering
+                // between the two. So a statement reading a clocked
+                // output/reg IMMEDIATELY after `Tick` resumes always sees
+                // the PRE-edge value, deterministically, not a maybe-race —
+                // this is the standard "sample at posedge+delta" testbench
+                // idiom, not optional. Confirmed against real `iverilog`:
+                // `enum_encoding`'s `tick(clk); expect state_bits == …`
+                // pairs reported FAIL on a correct design without this.
+                em.out.push_str(&format!("{indent}#1;\n"));
             }
             TestStmt::Expect(e) => {
                 let cond_str = em.expr(e);
@@ -150,6 +182,9 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         hoisted_decls: String::new(),
         cur_decls: Default::default(),
         in_fn_body: false,
+        fn_hoist_counter: 0,
+        fn_hoisted_regs: String::new(),
+        fn_hoisted_stmts: Vec::new(),
         cover_ordinals: HashMap::new(),
     };
 
@@ -394,6 +429,23 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
                 ));
             }
         }
+
+        // BUG-65 (docs/audit/bugs.md): the DUT's own reg/mem power-on
+        // `initial` statements (`module/mod.rs`) are SEPARATE `initial`
+        // constructs from this testbench's own — Verilog gives no ordering
+        // guarantee between different `initial` blocks that all start at
+        // time 0, only that each runs to its own first blocking delay
+        // before yielding. A test with no `Drive`/`Tick` before its first
+        // `Expect` (`std/fifo.mimz`'s "starts empty", checking `empty==1`
+        // with zero stimulus) could resume and check BEFORE the DUT's own
+        // reg-init `initial` had run at all, reading X. `Drive`/`Tick`'s
+        // own `#1` (`emit_test_stmts`) already covers every OTHER case;
+        // this one settling delay up front, before the first user
+        // statement, is what closes the one they can't reach — a test with
+        // neither. Confirmed against real `iverilog`: `fifo`'s "starts
+        // empty" and `uart_tx`'s "idles high" tests, both zero-stimulus,
+        // reported FAIL at time 0 without this.
+        em.out.push_str("    #1;\n");
 
         emit_test_stmts(&mut em, &test.body, "    ");
 

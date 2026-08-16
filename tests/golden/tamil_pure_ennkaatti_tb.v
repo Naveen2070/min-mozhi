@@ -12,7 +12,9 @@ module ________3______________tb;
     $dumpfile("________3______________tb.vcd");
     $dumpvars(0, ________3______________tb);
     ilakkam = 0;
+    #1;
     ilakkam <= 3;
+    #1;
     if (((kaatsi == 'h4F)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaatsi == 'h4F)");
       $finish;
@@ -36,7 +38,9 @@ module _8_______________________________________tb;
     $dumpfile("_8_______________________________________tb.vcd");
     $dumpvars(0, _8_______________________________________tb);
     ilakkam = 0;
+    #1;
     ilakkam <= 8;
+    #1;
     if (((kaatsi == 'h7F)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaatsi == 'h7F)");
       $finish;
@@ -60,7 +64,9 @@ module _______________________________________tb;
     $dumpfile("_______________________________________tb.vcd");
     $dumpvars(0, _______________________________________tb);
     ilakkam = 0;
+    #1;
     ilakkam <= 'hF;
+    #1;
     if (((kaatsi == 'h00)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kaatsi == 'h00)");
       $finish;

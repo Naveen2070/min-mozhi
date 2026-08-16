@@ -330,6 +330,40 @@ impl Emitter<'_> {
             }
         }
 
+        // BUG-65 (docs/audit/bugs.md): `ModuleItem::Reg`'s own doc comment
+        // states the identical safety rule `mem`'s does — "no uninitialized
+        // state" — and `mimz-sim/src/sim/kernel.rs`'s
+        // `regs_init_to_their_reset_value` test confirms the KERNEL honors
+        // it unconditionally: a reg holds its declared value from t=0, no
+        // reset pulse required. The emitter only ever encoded that value
+        // into the synchronous `if (rst)` branch below — a test/design that
+        // reads a reg (or anything derived from it) before ever asserting
+        // reset agrees with `mimz test` and disagrees with the emitted
+        // Verilog, where the reg is a real 4-state X until reset fires.
+        // Confirmed against real `iverilog`: `std/fifo.mimz`'s "starts
+        // empty" test (checks `count == 0` with zero stimulus) and three
+        // more shipped stdlib examples (`debouncer`, `pwm`, `uart_tx`) all
+        // reported FAIL for exactly this reason. Same fix shape as the
+        // `mem` loop just above, one level up: seed every reg to its
+        // declared value too.
+        let mut reg_note_emitted = false;
+        for item in flat.iter() {
+            if let ModuleItem::Reg { name, reset, .. } = item {
+                if !reg_note_emitted {
+                    self.out.push_str(
+                        "    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` \
+                         register-init line(s) below are simulation/FPGA-only - an ASIC \
+                         flow has no defined power-on default and will not honor them. \
+                         The synchronous reset below still applies regardless.\n",
+                    );
+                    reg_note_emitted = true;
+                }
+                let v = self.expr(reset);
+                self.out
+                    .push_str(&format!("    initial {} = {v};\n", name.name));
+            }
+        }
+
         // Instances: auto-wire every child output as `{inst}_{port}`.
         // `repeat` bodies are unrolled per iteration (instances first, to
         // match Verilog's declare-before-use convention).

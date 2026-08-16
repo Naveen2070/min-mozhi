@@ -11,6 +11,11 @@ module Debouncer #(
     reg sync1;
     reg [(WIDTH)-1:0] cnt;
     reg out_q;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial sync0 = 0;
+    initial sync1 = 0;
+    initial cnt = 0;
+    initial out_q = 0;
     assign stable = out_q;
     always @(posedge clk) begin
         if (rst) begin
