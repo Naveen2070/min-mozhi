@@ -12,7 +12,9 @@ module seg7_decodes_3_tb;
     $dumpfile("seg7_decodes_3_tb.vcd");
     $dumpvars(0, seg7_decodes_3_tb);
     digit = 0;
+    #1;
     digit <= 3;
+    #1;
     if (((seg == 'h4F)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(seg == 'h4F)");
       $finish;
@@ -36,7 +38,9 @@ module seg7_lights_all_segments_for_8_tb;
     $dumpfile("seg7_lights_all_segments_for_8_tb.vcd");
     $dumpvars(0, seg7_lights_all_segments_for_8_tb);
     digit = 0;
+    #1;
     digit <= 8;
+    #1;
     if (((seg == 'h7F)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(seg == 'h7F)");
       $finish;
@@ -60,7 +64,9 @@ module seg7_blanks_a_non_decimal_input_tb;
     $dumpfile("seg7_blanks_a_non_decimal_input_tb.vcd");
     $dumpvars(0, seg7_blanks_a_non_decimal_input_tb);
     digit = 0;
+    #1;
     digit <= 'hF;
+    #1;
     if (((seg == 'h00)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(seg == 'h00)");
       $finish;

@@ -7,6 +7,9 @@ module simitti #(
 );
     reg [(26)-1:0] kannakku;
     reg nilaimai;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial kannakku = 0;
+    initial nilaimai = 0;
     assign olli = nilaimai;
     always @(posedge katikai) begin
         if (miill) begin

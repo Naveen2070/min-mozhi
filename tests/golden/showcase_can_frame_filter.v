@@ -14,6 +14,13 @@ module CanFrameFilter (
     reg [(2)-1:0] frame_type_reg;
     reg [(4)-1:0] match_count_reg;
     wire accept;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial data_cnt = 0;
+    initial remote_cnt = 0;
+    initial err_cnt = 0;
+    initial filter_out_reg = 0;
+    initial frame_type_reg = 0;
+    initial match_count_reg = 0;
     assign accept = (((kind == 0)) ? (1) : (((kind == 1)) ? (1) : (0)));
     assign filter_out = filter_out_reg;
     assign frame_type = frame_type_reg;

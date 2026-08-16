@@ -1269,6 +1269,17 @@ Task 1–4 status notes for the full account, including a testbench-side flush
 bug (hoisted wires were never emitted into testbench text at all) found and
 fixed while closing this gap, not in the original filing.
 
+**Status update (2026-08-16, round-6 plan Task 4):** the residual above is
+also closed. `hoist_if_needed`/`hoist_slice_base_if_needed`, when
+`self.in_fn_body`, now hoist into a function-local `reg` (a fresh
+`fn_hoist_counter`/`fn_hoisted_regs`/`fn_hoisted_stmts` buffer on `Emitter`,
+never shared with the module's own) instead of pushing the Task 1-era `Diag` —
+so a `fn`-body hoist site genuinely covers the position instead of only
+diagnosing it can't. GAP-16's own invariant ("a hoist site may not silently do
+nothing when it cannot resolve a `Kind`") now holds with the machinery
+present, not just the diagnostic, for every context this gap named. See
+BUG-63's own entry for the verification detail.
+
 **What.** `cur_decls` is built once per module (`emit_verilog/module/mod.rs:127`)
 and is `kinds::infer_kind`'s only data source. Every hoist call site is gated on
 `infer_kind` returning `Some` and renders the text **unchanged** otherwise.

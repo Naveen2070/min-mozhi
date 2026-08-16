@@ -447,6 +447,102 @@ fn every_emitted_testbench_passes_iverilog() {
     );
 }
 
+/// Task 5 (BUG-64, `docs/plan/v0.2-class-closure-round6.local.md`): Layer 1.5
+/// above only proves an emitted testbench ELABORATES, never that it reports
+/// the right verdict. Two independent root causes, both closed by
+/// `emit_verilog`'s testbench/module emission, both found only by actually
+/// running the whole corpus (this test) rather than the 3 examples BUG-64
+/// was originally filed against:
+///
+/// 1. `TestStmt::Drive`/`Tick` write/advance non-blocking (`<=`) — right
+///    when something later reads the result, wrong when the very next
+///    statement does, in the SAME time step, before the deferred update
+///    lands (`enum_encoding`, `shift`, `tested_adder`).
+/// 2. BUG-65 (docs/audit/bugs.md): a plain `reg`'s declared reset value was
+///    only ever encoded into the synchronous `if (rst)` branch, never as a
+///    Verilog `initial` — so a test that never asserts `rst` (matching
+///    `mimz test`'s own kernel, which holds every reg at its declared value
+///    from t=0 unconditionally) read a real 4-state X instead
+///    (`debouncer`, `fifo`, `pwm`, `uart_tx`).
+///
+/// Layer 2 for the whole corpus: run every emitted testbench MODULE (there
+/// can be more than one per file, one per `test` block — built and run
+/// separately, `-s <module>`, so one module's `$finish` can't cut off
+/// another's `$display`) under real `vvp` and assert it prints PASS with no
+/// FAIL.
+#[test]
+fn every_emitted_testbench_reports_pass_under_vvp() {
+    let Some(bin) = require_iverilog() else {
+        return;
+    };
+    let mut checked = 0;
+    let mut stack = vec![repo().join("examples")];
+    let mut files = Vec::new();
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "mimz") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    for path in files {
+        let Some((v, tb)) = compile_example_tb(&path) else {
+            continue;
+        };
+        let tb_src = std::fs::read_to_string(&tb).unwrap();
+        let safe = path.display().to_string().replace(['\\', '/', ':'], "_");
+        for line in tb_src.lines() {
+            let Some(rest) = line.strip_prefix("module ") else {
+                continue;
+            };
+            let Some(name) = rest.strip_suffix(';') else {
+                continue;
+            };
+            let vvp_out = std::env::temp_dir().join(format!("mimz_bug64_{safe}_{name}.vvp"));
+            let build = tool(&bin, "iverilog")
+                .arg("-o")
+                .arg(&vvp_out)
+                .args(["-s", name])
+                .arg(&tb)
+                .arg(&v)
+                .output()
+                .unwrap();
+            assert!(
+                build.status.success(),
+                "iverilog failed to build `{name}` for {}:\n{}",
+                path.display(),
+                String::from_utf8_lossy(&build.stderr)
+            );
+            let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+            let stdout = String::from_utf8_lossy(&sim.stdout);
+            assert!(
+                sim.status.success(),
+                "vvp failed running `{name}` for {}:\n{stdout}",
+                path.display()
+            );
+            assert!(
+                stdout.contains("PASS"),
+                "expected `{name}` ({}) to report PASS, got:\n{stdout}",
+                path.display()
+            );
+            assert!(
+                !stdout.contains("FAIL"),
+                "expected `{name}` ({}) to report no FAIL, got:\n{stdout}",
+                path.display()
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 5,
+        "expected at least the tested examples' testbenches to have run, found {checked}"
+    );
+}
+
 /// BUG-51 (docs/audit/bugs.md), found verifying Task 8 of `docs/plan/v0.2-
 /// class-closure-round3.local.md`: `--emit-testbench`'s `TestStmt::Drive`
 /// used blocking `=` for every stimulus write, including `rst = 0;` right

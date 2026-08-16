@@ -29,6 +29,7 @@ module fifo_starts_empty_tb;
     push = 0;
     pop = 0;
     din = 0;
+    #1;
     if (((empty == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(empty == 1)");
       $finish;
@@ -73,10 +74,15 @@ module fifo_round_trips_a_byte_tb;
     push = 0;
     pop = 0;
     din = 0;
+    #1;
     push <= 1;
+    #1;
     din <= 'hA5;
+    #1;
     repeat (1) @(posedge clk);
+    #1;
     push <= 0;
+    #1;
     if (((dout == 'hA5)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(dout == 'hA5)");
       $finish;
@@ -121,9 +127,13 @@ module fifo_fills_up_tb;
     push = 0;
     pop = 0;
     din = 0;
+    #1;
     push <= 1;
+    #1;
     din <= 1;
+    #1;
     repeat (4) @(posedge clk);
+    #1;
     if (((full == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(full == 1)");
       $finish;

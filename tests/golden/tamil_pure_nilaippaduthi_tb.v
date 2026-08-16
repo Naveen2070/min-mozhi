@@ -19,8 +19,11 @@ module ___________________________tb;
     $dumpvars(0, ___________________________tb);
     miill = 0;
     muulam = 0;
+    #1;
     muulam <= 1;
+    #1;
     repeat (8) @(posedge katikai);
+    #1;
     if (((thellivu == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(thellivu == 1)");
       $finish;
@@ -51,10 +54,15 @@ module ___________________________________tb;
     $dumpvars(0, ___________________________________tb);
     miill = 0;
     muulam = 0;
+    #1;
     muulam <= 1;
+    #1;
     repeat (2) @(posedge katikai);
+    #1;
     muulam <= 0;
+    #1;
     repeat (8) @(posedge katikai);
+    #1;
     if (((thellivu == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(thellivu == 0)");
       $finish;

@@ -19,8 +19,11 @@ module pwm_holds_low_at_zero_duty_tb;
     $dumpvars(0, pwm_holds_low_at_zero_duty_tb);
     rst = 0;
     duty = 0;
+    #1;
     duty <= 0;
+    #1;
     repeat (6) @(posedge clk);
+    #1;
     if (((pwm == 0)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(pwm == 0)");
       $finish;
@@ -51,7 +54,9 @@ module pwm_leads_each_period_high_for_non_zero_duty_tb;
     $dumpvars(0, pwm_leads_each_period_high_for_non_zero_duty_tb);
     rst = 0;
     duty = 0;
+    #1;
     duty <= 8;
+    #1;
     if (((pwm == 1)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(pwm == 1)");
       $finish;

@@ -7,6 +7,8 @@ module ShiftRegister #(
     output wire [(WIDTH)-1:0] dout
 );
     reg [(WIDTH)-1:0] sr;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial sr = 0;
     wire [8:0] __mimz_sub_1;
     assign __mimz_sub_1 = (sr << 1);
     assign dout = sr;

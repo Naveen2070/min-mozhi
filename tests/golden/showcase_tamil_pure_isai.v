@@ -15,6 +15,13 @@ module isai #(
     reg [(20)-1:0] ilakku;
     wire [(20)-1:0] suruthi;
     wire [(8)-1:0] kaalam;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial mukavari = 0;
+    initial suram_ennnnikkai = 0;
+    initial kaala_ennnnikkai = 0;
+    initial maarrrru = 0;
+    initial seyalil = 0;
+    initial ilakku = 0;
     wire [63:0] __mimz_sub_1;
     assign __mimz_sub_1 = ((kaalam) * TICK);
     assign suruthi = (((mukavari == 0)) ? (75758) : (((mukavari == 1)) ? (75758) : (((mukavari == 2)) ? (71633) : (((mukavari == 3)) ? (63776) : (((mukavari == 4)) ? (63776) : (((mukavari == 5)) ? (71633) : (((mukavari == 6)) ? (75758) : (((mukavari == 7)) ? (85034) : (((mukavari == 8)) ? (95420) : (((mukavari == 9)) ? (95420) : (((mukavari == 10)) ? (85034) : (((mukavari == 11)) ? (75758) : (((mukavari == 12)) ? (85034) : (((mukavari == 13)) ? (85034) : (((mukavari == 14)) ? (95420) : (0))))))))))))))));

@@ -29,6 +29,10 @@ module Fifo #(
     // NOTE: the `initial` memory-init loop(s) below are simulation/FPGA-only — an ASIC flow has no defined power-on RAM content and will not honor them. Add an explicit clocked load/reset path if this design targets ASIC.
     integer __mimz_data_i;
     initial for (__mimz_data_i = 0; __mimz_data_i < (DEPTH); __mimz_data_i = __mimz_data_i + 1) data[__mimz_data_i] = 0;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial head = 0;
+    initial tail = 0;
+    initial count = 0;
     assign dout = data[head];
     assign full = (count == DEPTH);
     assign empty = (count == 0);
