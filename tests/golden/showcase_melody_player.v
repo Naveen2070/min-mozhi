@@ -15,6 +15,13 @@ module MelodyPlayer #(
     reg [(20)-1:0] target;
     wire [(20)-1:0] pitch;
     wire [(8)-1:0] dur;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial addr = 0;
+    initial tone_cnt = 0;
+    initial dur_cnt = 0;
+    initial toggle = 0;
+    initial active = 0;
+    initial target = 0;
     wire [63:0] __mimz_sub_1;
     assign __mimz_sub_1 = ((dur) * TICK);
     assign pitch = (((addr == 0)) ? (75758) : (((addr == 1)) ? (75758) : (((addr == 2)) ? (71633) : (((addr == 3)) ? (63776) : (((addr == 4)) ? (63776) : (((addr == 5)) ? (71633) : (((addr == 6)) ? (75758) : (((addr == 7)) ? (85034) : (((addr == 8)) ? (95420) : (((addr == 9)) ? (95420) : (((addr == 10)) ? (85034) : (((addr == 11)) ? (75758) : (((addr == 12)) ? (85034) : (((addr == 13)) ? (85034) : (((addr == 14)) ? (95420) : (0))))))))))))))));

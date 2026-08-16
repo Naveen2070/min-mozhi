@@ -605,24 +605,26 @@ impl Emitter<'_> {
         // Task 2 gives a `fn` body a real `cur_decls`, which means a real
         // MISMATCH — and therefore a real hoist — can now fire inside one
         // for the first time (`nand(extend(x, 8))`, a working example one
-        // screen up in that plan's own repro table). This function only
-        // knows how to hoist into a MODULE-scope `wire`/`assign` pair,
-        // which a `function automatic` cannot legally reference forward —
-        // confirmed against real `iverilog`. Diagnosing here, rather than
-        // emitting that invalid Verilog, is the same GAP-16 invariant
-        // Task 1's `hoist_unresolved` states for the `None` case, applied
-        // to the `Some`-but-can't-actually-hoist-HERE one. In-function
-        // `reg`-based hoisting is real follow-up work, not this task.
+        // screen up in that plan's own repro table). A MODULE-scope
+        // `wire`/`assign` pair (below) is illegal here — a `function
+        // automatic` cannot reference it forward — so hoist into a
+        // function-local `reg` instead, via `render_fn_operand`'s
+        // buffer, which the caller (`funcs.rs`) drains into a blocking-
+        // assignment statement immediately before the statement this
+        // operand belongs to.
         if self.in_fn_body {
-            self.err(
-                expr.span,
-                "this expression needs a helper wire to render correctly, but a value inside \
-                 a `fn` body cannot declare one yet"
-                    .to_string(),
-                "this is a compiler limitation (GAP-16/BUG-63); move the computation into the \
-                 caller (a module-body `let`/wire) instead of inside the `fn`",
-            );
-            return rendered_text;
+            self.fn_hoist_counter += 1;
+            let name = format!("__mimz_fn_sub_{}", self.fn_hoist_counter);
+            let ty = if mimz_kind.signed {
+                format!("signed [{}:0]", mimz_kind.width.saturating_sub(1))
+            } else {
+                format!("[{}:0]", mimz_kind.width.saturating_sub(1))
+            };
+            self.fn_hoisted_regs
+                .push_str(&format!("        reg {ty} {name};\n"));
+            self.fn_hoisted_stmts
+                .push(format!("{name} = {rendered_text};"));
+            return name;
         }
         self.hoist_counter += 1;
         let name = format!("__mimz_sub_{}", self.hoist_counter);
@@ -656,28 +658,37 @@ impl Emitter<'_> {
         rendered_text: String,
         width: u32,
         signed: bool,
-        span: crate::span::Span,
+        // Task 4's real fix (reg-based in-`fn` hoisting) no longer needs a
+        // span here — it stopped diagnosing and started hoisting — but the
+        // `hoist_unresolved`-family call sites this function shares a
+        // signature shape with all have one to pass, so it stays for that
+        // symmetry rather than forcing six call sites to special-case this
+        // one function.
+        _span: crate::span::Span,
     ) -> String {
         if super::expr::is_plain_identifier(&rendered_text) {
             return rendered_text;
         }
         // Task 4 (BUG-63) — same reasoning as `hoist_if_needed`'s own
-        // `in_fn_body` check immediately above: this is the grammar-
+        // `in_fn_body` branch immediately above: this is the grammar-
         // required-wire family (a slice/bit-select/`trunc` base), so
         // leaving `rendered_text` un-hoisted here isn't just a width risk,
-        // it's flatly unparseable — but hoisting INTO a `fn` body is
-        // exactly as illegal in real Verilog as `hoist_if_needed`'s own
-        // case, so this must diagnose rather than silently do either.
+        // it's flatly unparseable. Hoist into a function-local `reg` the
+        // same way, via the same `fn_hoisted_regs`/`fn_hoisted_stmts`
+        // buffer `render_fn_operand` drains.
         if self.in_fn_body {
-            self.err(
-                span,
-                "this expression needs a helper wire to render correctly, but a value inside \
-                 a `fn` body cannot declare one yet"
-                    .to_string(),
-                "this is a compiler limitation (GAP-16/BUG-63); move the computation into the \
-                 caller (a module-body `let`/wire) instead of inside the `fn`",
-            );
-            return rendered_text;
+            self.fn_hoist_counter += 1;
+            let name = format!("__mimz_fn_sub_{}", self.fn_hoist_counter);
+            let ty = if signed {
+                format!("signed [{}:0]", width.saturating_sub(1))
+            } else {
+                format!("[{}:0]", width.saturating_sub(1))
+            };
+            self.fn_hoisted_regs
+                .push_str(&format!("        reg {ty} {name};\n"));
+            self.fn_hoisted_stmts
+                .push(format!("{name} = {rendered_text};"));
+            return name;
         }
         self.hoist_counter += 1;
         let name = format!("__mimz_sub_{}", self.hoist_counter);

@@ -29,6 +29,10 @@ module varisai #(
     // NOTE: the `initial` memory-init loop(s) below are simulation/FPGA-only — an ASIC flow has no defined power-on RAM content and will not honor them. Add an explicit clocked load/reset path if this design targets ASIC.
     integer __mimz_kallam_i;
     initial for (__mimz_kallam_i = 0; __mimz_kallam_i < (aazham); __mimz_kallam_i = __mimz_kallam_i + 1) kallam[__mimz_kallam_i] = 0;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial mun = 0;
+    initial pin = 0;
+    initial thokai = 0;
     assign vellitharavu = kallam[mun];
     assign nirraivu = (thokai == aazham);
     assign kaali = (thokai == 0);

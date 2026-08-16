@@ -15,8 +15,11 @@ module ______________________tb;
     $dumpvars(0, ______________________tb);
     a = 0;
     aa = 0;
+    #1;
     a <= 5;
+    #1;
     aa <= 10;
+    #1;
     if (((kuuttu == 15)) !== 1'b1) begin
       $display("FAIL: expect %0s failed", "(kuuttu == 15)");
       $finish;

@@ -38,6 +38,18 @@ impl Emitter<'_> {
         // `self.env` above.
         let saved_decls = std::mem::replace(&mut self.cur_decls, std::rc::Rc::new(HashMap::new()));
         let saved_in_fn_body = std::mem::replace(&mut self.in_fn_body, true);
+        // Task 4 real fix (BUG-63): a fresh, function-local hoist buffer/
+        // counter, never shared with the enclosing module's own
+        // `hoist_counter`/`hoisted_decls` — saved/restored exactly like
+        // `cur_decls`/`in_fn_body` above, though in practice a `fn` is
+        // never rendered while another `fn`'s body is mid-render, so these
+        // always start fresh.
+        let saved_fn_hoist_counter = std::mem::replace(&mut self.fn_hoist_counter, 0);
+        let saved_fn_hoisted_regs = std::mem::take(&mut self.fn_hoisted_regs);
+        debug_assert!(
+            self.fn_hoisted_stmts.is_empty(),
+            "fn_hoisted_stmts must be drained between statements, never carried across a fn"
+        );
 
         // Array-typed names in scope for this body: each param or `let`-bound
         // array maps to `(element_width_string, length)` so a call argument
@@ -188,9 +200,17 @@ impl Emitter<'_> {
             };
             s.push_str(&decl_line);
         }
+        // Task 4 real fix (BUG-63): any hoist inside the body below fills
+        // `self.fn_hoisted_regs` with `reg` decl lines — Verilog-2005
+        // requires every function `reg` declared before its first
+        // statement, but a hoist is only discovered while rendering that
+        // statement's own operand, so declare the splice point now and
+        // fill it in only after the whole body is rendered (mirrors
+        // `module()`'s own `insert_str` at a saved `fn_pos`).
+        let regs_pos = s.len();
         s.push_str("        begin\n");
-        let tail = self.expr_subst(&decl.tail, &HashMap::new(), &arrays);
-        let tail_code = format!("            {} = {};\n", decl.name.name, tail);
+        let (tail_prefix, tail) = self.render_fn_operand(&decl.tail, &arrays, "            ");
+        let tail_code = format!("{tail_prefix}            {} = {};\n", decl.name.name, tail);
         let body_code = self.emit_fn_stmts(
             &decl.stmts,
             &tail_code,
@@ -200,13 +220,42 @@ impl Emitter<'_> {
             &decl.params,
         );
         s.push_str(&body_code);
+        if !self.fn_hoisted_regs.is_empty() {
+            s.insert_str(regs_pos, &self.fn_hoisted_regs);
+        }
         s.push_str("        end\n");
         s.push_str("    endfunction\n");
 
         self.env = saved_env;
         self.cur_decls = saved_decls;
         self.in_fn_body = saved_in_fn_body;
+        self.fn_hoist_counter = saved_fn_hoist_counter;
+        self.fn_hoisted_regs = saved_fn_hoisted_regs;
         s
+    }
+
+    /// Renders one `fn`-body operand (a `let` value, a `return`/tail
+    /// expression, an `if` condition — anywhere `emit_fn_stmts` currently
+    /// calls `expr_subst` directly) and drains whatever hoist statements
+    /// that rendering pushed into `self.fn_hoisted_stmts` (Task 4 real fix,
+    /// BUG-63) into a properly-indented prefix. The prefix must be emitted
+    /// immediately before the statement this operand belongs to — never
+    /// batched across statements — so a hoisted assignment lands in the
+    /// same control-flow branch as its use and executes before it, exactly
+    /// what a `function automatic`'s sequential body requires.
+    fn render_fn_operand(&mut self, e: &Expr, arrays: &ArrayScope, pad: &str) -> (String, String) {
+        debug_assert!(
+            self.fn_hoisted_stmts.is_empty(),
+            "fn_hoisted_stmts must be drained before rendering the next operand"
+        );
+        let v = self.expr_subst(e, &HashMap::new(), arrays);
+        let mut prefix = String::new();
+        for stmt in self.fn_hoisted_stmts.drain(..) {
+            prefix.push_str(pad);
+            prefix.push_str(&stmt);
+            prefix.push('\n');
+        }
+        (prefix, v)
     }
 
     /// Lower a `fn`-body statement list to Verilog, threading `rest` — the
@@ -236,11 +285,13 @@ impl Emitter<'_> {
                     // from its element (mirrors the N-reg declaration above,
                     // same `<name>_<i>` convention as an array param).
                     for (i, el) in elems.iter().enumerate() {
-                        let v = self.expr_subst(el, &HashMap::new(), arrays);
+                        let (prefix, v) = self.render_fn_operand(el, arrays, &pad);
+                        out.push_str(&prefix);
                         out.push_str(&format!("{pad}{}_{i} = {v};\n", l.name.name));
                     }
                 } else {
-                    let v = self.expr_subst(&l.value, &HashMap::new(), arrays);
+                    let (prefix, v) = self.render_fn_operand(&l.value, arrays, &pad);
+                    out.push_str(&prefix);
                     out.push_str(&format!("{pad}{} = {v};\n", l.name.name));
                 }
                 out.push_str(&self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays, params));
@@ -252,8 +303,8 @@ impl Emitter<'_> {
                 // `stmts` is reachable for a program that passed the checker
                 // — the continuation for a `return` is simply the return
                 // value itself, never `rest`.
-                let v = self.expr_subst(e, &HashMap::new(), arrays);
-                format!("{pad}{fname} = {v};\n")
+                let (prefix, v) = self.render_fn_operand(e, arrays, &pad);
+                format!("{prefix}{pad}{fname} = {v};\n")
             }
             Some((FnStmt::If { cond, then, els }, tail_stmts)) => {
                 let cont = self.emit_fn_stmts(tail_stmts, rest, fname, indent, arrays, params);
@@ -262,9 +313,9 @@ impl Emitter<'_> {
                     Some(els) => self.emit_fn_stmts(els, &cont, fname, indent + 1, arrays, params),
                     None => cont.clone(),
                 };
-                let c = self.expr_subst(cond, &HashMap::new(), arrays);
+                let (prefix, c) = self.render_fn_operand(cond, arrays, &pad);
                 format!(
-                    "{pad}if ({c}) begin\n{then_code}{pad}end else begin\n{else_code}{pad}end\n"
+                    "{prefix}{pad}if ({c}) begin\n{then_code}{pad}end else begin\n{else_code}{pad}end\n"
                 )
             }
             Some((
