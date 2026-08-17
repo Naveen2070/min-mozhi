@@ -44,9 +44,23 @@
 //!   "parser-restricted to a `Wire` init") — never a property of the
 //!   operator itself (e.g. "reductions are always 1 bit"), which is a
 //!   fact about the RESULT and answers nothing about the OPERAND this
-//!   file exists to classify.
+//!   file exists to classify; or
+//! - a `NotApplicable` naming **a checked fact about what the emitter
+//!   renders** — the fourth category (round-6 plan Task 8,
+//!   `docs/plan/v0.2-class-closure-round6.local.md`; round-6 review Part
+//!   3.3, `docs/audit/review-2026-08-15.md`), added after `Builtin::Trunc`'s
+//!   arm below was found resting on exactly the gap the first three
+//!   categories don't cover: "already exactly N bits regardless of
+//!   position" is true only because a RENDER call site
+//!   (`hoist_slice_base_if_needed`, `expr.rs`) hoists a composite base
+//!   first — a fact about that call site, not a checker rule/grammar
+//!   restriction/lowering pass and not a property of the operator either.
+//!   A reason in this category must name the call site that performs the
+//!   hoist and the condition under which it fires — "it's hoisted
+//!   elsewhere" alone, unnamed, is the same unchecked assertion (a′-2)
+//!   already forbids in the other three forms.
 //!
-//! "No mismatch is possible" alone, with neither of the above, is not a
+//! "No mismatch is possible" alone, with none of the above, is not a
 //! reason — it is the sentence BUG-60 shipped from.
 
 use std::collections::HashMap;

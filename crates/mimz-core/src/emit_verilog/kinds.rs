@@ -51,9 +51,12 @@
 //! lossless `+1` growth). "Correct company for the wrong reason" is what
 //! an unchecked "harmless" claim buys; this file's own coverage doc
 //! (`tests/self_determined_regression.rs`'s `expr_kind_infer_kind_coverage`)
-//! is where each arm's checked reason — differential, unit test, or a
-//! named checker/grammar/lowering fact — is recorded, same bar as the
-//! classifier's own coverage docs.
+//! is where each arm's checked reason — differential, unit test, a named
+//! checker/grammar/lowering fact, or (round-6 plan Task 8) a checked fact
+//! about what the EMITTER renders, naming the render call site involved
+//! and the condition under which it fires — is recorded, same bar as the
+//! classifier's own coverage docs (`self_determined.rs`'s own module doc
+//! spells out all four (a′-2) categories).
 use std::collections::HashMap;
 
 use crate::ast::{BinOp, Builtin, Expr, ExprKind};

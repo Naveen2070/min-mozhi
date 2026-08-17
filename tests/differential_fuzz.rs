@@ -851,10 +851,19 @@ fn wrap_builtin(rng: &mut Rng, f: Frag) -> Frag {
             // for `f` to be. That double-pick is rare enough that 0 of
             // 10,000 programs generated while testing this fix contained
             // a reduction over an extend at all — depth cannot fix a shape
-            // the generator essentially never emits. Force exactly that
-            // position here when `f` doesn't already guarantee it, the
-            // same `extend`-wrap the `Extend` candidate above uses.
-            let arg = if f.atomic {
+            // the generator essentially never emits. Force that position
+            // here, on a coin flip, when `f` doesn't already guarantee it,
+            // the same `extend`-wrap the `Extend` candidate above uses.
+            //
+            // Round-6 plan Task 9 (round-6 review Part 4.2): the first cut
+            // of this forced it UNCONDITIONALLY, which made `nand`/`nor`/
+            // `xnor` of a BARE port unreachable at any depth — the shape
+            // `matrix_nand_in_concat_matches_icarus` pins and all four
+            // flavours of the shipped `bitops.mimz` example actually use.
+            // One token (`&& rng.next_range(2) == 0`) keeps both shapes
+            // reachable instead of swapping one kind of coverage for the
+            // other.
+            let arg = if f.atomic && rng.next_range(2) == 0 {
                 let target = (f.width + (rng.next_range(8) + 1) as u32).min(MAX_WIDTH);
                 format!("extend({}, {target})", f.text)
             } else {
@@ -1080,10 +1089,28 @@ fn gen_special_leaves(
         }
     };
 
-    // fn call — BUG-41 repro ①/⑤'s shape.
+    // fn call — BUG-41 repro ①/⑤'s shape. Round-6 Task 6 (GAP-16/BUG-62):
+    // the body used to be a bare parameter passthrough (`{ x }`), which
+    // can never make `infer_kind` return `None` inside a `fn` — exactly
+    // the shape round 6 found the whole hoist machinery was untested
+    // against (`fn allset(x) { &extend(x, 8) }` etc.). Give it a REAL
+    // body instead: the same `gen_expr_collecting` machinery the module
+    // body uses, over the fn's own single param only (a `fn` can't see
+    // outer ports/instances/mem, so no `special` pool here), at a shallow
+    // depth (this is a leaf drawn sparingly, not the module's own tree),
+    // then forced onto the declared return type exactly like a v3
+    // register's next-state expression already is.
     {
         let (name, w, signed) = pick(rng);
-        prelude += &format!("fn ident{w}(x: bits[{w}]) -> bits[{w}] {{\n  x\n}}\n\n");
+        let fn_ports: Vec<Port> = vec![("x".to_string(), w, false)];
+        let mut fn_subs = Subs::new();
+        let fn_depth = 1 + rng.next_range(2) as u32; // 1..=2
+        let fn_body = gen_expr_collecting(rng, &fn_ports, &[], fn_depth, w, &mut fn_subs);
+        let fn_body = force_width(rng, fn_body, w, false);
+        prelude += &format!(
+            "fn ident{w}(x: bits[{w}]) -> bits[{w}] {{\n  {}\n}}\n\n",
+            fn_body.text
+        );
         leaves.push(Frag {
             text: format!("ident{w}({})", arg_of(&name, signed)),
             width: w,
@@ -1181,8 +1208,56 @@ fn gen_module(seed: u64) -> (String, Vec<Port>, u32, Vec<Port>) {
     let mut subs = Subs::new();
     let body = gen_expr_collecting(&mut rng, &ports, &special, depth, MAX_WIDTH, &mut subs);
 
+    // Round-6 Task 6 (GAP-16/BUG-62(b)): a module `parameter` used as an
+    // `extend` width, in about a third of programs — round 6's other
+    // structurally-unreachable shape (`module Fuzz(W: int = 8) { y =
+    // &extend(a, W) }`), since no generator here ever emitted a
+    // `parameter` before. Built as its own materialized output (the same
+    // GAP-11(a) "extra port" mechanism below), NOT fed into `special`/
+    // `gen_leaf`'s general pool: the emitter's own symbolic-width fix
+    // (Task 3, `expr.rs::try_widen_symbolic_extend`) only rewrites
+    // `extend(x, W)` when it is the DIRECT operand at one of the
+    // self-determined positions it names (reduction, concat member,
+    // cast, nand/nor/xnor) — nesting it deeper (e.g. under a further
+    // `trunc`) is a documented, still-open case that legitimately
+    // diagnoses rather than compiles (Task 3's own status note), which
+    // this differential test isn't set up to expect. Keeping the shape
+    // fixed at a covered position, rather than recursing it through
+    // `gen_expr_collecting`, reaches the bug without also reaching that
+    // open ceiling.
+    let param_port = if rng.next_range(3) == 0 {
+        let (name, w, signed) = &ports[rng.next_range(ports.len() as u64) as usize];
+        let pwidth = (w + (rng.next_range(8) + 1) as u32).min(MAX_WIDTH);
+        let arg = if *signed {
+            format!("unsigned({name})")
+        } else {
+            name.clone()
+        };
+        let text = if rng.next_range(2) == 0 {
+            format!("(&extend({arg}, W))")
+        } else {
+            format!("nand(extend({arg}, W))")
+        };
+        Some((
+            "W".to_string(),
+            pwidth,
+            Frag {
+                text,
+                width: 1,
+                signed: false,
+                atomic: false,
+            },
+        ))
+    } else {
+        None
+    };
+
     let mut src = prelude;
-    src += "module Fuzz {\n";
+    src += "module Fuzz";
+    if let Some((pname, pwidth, _)) = &param_port {
+        src += &format!("({pname}: int = {pwidth})");
+    }
+    src += " {\n";
     for (name, w, signed) in &ports {
         src += &format!("  in {name}: {}\n", ty_str(*w, *signed));
     }
@@ -1197,7 +1272,7 @@ fn gen_module(seed: u64) -> (String, Vec<Port>, u32, Vec<Port>) {
     // The outermost internal node IS the body, so materializing it would
     // duplicate the whole expression into a second identical port.
     subs.frags.retain(|f| f.text != body.text);
-    let sub_ports: Vec<Port> = subs
+    let mut sub_ports: Vec<Port> = subs
         .frags
         .iter()
         .enumerate()
@@ -1206,6 +1281,12 @@ fn gen_module(seed: u64) -> (String, Vec<Port>, u32, Vec<Port>) {
     for ((name, w, signed), f) in sub_ports.iter().zip(&subs.frags) {
         src += &format!("  out {name}: {}\n", ty_str(*w, *signed));
         src += &format!("  {name} = {}\n", f.text);
+    }
+    if let Some((_, _, frag)) = &param_port {
+        let name = format!("y{}", sub_ports.len());
+        src += &format!("  out {name}: {}\n", ty_str(frag.width, frag.signed));
+        src += &format!("  {name} = {}\n", frag.text);
+        sub_ports.push((name, frag.width, frag.signed));
     }
     src += &format!("  y = {}\n", body.text);
     src += "}\n";
@@ -1517,6 +1598,49 @@ fn differential_fuzz_matches_icarus() {
             }
         }
     }
+}
+
+/// Round-6 plan Task 9 (round-6 review Part 4.2): `wrap_builtin`'s
+/// `nand`/`nor`/`xnor` arm used to force EVERY atomic (bare-port/literal)
+/// operand through an `extend(...)` wrap unconditionally, which made a
+/// reduction over a bare port unreachable at any depth — a real coverage
+/// loss (`matrix_nand_in_concat_matches_icarus`'s own control shape, and
+/// what all four flavours of the shipped `bitops.mimz` example actually
+/// emit), not just a hypothetical one. Demonstrates the fix rather than
+/// asserting it: scans a sample of generated programs and requires BOTH
+/// the narrow-rendering shape (BUG-60's own repro — what makes the fuzzer
+/// useful for this bug class at all) and the bare-operand shape (what the
+/// unconditional version silently stopped emitting) to actually appear.
+#[test]
+fn task9_reduction_fuzz_bias_reaches_both_bare_and_extended_operands() {
+    let mut bare = 0u32;
+    let mut extended = 0u32;
+    for seed in 0..2000u64 {
+        let (src, ..) = gen_module(0xC0FFEE_u64.wrapping_add(seed));
+        for name in ["nand(", "nor(", "xnor("] {
+            let mut rest = src.as_str();
+            while let Some(i) = rest.find(name) {
+                let after = &rest[i + name.len()..];
+                if after.starts_with("extend(") {
+                    extended += 1;
+                } else {
+                    bare += 1;
+                }
+                rest = after;
+            }
+        }
+    }
+    assert!(
+        bare > 0,
+        "2000 seeds produced zero bare-operand nand/nor/xnor calls — the \
+         coin flip (`f.atomic && rng.next_range(2) == 0`) regressed back \
+         to unconditional extend-wrapping"
+    );
+    assert!(
+        extended > 0,
+        "2000 seeds produced zero extend-wrapped nand/nor/xnor calls — \
+         BUG-60's own narrow-rendering shape stopped being reachable"
+    );
 }
 
 /// v3's fast, Icarus-independent counterpart to
