@@ -1356,3 +1356,100 @@ branch of one — needs the same written, checked reason (a′) demands of an ar
 recorded in a coverage doc keyed by call site rather than by `ExprKind`
 variant. Amend (a′-2) with the fourth category and the no-implicit-hoist rule
 above.
+
+---
+
+## GAP-18 (HIGH, architectural) — the hoist buffer's flush point is a second scoping axis, and nothing watches it
+
+**Status:** OPEN. Filed 2026-08-17 by round 7
+([`review-2026-08-17.md`](review-2026-08-17.md), Parts 3.1 and 12).
+
+**What.** [GAP-16](#gap-16-high-architectural--the-self-determined-hoist-machinery-is-scoped-to-module-bodies-and-nothing-states-the-scope)
+is about **which `decls` map is in scope** when a hoist site asks
+`infer_kind` a question. Round-6 Task 1 answered it with a real runtime
+invariant (`hoist_unresolved`: a hoist site may not silently do nothing when it
+cannot resolve a `Kind`), and that invariant works — it found
+[BUG-67](bugs/bug-61-70.md) and half of [BUG-68](bugs/bug-61-70.md) in round 7,
+unprompted.
+
+There is a **second, orthogonal axis on the same machinery**: **when is the
+hoist buffer flushed, relative to the render that filled it.** `module()` fills
+one shared `hoisted_decls` string and splices it in at a single `hoist_pos`
+captured at `module/mod.rs:385`. Three render sites run _before_ that line and
+can each hoist — instance port connections, `reg` reset `initial` seeds, `mem`
+init/depth — so their hoisted wires are declared after their own use
+([BUG-66](bugs/bug-61-70.md)).
+
+**Why it matters, and why GAP-16's invariant cannot cover it.** The two axes
+have different shapes:
+
+| axis       | question                    | failure                                                                     | detectable by                                                                                               |
+| ---------- | --------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| GAP-16     | which `decls` is in scope?  | a map is missing an entry → `infer_kind` returns `None`                     | a generic assert on the `None` branch — Task 1's `hoist_unresolved`                                         |
+| **GAP-18** | when is the buffer flushed? | a buffer is emptied at the wrong point → a correct wire lands after its use | **nothing today** — this is the `Some(k)` branch; `infer_kind` resolved, the hoist fired, the wire is right |
+
+**Evidence.** BUG-66's three reproductions, each `mimz check` OK, `mimz compile`
+exit 0, each rejected by real `iverilog` with
+`Unable to bind wire/reg/memory … declaration after use`. Also: a machine check
+over the emitted `.v` of all 226 shipped `.mimz` files finds zero out-of-order
+references, which is exactly why every instrument in the project is green — they
+all watch the module-body expression emitter.
+
+**Recommended direction.** Not another rule about where hoists may happen. A
+**post-emission invariant** on the text the emitter produces:
+
+> No `__mimz_sub_N` / `__mimz_fn_sub_N` may be referenced in the emitted output
+> before the line that declares it.
+
+Twenty lines, one `debug_assert!` in `emit()`, and it covers the whole axis
+generically rather than the three sites currently known. It would have caught
+the instance site six rounds ago and the `reg` site the day BUG-65 landed. Long
+term, [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)
+removes the axis entirely: with a typed elaborated IR a hoisted node is just a
+node, and there is no buffer to flush at the wrong time.
+
+---
+
+## GAP-19 (MEDIUM, testing) — `wasm_parity` skips silently, and CI never builds the artifact it needs
+
+**Status:** OPEN. Filed 2026-08-17 by round 7
+([`review-2026-08-17.md`](review-2026-08-17.md), Part 8).
+
+**What.** `tests/wasm_parity.rs::run_parity` opens with:
+
+```rust
+let pkg_dir = manifest_dir.join("crates").join("mimz-wasm").join("pkg");
+if !pkg_dir.exists() {
+    eprintln!("skipping WASM parity test: mimz-wasm pkg not built");
+    return;
+}
+```
+
+`crates/mimz-wasm/pkg` is not tracked, does not exist in a fresh checkout, and
+**`.github/workflows/ci.yml` never builds it** — the file contains no occurrence
+of the string `wasm` at all. So `all_examples_work_in_wasm` and
+`all_showcase_work_in_wasm` are **vacuous passes**, in CI and locally, and count
+2 toward the suite total.
+
+**Why it matters.** Two effects, both bad in different directions:
+
+1. **No coverage.** The one test that would catch a genuine native/WASM
+   divergence has not run in CI, ever.
+2. **A false diagnosis it invites.** Round-6 Task 6 saw these tests fail and
+   recorded them as "a pre-existing native/WASM emitter parity gap … unrelated
+   to this task". They are not a parity gap — `mimz-wasm` depends on
+   `mimz-sim` → `mimz-core` and compiles the _same_ emitter, so a rebuilt `pkg`
+   cannot diverge. The failure was a **stale build artifact**: a `pkg/` built
+   before BUG-65 added its `// NOTE (BUG-65 …)` line to every clocked module's
+   emitted Verilog. The behaviour is deterministic, not intermittent — it fails
+   exactly when a stale `pkg/` is present and passes vacuously otherwise, which
+   is why Task 6 saw it and Tasks 7–9 did not.
+
+**Evidence.** `pkg/` confirmed absent and untracked at `7286b71`; `ci.yml`
+grepped for `wasm` (0 matches); the skip path read directly.
+
+**Recommended direction.** Two small changes: build the WASM package in CI
+before the test job, and make the skip **loud** — mirror this repo's own
+`REQUIRE_IVERILOG` convention with a `MIMZ_REQUIRE_WASM` env var that turns the
+early return into a failure, so a release gate cannot score the test green
+without having run it.
