@@ -20,6 +20,8 @@
 //! Icarus-invocation path.
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::path::PathBuf;
 
 use mimz::ast::{self, ExprKind, TopItem};
 use mimz::checker::consteval;
@@ -332,6 +334,24 @@ fn task5_comparison_operand_hoist_catches_a_mismatch_matches_icarus() {
     let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[8]\n  \
                 out y: bit\n  y = (extend(a, 8) == b)\n}\n";
     // a=0b1111 (15), zero-extended to 8 bits = 15 = b: equal, y=1.
+    differential(src, &[("a", 0b1111), ("b", 15)]);
+}
+
+#[test]
+fn task7_comparison_rhs_operand_hoist_catches_a_mismatch_matches_icarus() {
+    // Round-6 plan Task 7 (GAP-17, `docs/plan/v0.2-class-closure-round6.
+    // local.md`): the comparison arm's `lhs`/`rhs` hoists are two SEPARATE
+    // call sites in `expr.rs` (each with its own `hoist_if_needed` call),
+    // and every existing differential here only ever put the narrow-
+    // rendering operand on the LHS — `task5_comparison_operand_hoist_
+    // catches_a_mismatch_matches_icarus`'s own `b` (RHS) is a bare
+    // identifier, so it never exercised the RHS call site's OWN hoist,
+    // only its (identical, by construction) doesn't-fire path. Swap sides:
+    // `b` is now the bare-identifier LHS (doesn't-fire control) and
+    // `extend(a, 8)` the RHS (fires).
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[8]\n  \
+                out y: bit\n  y = (b == extend(a, 8))\n}\n";
+    // Same vector as task5's test, sides swapped: still equal, y=1.
     differential(src, &[("a", 0b1111), ("b", 15)]);
 }
 
@@ -1620,6 +1640,129 @@ fn bug_58_negating_the_signed_minimum_matches_icarus() {
     differential(src, &[("a", 0x80)]);
 }
 
+#[test]
+fn task7_symbolic_extend_base_hoist_when_base_is_composite_matches_icarus() {
+    // Round-6 plan Task 7 (GAP-17): `try_widen_symbolic_extend` (`expr.rs`)
+    // hoists `extend(x, W)`'s own OPERAND `x` into a named wire before
+    // splicing it into the explicit widen text
+    // (`{{(W)-(N){fill}}, named}`) whenever `x`'s rendered text isn't
+    // already a plain identifier — its own `hoist_slice_base_if_needed`
+    // call, `expr.rs:172`. Every existing BUG-62(b)/Task-3 differential
+    // only ever widened a BARE port (`extend(a, W)`), which never reaches
+    // this hoist at all (a bare identifier is already safe to splice
+    // as-is). Force it with a composite base instead — a slice.
+    let src = "module Fuzz(W: int = 8) {\n  in a: bits[8]\n  in c: bits[4]\n  \
+                out y: bits[12]\n  y = { c, extend(a[3:0], W) }\n}\n";
+    // a = 0b1011_0101 (181); a[3:0] = 0b0101 (5), zero-extended from 4 to
+    // W=8 bits (still 5), prefixed with c = 0b1010 (10) -> 12 bits =
+    // 0b1010_00000101 = 2565.
+    differential(src, &[("a", 0b1011_0101), ("c", 0b1010)]);
+}
+
+// ---------------------------------------------------------------------
+// Round-6 plan Tasks 2/4 (BUG-62①②③, BUG-63, `docs/audit/bugs.md`) fixed
+// the `fn`-body emitter context — `render_fn_decl` now builds a real
+// `decls` map from the `fn`'s own params/`let`s instead of leaving
+// `infer_kind` looking at the ENCLOSING MODULE's map (which never has an
+// entry for a `fn` parameter's name), and gave `fn`-body hoists their own
+// function-local `reg` buffer instead of a module-scope `wire`. Both
+// fixes were verified against real `iverilog` while landing (round-6
+// plan's own status notes, `docs/plan/v0.2-class-closure-round6.local.md`)
+// but — unlike every OTHER bug in this file — never pinned as a permanent
+// regression here. Round-6 plan Task 7 (GAP-17) needs a real `fn`-body
+// differential to cite for this axis anyway, so these four close that gap:
+// the exact repro shapes BUG-62①②③/BUG-63 filed, run through the same
+// `differential`/two-judge machinery as everything else in this file.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_62_reduction_of_an_extend_inside_a_fn_body_matches_icarus() {
+    // BUG-62①: `fn`'s own `x` was never in `decls` before round-6 Task 2,
+    // so `infer_kind` returned `None` for it and the reduction's operand
+    // hoist (`expr.rs`'s `ExprKind::Unary` arm) silently fell through,
+    // rendering `&(x)` — an AND-reduce over `x`'s bare 4 bits — instead of
+    // `x` zero-extended to 8 first.
+    let src = "fn allset(x: bits[4]) -> bit {\n  &extend(x, 8)\n}\n\n\
+               module Fuzz {\n  in x: bits[4]\n  out y: bit\n  y = allset(x)\n}\n";
+    // x = 0b1111: and-reduce(zero_extend(x,8)) = 0 (the top 4 bits are 0).
+    // Pre-fix, and-reduce(x) over the bare 4 bits = 1 — the divergence.
+    differential(src, &[("x", 0b1111)]);
+}
+
+#[test]
+fn bug_62_negated_reduction_of_an_extend_inside_a_fn_body_matches_icarus() {
+    // BUG-62②: same defect, through `Builtin::Nand`'s own operand hoist.
+    let src = "fn nandit(x: bits[4]) -> bit {\n  nand(extend(x, 8))\n}\n\n\
+               module Fuzz {\n  in x: bits[4]\n  out y: bit\n  y = nandit(x)\n}\n";
+    // x = 0b1111: nand(zero_extend(x,8)) = 1. Pre-fix, nand(x) over the
+    // bare 4 bits = 0 — the divergence.
+    differential(src, &[("x", 0b1111)]);
+}
+
+#[test]
+fn bug_62_extend_in_a_concat_inside_a_fn_body_matches_icarus() {
+    // BUG-62③ — BUG-28's own founding divergence, alive inside a `fn`
+    // body: the concat-member hoist (`expr.rs`'s `ExprKind::Concat` arm)
+    // needs `x`'s `Kind`, which `decls` never had before round-6 Task 2.
+    let src = "fn packit(x: bits[4], b: bits[4]) -> bits[12] {\n  \
+               { b, extend(x, 8) }\n}\n\n\
+               module Fuzz {\n  in x: bits[4]\n  in b: bits[4]\n  \
+               out y: bits[12]\n  y = packit(x, b)\n}\n";
+    // x=0b1111, b=0b1010: {b, zero_extend(x,8)} = 0b1010_00001111 = 2575.
+    // Pre-fix (bare `x`, only 8 bits crammed into a 12-bit return, zero-
+    // padded by the assignment) gave 175 — BUG-28's own byte-identical
+    // wrong value, reached through a `fn` instead of a bare top-level
+    // concat member.
+    differential(src, &[("x", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn task8_trunc_of_a_composite_base_inside_a_fn_body_matches_icarus() {
+    // Round-6 review Part 3.3 (`docs/audit/review-2026-08-15.md`): the
+    // CLASSIFIER coverage doc's `Trunc` arm claimed "already exactly N
+    // bits regardless of position", cited only to a BARE-IDENTIFIER base
+    // (`matrix_trunc_in_concat_matches_icarus`'s `trunc(a, 2)`) — the exact
+    // discriminating gap `Nand`/`Nor`/`Xnor`'s own arm was corrected for
+    // one screen above (BUG-60's signature). The claim is true only where
+    // the RENDER call site's own base-hoist (`hoist_slice_base_if_needed`,
+    // `HOIST_CALL_SITES["trunc base"]`) actually fires — `bug_36`, above,
+    // already pins that for a composite base at MODULE scope; this pins
+    // the same shape inside a `fn` body, the context round-6 Tasks 2/4
+    // made that hoist route through a function-local `reg` instead of a
+    // module-scope wire. Before those tasks landed, this exact source was
+    // a checker-clean `mimz check`/`mimz compile` exit 0 that Icarus
+    // rejected as a syntax error (`(x)[(2)-1:0]` is not a valid
+    // part-select base) — round-6 review's own repro ⑥.
+    let src = "fn low2(x: bits[4]) -> bits[2] {\n  trunc(extend(x, 8), 2)\n}\n\n\
+               module Fuzz {\n  in x: bits[4]\n  out y: bits[2]\n  y = low2(x)\n}\n";
+    // x = 0b1111: zero_extend(x,8) = 0b0000_1111, low 2 bits = 0b11 = 3.
+    differential(src, &[("x", 0b1111)]);
+}
+
+#[test]
+fn bug_63_fn_param_shadowing_a_module_signal_reads_the_argument_matches_icarus() {
+    // BUG-63: once Task 2 gives `fn pack`'s own `a` parameter a real
+    // `decls` entry, a hoist inside `pack`'s body genuinely fires (Task
+    // 2's whole point) — but if it shared the MODULE's `hoisted_decls`
+    // buffer, it would emit a module-scope wire computed over the
+    // MODULE's OWN `a` signal (name collision with the fn param), not the
+    // caller's argument, and declared AFTER the function that reads it
+    // (`function automatic` can't forward-reference module scope). Task
+    // 4's fix hoists into a function-LOCAL `reg` instead — this proves
+    // both halves: it elaborates, and it reads the ARGUMENT (`c`), not
+    // the module's own `a` (deliberately given a DIFFERENT value so the
+    // two would diverge if the wrong one were read).
+    let src = "fn pack(a: bits[4], b: bits[4]) -> bits[12] {\n  \
+               { b, extend(a, 8) }\n}\n\n\
+               module Fuzz {\n  in a: bits[4]\n  in c: bits[4]\n  in b: bits[4]\n  \
+               out y: bits[12]\n  y = pack(c, b)\n}\n";
+    // Module's own `a` = 0b0001 (decoy, must NOT be read); the argument
+    // `c` = 0b1111 is what `pack`'s own `a` parameter is bound to.
+    // {b, zero_extend(c,8)} = 0b1010_00001111 = 2575. Reading the
+    // module's `a` instead would give 0b1010_00000001 = 2561.
+    differential(src, &[("a", 0b0001), ("c", 0b1111), ("b", 0b1010)]);
+}
+
 /// GAP-13's own axis — exhaustive over `ExprKind`, no wildcard. Never
 /// called (a compile-time-only property): its only job is that adding an
 /// `ExprKind` variant without a line here fails the build, the same
@@ -1656,9 +1799,13 @@ fn bug_58_negating_the_signed_minimum_matches_icarus() {
 /// it is EITHER a citation to a differential whose operand renders
 /// NARROWER than its mimz width (never a bare identifier), OR a
 /// `NotApplicable` naming a checker rule / grammar restriction / lowering
-/// pass by CODE. "No mismatch is possible" alone, unattached to either,
-/// is not a reason — see `Unary`'s and `Index`'s own entries below for
-/// what the corrected text looks like.
+/// pass by CODE, OR (round-6 plan Task 8, the fourth (a′-2) category) a
+/// `NotApplicable` naming a checked fact about what the emitter renders,
+/// which must itself name the call site performing any hoist it leans on
+/// and the condition under which that hoist fires. "No mismatch is
+/// possible" alone, unattached to any of the three, is not a reason — see
+/// `Unary`'s and `Index`'s own entries below for what the corrected text
+/// looks like.
 #[allow(dead_code)]
 fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
     match kind {
@@ -1880,7 +2027,11 @@ fn expr_kind_self_determined_coverage(kind: &ExprKind) -> &'static str {
 /// width IS its mimz width (BUG-60). A citation for a `None` arm here
 /// must be a differential whose operand renders NARROWER than its mimz
 /// width; a `NotApplicable` must name a checker/grammar/lowering fact by
-/// code, never a property of the operator.
+/// code, never a property of the operator — OR (round-6 plan Task 8, the
+/// fourth (a′-2) category, added after `Trunc`'s own arm below was found
+/// resting on exactly this gap — round-6 review Part 3.3) a checked fact
+/// about what the emitter renders, naming the call site that performs any
+/// hoist the claim leans on and the condition under which it fires.
 #[allow(dead_code)]
 fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
     use ast::Builtin;
@@ -1917,10 +2068,26 @@ fn builtin_self_determined_coverage(builtin: &ast::Builtin) -> &'static str {
              sound as `Abs` above)"
         }
         Builtin::Trunc => {
-            "covered by matrix_trunc_in_concat_matches_icarus — direct \
-             concat member; `trunc` renders an explicit `x[N-1:0]` \
-             part-select, already exactly N bits regardless of position, so \
-             `None` needs no recursion proof the way `Min`/`Max` did"
+            "covered by matrix_trunc_in_concat_matches_icarus for the \
+             bare-identifier (no-mismatch) case — but, per (a′-2)'s fourth \
+             category (a checked fact about what the emitter renders, \
+             naming the call site and its firing condition), that citation \
+             ALONE does not establish 'already exactly N bits regardless \
+             of position': round-6 review Part 3.3 found this arm's prior \
+             wording did exactly that, cited to `trunc(a, 2)`, and it is \
+             FALSE for a composite base — `trunc(extend(x,8), 2)` inside a \
+             `fn` emitted `(x)[(2)-1:0]`, a syntax error, before round-6 \
+             Tasks 2/4 fixed it. `trunc` DOES render an explicit \
+             `x[N-1:0]` part-select at exactly N bits, but ONLY because \
+             the RENDER call site (`expr.rs`'s `Builtin::Trunc` arm, \
+             `hoist_slice_base_if_needed`, named `HOIST_CALL_SITES['trunc \
+             base']` in this file) hoists a composite base to a named wire \
+             first — a fact about that call site, not a property of the \
+             operator. Now proven narrow-rendering in BOTH contexts a \
+             `NotApplicable`-shaped citation must name: module scope \
+             (bug_36_trunc_of_a_concat_hoists_the_base_first) and `fn` \
+             scope (task8_trunc_of_a_composite_base_inside_a_fn_body_\
+             matches_icarus)"
         }
         Builtin::Nand | Builtin::Nor | Builtin::Xnor => {
             "covered by matrix_nand_in_concat_matches_icarus/matrix_nor_.../\
@@ -2327,5 +2494,553 @@ fn builtin_infer_call_coverage(builtin: &ast::Builtin) -> &'static str {
              `ast::sync_prim_lower::expand_sync_prims` before the module \
              body is ever walked for `Kind` inference at all"
         }
+    }
+}
+
+// =======================================================================
+// Round-6 plan Task 7 (GAP-17, `docs/plan/v0.2-class-closure-round6.
+// local.md`): the sixth coverage doc, and the first keyed by CALL SITE
+// rather than by `ExprKind`/`Builtin` variant.
+//
+// Round 6's own central finding (`docs/audit/review-2026-08-15.md` Part
+// 3.4): rule (a′), and the five coverage docs above, audit what an ARM
+// answers (`infer_kind`/`verilog_self_determined_kind`'s own match
+// statements). Ten of the fourteen live instances of this bug family
+// since round 3 were never in an arm's answer — they were in the
+// PLUMBING that feeds a hoist decision from that answer: a call site
+// that forgot to hoist at all (BUG-46/49/59/60/61), a `decls` map that
+// was empty or scoped to the wrong thing (BUG-53, BUG-62), a hoist that
+// fired in the wrong SCOPE (BUG-63), or one that fired at the wrong TIME
+// relative to its own use (BUG-45/63's ordering half). An arm can be
+// exhaustive and every one of its answers correct while the call site
+// reading that answer still ships a silent miscompile — that is
+// precisely what round 5's own BUG-60 fix said out loud ("the classifier
+// arms stay `None`, unchanged ... only the render call site needed the
+// hoist"), and it is why this axis exists as its OWN doc instead of a
+// sixth column bolted onto `expr_kind_self_determined_coverage` above.
+//
+// What changed since round 5 that makes "emitter context" a real axis
+// (not just a nice-to-have): before round 6, `cur_decls` only ever held
+// ONE thing — the enclosing module's own flattened signals — so every
+// hoist call site had exactly one context to reason about. Round-6 Task 2
+// gives a `fn` body and a testbench's own `Emitter` a REAL `decls` too
+// (previously either the module's own, wrong, map, or empty), and Task 4
+// gives a `fn`-body hoist its own function-local `reg` buffer instead of
+// sharing the module's `wire`/`assign` one. Every entry below states
+// which of these three contexts (module body / `fn` body / testbench)
+// the position can occur in TODAY, not just which one happened to be
+// tested when the call site was first written.
+//
+// Rule (a′) applies here identically to how it applies to an arm
+// (`self_determined.rs`'s own module doc, GAP-15): a "fires" claim below
+// is only acceptable when cited to a differential whose hoisted operand
+// renders NARROWER than its mimz width (never a bare identifier) — and,
+// per this axis's own addition, in the SPECIFIC emitter context claimed,
+// not just "a similar-looking test exists somewhere". Several entries
+// below say so explicitly where the honest answer is "proven in module
+// body, architecturally identical but not separately pinned in fn body/
+// testbench" — an unproven claim stated as proven is exactly the BUG-52/
+// BUG-60 failure mode this whole family exists to stop making.
+//
+// Round-6 plan Task 8 (a′-2)'s fourth category applies here with special
+// force, since this doc IS the call-site axis: an entry ANYWHERE in this
+// file (or in `self_determined.rs`/`kinds.rs`) that rests its reason on
+// "a hoist happens elsewhere" must name the specific `HoistCallSite.name`
+// below that performs it and the condition under which it fires — "it's
+// hoisted" alone, unnamed, is not a reason (`builtin_self_determined_
+// coverage`'s old `Trunc` arm, round-6 review Part 3.3, is the worked
+// counter-example: true only because `HOIST_CALL_SITES["trunc base"]`
+// fires, false as an unqualified property of the operator).
+//
+// Exhaustiveness cannot be build-enforced here the way a `match` can (a
+// call site is a source LOCATION, not a value the compiler can pattern-
+// match on) — paired instead with `every_hoist_call_site_in_expr_rs_has_
+// a_coverage_entry` below, a crude source-scan count that fails the
+// moment `expr.rs` gains or loses a `hoist_if_needed`/`hoist_slice_base_
+// if_needed`/`hoist_width_effect_operand` call without a matching entry
+// here. `name` is a stable KEY (not a line number — those drift on any
+// unrelated edit); it matches the exact `site` string `hoist_unresolved`
+// receives where one exists, invented consistently otherwise.
+// =======================================================================
+
+/// One `hoist_if_needed`/`hoist_slice_base_if_needed`/
+/// `hoist_width_effect_operand` call site in `emit_verilog/expr.rs`. See
+/// this section's own module doc above for the discipline every
+/// `coverage` string here is held to.
+#[allow(dead_code)]
+struct HoistCallSite {
+    /// Stable name for this call site.
+    name: &'static str,
+    /// Which of the three functions this call reaches.
+    via: &'static str,
+    /// Position, emitter context(s), fires-differential, doesn't-fire
+    /// control, and `None`-branch story, in that order.
+    coverage: &'static str,
+}
+
+#[allow(dead_code)]
+const HOIST_CALL_SITES: &[HoistCallSite] = &[
+    HoistCallSite {
+        name: "Unary reduction operand",
+        via: "hoist_if_needed",
+        coverage: "Position: a reduction's (`&`/`|`/`^`) OPERAND — always \
+            self-determined in Verilog, distinct from the reduction's own \
+            always-1-bit RESULT (`ExprKind::Unary`, expr.rs:589). Contexts: \
+            module body (BUG-60's own filing), fn body (BUG-62①, `fn \
+            allset(x) { &extend(x,8) }` — Task 2 gives the fn its own \
+            decls), testbench (Task 2's DUT-decls install + Task 5's \
+            hoisted-decls flush apply identically to an `expect`'s own \
+            reduction, though no dedicated testbench differential isolates \
+            THIS position specifically — `every_emitted_testbench_reports_\
+            pass_under_vvp`, tests/icarus.rs, is the general net). Fires: \
+            bug_60_and_reduction_of_an_extend_in_a_concat_matches_icarus \
+            (module body) and bug_62_reduction_of_an_extend_inside_a_fn_\
+            body_matches_icarus (fn body). Doesn't fire: bug_60_and_\
+            reduction_of_a_bare_identifier_stays_unhoisted. None branch: \
+            try_widen_symbolic_extend (Task 3) first, then hoist_unresolved(\
+            \"Unary reduction operand\") (Task 1) — never silent after \
+            those two land.",
+    },
+    HoistCallSite {
+        name: "comparison LHS operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `Eq|Ne|Lt|Le|Gt|Ge`'s left operand \
+            (expr.rs:662) — hoisted independently of the RHS. Contexts: \
+            module/fn/testbench (an `expect x == 0` renders through this \
+            exact arm; no dedicated fn-body/testbench differential exists \
+            for this specific operand). Fires + doesn't-fire together: \
+            task5_comparison_operand_hoist_catches_a_mismatch_matches_\
+            icarus (`extend(a,8)` LHS hoists; `b` RHS, a bare identifier, \
+            doesn't — the pairing IS the over-hoist control, confirmed by \
+            hand-reading the emission: exactly one `__mimz_sub` wire). \
+            None branch: deliberately NOT routed through hoist_unresolved \
+            (expr.rs:663-677's own comment) — a comparison's operands are \
+            LRM-auto-widened (5.5.1) to match before comparing, so an \
+            un-hoisted parameter-driven operand (`x == (DEPTH-1)`, \
+            `std/fifo.mimz`, a working golden) already gets the right \
+            VALUE from Verilog's own widening, in any emitter context.",
+    },
+    HoistCallSite {
+        name: "comparison RHS operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `Eq|Ne|Lt|Le|Gt|Ge`'s right operand \
+            (expr.rs:684) — the mirror of `comparison LHS operand`, same \
+            guard, opposite side. Fires + doesn't-fire: task7_comparison_\
+            rhs_operand_hoist_catches_a_mismatch_matches_icarus (round-6 \
+            Task 7 — no existing differential put the narrow operand on \
+            the RHS before this; `extend(a,8)` RHS hoists, `b` LHS \
+            doesn't, confirmed by hand-reading the emission). Contexts and \
+            None branch: identical reasoning to `comparison LHS operand` \
+            — same code shape, same LRM guarantee, independent of emitter \
+            context.",
+    },
+    HoistCallSite {
+        name: "concat member",
+        via: "hoist_if_needed",
+        coverage: "Position: each `{...}` member (ExprKind::Concat, \
+            expr.rs:820) — Verilog fixes a concat's own width as the exact \
+            sum of its members' rendered widths, so a member rendering \
+            narrower than its mimz width must be hoisted. Contexts: \
+            module body (BUG-19's founding case), fn body (BUG-62③ — \
+            packit, BUG-28's own 2575-vs-175 divergence reached through a \
+            `fn`), testbench (Task 2/5, no dedicated differential isolates \
+            this position there specifically). Fires: bug_19_lossless_\
+            sub_in_a_concat_matches_icarus (module), bug_62_extend_in_a_\
+            concat_inside_a_fn_body_matches_icarus (fn). Doesn't fire: \
+            `b` in any of the bug_60_*_in_a_concat tests — a plain \
+            identifier concat member never spuriously hoists \
+            (`hoist_if_needed`'s own is_plain_identifier early return, \
+            ports.rs:558, applies uniformly regardless of call site). \
+            None branch: try_widen_symbolic_extend (Task 3 — task7_\
+            symbolic_extend_base_hoist_when_base_is_composite_matches_\
+            icarus is exactly this position with the widen path forced) \
+            then hoist_unresolved(\"concat member\") (Task 1).",
+    },
+    HoistCallSite {
+        name: "replicate member",
+        via: "hoist_if_needed",
+        coverage: "Position: each part of a `{N{...}}` replication body \
+            (ExprKind::Replicate, expr.rs:845) — same self-determined-\
+            width rule as `concat member`, one construct over. Contexts: \
+            module/fn/testbench — same story as `concat member`: no \
+            dedicated fn-body/testbench differential exists for THIS \
+            construct specifically, but it shares the identical \
+            `hoist_if_needed`/`try_widen_symbolic_extend`/`hoist_\
+            unresolved` code `concat member` already proves in both \
+            contexts (this function has no separate branch for `Concat` \
+            vs `Replicate` — both route through the same three calls). \
+            Fires: shape_replicate_operand_of_extend_in_a_concat_matches_\
+            icarus, bug_60_and_reduction_of_an_extend_in_a_replication_\
+            matches_icarus. Doesn't fire: a bare-identifier replication \
+            body shares `concat member`'s own is_plain_identifier control \
+            architecturally (same code, same guard). None branch: same \
+            as `concat member`.",
+    },
+    HoistCallSite {
+        name: "signed-cast operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `$signed(...)`'s own argument \
+            (Builtin::SignedCast, expr.rs:1036). Contexts: module/fn/\
+            testbench (always evaluated by plain `eval`, never `eval_ctx` \
+            — self-determined regardless of context; no dedicated fn-\
+            body/testbench differential isolates it there). Fires: \
+            matrix_signed_unsigned_cast_recursion_catches_a_mismatched_\
+            operand_matches_icarus. Doesn't fire: matrix_signed_unsigned_\
+            cast_roundtrip_in_concat_matches_icarus's own no-mismatch \
+            case. None branch: try_widen_symbolic_extend then hoist_\
+            unresolved(\"signed-cast operand\").",
+    },
+    HoistCallSite {
+        name: "unsigned-cast operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `$unsigned(...)`'s own argument \
+            (Builtin::UnsignedCast, expr.rs:1059) — mirrors `signed-cast \
+            operand` exactly, opposite cast direction, identical code \
+            shape. Fires/doesn't-fire: the same matrix_signed_unsigned_\
+            cast_* pair (round-4 Task 4's own note: both directions \
+            exercised by the same two tests). Contexts and None branch: \
+            identical to `signed-cast operand`.",
+    },
+    HoistCallSite {
+        name: "encoding operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `Builtin::Encoding`'s own argument (an \
+            enum-to-bits cast, expr.rs:1083). Contexts: module/fn/\
+            testbench, same self-determined reasoning as the two cast \
+            operands above (no dedicated fn-body/testbench differential). \
+            Fires: matrix_encoding_of_payload_enum_in_concat_matches_\
+            icarus. Doesn't fire: matrix_encoding_of_tag_only_enum_in_\
+            concat_matches_icarus's own no-payload (already-matching) \
+            case. None branch: try_widen_symbolic_extend then hoist_\
+            unresolved(\"encoding operand\").",
+    },
+    HoistCallSite {
+        name: "nand operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `nand(...)`'s own argument — the negated-\
+            reduction sibling of `Unary reduction operand` \
+            (Builtin::Nand, expr.rs:1302). Contexts: module (BUG-60's own \
+            nand repro), fn body (BUG-62②), testbench (general net only, \
+            see `Unary reduction operand`). Fires: bug_60_nand_of_an_\
+            extend_matches_icarus (module), bug_62_negated_reduction_of_\
+            an_extend_inside_a_fn_body_matches_icarus (fn). Doesn't fire: \
+            matrix_nand_in_concat_matches_icarus's own no-mismatch \
+            (already-atomic-operand) case. None branch: try_widen_\
+            symbolic_extend then hoist_unresolved(\"nand operand\").",
+    },
+    HoistCallSite {
+        name: "nor operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `nor(...)`'s own argument (Builtin::Nor, \
+            expr.rs:1316) — identical shape to `nand operand`, opposite \
+            polarity. Fires: bug_60_or_reduction_of_a_negated_extend_\
+            matches_icarus (module body only — no fn-body differential \
+            isolates `nor` specifically; the code path is byte-identical \
+            to `nand operand`'s own fn-body-proven one, `Nand`/`Nor`/\
+            `Xnor` sharing one `hoist_if_needed`/`try_widen_symbolic_\
+            extend`/`hoist_unresolved` shape and differing only in the \
+            render template). Doesn't fire: matrix_nor_in_concat_matches_\
+            icarus's own no-mismatch case. Contexts and None branch: same \
+            as `nand operand`.",
+    },
+    HoistCallSite {
+        name: "xnor operand",
+        via: "hoist_if_needed",
+        coverage: "Position: `xnor(...)`'s own argument (Builtin::Xnor, \
+            expr.rs:1330) — identical shape to `nand operand`/`nor \
+            operand`. Fires: matrix_xnor_in_concat_matches_icarus's own \
+            mismatch half (BUG-35's fix, per builtin_infer_call_coverage \
+            above) — module body only, same fn-body gap as `nor \
+            operand`. Doesn't fire: the same test's own no-mismatch half. \
+            Contexts and None branch: same as `nand operand`.",
+    },
+    HoistCallSite {
+        name: "symbolic-extend base",
+        via: "hoist_slice_base_if_needed",
+        coverage: "Position: inside try_widen_symbolic_extend \
+            (expr.rs:172) — hoists `extend(x, W)`'s own operand `x` into \
+            a named wire before splicing it into the explicit `{{(W)-(N)\
+            {fill}}, named}` widen text, whenever `x`'s rendered text \
+            isn't already a plain identifier. Only reached when Task 3's \
+            own condition holds (`W` doesn't const-fold) AND the calling \
+            self-determined position's `infer_kind(extend(x,W))` was \
+            `None`. Contexts: module body only — no fn-body/testbench \
+            differential exercises a symbolic-width extend at all yet \
+            (Task 6's fuzz generator only ever widens a bare port). \
+            Fires: task7_symbolic_extend_base_hoist_when_base_is_\
+            composite_matches_icarus (round-6 Task 7 — the only \
+            differential forcing a COMPOSITE base here; every prior \
+            BUG-62(b) repro used a bare port, which never reaches this \
+            line at all, confirmed by hand-reading the emission of both). \
+            Doesn't fire: BUG-62(b)'s own bare-port repros (`&extend(a,\
+            W)`, `{b,extend(a,W)}`) — `is_plain_identifier(\"a\")` short-\
+            circuits before this line runs. None branch: `k.width == 0` \
+            or `infer_kind(x)` itself unresolvable falls through to the \
+            CALLER's own hoist_unresolved (try_widen_symbolic_extend's \
+            own doc comment: 'a residual case this doesn't attempt to \
+            close') — no repro exercises that residual.",
+    },
+    HoistCallSite {
+        name: "width-effect/shift operand's own hoist",
+        via: "hoist_slice_base_if_needed",
+        coverage: "Position: inside hoist_width_effect_operand's \
+            `Some(kind)` arm (expr.rs:286) — once `child` is confirmed \
+            hoistable (a lossless/wrap binop unconditionally, or a shift \
+            when `allow_shift`) AND its `Kind` resolves, this line does \
+            the actual wire-and-assign. Shared by every one of the four \
+            `hoist_width_effect_operand` call sites' own `Some` path — \
+            its fires/doesn't-fire citations ARE theirs, since the \
+            `hoistable` gate one function up (expr.rs:272-273) decides \
+            whether this line is ever reached at all, not this line \
+            itself. Contexts: module/fn/testbench, same as those four. \
+            None branch: NOT routed through hoist_unresolved by design \
+            (expr.rs:288-304's own comment) — a module `int` parameter \
+            inside a width-effect/shift child has no `Kind` by \
+            construction (`Ty::CtInt`, not `bits[N]`), and Verilog's own \
+            context growth is harmless there once the base growth is \
+            lossless — proven by examples/*/shift.mimz's `extend(3 << \
+            AMOUNT, 8)`, a working golden this fallback has always \
+            covered.",
+    },
+    HoistCallSite {
+        name: "self-determined if/match branch (render_shift_ctx_operand)",
+        via: "hoist_slice_base_if_needed",
+        coverage: "Position: inside render_shift_ctx_operand \
+            (expr.rs:374) — when `child` is itself an `if`/`match` \
+            sitting at a `!allow_shift` position (the LHS of an outer \
+            shift, `allow_shift_lhs`) AND its own `Kind` resolves, hoists \
+            the WHOLE if/match's rendered text — BUG-59's fix: a fused \
+            shift chain hidden in a branch resolves bottom-up in the \
+            kernel but would otherwise inherit the outer assignment's \
+            grown context if left inline. Contexts: module body (the \
+            only context any Shl/Shr-of-an-if-branch differential \
+            exists in). Fires: bug_59_fused_shift_chain_inside_an_if_\
+            branch_as_the_lhs_of_a_growing_shift_matches_icarus — \
+            confirmed by hand-reading the emission: the whole `if` \
+            hoists into one `wire signed [10:0] __mimz_sub_1`, its \
+            branches' own internal shifts left un-hoisted (see `if-expr \
+            then-branch`'s own doesn't-fire note). Doesn't fire: whenever \
+            the position is instead self-determined (`allow_shift: \
+            true`), this branch's own `!allow_shift` guard excludes it — \
+            bug_55_signed_shift_right_inside_match_wildcard_arm_matches_\
+            icarus's own match (sitting inside `extend(...)`) never \
+            reaches this line at all, taking `match arm value`'s own \
+            path instead (confirmed by hand-reading its emission: no \
+            whole-match wire, only the wildcard arm's own `__mimz_sub_3`). \
+            None branch: `infer_kind(child)` unresolvable falls through \
+            to hoist_width_effect_operand (line 376) unchanged — no \
+            repro exercises an unresolvable if/match Kind here.",
+    },
+    HoistCallSite {
+        name: "bit-select base",
+        via: "hoist_slice_base_if_needed",
+        coverage: "Position: `x[i]`'s own base (ExprKind::Index, \
+            expr.rs:901) — Verilog's bit-select grammar only accepts a \
+            plain identifier (BUG-61). Contexts: module body (BUG-61's \
+            own filing; no fn-body/testbench differential isolates this \
+            position, though its `None`-arm code is identical to `slice \
+            base`/`trunc base`, both partially fn-body-proven — none of \
+            the three's proofs transfers automatically, since each is a \
+            SEPARATE call site). Fires: bug_61_bit_select_of_an_extend_\
+            hoists_the_base_and_matches_icarus, bug_61_bit_select_of_a_\
+            concat_hoists_the_base_and_matches_icarus. Doesn't fire: \
+            bug_53_control_case_non_zero_base_identity_index_still_\
+            hoists's own bare-identifier base stays a plain part-select \
+            — the identical is_plain_identifier early return every other \
+            site here shares. None branch: hoist_unresolved(\"bit-select \
+            base\", requires_named_wire: true).",
+    },
+    HoistCallSite {
+        name: "slice base",
+        via: "hoist_slice_base_if_needed",
+        coverage: "Position: `x[hi:lo]`'s own base (ExprKind::Slice, \
+            expr.rs:923) — same BUG-20 grammar constraint as `bit-select \
+            base`, one construct over. Contexts: module body. Fires: \
+            bug_20_slice_of_a_composite_expression_matches_icarus. \
+            Doesn't fire: a bare-identifier slice base (e.g. `p0[3:0]`, \
+            used throughout this file's own const-bounded-slice tests) \
+            stays a plain part-select — is_plain_identifier's early \
+            return applies uniformly. None branch: hoist_unresolved(\
+            \"slice base\", requires_named_wire: true).",
+    },
+    HoistCallSite {
+        name: "trunc base",
+        via: "hoist_slice_base_if_needed",
+        coverage: "Position: `trunc(x, N)`'s own base, rendered as an \
+            explicit part-select `x[N-1:0]` (Builtin::Trunc, \
+            expr.rs:1238) — same grammar constraint as `bit-select base`/\
+            `slice base` (BUG-36). Contexts: module body. Fires: bug_36_\
+            trunc_of_a_concat_hoists_the_base_first, shape_replicate_\
+            nested_in_trunc_hoists_the_base. Doesn't fire: bug_44_trunc_\
+            of_a_signed_value_stays_signed_in_verilog's own bare-\
+            identifier base (`trunc(a, 3)`) stays a plain part-select — \
+            the EXACT shape round-6's own review (Part 3.3) found \
+            `builtin_self_determined_coverage`'s `Trunc` arm citing as \
+            false-in-general ('regardless of position') while being \
+            narrowly true for the CLASSIFIER question; here, at the \
+            RENDER call site, it genuinely is the correct, tested \
+            control. None branch: hoist_unresolved(\"trunc base\", \
+            requires_named_wire: true) — `trunc(extend(x,8), 2)` inside \
+            a `fn` (round 6's own review, Part 3.3) is exactly this \
+            position with an unresolvable base (a symbolic-width \
+            extend, since Task 3 only widens reduction/concat/cast/nand \
+            positions, never a slice/trunc base) — no repro pins that \
+            residual diagnostic path yet.",
+    },
+    HoistCallSite {
+        name: "width-effect/shift child (render_shift_ctx_operand fallback)",
+        via: "hoist_width_effect_operand",
+        coverage: "Position: render_shift_ctx_operand's own final call \
+            (expr.rs:376) — the generic entry every OTHER self-\
+            determined position (concat/replicate member, cast/encoding/\
+            nand/nor/xnor argument, comparison operand, extend's own \
+            argument) routes a lossless/wrap/shift child through. \
+            Contexts: module/fn/testbench (reached from any of the \
+            eleven `hoist_if_needed` sites' own render_shift_ctx_operand \
+            call, so its context list is the union of theirs). Fires: \
+            bug_23_wrap_directly_inside_a_concat_matches_icarus, bug_24_\
+            shl_under_sibling_add_matches_icarus. Doesn't fire: bug_23_\
+            top_level_wrap_needs_no_hoist — the function's own doc \
+            comment states it is never even called at the true top-level \
+            statement-RHS render, where the assignment's own declared \
+            width already pins the result. None branch: n/a — this call \
+            always returns SOME text (either hoisted, or unchanged by \
+            `width-effect/shift operand's own hoist`'s own None one \
+            level down).",
+    },
+    HoistCallSite {
+        name: "if-expr then-branch",
+        via: "hoist_width_effect_operand",
+        coverage: "Position: if_expr_subst's own `then` branch \
+            (expr.rs:414). Contexts: module body (context-determined, \
+            `allow_shift: false`, the ordinary top-level `if`) and self-\
+            determined (`allow_shift: true`, when the whole `if` sits \
+            inside e.g. extend()'s argument). Fires: no differential \
+            isolates a plain (non-fused) width-effect/shift operator \
+            specifically in the `then` branch of a SELF-determined `if` \
+            — bug_59_fused_shift_chain_inside_an_if_branch_as_the_lhs_\
+            of_a_growing_shift_matches_icarus exercises the SAME `then` \
+            position with a FUSED chain, but that gets caught one \
+            function up instead (`self-determined if/match branch`, \
+            confirmed by hand-reading its emission: no hoist happens \
+            HERE for that test). This is a genuine, open coverage gap, \
+            not a claimed proof. Doesn't fire: bug_24_regression_shift_\
+            in_if_branch_stays_unhoisted — the top-level, context-\
+            determined `y = if cond {1<<3} else {0}` case, `allow_shift: \
+            false`, correctly leaves the `then` branch unhoisted \
+            (`hoistable` requires `allow_shift && is_shift_binop`, false \
+            here); bug_59's own emission is a second doesn't-fire \
+            witness (allow_shift: false there too, for a different \
+            reason — see that entry). None branch: text unchanged — a \
+            module `int` parameter inside this branch is BUG-30's own \
+            documented-safe case (see `width-effect/shift operand's own \
+            hoist`); no repro isolates it at THIS specific branch beyond \
+            the general shift.mimz golden that entry cites.",
+    },
+    HoistCallSite {
+        name: "if-expr else-branch",
+        via: "hoist_width_effect_operand",
+        coverage: "Position: if_expr_subst's own `els` branch \
+            (expr.rs:416) — same code shape as `if-expr then-branch`, \
+            opposite branch. Fires: the identical open gap as `if-expr \
+            then-branch` — no differential forces a plain width-effect/\
+            shift operator into the `els` branch of a SELF-determined \
+            `if` either. Doesn't fire: bug_24_regression's own `else \
+            { 0 }` is a bare literal, not a hoistable shape, so it \
+            proves nothing about THIS branch's own hoistable path beyond \
+            trivially not firing — a weaker witness than `then-branch`'s \
+            own control. Contexts and None branch: identical to `if-expr \
+            then-branch`.",
+    },
+    HoistCallSite {
+        name: "match arm value",
+        via: "hoist_width_effect_operand",
+        coverage: "Position: match_subst's own `arm.value` \
+            (expr.rs:450), once per arm. Contexts: module body and \
+            self-determined (the whole `match` sitting inside extend()'s \
+            argument, `allow_shift: true`). Fires: bug_55_signed_shift_\
+            right_inside_match_wildcard_arm_matches_icarus — a signed \
+            `>>` in a wildcard arm, the match wrapped by `extend(...)`, \
+            correctly hoisted into its own `__mimz_sub_3` so it doesn't \
+            inherit the outer 16-bit context (confirmed by hand-reading \
+            the emission). Doesn't fire: shape_match_operand_of_add_in_\
+            concat_matches_icarus's own arms (`a`/`b`, bare identifiers \
+            — not width-effect/shift shapes at all, so `hoistable` is \
+            false regardless of `allow_shift`). None branch: same BUG-\
+            30-documented-safe case as the other `hoist_width_effect_\
+            operand` sites — no repro isolates an unresolvable-Kind \
+            width-effect match arm specifically.",
+    },
+];
+
+/// Round-6 plan Task 7 (GAP-17): the crude, build-enforced half of the
+/// exhaustiveness this axis can't get from a `match`. Counts every
+/// `self.hoist_if_needed(`/`self.hoist_slice_base_if_needed(`/
+/// `self.hoist_width_effect_operand(` call TEXT appears in `expr.rs` and
+/// asserts it equals `HOIST_CALL_SITES.len()` — a plain string count, not
+/// an AST walk, deliberately: "crude, and enough" is this task's own
+/// stated bar, and a source-scan the reader can verify by eye (`grep -c`)
+/// is more trustworthy than a parser this test would itself need proving
+/// correct. Adding, removing, or renaming a hoist call site without
+/// updating `HOIST_CALL_SITES` above fails here — the enforcement Task 7
+/// asks for, applied to a source location instead of an enum variant.
+#[test]
+fn every_hoist_call_site_in_expr_rs_has_a_coverage_entry() {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/mimz-core/src/emit_verilog/expr.rs");
+    let src =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    let patterns = [
+        "self.hoist_if_needed(",
+        "self.hoist_slice_base_if_needed(",
+        "self.hoist_width_effect_operand(",
+    ];
+    let actual: usize = patterns.iter().map(|pat| src.matches(pat).count()).sum();
+    assert_eq!(
+        actual,
+        HOIST_CALL_SITES.len(),
+        "expr.rs now has {actual} hoist_if_needed/hoist_slice_base_if_needed/\
+         hoist_width_effect_operand call sites but HOIST_CALL_SITES here has \
+         {} entries — round-6 plan Task 7 (GAP-17): every hoist call site \
+         needs its own coverage entry (position, emitter context(s), \
+         fires/doesn't-fire differentials, None-branch safety). Add or \
+         remove an entry above to match.",
+        HOIST_CALL_SITES.len()
+    );
+}
+
+/// Sanity check on `HOIST_CALL_SITES` itself — every entry has a non-empty
+/// name/coverage and a `via` naming one of the three functions this axis
+/// covers, and no two entries share a `name` (the field the module doc
+/// above treats as a stable key). Not exhaustiveness (that's the count
+/// guard above) — just guards against a copy-paste entry left blank or
+/// duplicated while editing the list.
+#[test]
+fn hoist_call_sites_are_well_formed_and_unique() {
+    let mut seen = std::collections::HashSet::new();
+    for site in HOIST_CALL_SITES {
+        assert!(
+            !site.name.is_empty(),
+            "a HOIST_CALL_SITES entry has an empty name"
+        );
+        assert!(
+            !site.coverage.is_empty(),
+            "HOIST_CALL_SITES[{:?}] has empty coverage text",
+            site.name
+        );
+        assert!(
+            matches!(
+                site.via,
+                "hoist_if_needed" | "hoist_slice_base_if_needed" | "hoist_width_effect_operand"
+            ),
+            "HOIST_CALL_SITES[{:?}] names an unknown function {:?}",
+            site.name,
+            site.via
+        );
+        assert!(
+            seen.insert(site.name),
+            "HOIST_CALL_SITES has a duplicate name: {:?}",
+            site.name
+        );
     }
 }

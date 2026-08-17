@@ -584,12 +584,27 @@ impl Emitter<'_> {
             // own doc comment already states the caller contract this
             // checks: `mimz_kind` must be the SAME `Kind` a fresh
             // `infer_kind(expr, decls, env)` call would return, not a
-            // stale value threaded through from an earlier position. Firing
-            // on a genuinely mismatched `mimz_kind` is exactly BUG-41/
-            // BUG-42's silent-miscompile class, made loud instead — expect
-            // it to fire on plenty of LEGITIMATELY `None` shapes too (that's
-            // the point: a fresh check on every hoist-position call, not
-            // just this one path).
+            // stale value threaded through from an earlier position.
+            //
+            // Round-6 plan Task 11 (round-6 review Part 5.3): checked
+            // against the call sites rather than assumed — **this assert is
+            // tautological as currently invoked, not a live check.** All
+            // eleven `hoist_if_needed` call sites (`expr.rs`) compute
+            // `mimz_kind` as `infer_kind(expr, &decls, &self.env)`
+            // immediately before this call, with the exact same `decls`
+            // and `self.env` still in scope — so the re-computation below
+            // is calling the same pure function with the same arguments a
+            // second time. It cannot fail today; unlike the bare-
+            // identifier branch's own assert above (real: `decls` and
+            // `mimz_kind` come from genuinely different sources there,
+            // `build_decls` vs. the caller's own `infer_kind` call), this
+            // one cannot yet catch BUG-41/BUG-42's class the way its
+            // original comment claimed. Kept anyway, deliberately, as a
+            // REFACTOR TRIPWIRE: the day a caller threads a `mimz_kind`
+            // computed for a DIFFERENT expression, or a cached/stale one
+            // from an earlier position, this starts firing — cheaper than
+            // waiting for that hypothetical caller to also ship a silent
+            // miscompile before anyone notices the contract broke.
             debug_assert!(
                 crate::emit_verilog::kinds::infer_kind(expr, decls, &self.env) == Some(mimz_kind),
                 "hoist_if_needed: classifier says nothing to compare for {expr:?}, but caller's \
