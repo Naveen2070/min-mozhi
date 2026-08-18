@@ -57,6 +57,18 @@ Leaving the reset value off is an error (`E0301` / `E1104`). A `reg` is only eve
 updated inside a clocked block, with the `<-` operator (next section, and
 [chapter 8](08-sequential-logic.md)).
 
+> **ASIC caveat.** The reset value is also emitted as an `initial` seed — the
+> same reasoning `mem`'s own caveat below states, extended to every register
+> in the language: simulators and most FPGA synthesis tools honor an
+> `initial` directly, but a real ASIC has no defined power-on default and an
+> ASIC synthesis flow will not honor one (BUG-65/BUG-69, `docs/audit/bugs.md`
+> — this widened F-5/BUG-32's original memory-only scope to every `reg`). The
+> synchronous reset path (`on`-block, `<-`) is unaffected either way — this
+> only matters for a design read before its first reset pulse. If a design
+> targets ASIC, assert reset before relying on any register's value, rather
+> than on its declared default alone. `mimz compile` notes this in the
+> generated Verilog's header whenever a `reg` is present.
+
 ## `mem`: memories (register arrays)
 
 A `mem` is an addressable array of registers — a RAM or register file. Declare it
@@ -75,10 +87,11 @@ separate reset line.
 > which simulators and most FPGA synthesis tools honor directly — but a real
 > ASIC has no defined power-on RAM content, and an ASIC synthesis flow will
 > not honor an `initial` value the way FPGA block RAM does (BUG-32,
-> `docs/audit/bugs.md`). If a design targets ASIC, add an explicit clocked
-> load/reset path for anything that must start in a known state, rather than
-> relying on `mem`'s own init value. `mimz compile` notes this in the
-> generated Verilog's header whenever a `mem` is present.
+> `docs/audit/bugs.md` — the same caveat applies to every `reg`'s own reset
+> value, see the `reg` section above). If a design targets ASIC, add an
+> explicit clocked load/reset path for anything that must start in a known
+> state, rather than relying on `mem`'s own init value. `mimz compile` notes
+> this in the generated Verilog's header whenever a `mem` is present.
 
 Access a `mem` by index. Writes happen on the clock (with `<-`, inside an `on`
 block); reads are combinational (with `=`):

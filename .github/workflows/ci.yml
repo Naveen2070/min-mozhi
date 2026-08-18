@@ -68,15 +68,29 @@ jobs:
         env:
           RUSTDOCFLAGS: "-D warnings"
 
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Build WASM package
+        # GAP-19 (docs/audit/gaps.md): without this, `tests/wasm_parity.rs`
+        # finds no `crates/mimz-wasm/pkg` and vacuously passes both its
+        # tests, in CI and locally — 2 of the workspace's own passing count
+        # that had never actually run. MIMZ_REQUIRE_WASM below (Tests step)
+        # turns that silent skip into a hard failure now that this step
+        # guarantees the pkg exists.
+        run: wasm-pack build crates/mimz-wasm --target web --release
+
       - name: Tests
         # REQUIRE_IVERILOG turns a missing Icarus install into a hard
         # failure — CI must never silently skip the differential tests.
+        # MIMZ_REQUIRE_WASM is the same convention, for wasm_parity (GAP-19).
         # --workspace: see Clippy step above. MIMZ_PERF_GATE is deliberately
         # NOT set here — the counter-kernel throughput floor is too noisy for
         # a shared PR runner (BUG-33); it's enforced in `nightly-bench` only.
         run: cargo test --workspace --all-targets
         env:
           REQUIRE_IVERILOG: "1"
+          MIMZ_REQUIRE_WASM: "1"
           # GAP-11: the differential fuzzers' in-source default is deliberately
           # shallow (20) so a local `cargo test` doesn't pay 3 process spawns
           # per seed. 400 is the depth that actually found BUG-42 (i=245) and

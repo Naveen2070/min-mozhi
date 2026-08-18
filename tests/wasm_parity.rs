@@ -25,6 +25,20 @@ fn run_parity(dir: &str) {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pkg_dir = manifest_dir.join("crates").join("mimz-wasm").join("pkg");
     if !pkg_dir.exists() {
+        // GAP-19 (docs/audit/gaps.md), round-7 plan Task 9: this used to
+        // skip silently in both CI and locally, with no way to tell "the
+        // pkg genuinely wasn't needed" from "the pkg is stale/missing and
+        // this test never ran" — 2 of the workspace's own passing count
+        // were vacuous. Mirrors `support::require_iverilog`'s own
+        // convention: `MIMZ_REQUIRE_WASM` turns a missing pkg into a hard
+        // failure instead of a silent skip, so a release gate can't score
+        // this green without having actually run it.
+        assert!(
+            std::env::var("MIMZ_REQUIRE_WASM").is_err(),
+            "MIMZ_REQUIRE_WASM is set but crates/mimz-wasm/pkg was not built — \
+             run `wasm-pack build crates/mimz-wasm --target web --release` first \
+             (docs/BUILD.md section 5)"
+        );
         eprintln!("skipping WASM parity test: mimz-wasm pkg not built");
         return;
     }
