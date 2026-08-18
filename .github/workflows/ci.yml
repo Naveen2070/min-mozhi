@@ -4,8 +4,8 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
   pull_request:
+    branches: [master, develop]
   # Manual "run the perf batch" button (Actions tab → CI → Run workflow).
   workflow_dispatch:
   schedule:
@@ -97,7 +97,7 @@ jobs:
   bench:
     name: mimz-bench correctness gate
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref_name == 'master' || github.ref_name == 'develop'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -187,7 +187,7 @@ jobs:
   fuzz:
     name: fuzz smoke (eval + compile)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && (github.ref_name == 'master' || github.ref_name == 'develop'))
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

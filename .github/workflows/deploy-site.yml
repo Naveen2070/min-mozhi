@@ -30,6 +30,7 @@ on:
         options: [preview, production]
         default: preview
   pull_request:
+    branches: [master, develop]
     paths:
       - "site/**"
       - "crates/mimz-wasm/**"
@@ -38,7 +39,7 @@ on:
       - "Cargo.lock"
       - ".github/workflows/deploy-site.yml"
   push:
-    branches: [master]
+    branches: [master, develop]
     paths:
       - "site/**"
       - "crates/mimz-wasm/**"
