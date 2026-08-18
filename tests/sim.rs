@@ -94,6 +94,8 @@ fn writes_a_gtkwave_vcd() {
         .unwrap();
     assert!(out.status.success(), "sim failed: {:?}", out);
     let v = fs::read_to_string(&vcd).unwrap();
+    let _ = fs::remove_file(&vcd);
+    let _ = fs::remove_file(&p);
     assert!(v.contains("$timescale"), "no timescale:\n{v}");
     assert!(v.contains("$enddefinitions"), "no enddefinitions:\n{v}");
     assert!(v.contains(" count $end"), "no count var:\n{v}");
@@ -166,6 +168,8 @@ fn a_combinational_module_writes_a_vcd() {
         .unwrap();
     assert!(out.status.success(), "{:?}", out);
     let v = fs::read_to_string(&vcd).unwrap();
+    let _ = fs::remove_file(&vcd);
+    let _ = fs::remove_file(&p);
     assert!(v.contains("$timescale") && v.contains(" sum $end"), "{v}");
     assert!(v.contains("b1100 "), "expected sum=12 vector line:\n{v}");
 }
