@@ -11,8 +11,8 @@ module saalaivillakku (
     reg [1:0] natappu;
     reg [(8)-1:0] neeram;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial natappu = NILAI_NIRRUTHTHU;
-    initial neeram = 0;
+    initial #0 natappu = NILAI_NIRRUTHTHU;
+    initial #0 neeram = 0;
     assign sivappu = (natappu == NILAI_NIRRUTHTHU);
     assign manjsall = (natappu == NILAI_ESSARI);
     assign passai = (natappu == NILAI_SEL);

@@ -109,9 +109,11 @@ pub(crate) fn fn_ret_decl_key(name: &str) -> String {
 /// unparseable Verilog for a slice/bit-select/`trunc` base). **A hoist
 /// site may not silently do nothing when it cannot resolve a `Kind`** —
 /// every `None` arm at such a site must route through
-/// `module::ports::Emitter::hoist_unresolved`, which asserts in debug and
-/// diagnoses in release for the positions whose grammar demands a named
-/// wire.
+/// `module::ports::Emitter::hoist_unresolved`, which always diagnoses (round-7
+/// plan Task 2, GAP-16/BUG-67/68 — a `Diag`, not just the positions whose
+/// grammar demands a named wire) and additionally panics under `cfg!(test)`,
+/// so reaching this fallback during development stays loud while a real
+/// `mimz compile` binary, in either profile, never aborts on it.
 pub(crate) fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>, env: &Env) -> Option<Kind> {
     match &expr.kind {
         ExprKind::Int { value, .. } => Some(Kind {

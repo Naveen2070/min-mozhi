@@ -180,6 +180,8 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         bundle_sigs: HashMap::new(),
         hoist_counter: 0,
         hoisted_decls: String::new(),
+        pre_decl_hoisted_decls: String::new(),
+        in_pre_decl_render: false,
         cur_decls: Default::default(),
         in_fn_body: false,
         fn_hoist_counter: 0,
@@ -288,11 +290,22 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         // port width folds the same way the loop above already resolved it
         // (`test_env`, not the otherwise-always-empty `em.env`).
         em.env = test_env.clone();
-        em.cur_decls = std::rc::Rc::new(em.build_decls(&dut.items));
+        // Round-7 plan Task 5 (BUG-68, review Part 3.3): `module()` works
+        // from `self.flatten_items(&m.items)` — which expands `const if`,
+        // lowers `sync loop`/`foreach`, and runs `expand_sync_prims`, all
+        // of which can declare ports/wires/regs — but this whole function
+        // used the DUT's raw, UNFLATTENED `dut.items` throughout, so any
+        // port a `const if`/`sync loop` generates was invisible to both
+        // the hoist machinery (`cur_decls` below) AND this function's own
+        // port-declaration/connection/zero-init loops. `flat_dut_items` is
+        // this function's single source of truth for the DUT's item list
+        // from here on; `dut.items` itself must not be read again below.
+        let flat_dut_items = em.flatten_items(&dut.items);
+        em.cur_decls = std::rc::Rc::new(em.build_decls(&flat_dut_items));
 
         let mut dut_connections = Vec::new();
 
-        for item in &dut.items {
+        for item in &flat_dut_items {
             match item {
                 ModuleItem::Port { dir, name, ty } => {
                     let kind = if *dir == Dir::In { "reg" } else { "wire" };
@@ -377,7 +390,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
             dut_connections.join(",\n    ")
         ));
 
-        for item in &dut.items {
+        for item in &flat_dut_items {
             if let ModuleItem::Clock(c) = item {
                 let safe_clock = sanitize_verilog_ident(&c.name);
                 em.out.push_str(&format!("  initial {} = 0;\n", safe_clock));
@@ -413,7 +426,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         em.out
             .push_str(&format!("    $dumpvars(0, {});\n", tb_name));
 
-        for item in &dut.items {
+        for item in &flat_dut_items {
             if let ModuleItem::Port { dir, name, .. } = item
                 && *dir == Dir::In
             {
@@ -459,8 +472,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         // hierarchical reference through `_dut_inst`, same convention
         // `tests/icarus.rs`'s own cover tests already use to verify these
         // registers from outside the DUT.
-        let mut all_covers: Vec<&crate::ast::CoverStmt> = dut
-            .items
+        let mut all_covers: Vec<&crate::ast::CoverStmt> = flat_dut_items
             .iter()
             .filter_map(|i| match i {
                 ModuleItem::Cover(c) => Some(c),
@@ -468,10 +480,10 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
             })
             .collect();
         all_covers.extend(crate::emit_verilog::module::collect_on_block_covers(
-            &dut.items,
+            &flat_dut_items,
         ));
         if !all_covers.is_empty() {
-            let ordinals = crate::emit_verilog::module::build_cover_ordinals(&dut.items);
+            let ordinals = crate::emit_verilog::module::build_cover_ordinals(&flat_dut_items);
             em.out.push_str("    `ifndef SYNTHESIS\n");
             // A cover counter's own increment (`always @(cond)` for the
             // comb form, an NBA `<=` inside `on rise` for the clocked

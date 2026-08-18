@@ -26,12 +26,12 @@ module VgaKuri (
     reg [(4)-1:0] frame_cnt_acc;
     reg frame_cnt_done_r;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial h_cnt = 0;
-    initial v_cnt = 0;
-    initial frame_cnt_cnt = 0;
-    initial frame_cnt_running_r = 0;
-    initial frame_cnt_acc = 0;
-    initial frame_cnt_done_r = 0;
+    initial #0 h_cnt = 0;
+    initial #0 v_cnt = 0;
+    initial #0 frame_cnt_cnt = 0;
+    initial #0 frame_cnt_running_r = 0;
+    initial #0 frame_cnt_acc = 0;
+    initial #0 frame_cnt_done_r = 0;
     wire [9:0] __mimz_sub_1;
     assign __mimz_sub_1 = (h_cnt >> 7);
     wire [5:0] __mimz_sub_2;
