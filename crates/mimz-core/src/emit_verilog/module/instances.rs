@@ -5,7 +5,7 @@ impl Emitter<'_> {
     /// conditions against `self.env`. Items in the losing branch are dropped.
     /// Nested ConstIf is resolved recursively. Used by `module()` for loops
     /// that don't recurse.
-    pub(super) fn flatten_items(&self, items: &[ModuleItem]) -> Vec<ModuleItem> {
+    pub(in crate::emit_verilog) fn flatten_items(&self, items: &[ModuleItem]) -> Vec<ModuleItem> {
         let items = crate::ast::expand_sync_prims(items);
         let mut out = Vec::new();
         for item in &items {

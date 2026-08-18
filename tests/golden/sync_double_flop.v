@@ -9,9 +9,9 @@ module SyncDoubleFlop (
     reg synced;
     reg __sync_synced_stage0;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial fast_reg = 0;
-    initial synced = 0;
-    initial __sync_synced_stage0 = 0;
+    initial #0 fast_reg = 0;
+    initial #0 synced = 0;
+    initial #0 __sync_synced_stage0 = 0;
     assign slow_bit = synced;
     always @(posedge clk_src) begin
         if (rst) begin

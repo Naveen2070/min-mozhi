@@ -33,6 +33,8 @@ fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
         bundle_sigs: HashMap::new(),
         hoist_counter: 0,
         hoisted_decls: String::new(),
+        pre_decl_hoisted_decls: String::new(),
+        in_pre_decl_render: false,
         cur_decls: Default::default(),
         in_fn_body: false,
         fn_hoist_counter: 0,

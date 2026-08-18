@@ -89,6 +89,8 @@ impl Emitter<'_> {
         self.funcs_used.clear();
         self.hoist_counter = 0;
         self.hoisted_decls.clear();
+        self.pre_decl_hoisted_decls.clear();
+        self.in_pre_decl_render = false;
 
         // Module-level consts layer onto the file consts for the duration
         // of this module; they fold to literals wherever used (widths,
@@ -290,6 +292,20 @@ impl Emitter<'_> {
             self.out.push_str("    `endif\n");
         }
 
+        // Round-7 plan Task 3 (BUG-66, GAP-18): the `mem` init/depth, `reg`
+        // reset, and instance-port-connection renders below all run BEFORE
+        // `hoist_pos` (captured after `emit_instances`, a few lines down)
+        // — so a hoist raised by any of them used to be spliced in AFTER
+        // its own use here. Every `wire`/`reg`/`mem` declaration is already
+        // emitted above (the "Declarations" loop), so this insertion point
+        // is safe for all three: `pre_decl_hoisted_decls` is spliced here,
+        // strictly before `hoist_pos`'s own splice, and strictly after
+        // every signal these three sites can reference (BUG-66's own
+        // reproductions, and option (a)'s own safety argument, only ever
+        // touch ports/parameters — already declared in the header).
+        let pre_decl_hoist_pos = self.out.len();
+        self.in_pre_decl_render = true;
+
         // Power-on init: seed every cell of each memory to its init value
         // (mirrors the simulator, which initializes all cells at construction).
         // Mandatory init value → no uninitialized state, without a per-cycle
@@ -323,8 +339,24 @@ impl Emitter<'_> {
                 let v = self.expr(init);
                 let iv = format!("__mimz_{}_i", name.name);
                 self.out.push_str(&format!("    integer {iv};\n"));
+                // `#0`: Task 3 (BUG-66, round-7 plan) fixed the DECLARATION
+                // order of a hoisted `wire`/`assign` pair this loop's own
+                // `v` may reference (`push_hoisted_decl`, `module/ports.rs`)
+                // — but a continuous `assign` and this `initial` block are
+                // both scheduled in the SAME time-0 active region, with no
+                // ordering guarantee between them. Confirmed against real
+                // `iverilog`: without `#0`, a hoisted operand read X/Z here
+                // (the wire hadn't propagated yet), even though the exact
+                // same hoisted wire read fine from the REG-init's own
+                // single-statement `initial` just below — a `for` loop
+                // apparently schedules differently. `#0` defers this block
+                // to time 0's INACTIVE region, strictly after every
+                // active-region continuous assign has settled, with no
+                // visible time advance (the emitted testbench's own first
+                // read is a full `#1` later — BUG-65's fix — so this can
+                // never race that).
                 self.out.push_str(&format!(
-                    "    initial for ({iv} = 0; {iv} < ({d}); {iv} = {iv} + 1) {}[{iv}] = {v};\n",
+                    "    initial #0 for ({iv} = 0; {iv} < ({d}); {iv} = {iv} + 1) {}[{iv}] = {v};\n",
                     name.name
                 ));
             }
@@ -359,8 +391,18 @@ impl Emitter<'_> {
                     reg_note_emitted = true;
                 }
                 let v = self.expr(reset);
+                // `#0`: same root cause as the `mem` loop's own `#0` above
+                // (a hoisted operand `v` may reference is a continuous
+                // `assign`, racing this `initial` block in the same time-0
+                // active region) — applied here for parity even though
+                // this single-statement form did NOT reproduce the race
+                // under real `iverilog` the way the `for`-loop form did;
+                // leaving the identical hazard unguarded here on nothing
+                // but "it happened not to manifest for one hand-picked
+                // vector" is exactly the fail-open pattern this project's
+                // own audit history keeps finding (GAP-13/14).
                 self.out
-                    .push_str(&format!("    initial {} = {v};\n", name.name));
+                    .push_str(&format!("    initial #0 {} = {v};\n", name.name));
             }
         }
 
@@ -369,6 +411,7 @@ impl Emitter<'_> {
         // match Verilog's declare-before-use convention).
         self.repeat_budget = REPEAT_BUDGET;
         self.emit_instances(&m.items);
+        self.in_pre_decl_render = false;
 
         // Insertion point for every hoisted `wire`/`assign` pair
         // (`self.hoisted_decls`, filled in below by the drives/seq-block
@@ -578,11 +621,18 @@ impl Emitter<'_> {
             inject.push_str(CLOG2_FN);
         }
         inject.push_str(&user_fn_inject);
-        // `hoist_pos` insertion FIRST — it sits after `fn_pos` in `self.out`,
-        // so inserting there does not shift `fn_pos` itself; inserting in
-        // the other order would silently move `hoist_pos` out from under us.
+        // Insert LARGEST offset first — `fn_pos <= pre_decl_hoist_pos <=
+        // hoist_pos` always (nothing/`mem`+`reg`+instances/everything else
+        // stand between them respectively) — so an earlier insertion never
+        // shifts a not-yet-used later position out from under us. Round-7
+        // plan Task 3 (BUG-66) added `pre_decl_hoist_pos` between the two
+        // pre-existing splices; the ordering rule itself is unchanged.
         if !self.hoisted_decls.is_empty() {
             self.out.insert_str(hoist_pos, &self.hoisted_decls);
+        }
+        if !self.pre_decl_hoisted_decls.is_empty() {
+            self.out
+                .insert_str(pre_decl_hoist_pos, &self.pre_decl_hoisted_decls);
         }
         if !inject.is_empty() {
             self.out.insert_str(fn_pos, &inject);

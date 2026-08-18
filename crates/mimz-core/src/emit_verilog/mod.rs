@@ -14,6 +14,16 @@
 //! emitter's own `check_ascii` is the backstop for anyone who skips it.
 //! Not yet supported here (clean errors, not wrong output): `trunc` on
 //! non-trivial expressions.
+//!
+//! GAP-18 (`docs/audit/gaps.md`) / round-7 plan Task 1 — a second axis
+//! alongside `kinds.rs`'s "a hoist site may not silently do nothing"
+//! (GAP-16): **a hoisted name may not be referenced before it is
+//! declared.** `hoist_if_needed`/`hoist_slice_base_if_needed` append into
+//! one buffer flushed at a single saved position (`hoist_pos`); correct
+//! only when every render site that can push into that buffer runs after
+//! the flush point. BUG-66 found three that don't. Enforced by
+//! [`assert_hoists_declared_before_use`], run over every module's own
+//! assembled text right after [`Emitter::module`] returns.
 
 mod expr;
 mod kinds;
@@ -430,6 +440,8 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
         bundle_sigs: HashMap::new(),
         hoist_counter: 0,
         hoisted_decls: String::new(),
+        pre_decl_hoisted_decls: String::new(),
+        in_pre_decl_render: false,
         cur_decls: Rc::default(),
         in_fn_body: false,
         fn_hoist_counter: 0,
@@ -490,7 +502,9 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
         em.env = file_consts;
         for item in &file.items {
             if let TopItem::Module(m) = item {
+                let module_start = em.out.len();
                 em.module(m);
+                assert_hoists_declared_before_use(&em.out[module_start..]);
                 em.out.push('\n');
             }
         }
@@ -500,6 +514,80 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
     } else {
         Err(em.diags)
     }
+}
+
+/// GAP-18 / round-7 plan Task 1 (see this module's own doc comment above):
+/// no `__mimz_sub_N`/`__mimz_fn_sub_N` may be referenced in `module_text`
+/// before the line that declares it. Checked once per assembled module
+/// body — a property of the FINAL text, not of any one hoist call, since
+/// BUG-66's three sites all resolve their `Kind` correctly and hoist
+/// correctly; only their buffer's flush point is wrong. A `debug_assert!`
+/// (live in release — `[profile.release] debug-assertions = true`,
+/// `Cargo.toml`), naming the identifier, the use line, and the
+/// declaration line, the same way `hoist_unresolved`'s own message names
+/// its site.
+fn assert_hoists_declared_before_use(module_text: &str) {
+    let lines: Vec<&str> = module_text.lines().collect();
+    let mut decl_line: HashMap<String, usize> = HashMap::new();
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        if !(trimmed.starts_with("wire ") || trimmed.starts_with("reg ")) {
+            continue;
+        }
+        for name in hoisted_names_in(line) {
+            if line.trim_end().ends_with(&format!("{name};")) {
+                decl_line.entry(name).or_insert(i);
+            }
+        }
+    }
+    for (i, line) in lines.iter().enumerate() {
+        for name in hoisted_names_in(line) {
+            if let Some(&d) = decl_line.get(&name) {
+                debug_assert!(
+                    i >= d,
+                    "GAP-18: hoisted name `{name}` referenced before its own declaration — \
+                     use at line {} (`{}`), declared at line {} (`{}`). A render site is \
+                     pushing into `hoisted_decls`/`fn_hoisted_regs` from before the buffer's \
+                     flush point (`hoist_pos`) — see BUG-66, docs/audit/bugs.md.",
+                    i + 1,
+                    line.trim(),
+                    d + 1,
+                    lines[d].trim(),
+                );
+            }
+        }
+    }
+}
+
+/// Every `__mimz_sub_N` / `__mimz_fn_sub_N` occurrence in `line`, as a
+/// whole identifier (not a substring of a longer one). No `regex`
+/// dependency needed: the two prefixes are fixed literal strings and
+/// neither is a substring of the other, so a plain `match_indices` scan
+/// over each is exact.
+fn hoisted_names_in(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for prefix in ["__mimz_sub_", "__mimz_fn_sub_"] {
+        for (start, _) in line.match_indices(prefix) {
+            let rest = &line[start + prefix.len()..];
+            let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+            if digits == 0 {
+                continue;
+            }
+            let end = start + prefix.len() + digits;
+            let before_ok = line[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_');
+            let after_ok = line[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '_');
+            if before_ok && after_ok {
+                out.push(line[start..end].to_string());
+            }
+        }
+    }
+    out
 }
 
 /// Emitter state: the symbol table to look up modules/enums, the growing
@@ -554,10 +642,26 @@ struct Emitter<'a> {
     /// Reset per module, alongside `clog2_fn_used`/`funcs_used`.
     hoist_counter: u32,
     /// Accumulated `wire [...] __mimz_sub_N; assign __mimz_sub_N = ...;`
-    /// declarations for the CURRENT module, inserted at `fn_pos`
-    /// alongside the existing `clog2`/user-`fn` injections. Reset per
-    /// module.
+    /// declarations for the CURRENT module, inserted at `hoist_pos`
+    /// (`module/mod.rs`). Reset per module.
     hoisted_decls: String,
+    /// Round-7 plan Task 3 (BUG-66, GAP-18): a SECOND hoist buffer, for the
+    /// three render sites that run BEFORE `hoist_pos` is captured — `mem`
+    /// init/depth, `reg` reset, and instance port connections
+    /// (`module/mod.rs`). Every `wire`/`reg`/`mem` declaration is already
+    /// emitted by the time those three sites render (the "Declarations"
+    /// loop runs first), so a hoist raised there is always safe to splice
+    /// right after that loop — before instance auto-wired outputs exist,
+    /// which is BUG-44's own reason `hoist_pos` itself can't move that
+    /// early. Spliced at `pre_decl_hoist_pos`, strictly before `hoist_pos`.
+    /// Reset per module, alongside `hoisted_decls`.
+    pre_decl_hoisted_decls: String,
+    /// True while rendering the three BUG-66 sites above — routes
+    /// `hoist_if_needed`/`hoist_slice_base_if_needed`'s module-scope branch
+    /// into `pre_decl_hoisted_decls` instead of `hoisted_decls`. Checked
+    /// after `in_fn_body` (mutually exclusive: neither site can be inside
+    /// a `fn` body). Reset per module.
+    in_pre_decl_render: bool,
     /// Every `Port`/`Wire`/`Reg` name of the CURRENT module, mapped to its
     /// resolved `Kind` — the "`flat_items_in_scope`" a self-determined
     /// hoist check needs (Stage 4, Phase A1b, Task 6). Built once per

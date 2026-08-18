@@ -21,14 +21,14 @@ module ethiroli #(
     reg ethiroli_niluvai;
     reg anuppi_thotakkam;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial nilai_pathivu = VAANGKINILAI_SEYALARRRRA;
-    initial veeka_ennnnikkai = 0;
-    initial thunnmi_kurriyiitu = 0;
-    initial nakarvu = 0;
-    initial vaangki_ennnnezhuththu = 0;
-    initial ethiroli_ennnnezhuththu = 0;
-    initial ethiroli_niluvai = 0;
-    initial anuppi_thotakkam = 0;
+    initial #0 nilai_pathivu = VAANGKINILAI_SEYALARRRRA;
+    initial #0 veeka_ennnnikkai = 0;
+    initial #0 thunnmi_kurriyiitu = 0;
+    initial #0 nakarvu = 0;
+    initial #0 vaangki_ennnnezhuththu = 0;
+    initial #0 ethiroli_ennnnezhuththu = 0;
+    initial #0 ethiroli_niluvai = 0;
+    initial #0 anuppi_thotakkam = 0;
     wire anuppi_nikazhvu_tx;
     wire anuppi_nikazhvu_busy;
     UartTx #(.CLKS_PER_BIT(CLKS_PER_BIT)) anuppi_nikazhvu (.clk(clk), .rst(rst), .start(anuppi_thotakkam), .data(ethiroli_ennnnezhuththu), .tx(anuppi_nikazhvu_tx), .busy(anuppi_nikazhvu_busy));
@@ -132,10 +132,10 @@ module UartTx #(
     reg [(3)-1:0] bit_index;
     reg [(8)-1:0] shift;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial state = STATE_IDLE;
-    initial clk_count = 0;
-    initial bit_index = 0;
-    initial shift = 0;
+    initial #0 state = STATE_IDLE;
+    initial #0 clk_count = 0;
+    initial #0 bit_index = 0;
+    initial #0 shift = 0;
     assign tx = (((state == STATE_IDLE)) ? (1) : (((state == STATE_START)) ? (0) : (((state == STATE_DATA)) ? (shift[0]) : (1))));
     assign busy = (((state == STATE_IDLE)) ? (0) : (((state == STATE_START)) ? (1) : (((state == STATE_DATA)) ? (1) : (1))));
     always @(posedge clk) begin

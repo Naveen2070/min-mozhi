@@ -442,7 +442,11 @@ impl Emitter<'_> {
     /// `fn`'s declared return type or an instance's port type (both can
     /// legitimately be `Bundle`-typed in the source, unlike an
     /// already-flattened `Port`/`Wire`/`Reg` field).
-    fn scalar_kind_in_env(&self, ty: &Type, env: &Env) -> Option<crate::width_rules::Kind> {
+    pub(super) fn scalar_kind_in_env(
+        &self,
+        ty: &Type,
+        env: &Env,
+    ) -> Option<crate::width_rules::Kind> {
         use crate::width_rules::Kind;
         match ty {
             Type::Bit => Some(Kind {
@@ -648,19 +652,35 @@ impl Emitter<'_> {
         } else {
             format!("[{}:0]", mimz_kind.width.saturating_sub(1))
         };
-        self.hoisted_decls
-            .push_str(&format!("    wire {ty} {name};\n"));
-        self.hoisted_decls
-            .push_str(&format!("    assign {name} = {rendered_text};\n"));
+        self.push_hoisted_decl(&ty, &name, &rendered_text);
         name
+    }
+
+    /// Round-7 plan Task 3 (BUG-66, GAP-18): `hoist_if_needed`/
+    /// `hoist_slice_base_if_needed`'s shared module-scope tail — append the
+    /// `wire`/`assign` pair to whichever buffer this render site's own
+    /// insertion point is safe for. `self.in_pre_decl_render` is true only
+    /// while rendering `mem` init/depth, `reg` reset, or an instance port
+    /// connection (`module/mod.rs`) — the three sites BUG-66 found running
+    /// before `hoist_pos` is captured; everywhere else (drives, seq blocks,
+    /// asserts, covers…) still goes to `hoisted_decls` exactly as before.
+    fn push_hoisted_decl(&mut self, ty: &str, name: &str, rendered_text: &str) {
+        let buf = if self.in_pre_decl_render {
+            &mut self.pre_decl_hoisted_decls
+        } else {
+            &mut self.hoisted_decls
+        };
+        buf.push_str(&format!("    wire {ty} {name};\n"));
+        buf.push_str(&format!("    assign {name} = {rendered_text};\n"));
     }
 
     /// Same mismatch detection, but for BUG-20's condition instead of a
     /// width mismatch: hoists whenever `rendered_text` (a slice's base)
     /// isn't already a plain identifier, since Verilog's part-select
-    /// grammar only accepts one. Shares the same counter/buffer as
-    /// `hoist_if_needed` (a single per-module numbering sequence for
-    /// every kind of hoist, not two separate ones).
+    /// grammar only accepts one. Shares the same counter as `hoist_if_needed`
+    /// (a single per-module numbering sequence for every kind of hoist, not
+    /// two separate ones) and the same buffer-routing (`push_hoisted_decl`,
+    /// round-7 plan Task 3).
     ///
     /// `signed` picks the declared wire's own signedness, mirroring
     /// `hoist_if_needed`'s `ty` computation exactly — needed by BUG-23's
@@ -712,10 +732,7 @@ impl Emitter<'_> {
         } else {
             format!("[{}:0]", width.saturating_sub(1))
         };
-        self.hoisted_decls
-            .push_str(&format!("    wire {ty} {name};\n"));
-        self.hoisted_decls
-            .push_str(&format!("    assign {name} = {rendered_text};\n"));
+        self.push_hoisted_decl(&ty, &name, &rendered_text);
         name
     }
 
@@ -781,25 +798,46 @@ impl Emitter<'_> {
         // here (that would re-emit the un-widened text this task exists
         // to stop doing), so it falls through to the loud assert below
         // like everything else.
-        debug_assert!(
-            false,
-            "hoist_unresolved: `infer_kind` returned None for {expr:?} at `{site}` \
+        let grammar_note = if requires_named_wire {
+            " (this position's Verilog grammar only accepts a named signal — the \
+              emitted text may not even parse)"
+        } else {
+            ""
+        };
+        let msg = format!(
+            "hoist_unresolved: `infer_kind` returned None for {expr:?} at `{site}`{grammar_note} \
              (rendered as `{rendered_text}`) — GAP-16/BUG-62: a hoist site may not \
              silently do nothing when it cannot resolve a Kind. If this shape is \
              genuinely unresolvable, name it in this function's own doc comment \
-             instead of loosening the assert.",
+             instead of loosening the assert."
         );
-        if requires_named_wire {
-            self.err(
-                expr.span,
-                format!(
-                    "cannot determine `{rendered_text}`'s width here to hoist it into \
-                     a named wire — the emitted Verilog would not parse"
-                ),
-                "this is a compiler limitation (GAP-16); simplify the expression \
-                 or file a bug report",
-            );
+        // Round-7 plan Task 2 (review Part 4.3, BUG-67/68): this used to be
+        // a bare `debug_assert!(false, ...)` reached with NO `Diag` at all
+        // for a `requires_named_wire: false` site (concat/reduction/cast/
+        // encoding members) — combined with `[profile.release]
+        // debug-assertions = true`, a SHIPPED `mimz compile` aborted with a
+        // Rust panic backtrace on a checker-clean program instead of
+        // exiting non-zero with a message. `debug_assert!` alone can't tell
+        // "a developer's test caught this" from "a user's release binary
+        // hit this" — both have `debug_assertions` on in this workspace —
+        // so the gate is `cfg!(test)` instead: true for the `cargo test`
+        // binary (every `emit_src`-style unit/regression test here still
+        // gets a loud, immediate panic — reaching this fallback during
+        // development IS a bug), false for the actual `mimz` CLI binary in
+        // EITHER profile, which now always gets a `Diag` and a clean exit.
+        // `cfg!(test)` is deliberately a per-compilation constant here —
+        // that's the whole mechanism (a different binary sees a different
+        // constant) — not an accidentally-always-true/false condition.
+        #[allow(clippy::assertions_on_constants)]
+        {
+            debug_assert!(!cfg!(test), "{msg}");
         }
+        self.err(
+            expr.span,
+            format!("cannot determine `{rendered_text}`'s width here — GAP-16: {msg}"),
+            "this is a compiler limitation; simplify the expression or file a bug \
+             report (docs/audit/bugs.md, GAP-16)",
+        );
         rendered_text
     }
 }

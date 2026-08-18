@@ -11,8 +11,8 @@ module TrafficLight (
     reg [1:0] state;
     reg [(8)-1:0] timer;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial state = STATE_RED;
-    initial timer = 0;
+    initial #0 state = STATE_RED;
+    initial #0 timer = 0;
     assign red = (state == STATE_RED);
     assign yellow = (state == STATE_YELLOW);
     assign green = (state == STATE_GREEN);
