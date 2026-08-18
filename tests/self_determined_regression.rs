@@ -2915,16 +2915,22 @@ const HOIST_CALL_SITES: &[HoistCallSite] = &[
             (expr.rs:414). Contexts: module body (context-determined, \
             `allow_shift: false`, the ordinary top-level `if`) and self-\
             determined (`allow_shift: true`, when the whole `if` sits \
-            inside e.g. extend()'s argument). Fires: no differential \
-            isolates a plain (non-fused) width-effect/shift operator \
-            specifically in the `then` branch of a SELF-determined `if` \
-            — bug_59_fused_shift_chain_inside_an_if_branch_as_the_lhs_\
-            of_a_growing_shift_matches_icarus exercises the SAME `then` \
-            position with a FUSED chain, but that gets caught one \
+            inside e.g. extend()'s argument). Fires: round-7 plan Task 6 \
+            (review Part 5) closed the open gap round-6 Task 7 correctly \
+            left here — task6_if_expr_then_branch_wrap_add_operand_\
+            inside_extend_matches_icarus and task6_if_expr_then_branch_\
+            wrap_mul_operand_inside_extend_matches_icarus force a plain \
+            (non-fused) `+%`/`*%` operand into the `then` branch of a \
+            SELF-determined `if` (`c=1`, `a=0b1111`) — confirmed to \
+            actually exercise THIS site by hand: reverting both hoist \
+            calls fails all four (both branches') differentials, not \
+            just `every_hoist_call_site_in_expr_rs_has_a_coverage_entry`'s \
+            own count. bug_59_fused_shift_chain_inside_an_if_branch_as_\
+            the_lhs_of_a_growing_shift_matches_icarus exercises the SAME \
+            `then` position with a FUSED chain, but that gets caught one \
             function up instead (`self-determined if/match branch`, \
             confirmed by hand-reading its emission: no hoist happens \
-            HERE for that test). This is a genuine, open coverage gap, \
-            not a claimed proof. Doesn't fire: bug_24_regression_shift_\
+            HERE for that test). Doesn't fire: bug_24_regression_shift_\
             in_if_branch_stays_unhoisted — the top-level, context-\
             determined `y = if cond {1<<3} else {0}` case, `allow_shift: \
             false`, correctly leaves the `then` branch unhoisted \
@@ -2942,15 +2948,19 @@ const HOIST_CALL_SITES: &[HoistCallSite] = &[
         via: "hoist_width_effect_operand",
         coverage: "Position: if_expr_subst's own `els` branch \
             (expr.rs:416) — same code shape as `if-expr then-branch`, \
-            opposite branch. Fires: the identical open gap as `if-expr \
-            then-branch` — no differential forces a plain width-effect/\
-            shift operator into the `els` branch of a SELF-determined \
-            `if` either. Doesn't fire: bug_24_regression's own `else \
-            { 0 }` is a bare literal, not a hoistable shape, so it \
-            proves nothing about THIS branch's own hoistable path beyond \
-            trivially not firing — a weaker witness than `then-branch`'s \
-            own control. Contexts and None branch: identical to `if-expr \
-            then-branch`.",
+            opposite branch. Fires: round-7 plan Task 6, the same close \
+            as `if-expr then-branch` one entry up — task6_if_expr_else_\
+            branch_wrap_add_operand_inside_extend_matches_icarus and \
+            task6_if_expr_else_branch_wrap_mul_operand_inside_extend_\
+            matches_icarus force a plain `+%`/`*%` operand into the \
+            `els` branch of a SELF-determined `if` (`c=0`, `a=0b1111`), \
+            confirmed the same way: reverting the `els`-branch hoist call \
+            alone fails these two without touching the `then`-branch \
+            pair. Doesn't fire: bug_24_regression's own `else { 0 }` is a \
+            bare literal, not a hoistable shape, so it proves nothing \
+            about THIS branch's own hoistable path beyond trivially not \
+            firing — a weaker witness than `then-branch`'s own control. \
+            Contexts and None branch: identical to `if-expr then-branch`.",
     },
     HoistCallSite {
         name: "match arm value",
@@ -3043,4 +3053,461 @@ fn hoist_call_sites_are_well_formed_and_unique() {
             site.name
         );
     }
+}
+
+/// Round-7 plan Task 1 (GAP-18, `docs/audit/gaps.md`): the hoist buffer's
+/// flush point is a second scoping axis alongside `hoist_unresolved`'s
+/// "which `decls` is in scope" — a hoisted wire can resolve its `Kind`
+/// correctly and still be declared after its own use, if the render site
+/// that asked for it runs before the buffer is flushed (BUG-66). The
+/// invariant enforcing this (`assert_hoists_declared_before_use`,
+/// `crates/mimz-core/src/emit_verilog/mod.rs`) is a `debug_assert!` that
+/// stays live in this workspace's release profile too (`[profile.release]
+/// debug-assertions = true`), so a violation anywhere in the corpus below
+/// surfaces as `mimz compile` aborting — `support::compile_example`'s own
+/// `assert!(status.success(), ...)` turns that into a normal test failure,
+/// backtrace and all, not a silent pass.
+///
+/// Walks `examples/` + `demo/` — 226 `.mimz` files, the exact count round
+/// 7's own one-off machine check covered by hand (review Part 3.1, "zero
+/// out-of-order references"). This reproduces that sweep as a real,
+/// running regression instead of a one-time audit claim.
+#[test]
+fn task1_hoisted_wire_is_never_referenced_before_its_declaration() {
+    let mut stack = vec![
+        support::repo().join("examples"),
+        support::repo().join("demo"),
+    ];
+    let mut files = Vec::new();
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "mimz") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    assert!(!files.is_empty(), "corpus sweep found no .mimz files");
+    for path in &files {
+        support::compile_example(path);
+    }
+}
+
+/// Round-7 plan Task 2 (review Part 4.3, BUG-67/68): `hoist_unresolved`
+/// (`crates/mimz-core/src/emit_verilog/module/ports.rs`) used to reach a
+/// bare `debug_assert!(false, ...)` with NO `Diag` at all for a
+/// `requires_named_wire: false` site (concat/reduction/cast/encoding
+/// members) — combined with `[profile.release] debug-assertions = true`,
+/// a SHIPPED `mimz compile` aborted with a Rust panic backtrace on this
+/// exact checker-clean program (BUG-67's own repro — a nested `fn` call
+/// whose return `Kind` `render_fn_decl`'s `decls` doesn't carry yet,
+/// Task 4 isn't landed) instead of exiting non-zero with a diagnostic.
+///
+/// Deliberately spawns the REAL `mimz` binary rather than calling
+/// `emit_src` in-process: the `debug_assert!` this task keeps for
+/// development is gated on `cfg!(test)`, which is true inside the
+/// `cargo test` binary (so an in-process call would still panic, by
+/// design — reaching this fallback during development stays loud) but
+/// false for the built CLI binary this spawns, in either profile. Only
+/// spawning the binary proves what an actual `mimz compile` user sees.
+#[test]
+fn task2_unresolvable_concat_member_is_a_diagnostic_not_a_panic() {
+    // Repointed at BUG-68's own repro (review Part 3.3, the testbench
+    // hoisting-half): Task 4 (BUG-67) below fixed this test's ORIGINAL
+    // source (a nested `fn` call inside another `fn`'s body), so it no
+    // longer reaches `hoist_unresolved` at all — exactly the churn Task 1's
+    // own `#[should_panic]` test hit when Task 3 landed. BUG-68 is still
+    // open (Task 5 hasn't landed); when it does, THIS test will need a new
+    // still-open repro in turn — `hoist_unresolved`'s fallback is meant to
+    // become unreachable for every known shape as this plan's tasks land,
+    // so any test targeting it necessarily borrows a temporarily-open bug.
+    let src = "const BIG: int = 1\n\
+               module Fuzz {\n  in a: bits[4]\n  const if (BIG == 1) {\n    out y: bits[4]\n  }\n  \
+               y = a\n}\n\n\
+               test \"t\" for Fuzz {\n  a = 0b1111\n  expect &extend(y, 8) == 0\n}\n";
+    let path = std::env::temp_dir().join("mimz_task2_bug68_repro.mimz");
+    fs::write(&path, src).unwrap();
+    let out_v = std::env::temp_dir().join("mimz_task2_bug68_repro.v");
+    let out = support::mimz()
+        .arg("compile")
+        .arg(&path)
+        .arg("-o")
+        .arg(&out_v)
+        .arg("--emit-testbench")
+        .output()
+        .unwrap();
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(&out_v);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "expected `mimz compile --emit-testbench` to reject BUG-68's repro \
+         (unresolvable reduction over a const-if-declared port), but it exited 0"
+    );
+    assert!(
+        !stderr.contains("panicked at"),
+        "expected a clean diagnostic, not a Rust panic:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("GAP-16"),
+        "expected the GAP-16 diagnostic text, got:\n{stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Round-7 plan Task 3 (BUG-66, GAP-18, review Part 3.1): a hoisted wire
+// needed by an instance port connection, a `reg` reset value, or a `mem`
+// init/depth expression used to be declared AFTER the line that already
+// used it — all three render before `hoist_pos` is captured
+// (`module/mod.rs`). `mimz check`/`compile` both exited 0; real Icarus
+// refused every one of them ("declaration after use"). Task 3 routes
+// these three sites' hoists through a second buffer
+// (`pre_decl_hoisted_decls`) spliced right after the module's own
+// wire/reg/mem declarations instead. Every differential below shares the
+// same math (`a = 0b1111`, `b = 0b1010` → `{b, extend(a, 8)}` = 0xA0F =
+// 2575), matching BUG-63's own value so a wrong-order-vs-wrong-value
+// regression is equally visible either way.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_66_a1_instance_port_connection_hoist_matches_icarus() {
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  let u = Sub() { d: { b, extend(a, 8) } }\n  \
+                y = u.q\n}\n\n\
+                module Sub {\n  in d: bits[12]\n  out q: bits[12]\n  q = d\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_66_a1_repeat_unrolled_instance_port_connection_hoist_matches_icarus() {
+    // "A1 also reproduces through a `repeat`-unrolled instance array (two
+    // wires, both out of order)" — review Part 3.1.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  repeat i: 0..2 {\n    \
+                let u[i] = Sub() { d: { b, extend(a, 8) } }\n  }\n  \
+                y = u[0].q\n}\n\n\
+                module Sub {\n  in d: bits[12]\n  out q: bits[12]\n  q = d\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+/// `reg`/`mem` reset-and-init values don't go through `differential_clocked`
+/// (BUG-66 A2/A3 below): `elaborate_project` (mimz-sim) requires that
+/// value to be a compile-time constant — a pre-existing, separate
+/// limitation of OUR OWN kernel, unrelated to BUG-66 (the checker, and
+/// the emitter, both accept a runtime port there; only mimz-sim's
+/// elaborator doesn't). Compiles + runs against real Icarus directly
+/// instead (mirrors the review's own verification method for these two
+/// repros): the acceptance oracle is `support::run_vvp`'s own build-status
+/// assert (BUG-66 made Icarus refuse to elaborate this at all) plus a
+/// value check against the source's own math.
+fn icarus_only_clocked(
+    bin: &std::path::Path,
+    src: &str,
+    tag: &str,
+    inputs: &[(&str, u32, u128)],
+    output: (&str, u32),
+    cycles: u64,
+) -> std::collections::BTreeMap<String, u128> {
+    let path = std::env::temp_dir().join(format!("mimz_{tag}.mimz"));
+    fs::write(&path, src).unwrap();
+    let design_v = support::compile_example(&path);
+    let _ = fs::remove_file(&path);
+    let inputs_meta: Vec<(String, u32, u128)> = inputs
+        .iter()
+        .map(|(n, w, v)| (n.to_string(), *w, *v))
+        .collect();
+    let outputs_meta = vec![(output.0.to_string(), output.1)];
+    let tb = support::clocked_testbench(
+        "Fuzz",
+        &[],
+        "clk",
+        Some("rst"),
+        &inputs_meta,
+        &outputs_meta,
+        cycles,
+        1,
+    );
+    let stdout = support::run_vvp(bin, tag, &design_v, &tb);
+    let icarus = support::parse_icarus(&stdout);
+    let last = *icarus
+        .keys()
+        .max()
+        .expect("no cycles recorded in Icarus output");
+    icarus[&last].clone()
+}
+
+#[test]
+fn bug_66_a2_reg_reset_hoist_matches_icarus() {
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  reg r: bits[12] = { b, extend(a, 8) }\n  \
+                on rise(clk) {\n    r <- { b, extend(a, 8) }\n  }\n  \
+                y = r\n}\n";
+    let row = icarus_only_clocked(
+        &bin,
+        src,
+        "bug_66_a2",
+        &[("a", 4, 0b1111), ("b", 4, 0b1010)],
+        ("y", 12),
+        4,
+    );
+    assert_eq!(row["y"], 2575, "expected y = {{b, extend(a,8)}} = 2575");
+}
+
+// ---------------------------------------------------------------------
+// Round-7 plan Task 4 (BUG-67, review Part 3.2): `render_fn_decl`'s
+// `fn_decls` never carried a `fn_ret_decl_key` for any project `fn` —
+// `build_decls` (module scope) does, so a nested `fn` call resolved fine
+// one level up but was unresolvable (`infer_kind` → `None`) inside
+// ANOTHER `fn`'s own body. BUG-28's founding divergence (2575 vs the
+// correct Icarus value), reached through a sixth context.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_67_nested_fn_call_in_a_concat_inside_a_fn_body_matches_icarus() {
+    let src = "fn inner(x: bits[4]) -> bits[4] { x }\n\
+               fn outer(x: bits[4], c: bits[4]) -> bits[12] { { c, extend(inner(x), 8) } }\n\n\
+               module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[12]\n  \
+               y = outer(a, b)\n}\n";
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_67_extend_of_a_nested_fn_call_inside_a_fn_body_matches_icarus() {
+    // A distinct self-determined position from the concat-member test above
+    // (a reduction operand, BUG-62①'s own shape one level deeper: a nested
+    // `fn` call instead of a bare parameter) — proves the fix isn't
+    // coincidentally narrow to the concat-member call site.
+    let src = "fn inner(x: bits[4]) -> bits[4] { x }\n\
+               fn allset(x: bits[4]) -> bit { &extend(inner(x), 8) }\n\n\
+               module Fuzz {\n  in a: bits[4]\n  out y: bit\n  y = allset(a)\n}\n";
+    differential(src, &[("a", 0b1111)]);
+}
+
+#[test]
+fn bug_67_module_scope_nested_fn_call_control_still_matches_icarus() {
+    // The module-scope control the plan itself names: `inner(a)` called
+    // directly from a MODULE body (not from inside another `fn`) already
+    // resolved correctly before this task (`build_decls` — not
+    // `render_fn_decl` — installs `fn_ret_decl_key` there) and must stay
+    // that way; Task 4 only touches `render_fn_decl`'s OWN map.
+    let src = "fn inner(x: bits[4]) -> bits[4] { x }\n\n\
+               module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[12]\n  \
+               y = { b, extend(inner(a), 8) }\n}\n";
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_66_a3_mem_init_hoist_matches_icarus() {
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  mem m: bits[12][4] = { b, extend(a, 8) }\n  \
+                y = m[0]\n}\n";
+    let row = icarus_only_clocked(
+        &bin,
+        src,
+        "bug_66_a3",
+        &[("a", 4, 0b1111), ("b", 4, 0b1010)],
+        ("y", 12),
+        4,
+    );
+    assert_eq!(row["y"], 2575, "expected y = {{b, extend(a,8)}} = 2575");
+}
+
+// ---------------------------------------------------------------------
+// Round-7 plan Task 5 (BUG-68, review Part 3.3): `emit_testbench` built
+// `cur_decls` (hoisting) AND its own port-declaration/connection loop
+// from `dut.items` UNFLATTENED — so any port a `const if`/`sync loop`
+// generates was invisible to both, in two distinct symptoms sharing one
+// cause: (a) a hoisting `expect` panicked (`hoist_unresolved`, the port's
+// `Kind` wasn't in `cur_decls`), (b) a plain `expect`'s testbench had NO
+// `wire`/connection for the port at all — `mimz test` reported PASS,
+// real Icarus refused to elaborate ("Unable to bind"). Fixed by giving
+// `emit_testbench` one flattened item list (`flat_dut_items`,
+// `testbench.rs`) and reading it everywhere `dut.items` used to be read
+// (decls, the port loop, the clock/reset zero-init loop, and cover
+// collection — the review named only the first two, but every one of
+// these was the SAME unflattened-view bug, so all were fixed together).
+//
+// The review's own repro uses a FILE-LEVEL `const if (BIG == 1)` —
+// deliberately NOT reused here: `emit_testbench` never folds file- or
+// module-level consts into its own `env` at all (a SEPARATE, pre-existing
+// limitation this task doesn't touch — confirmed by hand: even a bare
+// `bits[W]` port width with no `const if` involved fails to resolve under
+// `--emit-testbench` today). A literal `const if (1 == 1)` condition
+// isolates BUG-68's own defect (unflattened item visibility) without
+// tripping that unrelated gap.
+// ---------------------------------------------------------------------
+
+/// Compiles `src` with `--emit-testbench`, builds + runs the FIRST
+/// `module <name>;` found in the generated testbench against real Icarus,
+/// and returns its stdout. Mirrors `tests/icarus.rs`'s own
+/// `compile_example_tb` (private to that file, not reusable here) —
+/// this crate's one-off counterpart, since none of the shared `support`
+/// helpers drive `--emit-testbench` end to end.
+fn compile_and_run_testbench(bin: &std::path::Path, src: &str, tag: &str) -> String {
+    let path = std::env::temp_dir().join(format!("mimz_{tag}.mimz"));
+    fs::write(&path, src).unwrap();
+    let out_v = std::env::temp_dir().join(format!("mimz_{tag}.v"));
+    let out_tb = std::env::temp_dir().join(format!("mimz_{tag}_tb.v"));
+    let out = support::mimz()
+        .arg("compile")
+        .arg(&path)
+        .arg("-o")
+        .arg(&out_v)
+        .arg("--emit-testbench")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "`mimz compile --emit-testbench` failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let tb_src = fs::read_to_string(&out_tb).unwrap();
+    let name = tb_src
+        .lines()
+        .find_map(|l| l.strip_prefix("module ")?.strip_suffix(';'))
+        .expect("no `module <name>;` line in the emitted testbench");
+    let vvp_out = std::env::temp_dir().join(format!("mimz_{tag}.vvp"));
+    let build = support::tool(bin, "iverilog")
+        .arg("-o")
+        .arg(&vvp_out)
+        .args(["-s", name])
+        .arg(&out_tb)
+        .arg(&out_v)
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "iverilog failed to build `{name}`:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let sim = support::tool(bin, "vvp")
+        .current_dir(std::env::temp_dir())
+        .arg(&vvp_out)
+        .output()
+        .unwrap();
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(&out_v);
+    let _ = fs::remove_file(&out_tb);
+    let _ = fs::remove_file(&vvp_out);
+    // The testbench's own `$dumpfile("{name}.vcd")` writes into `vvp`'s
+    // `current_dir` above (`std::env::temp_dir()`), never the repo root —
+    // still clean it up so temp doesn't accumulate one per test run.
+    let _ = fs::remove_file(std::env::temp_dir().join(format!("{name}.vcd")));
+    let stdout = String::from_utf8_lossy(&sim.stdout).to_string();
+    assert!(
+        sim.status.success(),
+        "vvp failed running `{name}`:\n{stdout}"
+    );
+    stdout
+}
+
+#[test]
+fn bug_68_const_if_declared_port_is_declared_and_connected_in_the_emitted_testbench() {
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    // The port-declaration half — needs no hoist at all, so it was
+    // invisible to every hoist invariant: `mimz test` reported PASS
+    // (its own elaborator has no such unflattened view), the emitted
+    // testbench had no `wire y`/`.y(y)` at all, and real Icarus refused
+    // to elaborate.
+    let src = "module Fuzz {\n  in a: bits[4]\n  const if (1 == 1) {\n    out y: bits[4]\n  }\n  \
+               y = a\n}\n\n\
+               test \"t\" for Fuzz {\n  a = 0b1111\n  expect y == 0b1111\n}\n";
+    let stdout = compile_and_run_testbench(&bin, src, "bug_68_plain");
+    assert!(
+        stdout.contains("PASS") && !stdout.contains("FAIL"),
+        "expected PASS, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn bug_68_const_if_declared_port_in_a_hoisting_expect_matches_icarus() {
+    // The hoisting half — BUG-62 ⑨'s exact rendering (`(&(y))`, a fallback
+    // `hoist_unresolved` used to panic on) reached through a `const if`-
+    // generated port instead of a plain module port.
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "module Fuzz {\n  in a: bits[4]\n  const if (1 == 1) {\n    out y: bits[4]\n  }\n  \
+               y = a\n}\n\n\
+               test \"t\" for Fuzz {\n  a = 0b1111\n  expect &extend(y, 8) == 0\n}\n";
+    let stdout = compile_and_run_testbench(&bin, src, "bug_68_hoist");
+    assert!(
+        stdout.contains("PASS") && !stdout.contains("FAIL"),
+        "expected PASS, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn bug_68_sync_loop_declared_ports_are_declared_and_connected_in_the_emitted_testbench() {
+    // `sync loop`'s 4 generated ports (`_start`/`_done`/`_result`/
+    // `_running`) are the other half of what `flatten_items` adds —
+    // `expand_sync_prims`, not `ConstIf` expansion.
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "module Search {\n  clock clk\n  reset rst\n  mem m: bits[8][8] = 0\n  \
+               in key: bits[8]\n  sync loop find_first on rise(clk) (i: 0..8) -> \
+               result: signed[4] = 0 - 1 {\n    if m[i] == key { result <- 0 - 1 }\n  }\n}\n\n\
+               test \"t\" for Search {\n  key = 0\n  tick(clk)\n  \
+               expect find_first_running == 0\n}\n";
+    let stdout = compile_and_run_testbench(&bin, src, "bug_68_sync_loop");
+    assert!(
+        stdout.contains("PASS") && !stdout.contains("FAIL"),
+        "expected PASS, got:\n{stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Round-7 plan Task 6 (review Part 5): round-6 Task 7 left `if-expr
+// then-branch` (`expr.rs:414`) and `if-expr else-branch` (`expr.rs:416`)
+// marked as HONEST open coverage gaps in `HOIST_CALL_SITES` — correctly,
+// since no differential pinned them. Both sites are load-bearing: with
+// `a = 0b1111` (15), `a +% a` wraps to 14 and `a *% a` wraps to 1 at 4
+// bits; deleting either branch's hoist lets Verilog self-determine the
+// operator at the OUTER `extend(...)`'s 8-bit context instead of the
+// `if`'s own 4-bit width, giving the full UNWRAPPED value (30, 225) —
+// exactly what these differentials would catch. With both hoists removed
+// by hand, the review found the ENTIRE workspace produced exactly one
+// failure: `every_hoist_call_site_in_expr_rs_has_a_coverage_entry`,
+// because the call-site COUNT changed — no behavioral test noticed two
+// load-bearing hoists vanish. These four close that.
+// ---------------------------------------------------------------------
+
+#[test]
+fn task6_if_expr_then_branch_wrap_add_operand_inside_extend_matches_icarus() {
+    let src = "module Fuzz {\n  in c: bit\n  in a: bits[4]\n  out y: bits[8]\n  \
+               y = extend((if c { a +% a } else { a }), 8)\n}\n";
+    differential(src, &[("c", 1), ("a", 0b1111)]);
+}
+
+#[test]
+fn task6_if_expr_then_branch_wrap_mul_operand_inside_extend_matches_icarus() {
+    let src = "module Fuzz {\n  in c: bit\n  in a: bits[4]\n  out y: bits[8]\n  \
+               y = extend((if c { a *% a } else { a }), 8)\n}\n";
+    differential(src, &[("c", 1), ("a", 0b1111)]);
+}
+
+#[test]
+fn task6_if_expr_else_branch_wrap_add_operand_inside_extend_matches_icarus() {
+    let src = "module Fuzz {\n  in c: bit\n  in a: bits[4]\n  out y: bits[8]\n  \
+               y = extend((if c { a } else { a +% a }), 8)\n}\n";
+    differential(src, &[("c", 0), ("a", 0b1111)]);
+}
+
+#[test]
+fn task6_if_expr_else_branch_wrap_mul_operand_inside_extend_matches_icarus() {
+    let src = "module Fuzz {\n  in c: bit\n  in a: bits[4]\n  out y: bits[8]\n  \
+               y = extend((if c { a } else { a *% a }), 8)\n}\n";
+    differential(src, &[("c", 0), ("a", 0b1111)]);
 }

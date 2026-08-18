@@ -114,6 +114,21 @@ impl Emitter<'_> {
                 );
             }
         }
+        // Round-7 plan Task 4 (BUG-67): mirrors `build_decls`'s OWN
+        // identical loop (`module/ports.rs`) — every project `fn`'s
+        // declared return `Kind`, independent of any one call's arguments.
+        // Without this, `infer_kind`'s `FnCall` arm (`kinds.rs`) resolves a
+        // nested call one level up (module scope, where `build_decls` DOES
+        // install these keys) but not inside a `fn` body, where this map
+        // used to be the only source of truth and never carried them —
+        // BUG-28's founding divergence, reached through a sixth context.
+        // `mem_elem_decl_key` and the instance-port keys stay absent: a
+        // `fn` can read neither.
+        for (fname, other) in &self.project.funcs {
+            if let Some(k) = self.scalar_kind_in_env(&other.ret, &self.env) {
+                fn_decls.insert(crate::emit_verilog::kinds::fn_ret_decl_key(fname), k);
+            }
+        }
         self.cur_decls = std::rc::Rc::new(fn_decls);
 
         let ret_w = self.width(&decl.ret);

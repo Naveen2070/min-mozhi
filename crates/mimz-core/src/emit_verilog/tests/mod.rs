@@ -9,6 +9,7 @@ mod consts_and_translit;
 mod consts_scoping;
 mod extern_and_arrays;
 mod fn_loop;
+mod hoist_declaration_order;
 mod structural_match;
 mod valid_bundle_sugar;
 
