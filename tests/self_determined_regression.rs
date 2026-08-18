@@ -2669,12 +2669,23 @@ const HOIST_CALL_SITES: &[HoistCallSite] = &[
             unresolved` code `concat member` already proves in both \
             contexts (this function has no separate branch for `Concat` \
             vs `Replicate` — both route through the same three calls). \
-            Fires: shape_replicate_operand_of_extend_in_a_concat_matches_\
-            icarus, bug_60_and_reduction_of_an_extend_in_a_replication_\
-            matches_icarus. Doesn't fire: a bare-identifier replication \
-            body shares `concat member`'s own is_plain_identifier control \
-            architecturally (same code, same guard). None branch: same \
-            as `concat member`.",
+            Fires: round-7 plan Task 7 (review Part 9.2) replaced this \
+            entry's own former citations — shape_replicate_operand_of_\
+            extend_in_a_concat_matches_icarus (`extend({2{a}}, 12)`) \
+            actually hoists at `concat member` (the MISMATCH there is the \
+            whole replication vs `extend`'s target width, `a` alone is \
+            already correct as the replication's own body) and bug_60_\
+            and_reduction_of_an_extend_in_a_replication_matches_icarus \
+            (`&({2{extend(a,8)}})`) hoists at `Unary reduction operand`, \
+            neither reaching THIS site — confirmed by reading both \
+            emissions. task7_replicate_member_hoists_a_composite_body_\
+            matches_icarus (`{c, {2{extend(a, 8)}}}`) isolates the \
+            REPLICATION BODY itself as the mismatch instead, confirmed by \
+            hand-reading its own emission: exactly one hoisted wire, \
+            `{c, {2{__mimz_sub_1}}}`. Doesn't fire: a bare-identifier \
+            replication body shares `concat member`'s own \
+            is_plain_identifier control architecturally (same code, same \
+            guard). None branch: same as `concat member`.",
     },
     HoistCallSite {
         name: "signed-cast operand",
@@ -2705,14 +2716,31 @@ const HOIST_CALL_SITES: &[HoistCallSite] = &[
         name: "encoding operand",
         via: "hoist_if_needed",
         coverage: "Position: `Builtin::Encoding`'s own argument (an \
-            enum-to-bits cast, expr.rs:1083). Contexts: module/fn/\
-            testbench, same self-determined reasoning as the two cast \
-            operands above (no dedicated fn-body/testbench differential). \
-            Fires: matrix_encoding_of_payload_enum_in_concat_matches_\
-            icarus. Doesn't fire: matrix_encoding_of_tag_only_enum_in_\
-            concat_matches_icarus's own no-payload (already-matching) \
-            case. None branch: try_widen_symbolic_extend then hoist_\
-            unresolved(\"encoding operand\").",
+            enum-to-bits cast, expr.rs:1083). Round-7 plan Task 7 (review \
+            Part 9.2) found this entry's former citation \
+            (matrix_encoding_of_payload_enum_in_concat_matches_icarus) is \
+            a bare identifier (`p`) — no mismatch, nothing to hoist, \
+            proving nothing about this site. Looking for a REAL fires \
+            case (not just a corrected citation) turned up a genuinely \
+            open question, checked by hand rather than assumed: \
+            `infer_kind`'s own `EnumConstruct` arm (kinds.rs) is `_ => \
+            None` UNCONDITIONALLY — deliberate, since `EnumConstruct`'s \
+            rendering already explicitly zero-pads to the enum's full \
+            tag+payload width (confirmed by compiling `encoding(if ... { \
+            Packet.Ctrl(k) } else { Packet.Data(v) })` and \
+            `encoding(match sel { ... })` directly: both reach `encoding \
+            operand` with `infer_kind` returning `None` — `IfExpr`/`Match` \
+            recurse into their own arms, which are `EnumConstruct`s, \
+            which are always `None`). So EVERY enum-typed non-identifier \
+            expression this language can currently construct (a bare \
+            `EnumConstruct`, or an `if`/`match` wrapping one) routes \
+            through `hoist_unresolved`'s fallback here, never through \
+            `hoist_if_needed`'s own `Some(k)` comparison — this is a \
+            genuinely open, structurally-unreachable-today coverage gap, \
+            not a citation that merely needed replacing. Fires: nothing \
+            found; stated honestly rather than fabricated (round-6 Task \
+            8's own (a′-2) rule). None branch: hoist_unresolved(\"encoding \
+            operand\") — confirmed live above, not theoretical.",
     },
     HoistCallSite {
         name: "nand operand",
@@ -2733,26 +2761,38 @@ const HOIST_CALL_SITES: &[HoistCallSite] = &[
         via: "hoist_if_needed",
         coverage: "Position: `nor(...)`'s own argument (Builtin::Nor, \
             expr.rs:1316) — identical shape to `nand operand`, opposite \
-            polarity. Fires: bug_60_or_reduction_of_a_negated_extend_\
-            matches_icarus (module body only — no fn-body differential \
-            isolates `nor` specifically; the code path is byte-identical \
-            to `nand operand`'s own fn-body-proven one, `Nand`/`Nor`/\
-            `Xnor` sharing one `hoist_if_needed`/`try_widen_symbolic_\
-            extend`/`hoist_unresolved` shape and differing only in the \
-            render template). Doesn't fire: matrix_nor_in_concat_matches_\
-            icarus's own no-mismatch case. Contexts and None branch: same \
-            as `nand operand`.",
+            polarity. Fires: round-7 plan Task 7 (review Part 9.2) — the \
+            former citation, bug_60_or_reduction_of_a_negated_extend_\
+            matches_icarus, is `|(~extend(a, 8))`: a `|` UNARY REDUCTION \
+            over a negated extend, which hoists at `Unary reduction \
+            operand` (expr.rs:589) and never reaches `Builtin::Nor`'s own \
+            call site at all — confirmed by reading its emission. \
+            task7_nor_operand_of_an_extend_matches_icarus \
+            (`nor(extend(a, 8))`, the actual builtin call) isolates this \
+            site instead, confirmed the same way (module body only — no \
+            fn-body differential isolates `nor` specifically; the code \
+            path is byte-identical to `nand operand`'s own fn-body-proven \
+            one, `Nand`/`Nor`/`Xnor` sharing one `hoist_if_needed`/\
+            `try_widen_symbolic_extend`/`hoist_unresolved` shape and \
+            differing only in the render template). Doesn't fire: \
+            matrix_nor_in_concat_matches_icarus's own no-mismatch case. \
+            Contexts and None branch: same as `nand operand`.",
     },
     HoistCallSite {
         name: "xnor operand",
         via: "hoist_if_needed",
         coverage: "Position: `xnor(...)`'s own argument (Builtin::Xnor, \
             expr.rs:1330) — identical shape to `nand operand`/`nor \
-            operand`. Fires: matrix_xnor_in_concat_matches_icarus's own \
-            mismatch half (BUG-35's fix, per builtin_infer_call_coverage \
-            above) — module body only, same fn-body gap as `nor \
-            operand`. Doesn't fire: the same test's own no-mismatch half. \
-            Contexts and None branch: same as `nand operand`.",
+            operand`. Fires: round-7 plan Task 7 (review Part 9.2) — the \
+            former citation, matrix_xnor_in_concat_matches_icarus, is \
+            `xnor(a)`: `a` bare, no mismatch, its OWN no-mismatch control \
+            case, proving nothing about this site — confirmed by reading \
+            its emission (`(~^(a))`, no hoist). task7_xnor_operand_of_an_\
+            extend_matches_icarus (`xnor(extend(a, 8))`) isolates a real \
+            mismatch instead, confirmed the same way — module body only, \
+            same fn-body gap as `nor operand`. Doesn't fire: matrix_xnor_\
+            in_concat_matches_icarus (unchanged, still the no-mismatch \
+            control). Contexts and None branch: same as `nand operand`.",
     },
     HoistCallSite {
         name: "symbolic-extend base",
@@ -2983,36 +3023,55 @@ const HOIST_CALL_SITES: &[HoistCallSite] = &[
     },
 ];
 
-/// Round-6 plan Task 7 (GAP-17): the crude, build-enforced half of the
-/// exhaustiveness this axis can't get from a `match`. Counts every
-/// `self.hoist_if_needed(`/`self.hoist_slice_base_if_needed(`/
-/// `self.hoist_width_effect_operand(` call TEXT appears in `expr.rs` and
-/// asserts it equals `HOIST_CALL_SITES.len()` — a plain string count, not
-/// an AST walk, deliberately: "crude, and enough" is this task's own
-/// stated bar, and a source-scan the reader can verify by eye (`grep -c`)
-/// is more trustworthy than a parser this test would itself need proving
-/// correct. Adding, removing, or renaming a hoist call site without
-/// updating `HOIST_CALL_SITES` above fails here — the enforcement Task 7
-/// asks for, applied to a source location instead of an enum variant.
+/// Round-6 plan Task 7 (GAP-17), widened by round-7 plan Task 7 (review
+/// Part 4.2): the crude, build-enforced half of the exhaustiveness this
+/// axis can't get from a `match`. Counts every `self.hoist_if_needed(`/
+/// `self.hoist_slice_base_if_needed(`/`self.hoist_width_effect_operand(`
+/// call TEXT appears ANYWHERE under `crates/mimz-core/src/emit_verilog/`
+/// (every `.rs` file, not just `expr.rs`) and asserts it equals
+/// `HOIST_CALL_SITES.len()` — a plain string count, not an AST walk,
+/// deliberately: "crude, and enough" is round-6 Task 7's own stated bar,
+/// and a source-scan the reader can verify by eye (`grep -rc`) is more
+/// trustworthy than a parser this test would itself need proving correct.
+/// Round 7's own review found the count was correct today (21 sites, all
+/// in `expr.rs`) but noted the guard scanning `expr.rs` ALONE would miss
+/// a hoist call added in a NEW emitter context/file — precisely the
+/// failure mode this whole axis exists to catch (BUG-66/67/68 were all
+/// new-context failures). Adding, removing, or renaming a hoist call site
+/// ANYWHERE in `emit_verilog/` without updating `HOIST_CALL_SITES` above
+/// now fails here.
 #[test]
-fn every_hoist_call_site_in_expr_rs_has_a_coverage_entry() {
-    let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/mimz-core/src/emit_verilog/expr.rs");
-    let src =
-        fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+fn every_hoist_call_site_in_emit_verilog_has_a_coverage_entry() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/mimz-core/src/emit_verilog");
     let patterns = [
         "self.hoist_if_needed(",
         "self.hoist_slice_base_if_needed(",
         "self.hoist_width_effect_operand(",
     ];
-    let actual: usize = patterns.iter().map(|pat| src.matches(pat).count()).sum();
+    let mut actual = 0;
+    let mut stack = vec![root];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let src = fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+                actual += patterns
+                    .iter()
+                    .map(|pat| src.matches(pat).count())
+                    .sum::<usize>();
+            }
+        }
+    }
     assert_eq!(
         actual,
         HOIST_CALL_SITES.len(),
-        "expr.rs now has {actual} hoist_if_needed/hoist_slice_base_if_needed/\
-         hoist_width_effect_operand call sites but HOIST_CALL_SITES here has \
-         {} entries — round-6 plan Task 7 (GAP-17): every hoist call site \
-         needs its own coverage entry (position, emitter context(s), \
+        "emit_verilog/ now has {actual} hoist_if_needed/hoist_slice_base_if_needed/\
+         hoist_width_effect_operand call sites (across every .rs file, not just \
+         expr.rs) but HOIST_CALL_SITES here has {} entries — every hoist call \
+         site needs its own coverage entry (position, emitter context(s), \
          fires/doesn't-fire differentials, None-branch safety). Add or \
          remove an entry above to match.",
         HOIST_CALL_SITES.len()
@@ -3074,23 +3133,7 @@ fn hoist_call_sites_are_well_formed_and_unique() {
 /// running regression instead of a one-time audit claim.
 #[test]
 fn task1_hoisted_wire_is_never_referenced_before_its_declaration() {
-    let mut stack = vec![
-        support::repo().join("examples"),
-        support::repo().join("demo"),
-    ];
-    let mut files = Vec::new();
-    while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "mimz") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    assert!(!files.is_empty(), "corpus sweep found no .mimz files");
+    let files = support::corpus_files();
     for path in &files {
         support::compile_example(path);
     }
@@ -3510,4 +3553,56 @@ fn task6_if_expr_else_branch_wrap_mul_operand_inside_extend_matches_icarus() {
     let src = "module Fuzz {\n  in c: bit\n  in a: bits[4]\n  out y: bits[8]\n  \
                y = extend((if c { a } else { a *% a }), 8)\n}\n";
     differential(src, &[("c", 0), ("a", 0b1111)]);
+}
+
+// ---------------------------------------------------------------------
+// Round-7 plan Task 7 (review Part 9.2): three `HOIST_CALL_SITES` entries
+// (`replicate member`, `nor operand`, `xnor operand`) cited a test that
+// never reached the position — each hoisted somewhere ELSE instead
+// (`replicate member`'s citation hoisted at `concat member`; `nor
+// operand`'s citation was a `|` unary reduction, not the `nor` builtin;
+// `xnor operand`'s citation was its own no-mismatch control, proving
+// nothing). Confirmed each of the three below by reading the emission,
+// not just running it — see the `HOIST_CALL_SITES` entries' own updated
+// citations for the exact `.v` text each produces.
+// ---------------------------------------------------------------------
+
+#[test]
+fn task7_replicate_member_hoists_a_composite_body_matches_icarus() {
+    // `{2{extend(a, 8)}}` — the REPLICATION BODY itself (`extend(a, 8)`,
+    // 4-bit `a` needing to render at 8) is the mismatch, isolated from
+    // `extend`'s own argument position by nesting the replication INSIDE
+    // a concat instead of inside `extend`'s argument (the wrong citation's
+    // own shape, `extend({2{a}}, 12)`, which hoists at `concat member`
+    // because the MISMATCH there is the whole replication vs `extend`'s
+    // target width, not the replication's own body). Emission confirmed
+    // by hand: exactly one hoisted wire, `{c, {2{__mimz_sub_1}}}` — the
+    // replication's OWN total width (2×8=16) already matches `extend`'s
+    // target once the body is hoisted, so no second, concat-member-level
+    // hoist fires on top.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in c: bits[4]\n  out y: bits[20]\n  \
+               y = { c, {2{extend(a, 8)}} }\n}\n";
+    differential(src, &[("a", 0b1010), ("c", 0b0101)]);
+}
+
+#[test]
+fn task7_nor_operand_of_an_extend_matches_icarus() {
+    // The `nor(...)` BUILTIN's own argument — distinct from `bug_60_or_
+    // reduction_of_a_negated_extend_matches_icarus`'s `|(~extend(a, 8))`,
+    // which is a `|` unary reduction over a negated extend and hoists at
+    // `expr.rs:589` (`Unary reduction operand`), never reaching `Builtin::
+    // Nor`'s own call site at all.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[5]\n  \
+               y = { b, nor(extend(a, 8)) }\n}\n";
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn task7_xnor_operand_of_an_extend_matches_icarus() {
+    // `matrix_xnor_in_concat_matches_icarus`'s own source is `xnor(a)` —
+    // `a` bare, no mismatch, nothing to hoist. This forces a composite
+    // (`extend(a, 8)`) into the SAME position instead.
+    let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[5]\n  \
+               y = { b, xnor(extend(a, 8)) }\n}\n";
+    differential(src, &[("a", 0b1111), ("b", 0b1010)]);
 }

@@ -22,8 +22,8 @@
 //! one buffer flushed at a single saved position (`hoist_pos`); correct
 //! only when every render site that can push into that buffer runs after
 //! the flush point. BUG-66 found three that don't. Enforced by
-//! [`assert_hoists_declared_before_use`], run over every module's own
-//! assembled text right after [`Emitter::module`] returns.
+//! `assert_hoists_declared_before_use` (private), run over every module's own
+//! assembled text right after `Emitter::module` (private) returns.
 
 mod expr;
 mod kinds;
