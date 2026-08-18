@@ -276,7 +276,13 @@ pub(crate) fn run_vvp(bin: &Path, example: &str, design_v: &Path, tb: &str) -> S
         "iverilog failed on the {example} differential testbench:\n{}\n--- tb ---\n{tb}",
         String::from_utf8_lossy(&build.stderr)
     );
-    let sim = tool(bin, "vvp").arg(&vvp_out).output().unwrap();
+    let sim = tool(bin, "vvp")
+        .current_dir(std::env::temp_dir())
+        .arg(&vvp_out)
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_file(&tb_path);
+    let _ = std::fs::remove_file(&vvp_out);
     let stdout = String::from_utf8_lossy(&sim.stdout).to_string();
     assert!(sim.status.success(), "vvp failed on {example}:\n{stdout}");
     stdout

@@ -517,7 +517,14 @@ fn every_emitted_testbench_reports_pass_under_vvp() {
                 path.display(),
                 String::from_utf8_lossy(&build.stderr)
             );
-            let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+            let vcd_out = std::env::temp_dir().join(format!("{name}.vcd"));
+            let sim = tool(&bin, "vvp")
+                .current_dir(std::env::temp_dir())
+                .arg(&vvp_out)
+                .output()
+                .unwrap();
+            let _ = std::fs::remove_file(&vvp_out);
+            let _ = std::fs::remove_file(&vcd_out);
             let stdout = String::from_utf8_lossy(&sim.stdout);
             assert!(
                 sim.status.success(),
@@ -541,6 +548,14 @@ fn every_emitted_testbench_reports_pass_under_vvp() {
         checked >= 5,
         "expected at least the tested examples' testbenches to have run, found {checked}"
     );
+
+    // Verify no .vcd files were leaked into the repository root.
+    for entry in std::fs::read_dir(repo()).unwrap().flatten() {
+        let p = entry.path();
+        if p.is_file() && p.extension().is_some_and(|e| e == "vcd") {
+            panic!("leaked .vcd file found in repo root: {}", p.display());
+        }
+    }
 }
 
 /// BUG-51 (docs/audit/bugs.md), found verifying Task 8 of `docs/plan/v0.2-
@@ -579,6 +594,7 @@ fn emitted_testbench_reset_deassert_does_not_race_the_dut() {
 
     let tb_module = "reset_value_survives_exactly_one_tick_tb";
     let vvp_out = std::env::temp_dir().join("mimz_bug51_reset_race.vvp");
+    let vcd_out = std::env::temp_dir().join(format!("{tb_module}.vcd"));
     let build = tool(&bin, "iverilog")
         .arg("-o")
         .arg(&vvp_out)
@@ -592,7 +608,13 @@ fn emitted_testbench_reset_deassert_does_not_race_the_dut() {
         "iverilog failed to build the BUG-51 testbench:\n{}",
         String::from_utf8_lossy(&build.stderr)
     );
-    let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+    let sim = tool(&bin, "vvp")
+        .current_dir(std::env::temp_dir())
+        .arg(&vvp_out)
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_file(&vvp_out);
+    let _ = std::fs::remove_file(&vcd_out);
     assert!(sim.status.success(), "vvp failed to run");
     let stdout = String::from_utf8_lossy(&sim.stdout);
     assert!(
@@ -640,6 +662,7 @@ fn emitted_testbench_prints_the_cover_summary() {
 
     let tb_module = "drive_one_cycle_tb";
     let vvp_out = std::env::temp_dir().join("mimz_task8_cover_summary.vvp");
+    let vcd_out = std::env::temp_dir().join(format!("{tb_module}.vcd"));
     let build = tool(&bin, "iverilog")
         .arg("-o")
         .arg(&vvp_out)
@@ -653,7 +676,13 @@ fn emitted_testbench_prints_the_cover_summary() {
         "iverilog failed to build the cover-summary testbench:\n{}",
         String::from_utf8_lossy(&build.stderr)
     );
-    let sim = tool(&bin, "vvp").arg(&vvp_out).output().unwrap();
+    let sim = tool(&bin, "vvp")
+        .current_dir(std::env::temp_dir())
+        .arg(&vvp_out)
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_file(&vvp_out);
+    let _ = std::fs::remove_file(&vcd_out);
     assert!(sim.status.success(), "vvp failed to run");
     let stdout = String::from_utf8_lossy(&sim.stdout);
     assert!(stdout.contains("PASS"), "test itself must pass:\n{stdout}");
