@@ -22,23 +22,26 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## Index
 
-| ID                                                                                                                                | Gap                                                                     | Severity   | Status |
-| --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
-| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                             | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
-| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                                   | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                                  | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
-| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                                   | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)                     | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                                  | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                                 | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
-| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                                         | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
-| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                               | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
-| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                               | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
-| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)             | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                  | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
-| [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted) | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED |
-| [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)              | Release gate scored at 400 seeds while CI is configured for 5000        | MEDIUM     | CLOSED |
-| [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)                        | Per-arm reasoning audit has no independent party (single-author repo)   | MEDIUM     | CLOSED |
+| ID                                                                                                                                                  | Gap                                                                     | Severity   | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- | ------ |
+| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                                               | No IR; width/kind semantics implemented three times                     | HIGH       | OPEN   |
+| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                                                     | 2-state simulator; no X/Z, no tri-state/`inout`                         | MEDIUM     | OPEN   |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                                                    | Parser violates the mandatory-help contract (14/60 sites)               | MEDIUM     | CLOSED |
+| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                                                     | String-keyed name resolution; no interning                              | LOW→MEDIUM | OPEN   |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)                                       | No declared-type-vs-value oracle; self-determined positions ungenerated | HIGH       | CLOSED |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                                                    | No assertions (`assert`/`assume`/`cover`)                               | MEDIUM     | CLOSED |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                                                   | No enum↔bits cast                                                       | MEDIUM     | CLOSED |
+| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                                                           | Surface gaps: division, attributes, pipelines, type generics            | MEDIUM     | OPEN   |
+| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                                                 | LSP feature set + missing fix-it spans                                  | MEDIUM     | OPEN   |
+| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                                                 | No coverage measurement; checker and emitter unfuzzed                   | LOW        | OPEN   |
+| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)                               | Width-conformance oracle vacuous; CI fuzzes 20 seeds                    | MEDIUM     | CLOSED |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                                    | `mimz compile` is superlinear in module size                            | MEDIUM     | CLOSED |
+| [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted)                   | Position matrix has no `ExprKind` axis; deleted coverage assert         | MEDIUM     | CLOSED |
+| [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)                                | Release gate scored at 400 seeds while CI is configured for 5000        | MEDIUM     | CLOSED |
+| [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)                                          | Per-arm reasoning audit has no independent party (single-author repo)   | MEDIUM     | CLOSED |
+| [GAP-16](#gap-16-high-architectural-closed-2026-08-16--the-self-determined-hoist-machinery-is-scoped-to-module-bodies-and-nothing-states-the-scope) | Self-determined hoist machinery scoped to module bodies, unstated       | HIGH       | CLOSED |
+| [GAP-18](#gap-18-high-architectural-closed-2026-08-18--the-hoist-buffers-flush-point-is-a-second-scoping-axis-and-nothing-watches-it)               | Hoist buffer's flush point is a second, unwatched scoping axis          | HIGH       | CLOSED |
+| [GAP-19](#gap-19-medium-testing-closed-2026-08-18--wasm_parity-skips-silently-and-ci-never-builds-the-artifact-it-needs)                            | `wasm_parity` skips silently; CI never builds the artifact it needs     | MEDIUM     | CLOSED |
 
 ---
 
@@ -540,7 +543,8 @@ designs are generated these are needed and there is **no escape hatch at all** �
 `extern module` covers instantiating foreign Verilog but not annotating
 mimz-generated signals. **Direction:** an attribute syntax with an explicit
 vendor-mapping table, so the mapping is data rather than emitter special cases.
-Interacts with [BUG-32](bugs.md) (memory style).
+Interacts with [BUG-32](bugs.md) (memory style — widened 2026-08-18 to cover
+every `reg`'s own `initial`-seed lowering too, see BUG-65/BUG-69).
 
 ### 8c — No pipeline construct
 
@@ -990,6 +994,41 @@ vocabulary change (GAP-5's `wrap_builtin`, v3's clocked leaves) had the
 identical effect and was never flagged. Worth a maintainer's note the next
 time the corpus is touched, not a fix here.
 
+#### Vocabulary extended again 2026-08-18 — the nested `fn` call (round-7 plan Task 11)
+
+Round 7 ([`review-2026-08-17.md`](review-2026-08-17.md), Part 7) found six
+regions this direction still does not reach, and named the cheapest as the
+highest-value: `gen_special_leaves` emitted exactly **one** `fn` per program,
+so a `fn` calling another `fn` — [BUG-67](bugs.md)'s own shape — was
+structurally unreachable at any depth. It now generates a second `fn`,
+`inner{w}`, and offers `inner{w}(x)` to the outer `fn`'s body as an ordinary
+`special` leaf, on the same footing as a port. The placement is the point: the
+call lands in whatever concat member / cast operand / `match` arm the tree
+builds around it, which is what BUG-67 needed (a self-determined position
+inside a `fn` body), not merely a call. The callee is declared only when the
+generated body actually kept the call, so no program carries an unused `fn`.
+
+**Acceptance criterion, same shape as this direction's own:** with
+[BUG-67](bugs.md)'s fix reverted and nothing else changed, 400/400 fails at
+clocked seed `202427811` (`0xC10CCED + 182`) on
+`1 => unsigned((signed(extend(54, 6)) *% signed(inner6(x))))`. 5000/5000 green
+with the fix restored (5 passed, 1246.11 s).
+
+**The seed-comment caveat above fires again, and this is the second time.**
+Adding the inner-`fn` body generation and the new special-pool entry changes
+which `rng.next_range` calls happen, so every `tests/fixtures/fuzz-seeds/`
+entry now generates a **different program** than it did before 2026-08-18. The
+corpus still replays clean in full at every depth (workspace green, 400/400 and
+5000/5000 green), but a seed's `# BUG-nn` comment is again a historical label
+rather than a live guarantee that replaying it exercises that exact shape.
+Unchanged conclusion: inherent to a probabilistic generator, not a fix here.
+
+**Still open after this** — the other five regions round 7 named: an instance
+port connection with a hoisting expression, a non-constant `reg` reset, a `mem`
+init over a signal ([BUG-66](bugs.md)), a `const if` ([BUG-68](bugs.md)), and
+any emitted-testbench verdict. Each is a separate generator feature; none is
+ship-blocking, and each bug is covered directly by its own differential.
+
 ---
 
 ## GAP-14 (MEDIUM, process) — The release gate is scored at a shallower fuzz depth than the project's own CI runs
@@ -1246,9 +1285,12 @@ is [GAP-17](#gap-17-medium-process--rule-a-audits-the-arms-the-defects-are-at-th
 
 ---
 
-## GAP-16 (HIGH, architectural) — the self-determined hoist machinery is scoped to module bodies, and nothing states the scope
+## GAP-16 (HIGH, architectural, CLOSED 2026-08-16) — the self-determined hoist machinery is scoped to module bodies, and nothing states the scope
 
-**Status:** OPEN. Filed 2026-08-15. Source:
+**Status:** CLOSED 2026-08-16 (round-6 plan Task 4 — see the second "Status
+update" below; the heading/status line themselves were stale until 2026-08-18,
+round-7 plan Task 9, which corrected them to match what the entry's own body
+already said). Filed 2026-08-15. Source:
 [`review-2026-08-15.md`](review-2026-08-15.md) (round 6).
 
 **Status update (2026-08-15, same day, round-6 plan Tasks 1–3):** the core of
@@ -1359,12 +1401,23 @@ above.
 
 ---
 
-## GAP-18 (HIGH, architectural) — the hoist buffer's flush point is a second scoping axis, and nothing watches it
+## GAP-18 (HIGH, architectural, CLOSED 2026-08-18) — the hoist buffer's flush point is a second scoping axis, and nothing watches it
 
-**Status:** OPEN. Filed 2026-08-17 by round 7
-([`review-2026-08-17.md`](review-2026-08-17.md), Parts 3.1 and 12).
+**Status:** CLOSED 2026-08-18 (round-7 plan Tasks 1 and 3). Filed 2026-08-17 by
+round 7 ([`review-2026-08-17.md`](review-2026-08-17.md), Parts 3.1 and 12).
 
-**What.** [GAP-16](#gap-16-high-architectural--the-self-determined-hoist-machinery-is-scoped-to-module-bodies-and-nothing-states-the-scope)
+**Status update (2026-08-18).** Both halves of this gap's own "Recommended
+direction" landed. Task 1: the exact post-emission invariant this entry
+specifies (`assert_hoists_declared_before_use`, `emit_verilog/mod.rs`) — no
+`__mimz_sub_N`/`__mimz_fn_sub_N` may be referenced before its own declaration
+line, checked once per assembled module body. Verified it fires on all three
+of [BUG-66](bugs/bug-61-70.md)'s reproductions and stays silent across the
+whole 226-file shipped corpus. Task 3: BUG-66 itself fixed (a second hoist
+buffer + insertion point, spliced right after the module's own signal
+declarations), so the axis is now both watched AND, for every currently known
+site, correct.
+
+**What.** [GAP-16](#gap-16-high-architectural-closed-2026-08-16--the-self-determined-hoist-machinery-is-scoped-to-module-bodies-and-nothing-states-the-scope)
 is about **which `decls` map is in scope** when a hoist site asks
 `infer_kind` a question. Round-6 Task 1 answered it with a real runtime
 invariant (`hoist_unresolved`: a hoist site may not silently do nothing when it
@@ -1410,10 +1463,20 @@ node, and there is no buffer to flush at the wrong time.
 
 ---
 
-## GAP-19 (MEDIUM, testing) — `wasm_parity` skips silently, and CI never builds the artifact it needs
+## GAP-19 (MEDIUM, testing, CLOSED 2026-08-18) — `wasm_parity` skips silently, and CI never builds the artifact it needs
 
-**Status:** OPEN. Filed 2026-08-17 by round 7
+**Status:** CLOSED 2026-08-18 (round-7 plan Task 9). Filed 2026-08-17 by round 7
 ([`review-2026-08-17.md`](review-2026-08-17.md), Part 8).
+
+**Status update (2026-08-18).** Both of the "recommended direction"'s two
+changes landed. `.github/workflows/ci.yml`'s `check` job now installs
+`wasm-pack` and builds `crates/mimz-wasm/pkg` before the `Tests` step, which
+sets `MIMZ_REQUIRE_WASM: "1"`. `tests/wasm_parity.rs::run_parity` mirrors
+`support::require_iverilog`'s own convention exactly: the early return is now
+a hard failure when `MIMZ_REQUIRE_WASM` is set and the pkg is missing, a
+silent skip otherwise. Verified all three states by hand: pkg present → both
+tests pass for real; pkg missing + flag set → both fail loud; pkg missing, no
+flag → silent skip, unchanged from before.
 
 **What.** `tests/wasm_parity.rs::run_parity` opens with:
 

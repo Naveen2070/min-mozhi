@@ -17,6 +17,31 @@ pub(crate) fn repo() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Every `.mimz` file in the shipped corpus — `examples/` **and** `demo/`,
+/// sorted. One list for every corpus sweep, so a sweep cannot silently
+/// cover half the corpus: round-7 plan Task 10 found
+/// `every_emitted_testbench_reports_pass_under_vvp` (and its two Layer-1/1.5
+/// siblings) walking `examples/` only, leaving `demo/cpu.mimz`'s emitted
+/// testbench — the one design with a `test` block outside `examples/` —
+/// unswept by the very test that closed BUG-64/65.
+pub(crate) fn corpus_files() -> Vec<PathBuf> {
+    let mut stack = vec![repo().join("examples"), repo().join("demo")];
+    let mut files = Vec::new();
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "mimz") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    assert!(!files.is_empty(), "corpus sweep found no .mimz files");
+    files
+}
+
 pub(crate) fn mimz() -> Command {
     Command::new(env!("CARGO_BIN_EXE_mimz"))
 }

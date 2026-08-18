@@ -1096,17 +1096,53 @@ fn gen_special_leaves(
     // against (`fn allset(x) { &extend(x, 8) }` etc.). Give it a REAL
     // body instead: the same `gen_expr_collecting` machinery the module
     // body uses, over the fn's own single param only (a `fn` can't see
-    // outer ports/instances/mem, so no `special` pool here), at a shallow
+    // outer ports/instances/mem, so the module's own `special` pool is out
+    // of scope here — the one below is the fn's own), at a shallow
     // depth (this is a leaf drawn sparingly, not the module's own tree),
     // then forced onto the declared return type exactly like a v3
     // register's next-state expression already is.
     {
         let (name, w, signed) = pick(rng);
         let fn_ports: Vec<Port> = vec![("x".to_string(), w, false)];
+        // Round-7 Task 11 (BUG-67): a SECOND `fn`, callable from the first
+        // one's body. The generator used to emit exactly one `fn` per
+        // program, so a `fn` calling another `fn` — the sixth context
+        // BUG-28 reappeared in, where `render_fn_decl`'s fresh `decls`
+        // omitted the callee's own `__mimz_fnret__` key — was structurally
+        // unreachable at any depth. Offered to the outer body as an
+        // ordinary `special` leaf, on the same footing as a port, so the
+        // call lands in whatever concat/builtin/`if` position the tree
+        // happens to build around it rather than only at the root.
+        let mut inner_subs = Subs::new();
+        let inner_body = gen_expr_collecting(rng, &fn_ports, &[], 1, w, &mut inner_subs);
+        let inner_body = force_width(rng, inner_body, w, false);
+        let inner_leaf = Frag {
+            text: format!("inner{w}(x)"),
+            width: w,
+            signed: false,
+            atomic: false,
+        };
+
         let mut fn_subs = Subs::new();
         let fn_depth = 1 + rng.next_range(2) as u32; // 1..=2
-        let fn_body = gen_expr_collecting(rng, &fn_ports, &[], fn_depth, w, &mut fn_subs);
+        let fn_body = gen_expr_collecting(
+            rng,
+            &fn_ports,
+            std::slice::from_ref(&inner_leaf),
+            fn_depth,
+            w,
+            &mut fn_subs,
+        );
         let fn_body = force_width(rng, fn_body, w, false);
+        // Declare the callee only when the body actually kept the call —
+        // `clamp`/`force_width` can drop the leaf again, and an unused
+        // `fn` is a different (and uninteresting) shape to be fuzzing.
+        if fn_body.text.contains(&format!("inner{w}(")) {
+            prelude += &format!(
+                "fn inner{w}(x: bits[{w}]) -> bits[{w}] {{\n  {}\n}}\n\n",
+                inner_body.text
+            );
+        }
         prelude += &format!(
             "fn ident{w}(x: bits[{w}]) -> bits[{w}] {{\n  {}\n}}\n\n",
             fn_body.text

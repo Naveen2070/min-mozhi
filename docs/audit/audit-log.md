@@ -14,4 +14,4 @@ current month's file — do not put the ledger back in a table.**
 | ------- | ---------------------------------------------- | ------- |
 | 2026-06 | [`audit-log/2026-06.md`](audit-log/2026-06.md) | 5       |
 | 2026-07 | [`audit-log/2026-07.md`](audit-log/2026-07.md) | 12      |
-| 2026-08 | [`audit-log/2026-08.md`](audit-log/2026-08.md) | 29      |
+| 2026-08 | [`audit-log/2026-08.md`](audit-log/2026-08.md) | 32      |

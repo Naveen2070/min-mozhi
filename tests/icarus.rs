@@ -25,8 +25,8 @@ use mimz::sim::vcd::to_vcd;
 
 mod support;
 use support::{
-    clocked_testbench, comb_testbench, compile_example, gen_vectors, mimz, parse_icarus, repo,
-    require_iverilog, run_vvp, tool,
+    clocked_testbench, comb_testbench, compile_example, corpus_files, gen_vectors, mimz,
+    parse_icarus, repo, require_iverilog, run_vvp, tool,
 };
 
 /// Testbench file (under tests/icarus/) -> the example it tests.
@@ -341,19 +341,7 @@ fn every_emitted_verilog_passes_iverilog() {
         return;
     };
     let mut checked = 0;
-    let mut stack = vec![repo().join("examples")];
-    let mut files = Vec::new();
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "mimz") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
+    let files = corpus_files();
     for path in files {
         let v = compile_example(&path);
         let out = tool(&bin, "iverilog")
@@ -369,7 +357,10 @@ fn every_emitted_verilog_passes_iverilog() {
         );
         checked += 1;
     }
-    assert!(checked >= 48, "expected the whole corpus, found {checked}");
+    assert!(
+        checked >= 226,
+        "expected the whole corpus (`examples/` + `demo/`), found {checked}"
+    );
 }
 
 /// Compile one example with `--emit-testbench`; return `(out.v, out_tb.v)` if a testbench was generated.
@@ -411,19 +402,7 @@ fn every_emitted_testbench_passes_iverilog() {
         return;
     };
     let mut checked = 0;
-    let mut stack = vec![repo().join("examples")];
-    let mut files = Vec::new();
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "mimz") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
+    let files = corpus_files();
     for path in files {
         if let Some((v, tb)) = compile_example_tb(&path) {
             let out = tool(&bin, "iverilog")
@@ -442,8 +421,8 @@ fn every_emitted_testbench_passes_iverilog() {
         }
     }
     assert!(
-        checked >= 5,
-        "expected at least the tested examples to have testbenches, found {checked}"
+        checked >= 50,
+        "expected every corpus file with a `test` block to have a testbench, found {checked}"
     );
 }
 
@@ -465,34 +444,29 @@ fn every_emitted_testbench_passes_iverilog() {
 ///    from t=0 unconditionally) read a real 4-state X instead
 ///    (`debouncer`, `fifo`, `pwm`, `uart_tx`).
 ///
-/// Layer 2 for the whole corpus: run every emitted testbench MODULE (there
-/// can be more than one per file, one per `test` block — built and run
-/// separately, `-s <module>`, so one module's `$finish` can't cut off
-/// another's `$display`) under real `vvp` and assert it prints PASS with no
-/// FAIL.
+/// Layer 2 for the whole corpus — `examples/` **and** `demo/`: run every
+/// emitted testbench MODULE (there can be more than one per file, one per
+/// `test` block — built and run separately, `-s <module>`, so one module's
+/// `$finish` can't cut off another's `$display`) under real `vvp` and assert
+/// it prints PASS with no FAIL.
+///
+/// Round-7 plan Task 10: this sweep used to walk `examples/` only, so
+/// `demo/cpu.mimz`'s emitted testbench — the only one outside `examples/` —
+/// sat outside the very test that closed BUG-64/65. It now shares
+/// `support::corpus_files()` with its two siblings above.
 #[test]
 fn every_emitted_testbench_reports_pass_under_vvp() {
     let Some(bin) = require_iverilog() else {
         return;
     };
     let mut checked = 0;
-    let mut stack = vec![repo().join("examples")];
-    let mut files = Vec::new();
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "mimz") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
+    let mut with_tb = 0;
+    let files = corpus_files();
     for path in files {
         let Some((v, tb)) = compile_example_tb(&path) else {
             continue;
         };
+        with_tb += 1;
         let tb_src = std::fs::read_to_string(&tb).unwrap();
         let safe = path.display().to_string().replace(['\\', '/', ':'], "_");
         for line in tb_src.lines() {
@@ -544,9 +518,13 @@ fn every_emitted_testbench_reports_pass_under_vvp() {
             checked += 1;
         }
     }
+    // Round 7 (review Part 2.3) ran its own sweep over `examples/` AND `demo/`
+    // by hand and reported "files with testbenches: 50, testbench modules run:
+    // 90, failures: 0" — the in-repo test reached only 49 / 89 because it
+    // walked `examples/` alone. Floors, not equalities: the corpus only grows.
     assert!(
-        checked >= 5,
-        "expected at least the tested examples' testbenches to have run, found {checked}"
+        with_tb >= 50 && checked >= 90,
+        "expected round 7's corpus sweep (50 files / 90 modules) to be reproduced, found {with_tb} files / {checked} modules"
     );
 
     // Verify no .vcd files were leaked into the repository root.
