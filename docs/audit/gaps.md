@@ -22,27 +22,27 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## Index
 
-| ID                                                                                                                                                  | Gap                                                                              | Severity   | Status   |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------- | -------- |
-| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                                               | No IR; width/kind semantics implemented three times                              | HIGH       | OPEN     |
-| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                                                     | 2-state simulator; no X/Z, no tri-state/`inout`                                  | MEDIUM     | OPEN     |
-| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                                                    | Parser violates the mandatory-help contract (14/60 sites)                        | MEDIUM     | CLOSED   |
-| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                                                     | String-keyed name resolution; no interning                                       | LOW→MEDIUM | OPEN     |
-| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)                                       | No declared-type-vs-value oracle; self-determined positions ungenerated          | HIGH       | CLOSED   |
-| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                                                    | No assertions (`assert`/`assume`/`cover`)                                        | MEDIUM     | CLOSED   |
-| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                                                   | No enum↔bits cast                                                                | MEDIUM     | CLOSED   |
-| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                                                           | Surface gaps: division, attributes, pipelines, type generics                     | MEDIUM     | OPEN     |
-| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                                                 | LSP feature set + missing fix-it spans                                           | MEDIUM     | OPEN     |
-| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                                                 | No coverage measurement; checker and emitter unfuzzed                            | LOW        | OPEN     |
-| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)                               | Width-conformance oracle vacuous; CI fuzzes 20 seeds                             | MEDIUM     | CLOSED   |
-| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                                    | `mimz compile` is superlinear in module size                                     | MEDIUM     | CLOSED   |
-| [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted)                   | Position matrix has no `ExprKind` axis; deleted coverage assert                  | MEDIUM     | CLOSED   |
-| [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)                                | Release gate scored at 400 seeds while CI is configured for 5000                 | MEDIUM     | CLOSED   |
-| [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)                                          | Per-arm reasoning audit has no independent party (single-author repo)            | MEDIUM     | CLOSED   |
-| [GAP-16](#gap-16-high-architectural-closed-2026-08-16--the-self-determined-hoist-machinery-is-scoped-to-module-bodies-and-nothing-states-the-scope) | Self-determined hoist machinery scoped to module bodies, unstated                | HIGH       | CLOSED   |
-| [GAP-18](#gap-18-high-architectural-narrowed-2026-08-18--the-hoist-buffers-flush-point-is-a-second-scoping-axis-and-nothing-watches-it)             | Hoist buffer's flush point is a second, unwatched scoping axis                   | HIGH       | NARROWED |
-| [GAP-19](#gap-19-medium-testing-closed-2026-08-18--wasm_parity-skips-silently-and-ci-never-builds-the-artifact-it-needs)                            | `wasm_parity` skips silently; CI never builds the artifact it needs              | MEDIUM     | CLOSED   |
-| [GAP-20](#gap-20-high-testing-open--the-three-pre-declaration-render-sites-are-outside-every-oracle-and-no-test-elaborates-the-corpus-it-ships)     | Three pre-declaration render sites outside every oracle; corpus never elaborated | HIGH       | OPEN     |
+| ID                                                                                                                                                  | Gap                                                                              | Severity   | Status |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------- | ------ |
+| [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)                                                               | No IR; width/kind semantics implemented three times                              | HIGH       | OPEN   |
+| [GAP-2](#gap-2-medium--simulator-is-2-state-with-a-whole-value-unknown-flag-no-xz-no-tri-state)                                                     | 2-state simulator; no X/Z, no tri-state/`inout`                                  | MEDIUM     | OPEN   |
+| [GAP-3](#gap-3-medium--parser-violates-the-projects-own-mandatory-help-contract)                                                                    | Parser violates the mandatory-help contract (14/60 sites)                        | MEDIUM     | CLOSED |
+| [GAP-4](#gap-4-lowmedium--string-keyed-name-resolution-throughout-no-interning)                                                                     | String-keyed name resolution; no interning                                       | LOW→MEDIUM | OPEN   |
+| [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)                                       | No declared-type-vs-value oracle; self-determined positions ungenerated          | HIGH       | CLOSED |
+| [GAP-6](#gap-6-medium-language--no-assertions-assertassumecover)                                                                                    | No assertions (`assert`/`assume`/`cover`)                                        | MEDIUM     | CLOSED |
+| [GAP-7](#gap-7-medium-language--no-enumbits-cast)                                                                                                   | No enum↔bits cast                                                                | MEDIUM     | CLOSED |
+| [GAP-8](#gap-8-medium-language--surface-gaps-division-attributes-pipelines-type-generics)                                                           | Surface gaps: division, attributes, pipelines, type generics                     | MEDIUM     | OPEN   |
+| [GAP-9](#gap-9-medium-dx--lsp-feature-set-and-missing-fix-it-spans)                                                                                 | LSP feature set + missing fix-it spans                                           | MEDIUM     | OPEN   |
+| [GAP-10](#gap-10-low-process--no-coverage-measurement-checker-and-emitter-unfuzzed)                                                                 | No coverage measurement; checker and emitter unfuzzed                            | LOW        | OPEN   |
+| [GAP-11](#gap-11-medium-testing--the-width-conformance-oracle-is-vacuous-and-ci-fuzzes-at-a-depth-that-finds-nothing)                               | Width-conformance oracle vacuous; CI fuzzes 20 seeds                             | MEDIUM     | CLOSED |
+| [GAP-12](#gap-12-medium-performance--mimz-compile-is-superlinear-in-module-size)                                                                    | `mimz compile` is superlinear in module size                                     | MEDIUM     | CLOSED |
+| [GAP-13](#gap-13-medium-testing--the-position-matrix-has-no-exprkind-axis-and-the-only-structural-coverage-assertion-was-deleted)                   | Position matrix has no `ExprKind` axis; deleted coverage assert                  | MEDIUM     | CLOSED |
+| [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)                                | Release gate scored at 400 seeds while CI is configured for 5000                 | MEDIUM     | CLOSED |
+| [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)                                          | Per-arm reasoning audit has no independent party (single-author repo)            | MEDIUM     | CLOSED |
+| [GAP-16](#gap-16-high-architectural-closed-2026-08-16--the-self-determined-hoist-machinery-is-scoped-to-module-bodies-and-nothing-states-the-scope) | Self-determined hoist machinery scoped to module bodies, unstated                | HIGH       | CLOSED |
+| [GAP-18](#gap-18-high-architectural-closed-2026-08-19--the-hoist-buffers-flush-point-is-a-second-scoping-axis-and-nothing-watches-it)               | Hoist buffer's flush point is a second, unwatched scoping axis                   | HIGH       | CLOSED |
+| [GAP-19](#gap-19-medium-testing-closed-2026-08-18--wasm_parity-skips-silently-and-ci-never-builds-the-artifact-it-needs)                            | `wasm_parity` skips silently; CI never builds the artifact it needs              | MEDIUM     | CLOSED |
+| [GAP-20](#gap-20-high-testing-open--the-three-pre-declaration-render-sites-are-outside-every-oracle-and-no-test-elaborates-the-corpus-it-ships)     | Three pre-declaration render sites outside every oracle; corpus never elaborated | HIGH       | OPEN   |
 
 ---
 
@@ -1402,12 +1402,67 @@ above.
 
 ---
 
-## GAP-18 (HIGH, architectural, NARROWED 2026-08-18) — the hoist buffer's flush point is a second scoping axis, and nothing watches it
+## GAP-18 (HIGH, architectural, CLOSED 2026-08-19) — the hoist buffer's flush point is a second scoping axis, and nothing watches it
 
-**Status:** **NARROWED, not closed** — reopened 2026-08-18 by round 8
+**Status:** **CLOSED 2026-08-19**, round-8 plan Task 2
+(`docs/plan/v0.2-class-closure-round8.local.md`), branch
+`round8-class-closure` — this time genuinely, not just claimed. Widened
+`assert_hoists_declared_before_use` (`emit_verilog/mod.rs`) from the
+`__mimz_sub_N`/`__mimz_fn_sub_N` name family to every `wire`/`reg` declared
+in the module body — the sentence the "To close this properly" section
+below asked for, taken literally. Verified: fires on both of round 8's own
+BUG-70 constructions (hand-built fixtures reproducing the pre-Task-1 broken
+output — `task2_widened_invariant_fires_on_bug_70_construction_1`/`_2`,
+`tests/hoist_declaration_order.rs`) and stays silent across the full
+workspace test suite, 1300/1300 (`MIMZ_REQUIRE_WASM=1 REQUIRE_IVERILOG=1
+cargo test --workspace`) — corpus included. Previously **NARROWED, not
+closed** — reopened 2026-08-18 by round 8
 ([`review-2026-08-18.md`](review-2026-08-18.md), Part 2). Marked CLOSED
-2026-08-18 by round-7 plan Tasks 1 and 3; filed 2026-08-17 by round 7
+2026-08-18 by round-7 plan Tasks 1 and 3 (that closure note's overclaim is
+what round 8 caught); filed 2026-08-17 by round 7
 ([`review-2026-08-17.md`](review-2026-08-17.md), Parts 3.1 and 12).
+
+**What widening the scan actually required (2026-08-19).** More than the
+"roughly fifteen lines" the "To close this properly" section below
+estimated, and three guards beyond the ones it named, all found by re-running
+the full test suite after each change rather than by inspection alone:
+
+1. The three traps this entry's own "To close this properly" section named
+   (declaration-line self-reference, `.portname(signal)`'s port half, a
+   string literal's contents) — implemented as written.
+2. **A fourth trap this entry didn't name**: an injected `function ...
+endfunction` block (the `clog2` helper, or a user `fn`) is a SEPARATE
+   Verilog scope, textually first in the module (injected at `fn_pos`,
+   before every module-level declaration) for a reason unrelated to this
+   axis. Its own locals can coincidentally share a name with an unrelated
+   module-level `wire`/`reg` — confirmed empirically:
+   `examples/english/counter.mimz`'s `reg value` collided with `CLOG2_FN`'s
+   own `input integer value` the moment a design used both. Skipped
+   entirely (both passes) rather than scanned.
+3. **A naive "last identifier before the trailing `;`" is wrong twice over**,
+   both found by re-running the corpus after switching to it: a keyword
+   like `reg` is a character-SUFFIX of a real name that happens to end in
+   those letters (`reg filter_out_reg;` "ends with" `reg;` as characters,
+   though `reg` there is the tail of `filter_out_reg`, not a token); and a
+   `mem`'s own declaration (`reg [W-1:0] name [0:(depth)-1];`) puts the
+   depth expression's own identifier LAST in the line, not the declared
+   name — `std/fifo.mimz`'s `DEPTH` and `varisai.mimz`'s `aazham` both hit
+   this. Fixed by taking the FIRST identifier after the width bracket
+   closes instead — correct for every declaration shape this emitter
+   produces.
+4. **The module HEADER (parameter list + port list) had to be excluded from
+   the usage scan entirely** — not something this entry's own trap list
+   anticipated needing beyond "a port name... declared before the body
+   starts." A port's own name in `input wire a_tx,` is a declaration, never
+   a use — but scanning it as one surfaced a genuinely SEPARATE,
+   previously-unknown defect: bundle-field flattening's naming convention
+   (`{wire}_{field}`) can coincidentally collide with an existing port name,
+   producing a self-referential `assign` and a duplicate-declaration
+   elaboration failure. Filed as [BUG-73](bugs/bug-71-80.md), out of this
+   task's own scope (a different subsystem — bundle flattening, not
+   hoisting) — excluding the header from this scan is correct regardless
+   (ports never reference a body-declared name in their own width), and
+   BUG-73 needs its own fix, not a workaround here.
 
 **Correction (2026-08-18, round 8).** The closure note below claims the
 invariant "covers the whole axis generically rather than the three sites
@@ -1563,7 +1618,7 @@ without having run it.
 
 **What.** Three render sites in `module()` — `mem` init/depth, `reg` reset seeds,
 and instance port connections — sit inside the pre-declaration window that
-[GAP-18](#gap-18-high-architectural-narrowed-2026-08-18--the-hoist-buffers-flush-point-is-a-second-scoping-axis-and-nothing-watches-it)
+[GAP-18](#gap-18-high-architectural-closed-2026-08-19--the-hoist-buffers-flush-point-is-a-second-scoping-axis-and-nothing-watches-it)
 is about. **Nothing in the project generates an expression at any of them.**
 
 | oracle                                           | reaches those three sites?                                                                                                                      |

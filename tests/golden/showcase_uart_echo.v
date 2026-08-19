@@ -20,6 +20,8 @@ module UartEcho #(
     reg [(8)-1:0] echo_byte;
     reg echo_pending;
     reg tx_start;
+    wire tx_inst_tx;
+    wire tx_inst_busy;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
     initial #0 rx_state = RXSTATE_IDLE;
     initial #0 baud_cnt = 0;
@@ -29,8 +31,6 @@ module UartEcho #(
     initial #0 echo_byte = 0;
     initial #0 echo_pending = 0;
     initial #0 tx_start = 0;
-    wire tx_inst_tx;
-    wire tx_inst_busy;
     UartTx #(.CLKS_PER_BIT(CLKS_PER_BIT)) tx_inst (.clk(clk), .rst(rst), .start(tx_start), .data(echo_byte), .tx(tx_inst_tx), .busy(tx_inst_busy));
     wire [7:0] __mimz_sub_1;
     assign __mimz_sub_1 = (shift >> 1);
