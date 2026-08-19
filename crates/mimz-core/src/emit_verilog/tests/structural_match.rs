@@ -2,18 +2,23 @@ use super::*;
 
 #[test]
 fn structurally_matched_drive_emits_same_as_nominal_match() {
+    // `wa`/`wb` (not `a`/`b`) — BUG-73 (docs/audit/bugs.md): a bundle
+    // wire's own flattened field name (`{wire}_{field}`) must never
+    // collide with an existing port; `a`/`b` here used to collide with the
+    // ports `a_tx`/`a_rx`/`b_tx`/`b_rx`, which the emitter now correctly
+    // rejects as a duplicate declaration.
     let nominal = emit_src(
         "bundle HasUART { tx: bit, rx: bit }\n\
          module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
-         wire a: HasUART = { tx: a_tx, rx: a_rx }\n  wire b: HasUART = { tx: 0, rx: 0 }\n  \
-         b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
+         wire wa: HasUART = { tx: a_tx, rx: a_rx }\n  wire wb: HasUART = { tx: 0, rx: 0 }\n  \
+         wb = wa\n  b_tx = wb.tx\n  b_rx = wb.rx\n}\n",
     );
     let structural = emit_src(
         "bundle HasUART { tx: bit, rx: bit }\n\
          bundle SensorData { tx: bit, rx: bit }\n\
          module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out b_tx: bit\n  out b_rx: bit\n  \
-         wire a: SensorData = { tx: a_tx, rx: a_rx }\n  wire b: HasUART = { tx: 0, rx: 0 }\n  \
-         b = a\n  b_tx = b.tx\n  b_rx = b.rx\n}\n",
+         wire wa: SensorData = { tx: a_tx, rx: a_rx }\n  wire wb: HasUART = { tx: 0, rx: 0 }\n  \
+         wb = wa\n  b_tx = wb.tx\n  b_rx = wb.rx\n}\n",
     );
     assert_eq!(
         nominal, structural,
@@ -25,18 +30,20 @@ fn structurally_matched_drive_emits_same_as_nominal_match() {
 
 #[test]
 fn structurally_matched_port_connection_emits_same_as_nominal_match() {
+    // `wa` (not `a`) — BUG-73 (docs/audit/bugs.md): avoids the wire's own
+    // flattened field name colliding with the `a_tx`/`a_rx` ports.
     let nominal = emit_src(
         "bundle HasUART { tx: bit, rx: bit }\n\
          module Child { in u: HasUART }\n\
          module M {\n  in  a_tx: bit\n  in a_rx: bit\n  \
-         wire a: HasUART = { tx: a_tx, rx: a_rx }\n  let c = Child() { u: a }\n}\n",
+         wire wa: HasUART = { tx: a_tx, rx: a_rx }\n  let c = Child() { u: wa }\n}\n",
     );
     let structural = emit_src(
         "bundle HasUART { tx: bit, rx: bit }\n\
          bundle SensorData { tx: bit, rx: bit }\n\
          module Child { in u: HasUART }\n\
          module M {\n  in  a_tx: bit\n  in a_rx: bit\n  \
-         wire a: SensorData = { tx: a_tx, rx: a_rx }\n  let c = Child() { u: a }\n}\n",
+         wire wa: SensorData = { tx: a_tx, rx: a_rx }\n  let c = Child() { u: wa }\n}\n",
     );
     assert_eq!(
         nominal, structural,
@@ -54,18 +61,20 @@ fn structurally_matched_fn_arg_emits_same_as_nominal_match() {
     // workaround. This test asserts feature 2.9's own invariant: the
     // emitted text does not vary with the bundle's declared NAME,
     // nominal or structural.
+    // `wa` (not `a`) — BUG-73 (docs/audit/bugs.md): avoids the wire's own
+    // flattened field name colliding with the `a_tx`/`a_rx` ports.
     let nominal = emit_src(
         "bundle HasUART { tx: bit, rx: bit }\n\
          fn pick_tx(u: HasUART) -> bit { u.tx }\n\
          module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
-         wire a: HasUART = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
+         wire wa: HasUART = { tx: a_tx, rx: a_rx }\n  o = pick_tx(wa)\n}\n",
     );
     let structural = emit_src(
         "bundle HasUART { tx: bit, rx: bit }\n\
          bundle SensorData { tx: bit, rx: bit }\n\
          fn pick_tx(u: HasUART) -> bit { u.tx }\n\
          module M {\n  in  a_tx: bit\n  in a_rx: bit\n  out o: bit\n  \
-         wire a: SensorData = { tx: a_tx, rx: a_rx }\n  o = pick_tx(a)\n}\n",
+         wire wa: SensorData = { tx: a_tx, rx: a_rx }\n  o = pick_tx(wa)\n}\n",
     );
     assert_eq!(
         nominal, structural,

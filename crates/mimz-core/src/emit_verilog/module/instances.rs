@@ -65,9 +65,159 @@ impl Emitter<'_> {
         base
     }
 
+    /// Round-8 plan Task 1 (BUG-70): declare every instance's OUTPUT wires,
+    /// for every instance under `items` (descending into `repeat`/`foreach`/
+    /// `const if` the same way `emit_instances` does), and nothing else — no
+    /// connections, no instantiation line. Called BEFORE `pre_decl_hoist_pos`
+    /// is captured (`module()`, above the "Declarations" loop's own doc), so
+    /// every instance output wire this module can ever reference already
+    /// exists in `self.out` at a position earlier than that splice point.
+    ///
+    /// BUG-66's fix (round-7 plan Task 3) made this necessary: `emit_instances`
+    /// (below) used to be the ONLY pass over instances, and it interleaves
+    /// each instance's own output-wire declaration with the NEXT instance's
+    /// connection rendering — so a hoist raised by instance N's input
+    /// connection (reading an EARLIER instance's output, e.g. `u1.q`) got
+    /// spliced at `pre_decl_hoist_pos`, which is captured once, before this
+    /// whole region — strictly BEFORE `u1`'s own output wire, which
+    /// `emit_instances` had only just written a few lines into the same
+    /// region. `pre_decl_hoist_pos`'s safety argument ("every signal these
+    /// sites can reference is already declared by then") was true for ports/
+    /// parameters (BUG-66's own three reproductions) and false for exactly
+    /// this one signal class, which this pre-pass now closes by construction:
+    /// declare every instance output FIRST, entirely before the splice point,
+    /// then let `emit_instances`'s connections (which may hoist) run after.
+    ///
+    /// A pure declaration walk — only needs the child's resolved interface,
+    /// `width_subst`/`width_resolved`, and the resolved bundle fields, NONE
+    /// of which call into a self-determined-position hoist site (those live
+    /// in `expr.rs`'s VALUE-expression arms — `Unary`/`Concat`/`Replicate`/
+    /// `Builtin::{SignedCast,UnsignedCast,Encoding,Nand,Nor,Xnor,Trunc}` —
+    /// never in a width/type render), so this can never itself hoist and is
+    /// safe above the insertion point by construction, matching the ordering
+    /// the plan asked for.
+    ///
+    /// Resolution failures (unknown module) are not diagnosed here —
+    /// `instance()`'s own connection-rendering pass, unchanged below, still
+    /// resolves the identical target and pushes the `Diag`; duplicating the
+    /// error here would double-report the same failure for no benefit. Emit
+    /// only ever runs on already-checked programs, so in practice this path
+    /// never actually fails to resolve — mirrors the same reasoning
+    /// `emit_instances`'s own `ForEach` arm already gives for `None` being
+    /// unreachable there.
+    pub(super) fn declare_instance_outputs(&mut self, items: &[ModuleItem]) {
+        for item in items {
+            match item {
+                ModuleItem::Inst(inst) => self.declare_one_instance_outputs(inst),
+                ModuleItem::Repeat(r) => self.unroll(r, Self::declare_instance_outputs),
+                ModuleItem::ForEach(fe) => {
+                    if let Some(lowered) = crate::ast::lower_foreach_item(fe, items) {
+                        self.declare_instance_outputs(&lowered);
+                    }
+                }
+                ModuleItem::ConstIf {
+                    cond, then, els, ..
+                } => {
+                    let val = consteval::eval(cond, &self.env)
+                        .map(|v| v.to_i128_saturating())
+                        .unwrap_or(0);
+                    let branch = if val != 0 {
+                        then.as_slice()
+                    } else {
+                        els.as_deref().unwrap_or(&[])
+                    };
+                    self.declare_instance_outputs(branch);
+                }
+                ModuleItem::SyncLoop(_) => {}
+                _ => {}
+            }
+        }
+    }
+
+    /// One instance's own output-wire declarations — the same target
+    /// resolution and `args` map `instance()` builds for itself below (kept
+    /// as a second, independent resolution rather than threaded through,
+    /// since the two passes run at genuinely different points in `self.out`
+    /// and neither may borrow state across that gap); only the `Dir::Out`
+    /// half of `instance()`'s own port loop, since that is the only half
+    /// that declares anything.
+    fn declare_one_instance_outputs(&mut self, inst: &Inst) {
+        let Some((child_file, target)) = self.project.resolve_target_with_file(&inst.module) else {
+            return; // `instance()`'s own pass reports this
+        };
+        let iname = self.inst_name(inst);
+        let child_consts: Vec<(String, Expr)> = self
+            .module_envs
+            .get(&(child_file, target.name().name.clone()))
+            .map(|env| {
+                env.iter()
+                    .filter(|(_, v)| !v.is_negative())
+                    .map(|(n, v)| {
+                        let kind = ExprKind::Int {
+                            value: v.bits.clone(),
+                            raw: v.to_string(),
+                        };
+                        (
+                            n.clone(),
+                            Expr {
+                                kind,
+                                span: inst.span,
+                            },
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut args: HashMap<&str, &Expr> =
+            child_consts.iter().map(|(n, e)| (n.as_str(), e)).collect();
+        for a in &inst.args {
+            args.insert(a.name.name.as_str(), &a.value);
+        }
+        for item in target.items() {
+            let ModuleItem::Port {
+                dir: Dir::Out,
+                name,
+                ty,
+            } = item
+            else {
+                continue;
+            };
+            let bundle_fields = match ty {
+                Type::Bundle {
+                    name: bname,
+                    args: bargs,
+                } => Some(self.resolve_bundle_fields_for_instance(bname, bargs, &args)),
+                Type::Named(id) if self.project.resolve_bundle(id).is_some() => {
+                    Some(self.resolve_bundle_fields_for_instance(id, &[], &args))
+                }
+                _ => None,
+            };
+            if let Some(fields) = &bundle_fields {
+                for (fname, fty) in fields {
+                    let wire_name = format!("{}_{}_{}", iname, name.name, fname);
+                    if self.declare_signal_name(&wire_name, inst.span) {
+                        let w = self.width_resolved(fty);
+                        self.out.push_str(&format!("    wire {w}{wire_name};\n"));
+                    }
+                }
+            } else {
+                let wire_name = format!("{}_{}", iname, name.name);
+                if self.declare_signal_name(&wire_name, inst.span) {
+                    let w = self.width_subst(ty, &args);
+                    self.out.push_str(&format!("    wire {w}{wire_name};\n"));
+                }
+            }
+        }
+    }
+
     /// Emit every instance in `items`, descending into `repeat` bodies and
     /// unrolling them (the loop variable is bound per iteration). Declared
     /// before drives so child-output wires exist when the drives use them.
+    ///
+    /// Round-8 plan Task 1 (BUG-70): output wires themselves are now declared
+    /// by `declare_instance_outputs`'s own pre-pass, above, called before
+    /// this one — the `Dir::Out` arm in `instance()` below only NAMES the
+    /// wire for `port_conns`, it no longer writes the `wire` line itself.
     pub(super) fn emit_instances(&mut self, items: &[ModuleItem]) {
         for item in items {
             match item {
@@ -247,19 +397,22 @@ impl Emitter<'_> {
                                 port_conns.push(format!(".{}({})", name.name, sig));
                             }
                         }
+                        // Round-8 plan Task 1 (BUG-70): the wire itself is
+                        // already declared by `declare_instance_outputs`'s
+                        // own pre-pass, strictly before `pre_decl_hoist_pos`
+                        // — this arm only NAMES it for `port_conns`, so a
+                        // hoist raised by a LATER instance's connection
+                        // (which may read THIS instance's output) can never
+                        // be spliced ahead of its own declaration.
                         Dir::Out => {
                             if let Some(fields) = &bundle_fields {
-                                for (fname, fty) in fields {
+                                for (fname, _fty) in fields {
                                     let wire_name = format!("{}_{}_{}", iname, name.name, fname);
-                                    let w = self.width_resolved(fty);
-                                    self.out.push_str(&format!("    wire {w}{wire_name};\n"));
                                     port_conns
                                         .push(format!(".{}_{}({})", name.name, fname, wire_name));
                                 }
                             } else {
                                 let wire_name = format!("{}_{}", iname, name.name);
-                                let w = self.width_subst(ty, &args);
-                                self.out.push_str(&format!("    wire {w}{wire_name};\n"));
                                 port_conns.push(format!(".{}({})", name.name, wire_name));
                             }
                         }
