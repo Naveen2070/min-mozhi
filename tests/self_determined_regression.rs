@@ -3303,6 +3303,86 @@ fn bug_66_a2_reg_reset_hoist_matches_icarus() {
 }
 
 // ---------------------------------------------------------------------
+// Round-8 plan Task 1 (BUG-70, review Part 2.2/GAP-18): BUG-66's own fix
+// (above) captures `pre_decl_hoist_pos` once, before `emit_instances` runs
+// at all — safe for BUG-66's own three sites (ports/parameters, already
+// declared in the header) but NOT for an instance's OWN output wire, which
+// `emit_instances` declares INLINE, interleaved with the next instance's
+// connection rendering. A hoist raised by instance N's connection reading
+// an EARLIER instance's output (`u1.q`) used to be spliced at
+// `pre_decl_hoist_pos` — strictly BEFORE `u1`'s own wire, which had only
+// just been written a few lines into that same region. `mimz check` OK,
+// `mimz compile` exit 0, real Icarus refused ("declaration after use") on
+// the instance wire; `assert_hoists_declared_before_use` stayed silent,
+// since the out-of-order symbol was an ordinary wire (`u1_q`), not a
+// `__mimz_*` hoisted name. Fixed by declaring every instance's output wire
+// in its own pre-pass (`declare_instance_outputs`, `module/instances.rs`),
+// entirely before `pre_decl_hoist_pos` is captured.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_70_instance_port_hoist_reading_an_earlier_instance_output_matches_icarus() {
+    // Review Appendix A.10 / plan Task 1, Construction 1 — NOT one of
+    // BUG-66's three repros: a second instance's port connection hoists an
+    // expression that reads the FIRST instance's own output.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[4]\n  \
+                let u1 = Sub() { d: { b, extend(a, 8) } }\n  \
+                let u2 = Sub() { d: { b, extend(u1.q, 8) } }\n  \
+                y = u2.q\n}\n\n\
+                module Sub {\n  in d: bits[12]\n  out q: bits[4]\n  q = d[3:0]\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+#[test]
+fn bug_70_mem_init_hoist_reading_an_instance_output_matches_icarus() {
+    // Review Appendix A.11 / plan Task 1, Construction 2 — the same axis
+    // through a DIFFERENT one of BUG-66's three render sites, to confirm
+    // it is a property of the splice point and not of instances specifically.
+    // Same `icarus_only_clocked` oracle as `bug_66_a3` (mimz-sim's own
+    // elaborator requires a compile-time-constant `mem` init, unrelated to
+    // this bug) and the identical math (`{b, extend(a,8))}` = 2575), since
+    // `u1.q` here just forwards `a`'s own low 4 bits unchanged.
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  \
+                let u1 = Sub() { d: { b, extend(a, 8) } }\n  \
+                mem m: bits[12][4] = { b, extend(u1.q, 8) }\n  \
+                y = m[0]\n}\n\n\
+                module Sub {\n  in d: bits[12]\n  out q: bits[4]\n  q = d[3:0]\n}\n";
+    let row = icarus_only_clocked(
+        &bin,
+        src,
+        "bug_70_mem_init",
+        &[("a", 4, 0b1111), ("b", 4, 0b1010)],
+        ("y", 12),
+        4,
+    );
+    assert_eq!(
+        row["y"], 2575,
+        "expected y = {{b, extend(u1.q,8)}} = {{b, extend(a,8)}} = 2575"
+    );
+}
+
+#[test]
+fn bug_70_repeat_unrolled_instance_array_variant_matches_icarus() {
+    // Plan Task 1's own "watch out for": a `repeat`-unrolled instance array
+    // must have EVERY element's output wire declared by the pre-pass, not
+    // just the first — a later, non-repeat instance here connects to
+    // `u[1].q` (the array's SECOND element), which only exists under the
+    // repeat-generated key `u__1_q` (BUG-53's own naming convention).
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[4]\n  \
+                repeat i: 0..2 {\n    let u[i] = Sub() { d: { b, extend(a, 8) } }\n  }\n  \
+                let u2 = Sub() { d: { b, extend(u[1].q, 8) } }\n  \
+                y = u2.q\n}\n\n\
+                module Sub {\n  in d: bits[12]\n  out q: bits[4]\n  q = d[3:0]\n}\n";
+    differential_clocked(src, Some("Fuzz"), &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+// ---------------------------------------------------------------------
 // Round-7 plan Task 4 (BUG-67, review Part 3.2): `render_fn_decl`'s
 // `fn_decls` never carried a `fn_ret_decl_key` for any project `fn` —
 // `build_decls` (module scope) does, so a nested `fn` call resolved fine

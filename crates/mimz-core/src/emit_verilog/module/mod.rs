@@ -91,6 +91,7 @@ impl Emitter<'_> {
         self.hoisted_decls.clear();
         self.pre_decl_hoisted_decls.clear();
         self.in_pre_decl_render = false;
+        self.declared_signal_names.clear();
 
         // Module-level consts layer onto the file consts for the duration
         // of this module; they fold to literals wherever used (widths,
@@ -157,8 +158,16 @@ impl Emitter<'_> {
         self.emitting_port = true;
         for item in flat.iter() {
             match item {
-                ModuleItem::Clock(c) => ports.push(format!("input wire {}", c.name)),
-                ModuleItem::Reset { name: r, .. } => ports.push(format!("input wire {}", r.name)),
+                ModuleItem::Clock(c) => {
+                    if self.declare_signal_name(&c.name, c.span) {
+                        ports.push(format!("input wire {}", c.name));
+                    }
+                }
+                ModuleItem::Reset { name: r, .. } => {
+                    if self.declare_signal_name(&r.name, r.span) {
+                        ports.push(format!("input wire {}", r.name));
+                    }
+                }
                 ModuleItem::Port { dir, name, ty } => {
                     self.check_ascii(name);
                     let d = match dir {
@@ -178,11 +187,16 @@ impl Emitter<'_> {
                     if let Some(fields) = bundle_fields {
                         for (fname, fty) in &fields {
                             let w = self.width_resolved(fty);
-                            ports.push(format!("{d} {w}{}_{}", name.name, fname));
+                            let flat_name = format!("{}_{}", name.name, fname);
+                            if self.declare_signal_name(&flat_name, name.span) {
+                                ports.push(format!("{d} {w}{flat_name}"));
+                            }
                         }
                     } else {
                         let w = self.width(ty);
-                        ports.push(format!("{d} {w}{}", name.name));
+                        if self.declare_signal_name(&name.name, name.span) {
+                            ports.push(format!("{d} {w}{}", name.name));
+                        }
                     }
                 }
                 _ => {}
@@ -247,28 +261,34 @@ impl Emitter<'_> {
                     };
                     if let Some(fields) = bundle_fields {
                         for (fname, fty) in &fields {
-                            let w = self.width_resolved(fty);
-                            self.out
-                                .push_str(&format!("    wire {w}{}_{};\n", name.name, fname));
+                            let flat_name = format!("{}_{}", name.name, fname);
+                            if self.declare_signal_name(&flat_name, name.span) {
+                                let w = self.width_resolved(fty);
+                                self.out.push_str(&format!("    wire {w}{flat_name};\n"));
+                            }
                         }
-                    } else {
+                    } else if self.declare_signal_name(&name.name, name.span) {
                         let w = self.width(ty);
                         self.out.push_str(&format!("    wire {w}{};\n", name.name));
                     }
                 }
                 ModuleItem::Reg { name, ty, .. } => {
                     self.check_ascii(name);
-                    let w = self.width(ty);
-                    self.out.push_str(&format!("    reg {w}{};\n", name.name));
+                    if self.declare_signal_name(&name.name, name.span) {
+                        let w = self.width(ty);
+                        self.out.push_str(&format!("    reg {w}{};\n", name.name));
+                    }
                 }
                 ModuleItem::Mem {
                     name, ty, depth, ..
                 } => {
                     self.check_ascii(name);
-                    let w = self.width(ty);
-                    let d = self.expr(depth);
-                    self.out
-                        .push_str(&format!("    reg {w}{} [0:({d})-1];\n", name.name));
+                    if self.declare_signal_name(&name.name, name.span) {
+                        let w = self.width(ty);
+                        let d = self.expr(depth);
+                        self.out
+                            .push_str(&format!("    reg {w}{} [0:({d})-1];\n", name.name));
+                    }
                 }
                 ModuleItem::BundleDestructure { span, .. } => {
                     self.err(
@@ -280,6 +300,25 @@ impl Emitter<'_> {
                 _ => {}
             }
         }
+
+        // Round-8 plan Task 1 (BUG-70, GAP-18/20): declare every instance's
+        // OUTPUT wire before `pre_decl_hoist_pos` is captured a few lines
+        // down — strictly before ANY hoist this module can raise, not just
+        // before its OWN instance's connections. `emit_instances` (below,
+        // still the pass that renders connections and instantiation lines)
+        // used to be the only pass over instances and interleaved each
+        // instance's own output-wire declaration with the NEXT instance's
+        // connection rendering; a hoist raised by instance N's connection
+        // reading an EARLIER instance's output (`u1.q`) then got spliced at
+        // the single, fixed `pre_decl_hoist_pos` — ahead of `u1`'s own wire,
+        // which `emit_instances` had only just written a few lines into that
+        // same region (BUG-70). Doing every instance's declaration walk
+        // first, fully outside the `pre_decl_hoist_pos` window, restores the
+        // safety argument BUG-66's own fix claims but did not actually
+        // establish for this one signal class. See `declare_instance_outputs`
+        // (`module/instances.rs`) for the full reasoning.
+        self.repeat_budget = REPEAT_BUDGET;
+        self.declare_instance_outputs(&m.items);
 
         // Clocked `cover`s: declare each hit-counter register up front
         // (before the `posedge` block below references it) — the comb

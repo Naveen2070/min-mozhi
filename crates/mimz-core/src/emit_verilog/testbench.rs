@@ -188,6 +188,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         fn_hoisted_regs: String::new(),
         fn_hoisted_stmts: Vec::new(),
         cover_ordinals: HashMap::new(),
+        declared_signal_names: std::collections::HashSet::new(),
     };
 
     em.out.push_str(&format!(

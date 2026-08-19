@@ -20,6 +20,8 @@ module ethiroli #(
     reg [(8)-1:0] ethiroli_ennnnezhuththu;
     reg ethiroli_niluvai;
     reg anuppi_thotakkam;
+    wire anuppi_nikazhvu_tx;
+    wire anuppi_nikazhvu_busy;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
     initial #0 nilai_pathivu = VAANGKINILAI_SEYALARRRRA;
     initial #0 veeka_ennnnikkai = 0;
@@ -29,8 +31,6 @@ module ethiroli #(
     initial #0 ethiroli_ennnnezhuththu = 0;
     initial #0 ethiroli_niluvai = 0;
     initial #0 anuppi_thotakkam = 0;
-    wire anuppi_nikazhvu_tx;
-    wire anuppi_nikazhvu_busy;
     UartTx #(.CLKS_PER_BIT(CLKS_PER_BIT)) anuppi_nikazhvu (.clk(clk), .rst(rst), .start(anuppi_thotakkam), .data(ethiroli_ennnnezhuththu), .tx(anuppi_nikazhvu_tx), .busy(anuppi_nikazhvu_busy));
     wire [7:0] __mimz_sub_1;
     assign __mimz_sub_1 = (nakarvu >> 1);
