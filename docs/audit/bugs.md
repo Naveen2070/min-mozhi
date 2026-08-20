@@ -19,7 +19,7 @@ entries to the last range file and a row here.**
 | BUG-41–50 | [`bugs/bug-41-50.md`](bugs/bug-41-50.md) | 10      |
 | BUG-51–60 | [`bugs/bug-51-60.md`](bugs/bug-51-60.md) | 10      |
 | BUG-61–70 | [`bugs/bug-61-70.md`](bugs/bug-61-70.md) | 10      |
-| BUG-71–80 | [`bugs/bug-71-80.md`](bugs/bug-71-80.md) | 3       |
+| BUG-71–80 | [`bugs/bug-71-80.md`](bugs/bug-71-80.md) | 4       |
 
 ## Every bug
 

@@ -1458,11 +1458,12 @@ endfunction` block (the `clog2` helper, or a user `fn`) is a SEPARATE
    previously-unknown defect: bundle-field flattening's naming convention
    (`{wire}_{field}`) can coincidentally collide with an existing port name,
    producing a self-referential `assign` and a duplicate-declaration
-   elaboration failure. Filed as [BUG-73](bugs/bug-71-80.md), out of this
-   task's own scope (a different subsystem — bundle flattening, not
-   hoisting) — excluding the header from this scan is correct regardless
-   (ports never reference a body-declared name in their own width), and
-   BUG-73 needs its own fix, not a workaround here.
+   elaboration failure. Filed as [BUG-73](bugs/bug-71-80.md) — a different
+   subsystem (bundle flattening, not hoisting), so it got its own fix rather
+   than a workaround here: a shared `declared_signal_names` set that
+   diagnoses the collision, landed in the same commit. Excluding the header
+   from this scan is correct regardless (ports never reference a
+   body-declared name in their own width).
 
 **Correction (2026-08-18, round 8).** The closure note below claims the
 invariant "covers the whole axis generically rather than the three sites

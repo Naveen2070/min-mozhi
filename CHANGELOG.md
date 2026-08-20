@@ -12,7 +12,11 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ---
 
-## [Unreleased]
+## [0.2.0] — 2026-08-20 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
+
+The language edition is **unchanged**: keyword set v1, no breaking keyword
+change, so `mimz translate` needs no migration rule for this release. The one
+breaking change is a width-rule change (`<<`), listed under _Changed_ below.
 
 ### Added
 
@@ -129,6 +133,69 @@ in values`, its bound taken from the source's own declared length, never
   explicit `trunc` back down at each use; the E0401 diagnostic and
   `docs/guide/05-operators.md` §Shifts both explain the growth rule at
   the point of failure.
+
+### Fixed
+
+Eight rounds of adversarial review of the Verilog backend (`docs/audit/`, one
+`review-*.md` per round, with every reproduction quoted verbatim). Of the 73
+filed bug entries, **69 are fixed and 4 remain open** — all four MEDIUM, all
+compile-time refusals or simulator limitations, none a silent miscompile. The
+classes that mattered:
+
+- **The width-rule family (34 of them, BUG-28 … BUG-68).** Every instance had
+  the same shape: two implementations of one width rule — checker, emitter,
+  simulator — disagreeing, with the emitter producing Verilog whose widths
+  didn't match what the checker had accepted. Round 8 was the first round in
+  the series that added no new instance.
+- **The self-determined-position hoist (BUG-63 … BUG-72).** A concat member, a
+  reduction operand, a `$signed`/`encoding` operand and six other positions each
+  need an explicitly-widened temporary in Verilog; the emitter now hoists one
+  for all of them, including symbolic (parameter) widths.
+- **Declaration order (BUG-70).** Instance output wires were declared inside the
+  window the hoist buffer flushes into, so an emitted design could reference a
+  wire before its own declaration — accepted by `mimz check`, exit 0 from
+  `mimz compile`, rejected by every real elaborator. Instance outputs are now
+  declared in a separate pass before the flush point.
+- **Testbench const scope (BUG-71).** `--emit-testbench` didn't see the DUT's
+  own file-level `const`s, so a `const if` silently took its `else` branch —
+  which could make the emitted testbench report the **opposite verdict** to
+  `mimz test`. This was the only silent divergence left at the end of the
+  series.
+
+Guarding the same ground going forward: a runtime declaration-order invariant
+over every declared identifier in an emitted module; full `iverilog -g2005`
+elaboration of all 226 corpus files on every CI run; 90 emitted testbench
+modules asserted PASS under real `vvp`; and a 5000-seed differential fuzz
+against Icarus (`tools/gate.sh`).
+
+### Known issues
+
+Every open bug, plus the gaps most likely to be met in practice. `docs/audit/gaps.md`
+is the full gap ledger — eight are open; the two HIGH ones and the two most
+user-visible MEDIUM ones are listed here.
+
+- **GAP-1** (HIGH, architectural) — no IR; width/kind semantics are implemented
+  three times over and kept in agreement by tests rather than by construction.
+  The root cause of the width-rule family above, and the v0.3 direction. Until
+  it lands, the claim "the compiler produces Verilog that matches its own type
+  system" is **not** made.
+- **GAP-20** (HIGH, testing) — the differential fuzz generator emits `reg`
+  resets and `mem` initialisers as literals, leaving those two render sites
+  outside the generated grammar. Needs a separate Icarus-only oracle path.
+- **GAP-8** (MEDIUM, language) — surface gaps met early: no division operator,
+  no attributes, no pipeline construct.
+- **GAP-2** (MEDIUM, simulator) — `mimz-sim` is 2-state with a whole-value
+  unknown flag; it does not model per-bit X propagation. Run the emitted
+  testbench under `vvp` when that distinction matters.
+- **BUG-32** (MEDIUM) — `mem` lowers to an `initial` block: FPGA-only, not
+  ASIC-synthesizable, and unresettable.
+- **BUG-38** (MEDIUM) — `mimz-sim`'s combinational-only kernel rejects
+  enum-typed signals, ports and wires.
+- **BUG-39** (MEDIUM) — a `reg`'s reset value cannot be a payload-carrying
+  `EnumConstruct` expression.
+- **BUG-74** (MEDIUM) — an `if`/`match`-wrapped `EnumConstruct` passed directly
+  to `encoding()` is refused at compile time rather than lowered. Binding it to
+  a named `wire` first is unaffected.
 
 ---
 
