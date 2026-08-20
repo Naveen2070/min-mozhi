@@ -1,6 +1,8 @@
 [package]
 name = "mimz-wasm"
-version = "0.1.0"
+# Inherited like mimz-core/mimz-sim so the four crate versions can never drift
+# apart at a release bump again (it read 0.1.0 while the workspace read 0.2.0).
+version.workspace = true
 edition = "2024"
 description = "WebAssembly bindings for the Min-Mozhi (மின்மொழி) compiler — compile .mimz to Verilog in the browser."
 license = "MIT OR Apache-2.0"
