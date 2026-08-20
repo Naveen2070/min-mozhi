@@ -138,7 +138,7 @@ pub(crate) fn compile(
         if tests.is_empty() {
             no_tests = true;
         } else {
-            let tb_verilog = match emit_verilog::emit_testbench(&project, &tests) {
+            let tb_verilog = match emit_verilog::emit_testbench(&project, &asts, &tests) {
                 Ok(v) => v,
                 Err(errors) => return report_err(errors),
             };
