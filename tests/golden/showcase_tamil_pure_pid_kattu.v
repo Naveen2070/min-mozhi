@@ -13,8 +13,8 @@ module PidKattu (
     wire signed [(10)-1:0] vikitha_veerrupaatu;
     wire signed [(16)-1:0] moththam;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial #0 thokaiyiitu = 0;
-    initial #0 munthaiya_pizhai = 0;
+    initial thokaiyiitu = 0;
+    initial munthaiya_pizhai = 0;
     wire signed [9:0] __mimz_sub_1;
     assign __mimz_sub_1 = ((ilakku_mathippu) - (allavitappattathu));
     wire signed [10:0] __mimz_sub_2;

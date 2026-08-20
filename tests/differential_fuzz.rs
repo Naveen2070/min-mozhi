@@ -1197,10 +1197,35 @@ fn gen_special_leaves(
         if w2 != w {
             prelude += &sub_decl(w2);
         }
-        body += &format!(
-            "  repeat i: 0..1 {{\n    let sa[i] = Sub{w2}() {{ x: {} }}\n  }}\n",
+        // Round-8 plan Task 9: BUG-70's OWN reproduction is a SECOND
+        // instance's connection reading an EARLIER instance's output
+        // wrapped in `extend(...)`, as a CONCAT member — `.d({b,
+        // extend(u1.q, 8)})`, verbatim. Confirmed live that BOTH layers
+        // are load-bearing: a bare `extend(s.q, w2)` alone as the WHOLE
+        // connection compiles fine even with Task 1 reverted (its target
+        // width is already explicit, so no hoist is needed at all when
+        // it's the sole top-level expression); only nesting it as one
+        // MEMBER of an outer concat reproduces GAP-18's own "declared name
+        // `s_q` referenced before its own declaration" with Task 1
+        // reverted, and compiles clean with Task 1 restored. `arg_of`'s
+        // bare port/reg leaf can never reach either shape: only an
+        // instance's own OUTPUT wire is declared where `declare_instance_
+        // outputs` (Task 1) or the old inline `emit_instances` path put it,
+        // so `s.q` is the one leaf whose declaration position this
+        // depends on. Wired in directly (not through the general `Frag`
+        // pool, which has no way to prefer `s.q` over any other leaf)
+        // whenever there's room for both a real `extend` growth on `s.q`
+        // and a nonzero pad member (`w2 >= w + 2`).
+        let x2_arg = if w2 >= w + 2 && rng.next_range(2) == 0 {
+            let target_w = w + 1 + rng.next_range((w2 - w - 1) as u64) as u32; // w+1 ..= w2-1
+            let pad = w2 - target_w;
+            let padv = rng.next_u64() & support::mask(pad) as u64;
+            format!("{{extend({padv}, {pad}), extend(s.q, {target_w})}}")
+        } else {
             arg_of(&name2, signed2)
-        );
+        };
+        body +=
+            &format!("  repeat i: 0..1 {{\n    let sa[i] = Sub{w2}() {{ x: {x2_arg} }}\n  }}\n");
         leaves.push(Frag {
             text: "sa[0].q".to_string(),
             width: w2,
@@ -1705,6 +1730,50 @@ fn differential_fuzz_clocked_generates_checker_valid_programs() {
             );
         }
     }
+}
+
+/// Round-8 plan Task 9's own acceptance criterion: "name the seed inside
+/// 400 that first produces a hoisting instance-port connection." `x:
+/// {extend(` is a safe, unique textual marker for BUG-70's OWN shape — a
+/// SECOND instance's OWN CONNECTION reading the FIRST instance's output
+/// through `extend(s.q, ...)` as a CONCAT member — BUG-70's own
+/// reproduction verbatim, `{ b, extend(u1.q, 8) }` (`gen_special_leaves`'s
+/// array-instance branch). `x: {extend(` is a safe, unique marker: `arg_of`
+/// (the pre-existing bare-identifier fallback) never renders it, and it
+/// only ever appears at the connection SITE, not at some later unrelated
+/// use of `s.q` in the leaf pool (an earlier draft of this marker,
+/// `, s.q}`, matched both and found a false positive at seed index 3 where
+/// the connection itself was still a bare `arg_of`). Confirms the
+/// generator actually reaches the shape at a depth well within what CI's
+/// `check` job runs (`ci.yml` sets `MIMZ_DIFF_FUZZ_CLOCKED_N=400`) — the
+/// separate, manual half of this criterion (that reverting Task 1's own
+/// fix makes THIS shape fail) was verified by hand, the same way Task 1's
+/// own "watch fail first" step was: temporarily restored Task 1's own
+/// "before" shape (disabled `declare_instance_outputs`'s pre-pass call in
+/// `module()`, restored inline wire declaration in `instance()`'s own
+/// `Dir::Out` arm — a bare disable of the pre-pass ALONE does not
+/// reproduce BUG-70, it reproduces a DIFFERENT failure, an undeclared
+/// implicit net, since Task 1 replaced the declare mechanism rather than
+/// just moving it) and ran `mimz compile` directly on the seed this test
+/// finds (`CLOCKED_SEED_BASE+15` at the time of writing): confirmed it now
+/// fails GAP-18's own widened invariant (Task 2) — "declared name `s_q`
+/// referenced before its own declaration" — with Task 1 reverted, and
+/// compiles clean with Task 1 restored. Not repeated here as an automated
+/// test, since Task 1 is landed and there is nothing left to revert in CI.
+#[test]
+fn task9_instance_port_connection_reaches_a_hoisting_expression_within_400_seeds() {
+    let found = (0..400u64).find(|&i| {
+        let seed = CLOCKED_SEED_BASE.wrapping_add(i);
+        let (src, ..) = gen_clocked_module(seed);
+        src.contains("x: {extend(")
+    });
+    assert!(
+        found.is_some(),
+        "no seed inside the first 400 fresh clocked seeds (base {CLOCKED_SEED_BASE:#x}) \
+         produced a hoisting cross-instance port connection (`x: {{extend(...), \
+         extend(s.q, ...)}}`) — Task 9's own generator extension in `gen_special_leaves` \
+         regressed"
+    );
 }
 
 /// v3's real differential, clocked counterpart to

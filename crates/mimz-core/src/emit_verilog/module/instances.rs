@@ -5,7 +5,17 @@ impl Emitter<'_> {
     /// conditions against `self.env`. Items in the losing branch are dropped.
     /// Nested ConstIf is resolved recursively. Used by `module()` for loops
     /// that don't recurse.
-    pub(in crate::emit_verilog) fn flatten_items(&self, items: &[ModuleItem]) -> Vec<ModuleItem> {
+    ///
+    /// BUG-71 (`docs/audit/bugs.md`): an unevaluable condition used to read
+    /// `unwrap_or(0)` — silently "false" — with no diagnostic at all. A
+    /// `const if` whose condition cannot be evaluated is a compiler bug or a
+    /// checker gap, never a legitimate "false": push `consteval::eval`'s own
+    /// `Diag` (same convention `eval_consts`, above, already uses) instead
+    /// of guessing a branch. `&mut self` (was `&self`) is what this needs.
+    pub(in crate::emit_verilog) fn flatten_items(
+        &mut self,
+        items: &[ModuleItem],
+    ) -> Vec<ModuleItem> {
         let items = crate::ast::expand_sync_prims(items);
         let mut out = Vec::new();
         for item in &items {
@@ -13,9 +23,13 @@ impl Emitter<'_> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &self.env)
-                        .map(|v| v.to_i128_saturating())
-                        .unwrap_or(0);
+                    let val = match consteval::eval(cond, &self.env) {
+                        Ok(v) => v.to_i128_saturating(),
+                        Err(d) => {
+                            self.diags.push(d.with_file(self.cur_file));
+                            0
+                        }
+                    };
                     let branch = if val != 0 {
                         then.as_slice()
                     } else {
@@ -40,7 +54,17 @@ impl Emitter<'_> {
 
     /// Like `eval_consts` but recurses into `const if` winning branches so
     /// that consts declared inside a `const if` block are folded into the env.
-    pub(super) fn eval_consts_items(&mut self, items: &[ModuleItem], mut base: Env) -> Env {
+    ///
+    /// BUG-71 (`docs/audit/bugs.md`): same `unwrap_or(0)`-is-silently-false
+    /// gap as `flatten_items`, above, one function over — fixed the same way.
+    /// `pub(in crate::emit_verilog)`, not `pub(super)`: `testbench.rs`
+    /// (BUG-71's own fix) now calls this directly to seed its env with the
+    /// DUT's module-level consts too, the same way `module()` does.
+    pub(in crate::emit_verilog) fn eval_consts_items(
+        &mut self,
+        items: &[ModuleItem],
+        mut base: Env,
+    ) -> Env {
         for item in items {
             match item {
                 ModuleItem::Const(c) => {
@@ -49,9 +73,13 @@ impl Emitter<'_> {
                 ModuleItem::ConstIf {
                     cond, then, els, ..
                 } => {
-                    let val = consteval::eval(cond, &base)
-                        .map(|v| v.to_i128_saturating())
-                        .unwrap_or(0);
+                    let val = match consteval::eval(cond, &base) {
+                        Ok(v) => v.to_i128_saturating(),
+                        Err(d) => {
+                            self.diags.push(d.with_file(self.cur_file));
+                            0
+                        }
+                    };
                     let branch: &[ModuleItem] = if val != 0 {
                         then
                     } else {

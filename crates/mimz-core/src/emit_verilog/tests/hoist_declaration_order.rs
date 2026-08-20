@@ -13,6 +13,21 @@
 
 use super::*;
 
+/// Build a throwaway `test_emitter` and hand it to `f`. The fixture texts
+/// `assert_hoists_declared_before_use` is tested against below are hand-built
+/// Verilog, not real emitter output — the `Project`/`Emitter` backing them is
+/// irrelevant beyond giving `Emitter::err` somewhere to push a `Diag` and a
+/// `cur_file` to stamp it with, so one minimal placeholder module serves
+/// every call site here.
+fn with_test_emitter<R>(f: impl FnOnce(&mut Emitter) -> R) -> R {
+    let files = [parse(
+        "module Placeholder {\n  in a: bit\n  out y: bit\n  y = a\n}\n",
+    )];
+    let project = Project::from_files(&files).unwrap();
+    let mut em = test_emitter(&project);
+    f(&mut em)
+}
+
 #[test]
 fn identifiers_in_finds_whole_words_and_skips_radix_specifiers() {
     let line = "    Sub u (.d({b, __mimz_sub_1}), .q(__mimz_fn_sub_12));";
@@ -128,7 +143,9 @@ fn task2_widened_invariant_fires_on_bug_70_construction_1() {
         \x20   Sub u2 (.d({b, __mimz_sub_2}), .q(u2_q));\n\
         \x20   assign y = u2_q;\n\
         endmodule\n";
-    assert_hoists_declared_before_use(module_text);
+    with_test_emitter(|em| {
+        assert_hoists_declared_before_use(em, module_text, crate::span::Span::new(0, 0));
+    });
 }
 
 #[test]
@@ -152,7 +169,77 @@ fn task2_widened_invariant_fires_on_bug_70_construction_2() {
         \x20   Sub u1 (.d({b, __mimz_sub_1}), .q(u1_q));\n\
         \x20   assign y = m[0];\n\
         endmodule\n";
-    assert_hoists_declared_before_use(module_text);
+    with_test_emitter(|em| {
+        assert_hoists_declared_before_use(em, module_text, crate::span::Span::new(0, 0));
+    });
+}
+
+/// Round-8 plan Task 5: `assert_hoists_declared_before_use` used to be a
+/// bare `debug_assert!`; this workspace ships `[profile.release]
+/// debug-assertions = true` (`Cargo.toml`), so a violation aborted a real,
+/// shipped `mimz compile` with a Rust panic instead of exiting non-zero
+/// with a message — the same failure mode round-7 Task 2 removed from
+/// `hoist_unresolved` (`module/ports.rs`), ten lines away, the same day.
+///
+/// No test compiled inside this crate can observe "a real `mimz` binary
+/// takes the non-panicking branch" directly — `cfg!(test)` is a
+/// per-compilation constant, and it is unconditionally `true` for THIS
+/// binary (`cargo test -p mimz-core`), same as it always was for
+/// `hoist_unresolved`'s own identical gate (round-7 Task 2 shipped with no
+/// such test either, for the same reason — there is no in-repo precedent
+/// to diverge from). What IS observable here: the fix pushes the `Diag`
+/// BEFORE the `cfg!(test)`-gated `debug_assert!`, not after (the opposite
+/// order from `hoist_unresolved`) — so even in this binary, where the
+/// assert still panics loudly (proven by the two `#[should_panic]` tests
+/// above, unchanged), the `Diag` a real binary would return was already
+/// recorded on `em.diags` before that panic unwound. `catch_unwind` proves
+/// both halves at once: the panic still fires here, AND the identical
+/// `Diag` was genuinely constructed and pushed, not skipped by the branch
+/// that differs between the two binaries.
+#[test]
+fn task5_declaration_order_violation_is_a_diagnostic_not_a_panic_outside_tests() {
+    let module_text = "module Top (\n\
+        \x20   input wire [(4)-1:0] a,\n\
+        \x20   input wire [(4)-1:0] b,\n\
+        \x20   output wire [(4)-1:0] y\n\
+        );\n\
+        \x20   wire [7:0] __mimz_sub_1;\n\
+        \x20   assign __mimz_sub_1 = (a);\n\
+        \x20   wire [7:0] __mimz_sub_2;\n\
+        \x20   assign __mimz_sub_2 = (u1_q);\n\
+        \x20   wire [(4)-1:0] u1_q;\n\
+        \x20   Sub u1 (.d({b, __mimz_sub_1}), .q(u1_q));\n\
+        \x20   wire [(4)-1:0] u2_q;\n\
+        \x20   Sub u2 (.d({b, __mimz_sub_2}), .q(u2_q));\n\
+        \x20   assign y = u2_q;\n\
+        endmodule\n";
+
+    with_test_emitter(|em| {
+        // `&mut *em` (a reborrow), not `em` itself — the closure only needs
+        // unique access to the pointee for the duration of the call, so it
+        // captures that reborrow rather than moving the outer `&mut
+        // Emitter` binding. `em.diags` is readable again below once
+        // `catch_unwind` returns, with no raw pointer/unsafe needed.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_hoists_declared_before_use(&mut *em, module_text, crate::span::Span::new(0, 0));
+        }));
+        assert!(
+            result.is_err(),
+            "expected this crate's own test binary (cfg!(test) == true) to still panic loudly, \
+             same as the two should_panic tests above"
+        );
+        assert!(
+            !em.diags.is_empty(),
+            "the Diag must be pushed BEFORE the cfg!(test)-gated panic, not skipped by it — \
+             this is what makes a real `mimz` binary (cfg!(test) == false there) exit with a \
+             message instead of aborting, since it takes the identical code path minus the panic"
+        );
+        assert!(
+            em.diags[0].msg.contains("GAP-18"),
+            "expected the GAP-18 declaration-order message, got: {:?}",
+            em.diags[0]
+        );
+    });
 }
 
 #[test]

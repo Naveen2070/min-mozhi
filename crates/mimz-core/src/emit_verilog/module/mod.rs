@@ -374,8 +374,10 @@ impl Emitter<'_> {
                     );
                     mem_note_emitted = true;
                 }
+                let pre_decl_hoists_before = self.pre_decl_hoisted_decls.len();
                 let d = self.expr(depth);
                 let v = self.expr(init);
+                let needs_delay_guard = self.pre_decl_hoisted_decls.len() > pre_decl_hoists_before;
                 let iv = format!("__mimz_{}_i", name.name);
                 self.out.push_str(&format!("    integer {iv};\n"));
                 // `#0`: Task 3 (BUG-66, round-7 plan) fixed the DECLARATION
@@ -394,8 +396,15 @@ impl Emitter<'_> {
                 // visible time advance (the emitted testbench's own first
                 // read is a full `#1` later — BUG-65's fix — so this can
                 // never race that).
+                //
+                // Round-8 plan Task 7: the race is only possible when `d`/`v`
+                // actually pushed a hoisted `wire`/`assign` pair into
+                // `pre_decl_hoisted_decls` — a plain literal or a reference
+                // to an already-declared signal has nothing to race. Guard
+                // is narrowed to that case instead of applying unconditionally.
+                let delay = if needs_delay_guard { "#0 " } else { "" };
                 self.out.push_str(&format!(
-                    "    initial #0 for ({iv} = 0; {iv} < ({d}); {iv} = {iv} + 1) {}[{iv}] = {v};\n",
+                    "    initial {delay}for ({iv} = 0; {iv} < ({d}); {iv} = {iv} + 1) {}[{iv}] = {v};\n",
                     name.name
                 ));
             }
@@ -429,7 +438,9 @@ impl Emitter<'_> {
                     );
                     reg_note_emitted = true;
                 }
+                let pre_decl_hoists_before = self.pre_decl_hoisted_decls.len();
                 let v = self.expr(reset);
+                let needs_delay_guard = self.pre_decl_hoisted_decls.len() > pre_decl_hoists_before;
                 // `#0`: same root cause as the `mem` loop's own `#0` above
                 // (a hoisted operand `v` may reference is a continuous
                 // `assign`, racing this `initial` block in the same time-0
@@ -440,8 +451,15 @@ impl Emitter<'_> {
                 // but "it happened not to manifest for one hand-picked
                 // vector" is exactly the fail-open pattern this project's
                 // own audit history keeps finding (GAP-13/14).
+                //
+                // Round-8 plan Task 7: narrowed to fire only when `v` itself
+                // pushed a hoisted `wire`/`assign` pair — same reasoning as
+                // the `mem` loop above, kept per-parity rather than dropped,
+                // since the hazard this guards is real even though no
+                // shipped corpus file currently reaches it.
+                let delay = if needs_delay_guard { "#0 " } else { "" };
                 self.out
-                    .push_str(&format!("    initial #0 {} = {v};\n", name.name));
+                    .push_str(&format!("    initial {delay}{} = {v};\n", name.name));
             }
         }
 

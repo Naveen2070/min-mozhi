@@ -147,45 +147,75 @@ impl Emitter<'_> {
     /// toolchain this project targets accepts it in practice. Not solved
     /// here; would need a `generate`/conditional selection to close for
     /// real.
+    ///
+    /// Round-8 plan Task 10 (BUG-72): `Builtin::Trunc` needed the
+    /// identical `None`-arm recovery `Extend` already had — `infer_call`'s
+    /// `Extend | Trunc` arm folds the width argument with `const_fold` for
+    /// BOTH builtins, so a module `int` parameter (or an unresolvable base)
+    /// makes `infer_kind` return `None` for a symbolic-width `trunc` the
+    /// same way it does for `extend`, and every one of this function's 8
+    /// call sites fell through to `hoist_unresolved`'s diagnostic — a
+    /// checker-accepted, `extend`-symmetric construct the compiler flatly
+    /// refused. `trunc` needs none of `Extend`'s own width-math rebuild
+    /// though: its ORDINARY render arm below (`x[(n)-1:0]`) never
+    /// const-folds `n` at all, substituting it as TEXT unconditionally — a
+    /// Verilog part-select's own width is always exactly `n` bits by
+    /// construction, in ANY position, unlike a plain `extend()` passthrough
+    /// (which relies on ambient context Verilog doesn't provide at a
+    /// self-determined position). So the ordinary arm's own rendering IS
+    /// already the self-determined-position answer too — every caller here
+    /// already computed it, as `text`, via `render_shift_ctx_operand`
+    /// (which dispatches through that same ordinary arm) before ever
+    /// calling this function. Reusing it directly, rather than re-rendering
+    /// `args[0]` from scratch the way `Extend`'s own arm does, avoids a
+    /// second, redundant hoist of the base that would otherwise leave the
+    /// FIRST hoisted wire dead and unreferenced.
     fn try_widen_symbolic_extend(
         &mut self,
         expr: &Expr,
+        text: &str,
         subst: &HashMap<&str, &Expr>,
         arrays: &ArrayScope,
     ) -> Option<String> {
-        let ExprKind::Call {
-            func: Builtin::Extend,
-            args,
-        } = &expr.kind
-        else {
-            return None;
-        };
-        if consteval::eval(&args[1], &self.env).is_ok() {
-            return None; // width folds — the ordinary path already handles it
+        match &expr.kind {
+            ExprKind::Call {
+                func: Builtin::Extend,
+                args,
+            } => {
+                if consteval::eval(&args[1], &self.env).is_ok() {
+                    return None; // width folds — the ordinary path already handles it
+                }
+                let decls = Rc::clone(&self.cur_decls);
+                let k = crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env)?;
+                if k.width == 0 {
+                    return None;
+                }
+                let base_text = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
+                let named =
+                    self.hoist_slice_base_if_needed(base_text, k.width, k.signed, args[0].span);
+                let w_text = self.expr_subst(&args[1], subst, arrays);
+                let fill = if k.signed {
+                    format!("{named}[{}]", k.width - 1)
+                } else {
+                    "1'b0".to_string()
+                };
+                let mut widened = String::from("{{(");
+                widened.push_str(&w_text);
+                widened.push_str(")-(");
+                widened.push_str(&k.width.to_string());
+                widened.push_str("){");
+                widened.push_str(&fill);
+                widened.push_str("}}, ");
+                widened.push_str(&named);
+                widened.push('}');
+                Some(widened)
+            }
+            ExprKind::Call {
+                func: Builtin::Trunc,
+                ..
+            } => Some(text.to_string()),
+            _ => None,
         }
-        let decls = Rc::clone(&self.cur_decls);
-        let k = crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env)?;
-        if k.width == 0 {
-            return None;
-        }
-        let text = self.render_shift_ctx_operand(&args[0], subst, arrays, true);
-        let named = self.hoist_slice_base_if_needed(text, k.width, k.signed, args[0].span);
-        let w_text = self.expr_subst(&args[1], subst, arrays);
-        let fill = if k.signed {
-            format!("{named}[{}]", k.width - 1)
-        } else {
-            "1'b0".to_string()
-        };
-        let mut widened = String::from("{{(");
-        widened.push_str(&w_text);
-        widened.push_str(")-(");
-        widened.push_str(&k.width.to_string());
-        widened.push_str("){");
-        widened.push_str(&fill);
-        widened.push_str("}}, ");
-        widened.push_str(&named);
-        widened.push('}');
-        Some(widened)
     }
 
     /// Try to resolve an expression to a constant integer value, seeing
@@ -588,7 +618,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(inner, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(inner, x, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(inner, subst, arrays)
+                                .try_widen_symbolic_extend(inner, &x, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(
                                         inner,
@@ -819,7 +849,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(p, subst, arrays)
+                                .try_widen_symbolic_extend(p, &text, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(p, "concat member", text, false)
                                 }),
@@ -844,7 +874,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(p, &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(p, text, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(p, subst, arrays)
+                                .try_widen_symbolic_extend(p, &text, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(p, "replicate member", text, false)
                                 }),
@@ -1035,7 +1065,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .try_widen_symbolic_extend(&args[0], &text, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(
                                         &args[0],
@@ -1058,7 +1088,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .try_widen_symbolic_extend(&args[0], &text, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(
                                         &args[0],
@@ -1082,7 +1112,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], text, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .try_widen_symbolic_extend(&args[0], &text, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(&args[0], "encoding operand", text, false)
                                 }),
@@ -1301,7 +1331,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .try_widen_symbolic_extend(&args[0], &x, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(&args[0], "nand operand", x, false)
                                 }),
@@ -1315,7 +1345,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .try_widen_symbolic_extend(&args[0], &x, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(&args[0], "nor operand", x, false)
                                 }),
@@ -1329,7 +1359,7 @@ impl Emitter<'_> {
                         match crate::emit_verilog::kinds::infer_kind(&args[0], &decls, &self.env) {
                             Some(k) => self.hoist_if_needed(&args[0], x, k, &decls),
                             None => self
-                                .try_widen_symbolic_extend(&args[0], subst, arrays)
+                                .try_widen_symbolic_extend(&args[0], &x, subst, arrays)
                                 .unwrap_or_else(|| {
                                     self.hoist_unresolved(&args[0], "xnor operand", x, false)
                                 }),

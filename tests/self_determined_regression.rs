@@ -2561,6 +2561,19 @@ fn builtin_infer_call_coverage(builtin: &ast::Builtin) -> &'static str {
 // here. `name` is a stable KEY (not a line number — those drift on any
 // unrelated edit); it matches the exact `site` string `hoist_unresolved`
 // receives where one exists, invented consistently otherwise.
+//
+// Round-8 plan Task 10 (BUG-72): every entry below whose "None branch"
+// prose cites `try_widen_symbolic_extend (Task 3)` now also covers
+// `Builtin::Trunc`, not only `Extend` — the same recovery function, given
+// a second arm, not a second function (see BUG-72's own fix note,
+// `docs/audit/bugs/bug-71-80.md`, for the mechanism). Not repeated
+// per-entry below to avoid rewriting eight near-identical paragraphs; the
+// "Fires"/"Doesn't fire" citations for `Extend` still apply unchanged, a
+// symbolic-width `trunc` at the same position was simply never reachable
+// before this and needed no dedicated per-entry citation of its own
+// (`bug_72_trunc_symbolic_width_reduction_operand_matches_icarus`/
+// `..._concat_member_matches_icarus`, further down this file, exercise the
+// reduction and concat-member positions directly).
 // =======================================================================
 
 /// One `hoist_if_needed`/`hoist_slice_base_if_needed`/
@@ -2737,10 +2750,17 @@ const HOIST_CALL_SITES: &[HoistCallSite] = &[
             through `hoist_unresolved`'s fallback here, never through \
             `hoist_if_needed`'s own `Some(k)` comparison — this is a \
             genuinely open, structurally-unreachable-today coverage gap, \
-            not a citation that merely needed replacing. Fires: nothing \
-            found; stated honestly rather than fabricated (round-6 Task \
-            8's own (a′-2) rule). None branch: hoist_unresolved(\"encoding \
-            operand\") — confirmed live above, not theoretical.",
+            not a citation that merely needed replacing. Round-8 plan \
+            Task 10: filed as BUG-74 (docs/audit/bugs/bug-71-80.md, OPEN) \
+            and given a permanent citation — the `if`-wrapped shape this \
+            entry already hand-confirmed is now \
+            task2_unresolvable_concat_member_is_a_diagnostic_not_a_panic's \
+            own repro (repointed there when BUG-72's fix retired its \
+            previous one). Fires (the diagnostic-not-panic gate, not a \
+            VALUE mismatch — no `hoist_if_needed`/`Some(k)` path exists \
+            here to compare a hoisted value against): that same test. \
+            None branch: hoist_unresolved(\"encoding operand\") — \
+            confirmed live above, not theoretical.",
     },
     HoistCallSite {
         name: "nand operand",
@@ -3158,28 +3178,43 @@ fn task1_hoisted_wire_is_never_referenced_before_its_declaration() {
 /// spawning the binary proves what an actual `mimz compile` user sees.
 #[test]
 fn task2_unresolvable_concat_member_is_a_diagnostic_not_a_panic() {
-    // Repointed at BUG-68's own repro (review Part 3.3, the testbench
-    // hoisting-half): Task 4 (BUG-67) below fixed this test's ORIGINAL
-    // source (a nested `fn` call inside another `fn`'s body), so it no
-    // longer reaches `hoist_unresolved` at all — exactly the churn Task 1's
-    // own `#[should_panic]` test hit when Task 3 landed. BUG-68 is still
-    // open (Task 5 hasn't landed); when it does, THIS test will need a new
-    // still-open repro in turn — `hoist_unresolved`'s fallback is meant to
-    // become unreachable for every known shape as this plan's tasks land,
-    // so any test targeting it necessarily borrows a temporarily-open bug.
-    let src = "const BIG: int = 1\n\
-               module Fuzz {\n  in a: bits[4]\n  const if (BIG == 1) {\n    out y: bits[4]\n  }\n  \
-               y = a\n}\n\n\
-               test \"t\" for Fuzz {\n  a = 0b1111\n  expect &extend(y, 8) == 0\n}\n";
-    let path = std::env::temp_dir().join("mimz_task2_bug68_repro.mimz");
+    // Repointed a THIRD time — this test's own doc comment predicted
+    // exactly this churn: "hoist_unresolved's fallback is meant to become
+    // unreachable for every known shape as this plan's tasks land, so any
+    // test targeting it necessarily borrows a temporarily-open bug."
+    // Previously repointed at BUG-68's testbench-hoisting repro (round-8
+    // Task 3/BUG-71 closed it), then at BUG-72's symbolic-width `trunc`
+    // in a reduction operand (round-8 Task 10 closed that one too —
+    // `try_widen_symbolic_extend` now handles `Builtin::Trunc`, so THIS
+    // exact repro compiles clean as of this same round).
+    //
+    // Repointed at BUG-74 (docs/audit/bugs.md, OPEN, filed while retiring
+    // this test's own BUG-72 repro): `infer_kind`'s `EnumConstruct` arm is
+    // `_ => None` unconditionally (`kinds.rs`, deliberate — `EnumConstruct`
+    // rendering already explicitly zero-pads to the enum's full
+    // tag+payload width, so nothing NEEDS its own `Kind` in the ordinary
+    // case). But an `if`/`match` WRAPPING one, used directly as a
+    // self-determined-position argument (never through an intermediate
+    // named `wire`, which short-circuits via `is_plain_identifier` before
+    // `infer_kind` is ever consulted), reaches `hoist_unresolved`'s
+    // fallback for real — `HOIST_CALL_SITES["encoding operand"]` below
+    // already documented this as "confirmed live... not theoretical"
+    // before BUG-74 was filed; this test is that confirmation made
+    // permanent.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  \
+               in k: bits[4]\n  in v: bits[8]\n  in b: bits[4]\n  out y: bits[13]\n  \
+               enum Packet { Ctrl(k: bits[4]), Data(v: bits[8]) }\n  \
+               reg toggle: bit = 0\n  \
+               on rise(clk) {\n    toggle <- toggle +% 1\n  }\n  \
+               y = { b, encoding(if toggle == 0 { Packet.Ctrl(k) } else { Packet.Data(v) }) }\n}\n";
+    let path = std::env::temp_dir().join("mimz_task2_bug74_repro.mimz");
     fs::write(&path, src).unwrap();
-    let out_v = std::env::temp_dir().join("mimz_task2_bug68_repro.v");
+    let out_v = std::env::temp_dir().join("mimz_task2_bug74_repro.v");
     let out = support::mimz()
         .arg("compile")
         .arg(&path)
         .arg("-o")
         .arg(&out_v)
-        .arg("--emit-testbench")
         .output()
         .unwrap();
     let _ = fs::remove_file(&path);
@@ -3187,8 +3222,9 @@ fn task2_unresolvable_concat_member_is_a_diagnostic_not_a_panic() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         !out.status.success(),
-        "expected `mimz compile --emit-testbench` to reject BUG-68's repro \
-         (unresolvable reduction over a const-if-declared port), but it exited 0"
+        "expected `mimz compile` to reject BUG-74's repro \
+         (an `if`/`match`-wrapped `EnumConstruct` as an `encoding()` argument), \
+         but it exited 0"
     );
     assert!(
         !stderr.contains("panicked at"),
@@ -3300,6 +3336,24 @@ fn bug_66_a2_reg_reset_hoist_matches_icarus() {
         4,
     );
     assert_eq!(row["y"], 2575, "expected y = {{b, extend(a,8)}} = 2575");
+}
+
+#[test]
+fn task7_reg_reset_delay_guard_still_fires_when_the_reset_value_hoists() {
+    // Round-8 plan Task 7: `reg` reset gets the identical narrowing as the
+    // `mem` init loop below — proves it wasn't dropped there. Same
+    // hoisting shape as `bug_66_a2_reg_reset_hoist_matches_icarus` just
+    // above (`extend(a, 8)` inside a concat).
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  reg r: bits[12] = { b, extend(a, 8) }\n  \
+                on rise(clk) {\n    r <- { b, extend(a, 8) }\n  }\n  \
+                y = r\n}\n";
+    let v = compile_string(src).expect("reg reset with a hoisting value should compile");
+    assert!(
+        v.contains("initial #0 r ="),
+        "expected the reg-reset init to keep its `#0` delay guard when its own \
+         value hoists a wire, got:\n{v}"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -3442,6 +3496,40 @@ fn bug_66_a3_mem_init_hoist_matches_icarus() {
         4,
     );
     assert_eq!(row["y"], 2575, "expected y = {{b, extend(a,8)}} = 2575");
+}
+
+#[test]
+fn task7_mem_init_delay_guard_still_fires_when_the_init_value_hoists() {
+    // Round-8 plan Task 7: narrowed `initial #0` to fire only when the
+    // seed's own rendered value pushed a hoisted `wire`/`assign` pair —
+    // proves the narrowing didn't drop the guard for the case it exists
+    // for. Same source as `bug_66_a3_mem_init_hoist_matches_icarus` above
+    // (`extend(a, 8)` inside a concat is exactly BUG-66 A3's own hoisting
+    // shape), checked here against the emitted text directly rather than
+    // re-running the Icarus oracle a second time.
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  in a: bits[4]\n  in b: bits[4]\n  \
+                out y: bits[12]\n  mem m: bits[12][4] = { b, extend(a, 8) }\n  \
+                y = m[0]\n}\n";
+    let v = compile_string(src).expect("mem init with a hoisting value should compile");
+    assert!(
+        v.contains("initial #0 for"),
+        "expected the mem-init loop to keep its `#0` delay guard when its own \
+         value hoists a wire, got:\n{v}"
+    );
+}
+
+#[test]
+fn task7_mem_init_delay_guard_is_dropped_when_the_init_value_does_not_hoist() {
+    // Counterpart to the test above: a plain literal init needs no guard,
+    // and the whole shipped corpus is this shape (every `initial #0`
+    // golden line reverted when Task 7 landed).
+    let src = "module Fuzz {\n  clock clk\n  reset rst\n  out y: bits[12]\n  \
+                mem m: bits[12][4] = 0\n  y = m[0]\n}\n";
+    let v = compile_string(src).expect("mem init with a literal value should compile");
+    assert!(
+        !v.contains("initial #0"),
+        "expected no `#0` delay guard when the mem-init value doesn't hoist, got:\n{v}"
+    );
 }
 
 // ---------------------------------------------------------------------
@@ -3592,6 +3680,80 @@ fn bug_68_sync_loop_declared_ports_are_declared_and_connected_in_the_emitted_tes
 }
 
 // ---------------------------------------------------------------------
+// Round-8 plan Task 3 (BUG-71, review Part 1 item 5 / bugs/bug-71-80.md):
+// `emit_testbench` never folded a DUT's own FILE-level consts into its
+// env at all — `bug_68_*` above had to replace the review's own
+// `const if (BIG == 1)` repro with a literal `const if (1 == 1)` to
+// isolate BUG-68's unflattened-item defect from this separate gap. Now
+// fixed (`testbench.rs` seeds `em.env` from the DUT's file + module
+// consts before resolving test args/param defaults or flattening
+// items), these three restore the FILE-LEVEL const form as the test that
+// actually gates the fix — the literal-condition `bug_68_*` tests above
+// stay as controls, unchanged.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_71_file_level_const_if_port_is_declared_and_connected_in_the_emitted_testbench() {
+    // BUG-68's own filed reproduction, byte-for-byte (review Part 3.3) —
+    // previously failed even after BUG-68's own fix landed, because the
+    // testbench's `env` had no entry for `BIG` at all.
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "const BIG: int = 1\n\
+               module Fuzz {\n  in a: bits[4]\n  const if (BIG == 1) {\n    out y: bits[4]\n  }\n  \
+               y = a\n}\n\n\
+               test \"t\" for Fuzz {\n  a = 0b1111\n  expect y == 0b1111\n}\n";
+    let stdout = compile_and_run_testbench(&bin, src, "bug_71_file_const_plain");
+    assert!(
+        stdout.contains("PASS") && !stdout.contains("FAIL"),
+        "expected PASS, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn bug_71_file_level_const_if_hoisting_expect_matches_icarus() {
+    // The hoisting half of the same repro — a `const if`-declared port
+    // read through a self-determined position (`hoist_unresolved`'s own
+    // `requires_named_wire: false` arm).
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "const BIG: int = 1\n\
+               module Fuzz {\n  in a: bits[4]\n  const if (BIG == 1) {\n    out y: bits[4]\n  }\n  \
+               y = a\n}\n\n\
+               test \"t\" for Fuzz {\n  a = 0b1111\n  expect &extend(y, 8) == 0\n}\n";
+    let stdout = compile_and_run_testbench(&bin, src, "bug_71_file_const_hoist");
+    assert!(
+        stdout.contains("PASS") && !stdout.contains("FAIL"),
+        "expected PASS, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn bug_71_const_if_branch_width_divergence_agrees_with_mimz_test() {
+    // Review Part 1 item 5 / Appendix A.9 — the one genuinely SILENT
+    // symptom: a `then`/`else` pair differing in width used to make the
+    // emitted testbench elaborate and report the OPPOSITE verdict to
+    // `mimz test` (the `else` branch's narrower port silently won,
+    // `.unwrap_or(0)` reading the unevaluable file-const condition as
+    // false), with nothing but an Icarus port-width warning in between.
+    let Some(bin) = support::require_iverilog() else {
+        return;
+    };
+    let src = "const ON: int = 1\n\
+               module F {\n  in a: bits[8]\n  \
+               const if (ON == 1) {\n    out y: bits[8]\n  } else {\n    out y: bits[4]\n  }\n  \
+               y = a\n}\n\n\
+               test \"t\" for F {\n  a = 0b10101010\n  expect y == 0b10101010\n}\n";
+    let stdout = compile_and_run_testbench(&bin, src, "bug_71_width_divergence");
+    assert!(
+        stdout.contains("PASS") && !stdout.contains("FAIL"),
+        "expected PASS (agreeing with `mimz test`), got:\n{stdout}"
+    );
+}
+
+// ---------------------------------------------------------------------
 // Round-7 plan Task 6 (review Part 5): round-6 Task 7 left `if-expr
 // then-branch` (`expr.rs:414`) and `if-expr else-branch` (`expr.rs:416`)
 // marked as HONEST open coverage gaps in `HOIST_CALL_SITES` — correctly,
@@ -3685,4 +3847,59 @@ fn task7_xnor_operand_of_an_extend_matches_icarus() {
     let src = "module Fuzz {\n  in a: bits[4]\n  in b: bits[4]\n  out y: bits[5]\n  \
                y = { b, xnor(extend(a, 8)) }\n}\n";
     differential(src, &[("a", 0b1111), ("b", 0b1010)]);
+}
+
+// ---------------------------------------------------------------------
+// Round-8 plan Task 10 (BUG-72, docs/audit/bugs/bug-71-80.md): `infer_
+// call`'s `Extend | Trunc` arm folds the width argument with `const_fold`
+// for BOTH builtins, so a module `int` parameter makes `infer_kind` return
+// `None` for a symbolic-width `trunc` exactly the same way it does for
+// `extend` — but only `Extend` had a recovery path
+// (`try_widen_symbolic_extend`, `expr.rs`), so every one of the 8
+// self-determined-position call sites fell through to `hoist_unresolved`
+// for `trunc`, a checker-accepted, `extend`-symmetric construct the
+// compiler flatly refused. Fixed by giving `try_widen_symbolic_extend` a
+// `Builtin::Trunc` arm — needing no new width math, since the ORDINARY
+// (non-self-determined) `Builtin::Trunc` render arm never const-folds its
+// width argument either (`x[(n)-1:0]`, substituted as text
+// unconditionally), so its own rendering is already the self-determined-
+// position answer too.
+// ---------------------------------------------------------------------
+
+#[test]
+fn bug_72_trunc_symbolic_width_reduction_operand_matches_icarus() {
+    // The plan's own filed repro, verbatim, `WIDTH`'s own default (1)
+    // included — a reduction operand (`&trunc(sr << 1, WIDTH)`) wrapping a
+    // symbolic-width `trunc`, one `&` away from a shipped example
+    // (`shift_register.mimz`, which uses `extend` at the identical
+    // position). `|`'s two operands must match width (E0402), which is
+    // exactly why the filed repro's own default is `WIDTH = 1`: `&trunc(..)`
+    // reduces to 1 bit unconditionally, so only a 1-bit `extend(din,
+    // WIDTH)` type-checks against it — the differential (real Icarus vs.
+    // our own kernel) is what proves correctness, not a hand-derived
+    // expected value. Named `Fuzz`, not `ShiftRegister` (the plan's own
+    // name for this repro) — `differential_clocked`'s testbench helper
+    // hardcodes `"Fuzz"` as the instantiated module name.
+    let src = "module Fuzz(WIDTH: int = 1) {\n  clock clk\n  reset rst\n  \
+                in  din:  bit\n  out dout: bits[WIDTH]\n  reg sr: bits[WIDTH] = 0\n  \
+                on rise(clk) {\n    sr <- &trunc(sr << 1, WIDTH) | extend(din, WIDTH)\n  }\n  \
+                dout = sr\n}\n";
+    differential_clocked(src, None, &[("din", 1)]);
+}
+
+#[test]
+fn bug_72_trunc_symbolic_width_concat_member_matches_icarus() {
+    // Same defect, self-determined position is a CONCAT member instead of
+    // a reduction operand — proves the fix isn't coincidentally narrow to
+    // the reduction call site (`try_widen_symbolic_extend` is shared by
+    // both, per the `HOIST_CALL_SITES` table below). `WIDTH`'s own default
+    // widened to 4 here (unlike the reduction test above, nothing forces
+    // it to 1) so `sr << 1` genuinely grows past `WIDTH` before `trunc`
+    // narrows it back — the shape `trunc`'s own explicit-narrow fallback
+    // exists for.
+    let src = "module Fuzz(WIDTH: int = 4) {\n  clock clk\n  reset rst\n  \
+                in din: bit\n  out y: bits[WIDTH + 1]\n  reg sr: bits[WIDTH] = 0\n  \
+                on rise(clk) {\n    sr <- extend(din, WIDTH)\n  }\n  \
+                y = { din, trunc(sr << 1, WIDTH) }\n}\n";
+    differential_clocked(src, None, &[("din", 1)]);
 }

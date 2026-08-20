@@ -1498,6 +1498,15 @@ Note also that this invariant is a `debug_assert!` in a workspace that ships
 binary** — the failure mode round-7 plan Task 2 removed from `hoist_unresolved`
 the same day, ten lines away. Same `cfg!(test)` fix applies.
 
+**Closed 2026-08-20, round-8 plan Task 5.** The `cfg!(test)` fix now applies
+here too: the violation branch pushes a real `Diag` UNCONDITIONALLY, before
+the gated `debug_assert!`, so a real `mimz` binary in either profile exits
+non-zero with a message instead of aborting. See this file's own audit-log
+entry ([`audit-log/2026-08.md`](audit-log/2026-08.md), 2026-08-20) for the
+fix and its verification
+(`task5_declaration_order_violation_is_a_diagnostic_not_a_panic_outside_tests`,
+`tests/hoist_declaration_order.rs`).
+
 **Status update (2026-08-18).** Both halves of this gap's own "Recommended
 direction" landed. Task 1: the exact post-emission invariant this entry
 specifies (`assert_hoists_declared_before_use`, `emit_verilog/mod.rs`) — no
@@ -1671,6 +1680,61 @@ BUG-70's class corpus-wide the moment it landed.
 Item 1 is a day's smaller than item 2 and catches more today. Item 2 is what
 makes the next unknown site in this window loud instead of waiting for a
 reviewer to construct it.
+
+**Status update (2026-08-20), round-8 plan Task 4.** Item 1's own premise
+was checked directly rather than assumed, and turned out to be **stale
+before this task even started**: `every_emitted_verilog_passes_iverilog`
+(`tests/icarus.rs`) already ran `iverilog -t null` over the whole 226-file
+corpus with a `checked >= 226` floor — added by round 7's own `8a24f86`,
+before this gap's own review was written. The "second, cheaper hole" section
+above and this entry's own item 1 both claim no such in-repo test existed;
+that claim was wrong even at filing time, not merely later closed. `-t null`
+was empirically confirmed to perform the SAME full elaboration/binding pass
+as a real target (hand-built BUG-70's own broken declaration order and fed
+it to both — identical `Unable to bind wire/reg/memory` rejection), so the
+corpus-wide net item 1 asks for was live the whole time; the only real gap
+was an unpinned language generation, closed by adding `-g2005` to that same
+test rather than duplicating it. **GAP-20 stays OPEN**: item 2 (fuzz
+vocabulary for the three pre-declaration sites, round-8 plan Task 9) is
+still undone, and remains this gap's actual open half — the "first" oracle
+this axis lacks, not the corpus sweep.
+
+**Status update (2026-08-20), round-8 plan Task 9.** Item 2's instance-port
+connection piece is done — `gen_special_leaves`'s array-instance branch
+(`tests/differential_fuzz.rs`) now connects a second instance's input
+through `extend(<first instance's own output>, growth)` nested as a concat
+member, about half the time, matching BUG-70's own reproduction verbatim
+(`{ b, extend(u1.q, 8) }`). Confirmed live that this is the load-bearing
+shape and not an easier one: a bare `extend(s.q, w2)` alone as the WHOLE
+connection — no outer concat — compiles fine even with Task 1's fix
+reverted (its target width is already explicit, so no hoist is needed at
+all when it is the sole top-level expression); only nesting it as a concat
+member reaches GAP-18's own widened invariant. Verified against a live
+revert of Task 1 (disabling `declare_instance_outputs`'s pre-pass AND
+restoring inline wire declaration in `instance()`'s `Dir::Out` arm — a bare
+pre-pass disable alone reproduces a DIFFERENT failure, an undeclared
+implicit net, not BUG-70's declare-after-use): the generated seed then
+fails `mimz compile` itself with GAP-18's "declared name `s_q` referenced
+before its own declaration", and compiles clean again with the fix
+restored. Acceptance test:
+`task9_instance_port_connection_reaches_a_hoisting_expression_within_400_seeds`
+(seed `CLOCKED_SEED_BASE+15` at the time of writing).
+
+**The `reg`-reset and `mem`-init thirds of item 2 remain undone**, for a
+reason not visible until attempting them: both sites' declared value is
+read directly by `mimz-sim`'s own `elaborate_project` (`reg`) and by the
+kernel's power-on seed logic (`mem`), and that code path requires the value
+to be a **compile-time constant** — a pre-existing kernel limitation
+[BUG-66](bugs/bug-61-70.md)'s own entry already names (`icarus_only_clocked`,
+`tests/self_determined_regression.rs`, bypasses `mimz-sim` entirely for its
+own `reg`/`mem` reproductions for exactly this reason). Making either
+generator site emit a genuinely non-constant expression would break
+`differential_fuzz_clocked_matches_icarus`'s own `elaborate_project`/`run`
+calls for every program that reaches it — not a small fix alongside the
+instance-connection change, but a second, Icarus-only oracle path (mirroring
+`icarus_only_clocked`) that the existing kernel-vs-Icarus differential
+cannot host as-is. Left for a follow-up round rather than folded into this
+one.
 
 Long term, [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)
 removes the window: with a typed elaborated IR there is no pre-declaration
