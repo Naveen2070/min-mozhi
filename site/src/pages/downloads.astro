@@ -11,6 +11,33 @@ const RELEASES = `${REPO}/releases`;
 // when a new version ships.
 const releases = [
   {
+    tag: "v0.2.0",
+    name: "Wingless Butterfly",
+    date: "2026-08-20",
+    assets: [
+      {
+        platform: "Linux (x86_64)",
+        arch: "x86_64-unknown-linux-musl",
+        ext: "tar.gz",
+      },
+      {
+        platform: "macOS (Intel)",
+        arch: "x86_64-apple-darwin",
+        ext: "tar.gz",
+      },
+      {
+        platform: "macOS (Apple Silicon)",
+        arch: "aarch64-apple-darwin",
+        ext: "tar.gz",
+      },
+      {
+        platform: "Windows (x86_64)",
+        arch: "x86_64-pc-windows-msvc",
+        ext: "zip",
+      },
+    ],
+  },
+  {
     tag: "v0.1.0",
     name: "Wingless Butterfly",
     date: "2026-06-24",

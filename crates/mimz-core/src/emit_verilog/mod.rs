@@ -755,10 +755,27 @@ fn strip_instance_port_names(line: &str) -> String {
 /// Blanks the CONTENTS of every `"..."` string literal in `line`, keeping
 /// the quotes — a `$display("state is %0d", state)`-style literal's own
 /// text is never executable Verilog, so a name it happens to mention must
-/// never count as a "use". Not currently reachable from a plain module
-/// body (no `$display` is ever emitted there — only `--emit-testbench`
-/// output uses one, which this invariant doesn't scan) but cheap enough to
-/// guard against rather than leave a silent trap for future reuse.
+/// never count as a "use".
+///
+/// LOAD-BEARING, not defensive (round-9 verification, 2026-08-20 — this
+/// comment previously claimed the opposite, that no `$display` is ever
+/// emitted into a plain module body). An `assert` emits one directly into
+/// the body: `$display("ASSERTION FAILED: {msg}")`, both at module-item
+/// level (`module/mod.rs`'s `ModuleItem::Assert` arm) and inside an `on`
+/// block (`module/seq.rs`'s `SeqStmt::Assert` arm). When the source omits
+/// the optional message, `msg` is the RENDERED CONDITION — real signal
+/// identifiers, verbatim. A user-supplied message is arbitrary text and can
+/// name anything at all. Either form sits textually BEFORE the combinational
+/// `cover` block, which declares `__cover_N_cond`/`__cover_N_count` at the
+/// very end of the module, so a message mentioning one of those names is a
+/// genuine false positive that only this function prevents (constructed and
+/// confirmed: `cover(a[0] == 1)` plus
+/// `assert(a[1] == 0, "beware __cover_0_count")`).
+///
+/// The naive quote toggling below is safe despite `msg`'s own
+/// `replace('"', "\\\"")`: mimz's lexer has no string escape, so an
+/// unterminated-string error (E1002) rejects any source whose message
+/// contains a quote before emission is ever reached.
 fn strip_string_literals(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut in_string = false;

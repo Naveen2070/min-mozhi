@@ -405,7 +405,7 @@ edition codename on top, then the compiler and edition lines:
 
 ```text
 Wingless Butterfly
-mimz    0.1.0                       (compiler)
+mimz    0.2.0                       (compiler)
 edition wingless-butterfly-2026-1   (language)
 ```
 

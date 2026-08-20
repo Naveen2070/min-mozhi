@@ -1090,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "mimz"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1114,7 +1114,7 @@ dependencies = [
 
 [[package]]
 name = "mimz-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mimz-sim",
  "owo-colors",
@@ -1127,14 +1127,14 @@ dependencies = [
 
 [[package]]
 name = "mimz-sim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mimz-core",
 ]
 
 [[package]]
 name = "mimz-wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mimz-sim",
  "wasm-bindgen",
