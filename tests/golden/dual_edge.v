@@ -7,8 +7,8 @@ module DualEdge (
     reg [(8)-1:0] a;
     reg [(8)-1:0] b;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial #0 a = 0;
-    initial #0 b = 0;
+    initial a = 0;
+    initial b = 0;
     assign q = b;
     always @(posedge clk) begin
         if (rst) begin

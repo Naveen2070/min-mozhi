@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn bug_71_unevaluable_const_if_condition_is_a_diagnostic_not_a_silent_else() {
+    // BUG-71 (docs/audit/bugs.md): `flatten_items` used to read
+    // `consteval::eval(cond, &self.env).unwrap_or(0)` — an unevaluable
+    // condition silently took the `else` branch with NO diagnostic at all.
+    // `UNDEFINED` here is checker-rejected in real use (E0101/E0811) — this
+    // test bypasses the checker (`emit_src`/`emit_src_err`, this module's
+    // own helpers, never call `checker::check` — see their own doc
+    // comments) to pin `flatten_items`'s OWN defensive behavior directly,
+    // the same way `bare_bundle_typed_fn_return_is_a_diagnostic_not_invalid_verilog`
+    // (`bundle_flatten.rs`) pins a different emitter-only invariant the
+    // same way.
+    let diags = emit_src_err(
+        "module M {\n  in a: bits[4]\n  const if (UNDEFINED == 1) {\n    out y: bits[4]\n  }\n  \
+         y = a\n}\n",
+    );
+    assert!(
+        !diags.is_empty(),
+        "an unevaluable `const if` condition must push a Diag, not silently pick a branch"
+    );
+}
+
+#[test]
 fn child_consts_fold_into_parent_auto_wires() {
     // The child's ports are sized by ITS OWN `const W`. The parent's
     // auto-wire for `u.y` must fold that const to a literal — the

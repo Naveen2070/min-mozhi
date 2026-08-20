@@ -4,7 +4,7 @@
 //! a Verilog module that instantiates the DUT, drives its inputs,
 //! and evaluates `expect` statements using self-checking `$display` messages.
 
-use crate::ast::{Dir, ModuleItem, TestDecl, TestStmt, Type};
+use crate::ast::{Dir, File, ModuleItem, TestDecl, TestStmt, TopItem, Type};
 use crate::checker::consteval::{self, Env};
 use crate::diag::Diag;
 use crate::emit_verilog::{Emitter, Project, REPEAT_BUDGET};
@@ -164,8 +164,17 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
     }
 }
 
-/// Generates a Verilog testbench string for the given inline test declarations.
-pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, Vec<Diag>> {
+/// Generates a Verilog testbench string for the given inline test
+/// declarations. `files` is the same slice `Project::from_files` was built
+/// from — BUG-71 (`docs/audit/bugs.md`) needs it to seed each DUT's own
+/// file-level consts, which `Project` itself doesn't retain (it discards
+/// `TopItem::Const` entirely; only `emit()`'s own pre-pass in `mod.rs`
+/// used to have this, via its `files` parameter).
+pub fn emit_testbench(
+    project: &Project,
+    files: &[File],
+    tests: &[&TestDecl],
+) -> Result<String, Vec<Diag>> {
     let mut em = Emitter {
         project,
         out: String::new(),
@@ -240,6 +249,26 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
 
         em.out.push_str(&format!("module {};\n", tb_name));
 
+        // BUG-71 (docs/audit/bugs.md): seed the DUT's own file- and
+        // module-level consts BEFORE anything else below — `emit()`
+        // (`mod.rs`) does exactly this for every module it compiles
+        // directly (`file_consts`, then `eval_consts_items`); this
+        // function never did, so a `const if` referencing a file const
+        // was unevaluable here even though plain `mimz compile` resolves
+        // the identical design fine. `flatten_items` (below) reads
+        // `self.env` to decide every `const if`'s branch — without this,
+        // `consteval::eval` fails on the file const, and the condition
+        // silently took the `else` branch (now: a `Diag`, not silent —
+        // see `flatten_items`'s own fix). Test args and parameter defaults
+        // are resolved into `test_env` next, on top of this base, so an
+        // explicit test argument still wins on a name collision.
+        let dut_file_consts = em.eval_consts(
+            Env::new(),
+            files[dut_file].items.iter().filter_map(|i| match i {
+                TopItem::Const(c) => Some(c),
+                _ => None,
+            }),
+        );
         // Resolve explicit test args first — each may reference an earlier one
         // (e.g. `M(W: 8, DEPTH: W * 2)`), same as `sim::harness::params` — then
         // fall back to the module's own parameter defaults for anything the
@@ -247,7 +276,7 @@ pub fn emit_testbench(project: &Project, tests: &[&TestDecl]) -> Result<String, 
         // `sim::elaborate::elaborate_module`. Without this, a width expression
         // like `bits[W]` fails to resolve whenever a test omits a parameter
         // that has a module-level default.
-        let mut test_env = Env::new();
+        let mut test_env = em.eval_consts_items(&dut.items, dut_file_consts);
         for a in &test.args {
             match consteval::eval(&a.value, &test_env) {
                 Ok(v) => {
@@ -561,7 +590,7 @@ mod tests {
                 })
             })
             .collect();
-        emit_testbench(&project, &tests)
+        emit_testbench(&project, &asts, &tests)
     }
 
     /// BUG-54 (docs/audit/bugs.md): `expect`'s guard used to be
