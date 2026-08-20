@@ -12,11 +12,11 @@ module SyncPulse (
     reg __sync_dst_pulse_w_stage2;
     wire dst_pulse_w;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial #0 src_reg = 0;
-    initial #0 __sync_dst_pulse_w_toggle = 0;
-    initial #0 __sync_dst_pulse_w_stage0 = 0;
-    initial #0 __sync_dst_pulse_w_stage1 = 0;
-    initial #0 __sync_dst_pulse_w_stage2 = 0;
+    initial src_reg = 0;
+    initial __sync_dst_pulse_w_toggle = 0;
+    initial __sync_dst_pulse_w_stage0 = 0;
+    initial __sync_dst_pulse_w_stage1 = 0;
+    initial __sync_dst_pulse_w_stage2 = 0;
     assign dst_pulse_w = (__sync_dst_pulse_w_stage1 ^ __sync_dst_pulse_w_stage2);
     assign dst_pulse = dst_pulse_w;
     always @(posedge clk_src) begin

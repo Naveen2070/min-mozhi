@@ -832,9 +832,20 @@ impl Emitter<'_> {
         {
             debug_assert!(!cfg!(test), "{msg}");
         }
+        // Round-8 plan Task 6, item 6 (review Part 1, item 2's nit): `msg`
+        // above embeds `{expr:?}`, a raw AST `Debug` dump — fine for the
+        // `debug_assert!` text (a developer reading a test failure), wrong
+        // for a shipped compiler's user-facing `Diag`. This mirrors `msg`'s
+        // own content (site, grammar note, rendered text, GAP-16 pointer)
+        // without the AST dump.
         self.err(
             expr.span,
-            format!("cannot determine `{rendered_text}`'s width here — GAP-16: {msg}"),
+            format!(
+                "cannot determine `{rendered_text}`'s width here — GAP-16: \
+                 hoist_unresolved: `infer_kind` returned `None` at `{site}`{grammar_note} \
+                 (rendered as `{rendered_text}`) — a hoist site may not silently do \
+                 nothing when it cannot resolve a Kind."
+            ),
             "this is a compiler limitation; simplify the expression or file a bug \
              report (docs/audit/bugs.md, GAP-16)",
         );

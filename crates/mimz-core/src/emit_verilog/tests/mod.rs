@@ -39,3 +39,36 @@ fn emit_src_translit(src: &str) -> String {
     let project = Project::from_files(&files).unwrap();
     emit(&project, &files).expect("emit should succeed")
 }
+
+/// Minimal `Emitter` for unit-level tests that need to call a `&mut self`
+/// method directly without driving the whole `emit()` pipeline. Mirrors
+/// `emit()`'s own `Emitter` struct literal field-for-field (`module/
+/// tests.rs`'s own `test_emitter` does the same, one module level down,
+/// per that file's own doc comment — no shared helper exists across the
+/// two test trees).
+fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
+    Emitter {
+        project,
+        out: String::new(),
+        diags: Vec::new(),
+        cur_file: 0,
+        env: Env::new(),
+        module_envs: HashMap::new(),
+        repeat_budget: REPEAT_BUDGET,
+        clog2_fn_used: false,
+        emitting_port: false,
+        funcs_used: Vec::new(),
+        bundle_sigs: HashMap::new(),
+        hoist_counter: 0,
+        hoisted_decls: String::new(),
+        pre_decl_hoisted_decls: String::new(),
+        in_pre_decl_render: false,
+        cur_decls: Default::default(),
+        in_fn_body: false,
+        fn_hoist_counter: 0,
+        fn_hoisted_regs: String::new(),
+        fn_hoisted_stmts: Vec::new(),
+        cover_ordinals: HashMap::new(),
+        declared_signal_names: std::collections::HashSet::new(),
+    }
+}

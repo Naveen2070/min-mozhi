@@ -17,10 +17,10 @@ module anuppi #(
     reg [(3)-1:0] suttu;
     reg [(8)-1:0] nakarvu;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial #0 natappu = NILAI_OOYVU;
-    initial #0 ennnni = 0;
-    initial #0 suttu = 0;
-    initial #0 nakarvu = 0;
+    initial natappu = NILAI_OOYVU;
+    initial ennnni = 0;
+    initial suttu = 0;
+    initial nakarvu = 0;
     assign vari = (((natappu == NILAI_OOYVU)) ? (1) : (((natappu == NILAI_THOTAKKAM)) ? (0) : (((natappu == NILAI_THAKAVAL)) ? (nakarvu[0]) : (1))));
     assign veelai = (((natappu == NILAI_OOYVU)) ? (0) : (((natappu == NILAI_THOTAKKAM)) ? (1) : (((natappu == NILAI_THAKAVAL)) ? (1) : (1))));
     always @(posedge katikai) begin

@@ -17,10 +17,10 @@ module UartTx #(
     reg [(3)-1:0] bit_index;
     reg [(8)-1:0] shift;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial #0 state = STATE_IDLE;
-    initial #0 clk_count = 0;
-    initial #0 bit_index = 0;
-    initial #0 shift = 0;
+    initial state = STATE_IDLE;
+    initial clk_count = 0;
+    initial bit_index = 0;
+    initial shift = 0;
     assign tx = (((state == STATE_IDLE)) ? (1) : (((state == STATE_START)) ? (0) : (((state == STATE_DATA)) ? (shift[0]) : (1))));
     assign busy = (((state == STATE_IDLE)) ? (0) : (((state == STATE_START)) ? (1) : (((state == STATE_DATA)) ? (1) : (1))));
     always @(posedge clk) begin

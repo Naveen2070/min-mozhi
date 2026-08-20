@@ -334,7 +334,26 @@ fn icarus_major_version(bin: &Path) -> Option<u32> {
 }
 
 /// Layer 1 — every emitted `.v` in the corpus is valid Verilog by the
-/// judgment of a real tool, not just our substring asserts.
+/// judgment of a real tool, not just our substring asserts. Pins the
+/// language generation to `-g2005` (plain IEEE 1364-2005, no SystemVerilog
+/// extensions) rather than trusting Icarus's own default to stay put across
+/// versions — this is the corpus-wide counterpart to the emitter-side
+/// declaration-order invariant: nothing else runs a real elaborator over
+/// the whole shipped corpus (`every_emitted_testbench_reports_pass_under_vvp`
+/// below only reaches the ~50 files with `test` blocks). Round 8's manual
+/// review (Appendix B.2) ran this same sweep by hand over all 226 files in
+/// about three minutes and reported zero failures before it was promoted
+/// into this in-repo test; running it here measured ~14s (this machine, warm
+/// build). No corpus file
+/// today reaches a declaration-order shape strict enough to make this fail
+/// on its own — confirmed by hand-building BUG-70's own broken ordering
+/// (`u1_q` referenced by a hoisted wire spliced above `u1_q`'s own
+/// declaration) as a standalone `.v` and feeding it to real `iverilog`
+/// directly: both `-g2005` and Icarus's own default generation reject it
+/// identically (`Unable to bind wire/reg/memory 'u1_q' ... declaration
+/// after use`), so `-g2005` changes nothing observable today — it is a
+/// future-proofing pin, not today's detection mechanism. So today this
+/// sweep is a regression net against that whole class, not yet a detector.
 #[test]
 fn every_emitted_verilog_passes_iverilog() {
     let Some(bin) = require_iverilog() else {
@@ -345,13 +364,13 @@ fn every_emitted_verilog_passes_iverilog() {
     for path in files {
         let v = compile_example(&path);
         let out = tool(&bin, "iverilog")
-            .args(["-t", "null"])
+            .args(["-g2005", "-t", "null"])
             .arg(&v)
             .output()
             .unwrap();
         assert!(
             out.status.success(),
-            "iverilog rejected the Verilog emitted for {}:\n{}",
+            "iverilog -g2005 rejected the Verilog emitted for {}:\n{}",
             path.display(),
             String::from_utf8_lossy(&out.stderr)
         );

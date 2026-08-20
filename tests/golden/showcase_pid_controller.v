@@ -13,8 +13,8 @@ module PidController (
     wire signed [(10)-1:0] d_diff;
     wire signed [(16)-1:0] total;
     // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
-    initial #0 integral = 0;
-    initial #0 prev_error = 0;
+    initial integral = 0;
+    initial prev_error = 0;
     wire signed [9:0] __mimz_sub_1;
     assign __mimz_sub_1 = ((setpoint) - (measured));
     wire signed [10:0] __mimz_sub_2;

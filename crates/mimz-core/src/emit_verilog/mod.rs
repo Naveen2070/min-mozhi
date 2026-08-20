@@ -511,7 +511,8 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
             if let TopItem::Module(m) = item {
                 let module_start = em.out.len();
                 em.module(m);
-                assert_hoists_declared_before_use(&em.out[module_start..]);
+                let module_text = em.out[module_start..].to_string();
+                assert_hoists_declared_before_use(&mut em, &module_text, m.span);
                 em.out.push('\n');
             }
         }
@@ -535,12 +536,31 @@ pub fn emit(project: &Project, files: &[File]) -> Result<String, Vec<Diag>> {
 /// hoisted name. This widens the declaration map to every `wire`/`reg` line
 /// and the usage scan to every identifier, with three guards a general scan
 /// needs that the narrow one didn't (see `identifiers_in`/
-/// `strip_instance_port_names`'s own doc comments for each). A
-/// `debug_assert!` (live in release — `[profile.release] debug-assertions
-/// = true`, `Cargo.toml`), naming the identifier, the use line, and the
-/// declaration line, the same way `hoist_unresolved`'s own message names
-/// its site.
-fn assert_hoists_declared_before_use(module_text: &str) {
+/// `strip_instance_port_names`'s own doc comments for each).
+///
+/// Round-8 plan Task 5: this used to be a bare `debug_assert!` — and this
+/// workspace ships `[profile.release] debug-assertions = true`
+/// (`Cargo.toml`, deliberate), so a violation aborted a real, shipped `mimz
+/// compile` with a Rust panic and backtrace instead of exiting non-zero
+/// with a message — the exact failure mode round-7 Task 2 removed from
+/// `hoist_unresolved` (`module/ports.rs`), ten lines away, the same day.
+/// Same `cfg!(test)` gate, applied the same way: true for this crate's own
+/// `cargo test` binary (every `emit_src`-style test still gets a loud,
+/// immediate panic — reaching this IS a development-time bug), false for
+/// the real `mimz` binary in either profile. Pushes the `Diag`
+/// UNCONDITIONALLY, before the gated `debug_assert!` (the opposite order
+/// from `hoist_unresolved`, deliberately: this makes the push itself
+/// observable by a unit test even though the test binary's own `cfg!(test)`
+/// forces the panic branch too — `catch_unwind` around the call proves both
+/// halves in one place, see `task5_declaration_order_violation_is_a_
+/// diagnostic_not_a_panic_outside_tests` below). Takes the module's own
+/// span (`module_span`) — per-line spans into GENERATED Verilog don't map
+/// back to any real source location.
+fn assert_hoists_declared_before_use(
+    em: &mut Emitter,
+    module_text: &str,
+    module_span: crate::span::Span,
+) {
     let lines: Vec<&str> = module_text.lines().collect();
 
     // Shared skip predicate for both passes below: a `function ...
@@ -593,9 +613,10 @@ fn assert_hoists_declared_before_use(module_text: &str) {
         }
         let scannable = strip_string_literals(&strip_instance_port_names(line));
         for name in identifiers_in(&scannable) {
-            if let Some(&d) = decl_line.get(&name) {
-                debug_assert!(
-                    i >= d,
+            if let Some(&d) = decl_line.get(&name)
+                && i < d
+            {
+                let msg = format!(
                     "GAP-18: declared name `{name}` referenced before its own declaration — \
                      use at line {} (`{}`), declared at line {} (`{}`). A render site is \
                      writing this module's text out of declare-before-use order — see \
@@ -605,6 +626,21 @@ fn assert_hoists_declared_before_use(module_text: &str) {
                     d + 1,
                     lines[d].trim(),
                 );
+                em.err(
+                    module_span,
+                    msg.clone(),
+                    "this is a compiler bug in the emitter itself, not a problem with \
+                     your program; file a bug report (docs/audit/bugs.md, GAP-18)",
+                );
+                // Deliberately AFTER the push above (see this fn's own
+                // doc comment): a `cargo test` binary still panics here,
+                // loud and immediate, but the `Diag` a real `mimz`
+                // binary (`cfg!(test)` false there) would return was
+                // already recorded before that panic unwinds.
+                #[allow(clippy::assertions_on_constants)]
+                {
+                    debug_assert!(!cfg!(test), "{msg}");
+                }
             }
         }
     }
