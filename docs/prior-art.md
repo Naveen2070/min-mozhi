@@ -216,7 +216,7 @@ Two honest caveats the comparison surfaces:
 
 Before designing the checker passes, multi-clock/`sync`, `repeat`
 hardening, or the Phase 2 IR: check this page's language first (Spade,
-Amaranth, Spade/Veryl, FIRRTL respectively) and note in the decision log
+Amaranth, Veryl, FIRRTL respectively) and note in the decision log
 what was adopted or rejected, and why.
 
 ---

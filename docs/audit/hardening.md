@@ -73,8 +73,8 @@ added" once landed.
 
 ### HARD-7 (DONE) — `#![forbid(unsafe_code)]` on every crate, not just `mimz-core`
 
-**Status update 2026-08-09** (Task 7, `docs/plan/v0.2-class-closure-
-round3.local.md`): confirmed done, not just partially — `src/lib.rs:52` and
+**Status update 2026-08-09** (round-3 class-closure plan Task 7): confirmed
+done, not just partially — `src/lib.rs:52` and
 `src/main.rs:9` both carry the attribute, closing the gap this entry's
 2026-08-07 update said was the remaining action. Every crate in the
 workspace now carries `#![forbid(unsafe_code)]`: `mimz-core`,

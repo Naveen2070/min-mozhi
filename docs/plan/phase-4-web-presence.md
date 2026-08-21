@@ -2,7 +2,9 @@
 
 > **One static site: a landing page, the docs, and a WASM playground where you
 > write `.mimz` and see the Verilog _and the waveform_ in the browser.**
-> Window: pre-v0.1.0 public launch · Status: 🟡 in progress · Maintainer-gated (R12)
+> Window: pre-v0.1.0 public launch · Status: 🟢 shipped — deployed for the
+> 2026-06-24 v0.1.0 public launch (`docs/log/2026-06-24.md`); Vercel Analytics
+> added for the live site the same day
 
 ## Why now
 
@@ -197,14 +199,14 @@ translation of docs prose. (The maintainer subdomain on Vercel is now _in_ scope
 section 4.) The playground engine here is what those later ride
 on.
 
-## Build status (2026-06-30)
+## Build status (shipped 2026-06-24)
 
-- **Steps 1–5 complete:** `compile_string` lib wrapper + `crates/mimz-wasm` (step 2),
+- **Steps 1–6 complete:** `compile_string` lib wrapper + `crates/mimz-wasm` (step 2),
   Astro scaffold (step 3), Playground page with console (step 4), Waveform viewer +
-  stimulus panel (step 5) — all built and verified. The deploy workflow
+  stimulus panel (step 5), Vercel deploy + landing polish (step 6) — all built,
+  deployed, and verified. The deploy workflow
   (`.github/workflows/deploy-site.yml`, approach B prebuilt) was written on
   2026-06-19.
-- **Open (maintainer-gated, R12):** wire `mimz.naveenr.in` DNS (CNAME → Vercel);
-  add `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` as GitHub secrets; run
-  `vercel link` once in `site/`; then trigger production deploy.
-- **Next:** flip repo public + tag `v0.1.0` (maintainer's call).
+- **Shipped:** DNS, Vercel secrets, and `vercel link` were wired ahead of the
+  2026-06-24 v0.1.0 public launch — the repo flipped public and the site went
+  live the same day (`docs/log/2026-06-24.md`).

@@ -45,20 +45,22 @@ One-page reference. The authoritative sources are
 | `foreach` | `ovvondraga`    | `ஒவ்வொன்றாக`  | loop over a range or an array                             |
 | `sync`    | `othisai`       | `ஒத்திசை`     | modifier for `sync loop`, and the `sync.*` CDC primitives |
 | `extern`  | `anniya`        | `அன்னிய`      | declare a Verilog module we do not compile                |
+| `assert`  | `valiyuruthu`   | `வலியுறுத்து` | hard runtime invariant                                    |
+| `cover`   | `alavidu`       | `அளவிடு`      | functional-coverage counter                               |
 | `sim`     | `paavnai`       | `பாவனை`       | hardware-emulation block                                  |
 | `bind`    | `inai`          | `இணை`         | connect a port to a peripheral inside `sim`               |
 | `speed`   | `vegam`         | `வேகம்`       | set the emulated clock rate inside `sim`                  |
 | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar directive                                         |
 | `thamizh` | `thamizh`       | `தமிழ்`       | thamizh word-order profile                                |
 
-That is the complete active keyword set — 42 words. The table itself lives
+That is the complete active keyword set — 44 words. The table itself lives
 in [`lang/keywords.toml`](../../lang/keywords.toml); adding a word there is
 a DATA change, not a compiler change. The Tanglish and Tamil columns are
 frozen at keyword-set **v1** (2026-06-15), so a program you write today
 keeps lexing the same way.
 
-The Tanglish/Tamil spellings of `mem`, `async`, `fall`, `fn`, `return`, `default`, `bundle`, `loop`, `foreach`, `sync`, `extern`, `sim`, `bind`, and `speed` are **provisional**,
-pending native-speaker review before the v0.1.0 release.
+The Tanglish/Tamil spellings of `mem`, `async`, `fall`, `fn`, `return`, `default`, `bundle`, `assert`, `cover`, `loop`, `foreach`, `sync`, `extern`, `sim`, `bind`, and `speed` are **provisional**,
+pending native-speaker review.
 
 Reserved for future features (using one is an error): `inout`, `struct`,
 `secret`, `declassify`, `pipeline`, `interface`, `chan`, `prove`,
@@ -66,25 +68,28 @@ Reserved for future features (using one is an error): `inout`, `struct`,
 
 ## Types
 
-| Type        | Meaning                             |
-| ----------- | ----------------------------------- |
-| `bit`       | one bit (boolean)                   |
-| `bits[N]`   | `N`-bit unsigned                    |
-| `signed[N]` | `N`-bit two's-complement            |
-| `int`       | compile-time integer (params/const) |
-| `bool`      | compile-time boolean (params/const) |
+| Type        | Meaning                                        |
+| ----------- | ---------------------------------------------- |
+| `bit`       | one bit (boolean)                              |
+| `bits[N]`   | `N`-bit unsigned                               |
+| `signed[N]` | `N`-bit two's-complement                       |
+| `T?`        | valid-bundle sugar (`{ valid: bit, data: T }`) |
+| `T[N]`      | fixed-size array of `N` elements               |
+| `Bundle`    | named bundle of signals                        |
+| `int`       | compile-time integer (params/const)            |
+| `bool`      | compile-time boolean (params/const)            |
 
 ## Operators
 
-| Group        | Operators                                                              |
-| ------------ | ---------------------------------------------------------------------- |
-| arithmetic   | `+` `-` `*` (lossless, grow) · `+%` `-%` `*%` (wrapping)               |
-| shift        | `<<` `>>`                                                              |
-| bitwise      | `&` `\|` `^` `~`                                                       |
-| reduction    | `&x` `\|x` `^x` (collapse a bus to one bit)                            |
-| comparison   | `==` `!=` `<` `<=` `>` `>=` · chained: `lo <= x <= hi`                 |
-| logical      | `&&`/`and` `\|\|`/`or` `!`/`not` (on `bit` only)                       |
-| build/select | `{a, b}` concat · `{N{x}}` replicate · `x[i]` index · `x[hi:lo]` slice |
+| Group        | Operators                                                                                      |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| arithmetic   | `+` `-` `*` (lossless, grow) · `+%` `-%` `*%` (wrapping)                                       |
+| shift        | `<<` `>>`                                                                                      |
+| bitwise      | `&` `\|` `^` `~`                                                                               |
+| reduction    | `&x` `\|x` `^x` (collapse a bus to one bit)                                                    |
+| comparison   | `==` `!=` `<` `<=` `>` `>=` · chained: `lo <= x <= hi`                                         |
+| logical      | `&&`/`and` `\|\|`/`or` `!`/`not` (on `bit` only)                                               |
+| build/select | `{a, b}` concat · `{N{x}}` replicate · `x[i]` index · `x[hi:lo]` slice · `lhs ?? rhs` coalesce |
 
 Precedence is Rust-style: `x & 1 == 0` is `(x & 1) == 0`.
 
@@ -102,6 +107,7 @@ Precedence is Rust-style: `x & 1 == 0` is `(x & 1) == 0`.
 | `nand(x)`      | `~(&x)` → one bit                                                          |
 | `nor(x)`       | `~(\|x)` → one bit                                                         |
 | `xnor(x)`      | `~(^x)` → one bit (even parity)                                            |
+| `encoding(e)`  | read enum value's on-wire bit pattern as `bits[N]`                         |
 | `clog2(n)`     | bits to address `n` items (compile-time; a body width may use a parameter) |
 
 ## Assignment

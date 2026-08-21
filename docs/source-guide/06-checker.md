@@ -5,7 +5,7 @@ The checker runs nine passes over the AST to catch hardware bugs **before** they
 > **"Pass" here means one call inside `check()`.** Nine calls, spread over
 > eight files — `funcs.rs` contributes two of them. Two passes grew big
 > enough to become folders of their own: `names/` (7 files) and `widths/`
-> (11 files). The unit tests live in `checker/tests/` (11 files).
+> (11 files). The unit tests live in `checker/tests/` (12 files).
 
 ## `crates/mimz-core/src/checker/mod.rs` — The Entry
 
@@ -72,12 +72,14 @@ top-level dispatch; the siblings hold one concern each — `sigs.rs`
 typing engine plus lvalue/index/slice range checks), `ops/`
 (operator/concat/builtin typing: the lossless `+`/`-`/`*` growth rules,
 the width-matching family `+%`/bitwise/comparisons, shifts, `{...}`
-concat, and the builtin call table), `stmts.rs` (module items,
-`on`-block statements, enum tag/payload widths), `patterns.rs` (match
-patterns and exhaustiveness), `funcs.rs` (`fn` bodies and returns), and
-`insts.rs` (instantiation resolution: binds a child's parameters per call
-site and width-checks every connection against the child's port types
-under that binding). It checks:
+concat, and the builtin call table), `bundles.rs` (`resolve_bundle_fields`
+— resolving a bundle type's fields to `(name, Ty)` pairs under a given set
+of params, the E0901-E0912 bundle-shape checks lean on), `stmts.rs`
+(module items, `on`-block statements, enum tag/payload widths),
+`patterns.rs` (match patterns and exhaustiveness), `funcs.rs` (`fn`
+bodies and returns), and `insts.rs` (instantiation resolution: binds a
+child's parameters per call site and width-checks every connection
+against the child's port types under that binding). It checks:
 
 - **E0401** — expression width matches context (can't assign 8 bits to a 4-bit signal)
 - **E0402** — type mismatch (mixing `bits` and `signed` without a cast)

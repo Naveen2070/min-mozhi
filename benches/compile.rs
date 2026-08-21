@@ -35,7 +35,7 @@ fn phases(c: &mut Criterion) {
         b.iter(|| parse(black_box(tokens.clone())).expect("example parses"));
     });
 
-    // Checker: pre-parsed AST -> validated (six passes).
+    // Checker: pre-parsed AST -> validated (nine passes).
     let file = parse(tokens.clone()).expect("example parses");
     let asts = vec![file];
     group.bench_function("checker", |b| {

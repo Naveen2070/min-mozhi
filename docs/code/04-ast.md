@@ -76,6 +76,8 @@ enum FnStmt {
     Let(LocalLet),                                    // immutable local binding
     If { cond: Expr, then: Vec<FnStmt>, els: Option<Vec<FnStmt>> }, // `else` OPTIONAL
     Return(Expr),                                      // yields `expr`, ends this path
+    Loop { var: Ident, lo: Box<Expr>, hi: Box<Expr>, body: Vec<FnStmt>, span: Span },
+    ForEach { var: Ident, source: Box<Expr>, body: Vec<FnStmt>, span: Span },
     Error(Span),                                        // parse-recovery placeholder
 }
 ```
@@ -85,9 +87,7 @@ see "Statement vs expression `if`" above): a statement-level branch that doesn't
 return just falls through to the next statement, or ultimately `tail`, so there is
 no latch risk to guard against.
 
-`LocalLet` carries no `ty` field (the type is inferred). The emitter conservatively
-declares locals as `integer` (32-bit) in the Verilog output; precise width inference
-is a follow-up.
+`LocalLet` carries an `inferred_width: Cell<Option<u32>>` slot (the type and width are inferred by `checker::widths::funcs`). The emitter declares locals as precisely-sized `reg [W-1:0]` (or array elements) in the Verilog function output.
 
 `ExprKind::FnCall { name: Ident, args: Vec<Expr> }` is the call site. It is
 syntactically distinct from `ExprKind::Call { func: Builtin, … }` (built-ins):
@@ -177,9 +177,10 @@ FieldDecl {
 
 A bundle-typed value's _type_ is `Type::Bundle { name: QualIdent, args: Vec<NamedArg> }`
 — `args` holds compile-time parameter overrides (empty for parameterless
-bundles, e.g. plain `Handshake` vs. `MemBus(WIDTH: 32)`). Like
-`Type::Named`, it's nominal-only: two bundles are the same type iff they
-share a name, not a structurally-identical field list.
+bundles, e.g. plain `Handshake` vs. `MemBus(WIDTH: 32)`). At the AST layer,
+the type reference is written nominally; the checker then performs
+**structural bundle matching** (feature 2.9), allowing a bundle to satisfy any
+slot whose required fields it covers with matching types.
 
 A bundle literal is `ExprKind::BundleLit(Vec<FieldInit>)` — `{ name: Ident,
 value: Expr }` per field, order-independent (matched by name, not

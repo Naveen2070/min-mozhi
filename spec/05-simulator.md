@@ -27,7 +27,7 @@ or VCD library) — see the 2026-06-16 Decision in `docs/log/`.
   semantics exact (no read-after-write ordering hazards).
 - **Combinational settling** in topological order — the checker already guarantees
   the combinational graph is a DAG (no comb loops), so propagation terminates.
-- Reuses `src/sim/comb.rs::eval_outputs` for combinational expression evaluation
+- Reuses `crates/mimz-sim/src/sim/comb.rs::eval_outputs` for combinational expression evaluation
   and `checker::consteval::eval` for constants/widths (single source of truth).
 
 ## 2. Stimulus & timing
@@ -77,7 +77,7 @@ test "counter counts (await form)" for Counter(WIDTH: 4) {
   **halts that test** and reports a teaching-quality message (the expression's
   source, the cycle, and — for a comparison — each side's actual value). `mimz
 test` exits non-zero if any test fails.
-- **Implemented (B6, `src/sim/harness.rs`):** `mimz test <file>` runs every
+- **Implemented (B6, `crates/mimz-sim/src/sim/harness/`):** `mimz test <file>` runs every
   `test` block (drive / `tick` / `expect` / `if`), prints `ok` / `FAIL` per test
   with the teaching message, and sets the exit code. `--filter <substr>` selects
   tests by name; `--trace` / `--trace=changes` (with `--verbose` / `--signals`)
@@ -157,15 +157,9 @@ serial at an independent `baud` rate (derived against the sim block's
 `speed`) to a dashboard log and/or a local TCP socket. `speaker` plays the
 bound bit as a square-wave tone on the host's default audio
 output. Simulation-only — `mimz compile` never sees any of it. Full
-design:
-[`docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md`](../docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md)
-(Spec 1, `led`),
-[`docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md`](../docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md)
-(Spec 2, `uart_tx`/`uart_rx`), and
-[`docs/superpowers/specs/2026-07-08-hw-emulation-speaker-design.local.md`](../docs/superpowers/specs/2026-07-08-hw-emulation-speaker-design.local.md)
-(Spec 3, `speaker`) (all three files are gitignored/local — if they're
-not present, see `docs/Ideas/hardware_emulation.md` for the original
-proposal).
+design and peripheral details are documented in
+[`docs/code/14-hardware-emulation.md`](../docs/code/14-hardware-emulation.md)
+and [`docs/Ideas/hardware_emulation.md`](../docs/Ideas/hardware_emulation.md).
 
 ## 6. Out of scope (v1)
 
@@ -192,13 +186,16 @@ proposal).
 
 _Status: Phase 1.5 complete (2026-06-16) — the engine is fully built (B1–B8) and
 at full parity with the emitter (C1–C4): elaboration
-(`src/sim/elaborate.rs`), the event-driven two-phase kernel (`src/sim/kernel.rs`,
-reusing the shared evaluator `src/sim/value.rs`), the default stimulus
-(`src/sim/run.rs`), the hand-written VCD writer (`src/sim/vcd.rs`), the console
-trace (`src/sim/trace.rs`), the `test`-block harness (`src/sim/harness.rs`), and
+(`crates/mimz-sim/src/sim/elaborate/`), the event-driven two-phase kernel
+(`crates/mimz-sim/src/sim/kernel.rs`, reusing the shared evaluator
+`crates/mimz-sim/src/sim/value/`), the default stimulus
+(`crates/mimz-sim/src/sim/run.rs`), the hand-written VCD writer
+(`crates/mimz-sim/src/sim/vcd.rs`), the console trace
+(`crates/mimz-sim/src/sim/trace.rs`), the `test`-block harness
+(`crates/mimz-sim/src/sim/harness/`), and
 the `mimz sim` / `mimz test` commands — validated by the Icarus differential and
 the ≥1M cycle-events/sec perf baseline (B8). The combinational evaluator
-(`src/sim/comb.rs`) is reused. The C1–C4 follow-on brought full structural
+(`crates/mimz-sim/src/sim/comb.rs`) is reused. The C1–C4 follow-on brought full structural
 parity: the elaborator flattens cross-file instances (C2), unrolls `repeat`
 (C3), and encodes enum signals (C4), so the differential now covers the **entire
 single-file corpus (21 examples)** bit-for-bit vs Icarus. Deferred within v1: the

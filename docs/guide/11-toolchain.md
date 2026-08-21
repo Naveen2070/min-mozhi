@@ -345,8 +345,8 @@ highlighting for all three flavors.
 
 ```text
 cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 npx prettier --write "**/*.md" && npx markdownlint-cli2
 ```
 

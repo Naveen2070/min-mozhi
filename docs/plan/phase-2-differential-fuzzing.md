@@ -15,10 +15,9 @@ defect that a curated example list only catches if a human happens to
 write the right example. Random generation removes that dependency.
 
 This is deliberately a **phased, growing** effort — v1 is intentionally
-narrow (see design doc,
-`docs/superpowers/specs/2026-07-18-differential-fuzzing-design.local.md`),
-not the final shape. Each version below extends the generator's reach as
-the generator itself proves out and as the language gains surface area.
+narrow (unsigned combinational expressions only), not the final shape. Each
+version below extends the generator's reach as the generator itself proves
+out and as the language gains surface area.
 
 ## Work items
 

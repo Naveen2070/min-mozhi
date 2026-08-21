@@ -18,10 +18,10 @@
 >   - If-expression: `c enil { a } illaiyenil { b }`
 >   - Match: `<expr> thernthedu { }`
 >   - Test header: `M(args) kaaga "…" sodhanai { }`
-> - **`mimz translate --order code|thamizh`** converts between orders via AST pretty-printer (`src/pretty.rs`)
+> - **`mimz translate --order code|thamizh`** converts between orders via AST pretty-printer (`crates/mimz-core/src/pretty/`)
 > - All flips parse to same AST as code-order, emit byte-identical Verilog (`tests/grammar.rs`, `tests/fixtures/grammar/`)
-> - **Error-language plumbing** (2026-06-14): language selection (file-flavor majority + `--lang` override), case-suffix inflection (`src/morph.rs`), wired into `check`/`compile`/`eval` as additive English-fallback layer
-> - **Human-authored error catalog** (2026-06-15): `lang/messages.toml` localizes **33 of 44 checker E-codes** in Tamil and Tanglish (C3 ratified, sandhi rule in `lang/case_suffixes.toml`)
+> - **Error-language plumbing** (2026-06-14): language selection (file-flavor majority + `--lang` override), case-suffix inflection (`crates/mimz-core/src/morph.rs`), wired into `check`/`compile`/`eval` as additive English-fallback layer
+> - **Human-authored error catalog** (2026-06-15): `lang/messages.toml` localizes **34 of the (now 75) checker E-codes** in Tamil and Tanglish (C3 ratified, sandhi rule in `lang/case_suffixes.toml`); the catalog has not grown alongside the many checker codes added since (bundles, `fn`, tagged enums, `sync loop`, CDC, `assert`/`cover`, …), so coverage as a fraction has fallen even as the absolute count held steady
 > - **Deferred:** E0403/E0404/E0405 keep English text (too many heterogeneous message shapes for one template; Tamil preserved as comments)
 > - **Test oracle:** `mimz test` runs the blocks — a passing thamizh-order test (re-parsing to same `TestDecl`) is the oracle
 
@@ -87,7 +87,7 @@ syntax thamizh
   Only the _order_ is fixed per file.
 - `mimz translate` gains `--order code|thamizh`, which converts between the two
   orders by parsing to the AST and pretty-printing with the target profile
-  (`src/pretty.rs`). **Decision (2026-06-14):** because the AST holds no comments
+  (`crates/mimz-core/src/pretty/`). **Decision (2026-06-14):** because the AST holds no comments
   or original layout, `--order` output is **canonically formatted and drops
   comments** — meaning-preserving (same Verilog, same AST), not byte-preserving.
   Trivia-preservation stays with the keyword-only `--to` path (the token
@@ -228,9 +228,9 @@ Example:
 > English: `'sum' is 8 bits but 'a + b' produces 9 bits — use '+%' for wrapping math, or widen 'sum'.`
 > Tamil: `'sum' 8 பிட்கள்தான், ஆனால் 'a + b' 9 பிட்கள் தரும் — மடக்கு கணிதத்திற்கு '+%' பயன்படுத்தவும், அல்லது 'sum'-ஐ அகலமாக்கவும்.`
 
-### Status (2026-06-30): mechanism implemented, content panel-gated (33/44 codes covered)
+### Status: mechanism implemented, content panel-gated (34 of 75 checker codes covered as of this writing — the catalog has not kept pace with newer checker codes)
 
-The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
+The **engineering half** is in `crates/mimz-core/src/morph.rs` and wired into `check`/`compile`/
 `eval`:
 
 - **Selection** — `majority_flavor` counts a file's keyword flavors;
@@ -246,15 +246,20 @@ The **engineering half** is in `src/morph.rs` and wired into `check`/`compile`/
 > the native-speaker panel (decision C3) — machine-guessed Tamil is exactly the
 > "broken Tamil" this section warns against.
 >
-> **Resolved (2026-06-15, C3 ratified):** the panel authored the catalog. It now
-> ships in `lang/messages.toml` covering **33 of 44 checker E-codes** in Tamil and
-> Tanglish; the sandhi rule in `lang/case_suffixes.toml` is finalized (no longer
-> PROVISIONAL). **E0403/E0404/E0405 are deferred** — each emits many
-> heterogeneous message shapes that a single template cannot render faithfully,
-> so they keep their English text with the Tamil preserved as comments. JSON
-> diagnostic output stays English (the machine contract in `06-diagnostics.md`
-> is unchanged). The ~36 inline English messages were not refactored into the
-> catalog — they remain the byte-for-byte fallback for any uncovered code.
+> **Resolved (2026-06-15, C3 ratified):** the panel authored the catalog. It
+> shipped in `lang/messages.toml` covering 33 of the checker E-codes that
+> existed at ratification time, in Tamil and Tanglish; the sandhi rule in
+> `lang/case_suffixes.toml` is finalized (no longer PROVISIONAL).
+> **E0403/E0404/E0405 are deferred** — each emits many heterogeneous message
+> shapes that a single template cannot render faithfully, so they keep their
+> English text with the Tamil preserved as comments. JSON diagnostic output
+> stays English (the machine contract in `06-diagnostics.md` is unchanged).
+> The catalog now covers 34 codes (one addition, `E0418`, since
+> ratification) against **75** total checker codes in
+> `diag::ALL_CHECKER_CODES` — the checker's code count kept growing with
+> later features (bundles, `fn`, tagged enums, `sync loop`, CDC, `assert`/
+> `cover`, …) while the localized catalog did not, so most codes not
+> explicitly listed above still fall back to the byte-for-byte English text.
 
 ## 6. Scope Fence (v1 of the engine)
 

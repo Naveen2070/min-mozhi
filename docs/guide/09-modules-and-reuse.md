@@ -1,7 +1,7 @@
 # 9 — Modules and Reuse
 
 A module is the unit of reuse — you build bigger circuits by **instantiating**
-smaller modules and, since v0.2.14, by writing **combinational functions** (`fn`)
+smaller modules and by writing **combinational functions** (`fn`)
 for pure combinational logic that doesn't need its own module. This chapter covers parameters,
 instances, imports, and the compile-time generation features that let one
 description produce many sizes of hardware.
@@ -136,7 +136,7 @@ arrays, `E1302`), since a real Verilog port list is always flat wires. Add
 `= "RealModuleName"` after the name when the mimz-side name and the actual
 Verilog module name differ; the compiled output must be linked against the
 real `.v` file separately (`mimz.toml` or `--extern-src`). See spec/02
-§1.5c for the full grammar.
+section 1.5c for the full grammar.
 
 ## Compile-time loops: `repeat`
 

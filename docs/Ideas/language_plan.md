@@ -75,8 +75,7 @@ The core philosophy of Rust is catching bugs at compile time. In hardware, runti
 
   > **Shipped** — `sync.double_flop` (level/control signal) and `sync.pulse`
   > (single-cycle pulse) are real, checker-enforced synchronizer primitives,
-  > 1-bit signals only (spec/02-syntax-and-grammar.md §1.2b,
-  > `docs/superpowers/specs/2026-07-20-sync-cdc-design.local.md`). `sync` is
+  > 1-bit signals only (spec/02-syntax-and-grammar.md §1.2b). `sync` is
   > dual-purpose with the unrelated `sync loop` construct (disambiguated by
   > the token after `sync` — `loop`/`suzhal`/`சுழல்` vs `.`), exactly as the
   > v0.2.22 changelog entry in `spec/03-keywords-trilingual.md` predicted.
@@ -926,12 +925,12 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 | async reset / reset polarity                                                   | ✅     | `ModuleItem::Reset { is_async, .. }`, wired to emit (`posedge rst` added to sensitivity list when async)                                                                                                              |
 | packages / namespacing                                                         | ✅     | `QualIdent` namespace-keying in checker (names/widths), shipped 2026-07-02/03 (Phase-2-packages-namespacing, 570 tests)                                                                                               |
 | tagged-union payloads (2.7)                                                    | ✅     | `EnumVariant`/`PayloadField` in AST, wired through emit_verilog (translit/module/expr)                                                                                                                                |
-| `sync loop` — cycle-iterating FSM+counter loop                                 | ✅     | Spec 4 of `phase-2-suzhal-loop.local.md`, shipped 2026-07-06, 13 commits — lowers to existing Port/Reg/On/Drive, no new emit/sim shape needed                                                                         |
+| `sync loop` — cycle-iterating FSM+counter loop                                 | ✅     | Spec 4 of the bounded-loop design work, shipped 2026-07-06, 13 commits — lowers to existing Port/Reg/On/Drive, no new emit/sim shape needed                                                                           |
 | don't-care `match` (casex/casez)                                               | ✅     | `Pattern::IntMask { value, mask }` in `ast/expr.rs`, e.g. `0b1?? => ...`; `examples/*/priority.mimz` — shipped 2026-06-17 (corrected after a bad first grep — see re-audit note below)                                |
 | `sync` CDC (1.2, §1.2b `sync.double_flop`/`sync.pulse`)                        | ✅     | 1-bit-only synchronizer primitives, checker-enforced (E0702-E0705), shipped on `phase-2-correctness-consolidation-part2` (Stage 5 L2) — handshake protocols/async FIFOs still future work, as ordinary stdlib modules |
 | `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | confirmed still open — reserved keywords only (`secret`/`prove`/`fixed`/`requires`/`ensures`), no AST/checker/emit support yet                                                                                        |
 | `foreach`                                                                      | ✅     | sugar over `repeat`/bare `loop`, shipped 2026-07-13 — range + array/`mem`-element source forms, module-item and `on`-block/`fn`-body statement level                                                                  |
-| Enum-variant construction `Enum.Variant(a, b)`                                 | 🟡     | confirmed still open (`docs/plan/phase-2-ir-synthesis.md` line ~101) — needs `ExprKind::EnumConstruct`, follow-up to tagged unions                                                                                    |
+| Enum-variant construction `Enum.Variant(a, b)`                                 | ✅     | shipped in v0.2.0 (spec/02 §5a) — `ExprKind::EnumConstruct`, positional payload arguments, `examples/.../enum_construct.mimz`                                                                                         |
 | ternary `?:`                                                                   | ⛔     | `if {} else {}` expr is the one way (G1)                                                                                                                                                                              |
 | division `/` / modulo `%` operators                                            | ⛔     | no cheap operator form; future stdlib divider module                                                                                                                                                                  |
 | internal tri-state; auto-retiming-with-Fmax                                    | ⛔     | physics / honesty (Tier 4, section 7)                                                                                                                                                                                 |
@@ -943,10 +942,10 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 2. **Controlled loop (`loop`/`suzhal`/`சுழல்` bare form, `sync loop` cycle
    form)** — ✅ **DONE (2026-07-06)**, both shapes: bare `loop` elaborates to
    N unrolled copies (area cost); `sync loop` lowers to a real counter +
-   state machine spanning cycles (time cost). Four dependency-ordered specs
-   in `docs/plan/phase-2-suzhal-loop.local.md`, all shipped (Spec 1: `return`
-   - statement-based `fn` bodies; Spec 2: array-typed `fn` params; Spec 3:
-     bounded elaborate-time `loop`; Spec 4: `sync loop`).
+   state machine spanning cycles (time cost). Four dependency-ordered specs,
+   all shipped (Spec 1: `return`-statement-based `fn` bodies; Spec 2:
+   array-typed `fn` params; Spec 3: bounded elaborate-time `loop`; Spec 4:
+   `sync loop`).
 3. **`foreach`** — ✅ **DONE (2026-07-13)**; sugar over (1)/(2), now that
    array/`mem` types exist to iterate over.
 
@@ -986,14 +985,13 @@ strikethrough, so the sequencing rationale stays legible:
    `match`~~ ✅ all done, 2026-06-17.
 2. ~~Memories/arrays (`mem`)~~ ✅ done. 3. ~~Structs + interfaces~~ ✅ done. 4. ~~Combinational `function`~~ ✅ done (is `fn`).
 3. ~~Async reset / polarity~~ ✅ done (active-high; active-low still open). 6. ~~Controlled loop (`suzhal` + `sync loop`) + `foreach`~~ ✅ done.
-4. Phase-2 line: ~~tagged unions~~ ✅ done. ~~`sync` CDC~~ ✅ done. Enum-variant
-   construction syntax (`Enum.Variant(a, b)`), `prove`/contracts, `secret`/
+4. Phase-2 line: ~~tagged unions~~ ✅ done. ~~`sync` CDC~~ ✅ done. ~~Enum-variant
+   construction syntax (`Enum.Variant(a, b)`)~~ ✅ done. `prove`/contracts, `secret`/
    `system_fault`, fixed-point — still open (reserved keywords / AST gaps
    only, no checker/emit support). 8. Verification layer — future,
    post-simulator, spec/01 amendment.
 
-**Remaining open items, in order:** enum-variant construction
-syntax → `prove`/contracts → `secret`/`system_fault` → fixed-point →
+**Remaining open items, in order:** `prove`/contracts → `secret`/`system_fault` → fixed-point →
 verification layer.
 
 ### Newly-tracked items (were missing from this plan / phase-2)

@@ -335,8 +335,7 @@ check | sim <file>` run on an untrusted `.mimz` file) — `eval`/`sim`/`test`
 are explicitly in scope for that model and currently bypass its strongest
 guard.
 
-**Fix (2026-07-18, A2, stage 2 of
-`docs/plan/phase-2-correctness-consolidation.local.md`).** All 4 unchecked-
+**Fix (2026-07-18, A2, stage 2 of the correctness-consolidation plan).** All 4 unchecked-
 AST call sites now gate on `checker::check` before executing anything
 (reject on any checker error, same convention `compile`/`check` already
 use) — not just the 3 CLI commands named above: `src/commands/eval.rs`,
@@ -366,8 +365,8 @@ to avoid the two drifting out of sync.
 
 **Correction (2026-07-28 doc sync).** This note originally read "SEC-8
 itself stays OPEN," written before SEC-8's own fix landed later the same
-day. **SEC-8 is fixed** (see its entry above, A2, Stage 2 of
-`docs/plan/phase-2-correctness-consolidation.local.md`): all 4
+day. **SEC-8 is fixed** (see its entry above, A2, Stage 2 of the
+correctness-consolidation plan): all 4
 unchecked-AST call sites (`eval.rs`, `sim.rs`, `test.rs`, and
 `mimz-sim/src/runner.rs`) now gate on `checker::check` before executing.
 What remains true, and is the actual point this note was making: gating
@@ -424,8 +423,8 @@ crash is a controlled Rust panic, not memory unsafety.
 ([`review-2026-08-02.md`](review-2026-08-02.md) F-8), source read plus targeted
 probing.
 
-**Fix.** Landed as part of `docs/plan/v0.2-correctness-remediation.local.md`
-Task 2 (BUG-41). `infer_kind`'s signature is now exactly the proposed
+**Fix.** Landed as part of the v0.2 correctness-remediation plan, Task 2
+(BUG-41). `infer_kind`'s signature is now exactly the proposed
 `fn infer_kind(expr: &Expr, decls: &HashMap<String, Kind>) -> Option<Kind>`;
 the `Ident` arm is `decls.get(name).copied()` — a plain lookup, no
 `unwrap_or_else(|| panic!(...))` left anywhere in the function. Every call

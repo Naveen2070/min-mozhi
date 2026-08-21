@@ -1,7 +1,7 @@
 # Min-Mozhi — Versioning & Language Editions
 
 > **Spec v0.1.0.** Two version axes, kept deliberately distinct. The machine
-> source of truth is [`src/version.rs`](../src/version.rs); the human mirror is
+> source of truth is [`crates/mimz-core/src/version.rs`](../crates/mimz-core/src/version.rs); the human mirror is
 > [`CHANGELOG.md`](../CHANGELOG.md). This document explains the model.
 
 ---
@@ -12,10 +12,10 @@ Min-Mozhi versions **two different things**, and conflating them is the confusio
 this scheme removes — exactly the `rustc 1.x` (the compiler) vs Rust edition
 `2021` (the language) distinction:
 
-| Axis                 | What it versions                  | Source of truth                       | Advances when…                                                              |
-| -------------------- | --------------------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
-| **Compiler version** | the `mimz` binary / crate         | `Cargo.toml` (`CARGO_PKG_VERSION`)    | every release — bug fixes, new flags, faster codegen                        |
-| **Language edition** | the language the compiler accepts | `EDITION_HISTORY` in `src/version.rs` | only when the language itself changes (new keyword set / a breaking change) |
+| Axis                 | What it versions                  | Source of truth                                        | Advances when…                                                              |
+| -------------------- | --------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------- |
+| **Compiler version** | the `mimz` binary / crate         | `Cargo.toml` (`CARGO_PKG_VERSION`)                     | every release — bug fixes, new flags, faster codegen                        |
+| **Language edition** | the language the compiler accepts | `EDITION_HISTORY` in `crates/mimz-core/src/version.rs` | only when the language itself changes (new keyword set / a breaking change) |
 
 A new compiler version does **not** imply a new edition: many `mimz` releases can
 target the same edition. An edition changes far more rarely.
@@ -51,7 +51,7 @@ carries both in its header banner:
 
 ## 4. `EDITION_HISTORY` — the lineage, surfaced in source
 
-`src/version.rs` holds `EDITION_HISTORY`:
+`crates/mimz-core/src/version.rs` holds `EDITION_HISTORY`:
 
 - **One `const` row per edition** (variant, slug, year, code, date, one-line summary), ordered **oldest first**
 - **Last row** is the current edition (asserted by a unit test: history is ordered, `code` matches `lang/keywords.toml`'s `version`)

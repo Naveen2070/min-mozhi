@@ -23,7 +23,7 @@ file — verify your download first:
 - **Windows** — `Get-FileHash <archive> -Algorithm SHA256`, then compare to the
   matching line in `SHA256SUMS`.
 
-> **The binaries are UNSIGNED for v0.1.0** (code signing is deferred — see the
+> **The prebuilt binaries are UNSIGNED** (code signing is deferred — see the
 > `UNSIGNED.txt` in each archive). They are safe; the OS just doesn't recognise
 > the (absent) signature on first run:
 >
@@ -108,7 +108,7 @@ When you run `mimz compile`, your file flows through five stations:
 1. **Lexer** — text becomes tokens; keywords in any of the three flavors resolve
    to the same token here.
 2. **Parser** — tokens become an AST (the tree shape of your module).
-3. **Checker** — seven passes enforce every safety rule (names, widths, drivers,
+3. **Checker** — nine passes enforce every safety rule (names, widths, drivers,
    exhaustiveness, functions, clock domains). This is where you get teaching errors.
 4. **Emitter** — the AST becomes Verilog; `repeat` loops unroll, Tamil
    identifiers transliterate to ASCII.

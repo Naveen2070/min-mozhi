@@ -40,6 +40,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-14](#gap-14-medium-process--the-release-gate-is-scored-at-a-shallower-fuzz-depth-than-the-projects-own-ci-runs)                                | Release gate scored at 400 seeds while CI is configured for 5000                 | MEDIUM     | CLOSED |
 | [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)                                          | Per-arm reasoning audit has no independent party (single-author repo)            | MEDIUM     | CLOSED |
 | [GAP-16](#gap-16-high-architectural-closed-2026-08-16--the-self-determined-hoist-machinery-is-scoped-to-module-bodies-and-nothing-states-the-scope) | Self-determined hoist machinery scoped to module bodies, unstated                | HIGH       | CLOSED |
+| [GAP-17](#gap-17-medium-process-closed-2026-08-17--rule-a-audits-the-arms-the-defects-are-at-the-call-sites)                                        | Rule (a′) audits arms; the defects are at call sites                             | MEDIUM     | CLOSED |
 | [GAP-18](#gap-18-high-architectural-closed-2026-08-19--the-hoist-buffers-flush-point-is-a-second-scoping-axis-and-nothing-watches-it)               | Hoist buffer's flush point is a second, unwatched scoping axis                   | HIGH       | CLOSED |
 | [GAP-19](#gap-19-medium-testing-closed-2026-08-18--wasm_parity-skips-silently-and-ci-never-builds-the-artifact-it-needs)                            | `wasm_parity` skips silently; CI never builds the artifact it needs              | MEDIUM     | CLOSED |
 | [GAP-20](#gap-20-high-testing-open--the-three-pre-declaration-render-sites-are-outside-every-oracle-and-no-test-elaborates-the-corpus-it-ships)     | Three pre-declaration render sites outside every oracle; corpus never elaborated | HIGH       | OPEN   |
@@ -844,8 +845,8 @@ was the original finding.
 **Status: CLOSED.** Both halves done — the cost removed, and the instrument that
 would have caught it now exists.
 
-**Residual, decided rather than omitted (Task 9,
-`docs/plan/v0.2-class-closure-round3.local.md`).** `assert_bits_fit_width`
+**Residual, decided rather than omitted (round-3 class-closure plan, Task
+9).** `assert_bits_fit_width`
 staying tautological means the shape it can't catch — an intermediate whose
 VALUE exceeds its DECLARED width where sim and Verilog agree with each other
 and both disagree with the type (F-2's exact shape) — has no oracle.
@@ -870,7 +871,7 @@ walk on day one, not as a later addition.
 **Status:** CLOSED 2026-08-09. Filed 2026-08-09. Source:
 [`review-2026-08-09.md`](review-2026-08-09.md). All three directions done —
 1 and 3 the same day it was filed, 2 (fuzz generator vocabulary) same day
-too, `docs/plan/v0.2-class-closure-round3.local.md` Task 4.
+too, round-3 class-closure plan Task 4.
 
 **What.** [GAP-5](#gap-5-high-testing--no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)'s
 position matrix covers every `Builtin`. It covers no `ExprKind`. The gate that
@@ -1282,7 +1283,7 @@ identifier**. It is also false: `trunc(extend(x,8), 2)` inside a `fn` body
 emits `(x)[(2)-1:0]`, an Icarus syntax error
 ([BUG-62](bugs.md) ⑥). GAP-15 stays CLOSED because its own scope — the arms —
 was genuinely re-audited; the larger finding is that the scope was wrong, which
-is [GAP-17](#gap-17-medium-process--rule-a-audits-the-arms-the-defects-are-at-the-call-sites) below.
+is [GAP-17](#gap-17-medium-process-closed-2026-08-17--rule-a-audits-the-arms-the-defects-are-at-the-call-sites) below.
 
 ---
 
@@ -1306,11 +1307,10 @@ positions that need it (Task 3). **Narrower than "closed":** making the hoist
 itself possible inside a `fn` body (the actual `reg`-based mechanism BUG-63's
 fix shape describes) is still unstarted — that residual is now a clean
 diagnostic rather than a silent gap, which is what this filing asked for, but
-it is not the same as the machinery covering every context. See
-[`v0.2-class-closure-round6.local.md`](../plan/v0.2-class-closure-round6.local.md)'s
-Task 1–4 status notes for the full account, including a testbench-side flush
-bug (hoisted wires were never emitted into testbench text at all) found and
-fixed while closing this gap, not in the original filing.
+it is not the same as the machinery covering every context. Round 6's Tasks
+1-4 also found and fixed a testbench-side flush bug in passing — hoisted
+wires were never emitted into the emitted testbench text at all, only into
+the module body — not part of the original filing.
 
 **Status update (2026-08-16, round-6 plan Task 4):** the residual above is
 also closed. `hoist_if_needed`/`hoist_slice_base_if_needed`, when
@@ -1358,10 +1358,17 @@ can be answered wrong. This gap is the third distinct symptom of the same root
 
 ---
 
-## GAP-17 (MEDIUM, process) — rule (a′) audits the arms; the defects are at the call sites
+## GAP-17 (MEDIUM, process, CLOSED 2026-08-17) — rule (a′) audits the arms; the defects are at the call sites
 
-**Status:** OPEN. Filed 2026-08-15. Source:
-[`review-2026-08-15.md`](review-2026-08-15.md) (round 6).
+**Status:** CLOSED 2026-08-17 (round-6 plan Tasks 7-8). Filed 2026-08-15.
+Source: [`review-2026-08-15.md`](review-2026-08-15.md) (round 6). Verified
+against current source: the call-site-keyed coverage doc this entry's own
+"Fix" asked for exists (`HOIST_CALL_SITES`,
+`tests/self_determined_regression.rs`, all 21 `hoist_if_needed`/
+`hoist_slice_base_if_needed`/`hoist_width_effect_operand` call sites), and
+rule (a′-2) carries the fourth category this entry's "secondary findings"
+asked for — a `NotApplicable` naming "a checked fact about what the
+emitter renders" — in `self_determined.rs`'s module doc.
 
 **What.** [GAP-15](#gap-15-medium-process--the-per-arm-reasoning-audit-has-no-independent-party-and-cannot-have-one)'s
 rule (a′) constrains the written reason of every `None`/`NotApplicable` **arm**
@@ -1404,8 +1411,7 @@ above.
 
 ## GAP-18 (HIGH, architectural, CLOSED 2026-08-19) — the hoist buffer's flush point is a second scoping axis, and nothing watches it
 
-**Status:** **CLOSED 2026-08-19**, round-8 plan Task 2
-(`docs/plan/v0.2-class-closure-round8.local.md`), branch
+**Status:** **CLOSED 2026-08-19**, round-8 plan Task 2, branch
 `round8-class-closure` — this time genuinely, not just claimed. Widened
 `assert_hoists_declared_before_use` (`emit_verilog/mod.rs`) from the
 `__mimz_sub_N`/`__mimz_fn_sub_N` name family to every `wire`/`reg` declared

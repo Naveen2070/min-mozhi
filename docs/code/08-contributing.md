@@ -14,13 +14,18 @@ file, then come back here.
 
 ```text
 cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace
 npx prettier --check "**/*.md"
 npx markdownlint-cli2
 ```
 
-CI runs exactly this. Zero warnings is the bar, not a goal.
+CI runs exactly this. Zero warnings is the bar, not a goal. **`--workspace`
+is not optional** on `clippy`/`test`/`doc`: root `Cargo.toml` sets
+`default-members = ["."]`, so a bare `cargo test` silently skips
+`mimz-core` and `mimz-sim` — see the callout in
+[`10-test-map.md`](10-test-map.md).
 
 ## Recipe: change a Tanglish/Tamil keyword spelling
 
@@ -84,7 +89,7 @@ help)` and emit nothing. Errors, never guesses.
 ## Recipe: add a checker pass
 
 One safety rule = one pass = one file with its own tests (architecture
-principle 4; seven passes exist — the full how-to lives in
+principle 4; nine passes exist — the full how-to lives in
 [`11-checker.md`](11-checker.md)). Passes take the AST + symbol table,
 return diagnostics through `Checker::err`, which makes the stable
 `E####` code, the file index, and the teaching help text structurally
