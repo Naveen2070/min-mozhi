@@ -54,8 +54,8 @@ first character:
   emits one `Newline` if it spanned lines (a multi-line comment still
   separates statements).
 - **Numbers**: decimal, `0b`, `0x`, with `_` separators. The token keeps
-  both the parsed `value: u128` and the `raw` spelling so the emitter can
-  preserve the writer's base (`0xFF` stays hex in the Verilog). Tamil
+  both the parsed `value: crate::bits::Bits` (supporting arbitrary-width bit-vectors via `Bits::Small`/`Bits::Wide`) and the `raw` spelling so the emitter can
+  preserve the writer's base (`0xFF` stays hex in the Verilog). Masked binary literals (`0b1??`) produce `TokKind::MaskedInt { value, mask, width }`. Tamil
   digits (௦–௯) get a dedicated teaching error (decision B14: ASCII digits
   are universal vocabulary).
 - **Identifiers**: Unicode XID rules (`unicode-ident`), so Tamil-script

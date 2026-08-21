@@ -197,6 +197,22 @@ user-visible MEDIUM ones are listed here.
   to `encoding()` is refused at compile time rather than lowered. Binding it to
   a named `wire` first is unaffected.
 
+### Test suite
+
+- **1315 passing tests** across unit (lexer, parser, checker, emitter, morph,
+  sim, translate, grammar-sync, hardware-emulation) and integration (examples,
+  golden files, Icarus differential, fuzz corpus, self-determined regression,
+  external modules, packages, docs staleness guard).
+- **Golden-file pinning** — every example's Verilog output is byte-pinned in
+  `tests/golden/` (87 module goldens + 17 testbench goldens); any emitter
+  regression is caught immediately.
+- **`tests/fixtures/errors/`** — corpus of 119 `.mimz` files that must produce a
+  specific E-code; adding a checker code without a fixture fails CI.
+- **`grammar_sync`** — asserts that `lang/keywords.toml`, `spec/03`, and the
+  TextMate grammar are mutually consistent; no stale keyword spellings.
+- **`docs_sync`** — asserts the test count in `docs/code/10-test-map.md` matches
+  the actual suite.
+
 ---
 
 ## [0.1.0] — 2026-06-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`

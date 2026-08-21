@@ -6,7 +6,7 @@ The lexer is where your source text gets chopped into **tokens** — the smalles
 
 ## `crates/mimz-core/src/lexer/token.rs` — What a Token Looks Like
 
-**`Kw` enum** — This lists every keyword: `Module`, `In`, `Out`, `Wire`, `Reg`, `Mem`, `Clock`, `Reset`, `Async`, `On`, `Rise`, `Fall`, `If`, `Else`, `Match`, `Enum`, `Let`, `Const`, `Repeat`, `Import`, `True`, `False`, `Test`, `For`, `Tick`, `Expect`, `And`, `Or`, `Not`, `Syntax`, `Thamizh`, `Fn`.
+**`Kw` enum** — Lists all 44 keywords: `Module`, `In`, `Out`, `Wire`, `Reg`, `Mem`, `Clock`, `Reset`, `Async`, `On`, `Rise`, `Fall`, `If`, `Else`, `Match`, `Enum`, `Let`, `Const`, `Repeat`, `Loop`, `Foreach`, `Sync`, `Import`, `True`, `False`, `Test`, `For`, `Tick`, `Expect`, `And`, `Or`, `Not`, `Syntax`, `Thamizh`, `Fn`, `Default`, `Bundle`, `Assert`, `Cover`, `Return`, `Sim`, `Bind`, `Extern`, `Speed`.
 
 The important thing: `தொகுதி` and `thoguthi` and `module` all become `Kw::Module`. The flavor is recorded separately.
 
@@ -91,8 +91,20 @@ This loads `lang/keywords.toml` (embedded at build time) and builds two lookup t
 - A required keyword key is missing (enforced by `REQUIRED_KEYS`)
 - A spelling appears in two different keywords
 
-**`REQUIRED_KEYS`** is a list of 32 keys (32 keywords in the language) that MUST be in the TOML. Without this guard, accidentally deleting `[keywords.module]` would silently turn `module` into a plain identifier.
+**`REQUIRED_KEYS`** is a list of 44 keys (all 44 active keywords in the language) that MUST be in the TOML. Without this guard, accidentally deleting `[keywords.module]` would silently turn `module` into a plain identifier.
 
 **`kw_for_key(key)`** maps TOML key strings to `Kw` enum variants. Adding a new keyword means adding it here AND in the TOML.
 
-Reserved words (like `struct`, `sync`, `inout`) are not keywords yet but can't be used as identifiers. They're set aside for future features. (`fn` was formerly reserved but became an active keyword in v0.2.14.)
+Reserved words (like `struct`, `inout`, `channel`) are not keywords yet but can't be used as identifiers. They're set aside for future features.
+
+## `tests.rs` — Lexer Unit Tests
+
+The fourth file in `crates/mimz-core/src/lexer/` verifies tokenization edge cases:
+
+- Trilingual keyword tokenization across English, Tanglish, and Tamil
+- Full Unicode Tamil-script identifier parsing (`எண்ணி`)
+- Arbitrary-width integer literals (>128 bits represented via `Bits::Wide`)
+- Don't-care masked binary literals (`0b1??` producing `TokKind::MaskedInt`)
+- Wrapping operators (`+%`, `-%`, `*%`)
+- Token disambiguation (`<-` vs `<=`, `->`, `?`, `??`)
+- Reserved word rejection with `E1005` errors

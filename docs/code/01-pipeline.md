@@ -10,6 +10,15 @@ What actually happens when you run:
 mimz compile examples/english/alu.mimz -o alu.v
 ```
 
+## Workspace Architecture
+
+Min-Mozhi is structured as a 3-crate Cargo workspace plus the CLI root shell:
+
+- **`crates/mimz-core`**: The pure compiler pipeline (lexer, parser, AST, 9-pass checker, Verilog emitter, translation, formatter, linter, embedded standard library). Zero filesystem I/O or simulation dependencies.
+- **`crates/mimz-sim`**: The pure in-house event-driven cycle simulator (`mimz sim`), test harness runner (`mimz test`), VCD wave generator, and `EmulationHost` interface seam.
+- **`crates/mimz-wasm`**: Pure WASM bindings exposing `compile_string` and in-memory simulation for the browser playground.
+- **`mimz` (root crate)**: The CLI shell binary, filesystem I/O (`src/project.rs`), config loader (`src/config.rs`), LSP server (`src/lsp.rs`), and interactive hardware emulation peripherals (`src/emulate/`).
+
 ## Step 0 — CLI dispatch (`src/main.rs`)
 
 `main.rs` is **CLI-only** on purpose: clap parsing, subcommand dispatch

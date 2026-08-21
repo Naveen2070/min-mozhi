@@ -165,3 +165,37 @@ fn code_docs_have_a_sync_stamp() {
         "docs/code/README.md lost its 'Last synced' stamp"
     );
 }
+
+/// The test count in docs/code/10-test-map.md and the README badge must
+/// match each other and the expected current total (1315). This prevents
+/// the badge/docs from drifting from reality.
+#[test]
+fn test_count_matches_docs_and_badge() {
+    const EXPECTED_TOTAL: usize = 1315;
+
+    // 1. Check docs/code/10-test-map.md has the expected total
+    let test_map = read("docs/code/10-test-map.md");
+    let expected_line = format!("**{} tests**", EXPECTED_TOTAL);
+    assert!(
+        test_map.contains(&expected_line),
+        "docs/code/10-test-map.md master count should say **{} tests** — update the page",
+        EXPECTED_TOTAL
+    );
+
+    // 2. Check README.md badge matches
+    let readme = read("README.md");
+    let badge_pattern = format!("tests-{}%", EXPECTED_TOTAL);
+    assert!(
+        readme.contains(&badge_pattern) || readme.contains(&format!("tests-{} ", EXPECTED_TOTAL)),
+        "README.md badge does not match expected test count {} — update the badge URL",
+        EXPECTED_TOTAL
+    );
+
+    // 3. Check ROADMAP.md phase table references the right test counts (indirectly via status)
+    // This is a soft check - just verify the file mentions the current scale
+    let roadmap = read("ROADMAP.md");
+    assert!(
+        roadmap.contains("v0.2.0"),
+        "ROADMAP.md should reference v0.2.0 release"
+    );
+}

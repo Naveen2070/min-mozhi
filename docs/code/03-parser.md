@@ -18,9 +18,10 @@ section: `items/mod.rs` (shared `ty`/`lvalue`/`repeat_block` helpers +
 the `pub(in crate::parser) file()` entry), `items/file.rs` (imports,
 consts, enums), `items/module.rs` (modules and ports), `items/inst.rs`
 (instance declarations), `items/seq.rs` (`on`-blocks + thamizh
-variants), `items/test.rs` (`test` blocks), `items/func.rs` (`fn`
+variants), `items/test.rs` (`test` blocks), `items/bundle.rs` (`bundle`
+declarations), `items/extern_module.rs` (`extern module` Verilog FFI), `items/func.rs` (`fn`
 declarations — `fnDecl` from spec/02 section 5, including the `fnStmt`
-body: `let` / statement-level `if` / `return`, terminated by the
+body: `let` / statement-level `if` / `return` / `loop` / `foreach`, terminated by the
 mandatory tail expression).
 
 `mod.rs` owns the struct and all private plumbing; the `items/` files and
@@ -190,8 +191,8 @@ parsed in `expr.rs` alongside built-in calls — the distinction
 (user fn vs. built-in) is resolved at the expression level by name
 recognition; width/arity checking and recursion detection are
 checker passes (E0801–E0805). Every parse
-error carries a stable code (**E1101–E1111** — `self.error(span, code,
-msg)` makes the code mandatory; catalog and the E1101 grouping rule in
+error carries a stable code (**E1101–E1116** — `self.error(span, code,
+msg, help)` makes the code and help mandatory; catalog and the E1101 grouping rule in
 [`06-diagnostics.md`](06-diagnostics.md)).
 
 A `fn` body (`items/func.rs`) is `{ fnStmt } expr` — zero or more

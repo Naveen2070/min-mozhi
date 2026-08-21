@@ -39,21 +39,21 @@ crates/mimz-core/src/     # pure frontend + middle + emit — no optional deps
 ├── pretty/                   # Turning the AST back into readable source
 ├── explain.rs                # Long-form explanations for error codes
 ├── version.rs                # Compiler version + language edition
-├── lint.rs                   # Style/hygiene lints (W0002 snake_case, W0003 PascalCase)
+├── lint.rs                   # Style/hygiene lints (W0002 snake_case, W0003 PascalCase, W0004 unused signal)
 ├── bits.rs                   # The Bits value type — Small (≤128b, u128) / Wide (>128b) dispatch
 ├── wide.rs                   # Arbitrary-width arithmetic/bitwise primitives backing Bits::Wide
 ├── width_rules.rs            # Shared width-inference rules (checker + emitter self-determined-width agreement)
 ├── stdlib.rs                 # Embedded standard library (seg7/pwm/fifo/uart_tx/debouncer)
 ├── analysis.rs               # Editor symbol index + offset→definition / completion (LSP)
 ├── lexer/                    # The tokenizer (4 files)
-├── parser/                   # Tokens → structured tree (11 files + tests/, 13 files)
+├── parser/                   # Tokens → structured tree (11 files + tests/, 14 files)
 ├── ast/                      # The tree itself (6 files)
-├── checker/                  # Safety checks — 9 pass calls (8 files + names/ 7, widths/ 11, tests/ 11)
-└── emit_verilog/             # Verilog code generator (6 files + module/ 8, tests/ 11)
+├── checker/                  # Safety checks — 9 pass calls (8 files + names/ 7, widths/ 11, tests/ 12)
+└── emit_verilog/             # Verilog code generator (6 files + module/ 8, tests/ 12)
 
 crates/mimz-sim/src/      # event-driven simulator — depends only on mimz-core
 ├── runner.rs                 # Running commands in memory (powers the web playground)
-└── sim/                      # Event-driven simulator + EmulationHost trait (11 files + elaborate/ 7, value/ 4, harness/ 2)
+└── sim/                      # Event-driven simulator + EmulationHost trait (9 files + elaborate/ 7, value/ 4, harness/ 2)
 
 src/                       # shell crate — CLI, fs I/O, LSP, hw-emulation
 ├── main.rs                   # The front door — CLI that reads your commands
@@ -67,17 +67,18 @@ src/                       # shell crate — CLI, fs I/O, LSP, hw-emulation
 
 Now let's walk through each piece, one at a time. The rest of this guide is split into chapters — each chapter covers one folder or group of related files.
 
-| Chapter                       | What it covers                                                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------------------------- |
-| [02](02-foundations.md)       | span, diag, morph, config, project, runner, stdlib, bits/wide/width_rules — the support modules |
-| [03](03-lexer.md)             | The lexer (tokenizer) — all 4 files                                                             |
-| [04](04-parser.md)            | The parser — all 11 files (plus the 13-file `tests/` split)                                     |
-| [05](05-ast.md)               | The Abstract Syntax Tree — all 6 files                                                          |
-| [06](06-checker.md)           | Nine safety pass calls across 8 files, plus `names/`, `widths/`, `tests/`                       |
-| [07](07-verilog-emitter.md)   | Verilog code generator — 6 files plus the 8-file `module/` split                                |
-| [08](08-simulator.md)         | Event-driven simulator — 11 files plus `elaborate/`, `value/`, `harness/`                       |
-| [09](09-tooling-and-entry.md) | CLI commands, main.rs, lib.rs, translate, pretty, explain, version, analysis.rs, lsp.rs         |
-| [10](10-ecosystem.md)         | LSP, WASM, VS Code, benchmarks, fuzzing, tests, CI, examples, demos, lang, spec, site           |
+| Chapter                        | What it covers                                                                                  |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| [02](02-foundations.md)        | span, diag, morph, config, project, runner, stdlib, bits/wide/width_rules — the support modules |
+| [03](03-lexer.md)              | The lexer (tokenizer) — all 4 files                                                             |
+| [04](04-parser.md)             | The parser — all 11 files (plus the `tests/` split)                                             |
+| [05](05-ast.md)                | The Abstract Syntax Tree — all 6 files                                                          |
+| [06](06-checker.md)            | Nine safety pass calls across 8 files, plus `names/`, `widths/`, `tests/`                       |
+| [07](07-verilog-emitter.md)    | Verilog code generator — 6 files plus the 8-file `module/` split                                |
+| [08](08-simulator.md)          | Event-driven simulator — 11 files plus `elaborate/`, `value/`, `harness/`                       |
+| [09](09-tooling-and-entry.md)  | CLI commands, main.rs, lib.rs, translate, pretty, explain, version, lint, analysis.rs, lsp.rs   |
+| [10](10-ecosystem.md)          | LSP, WASM, VS Code, benchmarks, fuzzing, tests, CI, examples, demos, lang, spec, site           |
+| [11](11-hardware-emulation.md) | Native hardware emulation — dashboard, peripherals, EmulationHost seam                          |
 
 ---
 

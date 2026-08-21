@@ -119,7 +119,7 @@ shapes — walking a range, or walking every element of an array or `mem` — so
 you don't hand-write the bound yourself:
 
 ```mimz
-// index-range form: same unroll as `loop i in 0..4`
+// index-range form: same unroll as `loop i: 0..4`
 foreach i in 0..4 {
   lamps[i * 8 + 7 : i * 8] = i * 2
 }

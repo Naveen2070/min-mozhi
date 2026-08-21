@@ -99,7 +99,7 @@ handle every variant (chapter 7).
 
 ### Tagged unions (enums with payloads)
 
-Since v0.2.15, enum variants can carry **payload fields** — data that differs per
+Enum variants can carry **payload fields** — data that differs per
 variant:
 
 ```mimz
@@ -118,10 +118,10 @@ this case, so the total width is `tag_bits + 6`.
 Match on a tagged union must unpack the payload:
 
 ```mimz
-match pkt {
-  Packet.Data(d)      => out <- d
-  Packet.Ctrl(k, _)   => out <- {k, 0b0000}
-  Packet.Empty        => out <- 0b0000_0000
+out <- match pkt {
+  Packet.Data(d)    => d
+  Packet.Ctrl(k, _) => {k, 0b0000}
+  Packet.Empty      => 0b0000_0000
 }
 ```
 
@@ -165,7 +165,7 @@ with `let { field, ... } = expr`:
 ```mimz
 let { valid, data } = bus_in
 out y: bits[8]
-y = valid ? data : 0
+y = if valid { data } else { 0 }
 ```
 
 A partial destructure (naming only some fields) is fine — you don't have to
@@ -185,6 +185,36 @@ bundle Handshake(W: int = 8) {
 fn get_valid(h: Handshake(W: 8)) -> bit {
   h.valid
 }
+```
+
+## Valid bundle sugar (`T?`)
+
+A trailing `?` on a scalar type (`bit?`, `bits[N]?`, `signed[N]?`) is compiler sugar for a valid-bundle — a bundle shaped `{ valid: bit, data: T }`:
+
+```mimz
+in  req:  bits[8]?
+out resp: bits[8]
+
+resp = if req.valid { req.data } else { 0 }
+```
+
+You can also unwrap or chain optional values with the `??` coalesce operator (chapter 5).
+
+## Fixed-size array types (`T[N]`)
+
+Fixed-size, immutable array types like `bits[8][4]` represent a group of `N` scalar elements. They are used for `fn` parameters and memories:
+
+```mimz
+fn pick_first(items: bits[8][4]) -> bits[8] {
+  items[0]
+}
+```
+
+Array literals are written with square brackets `[e1, e2, ...]` and passed to `fn` calls or bound inside `fn` bodies:
+
+```mimz
+out first: bits[8]
+first = pick_first([10, 20, 30, 40])
 ```
 
 ## Compile-time types: `int` and `bool`

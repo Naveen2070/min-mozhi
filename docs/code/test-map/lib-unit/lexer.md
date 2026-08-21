@@ -1,0 +1,21 @@
+# Unit: lexer (`crates/mimz-core/src/lexer/tests.rs`, 15 tests)
+
+> Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
+
+| Test                                                     | Locks in                                                                                                                                                                          |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lexes_mixed_flavors`                                    | mixing three flavors in ONE line works — the migration path                                                                                                                       |
+| `tamil_identifiers_work`                                 | Tamil-script identifiers lex as identifiers (XID rules)                                                                                                                           |
+| `numbers`                                                | decimal / `0b` / `0x` parse, `_` separators, correct values                                                                                                                       |
+| `wrapping_operators`                                     | `+%` / `-%` are single tokens                                                                                                                                                     |
+| `larrow_vs_comparison`                                   | `<-` vs `<=` vs `<<` disambiguation — longest match                                                                                                                               |
+| `newline_continuation_after_operator`                    | the Go-style newline policy, both directions (kept AND dropped)                                                                                                                   |
+| `division_is_rejected_with_teaching_error`               | `/` errors AND the help text teaches the alternative                                                                                                                              |
+| `a_reserved_word_is_an_error`                            | a still-reserved word (`inout`) is a clean E1005, not a silent identifier — `fall`/`mem`/`sync` were each promoted to active, so the check moved to a word that is still reserved |
+| `mem_is_an_active_keyword`                               | `mem`/`ninaivagam`/`நினைவகம்` lex as KW_MEM in all three flavors (A4 promoted it from reserved)                                                                                   |
+| `async_is_an_active_keyword`                             | `async`/`otthisaivatra`/`ஒத்திசைவற்ற` lex as KW_ASYNC in all three flavors (A5 promoted it from reserved)                                                                         |
+| `dont_care_binary_literal_lexes_to_masked_int`           | `0b1??` lexes to `MaskedInt` (value/mask/width); plain `0b101` stays `Int` (A2)                                                                                                   |
+| `fn_keyword_lexes_in_all_flavors`                        | `fn`/`function`/`saarbu`/`சார்பு` lex as KW_FN (Phase 2)                                                                                                                          |
+| `rarrow_token_lexes`                                     | `->` lexes as RArrow (for fn returns and sync loops)                                                                                                                              |
+| `lexes_question_and_question_question`                   | `?` and `??` are distinct tokens — the optional-type suffix vs the coalesce operator                                                                                              |
+| `a_literal_wider_than_128_bits_lexes_without_a_size_cap` | a literal past the fast-path boundary lexes intact instead of being clamped                                                                                                       |

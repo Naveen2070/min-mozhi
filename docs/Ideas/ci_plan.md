@@ -9,19 +9,19 @@ model it relies on, and the hardening roadmap. The workflow lives in
 
 ## 1. Wired today (`.github/workflows/ci.yml`)
 
-| Job             | Trigger                    | Does                                                                                                                                                                                                                         |
-| --------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check`         | push / PR                  | The full R8 gate: `fmt --check`, `clippy --all-targets -D warnings`, **rustdoc `-D warnings`**, `cargo test` (`REQUIRE_IVERILOG=1`), `cargo build`, `cargo bench --no-run` (compile-check the `criterion` harness)           |
-| `bench`         | push / PR                  | `mimz-bench --no-cov --no-icarus` — its non-zero exit is a hard correctness gate (goldens, flavor byte-identity, fixtures, no-false-positives). `--history` is routed to a temp path so the gate never records a point.      |
-| `nightly-bench` | `workflow_dispatch` / cron | `mimz-bench --no-cov --iterations 500`, then **commits the appended `bench-history.jsonl` back to the repo** (`[skip ci]`) and uploads the report as an artifact. Has `permissions: contents: write`. Cron is commented out. |
-| `fuzz`          | push / PR                  | cargo-fuzz smoke run (60s each: `lex_parse_eval`, `lex_parse_compile`, `pretty_roundtrip`, `translate_roundtrip`), seeded from the example corpus; any panic/abort/timeout fails the job.                                    |
-| `fuzz-nightly`  | `workflow_dispatch` / cron | Extended fuzz (10 min/target), weekly (Mon 04:00 UTC).                                                                                                                                                                       |
-| `audit`         | push / PR                  | `cargo audit` over the committed `Cargo.lock` — non-zero on a RUSTSEC advisory or yanked crate (the supply-chain audit gate, section 3.3 below).                                                                             |
-| `docs`          | push / PR                  | markdownlint + prettier `--check`                                                                                                                                                                                            |
+| Job             | Trigger                                      | Does                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check`         | push / PR                                    | The full R8 gate: `fmt --check`, `clippy --workspace --all-targets -D warnings`, **rustdoc `-D warnings`**, a `wasm-pack build` of `mimz-wasm` (GAP-19 — makes a missing WASM pkg a hard failure via `MIMZ_REQUIRE_WASM=1`, not a silent skip), `cargo test --workspace --all-targets` (`REQUIRE_IVERILOG=1`), `cargo build --workspace`, `cargo bench --no-run` (compile-check the `criterion` harness) |
+| `bench`         | push / PR                                    | `mimz-bench --no-cov --no-icarus` — its non-zero exit is a hard correctness gate (goldens, flavor byte-identity, fixtures, no-false-positives). `--history` is routed to a temp path so the gate never records a point.                                                                                                                                                                                  |
+| `nightly-bench` | `workflow_dispatch` / cron (03:00 UTC daily) | `mimz-bench --no-cov --iterations 500`, then **commits the appended `bench-history.jsonl` back to the repo** (`[skip ci]`) and uploads the report as an artifact. Has `permissions: contents: write`.                                                                                                                                                                                                    |
+| `fuzz`          | push / PR                                    | cargo-fuzz smoke run (60s each: `lex_parse_eval`, `lex_parse_compile`, `pretty_roundtrip`, `translate_roundtrip`), seeded from the example corpus; any panic/abort/timeout fails the job.                                                                                                                                                                                                                |
+| `fuzz-nightly`  | `workflow_dispatch` / cron                   | Extended fuzz (10 min/target) **daily** (04:00 UTC) — was weekly until v0.2 round-3 Task 5 found BUG-47 past the per-PR depth (docs/audit/gaps.md GAP-13). Also runs the deep kernel-vs-Icarus differential at 5000 seeds/side (GAP-11).                                                                                                                                                                 |
+| `audit`         | push / PR                                    | `cargo audit` over the committed `Cargo.lock` — non-zero on a RUSTSEC advisory or yanked crate (the supply-chain audit gate, section 3.3 below).                                                                                                                                                                                                                                                         |
+| `docs`          | push / PR                                    | markdownlint + prettier `--check`                                                                                                                                                                                                                                                                                                                                                                        |
 
 Job gating: `check` / `bench` / `fuzz` / `audit` / `docs` run on `push` /
-`pull_request`; `nightly-bench` runs on the perf cron / dispatch; `fuzz-nightly`
-on the weekly fuzz cron / dispatch.
+`pull_request`; `nightly-bench` runs on the daily perf cron / dispatch;
+`fuzz-nightly` on the daily fuzz cron / dispatch.
 
 ---
 
@@ -151,11 +151,13 @@ when the repo goes public.
    `cargo audit` over the committed `Cargo.lock` on every push/PR (chose
    `cargo audit` over `cargo-deny`: no config file, advisory + yanked coverage;
    revisit `cargo-deny` if license/bans enforcement is later wanted).
-3. **Branch protection (section 3.2) — operational, do when going public.** Protect
-   `master` + require CI before merge; reconcile with the `nightly-bench` bot push
-   (allow bot bypass, or switch that step to a PR). Integrity, not a live hole.
-   **Maintainer action — not codeable in-repo** (GitHub Settings → Branches, or
-   `gh api`).
+3. **Branch protection (section 3.2) — operational, still open.** The repo has
+   been public since the 2026-06-24 v0.1.0 launch and `master` remains
+   unprotected (confirmed live, `gh api repos/.../branches/master/protection`
+   → 404). Protect `master` + require CI before merge; reconcile with the
+   `nightly-bench` bot push (allow bot bypass, or switch that step to a PR).
+   Integrity, not a live hole. **Maintainer action — not codeable in-repo**
+   (GitHub Settings → Branches, or `gh api`).
 
 Deferred / optional (not gaps): build provenance / signing (`SHA256SUMS` already
 gives download integrity; SLSA `actions/attest-build-provenance` is the future

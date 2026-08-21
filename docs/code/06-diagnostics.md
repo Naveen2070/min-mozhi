@@ -70,7 +70,7 @@ will key off them — never renumber.
 | E12xx       | loader                  | below                            |
 | E1301–E1302 | checker (extern module) | [`11-checker.md`](11-checker.md) |
 | W000x       | lint / flavor mixing    | below (§Warnings)                |
-| S01xx–S04xx | simulator runtime       | [`13-tooling.md`](13-tooling.md) |
+| S01xx–S05xx | simulator runtime       | [`13-tooling.md`](13-tooling.md) |
 
 **How to read a code at a glance** — the first digit pair says WHICH
 stage rejected your program, so you know what kind of mistake it is
@@ -85,7 +85,7 @@ before reading the message:
 | `W000x`                  | lint / flavor        | Advisory only — the build still succeeds                                         |
 | `S0xxx`                  | simulator            | The program compiled; something went wrong while RUNNING it                      |
 
-`mimz-sim`'s own runtime diagnostics (`S01xx`–`S04xx`) are a SEPARATE
+`mimz-sim`'s own runtime diagnostics (`S01xx`–`S05xx`) are a SEPARATE
 catalog — fires at elaboration/execution time, after the checker has
 already accepted the program (`mimz sim`/`mimz eval`/`mimz test`, and
 the WASM playground's single-source path). Catalogued in
@@ -195,7 +195,7 @@ list is the fixture-backed checker contract.
   keyed off the codes above; `morph::localized_msg` looks one up per code and
   flavor and interpolates the offending identifier (Tamil case-inflected) plus
   structured args (`{expected}/{found}/{op}/{lhs}/{rhs}/{first}/{second}/{type}`).
-  **33 of 74 checker codes** (`diag::ALL_CHECKER_CODES`) are localized — E0403/E0404/E0405
+  **34 of 75 checker codes** (`diag::ALL_CHECKER_CODES`) are localized — E0403/E0404/E0405
   stay English-only (each emits many distinct shapes; the Tamil drafts are preserved as
   comments in `lang/messages.toml`). Any code with no template renders the English `msg` verbatim,
   so uncovered codes are byte-identical across flavors. JSON diagnostics stay

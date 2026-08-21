@@ -19,6 +19,7 @@
 | 1.8   | Grammar Engine (Tamil word order) | ✅ Complete                              | 2026-06-16 |
 | 1.5   | Own Simulator                     | ✅ Complete                              | 2026-06-22 |
 | **→** | **v0.1.0 public release**         | ✅ Complete                              | 2026-06-24 |
+| **→** | **v0.2.0 public release**         | ✅ Complete                              | 2026-08-20 |
 | 2     | IR + Synthesis (Yosys/nextpnr)    | 🟡 In progress (language-features track) | —          |
 | 3     | Native FPGA bitstream             | ⏳ Planned                               | —          |
 | 4     | Ecosystem, stdlib, community      | ⏳ Ongoing                               | —          |
@@ -86,12 +87,12 @@ language-feature work.** The 2026-07-17 CTO review found one architectural
 root cause (three independently-implemented semantic authorities: checker,
 simulator, emitter) behind every recurring divergence bug in the audit log,
 plus a proven CRITICAL sim-vs-synthesis mismatch (BUG-11). Recommendation:
-freeze new language surface, land the fixes, then resume. Full staged plan:
-`docs/plan/phase-2-correctness-consolidation.local.md` (local working doc,
-not tracked — see the audit trail in `docs/audit/` for the tracked source
-of truth on each item).
+freeze new language surface, land the fixes, then resume. The staged
+remediation plan ran in 5 stages (critical correctness fixes, checker-gated
+execution, and further hardening rounds); the audit trail in `docs/audit/`
+is the tracked source of truth for each item.
 
-**Language-features track — in progress:**
+**Language-features track — completed in v0.2.0:**
 
 - ✅ Packages/namespacing (2026-07-02)
 - ✅ `suzhal`/சுழல் bounded loop (2026-07-05)
@@ -101,10 +102,13 @@ of truth on each item).
 - ✅ `clog2` const-builtin (2026-06-27)
 - ✅ Bundle-typed fn arg/return shape-checking (2026-07-11)
 - ✅ `foreach` range/elements-form loop sugar (2026-07-13)
-- Still open: enum variant construction syntax, structural
-  interface matching, `?`/`??` valid-bundle sugar, channels tier (a), wire
-  type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/
-  `system_fault`
+- ✅ Enum variant construction syntax `Enum.Variant(...)` (2026-07-14)
+- ✅ Structural bundle/interface matching (2026-07-16)
+- ✅ `?`/`??` valid-bundle sugar (2026-07-17)
+- ✅ Explicit CDC synchronizer primitives `sync.double_flop`/`sync.pulse` (2026-07-20)
+- ✅ Verilog FFI `extern module` + companion `.v` wiring (2026-07-15)
+- ✅ Hardware emulation `sim{}` blocks + `--emulate`/`--step` (2026-07-09)
+- Still open: channels tier (a), wire type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/`system_fault`
 
 **IR/synthesis track — not started.** Backend strategy: Verilog-2005 + Yosys
 is the standing plan, not a placeholder — own logic synthesis is
@@ -121,15 +125,10 @@ integration; it is not an alternative path toward an in-house synthesizer.
 - Yosys + nextpnr flow scripted end-to-end (`mimz build blink.mimz --target ice40`)
 - Study Yosys internals (techmapping, ABC interaction) to inform the above
 
-**Verilog FFI — not started, high priority.** The single highest-leverage
-gap for adoption beyond education: without a way to instantiate existing
-Verilog/SystemVerilog IP (vendor primitives, AXI interconnects, DDR
-controllers) from Min-Mozhi, the language hits a hard ceiling the moment a
-design needs anything it doesn't already have a construct for. Design the
-**external Verilog wrapping** construct (Constitution: emit + wrap Verilog)
-— spec bump + Decision log required before code, same as any new construct.
-Sequence this before further language-feature work once the current
-Enum Variant Construction item ships.
+**Verilog FFI — ✅ Complete (2026-07-15, spec/02 §1.5c).**
+Instantiate existing Verilog/SystemVerilog IP via `extern module Name(params) { doc: "...", ports }`
+with companion `.v` wiring via `[compile] verilog_files` or `--extern-src`, plus
+`warn` / `strict` simulation modes via `--extern-sim`.
 
 ### Phase 3 — Native FPGA Backend _(target: 2029–2030)_
 
@@ -151,13 +150,11 @@ where that ambition lives.
 
 - ✅ WASM browser playground (`crates/mimz-wasm`, CLI/WASM output parity tested)
 - ✅ Documentation site (Astro, `site/`, deployed via `deploy-site.yml`)
+- ✅ `mimz repl` — interactive combinational REPL
 - 🟡 Standard library — 5 modules shipped (fifo, pwm, uart_tx, seg7, debouncer);
-  SPI, I2C, AXI-Lite, and a CDC synchronizer (double-flop, double-dips with
-  the already-reserved `sync.<method>(...)` builtin-namespace token — see
-  spec/03's `KW_SYNC` disambiguation note) still open
+  SPI, I2C, AXI-Lite, and multi-bit CDC FIFO still open
 - ⏳ Package manager for Min-Mozhi modules
 - ⏳ npm / PyPI wrappers (thin — one Rust core, never reimplemented)
-- ⏳ `mimz repl` — interactive REPL
 - ⏳ `mimz tui` — no-IDE TUI workbench
 - ⏳ Community + Tamil Nadu semiconductor outreach
 

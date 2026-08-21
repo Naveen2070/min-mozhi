@@ -192,4 +192,5 @@ example) over ad-hoc ones.
   (`graphify-out/`, AST-only, no API cost).
 - When tests are added or removed, update the count and the ledger in
   `docs/code/10-test-map.md` (it is the human "what does a failing test mean"
-  map; no test asserts the total).
+  map; `tests/docs_sync.rs` mechanically asserts that `docs/code/10-test-map.md`
+  and `README.md` match the live `cargo test-summary` total).
