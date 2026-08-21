@@ -44,8 +44,8 @@ min-mozhi/
 │   │   ├── lexer/                   # Tokenizer (4 files)
 │   │   ├── parser/                  # Recursive-descent parser (11 files + tests/ split by topic, 13 files)
 │   │   ├── ast/                     # Shared AST (6 files)
-│   │   ├── checker/                 # 9 safety passes (13 files + tests/ split by topic, 11 files)
-│   │   └── emit_verilog/            # Verilog-2005 code gen (7 files)
+│   │   ├── checker/                 # 9 safety passes (8 files + names/ 7, widths/ 11, tests/ 11)
+│   │   └── emit_verilog/            # Verilog-2005 code gen (6 files + module/ 8 + tests/ 11)
 │   ├── mimz-sim/src/            # Event-driven simulator + runner
 │   │   ├── lib.rs                   # compile_string entry, re-exports sim/runner
 │   │   ├── runner.rs                # In-memory command engine (playground)
@@ -54,7 +54,7 @@ min-mozhi/
 ├── tests/                       # 23 test files + fixtures/golden/icarus
 ├── benches/compile.rs           # Criterion micro-benchmarks
 ├── fuzz/                        # 4 libFuzzer targets
-├── examples/                    # english/tanglish/tamil: 39 each, mixed: 38, tamil-pure: 20 (175 total)
+├── examples/                    # english/tanglish/tamil: 44 each, mixed: 43, tamil-pure: 25 (200 total)
 │   └── {english,tanglish,tamil,tamil-pure,mixed}/
 ├── demo/                        # Real hardware demos (alu, cpu)
 ├── editors/vscode/              # VS Code extension (plain JS)

@@ -141,7 +141,7 @@ flavor)` looks up a localized template for the diagnostic's E-code and, only if
 - **Native-speaker-authored (decision C3 ratified, 2026-06-15).** The localized
   catalog (`MESSAGES`, loaded once via `LazyLock` from `lang/messages.toml`) and the
   sandhi rules in `lang/case_suffixes.toml` came from native-speaker review — no longer
-  a stub, no longer PROVISIONAL. `MESSAGES` localizes **33 of 74 checker codes**
+  a stub, no longer PROVISIONAL. `MESSAGES` localizes **34 of 75 checker codes**
   (`diag::ALL_CHECKER_CODES`); E0403/E0404/E0405 are deferred (each emits many distinct message shapes — English
   kept, the Tamil drafts preserved as comments in `lang/messages.toml`). Templates also
   interpolate **structured args** the checker attaches via `Diag::with_arg`
@@ -244,88 +244,87 @@ Five ranges by category:
 | `S0401`–`S0404` | peripheral bind errors    | `sim/harness/mod.rs`'s `TestStmt::Sim` handling       |
 | `S0501`         | assertion failures        | `sim/kernel.rs`, `sim/run.rs` (GAP-6)                 |
 
-| Code  | Meaning                                                                       |
-| ----- | ----------------------------------------------------------------------------- |
-| S0102 | ambiguous bare reference (module/extern-module/bundle)                        |
-| S0103 | qualified reference's path doesn't match any `import`                         |
-| S0104 | qualified reference resolved to an import lacking the name                    |
-| S0105 | unknown module/extern-module reference (combined lookup miss)                 |
-| S0106 | unknown bundle reference                                                      |
-| S0109 | instance parameter has no value (no arg, no default)                          |
-| S0112 | instance input port not connected                                             |
-| S0113 | extern-module instance has no simulation model (strict mode)                  |
-| S0115 | unknown enum reference (construct/field/pattern)                              |
-| S0116 | enum has no such variant (construct/field/pattern)                            |
-| S0117 | bundle literal in an unsupported expression position                          |
-| S0119 | instance nesting exceeds the max recursion depth                              |
-| S0121 | module parameter has no default and no override was given                     |
-| S0122 | unknown enum type in a declared signal's type                                 |
-| S0123 | memory has a non-positive depth                                               |
-| S0124 | `repeat` would unroll past the repeat budget                                  |
-| S0125 | nested `repeat` is not supported                                              |
-| S0126 | a `repeat` body item is neither an instance nor a drive                       |
-| S0127 | bundle destructure in a module body is not yet supported                      |
-| S0128 | a flattened instance signal collides with an existing signal                  |
-| S0129 | a bit-driven signal has no declaration                                        |
-| S0130 | a bit-driven signal's bit position is never driven                            |
-| S0131 | no files to elaborate (defensive; unreachable via real callers)               |
-| S0133 | a clock/reset connection is not a plain signal name                           |
-| S0134 | a bit-indexed drive's index is out of range (0..128)                          |
-| S0135 | a slice-indexed drive's bound is out of range (0..128)                        |
-| S0136 | a slice-indexed drive's bounds are reversed                                   |
-| S0137 | std import path must be exactly `std.<module>` (two segments)                 |
-| S0138 | unknown standard library module                                               |
-| S0139 | `import` of a non-std module unsupported in single-source mode                |
-| S0201 | unknown signal reference (`Resolver::signal`/`mem_read` boundary)             |
-| S0202 | no `match` arm matched the value                                              |
-| S0203 | concatenation/replication exceeds the max width                               |
-| S0204 | replication count must be at least 1                                          |
-| S0205 | array has no elements to index                                                |
-| S0206 | memory read failed (`Resolver::mem_read` boundary)                            |
-| S0207 | a bit index or slice bound is out of range for the value's width              |
-| S0208 | slice bounds reversed (write `[hi:lo]`, msb first)                            |
-| S0209 | enum-variant / instance-port access not supported by the evaluator            |
-| S0210 | `BundleLit` reached the value evaluator unexpanded                            |
-| S0211 | array literal only valid as a `fn` argument or `let` binding                  |
-| S0212 | `EnumConstruct` reached the value evaluator unexpanded                        |
-| S0213 | signal of enum type — not modeled by the simulator                            |
-| S0214 | `Type::Bundle` reached `type_width` unflattened                               |
-| S0215 | `Type::Array` reached `type_width` unexpanded                                 |
-| S0216 | width must be at least 1                                                      |
-| S0217 | width exceeds the shared maximum                                              |
-| S0218 | no module with the given name in this file                                    |
-| S0219 | file defines no module                                                        |
-| S0220 | file defines multiple modules — none picked                                   |
-| S0221 | a shift amount cannot be `signed`                                             |
-| S0222 | `??` reached `binary_known` unlowered (see the known-gap note below)          |
-| S0223 | function table unavailable in this evaluation context                         |
-| S0224 | undefined function                                                            |
-| S0225 | array parameter has an invalid (non-positive) length                          |
-| S0226 | function called with too few arguments                                        |
-| S0227 | `loop` would unroll past the repeat budget                                    |
-| S0228 | `extend` target narrower than the value's own width                           |
-| S0229 | `clog2` is compile-time only                                                  |
-| S0230 | `eval_outputs`: no files (defensive; unreachable via real callers)            |
-| S0231 | module has `reg` state — unsupported by the combinational evaluator           |
-| S0232 | module has an `on` block — unsupported by the combinational evaluator         |
-| S0233 | module instantiates a sub-module — unsupported by the combinational evaluator |
-| S0234 | module uses `repeat` — unsupported by the combinational evaluator             |
-| S0235 | module uses `sync loop` — unsupported by the combinational evaluator          |
-| S0236 | missing value for a declared input                                            |
-| S0237 | signal is never driven                                                        |
-| S0238 | combinational cycle through a signal (also reused by `sim/kernel.rs`)         |
-| S0239 | `Sim::set`: name is not a drivable input/clock/reset                          |
-| S0240 | `+`/`-`/`*` operands disagree on signedness                                   |
-| S0301 | `tick(clk, ...)`: `clk` is not a declared clock of this module                |
-| S0302 | `tick(clk, n)`: `n` evaluated negative                                        |
-| S0303 | a tick would exceed the (headless) simulation cycle limit                     |
-| S0304 | `sim { speed ... }`: the rate evaluated to zero or negative                   |
-| S0305 | a `tick`/`speed` expression is wider than a plain integer                     |
-| S0401 | `bind port -> peripheral(...)`: unknown peripheral kind                       |
-| S0402 | bind direction mismatch (port exists, wrong direction)                        |
-| S0403 | no port of the needed direction with that name on the design                  |
-| S0404 | the peripheral itself rejected the bind (host-specific reason)                |
-| S0501 | `assert(cond)` / `assert(cond, "msg")` evaluated false (GAP-6)                |
+| Code  | Meaning                                                                                 |
+| ----- | --------------------------------------------------------------------------------------- |
+| S0102 | ambiguous bare reference (module/extern-module/bundle)                                  |
+| S0103 | qualified reference's path doesn't match any `import`                                   |
+| S0104 | qualified reference resolved to an import lacking the name                              |
+| S0105 | unknown module/extern-module reference (combined lookup miss)                           |
+| S0106 | unknown bundle reference                                                                |
+| S0109 | instance parameter has no value (no arg, no default)                                    |
+| S0112 | instance input port not connected                                                       |
+| S0113 | extern-module instance has no simulation model (strict mode)                            |
+| S0115 | unknown enum reference (construct/field/pattern)                                        |
+| S0116 | enum has no such variant (construct/field/pattern)                                      |
+| S0117 | bundle literal in an unsupported expression position                                    |
+| S0119 | instance nesting exceeds the max recursion depth                                        |
+| S0121 | module parameter has no default and no override was given                               |
+| S0122 | unknown enum type in a declared signal's type                                           |
+| S0123 | memory has a non-positive depth                                                         |
+| S0124 | `repeat` would unroll past the repeat budget                                            |
+| S0126 | a `repeat` body item is neither an instance, a drive, a nested `repeat`, nor `const if` |
+| S0127 | bundle destructure in a module body is not yet supported                                |
+| S0128 | a flattened instance signal collides with an existing signal                            |
+| S0129 | a bit-driven signal has no declaration                                                  |
+| S0130 | a bit-driven signal's bit position is never driven                                      |
+| S0131 | no files to elaborate (defensive; unreachable via real callers)                         |
+| S0133 | a clock/reset connection is not a plain signal name                                     |
+| S0134 | a bit-indexed drive's index is out of range (0..128)                                    |
+| S0135 | a slice-indexed drive's bound is out of range (0..128)                                  |
+| S0136 | a slice-indexed drive's bounds are reversed                                             |
+| S0137 | std import path must be exactly `std.<module>` (two segments)                           |
+| S0138 | unknown standard library module                                                         |
+| S0139 | `import` of a non-std module unsupported in single-source mode                          |
+| S0201 | unknown signal reference (`Resolver::signal`/`mem_read` boundary)                       |
+| S0202 | no `match` arm matched the value                                                        |
+| S0203 | concatenation/replication exceeds the max width                                         |
+| S0204 | replication count must be at least 1                                                    |
+| S0205 | array has no elements to index                                                          |
+| S0206 | memory read failed (`Resolver::mem_read` boundary)                                      |
+| S0207 | a bit index or slice bound is out of range for the value's width                        |
+| S0208 | slice bounds reversed (write `[hi:lo]`, msb first)                                      |
+| S0209 | enum-variant / instance-port access not supported by the evaluator                      |
+| S0210 | `BundleLit` reached the value evaluator unexpanded                                      |
+| S0211 | array literal only valid as a `fn` argument or `let` binding                            |
+| S0212 | `EnumConstruct` reached the value evaluator unexpanded                                  |
+| S0213 | signal of enum type — not modeled by the simulator                                      |
+| S0214 | `Type::Bundle` reached `type_width` unflattened                                         |
+| S0215 | `Type::Array` reached `type_width` unexpanded                                           |
+| S0216 | width must be at least 1                                                                |
+| S0217 | width exceeds the shared maximum                                                        |
+| S0218 | no module with the given name in this file                                              |
+| S0219 | file defines no module                                                                  |
+| S0220 | file defines multiple modules — none picked                                             |
+| S0221 | a shift amount cannot be `signed`                                                       |
+| S0222 | `??` reached `binary_known` unlowered (see the known-gap note below)                    |
+| S0223 | function table unavailable in this evaluation context                                   |
+| S0224 | undefined function                                                                      |
+| S0225 | array parameter has an invalid (non-positive) length                                    |
+| S0226 | function called with too few arguments                                                  |
+| S0227 | `loop` would unroll past the repeat budget                                              |
+| S0228 | `extend` target narrower than the value's own width                                     |
+| S0229 | `clog2` is compile-time only                                                            |
+| S0230 | `eval_outputs`: no files (defensive; unreachable via real callers)                      |
+| S0231 | module has `reg` state — unsupported by the combinational evaluator                     |
+| S0232 | module has an `on` block — unsupported by the combinational evaluator                   |
+| S0233 | module instantiates a sub-module — unsupported by the combinational evaluator           |
+| S0234 | module uses `repeat` — unsupported by the combinational evaluator                       |
+| S0235 | module uses `sync loop` — unsupported by the combinational evaluator                    |
+| S0236 | missing value for a declared input                                                      |
+| S0237 | signal is never driven                                                                  |
+| S0238 | combinational cycle through a signal (also reused by `sim/kernel.rs`)                   |
+| S0239 | `Sim::set`: name is not a drivable input/clock/reset                                    |
+| S0240 | `+`/`-`/`*` operands disagree on signedness                                             |
+| S0301 | `tick(clk, ...)`: `clk` is not a declared clock of this module                          |
+| S0302 | `tick(clk, n)`: `n` evaluated negative                                                  |
+| S0303 | a tick would exceed the (headless) simulation cycle limit                               |
+| S0304 | `sim { speed ... }`: the rate evaluated to zero or negative                             |
+| S0305 | a `tick`/`speed` expression is wider than a plain integer                               |
+| S0401 | `bind port -> peripheral(...)`: unknown peripheral kind                                 |
+| S0402 | bind direction mismatch (port exists, wrong direction)                                  |
+| S0403 | no port of the needed direction with that name on the design                            |
+| S0404 | the peripheral itself rejected the bind (host-specific reason)                          |
+| S0501 | `assert(cond)` / `assert(cond, "msg")` evaluated false (GAP-6)                          |
 
 **Two catalog gaps found and fixed 2026-08-01** (`docs/audit/bugs.md`
 BUG-26/BUG-27, filed 2026-07-31): `S0101`'s own "unknown module" arm was
@@ -339,6 +338,20 @@ bridged `String` (`sim::diag::bridge_code`/`diag_from_bridged`), which
 also let `sim/kernel.rs`'s own (previously uncoded) cycle-detection error
 reuse `S0238` for the identical condition in the real multi-module
 simulator.
+
+**`S0125` retired 2026-08-12** (round-4 plan Task 8, BUG-53's own
+check/sim/emit split): "nested `repeat` is not supported" was a real,
+reachable condition until the checker's own `no_decls_in_repeat` (E0303)
+started treating a nested `repeat` as legal hardware generation — the
+simulator's own repeat-body walk was a separate, hand-restricted loop
+that hadn't caught up. It now reuses the same recursive walk
+`run_worklist`'s `ConstIf` arm already used, so nested `repeat` elaborates
+for real and `S0125`'s only emission site is gone; `S0126` (a `repeat`
+body item that is neither an instance, a drive, a nested `repeat`, nor
+`const if`) is the code that would fire on a genuinely malformed body
+today. Same append-only-but-dead-arm reasoning as `S0101`, just because
+the FEATURE landed rather than because the arm was always unreachable.
+`ALL_SIM_CODES` is `[&str; 79]` — the table above lists every live code.
 
 ### Known deferred
 
@@ -454,7 +467,15 @@ flavor-localized hover render (English in v1), `ExprKind::Error` for
 expression-level recovery, and `did_close` cache eviction (the doc cache grows
 for the session).
 
-## Operational commands (bin-only: `init` / `doctor` / `completions` / `check --watch`)
+- **`crates/mimz-core/src/stdlib.rs` (embedded standard library)** — ships the
+  virtual standard library modules (`std.fifo`, `std.pwm`, `std.uart_tx`, `std.seg7`, `std.debouncer`)
+  compiled into the binary via `include_str!`. Resolves `import std.<name>` imports in-memory
+  without filesystem access; `mimz eject std` can write these out to a project directory.
+- **`crates/mimz-core/src/lint.rs` (style and best-practice linter)** — implements
+  non-fatal code quality warnings (`W0002` non-snake_case identifiers, `W0003` unused declarations,
+  `W0004` unused bundle fields, `W0001` flavor mixing). Runs during `mimz lint` and `mimz check`.
+
+## Operational commands (bin-only: `init` / `doctor` / `completions` / `check --watch` / `repl` / `eject`)
 
 These are **not** lib modules — they live in `src/commands/` (bin-only) and touch
 the OS, not the pipeline, so they stay out of the library (the WASM build and LSP
@@ -488,6 +509,10 @@ is complete (the friendly walkthrough is `docs/source-guide/09-tooling-and-entry
   (rationale: `docs/log/2026-06-25.md`). Gated behind the `watch` feature (on by
   default; the WASM build drops it, since `notify` pulls OS file-watch APIs that don't
   build on `wasm32`).
+- **`mimz repl` (`commands/repl.rs`).** Interactive line-by-line expression and declaration
+  evaluator powered by `rustyline` with history and syntax-aware parsing.
+- **`mimz eject std` (`commands/eject.rs`).** Extracts all embedded standard library
+  modules from `stdlib.rs` to disk in the local `./std/` directory.
 
 ## Scope discipline
 
@@ -495,7 +520,7 @@ Most of these grow incrementally: `explain` grows one code at a time,
 `translate`/`pretty` cover keyword flavor and all five landed word-order flips
 (clocked block, conditional, if-expression, match, test header), and `morph`
 ships the selection + inflection mechanism with the native-authored catalog
-(33 of 74 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
+(34 of 75 codes; C3 ratified 2026-06-15). `sim` is the exception — Phase 1.5 is
 feature-complete (the combinational `comb`, the event-driven kernel, VCD/trace,
 and `mimz test`). Each documents its own limits in its module header so the
 honesty rule (spec/01) holds for the tooling too.

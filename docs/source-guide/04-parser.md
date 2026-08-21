@@ -184,3 +184,26 @@ the black-box/external-Verilog declaration. Reuses `module()`'s param-list
 parsing and `port()`'s port-line parsing verbatim; the body accepts an
 optional `doc: STRING` line and otherwise only port/clock/reset items — a
 `wire` or `on` block has no body to belong to, so it's a parse error here.
+
+---
+
+## Parser Error Codes (`E1101`–`E1116`)
+
+Every parser error produces a stable diagnostic code and mandatory teaching help line:
+
+- `E1101`: Unexpected token or syntax error
+- `E1102`: Invalid top-level item
+- `E1103`: Enum needs at least one variant
+- `E1104`: Register declared without mandatory reset value
+- `E1105`: Non-blocking `<-` assignment outside `on` block
+- `E1106`: Continuous `=` assignment inside `on` block
+- `E1107`: Malformed `test` block syntax
+- `E1108`: Expression `if` without mandatory `else`
+- `E1109`: Chained comparisons (`a < b < c`)
+- `E1110`: Builtin function arity or call error
+- `E1111`: Parameter or const type is not `int` or `bool`
+- `E1112`: `syntax` directive must be first line of file
+- `E1113`: Maximum nesting depth exceeded (`MAX_DEPTH = 64`)
+- `E1114`: `sim` block syntax error
+- `E1115`: `??` operator or valid-bundle type error
+- `E1116`: Unknown `sync.*` method call

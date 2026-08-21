@@ -1,6 +1,6 @@
 # 6 — Built-in Functions
 
-Built-ins (and since v0.2.14, user-defined combinational functions) are the
+Built-ins (and user-defined combinational functions) are the
 call syntax in the language. Their names are **universal**: spelled the same
 in every flavor. There are twelve built-ins.
 
@@ -21,7 +21,7 @@ in  din: bit
 reg sr:  bits[8] = 0
 
 on rise(clk) {
-  sr <- (sr << 1) | extend(din, 8)
+  sr <- trunc(sr << 1, 8) | extend(din, 8)
 }
 ```
 

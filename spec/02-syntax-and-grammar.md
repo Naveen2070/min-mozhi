@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.29.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.30.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -139,9 +139,10 @@ dst_clock)` — a toggle-based synchronizer for a single-cycle pulse. Both
   (gray-code pointers) — the actual multi-bit-safe data-bus crossing —
   remain future work, buildable as ordinary `.mimz` stdlib modules layered
   on top of these two primitives (no further compiler/checker/emitter/
-  simulator changes needed for that layering). See
-  `docs/superpowers/specs/2026-07-20-sync-cdc-design.local.md` for the full
-  design rationale and Axis decisions.
+  simulator changes needed for that layering) — real hardware practice
+  treats synchronizer primitives as cells and handshake/FIFO logic as RTL
+  built from those cells (the reference model is Amaranth's `cdc` library,
+  `docs/prior-art.md`), and this design layers the same way.
 
 ### 1.3 Choosing — `if` and `match` are expressions
 
@@ -851,9 +852,10 @@ the emitted signals. `a ?? b` lowers to a ternary: the unwrap form emits
 `data`), evaluated at every field-consuming call site a bundle-typed value
 can reach (wire/reg init, `Drive`, module-port connection, `fn`-call
 argument) in the Verilog emitter. The simulator supports the same lowering
-at wire/reg init and `Drive` only — bundle-typed instance ports and `fn`
-arguments are unsupported in the simulator today, `??` or not
-(`docs/audit/bugs.md` BUG-15). A chained `??` (`x ?? y ?? z`) recurses into
+at all four sites (wire/reg init, `Drive`, instance-port connection, `fn`-call
+argument) — bundle-typed instance ports and `fn` arguments were a simulator
+gap through 2026-07 (`docs/audit/bugs.md` BUG-15) but were closed
+2026-08-01. A chained `??` (`x ?? y ?? z`) recurses into
 nested `??` operands rather than treating an already-bundle-typed
 sub-expression as a plain signal — required for the chain to lower to
 correct, not just plausible-looking, Verilog.
@@ -900,6 +902,12 @@ fn find_first(a: bits[8]) -> int {
   every path, so there is no "missing return" diagnostic.
 - Unreachable code after an unconditional `return` in the same block is
   `E0812`.
+- A `fn` name that collides with a builtin (`extend`, `trunc`, `min`, …) is
+  `E0802`; a call with the wrong argument count is `E0803`. Inside a body, a
+  `let` that shadows an earlier `let`/parameter at a **different** width is
+  `E0813` — same-width shadowing (a fold/accumulator pattern) is fine, since
+  it can share one Verilog `reg` declaration. Full catalog:
+  `docs/code/11-checker.md`.
 - `return` saves no hardware and exits nothing in silicon — it is
   priority-selected assignment, not control flow. Every branch's logic is
   still fully instantiated and evaluates every time; `return` only changes
@@ -951,6 +959,8 @@ module FindIndex {
     emitter generates a right-associated priority-mux over every element —
     `(i == 0) ? vals_0 : (i == 1) ? vals_1 : ... : vals_{N-1}` — so an
     out-of-range runtime value reads the last element.
+  - Indexing an array literal directly (`[a, b, c][0]`) is `E0419` — bind it
+    to a `let`/`fn` parameter first, then index that name.
 - **Never real Verilog hardware.** An array is elaborated away entirely: a
   `bits[8][4]` parameter becomes 4 independent scalar input ports/locals
   named `<param>_0` .. `<param>_3`, matching how `repeat` already
@@ -1256,7 +1266,7 @@ symbols, are **translated** in the Tanglish/Tamil flavors
 
 ```
 unary  →  * *%  →  + - +% -%  →  << >>  →  &  →  ^  →  |
-       →  comparison (chainable, one direction)  →  && / and  →  || / or
+       →  comparison (chainable, one direction)  →  && / and  →  || / or  →  ??
 ```
 
 So `x & 1 == 0` parses as `(x & 1) == 0` — the C trap is defused.
@@ -1299,7 +1309,7 @@ Use shifts, or wait for an explicit divider module in the stdlib (Phase 4).
 ```ebnf
 file        = { topItem } ;
 topItem     = importDecl | constDecl | moduleDecl | enumDecl | testDecl | fnDecl
-            | bundleDecl ;
+            | bundleDecl | externModule ;
 
 importDecl  = ( "import" | "include" ) IDENT { "." IDENT } NEWLINE ;
 constDecl   = "const" IDENT ":" ( "int" | "bool" ) "=" constExpr NEWLINE ;
@@ -1361,8 +1371,11 @@ coverStmt   = "cover" "(" expr [ "," STRING ] ")" NEWLINE ;
 
 onBlock     = "on" ( "rise" | "fall" ) "(" IDENT ")" seqBlock ;
 seqBlock    = "{" { seqStmt } "}" ;
-seqStmt     = regAssign | seqIf | seqLoop | seqForeach | assertStmt | coverStmt ;
+seqStmt     = regAssign | defaultStmt | seqIf | seqLoop | seqForeach | assertStmt
+            | coverStmt ;
 regAssign   = lvalue "<-" expr NEWLINE ;
+defaultStmt = "default" IDENT "<-" expr NEWLINE ;
+              (* priority-lowest assignment, top-level of a seqBlock only, section 1.8b *)
 seqIf       = "if" expr seqBlock [ "else" ( seqIf | seqBlock ) ] ;
 seqLoop     = "loop" IDENT ":" constExpr ".." constExpr seqBlock ;
               (* compile-time unrolled; usable inside on blocks, unlike item-level repeat *)
@@ -1392,7 +1405,9 @@ binMaskDigit = "0" | "1" | "?" | "_" ;
 binExpr     = unary { binOp unary } ;           (* precedence table, section 3 *)
 binOp       = "+" | "-" | "*" | "+%" | "-%" | "*%" | "<<" | ">>"
             | "&" | "^" | "|" | "==" | "!=" | "<" | "<=" | ">" | ">="
-            | "&&" | "||" | "and" | "or" ;
+            | "&&" | "||" | "and" | "or" | "??" ;
+            (* "??" is the lowest-precedence binOp — valid-bundle unwrap/OR-mux,
+               section 1.12a *)
 unary       = [ "~" | "-" | "!" | "not" | "&" | "|" | "^" ] postfix ;
 postfix     = primary { "[" expr [ ":" expr ] "]"
                        | "." IDENT [ "(" [ expr { "," expr } ] ")" ] } ;
@@ -1595,15 +1610,14 @@ because the `_` alternative provides no binding for `x`.
 
 ## 7. Deferred Features (explicitly out of v0.2)
 
-| Feature                                         | Target                                                |
-| ----------------------------------------------- | ----------------------------------------------------- |
-| `inout`/tristate ports                          | Phase 2                                               |
-| Enum-element and 2-D memories (`mem`)           | post-v1 (scalar `bit`/`bits`/`signed` cells ship now) |
-| Handshake (req/ack) protocols, async FIFOs      | future work (stdlib, on top of §1.2b)                 |
-| Structs/bundles/buses                           | post-Phase 2 (stdlib time)                            |
-| `match` ranges (e.g. `0..7`)                    | v0.3+                                                 |
-| Division/modulo                                 | never as operators; stdlib divider module (Phase 4)   |
-| Wrapping/instantiating external Verilog modules | per Constitution — design in Phase 2+                 |
+| Feature                                       | Target                                                        |
+| --------------------------------------------- | ------------------------------------------------------------- |
+| `inout`/tristate ports                        | Phase 2                                                       |
+| Enum-element and 2-D memories (`mem`)         | post-v1 (scalar `bit`/`bits`/`signed` cells ship now)         |
+| Handshake (req/ack) protocols, async FIFOs    | future work (stdlib, on top of §1.2b)                         |
+| Buses (multi-signal channels beyond `bundle`) | post-Phase 2 (stdlib time) — plain `bundle`s ship now (§1.12) |
+| `match` ranges (e.g. `0..7`)                  | v0.3+                                                         |
+| Division/modulo                               | never as operators; stdlib divider module (Phase 4)           |
 
 ---
 
@@ -1672,10 +1686,10 @@ dst_clock)` is a toggle-based synchronizer for a single-cycle pulse; both
   diagnostic E1116 (unknown `sync.` method name). §6 rule 5 and the §7
   deferred-features table updated accordingly — cross-clock reads are no
   longer blanket-deferred to "Phase 2," only handshake/FIFO multi-bit
-  crossing remains so. Full design rationale:
-  `docs/superpowers/specs/2026-07-20-sync-cdc-design.local.md`; execution
-  plan: `docs/superpowers/plans/2026-07-20-sync-cdc.local.md` (9 tasks,
-  `phase-2-correctness-consolidation-part2` branch). `docs/log/2026-07-21.md`.
+  crossing remains so. Both primitives lower to plain hidden `reg`/`on`
+  declarations (a 1-register stage for `double_flop`, a toggle register plus
+  a 3-stage destination shift register for `pulse`) — no new emitter or
+  simulator support was needed. `docs/log/2026-07-21.md`.
 - **v0.2.25 (2026-07-12):** **`foreach` — array/range sugar over
   `repeat`/`loop`** (new section 1.16, placed directly after `sync loop`'s
   section 1.15b). New section 5 productions `foreachBlock` (mirrors

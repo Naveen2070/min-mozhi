@@ -1,7 +1,7 @@
 # Phase 4 — Ecosystem
 
 > **Make it usable by others.**
-> Window: ongoing (starts once Phase 1 ships) · Status: ⚪ not started
+> Window: ongoing (starts once Phase 1 ships) · Status: 🟡 in progress / ongoing (WASM, playground, docs site, mimz repl, stdlib v1, LSP features shipped)
 
 ## Goal
 

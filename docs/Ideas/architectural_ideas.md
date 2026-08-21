@@ -71,66 +71,45 @@ Status key: ✅ done/enforced · 🟢 partly shipped, clear path · 🔵 planned
   hover/go-to-def/completion work (it is a prerequisite for them, not a
   standalone task). Not a v0.1.0 blocker.
 
-### Idea 2 — Fuzzing + differential testing → 🟢 two of three legs shipped (Phase 4)
+### Idea 2 — Fuzzing + differential testing → ✅ all three legs shipped (v0.2.0)
 
 - **Have (leg 1 — robustness fuzzing):** `fuzz/` is a cargo-fuzz crate with four
   targets — `lex_parse_eval`, `lex_parse_compile`, `pretty_roundtrip`,
   `translate_roundtrip` — asserting the untrusted-input path never panics.
   (Detached workspace; libFuzzer = nightly/Linux, runs in the `fuzz` CI job.)
 - **Have (leg 2 — differential oracle):**
-  `our_simulator_matches_icarus_bit_for_bit` (~21 examples, `tests/icarus.rs`)
-  already compares our simulator's VCD against Icarus on the **fixed** example
+  `our_simulator_matches_icarus_bit_for_bit` (`tests/icarus.rs`)
+  compares our simulator's VCD against Icarus on the **fixed** example
   corpus; `wasm_parity` checks WASM-vs-native parity.
-- **Gap (leg 3 — the generative half):** a generator that emits **random valid**
-  Min-Mozhi feeding the leg-2 oracle. The hard, valuable part is a
-  _valid-by-construction_ program generator (random tokens only exercise the
-  leg-1 fuzzers).
-- **Verdict:** feasible, substantial. Phase 4 / post-launch. Sequence: build a
-  typed-AST generator (respects width/driver/clock rules so output is valid) →
-  wire it to the existing sim-vs-Icarus comparator → gate in the `fuzz` CI job.
-  Not a v0.1.0 blocker.
+- **Have (leg 3 — the generative half):** a valid-by-construction AST generator in
+  `tests/differential_fuzz.rs` (v1–v3) that generates random valid Min-Mozhi programs
+  and asserts matching execution between Min-Mozhi's simulator and Icarus Verilog.
+- **Verdict:** ✅ **Shipped in v0.2.0** (`tests/differential_fuzz.rs`, `tools/gate.sh`).
 
-### Idea 3 — `extern module` / external-IP black-box → 🟡 design later, RESERVE THE KEYWORD NOW
+### Idea 3 — `extern module` / external-IP black-box → ✅ SHIPPED in v0.2.0
 
-- **State:** not reserved (`extern` is absent from `lang/keywords.toml`
-  `reserved`); this is the architecture.md open question "External Verilog module
-  wrapping construct (Phase 2+)".
-- **Feasibility:** a real language feature — new keyword + grammar (a port map
-  with declared widths) + a checker rule that **trusts the declared port types as
-  boundary axioms** (so width-inference and the safety passes stay sound across
-  the black box) + emitter passthrough (instantiate, do not render the body).
-  Honest fit: the black box is unchecked Verilog, so the checker treats its ports
-  as a typed contract and stops there. Moderate; Phase 2+.
-- **FREEZE IMPACT:** the _feature_ is additive (edition-safe, can land
-  post-1.0), but the _keyword_ must be reserved **before v0.1.0** — otherwise a
-  v0.1 program using `extern` as an identifier makes the later keyword a breaking
-  change (R11 + the growth doctrine). This is the one item here that touches the
-  freeze. Action is on the freeze checklist
-  (`docs/Ideas/language_plan.md` section 9) and in "what to do next".
+- **State:** `extern module Name(params) { doc: "...", ports }` is fully supported
+  (spec/02 §1.5c, `tests/extern.rs`, CLI `--extern-src`).
+- **Feasibility:** Real language feature with scalar port typing, checker validation
+  (E1301 duplicate name, E1302 non-scalar port), Verilog instantiation emission,
+  and simulator taint/strict mode (`mimz.toml [project] extern_sim`).
+- **Verdict:** ✅ **Shipped in v0.2.0** (`crates/mimz-core/src/parser/items/extern_module.rs`,
+  `crates/mimz-core/src/checker/extern_module.rs`, `tests/extern.rs`).
 
 ### Idea 4 — keep the core Wasm-friendly → ✅ already enforced; codified as an invariant
 
-- **State:** already true. All OS-coupled code (`std::fs`/`env`/`process`,
-  `tokio`) lives only in the CLI shell — `src/commands/`, `main.rs`,
-  `config.rs`, `project.rs`, `lsp.rs`, `src/bin/`. The core stages (`lexer`,
-  `parser`, `checker`, `emit_verilog`, `sim`, `ast`) are string → string/AST
-  pure. `crates/mimz-wasm` builds the lib with `default-features = false`,
-  dropping `lsp` + `bench` (tokio, memory-stats — they do not target wasm32);
-  `wasm_parity` proves the browser pipeline matches native.
-- **Verdict:** no work needed for v0.1.0. The discipline was implicit; it is now
-  a cross-cutting invariant in `docs/architecture.md` (the purity boundary), with
-  an optional CI guard noted in "what to do next".
+- **State:** All OS-coupled code (`std::fs`/`env`/`process`, `tokio`) lives only in
+  the CLI shell — `src/commands/`, `main.rs`, `config.rs`, `project.rs`, `lsp.rs`,
+  `src/bin/`. The core stages (`mimz-core`) and simulator (`mimz-sim`) are string/AST pure.
+  `crates/mimz-wasm` builds the pure lib with `default-features = false`; `wasm_parity`
+  proves the browser pipeline matches native.
+- **Verdict:** ✅ Codified and enforced across the 3-crate workspace.
 
-### Idea 5 — toolchain as modular crates → 🔵 already a documented trigger; do NOT do pre-1.0
+### Idea 5 — toolchain as modular crates → ✅ SHIPPED in v0.2.0
 
-- **State:** the workspace skeleton already exists (root lib + `crates/mimz-wasm`
-  = a 2-member workspace). `docs/architecture.md` already lists this as a
-  trigger-based evolution: "Planned crate split:
-  `mimz-syntax`/`mimz-check`/`mimz-backends`/`mimz`". The proposed
-  `mimz-parser`/`-checker`/`-sim`/`-emit` split is a finer-grained version of the
-  same move.
-- **Verdict:** mechanically high-feasibility (Rust workspace; the wasm crate
-  proves the pattern), but **premature** under the project's own "dumb first,
-  split on trigger" doctrine — there is no community plugin consumer today and
-  compile time is fine. Keep `mimz-checker` as the named mandatory gatekeeper
-  when the split happens. Defer; explicitly **not** a pre-1.0 task.
+- **State:** Split into a 3-crate Cargo workspace:
+  - `crates/mimz-core`: pure compiler pipeline and tooling;
+  - `crates/mimz-sim`: pure event-driven simulator and test runner;
+  - `crates/mimz-wasm`: WASM wrapper for web playground;
+  - Root `mimz` crate: CLI shell, config, I/O, LSP, and emulation.
+- **Verdict:** ✅ **Shipped in v0.2.0** (clean dependency layers, fast local compilation).

@@ -2,7 +2,7 @@
 
 This is a full event-driven simulator that runs Min-Mozhi designs **without** any Verilog tools. It produces VCD waveforms (viewable in GTKWave) and console traces.
 
-Eleven files directly under `crates/mimz-sim/src/sim/`, plus three folders
+Nine files directly under `crates/mimz-sim/src/sim/`, plus three folders
 that outgrew a single file: `elaborate/` (7), `value/` (4), `harness/` (2).
 One more file sits beside them at the crate root — `runner.rs`, the
 filesystem-free command engine the browser playground drives.
@@ -30,7 +30,13 @@ filesystem-free command engine the browser playground drives.
 > stability contract: append-only, never renumbered. Catalog in
 > [`docs/code/13-tooling.md`](../code/13-tooling.md).
 
-## `crates/mimz-sim/src/sim/value/` — The Value Model
+## `crates/mimz-sim/src/sim/value/` — The Value Model (4 Files)
+
+`mod.rs` holds `Val`, the `Resolver` trait, and the top-level `eval` dispatch;
+`binary.rs` holds the wide-path binary-operator arithmetic (width promotion,
+sign extension) `eval` calls into for operands that don't fit in a `u128`;
+`fn_eval.rs` holds `eval_fn_call`, the user-defined-`fn` interpreter; `tests.rs`
+is the unit-test suite for all three.
 
 **`Val`** — a bit-vector value: `bits: Bits` (see [`02-foundations.md`](02-foundations.md) for the `Small`/`Wide` split backing widths past 128 bits), `width: u32`, `signed: bool`, plus a coarse `unknown` taint flag. Two-state model only (no `X` or `Z` — Min-Mozhi doesn't have them in v0.1). `Val` is `Clone` but not `Copy` — a `Wide` value's `Vec<u64>` can't be a bitwise copy, so every caller needs an explicit `.clone()`.
 
@@ -55,7 +61,17 @@ behavior for free, and `FnStmt::ForEach` lowers on the spot via
 
 Rejects designs with registers, `on` blocks, instances, or repeat (with clear messages).
 
-## `crates/mimz-sim/src/sim/elaborate/` — Flattening the Design
+## `crates/mimz-sim/src/sim/elaborate/` — Flattening the Design (7 Files)
+
+`mod.rs` owns the top-level `elaborate_project` entry and its constants;
+each sibling owns one concern: `module.rs` (`elaborate_module` — one
+module's items into the flat form), `instance.rs` (`Flat`/`flatten_instance`
+— child-instance inlining), `bundle.rs` (bundle-typed signal/field
+resolution, mirroring `checker::widths::bundles` and the emitter's
+`module::bundle_fields`), `registry.rs` (`build_registry` plus the
+bundle/enum/extern/func lookup tables the rest of elaboration resolves
+against), `rewrite.rs` (the `Rw` AST-rewrite helper `sync loop`/`foreach`
+lowering shares before elaboration walks the item list), and `tests.rs`.
 
 **`elaborate_project(files, module, params)`** — turns an AST module with concrete parameter values into a flat `Design`:
 

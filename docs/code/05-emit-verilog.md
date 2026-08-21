@@ -139,6 +139,34 @@ reset wrapper.
 This works because the parser already guaranteed every `reg` has a reset
 value — safety rules compose.
 
+### Registers also get a power-on `initial` seed (BUG-65, `docs/audit/bugs.md`)
+
+Separately from the synchronous `if (rst)` branch above, every `reg` in a
+module also gets an `initial <name> = <its declared reset value>;`
+statement, emitted right after the declarations (same power-on-seeding
+idea as `mem`'s own `initial` loop, above) — the FIRST such line in a
+module is preceded by a one-time comment:
+
+```text
+// NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s)
+// below are simulation/FPGA-only - an ASIC flow has no defined power-on
+// default and will not honor them. The synchronous reset below still
+// applies regardless.
+initial value = 0;
+```
+
+Why: `mimz-sim`'s kernel already honors a reg's declared value from cycle
+0 unconditionally (no reset pulse required — the same "no uninitialized
+state" guarantee `mem` gets), but the emitted Verilog used to leave a reg
+as a real 4-state `X` until reset was actually asserted — a design that
+reads a reg before ever pulsing reset agreed with `mimz test` and
+disagreed with real `iverilog`. Confirmed against real hardware-adjacent
+tooling: several shipped `std/*.mimz` "starts empty/zero, no stimulus"
+tests failed under Icarus for exactly this reason before the fix. The
+`initial` line is simulation/FPGA convenience only (an ASIC flow ignores
+it — the comment says so explicitly); the synchronous `if (rst)` branch
+is still the only reset an ASIC-targeted design can rely on.
+
 ### Asynchronous reset — sensitivity-list widening
 
 By default the always-block is clock-only (`always @(posedge clk)`) and the reset
@@ -179,7 +207,15 @@ Mostly 1:1 symbol mapping. The interesting cases:
   Verilog arithmetic already wraps. (Lossless `+`/`-`/`*` emit the same
   thing today — width-growth enforcement is the checker's job. Verilog
   semantics make the result correct when widths are right; the checker
-  will make wrong widths impossible.)
+  will make wrong widths impossible.) A bare integer-literal operand of a
+  same-width "adapt to sibling" operator (`& | ^` or `+% -% *%`) — e.g.
+  `value +% 1` — renders explicitly sized to the sibling's resolved width
+  (`8'd1`, not a bare `1`) whenever that width is resolvable (BUG-56,
+  `docs/audit/bugs.md`): standing alone a plain `1` is fine (Verilog's own
+  32-bit-unsized-literal default still evaluates correctly there), but
+  real Icarus rejects it once the whole expression is later nested inside
+  a concat/replication member, so it is always sized up front rather than
+  only when a nesting site is detected.
 - **`match` → nested ternaries**: each arm becomes
   `(scrutinee == pat) ? value : (...)`; multi-pattern arms OR their
   comparisons; the final (or wildcard) arm is the default — which is also

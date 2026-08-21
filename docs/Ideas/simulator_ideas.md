@@ -90,7 +90,7 @@ This is recorded as a Decision in `docs/log/2026-06-16.md`.
 - **Why it rides this work:** the combinational evaluator (`src/sim/comb.rs`) is
   already callable on one module/expression; the Phase 1.5 kernel extends it to
   sequential. The WASM playground (Phase 4) reuses the same engine.
-- **Status:** Phase 4; no new syntax.
+- **Status:** ✅ **Shipped in v0.2.0** (`src/commands/repl.rs`, interactive evaluation with rustyline).
 - **Bigger sibling — `mimz tui` (idea 8.11):** a vim-like full-screen TUI
   workbench that, on start, asks the output mode (emit Verilog / run+log /
   waveform) and drives the WHOLE toolchain (clocked sim, VCD, `mimz test`, inline
