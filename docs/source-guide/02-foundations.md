@@ -4,7 +4,7 @@ These are the support modules that everything else depends on. They don't know a
 
 ---
 
-## `crates/mimz-core/src/span.rs` — Remembering Where Things Are (27 lines)
+## `crates/mimz-core/src/span.rs` — Remembering Where Things Are (71 lines)
 
 This tiny file defines one thing: a **Span**. A span is a half-open range of byte offsets — `[start, end)` — into the source text. Every single token and every single AST node carries one.
 
@@ -31,6 +31,8 @@ That underlined `^^^^^` comes from the span. It tells the diagnostic renderer ex
 
 **`Span::join(other)`** — when you build a compound node like `a + b`, you need a span that covers everything. `join` just takes the smaller start and bigger end: `min(a_start, b_start)..max(a_end, b_end)`.
 
+**`Span::line_col(src)`** — a lightweight, self-contained byte-offset → 1-based `(line, column)` conversion for callers that just need a human-readable location without going through the full diagnostic renderer. Used to default-label an `assert`/`cover` statement's report entry (`"line:col"`) when it carries no explicit string label — see `crates/mimz-sim/src/runner.rs`.
+
 ---
 
 ## `crates/mimz-core/src/diag.rs` — Making Error Messages Pretty
@@ -46,7 +48,7 @@ There are two types of diagnostics:
 
 ### `ALL_CHECKER_CODES` — The Master List of Error Codes
 
-This is a compile-time array listing all 44 stable error codes: `E0001`, `E0002`, ..., `E0808`. Once a code is assigned, it never changes — no renumbering, ever. This means documentation, `mimz explain`, and any Stack Overflow answers stay valid permanently.
+This is a compile-time array listing all 75 stable checker error codes (`E0001`–`E0912`, `E1301`–`E1302`), alongside the compiler flavor warning `W0001`. Once a code is assigned, it never changes — no renumbering, ever. This means documentation, `mimz explain`, and any Stack Overflow answers stay valid permanently.
 
 A unit test checks that every code here has a test fixture, and another checks that `mimz explain` covers every one.
 

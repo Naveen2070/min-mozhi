@@ -1,5 +1,7 @@
 # Hardware Emulation Mapping (`sim` blocks)
 
+> **Status:** ✅ **SHIPPED in v0.2.0** (2026-07-09, spec/02 §1.10b, `src/emulate/`, `mimz test --emulate`)
+
 ## The Vision
 
 Min-Mozhi’s built-in simulator (`mimz sim` and `mimz test`) is cycle-accurate and bit-for-bit identical to real hardware. To make hardware design more interactive and rewarding, we are introducing **Physical Hardware Emulation**.
@@ -41,13 +43,14 @@ test "play music" for MelodyPlayer {
 }
 ```
 
-### Tamil / Tanglish Translations (Pending Native Review)
+### Tamil / Tanglish Translations — shipped, `lang/keywords.toml`
 
 - `sim` -> `paavnai` / `பாவனை` (simulation/emulation)
 - `bind` -> `inai` / `இணை` (connect/bind)
 - `speed` -> `vegam` / `வேகம்` (speed)
-- `speaker` -> `oli` / `ஒலி` (sound/audio)
-- `led` -> `vilakku` / `விளக்கு` (light)
+
+(`speaker` and `led` are peripheral names inside a `bind` target, not
+reserved keywords, so they carry no keyword-table entry of their own.)
 
 ---
 
@@ -77,7 +80,7 @@ test "play music" for MelodyPlayer {
 
 1. **Parsing:** The parser adds a `SimBlock` node to the AST inside `TestBlock`. The `speed mhz(50)` uses standard function-call syntax to avoid complicating the numeric lexer.
 2. **Checking:** The type-checker ensures that mapped ports actually exist on the instanced module and have valid widths. It also validates `hz`, `khz`, and `mhz` built-ins.
-3. **Simulation (`src/sim/harness.rs`):**
+3. **Simulation (`crates/mimz-sim/src/sim/harness/`, `src/emulate/`):**
    - If a test contains a `sim` block, the simulation loop throttles its execution speed to match the real-world time elapsed according to the `speed` parameter.
    - For each `bind`, it initializes a background thread (e.g., an audio stream).
    - Inside the `tick(clk)` loop, the new state of the bound pin is immediately pushed to a fast, lock-free channel communicating with the peripheral thread.

@@ -284,27 +284,30 @@ each in its own file (some files run more than one pass):
    with one name? Error E0001.
 2. **`extern_module.rs`** — `extern module` port shapes must stay
    scalar (E1302).
-3. **`funcs.rs`** — ban recursive `fn` call cycles (E0805) and dead
-   code after `return` (E0812).
-4. **`consteval.rs`** — compute every `const` to an actual number, top
+3. **`funcs.rs`** (cycles) — ban recursive `fn` call cycles (E0805).
+4. **`funcs.rs`** (unreachable) — dead code after `return` (E0812).
+5. **`consteval.rs`** — compute every `const` to an actual number, top
    to bottom, so later passes can use the values (for example as
    `repeat` bounds). Overflow is an error, never a silent wrap — the
    checker obeys the language's own honesty rule.
-5. **`names.rs`** — for every module: build a scope (every declared
+6. **`names.rs`** — for every module: build a scope (every declared
    name and what it is — port, wire, reg, clock, const, instance…),
    then walk every expression and assignment and ask "does this name
    exist, and is this use legal?" Assigning to an input, clocking on a
    non-clock, leaving an instance input unconnected — all caught here.
    It also enforces structure rules like "a module with regs must
    declare a `reset`" (E0301).
-6. **`widths/`** — the exact-widths promise: every assignment,
+7. **`widths/`** — the exact-widths promise: every assignment,
    operand, and connection has the width its context needs; `signed`
    and `bits` never mix silently; a `match` must cover every value.
-7. **`drivers.rs`** — every wire and output driven exactly once, every
+8. **`drivers.rs`** — every wire and output driven exactly once, every
    reg owned by exactly one `on` block, and no combinational loops
    (the wire graph must be a DAG).
-8. **`clocks.rs`** — every reg belongs to one clock, and nothing reads
+9. **`clocks.rs`** — every reg belongs to one clock, and nothing reads
    across clock domains (that needs the explicit `sync` of Phase 2).
+
+Nine passes total (`check()`, `crates/mimz-core/src/checker/mod.rs`) —
+`funcs.rs` alone runs two of them.
 
 When something is wrong, the checker never panics and never stops
 early — it collects diagnostics and keeps checking, so you see ALL your
@@ -315,7 +318,7 @@ get:
 error[E0101]: unknown name `valu`
   --> examples/english/counter.mimz:17:11
    |
- 17|   count = valu
+ 17 |   count = valu
    |           ^^^^
    = help: nothing with this name is declared in this module — check the
      spelling, or declare it as a port, wire, reg, or const
@@ -341,11 +344,18 @@ walks each module and writes Verilog line by line:
   `parameter`
 - `clock clk` / `reset rst` → plain `input wire` ports (the TYPES were
   for the checker's benefit; Verilog has no clock type)
+- `reg value: bits[WIDTH] = 0` → also an `initial value = 0;` line, so
+  simulators/FPGAs that honor power-on state see the declared reset value
+  too (ASIC flows don't, and can't — the synchronous reset below is what
+  actually applies there; see the emitted `NOTE (BUG-65, docs/audit/bugs.md)`
+  comment)
 - the `on rise(clk)` block → an `always @(posedge clk)` block, with the
   reset branch **generated for you** from the reg's `= 0` reset value
-- `value <- value +% 1` → `value <= (value + 1);` — wrapping is what
+- `value <- value +% 1` → `value <= (value + 8'd1);` — wrapping is what
   plain `+` already does in Verilog at fixed width; the `+%` spelling
-  exists so the WRITER says it on purpose
+  exists so the WRITER says it on purpose; the literal gets an explicit
+  width (`8'd1`) so it can never silently pick up Verilog's own
+  32-bit-int-literal default
 
 The actual output for the counter:
 
@@ -360,12 +370,14 @@ module Counter #(
     output wire [(WIDTH)-1:0] count
 );
     reg [(WIDTH)-1:0] value;
+    // NOTE (BUG-65, docs/audit/bugs.md): the `initial` register-init line(s) below are simulation/FPGA-only - an ASIC flow has no defined power-on default and will not honor them. The synchronous reset below still applies regardless.
+    initial value = 0;
     assign count = value;
     always @(posedge clk) begin
         if (rst) begin
             value <= 0;
         end else begin
-            value <= (value + 1);
+            value <= (value + 8'd1);
         end
     end
 endmodule
@@ -378,10 +390,10 @@ tale).
 
 All paths below are under `crates/mimz-core/src/`.
 
-| File                       | Does what                                                 |
+| File / folder              | Does what                                                 |
 | -------------------------- | --------------------------------------------------------- |
 | `emit_verilog/mod.rs`      | `emit()` entry, the project table, output assembly        |
-| `emit_verilog/module.rs`   | one module → one Verilog module (ports, always blocks)    |
+| `emit_verilog/module/`     | one module → one Verilog module (ports, always blocks)    |
 | `emit_verilog/expr.rs`     | one expression tree → one Verilog expression string       |
 | `emit_verilog/translit.rs` | Tamil identifiers → readable ASCII (விளக்கு → `villakku`) |
 
@@ -439,14 +451,14 @@ cycle. The moment our simulator disagreed with real Verilog, that test goes red.
 
 All paths below are under `crates/mimz-sim/src/`.
 
-| File                      | Does what                                                                    |
+| File / folder             | Does what                                                                    |
 | ------------------------- | ---------------------------------------------------------------------------- |
-| `sim/elaborate.rs`        | flatten the AST into a steppable `Design` (instances, `repeat`, enums, mems) |
+| `sim/elaborate/`          | flatten the AST into a steppable `Design` (instances, `repeat`, enums, mems) |
 | `sim/kernel.rs`           | the edge-aware cycle engine (rise → sample → fall)                           |
 | `sim/comb.rs`             | settle a clockless (combinational) design, one frame per vector              |
-| `sim/value.rs`            | the shared expression evaluator (also behind `mimz eval`)                    |
+| `sim/value/`              | the shared expression evaluator (also behind `mimz eval`)                    |
 | `sim/vcd.rs` / `trace.rs` | `Timeline` → VCD waveform / per-cycle table                                  |
-| `sim/harness.rs`          | the `test`-block runner (`mimz test`: `tick`/`expect`/`if`)                  |
+| `sim/harness/`            | the `test`-block runner (`mimz test`: `tick`/`expect`/`if`)                  |
 
 The simulator's design notes live in
 [`docs/code/13-tooling.md`](code/13-tooling.md) (the `sim` section).
@@ -466,7 +478,7 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test --workspace` runs several layers (**1034 tests** today —
+`cargo test --workspace` runs several layers (**1315 tests** today —
 run `cargo test-summary --workspace` for the exact per-binary count; the
 full ledger and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):

@@ -126,8 +126,8 @@ peak-RSS trend flags the regression.
 
 **The goal:** keep the benchmark fast if the corpus ever scales to 1,000+ files.
 
-**Status: deferred.** Today's corpus is ~56 files and a full run is sub-second,
-so this is premature; revisit when scale is real.
+**Status: deferred.** Today's corpus is 200 example files and a full run is fast,
+so this is premature; revisit when scale reaches 1,000+ files.
 
 **Hard rule when it does land:** parallelize **only the untimed validation
 sweeps** (accuracy, safety, coverage — they are pass/fail). The speed pass
@@ -153,8 +153,9 @@ The full CI strategy, security model, and hardening roadmap now live in
 - **Perf batch — `nightly-bench` job:** `mimz-bench --no-cov --iterations 500`,
   then **commits the appended `bench-history.jsonl` back to the repo**
   (`[skip ci]`) and uploads the report as an artifact. The committed JSONL is
-  the canonical, version-controlled trend. Triggered **manually** today
-  (`workflow_dispatch`); the nightly cron is commented out in `ci.yml`.
+  the canonical, version-controlled trend. Triggered by `workflow_dispatch`
+  or the daily `0 3 * * *` UTC cron in `ci.yml` (gated on that exact cron so
+  the fuzz cron never triggers it).
 
 Deferred CI items (a public GitHub Pages dashboard, a `critcmp` PR timing gate,
 commit-SHA action pinning) are tracked in [`ci_plan.md`](ci_plan.md).

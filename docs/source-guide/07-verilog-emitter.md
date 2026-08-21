@@ -3,7 +3,7 @@
 This takes the checked AST and turns it into synthesizable Verilog-2005 text.
 
 Six top-level files plus a `module/` folder (8 files, the module body) and a
-`tests/` folder (11 files). The one job of every file here is TEXT: by the
+`tests/` folder (12 files). The one job of every file here is TEXT: by the
 time the emitter runs, the checker has already proven the design is legal,
 so nothing in this stage decides whether a program is correct — only how it
 is spelled in Verilog.

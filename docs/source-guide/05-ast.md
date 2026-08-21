@@ -10,7 +10,7 @@ The AST is the **single intermediate representation** that everything downstream
 
 **`Import`** — `import lib.adder` with path segments and a span.
 
-**`TopItem`** — anything at file level: a constant, module, enum, or test.
+**`TopItem`** — anything at file level: a constant (`Const`), module (`Module`), enum (`Enum`), test (`Test`), function (`Func`), bundle (`Bundle`), Verilog FFI (`ExternModule`), or placeholder error (`Error`).
 
 **`Ident`** — a name plus its source location. Used everywhere so errors can always point at the right place.
 
@@ -34,8 +34,13 @@ The AST is the **single intermediate representation** that everything downstream
 - **Inst** — child module instantiation
 - **On** — sequential clocked block
 - **Drive** — combinational assignment (`lhs = rhs`)
-- **Repeat** — compile-time unrolling
-- **Error** — a placeholder for a construct that failed to parse (see below)
+- **Repeat** — compile-time generation loop
+- **ForEach** — loop sugar iterating a range or array
+- **SyncLoop** — multi-cycle FSM loop
+- **ConstIf** — compile-time module item branch
+- **BundleDestructure** — `let { a, b } = bundle_sig`
+- **Assert** / **Cover** — verification primitives
+- **Error** — a placeholder for a construct that failed to parse
 
 **`Repeat`** — `repeat var: lo..hi { body }`. Compile-time, not runtime. Bounds must be constant.
 

@@ -33,15 +33,15 @@ driver:
 wire doubled: bits[9] = x + x
 ```
 
-Or declare and drive separately:
+Output ports, by contrast, are declared in the port list and driven combinationally:
 
 ```mimz
-wire t: bits[8]
+out t: bits[8]
 t = a & b
 ```
 
-Either way a `wire` has exactly one driver. Combinational logic must not form a
-loop — `wire w = w + 1` is rejected as a cycle (`E0504`).
+Either way a combinational signal has exactly one driver. Combinational logic must not form a
+loop — `wire w: bits[8] = w + 1` is rejected as a cycle (`E0504`).
 
 ## `reg`: registers (memory)
 

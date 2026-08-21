@@ -44,6 +44,56 @@ The compiler is a **library** with a thin CLI wrapper. `lib.rs` re-exports every
 - Future tools
 - Anyone embedding the compiler
 
+## Core Language Services Backing the CLI (`crates/mimz-core/src/`)
+
+Five pure `mimz-core` modules power the `translate`/`fmt`/`explain`/`lint`
+commands above and the `mimz --version` banner. None of them do fs I/O —
+`src/commands/*.rs` is the thin fs-touching wrapper around each.
+
+**`translate.rs`** — the engine behind `mimz translate --to <flavor>`.
+`translate(src, target)` / `translate_opts(src, target, opts)` re-lex the
+source and swap only the keyword TOKENS for the target flavor's canonical
+spelling — comments, layout, identifiers, and numbers pass through
+untouched, so the result is lossless and (with `romanize_names: false`,
+the default) round-trips A→B→A to identity. `parse_flavor(s)` parses the
+`--to` argument (`"english"`/`"en"`, `"tanglish"`/`"tl"`,
+`"tamil"`/`"ta"`). With `TranslateOpts::romanize_names` set, Tamil-script
+identifiers are also rewritten to Latin via the emitter's `romanize` —
+one-way, so that mode only makes sense combined with `--order`, not as a
+round-trip.
+
+**`pretty/`** (`mod.rs`, `exprs.rs`, `items.rs`, `seq.rs`, `tests.rs`) —
+the engine behind `mimz translate --order code|thamizh`. Unlike
+`translate.rs` (which re-spells tokens and preserves trivia), `pretty_print(file,
+flavor, order)` emits fresh source **from the AST**, so it can reorder
+clause heads between the `Code` (English-like SVO) and `Thamizh`
+(SOV/postpositional) profiles. The AST carries no comments or original
+layout, so output is canonically formatted, not byte-identical — the
+correctness contract is semantic: the result re-parses to the same AST
+and compiles to byte-identical Verilog.
+
+**`explain.rs`** — the engine behind `mimz explain <CODE>`. A single
+`EXPLANATIONS: &[(&str, &str)]` table holds the long-form teaching text
+for every stable E-code (the classroom version of the one-line `help:`
+on a `Diag`) — a unit test pins every entry in `diag::ALL_CHECKER_CODES`
+to a row here, so a new checker code can't ship without its explanation.
+
+**`version.rs`** — two deliberately separate version axes, surfaced
+together by `mimz --version`: `COMPILER_VERSION` (the crate's
+`Cargo.toml` version, advances every release) and the language
+**edition** (`EDITION_HISTORY: &[Edition]`, a codename/year/code triple
+that advances only when the keyword set or grammar breaks — an
+`Edition::tag()` like `wingless-butterfly-2026-1`). `KEYWORD_SET_VERSION`
+cross-checks against `keywords.toml`'s own `version` field so the two
+can't silently drift.
+
+**`lint.rs`** — the engine behind `mimz lint`, style/hygiene checks kept
+deliberately separate from the correctness checker: every lint is
+`severity::Warning` and never fails the build. `lint(files)` walks every
+module and currently raises W0002 (signal name should be snake_case),
+W0003 (module name should be PascalCase), and W0004 (signal declared but
+never referenced).
+
 ## `crates/mimz-core/src/analysis.rs` — Editor Symbol Index & Resolution
 
 This is the **pure, async-free** analysis layer that powers the LSP's hover, go-to-definition, and completion. `src/lsp.rs` is a thin adapter on top; the WASM playground can reuse these APIs too. All offsets are **byte** offsets — UTF-16 conversion is the LSP adapter's job.
@@ -99,6 +149,26 @@ The LSP server powers the **VS Code extension** (and potentially other editors).
 
 The LSP feature depends on `tokio` and `tower-lsp`, which are **optional** behind the `lsp` feature flag. The WASM build excludes them because they won't compile on `wasm32`.
 
+## The Two Pure Crate Roots
+
+**`crates/mimz-core/src/lib.rs`** — declares every `mimz-core` module (`ast`,
+`checker`, `emit_verilog`, `lexer`, `parser`, `pretty`, `translate`,
+`explain`, `version`, `lint`, `analysis`, `morph`, `project`, `stdlib`,
+`span`, `diag`, `bits`, `wide`, `width_rules`) and holds two crate-wide
+items that don't belong to any one of them: `REPEAT_BUDGET` (the `repeat`
+unroll cap the checker, emitter, and simulator all share) and
+`nfc_normalize(s)` (Unicode NFC normalization, so decomposed Tamil
+combining-mark sequences compare equal to their precomposed form before
+the lexer ever sees them — `src/project.rs`'s `read_source` calls this on
+every file it reads).
+
+**`crates/mimz-sim/src/lib.rs`** — declares `runner` and `sim`, re-exports
+`run_command`, and adds one function: `compile_string(source)`, the
+embedding entry point that runs the full pipeline (NFC-normalize → lex →
+parse → check → transliterate → emit) on an in-memory string with no
+filesystem and no `import` support. This is what `crates/mimz-wasm`
+calls under `compileToVerilog`.
+
 ## `crates/mimz-wasm/` — The Browser Playground
 
 This is a separate crate in the workspace (`crates/mimz-wasm/`) that wraps the compiler for the browser. It's only 40 lines of Rust — all the heavy lifting is in `mimz-sim` (and, transitively, `mimz-core`); `mimz-wasm` depends on `mimz-sim` directly, not on the root `mimz` shell crate, so no `default-features = false` juggling is needed.
@@ -119,9 +189,9 @@ The output lives in `crates/mimz-wasm/pkg/` — a `.wasm` file plus JS glue that
 
 The extension is intentionally plain JavaScript — no build step, no TypeScript compilation. What's in the repo IS what ships in the `.vsix`.
 
-**`extension.js`** — 44 lines. On activation, it starts the `mimz lsp` process as a language server client. The path to the `mimz` binary can be configured via `mimz.serverPath` in VS Code settings (default: just `mimz` on your PATH). If the server can't start, it shows a friendly warning — syntax highlighting still works, you just won't get live diagnostics.
+**`extension.js`** — 47 lines. On activation, it starts the `mimz lsp` process as a language server client. The path to the `mimz` binary can be configured via `mimz.serverPath` in VS Code settings (default: just `mimz` on your PATH). If the server can't start, it shows a friendly warning — syntax highlighting still works, you just won't get live diagnostics.
 
-**`syntaxes/mimz.tmLanguage.json`** — the TextMate grammar that gives you syntax highlighting in the editor. It's 126 lines and defines patterns for:
+**`syntaxes/mimz.tmLanguage.json`** — the TextMate grammar that gives you syntax highlighting in the editor. It's 135 lines and defines patterns for:
 
 - Comments (`//` and `/* */`)
 - Strings
@@ -131,7 +201,7 @@ The extension is intentionally plain JavaScript — no build step, no TypeScript
 - Control-flow keywords (`if`/`enil`/`எனில்`, `match`/`thernthedu`/`தேர்ந்தெடு`, etc.)
 - Boolean constants (`true`/`false`/`unmai`/`உண்மை`)
 - Types (`bit`, `bits`, `signed`, `int`, `bool`)
-- Builtins (`extend`, `trunc`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`)
+- Builtins (`extend`, `trunc`, `signed`, `unsigned`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`)
 - Numbers, operators
 - Reserved words (highlighted as warnings)
 

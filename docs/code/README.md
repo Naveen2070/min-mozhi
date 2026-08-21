@@ -28,22 +28,22 @@ is a bug — fix it the same day (RULES R1).
 
 (File numbers are stable IDs, not reading order — read top to bottom.)
 
-| Document                                                         | Covers                                                                                                                                                                    |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`01-pipeline.md`](01-pipeline.md)                               | End-to-end: what happens when you run `mimz compile`                                                                                                                      |
-| [`09-walkthrough-counter.md`](09-walkthrough-counter.md)         | The same pipeline SHOWN: real tokens, AST, and Verilog for `counter.mimz`                                                                                                 |
-| [`02-lexer.md`](02-lexer.md)                                     | Tokens, the trilingual keyword table, the newline policy                                                                                                                  |
-| [`03-parser.md`](03-parser.md)                                   | Recursive descent, error recovery, operator precedence                                                                                                                    |
-| [`04-ast.md`](04-ast.md)                                         | The one shared AST and its design rules                                                                                                                                   |
-| [`11-checker.md`](11-checker.md)                                 | The checker passes + the stable error-code catalog                                                                                                                        |
-| [`05-emit-verilog.md`](05-emit-verilog.md)                       | How `.mimz` becomes Verilog text                                                                                                                                          |
-| [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                                                                                                                   |
-| [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow                                                                                                           |
-| [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test                                                                                                         |
-| [`10-test-map.md`](10-test-map.md)                               | Every test's intent, what's deliberately uncovered, failure meaning                                                                                                       |
-| [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report                                                                                                    |
-| [`13-tooling.md`](13-tooling.md)                                 | Tooling modules (`explain`, `translate`/`pretty`, `morph`, `sim`, `config`, `version`, `analysis`) + operational commands (`init`/`doctor`/`completions`/`check --watch`) |
-| [`14-hardware-emulation.md`](14-hardware-emulation.md)           | `sim` blocks: `EmulationHost` seam, the LED/speaker/UART peripherals, `--emulate`/`--step`                                                                                |
+| Document                                                         | Covers                                                                                                                                                                                              |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`01-pipeline.md`](01-pipeline.md)                               | End-to-end: what happens when you run `mimz compile`                                                                                                                                                |
+| [`09-walkthrough-counter.md`](09-walkthrough-counter.md)         | The same pipeline SHOWN: real tokens, AST, and Verilog for `counter.mimz`                                                                                                                           |
+| [`02-lexer.md`](02-lexer.md)                                     | Tokens, the trilingual keyword table, the newline policy                                                                                                                                            |
+| [`03-parser.md`](03-parser.md)                                   | Recursive descent, error recovery, operator precedence                                                                                                                                              |
+| [`04-ast.md`](04-ast.md)                                         | The one shared AST and its design rules                                                                                                                                                             |
+| [`11-checker.md`](11-checker.md)                                 | The checker passes + the stable error-code catalog                                                                                                                                                  |
+| [`05-emit-verilog.md`](05-emit-verilog.md)                       | How `.mimz` becomes Verilog text                                                                                                                                                                    |
+| [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                                                                                                                                             |
+| [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow                                                                                                                                     |
+| [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test                                                                                                                                   |
+| [`10-test-map.md`](10-test-map.md) + [`test-map/`](test-map/)    | Every test's intent, what's deliberately uncovered, failure meaning — index + per-unit tables split into `test-map/` by category (lib-unit / crate-integration / workspace-integration / simulator) |
+| [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report                                                                                                                              |
+| [`13-tooling.md`](13-tooling.md)                                 | Tooling modules (`explain`, `translate`/`pretty`, `morph`, `sim`, `config`, `version`, `analysis`) + operational commands (`init`/`doctor`/`completions`/`check --watch`)                           |
+| [`14-hardware-emulation.md`](14-hardware-emulation.md)           | `sim` blocks: `EmulationHost` seam, the LED/speaker/UART peripherals, `--emulate`/`--step`                                                                                                          |
 
 ## The 60-second version
 
@@ -142,36 +142,24 @@ stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
 and refresh the stamp below.
 
-_Last synced with the code: 2026-08-02 (full docs audit across `docs/code/`,
-`docs/guide/`, and `docs/source-guide/`. **Test count corrected 1034 → 1115**
-(`cargo test --workspace --all-features -- --list`) and `10-test-map.md`'s
-master breakdown rebuilt as a per-binary table; a **Legend** section was
-added to that page (lib unit vs integration vs differential, golden,
-fixture, completeness guard, parametrized loop, flavor, E/W/S-code, Icarus
-Layer 1/2/3). Sections were added for suites the page had never listed —
-`crates/mimz-sim/tests/sim_errors.rs` (79), `tests/self_determined_regression.rs`
-(12), `tests/differential_fuzz.rs` (4), `tests/extern.rs` (5),
-`crates/mimz-core/tests/width_rules_conformance.rs` (2), `bits`/`wide`/
-`width_rules` (50), the AST lowering passes (21), `pretty` (8), `stdlib` (5),
-`runner` (13), `src/emulate/` (42), and the checker's internal pockets
-(`consteval`/`drivers`/`names`, 11). Stale per-section counts were corrected
-(`comb` 18→20, `value` 9→34, `elaborate` 22→24, `kernel` 16→25, run/vcd/trace
-14→16, `harness` 6→25, sim integration 10→17, eval integration 10→15,
-translate integration 13→15, config unit 7→8, config integration 5→7); the
-emitter section was restructured from one file into the `emit_verilog/tests/`
-topic split (28 → 68 across five locations). Fixture counts refreshed (error
-106→117, `_tb.v` 14→17, Icarus TBs 45→50). `11-checker.md`'s file-layout
-table was rebuilt for the nine-call pass order and the `names/`+`widths/`
-directory splits, its section pass-numbers renumbered to match, and the
-`E0904`/`E0905`/`E0908`/`W0001` catalog exceptions documented.
-`05-emit-verilog.md` gained the `module/` sub-table (`module.rs` → 8 files).
-`06-diagnostics.md` gained `E1113`–`E1116`, the `W0002`–`W0004` lint rows,
-a prefix legend, and the corrected localization count (33 of 73 → 33 of 74).
+_Last synced with the code: 2026-08-21 (full docs audit across `docs/code/`,
+`docs/guide/`, and `docs/source-guide/`. **Test count corrected 1115 → 1315**
+(`cargo test-summary --workspace`) and `10-test-map.md`'s
+master breakdown rebuilt with current per-binary counts. Fixture counts refreshed
+(error 117→119, golden `.v` steady at 70 module outputs + 17 `_tb.v` testbench
+goldens, 87 `.v` files total in `tests/golden/` — a same-day follow-up audit
+corrected an earlier miscount that conflated the 87-file total with the
+module-only count). `11-checker.md`, `05-emit-verilog.md`,
+`06-diagnostics.md` refreshed for current codes.
 `docs/source-guide/` chapters were resynced for the `names/`, `widths/`,
 `module/`, `elaborate/`, `value/`, `harness/`, `pretty/` directory splits
 and the checker's seven→nine pass count. `docs/guide/08-sequential-logic.md`
 gained a clock-domain-crossing section (`sync.double_flop`/`sync.pulse` were
-undocumented for users), and `docs/guide/README.md` a glossary.) Prior:
+undocumented for users), and `docs/guide/README.md` a glossary. `10-test-map.md`
+split into `test-map/` — the 2300-line file is now the index/overview (master
+table + legend + changelog) and each per-unit table lives in its own file under
+`test-map/lib-unit/`, `crate-integration/`, `workspace-integration/`, and
+`simulator/`.) Prior:
 2026-07-27 (full docs audit across `docs/code/`,
 `docs/guide/`, `docs/source-guide/`, `docs/how-the-compiler-works.md`, and
 `docs/BUILD.md`, prompted by the `oversized-test-file-split` branch: test

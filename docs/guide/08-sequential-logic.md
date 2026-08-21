@@ -177,16 +177,29 @@ Sometimes you need a hardware block to process data iteratively over multiple cl
 module SerialScanner {
   clock clk
   reset rst
+  in key: bits[8]
+  mem m: bits[8][8] = 0
+  out found: signed[4]
+  out busy: bit
 
-  // The sync loop automatically tracks iteration state
-  sync loop scan(clk, rst) i in 0..12 -> result: bits[8] = 0 {
-    // This executes once per clock cycle
-    result <- result +% 1
+  // The sync loop automatically generates counter and state machine
+  sync loop find_first on rise(clk) (i: 0..8) -> result: signed[4] = 0 - 1 {
+    if m[i] == key {
+      result <- signed({false, i})
+    }
   }
+
+  found = find_first_result
+  busy = find_first_running
 }
 ```
 
-Behind the scenes, Min-Mozhi lowers the `sync loop` directly into primitive `reg` and `on` blocks. It safely manages the counter widths (using `clog2(hi)` to save logic elements) and handles all the state-transition condition checks for you, ensuring that the hardware generated is both efficient and completely safe.
+A `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { body }` lowers to synthesized registers and state machine logic spanning `hi - lo` clock cycles. It automatically exposes four signals:
+
+- `<name>_start` — input pulse to trigger the loop execution;
+- `<name>_running` — high while the loop is actively executing;
+- `<name>_done` — pulsed high on the completion cycle;
+- `<name>_result` — holds the accumulator register value.
 
 ## Clock domains
 

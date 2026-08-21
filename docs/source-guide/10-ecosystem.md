@@ -27,13 +27,20 @@ The output is `bench-report.html` (interactive Chart.js graphs) and `bench-repor
 
 **`html.rs`** — renders the HTML report with trend charts, metric cards, and failure lists.
 
-**`metrics/`** — five submodules:
+**`metrics/`** — six submodules:
 
 - **`speed.rs`** — per-phase timing using `std::time::Instant`
 - **`accuracy.rs`** — golden file comparison, flavor identity tests, Icarus Verilog integration
 - **`safety.rs`** — error fixture sweep, help line audit, false positive check
 - **`memory.rs`** — peak RSS measurement over the full corpus
 - **`coverage.rs`** — E-code coverage + `cargo-llvm-cov` integration
+- **`scaling.rs`** — complexity-scaling check: emits the same synthetic
+  module at three doubling sizes (250/500/1000 registers, each drive shaped
+  to hit the emitter's hoist path) and records the cost ratio between
+  adjacent doublings. A linear-time emitter holds ~2.0x per doubling; an
+  unbounded ratio flags superlinear blowup — the class of regression an
+  absolute-time sample can't see (this is how GAP-12's superlinear
+  `mimz compile` behavior shipped undetected before this module existed)
 
 ## `benches/compile.rs` — Criterion Micro-Benchmarks
 
@@ -47,7 +54,7 @@ It measures:
 
 - **Lexer** — raw source to tokens
 - **Parser** — tokens to AST (clones a fresh token vec each iteration)
-- **Checker** — AST through all six safety passes
+- **Checker** — AST through all nine safety passes (see [06-checker.md](06-checker.md); the in-source comment beside this benchmark still says "six" and is stale)
 - **Emitter** — AST to Verilog text (clones the AST each iteration for clean state)
 
 Criterion's statistical warmup and outlier detection catch regressions that a single measurement wouldn't spot.
@@ -80,7 +87,7 @@ cargo test-summary [args]
 
 It's registered as a cargo alias in `.cargo/config.toml`. The output looks
 like this (numbers illustrative — the real run prints a row per binary and
-totals 1115):
+totals 1315):
 
 ```
 ================ test summary ================
@@ -116,10 +123,10 @@ Three workflows keep the repo healthy:
 
 ## `tests/` — Making Sure Everything Works (23 Test Files)
 
-**1115 tests** in total across the workspace, as of 2026-08-02. Run them
+**1315 tests** in total across the workspace, as of 2026-08-21. Run them
 all with `cargo test --workspace` — the `--workspace` flag is NOT optional
 (the root `Cargo.toml` sets `default-members = ["."]`, so a bare
-`cargo test` silently skips `mimz-core` and `mimz-sim`, hiding 845 of
+`cargo test` silently skips `mimz-core` and `mimz-sim`, hiding 930 of
 them). `cargo test-summary --workspace` prints the same run as a
 per-binary table. The per-test ledger, one row per test with what it
 locks in, is [`docs/code/10-test-map.md`](../code/10-test-map.md).
@@ -127,7 +134,7 @@ locks in, is [`docs/code/10-test-map.md`](../code/10-test-map.md).
 Two more integration suites live beside the crates they test rather than
 in the top-level `tests/` folder:
 
-- **`crates/mimz-sim/tests/sim_errors.rs`** — 79 tests, one per live
+- **`crates/mimz-sim/tests/sim_errors.rs`** — 81 tests, one per live
   `S0xxx` runtime code plus a completeness guard, so a new simulator error
   code cannot ship without a fixture that fires it
 - **`crates/mimz-core/tests/width_rules_conformance.rs`** — 2 tests
@@ -162,15 +169,15 @@ The top-level suite:
 
 **Fixtures:**
 
-- `tests/fixtures/errors/` — 117 `.mimz` files; every code in `ALL_CHECKER_CODES` has at least one, and several have more than one (different ways to trigger the same rule)
+- `tests/fixtures/errors/` — 119 `.mimz` files; every code in `ALL_CHECKER_CODES` has at least one, and several have more than one (different ways to trigger the same rule)
 - `tests/fixtures/grammar/` — 8 grammar conformance examples
 - `tests/fixtures/extern/` and `tests/fixtures/packages/` — 3 files each, for the Verilog-FFI and qualified-reference suites
-- `tests/golden/` — 70 golden Verilog outputs + 17 testbench goldens + 1 VCD trace
+- `tests/golden/` — 87 golden Verilog outputs + 17 testbench goldens + 1 VCD trace
 - `tests/icarus/` — 50 hand-written, self-checking Icarus Verilog testbenches
 
 ## `examples/` — Designs in All Five Flavors
 
-The `examples/` directory holds 39 top-level designs plus 5 stdlib modules (`std/`) and 1 shared library module (`lib/`) — 45 files — in **four** keyword flavors: English, Tanglish, Tamil, and mixed (`mixed/` has 44; one design has no mixed twin). A **fifth** folder, `tamil-pure/`, holds 20 designs written with Tamil keywords AND Tamil identifiers. Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
+The `examples/` directory holds 200 `.mimz` files across **five** keyword flavors: English (44), Tanglish (44), Tamil (44), mixed (43), and tamil-pure (25). Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
 
 The tests iterate two tables in `tests/examples.rs`: `BASE_EXAMPLES` (43 designs that exist in all four flavors, checked byte-identical after reskin) and `PURE_TAMIL` (16 pure-Tamil twins, exempt from byte-identity and instead proven equivalent by canonical renaming). Adding a row to either table extends coverage without adding a `#[test]`.
 
@@ -194,7 +201,7 @@ These TOML files are the project's **authoritative data**. The native-speaker pa
 
 **`keywords.toml`** — every keyword has three spellings (English, Tanglish, Tamil) plus optional alias lists per column. A `version` field at the root is cross-checked against `version.rs`. Reserved words for future features are listed at the bottom.
 
-**`messages.toml`** — localized error templates for 33 of the 74 checker E-codes (coverage growing), in both Tamil and Tanglish. Each template uses `{name}`, `{name.acc}`, `{name.dat}`, etc. for identifier interpolation.
+**`messages.toml`** — localized error templates for 34 of the 75 checker E-codes (coverage growing), in both Tamil and Tanglish. Each template uses `{name}`, `{name.acc}`, `{name.dat}`, etc. for identifier interpolation.
 
 **`case_suffixes.toml`** — the four Tamil case suffixes (accusative, dative, locative, instrumental) in both Tamil script and Tanglish romanization.
 

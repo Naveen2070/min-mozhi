@@ -33,8 +33,13 @@ lib split into a 3-crate workspace along the pure/impure axis —
 deps), `mimz-sim` (event-driven simulator, depends only on mimz-core),
 and the root shell crate (CLI, fs I/O, LSP, hw-emulation), which
 re-exports both as a facade so every `mimz::…` path a caller already used
-keeps compiling. Full rationale in
-`docs/plan/workspace-split.local.md`. An IR, a query system, and
+keeps compiling. An earlier 6-crate proposal (syntax/check/emit/sim/lsp/cli)
+was rejected as over-engineered — no unique dependencies per stage, a blurry
+syntax↔check border, and heavy import churn — in favor of this 3-way
+pure/impure split; the one real piece of work it required was moving the
+hw-emulation peripherals out of the simulator into the shell crate via a
+dependency-inversion trait (`EmulationHost`, `crates/mimz-sim/src/sim/host.rs`),
+so `mimz-sim` never needs `ratatui`/`crossterm`/`cpal`. An IR, a query system, and
 incremental compilation remain trigger-based and have not fired — named
 triggers, not speculative scaffolding.
 
@@ -162,7 +167,7 @@ Verilog's unsized-literal-in-concat default (32 bits per the LRM).
 
 The Constitution promises Min-Mozhi will eventually wrap real Verilog
 (spec/01 §4.2); `extern module Name(params) { doc: "...", ports }`
-(design doc `docs/superpowers/specs/2026-07-15-verilog-ffi-design.local.md`)
+(a from-scratch Verilog-FFI design accepted before implementation began)
 is the first cut, landed in one day across lexer → parser → checker →
 emitter → simulator → config/CLI → fixtures (commits `7aa1000`
 through this one). Four decisions worth recording:
@@ -346,8 +351,8 @@ for the recursive one.
 
 ## Where the code goes next (in order)
 
-1. ~~**Checker**~~ — ✅ landed 2026-06-11/12, seven passes in
-   `crates/mimz-core/src/checker/` (symbols, consteval, names, widths, drivers, funcs, clocks);
+1. ~~**Checker**~~ — ✅ landed 2026-06-11/12 (expanded to nine passes in
+   `crates/mimz-core/src/checker/`: symbols, extern_module, func_cycles, func_unreachable, consteval, names, widths, drivers, clocks);
    every spec/02 section 6 rule is now compiler-enforced.
 2. ~~**Stable error codes**~~ — ✅ complete 2026-06-12: every diagnostic
    in the compiler carries one (checker E0xxx, lexer E10xx, parser

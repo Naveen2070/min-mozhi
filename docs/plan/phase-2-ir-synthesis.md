@@ -64,10 +64,10 @@ language-feature work, now that Enum Variant Construction has shipped
 
 ### Clock-domain crossing (deferred from spec v0.1)
 
-- [ ] Design explicit CDC construct (`sync`) — spec update + Decision log entry
-      (design inputs from `docs/Ideas/language_plan.md` section 1.2, triage
-      2026-06-12: per-reg `@ clk` domain tags + a `sync.double_flop` stdlib
-      synchronizer; cross-domain reads without one become a checker error)
+- [x] Design explicit CDC construct (`sync`) — spec update + Decision log entry
+      **✅ DONE 2026-07-20 (spec/02 §1.2b, E0702–E0705)** — `sync.double_flop`
+      and `sync.pulse` 1-bit primitives; cross-domain reads without one become
+      checker error E0701.
 
 ### Language features (window: alongside IR work — from `docs/Ideas/language_plan.md` sections 7 (feasibility triage) and 10 (HDL parity gap analysis), Tier 3)
 

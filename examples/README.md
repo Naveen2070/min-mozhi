@@ -1,6 +1,6 @@
 # Examples
 
-The same 23 designs (plus 5 stdlib modules), four times — one folder per keyword flavor:
+The same 44 designs (plus 5 stdlib modules = 49 base examples), four times — one folder per keyword flavor:
 
 | Folder      | Keywords                                                                       |
 | ----------- | ------------------------------------------------------------------------------ |
@@ -13,32 +13,53 @@ Filenames and identifiers are identical across folders; **only the
 keywords differ**. CI asserts that each example compiles to
 **byte-identical Verilog** from all four folders (`tests/examples.rs`).
 
-| Example               | Shows                                                          |
-| --------------------- | -------------------------------------------------------------- |
-| `adder.mimz`          | combinational logic; lossless `+` keeps the carry              |
-| `counter.mimz`        | clock/reset, registers, `on rise`, wrapping `+%`               |
-| `alu.mimz`            | `match` as an expression; `import` + module instantiation      |
-| `traffic_light.mimz`  | FSM with `enum` + exhaustive `match`                           |
-| `shift_register.mimz` | `<<` and `\|`, parameterized width                             |
-| `mux4.mimz`           | 4-way mux via `match` on a 2-bit select                        |
-| `comparator.mimz`     | comparisons; `if`-expression with mandatory `else`             |
-| `blinker.mimz`        | clock divider + toggle with `^`                                |
-| `edge_detector.mimz`  | one-cycle pulse from a previous-value register                 |
-| `chained.mimz`        | `include` (alias of `import`) + dotted path `lib.full_adder`   |
-| `ripple_adder.mimz`   | `repeat` unrolling + instance array + `const`-driven width     |
-| `signed_math.mimz`    | `signed[N]`: sign-extending `extend`, signed `<`, lossless `+` |
-| `window.mimz`         | monotonic chained comparison `lo <= value <= hi`               |
-| `bitops.mimz`         | `min`/`max`/`abs` + negated reductions `nand`/`nor`/`xnor`     |
-| `datapath.mimz`       | `*`/`*%`, `>>`, concat `{a, b}`, slice `a[3:2]`, `trunc`       |
-| `vilakku.mimz`        | Tamil IDENTIFIERS end to end — transliterated to ASCII Verilog |
-| `tested_adder.mimz`   | inline `test` blocks with `tick`/`expect`                      |
-| `async_reset.mimz`    | `async reset` widens sensitivity list                          |
-| `dual_edge.mimz`      | `on fall(clk)` + mixed-edge registers                          |
-| `priority.mimz`       | don't-care `match` patterns `0b1??`                            |
-| `replicate.mimz`      | `{N{x}}` replication operator                                  |
-| `regfile.mimz`        | `mem` — register file with indexed read/write                  |
-| `shift.mimz`          | shift operations (used by sim shift tests)                     |
-| `lib/full_adder.mimz` | import target — one-bit full adder                             |
+| Example                   | Shows                                                               |
+| ------------------------- | ------------------------------------------------------------------- |
+| `adder.mimz`              | combinational logic; lossless `+` keeps the carry                   |
+| `alu.mimz`                | `match` as an expression; `import` + module instantiation           |
+| `assert_clocked.mimz`     | clocked `assert` — runtime invariant checked by simulator           |
+| `assert_comb.mimz`        | combinational `assert` — runtime invariant checked by simulator     |
+| `async_reset.mimz`        | `async reset` widens sensitivity list                               |
+| `bitops.mimz`             | `min`/`max`/`abs` + negated reductions `nand`/`nor`/`xnor`          |
+| `blinker.mimz`            | clock divider + toggle with `^`                                     |
+| `bundle_passthrough.mimz` | bundle ports, flattening, field access                              |
+| `chained.mimz`            | `include` (alias of `import`) + dotted path `lib.full_adder`        |
+| `comparator.mimz`         | comparisons; `if`-expression with mandatory `else`                  |
+| `counter.mimz`            | clock/reset, registers, `on rise`, wrapping `+%`                    |
+| `cover_clocked.mimz`      | clocked `cover` — counts real edges under Icarus                    |
+| `cover_comb.mimz`         | combinational `cover` — counts condition true from time zero        |
+| `datapath.mimz`           | `*`/`*%`, `>>`, concat `{a, b}`, slice `a[3:2]`, `trunc`            |
+| `debug_wrapper.mimz`      | `const if` conditional module items (WIDTH > 8 adds overflow port)  |
+| `dual_edge.mimz`          | `on fall(clk)` + mixed-edge registers                               |
+| `edge_detector.mimz`      | one-cycle pulse from a previous-value register                      |
+| `enum_construct.mimz`     | `Enum.Variant(...)` construction syntax for tagged unions           |
+| `enum_encoding.mimz`      | `encoding(e)` returns enum's on-wire bit pattern                    |
+| `fn_array_search.mimz`    | array-typed `fn` param + `loop` + `return` first-match search       |
+| `fn_const_local.mimz`     | `fn` with compile-time `const` local                                |
+| `fn_mac.mimz`             | combinational function with `if`/`return` guard clauses             |
+| `fn_mac_local.mimz`       | `fn` with local `const` used in body                                |
+| `fn_return_guard.mimz`    | `return` in `fn` body (priority-selected, not silicon early-exit)   |
+| `fn_with_const.mimz`      | `fn` using module-level `const`                                     |
+| `foreach_fill.mimz`       | `foreach i in 0..4` range form sugar over `repeat`                  |
+| `foreach_sum.mimz`        | `foreach v in array` elements form sugar over `loop`                |
+| `mux4.mimz`               | 4-way mux via `match` on a 2-bit select                             |
+| `priority.mimz`           | don't-care `match` patterns `0b1??`                                 |
+| `pulse_gen.mimz`          | `default` assignment for registers                                  |
+| `regfile.mimz`            | `mem` — register file with indexed read/write                       |
+| `replicate.mimz`          | `{N{x}}` replication operator                                       |
+| `ripple_adder.mimz`       | `repeat` unrolling + instance array + `const`-driven width          |
+| `shift_register.mimz`     | `<<` and `\|`, parameterized width                                  |
+| `shift.mimz`              | shift operations (used by sim shift tests)                          |
+| `signed_math.mimz`        | `signed[N]`: sign-extending `extend`, signed `<`, lossless `+`      |
+| `sync_double_flop.mimz`   | `sync.double_flop` — 2-flop CDC synchronizer for level signal       |
+| `sync_loop_search.mimz`   | `sync loop` — cycle-iterating FSM over a range                      |
+| `sync_pulse.mimz`         | `sync.pulse` — toggle-based CDC synchronizer for single-cycle pulse |
+| `tagged_packet.mimz`      | tagged union `enum` with payloads + exhaustive `match`              |
+| `tested_adder.mimz`       | inline `test` blocks with `tick`/`expect`                           |
+| `traffic_light.mimz`      | FSM with `enum` + exhaustive `match`                                |
+| `vilakku.mimz`            | Tamil IDENTIFIERS end to end — transliterated to ASCII Verilog      |
+| `window.mimz`             | monotonic chained comparison `lo <= value <= hi`                    |
+| `lib/full_adder.mimz`     | import target — one-bit full adder                                  |
 
 Adding an example? It goes into **all four folders** (keyword spellings
 come from `lang/keywords.toml` — never invent words) plus the `BASE_EXAMPLES`

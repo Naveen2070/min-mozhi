@@ -17,19 +17,19 @@
 
 ## The chapters
 
-| #   | Chapter                                        | Covers                                                                                                                      |
-| --- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 1   | [Overview](01-overview.md)                     | Project intro, pipeline overview, codebase map, design principles                                                           |
-| 2   | [Foundations](02-foundations.md)               | `span.rs`, `diag.rs`, `morph.rs`, `bits.rs`/`wide.rs`/`width_rules.rs`, `config.rs`, `project.rs`, `runner.rs`, `stdlib.rs` |
-| 3   | [Lexer](03-lexer.md)                           | `lexer/mod.rs`, `lexer/token.rs`, `lexer/keywords.rs`                                                                       |
-| 4   | [Parser](04-parser.md)                         | `parser/mod.rs`, `parser/expr.rs`, `parser/items/*`                                                                         |
-| 5   | [AST](05-ast.md)                               | `ast/mod.rs`, `ast/expr.rs`                                                                                                 |
-| 6   | [Checker](06-checker.md)                       | `checker/` — 9 safety pass calls over 8 files, plus `names/`, `widths/`, `tests/`                                           |
-| 7   | [Verilog Emitter](07-verilog-emitter.md)       | `emit_verilog/` — code generation (6 files + `module/`, `tests/`)                                                           |
-| 8   | [Simulator](08-simulator.md)                   | `sim/` — event-driven simulation (11 files + `elaborate/`, `value/`, `harness/`, incl. the `EmulationHost` seam)            |
-| 9   | [Tooling & Entry](09-tooling-and-entry.md)     | `commands/`, `main.rs`, `lib.rs`, LSP, WASM, VS Code                                                                        |
-| 10  | [Ecosystem](10-ecosystem.md)                   | Benchmarks, fuzzing, tests, CI, examples, demo, lang, spec, site                                                            |
-| 11  | [Hardware Emulation](11-hardware-emulation.md) | `src/emulate/` — LED/speaker/UART peripherals, the live dashboard, `--emulate`/`--step`                                     |
+| #   | Chapter                                        | Covers                                                                                                                            |
+| --- | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | [Overview](01-overview.md)                     | Project intro, pipeline overview, codebase map, design principles                                                                 |
+| 2   | [Foundations](02-foundations.md)               | `span.rs`, `diag.rs`, `morph.rs`, `bits.rs`/`wide.rs`/`width_rules.rs`, `config.rs`, `project.rs`, `runner.rs`, `stdlib.rs`       |
+| 3   | [Lexer](03-lexer.md)                           | `lexer/mod.rs`, `lexer/token.rs`, `lexer/keywords.rs`                                                                             |
+| 4   | [Parser](04-parser.md)                         | `parser/mod.rs`, `parser/expr.rs`, `parser/items/*`                                                                               |
+| 5   | [AST](05-ast.md)                               | `ast/mod.rs`, `ast/expr.rs`                                                                                                       |
+| 6   | [Checker](06-checker.md)                       | `checker/` — 9 safety pass calls over 8 files, plus `names/`, `widths/`, `tests/`                                                 |
+| 7   | [Verilog Emitter](07-verilog-emitter.md)       | `emit_verilog/` — code generation (6 files + `module/`, `tests/`)                                                                 |
+| 8   | [Simulator](08-simulator.md)                   | `sim/` — event-driven simulation (11 files + `elaborate/`, `value/`, `harness/`, incl. the `EmulationHost` seam)                  |
+| 9   | [Tooling & Entry](09-tooling-and-entry.md)     | `commands/`, `main.rs`, `lib.rs`, `translate.rs`/`pretty/`/`explain.rs`/`version.rs`/`lint.rs`, `analysis.rs`, LSP, WASM, VS Code |
+| 10  | [Ecosystem](10-ecosystem.md)                   | Benchmarks, fuzzing, tests, CI, examples, demo, lang, spec, site                                                                  |
+| 11  | [Hardware Emulation](11-hardware-emulation.md) | `src/emulate/` — LED/speaker/UART peripherals, the live dashboard, `--emulate`/`--step`                                           |
 
 ## Words you will meet in every chapter
 

@@ -120,8 +120,15 @@ set `REQUIRE_IVERILOG=1` to make them a hard failure instead of skipping.
 
 ## 5. WASM crate (`crates/mimz-wasm`)
 
-Exposes `compileToVerilog(source: string): string` to JavaScript (throws a JS
-`Error` whose message is the rendered diagnostics). Two build paths:
+Exposes two functions to JavaScript, both throwing a JS `Error` whose message
+is the rendered diagnostics on failure:
+
+- `compileToVerilog(source: string): string` — compile straight to Verilog.
+- `runCommand(source: string, command: string, args: string[]): string` — run
+  any `mimz` subcommand (`check`/`compile`/`eval`/`sim`/`test`) against
+  in-memory source, the engine behind the playground's in-browser console.
+
+Two build paths:
 
 ### A. Production build for the web — `wasm-pack` (recommended)
 

@@ -21,7 +21,7 @@ version = 1
 # (spec/03 section "Reserved words").
 reserved = [
   "inout",
-  "struct",
+  "struct", # orphaned: bundles/interfaces shipped as `bundle` (2026-07-16); no feature owns this reservation now — release candidate, needs a maintainer decision
   "secret",
   "declassify",
   "pipeline",
@@ -290,11 +290,14 @@ en = "return"
 tanglish = "thirumbu" # PROVISIONAL — pending native review
 tamil = "திரும்பு"    # PROVISIONAL — pending native review
 
+# Hardware-emulation block inside a `test` block (`sim { speed ...; bind ... }`).
+# Simulation-only, never reaches the Verilog emitter.
 [keywords.sim]
 en = "sim"
 tanglish = "paavnai"
 tamil = "பாவனை"
 
+# Hardware-emulation peripheral binding (`bind port -> led(0)`).
 [keywords.bind]
 en = "bind"
 tanglish = "inai"
@@ -312,6 +315,7 @@ en = "extern"
 tanglish = "anniya"   # PROVISIONAL — pending native review
 tamil = "அன்னிய"      # PROVISIONAL — pending native review
 
+# Real-time simulation throttling rate (`speed 1khz(...)` inside a `sim` block).
 [keywords.speed]
 en = "speed"
 tanglish = "vegam"

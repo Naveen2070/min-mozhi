@@ -156,6 +156,27 @@ the result width is `N` times the width of `x` — `{2{a}}` on a `bits[4]` value
 `bits[8]`. Nest it inside a wider concat just like any other piece, e.g.
 `{2{a}, b}`.
 
+## Valid-bundle fallback: `??`
+
+The `??` operator provides convenient fallback handling for valid-bundle values (`T?`):
+
+- **Unwrap form (`T? ?? T -> T`):** If the left operand is valid, produces its `data`; otherwise evaluates to the right operand:
+
+```mimz
+in  req: bits[8]?
+out val: bits[8]
+val = req ?? 0       // equivalent to: if req.valid { req.data } else { 0 }
+```
+
+- **OR-mux form (`T? ?? T? -> T?`):** Merges two optional signals; valid if either operand is valid:
+
+```mimz
+out merged: bits[8]?
+merged = primary ?? backup
+```
+
+`??` has the lowest binary operator precedence (level 0), binding less tightly than `||`.
+
 ## Precedence — the C trap is disarmed
 
 Min-Mozhi uses Rust-style precedence, not C's. In C, `x & 1 == 0` parses as
