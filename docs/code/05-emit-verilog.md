@@ -167,6 +167,20 @@ tests failed under Icarus for exactly this reason before the fix. The
 it — the comment says so explicitly); the synchronous `if (rst)` branch
 is still the only reset an ASIC-targeted design can rely on.
 
+**The `#0` variant (BUG-66):** when the init expression itself forced a
+self-determined-position hoist — rendering it pushed a hoisted `wire` +
+continuous `assign` pair that would race this very `initial` block in
+the same time-0 active region — the emitter writes
+`initial #0 <name> = <expr>;` instead, deferring the seed one delay slot
+so the hoisted `assign` settles first (`emit_verilog/module/mod.rs`;
+round-8 Task 7 narrowed the guard to fire only when a hoist actually
+happened, per-parity with `mem`'s own `#0` loop even though the
+single-statement form did not reproduce the race under `iverilog`). The
+guarded form is pinned by `tests/hoist_declaration_order.rs`
+(`initial #0 r =`). Golden-diff trap for maintainers: if regenerated
+output grows or loses a `#0` on an `initial` line, some operand's
+hoisting changed — diagnose it, don't blindly re-bless the golden.
+
 ### Asynchronous reset — sensitivity-list widening
 
 By default the always-block is clock-only (`always @(posedge clk)`) and the reset

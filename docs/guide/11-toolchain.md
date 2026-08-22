@@ -160,6 +160,7 @@ the fix.
 ```text
 mimz explain E0502
 mimz explain e0403     # case-insensitive
+mimz explain --list    # print the whole diagnostic catalog
 ```
 
 ## `mimz translate` — change flavor and/or word order

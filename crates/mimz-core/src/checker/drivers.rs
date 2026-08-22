@@ -1,4 +1,4 @@
-//! Pass 5 — single-driver and combinational-cycle rules (E0501–E0505).
+//! Pass 8 — single-driver and combinational-cycle rules (E0501–E0505).
 //!
 //! Enforces spec/02 section 6 rules 1 and 6: every `out`/`wire` is driven
 //! exactly once (disjoint constant bit-ranges count as different targets,
@@ -143,7 +143,7 @@ struct Dcx<'a> {
 }
 
 impl<'a> Checker<'a> {
-    /// Pass 5 entry: one analysis per declared module (file, name pair), in
+    /// Pass 8 entry: one analysis per declared module (file, name pair), in
     /// file order. Same-named modules from different files are legal
     /// (spec/02 section 1.5b) and each gets its own independent check — no
     /// "canonical" skip, which would silently leave every module but the
@@ -265,7 +265,7 @@ impl<'a> Checker<'a> {
                         consteval::eval(&r.lo, &dcx.env).map(|v| v.to_i128_saturating()),
                         consteval::eval(&r.hi, &dcx.env).map(|v| v.to_i128_saturating()),
                     ) else {
-                        // Bounds unevaluable (reported by pass 3, or no
+                        // Bounds unevaluable (reported by pass 6, or no
                         // binding): one unbound walk — extents degrade.
                         self.collect_items(dcx, &r.items, summaries, in_progress);
                         continue;
@@ -388,7 +388,7 @@ impl<'a> Checker<'a> {
                 }
                 return; // no edges/sites for a mis-kinded target
             }
-            _ => return, // E0108/E0101 already reported by pass 3
+            _ => return, // E0108/E0101 already reported by pass 6
         }
         let node = Node::Sig(name.clone());
         dcx.node_spans.entry(node.clone()).or_insert(lhs.span);
@@ -432,7 +432,7 @@ impl<'a> Checker<'a> {
                                  with `=` at module level (spec/02 section 1.2)",
                             );
                         }
-                        _ => {} // pass 3 owns the rest
+                        _ => {} // pass 6 owns the rest
                     }
                 }
                 SeqStmt::If { then, els, .. } => {
@@ -486,7 +486,7 @@ impl<'a> Checker<'a> {
         summaries: &mut HashMap<(usize, String), Summary>,
         in_progress: &mut HashSet<(usize, String)>,
     ) {
-        // names.rs (pass 3) runs before drivers.rs (pass 5) and resolves
+        // names.rs (pass 6) runs before drivers.rs (pass 8) and resolves
         // every instantiation it can — `resolved_file` is unset only for
         // the already-reported ambiguous/unknown cases, in which case the
         // calling module's own file is a safe fallback (comb_summary falls
@@ -530,7 +530,7 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Field { base, field } => {
-                // `inst.out` / `inst[i].out` — same unwrap as pass 3.
+                // `inst.out` / `inst[i].out` — same unwrap as pass 6.
                 let (core, index) = match &base.kind {
                     ExprKind::Index { base: b, index } if matches!(b.kind, ExprKind::Ident(_)) => {
                         (b, Some(index.as_ref()))

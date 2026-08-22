@@ -66,11 +66,19 @@ All three lex to the same token, so these two modules are identical to the
 compiler:
 
 ```mimz
-module M { in a: bit  out y: bit  y = a }
+module M {
+  in a: bit
+  out y: bit
+  y = a
+}
 ```
 
 ```mimz
-தொகுதி M { உள்ளீடு a: bit  வெளியீடு y: bit  y = a }
+தொகுதி M {
+  உள்ளீடு a: bit
+  வெளியீடு y: bit
+  y = a
+}
 ```
 
 The full table of all 44 keywords in all three flavors is in the
@@ -102,9 +110,10 @@ file to a single flavor for you, and `mimz fmt --strict` warns when a file mixes
 
 ## Layout and newlines
 
-Min-Mozhi is brace-delimited (`{ }`) and mostly whitespace-insensitive, with one
-Go-style convenience: a statement can continue onto the next line after an
-operator. Both of these are the same expression:
+Min-Mozhi is brace-delimited (`{ }`), and one statement per line is the rule:
+a statement ends at its newline. Two statements cannot share a line, even
+inside braces. Expressions may continue onto the next line after an operator,
+so these two are the same expression:
 
 ```mimz
 y = a +

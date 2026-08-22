@@ -2,7 +2,7 @@
 
 Hey there! This guide walks you through **every Rust file** in the Min-Mozhi compiler — what each piece does, why it's there, and how it ticks. I've written it for someone who's brand new to this project, so I'll skip the jargon and keep things conversational.
 
-Min-Mozhi ("Electricity Language") is the **first Tamil-rooted Hardware Description Language (HDL)** ever built. You write digital circuit designs — processors, counters, ALUs, anything — in a mix of English, Tanglish, or Tamil (you can even mix all three in one file). The compiler then turns it into Verilog-2005, which you can synthesize into real silicon.
+Min-Mozhi ("Electricity Language") is **a Tamil-rooted Hardware Description Language (HDL)**. You write digital circuit designs — processors, counters, ALUs, anything — in a mix of English, Tanglish, or Tamil (you can even mix all three in one file). The compiler then turns it into Verilog-2005, which you can synthesize into real silicon.
 
 It also has a built-in simulator so you can test your designs without needing any Verilog tools at all. Pretty neat.
 
@@ -48,7 +48,7 @@ crates/mimz-core/src/     # pure frontend + middle + emit — no optional deps
 ├── lexer/                    # The tokenizer (4 files)
 ├── parser/                   # Tokens → structured tree (11 files + tests/, 14 files)
 ├── ast/                      # The tree itself (6 files)
-├── checker/                  # Safety checks — 9 pass calls (8 files + names/ 7, widths/ 11, tests/ 12)
+├── checker/                  # Safety checks — 9 pass calls (7 files + names/ 7, widths/ 11, tests/ 12)
 └── emit_verilog/             # Verilog code generator (6 files + module/ 8, tests/ 12)
 
 crates/mimz-sim/src/      # event-driven simulator — depends only on mimz-core

@@ -59,7 +59,7 @@ Status key: ✅ done/enforced · 🟢 partly shipped, clear path · 🔵 planned
 ### Idea 1 — AST error recovery for the LSP → 🟢 partly shipped (Phase 4)
 
 - **Have:** statement-level panic-mode recovery already exists
-  (`Parser::sync_to_newline`, `src/parser/mod.rs`) — the parser reports more than
+  (`Parser::sync_to_newline`, `crates/mimz-core/src/parser/mod.rs`) — the parser reports more than
   one error per run and skips to the next newline / `}` instead of halting on the
   first. "Diagnostics on broken code" therefore already works at line
   granularity, and the LSP v0 (diagnostics-only) consumes it.

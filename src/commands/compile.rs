@@ -56,7 +56,7 @@ pub(crate) fn compile(
         }
     }
     // Phase timing (--debug): `load` fuses lex+parse+import-resolution, `check`
-    // is the six checker passes, `emit` is transliterate + lower + Verilog text.
+    // is the nine checker passes, `emit` is transliterate + lower + Verilog text.
     // For a finer lex-vs-parse split, see the criterion harness (`cargo bench`).
     let t_load = Instant::now();
     let lib_std = match lib_std_dir(path, config_path) {

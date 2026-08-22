@@ -3,7 +3,7 @@
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
 The new `init`, `doctor`, `completions`, and `check --watch` subcommands.
-See `docs/code/04-cli.md` for the full command reference.
+See `docs/code/13-tooling.md` for the full command reference.
 
 | Test                                                | Locks in                                                                                      |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------- |

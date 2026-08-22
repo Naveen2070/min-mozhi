@@ -1,5 +1,8 @@
 # Integration: self-determined-width regressions (`tests/self_determined_regression.rs`, 116 tests)
 
+> **This page is abridged**: it walks a representative subset of the suite's
+> regressions (the BUG-19/20/23/24 families). The remaining tests follow the
+> same shape — see the file itself for the full list.
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
 Verilog computes some subexpression widths by its OWN rule ("self-determined

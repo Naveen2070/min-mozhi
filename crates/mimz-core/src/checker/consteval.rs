@@ -1,4 +1,4 @@
-//! Pass 2 — compile-time constant evaluation.
+//! Pass 5 — compile-time constant evaluation.
 //!
 //! Evaluates file-level `const` declarations (top to bottom, each may use
 //! the ones above it) and provides [`eval`] for every other place a

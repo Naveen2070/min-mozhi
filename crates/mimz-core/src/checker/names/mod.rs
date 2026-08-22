@@ -1,4 +1,4 @@
-//! Pass 3 — name resolution and module-structure rules.
+//! Pass 6 — name resolution and module-structure rules.
 //!
 //! For every module: build the module scope (reporting E0003 in-module
 //! duplicates and E0301 reg-without-reset), then walk every expression,
@@ -69,8 +69,8 @@ impl Bind<'_> {
     }
 }
 
-/// One module's name table. Built here (pass 3), then stored on the
-/// `Checker` so the width pass (pass 4) resolves against the same table
+/// One module's name table. Built here (pass 6), then stored on the
+/// `Checker` so the width pass (pass 7) resolves against the same table
 /// instead of rebuilding it.
 pub(super) struct Scope<'a> {
     pub(super) names: HashMap<String, Bind<'a>>,

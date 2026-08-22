@@ -122,7 +122,7 @@ fn run_check(
         );
     }
     // Phase timing (--debug): `load` fuses lex+parse+import-resolution (the lib
-    // does them together); `check` is the six checker passes. For a finer
+    // does them together); `check` is the nine checker passes. For a finer
     // lex-vs-parse-vs-emit split, see the criterion harness (`cargo bench`).
     let t_load = Instant::now();
     let lib_std = match lib_std_dir(path, config_path) {

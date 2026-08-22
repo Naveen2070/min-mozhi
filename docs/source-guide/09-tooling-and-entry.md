@@ -171,7 +171,7 @@ calls under `compileToVerilog`.
 
 ## `crates/mimz-wasm/` — The Browser Playground
 
-This is a separate crate in the workspace (`crates/mimz-wasm/`) that wraps the compiler for the browser. It's only 40 lines of Rust — all the heavy lifting is in `mimz-sim` (and, transitively, `mimz-core`); `mimz-wasm` depends on `mimz-sim` directly, not on the root `mimz` shell crate, so no `default-features = false` juggling is needed.
+This is a separate crate in the workspace (`crates/mimz-wasm/`) that wraps the compiler for the browser. It's only 36 lines of Rust — all the heavy lifting is in `mimz-sim` (and, transitively, `mimz-core`); `mimz-wasm` depends on `mimz-sim` directly, not on the root `mimz` shell crate, so no `default-features = false` juggling is needed.
 
 **`compile_to_verilog(source)`** — compiled to WASM, exposed to JavaScript as `compileToVerilog(source)`. It calls `mimz_sim::compile_string()` and either returns Verilog text or throws a JS `Error` with the rendered diagnostics.
 
@@ -189,7 +189,7 @@ The output lives in `crates/mimz-wasm/pkg/` — a `.wasm` file plus JS glue that
 
 The extension is intentionally plain JavaScript — no build step, no TypeScript compilation. What's in the repo IS what ships in the `.vsix`.
 
-**`extension.js`** — 47 lines. On activation, it starts the `mimz lsp` process as a language server client. The path to the `mimz` binary can be configured via `mimz.serverPath` in VS Code settings (default: just `mimz` on your PATH). If the server can't start, it shows a friendly warning — syntax highlighting still works, you just won't get live diagnostics.
+**`extension.js`** — 39 lines. On activation, it starts the `mimz lsp` process as a language server client. The path to the `mimz` binary can be configured via `mimz.serverPath` in VS Code settings (default: just `mimz` on your PATH). If the server can't start, it shows a friendly warning — syntax highlighting still works, you just won't get live diagnostics.
 
 **`syntaxes/mimz.tmLanguage.json`** — the TextMate grammar that gives you syntax highlighting in the editor. It's 135 lines and defines patterns for:
 

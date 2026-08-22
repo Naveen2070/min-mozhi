@@ -1,4 +1,5 @@
 use super::*;
+use crate::checker::names::Bind;
 
 impl<'a> Checker<'a> {
     /// Resolve every declared signal's type up front (declaration order
@@ -7,9 +8,16 @@ impl<'a> Checker<'a> {
     pub(super) fn collect_sigs(&mut self, cx: &mut Wcx<'a>, items: &'a [ModuleItem]) {
         for item in items {
             match item {
-                ModuleItem::Port { name, ty, .. }
-                | ModuleItem::Wire { name, ty, .. }
-                | ModuleItem::Reg { name, ty, .. } => {
+                ModuleItem::Port { name, ty, .. } => {
+                    // A port width is emitted into the Verilog port list,
+                    // where a constant-function call cannot reach the
+                    // injected `clog2` body helper — reject what the
+                    // emitter would reject, here, with a coded error.
+                    self.reject_clog2_param_port_width(cx, ty);
+                    let t = self.resolve_ty(cx, ty);
+                    cx.sigs.insert(name.name.clone(), t);
+                }
+                ModuleItem::Wire { name, ty, .. } | ModuleItem::Reg { name, ty, .. } => {
                     let t = self.resolve_ty(cx, ty);
                     cx.sigs.insert(name.name.clone(), t);
                 }
@@ -200,6 +208,79 @@ impl<'a> Checker<'a> {
         let t = self.resolve_ty(cx, ty);
         self.diags.truncate(before);
         t
+    }
+
+    /// A PORT width that would need a Verilog constant-function call
+    /// cannot be emitted: the `clog2` helper is injected into the module
+    /// BODY, and a Verilog-2005 port list cannot reach it (port range
+    /// expressions are limited to constants and parameters). The checker
+    /// folds widths under the module's default parameter binding, so it
+    /// used to accept these and let the emitter fail later with an
+    /// uncoded error — this rejects them here instead, so `check` and
+    /// `compile` agree (E0420). Body signals (`wire`/`reg`/`mem`) keep
+    /// working: the body CAN reach the injected function.
+    pub(super) fn reject_clog2_param_port_width(&mut self, cx: &Wcx<'a>, ty: &'a Type) {
+        if let Type::Bits(w) | Type::Signed(w) = ty {
+            self.clog2_param_in_port(cx, w);
+        }
+    }
+
+    /// Walk a port-width expression; fire E0420 once per `clog2(...)`
+    /// whose argument tree references a module PARAMETER. `clog2` of a
+    /// const/literal folds fine everywhere and is left alone.
+    fn clog2_param_in_port(&mut self, cx: &Wcx<'a>, e: &'a Expr) {
+        match &e.kind {
+            ExprKind::Call {
+                func: crate::ast::Builtin::Clog2,
+                args,
+            } => {
+                if Self::refs_param(&args[0], cx) {
+                    self.err(
+                        cx.file,
+                        args[0].span,
+                        "E0420",
+                        "`clog2` of a parameter cannot size a port — the Verilog-2005 \
+                         port list cannot call the constant function that would compute it",
+                        "size a body `wire`/`reg` with it instead (the body can reach the \
+                         injected `clog2` helper), or pass the computed width in as its own \
+                         `int` parameter",
+                    );
+                }
+                self.clog2_param_in_port(cx, &args[0]);
+            }
+            ExprKind::Unary { expr, .. } => self.clog2_param_in_port(cx, expr),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                self.clog2_param_in_port(cx, lhs);
+                self.clog2_param_in_port(cx, rhs);
+            }
+            ExprKind::IfExpr { cond, then, els } => {
+                self.clog2_param_in_port(cx, cond);
+                self.clog2_param_in_port(cx, then);
+                self.clog2_param_in_port(cx, els);
+            }
+            ExprKind::Field { base, .. } => self.clog2_param_in_port(cx, base),
+            _ => {}
+        }
+    }
+
+    /// Does any leaf of `e` name a module PARAMETER? Width expressions
+    /// contain no `let`s, so a plain scope lookup cannot be shadowed.
+    fn refs_param(e: &Expr, cx: &Wcx<'a>) -> bool {
+        match &e.kind {
+            ExprKind::Ident(name) => matches!(cx.sc.names.get(name), Some(Bind::Param)),
+            ExprKind::Unary { expr, .. } => Self::refs_param(expr, cx),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                Self::refs_param(lhs, cx) || Self::refs_param(rhs, cx)
+            }
+            ExprKind::Call { func: _, args } => args.iter().any(|a| Self::refs_param(a, cx)),
+            ExprKind::IfExpr { cond, then, els } => {
+                Self::refs_param(cond, cx)
+                    || Self::refs_param(then, cx)
+                    || Self::refs_param(els, cx)
+            }
+            ExprKind::Field { base, .. } => Self::refs_param(base, cx),
+            _ => false,
+        }
     }
 
     /// Evaluate a width expression and validate the value (E0410).
