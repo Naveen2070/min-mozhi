@@ -152,10 +152,15 @@ tamil = "நிபந்தனைக் கிளையின் முடிவ
 tanglish = "Nibandhanai kilaiyin mudivugal maarubadugindrana: {first} mattrum {second}"
 
 [message.E0418]
-# PROVISIONAL — pending native-speaker review, same status the new-keyword
+# PROVISIONAL - pending native-speaker review, same status the new-keyword
 # spellings elsewhere in this file carry.
 tamil = "`encoding`க்கு enum மதிப்பு தேவை, ஆனால் {found} கிடைத்தது"
 tanglish = "`encoding`kku enum madhippu thevai, aanaal {found} kidaithathu"
+
+[message.E0420]
+# PROVISIONAL - pending native-speaker review.
+tamil = "அளவுரு மீதான `clog2` துறையின் அகலத்தை அமைக்க முடியாது — Verilog-2005 துறைப் பட்டியல் மாறிலி செயல்பாட்டை அழைக்க முடியாது. உடலில் கம்பி/பதிவேடு அகலமாகப் பயன்படுத்துங்கள், அல்லது அகலத்தைத் தனி `int` அளவுருவாக அனுப்புங்கள்"
+tanglish = "oru parameter mela `clog2` port width-a size panna mudiyadhu — Verilog-2005 port list-la constant function call panna mudiyadhu. body-la wire/reg width-ah use pannunga, illa width-a thani `int` parameter-ah anuppinga"
 
 [message.E0601]
 tamil = "தேர்ந்தெடு கூற்று {type} வகையின் அனைத்து மதிப்புகளையும் உள்ளடக்கவில்லை"

@@ -16,20 +16,20 @@ this page is the human ledger).
 > `default-members = ["."]` (fast local iteration on the shell crate, kept
 > from before the 3-crate workspace split), so a bare `cargo test-summary` /
 > `cargo test` only runs the root crate's own tests and silently skips
-> `mimz-core` (675 lib unit + 2 crate integration) and `mimz-sim` (172 lib
-> unit + 81 crate integration) — **935 tests invisible without the flag**.
+> `mimz-core` (678 lib unit + 2 crate integration) and `mimz-sim` (172 lib
+> unit + 81 crate integration) — **933 tests invisible without the flag**.
 > CI (`.github/workflows/ci.yml`) had this exact gap for one day
 > (2026-07-10 → 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1315 tests** as of 2026-08-21 (`cargo test-summary --workspace`):
+**1319 tests** as of 2026-08-22 (`cargo test --workspace`; re-counted from source by `tests/docs_sync.rs`):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      675 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      678 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |      172 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
-| `src/main.rs` (mimz bin unit)                       |        7 | in-process (`lsp`)                                     |
+| `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
 | `src/bin/mimz-bench/` (bin unit)                    |        6 | in-process                                             |
 | `crates/mimz-wasm` (lib unit)                       |        0 | no unit tests — covered via `wasm_parity`              |
 | doctests (×4 crates)                                |        0 | none currently — runnable examples live in `examples/` |
@@ -58,12 +58,12 @@ this page is the human ledger).
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1315** |                                                        |
+| **Total**                                           | **1319** |                                                        |
 
-Fixture counts (current): **119** error fixtures (`tests/fixtures/errors/*.mimz`,
+Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar
 fixtures · **3** extern fixtures · **3** package fixtures · **70** golden
-module `.v` outputs + **17** `_tb.v` testbench goldens (**87** `.v` files
+module `.v` outputs + **17** `_tb.v` testbench goldens (**88** `.v` files
 total in `tests/golden/`) + **1** `.vcd` ·
 **50** Icarus self-checking testbenches · **43** `BASE_EXAMPLES` × 4
 flavors + **16** pure-Tamil twins.
@@ -95,10 +95,10 @@ flavors + **16** pure-Tamil twins.
 - [`lib-unit/keyword-table.md`](lib-unit/keyword-table.md) — Keyword table (15 tests)
 - [`lib-unit/lexer.md`](lib-unit/lexer.md) — Lexer (15 tests)
 - [`lib-unit/parser.md`](lib-unit/parser.md) — Parser (102 tests across 13 files)
-- [`lib-unit/checker.md`](lib-unit/checker.md) — Checker (301 tests across 11 files)
+- [`lib-unit/checker.md`](lib-unit/checker.md) — Checker (286 tests across 11 files)
 - [`lib-unit/widths-pass.md`](lib-unit/widths-pass.md) — Widths pass internals (5 tests)
-- [`lib-unit/transliteration.md`](lib-unit/transliteration.md) — Transliteration (6 tests)
-- [`lib-unit/emitter.md`](lib-unit/emitter.md) — Emitter (105 tests)
+- [`lib-unit/transliteration.md`](lib-unit/transliteration.md) — Transliteration (7 tests)
+- [`lib-unit/emitter.md`](lib-unit/emitter.md) — Emitter (93 tests, excl. translit + testbench rows)
 - [`lib-unit/testbench-emitter.md`](lib-unit/testbench-emitter.md) — Testbench emitter (5 tests)
 - [`lib-unit/lint.md`](lib-unit/lint.md) — Lint (5 tests)
 - [`lib-unit/explain.md`](lib-unit/explain.md) — Explain (3 tests)
@@ -139,7 +139,6 @@ flavors + **16** pure-Tamil twins.
 - [`workspace-integration/packages.md`](workspace-integration/packages.md) — Packages (2 tests)
 - [`workspace-integration/self-determined-regression.md`](workspace-integration/self-determined-regression.md) — Self-determined regression (116 tests)
 - [`workspace-integration/showcase.md`](workspace-integration/showcase.md) — Showcase (6 tests)
-- [`workspace-integration/sim.md`](workspace-integration/sim.md) — Sim (17 tests)
 - [`workspace-integration/stdlib.md`](workspace-integration/stdlib.md) — Stdlib (11 tests)
 - [`workspace-integration/test-run.md`](workspace-integration/test-run.md) — Test run (9 tests)
 - [`workspace-integration/translate.md`](workspace-integration/translate.md) — Translate (15 tests)
@@ -149,11 +148,11 @@ flavors + **16** pure-Tamil twins.
 
 - [`simulator/combinational.md`](simulator/combinational.md) — Combinational evaluator (22 tests)
 - [`simulator/value-model.md`](simulator/value-model.md) — Value model + fn-body interpreter (38 tests)
-- [`simulator/elaboration.md`](simulator/elaboration.md) — Elaboration (25 tests)
+- [`simulator/elaboration.md`](simulator/elaboration.md) — Elaboration (26 tests)
 - [`simulator/kernel.md`](simulator/kernel.md) — Kernel (30 tests)
 - [`simulator/run-vcd-trace.md`](simulator/run-vcd-trace.md) — Sim runner / VCD / console trace (18 tests)
 - [`simulator/playground-runner.md`](simulator/playground-runner.md) — Playground runner (14 tests)
-- [`simulator/test-harness.md`](simulator/test-harness.md) — Test harness (27 tests)
+- [`simulator/test-harness.md`](simulator/test-harness.md) — Test harness (25 tests)
 - [`simulator/sim-integration.md`](simulator/sim-integration.md) — Sim integration (17 tests)
 
 ---

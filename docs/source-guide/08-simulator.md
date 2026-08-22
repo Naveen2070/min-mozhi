@@ -40,7 +40,7 @@ is the unit-test suite for all three.
 
 **`Val`** — a bit-vector value: `bits: Bits` (see [`02-foundations.md`](02-foundations.md) for the `Small`/`Wide` split backing widths past 128 bits), `width: u32`, `signed: bool`, plus a coarse `unknown` taint flag. Two-state model only (no `X` or `Z` — Min-Mozhi doesn't have them in v0.1). `Val` is `Clone` but not `Copy` — a `Wide` value's `Vec<u64>` can't be a bitwise copy, so every caller needs an explicit `.clone()`.
 
-**`eval(expr, resolver, consts)`** — this is THE expression evaluator, used by both the comb evaluator and the event-driven kernel. It handles every operator, builtin, and expression form with correct width semantics:
+**`eval<R: Resolver>(r: &mut R, e: &Expr)`** — this is THE expression evaluator, used by both the comb evaluator and the event-driven kernel. The resolver (a `Resolver` trait impl) supplies signal/const lookups for `eval`; there is no separate consts parameter. It handles every operator, builtin, and expression form with correct width semantics:
 
 - `+ - *` → lossless (grow width)
 - `+% -% *%` → wrapping (keep width)
@@ -87,7 +87,13 @@ lowering shares before elaboration walks the item list), and `tests.rs`.
 
 ## `crates/mimz-sim/src/sim/kernel.rs` — The Simulation Engine
 
-**`simulate(design, opts)`** — the event-driven, two-phase commit engine:
+The engine is the stateful `Sim` struct, not a free function: **`Sim::new(design)`**
+constructs it, `.set(name, bits)` / `.set_val(name, Val)` drive inputs,
+`.tick(clock)` advances one clock cycle, and `.peek(name)` reads a signal's
+current value. The free functions in `run.rs` (below) wrap this loop for
+command-line use.
+
+**`.tick(clock)`** runs the event-driven, two-phase commit engine:
 
 - **Phase 1 — Evaluate**: compute every register's NEXT value from current state and combinational logic
 - **Phase 2 — Commit**: update all registers at once (non-blocking, matching real hardware)
@@ -105,15 +111,22 @@ process-execution time each cycle — not folded away during elaboration like
 
 ## `crates/mimz-sim/src/sim/run.rs` — Default Stimulus
 
-**`run(design, opts)`** — drives a clocked design: toggle the clock, assert reset for initial cycles, hold specified inputs.
+**`run(design, opts: &SimOpts)`** — drives a clocked design: toggle the clock, assert reset for initial cycles, hold specified inputs.
 
 **`comb_run(design, vectors)`** — one vector → one settled frame, for combinational designs.
 
-**`MAX_SIM_CYCLES = 1_000_000`** — prevents OOM on adversarial input.
+**`MAX_SIM_CYCLES = 500_000_000`** — prevents OOM on adversarial input. (The nearby `MAX_SWEEP_VECTORS = 1_000_000` caps `--sweep`, not cycle counts.)
 
 ## `crates/mimz-sim/src/sim/harness/` — Test Block Runner
 
-**`run_test(files, src, decl)`** — runs one `test "name" for M(args) { body }`:
+**`run_test(files, src, decl, host, live, step, trace) -> Result<Outcome, _>`** — runs one `test "name" for M(args) { body }`. Beyond the AST (`files`, `src` for expression rendering in failure messages, and the `decl`), the extra parameters thread the emulation surface through:
+
+- `host: Box<dyn EmulationHost>` — the peripheral seam real hardware plugs into (headless/CI callers pass a no-op impl)
+- `live` — whether ticks pace/redraw in real time (the caller decides from `--emulate` + a TTY being attached)
+- `step` — single-cycle stepping mode
+- `trace` — capture a per-cycle timeline for `--trace` (skipping it saves real per-cycle overhead)
+
+A sibling `run_test_with_mode(...)` adds a `SimMode` for how `extern module` instances behave. Execution itself:
 
 1. Elaborates the module-under-test with the test's parameters
 2. Interprets the body step by step:

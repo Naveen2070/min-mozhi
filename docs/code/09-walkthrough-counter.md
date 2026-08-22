@@ -54,7 +54,7 @@ Ident("WIDTH")              @ 221..226    ← param names are plain idents
 Colon                       @ 226..227
 Ident("int")                @ 228..231    ← `int` is contextual, NOT a keyword
 Assign                      @ 232..233
-Int { value: 8, raw: "8" }  @ 234..235    ← value AND raw spelling kept
+Int { value: Small(8), raw: "8" }  @ 234..235    ← value AND raw spelling kept
 RParen                      @ 235..236
 LBrace                      @ 237..238    ← note: NO Newline after `{`
 Kw(Clock)                   @ 241..246
@@ -71,7 +71,7 @@ Ident("value")              @ 341..346
 LArrow                      @ 347..349    ← `<-` lexed as ONE token, not `<` `-`
 Ident("value")              @ 350..355
 PlusPct                     @ 356..358    ← `+%` likewise
-Int { value: 1, raw: "1" }  @ 359..360
+Int { value: Small(1), raw: "1" }  @ 359..360
 Newline ... RBrace ... Newline
 Ident("count") Assign Ident("value") Newline
 RBrace                      @ 382..383

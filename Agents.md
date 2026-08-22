@@ -35,7 +35,7 @@ src/               Shell crate (CLI, fs I/O, LSP, emulate/ hardware peripherals)
 crates/mimz-core/  Pure compiler pipeline (lexer, parser, ast, checker, emit_verilog, explain, lint, translate, pretty, morph, analysis, stdlib, version, wide, width_rules, bits, diag, span)
 crates/mimz-sim/   Event-driven simulator (sim/ comb/kernel/elaborate/harness/run/value/vcd/trace, runner.rs, EmulationHost trait)
 crates/mimz-wasm/  WASM playground wrapper (compileToVerilog, runCommand)
-tests/             Test suite (23 integration files + in-crate test suites across crates, 35 test suites / 1315 tests total)
+tests/             Test suite (23 integration files + in-crate test suites across crates, 35 test suites / 1318 tests total)
 benches/           Criterion micro-benchmarks
 fuzz/              libFuzzer targets (4)
 examples/          200 example files across 5 folders (44 english, 44 tanglish, 44 tamil, 43 mixed, 25 tamil-pure)

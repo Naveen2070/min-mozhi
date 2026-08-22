@@ -2,7 +2,7 @@
 
 This folder is the split of `../10-test-map.md` (which is the **index/overview**).
 
-- `../10-test-map.md` — master table (1315 tests), legend, and changelog. The single place that names the current total. `tests/docs_sync.rs` asserts the table's count matches the badge in `README.md` and the `**1315 tests**` line here.
+- `../10-test-map.md` — master table (1318 tests), legend, and changelog. The single place that names the current total. `tests/docs_sync.rs` asserts the table's count matches the badge in `README.md` and the `**1315 tests**` line here.
 - `index.md` — same content as `../10-test-map.md` but with links relative to _this_ folder (useful when browsing `test-map/` directly).
 - `lib-unit/` — lib-unit tables (keyword table, lexer, parser, checker, emitter, etc.)
 - `crate-integration/` — crate-level integration suites (`sim_errors.rs`, `width_rules_conformance.rs`)

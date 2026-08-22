@@ -34,18 +34,23 @@ The `enter()`/`leave()` pair wraps every recursive function. `enter()` returns `
 
 ## `crates/mimz-core/src/parser/expr.rs` — Parsing Expressions
 
-Expression parsing uses **precedence climbing**. There's a table of operator precedences:
+Expression parsing uses **precedence climbing**. There's a table of operator precedences (Rust-style — bitwise binds tighter than comparison; higher binds tighter):
 
 ```
-Level 0: or / ||
-Level 1: and / &&
-Level 2: ==, !=, <, <=, >, >=
-Level 3: |, ^
-Level 4: &
-Level 5: <<, >>
-Level 6: +, -, +%, -%
-Level 7: *, *%
+Level 10: unary - ~ ! not & | ^   (prefix)
+Level 9:  *, *%
+Level 8:  +, -, +%, -%
+Level 7:  <<, >>
+Level 6:  &
+Level 5:  ^
+Level 4:  |
+Level 3:  ==, !=, <, <=, >, >=
+Level 2:  and / &&
+Level 1:  or / ||
+Level 0:  ?? (valid-bundle coalesce)
 ```
+
+Note the Rust-style ordering: `^` binds tighter than `|` but looser than `&`, and comparisons sit between the bitwise and logic levels. Comparisons also allow a _monotonic_ one-direction chain (`a < b <= c`) via `comparison_chain`; mixed-direction chains get E1109.
 
 **`binary(min_prec)`** is the core. It parses a unary expression first, then loops: if the next operator has precedence ≥ `min_prec`, it consumes it and recursively parses the right-hand side at the next higher level. This naturally makes `+` and `-` left-associative while still binding tighter than `==`.
 
@@ -97,7 +102,7 @@ This function never fails — a bad item records an error, skips to the next lin
 
 **`repeat_block()`** — parses `repeat i: lo..hi { body }`.
 
-**`sync_loop_block()`** — parses `sync loop name on rise(clk)(i: lo..hi) -> result: type = init { body }` (the `sync`/`loop` head is consumed by the caller in `module_item`, mirroring `async reset`). A module-item-level multi-cycle construct that lowers to a small FSM (index register + `start`/`done` handshake) before the checker or emitter ever see it (see [`05-ast.md`](05-ast.md)'s `sync_loop_lower.rs` entry).
+**`sync_loop_block()`** — parses `sync loop name on rise(clk)(i: lo..hi) -> result: type = init { body }` (the `sync`/`loop` head is consumed by the caller in `module_item`, mirroring `async reset`). The parser produces a raw `ModuleItem::SyncLoop`; it is NOT lowered here. The checker validates that original node directly (span-accurate errors), and only the emitter and simulator call `ast::lower_sync_loop` to expand it into the small FSM (index register + `start`/`done` handshake) they then process through their ordinary Port/Reg/On/Drive paths (see [`05-ast.md`](05-ast.md)'s `sync_loop_lower.rs` entry).
 
 ---
 
@@ -202,7 +207,7 @@ Every parser error produces a stable diagnostic code and mandatory teaching help
 - `E1109`: Chained comparisons (`a < b < c`)
 - `E1110`: Builtin function arity or call error
 - `E1111`: Parameter or const type is not `int` or `bool`
-- `E1112`: `syntax` directive must be first line of file
+- `E1112`: Unknown syntax profile (`syntax <name>` where the name isn't `thamizh`)
 - `E1113`: Maximum nesting depth exceeded (`MAX_DEPTH = 64`)
 - `E1114`: `sim` block syntax error
 - `E1115`: `??` operator or valid-bundle type error

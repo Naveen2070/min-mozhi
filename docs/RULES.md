@@ -162,7 +162,7 @@ example) over ad-hoc ones.
   programs cannot claim it. Full pipeline, same session: the `reserved` list in
   `lang/keywords.toml` + the reserved table & changelog in `spec/03` + the TextMate
   grammar invalid pattern (`editors/vscode/syntaxes/mimz.tmLanguage.json`) + a
-  reserved-word test in `src/lexer/keywords.rs`. `tests/grammar_sync.rs`
+  reserved-word test in `crates/mimz-core/src/lexer/tests.rs`. `tests/grammar_sync.rs`
   enforces the grammar half.
 - Reserved words stay **English-only** until their feature lands and native
   review supplies the Tanglish/Tamil spellings — same rule as R9.

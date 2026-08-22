@@ -5,13 +5,13 @@
 </p>
 
 <p align="center">
-  <b>A modern, safe-by-default hardware description language — built to teach digital design, and the first Tamil-rooted HDL.</b><br>
+  <b>A modern, safe-by-default hardware description language — built to teach digital design, and a Tamil-rooted HDL.</b><br>
   <i>Reads like Go/TypeScript. Safe like Rust. Speaks English, Tanglish, and Tamil.</i>
 </p>
 
 <p align="center">
   <a href="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Naveen2070/min-mozhi/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-1315%20passing-brightgreen.svg"></a>
+  <a href="docs/code/10-test-map.md"><img alt="Tests" src="https://img.shields.io/badge/tests-1319%20passing-brightgreen.svg"></a>
   <img alt="Status" src="https://img.shields.io/badge/status-compiler%20%2B%20simulator-success.svg">
   <a href="https://rustup.rs"><img alt="Rust" src="https://img.shields.io/badge/rust-%E2%89%A5%201.85-orange.svg"></a>
   <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Apache--2.0-blue.svg">
@@ -73,8 +73,7 @@ thoguthi Counter(WIDTH: int = 8) {
 - **Beginner-first** — understand the basics in 1–2 hours; compile a counter
   within 5 minutes of installing, with errors that teach.
 - **Trilingual by design** — English, Tanglish, and Tamil are keyword skins over
-  one grammar; `mimz translate` converts losslessly between them. The first
-  Tamil-rooted HDL.
+  one grammar; `mimz translate` converts losslessly between them.
 
 Files use the **`.mimz`** extension; the CLI is **`mimz`**.
 
@@ -86,9 +85,9 @@ Prerequisite: [Rust](https://rustup.rs) stable ≥ 1.85.
 cargo build                                   # binary: target/debug/mimz
 
 mimz check   examples/english/counter.mimz    # lex + parse + safety checks
-mimz compile examples/english/counter.mimz -o counter.v --emit-testbench  # emit Verilog & testbench
+mimz compile examples/english/counter.mimz -o counter.v --emit-testbench  # emit Verilog (+ testbench if the file has test blocks)
 mimz sim     demo/cpu.mimz --cycles 8 -o demo/cpu.vcd     # simulate → VCD waveform
-mimz test    demo/cpu.mimz                     # run tick/expect test blocks
+mimz test    demo/cpu.mimz --emulate          # run tick/expect + sim blocks (skip without a TTY)
 ```
 
 > Replace `mimz` with `cargo run --` if you haven't installed the binary.
@@ -105,7 +104,7 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings && carg
 ## Status
 
 **Phases 1, 1.8, and 1.5 complete — a working compiler _and_ simulator**, with
-**1315 passing tests**.
+**1319 passing tests**.
 
 - **Compiler** — lexer (all three flavors) → parser → checker (every spec safety
   rule, stable `E`-codes) → Verilog emitter (`repeat` unrolling, Tamil→ASCII
@@ -141,27 +140,27 @@ so nothing you build here is a dead end.
 
 ## Documentation
 
-| Where                                      | What                                                               |
-| ------------------------------------------ | ------------------------------------------------------------------ |
-| [`docs/guide/`](docs/guide/README.md)      | **Learn the language** — from-scratch tutorial book                |
-| [`spec/`](spec/01-goals-and-philosophy.md) | Language spec — goals, grammar, keywords, simulator                |
-| [`examples/`](examples/)                   | 200 total: english/tanglish/tamil 44 each, mixed 43, tamil-pure 25 |
-| [`demo/`](demo/)                           | Accumulator-CPU showcase: check → test → sim → wave                |
-| [`docs/`](docs/README.md)                  | Docs hub — phase plans, architecture, dev log                      |
-| [`docs/code/`](docs/code/)                 | How the code works (maintainers & contributors)                    |
-| [`editors/vscode/`](editors/vscode/)       | VS Code syntax highlighting for `.mimz`                            |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | How to contribute                                                  |
+| Where                                      | What                                                                                                                                |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/guide/`](docs/guide/README.md)      | **Learn the language** — from-scratch tutorial book                                                                                 |
+| [`spec/`](spec/01-goals-and-philosophy.md) | Language spec — goals, grammar, keywords, simulator                                                                                 |
+| [`examples/`](examples/)                   | 200 top-level: english/tanglish/tamil 44 each, mixed 43, tamil-pure 25 (+24 std/lib twins in per-flavor subfolders = 224 recursive) |
+| [`demo/`](demo/)                           | Accumulator-CPU showcase: check → test → sim → wave                                                                                 |
+| [`docs/`](docs/README.md)                  | Docs hub — phase plans, architecture, dev log                                                                                       |
+| [`docs/code/`](docs/code/)                 | How the code works (maintainers & contributors)                                                                                     |
+| [`editors/vscode/`](editors/vscode/)       | VS Code syntax highlighting for `.mimz`                                                                                             |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)       | How to contribute                                                                                                                   |
 
 ## Roadmap
 
-| Phase | Status | Summary                                                                                                  |
-| ----- | ------ | -------------------------------------------------------------------------------------------------------- |
-| 1     | ✅     | Rust compiler: lexer → parser → AST → Verilog (Icarus-tested)                                            |
-| 1.8   | ✅     | Grammar Engine — natural Tamil SOV word order (`thamizh-order`)                                          |
-| 1.5   | ✅     | Own event-driven simulator + VCD, Icarus-differentiated                                                  |
-| 2     | ⏳     | Own IR + synthesis via open toolchain (Yosys/nextpnr)                                                    |
-| 3     | ⏳     | Native iCE40 bitstream generation                                                                        |
-| 4     | ⏳     | Docs site ✅, stdlib (fifo/pwm/uart_tx/seg7/debouncer) ✅ — SPI + package manager + community still open |
+| Phase | Status | Summary                                                                                                                 |
+| ----- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 1     | ✅     | Rust compiler: lexer → parser → AST → Verilog (Icarus-tested)                                                           |
+| 1.8   | ✅     | Grammar Engine — natural Tamil SOV word order (`thamizh-order`)                                                         |
+| 1.5   | ✅     | Own event-driven simulator + VCD, Icarus-differentiated                                                                 |
+| 2     | 🟡     | Own IR + synthesis via open toolchain (Yosys/nextpnr) — language-features track well underway; IR/synthesis not started |
+| 3     | ⚪     | Native iCE40 bitstream generation                                                                                       |
+| 4     | 🟡     | Docs site ✅, stdlib (fifo/pwm/uart_tx/seg7/debouncer) ✅ — SPI + package manager + community still open                |
 
 ## License
 

@@ -48,17 +48,17 @@ The AST is the **single intermediate representation** that everything downstream
 
 **`OnBlock`** — `on rise(clk) { body }` / `on fall(clk) { body }`.
 
-**`SeqStmt`** — inside an `on` block: `lhs <- rhs` (register update) or `if cond { } [else { }]`.
+**`SeqStmt`** — inside an `on` block: `Assign` (`lhs <- rhs`, the register update), `If` (statement-level, `else` optional), `Default` (priority-lowest `default name <- expr`; the emitter must emit these first so conditional assignments override them), `Loop` (compile-time unrolling inside the clocked block), `ForEach` (inline sugar over `Loop`), `Assert`/`Cover` (verification primitives), plus `Error` (parse-recovery placeholder).
 
 **`LValue`** — where a value is written: `signal`, `signal[i]`, or `signal[hi:lo]`.
 
-**`Type`** — `Bit` (single wire), `Bits(N)` (unsigned N-bit vector), `Signed(N)` (signed N-bit vector), `Named(ident)` (enum type), or `Bundle(name, args)` (a bundle type by name, e.g. `MemBus(WIDTH: 32)` — `args` is empty for parameterless bundles; nominal-only today, matched by name not structural field-list).
+**`Type`** — `Bit` (single wire), `Bits(N)` (unsigned N-bit vector), `Signed(N)` (signed N-bit vector), `Named(ident)` (enum type), `Bundle(name, args)` (a bundle type by name, e.g. `MemBus(WIDTH: 32)` — `args` is empty for parameterless bundles; nominal-only today, matched by name not structural field-list), or `Array(elem, len)` (fixed-size array value, element restricted to `Bit`/`Bits`/`Signed` and length const-evaluated — sugar over N independent scalars, never a real Verilog array).
 
 **`BundleDecl`** — `bundle Name(params) { fields }`: a struct-like grouping of ports/signals. `TopItem::Bundle` holds one. Bundle-typed values flatten to individual Verilog signals at emit time (name-mangled, e.g. `bus_in_valid`) — see [`05-emit-verilog.md`](../code/05-emit-verilog.md).
 
 **`TestDecl`** — `test "name" for Module(args) { body }`.
 
-**`TestStmt`** — inside a test: `Tick`, `Expect`, `Drive`, or `If`.
+**`TestStmt`** — inside a test: `Tick`, `Expect`, `Drive`, `If`, or `Sim` (the `sim { speed ... bind ... }` block powering hardware emulation — see [`11-hardware-emulation.md`](11-hardware-emulation.md)).
 
 **Error placeholders** — `TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each also have an `Error(span)` variant. It marks a spot where parsing failed but recovery kept going. These only appear when the tree comes from `parse_recover` (the editor/LSP path); the normal compile path uses the strict `parse`, which refuses a broken tree, so the checker and emitter never have to deal with a real one. There's no `Error` for expressions yet.
 
@@ -81,16 +81,18 @@ The AST is the **single intermediate representation** that everything downstream
 - **Replicate** — `{N{...}}` repetition
 - **Index** — `base[i]`
 - **Slice** — `base[hi:lo]`
-- **Call** — builtin function call (10 built-ins: `extend`, `trunc`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`, `signed`, `unsigned`)
+- **Call** — builtin function call (12 bare-identifier built-ins via `Builtin::from_name`: `extend`, `trunc`, `signed`, `unsigned`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`, `encoding`, `clog2`; the two `sync.*` CDC builtins are reachable only through the dot-namespaced call form)
 - **FnCall** — user-defined `fn` call (v0.2.14): inlined at emit time
+- **BundleLit** — `{ field: expr, ... }` (disambiguated from concat by `IDENT ":"` lookahead)
+- **ArrayLit** — `[e1, e2, ...]` array literal (uniform element type, E0414)
+- **EnumConstruct** — `Enum.Variant(arg, ...)` constructs an enum value; a dedicated node so the base name is never ambiguous with field access
 
 **`Pattern`** — what a match arm matches against:
 
 - `Int` — exact integer
 - `IntMask` — `0b1??` (binary don't-care)
 - `Bool` — `true`/`false`
-- `Variant` — `State.Red` (with optional `bindings: Vec<Pattern>` for tagged-union payload extraction)
-- `Variant.Multi` — multi-field variant match like `Packet.Ctrl(k, _)`
+- `Variant` — `State.Red`, or `Packet.Ctrl(k, _)` for tagged unions: one node with a `bindings: Vec<Ident>` — empty for tag-only patterns, one binding per payload field otherwise
 - `Wildcard` — `_` (catch-all)
 
 **`BinOp`** has specific width rules:
@@ -99,7 +101,7 @@ The AST is the **single intermediate representation** that everything downstream
 - `AddWrap`/`SubWrap`/`MulWrap` (`+%`/`-%`/`*%`) — **wrapping**: keeps operand width (like real hardware registers)
 - No `/` or `%` — division doesn't exist (it synthesizes to big, slow hardware)
 
-**`Builtin`** — the complete list of built-in functions: `Extend`, `Trunc`, `SignedCast`, `UnsignedCast`, `Min`, `Max`, `Abs`, `Nand`, `Nor`, `Xnor`. Since v0.2.14, users can also define their own combinational functions via `fn` (covered by `ExprKind::FnCall`).
+**`Builtin`** — the complete list of built-in function variants: `Extend`, `Trunc`, `SignedCast`, `UnsignedCast`, `Min`, `Max`, `Abs`, `Nand`, `Nor`, `Xnor`, plus `Encoding` (`encoding(e)` — an enum value's on-wire bit pattern, GAP-7), `Clog2` (the one compile-time builtin), and the dot-namespaced-only `SyncDoubleFlop`/`SyncPulse` CDC pair. Since v0.2.14, users can also define their own combinational functions via `fn` (covered by `ExprKind::FnCall`).
 
 ---
 
@@ -109,9 +111,12 @@ The AST is the **single intermediate representation** that everything downstream
 understands: this file rewrites a `ModuleItem::SyncLoop` into an equivalent
 `Port`/`Reg`/`On`/`Drive` combination (a small FSM: an index register, a
 `start`/`done` handshake, and the loop body's per-iteration logic driven off
-that index) BEFORE the checker or emitter ever see a `SyncLoop` node. The
-checker, emitter, pretty-printer, and simulator all consume the lowered
-form — only the parser and pretty-printer round-trip the original syntax.
+that index). Who calls it matters: **the checker validates the ORIGINAL
+`SyncLoop` node directly** (so its diagnostics point at the real source
+span), and only the emitter and simulator invoke `lower_sync_loop` and
+process its output through their existing Port/Reg/On/Drive handling — no
+new codegen shape, no new kernel dispatch. The pretty-printer round-trips
+the original syntax.
 
 ## `crates/mimz-core/src/ast/foreach_lower.rs` — Lowering `foreach`
 

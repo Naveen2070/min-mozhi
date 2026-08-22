@@ -256,12 +256,12 @@ function eats the tokens its rule allows and calls other rule-functions
 for the parts inside. Every parser function carries its grammar rule as
 a doc comment, so the code and the spec read side by side.
 
-| File             | Does what                                                                                |
-| ---------------- | ---------------------------------------------------------------------------------------- |
-| `parser/mod.rs`  | the `Parser` state (current position, collected errors), `parse()`                       |
-| `parser/items/`  | big structures: modules, ports, regs, `on` blocks, imports, tests                        |
-| `parser/expr.rs` | expressions: operators, precedence, calls, `if`/`match` expressions                      |
-| `parser/tests/`  | unit tests for tree shapes and teaching errors — one topic per file (14 files, 91 tests) |
+| File             | Does what                                                                                 |
+| ---------------- | ----------------------------------------------------------------------------------------- |
+| `parser/mod.rs`  | the `Parser` state (current position, collected errors), `parse()`                        |
+| `parser/items/`  | big structures: modules, ports, regs, `on` blocks, imports, tests                         |
+| `parser/expr.rs` | expressions: operators, precedence, calls, `if`/`match` expressions                       |
+| `parser/tests/`  | unit tests for tree shapes and teaching errors — one topic per file (14 files, 102 tests) |
 
 All paths above are under `crates/mimz-core/src/`. The tree types
 themselves also live there, in `ast/` (`ast/mod.rs` for
@@ -478,7 +478,7 @@ whatever comes back and sets the exit code.
 
 ## How the tests keep this picture true
 
-`cargo test --workspace` runs several layers (**1315 tests** today —
+`cargo test --workspace` runs several layers (**1318 tests** today —
 run `cargo test-summary --workspace` for the exact per-binary count; the
 full ledger and "what a failure means" notes are in
 [`docs/code/10-test-map.md`](code/10-test-map.md)):

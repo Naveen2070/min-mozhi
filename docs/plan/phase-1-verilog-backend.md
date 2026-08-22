@@ -42,11 +42,11 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
 
 ### 4. Semantic checks (the safety rules, `spec/02` section 6)
 
-- [x] Name resolution + duplicate detection (project-wide, post-import) — ✅ 2026-06-11, `src/checker/` first slice, stable E-codes E0001–E0109 (catalog: docs/code/11-checker.md)
+- [x] Name resolution + duplicate detection (project-wide, post-import) — ✅ 2026-06-11, `crates/mimz-core/src/checker/` first slice, stable E-codes E0001–E0109 (catalog: docs/code/11-checker.md)
 - [x] Const-evaluation engine: `const` decls, `repeat` bounds (✅ 2026-06-11, E02xx); width-position folding lands with width checking
-- [x] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match — ✅ 2026-06-11, `src/checker/widths.rs` (E0401–E0410); concrete-binding strategy (defaults + per-instantiation), literal fitting, connection checking
+- [x] Width checking incl. `+`/`-`/`*` growth and `+%` family exact-match — ✅ 2026-06-11, `crates/mimz-core/src/checker/widths.rs` (E0401–E0410); concrete-binding strategy (defaults + per-instantiation), literal fitting, connection checking
 - [x] Signed rules: no mixing, `signed()`/`unsigned()` casts, type-directed `extend`, negative literals — ✅ 2026-06-11 (same pass: E0403/E0405/E0407)
-- [x] Single-driver check; combinational cycle (DAG) check — ✅ 2026-06-11, `src/checker/drivers.rs` (E0501–E0505): per-bit drive extents, output coverage, reg-per-on-block, through-instance cycles via comb summaries
+- [x] Single-driver check; combinational cycle (DAG) check — ✅ 2026-06-11, `crates/mimz-core/src/checker/drivers.rs` (E0501–E0505): per-bit drive extents, output coverage, reg-per-on-block, through-instance cycles via comb summaries
 - [x] Exhaustiveness: `match` total, wire-`if` has `else` — ✅ 2026-06-12
       (E0601 non-exhaustive naming the gap, E0602 unreachable/duplicate
       arms; wire-`if` was already parser-enforced). Spec ruling v0.2.3:
@@ -54,7 +54,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
       legal (`docs/Ideas/language_plan.md` 1.4 resolved)
 - [x] `=` vs `<-` placement enforcement (✅ 2026-06-11, E0505) — clock/reset
       domain typing incl. per-reg clock ownership ✅ 2026-06-12
-      (`src/checker/clocks.rs`, E0701: cross-domain reads and
+      (`crates/mimz-core/src/checker/clocks.rs`, E0701: cross-domain reads and
       domain-mixing wires rejected, module-local; `sync` relaxes it in
       Phase 2)
 - [x] Instantiation completeness: every input connected exactly once —
@@ -92,7 +92,7 @@ v0.1.0 is tagged when the compiler is executable and testable (decision D6).
       disk — documented v0 limitation); per-file publishes with stale
       clearing; positions in UTF-16 (Tamil-safe); E-code + help on every
       squiggle. VS Code client added to `editors/vscode` (plain JS,
-      `mimz.serverPath` setting, packaged as `mimz-0.2.0.vsix`).
+      `mimz.serverPath` setting, packaged as `mimz-0.3.0.vsix`).
       Smoke-tested over the real wire protocol (`tests/lsp.rs`).
       Hover/go-to-def/completion stay in Phase 4.
 

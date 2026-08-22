@@ -1,6 +1,6 @@
 # Min-Mozhi — Syntax & Grammar
 
-> **Spec v0.2.30.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.31.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -529,9 +529,11 @@ wire k3: bits[8] = 161                // decimal — must fit the target width
     `clog2` constant function — the width then tracks an instantiation-time
     parameter override (`reg [(clog2(DEPTH))-1:0] ptr`). The function matches
     this floor-at-1 definition.
-  - **One limit:** a `clog2(PARAM)` in a **port** width is a compile error — the
+  - **One limit:** a `clog2(PARAM)` in a **port** width is **`E0420`** — the
     constant function lives in the module body and cannot reach the header port
-    list. Size a body signal with it, or pass the width as its own parameter.
+    list (a Verilog-2005 port range expression may only use constants and
+    parameters). Size a body signal with it, or pass the width as its own
+    parameter.
 
 - Digits are **ASCII only** (`0-9`, `a-f`); Tamil digits (௦–௯) are not
   accepted in literals.
@@ -609,8 +611,11 @@ const if (COND) {
 }]
 ```
 
-- `COND` is a compile-time expression: may use module parameters,
-  module-level `const`s, literals, and arithmetic/comparison operators.
+- `COND` is a compile-time expression: may use file-level or module-level
+  `const`s, literals, and arithmetic/comparison operators. Parameter-based
+  conditions are **not supported yet** — a `COND` referencing a module
+  parameter fails `E0811`; per-instance conditional elaboration is future
+  work (see `docs/Ideas/language_plan.md`).
 - Items in the winning branch are elaborated normally. Items in the losing
   branch are completely discarded — they are not type-checked,
   name-resolved, or emitted.
@@ -624,13 +629,15 @@ const if (COND) {
 **Example:**
 
 ```mimz
-module Adder(WIDTH: int = 8) {
-    in a: bits[WIDTH]
-    in b: bits[WIDTH]
-    out sum: bits[WIDTH]
+module Adder {
+    const WIDE: bool = true // flip to false to drop the overflow port
 
-    const if (WIDTH > 8) {
-        wire carry: bit = (a[WIDTH-1] & b[WIDTH-1])
+    in a: bits[16]
+    in b: bits[16]
+    out sum: bits[17]
+
+    const if (WIDE) {
+        wire carry: bit = (a[15] & b[15])
         out overflow: bit
         overflow = carry
     }
@@ -886,7 +893,7 @@ correct, not just plausible-looking, Verilog.
 fallthrough value if no `return` fires:
 
 ```mimz
-fn find_first(a: bits[8]) -> int {
+fn find_first(a: bits[8]) -> signed[4] {
   if a[0] == 1 { return 0 }
   if a[1] == 1 { return 1 }
   -1
@@ -900,6 +907,11 @@ fn find_first(a: bits[8]) -> int {
 - The tail expression is mandatory, exactly like a `fn` body always was
   before `return` existed — every function has a well-defined result on
   every path, so there is no "missing return" diagnostic.
+- A body whose final line starts with `if` parses that `if` as the
+  _statement_ form (its blocks hold statements), so a conditional **tail
+  expression must be parenthesized**: write `(if c { a } else { b })`.
+  Unparenthesized, the parser reports "expected let/if/return" inside the
+  branches plus a missing-tail error.
 - Unreachable code after an unconditional `return` in the same block is
   `E0812`.
 - A `fn` name that collides with a builtin (`extend`, `trunc`, `min`, …) is
@@ -1623,6 +1635,17 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.31 (2026-08-22):** **`const if` condition scope corrected** (section
+  1.9b). The condition accepts file-level/module-level `const`s, literals,
+  and arithmetic/comparison only — parameter-based conditions are **not
+  supported yet** and fail `E0811` (the checker never binds parameters into
+  the constant environment at the definition site). Section 1.9b's example
+  is rewritten const-driven (the previous parameterized example also had a
+  latent width bug: lossless `+` requires the one-bit-wider `sum`). True
+  per-instance conditional elaboration stays future work; see
+  `docs/Ideas/language_plan.md`. Also in v0.2.31: the `clog2(PARAM)`-in-a-port
+  limit (section 1.8) gained its own code, **`E0420`**, and is now rejected at
+  check time instead of surfacing as an uncoded emitter error.
 - **v0.2.30 (2026-08-07):** **`encoding(e)` — enum→bits cast** added
   (section 1.8; GAP-7, `docs/audit/gaps.md`). Reads out an enum value's
   stable on-wire bit pattern (tag, or tag+max-payload for a tagged union)
