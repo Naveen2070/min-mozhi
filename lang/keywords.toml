@@ -150,8 +150,8 @@ tamil = "மீண்டும்"
 
 [keywords.loop]
 en = "loop"
-tanglish = "suzhal"
-tamil = "சுழல்"
+tanglish = "suzhal" # PROVISIONAL — pending native review
+tamil = "சுழல்" # PROVISIONAL — pending native review
 
 # Element/range loop sugar over repeat/bare loop (Phase 2 gap-analysis
 # item, docs/Ideas/language_plan.md sec 10; design doc
@@ -166,8 +166,8 @@ tamil = "ஒவ்வொன்றாக"    # PROVISIONAL — pending native rev
 
 [keywords.sync]
 en = "sync"
-tanglish = "othisai"
-tamil = "ஒத்திசை"
+tanglish = "othisai" # PROVISIONAL — pending native review
+tamil = "ஒத்திசை" # PROVISIONAL — pending native review
 
 [keywords.import]
 en = "import"
@@ -296,14 +296,14 @@ tamil = "திரும்பு"    # PROVISIONAL — pending native review
 # Simulation-only, never reaches the Verilog emitter.
 [keywords.sim]
 en = "sim"
-tanglish = "paavnai"
-tamil = "பாவனை"
+tanglish = "paavnai" # PROVISIONAL — pending native review
+tamil = "பாவனை" # PROVISIONAL — pending native review
 
 # Hardware-emulation peripheral binding (`bind port -> led(0)`).
 [keywords.bind]
 en = "bind"
-tanglish = "inai"
-tamil = "இணை"
+tanglish = "inai" # PROVISIONAL — pending native review
+tamil = "இணை" # PROVISIONAL — pending native review
 
 # `extern module Name(params) { doc: "...", ports }` — declares the port
 # shape of a real Verilog module living outside Min-Mozhi (Verilog FFI,
@@ -320,5 +320,5 @@ tamil = "அன்னிய"      # PROVISIONAL — pending native review
 # Real-time simulation throttling rate (`speed 1khz(...)` inside a `sim` block).
 [keywords.speed]
 en = "speed"
-tanglish = "vegam"
-tamil = "வேகம்"
+tanglish = "vegam" # PROVISIONAL — pending native review
+tamil = "வேகம்" # PROVISIONAL — pending native review

@@ -1,0 +1,76 @@
+---
+// Prev/next chapter links, rendered at the foot of every doc page. The sequence
+// is built in lib/docs.ts (getNav) so the sidebar and this component can never
+// disagree about ordering.
+import type { NavItem } from "../lib/docs";
+
+interface Props {
+  prev?: NavItem;
+  next?: NavItem;
+}
+const { prev, next } = Astro.props;
+---
+
+{
+  (prev || next) && (
+    <nav aria-label="Chapter navigation" class="pager">
+      <div class="pager-cell">
+        {prev && (
+          <a href={`/${prev.href}`} rel="prev" class="pager-link">
+            <span class="pager-cap">Previous</span>
+            <span class="pager-title">&larr; {prev.label}</span>
+          </a>
+        )}
+      </div>
+      <div class="pager-cell pager-end">
+        {next && (
+          <a href={`/${next.href}`} rel="next" class="pager-link">
+            <span class="pager-cap">Next</span>
+            <span class="pager-title">{next.label} &rarr;</span>
+          </a>
+        )}
+      </div>
+    </nav>
+  )
+}
+
+<style>
+  .pager {
+    display: flex;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+  /* Both cells always render, so "next" stays right-aligned when "previous"
+     is absent (chapter 01) and vice versa (the last chapter). */
+  .pager-cell {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .pager-end {
+    text-align: right;
+  }
+  .pager-link {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    text-decoration: none;
+    border-radius: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    margin: -0.4rem -0.5rem;
+  }
+  .pager-link:hover {
+    background-color: var(--bg-soft);
+  }
+  .pager-cap {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+  }
+  .pager-title {
+    color: var(--link);
+    font-weight: 600;
+  }
+</style>

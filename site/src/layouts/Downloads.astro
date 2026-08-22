@@ -1,0 +1,33 @@
+---
+// Shell for the Downloads section: sidebar + content. Mirrors the Docs layout's
+// grid, but the sidebar stays visible at every width — it is only a handful of
+// links, so it stacks above the content on small screens rather than vanishing.
+import Base from "./Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import DownloadsSidebar from "../components/DownloadsSidebar.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  current: string; // "latest" | "all" | a release tag
+}
+const { title, description, current } = Astro.props;
+---
+
+<Base title={`${title} — Min-Mozhi`} description={description}>
+  <Nav />
+  <div
+    class="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-12 lg:flex-row"
+  >
+    <aside class="w-full shrink-0 lg:w-60">
+      <div class="lg:sticky lg:top-20">
+        <DownloadsSidebar current={current} />
+      </div>
+    </aside>
+    <main class="min-w-0 flex-1">
+      <slot />
+    </main>
+  </div>
+  <Footer />
+</Base>
