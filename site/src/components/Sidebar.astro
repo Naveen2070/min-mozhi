@@ -1,70 +1,76 @@
 ---
-import { getCollection } from "astro:content";
-import { docLabel, sortDocs } from "../lib/docs";
+// Chapter navigation. The sections are computed by lib/docs.ts (getNav) and passed
+// down by the Docs layout, so this component only renders — and so the pager walks
+// exactly the order shown here.
+import { sectionOf, type NavSection } from "../lib/docs";
 
 interface Props {
   current: string; // e.g. "guide/04-signals"
+  sections: NavSection[];
 }
-const { current } = Astro.props;
+const { current, sections } = Astro.props;
 
-const allGuide = await getCollection("guide");
-const guideMain = sortDocs(allGuide.filter((d: any) => !d.id.startsWith("stdlib/")));
-const stdlibAll = sortDocs(allGuide.filter((d: any) => d.id.startsWith("stdlib/")));
-const stdlibMain = stdlibAll.filter((d: any) => d.id.toLowerCase() !== "stdlib/readme");
-
-const spec = sortDocs(await getCollection("spec"));
-
-const sections = [
-  { title: "Guide", base: "guide", entries: guideMain, hasOverview: true },
-  { title: "Standard Library", base: "guide", overviewHref: "guide/stdlib/readme", entries: stdlibMain, hasOverview: true },
-  { title: "Spec", base: "spec", entries: spec, hasOverview: true },
-];
+// On the two beta sections, offer the way across instead of listing every other
+// section — Learn and Handbook are read together.
+const section = sectionOf(current);
+const crossLink =
+  section === "learn"
+    ? { href: "/handbook", label: "Handbook" }
+    : section === "handbook"
+      ? { href: "/learn", label: "Learn" }
+      : null;
 ---
 
 <nav aria-label="Documentation" class="text-sm">
   {
-    sections.map((section) => {
-      const overviewPath = section.overviewHref || section.base;
-      return (
+    sections.map((s) => (
       <details class="group mb-7" open>
-        <summary class="fg-muted mb-2 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none flex items-center justify-between hover:opacity-80 transition-opacity" style="list-style: none;">
-          {section.title}
-          <svg class="w-3 h-3 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        <summary
+          class="fg-muted mb-2 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none flex items-center justify-between hover:opacity-80 transition-opacity"
+          style="list-style: none;"
+        >
+          {s.title}
+          <svg
+            class="w-3 h-3 transition-transform group-open:rotate-180"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </summary>
         <ul class="space-y-0.5 mt-2">
-          {section.hasOverview && (
+          {s.items.map((item) => (
             <li>
               <a
-                href={`/${overviewPath}`}
+                href={`/${item.href}`}
                 class:list={[
                   "doc-link block rounded px-2 py-1",
-                  { active: current === overviewPath },
+                  { active: current.toLowerCase() === item.href.toLowerCase() },
                 ]}
               >
-                Overview
+                {item.label}
               </a>
             </li>
-          )}
-          {section.entries.map((e: any) => {
-            const href = `${section.base}/${e.id}`;
-            const active = current === href;
-            return (
-              <li>
-                <a
-                  href={`/${href}`}
-                  class:list={["doc-link block rounded px-2 py-1", { active }]}
-                >
-                  {docLabel(e.id.replace("stdlib/", ""))}
-                </a>
-              </li>
-            );
-          })}
+          ))}
         </ul>
       </details>
-      );
-    })
+    ))
+  }
+
+  {
+    crossLink && (
+      <div class="cross-link">
+        <a href={crossLink.href} class="doc-link block rounded px-2 py-1">
+          {crossLink.label} &rarr;
+        </a>
+      </div>
+    )
   }
 </nav>
 
@@ -82,7 +88,12 @@ const sections = [
     background-color: var(--bg-soft);
     font-weight: 600;
   }
-  
+
+  .cross-link {
+    border-top: 1px solid var(--border);
+    padding-top: 0.75rem;
+  }
+
   /* Hide the default marker for summary elements */
   summary::-webkit-details-marker {
     display: none;

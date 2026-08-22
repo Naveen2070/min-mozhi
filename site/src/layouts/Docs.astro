@@ -3,7 +3,9 @@ import Base from "./Base.astro";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 import Sidebar from "../components/Sidebar.astro";
+import Pager from "../components/Pager.astro";
 import LiveWaveformMount from "../components/LiveWaveformMount.tsx";
+import { getNav, getPager, sectionOf, sectionName } from "../lib/docs";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
@@ -27,21 +29,36 @@ try {
 }
 
 const { title, current, description } = Astro.props;
-const isSpec = current.startsWith("spec");
-const section = isSpec ? "language spec" : "guide";
+
+const section = sectionOf(current);
+const SECTION_BLURB: Record<string, string> = {
+  guide: "Learn the language step by step.",
+  spec: "The language specification.",
+  learn: "An introduction to hardware description languages, and to Min-Mozhi.",
+  handbook: "Every keyword, operator, quirk and command, in one reference.",
+};
+const isBeta = section === "learn" || section === "handbook";
 const metaDescription =
   description ??
-  `${title} — Min-Mozhi ${section}. ${section === "guide" ? "Learn the language step by step." : "The language specification."}`;
+  `${title} — Min-Mozhi ${sectionName(section)}. ${SECTION_BLURB[section]}${isBeta ? " (Beta.)" : ""}`;
 
-// JSON-LD breadcrumb: Home › Guide/Spec › this page.
+// Sidebar sections + the pager sequence come from one place, so they agree.
+const { sections, sequence } = await getNav(current);
+const { prev, next } = getPager(sequence, current);
+
+// The author-honesty disclaimer rides EVERY Learn page — the hub gets the full
+// box, each chapter a one-line banner. Keyed off the section alone: no per-file
+// flag to set, so a new chapter cannot silently ship without it.
+const isLearn = section === "learn";
+const isLearnHub = current === "learn";
+
+// JSON-LD breadcrumb: Home › <Section> › this page.
 const site = Astro.site ?? new URL("https://mimz.naveenr.in");
-const sectionBase = isSpec ? "spec" : "guide";
-const sectionName = isSpec ? "Spec" : "Guide";
 const crumbs = [
   { name: "Home", url: new URL("/", site).href },
-  { name: sectionName, url: new URL(`/${sectionBase}`, site).href },
+  { name: sectionName(section), url: new URL(`/${section}`, site).href },
 ];
-if (current !== sectionBase) {
+if (current !== section) {
   crumbs.push({ name: title, url: new URL(`/${current}/`, site).href });
 }
 const breadcrumbLd = {
@@ -66,15 +83,42 @@ const breadcrumbLd = {
   <div class="mx-auto flex max-w-6xl gap-10 px-4 py-10">
     <aside class="hidden w-60 shrink-0 lg:block">
       <div class="sticky top-20">
-        <Sidebar current={current} />
+        <Sidebar current={current} sections={sections} />
       </div>
     </aside>
     <main data-pagefind-body class="prose min-w-0 flex-1">
+      {
+        isLearn && isLearnHub && (
+          <aside class="notice-strong" data-pagefind-ignore>
+            <p>
+              <strong>A note on accuracy.</strong> I am not a hardware/HDL domain expert.
+              My background is adjacent to this field and I know the basics and most of
+              the concepts — but roughly <strong>60% of the general HDL material here is
+              researched and referenced from the internet</strong>, so it may not be
+              accurate 😅
+            </p>
+            <p>
+              <strong>Everything Min-Mozhi-specific is highly accurate</strong>, because I
+              built it. Treat the general hardware and HDL background as a friendly
+              introduction worth verifying, and the Min-Mozhi material as authoritative.
+            </p>
+          </aside>
+        )
+      }
+      {
+        isLearn && !isLearnHub && (
+          <aside class="notice-slim" data-pagefind-ignore>
+            General HDL material here is researched from the internet and may be
+            inaccurate — everything Min-Mozhi-specific is not. <a href="/learn">Why &rarr;</a>
+          </aside>
+        )
+      }
       <slot />
+      <Pager prev={prev} next={next} />
     </main>
   </div>
 
   <Footer />
-  
+
   <LiveWaveformMount client:only="react" sources={stdSources} />
 </Base>

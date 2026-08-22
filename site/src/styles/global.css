@@ -671,3 +671,102 @@ a {
   color: #ff6b6b;
   font-family: var(--font-mono);
 }
+
+/* ---- Beta sections: nav pill + mobile drawer + honesty notices --------- */
+
+/* Outline, not filled: a solid yellow chip beside two of seven nav links is
+   loud, and a filled pill inside an `.fg` link inherits the wrong color. The
+   text is the word "beta", not the glyph "β" — a bare Greek letter is read
+   inconsistently by screen readers and costs the same width at this size. */
+.beta-pill {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.25rem;
+  color: var(--accent);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  vertical-align: 0.08em;
+}
+
+/* Mobile nav drawer — native <details>, no JS. */
+.nav-drawer > summary {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  cursor: pointer;
+  list-style: none;
+}
+.nav-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+.nav-drawer-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0.25rem 1rem 0.75rem;
+  list-style: none;
+  background-color: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.nav-drawer-panel a {
+  display: block;
+  padding: 0.6rem 0;
+  color: var(--text);
+  text-decoration: none;
+}
+.nav-drawer-panel a:hover {
+  color: var(--accent);
+}
+
+/* Author-honesty disclaimer. Reuses the blockquote's accent-left-border
+   language so it reads as native, but heavier. */
+.notice-strong {
+  margin: 0 0 2rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0.6rem;
+  background-color: color-mix(in srgb, var(--accent) 8%, var(--bg-soft));
+}
+.notice-strong p {
+  margin: 0 0 0.75rem;
+}
+.notice-strong p:last-child {
+  margin-bottom: 0;
+}
+
+/* The per-chapter one-liner. Sits above the page's h1. */
+.notice-slim {
+  margin: 0 0 1.75rem;
+  padding: 0.15rem 0 0.15rem 0.75rem;
+  border-left: 2px solid var(--accent);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+/* ---- Downloads section ------------------------------------------------- */
+/* Brand-ramp helpers used by the release cards and "latest" pills. Were a
+   page-scoped `is:global` block; shared now that Downloads is several pages. */
+.bg-bolt-400 {
+  background-color: var(--color-bolt-400);
+}
+.text-bolt-400 {
+  color: var(--color-bolt-400);
+}
+.bg-bolt-400\/10 {
+  background-color: color-mix(in srgb, var(--color-bolt-400) 10%, transparent);
+}
+.group:hover .group-hover\:text-bolt-400 {
+  color: var(--color-bolt-400);
+}

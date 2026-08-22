@@ -1,0 +1,80 @@
+---
+// /downloads — the LATEST release only. Past releases live behind the sidebar's
+// History section so this page stays a single, obvious "get the compiler" page.
+import DownloadsLayout from "../../layouts/Downloads.astro";
+import ReleaseAssets from "../../components/ReleaseAssets.astro";
+import Changelog from "../../components/Changelog.astro";
+import { REPO, RELEASES_URL, latest, notesUrl, history } from "../../lib/releases";
+---
+
+<DownloadsLayout
+  title="Downloads"
+  description="Download the latest Min-Mozhi compiler for Linux, macOS, or Windows."
+  current="latest"
+>
+  <h1 class="fg text-3xl font-extrabold tracking-tight sm:text-4xl">Downloads</h1>
+  <p class="fg-muted mt-2 text-lg leading-relaxed">
+    Pre-built binaries for every platform. Also available via
+    <a href={`${REPO}#%EF%B8%8F-install`} class="fg">{" "}cargo install</a>
+    {" "}or from the
+    <a href={RELEASES_URL} class="fg">{" "}GitHub releases page</a>.
+  </p>
+
+  <hr class="bd my-10" />
+
+  <section>
+    <div class="flex flex-wrap items-baseline gap-3 mb-1">
+      <h2 class="fg text-2xl font-bold tracking-tight">{latest.tag}</h2>
+      <span class="fg-muted text-sm">— {latest.name}</span>
+      <span
+        class="rounded-full bg-bolt-400 px-2.5 py-0.5 text-xs font-bold text-[#081120]"
+      >
+        latest
+      </span>
+    </div>
+    <p class="fg-muted text-sm mb-5">
+      {latest.date} ·
+      <a href={notesUrl(latest)} class="fg">release notes</a>
+    </p>
+
+    <ReleaseAssets release={latest} />
+  </section>
+
+  <hr class="bd my-10" />
+
+  <Changelog tag={latest.tag} />
+
+  <hr class="bd my-10" />
+
+  <section>
+    <h2 class="fg text-xl font-bold tracking-tight mb-3">Install from source</h2>
+    <p class="fg-muted text-sm leading-relaxed mb-4">
+      If you have Rust installed, you can build from source:
+    </p>
+    <pre
+      class="bd bg-soft rounded-xl border p-4 text-sm overflow-x-auto"><code>cargo install --git {REPO} mimz</code></pre>
+    <p class="fg-muted text-xs mt-2">
+      Requires Rust 1.85+. The same binary as the pre-built releases.
+    </p>
+  </section>
+
+  {
+    history.length > 0 && (
+      <>
+        <hr class="bd my-10" />
+        <section>
+          <h2 class="fg text-xl font-bold tracking-tight mb-3">
+            Looking for an older version?
+          </h2>
+          <p class="fg-muted text-sm leading-relaxed">
+            Every past release is still downloadable —{" "}
+            <a href="/downloads/releases" class="fg">
+              browse all {history.length + 1} releases
+            </a>
+            .
+          </p>
+        </section>
+      </>
+    )
+  }
+</DownloadsLayout>
