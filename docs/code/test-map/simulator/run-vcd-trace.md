@@ -5,7 +5,7 @@
 Phase 1.5 step B4/B5 (+ C1): the default stimulus + clocked timeline capture
 (`run.rs::run`), the combinational `comb_run` (one settled frame per input
 vector), the hand-written 2-state VCD writer (`vcd.rs`), and the console trace
-renderer (`trace.rs`) — all over one per-cycle snapshot from the kernel.
+renderer (`trace.rs`) - all over one per-cycle snapshot from the kernel.
 
 | Test (module)                                              | Locks in                                                                            |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |

@@ -11,12 +11,12 @@ model it relies on, and the hardening roadmap. The workflow lives in
 
 | Job             | Trigger                                      | Does                                                                                                                                                                                                                                                                                                                                                                                                     |
 | --------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check`         | push / PR                                    | The full R8 gate: `fmt --check`, `clippy --workspace --all-targets -D warnings`, **rustdoc `-D warnings`**, a `wasm-pack build` of `mimz-wasm` (GAP-19 — makes a missing WASM pkg a hard failure via `MIMZ_REQUIRE_WASM=1`, not a silent skip), `cargo test --workspace --all-targets` (`REQUIRE_IVERILOG=1`), `cargo build --workspace`, `cargo bench --no-run` (compile-check the `criterion` harness) |
-| `bench`         | push / PR                                    | `mimz-bench --no-cov --no-icarus` — its non-zero exit is a hard correctness gate (goldens, flavor byte-identity, fixtures, no-false-positives). `--history` is routed to a temp path so the gate never records a point.                                                                                                                                                                                  |
+| `check`         | push / PR                                    | The full R8 gate: `fmt --check`, `clippy --workspace --all-targets -D warnings`, **rustdoc `-D warnings`**, a `wasm-pack build` of `mimz-wasm` (GAP-19 - makes a missing WASM pkg a hard failure via `MIMZ_REQUIRE_WASM=1`, not a silent skip), `cargo test --workspace --all-targets` (`REQUIRE_IVERILOG=1`), `cargo build --workspace`, `cargo bench --no-run` (compile-check the `criterion` harness) |
+| `bench`         | push / PR                                    | `mimz-bench --no-cov --no-icarus` - its non-zero exit is a hard correctness gate (goldens, flavor byte-identity, fixtures, no-false-positives). `--history` is routed to a temp path so the gate never records a point.                                                                                                                                                                                  |
 | `nightly-bench` | `workflow_dispatch` / cron (03:00 UTC daily) | `mimz-bench --no-cov --iterations 500`, then **commits the appended `bench-history.jsonl` back to the repo** (`[skip ci]`) and uploads the report as an artifact. Has `permissions: contents: write`.                                                                                                                                                                                                    |
 | `fuzz`          | push / PR                                    | cargo-fuzz smoke run (60s each: `lex_parse_eval`, `lex_parse_compile`, `pretty_roundtrip`, `translate_roundtrip`), seeded from the example corpus; any panic/abort/timeout fails the job.                                                                                                                                                                                                                |
-| `fuzz-nightly`  | `workflow_dispatch` / cron                   | Extended fuzz (10 min/target) **daily** (04:00 UTC) — was weekly until v0.2 round-3 Task 5 found BUG-47 past the per-PR depth (docs/audit/gaps.md GAP-13). Also runs the deep kernel-vs-Icarus differential at 5000 seeds/side (GAP-11).                                                                                                                                                                 |
-| `audit`         | push / PR                                    | `cargo audit` over the committed `Cargo.lock` — non-zero on a RUSTSEC advisory or yanked crate (the supply-chain audit gate, section 3.3 below).                                                                                                                                                                                                                                                         |
+| `fuzz-nightly`  | `workflow_dispatch` / cron                   | Extended fuzz (10 min/target) **daily** (04:00 UTC) - was weekly until v0.2 round-3 Task 5 found BUG-47 past the per-PR depth (docs/audit/gaps.md GAP-13). Also runs the deep kernel-vs-Icarus differential at 5000 seeds/side (GAP-11).                                                                                                                                                                 |
+| `audit`         | push / PR                                    | `cargo audit` over the committed `Cargo.lock` - non-zero on a RUSTSEC advisory or yanked crate (the supply-chain audit gate, section 3.3 below).                                                                                                                                                                                                                                                         |
 | `docs`          | push / PR                                    | markdownlint + prettier `--check`                                                                                                                                                                                                                                                                                                                                                                        |
 
 Job gating: `check` / `bench` / `fuzz` / `audit` / `docs` run on `push` /
@@ -31,10 +31,10 @@ Job gating: `check` / `bench` / `fuzz` / `audit` / `docs` run on `push` /
   `permissions: contents: write`; every other job uses the default read-only
   `GITHUB_TOKEN`. A compromise in `check`/`bench`/`docs` cannot write to the repo.
 - **Ephemeral, repo-scoped token.** `GITHUB_TOKEN` exists only for the duration
-  of a job, is revoked after, and can touch **only this repo** — never other
+  of a job, is revoked after, and can touch **only this repo** - never other
   repos, account settings, or secrets.
 - **Fork PRs get a read-only token** regardless of the `permissions:` block, and
-  `nightly-bench` (the only write job) never runs on PRs — so untrusted
+  `nightly-bench` (the only write job) never runs on PRs - so untrusted
   contributors can't reach the write token.
 
 The residual risk is **supply chain**: third-party actions or dependencies run
@@ -44,11 +44,11 @@ inside the write-enabled job. That's what the hardening below targets.
 
 ## 3. Hardening roadmap
 
-### 3.1 Pin third-party actions to commit SHAs (headline item) — ✅ DONE (2026-06-17)
+### 3.1 Pin third-party actions to commit SHAs (headline item) - ✅ DONE (2026-06-17)
 
 **Done, and exceeded the plan.** Every action in **both** workflows
 (`ci.yml` + `release.yml`) is pinned to a 40-char commit SHA with a trailing
-`# vX` comment — including the GitHub first-party actions (`actions/checkout`,
+`# vX` comment - including the GitHub first-party actions (`actions/checkout`,
 `actions/upload-artifact`, `actions/download-artifact`) that this plan had
 marked "optional". A hijacked tag can no longer inject code into the
 write-enabled jobs. Original note retained below for context.
@@ -57,7 +57,7 @@ Today the workflow references actions by **moving tag refs**
 (`dtolnay/rust-toolchain@stable`, `Swatinem/rust-cache@v2`,
 `DavidAnson/markdownlint-cli2-action@v23`). A tag can be re-pointed by the
 action's maintainer (or an attacker who compromises their account) to arbitrary
-code — and in `nightly-bench` that code would run **with `contents: write`**,
+code - and in `nightly-bench` that code would run **with `contents: write`**,
 i.e. able to push to the repo.
 
 **Plan:** pin every third-party action to a full 40-character commit SHA, with
@@ -89,11 +89,11 @@ is rejected. Pick one:
 - switch the commit step to a **PR-based** action (open a PR with the history
   update instead of pushing to `master`).
 
-These two interact — decide protection vs. direct bot push together.
+These two interact - decide protection vs. direct bot push together.
 
-### 3.3 Dependabot for actions + Cargo — ✅ DONE (2026-06-22)
+### 3.3 Dependabot for actions + Cargo - ✅ DONE (2026-06-22)
 
-`.github/dependabot.yml` now watches `github-actions` (directory `/` — all three
+`.github/dependabot.yml` now watches `github-actions` (directory `/` - all three
 workflows) and `cargo` (root workspace + `crates/mimz-wasm`), weekly, labelled
 `dependencies`. SHA/crate bumps arrive as reviewable PRs that the
 `check`/`bench`/`audit` gates validate. The companion `audit` job (section 1
@@ -103,14 +103,14 @@ Add `.github/dependabot.yml` watching `github-actions` and `cargo` so action
 SHAs and crate versions arrive as reviewable PRs (which the `check`/`bench`
 gates then validate).
 
-### 3.4 Tighten default permissions — ✅ DONE (2026-06-17)
+### 3.4 Tighten default permissions - ✅ DONE (2026-06-17)
 
 Both workflows now carry a top-level `permissions: contents: read`; `write` is
 scoped to only the jobs that need it (`nightly-bench` in `ci.yml`, the `release`
 job in `release.yml`). Original note below.
 
 Set a top-level `permissions: contents: read` so every job starts read-only and
-only `nightly-bench` opts up to `contents: write` — makes the privilege boundary
+only `nightly-bench` opts up to `contents: write` - makes the privilege boundary
 explicit and future-proof against new jobs accidentally inheriting write.
 
 ### 3.5 Public performance dashboard
@@ -121,7 +121,7 @@ Pages so the trend is viewable without downloading artifacts. (Moved here from
 
 ### 3.6 PR timing gate (deferred)
 
-`cargo bench` + `critcmp` / a threshold action to fail PRs that slow a phase —
+`cargo bench` + `critcmp` / a threshold action to fail PRs that slow a phase -
 deferred until run-to-run noise on shared runners is characterized; today the
 benches are only compile-checked.
 
@@ -139,31 +139,31 @@ benches are only compile-checked.
   jobs never run on PRs, and `Cargo.lock` is committed. Two gaps remain to call it
   _complete_ (below).
 
-## Next session — pick up here (remaining CI hardening, prioritized)
+## Next session - pick up here (remaining CI hardening, prioritized)
 
 Items 1 & 2 below are now **✅ DONE (2026-06-22)**. Only the operational
 branch-protection step (3) remains, and it must be done in the GitHub UI/API
 when the repo goes public.
 
-1. ~~**Dependabot (section 3.3).**~~ ✅ DONE — `.github/dependabot.yml` watches
+1. ~~**Dependabot (section 3.3).**~~ ✅ DONE - `.github/dependabot.yml` watches
    `github-actions` + `cargo`, weekly.
-2. ~~**Crate supply-chain audit gate.**~~ ✅ DONE — the `audit` job runs
+2. ~~**Crate supply-chain audit gate.**~~ ✅ DONE - the `audit` job runs
    `cargo audit` over the committed `Cargo.lock` on every push/PR (chose
    `cargo audit` over `cargo-deny`: no config file, advisory + yanked coverage;
    revisit `cargo-deny` if license/bans enforcement is later wanted).
-3. **Branch protection (section 3.2) — operational, still open.** The repo has
+3. **Branch protection (section 3.2) - operational, still open.** The repo has
    been public since the 2026-06-24 v0.1.0 launch and `master` remains
    unprotected (confirmed live, `gh api repos/.../branches/master/protection`
    → 404). Protect `master` + require CI before merge; reconcile with the
    `nightly-bench` bot push (allow bot bypass, or switch that step to a PR).
-   Integrity, not a live hole. **Maintainer action — not codeable in-repo**
+   Integrity, not a live hole. **Maintainer action - not codeable in-repo**
    (GitHub Settings → Branches, or `gh api`).
 
 Deferred / optional (not gaps): build provenance / signing (`SHA256SUMS` already
 gives download integrity; SLSA `actions/attest-build-provenance` is the future
 step if verifiable provenance is wanted); pinning runner images
-(`ubuntu-24.04` vs `ubuntu-latest`) — reproducibility hygiene, not
+(`ubuntu-24.04` vs `ubuntu-latest`) - reproducibility hygiene, not
 security-critical; section 3.5 public perf dashboard (not security); section 3.6 PR timing gate.
 
 > Both items 1 & 2 are new work beyond the approved Workstream C scope and are
-> SHA-pin-consistent, push-gated, and uncommitted (R12) — awaiting maintainer go.
+> SHA-pin-consistent, push-gated, and uncommitted (R12) - awaiting maintainer go.

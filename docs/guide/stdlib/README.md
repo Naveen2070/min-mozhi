@@ -1,19 +1,19 @@
 # Standard library
 
 A small, growing set of polished, tested building blocks written in Min-Mozhi
-itself — real hardware you can drop into a design or read to learn idioms. Every
+itself - real hardware you can drop into a design or read to learn idioms. Every
 module is:
 
-- **Trilingual** — shipped in all four keyword flavors (`english`, `tanglish`,
+- **Trilingual** - shipped in all four keyword flavors (`english`, `tanglish`,
   `tamil`, `mixed`), each compiling to **byte-identical** Verilog.
-- **Pure-Tamil too** — every module has a pure-Tamil twin (Tamil keywords _and_
+- **Pure-Tamil too** - every module has a pure-Tamil twin (Tamil keywords _and_
   identifiers, natural SOV word order), proven equivalent to the English module
   by canonical renaming.
-- **Tested three ways** — inline `test` blocks (`mimz test`), golden-locked
+- **Tested three ways** - inline `test` blocks (`mimz test`), golden-locked
   emitted Verilog, and a hand-written self-checking Icarus testbench that runs
   the compiled Verilog under `vvp`.
 
-> These are **importable** — `import std.fifo` works from any project, with no
+> These are **importable** - `import std.fifo` works from any project, with no
 > install path (the modules are embedded in the compiler). See
 > [Importing](#importing) below.
 
@@ -32,7 +32,7 @@ waveform from `mimz sim --trace`, and the tests.
 
 ## Importing
 
-Standard-library modules are built into the compiler — `import std.fifo` works
+Standard-library modules are built into the compiler - `import std.fifo` works
 from any project, no install path. The namespace and module are trilingual; the
 written alias picks the canonical English module or its pure-Tamil twin:
 
@@ -46,7 +46,7 @@ written alias picks the canonical English module or its pure-Tamil twin:
 
 > **Heads-up:** the alias is more than a name swap. Importing via a Tamil twin
 > (`வரிசை`, `நிலைப்படுத்தி`, …) selects the module whose **ports and
-> parameters have Tamil names too** — e.g. the Fifo twin takes
+> parameters have Tamil names too** - e.g. the Fifo twin takes
 > `அகலம்`/`ஆழம்` (not `WIDTH`/`DEPTH`) and exposes
 > `நுழை`/`நீக்கு`/`தரவு`/`கடிகை`/`மீள்`. Wiring it with English names fails
 > with `E0106`/`E0107`. Each module page lists both spellings; pick one flavor
@@ -67,7 +67,7 @@ mimz eject std --to ./std        # English canonical (--flavor tamil for twins)
 std = "./std"
 ```
 
-After this, `import std.fifo` loads `./std/fifo.mimz` — your copy wins.
+After this, `import std.fifo` loads `./std/fifo.mimz` - your copy wins.
 
 ## Try one
 

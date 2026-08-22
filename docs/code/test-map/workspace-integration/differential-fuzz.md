@@ -17,9 +17,9 @@ failure is reproducible. This is the test that found BUG-23.
 | `differential_fuzz_clocked_matches_icarus`                                      | …and clocked designs match Icarus cycle for cycle                                                                                                                  |
 
 `gen_special_leaves` is what decides which SHAPES the generator can reach at
-all — a `fn` call, a nested `fn` call (`inner{w}(x)` offered to the outer
+all - a `fn` call, a nested `fn` call (`inner{w}(x)` offered to the outer
 `fn`'s body as a `special` leaf, round-7 Task 11, so [BUG-67](../audit/bugs.md)'s
-shape is reachable), a `const`-bounded slice, and — clocked only — a plain
+shape is reachable), a `const`-bounded slice, and - clocked only - a plain
 instance-port read, an array-instance-port read and a `mem` read. Depth
 (`MIMZ_DIFF_FUZZ_N`) cannot compensate for a shape the vocabulary does not
 contain: see [`gaps.md`](../audit/gaps.md) GAP-13 direction 2.

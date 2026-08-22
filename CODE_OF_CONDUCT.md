@@ -21,7 +21,7 @@ Examples of behaviour that contributes to a positive environment:
 - Gracefully accepting constructive criticism
 - Focusing on what is best for the community
 - Showing empathy towards other community members
-- Asking questions in good faith — this is an educational project and "beginner"
+- Asking questions in good faith - this is an educational project and "beginner"
   questions are exactly the point
 
 Examples of unacceptable behaviour:
@@ -42,7 +42,7 @@ behaviour they deem inappropriate, threatening, offensive, or harmful.
 
 ## Scope
 
-This Code of Conduct applies within all community spaces — GitHub issues, pull
+This Code of Conduct applies within all community spaces - GitHub issues, pull
 requests, discussions, and any other official project channel.
 
 ## Enforcement

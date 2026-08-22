@@ -1,4 +1,4 @@
-# Phase 3 — Native Backend
+# Phase 3 - Native Backend
 
 > **Full end-to-end ownership.**
 > Window: years 2–4 · Status: ⚪ not started
@@ -6,7 +6,7 @@
 ## Goal
 
 `mimz build blink.mimz --target ice40` programs an FPGA **with no foreign
-tool in the loop** — our own techmapping, place-and-route, and bitstream
+tool in the loop** - our own techmapping, place-and-route, and bitstream
 generation for the iCE40 family (fully documented by Project IceStorm).
 
 ## Work items
@@ -32,7 +32,7 @@ LED blinker + UART echo built and flashed end-to-end with only `mimz`.
 
 ## Risks / notes
 
-- This is the longest, hardest phase — keep the Yosys/nextpnr path working the
+- This is the longest, hardest phase - keep the Yosys/nextpnr path working the
   whole time as the reference and fallback.
 - Scope to **iCE40 only** until exit criteria pass; ECP5 is the logged
   candidate for target #2.

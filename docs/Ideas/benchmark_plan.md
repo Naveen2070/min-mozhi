@@ -4,7 +4,7 @@ This document outlines the strategic roadmap for evolving the `mimz-bench`
 harness. The current harness already does macro-level tracking well (median
 over N iterations, historical LOC/s throughput, and a hard correctness gate),
 so the phases below add micro-level precision and resource tracking on top of
-it — in order of return on effort.
+it - in order of return on effort.
 
 ---
 
@@ -25,7 +25,7 @@ ignores one-off spikes and yields a stable steady-state number.
 
 `mimz-bench` exits **non-zero** on any accuracy or safety failure (see
 `src/bin/mimz-bench/main.rs`). So the harness is already CI-usable as a
-correctness gate today — the work below is about _performance_ precision and
+correctness gate today - the work below is about _performance_ precision and
 _resource_ tracking, not about adding gating.
 
 ### Cumulative data tracking
@@ -45,14 +45,14 @@ cumulative throughput (LOC/s) to history.
 
 ---
 
-## Phase 1: Cache Warm-up & I/O Isolation — ✅ DONE 2026-06-13
+## Phase 1: Cache Warm-up & I/O Isolation - ✅ DONE 2026-06-13
 
 Implemented: `measure_speed` (`src/bin/mimz-bench/metrics/speed.rs`) runs one untimed
 full pipeline per example before the timed loop.
 
 **The goal:** decouple disk speed from compiler speed.
 Reading `.mimz` files off an SSD/HDD introduces statistical noise. We only want
-to measure the _compiler's_ work, not the OS's disk-read speed — and we want
+to measure the _compiler's_ work, not the OS's disk-read speed - and we want
 `--iterations 1` to be honest, not just the default of 5.
 
 **Implementation strategy:**
@@ -68,14 +68,14 @@ metric the harness already reports, which is why it leads the roadmap.
 
 ---
 
-## Phase 2: Micro-Benchmarking (`criterion`, a separate harness) — ✅ DONE 2026-06-13
+## Phase 2: Micro-Benchmarking (`criterion`, a separate harness) - ✅ DONE 2026-06-13
 
 Implemented: `benches/compile.rs` (`[[bench]]`, `harness = false`) isolates
 lexer / parser / checker / emit over `traffic_light`; run with `cargo bench`,
 compile-checked in CI via `cargo bench --no-run`.
 
 **The goal:** isolate specific compiler phases to detect micro-regressions.
-`mimz-bench` is a macro benchmark — if compilation slows by 2 ms, it can't tell
+`mimz-bench` is a macro benchmark - if compilation slows by 2 ms, it can't tell
 you whether the lexer, parser, or checker caused it.
 
 **Important:** this is a **separate harness**, not part of `mimz-bench`.
@@ -101,20 +101,20 @@ as `critcmp` or a benchmark-threshold GitHub Action on top.
 
 ---
 
-## Phase 3: Memory Profiling — ✅ DONE 2026-06-13 (tier 1; dhat tier deferred)
+## Phase 3: Memory Profiling - ✅ DONE 2026-06-13 (tier 1; dhat tier deferred)
 
 The goal: a fast compiler is useless if it consumes gigabytes of RAM. ASTs are
 notorious for memory bloat, so track peak heap/RSS alongside speed.
 
 **Two tiers, kept separate:**
 
-- **Default (`memory-stats`, peak RSS) — ✅ DONE:** `measure_memory` records
+- **Default (`memory-stats`, peak RSS) - ✅ DONE:** `measure_memory` records
   peak resident set over a full-corpus compile into `bench-report.json` /
   `bench-history.jsonl`, surfaced as a card + memory-trend chart. `memory-stats`
   is lightweight (no allocator swap), so it rides a normal `mimz-bench` run.
-- **Opt-in (`dhat`, precise heap) — deferred:** for detailed allocation
+- **Opt-in (`dhat`, precise heap) - deferred:** for detailed allocation
   profiles. `dhat` installs a custom `#[global_allocator]` and slows execution
-  ~10×, so it can **never** share a timed run — gate it behind a dedicated
+  ~10×, so it can **never** share a timed run - gate it behind a dedicated
   `--profile-mem` build/feature and never report its timings as speed.
 
 If a developer accidentally clones heavy `String`s instead of borrowing, the
@@ -122,7 +122,7 @@ peak-RSS trend flags the regression.
 
 ---
 
-## Phase 4: Parallelization & Scale (`rayon`) — deferred
+## Phase 4: Parallelization & Scale (`rayon`) - deferred
 
 **The goal:** keep the benchmark fast if the corpus ever scales to 1,000+ files.
 
@@ -130,7 +130,7 @@ peak-RSS trend flags the regression.
 so this is premature; revisit when scale reaches 1,000+ files.
 
 **Hard rule when it does land:** parallelize **only the untimed validation
-sweeps** (accuracy, safety, coverage — they are pass/fail). The speed pass
+sweeps** (accuracy, safety, coverage - they are pass/fail). The speed pass
 (`measure_speed`) must stay **single-threaded**: running compiles concurrently
 makes them contend for CPU and cache, which corrupts the LOC/s measurement.
 
@@ -147,10 +147,10 @@ makes them contend for CPU and cache, which corrupts the LOC/s measurement.
 The full CI strategy, security model, and hardening roadmap now live in
 [`ci_plan.md`](ci_plan.md). Benchmark-relevant summary:
 
-- **push / PR — `bench` job:** `mimz-bench --no-cov --no-icarus` as a hard
+- **push / PR - `bench` job:** `mimz-bench --no-cov --no-icarus` as a hard
   correctness gate; `--history` routed to a temp path so it records no point.
   The `check` job also `cargo bench --no-run`s the `criterion` harness.
-- **Perf batch — `nightly-bench` job:** `mimz-bench --no-cov --iterations 500`,
+- **Perf batch - `nightly-bench` job:** `mimz-bench --no-cov --iterations 500`,
   then **commits the appended `bench-history.jsonl` back to the repo**
   (`[skip ci]`) and uploads the report as an artifact. The committed JSONL is
   the canonical, version-controlled trend. Triggered by `workflow_dispatch`

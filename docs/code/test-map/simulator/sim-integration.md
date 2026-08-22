@@ -1,4 +1,4 @@
-# Integration: sim (`tests/sim.rs`, 17 tests — run the real binary + lib in-process)
+# Integration: sim (`tests/sim.rs`, 17 tests - run the real binary + lib in-process)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
@@ -9,11 +9,11 @@ baseline and the golden VCD byte-lock (both run the lib in-process).
 | Test                                                                    | Locks in                                                                                                |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `trace_table_shows_a_row_per_cycle`                                     | `--trace` prints the per-cycle table (header + separator + N rows)                                      |
-| `cycles_over_the_limit_is_rejected_by_the_cli`                          | SEC: `--cycles` past `MAX_SIM_CYCLES` (1_000_000) is rejected at clap parse time — no unbounded loop    |
+| `cycles_over_the_limit_is_rejected_by_the_cli`                          | SEC: `--cycles` past `MAX_SIM_CYCLES` (1_000_000) is rejected at clap parse time - no unbounded loop    |
 | `changes_trace_is_monitor_style`                                        | `--trace=changes` prints `$monitor`-style lines (reaches `count=3`)                                     |
 | `writes_a_gtkwave_vcd`                                                  | `-o` writes a VCD with `$timescale`/`$enddefinitions`/`$dumpvars`/`count`                               |
 | `signals_flag_limits_the_trace`                                         | `--signals count` shows only `count`, excluding `value`                                                 |
-| `a_combinational_module_settles_one_frame`                              | C1: a clockless module simulates — `--in a=200,b=100` → one settled frame, `sum=300`                    |
+| `a_combinational_module_settles_one_frame`                              | C1: a clockless module simulates - `--in a=200,b=100` → one settled frame, `sum=300`                    |
 | `sweep_emits_a_frame_per_combination`                                   | C1: `--sweep a=1\|2\|3` (held `--in b=10`) → 3 frames, sums 11/12/13                                    |
 | `a_combinational_module_writes_a_vcd`                                   | C1: a clockless module writes a VCD with the settled output (`sum=12`)                                  |
 | `the_counter_kernel_clears_the_perf_baseline`                           | the kernel sustains ≥1M cycle-events/sec on the counter in release (B8; debug uses a low sanity floor)  |

@@ -1,9 +1,9 @@
-# `Seg7` — BCD → 7-segment decoder
+# `Seg7` - BCD → 7-segment decoder
 
 A combinational lookup that turns a 4-bit BCD value into the seven segment
 lines of a single display digit. The decimal digits **0–9** map to their glyph;
 any other nibble (10–15) blanks the display. It is a pure `match` table with a
-`_` wildcard, so it is exhaustive — the compiler proves every input is handled,
+`_` wildcard, so it is exhaustive - the compiler proves every input is handled,
 with no inferred latch.
 
 Segment bit order is **gfedcba**, active high: `seg[0]` is segment _a_ (the top
@@ -15,7 +15,7 @@ bar) through `seg[6]` for _g_ (the middle bar).
 - Also in `tanglish/`, `tamil/`, and `mixed/` flavors (byte-identical Verilog).
 - Pure-Tamil twin (Tamil keywords **and** identifiers, natural SOV order):
   [`examples/tamil-pure/ennkaatti.mimz`](../../../examples/tamil-pure/ennkaatti.mimz)
-  (`எண்காட்டி` — "digit display") — proven equivalent to the English module by
+  (`எண்காட்டி` - "digit display") - proven equivalent to the English module by
   canonical renaming.
 
 ## Interface
@@ -25,7 +25,7 @@ bar) through `seg[6]` for _g_ (the middle bar).
 | `digit` | in  | `bits[4]` | the BCD value to show (0–9; else blank) |
 | `seg`   | out | `bits[7]` | the segment lines, gfedcba, active high |
 
-`Seg7` is purely combinational — no clock, no reset, no parameters.
+`Seg7` is purely combinational - no clock, no reset, no parameters.
 
 ## How it works
 

@@ -4,7 +4,7 @@
 
 The shared value model and expression evaluator behind BOTH `comb.rs` and
 the kernel. A `Val` is a 2-state bit-vector carrying a width and a
-signedness — small values stay on a `u128` fast path and only promote to
+signedness - small values stay on a `u128` fast path and only promote to
 the multi-limb `wide` representation past 128 bits. This pocket also
 covers `fn`-body statement evaluation: `fn` bodies are interpreted
 directly (no elaborate-time lowering pass exists for them, unlike module
@@ -44,7 +44,7 @@ and `value/tests.rs`.
 **Operators and Verilog agreement**
 
 BUG-30 (`docs/audit/bugs.md`): `<<` now GROWS by the shift amount instead of
-widening to an ambient context width — its declared type already bounds the
+widening to an ambient context width - its declared type already bounds the
 true value, so no context threading is needed. The three former
 `shl_widens_to_context_like_verilog` / `shl_self_determined_preserves_left_operand_width` /
 `shl_chain_stays_at_shared_context_width` tests were replaced by the
@@ -61,7 +61,7 @@ grows-by-exactly-the-amount tests below.
 | `sub_of_two_signed_values_is_signed`                            | signedness propagates through `-`                                                                                                   |
 | `sub_of_two_unsigned_values_is_unsigned`                        | …and unsignedness does too (BUG-22: `binary_known`'s `Sub` arm used to hardcode `signed: true`)                                     |
 
-**Unknown-value (`x`) taint — extern modules in warn mode**
+**Unknown-value (`x`) taint - extern modules in warn mode**
 
 | Test                            | Locks in                                             |
 | ------------------------------- | ---------------------------------------------------- |
@@ -85,7 +85,7 @@ grows-by-exactly-the-amount tests below.
 **Negative literals (BUG-43)**
 
 BUG-43 (`docs/audit/bugs.md`): a negative literal is a CONSTANT, not an
-operation applied to its magnitude — negating "in place" at the literal's own
+operation applied to its magnitude - negating "in place" at the literal's own
 minimal width silently wrapped instead of sign-extending correctly.
 
 | Test                                                    | Locks in                                                                                            |

@@ -3,8 +3,8 @@
 All notable changes to **Min-Mozhi (மின்மொழி)**. The project has **two version
 axes** (see [`spec/06-editions.md`](spec/06-editions.md)):
 
-- **Compiler version** — the `mimz` binary / crate version (`Cargo.toml`).
-- **Language edition** — a codename + year + serial (`wingless-butterfly-2026-1`).
+- **Compiler version** - the `mimz` binary / crate version (`Cargo.toml`).
+- **Language edition** - a codename + year + serial (`wingless-butterfly-2026-1`).
   Surfaced by `mimz --version`, in every emitted Verilog header, and here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com).
@@ -12,9 +12,9 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ---
 
-## [0.2.0] — 2026-08-20 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
+## [0.2.0] - 2026-08-20 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
-> **Tag pending** — content frozen and release gates green (round 9, 8/8,
+> **Tag pending** - content frozen and release gates green (round 9, 8/8,
 > 2026-08-21), but no `v0.2.0` git tag exists yet. Cut it on the
 > `chore(release): prepare v0.2.0` commit when publishing.
 
@@ -25,25 +25,25 @@ breaking change is a width-rule change (`<<`), listed under _Changed_ below.
 ### Added
 
 - `sync.double_flop(signal, src_clock, dst_clock)` / `sync.pulse(signal,
-src_clock, dst_clock)` — clock-domain-crossing (CDC) synchronizer
+src_clock, dst_clock)` - clock-domain-crossing (CDC) synchronizer
   primitives: `double_flop` is a classic 2-flop synchronizer for a
   level/control signal, `pulse` is a toggle-based synchronizer for a
   single-cycle pulse. Both are ordinary builtin-namespace calls (no new
-  `ExprKind`) restricted to 1-bit signals (new diagnostic E0703 — a
+  `ExprKind`) restricted to 1-bit signals (new diagnostic E0703 - a
   bit-independent synchronizer on a multi-bit bus is a real metastability
   hazard, not just a style warning). New diagnostics E0702 (clock-argument
-  shape), E0704 (domain rule — asymmetric between the two primitives:
+  shape), E0704 (domain rule - asymmetric between the two primitives:
   `double_flop` accepts a domain-free or already-`src_clock`-owned signal,
   `pulse` requires `src_clock`-owned only), E0705 (illegal placement), and
   parser diagnostic E1116 (unknown `sync.` method name). `sync` remains
   dual-purpose with the existing `sync loop` construct, disambiguated by
   the token immediately after `sync`. Handshake (req/ack) protocols and
-  async FIFOs — the multi-bit-safe data-bus crossing — remain future work,
+  async FIFOs - the multi-bit-safe data-bus crossing - remain future work,
   buildable as ordinary `.mimz` stdlib modules on top of these primitives.
   New examples `examples/*/sync_double_flop.mimz` /
   `examples/*/sync_pulse.mimz`; new Icarus differential tests
   `sync_double_flop_matches_icarus` / `sync_pulse_matches_icarus`. See
-  `spec/02-syntax-and-grammar.md` §1.2b.
+  `spec/02-syntax-and-grammar.md` section 1.2b.
 - `mimz test --emulate`: `sim` blocks inside `test` blocks bind ports to
   virtual peripherals (`led`, `uart_tx`, `uart_rx`, `speaker`) with
   real-time throttling. `uart_tx`/`uart_rx` decode/encode 8-N-1 serial to
@@ -52,13 +52,13 @@ src_clock, dst_clock)` — clock-domain-crossing (CDC) synchronizer
   default, auto-degrades outside a real terminal.
 - `return` statement and statement-based `fn` bodies (`if`/`return`/`let`)
   for guard-clause-style combinational functions (priority-selected result
-  selection, not a silicon early-exit — every branch is still fully
+  selection, not a silicon early-exit - every branch is still fully
   instantiated). New keyword `return`/`thirumbu`/`திரும்பு`. New diagnostic
   E0812 (unreachable code after `return`). Fully backward compatible with
   existing `fn` bodies.
 - Array-typed `fn` parameters (`bits[8][4]`-style fixed-size, immutable
   arrays) and array literals (`[e1, ..., eN]`). An array is never real
-  Verilog hardware — it elaborates to N independent scalar signals,
+  Verilog hardware - it elaborates to N independent scalar signals,
   matching how `repeat` already elaborates to N copies of hardware.
   Indexing with a compile-time-constant folds directly; a runtime index
   generates a priority-mux over the elements. New diagnostics E0411-E0415.
@@ -66,7 +66,7 @@ src_clock, dst_clock)` — clock-domain-crossing (CDC) synchronizer
   form (`foreach i in lo..hi`) and an array/mem-element form (`foreach v
 in values`, its bound taken from the source's own declared length, never
   hand-written). Desugars to the existing `repeat`/`loop` machinery before
-  the checker/emitter/simulator ever see it — no new codegen. New
+  the checker/emitter/simulator ever see it - no new codegen. New
   diagnostic E0417 (elements-form source must be array/mem-typed). New
   keyword `foreach`; the Tanglish/Tamil spellings (`ovvondraga`/
   ஒவ்வொன்றாக) are provisional, pending native-speaker review.
@@ -78,20 +78,20 @@ in values`, its bound taken from the source's own declared length, never
   real `Ty::Bundle` (nominal identity + on-demand field resolution)
   instead of falling through to `Ty::Unknown`, replacing the old
   `Wcx::bundle_sigs` side-table this had relied on.
-- `Enum.Variant(arg1, arg2, ...)` construction syntax — the write-side
+- `Enum.Variant(arg1, arg2, ...)` construction syntax - the write-side
   counterpart to tagged-union `match`, completing that feature. Positional
   arguments only, in the variant's declared field order; a tag-only
   variant is constructed `Enum.Variant()`. Lowers to the same tag+payload
   bit layout `match` already extracts, on both the Verilog emitter and the
-  simulator. No new diagnostics — reuses E0806 (arity), E0401 (width), and
+  simulator. No new diagnostics - reuses E0806 (arity), E0401 (width), and
   E0103 (unknown enum/variant), generalized to cover both call sites.
-- `extern module Name(params) { doc: "...", ports }` — Verilog FFI: declares
+- `extern module Name(params) { doc: "...", ports }` - Verilog FFI: declares
   the port shape of a real, hand-written Verilog module (vendor IP, a
   hardened PLL, a protocol core) without defining its body, instantiable
   with zero new syntax through the existing `let u = Name(...) { conns }`
   form. Optional `= "RealName"` alias when the mimz-facing name differs
   from the real Verilog module's name; optional `doc: "..."` note. Ports
-  are scalar-only (`bit`/`bits[N]`/`signed[N]`, plus `clock`/`reset`) — new
+  are scalar-only (`bit`/`bits[N]`/`signed[N]`, plus `clock`/`reset`) - new
   diagnostics E1301 (duplicate extern module name) and E1302 (non-scalar
   extern port). The emitter instantiates the real module by name and never
   emits a definition for it. The simulator, which cannot execute real
@@ -103,7 +103,7 @@ in values`, its bound taken from the source's own declared length, never
   `--extern-src` CLI flag, which union additively.
 - Structural bundle matching (feature 2.9): a bundle satisfies any
   bundle-typed slot whose required fields it covers with exactly-matching
-  types, regardless of the two bundles' declared names — applies to `let`
+  types, regardless of the two bundles' declared names - applies to `let`
   bindings, `Drive` assignments, module-instantiation port connections, and
   `fn` bundle-typed args/returns. Extra fields on the provided side are
   allowed; shared fields never coerce width. New diagnostic E0910 (a
@@ -118,7 +118,7 @@ in values`, its bound taken from the source's own declared length, never
   `??` has two forms, chosen by the right operand's shape and never
   coercing width: unwrap (`T? ?? T -> T`) and OR-mux (`T? ?? T? -> T?`,
   chains left-associatively). Both always lower to an ordinary two-way mux
-  in the emitter and the simulator — never a tri-state/high-Z value. New
+  in the emitter and the simulator - never a tri-state/high-Z value. New
   diagnostics E0911 (left operand isn't a valid-bundle) and E0912 (right
   operand doesn't match the left's `data` type exactly).
 
@@ -126,29 +126,29 @@ in values`, its bound taken from the source's own declared length, never
 
 - **BREAKING:** `<<` is now lossless, like `+`/`-`/`*`: `bits[W] << k`
   (constant `k`) is `bits[W+k]`, and a runtime shift amount grows by its
-  own worst case (`2^N - 1` for a `bits[N]` amount) — the declared type
+  own worst case (`2^N - 1` for a `bits[N]` amount) - the declared type
   now bounds every value the shift could produce, matching the language's
   "safe by default" rule for every other lossless operator. Previously
   `<<` silently kept its left operand's width, which could drop the very
   bits real Verilog's own `<<` produces (BUG-30/BUG-11,
-  `docs/audit/bugs.md`). `>>` is unchanged — right-shifting only ever
+  `docs/audit/bugs.md`). `>>` is unchanged - right-shifting only ever
   reduces magnitude, so it never needed to grow. A shift-register/
   barrel-shifter idiom that re-shifts a value repeatedly now needs an
   explicit `trunc` back down at each use; the E0401 diagnostic and
-  `docs/guide/05-operators.md` §Shifts both explain the growth rule at
+  `docs/guide/05-operators.md` section Shifts both explain the growth rule at
   the point of failure.
 
 ### Fixed
 
 Eight rounds of adversarial review of the Verilog backend (`docs/audit/`, one
 `review-*.md` per round, with every reproduction quoted verbatim). Of the 73
-filed bug entries, **69 are fixed and 4 remain open** — all four MEDIUM, all
+filed bug entries, **69 are fixed and 4 remain open** - all four MEDIUM, all
 compile-time refusals or simulator limitations, none a silent miscompile. The
 classes that mattered:
 
 - **The width-rule family (34 of them, BUG-28 … BUG-68).** Every instance had
-  the same shape: two implementations of one width rule — checker, emitter,
-  simulator — disagreeing, with the emitter producing Verilog whose widths
+  the same shape: two implementations of one width rule - checker, emitter,
+  simulator - disagreeing, with the emitter producing Verilog whose widths
   didn't match what the checker had accepted. Round 8 was the first round in
   the series that added no new instance.
 - **The self-determined-position hoist (BUG-63 … BUG-72).** A concat member, a
@@ -157,11 +157,11 @@ classes that mattered:
   for all of them, including symbolic (parameter) widths.
 - **Declaration order (BUG-70).** Instance output wires were declared inside the
   window the hoist buffer flushes into, so an emitted design could reference a
-  wire before its own declaration — accepted by `mimz check`, exit 0 from
+  wire before its own declaration - accepted by `mimz check`, exit 0 from
   `mimz compile`, rejected by every real elaborator. Instance outputs are now
   declared in a separate pass before the flush point.
 - **Testbench const scope (BUG-71).** `--emit-testbench` didn't see the DUT's
-  own file-level `const`s, so a `const if` silently took its `else` branch —
+  own file-level `const`s, so a `const if` silently took its `else` branch -
   which could make the emitted testbench report the **opposite verdict** to
   `mimz test`. This was the only silent divergence left at the end of the
   series.
@@ -175,29 +175,29 @@ against Icarus (`tools/gate.sh`).
 ### Known issues
 
 Every open bug, plus the gaps most likely to be met in practice. `docs/audit/gaps.md`
-is the full gap ledger — eight are open; the two HIGH ones and the two most
+is the full gap ledger - eight are open; the two HIGH ones and the two most
 user-visible MEDIUM ones are listed here.
 
-- **GAP-1** (HIGH, architectural) — no IR; width/kind semantics are implemented
+- **GAP-1** (HIGH, architectural) - no IR; width/kind semantics are implemented
   three times over and kept in agreement by tests rather than by construction.
   The root cause of the width-rule family above, and the v0.3 direction. Until
   it lands, the claim "the compiler produces Verilog that matches its own type
   system" is **not** made.
-- **GAP-20** (HIGH, testing) — the differential fuzz generator emits `reg`
+- **GAP-20** (HIGH, testing) - the differential fuzz generator emits `reg`
   resets and `mem` initialisers as literals, leaving those two render sites
   outside the generated grammar. Needs a separate Icarus-only oracle path.
-- **GAP-8** (MEDIUM, language) — surface gaps met early: no division operator,
+- **GAP-8** (MEDIUM, language) - surface gaps met early: no division operator,
   no attributes, no pipeline construct.
-- **GAP-2** (MEDIUM, simulator) — `mimz-sim` is 2-state with a whole-value
+- **GAP-2** (MEDIUM, simulator) - `mimz-sim` is 2-state with a whole-value
   unknown flag; it does not model per-bit X propagation. Run the emitted
   testbench under `vvp` when that distinction matters.
-- **BUG-32** (MEDIUM) — `mem` lowers to an `initial` block: FPGA-only, not
+- **BUG-32** (MEDIUM) - `mem` lowers to an `initial` block: FPGA-only, not
   ASIC-synthesizable, and unresettable.
-- **BUG-38** (MEDIUM) — `mimz-sim`'s combinational-only kernel rejects
+- **BUG-38** (MEDIUM) - `mimz-sim`'s combinational-only kernel rejects
   enum-typed signals, ports and wires.
-- **BUG-39** (MEDIUM) — a `reg`'s reset value cannot be a payload-carrying
+- **BUG-39** (MEDIUM) - a `reg`'s reset value cannot be a payload-carrying
   `EnumConstruct` expression.
-- **BUG-74** (MEDIUM) — an `if`/`match`-wrapped `EnumConstruct` passed directly
+- **BUG-74** (MEDIUM) - an `if`/`match`-wrapped `EnumConstruct` passed directly
   to `encoding()` is refused at compile time rather than lowered. Binding it to
   a named `wire` first is unaffected.
 
@@ -207,89 +207,89 @@ user-visible MEDIUM ones are listed here.
   sim, translate, grammar-sync, hardware-emulation) and integration (examples,
   golden files, Icarus differential, fuzz corpus, self-determined regression,
   external modules, packages, docs staleness guard).
-- **Golden-file pinning** — every example's Verilog output is byte-pinned in
+- **Golden-file pinning** - every example's Verilog output is byte-pinned in
   `tests/golden/` (88 `.v` goldens: 71 module + 17 testbench); any emitter
   regression is caught immediately.
-- **`tests/fixtures/errors/`** — corpus of 120 `.mimz` files that must produce a
+- **`tests/fixtures/errors/`** - corpus of 120 `.mimz` files that must produce a
   specific E-code; adding a checker code without a fixture fails CI.
-- **`grammar_sync`** — asserts that `lang/keywords.toml`, `spec/03`, and the
+- **`grammar_sync`** - asserts that `lang/keywords.toml`, `spec/03`, and the
   TextMate grammar are mutually consistent; no stale keyword spellings.
-- **`docs_sync`** — asserts the test count in `docs/code/10-test-map.md` matches
+- **`docs_sync`** - asserts the test count in `docs/code/10-test-map.md` matches
   the actual suite.
 
 ---
 
-## [0.1.0] — 2026-06-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
+## [0.1.0] - 2026-06-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
 The first public release. Phases 0, 1, 1.8, and 1.5 complete.
 Keyword set v1 frozen 2026-06-15. 432 passing tests.
 
-### Language — Core
+### Language - Core
 
 #### Types and signals
 
-- `wire` — combinational signal driven by `=` assignments; inferred-latch guard
+- `wire` - combinational signal driven by `=` assignments; inferred-latch guard
   (unwired `wire` is a compile-time error `E0201`).
-- `reg` — clocked state element driven by `<-` inside `on rise`/`on fall` blocks;
+- `reg` - clocked state element driven by `<-` inside `on rise`/`on fall` blocks;
   mandatory reset value (no reset = `E0301`).
-- `bits[N]` — unsigned integer of exactly `N` bits.
-- `signed[N]` — two's-complement signed integer of exactly `N` bits; emitted as
+- `bits[N]` - unsigned integer of exactly `N` bits.
+- `signed[N]` - two's-complement signed integer of exactly `N` bits; emitted as
   Verilog `wire signed` / `reg signed`.
-- `int` — constant / parameter integer (not a signal type).
-- `bool` — single-bit boolean (`true`/`false`).
-- `clock` — dedicated clock-port type; drives `on rise`/`on fall` only.
-- `reset` — dedicated synchronous-reset type; active-high, one reset per module.
-- `async reset` — asynchronous reset variant; widens the always-block to
+- `int` - constant / parameter integer (not a signal type).
+- `bool` - single-bit boolean (`true`/`false`).
+- `clock` - dedicated clock-port type; drives `on rise`/`on fall` only.
+- `reset` - dedicated synchronous-reset type; active-high, one reset per module.
+- `async reset` - asynchronous reset variant; widens the always-block to
   `@(posedge clk or posedge rst)`; active-high only.
-- `in`, `out`, `inout` — port directions.
-- `mem m: bits[W][DEPTH] = init` — addressable register array; combinational
+- `in`, `out`, `inout` - port directions.
+- `mem m: bits[W][DEPTH] = init` - addressable register array; combinational
   indexed read, clocked indexed write, power-on initialiser.
 
 #### Operators and arithmetic
 
 - Lossless arithmetic: `+` / `-` / `*` grow width to hold the result; no silent
   truncation (`E0401`).
-- Wrapping family: `+%` / `-%` / `*%` — explicit saturating/wrapping ops for
+- Wrapping family: `+%` / `-%` / `*%` - explicit saturating/wrapping ops for
   when truncation is intended (emitted as Verilog `+`/`-`/`*` with the correct
   width).
 - Bitwise: `&`, `|`, `^`, `~`.
 - Shift: `<<`, `>>` (logical; `>>>` arithmetic).
 - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (always returns `bool`).
 - Concatenation: `{a, b, c}`.
-- Replication: `{N{x}}` — the inner group repeated `N` times (Verilog `{N{x}}`).
+- Replication: `{N{x}}` - the inner group repeated `N` times (Verilog `{N{x}}`).
 - Bit-select: `x[i]`; slice: `x[hi:lo]`.
 - Signed/unsigned guard: mixing `bits` and `signed` without an explicit cast is
   `E0402`.
 
 #### Control flow
 
-- `if <cond> { … } else { … }` — expression-oriented; mandatory `else` when
+- `if <cond> { … } else { … }` - expression-oriented; mandatory `else` when
   driving a wire (`E0501`).
-- `match <expr> { pattern => expr, … }` — exhaustive by default (`E0502`);
+- `match <expr> { pattern => expr, … }` - exhaustive by default (`E0502`);
   don't-care patterns `0b1??` (binary only, this edition) map to Verilog `casez`.
-- `on rise(clk) { … }` — rising-edge clocked block.
-- `on fall(clk) { … }` — falling-edge clocked block (negedge sibling).
+- `on rise(clk) { … }` - rising-edge clocked block.
+- `on fall(clk) { … }` - falling-edge clocked block (negedge sibling).
 
 #### Modules and instantiation
 
-- `module Name(PARAM: type = default) { … }` — parameterised module.
+- `module Name(PARAM: type = default) { … }` - parameterised module.
 - Port and wire declarations inside the module body.
 - Module instantiation with named ports.
 - Cross-file instantiation via `load` (no C-style preprocessor).
 
 #### Constants and parameters
 
-- `const NAME: type = value` — compile-time constant.
+- `const NAME: type = value` - compile-time constant.
 - Module parameters resolved at instantiation.
 
 #### Testing
 
-- `test "name" { tick { … } expect { … } }` — inline test blocks compiled by
+- `test "name" { tick { … } expect { … } }` - inline test blocks compiled by
   `mimz test`; `tick` sets inputs, `expect` asserts outputs.
 
 ---
 
-### Language — Safety Rules (compile-time, stable E-codes)
+### Language - Safety Rules (compile-time, stable E-codes)
 
 Every rule produces a teaching diagnostic with a `help:` line.
 
@@ -311,30 +311,30 @@ All codes are stable and will never be renumbered or reused.
 
 ### Trilingual keyword system
 
-- **Three keyword skins over one grammar**: English, Tanglish, Tamil — freely
+- **Three keyword skins over one grammar**: English, Tanglish, Tamil - freely
   mixable within a single file; identical semantics.
-- **Keyword set v1 frozen 2026-06-15** — English column immutable from this
+- **Keyword set v1 frozen 2026-06-15** - English column immutable from this
   point; Tanglish/Tamil columns ratified after native-speaker panel review (C3).
-- `mimz translate --flavor <english|tanglish|tamil|mixed>` — lossless,
+- `mimz translate --flavor <english|tanglish|tamil|mixed>` - lossless,
   round-trip keyword conversion; preserves identifiers and formatting.
-- `mimz translate --order <code|thamizh>` — converts between SVO (code-order)
+- `mimz translate --order <code|thamizh>` - converts between SVO (code-order)
   and SOV (Tamil natural word order).
-- Native Tamil/Tanglish error messages — `lang/messages.toml`; 33 of 36
+- Native Tamil/Tanglish error messages - `lang/messages.toml`; 33 of 36
   diagnostic codes have native-authored translations; structured-arg
   interpolation (signal names inflected with Tamil case suffixes via
   `lang/case_suffixes.toml`).
 
 ---
 
-### Grammar Engine (Phase 1.8) — `thamizh-order`
+### Grammar Engine (Phase 1.8) - `thamizh-order`
 
-Natural Tamil SOV word order — the postpositional clause forms that make Min-Mozhi
+Natural Tamil SOV word order - the postpositional clause forms that make Min-Mozhi
 code read like Tamil, not transliterated English:
 
-- `<cond> enil { }` — if-expression flip (condition-first → `enil`).
-- `yetram(clk) pothu { }` — clocked-block flip.
-- `<expr> thernthedu { }` — match-expression flip.
-- File-level `syntax thamizh` directive — activates the SOV parser profile;
+- `<cond> enil { }` - if-expression flip (condition-first → `enil`).
+- `yetram(clk) pothu { }` - clocked-block flip.
+- `<expr> thernthedu { }` - match-expression flip.
+- File-level `syntax thamizh` directive - activates the SOV parser profile;
   produces the identical AST as code-order.
 - Milestone: the traffic-light FSM in pure Tamil script, natural word order,
   compiling to byte-identical Verilog as its English twin.
@@ -372,15 +372,15 @@ code read like Tamil, not transliterated English:
 
 ### Simulator (Phase 1.5)
 
-- In-house event-driven cycle simulator written in Rust — no external tool at
+- In-house event-driven cycle simulator written in Rust - no external tool at
   runtime.
 - Supports clocked and combinational designs.
-- `--in key=value` — set input signals; `--sweep` — enumerate all input
+- `--in key=value` - set input signals; `--sweep` - enumerate all input
   combinations.
-- `--trace` — print signal values every cycle.
-- `-o file.vcd` — deterministic VCD waveform output (viewable in GTKWave).
-- `mimz test` — runs `tick`/`expect` test blocks; exit 0 = all pass.
-- **Icarus differential**: `our_simulator_matches_icarus_bit_for_bit` —
+- `--trace` - print signal values every cycle.
+- `-o file.vcd` - deterministic VCD waveform output (viewable in GTKWave).
+- `mimz test` - runs `tick`/`expect` test blocks; exit 0 = all pass.
+- **Icarus differential**: `our_simulator_matches_icarus_bit_for_bit` -
   every example's simulation output is byte-compared against Icarus Verilog in
   CI; the simulator is an Icarus-equivalent, not an approximation.
 
@@ -388,16 +388,16 @@ code read like Tamil, not transliterated English:
 
 ### Tooling and editor support
 
-- **VS Code extension** (`editors/vscode/`) — syntax highlighting for `.mimz`;
+- **VS Code extension** (`editors/vscode/`) - syntax highlighting for `.mimz`;
   live diagnostics via `mimz lsp`.
-- **LSP server** — `mimz lsp`; diagnostics-only for v0.1.0; hover/completion
+- **LSP server** - `mimz lsp`; diagnostics-only for v0.1.0; hover/completion
   gated on Phase 4.
-- **`mimz-bench`** — internal benchmark binary; measures speed, accuracy, safety
+- **`mimz-bench`** - internal benchmark binary; measures speed, accuracy, safety
   coverage, and memory usage; outputs an HTML report (`bench-report.html`).
-- **WASM wrapper** (`crates/mimz-wasm`) — `compile_string(source, imports)`
+- **WASM wrapper** (`crates/mimz-wasm`) - `compile_string(source, imports)`
   binding for the browser playground (Phase 4 web presence); built separately
   (`cargo build -p mimz-wasm --target wasm32-unknown-unknown`).
-- **Fuzz targets** (`fuzz/`) — four libFuzzer targets: lexer, parser, checker,
+- **Fuzz targets** (`fuzz/`) - four libFuzzer targets: lexer, parser, checker,
   translate round-trip; `translate_roundtrip` fuzz crash fixed (masked-int `?`
   byte glueing onto romanized identifiers).
 
@@ -410,7 +410,7 @@ code read like Tamil, not transliterated English:
 - All four core-flavor folders produce **byte-identical Verilog** from every
   example (CI-asserted by `tests/examples.rs`).
 - Every example validated by Icarus Verilog (lint + self-checking testbench).
-- **`demo/`** — accumulator CPU showcase: `mimz check` → `mimz test` →
+- **`demo/`** - accumulator CPU showcase: `mimz check` → `mimz test` →
   `mimz sim` → VCD waveform; the canonical end-to-end demo.
 - Designs shipped: adder, counter, ALU, traffic-light FSM, shift register,
   barrel shifter, comparator, mux, priority encoder, full adder, half adder,
@@ -424,27 +424,27 @@ code read like Tamil, not transliterated English:
 - **432 passing tests** across unit (lexer, parser, checker, emitter, morph,
   sim, translate, grammar-sync) and integration (examples, golden files, Icarus
   differential, fuzz corpus).
-- **Golden-file pinning** — every example's Verilog output is byte-pinned in
+- **Golden-file pinning** - every example's Verilog output is byte-pinned in
   `tests/golden/`; any emitter regression is caught immediately.
-- **`tests/fixtures/errors/`** — corpus of `.mimz` files that must produce a
+- **`tests/fixtures/errors/`** - corpus of `.mimz` files that must produce a
   specific E-code; adding a checker code without a fixture fails CI.
-- **`grammar_sync`** — asserts that `lang/keywords.toml`, `spec/03`, and the
+- **`grammar_sync`** - asserts that `lang/keywords.toml`, `spec/03`, and the
   TextMate grammar are mutually consistent; no stale keyword spellings.
-- **`docs_sync`** — asserts the test count in `docs/code/10-test-map.md` matches
+- **`docs_sync`** - asserts the test count in `docs/code/10-test-map.md` matches
   the actual suite.
 
 ---
 
 ### CI / Infrastructure
 
-- **`ci.yml`** — `cargo fmt`, `cargo clippy -D warnings`, `cargo test`,
+- **`ci.yml`** - `cargo fmt`, `cargo clippy -D warnings`, `cargo test`,
   `cargo audit` (supply-chain), `RUSTDOCFLAGS="-D warnings" cargo doc`,
   `prettier`, `markdownlint`; Icarus Verilog differential (`REQUIRE_IVERILOG=1`).
-- **`release.yml`** — cross-platform native builds: Linux (musl static),
+- **`release.yml`** - cross-platform native builds: Linux (musl static),
   Windows (MSVC), macOS Intel + Apple Silicon; SHA256SUMS; automated GitHub
   Release from `RELEASE_NOTES.md`.
-- **`deploy-site.yml`** — Astro documentation site build + Vercel deploy.
-- **`dependabot.yml`** — weekly Cargo + GitHub Actions dependency updates.
+- **`deploy-site.yml`** - Astro documentation site build + Vercel deploy.
+- **`dependabot.yml`** - weekly Cargo + GitHub Actions dependency updates.
 - All third-party Actions SHA-pinned; `contents: write` scoped to the release
   job only.
 - Binaries are **unsigned** for v0.1.0 (code signing deferred); `UNSIGNED.txt`
@@ -452,7 +452,7 @@ code read like Tamil, not transliterated English:
 
 ---
 
-### Reserved keywords (growth doctrine — R11)
+### Reserved keywords (growth doctrine - R11)
 
 Keywords reserved pre-v0.1.0 so no valid v0.1.0 program can claim them:
 
@@ -464,16 +464,16 @@ Keywords reserved pre-v0.1.0 so no valid v0.1.0 program can claim them:
 
 ### Notable fixes (pre-release)
 
-- **Shift truncation** (`crates/mimz-sim/src/sim/value.rs`) — `Shl`/`Shr` now guard
+- **Shift truncation** (`crates/mimz-sim/src/sim/value.rs`) - `Shl`/`Shr` now guard
   `if r >= 128 { 0 }` before the `as u32` cast; no silent wraparound.
-- **Testbench panic** (`mimz compile --emit-testbench`) — stem-less `--output`
+- **Testbench panic** (`mimz compile --emit-testbench`) - stem-less `--output`
   path (e.g. `..`) now produces a clean error instead of a panic.
-- **Partial output on testbench error** — testbench is generated before either
+- **Partial output on testbench error** - testbench is generated before either
   file is written; a testbench error leaves no stray `.v`.
-- **Fuzz crash** (`translate_roundtrip`) — `is_word_byte` now includes `?` so
+- **Fuzz crash** (`translate_roundtrip`) - `is_word_byte` now includes `?` so
   masked-int tokens (`0b1?`) don't glue onto romanized identifiers after
   round-trip.
-- **`--emit-testbench` with no test blocks** — now prints a `note:` and writes
+- **`--emit-testbench` with no test blocks** - now prints a `note:` and writes
   only the `.v` instead of silently doing nothing.
 
 ---

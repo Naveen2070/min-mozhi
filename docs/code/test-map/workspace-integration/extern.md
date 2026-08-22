@@ -2,7 +2,7 @@
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
-`extern module` declares a Verilog module we do NOT compile — a black box
+`extern module` declares a Verilog module we do NOT compile - a black box
 (vendor IP, a hand-written primitive). The compiler still type-checks the
 port list and instantiates it; the simulator needs to be told what to do
 with it.

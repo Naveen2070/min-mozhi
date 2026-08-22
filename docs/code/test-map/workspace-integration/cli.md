@@ -1,4 +1,4 @@
-# Integration: CLI (`tests/cli.rs`, 6 tests — run the real binary)
+# Integration: CLI (`tests/cli.rs`, 6 tests - run the real binary)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 

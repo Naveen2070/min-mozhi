@@ -5,7 +5,7 @@
 The emitter's units live in five places, plus two sibling files documented
 on their own pages ([`transliteration.md`](transliteration.md)'s
 `translit.rs`, 7 tests; [`testbench-emitter.md`](testbench-emitter.md)'s
-`testbench.rs`, 5 tests — neither is counted below, to avoid double-counting
+`testbench.rs`, 5 tests - neither is counted below, to avoid double-counting
 against this page's total). `mod.rs`'s own single-file test module was split
 into `emit_verilog/tests/` (topic files, 63 tests across 11 files) on the
 `oversized-test-file-split` branch; the remaining four are small pockets
@@ -15,7 +15,7 @@ inside the file they test.
 | --------------------------------- | ----: | ------------------------------------------------------------------------------ |
 | `emit_verilog/tests/` (11 files)  |    63 | end-to-end emission behavior, by topic (tables below)                          |
 | `emit_verilog/module/tests.rs`    |    10 | `build_decls` internals + `sync.*`/`sync loop`/`assert`/`cover` lowering shape |
-| `emit_verilog/kinds.rs`           |    16 | `infer_kind` — mimz's own width/signedness for an expression                   |
+| `emit_verilog/kinds.rs`           |    16 | `infer_kind` - mimz's own width/signedness for an expression                   |
 | `emit_verilog/self_determined.rs` |     3 | what real Verilog would self-determine for the same expression                 |
 | `emit_verilog/expr.rs`            |     1 | the `is_plain_identifier` hoist predicate                                      |
 
@@ -24,7 +24,7 @@ inside the file they test.
 | Test                                                        | Locks in                                                                                      |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `repeat_unrolls_drives_with_folded_indices`                 | `repeat i: 0..4 { y[i] = … }` emits `assign y[0..3]`; the half-open range stops at 3          |
-| `repeat_var_folds_in_index_arithmetic`                      | `y[i + 1]` folds to `y[1]`/`y[3]` — index arithmetic over the loop var collapses to a literal |
+| `repeat_var_folds_in_index_arithmetic`                      | `y[i + 1]` folds to `y[1]`/`y[3]` - index arithmetic over the loop var collapses to a literal |
 | `empty_and_reversed_ranges_emit_nothing`                    | `0..0` and `4..0` generate no hardware (no crash, no partial output)                          |
 | `repeat_over_budget_errors_cleanly`                         | a range past `REPEAT_BUDGET` (4096) is a clean error, not a runaway unroll                    |
 | `nested_repeat_folds_both_variables`                        | nested loops bind both `i` and `j` per iteration                                              |
@@ -37,7 +37,7 @@ inside the file they test.
 
 BUG-73 (`docs/audit/bugs.md`): a bundle-typed wire's or an instance's
 auto-wired output's flattened field name never checked whether that name was
-already taken by an ordinary port — silently producing a duplicate Verilog
+already taken by an ordinary port - silently producing a duplicate Verilog
 declaration and a self-referential tautology instead of a diagnostic.
 
 | Test                                                                                 | Locks in                                                                                                    |
@@ -54,7 +54,7 @@ declaration and a self-referential tautology instead of a diagnostic.
 
 ## emit_verilog/tests/valid_bundle_sugar.rs (10 tests)
 
-The `T?` / `??` sugar — a valid-bundle is `{ valid: bit, data: T }`, and
+The `T?` / `??` sugar - a valid-bundle is `{ valid: bit, data: T }`, and
 `??` either unwraps it or OR-muxes two of them.
 
 | Test                                                               | Locks in                                                          |
@@ -76,7 +76,7 @@ The `T?` / `??` sugar — a valid-bundle is `{ valid: bit, data: T }`, and
 | ----------------------------------------- | ------------------------------------------------------------------- |
 | `on_fall_emits_negedge`                   | `on fall(clk)` lowers to `always @(negedge clk)` (A3)               |
 | `async_reset_widens_the_sensitivity_list` | `async reset` lowers to `always @(posedge clk or posedge rst)` (A5) |
-| `a_sync_reset_stays_clock_only`           | a plain `reset` keeps `always @(posedge clk)` — no widening (A5)    |
+| `a_sync_reset_stays_clock_only`           | a plain `reset` keeps `always @(posedge clk)` - no widening (A5)    |
 
 ## emit_verilog/tests/clog2.rs (4 tests)
 
@@ -85,7 +85,7 @@ The `T?` / `??` sugar — a valid-bundle is `{ valid: bit, data: T }`, and
 | `clog2_of_a_const_derives_the_width`                               | `clog2(CONST)` folds to a literal width at compile time           |
 | `clog2_folds_into_the_port_width`                                  | …including in a port declaration                                  |
 | `clog2_of_a_parameter_in_a_body_width_emits_the_constant_function` | over a PARAMETER, the emitter writes a Verilog `function` instead |
-| `clog2_of_a_parameter_in_a_port_is_an_emit_error`                  | but a port width cannot use it — a clean error, not bad Verilog   |
+| `clog2_of_a_parameter_in_a_port_is_an_emit_error`                  | but a port width cannot use it - a clean error, not bad Verilog   |
 
 ## emit_verilog/tests/consts_and_translit.rs (3 tests)
 
@@ -125,7 +125,7 @@ The `T?` / `??` sugar — a valid-bundle is `{ valid: bit, data: T }`, and
 ## emit_verilog/tests/structural_match.rs (4 tests)
 
 Bundle compatibility is STRUCTURAL (same field names and types), not
-nominal (same declared bundle name) — these prove the emitted Verilog is
+nominal (same declared bundle name) - these prove the emitted Verilog is
 byte-identical either way.
 
 | Test                                                                   | Locks in                                   |
@@ -139,7 +139,7 @@ byte-identical either way.
 
 Round-7 plan Task 1 (GAP-18) widened by round-8 plan Task 2: the hoist
 buffer's flush point (`hoist_pos`) is a second scoping axis alongside
-`hoist_unresolved`'s own — a hoisted wire can resolve its `Kind` correctly
+`hoist_unresolved`'s own - a hoisted wire can resolve its `Kind` correctly
 and still land after its own use. `assert_hoists_declared_before_use`
 (`emit_verilog/mod.rs`) is the runtime invariant these tests pin.
 
@@ -167,12 +167,12 @@ and still land after its own use. `assert_hoists_declared_before_use`
 | `build_decls_maps_names_to_kinds`                        | the declaration table records each signal's kind (wire/reg/mem/…)                                                   |
 | `build_decls_resolves_port_and_wire_widths`              | …and its folded concrete width                                                                                      |
 | `sync_loop_emits_fsm_and_ports`                          | a `sync loop` lowers to a real index reg + `start`/`done` handshake                                                 |
-| `sync_double_flop_emits_a_plain_reg_chain`               | `sync.double_flop` becomes two ordinary registers — no special Verilog                                              |
+| `sync_double_flop_emits_a_plain_reg_chain`               | `sync.double_flop` becomes two ordinary registers - no special Verilog                                              |
 | `sync_pulse_emits_a_toggle_reg_and_a_src_clock_on_block` | `sync.pulse` becomes a toggle plus an `on` block on the SOURCE clock                                                |
 
 ## emit_verilog/kinds.rs (16 tests)
 
-`infer_kind` is the emitter-local counterpart to the checker's `Ty` — it
+`infer_kind` is the emitter-local counterpart to the checker's `Ty` - it
 answers "how wide, and signed or not, is this expression?" straight from
 the AST.
 
@@ -181,7 +181,7 @@ the AST.
 | `literal_gets_its_minimal_width`                                    | a bare literal is as narrow as it can be                                                                      |
 | `ident_looks_up_declared_kind`                                      | an identifier takes the kind of its declaration                                                               |
 | `ident_not_in_decls_is_none`                                        | an identifier missing from `decls` resolves to `None`, not a panic                                            |
-| `lossless_add_grows_by_one_bit`                                     | `+` grows — the exact-widths promise                                                                          |
+| `lossless_add_grows_by_one_bit`                                     | `+` grows - the exact-widths promise                                                                          |
 | `concat_sums_part_widths`                                           | `{a, b}` is `width(a) + width(b)`                                                                             |
 | `concat_with_an_unresolvable_part_is_none`                          | a concat with one unresolvable part resolves the whole thing to `None`                                        |
 | `wrap_add_with_a_narrower_bare_literal_adapts_to_the_sized_operand` | `x +% 1` sizes the literal to `x`, not the other way round                                                    |
@@ -204,8 +204,8 @@ emitter hoists the subexpression into an explicitly-sized wire (BUG-19/20).
 | Test                                                           | Locks in                                                                       |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `lossless_sub_self_determines_to_max_operand_width_not_growth` | Verilog does NOT grow `-`; this is exactly the disagreement that needs a hoist |
-| `comparison_has_no_verilog_specific_rule`                      | comparisons agree — no hoist needed                                            |
-| `plain_identifier_has_no_verilog_specific_rule`                | a bare identifier agrees — no hoist needed                                     |
+| `comparison_has_no_verilog_specific_rule`                      | comparisons agree - no hoist needed                                            |
+| `plain_identifier_has_no_verilog_specific_rule`                | a bare identifier agrees - no hoist needed                                     |
 
 ## emit_verilog/expr.rs (1 test)
 

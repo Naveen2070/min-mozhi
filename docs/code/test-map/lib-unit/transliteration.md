@@ -4,7 +4,7 @@
 
 | Test                                              | Locks in                                                                               |
 | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `pure_tamil_words_romanize_readably`              | விளக்கு → `villakku`, நிலை → `nilai` — the readable-output promise                     |
+| `pure_tamil_words_romanize_readably`              | விளக்கு → `villakku`, நிலை → `nilai` - the readable-output promise                     |
 | `ascii_and_mixed_names_keep_their_ascii`          | ASCII passes through untouched, even mixed into a Tamil name                           |
 | `non_tamil_unicode_falls_back_to_hex`             | other scripts → `_uXXXX`, never dropped                                                |
 | `results_always_start_like_an_identifier`         | output is always a valid Verilog identifier start                                      |

@@ -1,4 +1,4 @@
-# 05 — The Verilog Emitter (`crates/mimz-core/src/emit_verilog/`)
+# 05 - The Verilog Emitter (`crates/mimz-core/src/emit_verilog/`)
 
 ASTs + project symbol table → one Verilog-2005 source string.
 
@@ -7,16 +7,16 @@ ASTs + project symbol table → one Verilog-2005 source string.
 | File                 | Owns                                                                                                                                  |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `mod.rs`             | `Project` symbol table, `emit()` entry, `Emitter` state, helpers (`clog2`, `enum_const`, `verilog_literal`)                           |
-| `module/`            | Module shells, ports, declarations, instances, always-blocks — split by concern, see the sub-table below                              |
+| `module/`            | Module shells, ports, declarations, instances, always-blocks - split by concern, see the sub-table below                              |
 | `expr.rs`            | Expression rendering (incl. `match` → ternary chains); self-determined-position hoist call sites                                      |
-| `kinds.rs`           | `infer_kind` — mimz's own width/signedness for an expression, computed straight from the AST (Stage 4, Phase A1b)                     |
-| `self_determined.rs` | `verilog_self_determined_kind` — what real Verilog would compute for an expression in a self-determined position (Stage 4, Phase A1b) |
+| `kinds.rs`           | `infer_kind` - mimz's own width/signedness for an expression, computed straight from the AST (Stage 4, Phase A1b)                     |
+| `self_determined.rs` | `verilog_self_determined_kind` - what real Verilog would compute for an expression in a self-determined position (Stage 4, Phase A1b) |
 | `testbench.rs`       | Inline `test` blocks → Verilog testbench wrappers (`_tb.v`)                                                                           |
 | `translit.rs`        | Tamil → ASCII identifier pre-pass (`transliterate`, runs on the ASTs before `Project::from_files`)                                    |
-| `tests/`             | Unit tests, split by topic — see [`10-test-map.md`](10-test-map.md)                                                                   |
+| `tests/`             | Unit tests, split by topic - see [`10-test-map.md`](10-test-map.md)                                                                   |
 
 `module.rs` outgrew the ~600-line rule (07-decisions) and became a
-directory module on 2026-07-26 — same pattern one level down, `mod.rs`
+directory module on 2026-07-26 - same pattern one level down, `mod.rs`
 keeps the entry point and the siblings hold one concern each:
 
 | File in `module/`  | Owns                                                                                                                            |
@@ -24,23 +24,23 @@ keeps the entry point and the siblings hold one concern each:
 | `mod.rs`           | The `module()` entry and the item dispatch loop                                                                                 |
 | `ports.rs`         | Port/parameter lists, `build_decls`, width folding (`width`/`width_resolved`/`width_subst`), the two `hoist_*_if_needed` hoists |
 | `drives.rs`        | Combinational `assign` emission (`emit_drives`)                                                                                 |
-| `seq.rs`           | `on`-block bodies (`seq_stmts`) — statement `if`, `default`, `loop` unroll inside a clocked block                               |
+| `seq.rs`           | `on`-block bodies (`seq_stmts`) - statement `if`, `default`, `loop` unroll inside a clocked block                               |
 | `instances.rs`     | `repeat` flattening, per-item const folding, instance auto-wiring (`emit_instances`)                                            |
 | `funcs.rs`         | `fn` declaration inlining: body substitution, `loop` unroll with `return` short-circuit                                         |
-| `bundle_fields.rs` | Bundle-field expansion — a `bus.field` read/write resolves to the flattened `bus_field` wire, incl. across instance ports       |
+| `bundle_fields.rs` | Bundle-field expansion - a `bus.field` read/write resolves to the flattened `bus_field` wire, incl. across instance ports       |
 | `tests.rs`         | Unit tests for the above                                                                                                        |
 
 Same module-scoping pattern as the parser: state and shared helpers in
 `mod.rs`, the other files are `impl Emitter` blocks entered via
 `pub(super) fn module()` / `expr()` / `expr_subst()`. The exception is
 `translit.rs`: free functions over the AST, exposed as
-`emit_verilog::transliterate` — the CLI calls it between the checker and
+`emit_verilog::transliterate` - the CLI calls it between the checker and
 the emitter.
 
 ## Transliteration (`translit.rs`)
 
 Tamil-script identifiers (legal Min-Mozhi) become READABLE ASCII Verilog
-names — விளக்கு → `villakku`, சுடர் → `sutar` — via an AST rewrite, so the
+names - விளக்கு → `villakku`, சுடர் → `sutar` - via an AST rewrite, so the
 emitter itself never sees a non-ASCII name (`check_ascii` stays as the
 backstop for direct API users who skip the pre-pass). The scheme
 (decision 2026-06-12):
@@ -52,7 +52,7 @@ backstop for direct API users who skip the pre-pass). The scheme
 - Any other non-ASCII character becomes `_uXXXX` (uppercase hex).
 - Deterministic, one shared map per compile: collisions (ந/ன both → `n`;
   a romanization landing on an existing ASCII name or a Verilog keyword)
-  take `_2`, `_3`, … in first-seen source order — so the four flavor
+  take `_2`, `_3`, … in first-seen source order - so the four flavor
   folders still emit byte-identical Verilog.
 
 `vilakku` (4 flavors) is the worked example: every identifier in it is
@@ -60,11 +60,11 @@ Tamil; the emitted Verilog is pure ASCII outside the banner comment.
 
 ## Architecture invariant #6: deliberately dumb and readable
 
-The emitter is **string-based** — it formats text directly from the AST,
+The emitter is **string-based** - it formats text directly from the AST,
 no IR in between. Key consequence: **module parameters are emitted
 symbolically**. `bits[WIDTH]` becomes `[(WIDTH)-1:0]` and parameters pass
 straight through to Verilog parameters. The only constant folding here is
-the compile-time machinery `repeat` requires — `const`s and loop variables
+the compile-time machinery `repeat` requires - `const`s and loop variables
 fold to literals (see "Compile-time generation" below); parameters never
 do, so the symbolic-width property holds.
 
@@ -75,7 +75,7 @@ Phase 2 IR will demote it to a debugging backend rather than grow it into
 a compiler.
 
 Corollary: **parenthesize everything**. Every compound expression renders
-wrapped in `(...)`. Ugly, unambiguous, correct — prettiness is a future
+wrapped in `(...)`. Ugly, unambiguous, correct - prettiness is a future
 emitter's job, correctness is this one's.
 
 ## How a module is emitted (`module/`)
@@ -83,19 +83,19 @@ emitter's job, correctness is this one's.
 Source order inside a `.mimz` module body is free; output is regrouped
 into conventional Verilog order:
 
-1. **Header**: `module Name #(parameter ...) ( ports );` — ports (incl.
+1. **Header**: `module Name #(parameter ...) ( ports );` - ports (incl.
    clock/reset) appear in the order they were declared in the source.
 2. **Enum localparams**: each variant becomes
    `localparam [w-1:0] STATE_RED = 0;` with `w = clog2(variant count)`.
 3. **Declarations**: `wire`/`reg`/`mem` with their width strings (a `mem`
-   becomes a Verilog reg array with a power-on `initial` loop — see below).
+   becomes a Verilog reg array with a power-on `initial` loop - see below).
 4. **Instances** (see below).
 5. **Combinational drives**: `assign` for every `wire ... = ...` and
    every `lhs = rhs` drive.
-6. **Always-blocks**: one `always @(...)` per `on` block — `posedge clk`, or
+6. **Always-blocks**: one `always @(...)` per `on` block - `posedge clk`, or
    `posedge clk or posedge rst` when the reset is `async` (see below).
 
-### Instances — the auto-wiring contract
+### Instances - the auto-wiring contract
 
 `instance()` walks the **child module's interface** (not the connection
 list), which is what makes the errors precise:
@@ -104,7 +104,7 @@ list), which is what makes the errors precise:
 - **clock/reset** fall back to connecting a same-named signal in the
   parent when omitted (spec/02 section 1.5's implicit connection).
 - Every child **output** gets an auto-declared wire named
-  `{instance}_{port}` — and that is exactly what `inst.port` field
+  `{instance}_{port}` - and that is exactly what `inst.port` field
   accesses render to in `expr.rs`. The two files meet at this naming
   convention; change it in both places or not at all.
 - Child port widths may mention child parameters (`bits[WIDTH]`); when
@@ -114,7 +114,7 @@ list), which is what makes the errors precise:
   exists.
 - Connections naming a port the child doesn't have are errors.
 
-### Always-blocks — the generated reset
+### Always-blocks - the generated reset
 
 The writer never writes reset logic; the language guarantees it. For each
 `on` block:
@@ -131,20 +131,20 @@ end
 
 `collect_assigned` gathers every register the block writes (recursing
 through both `if` branches); each gets its declared reset value in the
-reset branch. Registers the block never writes are untouched — a module
+reset branch. Registers the block never writes are untouched - a module
 with two `on` blocks resets each register in the block that owns it.
 If the module declares no `reset`, the body is emitted without the
 reset wrapper.
 
 This works because the parser already guaranteed every `reg` has a reset
-value — safety rules compose.
+value - safety rules compose.
 
 ### Registers also get a power-on `initial` seed (BUG-65, `docs/audit/bugs.md`)
 
 Separately from the synchronous `if (rst)` branch above, every `reg` in a
 module also gets an `initial <name> = <its declared reset value>;`
 statement, emitted right after the declarations (same power-on-seeding
-idea as `mem`'s own `initial` loop, above) — the FIRST such line in a
+idea as `mem`'s own `initial` loop, above) - the FIRST such line in a
 module is preceded by a one-time comment:
 
 ```text
@@ -156,21 +156,21 @@ initial value = 0;
 ```
 
 Why: `mimz-sim`'s kernel already honors a reg's declared value from cycle
-0 unconditionally (no reset pulse required — the same "no uninitialized
+0 unconditionally (no reset pulse required - the same "no uninitialized
 state" guarantee `mem` gets), but the emitted Verilog used to leave a reg
-as a real 4-state `X` until reset was actually asserted — a design that
+as a real 4-state `X` until reset was actually asserted - a design that
 reads a reg before ever pulsing reset agreed with `mimz test` and
 disagreed with real `iverilog`. Confirmed against real hardware-adjacent
 tooling: several shipped `std/*.mimz` "starts empty/zero, no stimulus"
 tests failed under Icarus for exactly this reason before the fix. The
 `initial` line is simulation/FPGA convenience only (an ASIC flow ignores
-it — the comment says so explicitly); the synchronous `if (rst)` branch
+it - the comment says so explicitly); the synchronous `if (rst)` branch
 is still the only reset an ASIC-targeted design can rely on.
 
 **The `#0` variant (BUG-66):** when the init expression itself forced a
-self-determined-position hoist — rendering it pushed a hoisted `wire` +
+self-determined-position hoist - rendering it pushed a hoisted `wire` +
 continuous `assign` pair that would race this very `initial` block in
-the same time-0 active region — the emitter writes
+the same time-0 active region - the emitter writes
 `initial #0 <name> = <expr>;` instead, deferring the seed one delay slot
 so the hoisted `assign` settles first (`emit_verilog/module/mod.rs`;
 round-8 Task 7 narrowed the guard to fire only when a hoist actually
@@ -179,9 +179,9 @@ single-statement form did not reproduce the race under `iverilog`). The
 guarded form is pinned by `tests/hoist_declaration_order.rs`
 (`initial #0 r =`). Golden-diff trap for maintainers: if regenerated
 output grows or loses a `#0` on an `initial` line, some operand's
-hoisting changed — diagnose it, don't blindly re-bless the golden.
+hoisting changed - diagnose it, don't blindly re-bless the golden.
 
-### Asynchronous reset — sensitivity-list widening
+### Asynchronous reset - sensitivity-list widening
 
 By default the always-block is clock-only (`always @(posedge clk)`) and the reset
 is sampled inside it (synchronous). When the module declares `async reset rst`,
@@ -197,10 +197,10 @@ The `if (rst) …` body is unchanged; only the sensitivity list differs. A sync
 reset (the default) keeps the clock-only list. The choice is driven by
 `ModuleItem::Reset { is_async }`.
 
-### Memories (`mem`) — reg arrays with a power-on init
+### Memories (`mem`) - reg arrays with a power-on init
 
 A `mem name: bits[W][DEPTH] = init` lowers to a Verilog reg array plus an
-`initial` loop that seeds every cell to the init value at power-on — a memory's
+`initial` loop that seeds every cell to the init value at power-on - a memory's
 equivalent of a reset value (which is why the init is mandatory, E1104):
 
 ```text
@@ -219,11 +219,11 @@ Mostly 1:1 symbol mapping. The interesting cases:
 
 - **Wrapping ops** `+%`/`-%`/`*%` emit plain `+`/`-`/`*`: same-width
   Verilog arithmetic already wraps. (Lossless `+`/`-`/`*` emit the same
-  thing today — width-growth enforcement is the checker's job. Verilog
+  thing today - width-growth enforcement is the checker's job. Verilog
   semantics make the result correct when widths are right; the checker
   will make wrong widths impossible.) A bare integer-literal operand of a
-  same-width "adapt to sibling" operator (`& | ^` or `+% -% *%`) — e.g.
-  `value +% 1` — renders explicitly sized to the sibling's resolved width
+  same-width "adapt to sibling" operator (`& | ^` or `+% -% *%`) - e.g.
+  `value +% 1` - renders explicitly sized to the sibling's resolved width
   (`8'd1`, not a bare `1`) whenever that width is resolvable (BUG-56,
   `docs/audit/bugs.md`): standing alone a plain `1` is fine (Verilog's own
   32-bit-unsized-literal default still evaluates correctly there), but
@@ -232,13 +232,13 @@ Mostly 1:1 symbol mapping. The interesting cases:
   only when a nesting site is detected.
 - **`match` → nested ternaries**: each arm becomes
   `(scrutinee == pat) ? value : (...)`; multi-pattern arms OR their
-  comparisons; the final (or wildcard) arm is the default — which is also
+  comparisons; the final (or wildcard) arm is the default - which is also
   the bit-flip recovery path (the checker guarantees exhaustiveness,
   E0601, before anything reaches the emitter).
 - **`Enum.Variant`** → the localparam name (`STATE_RED`);
   **`instance.port`** → the auto-wire (`add_sum`). Disambiguated by
   looking the base name up in `project.enums`.
-- **`extend(x, N)`** emits just `(x)` — extension is context-automatic
+- **`extend(x, N)`** emits just `(x)` - extension is context-automatic
   in Verilog assignments: unsigned operands zero-extend, and
   `signed`-declared ones SIGN-extend (see "Signed emission" below). The
   call exists for the checker to verify widths. When `x` is a compile-time
@@ -257,7 +257,7 @@ Mostly 1:1 symbol mapping. The interesting cases:
 Verilog's own width-inference rule for a **self-determined position**
 (a concat/replication member, a comparison operand, a `$signed`/
 `$unsigned` argument, `extend()`'s own argument) can disagree with
-mimz's — e.g. a lossless `-` grows by one bit in mimz's model but
+mimz's - e.g. a lossless `-` grows by one bit in mimz's model but
 Verilog self-determines it at the plain max-operand width with no
 growth (BUG-19), and a slice's base (`x[hi:lo]`) must be a plain
 identifier in real Verilog even though mimz's own grammar allows an
@@ -266,14 +266,14 @@ arbitrary expression there (BUG-20).
 `kinds::infer_kind` (mimz's own Kind) and `self_determined::
 verilog_self_determined_kind` (Verilog's Kind for the same expression in
 a self-determined position) are two independent computations over the
-same `Expr`, both driven by `Emitter::build_decls` — every `Port`/`Wire`/
+same `Expr`, both driven by `Emitter::build_decls` - every `Port`/`Wire`/
 `Reg` `Kind` of the CURRENT module, built once per module and cached on
 `Emitter::cur_decls`, bundle fields flattened to `{name}_{field}` entries
 the same way every other bundle-aware renderer here does. `Emitter::
 hoist_if_needed` compares the two; on a mismatch it lifts the expression
 into a fresh `wire __mimz_sub_N; assign __mimz_sub_N = <expr>;` pair
 (injected at the module-body top, alongside the `clog2`/user-`fn`
-injections) and uses the wire's name instead — forcing the expression to
+injections) and uses the wire's name instead - forcing the expression to
 evaluate at mimz's own intended width before it ever reaches the
 self-determined position. `Emitter::hoist_slice_base_if_needed` is the
 BUG-20/BUG-19-`extend` sibling: it hoists unconditionally on SHAPE
@@ -283,7 +283,7 @@ regardless of width.
 
 Call sites (`expr.rs`): `ExprKind::Concat`/`Replicate` (each part),
 the shared binary-operator arm (comparison operators only:
-`Eq|Ne|Lt|Le|Gt|Ge` — Verilog LRM 5.5.1 makes only comparison operands
+`Eq|Ne|Lt|Le|Gt|Ge` - Verilog LRM 5.5.1 makes only comparison operands
 genuinely self-determined; every other binary operator's operands are
 context-determined and should not be hoisted), `Builtin::SignedCast`/
 `UnsignedCast`, `Builtin::Extend`'s non-constant argument, and
@@ -292,13 +292,13 @@ Every call site is guarded by `expr::kind_is_inferrable`, a non-panicking
 mirror of `infer_kind`'s own traversal shape: `Emitter::cur_decls` is
 deliberately incomplete (it never has a `fn` body's own params/`let`s, a
 module `parameter` kept symbolic by design, or anything from the
-testbench emitter, which never calls `module()` at all) — the guard
+testbench emitter, which never calls `module()` at all) - the guard
 skips hoisting cleanly for those instead of panicking, so hoisting only
 ever fires for genuine module-body value expressions.
 
 ## Compile-time generation: `repeat` unrolling
 
-`repeat` is **not** emitted as a Verilog `generate` loop — the dumb-emitter
+`repeat` is **not** emitted as a Verilog `generate` loop - the dumb-emitter
 invariant says no symbolic generation. Instead the emitter carries a small
 `env: HashMap<String, i128>` of compile-time values (file consts, then module
 consts, then enclosing `repeat` loop variables) and **unrolls** each block,
@@ -308,12 +308,12 @@ reusing the checker's `consteval::eval` rather than reimplementing it:
   literal; index/bound expressions (`sum[i]`, `i + 1`, `WIDTH - 1`) fold the
   same way; a compile-time `if` (`if i == 0 { … } else { … }`) collapses to
   the taken branch. Module **parameters are deliberately absent** from `env`,
-  so they stay symbolic Verilog `parameter`s (`[WIDTH-1:0]`) — only literals,
+  so they stay symbolic Verilog `parameter`s (`[WIDTH-1:0]`) - only literals,
   named `const`s, and loop variables fold. A `const` therefore emits **no
   hardware**; it is compile-time-only (spec/02 section 4).
 - **Two passes, budgeted.** Instances are unrolled before drives (Verilog
   declare-before-use); each pass resets a `REPEAT_BUDGET` (4096) and errors
-  if a single expansion would exceed it — a runaway-bound backstop.
+  if a single expansion would exceed it - a runaway-bound backstop.
 - **Flat names.** An array instance `let fa[i] = …` becomes `fa__<i>`
   (double underscore to stay clear of user names); its auto-wired outputs
   become `fa__<i>_<port>`, which is exactly what an indexed field read
@@ -331,11 +331,11 @@ exhaustively under Icarus.
 
 Three more compile-time constructs, each handled differently by this file:
 
-- **`loop`** unrolls exactly like `repeat` — same `env`/`REPEAT_BUDGET`
+- **`loop`** unrolls exactly like `repeat` - same `env`/`REPEAT_BUDGET`
   mechanism, directly in the emitter, no separate AST lowering pass. Both
   the `on`-block form (`SeqStmt::Loop`) and the `fn`-body form
   (`FnStmt::Loop`) unroll this way; unlike `SeqStmt::If`, a `loop` body
-  unrolls at the SAME nesting `depth` (it introduces no new Verilog block —
+  unrolls at the SAME nesting `depth` (it introduces no new Verilog block -
   it's a literal textual duplicate of hand-written code).
 - **`foreach`** is pure sugar over `repeat`/`loop`, but lowered at different
   points depending on where it appears: at the module-item and
@@ -344,7 +344,7 @@ Three more compile-time constructs, each handled differently by this file:
   `on`-blocks (`SeqStmt::ForEach`) and `fn` bodies (`FnStmt::ForEach`) it
   lowers **on the spot**, at the point of use, via `ast::lower_foreach_in_seq`
   / `lower_foreach_fn`, then recurses into the resulting `Loop` at the same
-  depth. There is no dedicated "emit a ForEach" code path anywhere — only
+  depth. There is no dedicated "emit a ForEach" code path anywhere - only
   "lower a ForEach, then emit the `Loop`/`Repeat` it becomes."
 - **`sync loop`** is different in kind, not just in lowering point:
   `ast::lower_sync_loop` rewrites `ModuleItem::SyncLoop` into ordinary
@@ -352,7 +352,7 @@ Three more compile-time constructs, each handled differently by this file:
   handshake) before `flatten_items` runs, so the emitter produces the exact
   same `always @(posedge clk)` FSM it would for a hand-written equivalent.
   No part of the actual emission logic in this file has a `SyncLoop`-specific
-  code path — only the flatten/instance-collection stages know a `SyncLoop`
+  code path - only the flatten/instance-collection stages know a `SyncLoop`
   item existed, so they can route it through the pre-lowered items instead.
 
 ## Bundle flattening
@@ -360,7 +360,7 @@ Three more compile-time constructs, each handled differently by this file:
 A bundle-typed port, wire, or signal never reaches Verilog as one signal.
 `Project::bundles` resolves the declaration, and `resolve_bundle_fields`
 expands each field to its own scalar/vector signal, name-mangled as
-**`{signal}_{field}`** (single underscore — distinct from the
+**`{signal}_{field}`** (single underscore - distinct from the
 double-underscore `fa__<i>` scheme used for unrolled instance arrays, see
 above). A bundle literal (`Bundle { f: x }`) driving a bundle-typed wire
 emits one `assign name_field = value;` per field; a bundle-to-bundle drive
@@ -379,7 +379,7 @@ native two's-complement semantics apply:
 - comparisons are signed.
 
 Sound because the checker forbids signed/unsigned mixing inside one
-expression (E0403) — a Verilog expression here is either all-signed or
+expression (E0403) - a Verilog expression here is either all-signed or
 all-unsigned, never the silent-fallback mix.
 
 Verified exhaustively by `signed_math` (4 flavors) + its 256-pair Icarus
@@ -387,7 +387,7 @@ TB; the deliberate breakage check (drop the `signed` modifier) makes that
 TB fail with "sign lost".
 
 Residual edge, documented honestly: `trunc` emits a part-select, which
-Verilog treats as unsigned MID-expression — at declared-signal
+Verilog treats as unsigned MID-expression - at declared-signal
 boundaries (the normal case) signedness is restored by the declaration;
 spec/02 already rules "slicing signed yields bits".
 
@@ -397,9 +397,9 @@ The emitter's rule for unimplemented features: **error, never guess.**
 
 | Gap                                                                   | Error points at           | Lands with                                                         |
 | --------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------ |
-| Non-ASCII reaching the emitter                                        | the identifier            | never, normally — `transliterate` runs first; this is the backstop |
+| Non-ASCII reaching the emitter                                        | the identifier            | never, normally - `transliterate` runs first; this is the backstop |
 | Field access on complex exprs                                         | the expression            | checker/IR                                                         |
-| Bundle destructure in a module body (`ModuleItem::BundleDestructure`) | the destructure statement | not yet implemented — errors "not yet supported by the emitter"    |
+| Bundle destructure in a module body (`ModuleItem::BundleDestructure`) | the destructure statement | not yet implemented - errors "not yet supported by the emitter"    |
 
 ## Known performance notes
 
@@ -409,12 +409,12 @@ The emitter's rule for unimplemented features: **error, never guess.**
 
 ## Testing
 
-`tests/examples.rs` compiles every example and asserts on the output —
+`tests/examples.rs` compiles every example and asserts on the output -
 including the four-flavor byte-identity test, which proves the
-trilingual thesis at the byte level — and pins every base example's
+trilingual thesis at the byte level - and pins every base example's
 FULL output to `tests/golden/<base>.v` (banner line excluded, so
 version bumps don't churn goldens). After an INTENDED emitter change:
-`MIMZ_UPDATE_GOLDENS=1 cargo test --test examples` regenerates them —
+`MIMZ_UPDATE_GOLDENS=1 cargo test --test examples` regenerates them -
 then review the golden diff like any other code change. The Icarus
 suite (`tests/icarus.rs`) remains the independent judge: our asserts
 check OUR expectations; iverilog + the self-checking TBs check

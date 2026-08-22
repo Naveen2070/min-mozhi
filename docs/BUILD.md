@@ -1,4 +1,4 @@
-# Building Min-Mozhi — Tools, Crates & Commands
+# Building Min-Mozhi - Tools, Crates & Commands
 
 A single reference for **what to install** and **how to build/run/test** every
 part of this repository: the compiler, the WebAssembly crate, the website, and
@@ -6,7 +6,7 @@ the VS Code extension. All commands run from the **repo root** unless noted.
 
 > Quick links: [Toolchain](#1-toolchain-prerequisites) ·
 > [Workspace & crates](#2-workspace--crates) ·
-> [Compiler (native)](#3-compiler-native--the-regular-build) ·
+> [Compiler (native)](#3-compiler-native---the-regular-build) ·
 > [Tests & gate](#4-tests--quality-gate-r8) ·
 > [WASM crate](#5-wasm-crate-cratesmimz-wasm) ·
 > [Website](#6-website-site) · [VS Code extension](#7-vs-code-extension-editorsvscode) ·
@@ -20,13 +20,13 @@ the VS Code extension. All commands run from the **repo root** unless noted.
 | ------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------- |
 | **Rust** (`rustc` + `cargo`)          | **1.85+** (MSRV); edition 2024                                                           | the compiler, everything              | <https://rustup.rs>                                      |
 | **rustup**                            | any                                                                                      | managing the wasm target              | comes with the rustup installer                          |
-| **wasm32 target**                     | —                                                                                        | building the WASM crate               | `rustup target add wasm32-unknown-unknown`               |
+| **wasm32 target**                     | -                                                                                        | building the WASM crate               | `rustup target add wasm32-unknown-unknown`               |
 | **wasm-pack** _(recommended)_         | latest                                                                                   | web `.wasm` + JS glue (runs wasm-opt) | `cargo install wasm-pack`                                |
 | **wasm-bindgen-cli** _(or)_           | **must match** the `wasm-bindgen` crate (see [section 5](#5-wasm-crate-cratesmimz-wasm)) | manual/headless wasm glue             | `cargo install wasm-bindgen-cli --version <X.Y.Z>`       |
 | **Node.js** + **npm**                 | Node ≥ 20 (dev on 24); npm 11                                                            | the website + VS Code extension       | <https://nodejs.org>                                     |
-| **Icarus Verilog** (`iverilog`/`vvp`) | any                                                                                      | _optional_ — the differential tests   | <https://bleyer.org/icarus> (Win) / your package manager |
+| **Icarus Verilog** (`iverilog`/`vvp`) | any                                                                                      | _optional_ - the differential tests   | <https://bleyer.org/icarus> (Win) / your package manager |
 
-`prettier` and `markdownlint-cli2` are run via `npx` — no install needed.
+`prettier` and `markdownlint-cli2` are run via `npx` - no install needed.
 
 ---
 
@@ -36,10 +36,10 @@ This is a Cargo **workspace** (root = the compiler) plus two npm projects:
 
 | Path                  | What it is                                                                                                                          | Built with                     |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `.` (root, `src/`)    | **`mimz`** — shell crate (CLI, fs I/O, LSP, hw-emulation) + `mimz`/`mimz-bench` binaries; re-exports mimz-core/mimz-sim as a facade | cargo                          |
-| `crates/mimz-core/`   | **`mimz-core`** — pure lexer/parser/ast/checker/emit_verilog/etc, zero optional deps                                                | cargo                          |
-| `crates/mimz-sim/`    | **`mimz-sim`** — event-driven simulator + `runner.rs`, depends only on mimz-core                                                    | cargo                          |
-| `crates/mimz-wasm/`   | **`mimz-wasm`** — wasm-bindgen wrapper (`compileToVerilog`), depends on `mimz-sim` directly                                         | cargo + wasm-pack/wasm-bindgen |
+| `.` (root, `src/`)    | **`mimz`** - shell crate (CLI, fs I/O, LSP, hw-emulation) + `mimz`/`mimz-bench` binaries; re-exports mimz-core/mimz-sim as a facade | cargo                          |
+| `crates/mimz-core/`   | **`mimz-core`** - pure lexer/parser/ast/checker/emit_verilog/etc, zero optional deps                                                | cargo                          |
+| `crates/mimz-sim/`    | **`mimz-sim`** - event-driven simulator + `runner.rs`, depends only on mimz-core                                                    | cargo                          |
+| `crates/mimz-wasm/`   | **`mimz-wasm`** - wasm-bindgen wrapper (`compileToVerilog`), depends on `mimz-sim` directly                                         | cargo + wasm-pack/wasm-bindgen |
 | `tools/test-summary/` | dev helper behind the `cargo test-summary` alias                                                                                    | cargo                          |
 | `benches/compile.rs`  | per-phase `criterion` micro-benchmarks                                                                                              | `cargo bench`                  |
 | `site/`               | the Astro website (landing + docs + playground)                                                                                     | npm                            |
@@ -48,17 +48,17 @@ This is a Cargo **workspace** (root = the compiler) plus two npm projects:
 **Cargo features** (root `Cargo.toml`): `default = ["lsp", "bench", "watch",
 "hw-emulation"]`. The CLI-only deps that don't build on wasm32 (`tokio`,
 `tower-lsp`, `memory-stats`, `ratatui`/`crossterm`/`cpal`) are optional behind
-those features, and live only in the root shell crate — `mimz-core` and
+those features, and live only in the root shell crate - `mimz-core` and
 `mimz-sim` have zero optional deps. `mimz-wasm` depends on `mimz-sim`
 directly (not on root `mimz`), so no `default-features = false` dance is
 needed there. Root `Cargo.toml` sets `default-members = ["."]`, so the
-everyday `cargo build`/`cargo test` only targets the shell crate — pass
+everyday `cargo build`/`cargo test` only targets the shell crate - pass
 `--workspace` to also build/test `mimz-core`/`mimz-sim` directly (CI does;
 see `docs/code/10-test-map.md`).
 
 ---
 
-## 3. Compiler (native) — the regular build
+## 3. Compiler (native) - the regular build
 
 ```sh
 cargo build                 # debug build of the mimz CLI
@@ -102,7 +102,7 @@ npx prettier --check "**/*.md"
 npx markdownlint-cli2 "**/*.md"
 ```
 
-`--workspace` is not optional here (see section 2) — CI (`.github/workflows/ci.yml`) runs every one of these with it.
+`--workspace` is not optional here (see section 2) - CI (`.github/workflows/ci.yml`) runs every one of these with it.
 
 Extras:
 
@@ -123,14 +123,14 @@ set `REQUIRE_IVERILOG=1` to make them a hard failure instead of skipping.
 Exposes two functions to JavaScript, both throwing a JS `Error` whose message
 is the rendered diagnostics on failure:
 
-- `compileToVerilog(source: string): string` — compile straight to Verilog.
-- `runCommand(source: string, command: string, args: string[]): string` — run
+- `compileToVerilog(source: string): string` - compile straight to Verilog.
+- `runCommand(source: string, command: string, args: string[]): string` - run
   any `mimz` subcommand (`check`/`compile`/`eval`/`sim`/`test`) against
   in-memory source, the engine behind the playground's in-browser console.
 
 Two build paths:
 
-### A. Production build for the web — `wasm-pack` (recommended)
+### A. Production build for the web - `wasm-pack` (recommended)
 
 ```sh
 rustup target add wasm32-unknown-unknown        # one-time
@@ -138,7 +138,7 @@ cargo install wasm-pack                          # one-time
 wasm-pack build crates/mimz-wasm --target web --release
 ```
 
-Output: **`crates/mimz-wasm/pkg/`** — `mimz_wasm.js`, `mimz_wasm_bg.wasm`,
+Output: **`crates/mimz-wasm/pkg/`** - `mimz_wasm.js`, `mimz_wasm_bg.wasm`,
 `*.d.ts`. `wasm-pack` runs `wasm-opt`, stripping dead code (e.g. the CLI's
 `clap`). Consume it from the site:
 
@@ -148,7 +148,7 @@ await init();
 const verilog = compileToVerilog(source); // throws on a compile error
 ```
 
-### B. Manual / headless — `cargo` + `wasm-bindgen-cli` (verified path)
+### B. Manual / headless - `cargo` + `wasm-bindgen-cli` (verified path)
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -164,7 +164,7 @@ wasm-bindgen --target nodejs --out-dir crates/mimz-wasm/pkg \
 node crates/mimz-wasm/smoke-test.cjs
 ```
 
-The smoke test compiles the counter through wasm and checks an error path —
+The smoke test compiles the counter through wasm and checks an error path -
 a fast, browserless proof the crate works.
 
 ### Just compile-check the wasm (no glue, fastest)
@@ -198,7 +198,7 @@ change a markdown/rehype plugin and a rebuild looks stale, clear the content
 cache: `rm -rf site/.astro site/node_modules/.astro` then rebuild.
 
 **Playground prerequisite.** The `/playground` page imports the wasm glue from
-`site/src/lib/wasm/` (git-ignored — generated, not committed). The `build:wasm`
+`site/src/lib/wasm/` (git-ignored - generated, not committed). The `build:wasm`
 script handles this: it compiles `crates/mimz-wasm` to wasm32 and runs
 `wasm-bindgen --target web` into `site/src/lib/wasm/`.
 
@@ -222,7 +222,7 @@ launches `mimz lsp`; set `mimz.serverPath` if `mimz` isn't on PATH.
 
 ## 8. Where the artifacts land
 
-Most of these are git-ignored — regenerate with the command shown.
+Most of these are git-ignored - regenerate with the command shown.
 
 | Artifact           | Path                                                   | Produced by                                                          |
 | ------------------ | ------------------------------------------------------ | -------------------------------------------------------------------- |

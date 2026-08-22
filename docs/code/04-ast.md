@@ -1,4 +1,4 @@
-# 04 — The AST (`crates/mimz-core/src/ast/`)
+# 04 - The AST (`crates/mimz-core/src/ast/`)
 
 The data structure every other stage agrees on.
 
@@ -7,11 +7,11 @@ The data structure every other stage agrees on.
 | File                 | Owns                                                                                                                                                                                                                                                   |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `mod.rs`             | Files, modules, declarations, sequential/test statements                                                                                                                                                                                               |
-| `expr.rs`            | Expressions, patterns, operators — re-exported via `pub use`                                                                                                                                                                                           |
-| `sync_loop_lower.rs` | Desugars `ModuleItem::SyncLoop` into `Port`/`Reg`/`On`/`Drive` primitives — the one shared function `emit_verilog` and `sim` both call                                                                                                                 |
-| `sync_prim_lower.rs` | Desugars `sync.double_flop`/`sync.pulse` `Builtin::Call` sites into `Reg`/`On`/`Wire` primitives — hidden names derived from the call's own target name, no counter; `expand_sync_prims` is the one shared function `emit_verilog` and `sim` both call |
-| `foreach_lower.rs`   | Desugars `ForEach`/`SeqStmt::ForEach`/`FnStmt::ForEach` into `Repeat`/`SeqStmt::Loop`/`FnStmt::Loop` — checker validates the original `ForEach` node directly; emit/sim/pretty each lower on the spot                                                  |
-| `builtin_bundles.rs` | Builds the two compiler-synthesized `__Valid`/`__ValidSigned` `BundleDecl`s backing `T?` sugar — never present in any `.mimz` source; shared by `checker::symbols::build_symbols` and `emit_verilog::Project::from_files`                              |
+| `expr.rs`            | Expressions, patterns, operators - re-exported via `pub use`                                                                                                                                                                                           |
+| `sync_loop_lower.rs` | Desugars `ModuleItem::SyncLoop` into `Port`/`Reg`/`On`/`Drive` primitives - the one shared function `emit_verilog` and `sim` both call                                                                                                                 |
+| `sync_prim_lower.rs` | Desugars `sync.double_flop`/`sync.pulse` `Builtin::Call` sites into `Reg`/`On`/`Wire` primitives - hidden names derived from the call's own target name, no counter; `expand_sync_prims` is the one shared function `emit_verilog` and `sim` both call |
+| `foreach_lower.rs`   | Desugars `ForEach`/`SeqStmt::ForEach`/`FnStmt::ForEach` into `Repeat`/`SeqStmt::Loop`/`FnStmt::Loop` - checker validates the original `ForEach` node directly; emit/sim/pretty each lower on the spot                                                  |
+| `builtin_bundles.rs` | Builds the two compiler-synthesized `__Valid`/`__ValidSigned` `BundleDecl`s backing `T?` sugar - never present in any `.mimz` source; shared by `checker::symbols::build_symbols` and `emit_verilog::Project::from_files`                              |
 
 The split is purely for file size; `pub use expr::*` means consumers
 write `ast::ExprKind` and never see it.
@@ -20,19 +20,19 @@ write `ast::ExprKind` and never see it.
 
 **No keyword-flavor or word-order information survives past the parser.**
 A Tanglish counter and an English counter produce structurally identical
-ASTs — that's why `tanglish_counter_compiles_to_identical_verilog`
+ASTs - that's why `tanglish_counter_compiles_to_identical_verilog`
 (tests/examples.rs) can assert byte-identical Verilog output, and it's
 what makes the Phase 1.8 grammar engine cheap: `thamizh-order` is a
 parser profile, not a second AST. Every downstream pass (checker,
 emitter, simulator) is automatically trilingual.
 
-The only flavor trace anywhere is `Token::flavor` — and tokens stop at
+The only flavor trace anywhere is `Token::flavor` - and tokens stop at
 the parser.
 
 ## Design rules
 
 - **Spans everywhere.** Every node that an error could point at carries a
-  `Span`. Adding a node type without a span is almost always a mistake —
+  `Span`. Adding a node type without a span is almost always a mistake -
   the checker will need to report on it eventually.
 - **`Ident` = name + span**, used for every user-written name. Plain
   `String` appears only where there is genuinely no source location.
@@ -43,32 +43,32 @@ the parser.
   `WIDTH` expression as written. Const evaluation is a checker
   responsibility; the AST never pre-computes.
 - **Structured, not stringly.** Builtins are an enum (`Builtin::Extend`…),
-  operators are enums — there is no "look at the name again later".
+  operators are enums - there is no "look at the name again later".
   The single exception is `Type::Named(Ident)` for enum types, resolved
   against the symbol table at emit (later: check) time.
 
-## Statement vs expression `if` — a deliberate split
+## Statement vs expression `if` - a deliberate split
 
 | Form                           | Node               | `else`        | Why                                                           |
 | ------------------------------ | ------------------ | ------------- | ------------------------------------------------------------- |
 | `if` driving a value (wires)   | `ExprKind::IfExpr` | **mandatory** | a missing branch = an undriven wire in some cycles = a latch  |
-| `if` inside `on` blocks (regs) | `SeqStmt::If`      | optional      | an unassigned register simply holds its value — no latch risk |
+| `if` inside `on` blocks (regs) | `SeqStmt::If`      | optional      | an unassigned register simply holds its value - no latch risk |
 
 This distinction is load-bearing for the no-latches guarantee; keep it.
 
-## `TopItem::Func` — combinational function declarations
+## `TopItem::Func` - combinational function declarations
 
 `TopItem::Func(FuncDecl)` holds a file-level `fn` declaration: name, parameter list
 (`Vec<FnParam>`), return type, a `stmts: Vec<FnStmt>` body, and a mandatory
-`tail: Expr` — the fallthrough result if no statement returns. This replaced the
+`tail: Expr` - the fallthrough result if no statement returns. This replaced the
 original `locals: Vec<LocalLet>` + `body: Expr` shape when `return` and
 statement-level `if` were added to `fn` bodies (spec/02 section 1.13); every
 pre-existing `fn` (locals + tail expr only) still parses to the same `stmts`/`tail`
 shape unchanged. `FnParam` (name + type) is intentionally named differently from
-the module-param `Param` (name + `ParamTy` + optional default) — they are
+the module-param `Param` (name + `ParamTy` + optional default) - they are
 different constructs.
 
-`FnStmt` mirrors `SeqStmt`'s shape (`on`-block statements) — same idea, a
+`FnStmt` mirrors `SeqStmt`'s shape (`on`-block statements) - same idea, a
 different terminal node:
 
 ```rust
@@ -82,7 +82,7 @@ enum FnStmt {
 }
 ```
 
-`FnStmt::If`'s `els` is `Option`, unlike `ExprKind::IfExpr` (mandatory `else` —
+`FnStmt::If`'s `els` is `Option`, unlike `ExprKind::IfExpr` (mandatory `else` -
 see "Statement vs expression `if`" above): a statement-level branch that doesn't
 return just falls through to the next statement, or ultimately `tail`, so there is
 no latch risk to guard against.
@@ -94,7 +94,7 @@ syntactically distinct from `ExprKind::Call { func: Builtin, … }` (built-ins):
 the parser resolves the distinction by name at parse time, so downstream passes see
 typed variants, never string names.
 
-## `Type::Array` and `ExprKind::ArrayLit` — fixed-size `fn`-parameter arrays
+## `Type::Array` and `ExprKind::ArrayLit` - fixed-size `fn`-parameter arrays
 
 ```rust
 Type::Array { elem: Box<Type>, len: Box<Expr> }   // `<elem>[N]`
@@ -102,26 +102,26 @@ ExprKind::ArrayLit(Vec<Expr>)                     // `[e1, ..., eN]`
 ```
 
 `Type::Array` is produced by `ty()`'s trailing-`[N]`-suffix loop
-(`03-parser.md`) wrapping any scalar type — `elem` is a bare `Box<Type>`
+(`03-parser.md`) wrapping any scalar type - `elem` is a bare `Box<Type>`
 with no span of its own, so diagnostics anchor on `len`'s span instead
 (the only span-bearing part of the node available). The parser is
 deliberately lenient here: `bits[8][4][2]` parses cleanly to a nested
 `Array { elem: Array { .. }, len: 2 }` even though nested arrays are not
-supported — the checker narrows (`E0411`), matching this project's
+supported - the checker narrows (`E0411`), matching this project's
 existing "lenient parser, narrowing checker" pattern (see e.g. bundle
 field validation).
 
-`ExprKind::ArrayLit` is a primary expression, not a suffix — unlike `{`
+`ExprKind::ArrayLit` is a primary expression, not a suffix - unlike `{`
 (which disambiguates bundle-literal vs. concat/replicate by lookahead), a
 `[` at the start of a primary is always an array literal; `arr[idx]`
 indexing is handled separately by `postfix()`, which only recognizes `[`
 **after** an existing base expression. Both nodes exist only where arrays
 are supported today: `fn` parameters, `fn`-body `let` locals, and call
-arguments — module-level ports/wires/registers reject `Type::Array`
+arguments - module-level ports/wires/registers reject `Type::Array`
 outright (`E0416`), so the emitter never has to lower a real Verilog
 array. See spec/02 section 1.14.
 
-## Tagged-union enums — `EnumVariant` and `PayloadField`
+## Tagged-union enums - `EnumVariant` and `PayloadField`
 
 `EnumDecl` (file-level `TopItem::Enum` or module-level `ModuleItem::Enum`) now
 models tagged-union enums. Its structure:
@@ -141,7 +141,7 @@ EnumVariant {
 }
 
 PayloadField {
-    name: Ident,   // documentation only — bindings in match are positional (D2)
+    name: Ident,   // documentation only - bindings in match are positional (D2)
     ty: Type,      // must be a concrete bit-vector (E0807 if not)
     span: Span,
 }
@@ -156,7 +156,7 @@ It is `None` until the checker runs. Downstream passes (emitter, sim) use it to
 compute tag bits (MSBs) and payload slices (LSBs). See spec/02 section 5a for
 the full wire layout.
 
-## Bundles — `BundleDecl`, `Type::Bundle`, `BundleLit`, `BundleDestructure`
+## Bundles - `BundleDecl`, `Type::Bundle`, `BundleLit`, `BundleDestructure`
 
 `BundleDecl` (`TopItem::Bundle`) is a struct-like grouping of ports/signals:
 
@@ -176,22 +176,23 @@ FieldDecl {
 ```
 
 A bundle-typed value's _type_ is `Type::Bundle { name: QualIdent, args: Vec<NamedArg> }`
-— `args` holds compile-time parameter overrides (empty for parameterless
-bundles, e.g. plain `Handshake` vs. `MemBus(WIDTH: 32)`). At the AST layer,
-the type reference is written nominally; the checker then performs
-**structural bundle matching** (feature 2.9), allowing a bundle to satisfy any
-slot whose required fields it covers with matching types.
 
-A bundle literal is `ExprKind::BundleLit(Vec<FieldInit>)` — `{ name: Ident,
+- `args` holds compile-time parameter overrides (empty for parameterless
+  bundles, e.g. plain `Handshake` vs. `MemBus(WIDTH: 32)`). At the AST layer,
+  the type reference is written nominally; the checker then performs
+  **structural bundle matching** (feature 2.9), allowing a bundle to satisfy any
+  slot whose required fields it covers with matching types.
+
+A bundle literal is `ExprKind::BundleLit(Vec<FieldInit>)` - `{ name: Ident,
 value: Expr }` per field, order-independent (matched by name, not
 position). `ModuleItem::BundleDestructure { bindings: Vec<Ident>, expr: Expr,
-span }` is `let { f, g } = expr` — **partial** destructure is allowed
+span }` is `let { f, g } = expr` - **partial** destructure is allowed
 (`bindings` need not cover every field); a field-rename attempt (`let {
 f: g } = expr`) is rejected at parse time (E0904, see spec/02 section 1.12).
 
 The checker's own internal type representation for a resolved bundle value
 (`Ty::Bundle` in `crates/mimz-core/src/checker/widths/mod.rs`) is a
-**separate type**, not this `Type::Bundle` — see
+**separate type**, not this `Type::Bundle` - see
 [`11-checker.md`](11-checker.md) for how it resolves field types on demand
 and backs bundle-typed `fn` argument/return shape-checking.
 
@@ -202,7 +203,7 @@ and backs bundle-typed `fn` argument/return shape-checking.
 parse, produced **only** by `parser::parse_recover` (the LSP path); the
 strict `parser::parse` returns `Err` on the same input, so an `Error` node
 **never reaches codegen**. The span covers the skipped source so tooling can
-locate the hole. Every downstream `match` handles the variant — the checker
+locate the hole. Every downstream `match` handles the variant - the checker
 skips it (no cascade diagnostics); the emitter/simulator/pretty-printer treat
 it as a documented unreachable no-op. See
 [`03-parser.md`](03-parser.md#two-entry-points-parse-strict-vs-parse_recover-best-effort).
@@ -211,10 +212,10 @@ unknown-width path through type inference).
 
 ## About `#![allow(dead_code)]`
 
-The parser populates the **complete** language contract — including
+The parser populates the **complete** language contract - including
 fields nothing consumes yet (`TestDecl` bodies, `Repeat` items,
-`Inst::index`, `Token::flavor`). The alternative — trimming the AST to
-what the emitter uses and re-growing it later — would churn every parser
+`Inst::index`, `Token::flavor`). The alternative - trimming the AST to
+what the emitter uses and re-growing it later - would churn every parser
 function twice. The allow is documented in `mod.rs` and **must be removed
 once the checker and simulator consume these fields** (they will), so
 real dead code can't hide behind it forever.

@@ -1,10 +1,10 @@
-# 5 — Operators
+# 5 - Operators
 
 Operators combine values into new values. The defining idea in Min-Mozhi is that
 **width is never lost silently**: the lossless operators grow their result to fit,
 and if you want the cheaper fixed-width wrap you ask for it explicitly.
 
-## Arithmetic — lossless vs wrapping
+## Arithmetic - lossless vs wrapping
 
 | Lossless | Result width        | Wrapping | Result width |
 | -------- | ------------------- | -------- | ------------ |
@@ -25,7 +25,7 @@ prod = a * b
 wrap = a +% b
 ```
 
-Assigning a lossless result into a too-narrow target is an error — that is the
+Assigning a lossless result into a too-narrow target is an error - that is the
 language telling you a bit would be dropped:
 
 ```mimz
@@ -47,7 +47,7 @@ a >> 1     // shift right
 
 `<<` is **lossless**, the same principle as `+`/`-`/`*`: the declared type
 must be wide enough to hold every bit the shift could produce, so `<<`
-**grows**. For a constant shift amount `k`, `bits[W] << k` is `bits[W+k]` —
+**grows**. For a constant shift amount `k`, `bits[W] << k` is `bits[W+k]` -
 exactly the room the shifted-in bits need:
 
 ```mimz
@@ -65,12 +65,12 @@ For a runtime shift amount, the compiler cannot know the exact value ahead
 of time, so it grows by the amount's own worst case: a `bits[N]` shift
 amount can be as large as `2^N - 1`, so the result grows by that much.
 
-`>>` does **not** grow — right-shifting only ever reduces magnitude, so the
+`>>` does **not** grow - right-shifting only ever reduces magnitude, so the
 left operand's own width already bounds every possible result.
 
 The cost: a shift-register/barrel-shifter idiom that re-shifts a value
 repeatedly grows one declared width at a time and needs an explicit
-`trunc` back down at each use — the same trade every lossless operator
+`trunc` back down at each use - the same trade every lossless operator
 makes, applied to `<<` for the first time in v0.2 (before that, `<<` quietly
 kept its left operand's width, which could silently drop the shifted-out
 bits a real Verilog `<<` never drops).
@@ -86,7 +86,7 @@ a ^ b      // xor
 
 These work bit-for-bit on equal-width operands.
 
-## Reductions — collapse a bus to one bit
+## Reductions - collapse a bus to one bit
 
 A reduction applies an operator across _all_ the bits of a single value and
 yields one `bit`:
@@ -97,7 +97,7 @@ yields one `bit`:
 ^a         // parity (xor of all bits)
 ```
 
-(The negated forms `nand`/`nor`/`xnor` are built-in functions — see
+(The negated forms `nand`/`nor`/`xnor` are built-in functions - see
 [chapter 6](06-builtins.md).)
 
 ## Comparisons
@@ -131,9 +131,9 @@ a || b     a or  b      // logical or
 !a         not a        // logical not
 ```
 
-`and`, `or`, `not` are keyword spellings of `&&`, `||`, `!` — fully
+`and`, `or`, `not` are keyword spellings of `&&`, `||`, `!` - fully
 interchangeable. Logical operators require `bit` operands; using them on a
-multi-bit bus is an error (`E0404`) — reach for a reduction or a comparison
+multi-bit bus is an error (`E0404`) - reach for a reduction or a comparison
 instead.
 
 ## Concatenation, indexing, slicing
@@ -152,7 +152,7 @@ out-of-range index or a reversed slice (`data[4:7]`) is caught (`E0406`).
 
 **Replication** `{N{x}}` is concatenation's shorthand: `{2{a}}` is exactly
 `{a, a}`, and `{4{a}}` is `a` four times over. The count `N` is compile-time, so
-the result width is `N` times the width of `x` — `{2{a}}` on a `bits[4]` value is
+the result width is `N` times the width of `x` - `{2{a}}` on a `bits[4]` value is
 `bits[8]`. Nest it inside a wider concat just like any other piece, e.g.
 `{2{a}, b}`.
 
@@ -177,10 +177,10 @@ merged = primary ?? backup
 
 `??` has the lowest binary operator precedence (level 0), binding less tightly than `||`.
 
-## Precedence — the C trap is disarmed
+## Precedence - the C trap is disarmed
 
 Min-Mozhi uses Rust-style precedence, not C's. In C, `x & 1 == 0` parses as
-`x & (1 == 0)` — a famous bug. Here it parses the way you expect:
+`x & (1 == 0)` - a famous bug. Here it parses the way you expect:
 
 ```mimz
 x & 1 == 0      // parses as (x & 1) == 0
