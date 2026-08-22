@@ -2,7 +2,7 @@
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
-The mechanical staleness guard for `docs/code/` — these verify the
+The mechanical staleness guard for `docs/code/` - these verify the
 structural facts the docs state, so doc drift fails CI. When one fails,
 **fix the named doc page, don't weaken the test.**
 

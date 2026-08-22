@@ -1,13 +1,13 @@
 # The Min-Mozhi Guide
 
-A learn-the-language book for Min-Mozhi (மின்மொழி) — from the very first
+A learn-the-language book for Min-Mozhi (மின்மொழி) - from the very first
 module to sequential FSMs, module reuse, and natural Tamil word order.
 
 If you have never written hardware before, that is fine: this guide starts at
 the ABCs and assumes only that you can run a command in a terminal. If you
 already know Verilog, VHDL, or Chisel, skim chapter 1, then jump to the
 [operators](05-operators.md) and [sequential-logic](08-sequential-logic.md)
-chapters — the safety rules are where Min-Mozhi differs most.
+chapters - the safety rules are where Min-Mozhi differs most.
 
 > Min-Mozhi describes **hardware**, not software. A module is a circuit, not a
 > program that runs top to bottom. Everything you write becomes wires and gates.
@@ -34,7 +34,7 @@ chapters — the safety rules are where Min-Mozhi differs most.
 ## Words this guide uses (read this once)
 
 Hardware has its own vocabulary. Here is the whole of it you need before
-chapter 1 — everything else is explained where it first appears.
+chapter 1 - everything else is explained where it first appears.
 
 | Word              | Plain meaning                                                                                                                                 |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -45,9 +45,9 @@ chapter 1 — everything else is explained where it first appears.
 | **sequential**    | Logic with memory: values held in registers and updated on a clock edge. Written with `<-` inside `on rise(clk)`.                             |
 | **register**      | A one-value memory cell that updates on a clock edge (`reg`). Verilog people say "flip-flop".                                                 |
 | **clock**         | A signal that alternates 0/1 forever; every register in a design updates on its edges.                                                        |
-| **reset**         | A signal that forces every register back to its declared starting value — the known power-on state.                                           |
+| **reset**         | A signal that forces every register back to its declared starting value - the known power-on state.                                           |
 | **synthesis**     | Turning your description into actual gates. "Synthesizable" means a real tool can build it.                                                   |
-| **latch**         | An accidental memory element created by an incomplete `if`. Almost always a bug — Min-Mozhi rejects the patterns that cause one.              |
+| **latch**         | An accidental memory element created by an incomplete `if`. Almost always a bug - Min-Mozhi rejects the patterns that cause one.              |
 | **Verilog**       | The industry-standard HDL Min-Mozhi compiles TO. You do not need to know it, but every tool downstream speaks it.                             |
 | **testbench**     | A throwaway circuit that drives your design and checks its outputs. `mimz test` runs one in-process; `--emit-testbench` writes a Verilog one. |
 | **flavor**        | Which keyword spelling a file uses: English, Tanglish (Tamil in Latin letters), or Tamil script. All three compile identically.               |
@@ -56,10 +56,10 @@ chapter 1 — everything else is explained where it first appears.
 ## Standard library
 
 Once you have the basics, the [standard-library gallery](stdlib/README.md)
-collects polished, tested building blocks written in Min-Mozhi itself — a
+collects polished, tested building blocks written in Min-Mozhi itself - a
 [debouncer](stdlib/debouncer.md), a [7-segment decoder](stdlib/seg7.md), a
 [PWM](stdlib/pwm.md), a [FIFO](stdlib/fifo.md), and a
-[UART transmitter](stdlib/uart_tx.md) — each in all four flavors plus a
+[UART transmitter](stdlib/uart_tx.md) - each in all four flavors plus a
 pure-Tamil twin, with reproducible waveforms.
 
 ## The ten-second tour
@@ -82,7 +82,7 @@ module Counter(WIDTH: int = 8) {
 
 That is a complete, synthesizable 8-bit counter. By the end of chapter 8 every
 line above will be obvious. The same circuit in Tamil keywords with natural word
-order is in chapter 10 — it compiles to the _byte-identical_ Verilog.
+order is in chapter 10 - it compiles to the _byte-identical_ Verilog.
 
 ## How Min-Mozhi keeps you safe
 

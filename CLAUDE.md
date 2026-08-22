@@ -93,15 +93,15 @@ min-mozhi/
 | ------------------------------------------------ | -------------------------------------------- |
 | `README.md`                                      | Master docs index with table of all sections |
 | `RULES.md`                                       | Repository working rules (source of truth)   |
-| `BUILD.md`                                       | Build reference — tools, crates, commands    |
-| `architecture.md`                                | Compiler architecture — pipeline, components |
+| `BUILD.md`                                       | Build reference - tools, crates, commands    |
+| `architecture.md`                                | Compiler architecture - pipeline, components |
 | `prior-art.md`                                   | Prior art: Veryl/Spade/Amaranth/Chisel       |
-| `how-the-compiler-works.md`                      | Beginner's tour — pipeline on one example    |
-| `guide/` (README + 13 files, + stdlib/ subguide) | **Learn the language** — from-scratch book   |
-| `code/` (README + 14 files)                      | **Maintainer docs** — per-module internals   |
-| `source-guide/` (README + 11)                    | **Friendly code tour** — every Rust file     |
+| `how-the-compiler-works.md`                      | Beginner's tour - pipeline on one example    |
+| `guide/` (README + 13 files, + stdlib/ subguide) | **Learn the language** - from-scratch book   |
+| `code/` (README + 14 files)                      | **Maintainer docs** - per-module internals   |
+| `source-guide/` (README + 11)                    | **Friendly code tour** - every Rust file     |
 | `audit/` (README + `bugs/` + log + reviews)      | Security & robustness audit                  |
 | `Ideas/` (6 files)                               | Forward-looking plans, roadmaps              |
 | `plan/`                                          | Detailed per-phase execution plans           |
-| `log/` (dated logs)                              | Dev log — append-only decisions & progress   |
+| `log/` (dated logs)                              | Dev log - append-only decisions & progress   |
 | `archive/`                                       | Closed working documents                     |

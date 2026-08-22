@@ -1,8 +1,8 @@
-# Integration: eval (`tests/eval.rs`, 15 tests — run the real binary)
+# Integration: eval (`tests/eval.rs`, 15 tests - run the real binary)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
-End-to-end `mimz eval` over corpus examples — proves the lib evaluator AND the
+End-to-end `mimz eval` over corpus examples - proves the lib evaluator AND the
 `--in`/`--module` plumbing. The security cases matter because the `eval` path
 skips the checker, so `comb.rs` is the only overflow guard (audit SEC-2).
 

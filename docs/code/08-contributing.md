@@ -1,9 +1,9 @@
-# 08 — Contributor Recipes
+# 08 - Contributor Recipes
 
 Practical how-tos for the changes people actually make. The quick
 orientation summary lives in the root
 [`CONTRIBUTING.md`](../../CONTRIBUTING.md); this is the detailed version.
-Read [`docs/RULES.md`](../RULES.md) too — it governs how plans, specs,
+Read [`docs/RULES.md`](../RULES.md) too - it governs how plans, specs,
 and logs stay in sync; this page covers the code side.
 
 Not familiar with the codebase yet? Start with
@@ -24,7 +24,7 @@ npx markdownlint-cli2
 CI runs exactly this. Zero warnings is the bar, not a goal. **`--workspace`
 is not optional** on `clippy`/`test`/`doc`: root `Cargo.toml` sets
 `default-members = ["."]`, so a bare `cargo test` silently skips
-`mimz-core` and `mimz-sim` — see the callout in
+`mimz-core` and `mimz-sim` - see the callout in
 [`10-test-map.md`](10-test-map.md).
 
 ## Recipe: change a Tanglish/Tamil keyword spelling
@@ -35,19 +35,19 @@ The native-speaker-review case. **Data change only:**
    `[keywords.*]` table).
 2. Update the table in `spec/03-keywords-trilingual.md` + its changelog.
 3. Update any example that used the old spelling.
-4. Log a Decision block (RULES R3 — keyword table changes are major).
+4. Log a Decision block (RULES R3 - keyword table changes are major).
 
 No Rust changes. `cargo test` proves the table still loads and is
 disjoint.
 
 ## Recipe: add a NEW keyword
 
-1. Spec first: `spec/02` (grammar) and `spec/03` (all three spellings) —
+1. Spec first: `spec/02` (grammar) and `spec/03` (all three spellings) -
    bump versions, changelogs.
 2. `lang/keywords.toml`: add the `[keywords.<key>]` entry.
 3. `crates/mimz-core/src/lexer/token.rs`: add the `Kw` variant.
 4. `crates/mimz-core/src/lexer/keywords.rs`: add the `kw_for_key` arm. (Miss this and
-   every test fails at startup with "unknown keyword key" — by design.)
+   every test fails at startup with "unknown keyword key" - by design.)
 5. Use it in the parser; add lexer + parser tests.
 6. Log entry.
 
@@ -55,15 +55,15 @@ disjoint.
 
 1. Spec first: grammar production in `spec/02` section 5 + a syntax-tour
    example. Bump the spec version.
-2. AST node in `crates/mimz-core/src/ast/` — with a `Span`, with rustdoc explaining the
+2. AST node in `crates/mimz-core/src/ast/` - with a `Span`, with rustdoc explaining the
    form and any safety-rule angle.
 3. Parse routine in `crates/mimz-core/src/parser/items/` or `expr.rs`:
    - doc comment = the EBNF production (house rule);
    - return `Option<T>`, record errors before returning `None`;
    - `expect(..., "learner-phrased what")` for every required token.
-4. Emit it in `crates/mimz-core/src/emit_verilog/` — or emit a clean
+4. Emit it in `crates/mimz-core/src/emit_verilog/` - or emit a clean
    "not yet supported" error (never wrong output).
-5. Tests: parser unit test (including the error path — assert the help
+5. Tests: parser unit test (including the error path - assert the help
    text teaches), plus an example/integration test if user-visible.
 6. Log entry; update the phase plan if scope changed (RULES R2).
 
@@ -72,7 +72,7 @@ disjoint.
 - Look up symbols via `self.project` (modules/enums by name).
 - Render expressions with `self.expr(e)`; inside child-width contexts use
   `expr_subst` with the parameter substitution map.
-- New output must be valid **Verilog-2005** (the floor — decision in the
+- New output must be valid **Verilog-2005** (the floor - decision in the
   log). Parenthesize compound expressions unconditionally.
 - If the construct can't be emitted correctly yet: `self.err(span, msg,
 help)` and emit nothing. Errors, never guesses.
@@ -80,7 +80,7 @@ help)` and emit nothing. Errors, never guesses.
   `{instance}_{port}`, created in `module/instances.rs::instance` AND assumed in
   `expr.rs` field rendering. Change both or neither.
 - Add an integration test in `tests/examples.rs` asserting on the output
-  text — the Icarus suite (`tests/icarus.rs`) then judges it with a real
+  text - the Icarus suite (`tests/icarus.rs`) then judges it with a real
   tool.
 - Emission changed on purpose? Regenerate the pinned outputs with
   `MIMZ_UPDATE_GOLDENS=1 cargo test --test examples`, then review the
@@ -89,7 +89,7 @@ help)` and emit nothing. Errors, never guesses.
 ## Recipe: add a checker pass
 
 One safety rule = one pass = one file with its own tests (architecture
-principle 4; nine passes exist — the full how-to lives in
+principle 4; nine passes exist - the full how-to lives in
 [`11-checker.md`](11-checker.md)). Passes take the AST + symbol table,
 return diagnostics through `Checker::err`, which makes the stable
 `E####` code, the file index, and the teaching help text structurally
@@ -99,20 +99,20 @@ code without an end-to-end fixture.
 
 ## Testing conventions
 
-The full per-test ledger — what each test locks in and what is
-deliberately uncovered — is [`10-test-map.md`](10-test-map.md). Update it
+The full per-test ledger - what each test locks in and what is
+deliberately uncovered - is [`10-test-map.md`](10-test-map.md). Update it
 when you add or remove tests.
 
 - **Unit tests** live in `src/<module>/tests.rs` (lexer), `src/<module>/tests/`
-  — split by topic, `mod.rs` + one file per section (parser, checker) — or a
-  `#[cfg(test)] mod tests` block (keywords, emitter).
+  - split by topic, `mod.rs` + one file per section (parser, checker) - or a
+    `#[cfg(test)] mod tests` block (keywords, emitter).
 - **Integration tests** in `tests/examples.rs` compile real examples
   end-to-end. `every_example_checks_clean` means: add an example file and
   it is automatically under test.
 - **Docs-sync tests** in `tests/docs_sync.rs` mechanically check the
   structural facts in `docs/code/` (module lists, file-layout tables).
-  If one fails, fix the named doc page — don't weaken the test.
-- Error-path tests assert on message/help **substrings** — enough to
+  If one fails, fix the named doc page - don't weaken the test.
+- Error-path tests assert on message/help **substrings** - enough to
   catch regressions, loose enough to allow wording polish.
 - The trilingual guarantee is CI-enforced: EN and Tanglish counters must
   produce byte-identical Verilog. Don't break that test; it is the
@@ -125,7 +125,7 @@ when you add or remove tests.
   their EBNF production (RULES R6). `cargo doc --document-private-items`
   must stay warning-free.
 - Comments explain WHY (the constraint), not WHAT (the next line).
-- Teaching-quality errors are part of every change — see
+- Teaching-quality errors are part of every change - see
   [`06-diagnostics.md`](06-diagnostics.md).
 - Keep files under ~600 lines; split with the module-scoping pattern
   ([`07-decisions-and-evolution.md`](07-decisions-and-evolution.md)).

@@ -1,6 +1,6 @@
 # Hardware Emulation Mapping (`sim` blocks)
 
-> **Status:** ✅ **SHIPPED in v0.2.0** (2026-07-09, spec/02 §1.10b, `src/emulate/`, `mimz test --emulate`)
+> **Status:** ✅ **SHIPPED in v0.2.0** (2026-07-09, spec/02 section 1.10b, `src/emulate/`, `mimz test --emulate`)
 
 ## The Vision
 
@@ -43,7 +43,7 @@ test "play music" for MelodyPlayer {
 }
 ```
 
-### Tamil / Tanglish Translations — shipped, `lang/keywords.toml`
+### Tamil / Tanglish Translations - shipped, `lang/keywords.toml`
 
 - `sim` -> `paavnai` / `பாவனை` (simulation/emulation)
 - `bind` -> `inai` / `இணை` (connect/bind)

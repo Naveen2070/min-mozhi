@@ -9,7 +9,7 @@ between them, `wide.rs` owns the multi-limb arithmetic, and
 `width_rules.rs` owns the ONE table both the checker and the simulator
 consult for "how wide is the result of this operator?".
 
-## bits.rs (17 tests) — the small/wide boundary
+## bits.rs (17 tests) - the small/wide boundary
 
 | Test                                                                   | Locks in                                                    |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -31,7 +31,7 @@ consult for "how wide is the result of this operator?".
 | `shrink_of_zero_is_never_reported_negative`                            | zero never comes back signed (BUG-13's original symptom)    |
 | `bits_to_decimal_string_renders_a_small_negative_value`                | decimal rendering handles the signed small path             |
 
-## wide.rs (18 tests) — multi-limb arithmetic
+## wide.rs (18 tests) - multi-limb arithmetic
 
 | Test                                                              | Locks in                          |
 | ----------------------------------------------------------------- | --------------------------------- |
@@ -54,10 +54,10 @@ consult for "how wide is the result of this operator?".
 | `to_decimal_string_matches_a_known_large_unsigned_value`          | …of a large unsigned value        |
 | `to_decimal_string_renders_a_negative_signed_value`               | …and of a negative one            |
 
-## width_rules.rs (19 tests) — the shared operator table
+## width_rules.rs (19 tests) - the shared operator table
 
 BUG-30 (`docs/audit/bugs.md`): `<<` now GROWS by the shift amount instead of
-matching the left operand's width — the former `shift_result_preserves_lhs_kind`
+matching the left operand's width - the former `shift_result_preserves_lhs_kind`
 / `shift_result_preserves_signed_lhs` pair was renamed to `shr_*` (still true
 for `>>`, which does not grow) and four new `shl_*` tests cover the growth rule.
 

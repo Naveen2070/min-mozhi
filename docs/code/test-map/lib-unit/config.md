@@ -7,7 +7,7 @@ exercised by the integration tests below).
 
 | Test                                                           | Locks in                                                                                 |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `empty_config_is_all_defaults`                                 | an empty/missing config is all `None` — pure built-in defaults                           |
+| `empty_config_is_all_defaults`                                 | an empty/missing config is all `None` - pure built-in defaults                           |
 | `parses_every_section`                                         | `lang` + `[translate]` + `[fmt]` keys deserialize to the right fields                    |
 | `unknown_key_is_rejected`                                      | a typo'd key (`too`, `flavour`) errors via `deny_unknown_fields`, never silently dropped |
 | `discover_walks_up_to_the_nearest_config`                      | discovery climbs from a nested file to the ancestor `mimz.toml`                          |

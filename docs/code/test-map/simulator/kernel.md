@@ -21,10 +21,10 @@ Shares the value model + expression evaluator with `comb` via
 | `bit_indexed_register_write_sets_one_bit`                             | BUG-8: `shift[i] <- v` on a plain register sets that bit, leaving the rest untouched                      |
 | `slice_indexed_register_write_sets_a_range`                           | BUG-8: `r[hi:lo] <- v` replaces that bit range, keeping bits outside it from the prior value              |
 | `disjoint_bit_indexed_writes_in_one_on_block_combine`                 | BUG-8: two `reg[i] <- v` writes to disjoint bits of the same register in one `on` block both take effect  |
-| `wraps_at_declared_width`                                             | `+%` on a `bits[2]` reg wraps 3→0 — width masking on the next value                                       |
+| `wraps_at_declared_width`                                             | `+%` on a `bits[2]` reg wraps 3→0 - width masking on the next value                                       |
 | `two_phase_commit_swaps_registers`                                    | `a <- b; b <- a` SWAPS (non-blocking): each reads the OLD value, proving the two-phase commit             |
 | `statement_if_picks_the_next_value`                                   | a statement-level `if` in the `on` block selects the reg's next value from the current state              |
-| `snapshot_covers_every_signal`                                        | `snapshot()` lists leaves (clk/rst/inputs), regs, and combinational outputs — the VCD/trace seam          |
+| `snapshot_covers_every_signal`                                        | `snapshot()` lists leaves (clk/rst/inputs), regs, and combinational outputs - the VCD/trace seam          |
 | `set_rejects_a_non_leaf`                                              | driving an output or an unknown name is a clean `S0239` error (only inputs/clocks/resets are drivable)    |
 | `combinational_chain_propagates_in_order`                             | a multi-level `wire → wire → output` chain (plus a reg input) settles in dependency order each cycle (B3) |
 | `combinational_cycle_is_reported`                                     | a pure comb loop (`a = b; b = a`) is caught at settle time and reports `S0238` (BUG-27), not spun on      |

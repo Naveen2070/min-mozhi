@@ -1,9 +1,9 @@
-# `Fifo` — synchronous FIFO queue
+# `Fifo` - synchronous FIFO queue
 
 A first-in-first-out buffer built on a `mem` (a ring buffer). Bytes pushed in
 come out in the same order. Writes land on the clock; the datum at the head
 reads out combinationally. A push when full and a pop when empty are both
-**ignored**, so the queue never over- or underflows — it is always consistent.
+**ignored**, so the queue never over- or underflows - it is always consistent.
 
 ## Source
 
@@ -11,7 +11,7 @@ reads out combinationally. A push when full and a pop when empty are both
 - Also in `tanglish/`, `tamil/`, and `mixed/` flavors (byte-identical Verilog).
 - Pure-Tamil twin (Tamil keywords **and** identifiers, natural SOV order):
   [`examples/tamil-pure/varisai.mimz`](../../../examples/tamil-pure/varisai.mimz)
-  (`வரிசை` — "queue") — proven equivalent to the English module by canonical
+  (`வரிசை` - "queue") - proven equivalent to the English module by canonical
   renaming.
 
 ## Interface
@@ -19,7 +19,7 @@ reads out combinationally. A push when full and a pop when empty are both
 | Port    | Dir | Type          | Meaning                                      |
 | ------- | --- | ------------- | -------------------------------------------- |
 | `clk`   | in  | clock         | the queue clock                              |
-| `rst`   | in  | reset         | sync reset — empties the queue               |
+| `rst`   | in  | reset         | sync reset - empties the queue               |
 | `push`  | in  | `bit`         | enqueue `din` this cycle (ignored when full) |
 | `pop`   | in  | `bit`         | dequeue this cycle (ignored when empty)      |
 | `din`   | in  | `bits[WIDTH]` | the datum to enqueue                         |
@@ -35,7 +35,7 @@ reads out combinationally. A push when full and a pop when empty are both
 ## How it works
 
 1. `data` is a `mem` of `DEPTH` cells. `head` and `tail` are `clog2(DEPTH)`-bit
-   pointers — the compiler derives that width from `DEPTH`, so you size the queue
+   pointers - the compiler derives that width from `DEPTH`, so you size the queue
    by capacity, not pointer bits. They wrap at `DEPTH - 1` (not at a power of
    two), so any depth works.
 2. `count` carries one extra bit so it can represent a completely full ring

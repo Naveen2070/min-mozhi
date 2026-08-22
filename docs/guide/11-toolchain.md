@@ -1,10 +1,10 @@
-# 11 — The Toolchain
+# 11 - The Toolchain
 
 The `mimz` CLI is how you check, build, run, and reshape your code. Every command
 takes a `.mimz` file; run them through `cargo run --` until `mimz` is on your
 `PATH`.
 
-## `mimz --version` — compiler and language edition
+## `mimz --version` - compiler and language edition
 
 `mimz` has **two version axes** (like `rustc 1.x` versus the Rust `2021` edition):
 the compiler's own version and the language edition. `--version` prints both,
@@ -21,7 +21,7 @@ tracks the language itself. See
 [`../../spec/06-editions.md`](../../spec/06-editions.md) for what the two axes
 mean and how editions evolve.
 
-## `mimz init <name>` — scaffold a new project
+## `mimz init <name>` - scaffold a new project
 
 Generate a ready-to-use project directory with a documented `mimz.toml` and a
 starter counter module (with a passing `test` block), so `mimz test` and
@@ -37,7 +37,7 @@ mimz compile my_project.mimz # emits my_project.v
 The module name is derived from the directory name (`my_project` →
 `MyProject`). The command refuses to overwrite a non-empty directory.
 
-## `mimz check` — lex, parse, and verify
+## `mimz check` - lex, parse, and verify
 
 The workhorse. Runs the front end and the full safety checker; writes nothing.
 
@@ -49,11 +49,11 @@ mimz check counter.mimz --watch               # re-check on every save until Ctr
 ```
 
 With `--watch`, the process stays alive and re-runs whenever any file in the
-project changes (entry + transitive imports) — useful for a tight edit–check
-loop. A clean file prints `OK: <path> — <N> module(s), <M> test(s), <K> file(s).`;
+project changes (entry + transitive imports) - useful for a tight edit–check
+loop. A clean file prints `OK: <path> - <N> module(s), <M> test(s), <K> file(s).`;
 a broken one prints `E`-coded diagnostics.
 
-## `mimz compile` — emit Verilog
+## `mimz compile` - emit Verilog
 
 Runs the whole pipeline and writes synthesizable Verilog. Resolves imports.
 
@@ -73,10 +73,10 @@ The command prints its output paths to `stdout`:
 has no `test` blocks it prints a note on `stderr` and writes only the `.v`; the testbench is
 built before either file is written, so an emission error leaves no stray output.
 
-## `mimz eval` — run combinational logic
+## `mimz eval` - run combinational logic
 
 Evaluate a purely combinational module's outputs for a set of inputs, without
-running the clock — a quick one-shot. (For clocked designs, registers, and
+running the clock - a quick one-shot. (For clocked designs, registers, and
 waveforms use `mimz sim`.)
 
 ```text
@@ -84,7 +84,7 @@ mimz eval adder.mimz --in a=3,b=5
 mimz eval alu.mimz --module Alu --in a=10,b=4,op=1 --param WIDTH=8
 ```
 
-## `mimz sim` — simulate and write a waveform
+## `mimz sim` - simulate and write a waveform
 
 Run a design under a default stimulus (reset asserted the first cycle, inputs
 held, the clock toggled) and capture a waveform. Clocked **and** combinational
@@ -102,8 +102,8 @@ mimz sim adder.mimz --sweep a=1|2|3 --in b=10      # a frame per input combo
 `mimz` emits a standard IEEE-1364 VCD that any waveform viewer opens:
 
 - **Web, no install:** open <https://app.surfer-project.org> (Surfer, runs in the
-  browser) and drag the `.vcd` in — the file stays local. Alt: <https://vc.drom.io>.
-- **Desktop:** GTKWave — `winget install GTKWave` (or `scoop install gtkwave`),
+  browser) and drag the `.vcd` in - the file stays local. Alt: <https://vc.drom.io>.
+- **Desktop:** GTKWave - `winget install GTKWave` (or `scoop install gtkwave`),
   then `gtkwave counter.vcd`.
 - **VS Code:** the Surfer / VaporView / WaveTrace extension opens `.vcd` in-editor.
 
@@ -111,7 +111,7 @@ For a full check → test → sim → view-waveform walkthrough on a real design
 accumulator CPU exercising instances, imports, `repeat`, enum state, and
 `match`-as-ROM), see [`../../demo/`](../../demo/).
 
-## `mimz test` — run `test` blocks
+## `mimz test` - run `test` blocks
 
 Run a file's `test "…" for M(…) { … }` blocks (`tick`/`expect`), reporting
 pass/fail with teaching messages; exits non-zero if any test fails.
@@ -122,11 +122,11 @@ mimz test counter.mimz --filter "counts up"   # only matching tests
 mimz test counter.mimz --trace                # waveform table per test
 ```
 
-## `mimz lint` — style and hygiene warnings
+## `mimz lint` - style and hygiene warnings
 
 Separate from `check` (which is about correctness). `mimz lint` checks naming
 conventions, unused signals, and other style rules. All diagnostics are
-warnings — the command never fails the build:
+warnings - the command never fails the build:
 
 ```text
 mimz lint counter.mimz
@@ -136,14 +136,14 @@ mimz lint counter.mimz --json    # machine-readable output
 `lint` runs import resolution and analyses the whole project; load/lex failures
 are the only things that make it exit non-zero.
 
-## `mimz repl` — interactive combinational evaluator
+## `mimz repl` - interactive combinational evaluator
 
 Parses a `.mimz` file once, then reads input bindings from stdin line by line.
 Each line is evaluated immediately and the module's outputs are printed:
 
 ```text
 mimz repl adder.mimz
-Min-Mozhi REPL  —  module `Adder`  (Ctrl-C or :quit to exit)
+Min-Mozhi REPL  -  module `Adder`  (Ctrl-C or :quit to exit)
 
 mimz> a=3, b=5
 sum = 8  (bits[9])
@@ -152,7 +152,7 @@ sum = 8  (bits[9])
 Internal commands: `:quit` / `:q` to exit, `:help` for usage. `--param` and
 `--module` work as in `mimz eval`.
 
-## `mimz explain` — the long-form error book
+## `mimz explain` - the long-form error book
 
 Every `E`-code has a classroom explanation: the rule, why silicon needs it, and
 the fix.
@@ -163,7 +163,7 @@ mimz explain e0403     # case-insensitive
 mimz explain --list    # print the whole diagnostic catalog
 ```
 
-## `mimz translate` — change flavor and/or word order
+## `mimz translate` - change flavor and/or word order
 
 Convert a file between keyword flavors and between code/thamizh word order.
 
@@ -175,14 +175,14 @@ mimz translate counter.mimz --order thamizh --to tamil
 
 Two important differences:
 
-- `--to` (flavor only) is a **lossless** keyword reskin — comments and layout
+- `--to` (flavor only) is a **lossless** keyword reskin - comments and layout
   survive.
 - `--order` re-emits from the AST, so it **reformats and drops comments** (the
   result still compiles to byte-identical Verilog and re-parses identically).
 
 ### Romanizing Tamil names: `--romanize-names`
 
-By default `translate` swaps only keywords and keeps identifiers verbatim — a
+By default `translate` swaps only keywords and keeps identifiers verbatim - a
 fully-Tamil program (see `examples/tamil-pure/`) keeps its Tamil _names_ even
 when you switch keyword flavor. Add `--romanize-names` to also rewrite Tamil
 identifiers to readable Latin (`கணக்கி` → `kannakki`), using the same scheme the
@@ -218,7 +218,7 @@ following name (e.g. `42கணக்கி`, written with no space).
   byte-for-byte.
 - Normal whitespace-separated code is unaffected.
 
-## `mimz fmt` — normalize to one flavor
+## `mimz fmt` - normalize to one flavor
 
 The `gofmt` of Min-Mozhi: rewrite a file in place so every keyword is one flavor.
 It rides the lossless `translate` path, so comments and layout are preserved.
@@ -233,7 +233,7 @@ mimz fmt messy.mimz -o clean.mimz    # write elsewhere, leave the input alone
 `fmt` only normalizes _flavor_; word-order reformatting stays with
 `translate --order` (because that one is not lossless).
 
-## `mimz doctor` — toolchain health check
+## `mimz doctor` - toolchain health check
 
 Prints the compiler version, platform info, runs an in-memory compile smoke
 test, and probes for optional external tools (iverilog, verilator, gtkwave):
@@ -243,11 +243,11 @@ mimz doctor              # user toolchain
 mimz doctor --dev        # also check Rust, wasm-pack, test tools (contributors)
 ```
 
-Missing external tools are warnings, not failures — the runtime CLI is entirely
+Missing external tools are warnings, not failures - the runtime CLI is entirely
 in-process. The command exits non-zero only on a real problem (broken pipeline,
 unwritable temp dir, invalid `mimz.toml`). Aliased as `mimz env`.
 
-## `mimz completions <shell>` — shell tab-completion
+## `mimz completions <shell>` - shell tab-completion
 
 Prints a shell tab-completion script to stdout, generated straight from the
 clap command tree (always matches the real subcommands and flags):
@@ -260,7 +260,7 @@ mimz completions zsh > /usr/local/share/zsh/site-functions/_mimz
 
 Supports bash, zsh, fish, powershell, and elvish.
 
-## `mimz eject std` — vendor the standard library
+## `mimz eject std` - vendor the standard library
 
 Writes the embedded standard library to a local directory so a project can
 vendor and customise it (then point `mimz.toml [lib] std` at the directory):
@@ -311,7 +311,7 @@ silently does nothing).
 ## A non-fatal lint: `W0001`
 
 Mixing **Tamil** keywords with English/Tanglish ones in one file triggers a
-non-fatal warning (`W0001`) on `check`/`compile`/`eval` and in the editor — Tamil
+non-fatal warning (`W0001`) on `check`/`compile`/`eval` and in the editor - Tamil
 reads in a different word order, so one language per file reads best. It never
 fails the build; `mimz fmt` normalizes the mix away. (English + Tanglish share
 code order, so mixing those two stays clean.)
@@ -333,7 +333,7 @@ without a localized template fall back to clear English. The machine-readable
 ## In your editor: `mimz lsp`
 
 `mimz lsp` is a Language Server: live red squiggles as you type (in the same
-flavor as the CLI), plus hover, go-to-definition, and completion — hover a
+flavor as the CLI), plus hover, go-to-definition, and completion - hover a
 signal to see its declared type, jump straight to where a name is defined
 (even across files, for a cross-file module instantiation), and get
 in-scope identifiers plus your file's majority-flavor keywords as you type.

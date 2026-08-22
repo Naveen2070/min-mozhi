@@ -1,11 +1,11 @@
-# 10 — Test Map: What Is Covered, What Isn't, and Why
+# 10 - Test Map: What Is Covered, What Isn't, and Why
 
 Every test, what it locks in, and what a failure means. Update this page
-when tests are added or removed (the count below is asserted nowhere —
+when tests are added or removed (the count below is asserted nowhere -
 this page is the human ledger).
 
 > **Live breakdown:** run **`cargo test-summary --workspace`** instead of
-> `cargo test` — it runs the suite, then prints a per-binary table (lib unit,
+> `cargo test` - it runs the suite, then prints a per-binary table (lib unit,
 > each bin, every integration suite, doctests) and a grand total.
 > Cross-platform (a standalone dev crate at `tools/test-summary/`, aliased in
 > `.cargo/config.toml`); forwards all `cargo test` args (`--release`,
@@ -32,8 +32,8 @@ re-derived from source by `tests/docs_sync.rs`, so this page must track it):
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
 | `src/bin/mimz-bench/` (bin unit)                    |        6 | in-process                                             |
-| `crates/mimz-wasm` (lib unit)                       |        0 | no unit tests — covered via `wasm_parity`              |
-| doctests (×4 crates)                                |        0 | none currently — runnable examples live in `examples/` |
+| `crates/mimz-wasm` (lib unit)                       |        0 | no unit tests - covered via `wasm_parity`              |
+| doctests (×4 crates)                                |        0 | none currently - runnable examples live in `examples/` |
 | `crates/mimz-sim/tests/sim_errors.rs`               |       81 | crate integration                                      |
 | `crates/mimz-core/tests/width_rules_conformance.rs` |        2 | crate integration                                      |
 | `tests/cli.rs`                                      |        6 | workspace integration (runs the binary)                |
@@ -71,15 +71,15 @@ flavors + **16** pure-Tamil twins.
 
 ---
 
-## Legend — how to read this page
+## Legend - how to read this page
 
 | Term                   | Means                                                                                                                                                                                                                                  |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **lib unit test**      | A `#[cfg(test)] mod tests` block INSIDE the source file it tests. Fast, in-process, sees private items. Most of the suite.                                                                                                             |
-| **integration test**   | A file under `tests/`. Compiled as its own crate, so it only sees the PUBLIC API — or shells out to the real `mimz` binary.                                                                                                            |
+| **integration test**   | A file under `tests/`. Compiled as its own crate, so it only sees the PUBLIC API - or shells out to the real `mimz` binary.                                                                                                            |
 | **golden file**        | A committed expected output (`tests/golden/*.v`). The test regenerates and byte-compares. Regenerate on purpose with `MIMZ_UPDATE_GOLDENS=1`.                                                                                          |
 | **fixture**            | A small input file the test loads (`tests/fixtures/`). Error fixtures declare their expected code in a header comment (`// expect: E0401`).                                                                                            |
-| **differential test**  | Runs the SAME design two ways and demands identical results — usually our simulator vs. real `iverilog`/`vvp`. Catches bugs asserts cannot.                                                                                            |
+| **differential test**  | Runs the SAME design two ways and demands identical results - usually our simulator vs. real `iverilog`/`vvp`. Catches bugs asserts cannot.                                                                                            |
 | **completeness guard** | A test that fails when a list and its documentation drift apart (e.g. every error code must own a fixture). It is how this page stays honest.                                                                                          |
 | **parametrized loop**  | One `#[test]` that iterates a table (`BASE_EXAMPLES`, `TESTBENCHES`). Adding a table row adds coverage WITHOUT changing the test count.                                                                                                |
 | **flavor**             | One of the keyword spellings: `english`, `tanglish`, `tamil`, `mixed`, plus `tamil-pure` (Tamil keywords AND Tamil identifiers).                                                                                                       |
@@ -93,69 +93,69 @@ flavors + **16** pure-Tamil twins.
 
 ### Lib Unit Tests
 
-- [`lib-unit/keyword-table.md`](test-map/lib-unit/keyword-table.md) — Keyword table (15 tests)
-- [`lib-unit/lexer.md`](test-map/lib-unit/lexer.md) — Lexer (15 tests)
-- [`lib-unit/parser.md`](test-map/lib-unit/parser.md) — Parser (102 tests across 13 files)
-- [`lib-unit/checker.md`](test-map/lib-unit/checker.md) — Checker (286 tests across 11 files)
-- [`lib-unit/widths-pass.md`](test-map/lib-unit/widths-pass.md) — Widths pass internals (5 tests)
-- [`lib-unit/transliteration.md`](test-map/lib-unit/transliteration.md) — Transliteration (6 tests)
-- [`lib-unit/emitter.md`](test-map/lib-unit/emitter.md) — Emitter (93 tests, excl. translit + testbench rows)
-- [`lib-unit/testbench-emitter.md`](test-map/lib-unit/testbench-emitter.md) — Testbench emitter (5 tests)
-- [`lib-unit/lint.md`](test-map/lib-unit/lint.md) — Lint (5 tests)
-- [`lib-unit/explain.md`](test-map/lib-unit/explain.md) — Explain (3 tests)
-- [`lib-unit/translate.md`](test-map/lib-unit/translate.md) — Translate (10 tests)
-- [`lib-unit/config.md`](test-map/lib-unit/config.md) — Config (8 tests)
-- [`lib-unit/version.md`](test-map/lib-unit/version.md) — Version (3 tests)
-- [`lib-unit/morph.md`](test-map/lib-unit/morph.md) — Morph (14 tests)
-- [`lib-unit/pretty.md`](test-map/lib-unit/pretty.md) — Pretty-printer (11 tests)
-- [`lib-unit/stdlib.md`](test-map/lib-unit/stdlib.md) — Standard-library routing (5 tests)
-- [`lib-unit/hardware-emulation.md`](test-map/lib-unit/hardware-emulation.md) — Hardware-emulation peripherals (42 tests)
-- [`lib-unit/source-normalization.md`](test-map/lib-unit/source-normalization.md) — Source normalization (1 test)
-- [`lib-unit/ast-lowering.md`](test-map/lib-unit/ast-lowering.md) — AST lowering passes (21 tests)
-- [`lib-unit/checker-internals.md`](test-map/lib-unit/checker-internals.md) — Checker internals (consteval 6, drivers 2, names 3)
-- [`lib-unit/wide-integers.md`](test-map/lib-unit/wide-integers.md) — Wide integers and width rules (bits 17, wide 18, width_rules 19)
+- [`lib-unit/keyword-table.md`](test-map/lib-unit/keyword-table.md) - Keyword table (15 tests)
+- [`lib-unit/lexer.md`](test-map/lib-unit/lexer.md) - Lexer (15 tests)
+- [`lib-unit/parser.md`](test-map/lib-unit/parser.md) - Parser (102 tests across 13 files)
+- [`lib-unit/checker.md`](test-map/lib-unit/checker.md) - Checker (286 tests across 11 files)
+- [`lib-unit/widths-pass.md`](test-map/lib-unit/widths-pass.md) - Widths pass internals (5 tests)
+- [`lib-unit/transliteration.md`](test-map/lib-unit/transliteration.md) - Transliteration (6 tests)
+- [`lib-unit/emitter.md`](test-map/lib-unit/emitter.md) - Emitter (93 tests, excl. translit + testbench rows)
+- [`lib-unit/testbench-emitter.md`](test-map/lib-unit/testbench-emitter.md) - Testbench emitter (5 tests)
+- [`lib-unit/lint.md`](test-map/lib-unit/lint.md) - Lint (5 tests)
+- [`lib-unit/explain.md`](test-map/lib-unit/explain.md) - Explain (3 tests)
+- [`lib-unit/translate.md`](test-map/lib-unit/translate.md) - Translate (10 tests)
+- [`lib-unit/config.md`](test-map/lib-unit/config.md) - Config (8 tests)
+- [`lib-unit/version.md`](test-map/lib-unit/version.md) - Version (3 tests)
+- [`lib-unit/morph.md`](test-map/lib-unit/morph.md) - Morph (14 tests)
+- [`lib-unit/pretty.md`](test-map/lib-unit/pretty.md) - Pretty-printer (11 tests)
+- [`lib-unit/stdlib.md`](test-map/lib-unit/stdlib.md) - Standard-library routing (5 tests)
+- [`lib-unit/hardware-emulation.md`](test-map/lib-unit/hardware-emulation.md) - Hardware-emulation peripherals (42 tests)
+- [`lib-unit/source-normalization.md`](test-map/lib-unit/source-normalization.md) - Source normalization (1 test)
+- [`lib-unit/ast-lowering.md`](test-map/lib-unit/ast-lowering.md) - AST lowering passes (21 tests)
+- [`lib-unit/checker-internals.md`](test-map/lib-unit/checker-internals.md) - Checker internals (consteval 6, drivers 2, names 3)
+- [`lib-unit/wide-integers.md`](test-map/lib-unit/wide-integers.md) - Wide integers and width rules (bits 17, wide 18, width_rules 19)
 
 ### Crate Integration Tests
 
-- [`crate-integration/sim-errors.md`](test-map/crate-integration/sim-errors.md) — Sim runtime errors (81 tests)
-- [`crate-integration/width-rules-conformance.md`](test-map/crate-integration/width-rules-conformance.md) — Width rules conformance (2 tests)
+- [`crate-integration/sim-errors.md`](test-map/crate-integration/sim-errors.md) - Sim runtime errors (81 tests)
+- [`crate-integration/width-rules-conformance.md`](test-map/crate-integration/width-rules-conformance.md) - Width rules conformance (2 tests)
 
 ### Workspace Integration Tests
 
-- [`workspace-integration/cli.md`](test-map/workspace-integration/cli.md) — CLI (6 tests)
-- [`workspace-integration/compile-string.md`](test-map/workspace-integration/compile-string.md) — Compile string (14 tests)
-- [`workspace-integration/config.md`](test-map/workspace-integration/config.md) — Config (7 tests)
-- [`workspace-integration/differential-fuzz.md`](test-map/workspace-integration/differential-fuzz.md) — Differential fuzzing (6 tests)
-- [`workspace-integration/docs-sync.md`](test-map/workspace-integration/docs-sync.md) — Docs sync (5 tests)
-- [`workspace-integration/errors.md`](test-map/workspace-integration/errors.md) — Error fixtures (4 tests)
-- [`workspace-integration/eval.md`](test-map/workspace-integration/eval.md) — Eval (15 tests)
-- [`workspace-integration/examples.md`](test-map/workspace-integration/examples.md) — Examples (13 tests)
-- [`workspace-integration/extern.md`](test-map/workspace-integration/extern.md) — Extern module (5 tests)
-- [`workspace-integration/fmt.md`](test-map/workspace-integration/fmt.md) — Fmt (9 tests)
-- [`workspace-integration/grammar.md`](test-map/workspace-integration/grammar.md) — Grammar engine (16 tests)
-- [`workspace-integration/grammar-sync.md`](test-map/workspace-integration/grammar-sync.md) — Grammar sync (6 tests)
-- [`workspace-integration/icarus.md`](test-map/workspace-integration/icarus.md) — Icarus differential (16 tests)
-- [`workspace-integration/lsp.md`](test-map/workspace-integration/lsp.md) — LSP (1 test)
-- [`workspace-integration/morph.md`](test-map/workspace-integration/morph.md) — Morph (20 tests)
-- [`workspace-integration/packages.md`](test-map/workspace-integration/packages.md) — Packages (2 tests)
-- [`workspace-integration/self-determined-regression.md`](test-map/workspace-integration/self-determined-regression.md) — Self-determined regression (116 tests)
-- [`workspace-integration/showcase.md`](test-map/workspace-integration/showcase.md) — Showcase (6 tests)
-- [`workspace-integration/sim.md`](test-map/workspace-integration/sim.md) — Sim (17 tests)
-- [`workspace-integration/stdlib.md`](test-map/workspace-integration/stdlib.md) — Stdlib (11 tests)
-- [`workspace-integration/test-run.md`](test-map/workspace-integration/test-run.md) — Test run (9 tests)
-- [`workspace-integration/translate.md`](test-map/workspace-integration/translate.md) — Translate (15 tests)
-- [`workspace-integration/wasm-parity.md`](test-map/workspace-integration/wasm-parity.md) — WASM parity (2 tests)
+- [`workspace-integration/cli.md`](test-map/workspace-integration/cli.md) - CLI (6 tests)
+- [`workspace-integration/compile-string.md`](test-map/workspace-integration/compile-string.md) - Compile string (14 tests)
+- [`workspace-integration/config.md`](test-map/workspace-integration/config.md) - Config (7 tests)
+- [`workspace-integration/differential-fuzz.md`](test-map/workspace-integration/differential-fuzz.md) - Differential fuzzing (6 tests)
+- [`workspace-integration/docs-sync.md`](test-map/workspace-integration/docs-sync.md) - Docs sync (5 tests)
+- [`workspace-integration/errors.md`](test-map/workspace-integration/errors.md) - Error fixtures (4 tests)
+- [`workspace-integration/eval.md`](test-map/workspace-integration/eval.md) - Eval (15 tests)
+- [`workspace-integration/examples.md`](test-map/workspace-integration/examples.md) - Examples (13 tests)
+- [`workspace-integration/extern.md`](test-map/workspace-integration/extern.md) - Extern module (5 tests)
+- [`workspace-integration/fmt.md`](test-map/workspace-integration/fmt.md) - Fmt (9 tests)
+- [`workspace-integration/grammar.md`](test-map/workspace-integration/grammar.md) - Grammar engine (16 tests)
+- [`workspace-integration/grammar-sync.md`](test-map/workspace-integration/grammar-sync.md) - Grammar sync (6 tests)
+- [`workspace-integration/icarus.md`](test-map/workspace-integration/icarus.md) - Icarus differential (16 tests)
+- [`workspace-integration/lsp.md`](test-map/workspace-integration/lsp.md) - LSP (1 test)
+- [`workspace-integration/morph.md`](test-map/workspace-integration/morph.md) - Morph (20 tests)
+- [`workspace-integration/packages.md`](test-map/workspace-integration/packages.md) - Packages (2 tests)
+- [`workspace-integration/self-determined-regression.md`](test-map/workspace-integration/self-determined-regression.md) - Self-determined regression (116 tests)
+- [`workspace-integration/showcase.md`](test-map/workspace-integration/showcase.md) - Showcase (6 tests)
+- [`workspace-integration/sim.md`](test-map/workspace-integration/sim.md) - Sim (17 tests)
+- [`workspace-integration/stdlib.md`](test-map/workspace-integration/stdlib.md) - Stdlib (11 tests)
+- [`workspace-integration/test-run.md`](test-map/workspace-integration/test-run.md) - Test run (9 tests)
+- [`workspace-integration/translate.md`](test-map/workspace-integration/translate.md) - Translate (15 tests)
+- [`workspace-integration/wasm-parity.md`](test-map/workspace-integration/wasm-parity.md) - WASM parity (2 tests)
 
 ### Simulator Tests
 
-- [`simulator/combinational.md`](test-map/simulator/combinational.md) — Combinational evaluator (22 tests)
-- [`simulator/value-model.md`](test-map/simulator/value-model.md) — Value model + fn-body interpreter (38 tests)
-- [`simulator/elaboration.md`](test-map/simulator/elaboration.md) — Elaboration (26 tests)
-- [`simulator/kernel.md`](test-map/simulator/kernel.md) — Kernel (30 tests)
-- [`simulator/run-vcd-trace.md`](test-map/simulator/run-vcd-trace.md) — Sim runner / VCD / console trace (18 tests)
-- [`simulator/playground-runner.md`](test-map/simulator/playground-runner.md) — Playground runner (14 tests)
-- [`simulator/test-harness.md`](test-map/simulator/test-harness.md) — Test harness (27 tests)
-- [`simulator/sim-integration.md`](test-map/simulator/sim-integration.md) — Sim integration (17 tests)
+- [`simulator/combinational.md`](test-map/simulator/combinational.md) - Combinational evaluator (22 tests)
+- [`simulator/value-model.md`](test-map/simulator/value-model.md) - Value model + fn-body interpreter (38 tests)
+- [`simulator/elaboration.md`](test-map/simulator/elaboration.md) - Elaboration (26 tests)
+- [`simulator/kernel.md`](test-map/simulator/kernel.md) - Kernel (30 tests)
+- [`simulator/run-vcd-trace.md`](test-map/simulator/run-vcd-trace.md) - Sim runner / VCD / console trace (18 tests)
+- [`simulator/playground-runner.md`](test-map/simulator/playground-runner.md) - Playground runner (14 tests)
+- [`simulator/test-harness.md`](test-map/simulator/test-harness.md) - Test harness (27 tests)
+- [`simulator/sim-integration.md`](test-map/simulator/sim-integration.md) - Sim integration (17 tests)
 
 ---
 

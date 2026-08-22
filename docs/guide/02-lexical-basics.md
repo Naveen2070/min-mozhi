@@ -1,12 +1,12 @@
-# 2 — Lexical Basics
+# 2 - Lexical Basics
 
 This chapter covers the smallest pieces: comments, names, keywords, and the one
-feature unique to Min-Mozhi — three interchangeable keyword flavors.
+feature unique to Min-Mozhi - three interchangeable keyword flavors.
 
 ## Comments
 
 ```mimz
-// line comment — to the end of the line
+// line comment - to the end of the line
 /* block comment
    spanning lines */
 ```
@@ -16,7 +16,7 @@ There is no documentation-comment syntax yet; `//` and `/* */` are it.
 ## Identifiers
 
 Identifiers name your modules, ports, wires, registers, parameters, and enum
-variants. They follow the usual rule — a letter or `_` then letters, digits, or
+variants. They follow the usual rule - a letter or `_` then letters, digits, or
 `_`:
 
 ```mimz
@@ -33,9 +33,9 @@ module விளக்கு {
 }
 ```
 
-Identifiers are **not** translated between flavors — only keywords are. Your
+Identifiers are **not** translated between flavors - only keywords are. Your
 names stay exactly as written. (Tamil _digits_ inside number literals are
-rejected — use ASCII digits.)
+rejected - use ASCII digits.)
 
 ## Numbers
 
@@ -52,7 +52,7 @@ no cheap hardware meaning); writing one is a teaching error.
 
 ## Keywords and the three flavors
 
-A keyword is a word the grammar reserves — `module`, `in`, `out`, `wire`, `reg`,
+A keyword is a word the grammar reserves - `module`, `in`, `out`, `wire`, `reg`,
 `if`, `match`, and so on. Min-Mozhi has the unusual property that every keyword
 has **three spellings**, called flavors:
 
@@ -87,7 +87,7 @@ The full table of all 44 keywords in all three flavors is in the
 
 > Only **keywords** change across flavors. Types (`bit`, `bits`, `signed`),
 > built-in function names (`extend`, `min`, …), operators, and your own
-> identifiers are universal — they are spelled the same in every flavor.
+> identifiers are universal - they are spelled the same in every flavor.
 
 ### Mixing flavors
 

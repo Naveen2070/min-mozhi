@@ -4,7 +4,7 @@
 
 The AST → Min-Mozhi source printer behind `mimz translate --order
 code|thamizh` and `mimz fmt`. Every test is a ROUND TRIP: print the AST,
-re-parse the output, and demand the same tree — the oracle that proves the
+re-parse the output, and demand the same tree - the oracle that proves the
 printer is not quietly losing information.
 
 | Test                                                                    | Locks in                                                                    |

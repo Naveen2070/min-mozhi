@@ -1,7 +1,7 @@
-# 3 — Types and Values
+# 3 - Types and Values
 
 Every signal in Min-Mozhi has a **type**, and the type carries a **width** (how
-many bits the wire is). Widths are checked everywhere — the compiler never
+many bits the wire is). Widths are checked everywhere - the compiler never
 silently widens or truncates a value. Getting comfortable with widths is most of
 learning the language.
 
@@ -19,7 +19,7 @@ in  data:  bits[8]
 in  delta: signed[4]
 ```
 
-`N` is a **width expression** — usually a literal, but it can be a parameter or a
+`N` is a **width expression** - usually a literal, but it can be a parameter or a
 `const`, which the compiler folds at build time:
 
 ```mimz
@@ -51,7 +51,7 @@ ready = true
 ## Signed vs unsigned, and why they never mix
 
 `bits[N]` is unsigned; `signed[N]` is two's-complement. Min-Mozhi will **not**
-let you combine them in one operation without an explicit cast — silent
+let you combine them in one operation without an explicit cast - silent
 sign-confusion is a notorious bug source:
 
 ```mimz
@@ -66,7 +66,7 @@ they change how the _next_ operator treats it.
 
 ## Number literals and their width
 
-A bare number like `7` is a compile-time integer with no fixed width yet — it
+A bare number like `7` is a compile-time integer with no fixed width yet - it
 adapts to the context it is used in, as long as it fits. Assigning a literal that
 does not fit its target is rejected:
 
@@ -99,7 +99,7 @@ handle every variant (chapter 7).
 
 ### Tagged unions (enums with payloads)
 
-Enum variants can carry **payload fields** — data that differs per
+Enum variants can carry **payload fields** - data that differs per
 variant:
 
 ```mimz
@@ -112,7 +112,7 @@ enum Packet {
 
 `Data` carries an 8-bit value; `Ctrl` carries two fields (`kind` and `seq`);
 `Empty` carries nothing. The compiler sizes the tag to fit the variant count and
-pads the payload to the widest variant — `Ctrl`'s 6 bits (`kind` + `seq`) in
+pads the payload to the widest variant - `Ctrl`'s 6 bits (`kind` + `seq`) in
 this case, so the total width is `tag_bits + 6`.
 
 Match on a tagged union must unpack the payload:
@@ -148,7 +148,7 @@ module Node {
 
 The compiler automatically flattens a bundle into individual signals (`bus_in_valid`, `bus_in_ready`, etc.) during Verilog emission, meaning bundles have zero runtime overhead and generate clean, synthesis-safe hardware.
 
-Build a bundle-typed value with a **literal**, `{ field: value, ... }` — every
+Build a bundle-typed value with a **literal**, `{ field: value, ... }` - every
 field must be given (a missing field is `E0901`, an unknown one is rejected
 too):
 
@@ -168,7 +168,7 @@ out y: bits[8]
 y = if valid { data } else { 0 }
 ```
 
-A partial destructure (naming only some fields) is fine — you don't have to
+A partial destructure (naming only some fields) is fine - you don't have to
 bind every field. Duplicate binding names and field-rename syntax
 (`{ f: alias }`) are both rejected at parse time; a destructured field keeps
 its own name.
@@ -189,7 +189,7 @@ fn get_valid(h: Handshake(W: 8)) -> bit {
 
 ## Valid bundle sugar (`T?`)
 
-A trailing `?` on a scalar type (`bit?`, `bits[N]?`, `signed[N]?`) is compiler sugar for a valid-bundle — a bundle shaped `{ valid: bit, data: T }`:
+A trailing `?` on a scalar type (`bit?`, `bits[N]?`, `signed[N]?`) is compiler sugar for a valid-bundle - a bundle shaped `{ valid: bit, data: T }`:
 
 ```mimz
 in  req:  bits[8]?
@@ -220,7 +220,7 @@ first = pick_first([10, 20, 30, 40])
 ## Compile-time types: `int` and `bool`
 
 Parameters and `const`s are compile-time values, not hardware. They use the
-compile-time types `int` and `bool` — never `bits[N]`:
+compile-time types `int` and `bool` - never `bits[N]`:
 
 ```mimz
 const LANES: int = 4
@@ -233,4 +233,4 @@ These exist only during compilation; they fold into widths and unrolled hardware
 and never become wires themselves. More on parameters and `const` in
 [chapter 9](09-modules-and-reuse.md).
 
-Next: [signals — ports, wires, and registers](04-signals.md).
+Next: [signals - ports, wires, and registers](04-signals.md).

@@ -1,4 +1,4 @@
-﻿# Security Policy
+# Security Policy
 
 ## Supported Versions
 
@@ -10,22 +10,22 @@ Only the latest release receives security fixes. Older tags are unsupported.
 
 ## Scope
 
-Min-Mozhi is a **compiler and simulator** — its security surface is different
+Min-Mozhi is a **compiler and simulator** - its security surface is different
 from a web service. In scope:
 
 - **Malicious input that crashes the compiler** (mimz check, mimz compile,
-  mimz sim) — a compiler should never panic or produce undefined behavior on
+  mimz sim) - a compiler should never panic or produce undefined behavior on
   any source file, no matter how malformed.
 - **Incorrect Verilog output** that silently violates a safety rule the spec
   guarantees (e.g. emitting multiple drivers, latches, or unsigned/signed
   confusion without raising an `E`-code).
-- **Supply-chain issues** — malicious dependency, compromised GitHub Action.
+- **Supply-chain issues** - malicious dependency, compromised GitHub Action.
 
 Out of scope for this release:
 
 - Compile-time information-flow checks (`secret` taint, `system_fault` network)
-  — those are a roadmap item (Phase 2 / spec G5), not yet implemented.
-- Synthesized hardware security — Min-Mozhi emits Verilog; hardware correctness
+  - those are a roadmap item (Phase 2 / spec G5), not yet implemented.
+- Synthesized hardware security - Min-Mozhi emits Verilog; hardware correctness
   is the downstream toolchain''s responsibility.
 
 ## Reporting a Vulnerability
@@ -34,9 +34,9 @@ Out of scope for this release:
 
 Use one of:
 
-1. **GitHub private vulnerability reporting** — go to the Security tab on the
+1. **GitHub private vulnerability reporting** - go to the Security tab on the
    repository page and click ''Report a vulnerability'' (recommended).
-2. **Email** — contact the maintainer directly via the email on
+2. **Email** - contact the maintainer directly via the email on
    [Naveen R''s GitHub profile](https://github.com/Naveen2070).
 
 Include:

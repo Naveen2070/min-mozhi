@@ -2,7 +2,7 @@
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
-The two version axes — compiler (crate) vs language edition — and the
+The two version axes - compiler (crate) vs language edition - and the
 `EDITION_HISTORY` source of truth (Workstream B).
 
 | Test                                        | Locks in                                                                                             |

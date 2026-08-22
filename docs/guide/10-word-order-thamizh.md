@@ -1,18 +1,18 @@
-# 10 — Natural Word Order (thamizh)
+# 10 - Natural Word Order (thamizh)
 
-Everything so far used **code order** — the clause head leads, like English and
+Everything so far used **code order** - the clause head leads, like English and
 most programming languages: `on rise(clk) { … }`, `if c { … }`, `match e { … }`.
 Tamil, however, is an SOV / postpositional language: the operand comes first and
 the clause word trails. Min-Mozhi's grammar engine lets Tamil and Tanglish code
-read in that natural order — without changing the meaning at all.
+read in that natural order - without changing the meaning at all.
 
 > Word order and keyword flavor are **independent**. Flavor chooses the words;
 > word order chooses where the clause word sits. You can have English keywords in
-> thamizh order, or Tamil keywords in code order — any combination.
+> thamizh order, or Tamil keywords in code order - any combination.
 
 ## Turning it on
 
-Add the directive `syntax thamizh` at the top of the file (in any flavor —
+Add the directive `syntax thamizh` at the top of the file (in any flavor -
 `ilakkanam thamizh` in Tanglish/Tamil). Without the directive, code order is the
 default; there is no `code` directive word.
 
@@ -30,12 +30,12 @@ Only the clause words move. Six constructs are order-sensitive:
 | `fn foo(x: bits[4]) -> bits[4]`   | `fn foo(x: bits[4]) -> bits[4]` |
 
 The if-expression and statement-level `if` share the same flip. `fn` declarations
-use infix syntax in both orders (unchanged — the `fn` keyword leads always). The
+use infix syntax in both orders (unchanged - the `fn` keyword leads always). The
 test-header flip (Phase 1.5 B7) completes all six word-order flips of the grammar
 engine.
 
-The clause word (`on`, `if`, `match`) trails its operand. Everything else — ports,
-declarations, assignments, expressions — is unchanged.
+The clause word (`on`, `if`, `match`) trails its operand. Everything else - ports,
+declarations, assignments, expressions - is unchanged.
 
 ## The counter, in thamizh order
 
@@ -61,7 +61,7 @@ thoguthi Counter(WIDTH: int = 8) {
 }
 ```
 
-`yetram(clk) pothu { … }` is `rise(clk) on { … }` — the edge leads, `on` (`pothu`)
+`yetram(clk) pothu { … }` is `rise(clk) on { … }` - the edge leads, `on` (`pothu`)
 trails. A `match` flips the same way, scrutinee first:
 
 ```mimz

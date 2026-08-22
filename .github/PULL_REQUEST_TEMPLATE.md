@@ -14,12 +14,12 @@
 
 ## Checklist
 
-### Quality gate (R8 — CI enforces all of these)
+### Quality gate (R8 - CI enforces all of these)
 
-- [ ] `cargo fmt --all` — clean
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo test` — all passing
-- [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` — clean
+- [ ] `cargo fmt --all` - clean
+- [ ] `cargo clippy --all-targets -- -D warnings` - clean
+- [ ] `cargo test` - all passing
+- [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` - clean
 
 ### Tests
 
@@ -45,7 +45,7 @@
 ### Release gate _(only if this PR restores/claims a release-readiness note, e.g. "v0.2 ships")_
 
 - [ ] Gate 5 scored at the nightly depth, not the per-PR depth (GAP-14,
-      `docs/audit/README.md` § Release-gate scoring convention) — ran
+      `docs/audit/README.md` section Release-gate scoring convention) - ran
       `tools/gate.sh` or dispatched `fuzz-nightly` and pasted the depth +
       result below. **A 400/400-scored gate 5 does not count.**
 
@@ -57,4 +57,4 @@
 
 <!-- Does this touch spec/01, spec/02, or the keyword table?
      If yes: what breaks, and how was it handled?
-     If no: write "N/A — additive / docs / tooling only." -->
+     If no: write "N/A - additive / docs / tooling only." -->

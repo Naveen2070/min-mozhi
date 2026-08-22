@@ -1,12 +1,12 @@
-# Min-Mozhi demo — write a design, simulate it, see the waveform
+# Min-Mozhi demo - write a design, simulate it, see the waveform
 
 A self-contained sandbox for writing a `.mimz` design, compiling it to Verilog,
-running the built-in simulator, and viewing the resulting waveform — in VS Code
+running the built-in simulator, and viewing the resulting waveform - in VS Code
 or a browser.
 
 The example here, [`cpu.mimz`](cpu.mimz) + [`alu.mimz`](alu.mimz), is the most
 feature-dense design Min-Mozhi can build today: a single-clock **accumulator
-CPU** that exercises every structural feature the simulator supports —
+CPU** that exercises every structural feature the simulator supports -
 
 | Feature                               | Where in the design               |
 | ------------------------------------- | --------------------------------- |
@@ -32,7 +32,7 @@ halts.
   ```
 
   This produces `target/release/mimz` (`mimz.exe` on Windows). Below, `mimz`
-  means that binary — or just use `cargo run -q --` in place of `mimz`.
+  means that binary - or just use `cargo run -q --` in place of `mimz`.
 
 - **A waveform viewer** (pick one): the **Surfer** VS Code extension (or
   <https://app.surfer-project.org> in a browser), **GTKWave**, **VaporView**, or
@@ -54,7 +54,7 @@ mimz check demo/cpu.mimz
 Expected:
 
 ```
-OK: demo/cpu.mimz — 2 module(s), 1 test(s), 2 file(s)
+OK: demo/cpu.mimz - 2 module(s), 1 test(s), 2 file(s)
 ```
 
 A clean `OK:` means it lexed, parsed, and passed all six checker passes (widths,
@@ -83,7 +83,7 @@ accumulator ended at `0x86`. Exit code is non-zero if any test fails.
 mimz sim demo/cpu.mimz --cycles 8 --trace
 ```
 
-Expected — `acc` walks `0 → 5 → 8 → 6 → 6 → 134` (`0x86`), then the FSM halts
+Expected - `acc` walks `0 → 5 → 8 → 6 → 6 → 134` (`0x86`), then the FSM halts
 (`phase` flips `0 → 1`) and `pc` freezes:
 
 ```
@@ -105,23 +105,23 @@ cycle | acc | pc | leds | phase | pcr | accr
 mimz sim demo/cpu.mimz --cycles 8 -o demo/cpu.vcd
 ```
 
-Writes `demo/cpu.vcd` — a standard IEEE-1364 value-change dump.
+Writes `demo/cpu.vcd` - a standard IEEE-1364 value-change dump.
 
 ## 5. View the waveform as a graph
 
-`cpu.vcd` is a standard VCD — any of these open it. In every viewer, add the
+`cpu.vcd` is a standard VCD - any of these open it. In every viewer, add the
 signals **`clk`, `rst`, `pc`, `acc`, `leds`, `phase`** to watch the accumulator
 climb to `0x86` and `phase` flip `0 → 1` (Run → Halt).
 
-### A. Web — zero install (fastest)
+### A. Web - zero install (fastest)
 
-- **Surfer** — open <https://app.surfer-project.org>, then drag `demo/cpu.vcd`
+- **Surfer** - open <https://app.surfer-project.org>, then drag `demo/cpu.vcd`
   onto the page (or **File → Open file**). Runs in the browser via WASM; the file
   never leaves your machine.
-- **VCDROM** — open <https://vc.drom.io> and drag `demo/cpu.vcd` in. Same idea,
+- **VCDROM** - open <https://vc.drom.io> and drag `demo/cpu.vcd` in. Same idea,
   also fully client-side.
 
-### B. VS Code extension — view it without leaving the editor
+### B. VS Code extension - view it without leaving the editor
 
 Install one (Quick Open `Ctrl/Cmd+P`, then paste the line), then just click
 `demo/cpu.vcd` in the Explorer:
@@ -142,7 +142,7 @@ Install one (Quick Open `Ctrl/Cmd+P`, then paste the line), then just click
   - Linux: `sudo apt install gtkwave`
   - then: `gtkwave demo/cpu.vcd`
 - **Surfer desktop** (modern): `cargo install surfer`, then
-  `surfer demo/cpu.vcd` — or grab a build from
+  `surfer demo/cpu.vcd` - or grab a build from
   <https://gitlab.com/surfer-project/surfer/-/releases>.
 
 ## 6. Compile to Verilog (optional)
@@ -163,19 +163,19 @@ iverilog -t null demo/cpu.v        # must elaborate cleanly
 ## Edit → re-run loop
 
 1. Edit `demo/cpu.mimz` (or add your own `.mimz` file in this folder).
-2. `mimz check demo/cpu.mimz` — fix any `E`-coded errors (each carries a teaching
+2. `mimz check demo/cpu.mimz` - fix any `E`-coded errors (each carries a teaching
    message; `mimz explain E0402` expands one).
-3. `mimz test demo/cpu.mimz` — confirm behavior.
-4. `mimz sim demo/cpu.mimz --cycles N -o demo/cpu.vcd` — regenerate the waveform
+3. `mimz test demo/cpu.mimz` - confirm behavior.
+4. `mimz sim demo/cpu.mimz --cycles N -o demo/cpu.vcd` - regenerate the waveform
    and refresh it in your viewer.
 
 ### Ideas to try
 
 - Change the program ROM in `cpu.mimz` (the `match pcr { … }`) and watch `acc`
   change in the trace/waveform.
-- Add an opcode to `alu.mimz` (e.g. XOR `0b…`) — the checker will tell you if a
+- Add an opcode to `alu.mimz` (e.g. XOR `0b…`) - the checker will tell you if a
   width or exhaustiveness rule breaks.
-- Write the whole thing in Tamil or Tanglish keywords — same circuit, same
+- Write the whole thing in Tamil or Tanglish keywords - same circuit, same
   Verilog (`mimz translate demo/cpu.mimz --to tamil`).
 
 ## What it does NOT do (today's ceiling)
@@ -185,5 +185,5 @@ division. See the language docs (`docs/guide/`) for the full feature set.
 
 ---
 
-_Generated `*.v` / `*.vcd` are git-ignored here — they rebuild from the `.mimz`
+_Generated `*.v` / `*.vcd` are git-ignored here - they rebuild from the `.mimz`
 sources with the commands above._

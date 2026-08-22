@@ -43,7 +43,7 @@ The core philosophy of Rust is catching bugs at compile time. In hardware, runti
 ### 1.2 Clock Domain Checker (Hardware Thread-Safety)
 
 - **Explanation:** Passing a signal from one clock domain to another without proper synchronization (CDC) causes metastability, where the chip enters an undefined electrical state. This is the hardware equivalent of a software data race.
-- **Example (shipped, real syntax — no `@ clock` annotation; clock ownership
+- **Example (shipped, real syntax - no `@ clock` annotation; clock ownership
   is inferred from which `on` block drives a `reg`, exactly like everywhere
   else in the language):**
 
@@ -73,11 +73,11 @@ The core philosophy of Rust is catching bugs at compile time. In hardware, runti
   slow_bit = synced
   ```
 
-  > **Shipped** — `sync.double_flop` (level/control signal) and `sync.pulse`
+  > **Shipped** - `sync.double_flop` (level/control signal) and `sync.pulse`
   > (single-cycle pulse) are real, checker-enforced synchronizer primitives,
-  > 1-bit signals only (spec/02-syntax-and-grammar.md §1.2b). `sync` is
+  > 1-bit signals only (spec/02-syntax-and-grammar.md section 1.2b). `sync` is
   > dual-purpose with the unrelated `sync loop` construct (disambiguated by
-  > the token after `sync` — `loop`/`suzhal`/`சுழல்` vs `.`), exactly as the
+  > the token after `sync` - `loop`/`suzhal`/`சுழல்` vs `.`), exactly as the
   > v0.2.22 changelog entry in `spec/03-keywords-trilingual.md` predicted.
   > Handshake protocols and async FIFOs (multi-bit data-bus crossing) remain
   > future work, buildable as ordinary `.mimz` stdlib modules on top of
@@ -531,12 +531,12 @@ Hardware engineering is ultimately constrained by clock speed (Fmax), security (
   ```
 
 - **Status (2026-08-06):** the runtime half shipped as `docs/audit/gaps.md`
-  GAP-6 — `assert(cond)`/`assert(cond, "msg")` (2026-08-05) and
+  GAP-6 - `assert(cond)`/`assert(cond, "msg")` (2026-08-05) and
   `cover(cond)`/`cover(cond, "label")` (2026-08-06), both simulation-only
   (`` `ifndef SYNTHESIS ``-guarded in the emitted Verilog, native in
   `mimz-sim`). **Remaining, deliberately deferred by GAP-6's own direction:**
   `assume`, SVA sequence/property emission, and the formal (`prove`/
-  SymbiYosys) bridge this section describes — none have AST/checker/emit
+  SymbiYosys) bridge this section describes - none have AST/checker/emit
   support yet. `prove` stays reserved-keyword-only per section 10's gap
   table.
 
@@ -700,13 +700,13 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
   let combined_bus = [..upper_byte, ..lower_byte, padding_bit]
   ```
 
-### 8.11 Vim-like TUI Workbench (`mimz tui`) — no-IDE interactive driver
+### 8.11 Vim-like TUI Workbench (`mimz tui`) - no-IDE interactive driver
 
 - **Explanation:** a full-screen, keyboard-driven terminal UI (vim-like panes/modal
   keys) that wraps the whole toolchain so a user with **no IDE** still gets
-  compiler help interactively. On start it asks the **output mode** — (a) emit
+  compiler help interactively. On start it asks the **output mode** - (a) emit
   Verilog, (b) just run the simulation and show the log (pass/fail + `$monitor`
-  trace), or (c) also produce a waveform (VCD) — then opens an edit pane + a
+  trace), or (c) also produce a waveform (VCD) - then opens an edit pane + a
   results pane that re-runs on save. Diagnostics (the friendly errors of 8.1) render
   inline against the source; `test` blocks run with their teaching messages; the
   waveform option writes a VCD and/or shows the console trace. Think "`mimz check`
@@ -714,14 +714,14 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
     language surface.
 - **How it differs from 8.5:** 8.5 is a narrow line REPL for **combinational**
   expressions (`let out = a & !b`, flip inputs, see the value). 8.11 is the
-  **whole-design** workbench — clocked sim, waveforms, Verilog emit, test runs,
-  inline diagnostics — for editing and running real `.mimz` files without an
+  **whole-design** workbench - clocked sim, waveforms, Verilog emit, test runs,
+  inline diagnostics - for editing and running real `.mimz` files without an
   editor/IDE. 8.5's evaluator is one of the engines it drives.
 - **Feasibility:** Medium, **tool not syntax** (zero language/freeze cost; additive,
   edition-safe). Rides what already ships: `crates/mimz-sim` (Phase 1.5 kernel + VCD +
   `mimz test`), the emitter (`mimz compile`), the checker's diagnostics, and the
   trilingual front-end. A TUI crate (e.g. `ratatui`) would be the first real UI
-  dependency — weigh against the minimal-dep ethos; the output-mode prompt + a
+  dependency - weigh against the minimal-dep ethos; the output-mode prompt + a
   re-run-on-save loop is the MVP. Post-Phase-1.5; pairs naturally with the Phase 4
   WASM playground (same engines, different shell).
 - **Example Use Case:** `mimz tui counter.mimz` → prompt "Output: [v]erilog /
@@ -739,22 +739,22 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 ### 8.13 Project Scaffolding & Templates (`mimz init`)
 
 - **Status:** 🟡 Base shipped (2026-06-25); template gallery is the open extension.
-- **Explanation:** `cargo new`-style onboarding. The shipped `mimz init <name>` creates `./<name>/` with a documented `mimz.toml` and a starter `<name>.mimz` — a counter module (named PascalCase from the project) plus an inline `test` block that passes — so `mimz test` / `mimz compile` work on the first try with zero blank-page friction. The forward-looking extension is a **template gallery**: `mimz init <name> --template <kind>` choosing among curated starters (e.g. `counter`, `fsm`, `uart`, `alu`, `combinational`, `tamil` / `tanglish` flavor variants), and ideally sourcing them from the `examples/` corpus so every template is already part of the Icarus/golden differential — i.e. templates that are _proven to compile and simulate_, not hand-maintained snippets that can rot. A `--lang`/`--flavor` switch would emit the starter in Tanglish or pure-Tamil keywords, reinforcing the trilingual identity at first contact.
-- **Feasibility:** High, **tool not syntax** (zero language/freeze cost; additive, edition-safe). The base landed in ~one file (`src/commands/init.rs`); the starter is modelled on the proven counter+test from `tests/test_run.rs`, and `tests/cli.rs` runs the generated project through `mimz test` so the scaffold can't silently break. The gallery's main design choice is the template source: inline string constants (simplest) vs. reading from `examples/` at build time (no rot, but couples `init` to the corpus layout). Flavor variants reuse `mimz translate`/`fmt`, which already reskin keywords — so a single English template can be emitted in any of the three flavors rather than maintaining three copies.
+- **Explanation:** `cargo new`-style onboarding. The shipped `mimz init <name>` creates `./<name>/` with a documented `mimz.toml` and a starter `<name>.mimz` - a counter module (named PascalCase from the project) plus an inline `test` block that passes - so `mimz test` / `mimz compile` work on the first try with zero blank-page friction. The forward-looking extension is a **template gallery**: `mimz init <name> --template <kind>` choosing among curated starters (e.g. `counter`, `fsm`, `uart`, `alu`, `combinational`, `tamil` / `tanglish` flavor variants), and ideally sourcing them from the `examples/` corpus so every template is already part of the Icarus/golden differential - i.e. templates that are _proven to compile and simulate_, not hand-maintained snippets that can rot. A `--lang`/`--flavor` switch would emit the starter in Tanglish or pure-Tamil keywords, reinforcing the trilingual identity at first contact.
+- **Feasibility:** High, **tool not syntax** (zero language/freeze cost; additive, edition-safe). The base landed in ~one file (`src/commands/init.rs`); the starter is modelled on the proven counter+test from `tests/test_run.rs`, and `tests/cli.rs` runs the generated project through `mimz test` so the scaffold can't silently break. The gallery's main design choice is the template source: inline string constants (simplest) vs. reading from `examples/` at build time (no rot, but couples `init` to the corpus layout). Flavor variants reuse `mimz translate`/`fmt`, which already reskin keywords - so a single English template can be emitted in any of the three flavors rather than maintaining three copies.
 - **Example Use Case:** `mimz init blink --template fsm --flavor tanglish` → a `blink/` project whose `blink.mimz` is a documented traffic-light-style FSM written in Tanglish keywords, with a passing `test` block; `cd blink && mimz test` is green immediately.
 
 ---
 
-### Tier 1 — Already shipped (the idea renames an existing rule)
+### Tier 1 - Already shipped (the idea renames an existing rule)
 
 | Idea                                     | Verdict                                                                                                                                                 |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2.8 Properties `{ get, private set }`    | Already enforced — an `out` is only drivable by its own module (E0104/E0107/E0108). Redundant; skip.                                                    |
+| 2.8 Properties `{ get, private set }`    | Already enforced - an `out` is only drivable by its own module (E0104/E0107/E0108). Redundant; skip.                                                    |
 | 2.1 Null safety (the goal)               | "A wire must always be driven" IS the single-driver + coverage pass (E0501/E0502). The `??` unwrap solves a problem the language already prevents.      |
-| 1.1 Borrow checker (sound approximation) | Double-drives are already rejected. The full version (proving two FSM states never co-occur) is reachability analysis — SMT-grade; parked.              |
-| 2.3 Width inference (half)               | `CtInt` + lossless `+` (max+1) is exactly the example. The other half — inferring a wire's declared type from its init — is a cheap, real win (Tier 3). |
+| 1.1 Borrow checker (sound approximation) | Double-drives are already rejected. The full version (proving two FSM states never co-occur) is reachability analysis - SMT-grade; parked.              |
+| 2.3 Width inference (half)               | `CtInt` + lossless `+` (max+1) is exactly the example. The other half - inferring a wire's declared type from its init - is a cheap, real win (Tier 3). |
 
-### Tier 2 — Already planned (good design inputs for those slices)
+### Tier 2 - Already planned (good design inputs for those slices)
 
 | Idea                                                    | Lands with                                                                                                                                                             |
 | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -762,45 +762,45 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
 | 1.2 Clock domain checking                               | = the deferred clock-ownership slice + Phase 2 multi-clock design. `@ clk` syntax and `sync.double_flop` are concrete inputs. Best idea in the doc relative to effort. |
 | 3.3 await tests / 4.1 `sim::` / 6.4 step-back debugging | Phase 1.5 simulator API design. Step-back is feasible precisely because our own simulator records the full trace.                                                      |
 
-### Tier 3 — Good and feasible — spec for Phase 2/3
+### Tier 3 - Good and feasible - spec for Phase 2/3
 
 | Idea                                                                    | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 2.7 Tagged unions with payloads                                         | Strongest new feature; enums + match exist, payload = tag bits + max-payload bits, clean synthesis. Gives `Result` (4.2) for free. Build first after Phase 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | 2.4 Interfaces/bundles + destructuring                                  | The #1 feature every Verilog successor adds; flatten to nets in the emitter. Then 2.9 structural matching is a small checker rule on top.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| 3.1 Channels — tier (a) only                                            | Decoupled-style valid/ready/data bundles with explicit handshake: proven tech. Tier (b) — blocking `<-` reads that auto-synthesize an FSM — is behavioral synthesis (research); parked.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 3.1 Channels - tier (a) only                                            | Decoupled-style valid/ready/data bundles with explicit handshake: proven tech. Tier (b) - blocking `<-` reads that auto-synthesize an FSM - is behavioral synthesis (research); parked.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 6.3 `prove` blocks                                                      | Do NOT embed Z3. Emit SystemVerilog assertions and drive SymbiYosys, the same way Icarus handles simulation. Weekend-sized backend, killer teaching feature.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 2.3 (other half) — **attempted 2026-06-14, DEFERRED**                   | `wire sum = a + b` without an annotation. NOT as cheap as it looked: the checker's `Ty` lives only inside the widths pass and has **no symbolic width algebra** (every module is checked under CONCRETE param bindings), so a wire in a parametric module (`bits[W+1]`) has no concrete type to write back into the AST; and the inferred type must be materialized for the emitter/sim, which the widths pass cannot do (it borrows the AST immutably). Needs symbolic widths (large) or a non-parametric-only restriction with a documented wart. Reason recorded in `docs/log/2026-06-14.md`; revisit when symbolic widths exist. |
-| `count_ones`-style builtins — **partly addressed 2026-06-14**           | The reduction family already exists as the `&`/`\|`/`^` operators; `min`/`max`/`abs`/`nand`/`nor`/`xnor` shipped as built-ins (spec/02 v0.2.7). `count_ones` (popcount) itself is DEFERRED — it needs the operand's width at emit time, which the emitter cannot produce (`width()` works on a declared `Type` only). Revisit alongside emitter expression-width support.                                                                                                                                                                                                                                                            |
-| **6.2 `secret` taint — slice 1** (promoted from Tier 4, v0.3)           | Now a G5 constitution goal. Lattice labels in a checker pass (SecVerilog model), `secret`/`declassify` keywords, error when secret reaches a public out or unlabelled storage. Explicit flow only — timing side channels stay out of scope, stated honestly.                                                                                                                                                                                                                                                                                                                                                                         |
+| 2.3 (other half) - **attempted 2026-06-14, DEFERRED**                   | `wire sum = a + b` without an annotation. NOT as cheap as it looked: the checker's `Ty` lives only inside the widths pass and has **no symbolic width algebra** (every module is checked under CONCRETE param bindings), so a wire in a parametric module (`bits[W+1]`) has no concrete type to write back into the AST; and the inferred type must be materialized for the emitter/sim, which the widths pass cannot do (it borrows the AST immutably). Needs symbolic widths (large) or a non-parametric-only restriction with a documented wart. Reason recorded in `docs/log/2026-06-14.md`; revisit when symbolic widths exist. |
+| `count_ones`-style builtins - **partly addressed 2026-06-14**           | The reduction family already exists as the `&`/`\|`/`^` operators; `min`/`max`/`abs`/`nand`/`nor`/`xnor` shipped as built-ins (spec/02 v0.2.7). `count_ones` (popcount) itself is DEFERRED - it needs the operand's width at emit time, which the emitter cannot produce (`width()` works on a declared `Type` only). Revisit alongside emitter expression-width support.                                                                                                                                                                                                                                                            |
+| **6.2 `secret` taint - slice 1** (promoted from Tier 4, v0.3)           | Now a G5 constitution goal. Lattice labels in a checker pass (SecVerilog model), `secret`/`declassify` keywords, error when secret reaches a public out or unlabelled storage. Explicit flow only - timing side channels stay out of scope, stated honestly.                                                                                                                                                                                                                                                                                                                                                                         |
 | **4.3 `system_fault` silicon v1** (promoted from Tier 4, v0.3)          | Sticky fault reg + `FAULT_OUT` pin + safe-state mux on declared outputs + lockout until cold reset. Plain synthesizable logic, no clock gating (clock-stop stays parked). Sim side (`$fatal`) lands earlier, Phase 1.5.                                                                                                                                                                                                                                                                                                                                                                                                              |
 | **2.1 `?` as valid-bundle** (re-targeted, v0.3)                         | `bits[8]?` = `{valid: bit, data: bits[8]}` (Chisel `Valid` style); `??` = mux on valid. Composes with channels tier-(a). Blocked on interfaces/bundles landing first. The tri-state meaning stays dead (Tier 4).                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `default` assignments (salvaged from 3.2 `defer`)                       | `default x = 0` = value unless assigned this cycle. Same forgot-to-deassert protection `defer` wanted, with honest hardware semantics. Small sugar.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `pipeline(stages = N)` honest version (salvaged from 6.1)               | Inserts N register stages + emits the vendor retiming attribute; the synthesis tool balances. Never promises "highest Fmax". Pairs with channels for latency bookkeeping.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Const-`if` at item level (salvaged from 2.6)                            | Conditional elaboration (Verilog `generate if`) — the real 10% params don't cover. Small feature, big DX for parameterized IP.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Const-`if` at item level (salvaged from 2.6)                            | Conditional elaboration (Verilog `generate if`) - the real 10% params don't cover. Small feature, big DX for parameterized IP.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **1.1 via `prove`** (promoted from Tier 4, second re-triage 2026-06-12) | Prove-backed shared-resource access: the user STATES the exclusion property (`prove !(fsm1 == CALC && fsm2 == CALC)`), SymbiYosys proves it, the checker then accepts the guarded double-drive. Full borrow-checker DX, sound, zero in-house SMT. Blocked on 6.3 landing.                                                                                                                                                                                                                                                                                                                                                            |
 
-### Tier 4 — Rejected (with reasons that survive the v0.3 goal shift)
+### Tier 4 - Rejected (with reasons that survive the v0.3 goal shift)
 
 | Idea                                       | Reason                                                                                                                                                                                                                                                                              |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2.1 `bits[8]?` → tri-state                 | Internal tri-states are not synthesizable on FPGAs (IO pads only) — physics, not priorities. The `?` syntax survives as a valid-bundle (Tier 3). Top-level `inout` pads (I2C SDA, shared external buses) are a separate legitimate future feature — pad-level only, never internal. |
-| 3.2 `defer` (the name and model)           | "Run on state transition" has no hardware meaning — detecting a transition is itself more hardware. The pain point survives as `default` assignments (Tier 3).                                                                                                                      |
+| 2.1 `bits[8]?` → tri-state                 | Internal tri-states are not synthesizable on FPGAs (IO pads only) - physics, not priorities. The `?` syntax survives as a valid-bundle (Tier 3). Top-level `inout` pads (I2C SDA, shared external buses) are a separate legitimate future feature - pad-level only, never internal. |
+| 3.2 `defer` (the name and model)           | "Run on state transition" has no hardware meaning - detecting a transition is itself more hardware. The pain point survives as `default` assignments (Tier 3).                                                                                                                      |
 | 6.1 Automatic retiming (the claim)         | Register balancing needs timing models only the synthesis tool has. The honest stage-inserter survives as `pipeline(stages = N)` (Tier 3).                                                                                                                                          |
 | 2.6 Module-returning closures              | Parameterized modules already express the example (`DelayLine(CYCLES = 5)`); full metaprogramming is why Chisel embedded in Scala. The gap survives as const-`if` (Tier 3).                                                                                                         |
 | 1.6 `pulse` / 1.3 affine tokens            | Research-grade temporal typing (see Filament); the 1.6 example violates E0505. Cheap approximation when channels land: unused-channel-read lint (must-consume warning).                                                                                                             |
-| 2.5 `filter`                               | Hardware cannot have runtime-sized results — physics. `map`/`reduce` stay (sugar over `repeat`); `repeat` + const-`if` covers compile-time selection.                                                                                                                               |
-| 1.1 Full temporal borrow check (automatic) | The COMPILER proving two FSM states never co-occur is reachability analysis (SMT-grade) — stays rejected. The sound approximation is today's single-driver rules (Tier 1); the user-stated, tool-proved version moved to Tier 3 ("1.1 via `prove`", second re-triage).              |
+| 2.5 `filter`                               | Hardware cannot have runtime-sized results - physics. `map`/`reduce` stay (sugar over `repeat`); `repeat` + const-`if` covers compile-time selection.                                                                                                                               |
+| 1.1 Full temporal borrow check (automatic) | The COMPILER proving two FSM states never co-occur is reachability analysis (SMT-grade) - stays rejected. The sound approximation is today's single-driver rules (Tier 1); the user-stated, tool-proved version moved to Tier 3 ("1.1 via `prove`", second re-triage).              |
 
 ### Cross-cutting costs (price every Tier 3 item with these)
 
 - Every new keyword (`chan`, `prove`, `interface`, `await`, …) needs Tanglish +
-  Tamil spellings through lang/keywords.toml and native-speaker review — the keyword
+  Tamil spellings through lang/keywords.toml and native-speaker review - the keyword
   table is the bottleneck on every idea here.
 - Every feature ships ×4 example folders (byte-identical Verilog rule), roughly
   doubling its apparent size.
 - Several samples above contradict the current spec (wires assigned inside `on`,
-  `=`/`<-` mixing) — each Tier 3 item needs a real spec section before code.
+  `=`/`<-` mixing) - each Tier 3 item needs a real spec section before code.
 
 ---
 
@@ -816,7 +816,7 @@ breaking change is nearly free _now_ and expensive _later_.
 **Organizing insight:** changes fall into two kinds.
 
 - An _additive_ change (turns an error into valid code, or adds syntax that didn't
-  exist) is edition-safe — it can land any time, even post-freeze, without breaking
+  exist) is edition-safe - it can land any time, even post-freeze, without breaking
   code.
 - A _breaking_ change (re-means or removes existing valid syntax) must land
   **before v0.1.0** or owe an edition + `translate` rule.
@@ -829,24 +829,24 @@ whenever.
 
 | Idea                               | Path                  | Tier               | Recommendation                                                                                                                                                                                       |
 | ---------------------------------- | --------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8.1 Elm-style didactic errors      | additive              | 2                  | Build incrementally now — it IS the G1 promise. Extend `Diag` + a `mimz explain <CODE>` long-form. Diagrams must depict real hardware (honesty).                                                     |
+| 8.1 Elm-style didactic errors      | additive              | 2                  | Build incrementally now - it IS the G1 promise. Extend `Diag` + a `mimz explain <CODE>` long-form. Diagrams must depict real hardware (honesty).                                                     |
 | 8.2 Contracts `requires`/`ensures` | additive              | 3 (after `prove`)  | Edition-safe. Caller-side `requires` (compile-time div-by-zero) is the high-value half. Reserve the two keywords now.                                                                                |
 | 8.3 Fixed-point `fixed[N,F]`       | additive              | 3                  | Highest standalone educational/DSP value. Needs float literals + a rounding/overflow spec section (the honest part). Reserve `fixed` now.                                                            |
-| 8.4 `$comptime` / `$if`            | additive (split)      | 3 / 4              | Adopt item-level const-`if` (a **keyword**, not a `$` sigil). Reject the general comptime interpreter — `repeat`+const-`if` cover ~90%.                                                              |
+| 8.4 `$comptime` / `$if`            | additive (split)      | 3 / 4              | Adopt item-level const-`if` (a **keyword**, not a `$` sigil). Reject the general comptime interpreter - `repeat`+const-`if` cover ~90%.                                                              |
 | 8.5 Hardware REPL                  | tool, not syntax      | 3 (Phase 4)        | Rides the approved WASM playground + Phase 1.5 sim evaluator. Scope to combinational. No syntax cost.                                                                                                |
 | 8.6 Pipe `\|>`                     | additive              | 3 (blocked)        | Needs callables (only builtins exist, E1110) AND is a 2nd way to write calls (G1 one-way). Park until extension functions land.                                                                      |
-| 8.7 Spread `..bus` (wiring)        | additive              | 3 (after bundles)  | Rank-1 honesty tension — implicit wiring hides connectivity. Allow only spreading a **declared interface type**; keep expansion greppable.                                                           |
+| 8.7 Spread `..bus` (wiring)        | additive              | 3 (after bundles)  | Rank-1 honesty tension - implicit wiring hides connectivity. Allow only spreading a **declared interface type**; keep expansion greppable.                                                           |
 | 8.8 Struct update `..old`          | additive              | 3 (after bundles)  | Clean FSM ergonomics, low risk. Base is named, stays honest. `struct` already reserved.                                                                                                              |
-| 8.9 Chained comparison             | **additive widening** | ✅ DONE 2026-06-13 | **Allowed** — monotonic one-direction chain desugars to `&&` (`comparison_chain` in `crates/mimz-core/src/parser/expr.rs`); mixed-direction + `==`/`!=` chains stay E1109. spec/02 v0.2.6 section 3. |
-| 8.10 Range slice `[8..16]`         | **breaking**          | ✅ DONE 2026-06-13 | **Ratified `[hi:lo]` as final; break rejected** — universal hardware vocabulary wins; no range form. spec/02 v0.2.6 section 1.8.                                                                     |
+| 8.9 Chained comparison             | **additive widening** | ✅ DONE 2026-06-13 | **Allowed** - monotonic one-direction chain desugars to `&&` (`comparison_chain` in `crates/mimz-core/src/parser/expr.rs`); mixed-direction + `==`/`!=` chains stay E1109. spec/02 v0.2.6 section 3. |
+| 8.10 Range slice `[8..16]`         | **breaking**          | ✅ DONE 2026-06-13 | **Ratified `[hi:lo]` as final; break rejected** - universal hardware vocabulary wins; no range form. spec/02 v0.2.6 section 1.8.                                                                     |
 
 ### The `..` operator (recommendation)
 
-Use `..` for the **spread/splat family only** — wiring (8.7), struct-update (8.8),
-concat-spread — because those are genuinely one operation (expand-a-bundle-in-place),
+Use `..` for the **spread/splat family only** - wiring (8.7), struct-update (8.8),
+concat-spread - because those are genuinely one operation (expand-a-bundle-in-place),
 so one token is honest and learnable.
 
-**Do NOT overload `..` for ranges** (keep slicing `[hi:lo]`, per 8.10) — that avoids
+**Do NOT overload `..` for ranges** (keep slicing `[hi:lo]`, per 8.10) - that avoids
 two problems:
 
 - the range/splat semantic collision,
@@ -858,16 +858,16 @@ All `..`-spread features gate on interfaces/bundles (2.4); finalize the token wh
 ### Pre-v0.1.0 freeze checklist (what the doctrine forces now)
 
 1. **Reserve keywords** (non-breaking, protects the namespace): `fixed`, `requires`,
-   `ensures` — same pipeline as the eight v0.3-backlog words.
+   `ensures` - same pipeline as the eight v0.3-backlog words.
 2. **Reserve the `..` spread operator** when interfaces/bundles (2.4) are specced
    (lexer/grammar matter, not the keyword table).
-3. ~~**Decide 8.9**~~ ✅ **DONE 2026-06-13** — monotonic chained comparison allowed
+3. ~~**Decide 8.9**~~ ✅ **DONE 2026-06-13** - monotonic chained comparison allowed
    (`comparison_chain`, spec/02 v0.2.6 section 3).
-4. ~~**Ratify `[hi:lo]` slicing as final**~~ ✅ **DONE 2026-06-13** — break rejected,
+4. ~~**Ratify `[hi:lo]` slicing as final**~~ ✅ **DONE 2026-06-13** - break rejected,
    `[hi:lo]`/`{a,b}` are canonical (spec/02 v0.2.6 section 1.8).
 5. Everything else (8.1, 8.2, 8.3, 8.5, 8.6, 8.7, 8.8) is additive / edition-safe →
    can land after v0.1.0 with no breakage; none of it pressures the freeze date.
-6. **Reserve `extern`** (external-Verilog / black-box-IP module — `architectural_ideas.md`
+6. **Reserve `extern`** (external-Verilog / black-box-IP module - `architectural_ideas.md`
    idea 3, the architecture open question "External Verilog module wrapping construct").
    The _feature_ is additive and lands Phase 2+, but the _keyword_ must be reserved
    now so a v0.1 program can't claim it as an identifier (R11). Full pipeline, same
@@ -883,13 +883,13 @@ Reviewed Min-Mozhi against the full feature sets of **VHDL, Verilog, and
 SystemVerilog** ("variables/types → operators → control → loops → subprograms →
 concurrency → OOP → verification").
 
-**Decision:** scope = _curated subset + broaden RTL parity_ — stay synthesizable,
+**Decision:** scope = _curated subset + broaden RTL parity_ - stay synthesizable,
 safe-by-default, educational. Concretely:
 
 - pull the big **synthesizable** RTL gaps forward;
 - do **not** chase SV verification/OOP now (but keep that door open, see below).
 
-"Full parity" is the wrong target — half the SV list is verification/software,
+"Full parity" is the wrong target - half the SV list is verification/software,
 which violates tie-breaker #1 (hardware honesty). The right target is **complete
 synthesizable-RTL coverage** + the safety/trilingual differentiators.
 
@@ -911,7 +911,7 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 ### Gaps, triaged
 
 > **Audited 2026-07-12 against actual code state** (this table had drifted
-> badly — most 🟢/🟡 rows below were already shipped and undocumented as
+> badly - most 🟢/🟡 rows below were already shipped and undocumented as
 > such). Verified by grepping for the concrete AST/checker/emit symbols, not
 > by re-reading old commit messages.
 
@@ -919,40 +919,40 @@ instance-arrays; `on rise(clk)` + `<-` + sync reset; built-in `test`/`tick`/
 | ------------------------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | replication `{N{x}}`                                                           | ✅     | `ExprKind::Replicate`, parser+checker+emit, compile-time N                                                                                                                                                            |
 | falling-edge `on fall(clk)`                                                    | ✅     | `Edge::Fall`, wired through parser/checker/emit/sim (`negedge` sensitivity)                                                                                                                                           |
-| memories / arrays / RAM (`mem`)                                                | ✅     | `ModuleItem::Mem { name, ty, depth, init }` — shipped 2026-06-17; full parser/checker(widths+names+drivers)/emit/sim/pretty/lint/analysis                                                                             |
-| struct / record + interfaces (`struct`/`interface`)                            | ✅     | shipped as `bundle` — checker/emit/sim complete; bundle-width-model (T6, 2026-07-11) added arg/return shape-checking                                                                                                  |
-| combinational `function`                                                       | ✅     | this **is** `fn` — AST doc comment: "user-defined combinational function... pure and combinational, no registers, no clocks"; Specs 1-2 shipped it                                                                    |
+| memories / arrays / RAM (`mem`)                                                | ✅     | `ModuleItem::Mem { name, ty, depth, init }` - shipped 2026-06-17; full parser/checker(widths+names+drivers)/emit/sim/pretty/lint/analysis                                                                             |
+| struct / record + interfaces (`struct`/`interface`)                            | ✅     | shipped as `bundle` - checker/emit/sim complete; bundle-width-model (T6, 2026-07-11) added arg/return shape-checking                                                                                                  |
+| combinational `function`                                                       | ✅     | this **is** `fn` - AST doc comment: "user-defined combinational function... pure and combinational, no registers, no clocks"; Specs 1-2 shipped it                                                                    |
 | async reset / reset polarity                                                   | ✅     | `ModuleItem::Reset { is_async, .. }`, wired to emit (`posedge rst` added to sensitivity list when async)                                                                                                              |
 | packages / namespacing                                                         | ✅     | `QualIdent` namespace-keying in checker (names/widths), shipped 2026-07-02/03 (Phase-2-packages-namespacing, 570 tests)                                                                                               |
 | tagged-union payloads (2.7)                                                    | ✅     | `EnumVariant`/`PayloadField` in AST, wired through emit_verilog (translit/module/expr)                                                                                                                                |
-| `sync loop` — cycle-iterating FSM+counter loop                                 | ✅     | Spec 4 of the bounded-loop design work, shipped 2026-07-06, 13 commits — lowers to existing Port/Reg/On/Drive, no new emit/sim shape needed                                                                           |
-| don't-care `match` (casex/casez)                                               | ✅     | `Pattern::IntMask { value, mask }` in `ast/expr.rs`, e.g. `0b1?? => ...`; `examples/*/priority.mimz` — shipped 2026-06-17 (corrected after a bad first grep — see re-audit note below)                                |
-| `sync` CDC (1.2, §1.2b `sync.double_flop`/`sync.pulse`)                        | ✅     | 1-bit-only synchronizer primitives, checker-enforced (E0702-E0705), shipped on `phase-2-correctness-consolidation-part2` (Stage 5 L2) — handshake protocols/async FIFOs still future work, as ordinary stdlib modules |
-| `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | confirmed still open — reserved keywords only (`secret`/`prove`/`fixed`/`requires`/`ensures`), no AST/checker/emit support yet                                                                                        |
-| `foreach`                                                                      | ✅     | sugar over `repeat`/bare `loop`, shipped 2026-07-13 — range + array/`mem`-element source forms, module-item and `on`-block/`fn`-body statement level                                                                  |
-| Enum-variant construction `Enum.Variant(a, b)`                                 | ✅     | shipped in v0.2.0 (spec/02 §5a) — `ExprKind::EnumConstruct`, positional payload arguments, `examples/.../enum_construct.mimz`                                                                                         |
+| `sync loop` - cycle-iterating FSM+counter loop                                 | ✅     | Spec 4 of the bounded-loop design work, shipped 2026-07-06, 13 commits - lowers to existing Port/Reg/On/Drive, no new emit/sim shape needed                                                                           |
+| don't-care `match` (casex/casez)                                               | ✅     | `Pattern::IntMask { value, mask }` in `ast/expr.rs`, e.g. `0b1?? => ...`; `examples/*/priority.mimz` - shipped 2026-06-17 (corrected after a bad first grep - see re-audit note below)                                |
+| `sync` CDC (1.2, section 1.2b `sync.double_flop`/`sync.pulse`)                 | ✅     | 1-bit-only synchronizer primitives, checker-enforced (E0702-E0705), shipped on `phase-2-correctness-consolidation-part2` (Stage 5 L2) - handshake protocols/async FIFOs still future work, as ordinary stdlib modules |
+| `prove`/contracts (6.3/8.2) · `secret`/`system_fault` (G5) · fixed-point (8.3) | 🔵     | confirmed still open - reserved keywords only (`secret`/`prove`/`fixed`/`requires`/`ensures`), no AST/checker/emit support yet                                                                                        |
+| `foreach`                                                                      | ✅     | sugar over `repeat`/bare `loop`, shipped 2026-07-13 - range + array/`mem`-element source forms, module-item and `on`-block/`fn`-body statement level                                                                  |
+| Enum-variant construction `Enum.Variant(a, b)`                                 | ✅     | shipped in v0.2.0 (spec/02 section 5a) - `ExprKind::EnumConstruct`, positional payload arguments, `examples/.../enum_construct.mimz`                                                                                  |
 | ternary `?:`                                                                   | ⛔     | `if {} else {}` expr is the one way (G1)                                                                                                                                                                              |
 | division `/` / modulo `%` operators                                            | ⛔     | no cheap operator form; future stdlib divider module                                                                                                                                                                  |
 | internal tri-state; auto-retiming-with-Fmax                                    | ⛔     | physics / honesty (Tier 4, section 7)                                                                                                                                                                                 |
 
-### Loops (explicit — three honest hardware shapes)
+### Loops (explicit - three honest hardware shapes)
 
-1. **Compile-time unroll** — `repeat i: lo..hi` — ✅ have (≈ `generate`,
+1. **Compile-time unroll** - `repeat i: lo..hi` - ✅ have (≈ `generate`,
    SV statically-bounded `for`).
 2. **Controlled loop (`loop`/`suzhal`/`சுழல்` bare form, `sync loop` cycle
-   form)** — ✅ **DONE (2026-07-06)**, both shapes: bare `loop` elaborates to
+   form)** - ✅ **DONE (2026-07-06)**, both shapes: bare `loop` elaborates to
    N unrolled copies (area cost); `sync loop` lowers to a real counter +
    state machine spanning cycles (time cost). Four dependency-ordered specs,
    all shipped (Spec 1: `return`-statement-based `fn` bodies; Spec 2:
    array-typed `fn` params; Spec 3: bounded elaborate-time `loop`; Spec 4:
    `sync loop`).
-3. **`foreach`** — ✅ **DONE (2026-07-13)**; sugar over (1)/(2), now that
+3. **`foreach`** - ✅ **DONE (2026-07-13)**; sugar over (1)/(2), now that
    array/`mem` types exist to iterate over.
 
 A data-dependent unbounded `while` has no fixed silicon → accepted **only** in a
 bounded or FSM-lowered form, never free-running.
 
-### Verification / OOP / DV — 🟣 deferred, revisitable (NOT permanent-out)
+### Verification / OOP / DV - 🟣 deferred, revisitable (NOT permanent-out)
 
 The deferred DV features: SV `class`/OOP, `rand`/constraints,
 covergroup/coverpoint/cross, immediate + concurrent (SVA) assertions, `fork/join`,
@@ -964,7 +964,7 @@ logic too."_
 These form a separate **verification layer** (not RTL): they ride the **simulator
 track** (Phase 1.5+) and the **`prove`** track, fenced from synthesis exactly like
 today's `test` blocks. Pursuing the heavier DV pieces later is a deliberate
-**co-goal amendment to spec/01** when the simulator is mature — recorded as a
+**co-goal amendment to spec/01** when the simulator is mature - recorded as a
 future option, not a rejection.
 
 Substitutes to build first (cover most needs):
@@ -974,10 +974,10 @@ Substitutes to build first (cover most needs):
 - `prove` → SymbiYosys (Phase 2, SVA-style);
 - `requires`/`ensures` (Phase 2+).
 
-### Recommended pull-forward order (synthesizable RTL) — updated 2026-07-12
+### Recommended pull-forward order (synthesizable RTL) - updated 2026-07-12
 
 Everything in this order shipped, confirmed against `docs/plan/phase-2-ir-synthesis.md`
-(the actually-maintained tracker for this backlog — it was accurate the whole
+(the actually-maintained tracker for this backlog - it was accurate the whole
 time; this file had just drifted). Original order preserved below with
 strikethrough, so the sequencing rationale stays legible:
 
@@ -987,8 +987,8 @@ strikethrough, so the sequencing rationale stays legible:
 3. ~~Async reset / polarity~~ ✅ done (active-high; active-low still open). 6. ~~Controlled loop (`suzhal` + `sync loop`) + `foreach`~~ ✅ done.
 4. Phase-2 line: ~~tagged unions~~ ✅ done. ~~`sync` CDC~~ ✅ done. ~~Enum-variant
    construction syntax (`Enum.Variant(a, b)`)~~ ✅ done. `prove`/contracts, `secret`/
-   `system_fault`, fixed-point — still open (reserved keywords / AST gaps
-   only, no checker/emit support). 8. Verification layer — future,
+   `system_fault`, fixed-point - still open (reserved keywords / AST gaps
+   only, no checker/emit support). 8. Verification layer - future,
    post-simulator, spec/01 amendment.
 
 **Remaining open items, in order:** `prove`/contracts → `secret`/`system_fault` → fixed-point →
@@ -1008,7 +1008,7 @@ now shipped.
 
 A reviewer proposed six improvements. Triaged against the compiler as it exists
 today (522 tests; spec/02 v0.2.12). **Four of the six already ship or are already
-planned** — recorded here so the review is captured and not re-opened. Only one is
+planned** - recorded here so the review is captured and not re-opened. Only one is
 genuinely new, and it is freeze-safe.
 
 Status key: ✅ already shipped · 🔵 already triaged + planned · 🟡 new, feasible,
@@ -1016,35 +1016,35 @@ needs a Decision · ⛔ rejected.
 
 | #   | Reviewer item                                       | Reality                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Verdict                                                              |
 | --- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| 1   | "Operator precedence is missing"                    | spec/02 **section 3** already defines a full Rust-style precedence table (`unary → * → + - → << >> → & → ^ → \| → comparison → && → \|\|`). So `a + b * c` parses as `a + (b * c)`. The EBNF line the reviewer saw (`binExpr = unary { binOp unary }`) carries the comment "precedence table, section 3" right beside it.                                                                                                                                                                                                  | ✅ shipped — non-issue                                               |
-| 2   | `let` for local expression values                   | Named combinational intermediates **already exist** as `wire name: type = expr` (and `reg`). `let` is deliberately reserved for **hardware instances**, not variables (documented anti-footgun, spec/02 section 1.5). The real ergonomics gap is the **mandatory type annotation** — that is exactly item 5. An expression-level `let … in …` is a _second_ way to name a value `wire` already names → G1 tension, low marginal value.                                                                                     | 🔵 core shipped (covered by `wire` + item 5); expr-`let` parked (G1) |
-| 3   | User-defined functions                              | `fn`/`function` are **reserved** (R11); calling a user function is **E1110**. "Combinational `function`" is an open item in `phase-2-ir-synthesis.md` (gap section 10) — pure/stateless, inlined at emit, also unblocks pipe `\|>` (8.6).                                                                                                                                                                                                                                                                                  | 🔵 already planned (phase-2)                                         |
-| 4   | Enum `match` exhaustiveness                         | **Already enforced**: **E0601** (match not exhaustive) + **E0602** (unreachable arm), with fixtures, spec/02 section 1.3. The reviewer's exact example (error if `Stop` is omitted) is E0601 today. Note the spec wrinkle: a `_` fallback is _required even on fully-covered enums_ (radiation-bit-flip recovery).                                                                                                                                                                                                         | ✅ shipped — exactly the request                                     |
+| 1   | "Operator precedence is missing"                    | spec/02 **section 3** already defines a full Rust-style precedence table (`unary → * → + - → << >> → & → ^ → \| → comparison → && → \|\|`). So `a + b * c` parses as `a + (b * c)`. The EBNF line the reviewer saw (`binExpr = unary { binOp unary }`) carries the comment "precedence table, section 3" right beside it.                                                                                                                                                                                                  | ✅ shipped - non-issue                                               |
+| 2   | `let` for local expression values                   | Named combinational intermediates **already exist** as `wire name: type = expr` (and `reg`). `let` is deliberately reserved for **hardware instances**, not variables (documented anti-footgun, spec/02 section 1.5). The real ergonomics gap is the **mandatory type annotation** - that is exactly item 5. An expression-level `let … in …` is a _second_ way to name a value `wire` already names → G1 tension, low marginal value.                                                                                     | 🔵 core shipped (covered by `wire` + item 5); expr-`let` parked (G1) |
+| 3   | User-defined functions                              | `fn`/`function` are **reserved** (R11); calling a user function is **E1110**. "Combinational `function`" is an open item in `phase-2-ir-synthesis.md` (gap section 10) - pure/stateless, inlined at emit, also unblocks pipe `\|>` (8.6).                                                                                                                                                                                                                                                                                  | 🔵 already planned (phase-2)                                         |
+| 4   | Enum `match` exhaustiveness                         | **Already enforced**: **E0601** (match not exhaustive) + **E0602** (unreachable arm), with fixtures, spec/02 section 1.3. The reviewer's exact example (error if `Stop` is omitted) is E0601 today. Note the spec wrinkle: a `_` fallback is _required even on fully-covered enums_ (radiation-bit-flip recovery).                                                                                                                                                                                                         | ✅ shipped - exactly the request                                     |
 | 5   | Type inference (`wire x = a + b`)                   | = "wire type inference (2.3 other half)", already in phase-2. **Attempted 2026-06-14 and DEFERRED**: the checker's `Ty` has no symbolic width algebra (modules are checked under concrete param bindings), so a wire in a parametric module has no concrete type to write back, and the inferred type can't be materialized for emit/sim. Revisit when symbolic widths exist.                                                                                                                                              | 🔵 planned, blocked (documented)                                     |
-| 6   | Port-declaration grouping `in { a, b, c: bits[8] }` | **Genuinely new** — not in any prior doc. Mechanically trivial: pure parser sugar that desugars to N separate port decls; additive, edition-safe, **zero freeze cost**. The tension is **G1** ("one obvious way to do each thing") — it is a second surface for a declaration that already has one, the same basis on which ternary `?:` and Rust range-slicing were rejected. Honest verdict: feasible and cheap, but it is a **philosophy decision, not a mechanical one** — needs a logged G1 ruling before code (R13). | 🟡 new, feasible, **needs a Decision**                               |
+| 6   | Port-declaration grouping `in { a, b, c: bits[8] }` | **Genuinely new** - not in any prior doc. Mechanically trivial: pure parser sugar that desugars to N separate port decls; additive, edition-safe, **zero freeze cost**. The tension is **G1** ("one obvious way to do each thing") - it is a second surface for a declaration that already has one, the same basis on which ternary `?:` and Rust range-slicing were rejected. Honest verdict: feasible and cheap, but it is a **philosophy decision, not a mechanical one** - needs a logged G1 ruling before code (R13). | 🟡 new, feasible, **needs a Decision**                               |
 
 **Net:** items 1 and 4 need no action (shipped); items 2-core, 3, 5 are already
 planned/shipped (pointers above, no duplication). The only forward action is
-item 6 (port grouping) and the expr-`let` sliver of item 2 — both freeze-safe
+item 6 (port grouping) and the expr-`let` sliver of item 2 - both freeze-safe
 additive sugar gated on a **G1 ruling**, recorded in the phase-2 plan's
 "section 8 additive ideas" list as decision-pending (not committed work).
 
 ## 12. `fn` module-scope capture (2026-07-18, from CTO review BUG-12)
 
 Today a `fn` body only sees file-level consts/params, never the enclosing
-module's — a module-const reference from inside a `fn` fails `mimz check`
+module's - a module-const reference from inside a `fn` fails `mimz check`
 with E0101, and the emitter agrees (`file_env` swap in
 `emit_verilog/module.rs`). Filed as [`docs/audit/bugs.md`](../audit/bugs.md)
 BUG-12, re-scoped 2026-07-17 from an emitter bug to a language-design
 limitation (checker and emitter are consistent, not divergent).
 
-**Status: open, deliberately deferred — not a bug to close, a feature to
+**Status: open, deliberately deferred - not a bug to close, a feature to
 design.** Two directions, neither picked yet:
 
 - Bless file-scoping explicitly in `spec/02-syntax-and-grammar.md` (document
   the limitation as intentional; workaround stays "pass the value as a `fn`
   parameter, or hoist the const to file level").
-- Design real module-scope capture for `fn` — needs its own spec section
+- Design real module-scope capture for `fn` - needs its own spec section
   covering how a `fn`'s width/const resolution interacts with the module's
   own parametric instantiation; a checker + emitter change, not a doc-only
   fix.
@@ -1052,7 +1052,7 @@ design.** Two directions, neither picked yet:
 Revisit after the `phase-2-correctness-consolidation` stages land (the
 `fn`-scoping decision doesn't block those, and per that roadmap's own
 recommendation, new language surface waits until the correctness class it
-depends on — one shared width/const-eval authority — is closed).
+depends on - one shared width/const-eval authority - is closed).
 
 ## 13. Per-instance `const if` elaboration (2026-08-22, from doc-code audit H2)
 
@@ -1065,7 +1065,7 @@ constant environment at the definition site (`checker/names/mod.rs`
 condition fails `E0811`. Discovered 2026-08-22; docs corrected in
 spec v0.2.31 to state the real scope.
 
-**Status: open — feature to design, not a bug to patch.** Folding at the
+**Status: open - feature to design, not a bug to patch.** Folding at the
 definition site using param DEFAULTS would be semantically wrong: two
 instances of the same module may pass different parameter values and must
 be able to include different branches. A correct implementation needs
@@ -1083,5 +1083,5 @@ per-instantiation resolution:
   no single definition-site value can satisfy".
 
 Prerequisite: the shared width/const-eval authority closure recommended at
-the end of section 12 — branch selection must use the same evaluator as
+the end of section 12 - branch selection must use the same evaluator as
 everything else.

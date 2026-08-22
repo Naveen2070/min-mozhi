@@ -2,10 +2,10 @@
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
-Style and hygiene warnings — the `mimz lint` passes (W0002 snake_case,
+Style and hygiene warnings - the `mimz lint` passes (W0002 snake_case,
 W0003 PascalCase, W0004 unused signal). Additive and always warning-only;
 no spec or grammar change. Note the unused-signal rule (W0004) has no
-dedicated unit test here — it is exercised through `mimz lint`'s own
+dedicated unit test here - it is exercised through `mimz lint`'s own
 surface rather than in this pocket.
 
 | Test                                   | Locks in                                                  |
