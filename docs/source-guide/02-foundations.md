@@ -306,11 +306,11 @@ The five stdlib modules (`debouncer`, `seg7`, `pwm`, `fifo`, `uart_tx`) are alre
 
 ### Resolution
 
-**`resolve(alias, stem)`** — the routing entry. First checks `alias` against `NS_ALIASES` (`["std", "nuulagam", "நூலகம்"]`) so any of the three namespace spellings work. Then matches `stem` against canonical name, twin name, and twin romanization. Returns `(source, variant)` or an error listing the available stems.
+**`resolve(ns, module) -> Option<(&StdModule, StdVariant)>`** — the routing entry. First checks `ns` via `is_std_namespace` (`NS_ALIASES`: `["std", "nuulagam", "நூலகம்"]`) so any of the three namespace spellings work; `None` if not. Then matches `module` against canonical stem, twin name, and twin romanization, returning the catalog row plus which `StdVariant` (Canonical/Twin) the spelling selected.
 
 **`is_std_namespace(alias)`** — thin predicate used by the project loader to decide whether to try the embedded library.
 
-**`eject_to(dir, use_twin, force)`** — vendors the stdlib to disk: writes all modules' source files to `dir/`. `use_twin = true` writes the pure-Tamil twin spellings (for a Tamil-first project). `force = false` aborts on any pre-existing file before touching anything else (all-or-nothing invariant). Used by `mimz eject std` (`src/commands/eject.rs`).
+**`eject_to(dir, tamil, force)`** — vendors the stdlib to disk: writes all modules' source files to `dir/`, returning the paths written. `tamil = true` writes the pure-Tamil twin spellings (files named after the twin; for a Tamil-first project). `force = false` aborts on any pre-existing file before touching anything else (all-or-nothing invariant). Used by `mimz eject std` (`src/commands/eject.rs`).
 
 ### Override path
 

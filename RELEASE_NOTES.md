@@ -9,7 +9,7 @@
 -->
 
 The second release of **Min-Mozhi (மின்மொழி)** — a modern, safe-by-default HDL,
-built to teach digital design, and the first Tamil-rooted one. This release adds
+built to teach digital design, and a Tamil-rooted one. This release adds
 the language surface a real design needs (Verilog FFI, valid-bundles, structural
 bundles, enum construction, arrays, `foreach`, CDC synchronizers) and — the
 bigger half of the work — closes an eight-round correctness audit of the Verilog

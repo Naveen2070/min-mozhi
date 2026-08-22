@@ -3,7 +3,7 @@ use super::*;
 impl<'a> Checker<'a> {
     /// Resolve a bundle's fields to `(name, Ty)` pairs under the given args.
     /// `bfile_hint` is the bundle type's own `QualIdent::resolved_file`
-    /// (set by names.rs pass 3) — the exact candidate when it names one,
+    /// (set by names.rs pass 6) — the exact candidate when it names one,
     /// else the sole candidate (bare-and-unambiguous; a `None` hint here
     /// only ever means an already-reported ambiguous/unknown reference).
     /// Returns `None` and emits E0906 if a required param has no value.

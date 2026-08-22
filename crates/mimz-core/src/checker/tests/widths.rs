@@ -42,7 +42,7 @@ fn a_well_typed_cover_inside_an_on_block_checks_clean() {
     check_one(src).expect("a single-bit cover condition inside on rise(clk) must pass");
 }
 
-// ---- Pass 4: widths (E0401–E0410) ------------------------------------
+// ---- Pass 7: widths (E0401–E0410) ------------------------------------
 
 #[test]
 fn assignment_width_mismatch_is_e0401() {
@@ -456,6 +456,32 @@ fn zero_width_output_with_indexed_drivers_does_not_panic() {
 fn adder_growth_passes() {
     let src = "module Adder(WIDTH: int = 8) {\n  in a: bits[WIDTH]\n  in b: bits[WIDTH]\n  out sum: bits[WIDTH + 1]\n  sum = a + b\n}\n";
     check_one(src).expect("lossless + grows into the wider target");
+}
+
+#[test]
+fn clog2_of_param_port_width_is_e0420() {
+    // The checker folds widths under the default param binding (clog2(8)=3),
+    // but the emitter must write the GENERIC module, whose Verilog-2005 port
+    // list cannot call the injected clog2 constant function. Reject at check
+    // time so `check` and `compile` agree (doc-code audit 2026-08-22, M11).
+    let src = "module P1(WIDTH: int = 8) {\n  in a: bits[WIDTH]\n  out idx: bits[clog2(WIDTH)]\n  idx = 0\n}\n";
+    let d = first_err(src, "E0420");
+    assert!(d.msg.contains("port"));
+}
+
+#[test]
+fn clog2_of_const_port_width_still_passes() {
+    // A const argument folds everywhere — the emitter renders the literal.
+    let src = "module P2 {\n  in a: bits[8]\n  out idx: bits[clog2(20)]\n  idx = 0\n}\n";
+    check_one(src).expect("clog2 of a literal is emittable in a port list");
+}
+
+#[test]
+fn clog2_of_param_body_wire_passes() {
+    // Only PORT widths are restricted; the module body can reach the
+    // injected Verilog clog2 function.
+    let src = "module P3(WIDTH: int = 8) {\n  in a: bits[WIDTH]\n  wire w: bits[clog2(WIDTH)] = 0\n  out y: bit\n  y = w[0]\n}\n";
+    check_one(src).expect("body signals may use clog2 of a parameter");
 }
 
 #[test]

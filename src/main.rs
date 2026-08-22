@@ -38,7 +38,7 @@ use commands::{
 #[command(
     name = "mimz",
     version,
-    about = "Min-Mozhi (மின்மொழி) — the first Tamil-rooted HDL. Reads like Go/TypeScript, safe like Rust.",
+    about = "Min-Mozhi (மின்மொழி) — a Tamil-rooted HDL. Reads like Go/TypeScript, safe like Rust.",
     subcommand_required = true,
     arg_required_else_help = true
 )]

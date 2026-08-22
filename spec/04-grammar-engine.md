@@ -21,7 +21,7 @@
 > - **`mimz translate --order code|thamizh`** converts between orders via AST pretty-printer (`crates/mimz-core/src/pretty/`)
 > - All flips parse to same AST as code-order, emit byte-identical Verilog (`tests/grammar.rs`, `tests/fixtures/grammar/`)
 > - **Error-language plumbing** (2026-06-14): language selection (file-flavor majority + `--lang` override), case-suffix inflection (`crates/mimz-core/src/morph.rs`), wired into `check`/`compile`/`eval` as additive English-fallback layer
-> - **Human-authored error catalog** (2026-06-15): `lang/messages.toml` localizes **34 of the (now 75) checker E-codes** in Tamil and Tanglish (C3 ratified, sandhi rule in `lang/case_suffixes.toml`); the catalog has not grown alongside the many checker codes added since (bundles, `fn`, tagged enums, `sync loop`, CDC, `assert`/`cover`, …), so coverage as a fraction has fallen even as the absolute count held steady
+> - **Human-authored error catalog** (2026-06-15): `lang/messages.toml` localizes **35 of the (now 76) checker E-codes** in Tamil and Tanglish (C3 ratified, sandhi rule in `lang/case_suffixes.toml`); the catalog has grown only once since (E0420's provisional entry), far slower than the checker codes added in the meantime (bundles, `fn`, tagged enums, `sync loop`, CDC, `assert`/`cover`, …), so coverage as a fraction keeps falling even as the absolute count inches up. Live counts are computed from source and enforced against this claim by `tests/docs_sync.rs`
 > - **Deferred:** E0403/E0404/E0405 keep English text (too many heterogeneous message shapes for one template; Tamil preserved as comments)
 > - **Test oracle:** `mimz test` runs the blocks — a passing thamizh-order test (re-parsing to same `TestDecl`) is the oracle
 

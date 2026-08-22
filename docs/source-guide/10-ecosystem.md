@@ -54,7 +54,7 @@ It measures:
 
 - **Lexer** — raw source to tokens
 - **Parser** — tokens to AST (clones a fresh token vec each iteration)
-- **Checker** — AST through all nine safety passes (see [06-checker.md](06-checker.md); the in-source comment beside this benchmark still says "six" and is stale)
+- **Checker** — AST through all nine safety passes (see [06-checker.md](06-checker.md))
 - **Emitter** — AST to Verilog text (clones the AST each iteration for clean state)
 
 Criterion's statistical warmup and outlier detection catch regressions that a single measurement wouldn't spot.
@@ -87,7 +87,7 @@ cargo test-summary [args]
 
 It's registered as a cargo alias in `.cargo/config.toml`. The output looks
 like this (numbers illustrative — the real run prints a row per binary and
-totals 1315):
+totals 1319):
 
 ```
 ================ test summary ================
@@ -123,7 +123,7 @@ Three workflows keep the repo healthy:
 
 ## `tests/` — Making Sure Everything Works (23 Test Files)
 
-**1315 tests** in total across the workspace, as of 2026-08-21. Run them
+**1319 tests** in total across the workspace, as of 2026-08-22 (re-counted from source by `tests/docs_sync.rs`). Run them
 all with `cargo test --workspace` — the `--workspace` flag is NOT optional
 (the root `Cargo.toml` sets `default-members = ["."]`, so a bare
 `cargo test` silently skips `mimz-core` and `mimz-sim`, hiding 930 of
@@ -177,7 +177,7 @@ The top-level suite:
 
 ## `examples/` — Designs in All Five Flavors
 
-The `examples/` directory holds 200 `.mimz` files across **five** keyword flavors: English (44), Tanglish (44), Tamil (44), mixed (43), and tamil-pure (25). Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
+The `examples/` directory holds 200 top-level `.mimz` files across **five** keyword flavors: English (44), Tanglish (44), Tamil (44), mixed (43), and tamil-pure (25). Each of the four non-pure flavors also carries `lib/`/`std/` twin subfolders (+6 files each → 224 recursive). Think of it as the compiler's "hello world" collection showing that every keyword flavor works identically.
 
 The tests iterate two tables in `tests/examples.rs`: `BASE_EXAMPLES` (43 designs that exist in all four flavors, checked byte-identical after reskin) and `PURE_TAMIL` (16 pure-Tamil twins, exempt from byte-identity and instead proven equivalent by canonical renaming). Adding a row to either table extends coverage without adding a `#[test]`.
 

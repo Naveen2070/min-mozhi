@@ -718,7 +718,7 @@ To further solidify Min-Mozhi's position as the "Ultimate Modern HDL," here are 
   inline diagnostics — for editing and running real `.mimz` files without an
   editor/IDE. 8.5's evaluator is one of the engines it drives.
 - **Feasibility:** Medium, **tool not syntax** (zero language/freeze cost; additive,
-  edition-safe). Rides what already ships: `src/sim` (Phase 1.5 kernel + VCD +
+  edition-safe). Rides what already ships: `crates/mimz-sim` (Phase 1.5 kernel + VCD +
   `mimz test`), the emitter (`mimz compile`), the checker's diagnostics, and the
   trilingual front-end. A TUI crate (e.g. `ratatui`) would be the first real UI
   dependency — weigh against the minimal-dep ethos; the output-mode prompt + a
@@ -827,18 +827,18 @@ whenever.
 
 ### Per-idea verdicts
 
-| Idea                               | Path                  | Tier               | Recommendation                                                                                                                                                                      |
-| ---------------------------------- | --------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 8.1 Elm-style didactic errors      | additive              | 2                  | Build incrementally now — it IS the G1 promise. Extend `Diag` + a `mimz explain <CODE>` long-form. Diagrams must depict real hardware (honesty).                                    |
-| 8.2 Contracts `requires`/`ensures` | additive              | 3 (after `prove`)  | Edition-safe. Caller-side `requires` (compile-time div-by-zero) is the high-value half. Reserve the two keywords now.                                                               |
-| 8.3 Fixed-point `fixed[N,F]`       | additive              | 3                  | Highest standalone educational/DSP value. Needs float literals + a rounding/overflow spec section (the honest part). Reserve `fixed` now.                                           |
-| 8.4 `$comptime` / `$if`            | additive (split)      | 3 / 4              | Adopt item-level const-`if` (a **keyword**, not a `$` sigil). Reject the general comptime interpreter — `repeat`+const-`if` cover ~90%.                                             |
-| 8.5 Hardware REPL                  | tool, not syntax      | 3 (Phase 4)        | Rides the approved WASM playground + Phase 1.5 sim evaluator. Scope to combinational. No syntax cost.                                                                               |
-| 8.6 Pipe `\|>`                     | additive              | 3 (blocked)        | Needs callables (only builtins exist, E1110) AND is a 2nd way to write calls (G1 one-way). Park until extension functions land.                                                     |
-| 8.7 Spread `..bus` (wiring)        | additive              | 3 (after bundles)  | Rank-1 honesty tension — implicit wiring hides connectivity. Allow only spreading a **declared interface type**; keep expansion greppable.                                          |
-| 8.8 Struct update `..old`          | additive              | 3 (after bundles)  | Clean FSM ergonomics, low risk. Base is named, stays honest. `struct` already reserved.                                                                                             |
-| 8.9 Chained comparison             | **additive widening** | ✅ DONE 2026-06-13 | **Allowed** — monotonic one-direction chain desugars to `&&` (`comparison_chain` in `src/parser/expr.rs`); mixed-direction + `==`/`!=` chains stay E1109. spec/02 v0.2.6 section 3. |
-| 8.10 Range slice `[8..16]`         | **breaking**          | ✅ DONE 2026-06-13 | **Ratified `[hi:lo]` as final; break rejected** — universal hardware vocabulary wins; no range form. spec/02 v0.2.6 section 1.8.                                                    |
+| Idea                               | Path                  | Tier               | Recommendation                                                                                                                                                                                       |
+| ---------------------------------- | --------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8.1 Elm-style didactic errors      | additive              | 2                  | Build incrementally now — it IS the G1 promise. Extend `Diag` + a `mimz explain <CODE>` long-form. Diagrams must depict real hardware (honesty).                                                     |
+| 8.2 Contracts `requires`/`ensures` | additive              | 3 (after `prove`)  | Edition-safe. Caller-side `requires` (compile-time div-by-zero) is the high-value half. Reserve the two keywords now.                                                                                |
+| 8.3 Fixed-point `fixed[N,F]`       | additive              | 3                  | Highest standalone educational/DSP value. Needs float literals + a rounding/overflow spec section (the honest part). Reserve `fixed` now.                                                            |
+| 8.4 `$comptime` / `$if`            | additive (split)      | 3 / 4              | Adopt item-level const-`if` (a **keyword**, not a `$` sigil). Reject the general comptime interpreter — `repeat`+const-`if` cover ~90%.                                                              |
+| 8.5 Hardware REPL                  | tool, not syntax      | 3 (Phase 4)        | Rides the approved WASM playground + Phase 1.5 sim evaluator. Scope to combinational. No syntax cost.                                                                                                |
+| 8.6 Pipe `\|>`                     | additive              | 3 (blocked)        | Needs callables (only builtins exist, E1110) AND is a 2nd way to write calls (G1 one-way). Park until extension functions land.                                                                      |
+| 8.7 Spread `..bus` (wiring)        | additive              | 3 (after bundles)  | Rank-1 honesty tension — implicit wiring hides connectivity. Allow only spreading a **declared interface type**; keep expansion greppable.                                                           |
+| 8.8 Struct update `..old`          | additive              | 3 (after bundles)  | Clean FSM ergonomics, low risk. Base is named, stays honest. `struct` already reserved.                                                                                                              |
+| 8.9 Chained comparison             | **additive widening** | ✅ DONE 2026-06-13 | **Allowed** — monotonic one-direction chain desugars to `&&` (`comparison_chain` in `crates/mimz-core/src/parser/expr.rs`); mixed-direction + `==`/`!=` chains stay E1109. spec/02 v0.2.6 section 3. |
+| 8.10 Range slice `[8..16]`         | **breaking**          | ✅ DONE 2026-06-13 | **Ratified `[hi:lo]` as final; break rejected** — universal hardware vocabulary wins; no range form. spec/02 v0.2.6 section 1.8.                                                                     |
 
 ### The `..` operator (recommendation)
 
@@ -1053,3 +1053,35 @@ Revisit after the `phase-2-correctness-consolidation` stages land (the
 `fn`-scoping decision doesn't block those, and per that roadmap's own
 recommendation, new language surface waits until the correctness class it
 depends on — one shared width/const-eval authority — is closed).
+
+## 13. Per-instance `const if` elaboration (2026-08-22, from doc-code audit H2)
+
+`const if` conditions currently accept file-level/module-level `const`s,
+literals, and arithmetic/comparison only. spec/02 section 1.9b and
+`docs/guide/09-modules-and-reuse.md` historically promised parameter-based
+conditions too, but the checker never binds module parameters into the
+constant environment at the definition site (`checker/names/mod.rs`
+`check_module`: env = file consts + module consts), so every param
+condition fails `E0811`. Discovered 2026-08-22; docs corrected in
+spec v0.2.31 to state the real scope.
+
+**Status: open — feature to design, not a bug to patch.** Folding at the
+definition site using param DEFAULTS would be semantically wrong: two
+instances of the same module may pass different parameter values and must
+be able to include different branches. A correct implementation needs
+per-instantiation resolution:
+
+- checker: evaluate each `ConstIf` per concrete param binding (the widths
+  config-worklist machinery in `checker/widths/mod.rs`, `MAX_CONFIGS`, is
+  the precedent for multi-config analysis);
+- emitter: either resolve branches per instance (duplicating module bodies
+  per distinct config) or emit Verilog-2005 `generate` constructs;
+- sim elaborate: same branch selection as the emitter so simulation matches
+  hardware;
+- diagnostics: E0811 stays for genuinely unresolvable conditions; a new
+  code may be needed for "condition depends on an instance parameter that
+  no single definition-site value can satisfy".
+
+Prerequisite: the shared width/const-eval authority closure recommended at
+the end of section 12 — branch selection must use the same evaluator as
+everything else.

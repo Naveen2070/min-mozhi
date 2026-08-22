@@ -4,8 +4,10 @@
 # list (e.g. `en_aliases`). Aliases lex to the same token; future tooling
 # (`mimz translate`, `mimz fmt`) normalizes them to the canonical spelling.
 #
-# Keyword set: v1 (2026-06-15) — Tanglish/Tamil columns FINALIZED by native-speaker
-# review (Phase 0 closed). Frozen for v1; spellings may change in a future v2.
+# Keyword set: v1 (2026-06-15) — Tanglish/Tamil columns ratified by native-speaker
+# review (Phase 0 closed). Frozen for v1 EXCEPT the entries explicitly marked
+# PROVISIONAL below (dev/testing placeholder spellings pending native-speaker
+# review, R9/R11); spellings may change in a future v2.
 # Changing a word here is a data change — no compiler code is touched.
 #
 # Columns: en = English (frozen) · tanglish = romanized Tamil · tamil = Tamil script

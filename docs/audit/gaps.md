@@ -44,6 +44,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 | [GAP-18](#gap-18-high-architectural-closed-2026-08-19--the-hoist-buffers-flush-point-is-a-second-scoping-axis-and-nothing-watches-it)               | Hoist buffer's flush point is a second, unwatched scoping axis                   | HIGH       | CLOSED |
 | [GAP-19](#gap-19-medium-testing-closed-2026-08-18--wasm_parity-skips-silently-and-ci-never-builds-the-artifact-it-needs)                            | `wasm_parity` skips silently; CI never builds the artifact it needs              | MEDIUM     | CLOSED |
 | [GAP-20](#gap-20-high-testing-open--the-three-pre-declaration-render-sites-are-outside-every-oracle-and-no-test-elaborates-the-corpus-it-ships)     | Three pre-declaration render sites outside every oracle; corpus never elaborated | HIGH       | OPEN   |
+| [GAP-21](#gap-21-low-language-open--clog2param-cannot-size-a-port-verilog-2005-port-list-scoping)                                                   | `clog2(PARAM)` cannot size a port (Verilog-2005 port-list scoping)               | LOW        | OPEN   |
 
 ---
 
@@ -1746,3 +1747,36 @@ one.
 Long term, [GAP-1](#gap-1-high-architectural--no-ir-widthkind-semantics-implemented-three-times)
 removes the window: with a typed elaborated IR there is no pre-declaration
 render phase to be outside of.
+
+## GAP-21 (LOW, language, OPEN) — `clog2(PARAM)` cannot size a port (Verilog-2005 port-list scoping)
+
+**What:** a port width of the form `bits[clog2(PARAM)]` — the classic "address
+bits for a FIFO of depth N" pattern — is rejected with `E0420`. Body widths
+(`wire`/`reg`/`mem`) accept it: the emitter injects a Verilog-2005 `clog2`
+constant function into the module body, so body widths track an
+instantiation-time parameter override. Only the PORT list is closed to it.
+Before 2026-08-22 this split was invisible: `mimz check` folded the width under
+the module's default parameter binding and passed, then `mimz compile` died in
+the emitter with an _uncoded_ error. The checker now fires `E0420` at check
+time (`checker/widths/sigs.rs`, `reject_clog2_param_port_width`), so both
+commands agree; fixture `tests/fixtures/errors/e0420_clog2_param_port.mimz`.
+
+**Is it truly a Verilog-2005 limitation? Yes, with nuance.** IEEE
+1364-2005 allows constant-function calls in constant expressions, but a module
+port range is part of the module HEADER, which lexically precedes every
+body-local function definition, and 1364-2005 provides no forward-reference or
+package mechanism for it (SystemVerilog relaxes this via packages and `$clog2`;
+Verilog-2001/2005 tool behavior for header-local constant functions is
+uniformly reject-or-unreliable). So the emitter's original refusal was correct
+— the defect was the checker/emitter disagreement, not the refusal. Workarounds
+that work today: size a body signal with `clog2(PARAM)`, or pass the computed
+width in as its own `int` parameter from the instantiation site.
+
+**Why it matters / recommended direction:** LOW priority because the
+workarounds are cheap and the error is now honest and early. If a future
+edition targets SystemVerilog output (or emits package-scoped helpers), revisit
+and allow `clog2(PARAM)` ports; that change would land alongside the
+per-instance `const if` elaboration design in
+[`docs/Ideas/language_plan.md`](../Ideas/language_plan.md) section 13, since
+both need definition-site-vs-instance-site resolution machinery. Found by the
+2026-08-22 doc-code audit (M11/L1).

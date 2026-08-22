@@ -359,6 +359,19 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: bind the literal to a `let`/`fn` parameter first, then index\n\
          that name: `let vals = [a, b, c]` (inside a `fn`), then `vals[0]`.",
     ),
+    (
+        "E0420",
+        "E0420 — `clog2` of a parameter cannot size a port\n\n\
+         A port's width is written into the Verilog port list, and Verilog-2005\n\
+         port range expressions may only use constants and parameters — they\n\
+         cannot call the `clog2` constant function, which lives in the module\n\
+         body where the port list can't reach it. The checker folds widths\n\
+         under the module's default parameter values, so this only surfaces\n\
+         at emission without this error.\n\n\
+         Fix: size a body `wire`/`reg` with `clog2(param)` instead (the body\n\
+         CAN call the helper), or pass the computed width in as its own `int`\n\
+         parameter.",
+    ),
     // ----- E05xx: drivers & cycles -----
     (
         "E0501",

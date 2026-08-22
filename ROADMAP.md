@@ -1,7 +1,7 @@
 # Min-Mozhi (மின்மொழி) — Roadmap
 
 > **"Language of Electricity"** — a modern, safe-by-default HDL, built to help
-> students learn digital design, and the first Tamil-rooted Hardware Description
+> students learn digital design, and a Tamil-rooted Hardware Description
 > Language.
 >
 > This file is the **public-facing summary**. Detailed task-level plans live in
@@ -19,7 +19,7 @@
 | 1.8   | Grammar Engine (Tamil word order) | ✅ Complete                              | 2026-06-16 |
 | 1.5   | Own Simulator                     | ✅ Complete                              | 2026-06-22 |
 | **→** | **v0.1.0 public release**         | ✅ Complete                              | 2026-06-24 |
-| **→** | **v0.2.0 public release**         | ✅ Complete                              | 2026-08-20 |
+| **→** | **v0.2.0 public release**         | 🟡 Prepared (tag pending)                | 2026-08-20 |
 | 2     | IR + Synthesis (Yosys/nextpnr)    | 🟡 In progress (language-features track) | —          |
 | 3     | Native FPGA bitstream             | ⏳ Planned                               | —          |
 | 4     | Ecosystem, stdlib, community      | ⏳ Ongoing                               | —          |
@@ -62,7 +62,7 @@
 - `syntax thamizh` file-level directive
 - `mimz translate --order code|thamizh`
 - Tamil morphology helper for error messages (case suffixes on signal names)
-- Native-authored error catalog (`lang/messages.toml`) — 33/36 codes
+- Native-authored error catalog (`lang/messages.toml`) — 35 of the 76 checker codes localized (35 tanglish + tamil)
 
 ### Phase 1.5 — Simulator ✅ (2026-06-16 → 2026-06-22)
 
@@ -290,7 +290,7 @@ gantt
 
 | Dimension         | Significance                                                                                                                                                                                                                      |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cultural**      | First Tamil-rooted HDL — anywhere in the world; brings native-language programming to Tamil-speaking students and grows Tamil as a language you can actually code in                                                              |
+| **Cultural**      | A Tamil-rooted HDL — brings native-language programming to Tamil-speaking students and grows Tamil as a language you can actually code in                                                                                         |
 | **Education**     | Built from the ground up to teach digital design — compile a counter in 5 minutes, read errors that explain _what went wrong and how to fix it_, learn hardware thinking without fighting toolchain friction                      |
 | **Safety**        | Every classic Verilog footgun — silent truncation, latch inference, multiple drivers, uninitialized registers, signed/unsigned confusion — is a compile-time error with a teaching diagnostic; safe by default, not by convention |
 | **Modern Syntax** | Go/TypeScript-style braces and `: type` annotations, expression-oriented `if`/`match`, no `begin/end`, no preprocessor — a syntax that feels familiar to anyone who has written a modern programming language                     |

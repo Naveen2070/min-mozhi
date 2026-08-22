@@ -26,7 +26,7 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
       blocks emit no Verilog, so no same-Verilog oracle) and **landed there as B7**
       (2026-06-16): `mimz test` executes the blocks, so a passing thamizh-order test
       re-parsing to the same `TestDecl` is the oracle
-      (`src/parser/items/test.rs::test_decl_thamizh`, `src/pretty.rs`). All five
+      (`crates/mimz-core/src/parser/items/test.rs::test_decl_thamizh`, `crates/mimz-core/src/pretty.rs`). All five
       clause flips are now implemented.
 - [x] Expression-first parsing with one-token lookahead after the operand (no
       backtracking) — the clocked-block flip dispatches on the leading `Kw::Rise`;
@@ -58,11 +58,13 @@ the **same AST**, plus grammar-correct Tamil error messages. Full design:
       `morph::inflect` attaches them. The sandhi rule is **finalized** (C3 ratified
       2026-06-15, no longer PROVISIONAL).
 - [x] Error catalog authored in Tamil + Tanglish by humans (not machine-translated);
-      helper only inflects names — panel-authored (C3). `lang/messages.toml` localizes
-      **33 of 44 checker E-codes**; E0403/E0404/E0405 deferred (each emits many
+      helper only inflects names — panel-authored (C3). `lang/messages.toml` had
+      localized **33 of the then-44 checker E-codes** at phase close (2026-06-16);
+      E0403/E0404/E0405 deferred (each emits many
       message shapes one template can't fit — English kept, Tamil preserved as
       comments). The renderer interpolates structured args (`{expected}`/`{op}`/…)
-      with an English fallback when a token is unfilled.
+      with an English fallback when a token is unfilled. Live counts (35 of 76 as
+      of 2026-08-22) are computed from source and enforced by `tests/docs_sync.rs`.
 - [x] Error-language selection: file flavor majority, `--lang` override
       (`morph::majority_flavor` / `effective_lang`, wired into `check`/`compile`/`eval`,
       2026-06-14). Additive English-fallback: uncovered codes render unchanged.

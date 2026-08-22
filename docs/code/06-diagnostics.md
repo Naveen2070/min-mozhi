@@ -50,9 +50,9 @@ uninitialized state (spec/02 section 1.2)`.
 Patterns in code:
 
 - `Diag::new(span, msg).with_code(code).with_help(help)` — anywhere.
-- Parser: `self.error(span, code, msg)` then optionally `self.help(text)`
-  (attaches to the most recent error). The code argument is mandatory —
-  same discipline as `Checker::err`.
+- Parser: `self.error(span, code, msg, help)` — all four arguments,
+  with code AND help mandatory (same discipline as `Checker::err`;
+  GAP-3: the teaching contract is not optional).
 - Emitter: `self.err(span, msg, help)` (empty `help` = no help line).
 
 ## Stable error codes — the full map
@@ -92,34 +92,34 @@ the WASM playground's single-source path). Catalogued in
 [`13-tooling.md`](13-tooling.md#s0xxx--runtime-diagnostic-codes-r2-docsauditreview-2026-07-17md),
 not here — `ALL_SIM_CODES` lives in `crates/mimz-sim`, not `mimz-core`.
 
-| Code  | Meaning                                                             |
-| ----- | ------------------------------------------------------------------- |
-| E1001 | unterminated block comment                                          |
-| E1002 | unterminated string                                                 |
-| E1003 | Tamil digits in a literal (ASCII digits are universal)              |
-| E1004 | malformed number                                                    |
-| E1005 | reserved word used as a name                                        |
-| E1006 | division `/` does not exist (teaches the hardware cost)             |
-| E1007 | modulo `%` does not exist (teaches `+%`/slicing)                    |
-| E1008 | unexpected character                                                |
-| E1101 | expected-X-found-Y family (incl. terminators, missing `}`)          |
-| E1102 | bad top-level item                                                  |
-| E1103 | enum needs at least one variant                                     |
-| E1104 | register has no reset value, or memory has no init value            |
-| E1105 | `<-` outside an `on` block                                          |
-| E1106 | `=` inside an `on` block                                            |
-| E1107 | `test` block syntax (name, body statements)                         |
-| E1108 | value-driving `if` without `else` (the latch lesson)                |
-| E1109 | chained comparison                                                  |
-| E1110 | call errors (not a builtin, wrong arity)                            |
-| E1111 | parameter/const type is not `int`/`bool`                            |
-| E1112 | unknown `syntax` profile (only `thamizh` is valid)                  |
-| E1113 | nested too deeply to parse safely (the anti-stack-overflow guard)   |
-| E1114 | `sim` block syntax (`speed`/`bind` clause is malformed)             |
-| E1115 | `??` applied to an already-optional type (`bits[8]??`)              |
-| E1116 | unknown `sync.*` method (only `double_flop`/`pulse` exist)          |
-| E1201 | imported file does not exist                                        |
-| E1202 | bad standard-library import (`std.<module>` shape / unknown module) |
+| Code  | Meaning                                                                     |
+| ----- | --------------------------------------------------------------------------- |
+| E1001 | unterminated block comment                                                  |
+| E1002 | unterminated string                                                         |
+| E1003 | Tamil digits in a literal (ASCII digits are universal)                      |
+| E1004 | malformed number                                                            |
+| E1005 | reserved word used as a name                                                |
+| E1006 | division `/` does not exist (teaches the hardware cost)                     |
+| E1007 | modulo `%` does not exist (teaches `+%`/slicing)                            |
+| E1008 | unexpected character                                                        |
+| E1101 | expected-X-found-Y family (incl. terminators, missing `}`)                  |
+| E1102 | bad top-level item                                                          |
+| E1103 | enum needs at least one variant                                             |
+| E1104 | register has no reset value, or memory has no init value                    |
+| E1105 | `<-` outside an `on` block                                                  |
+| E1106 | `=` inside an `on` block                                                    |
+| E1107 | `test` block syntax (name, body statements)                                 |
+| E1108 | value-driving `if` without `else` (the latch lesson)                        |
+| E1109 | chained comparison                                                          |
+| E1110 | call errors (not a builtin, wrong arity)                                    |
+| E1111 | parameter/const type is not `int`/`bool`                                    |
+| E1112 | unknown `syntax` profile (only `thamizh` is valid)                          |
+| E1113 | nested too deeply to parse safely, or empty `()` on a tag-only enum variant |
+| E1114 | `sim` block syntax (`speed`/`bind` clause is malformed)                     |
+| E1115 | `??` applied to an already-optional type (`bits[8]??`)                      |
+| E1116 | unknown `sync.*` method (only `double_flop`/`pulse` exist)                  |
+| E1201 | imported file does not exist                                                |
+| E1202 | bad standard-library import (`std.<module>` shape / unknown module)         |
 
 Grouping rule: E1101 deliberately covers the whole expected/found
 family — those messages share one translation shape; the codes that
@@ -130,6 +130,15 @@ parser counts nesting depth (`parser::MAX_DEPTH`) and bails with one
 clean diagnostic rather than letting adversarial input abort the process
 with a stack overflow. It is latched, so a 2000-deep expression produces
 exactly one E1113, not 2000.
+
+The code carries a **second meaning** (decision D1): `enum Foo { A() }` —
+empty parentheses on a tag-only variant — is also E1113, with a
+"drop the parens for a tag-only variant" hint
+(`parser/items/file.rs`; pinned by
+`empty_parens_variant_is_a_parse_error` in
+`parser/tests/test_blocks_sim_and_recovery.rs`). Both meanings are
+parse-shape errors whose messages need no interpolation tokens, which is
+why they share one code.
 
 Not every code has a long-form `mimz explain` entry yet: `E1112`,
 `E1113` and `W0001` are message-only today. `E0904` is a parser code

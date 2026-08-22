@@ -2,9 +2,11 @@
 
 > **Your own behavioral engine — no external tools.**
 > Window: months 10–12, **after Phase 1.8** (solo-dev order, decision D3) ·
-> Target: 31 May 2027 · Status: 🟢 **COMPLETE (2026-06-16, branch
-> `phase-1.5-simulator`)** — all eight core work items (B1–B8) **and** the
-> full-parity follow-on (C1–C4) have landed; see the 2026-06-16 dev log. The
+> Target: 31 May 2027 · Status: 🟢 **COMPLETE** — all eight core work items
+> (B1–B8) **and** the full-parity follow-on (C1–C4) landed on branch
+> `phase-1.5-simulator` by **2026-06-16** (see the 2026-06-16 dev log); the
+> phase **closed 2026-06-22** after audit/fuzz hardening and the v0.1.0
+> version bump (the ROADMAP date). The
 > simulator now covers the **entire single-file corpus bit-for-bit vs Icarus**
 > (21 examples). Stabilizes (→ release) when the public-repo step opens (D7).
 > Suite: 522 tests green (as of 2026-06-30). Only additive, non-blocking items remain (listed below).
@@ -16,12 +18,12 @@ Icarus or any external tool involved.
 
 ## Work items
 
-- [x] **B1** Elaboration: AST → flat signal/process graph, params/widths/reset folded (`src/sim/elaborate.rs`). B1 shipped single-module; the C2/C3/C4 follow-on (below) lifted that — `elaborate_project` now flattens cross-file instances, unrolls `repeat`, and encodes enum signals.
-- [x] **B2** Event-driven simulation kernel: two-phase update (compute `<-` values, then commit) so register semantics are exact (`src/sim/kernel.rs`; shared evaluator `src/sim/value.rs`).
+- [x] **B1** Elaboration: AST → flat signal/process graph, params/widths/reset folded (`crates/mimz-sim/src/sim/elaborate/`). B1 shipped single-module; the C2/C3/C4 follow-on (below) lifted that — `elaborate_project` now flattens cross-file instances, unrolls `repeat`, and encodes enum signals.
+- [x] **B2** Event-driven simulation kernel: two-phase update (compute `<-` values, then commit) so register semantics are exact (`crates/mimz-sim/src/sim/kernel.rs`; shared evaluator `crates/mimz-sim/src/sim/value.rs`).
 - [x] **B3** Combinational propagation in topological order — the kernel's memoized resolver settles the DAG on demand and reports comb cycles.
-- [x] **B4** Clock/reset stimulus generation (`src/sim/run.rs` → `Timeline`).
-- [x] **B5** VCD writer (viewable in GTKWave) + console trace (`--trace`/`--trace=changes`) + the `mimz sim` command (`src/sim/{vcd,trace}.rs`, `src/commands/sim.rs`).
-- [x] **B6** `test` blocks from `spec/02` section 1.10: input drives, `tick(clk[,n])`, `expect`, `if`/`else`, run via `mimz test` with teaching-quality failure messages + exit codes (`src/sim/harness.rs`, `src/commands/test.rs`). (The `await clk.cycles(n)` form is decided but parked on its native-review spelling — see the test-syntax stretch item.)
+- [x] **B4** Clock/reset stimulus generation (`crates/mimz-sim/src/sim/run.rs` → `Timeline`).
+- [x] **B5** VCD writer (viewable in GTKWave) + console trace (`--trace`/`--trace=changes`) + the `mimz sim` command (`crates/mimz-sim/src/sim/{vcd,trace}.rs`, `src/commands/sim.rs`).
+- [x] **B6** `test` blocks from `spec/02` section 1.10: input drives, `tick(clk[,n])`, `expect`, `if`/`else`, run via `mimz test` with teaching-quality failure messages + exit codes (`crates/mimz-sim/src/sim/harness/mod.rs`, `src/commands/test.rs`). (The `await clk.cycles(n)` form is decided but parked on its native-review spelling — see the test-syntax stretch item.)
 - [x] **B7** Test-header thamizh-order flip (`M(args) kaaga "…" sodhanai { }`) — the 5th word-order flip; execution is the oracle.
 - [x] **B8** Differential testing: same example, same stimulus → compare against Icarus **bit-for-bit**, three ways (our kernel == our VCD waveform == Icarus), on counter / shift register / edge detector (`tests/icarus.rs`, Layer 3).
 - [x] **B8** Performance baseline: ≥1M cycle-events/sec on the counter — measured ~2.3M in release (best of 5, to reject load-induced dips) (`tests/sim.rs`).
@@ -45,7 +47,7 @@ Icarus or any external tool involved.
       **Post-v1 stretch** (VCD + kernel came first, as planned).
 - [x] Note: the combinational evaluator is what the Phase 4 hardware REPL (idea
       8.5) rides on — it stays callable on a single module/expression via
-      `src/sim/comb.rs` + `mimz eval` (the down-payment shipped before B1).
+      `crates/mimz-sim/src/sim/comb.rs` + `mimz eval` (the down-payment shipped before B1).
 
 ### Still open after Phase 1.5 (additive — none block the release)
 
@@ -74,7 +76,7 @@ remaining clocked design.
 
 _What landed (done):_
 
-- [x] `comb_run` (`src/sim/run.rs`) — `mimz sim` runs **combinational** modules:
+- [x] `comb_run` (`crates/mimz-sim/src/sim/run.rs`) — `mimz sim` runs **combinational** modules:
       `--in` settles one frame, `--sweep a=0|1|2` one frame per combination; same
       VCD/trace path. (+5 lib unit, +3 sim integration, −1 obsolete reject test.)
 - [x] **Signed-aware differential via Verilog `%b`** (binary) — replaced `%0d`; the
@@ -82,7 +84,7 @@ _What landed (done):_
       param overrides. Now covers **12 ASCII-named english examples** incl. SIGNED
       (`bitops`, `signed_math`).
 - [x] **Bug found + fixed by the new differential:** the shared evaluator's lossless
-      signed `+`/`*` (`src/sim/value.rs`) added raw bits without sign-extending a
+      signed `+`/`*` (`crates/mimz-sim/src/sim/value.rs`) added raw bits without sign-extending a
       negative operand → wrong result (also affected `mimz eval`). Fixed to use
       `as_i128` (matches Verilog). Regression `signed_lossless_add_sign_extends`.
 
@@ -101,7 +103,7 @@ _Tamil-pure / `vilakku` examples — now IN the bit-for-bit differential (done):
 _Out of C1 scope by design (the rest of full parity — C2–C4):_
 
 - [x] **C2 — instance / multi-module elaboration** (2026-06-16): `elaborate_project`
-      in `src/sim/elaborate.rs` flattens `let` instances (incl. across `import`s) —
+      in `crates/mimz-sim/src/sim/elaborate/` flattens `let` instances (incl. across `import`s) —
       each child inlined with signals prefixed `{inst}_{name}`, `inst.port` → wire
       `inst_port` (matches the emitter), so the flat `Design` is bit-for-bit
       equivalent. `mimz sim`/`mimz test` now `load_project`. `alu` (`Top`) and
@@ -179,7 +181,7 @@ fidelity / cost:
 2. **Tier 2 — a true event-driven kernel (the real fix).** Nets with current
    values, a per-process sensitivity list (sensitive to `posedge rst` too, not
    just the clock), a time-ordered event queue, delta-cycle settling — Verilog
-   reference semantics. A significant `src/sim/kernel.rs` rewrite that **pairs
+   reference semantics. A significant `crates/mimz-sim/src/sim/kernel.rs` rewrite that **pairs
    naturally with adding 4-state X/Z** (a reset recovery/removal violation _is_ an
    X), so the two land as one "higher-fidelity engine" milestone. This is what
    makes the in-house sim show "resets between edges."
@@ -203,6 +205,6 @@ fast functional model.
   [`docs/audit/bugs.md`](../audit/bugs.md)). Fixed: `BinOp::Shl` now uses
   `(l.width + shift).min(128)` for the result width, matching Verilog semantics.
   Regression: `shl_does_not_truncate_to_left_operand_width` unit test in
-  `src/sim/value.rs`, shift example in the `tests/icarus.rs` layer-3 differential
+  `crates/mimz-sim/src/sim/value.rs`, shift example in the `tests/icarus.rs` layer-3 differential
   (english + tamil-pure `nakartthi`). The FIFO workaround (explicit `DEPTH`) has
   been reverted — the clean `1 << AW` design is restored.

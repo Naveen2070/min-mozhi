@@ -88,7 +88,7 @@ impl<'a> Checker<'a> {
         inst: &'a Inst,
         report: bool,
     ) -> Option<ChildBinding<'a>> {
-        // names.rs (pass 3) already resolved this instantiation —
+        // names.rs (pass 6) already resolved this instantiation —
         // `resolved_file` is unset only for the already-reported
         // ambiguous/unknown cases, where the sole candidate (`.first()`) is
         // the safe fallback (bare-and-unambiguous, or "nothing to find").

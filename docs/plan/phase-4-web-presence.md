@@ -57,7 +57,14 @@ docs/guide/*, spec/*  (existing markdown)           ┘
 ### 1. WASM engine — `crates/mimz-wasm/` (new workspace member) + tiny lib add
 
 - **`src/lib.rs`: add `compile_string(source, imports) -> Result<String, Vec<Diag>>`**
-  (~30 lines). Wraps the existing pipeline _without_ `std::fs`: `lexer::lex` →
+  — **shipped differently (2026-06-24):** the real embedding entry is
+  `pub fn compile_string(source: &str) -> Result<String, String>` in
+  `crates/mimz-sim/src/lib.rs`, delegating to
+  `run_command(source, "compile", &[])`. No `imports` map (a source containing
+  an `import` is rejected outright), and failures return one rendered,
+  caret-annotated diagnostics string — the same text `mimz compile` prints —
+  not a `Vec<Diag>`.
+  Wraps the existing pipeline _without_ `std::fs`: `lexer::lex` →
   `parser::parse` → `checker::check` → `emit_verilog::transliterate` →
   `Project::from_files` → `emit`. `imports` is a `name → source` map (the browser
   can't read files). This is the only net-new library code.
@@ -161,11 +168,11 @@ Chosen over GitHub Pages: served at root (`/`) — no `base`-path config, which 
 
 ## Reused code (do not reinvent)
 
-- Compile: `src/lexer/mod.rs::lex`, `src/parser/mod.rs::parse`,
-  `src/checker/mod.rs::check`,
-  `src/emit_verilog/mod.rs::{transliterate, Project::from_files, emit}`.
-- Simulate: `src/sim/elaborate.rs::elaborate_project`,
-  `src/sim/run.rs::{run, comb_run, Timeline}`, `src/sim/vcd.rs::to_vcd`.
+- Compile: `crates/mimz-core/src/lexer/mod.rs::lex`, `crates/mimz-core/src/parser/mod.rs::parse`,
+  `crates/mimz-core/src/checker/mod.rs::check`,
+  `crates/mimz-core/src/emit_verilog/mod.rs::{transliterate, Project::from_files, emit}`.
+- Simulate: `crates/mimz-sim/src/sim/elaborate/mod.rs::elaborate_project`,
+  `crates/mimz-sim/src/sim/run.rs::{run, comb_run, Timeline}`, `crates/mimz-sim/src/sim/vcd.rs::to_vcd`.
 - Diagnostics: `src/diag/mod.rs` (+ existing `--json` shape) for playground errors.
 - Highlight: existing VS Code TextMate grammar (kept in sync by `tests/grammar_sync.rs`).
 - Docs content: `docs/guide/*.md`, `spec/*.md` (sourced, not copied).

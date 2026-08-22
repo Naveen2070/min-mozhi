@@ -659,7 +659,7 @@ impl<'a> Checker<'a> {
                 args,
             } => {
                 let Some(edecl) = self.lookup_enum(&cx.sc, &enum_name.name) else {
-                    // Unknown enum — pass 3 (names.rs) already reported it.
+                    // Unknown enum — pass 6 (names.rs) already reported it.
                     for a in args {
                         let _ = self.infer_ty(cx, a);
                     }
@@ -667,14 +667,14 @@ impl<'a> Checker<'a> {
                 };
                 let Some(decl_v) = edecl.variants.iter().find(|v| v.name.name == variant.name)
                 else {
-                    // Unknown variant — pass 3 already reported E0103.
+                    // Unknown variant — pass 6 already reported E0103.
                     for a in args {
                         let _ = self.infer_ty(cx, a);
                     }
                     return Ty::Unknown;
                 };
                 if decl_v.fields.len() != args.len() {
-                    // Arity mismatch — pass 3 already reported E0806. Still
+                    // Arity mismatch — pass 6 already reported E0806. Still
                     // infer each arg's own type so inner errors surface.
                     for a in args {
                         let _ = self.infer_ty(cx, a);
@@ -735,12 +735,12 @@ impl<'a> Checker<'a> {
                 Ty::Unknown
             }
             // Param/Const whose value failed to evaluate (reported), or a
-            // name pass 3 already flagged as unknown (E0101).
+            // name pass 6 already flagged as unknown (E0101).
             _ => Ty::Unknown,
         }
     }
 
-    /// `base.field` — enum variant, instance output, or bundle field (mirrors pass 3's
+    /// `base.field` — enum variant, instance output, or bundle field (mirrors pass 6's
     /// resolution; here we only need the TYPE).
     fn field_ty(
         &mut self,
@@ -806,7 +806,7 @@ impl<'a> Checker<'a> {
                     // parameters never reach this branch (fn bodies get an
                     // empty `Scope`, handled below instead). A module param
                     // can never be bundle-typed (`ParamTy` is `Int`/`Bool`
-                    // only), so this always errors — mirroring pass 3's
+                    // only), so this always errors — mirroring pass 6's
                     // wording from before names.rs started deferring `Param`
                     // field access generically to support bundle-typed fn
                     // params (see names.rs's `expr` field-access match).
@@ -820,7 +820,7 @@ impl<'a> Checker<'a> {
                     return Ty::Unknown;
                 }
                 Bind::Enum(en) => {
-                    // `State.Red` — legitimate enum-variant read. Pass 3
+                    // `State.Red` — legitimate enum-variant read. Pass 6
                     // (`names.rs`'s `!matches!(b, Bind::Enum(_))` guard)
                     // explicitly exempts `Bind::Enum` from its "no fields"
                     // error and only checks the variant name exists
@@ -836,7 +836,7 @@ impl<'a> Checker<'a> {
                     };
                 }
                 // Mem/Clock/Reset/Const/Bundle: names.rs never defers these —
-                // pass 3 already reported the correctly-worded diagnostic
+                // pass 6 already reported the correctly-worded diagnostic
                 // (`self.err` in `names::expr`'s generic `Some(b) if ...`
                 // arm), so don't report a second, wrongly-worded one here.
                 _ => return Ty::Unknown,

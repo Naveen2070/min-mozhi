@@ -78,9 +78,9 @@ pub(super) struct Checker<'a> {
     /// (`widths/mod.rs`) indexes this array directly by a bundle's declaring
     /// file with no bounds check, so that index must stay in range.
     file_consts: Vec<HashMap<String, consteval::ConstVal>>,
-    /// (declaring file, module name) -> its name table, built by pass 3
-    /// (`names.rs`) and reused by pass 4 (`widths.rs`) and pass 5
-    /// (`drivers.rs`). Keyed by file so two same-named modules from
+    /// (declaring file, module name) -> its name table, built by pass 6
+    /// (`resolve_names`) and reused by pass 7 (`check_widths`) and pass 8
+    /// (`check_drivers`). Keyed by file so two same-named modules from
     /// different files each get their own scope — a bare-name key would
     /// silently return the wrong file's scope once cross-file name reuse
     /// is legal (spec/02 section 1.5b). `Rc` so a pass can hold the scope

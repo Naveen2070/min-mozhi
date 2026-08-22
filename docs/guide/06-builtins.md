@@ -94,10 +94,11 @@ the checker already uses internally for enum tag widths.
 
 `clog2(PARAM)` works in a module **body** width — it lowers to an injected
 Verilog constant function, so the width still tracks an instantiation-time
-parameter override. `clog2(PARAM)` in a **port** width is a compile error
-(`E0407`) — a port's width has to be known before the body exists to inject
-anything into. `clog2` of a plain literal always folds at compile time in
-either position.
+parameter override. `clog2(PARAM)` in a **port** width is `E0420` — checked
+at compile time like any other error: a Verilog-2005 port list may only use
+constants and parameters, and cannot call the constant function that would
+compute it (that function lives in the body the port list precedes).
+`clog2` of a plain literal always folds at compile time in either position.
 
 ## Enum→bits: `encoding`
 
@@ -141,11 +142,13 @@ See the full runnable example: `examples/english/enum_encoding.mimz`.
 
 A `fn` is pure, stateless combinational logic that isn't worth its own
 module — inlined at the call site during emission, so recursion isn't
-allowed and there's no instantiation overhead:
+allowed and there's no instantiation overhead. (`fn` is one of the two
+keywords with an English alias — you may spell it `function`; the other is
+`import`, spelled `include`.)
 
 ```mimz
 fn max3(a: bits[8], b: bits[8], c: bits[8]) -> bits[8] {
-  return max(max(a, b), c)
+  max(max(a, b), c)
 }
 
 module Top {
@@ -157,6 +160,23 @@ module Top {
   biggest = max3(x, y, z)
 }
 ```
+
+The last line of a `fn` body is the returned value (a _tail expression_) —
+you don't write `return` for it. A mid-body `return` works too, but a body
+that ends in a bare `return ...` statement has no value expression after it,
+so the compiler rejects it.
+
+One layout quirk to know: a conditional as the final line is read as an if
+_statement_, not a value — so a conditional result must be parenthesized:
+
+```mimz
+fn pick(s: bit, a: bits[4], b: bits[4]) -> bits[4] {
+  (if s { a } else { b })
+}
+```
+
+Without the parentheses you get a confusing pair of "expected let/if/return"
+errors instead of the value.
 
 `fn` bodies can use `if`/`match`, `repeat`/`loop` unrolling, and other
 built-ins (as above) — anything combinational. Function names are

@@ -308,7 +308,7 @@ impl<'a> Checker<'a> {
                                         );
                                     }
                                 } else {
-                                    // Unknown variant: pass 3 already
+                                    // Unknown variant: pass 6 already
                                     // reported E0103 — just disarm coverage.
                                     bad = true;
                                 }

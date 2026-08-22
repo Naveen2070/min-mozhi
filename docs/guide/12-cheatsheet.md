@@ -37,7 +37,7 @@ One-page reference. The authoritative sources are
 | `and`     | `mattrum`       | `மற்றும்`     | logical and (`&&`)                                        |
 | `or`      | `alladhu`       | `அல்லது`      | logical or (`\|\|`)                                       |
 | `not`     | `alla`          | `அல்ல`        | logical not (`!`)                                         |
-| `fn`      | `saarbu`        | `சார்பு`      | combinational function                                    |
+| `fn`      | `saarbu`        | `சார்பு`      | combinational function (`function` alias)                 |
 | `return`  | `thirumbu`      | `திரும்பு`    | function return statement                                 |
 | `default` | `iyalbu`        | `இயல்பு`      | fallback register assignment                              |
 | `bundle`  | `kattai`        | `கட்டை`       | named group of signals                                    |
@@ -55,12 +55,13 @@ One-page reference. The authoritative sources are
 
 That is the complete active keyword set — 44 words. The table itself lives
 in [`lang/keywords.toml`](../../lang/keywords.toml); adding a word there is
-a DATA change, not a compiler change. The Tanglish and Tamil columns are
-frozen at keyword-set **v1** (2026-06-15), so a program you write today
+a DATA change, not a compiler change. The Tanglish and Tamil columns were
+ratified at keyword-set **v1** (2026-06-15); they are frozen **except the
+entries marked PROVISIONAL in the table** — the spellings of `mem`,
+`async`, `fall`, `fn`, `return`, `default`, `bundle`, `assert`, `cover`,
+`loop`, `foreach`, `sync`, `extern`, `sim`, `bind`, and `speed` are
+placeholders pending native-speaker review. A program you write today
 keeps lexing the same way.
-
-The Tanglish/Tamil spellings of `mem`, `async`, `fall`, `fn`, `return`, `default`, `bundle`, `assert`, `cover`, `loop`, `foreach`, `sync`, `extern`, `sim`, `bind`, and `speed` are **provisional**,
-pending native-speaker review.
 
 Reserved for future features (using one is an error): `inout`, `struct`,
 `secret`, `declassify`, `pipeline`, `interface`, `chan`, `prove`,

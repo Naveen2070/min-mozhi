@@ -47,7 +47,7 @@ cumulative throughput (LOC/s) to history.
 
 ## Phase 1: Cache Warm-up & I/O Isolation — ✅ DONE 2026-06-13
 
-Implemented: `measure_speed` (`src/bin/mimz-bench/metrics.rs`) runs one untimed
+Implemented: `measure_speed` (`src/bin/mimz-bench/metrics/speed.rs`) runs one untimed
 full pipeline per example before the timed loop.
 
 **The goal:** decouple disk speed from compiler speed.

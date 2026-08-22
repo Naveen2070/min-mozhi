@@ -14,6 +14,10 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ## [0.2.0] — 2026-08-20 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
+> **Tag pending** — content frozen and release gates green (round 9, 8/8,
+> 2026-08-21), but no `v0.2.0` git tag exists yet. Cut it on the
+> `chore(release): prepare v0.2.0` commit when publishing.
+
 The language edition is **unchanged**: keyword set v1, no breaking keyword
 change, so `mimz translate` needs no migration rule for this release. The one
 breaking change is a width-rule change (`<<`), listed under _Changed_ below.
@@ -199,14 +203,14 @@ user-visible MEDIUM ones are listed here.
 
 ### Test suite
 
-- **1315 passing tests** across unit (lexer, parser, checker, emitter, morph,
+- **1318 passing tests** across unit (lexer, parser, checker, emitter, morph,
   sim, translate, grammar-sync, hardware-emulation) and integration (examples,
   golden files, Icarus differential, fuzz corpus, self-determined regression,
   external modules, packages, docs staleness guard).
 - **Golden-file pinning** — every example's Verilog output is byte-pinned in
-  `tests/golden/` (87 module goldens + 17 testbench goldens); any emitter
+  `tests/golden/` (88 `.v` goldens: 71 module + 17 testbench); any emitter
   regression is caught immediately.
-- **`tests/fixtures/errors/`** — corpus of 119 `.mimz` files that must produce a
+- **`tests/fixtures/errors/`** — corpus of 120 `.mimz` files that must produce a
   specific E-code; adding a checker code without a fixture fails CI.
 - **`grammar_sync`** — asserts that `lang/keywords.toml`, `spec/03`, and the
   TextMate grammar are mutually consistent; no stale keyword spellings.
@@ -362,7 +366,7 @@ code read like Tamil, not transliterated English:
 | `mimz fmt <file>`                | Format a `.mimz` source file                                                       |
 | `mimz eval <expr>`               | Evaluate a constant expression                                                     |
 | `mimz lsp`                       | Start the LSP server (used by the VS Code extension)                               |
-| `mimz --version`                 | Prints compiler version + language edition on two lines                            |
+| `mimz --version`                 | Prints compiler version + language edition (three lines: codename banner first)    |
 
 ---
 
@@ -460,7 +464,7 @@ Keywords reserved pre-v0.1.0 so no valid v0.1.0 program can claim them:
 
 ### Notable fixes (pre-release)
 
-- **Shift truncation** (`src/sim/value.rs`) — `Shl`/`Shr` now guard
+- **Shift truncation** (`crates/mimz-sim/src/sim/value.rs`) — `Shl`/`Shr` now guard
   `if r >= 128 { 0 }` before the `as u32` cast; no silent wraparound.
 - **Testbench panic** (`mimz compile --emit-testbench`) — stem-less `--output`
   path (e.g. `..`) now produces a clean error instead of a panic.
