@@ -1,0 +1,138 @@
+---
+// The Handbook's keyword tables, generated at build time from lang/keywords.toml
+// — the compiler's own source of truth — so this page cannot drift from what the
+// compiler actually accepts. Rendered in file order, which is already grouped by
+// topic in the TOML.
+import { loadKeywords } from "../lib/keywords.mjs";
+
+const { version, keywords, reserved } = loadKeywords();
+const provisional = keywords.filter((k) => k.provisional);
+const aliased = keywords.filter((k) => Object.keys(k.aliases).length > 0);
+---
+
+<p>
+  <strong>{keywords.length} keywords</strong>, keyword-set v{version}. Generated
+  from <code>lang/keywords.toml</code> when this page was built.
+  <span class="kw-dagger">†</span> marks a spelling that is still provisional —
+  see <a href="#provisional-spellings">below</a>.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>English</th>
+      <th>Tanglish</th>
+      <th>Tamil</th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      keywords.map((k) => (
+        <tr>
+          <td>
+            <code>{k.en}</code>
+            {k.aliases.en?.map((a) => (
+              <>
+                {" "}
+                <code class="kw-alias">{a}</code>
+              </>
+            ))}
+          </td>
+          <td>
+            <code>{k.tanglish}</code>
+            {k.provisional && <span class="kw-dagger">†</span>}
+          </td>
+          <td lang="ta" class="ff-tamil">
+            <code>{k.tamil}</code>
+            {k.provisional && <span class="kw-dagger">†</span>}
+          </td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>
+
+<h2 id="aliases">Aliases</h2>
+
+<p>
+  An alias lexes to exactly the same token as the canonical spelling — the two
+  are interchangeable, and <code>mimz fmt</code> normalizes an alias to the
+  canonical word.
+</p>
+
+<ul>
+  {
+    aliased.map((k) =>
+      Object.entries(k.aliases).map(([col, words]) => (
+        <li>
+          {words.map((w) => (
+            <code>{w}</code>
+          ))}{" "}
+          &rarr; <code>{(k as any)[col]}</code> <span class="kw-note">({col})</span>
+        </li>
+      )),
+    )
+  }
+</ul>
+
+<h2 id="reserved-words">Reserved words</h2>
+
+<p>
+  Reserved for future features and <strong>not usable as names</strong> today —
+  using one is <code>E1005</code>, with a message explaining which feature holds
+  the reservation. They are deliberately untranslated until the feature lands.
+</p>
+
+<p>
+  {
+    reserved.map((w, i) => (
+      <>
+        {i > 0 && " · "}
+        <code>{w}</code>
+      </>
+    ))
+  }
+</p>
+
+<h2 id="provisional-spellings">Provisional spellings</h2>
+
+<p>
+  The English column is frozen. The Tanglish and Tamil columns were ratified at
+  keyword-set v{version} and are frozen too — <em>except</em> the{" "}
+  {provisional.length} entries marked <span class="kw-dagger">†</span> above,
+  whose Tanglish/Tamil spellings are dev/testing placeholders pending
+  native-speaker review. They were authorized so the four-flavor tooling works
+  today; a future keyword-set version may change them.
+</p>
+
+<p>
+  This affects <strong>only</strong> the Tanglish and Tamil words. A program you
+  write today keeps lexing the same way, and the emitted Verilog is unaffected.
+  The provisional entries are:
+</p>
+
+<p>
+  {
+    provisional.map((k, i) => (
+      <>
+        {i > 0 && " · "}
+        <code>{k.en}</code>
+      </>
+    ))
+  }
+</p>
+
+<style>
+  .kw-dagger {
+    color: var(--accent);
+    font-weight: 700;
+    margin-left: 0.15rem;
+  }
+  .kw-alias {
+    opacity: 0.75;
+  }
+  .kw-note {
+    color: var(--text-muted);
+    font-size: 0.85em;
+  }
+</style>

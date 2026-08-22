@@ -1,0 +1,109 @@
+---
+// Downloads navigation: Latest on top, then the most recent past releases and a
+// way through to the full list. Visible at every width (it is short) — it stacks
+// above the content on small screens instead of disappearing.
+import { latest, historyPreview, history } from "../lib/releases";
+
+interface Props {
+  current: string; // "latest" | "all" | a release tag
+}
+const { current } = Astro.props;
+---
+
+<nav aria-label="Downloads" class="text-sm">
+  <div class="mb-7">
+    <div
+      class="fg-muted mb-2 text-xs font-semibold uppercase tracking-wider"
+    >
+      Latest
+    </div>
+    <ul class="space-y-0.5">
+      <li>
+        <a
+          href="/downloads"
+          class:list={[
+            "dl-link block rounded px-2 py-1",
+            { active: current === "latest" },
+          ]}
+        >
+          {latest.tag}
+          <span class="dl-badge">latest</span>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  {
+    history.length > 0 && (
+      <div class="mb-7">
+        <div class="fg-muted mb-2 text-xs font-semibold uppercase tracking-wider">
+          History
+        </div>
+        <ul class="space-y-0.5">
+          {historyPreview.map((r) => (
+            <li>
+              <a
+                href={`/downloads/${r.tag}`}
+                class:list={[
+                  "dl-link block rounded px-2 py-1",
+                  { active: current === r.tag },
+                ]}
+              >
+                {r.tag}
+                <span class="dl-date">{r.date}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="dl-all">
+          <a
+            href="/downloads/releases"
+            class:list={[
+              "dl-link block rounded px-2 py-1",
+              { active: current === "all" },
+            ]}
+          >
+            View all releases &rarr;
+          </a>
+        </div>
+      </div>
+    )
+  }
+</nav>
+
+<style>
+  .dl-link {
+    color: var(--text-muted);
+    text-decoration: none;
+  }
+  .dl-link:hover {
+    color: var(--text);
+    background-color: var(--bg-soft);
+  }
+  .dl-link.active {
+    color: var(--accent);
+    background-color: var(--bg-soft);
+    font-weight: 600;
+  }
+  .dl-badge {
+    margin-left: 0.4rem;
+    border: 1px solid var(--accent);
+    border-radius: 0.25rem;
+    padding: 0.05rem 0.3rem;
+    color: var(--accent);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .dl-date {
+    display: block;
+    font-size: 0.7rem;
+    opacity: 0.75;
+  }
+  .dl-all {
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.5rem;
+  }
+</style>
