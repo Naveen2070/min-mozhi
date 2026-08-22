@@ -1,0 +1,136 @@
+---
+// /downloads/<tag> — one superseded release.
+//
+// Deliberately NOT a copy of /downloads with different numbers. That page's job
+// is "get the compiler"; this page's job is "you asked for an old one, here it
+// is, and here is the way back to current". So the hierarchy is inverted: the
+// loudest thing on the page is the route to the latest version, and the actual
+// downloads are presented in the muted `archive` variant below it.
+import DownloadsLayout from "../../layouts/Downloads.astro";
+import ReleaseAssets from "../../components/ReleaseAssets.astro";
+import Changelog from "../../components/Changelog.astro";
+import { REPO, history, latest, notesUrl, type Release } from "../../lib/releases";
+
+export async function getStaticPaths() {
+  // Only past releases get their own page; the latest one IS /downloads.
+  return history.map((release: Release) => ({
+    params: { tag: release.tag },
+    props: { release },
+  }));
+}
+
+const { release } = Astro.props;
+
+// "What changed since <this release>" is the NEXT release's changelog entry —
+// currently the latest. The GitHub compare stays available beside it.
+const compareUrl = `${REPO}/compare/${release.tag}...${latest.tag}`;
+---
+
+<DownloadsLayout
+  title={`${release.tag} — older release`}
+  description={`Downloads for Min-Mozhi ${release.tag}, released ${release.date}. Superseded by ${latest.tag}.`}
+  current={release.tag}
+>
+  <nav aria-label="Breadcrumb" class="fg-muted mb-6 text-sm">
+    <a href="/downloads" class="fg">Downloads</a>
+    <span aria-hidden="true"> / </span>
+    <a href="/downloads/releases" class="fg">All releases</a>
+    <span aria-hidden="true"> / </span>
+    <span>{release.tag}</span>
+  </nav>
+
+  <div class="flex flex-wrap items-baseline gap-3">
+    <h1 class="fg text-3xl font-extrabold tracking-tight sm:text-4xl">
+      {release.tag}
+    </h1>
+    <span class="dl-old-pill">superseded</span>
+  </div>
+  <p class="fg-muted mt-2 text-sm">
+    {release.name} · released {release.date} ·
+    <a href={notesUrl(release)} class="fg">release notes</a>
+  </p>
+
+  <!-- The loudest element on the page: the way back to current. -->
+  <section class="dl-notice mt-8">
+    <p class="dl-notice-title">This is not the current release.</p>
+    <p class="fg-muted mt-1 text-sm leading-relaxed">
+      {latest.tag} has been out since {latest.date}. Unless you are pinning to
+      {" "}{release.tag} on purpose — reproducing a build, or bisecting a
+      regression — take the current one instead.
+    </p>
+    <div class="mt-4 flex flex-wrap gap-3">
+      <a
+        href="/downloads"
+        class="btn-primary rounded-md px-5 py-2.5 text-sm font-semibold no-underline transition-transform hover:scale-105 active:scale-95"
+      >
+        Get {latest.tag} instead &rarr;
+      </a>
+      <a
+        href="#changelog"
+        class="btn-outline rounded-md border px-5 py-2.5 text-sm font-semibold no-underline transition-colors hover:bg-white/5"
+      >
+        What changed since {release.tag}
+      </a>
+    </div>
+  </section>
+
+  <hr class="bd my-10" />
+
+  <section>
+    <h2 class="fg text-xl font-bold tracking-tight">
+      Download {release.tag} anyway
+    </h2>
+    <p class="fg-muted mt-1 mb-5 text-sm">
+      Archived binaries. Verify against the checksums before running them.
+    </p>
+
+    <ReleaseAssets release={release} variant="archive" />
+  </section>
+
+  <hr class="bd my-10" />
+
+  <Changelog
+    tag={latest.tag}
+    heading={`What changed since ${release.tag}`}
+    diffUrl={compareUrl}
+    diffLabel={`Compare ${release.tag} → ${latest.tag} on GitHub`}
+  />
+
+  <hr class="bd my-10" />
+
+  <section>
+    <h2 class="fg text-xl font-bold tracking-tight mb-3">
+      Build {release.tag} from source
+    </h2>
+    <p class="fg-muted text-sm leading-relaxed mb-4">
+      Pinned to this tag — note the <code>--tag</code>, without which Cargo
+      builds the current tip instead:
+    </p>
+    <pre
+      class="bd bg-soft rounded-xl border p-4 text-sm overflow-x-auto"><code>cargo install --git {REPO} --tag {release.tag} mimz</code></pre>
+  </section>
+</DownloadsLayout>
+
+<style>
+  .dl-old-pill {
+    border: 1px solid var(--text-muted);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .dl-notice {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0.6rem;
+    background-color: color-mix(in srgb, var(--accent) 8%, var(--bg-soft));
+    padding: 1.1rem 1.2rem;
+  }
+  .dl-notice-title {
+    color: var(--text);
+    font-weight: 700;
+  }
+</style>

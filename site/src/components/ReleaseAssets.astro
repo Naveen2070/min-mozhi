@@ -1,0 +1,89 @@
+---
+// The download-card grid + checksum link for one release. Shared by the latest
+// page, each per-release page, and the full list, so the card markup lives once.
+import {
+  assetFilename,
+  assetUrl,
+  checksumUrl,
+  type Release,
+} from "../lib/releases";
+
+interface Props {
+  release: Release;
+  /**
+   * "primary" — the latest release: accent icons, cards lift on hover.
+   * "archive" — a superseded release: neutral icons, flat cards, so the page
+   *   never looks like it is recommending an old version.
+   */
+  variant?: "primary" | "archive";
+}
+const { release, variant = "primary" } = Astro.props;
+const archive = variant === "archive";
+---
+
+<div class="grid gap-3 sm:grid-cols-2">
+  {
+    release.assets.map((a) => (
+      <a
+        href={assetUrl(release, a)}
+        class:list={["bd bg-soft group flex items-center gap-4 rounded-xl border p-4 no-underline transition-all", archive ? "dl-card-archive" : "hover:-translate-y-0.5 hover:shadow-lg"]}
+      >
+        <div class:list={["flex h-10 w-10 items-center justify-center rounded-lg shrink-0", archive ? "dl-icon-archive" : "bg-bolt-400/10 text-bolt-400"]}>
+          <svg
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="2"
+            aria-hidden="true"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+            />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <div class:list={["fg font-semibold transition-colors", archive ? "" : "group-hover:text-bolt-400"]}>
+            {a.platform}
+          </div>
+          <div class="fg-muted text-xs truncate">{assetFilename(release, a)}</div>
+        </div>
+      </a>
+    ))
+  }
+</div>
+
+<div class="mt-3">
+  <a
+    href={checksumUrl(release)}
+    class="fg-muted inline-flex items-center gap-1.5 text-xs hover:text-bolt-400 transition-colors no-underline"
+  >
+    <svg
+      class="h-3.5 w-3.5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      stroke-width="2"
+      aria-hidden="true"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+      />
+    </svg>
+    SHA256 checksums
+  </a>
+</div>
+
+<style>
+  .dl-card-archive:hover {
+    border-color: var(--text-muted);
+  }
+  .dl-icon-archive {
+    background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+    color: var(--text-muted);
+  }
+</style>

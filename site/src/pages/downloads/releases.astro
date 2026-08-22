@@ -1,0 +1,52 @@
+---
+// /downloads/releases — every release as a list. Each row links through to that
+// release's own page; no assets are expanded here, so the list stays scannable
+// however long it gets.
+import DownloadsLayout from "../../layouts/Downloads.astro";
+import { releases, latest, RELEASES_URL } from "../../lib/releases";
+---
+
+<DownloadsLayout
+  title="All releases"
+  description="Every Min-Mozhi release, newest first — pick a version to see its downloads."
+  current="all"
+>
+  <h1 class="fg text-3xl font-extrabold tracking-tight sm:text-4xl">
+    All releases
+  </h1>
+  <p class="fg-muted mt-2 text-lg leading-relaxed">
+    {releases.length} releases, newest first. Pick one to see its downloads and
+    checksums.
+  </p>
+
+  <hr class="bd my-10" />
+
+  <ul class="space-y-3">
+    {
+      releases.map((r) => (
+        <li>
+          <a
+            href={r.tag === latest.tag ? "/downloads" : `/downloads/${r.tag}`}
+            class="bd bg-soft group flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border p-4 no-underline transition-all hover:-translate-y-0.5 hover:shadow-lg"
+          >
+            <span class="fg text-lg font-bold tracking-tight group-hover:text-bolt-400 transition-colors">
+              {r.tag}
+            </span>
+            <span class="fg-muted text-sm">— {r.name}</span>
+            {r.tag === latest.tag && (
+              <span class="rounded-full bg-bolt-400 px-2.5 py-0.5 text-xs font-bold text-[#081120]">
+                latest
+              </span>
+            )}
+            <span class="fg-muted ml-auto text-sm">{r.date}</span>
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+
+  <p class="fg-muted mt-8 text-sm">
+    Source tarballs and full release notes live on the
+    <a href={RELEASES_URL} class="fg">{" "}GitHub releases page</a>.
+  </p>
+</DownloadsLayout>

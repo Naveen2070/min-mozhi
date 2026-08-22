@@ -1,0 +1,77 @@
+---
+// "What changed" for one release, rendered from the repo's CHANGELOG.md rather
+// than sending the reader out to a GitHub diff. The diff link stays as a
+// secondary route for anyone who wants commits instead of prose.
+import { createMarkdownProcessor } from "@astrojs/markdown-remark";
+import { changelogFor } from "../lib/changelog";
+import { RELEASES_URL } from "../lib/releases";
+
+interface Props {
+  /** Which changelog entry to render, e.g. "v0.2.0". */
+  tag: string;
+  /** Overrides the default "What changed in <tag>". */
+  heading?: string;
+  /** Secondary link; defaults to this tag's GitHub release notes. */
+  diffUrl?: string;
+  diffLabel?: string;
+}
+const { tag, heading, diffUrl, diffLabel } = Astro.props;
+
+const section = changelogFor(tag);
+
+// The changelog has no fenced code blocks, so highlighting is dead weight —
+// leaving it off keeps the output plain `<pre>` that `.prose` already styles,
+// and avoids a second syntax theme fighting the site's own.
+let html = "";
+if (section) {
+  const processor = await createMarkdownProcessor({ syntaxHighlight: false });
+  const { code } = await processor.render(section.body);
+  html = code;
+}
+
+const linkUrl = diffUrl ?? `${RELEASES_URL}/tag/${tag}`;
+const linkLabel = diffLabel ?? `${tag} release notes on GitHub`;
+---
+
+<section id="changelog" class="cl">
+  <h2 class="fg text-xl font-bold tracking-tight">
+    {heading ?? `What changed in ${tag}`}
+  </h2>
+  {section?.subtitle && <p class="fg-muted mt-1 text-sm">{section.subtitle}</p>}
+
+  {
+    section ? (
+      <div class="prose cl-body mt-6" set:html={html} />
+    ) : (
+      <p class="fg-muted mt-4 text-sm leading-relaxed">
+        No changelog entry is recorded for {tag} in this build — the GitHub
+        release notes have the details.
+      </p>
+    )
+  }
+
+  <p class="mt-6 text-sm">
+    <a href={linkUrl} class="cl-diff fg-muted">{linkLabel} &rarr;</a>
+  </p>
+</section>
+
+<style>
+  /* Long-form prose dropped into a page that is otherwise cards and buttons —
+     a rule and some air so it reads as a distinct document, not more furniture. */
+  .cl-body {
+    border-top: 1px solid var(--border);
+    padding-top: 1.5rem;
+  }
+  .cl-body :global(h3) {
+    font-size: 1.05rem;
+  }
+  .cl-body :global(h4) {
+    font-size: 0.95rem;
+  }
+  .cl-diff {
+    text-decoration: none;
+  }
+  .cl-diff:hover {
+    color: var(--accent);
+  }
+</style>

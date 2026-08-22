@@ -2,21 +2,71 @@
 import Wordmark from "./Wordmark.astro";
 import ThemeToggle from "./ThemeToggle.tsx";
 import Search from "./Search.astro";
+
+// One list, rendered twice (desktop strip + mobile drawer). Duplicating the
+// markup would guarantee the two drift apart.
+const links = [
+  { href: "/guide", label: "Docs" },
+  { href: "/spec", label: "Spec" },
+  { href: "/learn", label: "Learn", beta: true },
+  { href: "/handbook", label: "Handbook", beta: true },
+  { href: "/playground", label: "Playground" },
+  { href: "/downloads", label: "Downloads" },
+  { href: "https://github.com/Naveen2070/min-mozhi", label: "GitHub" },
+];
 ---
 
-<header class="nav-bar sticky top-0 z-30 border-b backdrop-blur">
+<header class="nav-bar sticky top-0 z-30 border-b backdrop-blur relative">
   <nav class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
     <a href="/" class="fg no-underline">
       <Wordmark />
     </a>
     <div class="flex items-center gap-4 text-sm">
-      <a href="/guide" class="fg">Docs</a>
-      <a href="/spec" class="fg">Spec</a>
-      <a href="/playground" class="fg">Playground</a>
-      <a href="/downloads" class="fg">Downloads</a>
-      <a href="https://github.com/Naveen2070/min-mozhi" class="fg">GitHub</a>
+      <div class="hidden items-center gap-4 md:flex">
+        {
+          links.map((l) => (
+            <a href={l.href} class="fg">
+              {l.label}
+              {l.beta && <span class="beta-pill">beta</span>}
+            </a>
+          ))
+        }
+      </div>
+
       <Search />
       <ThemeToggle client:idle />
+
+      {/* Native <details> drawer: no JS, keyboard-accessible for free. Safe
+          because the site is a plain MPA — every navigation is a full reload,
+          so the drawer cannot get stuck open. */}
+      <details class="nav-drawer md:hidden">
+        <summary class="fg" aria-label="Menu">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M4 7h16M4 12h16M4 17h16"></path>
+          </svg>
+        </summary>
+        <ul class="nav-drawer-panel">
+          {
+            links.map((l) => (
+              <li>
+                <a href={l.href}>
+                  {l.label}
+                  {l.beta && <span class="beta-pill">beta</span>}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </details>
     </div>
   </nav>
 </header>
