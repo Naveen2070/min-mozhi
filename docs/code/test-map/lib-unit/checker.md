@@ -2,7 +2,7 @@
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
-One test per error code plus clean-pass cases — the codes are the
+One test per error code plus clean-pass cases - the codes are the
 stable contract, so each test asserts the CODE and a message substring
 (loose on wording). The full catalog with meanings lives in
 [`11-checker.md`](11-checker.md); the test names map one-to-one
@@ -11,48 +11,48 @@ stable contract, so each test asserts the CODE and a message substring
 Split 2026-07-26 (`oversized-test-file-split`) from a single 3026-line
 `tests.rs` into 11 topic files under `tests/`; `mod.rs` keeps only the
 shared `check_one`/`first_err`/`first_err_multi`/`any_code` helpers. Zero
-test-behavior change — every row below is the same test that existed
+test-behavior change - every row below is the same test that existed
 before, just organized by file and given a row if it lacked one.
 
 ## checker/tests/names_and_consts.rs (35 tests)
 
-| Test                                                                   | Locks in                                                                                          |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `clean_module_passes`                                                  | clean code produces ZERO diagnostics — the checker must never cry wolf                            |
-| `clog2_in_a_width_position_is_clean`                                   | `clog2(N)` used in a width position checks clean                                                  |
-| `clog2_of_a_module_const_is_clean`                                     | `clog2` of a module-level `const` checks clean                                                    |
-| `clog2_of_zero_is_e0202`                                               | `clog2(0)` is E0202 (undefined — no width represents zero values)                                 |
-| `clog2_in_a_runtime_value_position_is_e0407`                           | `clog2` used in a runtime (non-width) value position is E0407                                     |
-| `same_name_module_in_different_files_is_not_an_error_until_referenced` | packages/namespacing: cross-file name collisions are legal until referenced (spec/02 §1.5b)       |
-| `ambiguous_bare_module_reference_is_e0110`                             | a bare module reference that's ambiguous across imports is E0110                                  |
-| `qualified_module_reference_resolves_unambiguously`                    | a qualified (`a.b.Foo`) reference resolves unambiguously even when a bare name would be ambiguous |
-| `qualified_reference_actually_resolves_via_a_real_import_path`         | a qualified reference resolves through a REAL import path end to end, not just a synthetic one    |
-| `qualified_reference_with_unmatched_path_is_e0111`                     | a qualified reference whose path segments don't match any actual import is E0111                  |
-| `qualified_reference_to_a_file_that_doesnt_declare_the_name_is_e0111`  | a qualified reference to a real file that doesn't declare the named module is E0111               |
-| `same_name_module_in_the_same_file_is_still_e0001`                     | two same-named modules in the SAME file is still E0001 — only cross-file collisions are legal     |
-| `duplicate_signal_in_module_is_e0003`                                  | a duplicate signal name within one module is E0003                                                |
-| `duplicate_file_const_is_e0004`                                        | a duplicate file-level `const` name is E0004                                                      |
-| `unknown_name_is_e0101_with_teaching_help`                             | an unknown name is E0101 with teaching help text                                                  |
-| `array_param_length_referencing_an_unbound_name_is_e0101`              | an array param's length expression referencing an unbound name is E0101                           |
-| `unknown_module_in_inst_is_e0102_and_mentions_import`                  | instantiating an unknown module is E0102, mentioning `import`                                     |
-| `unknown_enum_variant_is_e0103_and_lists_variants`                     | referencing an unknown enum variant is E0103, listing the real variants                           |
-| `reading_an_input_of_an_instance_is_e0104`                             | reading an instance's OWN input port (not an output) is E0104                                     |
-| `field_on_a_wire_is_e0105`                                             | field access on a plain (non-bundle) wire is E0105                                                |
-| `unknown_param_in_inst_is_e0106_and_lists_params`                      | an unknown parameter name in an instantiation is E0106, listing the real params                   |
-| `connecting_an_output_is_e0107`                                        | connecting to an instance's output port (outputs aren't connectable) is E0107                     |
-| `assigning_an_input_is_e0108`                                          | assigning a module's own `in` port is E0108                                                       |
-| `on_rise_of_a_non_clock_is_e0109`                                      | `on rise(x)` where `x` isn't declared `clock` is E0109                                            |
-| `const_arithmetic_and_repeat_bounds_evaluate`                          | compile-time const arithmetic and `repeat` bounds evaluate correctly with zero diagnostics        |
-| `non_constant_repeat_bound_is_e0201`                                   | a non-constant `repeat` bound is E0201                                                            |
-| `foreach_elements_form_on_scalar_is_e0417`                             | `foreach v in <scalar>` (not array/mem-typed) is E0417                                            |
-| `foreach_range_form_checks_clean`                                      | `foreach i in 0..N { }` (range form) checks clean, lowering to `repeat`/`loop` as expected        |
-| `foreach_elements_form_checks_clean_over_mem`                          | `foreach v in <mem>` (elements form over a `mem`) checks clean                                    |
-| `foreach_elements_form_variable_resolves_inside_on_block`              | the bound element variable resolves correctly inside a clocked `on` block                         |
-| `foreach_elements_form_at_module_level_checks_clean`                   | `foreach` as a bare module item (not inside `on`/`fn`) checks clean                               |
-| `foreach_elements_form_in_fn_body_resolves_via_own_param`              | inside a `fn` body, the elements-form source resolves against the `fn`'s own parameter list       |
-| `const_using_a_later_const_is_e0201`                                   | a `const` referencing another `const` declared LATER in the file is E0201 (no forward ref)        |
-| `const_overflow_is_e0202`                                              | a `const` expression that overflows is E0202                                                      |
-| `reg_without_reset_declaration_is_e0301`                               | a `reg` with no `reset` line is E0301                                                             |
+| Test                                                                   | Locks in                                                                                           |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `clean_module_passes`                                                  | clean code produces ZERO diagnostics - the checker must never cry wolf                             |
+| `clog2_in_a_width_position_is_clean`                                   | `clog2(N)` used in a width position checks clean                                                   |
+| `clog2_of_a_module_const_is_clean`                                     | `clog2` of a module-level `const` checks clean                                                     |
+| `clog2_of_zero_is_e0202`                                               | `clog2(0)` is E0202 (undefined - no width represents zero values)                                  |
+| `clog2_in_a_runtime_value_position_is_e0407`                           | `clog2` used in a runtime (non-width) value position is E0407                                      |
+| `same_name_module_in_different_files_is_not_an_error_until_referenced` | packages/namespacing: cross-file name collisions are legal until referenced (spec/02 section 1.5b) |
+| `ambiguous_bare_module_reference_is_e0110`                             | a bare module reference that's ambiguous across imports is E0110                                   |
+| `qualified_module_reference_resolves_unambiguously`                    | a qualified (`a.b.Foo`) reference resolves unambiguously even when a bare name would be ambiguous  |
+| `qualified_reference_actually_resolves_via_a_real_import_path`         | a qualified reference resolves through a REAL import path end to end, not just a synthetic one     |
+| `qualified_reference_with_unmatched_path_is_e0111`                     | a qualified reference whose path segments don't match any actual import is E0111                   |
+| `qualified_reference_to_a_file_that_doesnt_declare_the_name_is_e0111`  | a qualified reference to a real file that doesn't declare the named module is E0111                |
+| `same_name_module_in_the_same_file_is_still_e0001`                     | two same-named modules in the SAME file is still E0001 - only cross-file collisions are legal      |
+| `duplicate_signal_in_module_is_e0003`                                  | a duplicate signal name within one module is E0003                                                 |
+| `duplicate_file_const_is_e0004`                                        | a duplicate file-level `const` name is E0004                                                       |
+| `unknown_name_is_e0101_with_teaching_help`                             | an unknown name is E0101 with teaching help text                                                   |
+| `array_param_length_referencing_an_unbound_name_is_e0101`              | an array param's length expression referencing an unbound name is E0101                            |
+| `unknown_module_in_inst_is_e0102_and_mentions_import`                  | instantiating an unknown module is E0102, mentioning `import`                                      |
+| `unknown_enum_variant_is_e0103_and_lists_variants`                     | referencing an unknown enum variant is E0103, listing the real variants                            |
+| `reading_an_input_of_an_instance_is_e0104`                             | reading an instance's OWN input port (not an output) is E0104                                      |
+| `field_on_a_wire_is_e0105`                                             | field access on a plain (non-bundle) wire is E0105                                                 |
+| `unknown_param_in_inst_is_e0106_and_lists_params`                      | an unknown parameter name in an instantiation is E0106, listing the real params                    |
+| `connecting_an_output_is_e0107`                                        | connecting to an instance's output port (outputs aren't connectable) is E0107                      |
+| `assigning_an_input_is_e0108`                                          | assigning a module's own `in` port is E0108                                                        |
+| `on_rise_of_a_non_clock_is_e0109`                                      | `on rise(x)` where `x` isn't declared `clock` is E0109                                             |
+| `const_arithmetic_and_repeat_bounds_evaluate`                          | compile-time const arithmetic and `repeat` bounds evaluate correctly with zero diagnostics         |
+| `non_constant_repeat_bound_is_e0201`                                   | a non-constant `repeat` bound is E0201                                                             |
+| `foreach_elements_form_on_scalar_is_e0417`                             | `foreach v in <scalar>` (not array/mem-typed) is E0417                                             |
+| `foreach_range_form_checks_clean`                                      | `foreach i in 0..N { }` (range form) checks clean, lowering to `repeat`/`loop` as expected         |
+| `foreach_elements_form_checks_clean_over_mem`                          | `foreach v in <mem>` (elements form over a `mem`) checks clean                                     |
+| `foreach_elements_form_variable_resolves_inside_on_block`              | the bound element variable resolves correctly inside a clocked `on` block                          |
+| `foreach_elements_form_at_module_level_checks_clean`                   | `foreach` as a bare module item (not inside `on`/`fn`) checks clean                                |
+| `foreach_elements_form_in_fn_body_resolves_via_own_param`              | inside a `fn` body, the elements-form source resolves against the `fn`'s own parameter list        |
+| `const_using_a_later_const_is_e0201`                                   | a `const` referencing another `const` declared LATER in the file is E0201 (no forward ref)         |
+| `const_overflow_is_e0202`                                              | a `const` expression that overflows is E0202                                                       |
+| `reg_without_reset_declaration_is_e0301`                               | a `reg` with no `reset` line is E0301                                                              |
 
 ## checker/tests/widths.rs (68 tests)
 
@@ -69,16 +69,16 @@ E0407) plus clean passes.
 | `a_well_typed_cover_in_a_module_body_checks_clean`                    | a correctly-typed module-body `cover` checks clean                                                                        |
 | `a_well_typed_cover_inside_an_on_block_checks_clean`                  | a correctly-typed `cover` inside `on rise(clk)` checks clean                                                              |
 | `assignment_width_mismatch_is_e0401`                                  | an assignment with mismatched widths is E0401                                                                             |
-| `plus_into_same_width_target_teaches_wrap_in_e0401`                   | the dropped-carry moment teaches `+%` — the spec/02 section 1.2 promise, executable                                       |
+| `plus_into_same_width_target_teaches_wrap_in_e0401`                   | the dropped-carry moment teaches `+%` - the spec/02 section 1.2 promise, executable                                       |
 | `shift_left_into_same_width_target_teaches_growth_in_e0401`           | BUG-30: a `<<` result narrowed back into its own operand's width teaches the growth rule, not the generic mismatch text   |
 | `shift_right_width_mismatch_uses_the_generic_help_not_the_growth_one` | `>>` (which never grows) keeps the plain E0401 help text, distinguishing it from the `<<`-specific one                    |
 | `connection_width_mismatch_is_e0401_naming_the_port`                  | an instance port connection at the wrong width is E0401, naming the port                                                  |
 | `replication_width_is_count_times_inner`                              | `{2{bits[4]}}` is `bits[8]`, `{3{bits[4]}}` is `bits[12]` (A1)                                                            |
 | `replication_width_mismatch_is_e0401`                                 | `{2{a}}` (bits[8]) into a `bits[4]` is the usual assignment width error                                                   |
 | `a_non_constant_replication_count_is_e0201`                           | `{n{a}}` with a signal count is "not a compile-time constant" (reused code)                                               |
-| `a_zero_replication_count_is_e0410`                                   | `{0{a}}` has zero width — reuses the "not a valid width" code                                                             |
+| `a_zero_replication_count_is_e0410`                                   | `{0{a}}` has zero width - reuses the "not a valid width" code                                                             |
 | `dont_care_pattern_must_match_the_scrutinee_width`                    | `0b1??` is fine on `bits[3]`, a width error (E0409) on `bits[4]` (A2)                                                     |
-| `a_dont_care_match_still_needs_a_wildcard`                            | masked patterns earn no coverage — `0b1??`+`0b0??` without `_` is E0601 (A2)                                              |
+| `a_dont_care_match_still_needs_a_wildcard`                            | masked patterns earn no coverage - `0b1??`+`0b0??` without `_` is E0601 (A2)                                              |
 | `a_dont_care_pattern_on_an_enum_is_e0409`                             | a masked pattern on an enum scrutinee is rejected (match variants by name) (A2)                                           |
 | `min_max_take_two_same_width_operands`                                | `min`/`max` require both operands at the same width                                                                       |
 | `min_of_mismatched_widths_is_e0402`                                   | `min` of two mismatched-width operands is E0402                                                                           |
@@ -105,8 +105,8 @@ E0407) plus clean passes.
 | `index_out_of_range_is_e0406`                                         | a bit index past the signal's width is E0406                                                                              |
 | `reversed_slice_is_e0406`                                             | a slice with `hi < lo` (reversed bounds) is E0406                                                                         |
 | `huge_slice_bound_that_would_wrap_u32_is_still_e0406`                 | a slice bound large enough to wrap a `u32` cast is still a clean E0406, not a silently-wrapped index                      |
-| `extend_to_a_smaller_width_is_e0407`                                  | `extend` to a SMALLER width is E0407 (that's narrowing — use `trunc`)                                                     |
-| `trunc_to_a_larger_width_is_e0407`                                    | `trunc` to a LARGER width is E0407 (that's widening — use `extend`)                                                       |
+| `extend_to_a_smaller_width_is_e0407`                                  | `extend` to a SMALLER width is E0407 (that's narrowing - use `trunc`)                                                     |
+| `trunc_to_a_larger_width_is_e0407`                                    | `trunc` to a LARGER width is E0407 (that's widening - use `extend`)                                                       |
 | `negating_bits_is_e0407`                                              | unary `-` on an unsigned `bits[N]` is E0407 (negation needs `signed`)                                                     |
 | `if_arms_that_disagree_are_e0408`                                     | an if-expression whose arms disagree in width is E0408                                                                    |
 | `match_pattern_wider_than_scrutinee_is_e0409`                         | a match pattern literal wider than the scrutinee is E0409                                                                 |
@@ -118,11 +118,11 @@ E0407) plus clean passes.
 | `enum_state_machine_passes`                                           | an enum-driven FSM module checks clean end to end                                                                         |
 | `register_file_passes`                                                | a `mem` with a clocked indexed write + combinational indexed read checks clean (A4)                                       |
 | `a_non_constant_memory_depth_is_e0201`                                | a memory `DEPTH` that is not a compile-time constant is E0201 (A4)                                                        |
-| `a_zero_memory_depth_is_e0410`                                        | a memory `DEPTH` of 0 is E0410 — a memory needs at least one cell (A4)                                                    |
+| `a_zero_memory_depth_is_e0410`                                        | a memory `DEPTH` of 0 is E0410 - a memory needs at least one cell (A4)                                                    |
 | `a_memory_init_that_overflows_the_element_is_e0405`                   | a `mem` init value too wide for the element type is E0405 (A4)                                                            |
 | `a_constant_address_past_the_depth_is_e0406`                          | a compile-time address `≥ DEPTH` is E0406 (out of range) (A4)                                                             |
 | `a_memory_inside_repeat_is_e0303`                                     | declaring a `mem` inside `repeat` is E0303 (declare once, outside) (A4)                                                   |
-| `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape — explicit `extend` where widths differ                                                    |
+| `extend_of_a_bit_into_bitwise_passes`                                 | the fixed shift-register shape - explicit `extend` where widths differ                                                    |
 | `shift_register_without_the_trunc_no_longer_matches_widths`           | BUG-30 regression: the old shift-register idiom without an explicit `trunc` no longer matches widths, now that `<<` grows |
 | `comparison_with_a_const_passes`                                      | comparing a signal against a compile-time `const` checks clean                                                            |
 | `defaultless_param_module_is_checked_per_instantiation`               | a module with no param defaults is checked under each instantiation's concrete binding                                    |
@@ -149,8 +149,8 @@ blocks for E0503) plus clean passes guarding against false positives.
 | `forward_reference_to_unknown_output_field_is_e0104`        | a forward reference to an unknown instance output field is E0104                          |
 | `arrow_assignment_to_a_wire_is_e0505`                       | using `<-` (clocked assign) on a wire is E0505                                            |
 | `combinational_drive_of_a_reg_is_e0505`                     | using `=` (combinational drive) on a reg is E0505                                         |
-| `disjoint_per_bit_drives_via_repeat_pass`                   | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits — legal    |
-| `feedback_through_a_register_is_not_a_cycle`                | a reg breaks the loop — the normal shape of hardware never false-positives                |
+| `disjoint_per_bit_drives_via_repeat_pass`                   | the Chaser idiom: eight `led[i] = ...` drives are eight drivers for eight bits - legal    |
+| `feedback_through_a_register_is_not_a_cycle`                | a reg breaks the loop - the normal shape of hardware never false-positives                |
 | `repeat_instance_array_ripple_carry_is_not_a_cycle`         | per-index instance-output nodes: `fa[1] -> fa[0]` is a chain, not a loop                  |
 | `defaultless_module_with_param_indexed_drives_is_not_e0501` | a defaultless-param module whose per-index drives depend on the param isn't falsely E0501 |
 
@@ -166,12 +166,12 @@ clean, plus the `sync.*` arg-shape and domain/placement rules.
 | `reading_another_domains_reg_is_e0701`                          | reading a register owned by another clock domain directly is E0701                                    |
 | `cross_domain_through_a_wire_is_e0701`                          | crossing clock domains through an intermediate wire is still caught as E0701                          |
 | `a_wire_mixing_two_domains_is_e0701`                            | a wire that mixes signals from two clock domains is E0701                                             |
-| `same_domain_logic_under_two_declared_clocks_passes`            | E0701 colors by USE, not by declaration count — an unused clock changes nothing                       |
+| `same_domain_logic_under_two_declared_clocks_passes`            | E0701 colors by USE, not by declaration count - an unused clock changes nothing                       |
 | `sync_double_flop_with_non_clock_second_arg_is_e0702`           | `sync.double_flop`'s second argument not being a clock is E0702                                       |
 | `sync_double_flop_with_matching_src_and_dst_clock_is_e0702`     | `sync.double_flop` with identical src/dst clock arguments is E0702 (needs two distinct clocks)        |
 | `sync_double_flop_with_a_2_bit_signal_is_e0703`                 | `sync.double_flop` on a signal wider than 1 bit is E0703 (single-bit-only crossing primitive)         |
 | `sync_double_flop_signal_from_a_third_unrelated_clock_is_e0704` | `sync.double_flop`'s source signal belonging to neither declared clock is E0704                       |
-| `sync_pulse_signal_that_is_domain_free_is_e0704`                | `sync.pulse`'s source must be exactly a register owned by `src_clock` — a domain-free source is E0704 |
+| `sync_pulse_signal_that_is_domain_free_is_e0704`                | `sync.pulse`'s source must be exactly a register owned by `src_clock` - a domain-free source is E0704 |
 | `sync_double_flop_used_outside_its_own_on_block_clock_is_e0705` | `sync.double_flop`'s result used outside the `on`-block clock it was assigned in is E0705             |
 | `sync_pulse_used_as_a_reg_source_is_e0705`                      | `sync.pulse`'s result feeding a register clocked wrong is E0705                                       |
 | `sync_double_flop_hidden_in_a_reg_reset_value_is_e0705`         | a `sync.double_flop` call hidden inside a reg's reset-value expression is still caught, E0705         |
@@ -183,7 +183,7 @@ clean, plus the `sync.*` arg-shape and domain/placement rules.
 | ---------------------------------------------------- | ------------------------------------------------------------------------- |
 | `unconnected_input_is_e0302_naming_it`               | an unconnected instance input is E0302, naming it                         |
 | `several_unconnected_inputs_are_listed_in_one_error` | multiple unconnected inputs are listed together in one E0302              |
-| `clock_and_reset_ports_may_be_omitted`               | E0302 exempts clock/reset — implicit-by-name stays the emitter's contract |
+| `clock_and_reset_ports_may_be_omitted`               | E0302 exempts clock/reset - implicit-by-name stays the emitter's contract |
 | `connecting_an_input_twice_is_e0302`                 | connecting the same instance input twice is E0302                         |
 
 ## checker/tests/enums.rs (38 tests)
@@ -284,7 +284,7 @@ checking, and per-scope name/width leakage guards.
 
 ## checker/tests/regressions.rs (4 tests)
 
-Kept as one file, not split further — a named historical batch (Task 15
+Kept as one file, not split further - a named historical batch (Task 15
 sweep) tied to `.superpowers/sdd/progress.md`'s notes.
 
 | Test                                                                                 | Locks in                                                                                         |
@@ -338,7 +338,7 @@ args-returns/port connections.
 
 | Test                                                                  | Locks in                                                                                                |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `unreachable_code_after_return_is_e0812`                              | a statement after `return` (not the tail) is unreachable — E0812                                        |
+| `unreachable_code_after_return_is_e0812`                              | a statement after `return` (not the tail) is unreachable - E0812                                        |
 | `return_as_last_statement_before_tail_is_not_e0812`                   | `return` immediately before the tail expression is NOT flagged unreachable (no code follows it)         |
 | `fn_loop_body_return_followed_by_more_code_is_unreachable`            | code after `return` inside a `loop` body is still E0812                                                 |
 | `fn_loop_after_return_in_sibling_branch_is_not_flagged`               | code after an `if` branch's `return` in a SIBLING branch is not falsely flagged                         |
@@ -350,9 +350,9 @@ args-returns/port connections.
 | `array_param_forwarded_by_name_with_matching_type_is_accepted`        | forwarding an array param by name with a matching type is accepted                                      |
 | `array_param_forwarded_by_name_with_mismatched_length_is_rejected`    | forwarding an array param by name with a mismatched length is rejected                                  |
 | `constant_array_index_out_of_range_is_e0415`                          | a compile-time-constant array index past the length is E0415                                            |
-| `runtime_array_index_is_accepted`                                     | a runtime (non-constant) array index is accepted — only constant indices are range-checked              |
+| `runtime_array_index_is_accepted`                                     | a runtime (non-constant) array index is accepted - only constant indices are range-checked              |
 | `indexing_an_array_literal_directly_is_e0419`                         | indexing a bare array literal (`[1,2,3][0]`, no named binding) is E0419                                 |
-| `indexing_a_named_array_still_works_after_e0419`                      | …while indexing a NAMED array still works — the restriction is literals-only                            |
+| `indexing_a_named_array_still_works_after_e0419`                      | …while indexing a NAMED array still works - the restriction is literals-only                            |
 | `array_typed_module_port_is_e0416`                                    | an array-typed module port is E0416 (arrays aren't a port type)                                         |
 | `array_typed_wire_is_e0416`                                           | an array-typed `wire` is E0416                                                                          |
 | `array_typed_output_with_constant_indexed_drive_is_e0416_not_a_panic` | an array-typed output driven by a constant index is E0416, not a panic (regression)                     |

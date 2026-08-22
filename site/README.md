@@ -1,20 +1,20 @@
 # Min-Mozhi website (`site/`)
 
-The marketing + docs site for **Min-Mozhi** (மின்மொழி) — landing page, the guide /
+The marketing + docs site for **Min-Mozhi** (மின்மொழி) - landing page, the guide /
 language spec, and an in-browser playground that runs the real compiler compiled
 to WebAssembly. Public home: `mimz.naveenr.in` (not live until the maintainer
-flips it — see _Deploy_).
+flips it - see _Deploy_).
 
 ## Stack
 
 - **Astro 6** (static output) with **React 19** islands for the interactive bits.
 - **Tailwind v4** (via `@tailwindcss/vite`) + a small set of design tokens and
   utility classes in `src/styles/global.css`. **No inline styles** anywhere
-  (`style=` is disallowed — keep everything in classes).
+  (`style=` is disallowed - keep everything in classes).
 - **Shiki** for code blocks (the `mimz` grammar is loaded from the VS Code
   extension's TextMate file), **Pagefind** for search, `@astrojs/sitemap`.
 - Fonts are **self-hosted** via Fontsource (Inter, JetBrains Mono, Noto Sans
-  Tamil) — no Google Fonts request, so the CSP needs no font CDN.
+  Tamil) - no Google Fonts request, so the CSP needs no font CDN.
 - `@astrojs/vercel` adapter; security headers + CSP live in `vercel.json`.
 
 ## Layout
@@ -35,7 +35,7 @@ src/
     WaveformViewer.tsx  canvas VCD waveform renderer
   layouts/         Base.astro · Docs.astro
   pages/           index.astro · playground.astro · 404.astro · guide/ · spec/
-  lib/wasm/        generated wasm-bindgen glue (git-ignored — see below)
+  lib/wasm/        generated wasm-bindgen glue (git-ignored - see below)
   styles/global.css
 ```
 

@@ -31,7 +31,7 @@ the `sim { speed … bind … }` block: peripheral binding, frame pacing, and th
 | `sim_block_with_unknown_port_errors`                        | binding a port that does not exist is `S0403`                      |
 | `sim_block_binding_an_input_to_an_output_peripheral_errors` | direction mismatch is `S0402`…                                     |
 | `sim_block_binding_an_output_to_an_input_peripheral_errors` | …in both directions                                                |
-| `sim_block_with_speaker_bound_runs_fine_without_emulate`    | a bound peripheral is inert without `--emulate` — tests still pass |
+| `sim_block_with_speaker_bound_runs_fine_without_emulate`    | a bound peripheral is inert without `--emulate` - tests still pass |
 | `live_true_without_a_dashboard_still_passes`                | live mode with no dashboard attached degrades gracefully           |
 | `cycles_per_frame_floors_to_one`                            | the frame pacer never computes zero cycles per frame               |
 | `batch_sizes_splits_evenly`                                 | cycle batching splits without dropping or duplicating cycles       |

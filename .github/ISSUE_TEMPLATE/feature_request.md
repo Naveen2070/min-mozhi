@@ -21,9 +21,9 @@ assignees: Naveen2070
 
 <!-- Check all that apply -->
 
-- [ ] Supports the education goal (G1 — beginner-friendly, teaching errors)
-- [ ] Supports the safety goal (G2 — compile-time hardware safety rules)
-- [ ] Supports the trilingual goal (G3 — English / Tanglish / Tamil)
+- [ ] Supports the education goal (G1 - beginner-friendly, teaching errors)
+- [ ] Supports the safety goal (G2 - compile-time hardware safety rules)
+- [ ] Supports the trilingual goal (G3 - English / Tanglish / Tamil)
 - [ ] Fits the roadmap phase scope (see ROADMAP.md)
 
 ## Alternatives considered

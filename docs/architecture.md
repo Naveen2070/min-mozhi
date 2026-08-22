@@ -1,14 +1,14 @@
-# Min-Mozhi — Architecture
+# Min-Mozhi - Architecture
 
 > Living document (RULES.md R3: update whenever components or data flow change).
-> Status: **Phases 1, 1.8, and 1.5 complete** — lexer, parser (code-order +
+> Status: **Phases 1, 1.8, and 1.5 complete** - lexer, parser (code-order +
 > thamizh-order), full checker (nine passes), Verilog emitter (repeat unrolling,
 > transliteration, signed), CLI
 > (`check`/`compile`/`lsp`/`explain`/`translate`/`eval`/`sim`/`test`/`fmt`,
 > `--json`), LSP v0, all Icarus-validated. The **own simulator** is built and shipped
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
-> (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
+> (`mimz fmt` - keyword normalization, strict-mode mix detection). The IR is still design.
 > Last updated: 2026-08-22 (doc-code audit: 76 checker error codes
 > (E0001–E0912/E0420, E1301–E1302); 35 test suites / 1318 passing tests;
 > error fixtures 120, goldens 88 `.v` (71 module + 17 `_tb.v`) + 1 `.vcd`,
@@ -21,15 +21,15 @@
 > `parser/tests.rs` → per-topic `tests/` directories (11 and 13 files);
 > tests/ 20→23 files, error fixtures 106→117, goldens 68→70 `.v` + 14→17
 > `_tb.v`, example count corrected 187→175 (39 english/tanglish/tamil each,
-> 38 mixed, 20 tamil-pure — top-level showcase files, excluding
+> 38 mixed, 20 tamil-pure - top-level showcase files, excluding
 > `std`/`lib` support `.mimz`); `lib.rs` pub mod 18→19). Prior: 2026-07-14
 > (`foreach` doc-sync pass: example count 178→187,
 > added `packages.rs`/`showcase.rs` to the test-file tree). Prior:
 > 2026-07-10 (workspace-split: the compiler is now a 3-crate
-> Cargo workspace — `mimz-core` (pure pipeline), `mimz-sim` (simulator +
+> Cargo workspace - `mimz-core` (pure pipeline), `mimz-sim` (simulator +
 > runner), `mimz` (root shell crate: fs I/O, the new `emulate` hardware
-> peripherals, CLI facade); §3 and Repository layout rewritten). Prior:
-> 2026-07-06 (comprehensive doc audit — error codes E0001–E0909, example count 178, error fixtures 102, golden .v 68, lib.rs pub mod 18, accurate per-flavor breakdowns)
+> peripherals, CLI facade); section 3 and Repository layout rewritten). Prior:
+> 2026-07-06 (comprehensive doc audit - error codes E0001–E0909, example count 178, error fixtures 102, golden .v 68, lib.rs pub mod 18, accurate per-flavor breakdowns)
 > spec version numbers, fixture counts, file counts across guide/code/source-guide)
 
 ---
@@ -45,10 +45,10 @@
  └──────┬───────┘   records flavor used → error language, fmt
         ▼
  ┌──────────────┐   recursive descent · profile: code-order (P1)
- │    PARSER    │   + thamizh-order (P1.8) — same productions, flipped
+ │    PARSER    │   + thamizh-order (P1.8) - same productions, flipped
  └──────┬───────┘   clause heads, one-token lookahead
         ▼
- ┌──────────────┐   ONE SHARED AST — everything downstream is
+ ┌──────────────┐   ONE SHARED AST - everything downstream is
  │     AST      │   flavor- and word-order-blind
  └──────┬───────┘
         ▼
@@ -68,17 +68,17 @@
  └─────────────────────────────────────────────────┘
 
  side tools (share lexer/parser/AST + pretty-printer):
-   mimz translate  — flavor reskin ✅ 2026-06-13 (--to; lossless, token-level);
+   mimz translate  - flavor reskin ✅ 2026-06-13 (--to; lossless, token-level);
                      word-order (--order thamizh) ✅ Phase 1.8;
                      --romanize-names + reversible name-map sidecar ✅ 2026-06-15
-   mimz explain    — long-form text per E-code ✅ 2026-06-13 (lib `explain`)
-   mimz eval       — combinational evaluator ✅ 2026-06-13 (lib `sim::comb`;
-                     a slice of the Phase 1.5 simulator — no clocks/regs)
-   mimz sim        — full simulator ✅ Phase 1.5 (lib `crates/mimz-sim/src/sim/`; clocked +
+   mimz explain    - long-form text per E-code ✅ 2026-06-13 (lib `explain`)
+   mimz eval       - combinational evaluator ✅ 2026-06-13 (lib `sim::comb`;
+                     a slice of the Phase 1.5 simulator - no clocks/regs)
+   mimz sim        - full simulator ✅ Phase 1.5 (lib `crates/mimz-sim/src/sim/`; clocked +
                      combinational, --in/--sweep, --cycles, --trace, -o .vcd)
-   mimz test       — tick/expect test runner ✅ Phase 1.5 (lib `sim::harness`)
-    mimz fmt        — keyword normalization + strict-mode ✅ 2026-06-15
-    mimz lsp        — language server ✅ v0 SHIPPED 2026-06-12 (diagnostics);
+   mimz test       - tick/expect test runner ✅ Phase 1.5 (lib `sim::harness`)
+    mimz fmt        - keyword normalization + strict-mode ✅ 2026-06-15
+    mimz lsp        - language server ✅ v0 SHIPPED 2026-06-12 (diagnostics);
                      hover/go-to-def/completion ✅ SHIPPED 2026-06-25
 ```
 
@@ -87,7 +87,7 @@
 Built ✅ as of 2026-06-12 (Phase 1 complete):
 
 - keyword table, lexer, parser (code-order), AST;
-- checker — ALL spec/02 section 6 safety rules (names/consts/E-codes,
+- checker - ALL spec/02 section 6 safety rules (names/consts/E-codes,
   width/type E04xx, driver/cycle E05xx, instantiation completeness E0302,
   match exhaustiveness E06xx, clock domains E0701) + combinational functions
   E0801–E0808 (symbol registration, arity, return width, recursion,
@@ -119,27 +119,27 @@ The IR and native backend remain planned.
 
 ## 3. Code Layout (Rust)
 
-A Cargo **workspace** of three crates plus two thin binaries — the `mimz`
+A Cargo **workspace** of three crates plus two thin binaries - the `mimz`
 CLI and the `mimz-bench` harness. The lib/bin split happened 2026-06-12 when
 the LSP arrived; the crate-per-boundary split into `mimz-core`/`mimz-sim`
 happened later, once a second non-CLI, non-terminal consumer (the WASM
 playground) needed the pure pipeline + simulator without dragging in
 `ratatui`/filesystem/terminal code:
 
-- **`mimz-core`** — the pure pipeline (lexer → parser → AST → checker →
+- **`mimz-core`** - the pure pipeline (lexer → parser → AST → checker →
   Verilog emitter) plus the tooling modules that never touch a filesystem
   or terminal (`explain`, `lint`, `translate`, `pretty`, `morph`,
   `analysis`, `stdlib`, `version`), plus the pure remainder of `project`
   (the `LoadedFile` struct and `render_diags`/`render_diags_lang`
-  diagnostic rendering — no fs I/O, no NFC normalization, no import
+  diagnostic rendering - no fs I/O, no NFC normalization, no import
   resolution; the shell's `project.rs` does those and re-exports these
   types via `pub use mimz_core::project::{LoadedFile, render_diags,
 render_diags_lang};`).
-- **`mimz-sim`** — the event-driven simulator (`sim/`) and the in-memory
+- **`mimz-sim`** - the event-driven simulator (`sim/`) and the in-memory
   command runner (`runner.rs`), depending only on `mimz-core`. Defines the
   `EmulationHost` trait + `Direction` enum (`sim/host.rs`) so the simulator
   can drive hardware peripherals without depending on them.
-- **`mimz`** (root `src/`, this crate) — the thin shell: filesystem I/O
+- **`mimz`** (root `src/`, this crate) - the thin shell: filesystem I/O
   (`project.rs`, `config.rs`), the native hardware-emulation peripherals
   (`emulate/`, feature-gated behind `hw-emulation`, implementing
   `EmulationHost`), the CLI binary, the LSP server, `mimz-bench`, and a
@@ -150,7 +150,7 @@ render_diags_lang};`).
 ```
 mimz/ (workspace root)
 ├── Cargo.toml
-├── lang/keywords.toml              # trilingual table — data, not code
+├── lang/keywords.toml              # trilingual table - data, not code
 ├── crates/
 │   ├── mimz-core/
 │   │   ├── Cargo.toml
@@ -276,8 +276,8 @@ min-mozhi/
 ├── README.md, LICENSE-*, Cargo.toml
 ├── lang/keywords.toml          # language data (embedded at build time)
 ├── ROADMAP.md                  # roadmap summary
-├── spec/                       # the LANGUAGE — normative, versioned (v0.2)
-├── docs/                       # the PROJECT — plan/, log/, archive/, RULES, guide/, code/, source-guide/, audit/, Ideas/
+├── spec/                       # the LANGUAGE - normative, versioned (v0.2)
+├── docs/                       # the PROJECT - plan/, log/, archive/, RULES, guide/, code/, source-guide/, audit/, Ideas/
 ├── src/                        # the shell crate: fs I/O, emulate/, CLI, LSP (tree above)
 ├── crates/mimz-core/           # pure pipeline + most tooling (tree above)
 ├── crates/mimz-sim/            # event-driven simulator + runner (tree above)
@@ -307,7 +307,7 @@ Future directories (created when their trigger fires, not before):
 
 1. **One AST.** No flavor, keyword, or word-order information survives past the
    parser except as display metadata for diagnostics/fmt.
-2. **Spans everywhere.** Every AST node and IR object carries a source span —
+2. **Spans everywhere.** Every AST node and IR object carries a source span -
    error quality is a core goal, not a feature.
 3. **Data over code for language identity.** Keywords (and later error
    catalogs) are data files, so community review never touches Rust.
@@ -317,8 +317,8 @@ Future directories (created when their trigger fires, not before):
    IR vs AST simulation (2), native flow vs Yosys/nextpnr (3).
 6. **Dumb first, fast later.** Emitters/backends start naive and readable;
    optimization lives in dedicated IR passes, never hidden in emitters.
-7. **Pure core, impure shell.** The compiler stages — `lexer`, `parser`,
-   `checker`, `emit_verilog`, `sim`, `ast` — are string → string/AST pure: no
+7. **Pure core, impure shell.** The compiler stages - `lexer`, `parser`,
+   `checker`, `emit_verilog`, `sim`, `ast` - are string → string/AST pure: no
    `std::fs`/`env`/`process`, no `tokio`, no globals. All OS coupling lives in
    the CLI shell (`src/commands/`, `main.rs`, `config.rs`, `project.rs`,
    `lsp.rs`, `src/bin/`) and the optional `lsp`/`bench` features. This is what
@@ -326,7 +326,7 @@ Future directories (created when their trigger fires, not before):
    the whole pipeline in the browser (`wasm_parity` guards it). Keep it: a new
    OS dependency belongs in the shell, never in a core stage.
 
-## 5. Evolution Triggers (planned inflection points — not emergencies)
+## 5. Evolution Triggers (planned inflection points - not emergencies)
 
 The architecture is staged on purpose; each piece below is _correct now_ and
 has a known moment when it must change. When a trigger fires, do the listed
@@ -336,12 +336,12 @@ move and log it (R3). Letting a trigger pass is how architectures rot.
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | String-based Verilog emitter reading the AST         | Checker lands (work item 4)                                                          | Move all semantic errors (unknown module, port connectivity) out of the emitter into checker passes; emitter only renders                                                                                                                                                                                    |
 | Emitter has no width knowledge (`extend` is a no-op) | IR exists (Phase 2)                                                                  | Emit from typed IR, demote AST→Verilog path to a debug backend                                                                                                                                                                                                                                               |
-| ~~Diagnostics are free-text, no IDs~~                | ✅ FIRED — every stage's errors carry stable codes (2026-06-12; map in docs/code/06) | Done: codes everywhere; the P1.8 message catalogs key off them                                                                                                                                                                                                                                               |
-| ~~Single binary crate~~                              | ✅ FIRED — LSP + `--json` consumers arrived (2026-06-12)                             | Done: `lib.rs` + thin `main.rs`                                                                                                                                                                                                                                                                              |
-| ~~Single lib crate~~                                 | ✅ FIRED — WASM playground needed a dependency-optional-free build (2026-07-09/10)   | Done: 3-crate split along the pure/impure axis — `mimz-core`/`mimz-sim`/shell (section 3 above; landed 2026-07-10). The earlier 6-crate proposal (`mimz-syntax`/`mimz-check`/`mimz-backends`/…) was rejected as over-engineered — no unique deps per stage — and stays un-fired; revisit only on real demand |
+| ~~Diagnostics are free-text, no IDs~~                | ✅ FIRED - every stage's errors carry stable codes (2026-06-12; map in docs/code/06) | Done: codes everywhere; the P1.8 message catalogs key off them                                                                                                                                                                                                                                               |
+| ~~Single binary crate~~                              | ✅ FIRED - LSP + `--json` consumers arrived (2026-06-12)                             | Done: `lib.rs` + thin `main.rs`                                                                                                                                                                                                                                                                              |
+| ~~Single lib crate~~                                 | ✅ FIRED - WASM playground needed a dependency-optional-free build (2026-07-09/10)   | Done: 3-crate split along the pure/impure axis - `mimz-core`/`mimz-sim`/shell (section 3 above; landed 2026-07-10). The earlier 6-crate proposal (`mimz-syntax`/`mimz-check`/`mimz-backends`/…) was rejected as over-engineered - no unique deps per stage - and stays un-fired; revisit only on real demand |
 | Lexer discards comments/whitespace                   | `mimz fmt` work starts                                                               | Add a trivia-preserving lexing mode; `translate` stays token-level and is unaffected                                                                                                                                                                                                                         |
-| Tokens own `String`s, cloned freely                  | Compile time on real projects becomes noticeable (not before)                        | String interning + token indices — contained inside `lexer/`                                                                                                                                                                                                                                                 |
-| ~~Emitter semantic checks duplicated per backend~~   | ✅ FIRED — Simulator (P1.5) shipped                                                  | Done: the simulator elaborates from `project.rs` + checker output (`crates/mimz-sim/src/sim/elaborate.rs`); both backends consume the same checked AST                                                                                                                                                       |
+| Tokens own `String`s, cloned freely                  | Compile time on real projects becomes noticeable (not before)                        | String interning + token indices - contained inside `lexer/`                                                                                                                                                                                                                                                 |
+| ~~Emitter semantic checks duplicated per backend~~   | ✅ FIRED - Simulator (P1.5) shipped                                                  | Done: the simulator elaborates from `project.rs` + checker output (`crates/mimz-sim/src/sim/elaborate.rs`); both backends consume the same checked AST                                                                                                                                                       |
 
 ## 6. Open Questions (log a Decision when resolved)
 
@@ -353,8 +353,8 @@ Resolved in v0.2:
 
 - Reset style v2: `async reset` shipped (2026-06-17, spec v0.2.12).
 - Memories/arrays: `mem` shipped (2026-06-17, spec v0.2.11).
-- CDC `sync` construct: `sync.double_flop` and `sync.pulse` shipped (2026-07-20, spec v0.2 §1.2b).
-- External Verilog FFI: `extern module` shipped (2026-07-15, spec v0.2 §1.5c).
+- CDC `sync` construct: `sync.double_flop` and `sync.pulse` shipped (2026-07-20, spec v0.2 section 1.2b).
+- External Verilog FFI: `extern module` shipped (2026-07-15, spec v0.2 section 1.5c).
 - Tagged unions & structural bundles: shipped (2026-06-28 to 2026-07-17).
 
 Resolved 2026-06-10 (see log + spec v0.2): `import` semantics, `repeat`

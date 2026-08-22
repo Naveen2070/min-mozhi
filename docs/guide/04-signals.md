@@ -1,7 +1,7 @@
-# 4 — Signals: Ports, Wires, and Registers
+# 4 - Signals: Ports, Wires, and Registers
 
 A module is made of **signals**. There are a handful of kinds, and the difference
-between two of them — `wire` and `reg` — is the single most important distinction
+between two of them - `wire` and `reg` - is the single most important distinction
 in hardware design.
 
 ## Ports: `in` and `out`
@@ -25,7 +25,7 @@ is an error (`E0502`), and so is one driven twice (`E0501`).
 
 ## `wire`: combinational signals
 
-A `wire` is a named piece of combinational logic — a value that is always equal
+A `wire` is a named piece of combinational logic - a value that is always equal
 to its driving expression, recomputed continuously. Declare it with a type and a
 driver:
 
@@ -41,7 +41,7 @@ t = a & b
 ```
 
 Either way a combinational signal has exactly one driver. Combinational logic must not form a
-loop — `wire w: bits[8] = w + 1` is rejected as a cycle (`E0504`).
+loop - `wire w: bits[8] = w + 1` is rejected as a cycle (`E0504`).
 
 ## `reg`: registers (memory)
 
@@ -57,21 +57,22 @@ Leaving the reset value off is an error (`E0301` / `E1104`). A `reg` is only eve
 updated inside a clocked block, with the `<-` operator (next section, and
 [chapter 8](08-sequential-logic.md)).
 
-> **ASIC caveat.** The reset value is also emitted as an `initial` seed — the
+> **ASIC caveat.** The reset value is also emitted as an `initial` seed - the
 > same reasoning `mem`'s own caveat below states, extended to every register
 > in the language: simulators and most FPGA synthesis tools honor an
 > `initial` directly, but a real ASIC has no defined power-on default and an
 > ASIC synthesis flow will not honor one (BUG-65/BUG-69, `docs/audit/bugs.md`
-> — this widened F-5/BUG-32's original memory-only scope to every `reg`). The
-> synchronous reset path (`on`-block, `<-`) is unaffected either way — this
-> only matters for a design read before its first reset pulse. If a design
-> targets ASIC, assert reset before relying on any register's value, rather
-> than on its declared default alone. `mimz compile` notes this in the
-> generated Verilog's header whenever a `reg` is present.
+>
+> - this widened F-5/BUG-32's original memory-only scope to every `reg`). The
+>   synchronous reset path (`on`-block, `<-`) is unaffected either way - this
+>   only matters for a design read before its first reset pulse. If a design
+>   targets ASIC, assert reset before relying on any register's value, rather
+>   than on its declared default alone. `mimz compile` notes this in the
+>   generated Verilog's header whenever a `reg` is present.
 
 ## `mem`: memories (register arrays)
 
-A `mem` is an addressable array of registers — a RAM or register file. Declare it
+A `mem` is an addressable array of registers - a RAM or register file. Declare it
 with an element type, a depth, and a mandatory power-on init value:
 
 ```mimz
@@ -79,15 +80,15 @@ mem m: bits[8][4] = 0      // 4 cells of 8 bits, every cell seeded to 0
 ```
 
 The type reads `bits[W][DEPTH]`: each cell is `bits[8]` and there are `4` of them.
-Like a `reg`, a memory must declare its init value — leaving it off is an error
-(`E1104`) — because every cell powers up in a known state; a memory needs no
+Like a `reg`, a memory must declare its init value - leaving it off is an error
+(`E1104`) - because every cell powers up in a known state; a memory needs no
 separate reset line.
 
 > **ASIC caveat.** The init value is emitted as an `initial`-block seed loop,
-> which simulators and most FPGA synthesis tools honor directly — but a real
+> which simulators and most FPGA synthesis tools honor directly - but a real
 > ASIC has no defined power-on RAM content, and an ASIC synthesis flow will
 > not honor an `initial` value the way FPGA block RAM does (BUG-32,
-> `docs/audit/bugs.md` — the same caveat applies to every `reg`'s own reset
+> `docs/audit/bugs.md` - the same caveat applies to every `reg`'s own reset
 > value, see the `reg` section above). If a design targets ASIC, add an
 > explicit clocked load/reset path for anything that must start in a known
 > state, rather than relying on `mem`'s own init value. `mimz compile` notes
@@ -106,7 +107,7 @@ on rise(clk) {
 rdata = m[raddr]           // combinational read
 ```
 
-You index into a memory to read or write a cell — you cannot assign the whole
+You index into a memory to read or write a cell - you cannot assign the whole
 memory at once. The usual assignment-kind rule applies:
 
 - `<-` to write a cell on the clock;
@@ -124,11 +125,11 @@ clock clk
 reset rst
 ```
 
-`clock` is its own type — you cannot read it as data (`E0403`), and `on rise(x)`
+`clock` is its own type - you cannot read it as data (`E0403`), and `on rise(x)`
 requires `x` to actually be a clock (`E0109`). `reset` is **synchronous and
 active-high by default**: on a rising clock edge, if reset is asserted, every
-register snaps back to its declared reset value. Prefix `async` —
-`async reset rst` — for an asynchronous reset that clears the registers the
+register snaps back to its declared reset value. Prefix `async` -
+`async reset rst` - for an asynchronous reset that clears the registers the
 instant it is asserted, without waiting for the clock (see
 [chapter 8](08-sequential-logic.md)).
 
@@ -171,12 +172,12 @@ beginners.
 
 | Kind     | Keyword (en) | Holds state? | Driven with | Reset value? |
 | -------- | ------------ | ------------ | ----------- | ------------ |
-| input    | `in`         | no           | (external)  | —            |
-| output   | `out`        | no           | `=`         | —            |
-| wire     | `wire`       | no           | `=`         | —            |
+| input    | `in`         | no           | (external)  | -            |
+| output   | `out`        | no           | `=`         | -            |
+| wire     | `wire`       | no           | `=`         | -            |
 | register | `reg`        | **yes**      | `<-`        | **required** |
 | memory   | `mem`        | **yes**      | `<-` (cell) | **required** |
-| clock    | `clock`      | —            | —           | —            |
-| reset    | `reset`      | —            | —           | —            |
+| clock    | `clock`      | -            | -           | -            |
+| reset    | `reset`      | -            | -           | -            |
 
 Next: [operators](05-operators.md).

@@ -1,11 +1,11 @@
-# Min-Mozhi (மின்மொழி) — Roadmap
+# Min-Mozhi (மின்மொழி) - Roadmap
 
-> **"Language of Electricity"** — a modern, safe-by-default HDL, built to help
+> **"Language of Electricity"** - a modern, safe-by-default HDL, built to help
 > students learn digital design, and a Tamil-rooted Hardware Description
 > Language.
 >
 > This file is the **public-facing summary**. Detailed task-level plans live in
-> [`docs/plan/`](docs/plan/) (source of truth — see [`docs/RULES.md`](docs/RULES.md) R1/R2).
+> [`docs/plan/`](docs/plan/) (source of truth - see [`docs/RULES.md`](docs/RULES.md) R1/R2).
 > Progress and decisions are logged in [`docs/log/`](docs/log/).
 
 ---
@@ -20,69 +20,69 @@
 | 1.5   | Own Simulator                     | ✅ Complete                              | 2026-06-22 |
 | **→** | **v0.1.0 public release**         | ✅ Complete                              | 2026-06-24 |
 | **→** | **v0.2.0 public release**         | 🟡 Prepared (tag pending)                | 2026-08-20 |
-| 2     | IR + Synthesis (Yosys/nextpnr)    | 🟡 In progress (language-features track) | —          |
-| 3     | Native FPGA bitstream             | ⏳ Planned                               | —          |
-| 4     | Ecosystem, stdlib, community      | ⏳ Ongoing                               | —          |
+| 2     | IR + Synthesis (Yosys/nextpnr)    | 🟡 In progress (language-features track) | -          |
+| 3     | Native FPGA bitstream             | ⏳ Planned                               | -          |
+| 4     | Ecosystem, stdlib, community      | ⏳ Ongoing                               | -          |
 
 ---
 
 ## Phase Details
 
-### Phase 0 — Foundation ✅ (2026-06-10 → 2026-06-15)
+### Phase 0 - Foundation ✅ (2026-06-10 → 2026-06-15)
 
 > Design before you code.
 
-- Language goals and philosophy (`spec/01`) — education, safety, trilingual,
+- Language goals and philosophy (`spec/01`) - education, safety, trilingual,
   full-stack ownership
-- Full syntax and grammar design (`spec/02`) — EBNF, seven static safety rules
-- Trilingual keyword system (`spec/03`) — English/Tanglish/Tamil skins, keyword
+- Full syntax and grammar design (`spec/02`) - EBNF, seven static safety rules
+- Trilingual keyword system (`spec/03`) - English/Tanglish/Tamil skins, keyword
   set v1 frozen
-- Grammar Engine design (`spec/04`) — `thamizh-order` SOV parser profile
+- Grammar Engine design (`spec/04`) - `thamizh-order` SOV parser profile
 - Compiler language chosen: **Rust** (static binary, sum types, miette diagnostics)
 - Repo structure, docs system, dev-log discipline (`docs/RULES.md`)
 
-### Phase 1 — Verilog Backend ✅ (2026-06-10 → 2026-06-12)
+### Phase 1 - Verilog Backend ✅ (2026-06-10 → 2026-06-12)
 
-> Get something working end-to-end — done six months ahead of target.
+> Get something working end-to-end - done six months ahead of target.
 
-- Lexer — trilingual, Unicode identifiers, `E10xx`
-- Parser — full grammar, recursive-descent, `E11xx`, statement-level recovery
-- AST — typed nodes, source spans
-- Checker — six passes, all spec safety rules, `E02xx`–`E07xx`
-- Verilog emitter — synthesizable Verilog-2005, `repeat` unrolling,
+- Lexer - trilingual, Unicode identifiers, `E10xx`
+- Parser - full grammar, recursive-descent, `E11xx`, statement-level recovery
+- AST - typed nodes, source spans
+- Checker - six passes, all spec safety rules, `E02xx`–`E07xx`
+- Verilog emitter - synthesizable Verilog-2005, `repeat` unrolling,
   Tamil→ASCII transliteration, `wire signed` / `reg signed`
-- Icarus Verilog validation — every example linted and simulated
-- LSP v0 — diagnostics-only language server + VS Code extension
+- Icarus Verilog validation - every example linted and simulated
+- LSP v0 - diagnostics-only language server + VS Code extension
 
-### Phase 1.8 — Grammar Engine ✅ (2026-06-14 → 2026-06-16)
+### Phase 1.8 - Grammar Engine ✅ (2026-06-14 → 2026-06-16)
 
-> Natural Tamil SOV word order — இலக்கண இயந்திரம்
+> Natural Tamil SOV word order - இலக்கண இயந்திரம்
 
 - `thamizh-order` parser profile: `enil`-if, `pothu`-clocked, `thernthedu`-match
 - `syntax thamizh` file-level directive
 - `mimz translate --order code|thamizh`
 - Tamil morphology helper for error messages (case suffixes on signal names)
-- Native-authored error catalog (`lang/messages.toml`) — 35 of the 76 checker codes localized (35 tanglish + tamil)
+- Native-authored error catalog (`lang/messages.toml`) - 35 of the 76 checker codes localized (35 tanglish + tamil)
 
-### Phase 1.5 — Simulator ✅ (2026-06-16 → 2026-06-22)
+### Phase 1.5 - Simulator ✅ (2026-06-16 → 2026-06-22)
 
 > Your own behavioral engine.
 
-- In-house event-driven cycle simulator — no external tool at runtime
-- `mimz sim` — clocked and combinational, `--in`, `--sweep`, `--cycles`,
+- In-house event-driven cycle simulator - no external tool at runtime
+- `mimz sim` - clocked and combinational, `--in`, `--sweep`, `--cycles`,
   `--trace`, `-o file.vcd`
-- `mimz test` — `tick`/`expect` test blocks, exit 0 = all pass
+- `mimz test` - `tick`/`expect` test blocks, exit 0 = all pass
 - Icarus differential: byte-for-byte match on all examples (`REQUIRE_IVERILOG=1`)
 - VCD waveform output, viewable in GTKWave
 
-### Phase 2 — IR + Synthesis 🟡 (2026-06-24 → ongoing) _(IR/synthesis target: 2028)_
+### Phase 2 - IR + Synthesis 🟡 (2026-06-24 → ongoing) _(IR/synthesis target: 2028)_
 
 > Own your middle layer.
 
 Two tracks, running in parallel; see `docs/plan/phase-2-ir-synthesis.md` for
 the full triaged backlog (source of truth).
 
-**Correctness consolidation — opened 2026-07-18, gates further
+**Correctness consolidation - opened 2026-07-18, gates further
 language-feature work.** The 2026-07-17 CTO review found one architectural
 root cause (three independently-implemented semantic authorities: checker,
 simulator, emitter) behind every recurring divergence bug in the audit log,
@@ -92,7 +92,7 @@ remediation plan ran in 5 stages (critical correctness fixes, checker-gated
 execution, and further hardening rounds); the audit trail in `docs/audit/`
 is the tracked source of truth for each item.
 
-**Language-features track — completed in v0.2.0:**
+**Language-features track - completed in v0.2.0:**
 
 - ✅ Packages/namespacing (2026-07-02)
 - ✅ `suzhal`/சுழல் bounded loop (2026-07-05)
@@ -110,52 +110,52 @@ is the tracked source of truth for each item.
 - ✅ Hardware emulation `sim{}` blocks + `--emulate`/`--step` (2026-07-09)
 - Still open: channels tier (a), wire type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/`system_fault`
 
-**IR/synthesis track — not started.** Backend strategy: Verilog-2005 + Yosys
-is the standing plan, not a placeholder — own logic synthesis is
+**IR/synthesis track - not started.** Backend strategy: Verilog-2005 + Yosys
+is the standing plan, not a placeholder - own logic synthesis is
 research-grade (Yosys/nextpnr represent a decade-plus of community
 engineering), so this track rides on that ecosystem for technology mapping
 rather than competing with it. The "internals study" item below feeds that
 integration; it is not an alternative path toward an in-house synthesizer.
 
-- Min-Mozhi IR — own netlist-like intermediate format (typed cells/nets,
-  clock domains preserved — feeds the Yosys/nextpnr flow below, not a
+- Min-Mozhi IR - own netlist-like intermediate format (typed cells/nets,
+  clock domains preserved - feeds the Yosys/nextpnr flow below, not a
   replacement for it)
 - IR emitter from AST
 - IR → Yosys JSON netlist or a Yosys-friendly structural Verilog subset
 - Yosys + nextpnr flow scripted end-to-end (`mimz build blink.mimz --target ice40`)
 - Study Yosys internals (techmapping, ABC interaction) to inform the above
 
-**Verilog FFI — ✅ Complete (2026-07-15, spec/02 §1.5c).**
+**Verilog FFI - ✅ Complete (2026-07-15, spec/02 section 1.5c).**
 Instantiate existing Verilog/SystemVerilog IP via `extern module Name(params) { doc: "...", ports }`
 with companion `.v` wiring via `[compile] verilog_files` or `--extern-src`, plus
 `warn` / `strict` simulation modes via `--extern-sim`.
 
-### Phase 3 — Native FPGA Backend _(target: 2029–2030)_
+### Phase 3 - Native FPGA Backend _(target: 2029–2030)_
 
 > Full end-to-end ownership.
 
-Genuinely on the table, not a hedge — Yosys/nextpnr is Phase 2's backend
+Genuinely on the table, not a hedge - Yosys/nextpnr is Phase 2's backend
 because it's the pragmatic path to real hardware _now_, not a verdict that
 a native backend is unwanted. If the maintainer wants to build one, this is
 where that ambition lives.
 
 - Target-specific backends per FPGA architecture
-- Direct bitstream generation (iCE40 family — open and well documented)
+- Direct bitstream generation (iCE40 family - open and well documented)
 - Optimizer passes: dead-signal elimination, constant folding
 - Milestone: `mimz build blink.mimz --target ice40` → programs FPGA directly
 
-### Phase 4 — Ecosystem _(ongoing from v0.1.0)_
+### Phase 4 - Ecosystem _(ongoing from v0.1.0)_
 
 > Make it usable by others.
 
 - ✅ WASM browser playground (`crates/mimz-wasm`, CLI/WASM output parity tested)
 - ✅ Documentation site (Astro, `site/`, deployed via `deploy-site.yml`)
-- ✅ `mimz repl` — interactive combinational REPL
-- 🟡 Standard library — 5 modules shipped (fifo, pwm, uart_tx, seg7, debouncer);
+- ✅ `mimz repl` - interactive combinational REPL
+- 🟡 Standard library - 5 modules shipped (fifo, pwm, uart_tx, seg7, debouncer);
   SPI, I2C, AXI-Lite, and multi-bit CDC FIFO still open
 - ⏳ Package manager for Min-Mozhi modules
-- ⏳ npm / PyPI wrappers (thin — one Rust core, never reimplemented)
-- ⏳ `mimz tui` — no-IDE TUI workbench
+- ⏳ npm / PyPI wrappers (thin - one Rust core, never reimplemented)
+- ⏳ `mimz tui` - no-IDE TUI workbench
 - ⏳ Community + Tamil Nadu semiconductor outreach
 
 ---
@@ -173,11 +173,11 @@ with AI agents** (current mode). AI agents compress documentation, auditing,
 and boilerplate tasks significantly; design and architecture decisions remain
 human-paced.
 
-### Version A — Solo Developer (no AI assist)
+### Version A - Solo Developer (no AI assist)
 
 ```mermaid
 gantt
-    title Min-Mozhi — Solo Developer Timeline
+    title Min-Mozhi - Solo Developer Timeline
     dateFormat  YYYY-MM-DD
     axisFormat  %b %Y
 
@@ -225,7 +225,7 @@ gantt
 
 ---
 
-### Version B — Solo Developer + AI Agents (actual)
+### Version B - Solo Developer + AI Agents (actual)
 
 > [!IMPORTANT]
 > **All code in this project is human-monitored, reviewed, and verified.**
@@ -234,7 +234,7 @@ gantt
 
 ```mermaid
 gantt
-    title Min-Mozhi — Solo Dev + AI Agents (Actual)
+    title Min-Mozhi - Solo Dev + AI Agents (Actual)
     dateFormat  YYYY-MM-DD
     axisFormat  %d %b
 
@@ -290,12 +290,12 @@ gantt
 
 | Dimension         | Significance                                                                                                                                                                                                                      |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Cultural**      | A Tamil-rooted HDL — brings native-language programming to Tamil-speaking students and grows Tamil as a language you can actually code in                                                                                         |
-| **Education**     | Built from the ground up to teach digital design — compile a counter in 5 minutes, read errors that explain _what went wrong and how to fix it_, learn hardware thinking without fighting toolchain friction                      |
-| **Safety**        | Every classic Verilog footgun — silent truncation, latch inference, multiple drivers, uninitialized registers, signed/unsigned confusion — is a compile-time error with a teaching diagnostic; safe by default, not by convention |
-| **Modern Syntax** | Go/TypeScript-style braces and `: type` annotations, expression-oriented `if`/`match`, no `begin/end`, no preprocessor — a syntax that feels familiar to anyone who has written a modern programming language                     |
-| **Technical**     | Full compiler stack from source to synthesizable Verilog, own event-driven simulator, LSP server, VS Code extension — a complete, self-contained toolchain                                                                        |
-| **Timing**        | India's semiconductor boom — TATA, Vedanta fabs, India Semiconductor Mission — creates real demand for Tamil Nadu engineers who know HDL from day one                                                                             |
+| **Cultural**      | A Tamil-rooted HDL - brings native-language programming to Tamil-speaking students and grows Tamil as a language you can actually code in                                                                                         |
+| **Education**     | Built from the ground up to teach digital design - compile a counter in 5 minutes, read errors that explain _what went wrong and how to fix it_, learn hardware thinking without fighting toolchain friction                      |
+| **Safety**        | Every classic Verilog footgun - silent truncation, latch inference, multiple drivers, uninitialized registers, signed/unsigned confusion - is a compile-time error with a teaching diagnostic; safe by default, not by convention |
+| **Modern Syntax** | Go/TypeScript-style braces and `: type` annotations, expression-oriented `if`/`match`, no `begin/end`, no preprocessor - a syntax that feels familiar to anyone who has written a modern programming language                     |
+| **Technical**     | Full compiler stack from source to synthesizable Verilog, own event-driven simulator, LSP server, VS Code extension - a complete, self-contained toolchain                                                                        |
+| **Timing**        | India's semiconductor boom - TATA, Vedanta fabs, India Semiconductor Mission - creates real demand for Tamil Nadu engineers who know HDL from day one                                                                             |
 | **Community**     | Tamil Nadu has a growing VLSI and chip design ecosystem; Min-Mozhi is designed to lower the barrier for students entering it                                                                                                      |
 
 ---
@@ -305,7 +305,7 @@ gantt
 | Phase      | Description        | What you can show the world             |
 | ---------- | ------------------ | --------------------------------------- |
 | 0          | Foundation         | Language spec, grammar, GitHub repo     |
-| 1          | Verilog Backend    | Working compiler — Min-Mozhi → Verilog  |
+| 1          | Verilog Backend    | Working compiler - Min-Mozhi → Verilog  |
 | 1.8        | Grammar Engine     | Tamil code in natural Tamil word order  |
 | 1.5        | Simulator          | Own simulator with waveform output      |
 | **v0.1.0** | **Public release** | **All of the above, open to the world** |
@@ -315,4 +315,4 @@ gantt
 
 ---
 
-_Min-Mozhi — மின்மொழி — Speak in Circuits_
+_Min-Mozhi - மின்மொழி - Speak in Circuits_

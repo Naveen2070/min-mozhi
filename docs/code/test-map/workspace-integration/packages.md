@@ -1,4 +1,4 @@
-# Integration: packages (`tests/packages.rs`, 2 tests — run the real binary)
+# Integration: packages (`tests/packages.rs`, 2 tests - run the real binary)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 

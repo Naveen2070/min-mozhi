@@ -3,7 +3,7 @@
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
 Four sugar constructs never reach the emitter or the simulator as
-themselves — a shared lowering function rewrites each into primitives that
+themselves - a shared lowering function rewrites each into primitives that
 both back ends already understand. These tests pin the SHAPE of that
 rewrite, which is what makes "the emitter and the simulator agree" cheap
 (there is only one implementation to agree with).
@@ -22,17 +22,17 @@ substitutes the loop variable with `values[i]` throughout the body.
 | `seq_elements_form_substitutes_var_with_index_expr`                | inside an `on` block, `v` is replaced by `values[i]` everywhere it appears           |
 | `fn_elements_form_resolves_via_own_param_and_binds_with_let`       | inside a `fn`, the array parameter supplies the length and the body binds via `let`  |
 | `fn_elements_form_on_undeclared_param_returns_none`                | …and an unknown parameter returns `None` rather than guessing                        |
-| `loop_var_shadowing_outer_foreach_var_is_not_substituted`          | an inner `loop` reusing the name SHADOWS it — no substitution leaks in               |
+| `loop_var_shadowing_outer_foreach_var_is_not_substituted`          | an inner `loop` reusing the name SHADOWS it - no substitution leaks in               |
 | `nested_repeat_var_shadowing_outer_foreach_var_is_not_substituted` | same for a nested `repeat`                                                           |
 | `nested_sync_loop_body_substitutes_outer_foreach_var`              | but a nested `sync loop` (different variable) still gets the outer substitution      |
-| `subst_expr_match_arm_binding_shadows_target`                      | a `match` arm binding of the same name shadows too — scoping is respected            |
+| `subst_expr_match_arm_binding_shadows_target`                      | a `match` arm binding of the same name shadows too - scoping is respected            |
 
 ## ast/sync_loop_lower.rs (3 tests)
 
 | Test                                                        | Locks in                                                                                                                            |
 | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `lower_produces_twelve_items_in_order`                      | one `sync loop` expands to exactly twelve primitive items (index reg, `start`/`done` handshake, ports, `on` block) in a fixed order |
-| `counter_width_is_clog2_hi_not_clog2_range_when_lo_nonzero` | the index register is `clog2(hi)` wide, not `clog2(hi - lo)` — the counter counts to `hi`, so a nonzero `lo` does not shrink it     |
+| `counter_width_is_clog2_hi_not_clog2_range_when_lo_nonzero` | the index register is `clog2(hi)` wide, not `clog2(hi - lo)` - the counter counts to `hi`, so a nonzero `lo` does not shrink it     |
 | `rename_expr_match_arm_binding_shadows_accumulator_name`    | a `match` arm binding named like the accumulator shadows it instead of being rewritten                                              |
 
 ## ast/sync_prim_lower.rs (4 tests)
@@ -51,7 +51,7 @@ construct at all.
 
 ## ast/mod.rs (4 tests)
 
-Constructor smoke tests — cheap guards that a node type still builds after
+Constructor smoke tests - cheap guards that a node type still builds after
 a field is added or reordered.
 
 | Test                          | Locks in               |

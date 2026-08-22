@@ -1,111 +1,111 @@
-# 5 — The AST: What the Parser Produces (6 Files)
+# 5 - The AST: What the Parser Produces (6 Files)
 
-The AST is the **single intermediate representation** that everything downstream uses — the checker, the Verilog emitter, the simulator, and the pretty-printer. It's deliberately flavor-blind and word-order-blind: all the surface variation (English vs Tamil keywords, SVO vs SOV clause order) is absorbed by the lexer and parser and never reaches the tree.
-
----
-
-## `crates/mimz-core/src/ast/mod.rs` — The Core Types
-
-**`File`** — one parsed source: `imports` followed by `items` (modules, enums, constants, tests).
-
-**`Import`** — `import lib.adder` with path segments and a span.
-
-**`TopItem`** — anything at file level: a constant (`Const`), module (`Module`), enum (`Enum`), test (`Test`), function (`Func`), bundle (`Bundle`), Verilog FFI (`ExternModule`), or placeholder error (`Error`).
-
-**`Ident`** — a name plus its source location. Used everywhere so errors can always point at the right place.
-
-**`Module`** — the hardware module: name, compile-time parameters, body items, span.
-
-**`Param`** — one parameter: name, type (`int` or `bool`), optional default.
-
-**`ConstDecl`** — `const NAME: int = expr`. Compile-time constant.
-
-**`EnumDecl`** — `enum Name { Var1, Var2, ... }`. Variants encode to the smallest binary width (`ceil(log2(count))` bits). Since v0.2.15, variants can carry **payload fields**: `Data(val: bits[8])` — stored as `EnumVariant` with a `Vec<PayloadField>`.
-
-**`ModuleItem`** — everything that can go in a module body:
-
-- **Port** — `in`/`out` with name and type
-- **Clock** — just the clock name
-- **Reset** — name plus whether it's asynchronous
-- **Wire** — name, type, and mandatory drive expression
-- **Reg** — name, type, and mandatory reset value
-- **Mem** — name, element type, depth, and mandatory init value
-- **Const** / **Enum** — inline declarations
-- **Inst** — child module instantiation
-- **On** — sequential clocked block
-- **Drive** — combinational assignment (`lhs = rhs`)
-- **Repeat** — compile-time generation loop
-- **ForEach** — loop sugar iterating a range or array
-- **SyncLoop** — multi-cycle FSM loop
-- **ConstIf** — compile-time module item branch
-- **BundleDestructure** — `let { a, b } = bundle_sig`
-- **Assert** / **Cover** — verification primitives
-- **Error** — a placeholder for a construct that failed to parse
-
-**`Repeat`** — `repeat var: lo..hi { body }`. Compile-time, not runtime. Bounds must be constant.
-
-**`Inst`** — `let name = Module(params) { connections }`. Child outputs are read as `name.port`.
-
-**`OnBlock`** — `on rise(clk) { body }` / `on fall(clk) { body }`.
-
-**`SeqStmt`** — inside an `on` block: `Assign` (`lhs <- rhs`, the register update), `If` (statement-level, `else` optional), `Default` (priority-lowest `default name <- expr`; the emitter must emit these first so conditional assignments override them), `Loop` (compile-time unrolling inside the clocked block), `ForEach` (inline sugar over `Loop`), `Assert`/`Cover` (verification primitives), plus `Error` (parse-recovery placeholder).
-
-**`LValue`** — where a value is written: `signal`, `signal[i]`, or `signal[hi:lo]`.
-
-**`Type`** — `Bit` (single wire), `Bits(N)` (unsigned N-bit vector), `Signed(N)` (signed N-bit vector), `Named(ident)` (enum type), `Bundle(name, args)` (a bundle type by name, e.g. `MemBus(WIDTH: 32)` — `args` is empty for parameterless bundles; nominal-only today, matched by name not structural field-list), or `Array(elem, len)` (fixed-size array value, element restricted to `Bit`/`Bits`/`Signed` and length const-evaluated — sugar over N independent scalars, never a real Verilog array).
-
-**`BundleDecl`** — `bundle Name(params) { fields }`: a struct-like grouping of ports/signals. `TopItem::Bundle` holds one. Bundle-typed values flatten to individual Verilog signals at emit time (name-mangled, e.g. `bus_in_valid`) — see [`05-emit-verilog.md`](../code/05-emit-verilog.md).
-
-**`TestDecl`** — `test "name" for Module(args) { body }`.
-
-**`TestStmt`** — inside a test: `Tick`, `Expect`, `Drive`, `If`, or `Sim` (the `sim { speed ... bind ... }` block powering hardware emulation — see [`11-hardware-emulation.md`](11-hardware-emulation.md)).
-
-**Error placeholders** — `TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each also have an `Error(span)` variant. It marks a spot where parsing failed but recovery kept going. These only appear when the tree comes from `parse_recover` (the editor/LSP path); the normal compile path uses the strict `parse`, which refuses a broken tree, so the checker and emitter never have to deal with a real one. There's no `Error` for expressions yet.
+The AST is the **single intermediate representation** that everything downstream uses - the checker, the Verilog emitter, the simulator, and the pretty-printer. It's deliberately flavor-blind and word-order-blind: all the surface variation (English vs Tamil keywords, SVO vs SOV clause order) is absorbed by the lexer and parser and never reaches the tree.
 
 ---
 
-## `crates/mimz-core/src/ast/expr.rs` — Expressions and Patterns
+## `crates/mimz-core/src/ast/mod.rs` - The Core Types
 
-**`Expr`** — an expression: a `kind` (what it is) plus a `span` (where it was written).
+**`File`** - one parsed source: `imports` followed by `items` (modules, enums, constants, tests).
 
-**`ExprKind`** — every expression form:
+**`Import`** - `import lib.adder` with path segments and a span.
 
-- **Int** — literal with value and raw spelling
-- **Bool** — `true` / `false`
-- **Ident** — a signal, parameter, or constant name
-- **Field** — `base.field` (enum variant or instance port)
-- **Unary** / **Binary** — operator expressions
-- **IfExpr** — expression `if` (ALWAYS has `else`, unlike statement if)
-- **Match** — pattern match with scrutinee and arms
-- **Concat** — `{a, b, c}` bit concatenation
-- **Replicate** — `{N{...}}` repetition
-- **Index** — `base[i]`
-- **Slice** — `base[hi:lo]`
-- **Call** — builtin function call (12 bare-identifier built-ins via `Builtin::from_name`: `extend`, `trunc`, `signed`, `unsigned`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`, `encoding`, `clog2`; the two `sync.*` CDC builtins are reachable only through the dot-namespaced call form)
-- **FnCall** — user-defined `fn` call (v0.2.14): inlined at emit time
-- **BundleLit** — `{ field: expr, ... }` (disambiguated from concat by `IDENT ":"` lookahead)
-- **ArrayLit** — `[e1, e2, ...]` array literal (uniform element type, E0414)
-- **EnumConstruct** — `Enum.Variant(arg, ...)` constructs an enum value; a dedicated node so the base name is never ambiguous with field access
+**`TopItem`** - anything at file level: a constant (`Const`), module (`Module`), enum (`Enum`), test (`Test`), function (`Func`), bundle (`Bundle`), Verilog FFI (`ExternModule`), or placeholder error (`Error`).
 
-**`Pattern`** — what a match arm matches against:
+**`Ident`** - a name plus its source location. Used everywhere so errors can always point at the right place.
 
-- `Int` — exact integer
-- `IntMask` — `0b1??` (binary don't-care)
-- `Bool` — `true`/`false`
-- `Variant` — `State.Red`, or `Packet.Ctrl(k, _)` for tagged unions: one node with a `bindings: Vec<Ident>` — empty for tag-only patterns, one binding per payload field otherwise
-- `Wildcard` — `_` (catch-all)
+**`Module`** - the hardware module: name, compile-time parameters, body items, span.
+
+**`Param`** - one parameter: name, type (`int` or `bool`), optional default.
+
+**`ConstDecl`** - `const NAME: int = expr`. Compile-time constant.
+
+**`EnumDecl`** - `enum Name { Var1, Var2, ... }`. Variants encode to the smallest binary width (`ceil(log2(count))` bits). Since v0.2.15, variants can carry **payload fields**: `Data(val: bits[8])` - stored as `EnumVariant` with a `Vec<PayloadField>`.
+
+**`ModuleItem`** - everything that can go in a module body:
+
+- **Port** - `in`/`out` with name and type
+- **Clock** - just the clock name
+- **Reset** - name plus whether it's asynchronous
+- **Wire** - name, type, and mandatory drive expression
+- **Reg** - name, type, and mandatory reset value
+- **Mem** - name, element type, depth, and mandatory init value
+- **Const** / **Enum** - inline declarations
+- **Inst** - child module instantiation
+- **On** - sequential clocked block
+- **Drive** - combinational assignment (`lhs = rhs`)
+- **Repeat** - compile-time generation loop
+- **ForEach** - loop sugar iterating a range or array
+- **SyncLoop** - multi-cycle FSM loop
+- **ConstIf** - compile-time module item branch
+- **BundleDestructure** - `let { a, b } = bundle_sig`
+- **Assert** / **Cover** - verification primitives
+- **Error** - a placeholder for a construct that failed to parse
+
+**`Repeat`** - `repeat var: lo..hi { body }`. Compile-time, not runtime. Bounds must be constant.
+
+**`Inst`** - `let name = Module(params) { connections }`. Child outputs are read as `name.port`.
+
+**`OnBlock`** - `on rise(clk) { body }` / `on fall(clk) { body }`.
+
+**`SeqStmt`** - inside an `on` block: `Assign` (`lhs <- rhs`, the register update), `If` (statement-level, `else` optional), `Default` (priority-lowest `default name <- expr`; the emitter must emit these first so conditional assignments override them), `Loop` (compile-time unrolling inside the clocked block), `ForEach` (inline sugar over `Loop`), `Assert`/`Cover` (verification primitives), plus `Error` (parse-recovery placeholder).
+
+**`LValue`** - where a value is written: `signal`, `signal[i]`, or `signal[hi:lo]`.
+
+**`Type`** - `Bit` (single wire), `Bits(N)` (unsigned N-bit vector), `Signed(N)` (signed N-bit vector), `Named(ident)` (enum type), `Bundle(name, args)` (a bundle type by name, e.g. `MemBus(WIDTH: 32)` - `args` is empty for parameterless bundles; nominal-only today, matched by name not structural field-list), or `Array(elem, len)` (fixed-size array value, element restricted to `Bit`/`Bits`/`Signed` and length const-evaluated - sugar over N independent scalars, never a real Verilog array).
+
+**`BundleDecl`** - `bundle Name(params) { fields }`: a struct-like grouping of ports/signals. `TopItem::Bundle` holds one. Bundle-typed values flatten to individual Verilog signals at emit time (name-mangled, e.g. `bus_in_valid`) - see [`05-emit-verilog.md`](../code/05-emit-verilog.md).
+
+**`TestDecl`** - `test "name" for Module(args) { body }`.
+
+**`TestStmt`** - inside a test: `Tick`, `Expect`, `Drive`, `If`, or `Sim` (the `sim { speed ... bind ... }` block powering hardware emulation - see [`11-hardware-emulation.md`](11-hardware-emulation.md)).
+
+**Error placeholders** - `TopItem`, `ModuleItem`, `SeqStmt`, and `TestStmt` each also have an `Error(span)` variant. It marks a spot where parsing failed but recovery kept going. These only appear when the tree comes from `parse_recover` (the editor/LSP path); the normal compile path uses the strict `parse`, which refuses a broken tree, so the checker and emitter never have to deal with a real one. There's no `Error` for expressions yet.
+
+---
+
+## `crates/mimz-core/src/ast/expr.rs` - Expressions and Patterns
+
+**`Expr`** - an expression: a `kind` (what it is) plus a `span` (where it was written).
+
+**`ExprKind`** - every expression form:
+
+- **Int** - literal with value and raw spelling
+- **Bool** - `true` / `false`
+- **Ident** - a signal, parameter, or constant name
+- **Field** - `base.field` (enum variant or instance port)
+- **Unary** / **Binary** - operator expressions
+- **IfExpr** - expression `if` (ALWAYS has `else`, unlike statement if)
+- **Match** - pattern match with scrutinee and arms
+- **Concat** - `{a, b, c}` bit concatenation
+- **Replicate** - `{N{...}}` repetition
+- **Index** - `base[i]`
+- **Slice** - `base[hi:lo]`
+- **Call** - builtin function call (12 bare-identifier built-ins via `Builtin::from_name`: `extend`, `trunc`, `signed`, `unsigned`, `min`, `max`, `abs`, `nand`, `nor`, `xnor`, `encoding`, `clog2`; the two `sync.*` CDC builtins are reachable only through the dot-namespaced call form)
+- **FnCall** - user-defined `fn` call (v0.2.14): inlined at emit time
+- **BundleLit** - `{ field: expr, ... }` (disambiguated from concat by `IDENT ":"` lookahead)
+- **ArrayLit** - `[e1, e2, ...]` array literal (uniform element type, E0414)
+- **EnumConstruct** - `Enum.Variant(arg, ...)` constructs an enum value; a dedicated node so the base name is never ambiguous with field access
+
+**`Pattern`** - what a match arm matches against:
+
+- `Int` - exact integer
+- `IntMask` - `0b1??` (binary don't-care)
+- `Bool` - `true`/`false`
+- `Variant` - `State.Red`, or `Packet.Ctrl(k, _)` for tagged unions: one node with a `bindings: Vec<Ident>` - empty for tag-only patterns, one binding per payload field otherwise
+- `Wildcard` - `_` (catch-all)
 
 **`BinOp`** has specific width rules:
 
-- `Add`/`Sub`/`Mul` — **lossless**: result grows (N+1, N+1, N+M bits)
-- `AddWrap`/`SubWrap`/`MulWrap` (`+%`/`-%`/`*%`) — **wrapping**: keeps operand width (like real hardware registers)
-- No `/` or `%` — division doesn't exist (it synthesizes to big, slow hardware)
+- `Add`/`Sub`/`Mul` - **lossless**: result grows (N+1, N+1, N+M bits)
+- `AddWrap`/`SubWrap`/`MulWrap` (`+%`/`-%`/`*%`) - **wrapping**: keeps operand width (like real hardware registers)
+- No `/` or `%` - division doesn't exist (it synthesizes to big, slow hardware)
 
-**`Builtin`** — the complete list of built-in function variants: `Extend`, `Trunc`, `SignedCast`, `UnsignedCast`, `Min`, `Max`, `Abs`, `Nand`, `Nor`, `Xnor`, plus `Encoding` (`encoding(e)` — an enum value's on-wire bit pattern, GAP-7), `Clog2` (the one compile-time builtin), and the dot-namespaced-only `SyncDoubleFlop`/`SyncPulse` CDC pair. Since v0.2.14, users can also define their own combinational functions via `fn` (covered by `ExprKind::FnCall`).
+**`Builtin`** - the complete list of built-in function variants: `Extend`, `Trunc`, `SignedCast`, `UnsignedCast`, `Min`, `Max`, `Abs`, `Nand`, `Nor`, `Xnor`, plus `Encoding` (`encoding(e)` - an enum value's on-wire bit pattern, GAP-7), `Clog2` (the one compile-time builtin), and the dot-namespaced-only `SyncDoubleFlop`/`SyncPulse` CDC pair. Since v0.2.14, users can also define their own combinational functions via `fn` (covered by `ExprKind::FnCall`).
 
 ---
 
-## `crates/mimz-core/src/ast/sync_loop_lower.rs` — Lowering `sync loop`
+## `crates/mimz-core/src/ast/sync_loop_lower.rs` - Lowering `sync loop`
 
 `sync loop` is sugar over primitives the rest of the pipeline already
 understands: this file rewrites a `ModuleItem::SyncLoop` into an equivalent
@@ -114,37 +114,37 @@ understands: this file rewrites a `ModuleItem::SyncLoop` into an equivalent
 that index). Who calls it matters: **the checker validates the ORIGINAL
 `SyncLoop` node directly** (so its diagnostics point at the real source
 span), and only the emitter and simulator invoke `lower_sync_loop` and
-process its output through their existing Port/Reg/On/Drive handling — no
+process its output through their existing Port/Reg/On/Drive handling - no
 new codegen shape, no new kernel dispatch. The pretty-printer round-trips
 the original syntax.
 
-## `crates/mimz-core/src/ast/foreach_lower.rs` — Lowering `foreach`
+## `crates/mimz-core/src/ast/foreach_lower.rs` - Lowering `foreach`
 
 Same idea, for `foreach`: rewrites both forms (`foreach i in lo..hi` and
-`foreach v in <array-or-mem>`) into the equivalent `Repeat`/`Loop` node —
+`foreach v in <array-or-mem>`) into the equivalent `Repeat`/`Loop` node -
 elements-form iteration becomes an index-bound `Repeat` that substitutes the
 bound variable with `source[idx]` throughout the body. Exposes one lowering
 function per syntax position, since a `foreach` can appear as a module item,
 inside an `on` block, or inside a `fn` body, and each position's surrounding
 node shape differs: `lower_foreach_item`, `lower_foreach_in_seq` (recurses
 into nested `if`s too), and `lower_foreach_fn`. Like `sync loop`, everything
-downstream of the parser sees only `Repeat`/`Loop` — never a raw `ForEach`
-node — except the checker, which validates `ForEach` directly before
+downstream of the parser sees only `Repeat`/`Loop` - never a raw `ForEach`
+node - except the checker, which validates `ForEach` directly before
 lowering (see [`06-checker.md`](06-checker.md)) so its errors (`E0417`) can
 point at the original `foreach` syntax.
 
-## `crates/mimz-core/src/ast/sync_prim_lower.rs` — Lowering `sync.*`
+## `crates/mimz-core/src/ast/sync_prim_lower.rs` - Lowering `sync.*`
 
 Same sugar-over-primitives pattern again, for the CDC builtins:
 `expand_sync_prims` rewrites `sync.double_flop`/`sync.pulse` call sites into
-ordinary `Reg`/`On`/`Wire` items. Assumes checker-clean input — the checker
+ordinary `Reg`/`On`/`Wire` items. Assumes checker-clean input - the checker
 already validated each call's shape, domain, and placement before this runs,
 the same contract `sync_loop_lower`/`foreach_lower` have with their passes.
 
-## `crates/mimz-core/src/ast/builtin_bundles.rs` — `T?` Valid-Bundle Sugar
+## `crates/mimz-core/src/ast/builtin_bundles.rs` - `T?` Valid-Bundle Sugar
 
 The two compiler-synthesized bundle declarations backing `T?` sugar
-(`bit?`/`bits[N]?`/`signed[N]?`) — never written in `.mimz` source; a
+(`bit?`/`bits[N]?`/`signed[N]?`) - never written in `.mimz` source; a
 `?`-suffixed type desugars directly to a reference to one of these two
 synthesized `BundleDecl`s at parse time. Lives here rather than duplicated
 across `checker::symbols` and the emitter, since both need the same

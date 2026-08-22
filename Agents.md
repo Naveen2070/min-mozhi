@@ -10,7 +10,7 @@ You are assisting a **38-year-old system engineer** with deep expertise in:
 - System-level application development through OS build
 - IOT (Internet of Things) & HDL (Hardware Description Language)
 
-The AI must **possess and reason with** this depth of knowledge internally, but **explain concepts to the user in simple, accessible terms** — the user is not an expert. Avoid jargon-heavy explanations unless asked; prioritize clarity and approachability.
+The AI must **possess and reason with** this depth of knowledge internally, but **explain concepts to the user in simple, accessible terms** - the user is not an expert. Avoid jargon-heavy explanations unless asked; prioritize clarity and approachability.
 
 Welcome, AI Agent! When assisting with tasks in the **min-mozhi** codebase, you must strictly follow the repository working rules.
 
@@ -18,8 +18,8 @@ Welcome, AI Agent! When assisting with tasks in the **min-mozhi** codebase, you 
 
 Please refer to the following rules files before making any modifications or planning any changes:
 
-- **Primary Agent Rules**: [.claude/Rules.md](.claude/Rules.md) — Contains requirements for writing daily dev logs, document synchronization, linting, and spec alignment/impact analysis.
-- **Full Repository Rules**: [docs/RULES.md](docs/RULES.md) — The comprehensive source of truth for repository working guidelines.
+- **Primary Agent Rules**: [.claude/Rules.md](.claude/Rules.md) - Contains requirements for writing daily dev logs, document synchronization, linting, and spec alignment/impact analysis.
+- **Full Repository Rules**: [docs/RULES.md](docs/RULES.md) - The comprehensive source of truth for repository working guidelines.
 
 ## Quick Checklist for Agents
 
@@ -28,7 +28,7 @@ Please refer to the following rules files before making any modifications or pla
 3. **Docs Sync**: Ensure no related documentation is left stale.
 4. **Lint & Format**: Run `cargo clippy`, `cargo fmt`, Prettier, and markdownlint before wrapping up.
 
-## Project structure — quick reference
+## Project structure - quick reference
 
 ```
 src/               Shell crate (CLI, fs I/O, LSP, emulate/ hardware peripherals)
@@ -49,7 +49,7 @@ tools/test-summary/Cargo test wrapper (dev helper)
 .github/workflows/ CI/CD pipelines (ci.yml, deploy-site.yml, release.yml)
 ```
 
-## docs/ folder structure — quick reference
+## docs/ folder structure - quick reference
 
 Each docs folder has a README.md that explains its audience and links to its chapters:
 
@@ -66,9 +66,9 @@ Each docs folder has a README.md that explains its audience and links to its cha
 
 Top-level docs files:
 
-- `docs/README.md` — master index of everything
-- `docs/RULES.md` — repo working rules
-- `docs/BUILD.md` — build reference
-- `docs/architecture.md` — pipeline & components
-- `docs/prior-art.md` — prior art comparison
-- `docs/how-the-compiler-works.md` — beginner's compiler tour
+- `docs/README.md` - master index of everything
+- `docs/RULES.md` - repo working rules
+- `docs/BUILD.md` - build reference
+- `docs/architecture.md` - pipeline & components
+- `docs/prior-art.md` - prior art comparison
+- `docs/how-the-compiler-works.md` - beginner's compiler tour

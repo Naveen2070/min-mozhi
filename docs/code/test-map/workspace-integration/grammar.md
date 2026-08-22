@@ -1,4 +1,4 @@
-# Integration: grammar engine (`tests/grammar.rs`, 16 tests — run the real binary)
+# Integration: grammar engine (`tests/grammar.rs`, 16 tests - run the real binary)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
@@ -24,5 +24,5 @@ four-flavor per R9).
 | `flipped_conditional_is_rejected_in_code_order`       | `<cond> enil { }` rejected without the directive                                                       |
 | `flipped_if_expr_is_rejected_in_code_order`           | `a > b enil { } illaiyenil { }` rejected without the directive                                         |
 | `flipped_match_is_rejected_in_code_order`             | `op thernthedu { }` rejected without the directive                                                     |
-| `code_order_if_is_rejected_in_thamizh`                | leading `enil` (code order) in a thamizh file errors — symmetric profile boundary                      |
+| `code_order_if_is_rejected_in_thamizh`                | leading `enil` (code order) in a thamizh file errors - symmetric profile boundary                      |
 | `deeply_nested_thamizh_else_if_errors_not_overflows`  | deep thamizh `illaiyenil … enil` chain → clean E1113, no stack overflow (SEC-1 guard on the flip path) |

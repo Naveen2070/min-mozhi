@@ -1,17 +1,17 @@
-# 13 — Hardware Emulation: `sim` Blocks
+# 13 - Hardware Emulation: `sim` Blocks
 
 > **Beta.** Hardware emulation shipped 2026-07-07 through 2026-07-09 and is
-> still young — four peripherals, native platforms only (behind the
+> still young - four peripherals, native platforms only (behind the
 > `hw-emulation` Cargo feature, not available in the WASM playground), and
 > the API surface (`sim{}` grammar, peripheral config keys) may still
 > change without a full edition bump. Safe to use in `test` blocks today;
 > just don't treat it as a frozen contract yet.
 
-Everything so far runs at simulator speed — thousands of cycles a second,
+Everything so far runs at simulator speed - thousands of cycles a second,
 with no sense of real time. A `sim` block inside a `test` block gives up
 that speed on purpose, in exchange for something a plain `mimz test` can't
-give you: a real, watchable peripheral — a blinking LED in your terminal, an
-actual audio tone, a real TCP serial port — driven by your design at (an
+give you: a real, watchable peripheral - a blinking LED in your terminal, an
+actual audio tone, a real TCP serial port - driven by your design at (an
 approximation of) real-world timing.
 
 This is **simulation-only**. `mimz compile` never sees a `sim` block; it
@@ -20,8 +20,8 @@ exists purely inside `test`, alongside `tick`/`expect`.
 ## Turning it on: `--emulate`
 
 A test containing a `sim` block is **skipped** unless emulation is actually
-live. Without any flag — or when stdout isn't a real terminal (CI, a pipe,
-`mimz test | tee log`) — `mimz test` reports the test as `SKIP` with a
+live. Without any flag - or when stdout isn't a real terminal (CI, a pipe,
+`mimz test | tee log`) - `mimz test` reports the test as `SKIP` with a
 reason line and exits 0; the sim-block body does not run at all:
 
 ```sh
@@ -29,7 +29,7 @@ mimz test blink.mimz --emulate
 ```
 
 Emulation goes live only when `--emulate` (or `--step`) is passed AND
-stdout is an actual terminal — so a CI job can never hang waiting for
+stdout is an actual terminal - so a CI job can never hang waiting for
 hardware that isn't there.
 
 Add `--step` for single-cycle control: the run pauses after every cycle,
@@ -52,12 +52,12 @@ test "quick beep (emulated)" for MelodyPlayer(TICK: 500000) {
 }
 ```
 
-- `speed hz(N)` / `speed khz(N)` / `speed mhz(N)` — the real-world clock
+- `speed hz(N)` / `speed khz(N)` / `speed mhz(N)` - the real-world clock
   rate the design's declared clock should be throttled to (all three units
   work; they multiply out to the same cycle pacing). Everything inside the
   block paces against this; without a `sim` block, `tick` runs as fast as
   the interpreter can go.
-- `bind <port> -> <peripheral>(<config>)` — connects one of the module's
+- `bind <port> -> <peripheral>(<config>)` - connects one of the module's
   ports to a virtual peripheral. One `bind` per port; a port can only be
   bound once.
 
@@ -65,19 +65,19 @@ test "quick beep (emulated)" for MelodyPlayer(TICK: 500000) {
 
 | Peripheral | Direction | Binds to                 | Config                                                                                                |
 | ---------- | --------- | ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `led`      | output    | `bit`/`bits[N]` (N ≤ 64) | `color: red\|green\|blue\|...` — which color the dashboard draws it                                   |
-| `speaker`  | output    | `bit`                    | none — plays the bound bit as a square-wave tone on the host's default audio output                   |
-| `uart_tx`  | output    | `bit`                    | `baud: N`, `port: N` — encodes 8-N-1 serial, decoded live to the dashboard log and a local TCP socket |
+| `led`      | output    | `bit`/`bits[N]` (N ≤ 64) | `color: red\|green\|blue\|...` - which color the dashboard draws it                                   |
+| `speaker`  | output    | `bit`                    | none - plays the bound bit as a square-wave tone on the host's default audio output                   |
+| `uart_tx`  | output    | `bit`                    | `baud: N`, `port: N` - encodes 8-N-1 serial, decoded live to the dashboard log and a local TCP socket |
 | `uart_rx`  | input     | `bit`                    | `baud: N`, plus either `port: N` (a TCP socket) or `source: "<hex bytes>"` (a literal byte string)    |
 
-`uart_tx`/`uart_rx`'s `baud` is independent of the `sim` block's `speed` —
+`uart_tx`/`uart_rx`'s `baud` is independent of the `sim` block's `speed` -
 the peripheral derives its own bit timing (`cycles_per_bit`) from the two
 together, the same way a real UART's baud rate is independent of the
 system clock it's driven from.
 
 A binding error (wrong port direction, a config value out of range, an
 unknown peripheral name) is a teaching-quality message at `mimz test` time,
-the same tier as any other diagnostic — it fires even without `--emulate`,
+the same tier as any other diagnostic - it fires even without `--emulate`,
 so a broken `sim` block never silently passes CI.
 
 ## What you see
@@ -90,7 +90,7 @@ even at a fast `speed`. At the end of a live run (pass, fail, or `--step`
 quit), the dashboard waits for Enter (or `q`) before closing, so you don't
 miss the final state.
 
-Outside a real terminal — or without `--emulate` at all — none of this
+Outside a real terminal - or without `--emulate` at all - none of this
 renders; the test just runs and reports pass/fail like any other.
 
 ## Worked example
@@ -100,7 +100,7 @@ and a `led` (lit while playing); `showcase/*/uart_echo.mimz` binds `uart_tx`
 to a real local TCP socket, so you can listen in with `nc localhost 8081`
 while its self-checking test drives `rx` directly. Both exist in all four
 code-order flavor folders (`english`, `tanglish`, `tamil`, `mixed`) plus a
-pure-Tamil twin (`isai.mimz`, `edhiroli.mimz`) — run
+pure-Tamil twin (`isai.mimz`, `edhiroli.mimz`) - run
 `mimz test showcase/english/melody_player.mimz --emulate` in a real
 terminal to hear it.
 

@@ -1,41 +1,41 @@
-# 9 — Tooling, Entry Points & Editor Support
+# 9 - Tooling, Entry Points & Editor Support
 
-## `src/commands/` — CLI Command Handlers (16 Files)
+## `src/commands/` - CLI Command Handlers (16 Files)
 
-These are thin functions that wire CLI arguments to the library modules. Nothing clever here — just plumbing. `mod.rs` declares the set and re-exports each handler; `main.rs` parses the CLI and dispatches into one function here.
+These are thin functions that wire CLI arguments to the library modules. Nothing clever here - just plumbing. `mod.rs` declares the set and re-exports each handler; `main.rs` parses the CLI and dispatches into one function here.
 
 **Pipeline & language commands:**
 
-- **`check.rs`** — load file, run lex→parse→check, print "OK" or errors. `--tokens` stops after the lexer and dumps the token stream; `--watch` re-runs on every save (watches the entry file's directory plus each transitive import's directory, reconciled after every run — `watch` feature, on by default)
-- **`compile.rs`** — full pipeline to a `.v` file; `--emit-testbench` also writes a `_tb.v` from inline `test` blocks
-- **`eval.rs`** — evaluate combinational modules (`--in`, `--module`, `--param`)
-- **`sim.rs`** — simulate with sweep, steps, traces, VCD
-- **`test.rs`** — run `tick`/`expect` test blocks
-- **`translate.rs`** — reskin keywords between flavors (`--to`, `--order`, romanization)
-- **`fmt.rs`** — in-place keyword normalization
-- **`explain.rs`** — print long-form error-code explanations
-- **`lint.rs`** — style and hygiene warnings (naming conventions, unused signals; always warning-only)
-- **`repl.rs`** — interactive read-eval-print loop: parse a file once, then evaluate stdin bindings line by line
-- **`eject.rs`** — vendor the embedded standard library to disk (`mimz eject std`)
+- **`check.rs`** - load file, run lex→parse→check, print "OK" or errors. `--tokens` stops after the lexer and dumps the token stream; `--watch` re-runs on every save (watches the entry file's directory plus each transitive import's directory, reconciled after every run - `watch` feature, on by default)
+- **`compile.rs`** - full pipeline to a `.v` file; `--emit-testbench` also writes a `_tb.v` from inline `test` blocks
+- **`eval.rs`** - evaluate combinational modules (`--in`, `--module`, `--param`)
+- **`sim.rs`** - simulate with sweep, steps, traces, VCD
+- **`test.rs`** - run `tick`/`expect` test blocks
+- **`translate.rs`** - reskin keywords between flavors (`--to`, `--order`, romanization)
+- **`fmt.rs`** - in-place keyword normalization
+- **`explain.rs`** - print long-form error-code explanations
+- **`lint.rs`** - style and hygiene warnings (naming conventions, unused signals; always warning-only)
+- **`repl.rs`** - interactive read-eval-print loop: parse a file once, then evaluate stdin bindings line by line
+- **`eject.rs`** - vendor the embedded standard library to disk (`mimz eject std`)
 
 **Project & environment commands:**
 
-- **`init.rs`** — `mimz init <name>` scaffolds `./<name>/`: a documented `mimz.toml` and a starter `<name>.mimz` (a free-running counter plus a passing inline `test` block), so `mimz test`/`mimz compile` work immediately. Refuses to overwrite a non-empty directory; derives the module name from the project name (PascalCase, Tamil-aware)
-- **`doctor.rs`** — `mimz doctor` (alias `mimz env`) prints a toolchain & environment report and runs an in-memory pipeline smoke test. The runtime is fully in-process, so `iverilog`/`verilator`/`gtkwave` are **optional** cross-check/waveform tools (missing ⇒ warn, never fail); `--dev` adds the contributor toolchain (Rust, WASM target, nextest, node)
-- **`completions.rs`** — `mimz completions <shell>` prints a tab-completion script (bash/zsh/fish/powershell/elvish), generated straight from the clap command tree so it always matches the real subcommands and flags
+- **`init.rs`** - `mimz init <name>` scaffolds `./<name>/`: a documented `mimz.toml` and a starter `<name>.mimz` (a free-running counter plus a passing inline `test` block), so `mimz test`/`mimz compile` work immediately. Refuses to overwrite a non-empty directory; derives the module name from the project name (PascalCase, Tamil-aware)
+- **`doctor.rs`** - `mimz doctor` (alias `mimz env`) prints a toolchain & environment report and runs an in-memory pipeline smoke test. The runtime is fully in-process, so `iverilog`/`verilator`/`gtkwave` are **optional** cross-check/waveform tools (missing ⇒ warn, never fail); `--dev` adds the contributor toolchain (Rust, WASM target, nextest, node)
+- **`completions.rs`** - `mimz completions <shell>` prints a tab-completion script (bash/zsh/fish/powershell/elvish), generated straight from the clap command tree so it always matches the real subcommands and flags
 
 **Shared:**
 
-- **`helpers.rs`** — shared config/flavor resolution and project-warning collection used by every handler
-- **`mod.rs`** — module declarations + handler re-exports
+- **`helpers.rs`** - shared config/flavor resolution and project-warning collection used by every handler
+- **`mod.rs`** - module declarations + handler re-exports
 
-## `src/main.rs` & `src/lib.rs` — The Front Door
+## `src/main.rs` & `src/lib.rs` - The Front Door
 
-### `main.rs` — CLI Entry
+### `main.rs` - CLI Entry
 
 Uses `clap` to parse commands. Dispatches to the command handlers. Has a `--json` flag to switch from human-readable output to JSON.
 
-### `lib.rs` — Library Root
+### `lib.rs` - Library Root
 
 The compiler is a **library** with a thin CLI wrapper. `lib.rs` re-exports everything. The library API (`compile_string`) can be consumed by:
 
@@ -47,111 +47,111 @@ The compiler is a **library** with a thin CLI wrapper. `lib.rs` re-exports every
 ## Core Language Services Backing the CLI (`crates/mimz-core/src/`)
 
 Five pure `mimz-core` modules power the `translate`/`fmt`/`explain`/`lint`
-commands above and the `mimz --version` banner. None of them do fs I/O —
+commands above and the `mimz --version` banner. None of them do fs I/O -
 `src/commands/*.rs` is the thin fs-touching wrapper around each.
 
-**`translate.rs`** — the engine behind `mimz translate --to <flavor>`.
+**`translate.rs`** - the engine behind `mimz translate --to <flavor>`.
 `translate(src, target)` / `translate_opts(src, target, opts)` re-lex the
 source and swap only the keyword TOKENS for the target flavor's canonical
-spelling — comments, layout, identifiers, and numbers pass through
+spelling - comments, layout, identifiers, and numbers pass through
 untouched, so the result is lossless and (with `romanize_names: false`,
 the default) round-trips A→B→A to identity. `parse_flavor(s)` parses the
 `--to` argument (`"english"`/`"en"`, `"tanglish"`/`"tl"`,
 `"tamil"`/`"ta"`). With `TranslateOpts::romanize_names` set, Tamil-script
-identifiers are also rewritten to Latin via the emitter's `romanize` —
+identifiers are also rewritten to Latin via the emitter's `romanize` -
 one-way, so that mode only makes sense combined with `--order`, not as a
 round-trip.
 
-**`pretty/`** (`mod.rs`, `exprs.rs`, `items.rs`, `seq.rs`, `tests.rs`) —
+**`pretty/`** (`mod.rs`, `exprs.rs`, `items.rs`, `seq.rs`, `tests.rs`) -
 the engine behind `mimz translate --order code|thamizh`. Unlike
 `translate.rs` (which re-spells tokens and preserves trivia), `pretty_print(file,
 flavor, order)` emits fresh source **from the AST**, so it can reorder
 clause heads between the `Code` (English-like SVO) and `Thamizh`
 (SOV/postpositional) profiles. The AST carries no comments or original
-layout, so output is canonically formatted, not byte-identical — the
+layout, so output is canonically formatted, not byte-identical - the
 correctness contract is semantic: the result re-parses to the same AST
 and compiles to byte-identical Verilog.
 
-**`explain.rs`** — the engine behind `mimz explain <CODE>`. A single
+**`explain.rs`** - the engine behind `mimz explain <CODE>`. A single
 `EXPLANATIONS: &[(&str, &str)]` table holds the long-form teaching text
 for every stable E-code (the classroom version of the one-line `help:`
-on a `Diag`) — a unit test pins every entry in `diag::ALL_CHECKER_CODES`
+on a `Diag`) - a unit test pins every entry in `diag::ALL_CHECKER_CODES`
 to a row here, so a new checker code can't ship without its explanation.
 
-**`version.rs`** — two deliberately separate version axes, surfaced
+**`version.rs`** - two deliberately separate version axes, surfaced
 together by `mimz --version`: `COMPILER_VERSION` (the crate's
 `Cargo.toml` version, advances every release) and the language
 **edition** (`EDITION_HISTORY: &[Edition]`, a codename/year/code triple
-that advances only when the keyword set or grammar breaks — an
+that advances only when the keyword set or grammar breaks - an
 `Edition::tag()` like `wingless-butterfly-2026-1`). `KEYWORD_SET_VERSION`
 cross-checks against `keywords.toml`'s own `version` field so the two
 can't silently drift.
 
-**`lint.rs`** — the engine behind `mimz lint`, style/hygiene checks kept
+**`lint.rs`** - the engine behind `mimz lint`, style/hygiene checks kept
 deliberately separate from the correctness checker: every lint is
 `severity::Warning` and never fails the build. `lint(files)` walks every
 module and currently raises W0002 (signal name should be snake_case),
 W0003 (module name should be PascalCase), and W0004 (signal declared but
 never referenced).
 
-## `crates/mimz-core/src/analysis.rs` — Editor Symbol Index & Resolution
+## `crates/mimz-core/src/analysis.rs` - Editor Symbol Index & Resolution
 
-This is the **pure, async-free** analysis layer that powers the LSP's hover, go-to-definition, and completion. `src/lsp.rs` is a thin adapter on top; the WASM playground can reuse these APIs too. All offsets are **byte** offsets — UTF-16 conversion is the LSP adapter's job.
+This is the **pure, async-free** analysis layer that powers the LSP's hover, go-to-definition, and completion. `src/lsp.rs` is a thin adapter on top; the WASM playground can reuse these APIs too. All offsets are **byte** offsets - UTF-16 conversion is the LSP adapter's job.
 
 ### `SymbolIndex` and `Symbol`
 
 **`SymbolIndex`** is the project-wide definition table for one analysis run: a `Vec<(PathBuf, String)>` of loaded files, and a `Vec<Symbol>`.
 
-**`Symbol`** is one named definition: name, kind (`SymKind` — Module/Param/Port/Clock/Reset/Wire/Reg/Mem/Const/Enum/EnumVariant/Inst), which file it's in (`file_idx`), its defining span (byte offsets), hover text, and the enclosing module's index.
+**`Symbol`** is one named definition: name, kind (`SymKind` - Module/Param/Port/Clock/Reset/Wire/Reg/Mem/Const/Enum/EnumVariant/Inst), which file it's in (`file_idx`), its defining span (byte offsets), hover text, and the enclosing module's index.
 
 ### `build_index(files)`
 
-Walks all loaded files' ASTs and emits one `Symbol` per declaration. Everything that has a name and a span ends up here: module names, parameters, ports, clocks, resets, wires, regs, mems, consts, enum types + variants, and instance names. The hover `render` is a one-liner like `out y: bits[8] — output port`.
+Walks all loaded files' ASTs and emits one `Symbol` per declaration. Everything that has a name and a span ends up here: module names, parameters, ports, clocks, resets, wires, regs, mems, consts, enum types + variants, and instance names. The hover `render` is a one-liner like `out y: bits[8] - output port`.
 
 ### `resolve_at(index, files, file_idx, offset)`
 
-Given a cursor position (byte offset into a specific file), finds the identifier under the cursor and returns the `Symbol` it resolves to — i.e. its **declaration** span, not the use site. This powers go-to-definition and hover.
+Given a cursor position (byte offset into a specific file), finds the identifier under the cursor and returns the `Symbol` it resolves to - i.e. its **declaration** span, not the use site. This powers go-to-definition and hover.
 
 It handles:
 
-- Module-local names (port, reg, wire, const, param) — resolved within the enclosing module
-- Module names at instantiation sites — cross-file, pointing into the imported file
-- Names inside `test` blocks — ports of the module under test
+- Module-local names (port, reg, wire, const, param) - resolved within the enclosing module
+- Module names at instantiation sites - cross-file, pointing into the imported file
+- Names inside `test` blocks - ports of the module under test
 
 **`parse_recover`** `Error` nodes don't crash resolution; good declarations around a broken line still resolve.
 
 ### `completions(index, files, file_idx, offset)`
 
-Returns a list of `Candidate`s for the current cursor position: all in-scope module members (as `CandKind::Ident`), plus the full keyword set for the file's majority flavor (derived internally via `morph::majority_flavor`, as `CandKind::Keyword`). Keywords from other flavors are excluded — a Tamil-flavored file never offers English spellings. Prefix filtering is left to the editor.
+Returns a list of `Candidate`s for the current cursor position: all in-scope module members (as `CandKind::Ident`), plus the full keyword set for the file's majority flavor (derived internally via `morph::majority_flavor`, as `CandKind::Keyword`). Keywords from other flavors are excluded - a Tamil-flavored file never offers English spellings. Prefix filtering is left to the editor.
 
 ---
 
-## `src/lsp.rs` — The Language Server
+## `src/lsp.rs` - The Language Server
 
-The LSP server powers the **VS Code extension** (and potentially other editors). As of 2026-06-25 (`phase-4-lsp-dx`) it provides **live diagnostics plus hover, go-to-definition, and completion** — a thin `tower-lsp` adapter over the pure `crates/mimz-core/src/analysis.rs` layer above. Diagnostics stay on the strict parser; the DX features ride `parse_recover` partial trees, so they work on half-typed files.
+The LSP server powers the **VS Code extension** (and potentially other editors). As of 2026-06-25 (`phase-4-lsp-dx`) it provides **live diagnostics plus hover, go-to-definition, and completion** - a thin `tower-lsp` adapter over the pure `crates/mimz-core/src/analysis.rs` layer above. Diagnostics stay on the strict parser; the DX features ride `parse_recover` partial trees, so they work on half-typed files.
 
-**`run()`** — starts the server over stdio. It creates a Tokio runtime and a `tower-lsp` service that listens for LSP messages.
+**`run()`** - starts the server over stdio. It creates a Tokio runtime and a `tower-lsp` service that listens for LSP messages.
 
-**`Backend::recheck(uri, text)`** — the diagnostics half. Whenever you open, change, or save a `.mimz` file in VS Code, this runs:
+**`Backend::recheck(uri, text)`** - the diagnostics half. Whenever you open, change, or save a `.mimz` file in VS Code, this runs:
 
 1. Calls `analyze()` to lex, parse, and check the entire project (the file + its imports from disk)
 2. Localizes each diagnostic to the file's predominant keyword flavor
-3. Publishes diagnostics to the editor — each file gets its own `publishDiagnostics` call
+3. Publishes diagnostics to the editor - each file gets its own `publishDiagnostics` call
 4. Clears stale diagnostics for files that no longer have errors
 
-**`analyze(entry, text)`** — the in-memory pipeline. It parses the entry document's current text (from the editor, not disk) with the strict `parser::parse` (no checker cascade on half-typed input), then resolves imports by walking the filesystem. The checker runs across the whole project, and diagnostics are attributed to their source file.
+**`analyze(entry, text)`** - the in-memory pipeline. It parses the entry document's current text (from the editor, not disk) with the strict `parser::parse` (no checker cascade on half-typed input), then resolves imports by walking the filesystem. The checker runs across the whole project, and diagnostics are attributed to their source file.
 
-**Hover / definition / completion** — each handler caches the open document's text (updated on didOpen/didChange/didSave), converts the LSP UTF-16 `Position` to a byte offset, runs `load_for_features` (`parse_recover` + the import walk, skipping `std.*` virtual imports), then calls the matching `analysis` function (`resolve_at` / `build_index` / `completions`) and maps the result back to `Hover` / `Location` / `CompletionItem[]`. A `std:` virtual path yields no go-to-def location (no real file URI). Deferred: dot-member completion, flavor-localized hover render (English in v1), and `did_close` cache eviction.
+**Hover / definition / completion** - each handler caches the open document's text (updated on didOpen/didChange/didSave), converts the LSP UTF-16 `Position` to a byte offset, runs `load_for_features` (`parse_recover` + the import walk, skipping `std.*` virtual imports), then calls the matching `analysis` function (`resolve_at` / `build_index` / `completions`) and maps the result back to `Hover` / `Location` / `CompletionItem[]`. A `std:` virtual path yields no go-to-def location (no real file URI). Deferred: dot-member completion, flavor-localized hover render (English in v1), and `did_close` cache eviction.
 
-**`to_lsp(d, src, flavor)`** — converts a `Diag` to an LSP `Diagnostic`. The WHAT line is localized if the catalog covers it, and the help line is appended after a `\nhelp:` prefix (with a trailing space). The span is converted to LSP `Range` with UTF-16 character offsets (because that's what the LSP protocol requires — important for Tamil text, where one character may be 1 or 2 UTF-16 units).
+**`to_lsp(d, src, flavor)`** - converts a `Diag` to an LSP `Diagnostic`. The WHAT line is localized if the catalog covers it, and the help line is appended after a `\nhelp:` prefix (with a trailing space). The span is converted to LSP `Range` with UTF-16 character offsets (because that's what the LSP protocol requires - important for Tamil text, where one character may be 1 or 2 UTF-16 units).
 
-**`position(src, offset)`** — converts a byte offset to an LSP `Position`. LSP measures columns in UTF-16 code units, not bytes and not chars. A Tamil identifier like `மணி` is 9 UTF-8 bytes but only 3 UTF-16 units, so this function counts carefully.
+**`position(src, offset)`** - converts a byte offset to an LSP `Position`. LSP measures columns in UTF-16 code units, not bytes and not chars. A Tamil identifier like `மணி` is 9 UTF-8 bytes but only 3 UTF-16 units, so this function counts carefully.
 
 The LSP feature depends on `tokio` and `tower-lsp`, which are **optional** behind the `lsp` feature flag. The WASM build excludes them because they won't compile on `wasm32`.
 
 ## The Two Pure Crate Roots
 
-**`crates/mimz-core/src/lib.rs`** — declares every `mimz-core` module (`ast`,
+**`crates/mimz-core/src/lib.rs`** - declares every `mimz-core` module (`ast`,
 `checker`, `emit_verilog`, `lexer`, `parser`, `pretty`, `translate`,
 `explain`, `version`, `lint`, `analysis`, `morph`, `project`, `stdlib`,
 `span`, `diag`, `bits`, `wide`, `width_rules`) and holds two crate-wide
@@ -159,23 +159,23 @@ items that don't belong to any one of them: `REPEAT_BUDGET` (the `repeat`
 unroll cap the checker, emitter, and simulator all share) and
 `nfc_normalize(s)` (Unicode NFC normalization, so decomposed Tamil
 combining-mark sequences compare equal to their precomposed form before
-the lexer ever sees them — `src/project.rs`'s `read_source` calls this on
+the lexer ever sees them - `src/project.rs`'s `read_source` calls this on
 every file it reads).
 
-**`crates/mimz-sim/src/lib.rs`** — declares `runner` and `sim`, re-exports
+**`crates/mimz-sim/src/lib.rs`** - declares `runner` and `sim`, re-exports
 `run_command`, and adds one function: `compile_string(source)`, the
 embedding entry point that runs the full pipeline (NFC-normalize → lex →
 parse → check → transliterate → emit) on an in-memory string with no
 filesystem and no `import` support. This is what `crates/mimz-wasm`
 calls under `compileToVerilog`.
 
-## `crates/mimz-wasm/` — The Browser Playground
+## `crates/mimz-wasm/` - The Browser Playground
 
-This is a separate crate in the workspace (`crates/mimz-wasm/`) that wraps the compiler for the browser. It's only 36 lines of Rust — all the heavy lifting is in `mimz-sim` (and, transitively, `mimz-core`); `mimz-wasm` depends on `mimz-sim` directly, not on the root `mimz` shell crate, so no `default-features = false` juggling is needed.
+This is a separate crate in the workspace (`crates/mimz-wasm/`) that wraps the compiler for the browser. It's only 36 lines of Rust - all the heavy lifting is in `mimz-sim` (and, transitively, `mimz-core`); `mimz-wasm` depends on `mimz-sim` directly, not on the root `mimz` shell crate, so no `default-features = false` juggling is needed.
 
-**`compile_to_verilog(source)`** — compiled to WASM, exposed to JavaScript as `compileToVerilog(source)`. It calls `mimz_sim::compile_string()` and either returns Verilog text or throws a JS `Error` with the rendered diagnostics.
+**`compile_to_verilog(source)`** - compiled to WASM, exposed to JavaScript as `compileToVerilog(source)`. It calls `mimz_sim::compile_string()` and either returns Verilog text or throws a JS `Error` with the rendered diagnostics.
 
-**`run_command(source, command, args)`** — exposed as `runCommand(source, command, args)`. It calls `mimz_sim::run_command()` — the same in-memory runner that powers the CLI's WASM-adjacent paths.
+**`run_command(source, command, args)`** - exposed as `runCommand(source, command, args)`. It calls `mimz_sim::run_command()` - the same in-memory runner that powers the CLI's WASM-adjacent paths.
 
 The WASM crate is **not** in the workspace's `default-members`, so everyday `cargo build`/`cargo test` at the root doesn't try to compile it (it targets `wasm32` and pulls in `wasm-bindgen`). You build it explicitly:
 
@@ -183,15 +183,15 @@ The WASM crate is **not** in the workspace's `default-members`, so everyday `car
 wasm-pack build crates/mimz-wasm --target web
 ```
 
-The output lives in `crates/mimz-wasm/pkg/` — a `.wasm` file plus JS glue that the documentation website loads.
+The output lives in `crates/mimz-wasm/pkg/` - a `.wasm` file plus JS glue that the documentation website loads.
 
-## `editors/vscode/` — The VS Code Extension
+## `editors/vscode/` - The VS Code Extension
 
-The extension is intentionally plain JavaScript — no build step, no TypeScript compilation. What's in the repo IS what ships in the `.vsix`.
+The extension is intentionally plain JavaScript - no build step, no TypeScript compilation. What's in the repo IS what ships in the `.vsix`.
 
-**`extension.js`** — 39 lines. On activation, it starts the `mimz lsp` process as a language server client. The path to the `mimz` binary can be configured via `mimz.serverPath` in VS Code settings (default: just `mimz` on your PATH). If the server can't start, it shows a friendly warning — syntax highlighting still works, you just won't get live diagnostics.
+**`extension.js`** - 39 lines. On activation, it starts the `mimz lsp` process as a language server client. The path to the `mimz` binary can be configured via `mimz.serverPath` in VS Code settings (default: just `mimz` on your PATH). If the server can't start, it shows a friendly warning - syntax highlighting still works, you just won't get live diagnostics.
 
-**`syntaxes/mimz.tmLanguage.json`** — the TextMate grammar that gives you syntax highlighting in the editor. It's 135 lines and defines patterns for:
+**`syntaxes/mimz.tmLanguage.json`** - the TextMate grammar that gives you syntax highlighting in the editor. It's 135 lines and defines patterns for:
 
 - Comments (`//` and `/* */`)
 - Strings
@@ -207,4 +207,4 @@ The extension is intentionally plain JavaScript — no build step, no TypeScript
 
 It uses Unicode-aware word boundaries (`(?<![\\p{L}\\p{N}_])`) instead of `\b` so Tamil-script keywords match correctly. A test (`tests/grammar_sync.rs`) checks that the keyword list here stays in sync with `keywords.toml`.
 
-**`language-configuration.json`** — defines comment toggles, bracket matching, and auto-closing pairs.
+**`language-configuration.json`** - defines comment toggles, bracket matching, and auto-closing pairs.

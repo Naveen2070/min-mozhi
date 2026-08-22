@@ -1,40 +1,40 @@
-# 4 — The Parser: Building the Tree (11 Files)
+# 4 - The Parser: Building the Tree (11 Files)
 
-The parser takes the token stream and builds an **Abstract Syntax Tree (AST)** — a structured representation of your program's grammar. It's a recursive-descent parser with multi-error recovery.
+The parser takes the token stream and builds an **Abstract Syntax Tree (AST)** - a structured representation of your program's grammar. It's a recursive-descent parser with multi-error recovery.
 
 ---
 
-## `crates/mimz-core/src/parser/mod.rs` — The Parser Core
+## `crates/mimz-core/src/parser/mod.rs` - The Parser Core
 
 **`parse(toks)`** is the entry point. Creates a `Parser`, calls `file()`, and returns either the AST or all collected errors. **Strict**: any error means no tree (so the compiler never emits Verilog from broken input).
 
-**`parse_recover(toks)`** is the sibling entry for tools (the LSP). It runs the same parse but **never throws the tree away** — it returns `(File, errors)`, and where a statement or item fails it leaves an `Error` placeholder node in the tree (carrying the skipped span) instead of dropping it. That keeps the surrounding good nodes intact so an editor can still offer hover/completion on a half-typed file. Only `parse_recover` ever produces `Error` nodes; the strict `parse` returns an error instead, so code generation never sees one.
+**`parse_recover(toks)`** is the sibling entry for tools (the LSP). It runs the same parse but **never throws the tree away** - it returns `(File, errors)`, and where a statement or item fails it leaves an `Error` placeholder node in the tree (carrying the skipped span) instead of dropping it. That keeps the surrounding good nodes intact so an editor can still offer hover/completion on a half-typed file. Only `parse_recover` ever produces `Error` nodes; the strict `parse` returns an error instead, so code generation never sees one.
 
-**`Profile` enum** — `CodeOrder` (default, English-like word order) or `Thamizh` (SOV/postpositional). Set by the `syntax thamizh` directive. Both produce the same AST — the profile only steers which clause-head syntax the parser accepts.
+**`Profile` enum** - `CodeOrder` (default, English-like word order) or `Thamizh` (SOV/postpositional). Set by the `syntax thamizh` directive. Both produce the same AST - the profile only steers which clause-head syntax the parser accepts.
 
-**Stack overflow protection** — `MAX_DEPTH = 64` levels. Each recursive call adds about 12 Rust stack frames, and the default thread stack is 1 MB. 64 levels is way more than any human-written file needs. A deeper file gets E1113 instead of a crash.
+**Stack overflow protection** - `MAX_DEPTH = 64` levels. Each recursive call adds about 12 Rust stack frames, and the default thread stack is 1 MB. 64 levels is way more than any human-written file needs. A deeper file gets E1113 instead of a crash.
 
 The `enter()`/`leave()` pair wraps every recursive function. `enter()` returns `None` once the depth limit is hit, and the `?` operator propagates it up.
 
 **Token plumbing:**
 
-- `peek()` / `peek_kind()` — look at the current token without consuming
-- `at(kind)` / `at_kw(kw)` — boolean check
-- `eat(kind)` / `eat_kw(kw)` — consume if it matches, return boolean
-- `bump()` — unconditionally consume and return
-- `expect(kind, what)` — consume or record E1101: "expected {what}, found {actual}"
+- `peek()` / `peek_kind()` - look at the current token without consuming
+- `at(kind)` / `at_kw(kw)` - boolean check
+- `eat(kind)` / `eat_kw(kw)` - consume if it matches, return boolean
+- `bump()` - unconditionally consume and return
+- `expect(kind, what)` - consume or record E1101: "expected {what}, found {actual}"
 
 **Error recovery:**
 
-- `sync_to_newline()` — skip tokens until the next newline, `}`, or EOF. This lets the parser continue checking later statements in the same block.
-- `span_since(start)` — measures from where a broken construct started to the last token consumed, so `parse_recover` can size the `Error` placeholder it leaves behind.
-- `terminator()` — expects a newline or an implicit terminator before `}`/EOF.
+- `sync_to_newline()` - skip tokens until the next newline, `}`, or EOF. This lets the parser continue checking later statements in the same block.
+- `span_since(start)` - measures from where a broken construct started to the last token consumed, so `parse_recover` can size the `Error` placeholder it leaves behind.
+- `terminator()` - expects a newline or an implicit terminator before `}`/EOF.
 
 ---
 
-## `crates/mimz-core/src/parser/expr.rs` — Parsing Expressions
+## `crates/mimz-core/src/parser/expr.rs` - Parsing Expressions
 
-Expression parsing uses **precedence climbing**. There's a table of operator precedences (Rust-style — bitwise binds tighter than comparison; higher binds tighter):
+Expression parsing uses **precedence climbing**. There's a table of operator precedences (Rust-style - bitwise binds tighter than comparison; higher binds tighter):
 
 ```
 Level 10: unary - ~ ! not & | ^   (prefix)
@@ -58,27 +58,27 @@ Note the Rust-style ordering: `^` binds tighter than `|` but looser than `&`, an
 
 **`postfix()`** handles primary expressions followed by postfixes:
 
-- `ident` — a bare name
-- `ident(args)` — builtin call
-- `N'literal` — width-annotated literal like `8'd42`
+- `ident` - a bare name
+- `ident(args)` - builtin call
+- `N'literal` - width-annotated literal like `8'd42`
 - `true` / `false`
 - Number literal
-- `( expr )` — grouping
-- `{ exprs }` — concatenation
-- `{ count{ exprs } }` — replication
+- `( expr )` - grouping
+- `{ exprs }` - concatenation
+- `{ count{ exprs } }` - replication
 - Then optionally: `.ident` (field access), `[i]` (index), `[hi:lo]` (slice)
 
-**`if_expr()`** parses `if cond { then } else { else }`. In expression position, `else` is mandatory — no inferred latches.
+**`if_expr()`** parses `if cond { then } else { else }`. In expression position, `else` is mandatory - no inferred latches.
 
 **`match_expr()`** parses `match scrutinee { arms }`. Each arm: `patterns => value`. Multiple patterns in one arm OR together.
 
 ---
 
-## `crates/mimz-core/src/parser/items/file.rs` — Top-Level Items
+## `crates/mimz-core/src/parser/items/file.rs` - Top-Level Items
 
-**`syntax_directive()`** — checks for an optional leading `syntax thamizh`. Sets `self.profile = Profile::Thamizh`. The directive never enters the AST, so a thamizh-order file and its code-order twin parse into the same tree.
+**`syntax_directive()`** - checks for an optional leading `syntax thamizh`. Sets `self.profile = Profile::Thamizh`. The directive never enters the AST, so a thamizh-order file and its code-order twin parse into the same tree.
 
-**`file()`** — the whole-file entry. Loops over file-level items:
+**`file()`** - the whole-file entry. Loops over file-level items:
 
 - `import lib.adder` → `import_decl()`
 - `const NAME: int = expr` → `const_decl()`
@@ -88,63 +88,63 @@ Note the Rust-style ordering: `^` binds tighter than `|` but looser than `&`, an
 - `test "..." for M(...) { }` → `test_decl()`
 - In thamizh profile, a bare identifier starts `test_decl_thamizh()`
 
-This function never fails — a bad item records an error, skips to the next line, and the parser keeps going.
+This function never fails - a bad item records an error, skips to the next line, and the parser keeps going.
 
 ---
 
-## `crates/mimz-core/src/parser/items/mod.rs` — Shared Helpers
+## `crates/mimz-core/src/parser/items/mod.rs` - Shared Helpers
 
-**`lvalue()`** — parses an assignment target: `ident` optionally followed by `[i]` or `[hi:lo]`.
+**`lvalue()`** - parses an assignment target: `ident` optionally followed by `[i]` or `[hi:lo]`.
 
-**`expr_to_lvalue(expr)`** — thamizh-order seq statements parse their head as an expression before knowing if it's a condition or an lvalue. This function recovers the `LValue` from the expression.
+**`expr_to_lvalue(expr)`** - thamizh-order seq statements parse their head as an expression before knowing if it's a condition or an lvalue. This function recovers the `LValue` from the expression.
 
-**`ty()`** — parses a type: `bit`, `bits[N]`, `signed[N]`, or an enum name.
+**`ty()`** - parses a type: `bit`, `bits[N]`, `signed[N]`, or an enum name.
 
-**`repeat_block()`** — parses `repeat i: lo..hi { body }`.
+**`repeat_block()`** - parses `repeat i: lo..hi { body }`.
 
-**`sync_loop_block()`** — parses `sync loop name on rise(clk)(i: lo..hi) -> result: type = init { body }` (the `sync`/`loop` head is consumed by the caller in `module_item`, mirroring `async reset`). The parser produces a raw `ModuleItem::SyncLoop`; it is NOT lowered here. The checker validates that original node directly (span-accurate errors), and only the emitter and simulator call `ast::lower_sync_loop` to expand it into the small FSM (index register + `start`/`done` handshake) they then process through their ordinary Port/Reg/On/Drive paths (see [`05-ast.md`](05-ast.md)'s `sync_loop_lower.rs` entry).
+**`sync_loop_block()`** - parses `sync loop name on rise(clk)(i: lo..hi) -> result: type = init { body }` (the `sync`/`loop` head is consumed by the caller in `module_item`, mirroring `async reset`). The parser produces a raw `ModuleItem::SyncLoop`; it is NOT lowered here. The checker validates that original node directly (span-accurate errors), and only the emitter and simulator call `ast::lower_sync_loop` to expand it into the small FSM (index register + `start`/`done` handshake) they then process through their ordinary Port/Reg/On/Drive paths (see [`05-ast.md`](05-ast.md)'s `sync_loop_lower.rs` entry).
 
 ---
 
-## `crates/mimz-core/src/parser/items/func.rs` — Function Declarations, `loop`, `foreach`
+## `crates/mimz-core/src/parser/items/func.rs` - Function Declarations, `loop`, `foreach`
 
-**`func_decl()`** — parses `fn name(params) -> type { body }`. A param's type can be an array (`bits[8][4]`) — the parser accepts it like any other `ty()`; array-vs-scalar expansion is a checker/emitter concern, not a parsing one.
+**`func_decl()`** - parses `fn name(params) -> type { body }`. A param's type can be an array (`bits[8][4]`) - the parser accepts it like any other `ty()`; array-vs-scalar expansion is a checker/emitter concern, not a parsing one.
 
-**`fn_body()`** — `{fnStmt} expr`: zero or more statements (`let`, guard-clause `return`, statement-level `if`/`else`, `loop`, `foreach`) followed by exactly one mandatory tail expression.
+**`fn_body()`** - `{fnStmt} expr`: zero or more statements (`let`, guard-clause `return`, statement-level `if`/`else`, `loop`, `foreach`) followed by exactly one mandatory tail expression.
 
 - `loop var: lo..hi { }` → `FnStmt::Loop` (note the `:` separator, same as the module-item `repeat`)
 - `foreach var in source { }` → `FnStmt::ForEach`, where `source` is either a `lo..hi` range or a bare identifier (array/mem element form)
 
-## `crates/mimz-core/src/parser/items/bundle.rs` — Bundle Declarations
+## `crates/mimz-core/src/parser/items/bundle.rs` - Bundle Declarations
 
-**`bundle_decl()`** — parses `bundle Name(params) { fields }` (params are optional, same grammar as module params). A bundle literal (`Name { f: x }`) is parsed in `expr.rs` via lookahead (disambiguated from a concat/block), and destructuring (`let { f } = expr`) is parsed in `items/module.rs` (disambiguated from a plain instantiation by the leading `{` after `let`).
+**`bundle_decl()`** - parses `bundle Name(params) { fields }` (params are optional, same grammar as module params). A bundle literal (`Name { f: x }`) is parsed in `expr.rs` via lookahead (disambiguated from a concat/block), and destructuring (`let { f } = expr`) is parsed in `items/module.rs` (disambiguated from a plain instantiation by the leading `{` after `let`).
 
 ---
 
-## `crates/mimz-core/src/parser/items/module.rs` — Module Body Items
+## `crates/mimz-core/src/parser/items/module.rs` - Module Body Items
 
-**`module()`** — parses the whole module: name, optional parameter list with defaults, brace-delimited body.
+**`module()`** - parses the whole module: name, optional parameter list with defaults, brace-delimited body.
 
-**`module_item()`** — dispatches on the leading keyword:
+**`module_item()`** - dispatches on the leading keyword:
 
 - `in`/`out` → port declaration
 - `clock` → clock declaration
 - `reset` → reset (synchronous, active-high)
 - `async reset` → asynchronous reset
-- `wire name: type = expr` — MUST have a drive value
-- `reg name: type = value` — MUST have a reset value (E1104 if missing)
-- `mem name: type[depth] = value` — MUST have an init value
+- `wire name: type = expr` - MUST have a drive value
+- `reg name: type = value` - MUST have a reset value (E1104 if missing)
+- `mem name: type[depth] = value` - MUST have an init value
 - `let` → child module instantiation
 - `on` → sequential block (code order)
 - `rise`/`fall` → sequential block (thamizh order)
 - `repeat` → compile-time generation
-- Bare identifier → combinational drive `lhs = rhs`. If you write `<-` here, you get E1105 — a teaching message pointing you to `on` blocks.
+- Bare identifier → combinational drive `lhs = rhs`. If you write `<-` here, you get E1105 - a teaching message pointing you to `on` blocks.
 
 ---
 
-## `crates/mimz-core/src/parser/items/inst.rs` — Instantiations
+## `crates/mimz-core/src/parser/items/inst.rs` - Instantiations
 
-**`inst()`** — parses `let name = Module(params) { connections }`. Supports:
+**`inst()`** - parses `let name = Module(params) { connections }`. Supports:
 
 - Optional `[index]` for instance arrays inside `repeat`
 - Parameter overrides `(P: val, ...)`
@@ -152,42 +152,42 @@ This function never fails — a bad item records an error, skips to the next lin
 
 ---
 
-## `crates/mimz-core/src/parser/items/seq.rs` — Sequential (`on`) Blocks
+## `crates/mimz-core/src/parser/items/seq.rs` - Sequential (`on`) Blocks
 
-**`on_block()`** — code order: `on rise(clk) { body }` / `on fall(clk) { body }`.
+**`on_block()`** - code order: `on rise(clk) { body }` / `on fall(clk) { body }`.
 
-**`on_block_thamizh()`** — thamizh order: `rise(clk) on { body }` / `fall(clk) on { body }`. Same AST.
+**`on_block_thamizh()`** - thamizh order: `rise(clk) on { body }` / `fall(clk) on { body }`. Same AST.
 
-**`seq_stmt()`** — one statement inside a sequential block. Dispatches on profile:
+**`seq_stmt()`** - one statement inside a sequential block. Dispatches on profile:
 
 - Code order: `if cond { }`, `lhs <- rhs`, `loop var: lo..hi { }` (→ `SeqStmt::Loop`), or `foreach var in source { }` (→ `SeqStmt::ForEach`). Using `=` here gets E1106 (teaching message about `<-`).
 - Thamizh order: parses the head as an expression, then checks for `enil` (conditional) or `<-` (assignment).
 
-**`seq_if()`** — statement-level `if`. `else` is optional here (registers hold their value when not assigned — no latch risk, unlike wires).
+**`seq_if()`** - statement-level `if`. `else` is optional here (registers hold their value when not assigned - no latch risk, unlike wires).
 
 ---
 
-## `crates/mimz-core/src/parser/items/test.rs` — Test Blocks
+## `crates/mimz-core/src/parser/items/test.rs` - Test Blocks
 
-**`test_decl()`** — code order: `test "name" for Module(args) { body }`.
+**`test_decl()`** - code order: `test "name" for Module(args) { body }`.
 
-**`test_decl_thamizh()`** — thamizh order: `Module(args) kaaga "name" sodhanai { body }`. Same AST.
+**`test_decl_thamizh()`** - thamizh order: `Module(args) kaaga "name" sodhanai { body }`. Same AST.
 
-**`test_block()`** — dispatches:
+**`test_block()`** - dispatches:
 
-- `tick(clk [, N])` — advance N cycles
-- `expect expr` — assert a condition
-- `ident = expr` — drive an input
-- `if cond { }` — test-time conditional
+- `tick(clk [, N])` - advance N cycles
+- `expect expr` - assert a condition
+- `ident = expr` - drive an input
+- `if cond { }` - test-time conditional
 
 ---
 
-## `crates/mimz-core/src/parser/items/extern_module.rs` — Verilog FFI
+## `crates/mimz-core/src/parser/items/extern_module.rs` - Verilog FFI
 
-**`extern_module()`** — `extern module Name(params) { doc: "...", ports }`,
+**`extern_module()`** - `extern module Name(params) { doc: "...", ports }`,
 the black-box/external-Verilog declaration. Reuses `module()`'s param-list
 parsing and `port()`'s port-line parsing verbatim; the body accepts an
-optional `doc: STRING` line and otherwise only port/clock/reset items — a
+optional `doc: STRING` line and otherwise only port/clock/reset items - a
 `wire` or `on` block has no body to belong to, so it's a parse error here.
 
 ---

@@ -1,10 +1,10 @@
-# Code Documentation — How the Compiler Works
+# Code Documentation - How the Compiler Works
 
 > Maintainer docs for `src/` and `crates/` (mimz-core/mimz-sim/mimz-wasm). If
 > you are going to read or change the compiler's code, start here.
 
 These documents explain **how the code works today** and **why it is
-shaped the way it is** — the things a future contributor cannot get from
+shaped the way it is** - the things a future contributor cannot get from
 reading one file at a time.
 
 ## How this folder relates to the other docs
@@ -22,11 +22,11 @@ reading one file at a time.
 
 Rule of thumb: `architecture.md` says what must stay true; this folder
 says how the current code makes it true. When they disagree, one of them
-is a bug — fix it the same day (RULES R1).
+is a bug - fix it the same day (RULES R1).
 
 ## Reading order
 
-(File numbers are stable IDs, not reading order — read top to bottom.)
+(File numbers are stable IDs, not reading order - read top to bottom.)
 
 | Document                                                         | Covers                                                                                                                                                                                              |
 | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,7 +40,7 @@ is a bug — fix it the same day (RULES R1).
 | [`06-diagnostics.md`](06-diagnostics.md)                         | The teaching-error system and how to write a good error                                                                                                                                             |
 | [`07-decisions-and-evolution.md`](07-decisions-and-evolution.md) | The code-shaping decisions, and how the code is planned to grow                                                                                                                                     |
 | [`08-contributing.md`](08-contributing.md)                       | Recipes: add a keyword, a syntax form, an emitter feature, a test                                                                                                                                   |
-| [`10-test-map.md`](10-test-map.md) + [`test-map/`](test-map/)    | Every test's intent, what's deliberately uncovered, failure meaning — index + per-unit tables split into `test-map/` by category (lib-unit / crate-integration / workspace-integration / simulator) |
+| [`10-test-map.md`](10-test-map.md) + [`test-map/`](test-map/)    | Every test's intent, what's deliberately uncovered, failure meaning - index + per-unit tables split into `test-map/` by category (lib-unit / crate-integration / workspace-integration / simulator) |
 | [`12-benchmark.md`](12-benchmark.md)                             | The `mimz-bench` harness: speed/accuracy/safety/coverage + HTML report                                                                                                                              |
 | [`13-tooling.md`](13-tooling.md)                                 | Tooling modules (`explain`, `translate`/`pretty`, `morph`, `sim`, `config`, `version`, `analysis`) + operational commands (`init`/`doctor`/`completions`/`check --watch`)                           |
 | [`14-hardware-emulation.md`](14-hardware-emulation.md)           | `sim` blocks: `EmulationHost` seam, the LED/speaker/UART peripherals, `--emulate`/`--step`                                                                                                          |
@@ -60,7 +60,7 @@ is a bug — fix it the same day (RULES R1).
                                               emitted as tag wire + payload)
 ```
 
-- Every stage returns `Result<_, Vec<Diag>>` — errors are **values**, collected
+- Every stage returns `Result<_, Vec<Diag>>` - errors are **values**, collected
   and rendered once, never printed mid-pass and never panicked.
 - Every token and AST node carries a `Span` (byte range into the source), so
   every error can point at real code with a caret.
@@ -71,36 +71,36 @@ is a bug — fix it the same day (RULES R1).
 Eleven **tooling** modules consume the pipeline rather than forming a stage
 in it (page 13). As of the `mimz-core`/`mimz-sim` workspace split, the pure
 pipeline stages and most tooling live in `mimz-core`, the simulator lives in
-`mimz-sim`, and the root `mimz` crate is a thin shell (filesystem I/O —
-`project`, `config` — plus the native `emulate` peripherals) that re-exports
+`mimz-sim`, and the root `mimz` crate is a thin shell (filesystem I/O -
+`project`, `config` - plus the native `emulate` peripherals) that re-exports
 both under the same `mimz::…` paths as before the split (see
-`docs/architecture.md` §3 and `src/lib.rs`'s crate-map table):
+`docs/architecture.md` section 3 and `src/lib.rs`'s crate-map table):
 
-- `explain` — long-form text per E/W-code, `mimz explain`.
-- `lint` — style and hygiene warnings (`mimz lint`): naming conventions
+- `explain` - long-form text per E/W-code, `mimz explain`.
+- `lint` - style and hygiene warnings (`mimz lint`): naming conventions
   (W0002/W0003), unused-signal detection (W0004), additive and always
   warning-only.
-- `stdlib` — the embedded standard library behind `import std.*`: the
+- `stdlib` - the embedded standard library behind `import std.*`: the
   module catalog, alias routing (English stem vs pure-Tamil twin), and
   `mimz eject std` vendoring.
-- `translate` — keyword-flavor reskin, `mimz translate --to`.
-- `pretty` — the AST → source pretty-printer behind
+- `translate` - keyword-flavor reskin, `mimz translate --to`.
+- `pretty` - the AST → source pretty-printer behind
   `mimz translate --order code|thamizh`.
-- `morph` — error-language selection + Tamil case-suffix inflection,
+- `morph` - error-language selection + Tamil case-suffix inflection,
   behind `--lang`.
-- `sim` — the Phase 1.5 simulator: the combinational evaluator behind
+- `sim` - the Phase 1.5 simulator: the combinational evaluator behind
   `mimz eval` plus the event-driven kernel, VCD/trace, and `test` runner
   behind `mimz sim` / `mimz test`.
-- `config` — reads per-project defaults from `mimz.toml` (CLI flags
+- `config` - reads per-project defaults from `mimz.toml` (CLI flags
   override it).
-- `version` — holds the two version axes, the compiler (crate) version vs
+- `version` - holds the two version axes, the compiler (crate) version vs
   the language edition (`EDITION_HISTORY`), surfaced by `mimz --version`
   and the Verilog header (see `spec/06-editions.md`).
-- `analysis` — pure, async-free editor analysis: a symbol index over the
+- `analysis` - pure, async-free editor analysis: a symbol index over the
   loaded file set plus offset→definition resolution and completion
   candidates, consumed by the LSP server (`src/lsp.rs`) for hover /
   go-to-definition / completion.
-- `emulate` — native-only peripheral registry (LED/speaker/UART) bound in
+- `emulate` - native-only peripheral registry (LED/speaker/UART) bound in
   `sim{}` blocks and driven through `mimz-sim`'s `EmulationHost` trait,
   behind `mimz test --emulate`; feature-gated behind `hw-emulation` and
   never compiled for `wasm32` (lives in the root shell crate, not
@@ -108,14 +108,14 @@ both under the same `mimz::…` paths as before the split (see
   writeup in page 14.
 
 Plus a handful of **operational** commands (bin-only, in `src/commands/`, not
-lib modules — they touch the OS, not the pipeline; page 13): `mimz init`
+lib modules - they touch the OS, not the pipeline; page 13): `mimz init`
 (scaffold a project), `mimz doctor`/`env` (toolchain & environment report),
 `mimz completions <shell>` (shell tab-completion), `mimz repl` (interactive
-read-eval-print loop — parses a file once, then evaluates input bindings
+read-eval-print loop - parses a file once, then evaluates input bindings
 from stdin per line), `mimz eject std` (vendor the embedded standard
 library into the project), and `mimz check --watch` (re-check on save).
 
-## Vocabulary — words this folder uses precisely
+## Vocabulary - words this folder uses precisely
 
 | Term                         | Means here                                                                                                                                   |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -130,13 +130,13 @@ library into the project), and `mimz check --watch` (re-check on save).
 | **diagnostic**               | An error or warning VALUE (`Diag`), collected and rendered once at the end. Nothing in the pipeline prints or panics mid-pass.               |
 | **E-code / W-code / S-code** | Stable diagnostic identifiers: `E` = compile error, `W` = warning, `S` = simulator runtime error. Never renumbered.                          |
 | **golden file**              | A committed expected output that a test byte-compares against (`tests/golden/`). Regenerate deliberately, review the diff.                   |
-| **differential test**        | Running the same design two ways and demanding identical results — usually our simulator vs. real `iverilog`.                                |
-| **Icarus**                   | [Icarus Verilog](https://steveicarus.github.io/iverilog/) (`iverilog`/`vvp`) — the independent Verilog simulator we check ourselves against. |
+| **differential test**        | Running the same design two ways and demanding identical results - usually our simulator vs. real `iverilog`.                                |
+| **Icarus**                   | [Icarus Verilog](https://steveicarus.github.io/iverilog/) (`iverilog`/`vvp`) - the independent Verilog simulator we check ourselves against. |
 
 ## Keeping these docs honest
 
 The structural facts in this folder (module lists, file-layout tables)
-are **mechanically checked** by `tests/docs_sync.rs` — add a module or a
+are **mechanically checked** by `tests/docs_sync.rs` - add a module or a
 source file without updating the docs and `cargo test` fails, naming the
 stale page. Prose truthfulness can't be automated: when you change how
 the code works, update the matching page in the same session (RULES R1)
@@ -147,7 +147,7 @@ _Last synced with the code: 2026-08-21 (full docs audit across `docs/code/`,
 (`cargo test-summary --workspace`) and `10-test-map.md`'s
 master breakdown rebuilt with current per-binary counts. Fixture counts refreshed
 (error 117→119, golden `.v` steady at 70 module outputs + 17 `_tb.v` testbench
-goldens, 87 `.v` files total in `tests/golden/` — a same-day follow-up audit
+goldens, 87 `.v` files total in `tests/golden/` - a same-day follow-up audit
 corrected an earlier miscount that conflated the 87-file total with the
 module-only count). `11-checker.md`, `05-emit-verilog.md`,
 `06-diagnostics.md` refreshed for current codes.
@@ -156,7 +156,7 @@ module-only count). `11-checker.md`, `05-emit-verilog.md`,
 and the checker's seven→nine pass count. `docs/guide/08-sequential-logic.md`
 gained a clock-domain-crossing section (`sync.double_flop`/`sync.pulse` were
 undocumented for users), and `docs/guide/README.md` a glossary. `10-test-map.md`
-split into `test-map/` — the 2300-line file is now the index/overview (master
+split into `test-map/` - the 2300-line file is now the index/overview (master
 table + legend + changelog) and each per-unit table lives in its own file under
 `test-map/lib-unit/`, `crate-integration/`, `workspace-integration/`, and
 `simulator/`.) Prior:
@@ -164,7 +164,7 @@ table + legend + changelog) and each per-unit table lives in its own file under
 `docs/guide/`, `docs/source-guide/`, `docs/how-the-compiler-works.md`, and
 `docs/BUILD.md`, prompted by the `oversized-test-file-split` branch: test
 count corrected 765→1034 (`cargo test-summary --workspace`); `10-test-map.md`
-rebuilt — checker/parser sections restructured from single-file tables into
+rebuilt - checker/parser sections restructured from single-file tables into
 per-topic-file tables (`checker/tests/` 11 files/268 tests, `parser/tests/`
 13 files/91 tests), 79 previously-undocumented tests given descriptions,
 keyword-table/lexer/transliteration counts corrected; `06-diagnostics.md`/
@@ -177,19 +177,19 @@ gained coverage for `bits.rs`/`wide.rs`/`width_rules.rs`/`extern_module.rs`/
 `sync_prim_lower.rs`/`builtin_bundles.rs`/self-determined-width emitter
 files and its `Val` description was corrected post-BUG-13). Prior: 2026-07-14
 (BUG-7/8/9 fix pass: test count
-765→772 — synced `10-test-map.md`'s checker (201→204, new E0813 rows),
+765→772 - synced `10-test-map.md`'s checker (201→204, new E0813 rows),
 fn-body interpreter (8→9, sign-extension fix test), and kernel (13→16,
 bit/slice-indexed register write tests) sections, plus `README.md`'s test
 badge/status line). Prior: 2026-07-14 (`foreach` doc-sync pass: brought
-`10-test-map.md` back in line with the current 765-test workspace suite —
+`10-test-map.md` back in line with the current 765-test workspace suite -
 updated per-file counts (keyword table 11→12, parser 68→76, checker
 195→201, emitter 27→28, icarus 5→8, elaboration 19→22) with rows for the
 new `foreach` tests, added the previously-undocumented `packages`/
 `showcase`/`compile_string`/`wasm_parity` integration suites and a new
 `value.rs` fn-body-interpreter section; corrected `CLAUDE.md`'s stale
 example count (129→187 actual files) and `guide`/`code`/`source-guide`/
-`Ideas` file counts). Prior: 2026-07-10 (workspace-split documentation pass: the compiler is now a 3-crate Cargo workspace — `mimz-core` (pure pipeline + most tooling), `mimz-sim` (event-driven simulator + runner), and the root `mimz` shell crate (`project`/`config` fs I/O, the new `emulate` module, CLI facade); documented the `emulate` module (native LED/speaker/UART peripherals for `sim{}` blocks, `hw-emulation` feature) here and in `src/lib.rs`'s crate-map table; tooling-module count Ten→Eleven; updated `docs/architecture.md` §3/Repository-layout and `CLAUDE.md`'s project-structure tree to match). Prior: 2026-07-06 (documentation audit: updated test count 476→663 — runtime `cargo test` reports 663 passing, 0 ignored, covering the new `loop`, `sync loop`, and `bundle` features). Prior: 2026-06-27 (tooling-currency pass: documented the bin-only operational commands — `mimz init` / `doctor`(`env`) / `completions` / `check --watch` — in page 13 (new section) and `docs/source-guide/09-tooling-and-entry.md`; corrected source-guide/09's command-handler count 11→16 with the missing `init`/`doctor`/`completions`/`lint`/`repl` entries; rewrote its stale "diagnostics-only v0" LSP section now that hover / go-to-definition / completion shipped (2026-06-25) and fixed the `resolve_at`/`completions` signatures; bumped this README's tooling-module count Nine→Ten and added the operational-commands note; CLAUDE.md `commands/` 11→16). Prior: 2026-06-26 (documentation audit: updated test count 433→476 (corrected 465→476 — the earlier 465 omitted the 11 `tests/stdlib.rs` integration tests; runtime `cargo test` reports 476 passing, 0 ignored), example count 105→129, fixture count 72→73, module file counts across lexer/parser/checker/sim/commands, added stdlib.rs and analysis.rs to all maps, added `tests/cli.rs` (init/doctor/completions) to the test-file lists, icarus example count 72→129). Prior: 2026-06-23 (post-stdlib shipment, BUG-6 fix, Fuzz crash fix, reserved `extern`, parser AST error recovery —
-replication, don't-care patterns, `on fall`, `mem`, `async reset` — plus
+`Ideas` file counts). Prior: 2026-07-10 (workspace-split documentation pass: the compiler is now a 3-crate Cargo workspace - `mimz-core` (pure pipeline + most tooling), `mimz-sim` (event-driven simulator + runner), and the root `mimz` shell crate (`project`/`config` fs I/O, the new `emulate` module, CLI facade); documented the `emulate` module (native LED/speaker/UART peripherals for `sim{}` blocks, `hw-emulation` feature) here and in `src/lib.rs`'s crate-map table; tooling-module count Ten→Eleven; updated `docs/architecture.md` section 3/Repository-layout and `CLAUDE.md`'s project-structure tree to match). Prior: 2026-07-06 (documentation audit: updated test count 476→663 - runtime `cargo test` reports 663 passing, 0 ignored, covering the new `loop`, `sync loop`, and `bundle` features). Prior: 2026-06-27 (tooling-currency pass: documented the bin-only operational commands - `mimz init` / `doctor`(`env`) / `completions` / `check --watch` - in page 13 (new section) and `docs/source-guide/09-tooling-and-entry.md`; corrected source-guide/09's command-handler count 11→16 with the missing `init`/`doctor`/`completions`/`lint`/`repl` entries; rewrote its stale "diagnostics-only v0" LSP section now that hover / go-to-definition / completion shipped (2026-06-25) and fixed the `resolve_at`/`completions` signatures; bumped this README's tooling-module count Nine→Ten and added the operational-commands note; CLAUDE.md `commands/` 11→16). Prior: 2026-06-26 (documentation audit: updated test count 433→476 (corrected 465→476 - the earlier 465 omitted the 11 `tests/stdlib.rs` integration tests; runtime `cargo test` reports 476 passing, 0 ignored), example count 105→129, fixture count 72→73, module file counts across lexer/parser/checker/sim/commands, added stdlib.rs and analysis.rs to all maps, added `tests/cli.rs` (init/doctor/completions) to the test-file lists, icarus example count 72→129). Prior: 2026-06-23 (post-stdlib shipment, BUG-6 fix, Fuzz crash fix, reserved `extern`, parser AST error recovery -
+replication, don't-care patterns, `on fall`, `mem`, `async reset` - plus
 Workstream B: the new `version` module (compiler vs language-edition axes,
 `EDITION_HISTORY`, `mimz --version`, `spec/06-editions.md`, `CHANGELOG.md`).
 Prior 2026-06-16 (a docs-currency pass for the **completed
@@ -202,10 +202,10 @@ and corrected the test map (page 10) per-section counts to match reality
 integration 6 → 7) and broadened the Layer-3 Icarus differential row to the full
 21-example single-file corpus. The 364 grand total was already correct. Prior:
 Phase 0 closed + **keyword set v1 locked** 2026-06-15; the **native-authored Tamil/Tanglish error catalog** shipped
-(decision C3 ratified) — `lang/messages.toml` + structured-arg interpolation through
+(decision C3 ratified) - `lang/messages.toml` + structured-arg interpolation through
 `Diag::with_arg`/`Checker::err_args`, 33 of 36 checker codes localized (pages 6,
 13); no longer a stub. A docs-currency pass refreshed pages 1, 6, 13, the test map
-(page 10), and this stamp. Prior 2026-06-15 (adds: the `config` module — `mimz.toml`
+(page 10), and this stamp. Prior 2026-06-15 (adds: the `config` module - `mimz.toml`
 project defaults for CLI flags, discovered by walking up from the input file,
 with precedence CLI › config › default (page 13); and reversible romanization +
 auto name-map discovery on `mimz translate`. A same-day fuzz/security audit then
@@ -214,14 +214,14 @@ added the `reskin` script-boundary guard + a `--names-map` version check
 A behavior-preserving code-split then broke three oversized files into submodules:
 `src/parser/items.rs` → `items/` (now `crates/mimz-core/src/parser/items/`), `src/main.rs` handlers → `src/commands/`, and
 `src/bin/mimz-bench/metrics.rs` → `metrics/` (pages 3, 13, 12).
-Prior 2026-06-14 (adds: the `morph` module — error-language
+Prior 2026-06-14 (adds: the `morph` module - error-language
 selection (file-flavor majority + `--lang`) and the Tamil case-suffix inflection
 mechanism behind localized diagnostics (Phase 1.8, spec/04 section 5), an additive
 English-fallback layer documented in page 13; the catalog content + final sandhi
-are panel-gated (C3). Earlier the same day: the `pretty` module — the AST →
+are panel-gated (C3). Earlier the same day: the `pretty` module - the AST →
 source pretty-printer behind `mimz translate --order code|thamizh` (Phase 1.8),
 documented in page 13; and the Phase 1.8 thamizh-order parser flips. Prior
-2026-06-13 (adds: the quick-wins tooling block —
+2026-06-13 (adds: the quick-wins tooling block -
 `explain` (`mimz explain <CODE>`), `translate` (`mimz translate --to <flavor>`),
 and `sim::comb` (`mimz eval`), documented in page 13; and earlier the same day:
 monotonic chained comparison
@@ -229,7 +229,7 @@ monotonic chained comparison
 metric (peak RSS) + an upgraded HTML report; a `criterion` per-phase
 micro-benchmark harness (`benches/compile.rs`, `cargo bench`); CI extended
 with rustdoc/bench/perf-batch jobs and a committed `bench-history.jsonl`.
-Prior 2026-06-12 baseline: Phase 1 COMPLETE — checker all six passes,
+Prior 2026-06-12 baseline: Phase 1 COMPLETE - checker all six passes,
 `repeat` emission, transliteration, signed emission, golden files, full
 E-code coverage incl. lexer E10xx/parser E11xx/loader E1201, lib/bin split
 (`src/lib.rs`), `--json` diagnostics, LSP v0, `mimz-bench` harness page 12)._

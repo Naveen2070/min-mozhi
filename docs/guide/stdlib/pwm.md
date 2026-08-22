@@ -1,8 +1,8 @@
-# `Pwm` — pulse-width modulator
+# `Pwm` - pulse-width modulator
 
 A free-running counter sweeps `0 → 2^WIDTH-1` and wraps. The output is high
 while the counter is **below** `duty` and low above it, so the fraction of each
-period spent high is `duty / 2^WIDTH` — a duty cycle you set at runtime. Drive
+period spent high is `duty / 2^WIDTH` - a duty cycle you set at runtime. Drive
 an LED with it to dim the LED; drive a motor to set its speed.
 
 ## Source
@@ -11,7 +11,7 @@ an LED with it to dim the LED; drive a motor to set its speed.
 - Also in `tanglish/`, `tamil/`, and `mixed/` flavors (byte-identical Verilog).
 - Pure-Tamil twin (Tamil keywords **and** identifiers, natural SOV order):
   [`examples/tamil-pure/minukki.mimz`](../../../examples/tamil-pure/minukki.mimz)
-  (`மினுக்கி` — "dimmer") — proven equivalent to the English module by canonical
+  (`மினுக்கி` - "dimmer") - proven equivalent to the English module by canonical
   renaming.
 
 ## Interface
@@ -19,7 +19,7 @@ an LED with it to dim the LED; drive a motor to set its speed.
 | Port   | Dir | Type          | Meaning                                   |
 | ------ | --- | ------------- | ----------------------------------------- |
 | `clk`  | in  | clock         | the period clock                          |
-| `rst`  | in  | reset         | sync reset — clears the counter to 0      |
+| `rst`  | in  | reset         | sync reset - clears the counter to 0      |
 | `duty` | in  | `bits[WIDTH]` | threshold; high time per period is `duty` |
 | `pwm`  | out | `bit`         | the modulated output                      |
 
@@ -32,7 +32,7 @@ it high for all but the last count.
 
 ## How it works
 
-1. `counter` increments every clock and wraps with `+%` — a free-running ramp.
+1. `counter` increments every clock and wraps with `+%` - a free-running ramp.
 2. `pwm = counter < duty` is a pure comparison: high for the first `duty` counts
    of each period, low for the rest. The high fraction is exactly `duty / 2^WIDTH`.
 
@@ -71,4 +71,4 @@ The module ships with inline `test` blocks (run `mimz test
 examples/english/std/pwm.mimz`): a zero duty cycle never drives the output high,
 and a non-zero duty leads the period high out of reset. A self-checking Icarus
 testbench (`tests/icarus/std_pwm_tb.v`) confirms exactly `duty` of every 16
-cycles are high — the duty-cycle guarantee — for the bit-for-bit differential.
+cycles are high - the duty-cycle guarantee - for the bit-for-bit differential.

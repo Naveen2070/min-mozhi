@@ -4,13 +4,13 @@
 
 The contract test for the `S0xxx` runtime catalog
 ([`13-tooling.md`](13-tooling.md#s0xxx--runtime-diagnostic-codes-r2-docsauditreview-2026-07-17md)).
-**One test per live code, plus one completeness guard** —
+**One test per live code, plus one completeness guard** -
 `every_sim_code_has_a_fixture_above` fails if `ALL_SIM_CODES` gains an
 entry with no firing fixture, so a new runtime code cannot ship uncovered.
 
 Each test is named for the code it fires (`s0102_ambiguous_bare_reference`,
 `s0238_combinational_cycle_fires_with_its_own_code`, …) and asserts BOTH
-that the operation fails and that the failure carries exactly that code —
+that the operation fails and that the failure carries exactly that code -
 a code silently downgraded at a trait boundary (BUG-27) fails the test.
 
 Unlike `tests/errors.rs`, these call straight into `mimz-sim`'s public API

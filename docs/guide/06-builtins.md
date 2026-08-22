@@ -1,4 +1,4 @@
-# 6 — Built-in Functions
+# 6 - Built-in Functions
 
 Built-ins (and user-defined combinational functions) are the
 call syntax in the language. Their names are **universal**: spelled the same
@@ -13,7 +13,7 @@ in every flavor. There are twelve built-ins.
 | `signed(x)`    | reinterpret the bits of `x` as `signed` (pattern unchanged)      |
 | `unsigned(x)`  | reinterpret the bits of `x` as unsigned                          |
 
-`extend` makes a resize **visible** — widths never change implicitly, so when a
+`extend` makes a resize **visible** - widths never change implicitly, so when a
 1-bit value has to join an 8-bit bus you say so:
 
 ```mimz
@@ -26,7 +26,7 @@ on rise(clk) {
 ```
 
 `extend` only widens; trying to "extend" to a narrower width is an error
-(`E0407`) — use `trunc` to narrow. `signed`/`unsigned` are how you cross the
+(`E0407`) - use `trunc` to narrow. `signed`/`unsigned` are how you cross the
 signed/unsigned boundary on purpose:
 
 ```mimz
@@ -71,12 +71,12 @@ out allz: bit
 allz = nor(bus)      // 1 when bus is all zeros
 ```
 
-A negated reduction on a `signed` value is rejected (`E0403`) — reductions are a
+A negated reduction on a `signed` value is rejected (`E0403`) - reductions are a
 `bits` operation.
 
 ## Compile-time width builtin: `clog2`
 
-`clog2(n)` folds to the ceiling of log2(n) — the number of bits needed to
+`clog2(n)` folds to the ceiling of log2(n) - the number of bits needed to
 address `n` items. Unlike the others above, `clog2` only makes sense in a
 **compile-time** position: a width (`bits[clog2(DEPTH)]`), a `const`, or a
 `repeat` bound.
@@ -92,9 +92,9 @@ floors at 1, one bit more than Verilog's `$clog2(1) = 0`), `clog2(3)` =
 const-evaluate to `>= 1` (`E0202` otherwise). It's the same width formula
 the checker already uses internally for enum tag widths.
 
-`clog2(PARAM)` works in a module **body** width — it lowers to an injected
+`clog2(PARAM)` works in a module **body** width - it lowers to an injected
 Verilog constant function, so the width still tracks an instantiation-time
-parameter override. `clog2(PARAM)` in a **port** width is `E0420` — checked
+parameter override. `clog2(PARAM)` in a **port** width is `E0420` - checked
 at compile time like any other error: a Verilog-2005 port list may only use
 constants and parameters, and cannot call the constant function that would
 compute it (that function lives in the body the port list precedes).
@@ -102,13 +102,13 @@ compute it (that function lives in the body the port list precedes).
 
 ## Enum→bits: `encoding`
 
-An `enum` is a symbolic type — you can `match` on it, but you can't otherwise
+An `enum` is a symbolic type - you can `match` on it, but you can't otherwise
 treat it as a number. `encoding(e)` is the one deliberate escape hatch: it
 reads out an enum value's stable on-wire bit pattern as plain unsigned
 `bits[N]`, the same bits the compiler already assigns as `localparam`s
 internally.
 
-The most common reason to reach for it is a debug or bring-up port — showing
+The most common reason to reach for it is a debug or bring-up port - showing
 an FSM's current state on LEDs or a logic-analyzer header without attaching a
 full debugger:
 
@@ -123,27 +123,27 @@ state_bits = encoding(state)
 
 For a plain, tag-only enum like `Light` (3 variants), `N` is just the tag
 width, `clog2(3) = 2`. For a **tagged union** with payload fields, `N` is the
-enum's FULL width — tag plus the largest payload — the exact same total
+enum's FULL width - tag plus the largest payload - the exact same total
 `inferred_total_width` the emitter already sizes the signal at. There's no
 way to get just the tag out of a payload-carrying enum via `encoding` alone;
 slice the result yourself (`encoding(pkt)[hi:lo]`) if that's what you need.
 
 There is deliberately **no reverse cast** (`bits` → `enum`). An unchecked
 integer-to-enum conversion would let an arbitrary bit pattern claim to be a
-declared enum value — exactly the invalid-state class the enum type exists
+declared enum value - exactly the invalid-state class the enum type exists
 to rule out at compile time.
 
 Every OTHER built-in on this page rejects an enum argument (`E0403`/`E0407`);
-`encoding` is the one built-in that requires one — anything else is `E0418`.
+`encoding` is the one built-in that requires one - anything else is `E0418`.
 
 See the full runnable example: `examples/english/enum_encoding.mimz`.
 
 ## Combinational functions: `fn`
 
 A `fn` is pure, stateless combinational logic that isn't worth its own
-module — inlined at the call site during emission, so recursion isn't
+module - inlined at the call site during emission, so recursion isn't
 allowed and there's no instantiation overhead. (`fn` is one of the two
-keywords with an English alias — you may spell it `function`; the other is
+keywords with an English alias - you may spell it `function`; the other is
 `import`, spelled `include`.)
 
 ```mimz
@@ -161,13 +161,13 @@ module Top {
 }
 ```
 
-The last line of a `fn` body is the returned value (a _tail expression_) —
+The last line of a `fn` body is the returned value (a _tail expression_) -
 you don't write `return` for it. A mid-body `return` works too, but a body
 that ends in a bare `return ...` statement has no value expression after it,
 so the compiler rejects it.
 
 One layout quirk to know: a conditional as the final line is read as an if
-_statement_, not a value — so a conditional result must be parenthesized:
+_statement_, not a value - so a conditional result must be parenthesized:
 
 ```mimz
 fn pick(s: bit, a: bits[4], b: bits[4]) -> bits[4] {
@@ -179,17 +179,17 @@ Without the parentheses you get a confusing pair of "expected let/if/return"
 errors instead of the value.
 
 `fn` bodies can use `if`/`match`, `repeat`/`loop` unrolling, and other
-built-ins (as above) — anything combinational. Function names are
+built-ins (as above) - anything combinational. Function names are
 project-wide unique (`E0801`) and are never namespace-qualified, unlike
 module/enum/bundle names (chapter 9).
 
 ## Array-typed `fn` parameters
 
-A `fn` parameter can be array-typed — `bits[8][4]` is an array of four
+A `fn` parameter can be array-typed - `bits[8][4]` is an array of four
 `bits[8]` elements. This isn't real Verilog array hardware: it's sugar over
 N independent scalar ports, so the size must be fixed at compile time and
 known from the type itself (the `foreach` element form in
-[chapter 7](07-expressions-and-control.md) relies on exactly this — the
+[chapter 7](07-expressions-and-control.md) relies on exactly this - the
 iteration count comes from the array type's own length):
 
 ```mimz
@@ -205,13 +205,13 @@ Indexing behaves differently depending on whether the index is known at
 compile time:
 
 - a **constant** index (a `loop`/`repeat` variable, a literal) folds
-  directly to the matching scalar — `vals[i]` inside the `loop` above just
+  directly to the matching scalar - `vals[i]` inside the `loop` above just
   becomes `vals_0`, `vals_1`, … at that unrolled position;
 - a **runtime** index (an ordinary signal) can't select a real array
   element, so the emitter generates a ternary-chain mux over every element
   instead: `fn pick(vals: bits[8][4], idx: bits[3]) -> bits[8] { vals[idx] }`
   compiles to a chain of `idx == 0 ? vals_0 : idx == 1 ? vals_1 : …`. An
-  out-of-range runtime index (more index values than elements — `idx` is
+  out-of-range runtime index (more index values than elements - `idx` is
   3 bits here but the array only has 4 elements) falls through to the last
   element rather than erroring, since the mux chain must cover every
   possible bit pattern.

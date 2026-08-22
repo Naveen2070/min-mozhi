@@ -1,83 +1,83 @@
-# Phase 4 — Ecosystem
+# Phase 4 - Ecosystem
 
 > **Make it usable by others.**
 > Window: ongoing (starts once Phase 1 ships) · Status: 🟡 in progress / ongoing (WASM, playground, docs site, mimz repl, stdlib v1, LSP features shipped)
 
 ## Goal
 
-Min-Mozhi becomes a community language with real users — students, hobbyists,
+Min-Mozhi becomes a community language with real users - students, hobbyists,
 and the Tamil Nadu VLSI ecosystem.
 
 ## Work items
 
 ### Standard library
 
-- [x] Core modules in Min-Mozhi itself: UART, SPI, PWM, debouncer, FIFO, ALU, 7-segment driver — **focused first set DONE 2026-06-23** on branch `stdlib-modules` (shipped as `examples/.../std/*` content). Set: debouncer, seg7, pwm, fifo, uart_tx — each with 4 flavors + a pure-Tamil twin (`nilaippaduthi`, `ennkaatti`, `minukki`, `varisai`, `anuppi`), inline `test` blocks, module + emitted-TB goldens, and 2 hand Icarus TBs. **UART-RX, SPI master deferred** to a future stdlib branch.
-- [x] **Importable `std.*` path DONE 2026-06-24** on branch `stdlib-importable-path` — `import std.fifo` (and `serkka nuulagam.varisai` / `சேர்க்க நூலகம்.வரிசை`) resolve to an **embedded** standard library (`src/stdlib.rs`, `include_str!` of the tested example files — no install path, WASM-safe). Routing keys on the written alias (English stem → canonical, twin name → pure-Tamil twin). `mimz.toml [lib] std = "<dir>"` overrides with a local copy; `mimz eject std` vendors it. New `tests/stdlib.rs`; spec/02 §1.5 + E1202.
-- [x] Each stdlib module: trilingual doc page + testbench + waveform — `docs/guide/stdlib/<module>.md` (+ gallery `README.md`) with a reproducible ASCII `--trace` waveform per module (PNG screenshots remain a maintainer step); inline `test` blocks + hand Icarus TBs serve as the testbench.
-- **Bug surfaced while building these (FIXED):** the simulator left-shift evaluated `1 << n` as `0` (truncated to the left operand's width) — `docs/audit/bugs.md` **BUG-6**, fixed in `crates/mimz-sim/src/sim/value.rs`. The FIFO workaround (explicit `DEPTH` param) has been reverted; the clean `1 << AW` design is restored.
-- **Language-gap noted (RESOLVED 2026-06-27):** there was no user-facing `clog2`, so a parameterized memory passed both an address width and a depth. The `clog2` const-builtin shipped (spec/02 §1.8; `clog2(<param>)` lowers to an injected Verilog-2005 constant function for body widths), and `Fifo` was refactored `AW` → `DEPTH` (`bits[clog2(DEPTH)]` pointers, generalized wrap so any `DEPTH >= 1` works) across all four flavors + the pure-Tamil twin.
+- [x] Core modules in Min-Mozhi itself: UART, SPI, PWM, debouncer, FIFO, ALU, 7-segment driver - **focused first set DONE 2026-06-23** on branch `stdlib-modules` (shipped as `examples/.../std/*` content). Set: debouncer, seg7, pwm, fifo, uart_tx - each with 4 flavors + a pure-Tamil twin (`nilaippaduthi`, `ennkaatti`, `minukki`, `varisai`, `anuppi`), inline `test` blocks, module + emitted-TB goldens, and 2 hand Icarus TBs. **UART-RX, SPI master deferred** to a future stdlib branch.
+- [x] **Importable `std.*` path DONE 2026-06-24** on branch `stdlib-importable-path` - `import std.fifo` (and `serkka nuulagam.varisai` / `சேர்க்க நூலகம்.வரிசை`) resolve to an **embedded** standard library (`src/stdlib.rs`, `include_str!` of the tested example files - no install path, WASM-safe). Routing keys on the written alias (English stem → canonical, twin name → pure-Tamil twin). `mimz.toml [lib] std = "<dir>"` overrides with a local copy; `mimz eject std` vendors it. New `tests/stdlib.rs`; spec/02 section 1.5 + E1202.
+- [x] Each stdlib module: trilingual doc page + testbench + waveform - `docs/guide/stdlib/<module>.md` (+ gallery `README.md`) with a reproducible ASCII `--trace` waveform per module (PNG screenshots remain a maintainer step); inline `test` blocks + hand Icarus TBs serve as the testbench.
+- **Bug surfaced while building these (FIXED):** the simulator left-shift evaluated `1 << n` as `0` (truncated to the left operand's width) - `docs/audit/bugs.md` **BUG-6**, fixed in `crates/mimz-sim/src/sim/value.rs`. The FIFO workaround (explicit `DEPTH` param) has been reverted; the clean `1 << AW` design is restored.
+- **Language-gap noted (RESOLVED 2026-06-27):** there was no user-facing `clog2`, so a parameterized memory passed both an address width and a depth. The `clog2` const-builtin shipped (spec/02 section 1.8; `clog2(<param>)` lowers to an injected Verilog-2005 constant function for body widths), and `Fifo` was refactored `AW` → `DEPTH` (`bits[clog2(DEPTH)]` pointers, generalized wrap so any `DEPTH >= 1` works) across all four flavors + the pure-Tamil twin.
 
 ### Tooling
 
-- [~] VS Code extension: syntax highlighting (all flavors + thamizh-order), inline diagnostics via LSP — **LSP v0 (diagnostics only) pulled into Phase 1** (Decision 2026-06-12); this phase adds hover, go-to-definition, completion, and `translate` integration on top. **Hover / go-to-definition / completion DONE 2026-06-25** (branch `phase-4-lsp-dx`): pure `crates/mimz-core/src/analysis.rs` symbol index + `resolve_at` + `completions` over `parse_recover` partial trees, three `src/lsp.rs` handlers + doc-text store + capabilities; cross-file in-tree resolution incl. `test` blocks; trilingual majority-flavor keyword completion. Deferred: dot-member completion, flavor-localized hover render, `translate` integration
-- [~] **Parser AST error recovery** (`architectural_ideas.md` idea 1) — prerequisite for the hover/completion above. Statement-level recovery already exists (`sync_to_newline`, >1 error per run); this extends it to emit `Error` placeholder nodes so hover/semantic-highlight/completion still work on half-typed lines. Additive, edition-safe. **Parser side DONE 2026-06-22** (branch `phase-4-parser-ast-error-recovery`): `Error(Span)` AST variants + `parser::parse_recover` non-discarding entry point + recovery sites + exhaustive consumer handling (290→294 tests). **LSP wiring DONE 2026-06-25** (branch `phase-4-lsp-dx`): `lsp.rs` consumes the partial tree via `load_for_features` + the hover/go-to-def/completion handlers ride on it. **Still to do:** `ExprKind::Error` for expression-level recovery
+- [~] VS Code extension: syntax highlighting (all flavors + thamizh-order), inline diagnostics via LSP - **LSP v0 (diagnostics only) pulled into Phase 1** (Decision 2026-06-12); this phase adds hover, go-to-definition, completion, and `translate` integration on top. **Hover / go-to-definition / completion DONE 2026-06-25** (branch `phase-4-lsp-dx`): pure `crates/mimz-core/src/analysis.rs` symbol index + `resolve_at` + `completions` over `parse_recover` partial trees, three `src/lsp.rs` handlers + doc-text store + capabilities; cross-file in-tree resolution incl. `test` blocks; trilingual majority-flavor keyword completion. Deferred: dot-member completion, flavor-localized hover render, `translate` integration
+- [~] **Parser AST error recovery** (`architectural_ideas.md` idea 1) - prerequisite for the hover/completion above. Statement-level recovery already exists (`sync_to_newline`, >1 error per run); this extends it to emit `Error` placeholder nodes so hover/semantic-highlight/completion still work on half-typed lines. Additive, edition-safe. **Parser side DONE 2026-06-22** (branch `phase-4-parser-ast-error-recovery`): `Error(Span)` AST variants + `parser::parse_recover` non-discarding entry point + recovery sites + exhaustive consumer handling (290→294 tests). **LSP wiring DONE 2026-06-25** (branch `phase-4-lsp-dx`): `lsp.rs` consumes the partial tree via `load_for_features` + the hover/go-to-def/completion handlers ride on it. **Still to do:** `ExprKind::Error` for expression-level recovery
 - [ ] `mimz fmt` stabilized; `mimz translate` promoted in docs as the learning tool
-- [ ] Package manager (`mimz add <pkg>`) — design doc first, Decision-logged
-- [ ] **Generative differential testing** (`architectural_ideas.md` idea 2) — two legs already ship: the `fuzz/` cargo-fuzz robustness targets and the fixed-corpus sim-vs-Icarus oracle (`our_simulator_matches_icarus_bit_for_bit`, `wasm_parity`). The third leg is a _valid-by-construction_ Min-Mozhi generator (respects width/driver/clock rules) fed into that oracle, gated in the `fuzz` CI job. Substantial; post-launch
+- [ ] Package manager (`mimz add <pkg>`) - design doc first, Decision-logged
+- [ ] **Generative differential testing** (`architectural_ideas.md` idea 2) - two legs already ship: the `fuzz/` cargo-fuzz robustness targets and the fixed-corpus sim-vs-Icarus oracle (`our_simulator_matches_icarus_bit_for_bit`, `wasm_parity`). The third leg is a _valid-by-construction_ Min-Mozhi generator (respects width/driver/clock rules) fed into that oracle, gated in the `fuzz` CI job. Substantial; post-launch
 
-### Ecosystem drivers (one core, thin wrappers — Decision 2026-06-11)
+### Ecosystem drivers (one core, thin wrappers - Decision 2026-06-11)
 
-- [x] **WASM build + browser playground** — FIRST bridge to other
+- [x] **WASM build + browser playground** - FIRST bridge to other
       ecosystems: no toolchain, no install rights needed in a college
       lab, just a URL. Highest education-per-hour; serves the spec/01
       persona directly. Needs the simulator (Phase 1.5) to be a real
-      playground, not just a Verilog printer. **DONE 2026-06-18** (+ waveform viewer 2026-06-19) — Steps 1–5 of phase-4-web-presence.md.
+      playground, not just a Verilog printer. **DONE 2026-06-18** (+ waveform viewer 2026-06-19) - Steps 1–5 of phase-4-web-presence.md.
 - [x] **Interactive hardware REPL `mimz repl`** (idea 8.5,
-      `language_plan.md` section 9) — define an expression/gate, flip
+      `language_plan.md` section 9) - define an expression/gate, flip
       inputs, see combinational logic evaluate live. No new syntax: rides
       the WASM playground above + the Phase 1.5 sim evaluator. Scope to
-      combinational logic. **DONE — shipped as `mimz repl` command.**
+      combinational logic. **DONE - shipped as `mimz repl` command.**
 - [ ] **Vim-like TUI workbench `mimz tui`** (idea 8.11,
-      `language_plan.md` section 8) — a no-IDE, full-screen terminal driver
+      `language_plan.md` section 8) - a no-IDE, full-screen terminal driver
       for whole `.mimz` files: on start it asks the output mode (emit
       Verilog / run + log / waveform), then edits + re-runs on save with
       inline diagnostics, `test` results, a `$monitor` trace, and an
       optional VCD. The broader sibling of `mimz repl` (8.5): clocked sim + waveforms + emit, not just combinational expressions. Tool, not
-      syntax — rides the Phase 1.5 sim (`crates/mimz-sim`), the emitter, and the
+      syntax - rides the Phase 1.5 sim (`crates/mimz-sim`), the emitter, and the
       checker's diagnostics; pairs with the WASM playground (same engines,
       different shell). A TUI crate (e.g. `ratatui`) would be the first UI
-      dependency — weigh against the minimal-dep ethos; MVP is the
+      dependency - weigh against the minimal-dep ethos; MVP is the
       output-mode prompt + a re-run-on-save loop.
 - [ ] **npm wrapper package** (esbuild model: tiny package that fetches
-      the platform binary / loads the WASM and shells out) — TS/JS devs
+      the platform binary / loads the WASM and shells out) - TS/JS devs
       run `mimz` in their build like any other tool
 - [ ] **PyPI wrapper package** (same model)
-- [ ] Go / Java / Kotlin / etc. wrappers — only on demonstrated demand;
+- [ ] Go / Java / Kotlin / etc. wrappers - only on demonstrated demand;
       each is ~100 lines around the same binary, never a reimplementation
 - [ ] Prerequisite carried by Phase 1 work: keep the compiler core
       embeddable (lib/bin split so `project.rs` printing stays in the
-      CLI shell) + a `--json` diagnostics flag for tool consumers —
+      CLI shell) + a `--json` diagnostics flag for tool consumers -
       fold into the lexer/parser E-code retrofit
 
 ### Language-feature backlog (pointer)
 
 The triaged feature backlog from `docs/Ideas/language_plan.md` sections 7
 and 9 (tagged unions, interfaces/bundles, channels, `prove`/SymbiYosys, G5
-security features, DX sugar, plus the section-8 additive ideas —
+security features, DX sugar, plus the section-8 additive ideas -
 `fixed`-point, `requires`/`ensures` contracts, `..` spread/struct-update,
 pipe `|>`, didactic errors) lives as work items in
-**`docs/plan/phase-2-ir-synthesis.md` → "Language features"** — that list
+**`docs/plan/phase-2-ir-synthesis.md` → "Language features"** - that list
 is the single source of truth. The hardware REPL (8.5) and the `mimz tui`
-workbench (8.11) are the section-8 items that land in this phase (above) —
+workbench (8.11) are the section-8 items that land in this phase (above) -
 both are tools, not syntax, so they carry no freeze cost. Rejected ideas
 stay recorded with reasons in the ideas doc itself (Tier 4: physics, not
 priorities).
 
 ### Documentation & learning
 
-- [x] Documentation site — English first; Tamil translation of docs begins **after Phase 1** (decision D9). **DONE 2026-06-18** (Astro scaffold, Step 3 of phase-4-web-presence.md).
-- [ ] "Day one" tutorial: counter on a real board in under an hour — in Tamil, Tanglish, and English
+- [x] Documentation site - English first; Tamil translation of docs begins **after Phase 1** (decision D9). **DONE 2026-06-18** (Astro scaffold, Step 3 of phase-4-web-presence.md).
+- [ ] "Day one" tutorial: counter on a real board in under an hour - in Tamil, Tanglish, and English
 - [ ] Example gallery grown from community submissions
 
 ### Community
@@ -98,5 +98,5 @@ First external contributor PR merged; first classroom/workshop uses Min-Mozhi.
 
 ## Risks / notes
 
-- Start the VS Code syntax highlighting early (it's cheap and high-visibility) —
+- Start the VS Code syntax highlighting early (it's cheap and high-visibility) -
   it can ship right after Phase 1 even though it lives in this phase.

@@ -1,24 +1,24 @@
-# 7 — The Verilog Emitter
+# 7 - The Verilog Emitter
 
 This takes the checked AST and turns it into synthesizable Verilog-2005 text.
 
 Six top-level files plus a `module/` folder (8 files, the module body) and a
 `tests/` folder (12 files). The one job of every file here is TEXT: by the
 time the emitter runs, the checker has already proven the design is legal,
-so nothing in this stage decides whether a program is correct — only how it
+so nothing in this stage decides whether a program is correct - only how it
 is spelled in Verilog.
 
-## `crates/mimz-core/src/emit_verilog/mod.rs` — The Big Picture
+## `crates/mimz-core/src/emit_verilog/mod.rs` - The Big Picture
 
-**`Project` struct** — project-wide tables of modules and enums.
+**`Project` struct** - project-wide tables of modules and enums.
 
-**`Emitter` struct** — holds the output buffer, the project table, the constant environment, and any errors encountered during emission. The emitter might encounter problems (like non-const widths) and needs to report them rather than silently producing wrong Verilog.
+**`Emitter` struct** - holds the output buffer, the project table, the constant environment, and any errors encountered during emission. The emitter might encounter problems (like non-const widths) and needs to report them rather than silently producing wrong Verilog.
 
-**`emit(project, files)`** — the top-level entry. For each file, fold its constants; for each module, emit the Verilog.
+**`emit(project, files)`** - the top-level entry. For each file, fold its constants; for each module, emit the Verilog.
 
-**`REPEAT_BUDGET = 4096`** — maximum unroll iterations. Prevents a malicious file from producing gigabytes of Verilog.
+**`REPEAT_BUDGET = 4096`** - maximum unroll iterations. Prevents a malicious file from producing gigabytes of Verilog.
 
-## `crates/mimz-core/src/emit_verilog/module/` — Module Shell (8 Files)
+## `crates/mimz-core/src/emit_verilog/module/` - Module Shell (8 Files)
 
 This grew past the ~600-line house limit and became a folder. `mod.rs` keeps
 the entry point and the item-dispatch loop; each sibling owns one concern:
@@ -28,10 +28,10 @@ the entry point and the item-dispatch loop; each sibling owns one concern:
 | `mod.rs`           | The `module()` entry and the item dispatch loop                             |
 | `ports.rs`         | Port/parameter lists, declarations, width folding, the two hoist helpers    |
 | `drives.rs`        | Combinational `assign` lines                                                |
-| `seq.rs`           | `on`-block bodies — statement `if`, `default`, `loop` unrolling             |
+| `seq.rs`           | `on`-block bodies - statement `if`, `default`, `loop` unrolling             |
 | `instances.rs`     | `repeat` flattening, per-item const folding, instance auto-wiring           |
 | `funcs.rs`         | `fn` inlining: body substitution and `loop` unrolling with `return` cut-off |
-| `bundle_fields.rs` | Bundle-field expansion — `bus.field` resolves to the flattened `bus_field`  |
+| `bundle_fields.rs` | Bundle-field expansion - `bus.field` resolves to the flattened `bus_field`  |
 | `tests.rs`         | Unit tests for the above                                                    |
 
 Together they generate:
@@ -50,7 +50,7 @@ Plus:
 - Combinational drive assignments
 
 **`loop`/`suzhal`** (`SeqStmt::Loop` in an `on` block, `FnStmt::Loop` in a
-`fn` body) is unrolled by this module directly — no separate lowering pass,
+`fn` body) is unrolled by this module directly - no separate lowering pass,
 the emitter walks the loop body `hi - lo` times itself (fn-body loops thread
 each iteration's continuation so an inner `return` short-circuits correctly).
 
@@ -58,7 +58,7 @@ each iteration's continuation so an inner `return` short-circuits correctly).
 `ForEach` node (module item, `on`-block statement, `fn`-body statement)
 calls `crate::ast::lower_foreach_item`/`lower_foreach_in_seq`/
 `lower_foreach_fn` (see [`05-ast.md`](05-ast.md)) on the spot, then emits the
-resulting `Repeat`/`Loop` exactly as above — `None` (an unresolvable
+resulting `Repeat`/`Loop` exactly as above - `None` (an unresolvable
 elements-form source) is unreachable here since the checker's `E0417` would
 already have failed the build.
 
@@ -66,10 +66,10 @@ already have failed the build.
 rewrites it into real `Port`/`Reg`/`On`/`Drive` items (an index register plus
 a `start`/`done` handshake FSM) BEFORE this module's normal item-emission
 loop runs, so by the time `module/mod.rs` sees it, it's indistinguishable from
-hand-written primitives — there is no dedicated `SyncLoop`-shaped Verilog
+hand-written primitives - there is no dedicated `SyncLoop`-shaped Verilog
 output at all.
 
-## `crates/mimz-core/src/emit_verilog/expr.rs` — Expression Rendering
+## `crates/mimz-core/src/emit_verilog/expr.rs` - Expression Rendering
 
 Expressions are rendered to Verilog:
 
@@ -82,24 +82,24 @@ Expressions are rendered to Verilog:
 - Enum variants → `localparam` constant names
 - Tagged unions → **tag wire** + **payload extraction**: `{tag_bits, payload_bits}` width, variant tag as `localparam` values, payload extracted by field position in `assign` statements
 
-## `crates/mimz-core/src/emit_verilog/translit.rs` — Tamil Names → ASCII
+## `crates/mimz-core/src/emit_verilog/translit.rs` - Tamil Names → ASCII
 
 This pre-pass runs after the checker (which sees original names) and before emission (which needs ASCII). It converts Tamil-script identifiers to an ISO-15919-flavored romanization: `விளக்கு` → `villakku`.
 
 If two different Tamil names romanize the same way, the second gets `_2`. ASCII names and Verilog reserved words are never touched.
 
-## `crates/mimz-core/src/emit_verilog/testbench.rs` — Testbenches
+## `crates/mimz-core/src/emit_verilog/testbench.rs` - Testbenches
 
 Generates standalone Verilog testbench modules from inline `test` blocks. The testbench instantiates the DUT, drives inputs and clocks, and evaluates `expect` expressions using `$display("FAIL: ...")` and `$finish`.
 
-## `crates/mimz-core/src/emit_verilog/kinds.rs` and `self_determined.rs` — Matching Verilog's Own Width Rules
+## `crates/mimz-core/src/emit_verilog/kinds.rs` and `self_determined.rs` - Matching Verilog's Own Width Rules
 
 Two files backing one guarantee: that an emitted expression's width in
 real Verilog matches what mimz already checked. `kinds.rs` computes mimz's
 own width/signedness for an expression directly from the checked AST
-(`Kind` — the emitter-local counterpart to the checker's `Ty`).
+(`Kind` - the emitter-local counterpart to the checker's `Ty`).
 `self_determined.rs` computes what Verilog's OWN self-determined-width
-rule would compute for that same expression once emitted as text — the two
+rule would compute for that same expression once emitted as text - the two
 must agree, or the emitted Verilog would silently context-determine a
 different width than mimz checked (a real class of Verilog footguns:
 concat/replicate members, comparison operands, and `$signed`/`$unsigned`
