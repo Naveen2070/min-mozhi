@@ -212,7 +212,7 @@ auto name-map discovery on `mimz translate`. A same-day fuzz/security audit then
 added the `reskin` script-boundary guard + a `--names-map` version check
 (`docs/audit/bugs.md` BUG-2) and a fourth `translate_roundtrip` cargo-fuzz target.
 A behavior-preserving code-split then broke three oversized files into submodules:
-`src/parser/items.rs` → `items/`, `src/main.rs` handlers → `src/commands/`, and
+`src/parser/items.rs` → `items/` (now `crates/mimz-core/src/parser/items/`), `src/main.rs` handlers → `src/commands/`, and
 `src/bin/mimz-bench/metrics.rs` → `metrics/` (pages 3, 13, 12).
 Prior 2026-06-14 (adds: the `morph` module — error-language
 selection (file-flavor majority + `--lang`) and the Tamil case-suffix inflection

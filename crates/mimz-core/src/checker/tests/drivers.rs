@@ -1,6 +1,6 @@
 use super::*;
 
-// ---- Pass 5: drivers (E0501–E0505) ------------------------------------
+// ---- Pass 8: drivers (E0501–E0505) ------------------------------------
 
 #[test]
 fn driving_a_signal_twice_is_e0501() {

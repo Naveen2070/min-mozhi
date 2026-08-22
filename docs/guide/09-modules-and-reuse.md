@@ -25,27 +25,34 @@ widths and disappear; they are not wires.
 
 `const if` includes or excludes whole module-body items — ports, wires, regs,
 instances, anything — at elaboration time, based on a compile-time condition
-(usually a parameter):
+(usually a `const` flag):
 
 ```mimz
-module Adder(WIDTH: int = 8) {
-  in a: bits[WIDTH]
-  in b: bits[WIDTH]
-  out sum: bits[WIDTH]
+module Adder {
+  const WIDE: bool = true // flip to false to drop the overflow port
 
-  const if (WIDTH > 8) {
+  in a: bits[16]
+  in b: bits[16]
+  out sum: bits[17]
+
+  const if (WIDE) {
+    wire carry: bit = (a[15] & b[15])
     out overflow: bit
-    overflow = a[WIDTH-1] & b[WIDTH-1]
+    overflow = carry
   }
+
+  sum = a + b
 }
 ```
 
 The losing branch is discarded completely — not type-checked, not
 name-resolved, not emitted, so it can reference ports/wires that only exist
-in that branch. `COND` may use parameters, module-level `const`s, and
-arithmetic/comparison operators; if it can't be resolved at compile time,
-that's `E0811`. `const if` blocks may nest, and an `else { ... }` is
-optional. It's module-body only — no file-level conditional items.
+in that branch. `COND` may use file-level or module-level `const`s, literals,
+and arithmetic/comparison operators; **module parameters do not work in
+conditions yet** (a condition referencing one fails `E0811`). If the
+condition can't be resolved at compile time for any other reason, that's
+also `E0811`. `const if` blocks may nest, and an `else { ... }` is optional.
+It's module-body only — no file-level conditional items.
 
 ## Instances: `let`
 
@@ -132,11 +139,21 @@ Instantiation, connection checking, and width checking work exactly as for
 a native module — the only difference is the compiler never emits a
 `module ... endmodule` body for it, only the instantiation. Ports are
 scalar-only (`bit`/`bits[N]`/`signed[N]`/`clock`/`reset` — no bundles or
-arrays, `E1302`), since a real Verilog port list is always flat wires. Add
-`= "RealModuleName"` after the name when the mimz-side name and the actual
-Verilog module name differ; the compiled output must be linked against the
-real `.v` file separately (`mimz.toml` or `--extern-src`). See spec/02
-section 1.5c for the full grammar.
+arrays, `E1302`), since a real Verilog port list is always flat wires. When
+the mimz-side name and the actual Verilog module name differ, write
+`= "RealModuleName"` **between the name and the parameter list** (before
+the parameters, not after):
+
+```mimz
+extern module Pll = "real_pll"(MULT: int = 2) {
+  clock clk_in
+  out clk_out: bit
+}
+```
+
+The compiled output must be linked against the real `.v` file separately
+(`mimz.toml` or `--extern-src`). See spec/02 section 1.5c for the full
+grammar.
 
 ## Compile-time loops: `repeat`
 

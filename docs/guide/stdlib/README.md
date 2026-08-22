@@ -44,6 +44,14 @@ written alias picks the canonical English module or its pure-Tamil twin:
 | 7-seg     | `import std.seg7` → `Seg7`           | `serkka nuulagam.ennkaatti`     | `சேர்க்க நூலகம்.எண்காட்டி`       |
 | UART TX   | `import std.uart_tx` → `UartTx`      | `serkka nuulagam.anuppi`        | `சேர்க்க நூலகம்.அனுப்பி`         |
 
+> **Heads-up:** the alias is more than a name swap. Importing via a Tamil twin
+> (`வரிசை`, `நிலைப்படுத்தி`, …) selects the module whose **ports and
+> parameters have Tamil names too** — e.g. the Fifo twin takes
+> `அகலம்`/`ஆழம்` (not `WIDTH`/`DEPTH`) and exposes
+> `நுழை`/`நீக்கு`/`தரவு`/`கடிகை`/`மீள்`. Wiring it with English names fails
+> with `E0106`/`E0107`. Each module page lists both spellings; pick one flavor
+> for the whole instantiation.
+
 ### Vendoring (eject)
 
 To customize a module, write the library into your project and point

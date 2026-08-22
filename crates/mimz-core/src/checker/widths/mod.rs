@@ -1,4 +1,4 @@
-//! Pass 4 — width and type checking (E0401–E0410) + match
+//! Pass 7 — width and type checking (E0401–E0410) + match
 //! exhaustiveness (E0601/E0602).
 //!
 //! Enforces the language's core safety promise (spec/02 section 6):
@@ -10,7 +10,7 @@
 //! checked under a CONCRETE parameter binding — its defaults, plus one
 //! extra check per distinct binding it is instantiated with (memoized).
 //! A module whose params lack defaults is checked only as instantiated;
-//! never instantiated means its internals are skipped (passes 1–3 still
+//! never instantiated means its internals are skipped (passes 1–6 still
 //! ran). Connection widths are checked at every instantiation by
 //! evaluating the child's port types under the instance's arguments —
 //! the checker-side mirror of the emitter's `width_subst`.
@@ -273,7 +273,7 @@ struct Wcx<'a> {
 type Config = (usize, String, Vec<(String, i128)>);
 
 impl<'a> Checker<'a> {
-    /// Pass 4 entry: check every module under its default binding, then
+    /// Pass 7 entry: check every module under its default binding, then
     /// every distinct binding discovered at instantiation sites.
     pub(super) fn check_widths(&mut self) {
         let files = self.files;
@@ -400,7 +400,7 @@ impl<'a> Checker<'a> {
         }
         for item in &m.items {
             if let ModuleItem::Const(c) = item {
-                // Eval failures were already reported by pass 3.
+                // Eval failures were already reported by pass 6.
                 if let Ok(v) = consteval::eval(&c.value, &env) {
                     env.insert(c.name.name.clone(), v);
                 }
@@ -629,7 +629,7 @@ mod tests {
 
     #[test]
     fn mem_field_access_reports_exactly_one_diagnostic() {
-        // `my_mem` is `Bind::Mem`, present in both `cx.sc.names` (pass 3
+        // `my_mem` is `Bind::Mem`, present in both `cx.sc.names` (pass 6
         // diagnoses it there, correctly worded "is a memory") AND
         // `cx.sigs` (populated by `collect_sigs`). Regression test:
         // `field_ty`'s bundle-lookup fallback used to key on `cx.sigs`

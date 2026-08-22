@@ -87,10 +87,11 @@ This is recorded as a Decision in `docs/log/2026-06-16.md`.
 
 - **Explanation:** an interactive loop to poke a combinational module's inputs and
   see outputs, growing into single-stepping sequential designs.
-- **Why it rides this work:** the combinational evaluator (`src/sim/comb.rs`) is
+- **Why it rides this work:** the combinational evaluator
+  (`crates/mimz-sim/src/sim/comb.rs`) is
   already callable on one module/expression; the Phase 1.5 kernel extends it to
   sequential. The WASM playground (Phase 4) reuses the same engine.
-- **Status:** ✅ **Shipped in v0.2.0** (`src/commands/repl.rs`, interactive evaluation with rustyline).
+- **Status:** ✅ **Shipped in v0.2.0** (`src/commands/repl.rs`, interactive evaluation reading stdin directly).
 - **Bigger sibling — `mimz tui` (idea 8.11):** a vim-like full-screen TUI
   workbench that, on start, asks the output mode (emit Verilog / run+log /
   waveform) and drives the WHOLE toolchain (clocked sim, VCD, `mimz test`, inline
@@ -99,7 +100,9 @@ This is recorded as a Decision in `docs/log/2026-06-16.md`.
 
 ## 5. Testbench ergonomics: the `await` evolution
 
-- Phase 1.5 ships `await clk.cycles(n)` as a thin equivalent of `tick(clk, n)`
+- `await clk.cycles(n)` is **reserved, not shipped**: `await` is a reserved word
+  (keywords.toml / spec/03) with no grammar production yet. When it lands it will
+  be a thin equivalent of `tick(clk, n)`
   (cycle-waiting only) alongside `tick`/`expect`.
 - **Future idea (method-await, idea 3.3):** `let r = await uart.read_byte()` —
   suspend on a hardware response. Needs **callables/methods** (currently E1110), a

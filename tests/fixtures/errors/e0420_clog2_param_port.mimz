@@ -1,0 +1,6 @@
+// expect: E0420
+module P1(WIDTH: int = 8) {
+    in a: bits[WIDTH]
+    out idx: bits[clog2(WIDTH)]
+    idx = 0
+}

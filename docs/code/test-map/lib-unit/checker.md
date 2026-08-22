@@ -1,4 +1,4 @@
-# Unit: checker (`crates/mimz-core/src/checker/tests/`, 283 tests)
+# Unit: checker (`crates/mimz-core/src/checker/tests/`, 286 tests)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
@@ -54,7 +54,7 @@ before, just organized by file and given a row if it lacked one.
 | `const_overflow_is_e0202`                                              | a `const` expression that overflows is E0202                                                      |
 | `reg_without_reset_declaration_is_e0301`                               | a `reg` with no `reset` line is E0301                                                             |
 
-## checker/tests/widths.rs (65 tests)
+## checker/tests/widths.rs (68 tests)
 
 The width slice (E0401–E0410) added error paths for every code (several
 codes get two angles, e.g. `extend`-narrowing AND `trunc`-widening for

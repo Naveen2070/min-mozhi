@@ -2,8 +2,8 @@
 //! structured-arg interpolation + the additive English-fallback render path,
 //! end-to-end through the CLI.
 //!
-//! The localized catalog is now the native-authored one (`messages.toml`, 33 of
-//! 36 codes, decision C3 ratified 2026-06-15), so these tests assert the
+//! The localized catalog is now the native-authored one (`messages.toml`,
+//! decision C3 ratified 2026-06-15), so these tests assert the
 //! MECHANISM — that the right flavor is chosen, that the interpolated identifier
 //! is inflected and the structured args (`{expected}`/`{op}`/`{type}`/…) are
 //! filled, and crucially that any code the catalog does NOT cover (E0403/E0404/

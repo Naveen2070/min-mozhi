@@ -166,29 +166,66 @@ fn code_docs_have_a_sync_stamp() {
     );
 }
 
+/// Count `#[test]` functions across the workspace the way cargo counts
+/// them: every `.rs` file under these roots, lines whose trimmed form
+/// starts with the attribute (mid-line mentions inside docs/strings don't
+/// count — verified line-for-line against a full `cargo test --workspace`
+/// run: per-root sums matched every suite's own passed-count exactly).
+fn count_unit_tests() -> usize {
+    fn walk(dir: &std::path::Path, total: &mut usize) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, total);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                for line in fs::read_to_string(&path).unwrap().lines() {
+                    if line.trim_start().starts_with("#[test]") {
+                        *total += 1;
+                    }
+                }
+            }
+        }
+    }
+    let roots = [
+        "crates/mimz-core/src",
+        "crates/mimz-core/tests",
+        "crates/mimz-sim/src",
+        "crates/mimz-sim/tests",
+        "crates/mimz-wasm/src",
+        "src",
+        "tests",
+    ];
+    let mut total = 0;
+    for r in roots {
+        walk(&root().join(r), &mut total);
+    }
+    total
+}
+
 /// The test count in docs/code/10-test-map.md and the README badge must
-/// match each other and the expected current total (1315). This prevents
-/// the badge/docs from drifting from reality.
+/// match the live workspace total (counted from source, not pinned — a new
+/// `#[test]` anywhere updates the number this enforces). This prevents the
+/// badge/docs from drifting from reality.
 #[test]
 fn test_count_matches_docs_and_badge() {
-    const EXPECTED_TOTAL: usize = 1315;
+    let expected_total = count_unit_tests();
 
     // 1. Check docs/code/10-test-map.md has the expected total
     let test_map = read("docs/code/10-test-map.md");
-    let expected_line = format!("**{} tests**", EXPECTED_TOTAL);
+    let expected_line = format!("**{} tests**", expected_total);
     assert!(
         test_map.contains(&expected_line),
         "docs/code/10-test-map.md master count should say **{} tests** — update the page",
-        EXPECTED_TOTAL
+        expected_total
     );
 
     // 2. Check README.md badge matches
     let readme = read("README.md");
-    let badge_pattern = format!("tests-{}%", EXPECTED_TOTAL);
+    let badge_pattern = format!("tests-{}%", expected_total);
     assert!(
-        readme.contains(&badge_pattern) || readme.contains(&format!("tests-{} ", EXPECTED_TOTAL)),
+        readme.contains(&badge_pattern) || readme.contains(&format!("tests-{} ", expected_total)),
         "README.md badge does not match expected test count {} — update the badge URL",
-        EXPECTED_TOTAL
+        expected_total
     );
 
     // 3. Check ROADMAP.md phase table references the right test counts (indirectly via status)
@@ -197,5 +234,61 @@ fn test_count_matches_docs_and_badge() {
     assert!(
         roadmap.contains("v0.2.0"),
         "ROADMAP.md should reference v0.2.0 release"
+    );
+}
+
+/// Localized-code coverage must be stated identically everywhere from ONE
+/// computation: count `[message.*]` keys in `lang/messages.toml`, read the
+/// declared length of `ALL_CHECKER_CODES` out of `diag.rs`, then require both
+/// present-tense doc claim sites to carry exactly those numbers. Before the
+/// 2026-08-22 doc audit these counts existed in four conflicting forms
+/// ("33 of 44", "33 of 36", "34 of 75", "35 of 76"); this kills that drift.
+#[test]
+fn localized_code_count_matches_docs() {
+    // localized = number of [message.Exxxx] section keys in the catalog
+    let catalog = read("lang/messages.toml");
+    let localized = catalog
+        .lines()
+        .filter(|l| l.trim_start().starts_with("[message.E"))
+        .count();
+    assert!(
+        localized > 0,
+        "lang/messages.toml lost its [message.*] entries"
+    );
+
+    // total = the declared array length: `pub const ALL_CHECKER_CODES: [&str; N]`
+    let diag = read("crates/mimz-core/src/diag.rs");
+    let marker = "pub const ALL_CHECKER_CODES: [&str; ";
+    let start = match diag.find(marker) {
+        Some(i) => i + marker.len(),
+        None => panic!("ALL_CHECKER_CODES moved or renamed in crates/mimz-core/src/diag.rs"),
+    };
+    let digits: String = diag[start..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    let total: usize = digits
+        .parse()
+        .unwrap_or_else(|e| panic!("ALL_CHECKER_CODES length `{digits}` not a number: {e}"));
+
+    // membership (every key is a real checker code) is asserted by tests/morph.rs;
+    // here we only sanity-check magnitude before trusting it against prose.
+    assert!(
+        localized <= total,
+        "{localized} localized entries exceed the {total}-code checker registry"
+    );
+
+    // Claim site 1: ROADMAP error-catalog row.
+    let roadmap_claim = format!("{localized} of the {total} checker codes localized");
+    assert!(
+        read("ROADMAP.md").contains(&roadmap_claim),
+        "ROADMAP.md error-catalog row should read \"{roadmap_claim}\" — update the row to the computed counts"
+    );
+
+    // Claim site 2: spec/04 grammar-engine bullet.
+    let spec_claim = format!("**{localized} of the (now {total}) checker E-codes**");
+    assert!(
+        read("spec/04-grammar-engine.md").contains(&spec_claim),
+        "spec/04-grammar-engine.md error-catalog bullet should read \"{spec_claim}\" — update the bullet to the computed counts"
     );
 }

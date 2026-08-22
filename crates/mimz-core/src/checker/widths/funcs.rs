@@ -148,7 +148,7 @@ impl<'a> Checker<'a> {
                 FnStmt::Loop {
                     var, lo, hi, body, ..
                 } => {
-                    // Bounds that do not const-eval were reported by pass 3.
+                    // Bounds that do not const-eval were reported by pass 6.
                     let (Ok(lo_v), Ok(hi_v)) = (
                         consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
                         consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
@@ -193,7 +193,7 @@ impl<'a> Checker<'a> {
                             consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
                             consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
                         ) else {
-                            continue; // bounds reported by pass 3
+                            continue; // bounds reported by pass 6
                         };
                         let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
                             vec![lo_v, lo_v + 1, hi_v - 1]
@@ -235,7 +235,7 @@ impl<'a> Checker<'a> {
                                     bits(width)
                                 }
                             }
-                            _ => continue, // E0417 already reported by pass 3
+                            _ => continue, // E0417 already reported by pass 6
                         };
                         let sigs_before = cx.sigs.clone();
                         cx.sigs.insert(var.name.clone(), elem_ty);

@@ -208,9 +208,9 @@ impl<'a> Checker<'a> {
                                 *span,
                                 "E0811",
                                 "`const if` condition is not a compile-time constant",
-                                "use only module parameters, consts, literals, and \
-                                 arithmetic/comparison; runtime signals like ports are \
-                                 not allowed",
+                                "use only consts, literals, and \
+                                 arithmetic/comparison; parameters and runtime \
+                                 signals like ports are not allowed yet",
                             );
                         }
                     }

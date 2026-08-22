@@ -19,17 +19,18 @@ exists purely inside `test`, alongside `tick`/`expect`.
 
 ## Turning it on: `--emulate`
 
-A `sim` block is inert by default — `mimz test` runs it as a normal,
-full-speed test with no throttling and no dashboard. To actually emulate:
+A test containing a `sim` block is **skipped** unless emulation is actually
+live. Without any flag — or when stdout isn't a real terminal (CI, a pipe,
+`mimz test | tee log`) — `mimz test` reports the test as `SKIP` with a
+reason line and exits 0; the sim-block body does not run at all:
 
 ```sh
 mimz test blink.mimz --emulate
 ```
 
-`--emulate` only does something in a real terminal. Piped or redirected
-output (CI, a script, `mimz test | tee log`) auto-degrades to the same
-full-speed run as leaving the flag off, with a logged note explaining why —
-it never hangs a CI job waiting for a terminal that isn't there.
+Emulation goes live only when `--emulate` (or `--step`) is passed AND
+stdout is an actual terminal — so a CI job can never hang waiting for
+hardware that isn't there.
 
 Add `--step` for single-cycle control: the run pauses after every cycle,
 waiting for Enter to advance or `q` to quit. Useful for watching an LED
@@ -51,9 +52,11 @@ test "quick beep (emulated)" for MelodyPlayer(TICK: 500000) {
 }
 ```
 
-- `speed mhz(N)` — the real-world clock rate the design's declared clock
-  should be throttled to. Everything inside the block paces against this;
-  without a `sim` block, `tick` runs as fast as the interpreter can go.
+- `speed hz(N)` / `speed khz(N)` / `speed mhz(N)` — the real-world clock
+  rate the design's declared clock should be throttled to (all three units
+  work; they multiply out to the same cycle pacing). Everything inside the
+  block paces against this; without a `sim` block, `tick` runs as fast as
+  the interpreter can go.
 - `bind <port> -> <peripheral>(<config>)` — connects one of the module's
   ports to a virtual peripheral. One `bind` per port; a port can only be
   bound once.

@@ -1,4 +1,4 @@
-//! Pass 6 — clock-domain ownership (E0701, spec/02 section 6 rule 5).
+//! Pass 9 — clock-domain ownership (E0701, spec/02 section 6 rule 5).
 //!
 //! Every reg is owned by exactly one clock (its single `on` block's —
 //! E0503 already enforces the single block). This pass colors every
@@ -48,7 +48,7 @@ struct Ccx {
 }
 
 impl<'a> Checker<'a> {
-    /// Pass 6 entry: one analysis per declared module, in file order.
+    /// Pass 9 entry: one analysis per declared module, in file order.
     /// Same-named modules from different files are legal (spec/02 section
     /// 1.5b) and each gets its own independent check — no "canonical"
     /// skip, which would silently leave every module but the
@@ -137,7 +137,7 @@ impl<'a> Checker<'a> {
         self.check_sync_prim_calls(file, m, &mut cx);
     }
 
-    /// Pass 6's own carve-out: validates every `sync.double_flop`/
+    /// Pass 9's own carve-out: validates every `sync.double_flop`/
     /// `sync.pulse` call's domain rule (E0704) and placement rule (E0705).
     /// `expr_reads`'s `ExprKind::Call` arm already excludes these calls'
     /// arguments from the generic E0701 read-collector (this is the ONLY
@@ -555,7 +555,7 @@ fn body_reads(body: &[SeqStmt], module_items: &[ModuleItem], out: &mut Vec<(Stri
                 {
                     body_reads(&lowered, module_items, out);
                 }
-                // On `None`: E0417 already reported by pass 3 (names.rs) —
+                // On `None`: E0417 already reported by pass 6 (names.rs) —
                 // silently skip, same "reported once upstream" precedent
                 // used throughout this task.
             }

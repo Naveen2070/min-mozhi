@@ -26,7 +26,7 @@ impl<'a> Checker<'a> {
                         .unwrap_or(Ty::Unknown);
                     self.check_expr(cx, &sl.result_init, result_t.clone());
                     // Bounds that do not const-eval were already reported by
-                    // pass 3 (names.rs) — nothing more to check here. `lo`
+                    // pass 6 (names.rs) — nothing more to check here. `lo`
                     // isn't used in the width formula below (see the comment
                     // there), but must still const-eval — same skip-if-either-
                     // fails behavior as before Finding 2's fix.
@@ -166,7 +166,7 @@ impl<'a> Checker<'a> {
                 ModuleItem::On(on) => self.seq_width_stmts(cx, &on.body),
                 ModuleItem::Inst(inst) => self.check_inst_widths(cx, inst, found),
                 ModuleItem::Repeat(r) => {
-                    // Bounds that do not const-eval were reported by pass 3.
+                    // Bounds that do not const-eval were reported by pass 6.
                     let (Ok(lo), Ok(hi)) = (
                         consteval::eval(&r.lo, &cx.env).map(|v| v.to_i128_saturating()),
                         consteval::eval(&r.hi, &cx.env).map(|v| v.to_i128_saturating()),
@@ -242,7 +242,7 @@ impl<'a> Checker<'a> {
                             consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
                             consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
                         ) else {
-                            continue; // bounds reported by pass 3
+                            continue; // bounds reported by pass 6
                         };
                         let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
                             vec![lo_v, lo_v + 1, hi_v - 1]
@@ -282,7 +282,7 @@ impl<'a> Checker<'a> {
                                 }
                             }
                             // Not an array/mem: E0417 already reported by
-                            // pass 3 (names.rs) — silently skip.
+                            // pass 6 (names.rs) — silently skip.
                             _ => continue,
                         };
                         let shadowed = cx.sigs.insert(fe.var.name.clone(), elem_ty);
@@ -321,7 +321,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     // E0907: verify expr is actually bundle-typed (Ty::Unknown for non-bundles
-                    // produces no further diagnostic; pass 3 already reported unknown names).
+                    // produces no further diagnostic; pass 6 already reported unknown names).
                     let _ = self.infer_ty(cx, expr);
                     let _ = span; // span available for future E0907-on-destructure diagnostics
                 }
@@ -356,7 +356,7 @@ impl<'a> Checker<'a> {
                 SeqStmt::Loop {
                     var, lo, hi, body, ..
                 } => {
-                    // Bounds that do not const-eval were reported by pass 3.
+                    // Bounds that do not const-eval were reported by pass 6.
                     let (Ok(lo_v), Ok(hi_v)) = (
                         consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
                         consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
@@ -391,7 +391,7 @@ impl<'a> Checker<'a> {
                             consteval::eval(lo, &cx.env).map(|v| v.to_i128_saturating()),
                             consteval::eval(hi, &cx.env).map(|v| v.to_i128_saturating()),
                         ) else {
-                            continue; // bounds reported by pass 3
+                            continue; // bounds reported by pass 6
                         };
                         let values: Vec<i128> = if hi_v - lo_v > MAX_REPEAT_CHECKS {
                             vec![lo_v, lo_v + 1, hi_v - 1]
@@ -430,7 +430,7 @@ impl<'a> Checker<'a> {
                                     bits(width)
                                 }
                             }
-                            _ => continue, // E0417 already reported by pass 3
+                            _ => continue, // E0417 already reported by pass 6
                         };
                         let shadowed = cx.sigs.insert(var.name.clone(), elem_ty);
                         self.seq_width_stmts(cx, body);

@@ -9,11 +9,12 @@
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
 > (`mimz fmt` — keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-08-21 (full docs audit: 75 checker error codes
-> (E0001–E0912, E1301–E1302); 35 test suites / 1315 passing tests;
-> error fixtures 119, goldens 87 `.v` + 17 `_tb.v` + 1 `.vcd`,
-> 200 example files across 5 folders (44 english, 44 tanglish, 44 tamil,
-> 43 mixed, 25 tamil-pure); 3-crate workspace architecture). Prior: 2026-07-27
+> Last updated: 2026-08-22 (doc-code audit: 76 checker error codes
+> (E0001–E0912/E0420, E1301–E1302); 35 test suites / 1318 passing tests;
+> error fixtures 120, goldens 88 `.v` (71 module + 17 `_tb.v`) + 1 `.vcd`,
+> 200 top-level example files across 5 folders (44 english, 44 tanglish,
+> 44 tamil, 43 mixed, 25 tamil-pure; +24 std/lib twins = 224 recursive);
+> 3-crate workspace architecture). Prior: 2026-08-21
 > (full docs audit: checker seven→nine passes
 > (`extern_module.rs` E1301/E1302 pass added), E-code range E0001–E0909 →
 > E0001–E0912/E1301–E1302 (73 codes total); `checker/tests.rs`/
@@ -111,7 +112,7 @@ The IR and native backend remain planned.
 | **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; nine passes (symbols/extern-module ports/funcs cycle detection/funcs unreachable/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0912, E1301–E1302 (75 total) |
 | **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper                                                                               |
 | **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                                             |
-| **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `crates/mimz-sim/src/sim/` (comb, kernel, elaborate, harness, run, value, vcd, trace)           |
+| **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `crates/mimz-sim/src/sim/` (comb, kernel, diag, elaborate, harness, run, value, vcd, trace)     |
 | **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                                                                                               |
 | **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                                                                                                     |
 | **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                                                                                               |
@@ -166,6 +167,9 @@ mimz/ (workspace root)
 │   │       ├── stdlib.rs                  # embedded standard library modules
 │   │       ├── analysis.rs                # editor symbol index + offset→def/completion
 │   │       ├── project.rs                 # LoadedFile + render_diags(_lang) only (no fs I/O)
+│   │       ├── bits.rs                    # Bits value: Small(u128)/Wide(Vec<u64>)
+│   │       ├── wide.rs                    # limb arithmetic past 128 bits
+│   │       ├── width_rules.rs             # shared width/overflow contracts (single source)
 │   │       ├── ast/                       # the ONE shared AST
 │   │       │   ├── mod.rs                     # files, modules, decls, statements
 │   │       │   ├── expr.rs                    # expressions, patterns, operators
@@ -212,6 +216,7 @@ mimz/ (workspace root)
 │   │           ├── mod.rs                     # module entry + re-exports
 │   │           ├── comb.rs                    # combinational evaluator
 │   │           ├── kernel.rs                  # event-driven kernel
+│   │           ├── diag.rs                    # S0xxx runtime catalog (ALL_SIM_CODES)
 │   │           ├── elaborate/                 # AST → flat Design (7 files)
 │   │           ├── harness/                   # test block runner (2 files)
 │   │           ├── host.rs                    # EmulationHost trait + Direction enum
@@ -253,8 +258,8 @@ mimz/ (workspace root)
 │   ├── wasm_parity.rs                     # WASM ↔ CLI output parity
 │   ├── packages.rs                        # qualified cross-file references (a.b.Name)
 │   ├── showcase.rs                        # showcase/ demos (web playground, docs site)
-│   ├── golden/                            # pinned .v output per base example (87 .v + 17 _tb.v + 1 .vcd)
-│   └── fixtures/errors/                   # the broken corpus (119 .mimz files)
+│   ├── golden/                            # pinned .v output per base example (88 .v: 71 module + 17 _tb.v, + 1 .vcd)
+│   └── fixtures/errors/                   # the broken corpus (120 .mimz files + e0110_support/ helper)
 ├── benches/
 │   └── compile.rs                       # criterion per-phase micro-benchmarks (cargo bench; lexer/parser/checker/emit)
 ├── fuzz/                                # 4 libFuzzer targets (nightly only)
