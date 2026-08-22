@@ -1,10 +1,10 @@
-# 12 — Cheat Sheet
+# 12 - Cheat Sheet
 
 One-page reference. The authoritative sources are
 [`../../lang/keywords.toml`](../../lang/keywords.toml) (words) and
 [`../../spec/`](../../spec/) (semantics).
 
-## Keywords — all three flavors
+## Keywords - all three flavors
 
 | English   | Tanglish        | Tamil         | Used for                                                  |
 | --------- | --------------- | ------------- | --------------------------------------------------------- |
@@ -53,11 +53,11 @@ One-page reference. The authoritative sources are
 | `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar directive                                         |
 | `thamizh` | `thamizh`       | `தமிழ்`       | thamizh word-order profile                                |
 
-That is the complete active keyword set — 44 words. The table itself lives
+That is the complete active keyword set - 44 words. The table itself lives
 in [`lang/keywords.toml`](../../lang/keywords.toml); adding a word there is
 a DATA change, not a compiler change. The Tanglish and Tamil columns were
 ratified at keyword-set **v1** (2026-06-15); they are frozen **except the
-entries marked PROVISIONAL in the table** — the spellings of `mem`,
+entries marked PROVISIONAL in the table** - the spellings of `mem`,
 `async`, `fall`, `fn`, `return`, `default`, `bundle`, `assert`, `cover`,
 `loop`, `foreach`, `sync`, `extern`, `sim`, `bind`, and `speed` are
 placeholders pending native-speaker review. A program you write today
@@ -126,11 +126,11 @@ message:
 
 | Prefix           | Raised by | Means                                                              |
 | ---------------- | --------- | ------------------------------------------------------------------ |
-| `E10xx`          | lexer     | a typo at the character level — the text could not become words    |
-| `E11xx`          | parser    | a typo at the grammar level — the words could not become a program |
+| `E10xx`          | lexer     | a typo at the character level - the text could not become words    |
+| `E11xx`          | parser    | a typo at the grammar level - the words could not become a program |
 | `E12xx`          | loader    | an `import` could not be found                                     |
 | `E0xxx`, `E13xx` | checker   | the program parsed, but breaks a HARDWARE rule                     |
-| `W000x`          | lint      | advice only — the build still succeeds                             |
+| `W000x`          | lint      | advice only - the build still succeeds                             |
 | `S0xxx`          | simulator | it compiled, but something went wrong while running it             |
 
 This is a selection, not the catalog. The full list is in

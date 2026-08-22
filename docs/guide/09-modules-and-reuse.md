@@ -1,6 +1,6 @@
-# 9 — Modules and Reuse
+# 9 - Modules and Reuse
 
-A module is the unit of reuse — you build bigger circuits by **instantiating**
+A module is the unit of reuse - you build bigger circuits by **instantiating**
 smaller modules and by writing **combinational functions** (`fn`)
 for pure combinational logic that doesn't need its own module. This chapter covers parameters,
 instances, imports, and the compile-time generation features that let one
@@ -8,7 +8,7 @@ description produce many sizes of hardware.
 
 ## Parameters (generics)
 
-A module can take compile-time parameters — typically widths — with defaults:
+A module can take compile-time parameters - typically widths - with defaults:
 
 ```mimz
 module Reg(WIDTH: int = 8) {
@@ -23,8 +23,8 @@ widths and disappear; they are not wires.
 
 ## Conditional elaboration: `const if`
 
-`const if` includes or excludes whole module-body items — ports, wires, regs,
-instances, anything — at elaboration time, based on a compile-time condition
+`const if` includes or excludes whole module-body items - ports, wires, regs,
+instances, anything - at elaboration time, based on a compile-time condition
 (usually a `const` flag):
 
 ```mimz
@@ -45,14 +45,14 @@ module Adder {
 }
 ```
 
-The losing branch is discarded completely — not type-checked, not
+The losing branch is discarded completely - not type-checked, not
 name-resolved, not emitted, so it can reference ports/wires that only exist
 in that branch. `COND` may use file-level or module-level `const`s, literals,
 and arithmetic/comparison operators; **module parameters do not work in
 conditions yet** (a condition referencing one fails `E0811`). If the
 condition can't be resolved at compile time for any other reason, that's
 also `E0811`. `const if` blocks may nest, and an `else { ... }` is optional.
-It's module-body only — no file-level conditional items.
+It's module-body only - no file-level conditional items.
 
 ## Instances: `let`
 
@@ -91,7 +91,7 @@ a file is `E1201`.
 
 ## Packages: disambiguating same-named modules
 
-Two files can declare a module (or enum, or bundle) with the same name — this
+Two files can declare a module (or enum, or bundle) with the same name - this
 is legal as long as you never reference the name ambiguously. If you do
 import two files that both declare `Fifo`, qualify the reference with the
 exact import path you wrote, dot-joined:
@@ -107,7 +107,7 @@ module Top {
 ```
 
 The qualifier is exactly the import path as written in this file's own
-`import` — there's no separate "package name" declaration. A bare,
+`import` - there's no separate "package name" declaration. A bare,
 unqualified name still works as long as it's unambiguous, so this is fully
 additive. `E0110` fires if a bare name resolves to two or more declarations;
 `E0111` fires if the qualifier doesn't match any import in the file.
@@ -116,7 +116,7 @@ Functions (`fn`) stay project-wide unique and are never qualified.
 ## Wrapping real Verilog: `extern module`
 
 `extern module` declares a hand-written Verilog module's port list without
-giving it a body — for a vendor IP core or a hand-tuned block you want to
+giving it a body - for a vendor IP core or a hand-tuned block you want to
 instantiate from mimz source exactly like a native module:
 
 ```mimz
@@ -136,9 +136,9 @@ module Top {
 ```
 
 Instantiation, connection checking, and width checking work exactly as for
-a native module — the only difference is the compiler never emits a
+a native module - the only difference is the compiler never emits a
 `module ... endmodule` body for it, only the instantiation. Ports are
-scalar-only (`bit`/`bits[N]`/`signed[N]`/`clock`/`reset` — no bundles or
+scalar-only (`bit`/`bits[N]`/`signed[N]`/`clock`/`reset` - no bundles or
 arrays, `E1302`), since a real Verilog port list is always flat wires. When
 the mimz-side name and the actual Verilog module name differ, write
 `= "RealModuleName"` **between the name and the parameter list** (before
@@ -157,7 +157,7 @@ grammar.
 
 ## Compile-time loops: `repeat`
 
-`repeat` unrolls at build time — it is hardware generation, not a runtime loop.
+`repeat` unrolls at build time - it is hardware generation, not a runtime loop.
 The range is half-open (`lo..hi`):
 
 ```mimz
@@ -167,7 +167,7 @@ repeat i: 0..4 {
 ```
 
 You cannot _declare_ ports, wires, regs, clocks, etc. inside a `repeat` (those are
-module structure, not repeatable bodies) — doing so is `E0303`. What you generate
+module structure, not repeatable bodies) - doing so is `E0303`. What you generate
 inside is instances and drives.
 
 ## Instance arrays + `const`: a ripple-carry adder
@@ -199,9 +199,9 @@ module RippleAdder {
 
 What is happening:
 
-- `const WIDTH: int = 4` — change this one line and the whole adder regrows;
-- `let fa[i] = …` — an **instance array**: one `FullAdder` per bit;
-- `fa[i - 1].cout` — the carry chains from each stage to the next; the index
+- `const WIDTH: int = 4` - change this one line and the whole adder regrows;
+- `let fa[i] = …` - an **instance array**: one `FullAdder` per bit;
+- `fa[i - 1].cout` - the carry chains from each stage to the next; the index
   `i - 1` folds to a literal at compile time;
 - the `if i == 0 { cin } else { … }` is evaluated _during unrolling_, so bit 0
   takes the module carry-in and no dead `fa[-1]` is ever emitted.

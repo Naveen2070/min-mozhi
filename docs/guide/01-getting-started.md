@@ -1,10 +1,10 @@
-# 1 — Getting Started
+# 1 - Getting Started
 
 ## Install
 
 There are two paths: download a prebuilt binary, or build from source.
 
-### Option A — download a prebuilt binary (no Rust needed)
+### Option A - download a prebuilt binary (no Rust needed)
 
 Each tagged release attaches a `mimz` binary for every platform to the GitHub
 Release page. Pick the archive for your OS/arch:
@@ -17,21 +17,21 @@ Release page. Pick the archive for your OS/arch:
 | macOS (Apple Silicon)      | `mimz-<version>-aarch64-apple-darwin.tar.gz`      |
 
 Unpack it, then put `mimz` on your `PATH`. Each release also ships a `SHA256SUMS`
-file — verify your download first:
+file - verify your download first:
 
-- **macOS/Linux** — `shasum -a 256 -c SHA256SUMS --ignore-missing`.
-- **Windows** — `Get-FileHash <archive> -Algorithm SHA256`, then compare to the
+- **macOS/Linux** - `shasum -a 256 -c SHA256SUMS --ignore-missing`.
+- **Windows** - `Get-FileHash <archive> -Algorithm SHA256`, then compare to the
   matching line in `SHA256SUMS`.
 
-> **The prebuilt binaries are UNSIGNED** (code signing is deferred — see the
+> **The prebuilt binaries are UNSIGNED** (code signing is deferred - see the
 > `UNSIGNED.txt` in each archive). They are safe; the OS just doesn't recognise
 > the (absent) signature on first run:
 >
-> - **macOS** — Gatekeeper may block it. Clear the quarantine once with
+> - **macOS** - Gatekeeper may block it. Clear the quarantine once with
 >   `xattr -d com.apple.quarantine ./mimz`, or right-click the binary → **Open**.
-> - **Windows** — SmartScreen may warn. Click **More info → Run anyway**.
+> - **Windows** - SmartScreen may warn. Click **More info → Run anyway**.
 
-### Option B — build from source
+### Option B - build from source
 
 Min-Mozhi is a Rust program. With [Rust](https://rustup.rs) (stable ≥ 1.85):
 
@@ -46,7 +46,7 @@ Every command below is written as `mimz …`. Until you install the binary on yo
 `mimz check foo.mimz` becomes `cargo run -- check foo.mimz`.
 
 Source files use the `.mimz` extension. Confirm your install with
-`mimz --version` — it prints the compiler version and the language edition.
+`mimz --version` - it prints the compiler version and the language edition.
 
 ## Your first module
 
@@ -63,7 +63,7 @@ module And2 {
 ```
 
 Read it as a circuit: two one-bit inputs `a` and `b`, one output `y`, and `y` is
-wired to the AND of the two. That is the whole module — no `main`, no statements
+wired to the AND of the two. That is the whole module - no `main`, no statements
 that "run". A module is a box with ports and the logic that drives the outputs.
 
 ## Check it
@@ -105,14 +105,14 @@ endmodule
 
 When you run `mimz compile`, your file flows through five stations:
 
-1. **Lexer** — text becomes tokens; keywords in any of the three flavors resolve
+1. **Lexer** - text becomes tokens; keywords in any of the three flavors resolve
    to the same token here.
-2. **Parser** — tokens become an AST (the tree shape of your module).
-3. **Checker** — nine passes enforce every safety rule (names, widths, drivers,
+2. **Parser** - tokens become an AST (the tree shape of your module).
+3. **Checker** - nine passes enforce every safety rule (names, widths, drivers,
    exhaustiveness, functions, clock domains). This is where you get teaching errors.
-4. **Emitter** — the AST becomes Verilog; `repeat` loops unroll, Tamil
+4. **Emitter** - the AST becomes Verilog; `repeat` loops unroll, Tamil
    identifiers transliterate to ASCII.
-5. **Output** — a `.v` file.
+5. **Output** - a `.v` file.
 
 `mimz check` stops after station 3 (no file written); `mimz compile` runs all
 five. For the deep tour of the pipeline on a real example, see

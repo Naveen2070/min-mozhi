@@ -1,4 +1,4 @@
-# Integration: showcase (`tests/showcase.rs`, 6 tests — run the real binary)
+# Integration: showcase (`tests/showcase.rs`, 6 tests - run the real binary)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 

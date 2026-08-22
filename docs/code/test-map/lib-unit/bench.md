@@ -3,8 +3,8 @@
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
 The harness itself (docs in [`12-benchmark.md`](12-benchmark.md))
-re-measures what this suite asserts — rates and timings instead of
-pass/fail — so its own logic is unit-tested here:
+re-measures what this suite asserts - rates and timings instead of
+pass/fail - so its own logic is unit-tested here:
 
 | Test                                       | Locks in                                                       |
 | ------------------------------------------ | -------------------------------------------------------------- |
@@ -16,6 +16,6 @@ pass/fail — so its own logic is unit-tested here:
 | `failures_flip_the_verdict_and_are_listed` | a failing validation turns the verdict red and is named        |
 
 The `criterion` micro-benchmark harness (`benches/compile.rs`, run with
-`cargo bench`) carries **no `#[test]`s** — `criterion` benchmarks aren't
+`cargo bench`) carries **no `#[test]`s** - `criterion` benchmarks aren't
 test functions, so it doesn't affect the count above. It's a separate
 performance tool, not part of the assertion suite.

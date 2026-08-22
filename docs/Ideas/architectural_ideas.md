@@ -56,56 +56,56 @@ already a documented later-phase trigger/plan (1, 2, 5), or both. These ideas do
 Status key: ✅ done/enforced · 🟢 partly shipped, clear path · 🔵 planned phase ·
 🟡 freeze-sensitive (act before v0.1.0).
 
-### Idea 1 — AST error recovery for the LSP → 🟢 partly shipped (Phase 4)
+### Idea 1 - AST error recovery for the LSP → 🟢 partly shipped (Phase 4)
 
 - **Have:** statement-level panic-mode recovery already exists
-  (`Parser::sync_to_newline`, `crates/mimz-core/src/parser/mod.rs`) — the parser reports more than
+  (`Parser::sync_to_newline`, `crates/mimz-core/src/parser/mod.rs`) - the parser reports more than
   one error per run and skips to the next newline / `}` instead of halting on the
   first. "Diagnostics on broken code" therefore already works at line
   granularity, and the LSP v0 (diagnostics-only) consumes it.
 - **Gap:** recovery _drops_ the broken statement rather than leaving an `Error`
   placeholder node in the AST. Hover, semantic highlighting, and completion on a
-  half-typed line need those placeholder nodes — and those LSP features
+  half-typed line need those placeholder nodes - and those LSP features
   themselves are not built yet (LSP is v0, diagnostics-only).
 - **Verdict:** feasible, additive, edition-safe. Lands **with** the Phase 4 LSP
   hover/go-to-def/completion work (it is a prerequisite for them, not a
   standalone task). Not a v0.1.0 blocker.
 
-### Idea 2 — Fuzzing + differential testing → ✅ all three legs shipped (v0.2.0)
+### Idea 2 - Fuzzing + differential testing → ✅ all three legs shipped (v0.2.0)
 
-- **Have (leg 1 — robustness fuzzing):** `fuzz/` is a cargo-fuzz crate with four
-  targets — `lex_parse_eval`, `lex_parse_compile`, `pretty_roundtrip`,
-  `translate_roundtrip` — asserting the untrusted-input path never panics.
+- **Have (leg 1 - robustness fuzzing):** `fuzz/` is a cargo-fuzz crate with four
+  targets - `lex_parse_eval`, `lex_parse_compile`, `pretty_roundtrip`,
+  `translate_roundtrip` - asserting the untrusted-input path never panics.
   (Detached workspace; libFuzzer = nightly/Linux, runs in the `fuzz` CI job.)
-- **Have (leg 2 — differential oracle):**
+- **Have (leg 2 - differential oracle):**
   `our_simulator_matches_icarus_bit_for_bit` (`tests/icarus.rs`)
   compares our simulator's VCD against Icarus on the **fixed** example
   corpus; `wasm_parity` checks WASM-vs-native parity.
-- **Have (leg 3 — the generative half):** a valid-by-construction AST generator in
+- **Have (leg 3 - the generative half):** a valid-by-construction AST generator in
   `tests/differential_fuzz.rs` (v1–v3) that generates random valid Min-Mozhi programs
   and asserts matching execution between Min-Mozhi's simulator and Icarus Verilog.
 - **Verdict:** ✅ **Shipped in v0.2.0** (`tests/differential_fuzz.rs`, `tools/gate.sh`).
 
-### Idea 3 — `extern module` / external-IP black-box → ✅ SHIPPED in v0.2.0
+### Idea 3 - `extern module` / external-IP black-box → ✅ SHIPPED in v0.2.0
 
 - **State:** `extern module Name(params) { doc: "...", ports }` is fully supported
-  (spec/02 §1.5c, `tests/extern.rs`, CLI `--extern-src`).
+  (spec/02 section 1.5c, `tests/extern.rs`, CLI `--extern-src`).
 - **Feasibility:** Real language feature with scalar port typing, checker validation
   (E1301 duplicate name, E1302 non-scalar port), Verilog instantiation emission,
   and simulator taint/strict mode (`mimz.toml [project] extern_sim`).
 - **Verdict:** ✅ **Shipped in v0.2.0** (`crates/mimz-core/src/parser/items/extern_module.rs`,
   `crates/mimz-core/src/checker/extern_module.rs`, `tests/extern.rs`).
 
-### Idea 4 — keep the core Wasm-friendly → ✅ already enforced; codified as an invariant
+### Idea 4 - keep the core Wasm-friendly → ✅ already enforced; codified as an invariant
 
 - **State:** All OS-coupled code (`std::fs`/`env`/`process`, `tokio`) lives only in
-  the CLI shell — `src/commands/`, `main.rs`, `config.rs`, `project.rs`, `lsp.rs`,
+  the CLI shell - `src/commands/`, `main.rs`, `config.rs`, `project.rs`, `lsp.rs`,
   `src/bin/`. The core stages (`mimz-core`) and simulator (`mimz-sim`) are string/AST pure.
   `crates/mimz-wasm` builds the pure lib with `default-features = false`; `wasm_parity`
   proves the browser pipeline matches native.
 - **Verdict:** ✅ Codified and enforced across the 3-crate workspace.
 
-### Idea 5 — toolchain as modular crates → ✅ SHIPPED in v0.2.0
+### Idea 5 - toolchain as modular crates → ✅ SHIPPED in v0.2.0
 
 - **State:** Split into a 3-crate Cargo workspace:
   - `crates/mimz-core`: pure compiler pipeline and tooling;

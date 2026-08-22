@@ -1,12 +1,12 @@
 # mimz-wasm
 
-WebAssembly bindings for the Min-Mozhi (மின்மொழி) compiler — compile `.mimz` to
+WebAssembly bindings for the Min-Mozhi (மின்மொழி) compiler - compile `.mimz` to
 Verilog in the browser, no server. Wraps [`mimz_sim::compile_string`] (single-file,
 in-memory: no filesystem, no `import` resolution).
 
 ## API
 
-- **`compileToVerilog(source: string): string`** — returns the generated
+- **`compileToVerilog(source: string): string`** - returns the generated
   Verilog, or throws an `Error` whose `message` is the rendered, caret-annotated
   diagnostics (the same text `mimz compile` prints).
 

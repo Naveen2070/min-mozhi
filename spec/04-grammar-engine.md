@@ -1,11 +1,11 @@
-# Min-Mozhi — Grammar Engine (இலக்கண இயந்திரம்)
+# Min-Mozhi - Grammar Engine (இலக்கண இயந்திரம்)
 
-> **Spec v0.2.6 — Phase 1.8 complete; the test-header flip landed in Phase 1.5.**
+> **Spec v0.2.6 - Phase 1.8 complete; the test-header flip landed in Phase 1.5.**
 >
 > **Status history:**
 >
-> - **v0.2.6 (2026-06-16):** test-header flip implemented — `M(args) kaaga "…" sodhanai { }` (section 3 row 6). Phase 1.5 B6 gave `test` blocks an execution oracle (`mimz test`), B7 added the flip. Completes all five clause flips of the word-order engine.
-> - **v0.2.5 (2026-06-16):** DRAFT → stable. Phase 1.8 closed. Same-AST/round-trip suites green. Native-speaker panel ratified word order + error rendering (C3). 33/36 checker codes localized. Test-header flip deferred to Phase 1.5 — now closed.
+> - **v0.2.6 (2026-06-16):** test-header flip implemented - `M(args) kaaga "…" sodhanai { }` (section 3 row 6). Phase 1.5 B6 gave `test` blocks an execution oracle (`mimz test`), B7 added the flip. Completes all five clause flips of the word-order engine.
+> - **v0.2.5 (2026-06-16):** DRAFT → stable. Phase 1.8 closed. Same-AST/round-trip suites green. Native-speaker panel ratified word order + error rendering (C3). 33/36 checker codes localized. Test-header flip deferred to Phase 1.5 - now closed.
 > - **v0.2.4 (2026-06-15):** Section 3 examples synced to finalized v1 keyword set (`enil`/`thernthedu`/`illaiyenil`, `thudippu`/`veliyeedu`/`pathivedu`). `lang/keywords.toml` is the source of truth.
 >
 > **Goal:** let Tamil and Tanglish code read with **natural Tamil word order** (SOV, postpositional), not just Tamil words in English order.
@@ -23,7 +23,7 @@
 > - **Error-language plumbing** (2026-06-14): language selection (file-flavor majority + `--lang` override), case-suffix inflection (`crates/mimz-core/src/morph.rs`), wired into `check`/`compile`/`eval` as additive English-fallback layer
 > - **Human-authored error catalog** (2026-06-15): `lang/messages.toml` localizes **35 of the (now 76) checker E-codes** in Tamil and Tanglish (C3 ratified, sandhi rule in `lang/case_suffixes.toml`); the catalog has grown only once since (E0420's provisional entry), far slower than the checker codes added in the meantime (bundles, `fn`, tagged enums, `sync loop`, CDC, `assert`/`cover`, …), so coverage as a fraction keeps falling even as the absolute count inches up. Live counts are computed from source and enforced against this claim by `tests/docs_sync.rs`
 > - **Deferred:** E0403/E0404/E0405 keep English text (too many heterogeneous message shapes for one template; Tamil preserved as comments)
-> - **Test oracle:** `mimz test` runs the blocks — a passing thamizh-order test (re-parsing to same `TestDecl`) is the oracle
+> - **Test oracle:** `mimz test` runs the blocks - a passing thamizh-order test (re-parsing to same `TestDecl`) is the oracle
 
 ---
 
@@ -33,21 +33,21 @@ Layer 1 (the keyword skins in `03-keywords-trilingual.md`) translates _words_
 but keeps English-derived _word order_:
 
 ```mimz
-pothu yetram(clk) { ... }      // "when rise(clk)" — words Tamil, order English
-enil timer == 0 { ... }        // "if timer == 0" — same issue
+pothu yetram(clk) { ... }      // "when rise(clk)" - words Tamil, order English
+enil timer == 0 { ... }        // "if timer == 0" - same issue
 ```
 
-Real Tamil is **SOV and postpositional** — the condition comes first, the
+Real Tamil is **SOV and postpositional** - the condition comes first, the
 conditional word comes after:
 
-> \*timer == 0 **எனில்\*** — "timer == 0, if-so"
-> \*clk **ஏறும்போது\*** — "when clk rises"
+> \*timer == 0 **எனில்\*** - "timer == 0, if-so"
+> \*clk **ஏறும்போது\*** - "when clk rises"
 
 The Grammar Engine adds a second **syntax profile** to the parser so Tamil and
-Tanglish users can write in that natural order — while producing the **exact
+Tanglish users can write in that natural order - while producing the **exact
 same AST** as English code.
 
-## 2. Architecture — Two Layers, One AST
+## 2. Architecture - Two Layers, One AST
 
 ```
 source text
@@ -63,7 +63,7 @@ ONE SHARED AST ──► type check ──► Verilog / IR / simulator
 ```
 
 Everything after the parser is completely unaware of which profile the source
-used. The grammar engine is **parser-level only** — no semantic differences,
+used. The grammar engine is **parser-level only** - no semantic differences,
 ever. Two profiles:
 
 | Profile                | Word order                                                 | Who uses it                                   |
@@ -81,7 +81,7 @@ syntax thamizh
 
 - The directive word itself is trilingual like any keyword:
   `syntax thamizh` ≡ `ilakkanam thamizh` ≡ `இலக்கணம் தமிழ்`.
-- No directive → `code-order`. No auto-detection — word order changes how the
+- No directive → `code-order`. No auto-detection - word order changes how the
   parser works, so it must be unambiguous before parsing starts.
 - **Keyword flavors remain freely mixable** in both profiles (Layer 1 rule).
   Only the _order_ is fixed per file.
@@ -89,10 +89,10 @@ syntax thamizh
   orders by parsing to the AST and pretty-printing with the target profile
   (`crates/mimz-core/src/pretty/`). **Decision (2026-06-14):** because the AST holds no comments
   or original layout, `--order` output is **canonically formatted and drops
-  comments** — meaning-preserving (same Verilog, same AST), not byte-preserving.
+  comments** - meaning-preserving (same Verilog, same AST), not byte-preserving.
   Trivia-preservation stays with the keyword-only `--to` path (the token
   reskin). Lossless round-tripping including comments would require carrying
-  trivia in the AST — a separate, later change.
+  trivia in the AST - a separate, later change.
 - `mimz translate` also gains **`--romanize-names`** (2026-06-15), an opt-in flag
   on the keyword-only `--to` path that rewrites non-ASCII (Tamil) IDENTIFIERS to
   readable Latin, reusing the Verilog emitter's `romanize` (`கணக்கி` →
@@ -109,21 +109,21 @@ syntax thamizh
   - One narrow exception: a numeric literal directly abutting a Tamil
     keyword/identifier (e.g. `42தொகுதி`) relies on the Latin/Tamil script change
     as its only separator; reskinning to ASCII would glue it (`42module`), so the
-    reskin inserts a single separating space — the result stays lexable and
+    reskin inserts a single separating space - the result stays lexable and
     token-equivalent, but the restored source gains that space.
 
   Full behavior: `docs/code/13-tooling.md`.
 
 ## 3. What Flips in `thamizh-order`
 
-Only **clause-level** constructs flip — the places where English order fights
+Only **clause-level** constructs flip - the places where English order fights
 Tamil grammar. Declarations, expressions, operators, and types stay identical
 (they are not sentences; flipping them buys nothing and costs familiarity).
 
 | Construct     | code-order                      | thamizh-order                                          | Reading                  |
 | ------------- | ------------------------------- | ------------------------------------------------------ | ------------------------ |
 | conditional   | `enil <cond> { }`               | `<cond> enil { }`                                      | _timer == 0 எனில் …_     |
-| alternative   | `illaiyenil { }`                | `illaiyenil { }` (unchanged — already leads naturally) | _இல்லையெனில் …_          |
+| alternative   | `illaiyenil { }`                | `illaiyenil { }` (unchanged - already leads naturally) | _இல்லையெனில் …_          |
 | clocked block | `pothu yetram(clk) { }`         | `yetram(clk) pothu { }`                                | _clk ஏற்றம் போது …_      |
 | match         | `thernthedu <expr> { }`         | `<expr> thernthedu { }`                                | _state-ஐத் தேர்ந்தெடு …_ |
 | if-expression | `enil c { a } illaiyenil { b }` | `c enil { a } illaiyenil { b }`                        |                          |
@@ -156,7 +156,7 @@ thoguthi Counter(WIDTH: int = 8) {
 ```
 
 The falling-edge block flips identically: `on fall(clk) { }` ↔
-`irakkam(clk) pothu { }` (`fall`/`irakkam`/`இறக்கம்` — the negedge sibling of
+`irakkam(clk) pothu { }` (`fall`/`irakkam`/`இறக்கம்` - the negedge sibling of
 `rise`, added 2026-06-17; Tanglish/Tamil spellings provisional pending native
 review).
 
@@ -190,7 +190,7 @@ syntax thamizh
 }
 ```
 
-Read that `on`-block aloud: _"ஏற்றம் clk போது — timer பூஜ்ஜியம் எனில் …"_ —
+Read that `on`-block aloud: _"ஏற்றம் clk போது - timer பூஜ்ஜியம் எனில் …"_ -
 it parses as a Tamil sentence. That is the whole point of the engine.
 
 ## 4. Parsing Feasibility (why this is cheap, not research)
@@ -205,7 +205,7 @@ The strategy:
   - `<-` → it was a register assignment target
   - otherwise → error
 - **One token of lookahead** after an expression resolves every flipped
-  production — no backtracking, no GLR, no ambiguity (only a small closed set
+  production - no backtracking, no GLR, no ambiguity (only a small closed set
   of clause heads was flipped)
 - The **pretty-printer** (used by `mimz translate` / `mimz fmt`) is the same
   AST walker with per-profile output templates
@@ -216,47 +216,47 @@ The strategy:
 
 Translating error _templates_ word-by-word produces broken Tamil. The approach:
 
-- **Morphology helper** — table-driven Tamil case-suffix rules (வேற்றுமை உருபுகள்:
+- **Morphology helper** - table-driven Tamil case-suffix rules (வேற்றுமை உருபுகள்:
   -ஐ, -க்கு, -இல், -ஆல்) applied to signal names when composing sentences
-- **Not NLP, not machine translation** — a suffix lookup table plus
+- **Not NLP, not machine translation** - a suffix lookup table plus
   sandhi-joining rules for the ~10 message shapes the compiler emits
-- **Human-authored** — error texts are authored once per language by humans,
+- **Human-authored** - error texts are authored once per language by humans,
   the helper only inflects interpolated identifiers correctly
 
 Example:
 
-> English: `'sum' is 8 bits but 'a + b' produces 9 bits — use '+%' for wrapping math, or widen 'sum'.`
-> Tamil: `'sum' 8 பிட்கள்தான், ஆனால் 'a + b' 9 பிட்கள் தரும் — மடக்கு கணிதத்திற்கு '+%' பயன்படுத்தவும், அல்லது 'sum'-ஐ அகலமாக்கவும்.`
+> English: `'sum' is 8 bits but 'a + b' produces 9 bits - use '+%' for wrapping math, or widen 'sum'.`
+> Tamil: `'sum' 8 பிட்கள்தான், ஆனால் 'a + b' 9 பிட்கள் தரும் - மடக்கு கணிதத்திற்கு '+%' பயன்படுத்தவும், அல்லது 'sum'-ஐ அகலமாக்கவும்.`
 
-### Status: mechanism implemented, content panel-gated (34 of 75 checker codes covered as of this writing — the catalog has not kept pace with newer checker codes)
+### Status: mechanism implemented, content panel-gated (34 of 75 checker codes covered as of this writing - the catalog has not kept pace with newer checker codes)
 
 The **engineering half** is in `crates/mimz-core/src/morph.rs` and wired into `check`/`compile`/
 `eval`:
 
-- **Selection** — `majority_flavor` counts a file's keyword flavors;
+- **Selection** - `majority_flavor` counts a file's keyword flavors;
   `effective_lang` lets `--lang en|tanglish|tamil` override it (the spec/03 rule).
-- **Inflection** — the four case suffixes are DATA in `lang/case_suffixes.toml` (the
+- **Inflection** - the four case suffixes are DATA in `lang/case_suffixes.toml` (the
   lang/keywords.toml doctrine); `inflect(name, case, flavor)` attaches them.
-- **Additive, English-fallback** — diagnostics render in the chosen flavor only
+- **Additive, English-fallback** - diagnostics render in the chosen flavor only
   for E-codes the localized catalog covers; every other message keeps its
   English text verbatim, byte-for-byte.
 
 > **Decision (R3, 2026-06-14): build the mechanism now, gate the content on C3.**
 > The full Tamil + Tanglish catalog and the real **sandhi-joining rules** require
-> the native-speaker panel (decision C3) — machine-guessed Tamil is exactly the
+> the native-speaker panel (decision C3) - machine-guessed Tamil is exactly the
 > "broken Tamil" this section warns against.
 >
 > **Resolved (2026-06-15, C3 ratified):** the panel authored the catalog. It
 > shipped in `lang/messages.toml` covering 33 of the checker E-codes that
 > existed at ratification time, in Tamil and Tanglish; the sandhi rule in
 > `lang/case_suffixes.toml` is finalized (no longer PROVISIONAL).
-> **E0403/E0404/E0405 are deferred** — each emits many heterogeneous message
+> **E0403/E0404/E0405 are deferred** - each emits many heterogeneous message
 > shapes that a single template cannot render faithfully, so they keep their
 > English text with the Tamil preserved as comments. JSON diagnostic output
 > stays English (the machine contract in `06-diagnostics.md` is unchanged).
 > The catalog now covers 34 codes (one addition, `E0418`, since
 > ratification) against **75** total checker codes in
-> `diag::ALL_CHECKER_CODES` — the checker's code count kept growing with
+> `diag::ALL_CHECKER_CODES` - the checker's code count kept growing with
 > later features (bundles, `fn`, tagged enums, `sync loop`, CDC, `assert`/
 > `cover`, …) while the localized catalog did not, so most codes not
 > explicitly listed above still fall back to the byte-for-byte English text.
@@ -266,11 +266,11 @@ The **engineering half** is in `crates/mimz-core/src/morph.rs` and wired into `c
 - ✅ Clause-level word order (table in section 3)
 - ✅ Lossless `translate --order` both directions
 - ✅ Morphology-correct error interpolation
-- ❌ Free word order / full Tamil grammar parsing — Min-Mozhi stays a formal
+- ❌ Free word order / full Tamil grammar parsing - Min-Mozhi stays a formal
   language with two fixed orders, not a natural-language parser
-- ❌ Flipped declarations (`count: bits[8] veliyeedu`) — declarations are not
+- ❌ Flipped declarations (`count: bits[8] veliyeedu`) - declarations are not
   sentences; revisit only if users ask
-- ❌ Verb conjugation in keywords (ஏறும்போது as one inflected word) — keywords
+- ❌ Verb conjugation in keywords (ஏறும்போது as one inflected word) - keywords
   stay as fixed dictionary forms so the lexer stays a table lookup
 
 ---

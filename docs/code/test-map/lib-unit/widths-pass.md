@@ -3,7 +3,7 @@
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
 A second, smaller unit-test pocket living inside the width pass itself
-(distinct from the sibling `checker::tests` module above) — these pin
+(distinct from the sibling `checker::tests` module above) - these pin
 `Ty`/`Wcx` internals and dispatch paths too fine-grained for the
 one-test-per-error-code table, added 2026-07-11 alongside the `Ty::Bundle`
 model (see this file's changelog entry for that date).

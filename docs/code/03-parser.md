@@ -1,6 +1,6 @@
-# 03 — The Parser (`crates/mimz-core/src/parser/`)
+# 03 - The Parser (`crates/mimz-core/src/parser/`)
 
-`Vec<Token>` → `ast::File`. Plain recursive descent — no parser
+`Vec<Token>` → `ast::File`. Plain recursive descent - no parser
 generator, no combinators. Boring on purpose: a contributor should be
 able to map "the spec says X" to "the function that parses X" in seconds.
 
@@ -20,7 +20,7 @@ consts, enums), `items/module.rs` (modules and ports), `items/inst.rs`
 (instance declarations), `items/seq.rs` (`on`-blocks + thamizh
 variants), `items/test.rs` (`test` blocks), `items/bundle.rs` (`bundle`
 declarations), `items/extern_module.rs` (`extern module` Verilog FFI), `items/func.rs` (`fn`
-declarations — `fnDecl` from spec/02 section 5, including the `fnStmt`
+declarations - `fnDecl` from spec/02 section 5, including the `fnStmt`
 body: `let` / statement-level `if` / `return` / `loop` / `foreach`, terminated by the
 mandatory tail expression).
 
@@ -39,8 +39,8 @@ and the code together.
 
 Parse routines return `Option<T>`:
 
-- `Some(node)` — parsed.
-- `None` — failed, **and the error is already recorded** in `self.diags`.
+- `Some(node)` - parsed.
+- `None` - failed, **and the error is already recorded** in `self.diags`.
   `None` never means "not present"; presence checks are done by peeking
   (`at`, `at_kw`) before committing.
 
@@ -54,18 +54,18 @@ caller decides where to resynchronize.
 | `at*`     | look, don't consume                                                     |
 | `eat*`    | consume **if** it matches; returns whether it did                       |
 | `expect*` | consume or record an error; the `what` argument is human text           |
-| `bump`    | consume one token — never advances past `Eof`, so `peek` is always safe |
+| `bump`    | consume one token - never advances past `Eof`, so `peek` is always safe |
 
 `expect`'s `what` strings are part of the error UX: they describe the
 expectation in learner terms ("a module name", "`:` then the wire's
 type"), not grammar terms.
 
-## Error recovery — multi-error by design
+## Error recovery - multi-error by design
 
 When a statement fails, `sync_to_newline()` skips to the next newline or
 `}` and parsing continues. One typo therefore reports one error, and the
 rest of the file still gets checked (spec/01 G1: a learner shouldn't fix
-errors one compile at a time). Recovery points are statement boundaries —
+errors one compile at a time). Recovery points are statement boundaries -
 fine-grained enough in practice, simple enough to reason about.
 
 `terminator()` enforces the statement-ends-at-newline rule, accepting an
@@ -76,35 +76,35 @@ implicit terminator before `}` or `Eof`.
 Both run the same recursive descent (a shared `run()`); they differ only
 in what they return:
 
-- **`parse(toks) -> Result<File, Vec<Diag>>`** — the **strict** contract:
+- **`parse(toks) -> Result<File, Vec<Diag>>`** - the **strict** contract:
   ANY diagnostic discards the tree (`Err`). The compile/sim/emit pipeline
-  depends on this — no codegen from a broken parse.
-- **`parse_recover(toks) -> (File, Vec<Diag>)`** — never discards the tree.
+  depends on this - no codegen from a broken parse.
+- **`parse_recover(toks) -> (File, Vec<Diag>)`** - never discards the tree.
   At each recovery boundary it pushes an **`Error` placeholder node**
   (`TopItem::Error`, `ModuleItem::Error`, `SeqStmt::Error`,
   `TestStmt::Error`, each carrying the skipped `Span`) instead of dropping
   the broken construct, so the surrounding good nodes survive. This is the
   prerequisite for LSP semantics on half-typed files (hover, completion).
 
-`parse_recover` is the **only** source of `Error` nodes — `parse` returns
+`parse_recover` is the **only** source of `Error` nodes - `parse` returns
 `Err` on the same input, so codegen never sees one. `Parser::span_since`
 sizes each placeholder; every consumer (`checker/`, `emit_verilog/`,
 `sim/`, `pretty/`) handles the variants (the checker skips them with no
 cascade; the codegen stages treat them as documented unreachable no-ops).
-Expression-level recovery (`ExprKind::Error`) is deferred — an error-expr
+Expression-level recovery (`ExprKind::Error`) is deferred - an error-expr
 has no width/type, so it would need an "unknown" path through width/type
 inference.
 
-## Types and array literals — `ty()` (`items/mod.rs`), array-lit (`expr.rs`)
+## Types and array literals - `ty()` (`items/mod.rs`), array-lit (`expr.rs`)
 
 `ty()` is `arrayType | scalarType`: it first parses one `scalarType`
-(`bit`, `bits[N]`, `signed[N]`, or an enum/bundle name — unchanged since
+(`bit`, `bits[N]`, `signed[N]`, or an enum/bundle name - unchanged since
 before arrays existed, now split out as `scalar_ty()`), then loops on a
 trailing `[expr]` suffix, wrapping the type so far in `Type::Array { elem,
 len }` on each iteration. This makes `bits[8][4]` parse as `Array { elem:
 Bits(8), len: 4 }` and even `bits[8][4][2]` parse cleanly to a _nested_
 `Array` (the checker, not the grammar, rejects nested-array elements,
-`E0411` — this project's usual "lenient parser, narrowing checker" split,
+`E0411` - this project's usual "lenient parser, narrowing checker" split,
 the same one `mem`'s element-type restriction uses).
 
 Array **literals** (`[e1, ..., eN]`) are parsed in `expr.rs`'s primary
@@ -122,23 +122,23 @@ lookahead) because array literals have no ambiguous sibling.
 the shared grammar shape three other constructs echo:
 
 - **`loop`** (`items/seq.rs`'s `seq_loop_inner`, mirrored in `items/func.rs`
-  for `fn` bodies) — `"loop" ident ":" expr ".." expr seqBlock`, usable
+  for `fn` bodies) - `"loop" ident ":" expr ".." expr seqBlock`, usable
   inside an `on` block or a `fn` body. Same bound-clause shape as `repeat`
-  (note: **`:`**, not `in`), but produces `SeqStmt::Loop`/`FnStmt::Loop` —
+  (note: **`:`**, not `in`), but produces `SeqStmt::Loop`/`FnStmt::Loop` -
   interpreted directly by the checker/emitter/simulator, not lowered to
   `Repeat` (see [`11-checker.md`](11-checker.md), [`05-emit-verilog.md`](05-emit-verilog.md)).
-- **`sync loop`** (`items/mod.rs`'s `sync_loop_block`) — a module-item-level
+- **`sync loop`** (`items/mod.rs`'s `sync_loop_block`) - a module-item-level
   construct with its own FSM semantics, not sugar: `"sync" "loop" ident "on"
 ("rise"|"fall") "(" ident ")" "(" ident ":" expr ".." expr ")" "->" ident
 ":" type "=" expr seqBlock`. The `sync`/`loop` keyword pair is consumed by
   the caller in `module_item` (mirroring how `async reset` is handled
   there) before `sync_loop_block` picks up.
 - **`foreach`** (`items/mod.rs`'s `foreach_block`, mirrored in `items/seq.rs`
-  and `items/func.rs` for `on`-block/fn-body positions) — `"foreach" ident
+  and `items/func.rs` for `on`-block/fn-body positions) - `"foreach" ident
 "in" foreachSource "{" ... "}"`, where `foreachSource` is `expr [".."
 expr]`: `expr ".." expr` is the **range** form (identical shape to
   `repeat`'s bound clause, but with **`in`**, not `:`); a lone `expr` is the
-  **elements** form and must parse as a bare identifier — the parser only
+  **elements** form and must parse as a bare identifier - the parser only
   enforces "must be `ExprKind::Ident`" (a fast parse-time reject for e.g.
   `foreach x in a + b {}`); the checker enforces the deeper "must be
   array/mem-typed" rule (`E0417`). Unlike `loop`/`sync loop`, `foreach` is
@@ -158,22 +158,22 @@ unary(9) → * (8) → + - (7) → << >> (6) → & (5) → ^ (4) → | (3)
 Two deliberate deviations from C, both Rust-inspired (decision in the
 2026-06-10 log):
 
-- **Bitwise binds tighter than comparison** — `x & 1 == 0` means
+- **Bitwise binds tighter than comparison** - `x & 1 == 0` means
   `(x & 1) == 0`, killing C's classic footgun.
-- **Comparisons don't chain** — `a < b < c` is a hard error with a help
+- **Comparisons don't chain** - `a < b < c` is a hard error with a help
   message, not a silently-boolean comparison.
 
 Other notable spots:
 
-- `if` **expressions** require `else` (latches!) — enforced here in the
+- `if` **expressions** require `else` (latches!) - enforced here in the
   parser, with the teaching help text.
 - `match` parses its scrutinee with `binary(0)`, not `expr()`, to avoid
   ambiguity with a `{`-starting `if`/`match` head; parenthesize if needed.
 - Word operators `and`/`or`/`not` are handled in the same precedence
-  table / unary dispatch as `&&`/`||`/`!` — they are aliases (G1-x), not
+  table / unary dispatch as `&&`/`||`/`!` - they are aliases (G1-x), not
   separate features.
 - `else` may follow a newline: `seq_if`/`test_if` save the cursor, skip
-  newlines, and **backtrack** if no `else` is found — the parser's only
+  newlines, and **backtrack** if no `else` is found - the parser's only
   backtracking.
 - One-token lookahead everywhere. This matters for Phase 1.8: the
   `thamizh-order` profile was explicitly designed (spec/04) to also need
@@ -182,24 +182,24 @@ Other notable spots:
 
 ## What the parser deliberately does NOT do
 
-No name resolution, no width checking, no const evaluation — those are
+No name resolution, no width checking, no const evaluation - those are
 the checker's passes (`docs/code/11-checker.md`). The parser only
 enforces what is syntactically decidable, which includes several safety
 rules: `=` vs `<-` placement, mandatory reg reset values, mandatory
 `else` on if-expressions. User-defined function calls (`fnCall`) are
-parsed in `expr.rs` alongside built-in calls — the distinction
+parsed in `expr.rs` alongside built-in calls - the distinction
 (user fn vs. built-in) is resolved at the expression level by name
 recognition; width/arity checking and recursion detection are
 checker passes (E0801–E0805). Every parse
-error carries a stable code (**E1101–E1116** — `self.error(span, code,
+error carries a stable code (**E1101–E1116** - `self.error(span, code,
 msg, help)` makes the code and help mandatory; catalog and the E1101 grouping rule in
 [`06-diagnostics.md`](06-diagnostics.md)).
 
-A `fn` body (`items/func.rs`) is `{ fnStmt } expr` — zero or more
+A `fn` body (`items/func.rs`) is `{ fnStmt } expr` - zero or more
 statements (`let`, statement-level `if`, `return`) followed by exactly
 one mandatory tail expression. Statement-level `if` (`fn_if`) is parsed
 with `fn_stmt_block`, which unlike the top-level `fn_body` accepts no
-tail expression and makes `else` optional — mirroring `seqIf`'s
+tail expression and makes `else` optional - mirroring `seqIf`'s
 optional-`else` shape rather than the expression-level `ifExpr`'s
 mandatory one. The parser does not decide reachability past a `return`;
 unreachable code after an unconditional `return` in the same block is a

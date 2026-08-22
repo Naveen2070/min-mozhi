@@ -1,7 +1,7 @@
-# 8 — Sequential Logic
+# 8 - Sequential Logic
 
 So far the circuits have been **combinational**: outputs are a pure function of
-inputs, recomputed instantly. Real designs need **memory** — values that persist
+inputs, recomputed instantly. Real designs need **memory** - values that persist
 across clock ticks. That is sequential logic, built from registers and clocks.
 
 ## The clocked block: `on rise`
@@ -27,7 +27,7 @@ module Counter {
 
 Read `on rise(clk) { value <- value +% 1 }` as: "on each rising edge of `clk`,
 the register `value` becomes its old value plus one (wrapping at 255)." The `+%`
-is the wrapping add — a counter is exactly where you _want_ overflow to roll over.
+is the wrapping add - a counter is exactly where you _want_ overflow to roll over.
 
 The argument to `rise` must be a declared `clock` (`E0109`).
 
@@ -35,7 +35,7 @@ The argument to `rise` must be a declared `clock` (`E0109`).
 
 A register can also update on the **falling** edge with `on fall(clk)` (Verilog
 `negedge`). Both edge blocks may appear in the same module on the same clock, and
-their ordering within a cycle is observable — the rising-edge updates settle
+their ordering within a cycle is observable - the rising-edge updates settle
 before the falling-edge ones (matching Icarus semantics):
 
 ```mimz
@@ -49,7 +49,7 @@ on fall(clk) {
 
 This is the building block for dual-edge (DDR-style) pipelines.
 
-## Reset — synchronous (default) and asynchronous
+## Reset - synchronous (default) and asynchronous
 
 Any module with registers must declare a `reset`. By default reset is
 **synchronous and active-high**: on a rising edge, if reset is asserted, every
@@ -66,8 +66,8 @@ That is why the reset value is mandatory: it is the known power-on state.
 reset rst              // synchronous (the default)
 ```
 
-For an **asynchronous** reset — the register clears the instant `rst` is asserted,
-without waiting for a clock edge — prefix `async`:
+For an **asynchronous** reset - the register clears the instant `rst` is asserted,
+without waiting for a clock edge - prefix `async`:
 
 ```mimz
 async reset rst        // asynchronous, active-high
@@ -96,7 +96,7 @@ an error (`E0503`).
 
 ## Explicit fallback: `default`
 
-Holding is implicit — nothing written means nothing changes. `default` is the
+Holding is implicit - nothing written means nothing changes. `default` is the
 opposite: an EXPLICIT fallback value, for when you want a register to fall
 back to something specific unless a later condition overrides it, without
 writing an `else` on every branch:
@@ -111,13 +111,13 @@ on rise(clk) {
 ```
 
 A `default` always applies FIRST, so any later conditional `<-` to the same
-register in the same block overrides it — write it once at the top and forget
+register in the same block overrides it - write it once at the top and forget
 about it, rather than repeating `<- 0` in every unhandled branch. Rules the
 compiler enforces:
 
-- the target must be a `reg` (`E0809`) — a `wire`'s value is never held, so a
+- the target must be a `reg` (`E0809`) - a `wire`'s value is never held, so a
   "default" for one is meaningless;
-- at most one `default` per register per `on` block (`E0810`) — two fallback
+- at most one `default` per register per `on` block (`E0810`) - two fallback
   values for the same register is a contradiction, not a priority order.
 
 ## Finite state machines
@@ -164,8 +164,8 @@ module TrafficLight {
 
 Why this is safe by construction:
 
-- `state` is a `reg` with a reset value (`State.Red`) — a known power-on state;
-- the `match` over `State` is exhaustive — every state has a successor, so the
+- `state` is a `reg` with a reset value (`State.Red`) - a known power-on state;
+- the `match` over `State` is exhaustive - every state has a successor, so the
   compiler proves there is no forgotten transition;
 - the outputs are plain combinational decodes of the current state.
 
@@ -196,20 +196,20 @@ module SerialScanner {
 
 A `sync loop <name> on rise(clk) (var: lo..hi) -> result: ty = init { body }` lowers to synthesized registers and state machine logic spanning `hi - lo` clock cycles. It automatically exposes four signals:
 
-- `<name>_start` — input pulse to trigger the loop execution;
-- `<name>_running` — high while the loop is actively executing;
-- `<name>_done` — pulsed high on the completion cycle;
-- `<name>_result` — holds the accumulator register value.
+- `<name>_start` - input pulse to trigger the loop execution;
+- `<name>_running` - high while the loop is actively executing;
+- `<name>_done` - pulsed high on the completion cycle;
+- `<name>_result` - holds the accumulator register value.
 
 ## Clock domains
 
 If a design has more than one clock, Min-Mozhi tracks which clock owns each
 register and rejects reading a register from one domain inside another's logic
-(`E0701`) — a real source of metastability bugs, caught at compile time.
+(`E0701`) - a real source of metastability bugs, caught at compile time.
 
 Why it matters: a flip-flop needs its input to be stable for a short window
 around the clock edge. A signal arriving from a DIFFERENT clock has no such
-guarantee — it can change exactly at the edge, and the flip-flop can settle to
+guarantee - it can change exactly at the edge, and the flip-flop can settle to
 neither 0 nor 1 for a while. That is **metastability**, and it produces bugs
 that appear once an hour on real silicon and never in simulation. So the
 compiler refuses the read rather than letting you find out the hard way.
@@ -220,7 +220,7 @@ Sometimes you genuinely need a signal to travel between domains. Min-Mozhi
 gives you two built-in synchronizers, and they are the only sanctioned way
 across:
 
-### `sync.double_flop` — carry a LEVEL across
+### `sync.double_flop` - carry a LEVEL across
 
 Use this when the signal is a steady state ("the button is held", "the FIFO
 is empty"). It passes the value through two registers clocked by the
@@ -254,7 +254,7 @@ Read the call as: "take `src`, which belongs to `clk_fast`, and make it safe
 to use in `clk_slow`." The value shows up in the destination domain **two
 destination-clock cycles later**.
 
-### `sync.pulse` — carry an EVENT across
+### `sync.pulse` - carry an EVENT across
 
 Use this when the signal is a one-cycle strobe ("a byte arrived"). A level
 synchronizer would miss a fast pulse entirely, or stretch it; `sync.pulse`
@@ -267,14 +267,14 @@ wire got_it: bit = sync.pulse(tick_fast, clk_fast, clk_slow)
 
 ### The rules the compiler enforces
 
-Both primitives lower to ordinary registers — there is no magic Verilog
-construct behind them — but they only work if used exactly right, so the
+Both primitives lower to ordinary registers - there is no magic Verilog
+construct behind them - but they only work if used exactly right, so the
 checker is strict about it:
 
 | Rule                                                                                                                                       | Code    |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | the two clocks must be two DIFFERENT declared `clock`s                                                                                     | `E0702` |
-| the signal must be exactly 1 bit — multi-bit crossing is not provided yet                                                                  | `E0703` |
+| the signal must be exactly 1 bit - multi-bit crossing is not provided yet                                                                  | `E0703` |
 | the signal must really belong to the source clock's domain                                                                                 | `E0704` |
 | `double_flop` must be the direct `<-` right-hand side in the destination clock's `on` block; `pulse` must be a `wire`'s direct initializer | `E0705` |
 
@@ -283,13 +283,13 @@ larger expression is not a synchronizer, it is a race condition with extra
 steps.
 
 > **Still crossing?** These two cover control signals. Multi-bit data across
-> domains wants a FIFO — see [`std.fifo`](stdlib/fifo.md), where the crossing
+> domains wants a FIFO - see [`std.fifo`](stdlib/fifo.md), where the crossing
 > is handled inside a tested module instead of by hand.
 
 ## Guarding invariants: `assert`
 
 A register that should never exceed a bound, an input that should never be
-zero, a state that should never repeat — `assert` checks a hard invariant
+zero, a state that should never repeat - `assert` checks a hard invariant
 and teaches it at the exact moment it breaks, instead of hiding in a
 comment:
 
@@ -306,14 +306,14 @@ module Divider {
 
 `assert(cond)` / `assert(cond, "msg")` works in two places:
 
-- **In the module body** — checked every settled combinational state, like
+- **In the module body** - checked every settled combinational state, like
   `Divider`'s above. This is **immediate and unclocked**: it re-checks
   continuously, including while a design's own reset is still asserted and
-  its registers haven't reached a meaningful state yet — an invariant that
+  its registers haven't reached a meaningful state yet - an invariant that
   only holds once reset has released will fire spuriously here. If the
   invariant is about a REGISTER's value (not a combinational input), put
-  the `assert` inside `on rise(clk) { }` instead — see below.
-- **Inside `on rise(clk) { }`** — checked once per triggering edge:
+  the `assert` inside `on rise(clk) { }` instead - see below.
+- **Inside `on rise(clk) { }`** - checked once per triggering edge:
 
 ```mimz
 on rise(clk) {
@@ -323,22 +323,22 @@ on rise(clk) {
 ```
 
 `cond` must be a single `bit` (the same rule `if`/`&&` follow); `msg` is a
-plain string, not a general expression — it falls back to `cond`'s own
+plain string, not a general expression - it falls back to `cond`'s own
 source text when omitted.
 
 `assert` never reaches real hardware: the emitted Verilog wraps it in an
 `` `ifndef SYNTHESIS `` guard, so a synthesis tool strips it entirely.
-It **does** run in `mimz sim`/`mimz test`/the playground — a failing
+It **does** run in `mimz sim`/`mimz test`/the playground - a failing
 assert stops the run immediately with the reason, right where it broke.
 
-> `assume`/SVA-style sequence assertions aren't in the language yet —
+> `assume`/SVA-style sequence assertions aren't in the language yet -
 > `assert` and `cover` (next) are the first pieces of a larger
 > verification story.
 
 ## Counting how often something happens: `cover`
 
 `assert` halts a run the moment something breaks. `cover` is the opposite
-in spirit — it never halts anything, it just counts. Use it to confirm a
+in spirit - it never halts anything, it just counts. Use it to confirm a
 tricky branch, an edge value, or an interesting combination actually gets
 exercised, without turning that observation into a hard failure:
 
@@ -354,7 +354,7 @@ module Divider {
 ```
 
 `cover(cond)` / `cover(cond, "label")` works in the same two places
-`assert` does — the module body (checked every settled combinational
+`assert` does - the module body (checked every settled combinational
 state) and inside `on rise(clk) { }` (checked once per triggering edge):
 
 ```mimz
@@ -365,10 +365,10 @@ on rise(clk) {
 ```
 
 `cond` must be a single `bit`, same rule as `assert`'s own condition;
-`label` is a plain string, not a general expression — it falls back to
+`label` is a plain string, not a general expression - it falls back to
 the statement's own source location when omitted.
 
-Unlike `assert`, **`cover` never fails a run** — no exit code, no
+Unlike `assert`, **`cover` never fails a run** - no exit code, no
 diagnostic, no matter how many (or how few) times it hits. Like `assert`,
 it never reaches real hardware (the same `` `ifndef SYNTHESIS `` guard
 strips it for synthesis). Hit counts print in a summary at the end of

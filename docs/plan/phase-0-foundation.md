@@ -1,4 +1,4 @@
-# Phase 0 — Foundation
+# Phase 0 - Foundation
 
 > **Design before you code.**
 > Window: months 1–2 · Status: ✅ COMPLETE (2026-06-15)
@@ -6,7 +6,7 @@
 ## Goal
 
 A complete, reviewable language design on paper: philosophy, grammar, the
-trilingual keyword system, and the project's working process — so Phase 1
+trilingual keyword system, and the project's working process - so Phase 1
 coding starts with zero open design questions.
 
 ## Work items
@@ -21,9 +21,9 @@ coding starts with zero open design questions.
 - [x] Design review: 44-question register answered → spec v0.2 (`docs/archive/open-questions-2026-06-10.md`)
 - [x] License decided: **MIT + Apache-2.0 dual**
 - [x] Naming decided: extension **`.mimz`**, CLI **`mimz`**, project name Min-Mozhi
-- [x] Native-speaker review of Tanglish/Tamil keyword table (panel: tech/coder friends) — keyword set v1, 2026-06-15 (C3 ratified)
+- [x] Native-speaker review of Tanglish/Tamil keyword table (panel: tech/coder friends) - keyword set v1, 2026-06-15 (C3 ratified)
 - [x] Study list: Verilog internals + **Veryl, Spade, Amaranth, Chisel** → `docs/prior-art.md` (2026-06-11)
-- [x] `git init` + first commit + LICENSE files (done 2026-06-10; repo stays **private until after Phase 1.5** — decision D7, amended 2026-06-16)
+- [x] `git init` + first commit + LICENSE files (done 2026-06-10; repo stays **private until after Phase 1.5** - decision D7, amended 2026-06-16)
 
 ## Milestone
 
@@ -34,9 +34,9 @@ write valid Min-Mozhi on paper.
 
 1. All four spec docs exist and agree with each other and the examples. ✅
 2. Keyword table reviewed by native speakers (DRAFT marks removed). ✅ (keyword set v1, 2026-06-15)
-3. Repo under git with LICENSE files (private; public comes after Phase 1.5 — D7 amended 2026-06-16). ✅
+3. Repo under git with LICENSE files (private; public comes after Phase 1.5 - D7 amended 2026-06-16). ✅
 
 ## Risks / notes
 
-- Keyword word choices are the only externally-blocked item — don't let review
+- Keyword word choices are the only externally-blocked item - don't let review
   block Phase 1 coding; English flavor is frozen and sufficient to build against.

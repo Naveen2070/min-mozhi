@@ -1,26 +1,26 @@
-# 3 — The Lexer: Tokenizing Your Code (4 Files)
+# 3 - The Lexer: Tokenizing Your Code (4 Files)
 
-The lexer is where your source text gets chopped into **tokens** — the smallest meaningful chunks like `module`, `42`, `+`, `<-`, `{`, and so on.
+The lexer is where your source text gets chopped into **tokens** - the smallest meaningful chunks like `module`, `42`, `+`, `<-`, `{`, and so on.
 
 ---
 
-## `crates/mimz-core/src/lexer/token.rs` — What a Token Looks Like
+## `crates/mimz-core/src/lexer/token.rs` - What a Token Looks Like
 
-**`Kw` enum** — Lists all 44 keywords: `Module`, `In`, `Out`, `Wire`, `Reg`, `Mem`, `Clock`, `Reset`, `Async`, `On`, `Rise`, `Fall`, `If`, `Else`, `Match`, `Enum`, `Let`, `Const`, `Repeat`, `Loop`, `Foreach`, `Sync`, `Import`, `True`, `False`, `Test`, `For`, `Tick`, `Expect`, `And`, `Or`, `Not`, `Syntax`, `Thamizh`, `Fn`, `Default`, `Bundle`, `Assert`, `Cover`, `Return`, `Sim`, `Bind`, `Extern`, `Speed`.
+**`Kw` enum** - Lists all 44 keywords: `Module`, `In`, `Out`, `Wire`, `Reg`, `Mem`, `Clock`, `Reset`, `Async`, `On`, `Rise`, `Fall`, `If`, `Else`, `Match`, `Enum`, `Let`, `Const`, `Repeat`, `Loop`, `Foreach`, `Sync`, `Import`, `True`, `False`, `Test`, `For`, `Tick`, `Expect`, `And`, `Or`, `Not`, `Syntax`, `Thamizh`, `Fn`, `Default`, `Bundle`, `Assert`, `Cover`, `Return`, `Sim`, `Bind`, `Extern`, `Speed`.
 
 The important thing: `தொகுதி` and `thoguthi` and `module` all become `Kw::Module`. The flavor is recorded separately.
 
-**`Flavor` enum** — `English | Tanglish | Tamil`. Only meaningful for keyword tokens — it records which language spelled the keyword. This is used by `mimz fmt`, `translate`, and error-language detection.
+**`Flavor` enum** - `English | Tanglish | Tamil`. Only meaningful for keyword tokens - it records which language spelled the keyword. This is used by `mimz fmt`, `translate`, and error-language detection.
 
-**`TokKind` enum** — Every possible kind of token: identifiers, numbers, all the operators (`+`, `+%`, `<-`, `==`, etc.), punctuation, newlines, and EOF.
+**`TokKind` enum** - Every possible kind of token: identifiers, numbers, all the operators (`+`, `+%`, `<-`, `==`, etc.), punctuation, newlines, and EOF.
 
 Numbers carry their `raw` spelling (like `"0xFF"` not just `255`) so the Verilog emitter can preserve the author's chosen base.
 
-**`Token` struct** — A token has a `kind`, a `span` (where in the source), and an optional `flavor` (only set for keywords).
+**`Token` struct** - A token has a `kind`, a `span` (where in the source), and an optional `flavor` (only set for keywords).
 
 ---
 
-## `crates/mimz-core/src/lexer/mod.rs` — The Scanner Itself
+## `crates/mimz-core/src/lexer/mod.rs` - The Scanner Itself
 
 **`lex(src)`** is the main entry. It:
 
@@ -63,7 +63,7 @@ Numbers carry their `raw` spelling (like `"0xFF"` not just `255`) so the Verilog
 - `+%` beats `+`
 - `<-` beats `<`
 - `==` beats `=`
-- `/` and `%` get explicit teaching errors (E1006, E1007) — division and modulo don't exist in the language because they synthesize to slow, large hardware
+- `/` and `%` get explicit teaching errors (E1006, E1007) - division and modulo don't exist in the language because they synthesize to slow, large hardware
 
 ### The Newline Policy (`postprocess_newlines`)
 
@@ -78,12 +78,12 @@ So `postprocess_newlines` drops newlines when the previous token can't end a sta
 
 ---
 
-## `crates/mimz-core/src/lexer/keywords.rs` — The Keyword Table
+## `crates/mimz-core/src/lexer/keywords.rs` - The Keyword Table
 
 This loads `lang/keywords.toml` (embedded at build time) and builds two lookup tables:
 
-1. **spelling → (Kw, Flavor)** — for the lexer to recognize keywords
-2. **Kw → [en, tanglish, tamil]** — for the translator to reskin keywords
+1. **spelling → (Kw, Flavor)** - for the lexer to recognize keywords
+2. **Kw → [en, tanglish, tamil]** - for the translator to reskin keywords
 
 **`TABLE`** is the global singleton, loaded once on first use via `LazyLock`. It panics at startup if:
 
@@ -97,7 +97,7 @@ This loads `lang/keywords.toml` (embedded at build time) and builds two lookup t
 
 Reserved words (like `struct`, `inout`, `channel`) are not keywords yet but can't be used as identifiers. They're set aside for future features.
 
-## `tests.rs` — Lexer Unit Tests
+## `tests.rs` - Lexer Unit Tests
 
 The fourth file in `crates/mimz-core/src/lexer/` verifies tokenization edge cases:
 
