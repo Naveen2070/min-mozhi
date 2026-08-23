@@ -1,0 +1,36 @@
+---
+// The on-this-page rail. Headings come from Astro's render() at build time, so
+// nothing parses the DOM to build this. Astro assigns matching `id`s to the
+// rendered headings, so the slugs link correctly with no extra plugin.
+import type { MarkdownHeading } from "astro";
+
+interface Props {
+  headings: MarkdownHeading[];
+}
+const { headings } = Astro.props;
+
+// h2 and h3 only. h1 is the page title (already on screen) and h4+ makes the
+// rail longer than the prose on the cheatsheet and the grammar spec.
+const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
+
+// One heading is not a table of contents, it is a duplicate of the title.
+const show = items.length >= 2;
+---
+
+{
+  show && (
+    <nav class="toc" aria-label="On this page" data-toc data-pagefind-ignore>
+      <p class="u-eyebrow toc-head">On this page</p>
+      <ul>
+        {items.map((h) => (
+          <li class:list={["toc-item", `toc-d${h.depth}`]}>
+            <a href={`#${h.slug}`}>{h.text}</a>
+          </li>
+        ))}
+      </ul>
+      <a href="#top" class="toc-top">
+        Back to top
+      </a>
+    </nav>
+  )
+}

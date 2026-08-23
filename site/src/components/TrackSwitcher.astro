@@ -1,0 +1,48 @@
+---
+// The docs-track control above the sidebar. Native <details>, so it needs no
+// JS and is keyboard-accessible for free — the same reasoning as the mobile
+// nav drawer. Safe in an MPA: every navigation is a full reload, so it cannot
+// get stuck open.
+import { TRACKS } from "../lib/nav-map.mjs";
+
+interface Props {
+  track: string;
+}
+const { track } = Astro.props;
+const entries = Object.entries(TRACKS) as [
+  string,
+  { label: string; home: string; sections: string[] },
+][];
+const currentLabel = TRACKS[track as keyof typeof TRACKS].label;
+---
+
+<details class="track-switcher">
+  <summary aria-label={`Current track: ${currentLabel}. Switch track.`}>
+    <span class="u-eyebrow">Track</span>
+    <span class="track-current">{currentLabel}</span>
+    <svg
+      class="track-chevron"
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      aria-hidden="true"
+    >
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"
+      ></path>
+    </svg>
+  </summary>
+  <ul class="track-list">
+    {
+      entries.map(([key, t]) => (
+        <li>
+          <a href={t.home} aria-current={key === track ? "true" : undefined}>
+            {t.label}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</details>

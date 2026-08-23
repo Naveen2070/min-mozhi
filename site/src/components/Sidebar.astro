@@ -1,29 +1,26 @@
 ---
-// Chapter navigation. The sections are computed by lib/docs.ts (getNav) and passed
-// down by the Docs layout, so this component only renders — and so the pager walks
+// Chapter navigation. Sections are computed by lib/docs.ts (getNav) and passed
+// down by the Docs layout, so this component only renders — and the pager walks
 // exactly the order shown here.
-import { sectionOf, type NavSection } from "../lib/docs";
+//
+// The old hand-written learn↔handbook↔lab `crossLink` table is gone: the track
+// grouping puts related sections in the same sidebar, so the cross-link is a
+// consequence of the data rather than a lookup someone has to maintain.
+import TrackSwitcher from "./TrackSwitcher.astro";
+import type { NavSection } from "../lib/docs";
 
 interface Props {
-  current: string; // e.g. "guide/04-signals"
+  current: string; // e.g. "guide/08-sequential-logic"
   sections: NavSection[];
+  track: string;
 }
-const { current, sections } = Astro.props;
-
-// On the beta sections, offer the way across instead of listing every other
-// section — Learn, Handbook and Lab are read together.
-const section = sectionOf(current);
-const crossLink =
-  section === "learn"
-    ? { href: "/handbook", label: "Handbook" }
-    : section === "handbook"
-      ? { href: "/learn", label: "Learn" }
-      : section === "lab"
-        ? { href: "/learn", label: "Learn" }
-        : null;
+const { current, sections, track } = Astro.props;
+const key = current.toLowerCase();
 ---
 
-<nav aria-label="Documentation" class="text-sm">
+<TrackSwitcher track={track} />
+
+<nav aria-label="Documentation" class="text-sm" data-docs-nav>
   {
     sections.map((s) => (
       <details class="group mb-7" open>
@@ -31,7 +28,10 @@ const crossLink =
           class="fg-muted mb-2 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none flex items-center justify-between hover:opacity-80 transition-opacity"
           style="list-style: none;"
         >
-          {s.title}
+          <span>
+            {s.title}
+            {s.beta && <span class="beta-pill">beta</span>}
+          </span>
           <svg
             class="w-3 h-3 transition-transform group-open:rotate-180"
             fill="none"
@@ -51,9 +51,12 @@ const crossLink =
             <li>
               <a
                 href={`/${item.href}`}
+                aria-current={
+                  key === item.href.toLowerCase() ? "page" : undefined
+                }
                 class:list={[
                   "doc-link block rounded px-2 py-1",
-                  { active: current.toLowerCase() === item.href.toLowerCase() },
+                  { active: key === item.href.toLowerCase() },
                 ]}
               >
                 {item.label}
@@ -64,17 +67,25 @@ const crossLink =
       </details>
     ))
   }
-
-  {
-    crossLink && (
-      <div class="cross-link">
-        <a href={crossLink.href} class="doc-link block rounded px-2 py-1">
-          {crossLink.label} &rarr;
-        </a>
-      </div>
-    )
-  }
 </nav>
+
+{/* With three sections open at once the active chapter can start below the
+    fold. One line of script, only when the nav actually scrolls. Scoped to the
+    .docs-aside copy on purpose: the mobile drawer (Task 8) renders a second
+    Sidebar EARLIER in the DOM, and a bare querySelector would find that hidden
+    copy on desktop and silently do nothing. */}
+<script is:inline>
+  (() => {
+    const nav = document.querySelector(".docs-aside [data-docs-nav]");
+    const active = nav && nav.querySelector('[aria-current="page"]');
+    if (!active || !nav) return;
+    const navBox = nav.getBoundingClientRect();
+    const box = active.getBoundingClientRect();
+    if (box.top < navBox.top || box.bottom > navBox.bottom) {
+      active.scrollIntoView({ block: "center" });
+    }
+  })();
+</script>
 
 <style>
   .doc-link {
@@ -89,11 +100,6 @@ const crossLink =
     color: var(--accent);
     background-color: var(--bg-soft);
     font-weight: 600;
-  }
-
-  .cross-link {
-    border-top: 1px solid var(--border);
-    padding-top: 0.75rem;
   }
 
   /* Hide the default marker for summary elements */

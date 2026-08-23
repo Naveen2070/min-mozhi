@@ -56,6 +56,25 @@ const ogImage = new URL("/og.png", site).href;
   </head>
   <body>
     <slot />
+    <!-- One delegated listener copies any code block, whether the markup came
+         from rehype-code-copy.mjs or was written by hand on the landing page. -->
+    <script is:inline>
+      document.addEventListener("click", async (e) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const btn = target.closest("[data-copy]");
+        if (!btn) return;
+        const pre = btn.parentElement && btn.parentElement.querySelector("pre");
+        if (!pre) return;
+        try {
+          await navigator.clipboard.writeText(pre.innerText);
+          btn.dataset.copied = "1";
+          setTimeout(() => delete btn.dataset.copied, 1400);
+        } catch {
+          /* clipboard blocked (insecure context, denied permission) — no-op */
+        }
+      });
+    </script>
     <script>
       import { inject } from "@vercel/analytics";
       inject();
