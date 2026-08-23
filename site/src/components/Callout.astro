@@ -1,0 +1,15 @@
+---
+// The author-honesty notice, in its two sizes. Reuses the blockquote's
+// accent-left-border language so it reads as native, but heavier.
+//
+// Always data-pagefind-ignore: the disclaimer is on every Learn and Lab page,
+// and indexing it would make it the top hit for half the site's searches.
+interface Props {
+  variant: "strong" | "slim";
+}
+const { variant } = Astro.props;
+---
+
+<aside class={`callout callout-${variant}`} data-pagefind-ignore>
+  <slot />
+</aside>

@@ -1,0 +1,30 @@
+---
+// Track › Section › Page, above the h1. The same crumb data the layout already
+// computes for the JSON-LD BreadcrumbList, finally shown to human readers too.
+import { sectionOf, sectionName, trackName, trackHome } from "../lib/nav-map.mjs";
+
+interface Props {
+  current: string;
+  title: string;
+  track: string;
+}
+const { current, title, track } = Astro.props;
+const section = sectionOf(current);
+const isHub = current === section;
+---
+
+<nav class="crumbs" aria-label="Breadcrumb" data-pagefind-ignore>
+  <a href={trackHome(track)}>{trackName(track)}</a>
+  <span aria-hidden="true">&rsaquo;</span>
+  {
+    isHub ? (
+      <span aria-current="page">{sectionName(section)}</span>
+    ) : (
+      <>
+        <a href={`/${section}`}>{sectionName(section)}</a>
+        <span aria-hidden="true">&rsaquo;</span>
+        <span aria-current="page">{title}</span>
+      </>
+    )
+  }
+</nav>

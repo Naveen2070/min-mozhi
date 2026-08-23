@@ -4,15 +4,23 @@ import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 import Sidebar from "../components/Sidebar.astro";
 import Pager from "../components/Pager.astro";
+import Breadcrumb from "../components/Breadcrumb.astro";
+import Callout from "../components/Callout.astro";
+import Toc from "../components/Toc.astro";
+import TocSpy from "../components/TocSpy.tsx";
 import LiveWaveformMount from "../components/LiveWaveformMount.tsx";
 import { getNav, getPager, sectionOf, sectionName } from "../lib/docs";
 import { readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
+import type { MarkdownHeading } from "astro";
 
 interface Props {
   title: string;
   current: string; // e.g. "guide/04-signals"
   description?: string;
+  /** From `render(entry)`. Drives the on-this-page rail. */
+  headings?: MarkdownHeading[];
 }
 
 // Read stdlib examples for the interactive waveforms
@@ -28,7 +36,7 @@ try {
   // Graceful fallback during dev if examples aren't found
 }
 
-const { title, current, description } = Astro.props;
+const { title, current, description, headings = [] } = Astro.props;
 
 const section = sectionOf(current);
 const SECTION_BLURB: Record<string, string> = {
@@ -45,8 +53,13 @@ const metaDescription =
   `${title} — Min-Mozhi ${sectionName(section)}. ${SECTION_BLURB[section]}${isBeta ? " (Beta.)" : ""}`;
 
 // Sidebar sections + the pager sequence come from one place, so they agree.
-const { sections, sequence } = await getNav(current);
+const { sections, sequence, track } = await getNav(current);
 const { prev, next } = getPager(sequence, current);
+
+// The rail is only worth a column when there is something to list — the same
+// rule Toc.astro applies, so the grid and the rail agree.
+const tocItems = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const hasToc = tocItems.length >= 2;
 
 // The author-honesty disclaimer rides EVERY Learn AND Lab page (lab plan D8:
 // lesson 00 makes general-HDL claims, so the banner follows the section, not a
@@ -55,6 +68,48 @@ const { prev, next } = getPager(sequence, current);
 // silently ship without it.
 const isHonesty = section === "learn" || section === "lab";
 const isHonestyHub = current === section;
+
+// Where each section's markdown actually lives, so "edit this page" points at
+// the real file. Mirrors content.config.ts — guide/spec mirror repo docs, the
+// beta sections are site-local originals.
+function sourcePath(current: string): string {
+  const s = sectionOf(current);
+  const rest = current.slice(s.length + 1); // "" on a hub
+  if (s === "guide") {
+    return rest ? `docs/guide/${rest}.md` : "docs/guide/README.md";
+  }
+  if (s === "spec") {
+    return rest ? `spec/${rest}.md` : "spec/README.md";
+  }
+  return rest
+    ? `site/content/${s}/${rest}.md`
+    : `site/content/${s}/README.md`;
+}
+
+const relSource = sourcePath(current);
+const editUrl = `https://github.com/Naveen2070/min-mozhi/blob/master/${relSource}`;
+
+// Last commit date for that file. Vercel may build from a shallow clone with no
+// history, and a contributor may build from a tarball with no git at all — both
+// return null and the line simply does not render. Never guess from mtime: a
+// fresh checkout stamps every file with the clone time.
+let updated: string | null = null;
+try {
+  const iso = execFileSync(
+    "git",
+    ["log", "-1", "--format=%cI", "--", relSource],
+    { cwd: path.resolve(process.cwd(), ".."), encoding: "utf-8" },
+  ).trim();
+  updated = iso
+    ? new Date(iso).toLocaleDateString("en-GB", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+} catch {
+  updated = null;
+}
 
 // JSON-LD breadcrumb: Home › <Section> › this page.
 const site = Astro.site ?? new URL("https://mimz.naveenr.in");
@@ -84,16 +139,43 @@ const breadcrumbLd = {
     set:html={JSON.stringify(breadcrumbLd)}
   />
   <Nav />
-  <div class="mx-auto flex max-w-6xl gap-10 px-4 py-10">
-    <aside class="hidden w-60 shrink-0 lg:block">
-      <div class="sticky top-20">
-        <Sidebar current={current} sections={sections} />
+  <div class:list={["docs-shell", { "has-toc": hasToc }]}>
+    {/* Below lg the sidebar column is hidden, which until now left phones with
+        no chapter navigation at all. Native <details>, same pattern as the top
+        nav drawer, rendering the very same Sidebar component. */}
+    <details class="docs-drawer lg:hidden">
+      <summary>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16M4 12h16M4 17h16"></path>
+        </svg>
+        Chapters
+      </summary>
+      <div class="docs-drawer-panel">
+        <Sidebar current={current} sections={sections} track={track} />
+      </div>
+    </details>
+
+    <aside class="docs-aside">
+      <div class="docs-sticky">
+        <Sidebar current={current} sections={sections} track={track} />
       </div>
     </aside>
-    <main data-pagefind-body class="prose min-w-0 flex-1">
+
+    <main data-pagefind-body class="prose docs-main" id="top">
+      <Breadcrumb current={current} title={title} track={track} />
+      {/* honesty notices stay exactly here */}
       {
         isHonesty && isHonestyHub && (
-          <aside class="notice-strong" data-pagefind-ignore>
+          <Callout variant="strong">
             <p>
               <strong>A note on accuracy.</strong> I am not a hardware/HDL domain expert.
               My background is adjacent to this field and I know the basics and most of
@@ -106,21 +188,37 @@ const breadcrumbLd = {
               built it. Treat the general hardware and HDL background as a friendly
               introduction worth verifying, and the Min-Mozhi material as authoritative.
             </p>
-          </aside>
+          </Callout>
         )
       }
       {
         isHonesty && !isHonestyHub && (
-          <aside class="notice-slim" data-pagefind-ignore>
+          <Callout variant="slim">
             General HDL material here is researched from the internet and may be
             inaccurate — everything Min-Mozhi-specific is not. <a href="/learn">Why &rarr;</a>
-          </aside>
+          </Callout>
         )
       }
       <slot />
       <Pager prev={prev} next={next} />
+      <div class="page-meta" data-pagefind-ignore>
+        <a href={editUrl} rel="noopener">Edit this page</a>
+        {updated && <span>Last updated {updated}</span>}
+      </div>
     </main>
+
+    {
+      hasToc && (
+        <aside class="docs-toc">
+          <div class="docs-sticky">
+            <Toc headings={headings} />
+          </div>
+        </aside>
+      )
+    }
   </div>
+
+  {hasToc && <TocSpy client:idle />}
 
   <Footer />
 
