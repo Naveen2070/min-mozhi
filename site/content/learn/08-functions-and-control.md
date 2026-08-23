@@ -53,3 +53,6 @@ Then, for building designs out of modules:
 ## Then come back for
 
 Next: [tests, tooling and errors](/learn/09-tests-and-tooling) — the last step.
+
+> **Practice this.** The [Lab](/lab/05-functions-and-control) has hands-on exercises for this chapter - graded by the compiler, in your browser.
+

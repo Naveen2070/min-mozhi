@@ -43,3 +43,6 @@ pedantic for about a day and then feels obviously right.
 Next: [operators](/learn/06-operators). If you want the width rules as a
 reference rather than a lesson, the Handbook has
 [types and widths](/handbook/04-types-and-widths).
+
+> **Practice this.** The [Lab](/lab/02-widths-that-grow) has hands-on exercises for this chapter - graded by the compiler, in your browser.
+

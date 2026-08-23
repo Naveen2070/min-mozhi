@@ -225,13 +225,50 @@ a {
 .bg-soft {
   background-color: var(--bg-soft);
 }
+/* Button components are self-sufficient: pages may add Tailwind utilities
+   (px-*, rounded-*) to scale them up, but a BARE `class="btn-primary"` in
+   markdown - as the Learn/Guide chapters use - must still render as a real
+   button, not a colored strip of underlined text. inline-flex (not
+   inline-block) so an svg child - which Tailwind preflight makes block -
+   stays beside the label instead of stacking above it; being unlayered CSS,
+   this display also intentionally beats the layered flex utility. */
+a.btn-primary,
 .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.05rem;
+  border-radius: 0.55rem;
   background-color: var(--accent);
   color: #081120;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.45;
+  text-decoration: none;
+  text-underline-offset: 0;
 }
+a.btn-primary:hover,
+.btn-primary:hover {
+  filter: brightness(1.12);
+}
+a.btn-outline,
 .btn-outline {
-  border-color: var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.05rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--border);
   color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.45;
+  text-decoration: none;
+  text-underline-offset: 0;
+}
+a.btn-outline:hover,
+.btn-outline:hover {
+  background-color: var(--bg-soft);
 }
 /* Sticky translucent nav bar background. */
 .nav-bar {
@@ -769,4 +806,107 @@ a {
 }
 .group:hover .group-hover\:text-bolt-400 {
   color: var(--color-bolt-400);
+}
+
+/* ---- Lab ---------------------------------------------------------------- */
+/* The interactive lesson island, living inside the lab environment's IDE pane
+   (.ide-pane in the lesson page). Reuses the playground's pg-* controls. The
+   island fills its pane vertically: editor grows, console gets what's left. */
+.lab {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lab-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+/* Inside the pane the editor flexes instead of holding a fixed height —
+   the "no scroll page" comes from panes scrolling internally, not shrinking
+   the code area to nothing. */
+.lab .pg-editor {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 7rem;
+}
+.lab-where {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  margin-left: 0.25rem;
+}
+.lab-reset {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.lab-reset:hover {
+  color: var(--text);
+}
+.lab-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+.lab-verify {
+  font-weight: 700;
+}
+.lab-result {
+  min-height: 1.4rem;
+}
+.lab-result pre {
+  white-space: pre-wrap;
+  font-family: inherit;
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+}
+.lab-result.pass strong {
+  color: var(--color-bolt-400);
+}
+.lab-result.checked strong {
+  color: var(--accent);
+}
+.lab-result.fail strong {
+  color: #e05252;
+}
+html.dark .lab-result.fail strong {
+  color: #ff7b72;
+}
+.lab-next {
+  float: right;
+}
+.lab-cmd {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.lab-cmd .pg-input {
+  flex: 1;
+}
+.lab-log {
+  margin-top: 0.75rem;
+  flex: none;
+  max-height: clamp(7rem, 28vh, 13rem);
+}
+.lab-wave {
+  margin-top: 0.75rem;
+}
+.lab-wave summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Step sections get a focus target that clears the sticky nav. */
+.lab-step h3:focus {
+  outline: none;
 }

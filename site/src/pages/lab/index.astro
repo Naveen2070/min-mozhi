@@ -1,0 +1,58 @@
+---
+// /lab — the hub. Same standalone shell as the lesson pages (no docs chrome):
+// a slim bar and the hub text, centred. Reached from /learn (D7a).
+import { getCollection, render } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import Wordmark from "../../components/Wordmark.astro";
+
+const [entry] = await getCollection("labIndex");
+const { Content } = await render(entry);
+---
+
+<Base title={`${entry.data.title} — Lab — Min-Mozhi`} description={entry.data.description}>
+  <div class="lab-env">
+    <header class="env-bar">
+      <a href="/" class="fg no-underline">
+        <Wordmark />
+      </a>
+      <span class="beta-pill">beta</span>
+      <a href="/learn" class="env-exit fg">Learn &rarr;</a>
+    </header>
+    <main class="hub-pane">
+      <article class="prose lab-hub">
+        <Content />
+      </article>
+    </main>
+  </div>
+</Base>
+
+<style>
+  .lab-env {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+  .env-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+    flex-wrap: wrap;
+  }
+  .env-exit {
+    margin-left: auto;
+    font-size: 0.9rem;
+  }
+  .hub-pane {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    padding: 2.5rem 1.25rem;
+  }
+  .lab-hub {
+    max-width: 46rem;
+    width: 100%;
+  }
+</style>

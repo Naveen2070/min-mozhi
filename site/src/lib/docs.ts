@@ -42,6 +42,7 @@ const SECTION_NAMES = {
   spec: "Spec",
   learn: "Learn",
   handbook: "Handbook",
+  lab: "Lab",
 } as const;
 
 export type SectionBase = keyof typeof SECTION_NAMES;
@@ -87,9 +88,9 @@ export async function getNav(
 ): Promise<{ sections: NavSection[]; sequence: NavItem[] }> {
   const section = sectionOf(current);
 
-  // Learn / Handbook: contextual — show only this section (plus a cross-link,
-  // which the Sidebar renders), never a five-section wall.
-  if (section === "learn" || section === "handbook") {
+  // Learn / Handbook / Lab: contextual — show only this section (plus a
+  // cross-link, which the Sidebar renders), never a five-section wall.
+  if (section === "learn" || section === "handbook" || section === "lab") {
     const entries = await getCollection(section);
     const hub: NavItem = { href: section, label: SECTION_NAMES[section] };
     const items = localItems(entries, section);

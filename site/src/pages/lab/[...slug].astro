@@ -1,0 +1,308 @@
+---
+// /lab/<lesson> — the lab environment.
+//
+// Deliberately NOT a docs page: no Nav, no sidebar, no footer, no page
+// scrolling. Base gives the html skeleton and nothing else, and the shell
+// fills the viewport — lesson text left, IDE right (plan §4), each pane
+// scrolling internally. Reached from /learn and reverse links only (D7a).
+//
+// All steps ship in the DOM (Pagefind indexes the whole lesson; #step-N
+// deep-links work); the island reveals the active one and drives the two
+// pagers through data attributes. Without JS the first step reads fine and
+// the other steps are one "view source" away — the real text lives in Learn.
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import Wordmark from "../../components/Wordmark.astro";
+import Lab from "../../components/Lab.tsx";
+import { parseLesson, type LabStep } from "../../lib/lab";
+import { mdToHtml } from "../../lib/md";
+
+export async function getStaticPaths() {
+  const entries = await getCollection("lab");
+  return entries.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const lesson = parseLesson(entry.body ?? "");
+
+const all = (await getCollection("lab")).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+const idx = all.findIndex((e) => e.id === entry.id);
+const prevLesson = all[idx - 1] ?? null;
+const nextLesson = all[idx + 1] ?? null;
+
+const introHtml = await mdToHtml(lesson.intro);
+const stepHtml = await Promise.all(
+  lesson.steps.map(async (step: LabStep, i) => ({
+    step,
+    proseHtml: await mdToHtml(step.prose),
+    first: i === 0,
+  })),
+);
+
+// What the island needs to run a lesson: the code roles and step titles.
+// Prose is already in the DOM; only machinery goes through JSON.
+const labData = {
+  id: entry.id,
+  module: entry.data.module ?? null,
+  chapter: entry.data.chapter ?? null,
+  steps: lesson.steps.map((s) => ({
+    n: s.n,
+    title: s.title,
+    starter: s.starter ?? null,
+    solution: s.solution ?? null,
+    verify: s.verify ?? null,
+    hint: s.hint ?? null,
+  })),
+};
+---
+
+<Base
+  title={`${entry.data.title} — Lab — Min-Mozhi`}
+  description={entry.data.description}
+>
+  <div class="lab-env">
+    <header class="env-bar">
+      <a href="/" class="fg no-underline">
+        <Wordmark />
+      </a>
+      <span class="beta-pill">beta</span>
+      <span class="env-title">{entry.data.title}</span>
+      <nav class="env-lessons" aria-label="Lessons">
+        {
+          prevLesson ? (
+            <a href={`/lab/${prevLesson.id}`} class="env-nav-btn" aria-label={`Previous lesson: ${prevLesson.data.title}`}>
+              ‹
+            </a>
+          ) : (
+            <span class="env-nav-btn env-nav-off" aria-hidden="true">‹</span>
+          )
+        }
+        <span class="env-lesson-count">
+          Lesson {idx + 1} / {all.length}
+        </span>
+        {
+          nextLesson ? (
+            <a href={`/lab/${nextLesson.id}`} class="env-nav-btn" aria-label={`Next lesson: ${nextLesson.data.title}`}>
+              ›
+            </a>
+          ) : (
+            <span class="env-nav-btn env-nav-off" aria-hidden="true">›</span>
+          )
+        }
+      </nav>
+      <a href="/learn" class="env-exit fg">Learn &rarr;</a>
+    </header>
+
+    <div class="env-main">
+      <section
+        class="lesson-pane"
+        aria-label="Lesson text"
+        data-pagefind-body
+      >
+        <div class="prose lab-lesson" set:html={introHtml} />
+
+        {
+          stepHtml.map(({ step, proseHtml, first }) => (
+            <section
+              data-lab-step={step.n}
+              hidden={!first}
+              aria-labelledby={`step-${step.n}-heading`}
+            >
+              <h3 id={`step-${step.n}-heading`} tabindex={-1}>
+                Step {step.n}
+                {step.title && ` — ${step.title}`}
+              </h3>
+              <div class="prose" set:html={proseHtml} />
+              {step.hint && (
+                <details class="lab-hint">
+                  <summary>show hint</summary>
+                  {step.hint}
+                </details>
+              )}
+              {step.solution && (
+                <button
+                  type="button"
+                  class="pg-btn-ghost lab-show-solution"
+                  data-lab-solution={step.n}
+                >
+                  show solution for step {step.n}
+                </button>
+              )}
+            </section>
+          ))
+        }
+
+        <div class="step-pager">
+          <button type="button" class="pg-btn" data-lab-goto="prev">
+            &lsaquo; Previous
+          </button>
+          <button type="button" class="pg-btn" data-lab-goto="next">
+            Next &rsaquo;
+          </button>
+        </div>
+
+        <p class="env-honesty">
+          General HDL material across the docs is researched and may be
+          inaccurate — everything Min-Mozhi-specific is not.{" "}
+          <a href="/learn">Why &rarr;</a>
+        </p>
+      </section>
+
+      <aside class="ide-pane" aria-label="Lab editor">
+        <Lab client:only="react" />
+      </aside>
+    </div>
+
+    <script
+      is:inline
+      type="application/json"
+      id="lab-data"
+      set:html={JSON.stringify(labData)}
+    />
+  </div>
+</Base>
+
+<style>
+  /* Full-viewport app shell. Under lg the panes stack and the page scrolls
+     normally — a phone cannot fit two columns (plan F5). */
+  .lab-env {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+  }
+  @media (max-width: 1023px) {
+    .lab-env {
+      height: auto;
+      min-height: 100dvh;
+    }
+  }
+
+  .env-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid var(--border);
+    flex: none;
+    flex-wrap: wrap;
+  }
+  .env-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  .env-title::before {
+    content: "Lab · ";
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+  .env-lessons {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .env-lesson-count {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    min-width: 6.5rem;
+    text-align: center;
+  }
+  .env-nav-btn {
+    display: inline-block;
+    min-width: 1.8rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 0.45rem;
+    padding: 0.15rem 0.5rem;
+    text-decoration: none;
+    color: var(--text);
+  }
+  .env-nav-btn:hover {
+    border-color: var(--accent);
+  }
+  .env-nav-off {
+    opacity: 0.35;
+  }
+  .env-exit {
+    font-size: 0.9rem;
+  }
+
+  .env-main {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  @media (min-width: 1024px) {
+    .env-main {
+      grid-template-columns: minmax(0, 1fr) minmax(400px, 46%);
+    }
+  }
+
+  .lesson-pane {
+    min-height: 0;
+    padding: 1.25rem 1.5rem 2rem;
+    display: flex;
+    flex-direction: column;
+  }
+  @media (min-width: 1024px) {
+    .lesson-pane {
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+    }
+  }
+  .lesson-pane > section[hidden] {
+    display: none;
+  }
+
+  .step-pager {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: auto;
+    padding-top: 1.5rem;
+  }
+  .env-honesty {
+    margin-top: 1.25rem;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  .ide-pane {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 1.25rem;
+  }
+  @media (max-width: 1023px) {
+    .ide-pane {
+      border-top: 1px solid var(--border);
+      min-height: 32rem;
+    }
+  }
+
+  .lab-hint {
+    margin-top: 0.75rem;
+    border-left: 3px solid var(--accent);
+    background-color: var(--bg-soft);
+    border-radius: 0.4rem;
+    padding: 0.55rem 0.9rem;
+    font-size: 0.9rem;
+  }
+  .lab-hint summary {
+    cursor: pointer;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .lab-hint[open] summary {
+    margin-bottom: 0.35rem;
+  }
+  .lab-show-solution {
+    margin-top: 0.6rem;
+  }
+</style>
