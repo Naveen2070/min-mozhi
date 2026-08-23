@@ -50,3 +50,6 @@ their own chapter: [Guide 06 — Builtins](/guide/06-builtins).
 Next: [sequential logic](/learn/07-sequential-logic). The exact precedence
 ladder, with numbers, is in the Handbook's
 [operators](/handbook/03-operators) chapter.
+
+> **Practice this.** The [Lab](/lab/03-operators) has hands-on exercises for this chapter - graded by the compiler, in your browser.
+

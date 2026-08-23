@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1319 tests** as of 2026-08-22 (`cargo test --workspace`; the count is
+**1320 tests** as of 2026-08-23 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it):
 
 | Where it lives                                      |    Count | Kind                                                   |
@@ -49,6 +49,7 @@ re-derived from source by `tests/docs_sync.rs`, so this page must track it):
 | `tests/grammar.rs`                                  |       16 | workspace integration                                  |
 | `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)           |
 | `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                        |
+| `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6) |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                          |
 | `tests/morph.rs`                                    |       20 | workspace integration                                  |
 | `tests/packages.rs`                                 |        2 | workspace integration                                  |
@@ -59,7 +60,7 @@ re-derived from source by `tests/docs_sync.rs`, so this page must track it):
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1319** |                                                        |
+| **Total**                                           | **1320** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar

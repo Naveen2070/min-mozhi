@@ -4,6 +4,12 @@
 
 Changelog of test-count changes (newest first):
 
+- 2026-08-23 the site Learning Lab (/lab, BETA) ships its content gate:
+  **1319 → 1320** with the new `tests/lab_lessons.rs` (1 test) - compiles
+  every `site/content/lab/*.md` starter/solution/verify fence, proves each
+  exercise is solvable and not pre-solved, asserts annotated diagnostic codes,
+  and validates lesson link targets. Master count and badge updated.
+
 - 2026-08-21 documentation sync (no test-behavior change): the master
   count and per-section counts on this page were reconciled against
   `cargo test-summary --workspace` - **1115 → 1315**, reflecting all tests

@@ -65,6 +65,26 @@ const handbookIndex = defineCollection({
   schema: hubSchema,
 });
 
+// ---- Lab (beta) -----------------------------------------------------------
+// Site-local like Learn/Handbook, plus two lesson-specific fields: the chapter
+// that owns the concepts ("read the full story →"), and the module name every
+// verify block binds to - a hidden contract the prose must state (plan F4).
+
+const labSchema = chapterSchema.extend({
+  chapter: z.string().optional(),
+  module: z.string().optional(),
+});
+
+const lab = defineCollection({
+  loader: glob({ pattern: ["*.md", "!README.md"], base: "./content/lab" }),
+  schema: labSchema,
+});
+
+const labIndex = defineCollection({
+  loader: glob({ pattern: "README.md", base: "./content/lab" }),
+  schema: hubSchema,
+});
+
 export const collections = {
   guide,
   guideIndex,
@@ -74,4 +94,6 @@ export const collections = {
   learnIndex,
   handbook,
   handbookIndex,
+  lab,
+  labIndex,
 };

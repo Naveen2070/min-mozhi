@@ -10,15 +10,17 @@ interface Props {
 }
 const { current, sections } = Astro.props;
 
-// On the two beta sections, offer the way across instead of listing every other
-// section — Learn and Handbook are read together.
+// On the beta sections, offer the way across instead of listing every other
+// section — Learn, Handbook and Lab are read together.
 const section = sectionOf(current);
 const crossLink =
   section === "learn"
     ? { href: "/handbook", label: "Handbook" }
     : section === "handbook"
       ? { href: "/learn", label: "Learn" }
-      : null;
+      : section === "lab"
+        ? { href: "/learn", label: "Learn" }
+        : null;
 ---
 
 <nav aria-label="Documentation" class="text-sm">

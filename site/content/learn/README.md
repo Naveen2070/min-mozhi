@@ -37,6 +37,13 @@ From chapter 05 on, each step sets up a [Guide](/guide) chapter and hands you
 over to it — Learn tells you what to look for, the Guide teaches it. Nothing is
 taught twice.
 
+## Practice while you read
+
+Every Min-Mozhi chapter has a matching [Lab](/lab) lesson — short exercises in
+the browser, graded by the compiler itself. Start at
+[Verilog vs Min-Mozhi](/lab/00-verilog-vs-min-mozhi), or jump straight to
+[Your first module](/lab/01-your-first-module).
+
 ## How this fits with the rest of the site
 
 | Section                  | What it is                                                           |

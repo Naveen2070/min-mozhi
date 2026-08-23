@@ -140,3 +140,6 @@ good way to check your mental model against what actually gets built.
 
 Enough background. Next:
 [your first Min-Mozhi module](/learn/04-your-first-module).
+
+> **Practice this.** The [Lab](/lab/00-verilog-vs-min-mozhi) has hands-on exercises for this chapter - graded by the compiler, in your browser.
+
