@@ -48,3 +48,6 @@ starts as whatever the silicon felt like.
 ## Then come back for
 
 Next: [functions and control flow](/learn/08-functions-and-control).
+
+> **Practice this.** The [Lab](/lab/04-clocks-and-registers) has hands-on exercises for this chapter - graded by the compiler, in your browser.
+

@@ -72,3 +72,6 @@ That is the arc. From here:
   route you through.
 - **[The Spec](/spec)** — the normative definition, when you need the exact rule.
 - **[The Playground](/playground)** — compile and simulate in the browser.
+
+> **Practice this.** The [Lab](/lab/06-write-your-own-test) has hands-on exercises for this chapter - graded by the compiler, in your browser.
+

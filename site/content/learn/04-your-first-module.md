@@ -184,3 +184,6 @@ You have the shape of the language. The rest of this section walks you through
 the [Guide](/guide), one topic at a time, telling you what to look for.
 
 Next: [types and widths](/learn/05-types-and-widths).
+
+> **Practice this.** The [Lab](/lab/01-your-first-module) has hands-on exercises for this chapter - graded by the compiler, in your browser.
+
