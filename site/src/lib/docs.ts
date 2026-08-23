@@ -1,30 +1,43 @@
 // Helpers for the docs collections.
 //
-// Two flavors of source live behind these helpers:
-//   - guide/spec  — repo markdown with NO frontmatter, so nav labels and order are
-//                   derived from the filename id (e.g. "08-sequential-logic").
-//   - learn/handbook — site-local originals WITH frontmatter, so they use their
-//                   own `title` / `order` instead of the filename.
+// The pure parts (section/track mapping, label + order derivation) live in
+// nav-map.mjs so plain `node` can test them. This file adds only what needs
+// `astro:content`.
+//
+// Two flavors of source sit behind these helpers:
+//   - guide/spec      — repo markdown with NO frontmatter, so nav labels and
+//                       order come from the filename id ("08-sequential-logic").
+//   - learn/handbook/lab — site-local originals WITH frontmatter, so they use
+//                       their own `title` / `order`.
 import { getCollection } from "astro:content";
+import {
+  SECTION_NAMES,
+  TRACKS,
+  sectionOf,
+  sectionName,
+  trackOf,
+  trackName,
+  trackHome,
+  docLabel,
+  docOrder,
+  sortDocs,
+} from "./nav-map.mjs";
 
-export function docLabel(id: string): string {
-  const words = id
-    .replace(/^\d+(?:\.\d+)?[-_]?/, "") // drop a leading chapter number
-    .replace(/[-_]/g, " ")
-    .trim();
-  return words ? words.charAt(0).toUpperCase() + words.slice(1) : id;
-}
+export {
+  SECTION_NAMES,
+  TRACKS,
+  sectionOf,
+  sectionName,
+  trackOf,
+  trackName,
+  trackHome,
+  docLabel,
+  docOrder,
+  sortDocs,
+};
 
-export function docOrder(id: string): number {
-  const m = id.match(/^(\d+(?:\.\d+)?)/);
-  return m ? parseFloat(m[1]) : 999;
-}
-
-export function sortDocs<T extends { id: string }>(entries: readonly T[]): T[] {
-  return [...entries].sort((a, b) => docOrder(a.id) - docOrder(b.id));
-}
-
-// ---- Section navigation --------------------------------------------------
+export type SectionBase = "guide" | "spec" | "learn" | "handbook" | "lab";
+export type Track = "learn" | "reference" | "spec";
 
 export interface NavItem {
   /** Route without a leading slash, e.g. "guide/05-operators". */
@@ -35,26 +48,8 @@ export interface NavItem {
 export interface NavSection {
   title: string;
   items: NavItem[];
-}
-
-const SECTION_NAMES = {
-  guide: "Guide",
-  spec: "Spec",
-  learn: "Learn",
-  handbook: "Handbook",
-  lab: "Lab",
-} as const;
-
-export type SectionBase = keyof typeof SECTION_NAMES;
-
-/** Which top-level section a `current` string ("guide/05-operators") belongs to. */
-export function sectionOf(current: string): SectionBase {
-  const base = current.split("/")[0];
-  return base in SECTION_NAMES ? (base as SectionBase) : "guide";
-}
-
-export function sectionName(section: SectionBase): string {
-  return SECTION_NAMES[section];
+  /** Rendered as a "beta" pill beside the section title in the sidebar. */
+  beta?: boolean;
 }
 
 /** Site-local collections: frontmatter `order` sorts, frontmatter `title` labels. */
@@ -64,88 +59,104 @@ function localItems(entries: readonly any[], base: string): NavItem[] {
     .map((e) => ({ href: `${base}/${e.id}`, label: e.data.title }));
 }
 
-/** Repo-sourced collections: filename sorts and labels. */
+/** Repo-sourced collections: the filename sorts and labels. */
 function repoItems(
   entries: readonly any[],
   base: string,
   strip = "",
 ): NavItem[] {
-  return sortDocs(entries).map((e) => ({
+  return sortDocs(entries).map((e: any) => ({
     href: `${base}/${e.id}`,
     label: docLabel(strip ? e.id.replace(strip, "") : e.id),
   }));
 }
 
-/**
- * The sidebar's sections AND the linear sequence the pager walks, from one place
- * — so the two can never disagree about ordering.
- *
- * The sequence deliberately starts at the section hub, so chapter 01's "previous"
- * is the overview and the hub itself gets a "next".
- */
-export async function getNav(
-  current: string,
-): Promise<{ sections: NavSection[]; sequence: NavItem[] }> {
-  const section = sectionOf(current);
-
-  // Learn / Handbook / Lab: contextual — show only this section (plus a
-  // cross-link, which the Sidebar renders), never a five-section wall.
-  if (section === "learn" || section === "handbook" || section === "lab") {
-    const entries = await getCollection(section);
-    const hub: NavItem = { href: section, label: SECTION_NAMES[section] };
-    const items = localItems(entries, section);
-    return {
-      sections: [
-        {
-          title: SECTION_NAMES[section],
-          items: [{ href: hub.href, label: "Overview" }, ...items],
-        },
-      ],
-      sequence: [hub, ...items],
-    };
+/** A section's items, hub first, exactly as the sidebar shows them. */
+async function sectionItems(section: SectionBase): Promise<NavSection[]> {
+  if (section === "guide") {
+    const all = await getCollection("guide");
+    const main = repoItems(
+      all.filter((d: any) => !d.id.startsWith("stdlib/")),
+      "guide",
+    );
+    const stdlib = repoItems(
+      all.filter(
+        (d: any) =>
+          d.id.startsWith("stdlib/") && d.id.toLowerCase() !== "stdlib/readme",
+      ),
+      "guide",
+      "stdlib/",
+    );
+    return [
+      { title: "Guide", items: [{ href: "guide", label: "Overview" }, ...main] },
+      {
+        title: "Standard Library",
+        items: [
+          { href: "guide/stdlib/readme", label: "Overview" },
+          ...stdlib,
+        ],
+      },
+    ];
   }
 
-  const allGuide = await getCollection("guide");
-  const guideMain = repoItems(
-    allGuide.filter((d: any) => !d.id.startsWith("stdlib/")),
-    "guide",
-  );
-  const stdlib = repoItems(
-    allGuide.filter(
-      (d: any) =>
-        d.id.startsWith("stdlib/") && d.id.toLowerCase() !== "stdlib/readme",
-    ),
-    "guide",
-    "stdlib/",
-  );
-  const spec = repoItems(await getCollection("spec"), "spec");
+  if (section === "spec") {
+    const spec = repoItems(await getCollection("spec"), "spec");
+    return [
+      { title: "Spec", items: [{ href: "spec", label: "Overview" }, ...spec] },
+    ];
+  }
 
-  const guideHub: NavItem = { href: "guide", label: "Guide" };
-  const stdlibHub: NavItem = {
-    href: "guide/stdlib/readme",
-    label: "Standard Library",
-  };
-  const specHub: NavItem = { href: "spec", label: "Spec" };
-
-  const sections: NavSection[] = [
-    { title: "Guide", items: [{ href: "guide", label: "Overview" }, ...guideMain] },
+  // learn / handbook / lab — site-local, frontmatter-driven, all beta.
+  const entries = await getCollection(section);
+  return [
     {
-      title: "Standard Library",
-      items: [{ href: stdlibHub.href, label: "Overview" }, ...stdlib],
+      title: SECTION_NAMES[section],
+      beta: true,
+      items: [
+        { href: section, label: "Overview" },
+        ...localItems(entries, section),
+      ],
     },
-    { title: "Spec", items: [{ href: "spec", label: "Overview" }, ...spec] },
   ];
+}
 
-  // The stdlib chapters are their own sequence: without this split the pager
-  // would walk off the end of the main guide ("13-hardware-emulation") straight
-  // into "stdlib/…", which is a different book.
-  const sequence = current.toLowerCase().startsWith("guide/stdlib")
-    ? [stdlibHub, ...stdlib]
-    : section === "spec"
-      ? [specHub, ...spec]
-      : [guideHub, ...guideMain];
+/**
+ * The sidebar's sections AND the linear sequence the pager walks.
+ *
+ * The SECTIONS are grouped by track — a Learn page shows Learn and Lab, a
+ * Reference page shows Guide, Standard Library and Handbook. The SEQUENCE is
+ * unchanged from before tracks existed: it stays scoped to the reader's own
+ * section, so "next" never jumps between books.
+ *
+ * Each sequence deliberately starts at the section hub, so chapter 01's
+ * "previous" is the overview and the hub itself gets a "next".
+ */
+export async function getNav(current: string): Promise<{
+  sections: NavSection[];
+  sequence: NavItem[];
+  track: Track;
+}> {
+  const section = sectionOf(current) as SectionBase;
+  const track = trackOf(section) as Track;
 
-  return { sections, sequence };
+  const grouped = await Promise.all(
+    TRACKS[track].sections.map((s: string) => sectionItems(s as SectionBase)),
+  );
+  const sections = grouped.flat();
+
+  // The stdlib chapters are their own book: without this split the pager would
+  // walk off the end of "13-hardware-emulation" straight into "stdlib/…".
+  const key = current.toLowerCase();
+  let sequence: NavItem[];
+  if (key.startsWith("guide/stdlib")) {
+    sequence = sections.find((s) => s.title === "Standard Library")!.items;
+  } else if (section === "guide") {
+    sequence = sections.find((s) => s.title === "Guide")!.items;
+  } else {
+    sequence = sections.find((s) => s.title === SECTION_NAMES[section])!.items;
+  }
+
+  return { sections, sequence, track };
 }
 
 /** Neighbours of `current` within an already-ordered sequence. */

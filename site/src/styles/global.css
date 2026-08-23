@@ -49,6 +49,10 @@
   --accent: var(--color-bolt-400); /* lightning yellow */
   --accent-blue: var(--color-volt-400);
   --link: var(--color-volt-300);
+  --band: #060d1a;
+  --surface-2: #16294a;
+  --elev-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --elev-2: 0 8px 24px rgb(0 0 0 / 0.45);
   color-scheme: dark;
 }
 
@@ -62,7 +66,21 @@
   --accent: var(--color-bolt-600); /* readable gold on white */
   --accent-blue: var(--color-volt-600);
   --link: var(--color-volt-600);
+  --band: #f0f5fb;
+  --surface-2: #e9f0f9;
+  --elev-1: 0 1px 2px rgb(10 20 36 / 0.06);
+  --elev-2: 0 8px 24px rgb(10 20 36 / 0.10);
   color-scheme: light;
+}
+
+/* ---- Scale tokens (theme-independent) --------------------------------- */
+:root {
+  --radius-sm: 0.375rem;
+  --radius-md: 0.55rem;
+  --radius-lg: 0.75rem;
+  --content-max: 72rem;
+  --content-max-wide: 80rem;
+  --measure: 70ch;
 }
 
 html {
@@ -340,6 +358,41 @@ a.btn-outline:hover,
   width: 100%;
   height: auto;
 }
+/* Which of the six refusals is on screen. */
+.feat-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+.feat-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--border);
+  cursor: pointer;
+  transition:
+    width var(--t-micro) var(--ease),
+    background-color var(--t-micro) var(--ease);
+}
+.feat-dot:hover {
+  background-color: var(--text-muted);
+}
+.feat-dot.is-on {
+  background-color: var(--color-bolt-400);
+  width: 1.25rem;
+}
+.feat-dot:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .feat-dot {
+    transition: none;
+  }
+}
 /* Entrance: hidden until the wrapper gets .in (set when scrolled into view). */
 .feat-reveal {
   opacity: 0;
@@ -384,6 +437,16 @@ a.btn-outline:hover,
   stroke: var(--color-bolt-400);
   stroke-width: 2;
   stroke-linecap: round;
+}
+/* An unsafe connection that never landed — a missing reset, an undriven
+   output, a latch's absent default arm. Dashed reads as "not there". */
+.feat-wire-dashed {
+  fill: none;
+  stroke: var(--color-bolt-400);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 5 5;
+  opacity: 0.6;
 }
 .feat-arrow {
   fill: var(--color-bolt-400);
@@ -473,8 +536,19 @@ a.btn-outline:hover,
   font-size: 0.95rem;
   color: var(--text);
 }
+.feat-tri-branch {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.feat-tri-pill-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--text);
+}
 .feat-cycle {
-  animation: feat-fade 0.5s ease;
+  animation: feat-fade 0.5s ease both;
 }
 @keyframes feat-fade {
   from {
@@ -484,6 +558,38 @@ a.btn-outline:hover,
   to {
     opacity: 1;
     transform: none;
+  }
+}
+/* Staggered entrance for a group of .feat-cycle elements, e.g. SafeByDefault's
+   chips/badge/caption — same timing as feat-d1..d4 above, but as animation
+   delays so they replay on every remount (a transition-delay only ever fires
+   once, on the first class change). */
+.feat-cycle-d1 {
+  animation-delay: 0.05s;
+}
+.feat-cycle-d2 {
+  animation-delay: 0.17s;
+}
+.feat-cycle-d3 {
+  animation-delay: 0.3s;
+}
+.feat-cycle-d4 {
+  animation-delay: 0.44s;
+}
+/* Re-triggerable line-draw: feat-draw above only fires once (a transition
+   needs a class change on an element that already exists), so SafeByDefault's
+   per-scene wire uses an animation instead — replays every time React
+   remounts it via `key`. */
+.feat-draw-cycle {
+  stroke-dasharray: 600;
+  animation: feat-draw-line 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
+}
+@keyframes feat-draw-line {
+  from {
+    stroke-dashoffset: 600;
+  }
+  to {
+    stroke-dashoffset: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -498,6 +604,10 @@ a.btn-outline:hover,
   }
   .feat-cycle {
     animation: none;
+  }
+  .feat-draw-cycle {
+    animation: none;
+    stroke-dashoffset: 0;
   }
 }
 
@@ -765,25 +875,25 @@ a.btn-outline:hover,
   color: var(--accent);
 }
 
-/* Author-honesty disclaimer. Reuses the blockquote's accent-left-border
-   language so it reads as native, but heavier. */
-.notice-strong {
+/* Author-honesty disclaimer (rendered by components/Callout.astro). Reuses the
+   blockquote's accent-left-border language so it reads as native, but heavier. */
+.callout-strong {
   margin: 0 0 2rem;
   padding: 1rem 1.1rem;
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
-  border-radius: 0.6rem;
+  border-radius: var(--radius-md);
   background-color: color-mix(in srgb, var(--accent) 8%, var(--bg-soft));
 }
-.notice-strong p {
+.callout-strong p {
   margin: 0 0 0.75rem;
 }
-.notice-strong p:last-child {
+.callout-strong p:last-child {
   margin-bottom: 0;
 }
 
 /* The per-chapter one-liner. Sits above the page's h1. */
-.notice-slim {
+.callout-slim {
   margin: 0 0 1.75rem;
   padding: 0.15rem 0 0.15rem 0.75rem;
   border-left: 2px solid var(--accent);
@@ -909,4 +1019,758 @@ html.dark .lab-result.fail strong {
 /* Step sections get a focus target that clears the sticky nav. */
 .lab-step h3:focus {
   outline: none;
+}
+
+/* ---- Type scale ------------------------------------------------------- */
+/* The landing hero's display size. Fluid so it never wraps awkwardly between
+   a 360px phone and a 1920px desktop. */
+.u-display {
+  font-size: clamp(2.75rem, 6vw, 4.5rem);
+  font-weight: 800;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+}
+/* The small mono label used above section headings. Was written inline three
+   different ways on the old landing page. */
+.u-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.surface-2 {
+  background-color: var(--surface-2);
+}
+
+/* ---- Motion policy ---------------------------------------------------- */
+/* 150ms for a hover/press, 250ms for something entering. Anything slower
+   reads as lag on a docs site. */
+:root {
+  --t-micro: 150ms;
+  --t-enter: 250ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---- Code blocks (wrapped by lib/rehype-code-copy.mjs) ---------------- */
+.code-block {
+  position: relative;
+  margin: 0 0 1rem;
+}
+.code-block > pre {
+  margin: 0;
+}
+.code-block > [data-copy] {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--t-micro) var(--ease);
+}
+/* Keyboard users never hover, so focus must reveal it too. */
+.code-block:hover > [data-copy],
+.code-block > [data-copy]:focus-visible {
+  opacity: 1;
+}
+.code-block > [data-copy][data-copied] {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.code-block > [data-copy][data-copied]::after {
+  content: "Copied";
+}
+.code-block > [data-copy][data-copied] span {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .code-block > [data-copy] {
+    transition: none;
+  }
+}
+
+/* ---- Docs track switcher ---------------------------------------------- */
+.track-switcher {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-soft);
+}
+.track-switcher > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  list-style: none;
+}
+.track-switcher > summary::-webkit-details-marker {
+  display: none;
+}
+.track-current {
+  font-weight: 600;
+  color: var(--text);
+}
+.track-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform var(--t-micro) var(--ease);
+}
+.track-switcher[open] .track-chevron {
+  transform: rotate(180deg);
+}
+.track-list {
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+.track-list a {
+  display: block;
+  padding: 0.4rem 0.45rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.track-list a:hover {
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+.track-list a[aria-current="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .track-chevron {
+    transition: none;
+  }
+}
+
+.nav-bar a[aria-current="page"] {
+  color: var(--accent);
+}
+
+/* ---- Docs shell: one column, then two, then three -------------------- */
+.docs-shell {
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: var(--content-max-wide);
+  margin-inline: auto;
+  padding: 2.5rem 1rem;
+}
+.docs-aside,
+.docs-toc {
+  display: none;
+}
+.docs-main {
+  min-width: 0;
+  max-width: var(--measure);
+}
+/* The sticky rails clear the sticky nav bar and scroll independently, so a
+   30-link sidebar cannot push the page height around. */
+.docs-sticky {
+  position: sticky;
+  top: 5rem;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (min-width: 1024px) {
+  .docs-shell {
+    grid-template-columns: 16rem minmax(0, 1fr);
+  }
+  .docs-aside {
+    display: block;
+  }
+}
+@media (min-width: 1280px) {
+  .docs-shell.has-toc {
+    grid-template-columns: 16rem minmax(0, 1fr) 14rem;
+  }
+  .docs-shell.has-toc .docs-toc {
+    display: block;
+  }
+}
+
+/* ---- On-this-page rail ------------------------------------------------ */
+.toc {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.toc-head {
+  margin: 0 0 0.6rem;
+}
+.toc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+.toc-item a {
+  display: block;
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.toc-item a:hover {
+  color: var(--text);
+}
+.toc-d3 a {
+  padding-left: 1.5rem;
+}
+.toc-item a[data-active] {
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+.toc-top {
+  display: inline-block;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+.toc-top:hover {
+  color: var(--text);
+}
+/* Long headings must not force the rail wider than its column. */
+.toc-item a {
+  overflow-wrap: anywhere;
+}
+
+/* ---- Breadcrumb -------------------------------------------------------- */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.crumbs a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.crumbs a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.crumbs [aria-current="page"] {
+  color: var(--text);
+}
+
+/* ---- Mobile chapter drawer -------------------------------------------- */
+.docs-drawer {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-soft);
+}
+.docs-drawer > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+.docs-drawer > summary::-webkit-details-marker {
+  display: none;
+}
+.docs-drawer-panel {
+  padding: 0.25rem 0.8rem 0.9rem;
+  border-top: 1px solid var(--border);
+  max-height: 65vh;
+  overflow-y: auto;
+}
+@media (min-width: 1024px) {
+  .docs-drawer {
+    display: none;
+  }
+}
+
+/* ---- Page meta (edit link + last updated) ----------------------------- */
+.page-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.page-meta a {
+  color: var(--text-muted);
+}
+.page-meta a:hover {
+  color: var(--text);
+}
+
+/* ---- Landing hero: the live compile pane ------------------------------ */
+.hero-pane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  background-color: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--elev-2);
+}
+@media (min-width: 900px) {
+  .hero-pane {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+.hero-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background-color: var(--bg-soft);
+}
+.hero-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg);
+  font-size: 0.75rem;
+}
+.hero-bar-title {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.hero-tab {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hero-tab:hover {
+  color: var(--text);
+}
+.hero-tab.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.hero-status {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+.hero-status.is-err {
+  color: #ff6b6b;
+}
+.hero-editor {
+  flex: 1;
+  min-height: 22rem;
+  resize: none;
+  padding: 0.75rem;
+  border: none;
+  background-color: var(--bg-soft);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.hero-editor:focus {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+.hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.hero-out {
+  flex: 1;
+  margin: 0;
+  min-height: 22rem;
+  max-height: 30rem;
+  overflow: auto;
+  padding: 0.75rem;
+  background-color: var(--bg-soft);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  /* The emitted Verilog carries a long single-line NOTE comment about
+     register initialisation; wrapping keeps it inside the pane instead of
+     giving the hero a horizontal scrollbar. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Landing page ------------------------------------------------------ */
+.page {
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding: 4rem 1rem;
+}
+
+.band {
+  border-block: 1px solid var(--border);
+  background-color: var(--band);
+}
+.band-inner {
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding: 4rem 1rem;
+}
+.band-end .band-inner {
+  padding-bottom: 5rem;
+}
+
+.hero-section {
+  position: relative;
+  overflow: hidden;
+  /* Wider than the rest of the page's .page sections — the compile pane
+     needs the room so its two columns don't wrap the source/Verilog text. */
+  max-width: var(--content-max-wide);
+}
+/* Copy and the live compile pane stack on mobile, sit side by side from
+   1024px up — the pane used to run below the copy, leaving the entire right
+   half of the fold empty on a wide screen. The live pane gets the larger
+   share: it's two code columns, the copy is one column of prose. */
+.hero-grid {
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 3rem;
+  }
+}
+.hero-copy {
+  position: relative;
+  z-index: 1;
+  max-width: 46rem;
+  /* The headline's first line sizes itself off this column's actual rendered
+     width (container query units), not the viewport — the column's own
+     width already depends on the hero-grid ratio and the breakpoint, so a
+     vw-based guess drifts out of sync with it and wraps. */
+  container-type: inline-size;
+}
+/* "A safe-by-default HDL." stays on one line: font-size is 8% of the column
+   width, which is roughly what 23 characters of this weight need to just
+   fit it — so it holds at any column width instead of wrapping mid-word. */
+.hero-title-line1 {
+  white-space: nowrap;
+  font-size: clamp(1.35rem, 8cqi, 4.5rem);
+}
+/* A true watermark: faint, BEHIND the paragraph/buttons/install line (z-index
+   -1 inside .hero-copy's own stacking context — not 0, which painted above
+   static text in testing), parked in the gutter those shorter lines never
+   reach — right of the paragraph, left of the compile pane, below the
+   headline so it never competes with the one thing that must stay legible
+   at a glance. Low opacity means any text it does sit under stays readable. */
+.hero-mascot-watermark {
+  position: absolute;
+  z-index: -1;
+  right: -1rem;
+  bottom: -0.5rem;
+  width: 19rem;
+  height: auto;
+  opacity: 0.16;
+  pointer-events: none;
+  user-select: none;
+}
+@media (max-width: 900px) {
+  /* Below this the copy column is narrow enough that the gutter is gone —
+     the mark would sit on top of the paragraph instead of beside it. */
+  .hero-mascot-watermark {
+    display: none;
+  }
+}
+.hero-sub {
+  margin-top: 1.25rem;
+  font-size: 1.15rem;
+  line-height: 1.6;
+  max-width: 38rem;
+}
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.hero-cta .btn-primary {
+  padding: 0.7rem 1.4rem;
+  font-size: 0.95rem;
+}
+.hero-cta .btn-outline {
+  padding: 0.7rem 1.4rem;
+  font-size: 0.95rem;
+}
+.hero-install {
+  margin-top: 1.25rem;
+  font-size: 0.8125rem;
+}
+.hero-install code {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+.hero-live {
+  position: relative;
+  z-index: 1;
+  margin-top: 3rem;
+  scroll-margin-top: 5rem;
+}
+@media (min-width: 1024px) {
+  /* Side by side with the copy now — the grid's own gap does the spacing. */
+  .hero-live {
+    margin-top: 0;
+  }
+}
+.hero-note {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  max-width: 42rem;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 1rem;
+}
+@media (min-width: 900px) {
+  .stat-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.stat-value {
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+}
+.stat-label {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+.band-foot {
+  margin-top: 2rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.sec-title {
+  margin: 0.5rem 0 1rem;
+  font-size: clamp(1.6rem, 3vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.sec-lead {
+  max-width: 40rem;
+  margin-bottom: 1rem;
+  line-height: 1.7;
+}
+.split {
+  display: grid;
+  gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+}
+@media (min-width: 1024px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4rem;
+  }
+}
+
+.refusals {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.85rem;
+}
+.refusals li {
+  display: grid;
+  gap: 0.15rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--accent);
+}
+.refusals span {
+  font-size: 0.875rem;
+}
+
+.cards {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 2rem;
+}
+@media (min-width: 700px) {
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1100px) {
+  .cards {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+/* The "start where you are" band has three cards, not four. */
+.band-end .cards {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .band-end .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.card {
+  display: block;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-soft);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform var(--t-micro) var(--ease),
+    box-shadow var(--t-micro) var(--ease),
+    border-color var(--t-micro) var(--ease);
+}
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--elev-2);
+}
+.card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.card p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+  .card:hover {
+    transform: none;
+  }
+}
+
+/* ---- Footer ------------------------------------------------------------ */
+.site-footer {
+  border-top: 1px solid var(--border);
+  background-color: var(--bg-soft);
+}
+.footer-inner {
+  max-width: var(--content-max);
+  margin-inline: auto;
+  padding: 3rem 1rem 2rem;
+}
+.footer-cols {
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 900px) {
+  .footer-cols {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.footer-cols ul {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+.footer-cols a {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+.footer-cols a:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.footer-base {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+.footer-base a {
+  color: var(--text);
+}
+
+/* ---- Scrollbars ---------------------------------------------------------
+   Themed to the navy/surface palette in both themes via the existing vars.
+   WebKit gets a floating rounded thumb (the transparent border acts as a
+   margin thanks to background-clip: padding-box); Firefox gets the two-color
+   shorthand. Inner panes (hero output, TOC rail, console logs, wide tables)
+   inherit automatically. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: var(--border);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-muted);
+}
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--accent);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }

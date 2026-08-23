@@ -1,0 +1,14 @@
+---
+// A full-bleed section. The old landing page separated every section with a
+// hairline border at the same width, which is why it read as one flat scroll.
+interface Props {
+  class?: string;
+}
+const { class: className = "" } = Astro.props;
+---
+
+<section class={`band ${className}`}>
+  <div class="band-inner">
+    <slot />
+  </div>
+</section>

@@ -4,9 +4,9 @@ import Docs from "../../layouts/Docs.astro";
 
 // The guide hub (docs/guide/README.md) as the /guide landing page.
 const [entry] = await getCollection("guideIndex");
-const { Content } = await render(entry);
+const { Content, headings } = await render(entry);
 ---
 
-<Docs title="Guide" current="guide">
+<Docs title="Guide" current="guide" headings={headings}>
   <Content />
 </Docs>

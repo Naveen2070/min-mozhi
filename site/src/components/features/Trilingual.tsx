@@ -47,6 +47,37 @@ export default function Trilingual() {
           <span className="feat-tri-cap">{reduce ? "3 flavors" : cur.cap}</span>
         </div>
 
+        {/* The card's other two rows are short, and the right column is tall
+            — this fills the leftover height with the claim itself: one AST,
+            three keyword spellings branching off it. Reuses .feat-chip, the
+            same primitive SafeByDefault's diagrams use. */}
+        <svg
+          className="feat-tri-branch feat-reveal feat-d2"
+          viewBox="0 0 320 92"
+          role="img"
+          aria-label="One grammar branches into three keyword spellings: module, thoguthi, தொகுதி"
+        >
+          <rect className="feat-badge-box" x="110" y="4" width="100" height="26" rx="4" />
+          <text className="feat-badge-text" x="160" y="21" textAnchor="middle">
+            one grammar
+          </text>
+          <path className="feat-dashln" d="M160 30 L58 64" />
+          <path className="feat-dashln" d="M160 30 V64" />
+          <path className="feat-dashln" d="M160 30 L262 64" />
+          <rect className="feat-chip" x="14" y="64" width="88" height="26" rx="4" />
+          <text className="feat-tri-pill-text" x="58" y="81" textAnchor="middle">
+            module
+          </text>
+          <rect className="feat-chip" x="116" y="64" width="88" height="26" rx="4" />
+          <text className="feat-tri-pill-text" x="160" y="81" textAnchor="middle">
+            thoguthi
+          </text>
+          <rect className="feat-chip" x="218" y="64" width="88" height="26" rx="4" />
+          <text className="feat-tri-pill-text feat-tri-ta" x="262" y="81" textAnchor="middle">
+            தொகுதி
+          </text>
+        </svg>
+
         <div className="feat-tri-row feat-reveal feat-d3">
           <div>
             <div className="feat-tri-cap">Emitted Verilog · identical</div>

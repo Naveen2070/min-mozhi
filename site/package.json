@@ -13,7 +13,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "astro": "astro",
-    "test:lib": "node src/lib/keywords.test.mjs"
+    "test:lib": "node src/lib/keywords.test.mjs && node src/lib/nav-map.test.mjs && node src/lib/rehype-code-copy.test.mjs && node src/lib/stats.test.mjs"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.2.2",

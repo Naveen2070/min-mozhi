@@ -5,10 +5,14 @@ import Search from "./Search.astro";
 
 // One list, rendered twice (desktop strip + mobile drawer). Duplicating the
 // markup would guarantee the two drift apart.
+//
+// Seven links, shaped as the four docs tracks plus the three app surfaces. Lab
+// is deliberately absent: it is reached from the landing page and from the
+// Learn track's sidebar, not from an eighth top-level link (spec D11).
 const links = [
-  { href: "/guide", label: "Docs" },
-  { href: "/spec", label: "Spec" },
   { href: "/learn", label: "Learn", beta: true },
+  { href: "/guide", label: "Reference" },
+  { href: "/spec", label: "Spec" },
   { href: "/handbook", label: "Handbook", beta: true },
   { href: "/playground", label: "Playground" },
   { href: "/downloads", label: "Downloads" },
@@ -25,7 +29,15 @@ const links = [
       <div class="hidden items-center gap-4 md:flex">
         {
           links.map((l) => (
-            <a href={l.href} class="fg">
+            <a
+              href={l.href}
+              class="fg"
+              aria-current={
+                Astro.url.pathname.startsWith(l.href) && l.href !== "/"
+                  ? "page"
+                  : undefined
+              }
+            >
               {l.label}
               {l.beta && <span class="beta-pill">beta</span>}
             </a>

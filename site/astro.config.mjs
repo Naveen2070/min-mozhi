@@ -10,6 +10,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { unified } from "@astrojs/markdown-remark";
 
 import rehypeDocLinks from "./src/lib/rehype-doc-links.mjs";
+import rehypeCodeCopy from "./src/lib/rehype-code-copy.mjs";
 
 // Reuse the VS Code TextMate grammar (single source of truth, kept in sync with
 // keywords.toml by tests/grammar_sync.rs) so `.mimz` highlights identically on the
@@ -45,7 +46,7 @@ export default defineConfig({
     // applies — it flows through the shared markdown config to the renderer.
     // rehypeDocLinks rewrites the docs' relative .md links to site routes (or
     // GitHub for files we don't publish); the source markdown stays untouched.
-    processor: unified({ rehypePlugins: [rehypeDocLinks] }),
+    processor: unified({ rehypePlugins: [rehypeDocLinks, rehypeCodeCopy] }),
     // `ebnf` (used in spec/02 grammar blocks) has no Shiki grammar — skip it so it
     // renders as plain code instead of warning + falling back.
     syntaxHighlight: { type: "shiki", excludeLangs: ["ebnf"] },
