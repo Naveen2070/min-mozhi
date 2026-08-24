@@ -40,9 +40,9 @@ use registry::{
 };
 use rewrite::Rw;
 
-/// Max `repeat` iterations the simulator will unroll — the same crate-root
-/// constant the emitter uses, so a design that compiles also elaborates (the
-/// simulator is the emitter's differential oracle). See [`mimz_core::REPEAT_BUDGET`].
+// Max `repeat` iterations the simulator will unroll — the same crate-root
+// constant the emitter uses, so a design that compiles also elaborates (the
+// simulator is the emitter's differential oracle). See [`mimz_core::REPEAT_BUDGET`].
 use mimz_core::REPEAT_BUDGET;
 
 /// Max instance-nesting depth the simulator will flatten. `mimz sim`/`mimz test`
@@ -84,7 +84,7 @@ type Registry<'a> = HashMap<String, Vec<(usize, &'a ast::File, &'a ast::Module)>
 /// A signal's concrete type after width folding.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Width {
-    /// Bit width, `1..=128`.
+    /// Bit width, `1..=1_000_000` (`mimz_core::width_rules::MAX_WIDTH`).
     pub bits: u32,
     /// Whether the signal is `signed`.
     pub signed: bool,

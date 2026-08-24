@@ -782,7 +782,7 @@ fn s0221_shift_amount_cannot_be_signed() {
 }
 
 #[test]
-fn s0222_coalesce_reaches_binary_known_unlowered() {
+fn s0241_coalesce_reaches_binary_known_unlowered() {
     // `??` is normally desugared to an `IfExpr` by `elaborate::Rw::expr`
     // before evaluation — `comb.rs`'s lighter pipeline has no such rewrite
     // pass, so a raw `??` reaches `eval_ctx`'s `Binary` arm (and, through
@@ -793,8 +793,8 @@ fn s0222_coalesce_reaches_binary_known_unlowered() {
     inputs.insert("a".to_string(), value::Bits::Small(1));
     inputs.insert("b".to_string(), value::Bits::Small(2));
     assert_code(
-        "S0222",
-        "S0222",
+        "S0241",
+        "S0241",
         comb::eval_outputs(std::slice::from_ref(&f), None, &inputs, &empty_params()),
     );
 }
@@ -1283,15 +1283,20 @@ fn every_sim_code_has_a_fixture_above() {
         // every caller of the private `parse_source` bridges its `Diag`
         // down to a flat `.msg` string (Task 1.5's deliberate decision).
         "S0137", "S0138", "S0139",
+        // Fires correctly (`sim/comb.rs`'s `shift_left_max_width` /
+        // `shift_right_bit_32_set_in_amt` unit tests), but only through
+        // `comb::eval_outputs` directly, not through this file's
+        // harness-level (`Sim`/`run_test_headless`) contract fixtures.
+        "S0222",
     ];
     let covered: &[&str] = &[
         "S0102", "S0103", "S0104", "S0105", "S0106", "S0109", "S0112", "S0113", "S0115", "S0116",
         "S0117", "S0119", "S0121", "S0122", "S0123", "S0124", "S0126", "S0127", "S0128", "S0129",
         "S0130", "S0131", "S0133", "S0134", "S0135", "S0136", "S0201", "S0202", "S0203", "S0204",
         "S0205", "S0206", "S0207", "S0208", "S0209", "S0210", "S0211", "S0212", "S0213", "S0214",
-        "S0215", "S0216", "S0217", "S0218", "S0219", "S0220", "S0221", "S0222", "S0223", "S0224",
-        "S0225", "S0226", "S0227", "S0228", "S0229", "S0230", "S0231", "S0232", "S0233", "S0234",
-        "S0235", "S0236", "S0237", "S0238", "S0239", "S0240", "S0301", "S0302", "S0303", "S0304",
+        "S0215", "S0216", "S0217", "S0218", "S0219", "S0220", "S0221", "S0223", "S0224", "S0225",
+        "S0226", "S0227", "S0228", "S0229", "S0230", "S0231", "S0232", "S0233", "S0234", "S0235",
+        "S0236", "S0237", "S0238", "S0239", "S0240", "S0241", "S0301", "S0302", "S0303", "S0304",
         "S0305", "S0401", "S0402", "S0403", "S0404", "S0501",
     ];
     let missing: Vec<&str> = ALL_SIM_CODES

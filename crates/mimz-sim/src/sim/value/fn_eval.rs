@@ -267,7 +267,7 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, Box<Diag>>
             } => {
                 // `fn` bodies are interpreted directly (no pre-lowering pass
                 // exists for them, unlike module items/on-blocks) — lower on
-                // the spot, exactly where `emit_verilog/module.rs`'s
+                // the spot, exactly where `emit_verilog/module/funcs.rs`'s
                 // `emit_fn_stmts` already does the same thing for the exact
                 // same reason (Task 7).
                 if let Some(lowered) = ast::lower_foreach_fn(var, source, body, *span, env.params)
@@ -280,7 +280,7 @@ fn eval_fn_stmts(env: &mut FnEnv, stmts: &[FnStmt]) -> Result<FnFlow, Box<Diag>>
                 // here, but this evaluator also runs on unchecked ASTs
                 // (fuzzing/`mimz sim` without checking) — silently skip,
                 // matching `lower_foreach_item`'s own `None` handling
-                // elsewhere in this codebase (e.g. elaborate.rs's
+                // elsewhere in this codebase (e.g. elaborate/module.rs's
                 // `collect_lowered_foreach`).
             }
             FnStmt::Error(_) => {} // parse-recovery placeholder; unreachable on the eval path
@@ -319,7 +319,7 @@ impl Resolver for FnEnv<'_> {
         }
         // `Resolver::signal` itself stays `String` (trait signature is out of
         // scope per the design's "leave the boundary alone" decision) — the
-        // caller (`eval_ctx`'s `Ident`/`Index` arms) wraps this with the
+        // caller (`eval`'s `Ident`/`Index` arms) wraps this with the
         // enclosing `Expr`'s span into a real `Diag` (S0201).
         Err(format!(
             "unknown name `{name}` in function body (module signals are not in scope)"

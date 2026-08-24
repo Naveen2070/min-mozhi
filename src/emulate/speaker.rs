@@ -1,6 +1,5 @@
 //! The `speaker` peripheral: plays a bound `bit` output as a tone on the
-//! host's default audio output
-//! (docs/superpowers/specs/2026-07-08-hw-emulation-speaker-design.local.md).
+//! host's default audio output.
 //!
 //! Renders offline: `on_tick` only downsamples and buffers bits in memory
 //! (no device I/O, no pacing), and `finish` plays the whole clip back once

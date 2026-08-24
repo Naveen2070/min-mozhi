@@ -1,9 +1,11 @@
 //! Event-driven simulator + in-memory command runner. Depends only on
 //! `mimz-core` — no optional dependencies, no filesystem/OS access, no
 //! knowledge of hardware-emulation peripherals (that's the shell crate's
-//! `EmulationHost` implementation, plugged in through `sim::host`). The
-//! pure/impure boundary from the workspace split
-//! (`docs/plan/workspace-split.local.md`).
+//! `EmulationHost` implementation, plugged in through `sim::host`). This is
+//! the pure/impure boundary from the workspace split: everything here has
+//! zero optional dependencies and no filesystem/OS access, so it stays
+//! usable from environments that can't have either (e.g. the WASM
+//! playground).
 #![forbid(unsafe_code)]
 
 pub mod runner;
@@ -12,14 +14,15 @@ pub mod sim;
 pub use runner::run_command;
 
 /// Compile a single Min-Mozhi source string straight to Verilog, entirely in
-/// memory — no filesystem, no `import` resolution. This is the embedding entry
+/// memory — no filesystem. This is the embedding entry
 /// point used by the in-browser playground (`crates/mimz-wasm`) and any tool
 /// that already holds the source as a string.
 ///
 /// The full Phase 1 pipeline runs: NFC-normalize → lex → parse → check →
 /// transliterate → emit (the same stages as `mimz compile`, minus file I/O).
-/// `import` is **not** supported here — there is no file to resolve against — so
-/// a source containing one is rejected with a plain message.
+/// `std.<module>` imports resolve in memory from the bundled standard
+/// library; any other `import` is rejected with a plain message — there is
+/// no filesystem here to resolve it against.
 ///
 /// Returns the generated Verilog on success. On any failure returns the
 /// rendered, caret-annotated diagnostics (English) as one string — the same

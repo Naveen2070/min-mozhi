@@ -2,8 +2,7 @@
 //! phase-2-differential-fuzzing.md): random-program differential fuzzing.
 //! v3 scope adds clocked designs (`clock`/`reset`/`reg`/`on rise`) on top
 //! of v1/v2's unsigned+signed combinational base — no enum/bundle/fn/
-//! foreach/imports/dual-edge/multiple clocks yet. Full design (v1
-//! baseline): docs/superpowers/specs/2026-07-18-differential-fuzzing-design.local.md
+//! foreach/imports/dual-edge/multiple clocks yet.
 //!
 //! Generates a real `.mimz` module as source text, checker-clean **by
 //! construction** (every combine step unifies operand widths via

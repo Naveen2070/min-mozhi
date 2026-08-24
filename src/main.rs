@@ -167,7 +167,7 @@ enum Cmd {
         /// Target flavor: english | tanglish | tamil (default: the file's majority)
         #[arg(long)]
         to: Option<CliLang>,
-        /// Warn when the file mixes keyword flavors (mixing stays legal)
+        /// Warn when the file mixes keyword flavors; exit non-zero when mixed
         #[arg(long)]
         strict: bool,
         /// Write here instead of overwriting the input file
@@ -176,7 +176,7 @@ enum Cmd {
     },
     /// Run the language server over stdio.
     ///
-    /// Diagnostics-only v0; editors launch this — not for interactive use.
+    /// Editors launch this — not for interactive use.
     #[cfg(feature = "lsp")]
     Lsp,
     /// Explain a diagnostic code in depth, or list all codes with `--list`.
@@ -266,8 +266,9 @@ enum Cmd {
     },
     /// (experimental) Evaluate a combinational module.
     ///
-    /// No clocks/regs/instances (that is the Phase 1.5 simulator);
-    /// a slice of it, for quick checks and the future REPL.
+    /// Combinational only — no clocks, regs, or instances (`mimz sim`
+    /// covers clocked designs); quick value checks without writing a test
+    /// block, alongside `mimz sim` and `mimz repl`.
     #[command(alias = "evaluate")]
     Eval {
         /// The .mimz file

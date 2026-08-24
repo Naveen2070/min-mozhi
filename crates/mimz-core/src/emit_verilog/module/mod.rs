@@ -19,9 +19,8 @@ mod seq;
 /// `collect_seq_covers`. Used up front, to declare every clocked cover's
 /// hidden counter register before the `posedge` block that increments it
 /// (GAP-6 follow-up) — the comb form declares its own counter inline
-/// (Task 6) and never reaches this list. `pub(super)` since Task 8
-/// (`docs/plan/v0.2-class-closure-round3.local.md`): `testbench.rs`
-/// reuses it to print each cover's final hit count — the DUT module
+/// (Task 6) and never reaches this list. `pub(super)` since Task 8:
+/// `testbench.rs` reuses it to print each cover's final hit count — the DUT module
 /// itself has no Verilog-2005-legal "simulation just ended" hook, but the
 /// `--emit-testbench` output's own `initial` block, ending in `$finish`,
 /// does.
@@ -350,9 +349,8 @@ impl Emitter<'_> {
         // Mandatory init value → no uninitialized state, without a per-cycle
         // reset (the `reset` line clears registers only).
         //
-        // BUG-32 (docs/audit/bugs.md), Task 8 of docs/plan/v0.2-class-
-        // closure-round3.local.md: this `initial` seed is simulation- and
-        // FPGA-block-RAM-only — a real ASIC has no defined power-on RAM
+        // BUG-32 (docs/audit/bugs.md), Task 8: this `initial` seed is
+        // simulation- and FPGA-block-RAM-only — a real ASIC has no defined power-on RAM
         // content, and an ASIC synthesis flow will not honor it. Note this
         // once, right above the first `mem`'s init, rather than silently
         // implying the value is universal (`docs/guide/04-signals.md`'s
@@ -622,8 +620,7 @@ impl Emitter<'_> {
         // list and creates a self-triggering reactive loop). GAP-6
         // follow-up. Synthesis-stripped, same convention `assert` uses.
         //
-        // Task 8 #1 (docs/plan/v0.2-class-closure-round3.local.md):
-        // round 2's review claimed this "misses time zero" (a condition
+        // Task 8 #1: round 2's review claimed this "misses time zero" (a condition
         // true from the start, never toggling, never counted) — checked
         // against real `iverilog`/`vvp` before acting on it, and the claim
         // does not hold: a net's first x -> value transition (computed at
@@ -649,8 +646,7 @@ impl Emitter<'_> {
             }
         }
 
-        // Task 8 #2 (docs/plan/v0.2-class-closure-round3.local.md):
-        // `__cover_N_count` was incremented and read by nothing.
+        // Task 8 #2: `__cover_N_count` was incremented and read by nothing.
         // `final` (the natural "simulation just ended" hook) is IEEE
         // 1364-2001/SystemVerilog, not legal in the Verilog-2005 this
         // project targets throughout — confirmed the hard way, `iverilog`

@@ -115,10 +115,13 @@ fn check_unreachable_after_return(stmts: &[FnStmt], file: usize, ck: &mut Checke
             // `foreach` is pure sugar over `loop` (see `ast::foreach_lower`'s
             // module doc comment), but this specific check needs no
             // `ast::lower_foreach_fn` call at all: dead-code-after-`return`
-            // is a purely structural property of the statement list, and
-            // `lower_foreach_fn`'s Elements-form substitution only ever
-            // rewrites an `Ident(var)` read into `Index{arr, idx}` — it adds
-            // no `Return`/`If`/`Loop` nodes and removes none, so walking the
+            // is a purely structural property of the statement list, and for
+            // the Elements form `lower_foreach_fn` never rewrites `body` at
+            // all — it prepends one `Let(var = arr[idx])` binding ahead of
+            // the untouched original statements (unlike `lower_foreach_seq`,
+            // which must substitute `var` throughout because `SeqStmt` has
+            // no local-binding statement). That prepended `Let` adds no
+            // `Return`/`If`/`Loop` node and removes none, so walking the
             // RAW (unlowered) `body` finds exactly the same unreachable
             // statements a lowered walk would. This also means it's correct
             // to recurse unconditionally here, unlike `names.rs`/`widths`'s
@@ -209,10 +212,13 @@ fn collect_fn_stmt_calls(stmts: &[FnStmt], out: &mut Vec<String>) {
                 collect_fn_stmt_calls(body, out);
             }
             // Same "no lowering needed" reasoning as
-            // `check_unreachable_after_return`'s `ForEach` arm above: an
-            // `ExprKind::FnCall` node is neither introduced nor removed by
-            // `lower_foreach_fn`'s `Ident(var)` -> `Index{arr, idx}`
-            // substitution, so the raw body yields the identical call set.
+            // `check_unreachable_after_return`'s `ForEach` arm above: for
+            // the Elements form, `lower_foreach_fn` only prepends a
+            // `Let(var = arr[idx])` binding ahead of the untouched original
+            // `body` (it never substitutes `Ident(var)` reads the way
+            // `lower_foreach_seq`/`lower_foreach_item` do) — no
+            // `ExprKind::FnCall` node is introduced or removed either way,
+            // so the raw body yields the identical call set.
             // For the Range form, `source`'s `lo`/`hi` are walked too,
             // mirroring `FnStmt::Loop` just above.
             FnStmt::ForEach { source, body, .. } => {

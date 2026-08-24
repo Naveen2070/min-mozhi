@@ -1,5 +1,4 @@
-//! Shared width/kind rules — Stage 4, Phase A1a
-//! (`docs/superpowers/specs/2026-07-19-shared-width-semantics-design.local.md`).
+//! Shared width/kind rules — Stage 4, Phase A1a.
 //!
 //! The checker (`checker/widths/`) and the simulator
 //! (`mimz-sim`'s `sim/value.rs`) each computed expression width/
@@ -11,11 +10,12 @@
 //! operator rule; both sides call into it instead of each carrying
 //! their own copy.
 //!
-//! Deliberately narrow: only `shift_result`/`slice_result` so far (the
-//! two operators Stage 4's T3 conformance table starts with). The
-//! `same_width`/`lossless`/`concat` families remain in
-//! `checker/widths/ops.rs`, unconverted, as explicit follow-up work —
-//! not an oversight, a scoping decision made when this plan was written.
+//! Started narrow — `shift_result`/`slice_result`, the two operators
+//! Stage 4's T3 conformance table begins with — and has since grown:
+//! `lossless_result` and `matched_result` live here too, with
+//! `checker/widths/ops/mod.rs` calling into them. The `concat` family
+//! remains local to `checker/widths/ops/mod.rs`, as explicit follow-up
+//! work — not an oversight, a scoping decision.
 
 /// Widths above this are rejected (checker's E0410) — keeps `2^n`
 /// arithmetic trivially safe, and no real design comes close. The ONE
@@ -133,7 +133,7 @@ pub fn slice_result(base_width: u32, hi: u32, lo: u32) -> Result<Kind, RuleError
 /// drops information, so operand widths may differ freely; only
 /// signedness must already match (the checker rejects mixing `signed`
 /// and `bits` before this point — `lossless_ty`,
-/// `crates/mimz-core/src/checker/widths/ops.rs`). `is_mul` selects `*`'s
+/// `crates/mimz-core/src/checker/widths/ops/mod.rs`). `is_mul` selects `*`'s
 /// "sum of both widths" rule from `+`/`-`'s "grows by exactly one bit"
 /// rule. This unification is what fixes BUG-22
 /// (`docs/audit/bugs.md`): the simulator's `Sub` arm previously

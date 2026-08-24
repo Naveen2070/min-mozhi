@@ -11,6 +11,11 @@ pub(crate) enum EjectFlavor {
     Tamil,
 }
 
+/// Write the embedded standard library to `to`, one `.mimz` per module —
+/// the English canonical files, or the pure-Tamil twins for
+/// `EjectFlavor::Tamil`. Without `force`, an existing target file aborts
+/// the command. Prints every written path plus the `mimz.toml` `[lib] std`
+/// snippet that activates the vendored copy.
 pub(crate) fn eject_std(to: &Path, flavor: EjectFlavor, force: bool) -> ExitCode {
     let tamil = matches!(flavor, EjectFlavor::Tamil);
     match mimz::stdlib::eject_to(to, tamil, force) {

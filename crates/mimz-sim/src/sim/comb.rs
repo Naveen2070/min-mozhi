@@ -2,8 +2,9 @@
 //! inputs, by interpreting the AST directly.
 //!
 //! Scope (deliberately a SLICE of the Phase 1.5 simulator): one module, no
-//! `reg`, no `on` block, no instances, no `repeat`. Those are rejected with a
-//! clear message rather than half-evaluated. Within that scope it honors the
+//! `reg`, no `on` block, no instances, no `repeat`, no `sync loop`. Those are
+//! rejected with a clear message rather than half-evaluated. Within that scope
+//! it honors the
 //! spec's width semantics — lossless `+ - *` grow, the `+% -% *%` family wraps,
 //! slices/concat/`extend`/`trunc` resize — so the result matches what the
 //! Verilog emitter would produce for the same combinational logic.
@@ -221,7 +222,7 @@ pub fn eval_outputs(
     let mut drivers: BTreeMap<String, Expr> = BTreeMap::new();
     // A bit-indexed (`sig[i] = …`) or slice (`sig[hi:lo] = …`, BUG-17) drive
     // is collected per bit here and assembled into a `Concat` after the item
-    // loop — same strategy `crates/mimz-sim/src/sim/elaborate.rs`'s
+    // loop — same strategy `crates/mimz-sim/src/sim/elaborate/module.rs`'s
     // `record_drive` uses. A slice drive just expands to one bit-drive entry
     // per bit position, each reading the matching bit straight off the RHS.
     let mut bit_drives: BTreeMap<String, BTreeMap<u32, Expr>> = BTreeMap::new();
@@ -300,8 +301,8 @@ pub fn eval_outputs(
                     // value (arithmetic shift, so a negative constant
                     // sign-extends correctly) instead of indexing into the
                     // raw expression, which may have a narrower "natural"
-                    // width of its own (see elaborate.rs's `record_drive`,
-                    // the same fix mirrored here).
+                    // width of its own (see elaborate/module.rs's
+                    // `record_drive`, the same fix mirrored here).
                     if let Ok(v) = value::const_eval(rhs, &ints) {
                         for b in lo..=hi {
                             let bit = ((v >> (b - lo)) & 1) as u128;
@@ -461,7 +462,7 @@ impl Env<'_> {
         self.in_progress.push(name.to_string());
         // `<<` self-determines its own (grown) width now (BUG-30,
         // `docs/audit/bugs.md`) — no target width needs to reach `driver`,
-        // the `remask_to_width` below still reconciles the result against
+        // the `resize_to_width` below still reconciles the result against
         // the signal's declared width either way.
         let v = value::eval(self, driver)?;
         self.in_progress.pop();
@@ -482,7 +483,7 @@ impl Resolver for Env<'_> {
             // BUG-27: preserve `resolve`'s own code (e.g. `S0238`,
             // combinational cycle) across the `Resolver::signal` boundary
             // instead of always discarding it down to a plain message —
-            // `eval_ctx`'s `Ident` arm recovers it via `diag_from_bridged`.
+            // `eval`'s `Ident` arm recovers it via `diag_from_bridged`.
             self.resolve(name).map_err(|e| match e.code {
                 Some(code) => crate::sim::diag::bridge_code(code, &e.msg),
                 None => e.msg,

@@ -24,8 +24,7 @@ impl Emitter<'_> {
         // out of scope inside a `function automatic`, but file consts must
         // fold so uses like `a >> SCALE` emit correct literals.
         let saved_env = std::mem::replace(&mut self.env, file_env.clone());
-        // Task 2 (BUG-62(a), GAP-16, docs/plan/v0.2-class-closure-round6.local.md):
-        // `cur_decls` was left as the ENCLOSING MODULE's map for the whole
+        // Task 2 (BUG-62(a), GAP-16): `cur_decls` was left as the ENCLOSING MODULE's map for the whole
         // body — a `fn`'s own params/`let`s were never in it, so every
         // hoist call site's `infer_kind` saw `None` for a bare fn-body
         // operand and silently rendered it unchanged (BUG-28's founding
@@ -153,7 +152,8 @@ impl Emitter<'_> {
                 // BUG-10 (docs/audit/bugs.md): a bundle-typed `fn` parameter
                 // is never a single scalar `input` — it flattens to one
                 // `input` per field, same convention module ports/wires use
-                // (module.rs:60-78, 130-140). `expr.rs`'s `Field` arm
+                // (`module/mod.rs`'s port and wire declaration loops).
+                // `expr.rs`'s `Field` arm
                 // already renders `u.tx` as `u_tx` unconditionally, so the
                 // body needs no change — only this declaration and the
                 // call-site argument expansion below (`ExprKind::FnCall`

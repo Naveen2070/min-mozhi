@@ -31,7 +31,7 @@ mod resolve;
 
 /// What a name in module scope is bound to. Carries the node where it
 /// helps produce a better error (enums, instances). Shared with the
-/// width pass (`widths.rs`), which reuses the scopes this pass builds.
+/// width pass (`widths/`), which reuses the scopes this pass builds.
 #[derive(Clone, Copy)]
 pub(super) enum Bind<'a> {
     In,

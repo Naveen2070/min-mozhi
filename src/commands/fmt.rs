@@ -1,6 +1,7 @@
 //! `mimz fmt <file>` — normalize a file's keyword flavor in place. Token-based
 //! (via `mimz::translate`), so comments, layout, identifiers, and numbers are
-//! preserved byte-for-byte. With `--strict`, warns on mixed-flavor files.
+//! preserved byte-for-byte. With `--strict`, mixed-flavor input warns and
+//! fails (non-zero exit) so CI can flag it.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -14,8 +15,9 @@ use crate::Output;
 /// (via [`translate`](mimz::translate)), so comments, layout, identifiers, and
 /// numbers are preserved byte-for-byte — only keyword spellings change. The
 /// target flavor is `--to` if given, else the file's predominant flavor
-/// (`morph::majority_flavor`). With `--strict`, a file that mixes keyword flavors
-/// gets a warning first (mixing stays legal — spec/03, the learning path).
+/// (`morph::majority_flavor`). With `--strict`, a file that mixes keyword
+/// flavors also gets a warning and makes the command exit non-zero so CI can
+/// flag it (mixing stays legal under a plain `fmt` — spec/03, the learning path).
 pub(crate) fn fmt_file(
     path: &Path,
     to: Option<&str>,

@@ -364,9 +364,10 @@ impl Emitter<'_> {
                 }
                 ModuleItem::Port { dir, name, ty } => {
                     // Bundle ports flatten to one Verilog port per field,
-                    // same convention as the module header (module.rs:60-78)
-                    // and Drive-path (module.rs:762-807) — a bundle-typed
-                    // port is never a single scalar Verilog port.
+                    // same convention as the module header (`module/mod.rs`'s
+                    // port-declaration loop) and the drive path
+                    // (`module/drives.rs`) — a bundle-typed port is never a
+                    // single scalar Verilog port.
                     //
                     // NOTE: `args` here is this function's own instance-argument
                     // map (`HashMap<&str, &Expr>`, e.g. `{"W": &Expr(8)}` for

@@ -247,7 +247,7 @@ fn clocked_cover_counts_real_edges_under_iverilog() {
     );
 }
 
-/// Task 8 #1 of `docs/plan/v0.2-class-closure-round3.local.md`: round 2's
+/// Task 8 #1: round 2's
 /// review claimed a combinational `cover`'s `always @(cond)`-sensitized
 /// counter (`module/mod.rs`) "misses time zero" — a condition true from
 /// the start, never toggling, would never be counted — on the reasoning
@@ -445,7 +445,7 @@ fn every_emitted_testbench_passes_iverilog() {
     );
 }
 
-/// Task 5 (BUG-64, `docs/plan/v0.2-class-closure-round6.local.md`): Layer 1.5
+/// Task 5 (BUG-64): Layer 1.5
 /// above only proves an emitted testbench ELABORATES, never that it reports
 /// the right verdict. Two independent root causes, both closed by
 /// `emit_verilog`'s testbench/module emission, both found only by actually
@@ -555,10 +555,9 @@ fn every_emitted_testbench_reports_pass_under_vvp() {
     }
 }
 
-/// BUG-51 (docs/audit/bugs.md), found verifying Task 8 of `docs/plan/v0.2-
-/// class-closure-round3.local.md`: `--emit-testbench`'s `TestStmt::Drive`
-/// used blocking `=` for every stimulus write, including `rst = 0;` right
-/// after `repeat(N) @(posedge clk)` resumes — racing the DUT's own
+/// BUG-51 (docs/audit/bugs.md), found verifying Task 8: `--emit-testbench`'s
+/// `TestStmt::Drive` used blocking `=` for every stimulus write, including
+/// `rst = 0;` right after `repeat(N) @(posedge clk)` resumes — racing the DUT's own
 /// `always @(posedge clk)` block reading that SAME signal for the SAME
 /// edge (both active-region processes triggered by the identical event;
 /// their relative order is implementation-defined). Confirmed live: a
@@ -625,7 +624,7 @@ fn emitted_testbench_reset_deassert_does_not_race_the_dut() {
     );
 }
 
-/// Task 8 #2 (`docs/plan/v0.2-class-closure-round3.local.md`): a `cover`
+/// Task 8 #2: a `cover`
 /// counter was incremented and read by nothing. `--emit-testbench` now
 /// prints each cover's final hit count before `$finish`. Verified against
 /// real `iverilog`/`vvp` on both cover forms in the SAME design — also
@@ -1090,8 +1089,7 @@ fn differential_m(
     };
     let asts: Vec<File> = files.iter().map(|f| f.ast.clone()).collect();
     // Every real `mimz sim`/`test` invocation runs the checker before
-    // elaborating (A2, docs/plan/phase-2-correctness-consolidation.local.md
-    // stage 2) — a tagged enum's `inferred_total_width` Cell is populated by
+    // elaborating (A2, stage 2) — a tagged enum's `inferred_total_width` Cell is populated by
     // the checker's width pass, not the elaborator. Skipping this here would
     // test a code path no real user can reach.
     mimz::checker::check(&asts).expect("checker passes on a differential-test example");

@@ -1,7 +1,7 @@
 //! Golden-match accuracy measurement: verify that each example file compiles to
-//! the expected Verilog byte-for-byte (the reference `.v.golden` files), and
-//! that all keyword-flavor variants produce identical output. Optionally runs
-//! Icarus Verilog as a cross-check when installed.
+//! the expected Verilog byte-for-byte (the reference `tests/golden/<base>.v`
+//! files), and that all keyword-flavor variants produce identical output.
+//! Optionally runs Icarus Verilog as a cross-check when installed.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

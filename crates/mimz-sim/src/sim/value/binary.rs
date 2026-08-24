@@ -25,8 +25,8 @@ pub(super) fn extend_bits(v: Val, width: u32) -> u128 {
     // `masked()` panics on a `Wide` value — every caller of `extend_bits`
     // only invokes it on an operand already known to be `Small` (either
     // inside a dispatch's narrow-path `if` branch, or on a fn-call
-    // argument, which stays narrow-only for now — see `docs/superpowers/
-    // specs/2026-07-22-sim-wide-values-design.local.md`).
+    // argument: binding always goes through `Val::new`, which only ever
+    // builds the `Small` variant).
     let bits = v.masked();
     if width > v.width && v.signed && (bits >> (v.width - 1)) & 1 == 1 {
         bits | (mask(width) & !mask(v.width))
@@ -619,7 +619,7 @@ pub(super) fn binary_known(
         BinOp::LogicAnd => Val::new(l.lsb() & r.lsb(), 1, false),
         BinOp::LogicOr => Val::new(l.lsb() | r.lsb(), 1, false),
         // `??` is always rewritten to `IfExpr` by `Rw::expr` during
-        // elaboration (crates/mimz-sim/src/sim/elaborate.rs) before the
+        // elaboration (crates/mimz-sim/src/sim/elaborate/rewrite.rs) before the
         // kernel ever calls `binary_known` — so this arm is unreachable in
         // practice. Still a typed error rather than a panic: this function
         // returns `Result`, and a future caller of `binary_known` that skips
@@ -627,7 +627,7 @@ pub(super) fn binary_known(
         BinOp::Coalesce => {
             return Err(Box::new(
                 Diag::new(span, "?? should have been lowered during elaboration")
-                    .with_code("S0222"),
+                    .with_code("S0241"),
             ));
         }
     })

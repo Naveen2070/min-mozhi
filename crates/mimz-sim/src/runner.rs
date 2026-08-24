@@ -3,8 +3,10 @@
 //! stdout. This is the engine behind the browser playground console
 //! (`crates/mimz-wasm`) and any embedder.
 //!
-//! It is single-file (no `import` resolution — there is no filesystem to resolve
-//! against) and renders diagnostics in English. The CLI keeps its own thin
+//! It resolves `std.<module>` imports in memory from the bundled standard
+//! library (any other import is rejected with `S0139` — there is no
+//! filesystem to resolve against) and renders diagnostics in English. The CLI
+//! keeps its own thin
 //! handlers in `src/commands/`, but borrows the shared argument parsers below so
 //! there is one source for `--in` / `--param` / `--sweep` / `--trace` parsing.
 

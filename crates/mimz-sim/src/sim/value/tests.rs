@@ -463,7 +463,7 @@ fn checked_width_accepts_up_to_the_shared_max_width() {
 fn concat_can_exceed_128_bits() {
     let a = Val::new(u128::MAX, 128, false);
     let b = Val::new(1, 1, false);
-    // Simulate what eval_ctx's Concat arm does: total width 129.
+    // Simulate what eval's Concat arm does: total width 129.
     let total = a.width + b.width;
     assert_eq!(total, 129);
 }
