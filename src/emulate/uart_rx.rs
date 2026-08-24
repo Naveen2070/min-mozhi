@@ -1,6 +1,7 @@
 //! The `uart_rx` peripheral: drives a bound input bit with an 8-N-1
-//! encoded byte stream from a literal `source` string
-//! (docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md).
+//! encoded byte stream from a literal `source` string, LSB-first, with
+//! bit timing derived from the sim's `speed` clause and the configured
+//! `baud`.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};

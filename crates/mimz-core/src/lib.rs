@@ -1,8 +1,11 @@
 //! Pure compiler pipeline: lexer, parser, AST, checker, Verilog emitter, and
 //! supporting tooling (translate/pretty/explain/analysis/stdlib/morph). Zero
-//! optional dependencies and no filesystem/OS access — the pure half of the
-//! workspace split (`docs/plan/workspace-split.local.md`); `mimz-sim` and the
-//! root shell crate build on top of this.
+//! optional dependencies, and the compile pipeline itself touches no
+//! filesystem/OS state — the one exception is `stdlib::eject_to`, an
+//! explicit opt-in helper that writes the embedded stdlib out only when
+//! asked. That keeps this crate the pure half of the workspace split,
+//! usable from environments (like the WASM playground) that can't have
+//! either; `mimz-sim` and the root shell crate build on top of this.
 #![forbid(unsafe_code)]
 
 /// Compile-time unroll cap for `repeat` — the ceiling on how many iterations

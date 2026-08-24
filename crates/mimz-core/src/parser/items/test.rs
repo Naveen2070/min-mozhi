@@ -88,7 +88,7 @@ impl Parser {
         Some(args)
     }
 
-    /// `testBlock = "{" { tick | expect | drive | testIf } "}"`
+    /// `testBlock = "{" { tick | expect | drive | testIf | simBlock } "}"`
     fn test_block(&mut self) -> Option<(Vec<TestStmt>, Span)> {
         self.expect(TokKind::LBrace, "`{` to start the test body")?;
         let mut stmts = Vec::new();

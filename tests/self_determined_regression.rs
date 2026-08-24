@@ -322,8 +322,8 @@ fn bug_19_wrapping_sub_in_a_bitand_matches_icarus() {
 
 #[test]
 fn task5_comparison_operand_hoist_catches_a_mismatch_matches_icarus() {
-    // Round-5 plan Task 5 (docs/plan/v0.2-class-closure-round5.local.md):
-    // `self_determined.rs`'s `BinOp::Eq|Ne|Lt|Le|Gt|Ge => None` arm only
+    // Round-5 plan Task 5: `self_determined.rs`'s
+    // `BinOp::Eq|Ne|Lt|Le|Gt|Ge => None` arm only
     // ever claimed the comparison's own RESULT is 1 bit both sides — true,
     // and not the same claim as "the operands need no test". The operands
     // are hoisted at a SEPARATE call site (`expr.rs`'s comparison arm,
@@ -339,9 +339,9 @@ fn task5_comparison_operand_hoist_catches_a_mismatch_matches_icarus() {
 
 #[test]
 fn task7_comparison_rhs_operand_hoist_catches_a_mismatch_matches_icarus() {
-    // Round-6 plan Task 7 (GAP-17, `docs/plan/v0.2-class-closure-round6.
-    // local.md`): the comparison arm's `lhs`/`rhs` hoists are two SEPARATE
-    // call sites in `expr.rs` (each with its own `hoist_if_needed` call),
+    // Round-6 plan Task 7 (GAP-17): the comparison arm's `lhs`/`rhs`
+    // hoists are two SEPARATE call sites in `expr.rs` (each with its own
+    // `hoist_if_needed` call),
     // and every existing differential here only ever put the narrow-
     // rendering operand on the LHS — `task5_comparison_operand_hoist_
     // catches_a_mismatch_matches_icarus`'s own `b` (RHS) is a bare
@@ -669,7 +669,7 @@ fn bug_24_regression_nested_shift_lhs_of_shift_stays_unhoisted() {
 // a literal before emit ever reaches this code path — untestable by
 // construction, for any builtin.
 //
-// Task 4 (`docs/plan/v0.2-correctness-remediation.local.md`): this file
+// Task 4: this file
 // used to keep a SECOND, hand-maintained exhaustive match over `Builtin`
 // here (`matrix_shape`/`ALL_BUILTINS`) purely to assert "every builtin
 // was classified" — a parallel copy of the real gate-and-classifier
@@ -836,7 +836,7 @@ fn matrix_signed_unsigned_cast_roundtrip_in_concat_matches_icarus() {
 
 #[test]
 fn matrix_signed_unsigned_cast_recursion_catches_a_mismatched_operand_matches_icarus() {
-    // Task 4 (round-4 plan, `docs/plan/v0.2-class-closure-round4.local.md`):
+    // Task 4 (round-4 plan):
     // the test above's own comment admits it only proves the recursion is a
     // NO-OP when nothing underneath is mismatched — it never proved the
     // recursion actually CATCHES a real one, the exact gap BUG-42 shipped
@@ -1383,7 +1383,7 @@ fn shape_replicate_nested_in_trunc_hoists_the_base() {
 
 #[test]
 fn shape_concat_operand_of_extend_in_a_concat_matches_icarus() {
-    // Task 4 (round-4 plan, `docs/plan/v0.2-class-closure-round4.local.md`):
+    // Task 4 (round-4 plan):
     // `bug_36_trunc_of_a_concat_hoists_the_base_first` — the coverage doc's
     // prior citation for `ExprKind::Concat`'s classifier arm — actually
     // exercises `Builtin::Trunc`'s OWN unconditional-`None` arm and its
@@ -1667,8 +1667,7 @@ fn task7_symbolic_extend_base_hoist_when_base_is_composite_matches_icarus() {
 // entry for a `fn` parameter's name), and gave `fn`-body hoists their own
 // function-local `reg` buffer instead of a module-scope `wire`. Both
 // fixes were verified against real `iverilog` while landing (round-6
-// plan's own status notes, `docs/plan/v0.2-class-closure-round6.local.md`)
-// but — unlike every OTHER bug in this file — never pinned as a permanent
+// plan's own status notes) but — unlike every OTHER bug in this file — never pinned as a permanent
 // regression here. Round-6 plan Task 7 (GAP-17) needs a real `fn`-body
 // differential to cite for this axis anyway, so these four close that gap:
 // the exact repro shapes BUG-62①②③/BUG-63 filed, run through the same
@@ -1767,8 +1766,7 @@ fn bug_63_fn_param_shadowing_a_module_signal_reads_the_argument_matches_icarus()
 /// called (a compile-time-only property): its only job is that adding an
 /// `ExprKind` variant without a line here fails the build, the same
 /// enforcement the now-deleted `matrix_shape`/`ALL_BUILTINS` gave the
-/// `Builtin` axis (Task 4 of `docs/plan/v0.2-correctness-remediation.
-/// local.md` deleted those on the correct reasoning that the REAL
+/// `Builtin` axis (Task 4 deleted those on the correct reasoning that the REAL
 /// matches (`self_determined.rs`, `kinds::infer_call`) are themselves
 /// wildcard-free over `Builtin`).
 ///
@@ -2498,8 +2496,7 @@ fn builtin_infer_call_coverage(builtin: &ast::Builtin) -> &'static str {
 }
 
 // =======================================================================
-// Round-6 plan Task 7 (GAP-17, `docs/plan/v0.2-class-closure-round6.
-// local.md`): the sixth coverage doc, and the first keyed by CALL SITE
+// Round-6 plan Task 7 (GAP-17): the sixth coverage doc, and the first keyed by CALL SITE
 // rather than by `ExprKind`/`Builtin` variant.
 //
 // Round 6's own central finding (`docs/audit/review-2026-08-15.md` Part

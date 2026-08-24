@@ -14,10 +14,12 @@ use wasm_bindgen::prelude::*;
 
 /// Compile a single Min-Mozhi source string to Verilog.
 ///
-/// Resolves entirely in the browser — no filesystem, no `import`. On success the
-/// returned string is the generated Verilog. On failure a JS `Error` is thrown
-/// whose message is the rendered, caret-annotated diagnostics (the same text
-/// `mimz compile` prints).
+/// Resolves entirely in the browser — no filesystem access; `import std.<module>`
+/// resolves against the bundled standard library, other imports are rejected.
+/// On success the returned string is the generated Verilog. On failure a JS
+/// `Error` is thrown whose message is the rendered, caret-annotated diagnostics
+/// (the same diagnostics text `mimz compile` prints; paths may render as
+/// `<std::name>` placeholders).
 #[wasm_bindgen(js_name = compileToVerilog)]
 pub fn compile_to_verilog(source: &str) -> Result<String, JsError> {
     mimz_sim::compile_string(source).map_err(|diagnostics| JsError::new(&diagnostics))
@@ -26,7 +28,7 @@ pub fn compile_to_verilog(source: &str) -> Result<String, JsError> {
 /// Run any `mimz` subcommand against the source in memory — the engine behind the
 /// in-browser console.
 ///
-/// - `command` is one of `check`, `compile`, `eval`, `sim`, `test`.
+/// - `command` is one of `check`, `compile`, `eval`, `ports`, `sim`, `test`.
 /// - `args` is the flag list after the command, e.g.
 ///   `["--in", "a=1", "--cycles", "8", "--trace"]`.
 ///

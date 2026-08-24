@@ -1,8 +1,8 @@
 use super::*;
 
-// ----- Task 15 sweep: regression tests for previously hand-verified-only -----
-// ----- behaviors (see .superpowers/sdd/progress.md's "Minor (deferred..." -----
-// ----- lines for Tasks 9 and 12).                                        -----
+// ----- Regression tests for behaviors that were previously verified only -----
+// ----- by hand-trace during earlier development, pinned down here as    -----
+// ----- real tests (see each test's own comment for the gap it closes).  -----
 
 #[test]
 fn overlapping_import_prefixes_disambiguate_correctly() {

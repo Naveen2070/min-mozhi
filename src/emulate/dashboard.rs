@@ -1,16 +1,17 @@
 //! One `ratatui` terminal session per `test` block with an active `sim`
-//! block (docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md
-//! — "Dashboard scope: one dashboard per test").
+//! block — scoped per-test rather than spanning a whole run, so a test
+//! without a `sim` block stays byte-for-byte unaffected and each dashboard's
+//! lifetime matches the one `test` it belongs to.
 //!
 //! Every API here was checked against the vendored source for the versions
-//! this workspace actually resolves (`ratatui` 0.29.0, `crossterm` 0.28.1)
+//! this workspace actually resolves (`ratatui` 0.29.0, `crossterm` 0.29.0)
 //! rather than trusted from memory: `Frame::area` (not the older `size`) at
 //! `ratatui-0.29.0/src/terminal/frame.rs:59`, `Frame::buffer_mut` at
 //! `frame.rs:226`, `Layout::vertical`/`horizontal` as associated fns at
 //! `layout/layout.rs:247,267`, `Constraint::Length`/`Fill` at
 //! `layout/constraint.rs:116,194`, `Terminal::draw` at
 //! `terminal/terminal.rs:304`, and `enable_raw_mode`/`disable_raw_mode`/
-//! `EnterAlternateScreen`/`LeaveAlternateScreen` at `crossterm-0.28.1/src/terminal.rs`.
+//! `EnterAlternateScreen`/`LeaveAlternateScreen` at `crossterm-0.29.0/src/terminal.rs`.
 
 use std::io::{self, Stdout};
 

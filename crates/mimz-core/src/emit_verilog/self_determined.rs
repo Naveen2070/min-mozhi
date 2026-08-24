@@ -1,5 +1,4 @@
-//! Verilog's own self-determined-width rule — Stage 4, Phase A1b
-//! (`docs/superpowers/specs/2026-07-19-emitter-self-determined-position-design.local.md`).
+//! Verilog's own self-determined-width rule — Stage 4, Phase A1b.
 //!
 //! What real Verilog computes as an expression's width when it lands in
 //! a self-determined position (concat member, replication's repeated
@@ -20,8 +19,7 @@
 //! mismatched sub-expression (`extend(p, N)` renders as the bare `(p)`),
 //! which only the first question catches.
 //!
-//! Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2,
-//! `docs/plan/v0.2-class-closure-round5.local.md`): round 4's own audit
+//! Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2): round 4's own audit
 //! asked the BUG-42 question of ~60 arms and got it right on all but two
 //! — `ExprKind::Unary`'s `RedAnd|RedOr|RedXor` and
 //! `Builtin::Nand|Nor|Xnor` (BUG-60), both `None` arms whose written
@@ -46,9 +44,8 @@
 //!   fact about the RESULT and answers nothing about the OPERAND this
 //!   file exists to classify; or
 //! - a `NotApplicable` naming **a checked fact about what the emitter
-//!   renders** — the fourth category (round-6 plan Task 8,
-//!   `docs/plan/v0.2-class-closure-round6.local.md`; round-6 review Part
-//!   3.3, `docs/audit/review-2026-08-15.md`), added after `Builtin::Trunc`'s
+//!   renders** — the fourth category (round-6 plan Task 8; round-6 review
+//!   Part 3.3, `docs/audit/review-2026-08-15.md`), added after `Builtin::Trunc`'s
 //!   arm below was found resting on exactly the gap the first three
 //!   categories don't cover: "already exactly N bits regardless of
 //!   position" is true only because a RENDER call site

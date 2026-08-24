@@ -78,9 +78,9 @@ fn qualified_reference_actually_resolves_via_a_real_import_path() {
     // that one hand-set `QualIdent.resolved_file` directly. This one goes
     // through the real path: `user` has an actual `import b` statement and a
     // qualified `b.Fifo()` reference; only `Import.resolved_file` is set
-    // (mimicking what `project::load_project` does at Task 3 — this test file
-    // doesn't go through `project.rs`, so it sets that one Cell by hand, the
-    // same way the parser leaves it `None` and only the loader fills it in).
+    // (mimicking what `project::load_project` does — this test file doesn't
+    // go through `project.rs`, so it sets that one Cell by hand, the same
+    // way the parser leaves it `None` and only the loader fills it in).
     // Nothing here pokes `QualIdent.resolved_file` — the checker itself must
     // compute the match from `q.path` against `user`'s own `imports`.
     let a = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n");

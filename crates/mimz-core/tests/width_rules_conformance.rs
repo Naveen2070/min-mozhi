@@ -1,5 +1,4 @@
-//! T3 (Stage 4, `docs/plan/phase-2-correctness-consolidation.local.md`):
-//! a conformance table pinning spec semantics per operator, executed
+//! T3 (Stage 4): a conformance table pinning spec semantics per operator, executed
 //! against all three authorities — the shared `width_rules` module
 //! directly, the checker's own `Ty`-level inference, and the
 //! simulator's own `Val`-level evaluation — asserting all three agree.

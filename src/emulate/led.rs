@@ -1,5 +1,6 @@
 //! The `led` peripheral: a colored on/off indicator in the dashboard,
-//! bound to a `bit` or `bits[N]` output (docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md).
+//! bound to a `bit` or `bits[N]` output (N <= 64) — any nonzero value
+//! counts as "on", mirroring a real LED wired off a wider bus.
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;

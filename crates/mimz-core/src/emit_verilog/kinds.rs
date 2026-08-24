@@ -1,5 +1,4 @@
-//! Emitter-local `Kind` inference — Stage 4, Phase A1b
-//! (`docs/superpowers/specs/2026-07-19-emitter-self-determined-position-design.local.md`).
+//! Emitter-local `Kind` inference — Stage 4, Phase A1b.
 //!
 //! Computes mimz's own width/signedness for an expression DIRECTLY from
 //! the AST — no dependency on any prior pass having annotated anything.
@@ -40,8 +39,7 @@
 //! this function's own signature never needed to grow a second
 //! parameter.
 //!
-//! Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2,
-//! `docs/plan/v0.2-class-closure-round5.local.md`) applies here too, not
+//! Rule (a′) (GAP-15, `docs/audit/gaps.md`; round-5 plan Task 2) applies here too, not
 //! just to `self_determined.rs`'s classifier: an arm whose reason is "the
 //! approximation is harmless" needs a checked FACT behind that claim, not
 //! an assertion — `ExprKind::Unary` ignoring `op` and forwarding `inner`'s
@@ -100,8 +98,7 @@ pub(crate) fn fn_ret_decl_key(name: &str) -> String {
 /// in sync with this function by hand (that hand-sync is exactly what
 /// caused BUG-41).
 ///
-/// Task 1 (`docs/plan/v0.2-class-closure-round6.local.md`, GAP-16): "skip
-/// the check" used to mean silently returning the rendered text unchanged
+/// Task 1 (GAP-16): "skip the check" used to mean silently returning the rendered text unchanged
 /// at every one of `expr.rs`'s hoist call sites — the same fallback for a
 /// genuinely-harmless shape (a bare identifier, already correct) and for
 /// a `fn`-body local / testbench signal / symbolic parametric width

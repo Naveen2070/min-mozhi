@@ -106,8 +106,7 @@ pub enum ExprKind {
     /// A call to a user-defined combinational function.
     ///
     /// `name` is the function name; `args` are the positional argument
-    /// expressions. The parser produces this starting in Task 3; no existing
-    /// checker/emitter/sim path handles it yet — those are added in later tasks.
+    /// expressions.
     FnCall {
         /// The function being called.
         name: super::Ident,
@@ -157,8 +156,9 @@ pub struct Arm {
     pub value: Expr,
 }
 
-/// What a `match` arm can match on. No bindings, no ranges (deferred —
-/// spec/02 section 7).
+/// What a `match` arm can match on. `Variant` supports positional payload
+/// bindings; ranges (e.g. `0..7`) are still deferred to v0.3+ (spec/02
+/// section 7).
 #[derive(Clone, Debug)]
 pub enum Pattern {
     /// An exact integer literal — matches `s` iff `s == value`.
@@ -262,8 +262,7 @@ pub enum BinOp {
     /// `||` / `or`
     LogicOr,
     /// `??` — valid-bundle fallback: unwrap (`T? ?? T -> T`) or OR-mux
-    /// (`T? ?? T? -> T?`), decided by the RHS's structural shape (design:
-    /// `docs/superpowers/specs/2026-07-16-valid-bundle-sugar-design.local.md`).
+    /// (`T? ?? T? -> T?`), decided by the RHS's structural shape.
     Coalesce,
 }
 

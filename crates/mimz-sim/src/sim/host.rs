@@ -1,9 +1,9 @@
-//! The seam that inverts today's coupling between the simulator harness and
-//! concrete `ratatui`/`cpal` hardware-emulation peripherals
-//! (`src/sim/emulate/`). After the full workspace split, `mimz-sim`'s
-//! harness talks to peripherals only through [`EmulationHost`] — it has
-//! zero knowledge of ratatui/cpal. The shell crate (`mimz::emulate`, Task 7)
-//! implements this trait; the harness (Task 4) is rewritten to call it.
+//! The seam that inverts the coupling between the simulator harness and
+//! concrete `ratatui`/`cpal` hardware-emulation peripherals (`src/emulate/`
+//! in the shell crate). Since the workspace split, `mimz-sim`'s harness
+//! talks to peripherals only through [`EmulationHost`] — it has zero
+//! knowledge of ratatui/cpal. The shell crate (`mimz::emulate`) implements
+//! this trait; the harness calls it.
 
 use super::elaborate::Width;
 use super::value::Val;

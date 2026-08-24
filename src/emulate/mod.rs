@@ -1,7 +1,8 @@
-//! Native-only peripheral registry for `sim` blocks (`mimz test --emulate`,
-//! docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md,
-//! docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md).
-//! Behind the `hw-emulation` Cargo feature — never compiled for wasm32.
+//! Native-only peripheral registry for `sim` blocks (`mimz test --emulate`):
+//! maps a bind's peripheral name (`led`, `speaker`, `uart_tx`, `uart_rx`) to
+//! a constructor plus the port `Direction` it expects, so the harness and
+//! dashboard never grow a new match arm as peripherals are added. Behind the
+//! `hw-emulation` Cargo feature — never compiled for wasm32.
 
 pub(crate) mod dashboard;
 pub mod host;
@@ -37,7 +38,7 @@ pub(super) fn parse_port(value: &BindArgValue, peripheral: &str) -> Result<u16, 
 
 /// One bound virtual peripheral. Constructed once per `bind`, then driven
 /// (`drive`) and/or observed (`on_tick`, `on_change`) once per cycle or
-/// batch — see the design docs' Execution model sections. Object-safe:
+/// batch — see each method below for its exact call timing. Object-safe:
 /// `render` is the only widget the dashboard needs to draw.
 pub trait Peripheral: Send {
     /// Called once per batched frame (~30fps) when the bound port's value

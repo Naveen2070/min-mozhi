@@ -111,7 +111,7 @@ overflow-checks = true
 # Same reasoning, for `debug_assert!`: this repo's own test suite is run
 # almost exclusively via `cargo test --release` (compile-heavy corpus), so a
 # `#[cfg(debug_assertions)]`/`debug_assert!` invariant that only fired under
-# a plain debug build would never actually run against the 175-example
+# a plain debug build would never actually run against the full example
 # corpus, the Icarus suite, or the fuzzer — see `hoist_if_needed`'s own
 # position-matrix invariant (Task 4, `docs/plan/v0.2-correctness-
 # remediation.local.md`), whose entire value proposition is running on

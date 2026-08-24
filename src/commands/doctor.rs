@@ -97,6 +97,11 @@ fn optional(name: &str, version: Option<String>, purpose: &str) -> bool {
     }
 }
 
+/// Probe environment health section by section — compiler identity plus an
+/// end-to-end pipeline smoke test, optional Verilog simulators, temp-dir
+/// writability and `mimz.toml` discovery, and (with `dev`) the developer
+/// toolchain. Each probe prints an OK/Warn/Fail/Info status line; any Fail
+/// makes the command exit FAILURE.
 pub(crate) fn doctor(dev: bool) -> ExitCode {
     let mut failed = false;
 

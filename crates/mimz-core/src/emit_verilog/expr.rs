@@ -110,8 +110,7 @@ impl Emitter<'_> {
         self.expr_subst(e, &HashMap::new(), &ArrayScope::new())
     }
 
-    /// Task 3 (BUG-62(b), GAP-16, `docs/plan/v0.2-class-closure-round6.local.md`):
-    /// tried from a self-determined-position call site's own `None` arm
+    /// Task 3 (BUG-62(b), GAP-16): tried from a self-determined-position call site's own `None` arm
     /// (a concat/replicate member, a reduction/nand/nor/xnor operand, a
     /// `$signed`/`$unsigned` cast operand — never a comparison or a slice/
     /// bit-select/`trunc` BASE, see each call site's own comment) right
@@ -1395,7 +1394,8 @@ impl Emitter<'_> {
                     unreachable!(
                         "sync.double_flop/sync.pulse must be lowered by \
                          ast::sync_prim_lower::expand_sync_prims before reaching \
-                         Verilog rendering — a later task wires that call in"
+                         Verilog rendering — every emission path already calls it \
+                         (instances, drives), so reaching here means a path was missed"
                     )
                 }
             },

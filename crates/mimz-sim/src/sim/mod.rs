@@ -1,9 +1,9 @@
-//! The simulator (Phase 1.5) — today only its combinational SLICE exists.
+//! The simulator (Phase 1.5).
 //!
 //! [`comb`] evaluates a clockless module's outputs from a set of input values:
-//! no clock, no registers, no instances, no event kernel. The event-driven
-//! engine, VCD output ([`vcd`]), console trace ([`trace`]), and `test`
-//! execution ([`harness`]) are Phase 1.5 proper
+//! a combinational slice — no clock, no registers, no instances. The
+//! event-driven engine ([`kernel`]), VCD output ([`vcd`]), console trace
+//! ([`trace`]), and `test` execution ([`harness`]) complete Phase 1.5 proper
 //! (docs/plan/phase-1.5-simulator.md).
 //!
 //! This slice exists now as a deliberate down-payment: it is the engine the

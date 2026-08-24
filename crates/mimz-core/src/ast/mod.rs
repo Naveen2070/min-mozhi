@@ -46,7 +46,7 @@ pub struct Import {
     pub span: Span,
     /// Which loaded file this import resolved to, filled in by
     /// `project::load_project_with_lib` once the full file list is
-    /// assembled (Task 3). `None` for ASTs built without going through
+    /// assembled. `None` for ASTs built without going through
     /// `project.rs` (the in-memory playground, the LSP's own import walk).
     pub resolved_file: Cell<Option<usize>>,
 }
@@ -63,9 +63,7 @@ pub enum TopItem {
     /// A `test` block.
     Test(TestDecl),
     /// A user-defined combinational function (`fn name(params) -> ret { ... }`).
-    /// Functions are pure and combinational — no registers, no clocks. The parser
-    /// produces this starting in Task 3; no existing checker/emitter/sim path
-    /// generates it yet.
+    /// Functions are pure and combinational — no registers, no clocks.
     Func(FuncDecl),
     /// A file-level bundle declaration (`bundle Foo { ... }`).
     Bundle(BundleDecl),
@@ -252,11 +250,11 @@ impl QualIdent {
     }
 
     /// The actual qualified-reference disambiguation mechanism (spec/02
-    /// section 1.5b, design doc §4.4): match `self.path` against `imports`
+    /// section 1.5b): match `self.path` against `imports`
     /// — the REFERENCING file's own `import` statements, segment-by-segment
     /// by name — and, on an exact match whose import itself already
     /// resolved to a real file (`Import.resolved_file`, set once by
-    /// `project::load_project` per Task 3), cache that file index onto
+    /// `project::load_project_with_lib`), cache that file index onto
     /// `self.resolved_file`. No-op when already resolved (idempotent — safe
     /// to call from multiple passes/call sites) or when `self` is bare (bare
     /// references resolve a different way, via ambiguity-checked project-wide
@@ -322,10 +320,10 @@ pub struct ExternModule {
     /// context. Not consumed by any compiler pass today; reserved for
     /// hover/`mimz doc` tooling.
     pub doc: Option<String>,
-    /// Port/clock/reset declarations — restricted to `ModuleItem::Port`
-    /// (scalar-typed only) / `ModuleItem::Clock` / `ModuleItem::Reset` by
-    /// the checker (Task 3); the parser (this task) accepts the same
-    /// syntax `Module`'s body does for these three item kinds only.
+    /// Port/clock/reset declarations. The parser accepts the same syntax
+    /// `Module`'s body does; the checker is what actually restricts this to
+    /// `ModuleItem::Port` (scalar-typed only) / `ModuleItem::Clock` /
+    /// `ModuleItem::Reset` variants.
     pub items: Vec<ModuleItem>,
     /// Source span of the whole `extern module` declaration.
     pub span: Span,
@@ -479,7 +477,7 @@ pub struct BundleDecl {
 pub struct FieldDecl {
     /// The field's name.
     pub name: Ident,
-    /// Hardware type — must be concrete bit-vector or enum (E0807/E0905).
+    /// Hardware type — must be concrete bit-vector or enum (E0807).
     pub ty: Type,
     /// Source span of `name: type`.
     pub span: Span,
@@ -648,8 +646,9 @@ pub enum ModuleItem {
 }
 
 /// `repeat i: lo..hi { ... }` — compile-time unrolling, NOT a runtime loop.
-/// Bounds must const-evaluate; unrolling happens in the checker pass
-/// (Phase 1 work item 4), so the emitter currently rejects it cleanly.
+/// Bounds must const-evaluate; the emitter unrolls each block once per
+/// iteration value (`Emitter::unroll`, capped by `REPEAT_BUDGET`), while
+/// the checker checks the body once as written.
 #[derive(Clone, Debug)]
 pub struct Repeat {
     /// The compile-time loop variable, bound in `items` for each iteration.
@@ -901,9 +900,10 @@ pub enum Type {
     Named(QualIdent),
     /// Parametric bundle type: `MemBus(WIDTH: 32)` or plain `Handshake`.
     /// `args` is empty for bundles with no params.
-    /// note: nominal-only today; structural subtyping adds one field-list
-    /// comparison (2.9); first-class IR bundle (post-Phase 2) promotes
-    /// BundleType to a Type variant in IR
+    /// Matched STRUCTURALLY (spec/02 section 1.12, feature 2.9, shipped): a
+    /// bundle satisfies any bundle-typed slot whose required fields it
+    /// covers with exactly-matching types, regardless of the two bundles'
+    /// declared names — the checker never compares `name`s for this.
     Bundle {
         /// The bundle type's name.
         name: QualIdent,
@@ -916,7 +916,7 @@ pub enum Type {
     /// compile-time constant (checker-enforced, E0412, matching `mem`'s
     /// `DEPTH` and `repeat`'s bound). An array is never a real Verilog
     /// array — the emitter and simulator each lower it to N independent
-    /// scalars (see `docs/superpowers/specs/2026-07-04-array-typed-fn-params-design.local.md`).
+    /// scalars.
     Array {
         /// Element type; restricted to `Bit`/`Bits`/`Signed`.
         elem: Box<Type>,
@@ -978,7 +978,8 @@ pub enum TestStmt {
 }
 
 /// `sim { speed mhz(50)  bind audio -> speaker(...) }` inside a `test`
-/// block. Simulation-only (docs/superpowers/specs/2026-07-07-hw-emulation-led-design.local.md).
+/// block. Simulation-only surface — `mimz compile` ignores `sim` blocks
+/// entirely (zero Verilog impact), the same tier as `tick`/`expect`.
 #[derive(Clone, Debug)]
 pub struct SimBlock {
     /// The declared real-world clock rate in Hz, already desugared from

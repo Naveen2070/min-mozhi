@@ -465,11 +465,7 @@ impl Run<'_> {
                     // `.lsb()` (not `.bits & 1`, invalid since `Bits` gained a
                     // `Wide` variant) mirrors the identical fallout fix Task 7
                     // already applied to this exact "is this bit 1" truthy
-                    // check elsewhere (kernel.rs/comb.rs) — trivially in the
-                    // way of this task's own build/test verification, per
-                    // the task brief's "unless trivially in your way" carve-
-                    // out. `harness.rs`'s Wide-aware DECIMAL DISPLAY (`show`,
-                    // below) is untouched — that part is still Task 11's job.
+                    // check elsewhere (kernel.rs/comb.rs).
                     if v.unknown || v.lsb() != 1 {
                         return Err(Stop::Fail(self.fail_message(e)?));
                     }
@@ -622,9 +618,10 @@ impl Run<'_> {
 
     /// Call `on_change` on the host for every bound OUTPUT port — reads the
     /// signal's live value straight from `self.sim`, NOT from a captured
-    /// frame: capture stops past `MAX_SIM_CYCLES`'s 1M-frame cap (see
-    /// `capture`), so a frame is stale forever after that point while the
-    /// sim keeps ticking underneath it.
+    /// frame: frame capture (`capture`) only runs while `exec`'s cycle count
+    /// stays within its hardcoded 1,000,000-frame window (well below
+    /// `MAX_SIM_CYCLES`), so a frame is stale forever after that point while
+    /// the sim keeps ticking underneath it.
     fn notify_peripherals(&mut self) -> Result<(), String> {
         let Some(active) = &self.active_sim else {
             return Ok(());

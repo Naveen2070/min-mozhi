@@ -22,12 +22,16 @@
 //! is rejected; slicing `signed` yields `bits`; full enum/value coverage
 //! is exhaustive without `_`.
 //!
-//! File layout (split 2026-06-12, house module pattern as in parser/):
-//! `mod.rs` owns the [`Ty`] model, [`Wcx`], the config worklist, and the
-//! module-body walk; `expr.rs` is the bidirectional typing engine;
-//! `ops.rs` types operators, concat, and builtins; `insts.rs` resolves
-//! instantiation bindings and connection widths; `patterns.rs` checks
-//! `match` patterns and exhaustiveness.
+//! File layout (folder-of-files pattern, as in `parser/`): `mod.rs` owns
+//! the [`Ty`] model, [`Wcx`], and the config worklist; `stmts.rs` walks a
+//! module body and `on`/sequential statement lists; `expr/` is the
+//! bidirectional typing engine; `ops/` types operators, concat, and
+//! builtins; `insts.rs` resolves instantiation bindings and connection
+//! widths; `patterns.rs` checks `match` patterns and exhaustiveness;
+//! `bundles.rs` resolves bundle fields and structural shape matching;
+//! `funcs.rs` checks `fn` bodies and injects match-arm payload bindings;
+//! `sigs.rs` resolves declared signal/type widths (`collect_sigs`,
+//! `resolve_ty`, `eval_width`/`eval_depth`/`eval_array_len`).
 
 mod bundles;
 mod expr;

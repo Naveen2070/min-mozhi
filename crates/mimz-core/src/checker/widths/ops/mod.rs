@@ -250,9 +250,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Types a `??` expression (design:
-    /// `docs/superpowers/specs/2026-07-16-valid-bundle-sugar-design.local.md`,
-    /// "The `??` operator"). LHS must be a valid-bundle (`T?`, i.e.
+    /// Types a `??` expression. LHS must be a valid-bundle (`T?`, i.e.
     /// structurally `{ valid: bit, data: T }` — feature 2.9's structural
     /// rule decides this, same as any other bundle-typed slot); otherwise
     /// E0911. RHS is polymorphic:

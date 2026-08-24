@@ -25,7 +25,7 @@
 //! **Panel-authored content (decision C3, ratified 2026-06-15).** The Tamil +
 //! Tanglish catalog and the sandhi rules came from the native-speaker panel and
 //! now live in `messages.toml` / `case_suffixes.toml`. `MESSAGES` localizes
-//! **34 of the 75 checker E-codes**; E0403/E0404/E0405 are deferred (each emits
+//! **35 of the 76 checker E-codes**; E0403/E0404/E0405 are deferred (each emits
 //! many message shapes one template can't fit faithfully — English kept, Tamil
 //! preserved as comments in `messages.toml`).
 

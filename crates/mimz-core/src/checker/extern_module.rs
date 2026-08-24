@@ -1,6 +1,7 @@
 //! Pass: validate `extern module` declarations — port types must be
-//! scalar (Verilog FFI non-goal: no bundle/array-typed extern ports, see
-//! docs/superpowers/specs/2026-07-15-verilog-ffi-design.local.md).
+//! scalar (`bit`/`bits[N]`/`signed[N]`). A real Verilog module's port
+//! list is always a flat list of wires, so bundle/array-typed extern
+//! ports are out of scope for v1.
 
 use crate::ast::{ModuleItem, Type};
 
