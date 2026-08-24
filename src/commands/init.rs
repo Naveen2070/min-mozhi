@@ -1,6 +1,6 @@
 //! `mimz init <name>` — scaffold a new Min-Mozhi project in `./<name>/`.
-//! Creates a documented hello-world source file, a `mimz.toml` manifest, and a
-//! `.gitignore`. The module name is derived from the project directory name.
+//! Creates a documented hello-world source file and a `mimz.toml` manifest.
+//! The module name is derived from the project directory name.
 
 use std::path::PathBuf;
 use std::process::ExitCode;

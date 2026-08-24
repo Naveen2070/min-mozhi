@@ -1,6 +1,4 @@
-//! Runtime diagnostic codes for `mimz-sim` (R2:
-//! `docs/audit/review-2026-07-17.md`, design:
-//! `docs/superpowers/specs/2026-07-30-sim-runtime-diagnostics-r2-design.local.md`).
+//! Runtime diagnostic codes for `mimz-sim` (R2: `docs/audit/review-2026-07-17.md`).
 //!
 //! These are a DIFFERENT catalog from the checker's `E0xxx` codes
 //! (`mimz_core::diag::ALL_CHECKER_CODES`) — a checker code fires at
@@ -12,7 +10,7 @@
 //! — a code is never renumbered or reused once assigned.
 //!
 //! Every code here must have a firing fixture in the sim-errors
-//! contract test (Phase 5 of the design spec above).
+//! contract test.
 
 /// Every stable `mimz-sim` runtime error code. Grows as later tasks
 /// convert `Result<_, String>` sites to `Result<_, Box<mimz_core::diag::Diag>>`.
@@ -33,7 +31,7 @@
 /// elaborates for real and this code's only emission site is gone — same
 /// "nothing could observe it firing" reasoning as `S0101`, just because
 /// the FEATURE landed rather than because the arm was always dead.
-pub const ALL_SIM_CODES: [&str; 79] = [
+pub const ALL_SIM_CODES: [&str; 80] = [
     // S01xx — elaboration/wiring (sim/elaborate/registry.rs, instance.rs,
     // mod.rs, module.rs, rewrite.rs).
     "S0102", // ambiguous bare reference (module/extern-module/bundle)
@@ -93,7 +91,7 @@ pub const ALL_SIM_CODES: [&str; 79] = [
     "S0219", // file defines no module
     "S0220", // file defines multiple modules — none picked
     "S0221", // a shift amount cannot be `signed`
-    "S0222", // `??` reached binary_known unlowered
+    "S0222", // shift growth exceeds MAX_WIDTH
     "S0223", // function table unavailable in this evaluation context
     "S0224", // undefined function
     "S0225", // array parameter has an invalid (non-positive) length
@@ -122,6 +120,9 @@ pub const ALL_SIM_CODES: [&str; 79] = [
     // single-module one.
     "S0239", // `Sim::set`: name is not a drivable input/clock/reset
     "S0240", // `+`/`-`/`*` operands disagree on signedness
+    "S0241", // `??` reached `binary_known` unlowered (comb.rs's lighter
+    // pipeline skips `elaborate::Rw::expr`'s desugar-to-`IfExpr` pass, so a
+    // raw `??` can reach here — was misfiled under S0222 until this split)
     // S03xx — test-harness control flow (sim/harness/mod.rs's `Run::exec`).
     // The peripheral-bind-validation `Stop::Err` sites in the same match arm
     // (unknown peripheral / direction mismatch / no such port) are Task
@@ -146,11 +147,14 @@ pub const ALL_SIM_CODES: [&str; 79] = [
 
 /// Delimiter used by [`bridge_code`]/[`diag_from_bridged`] to smuggle a
 /// `Diag`'s own `code` through the `Resolver` trait's fixed `Result<_,
-/// String>` boundary (Phase 2 of the R2 design deliberately never threads
-/// `Span`/`Diag` through that trait's signature — see
-/// `docs/superpowers/plans/2026-07-30-sim-runtime-diagnostics-r2.local.md`'s
-/// "leave the trait alone" note). BUG-27: without this, a `Resolver::
-/// signal`/`mem_read` impl's own already-coded `Diag` (e.g. `Env::resolve`'s
+/// String>` boundary. `signal`/`mem_read` deliberately keep that plain
+/// `&str`-in, `String`-error signature rather than threading a `Span`/
+/// `Diag` through it — doing so would ripple through every `Resolver`
+/// implementer (`Env`, `CombEnv`, ...) and call site for what's a
+/// rarely-hit error path, so this marker-string trick preserves an
+/// already-coded `Diag` across the boundary instead. BUG-27: without this,
+/// a `Resolver::signal`/`mem_read` impl's own already-coded `Diag` (e.g.
+/// `Env::resolve`'s
 /// `S0238` combinational-cycle error) is unconditionally REPLACED by the
 /// boundary's generic fallback code (`S0201`/`S0206`) the moment it's
 /// bridged down to a plain `String` — a control character that can never

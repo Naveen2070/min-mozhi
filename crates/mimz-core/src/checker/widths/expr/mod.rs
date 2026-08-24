@@ -150,8 +150,7 @@ impl<'a> Checker<'a> {
                         ..
                     }
                 );
-                // BUG-30 (docs/audit/bugs.md), Task 6 of docs/plan/v0.2-
-                // class-closure-round3.local.md: `<<` grows just like
+                // BUG-30 (docs/audit/bugs.md): `<<` grows just like
                 // `+`/`-`, and hitting the generic "widths must match"
                 // text here — with no mention of WHY a shift's width
                 // changed — was the diagnostic-side half of the same gap

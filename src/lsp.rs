@@ -1,5 +1,5 @@
-//! `mimz lsp` — the diagnostics-only language server (LSP v0, Phase 1,
-//! non-gating; hover/go-to-definition land in Phase 4).
+//! `mimz lsp` — the language server: publishDiagnostics on every edit plus
+//! hover, go-to-definition, and completion over the analyzed workspace.
 //!
 //! A module of the BINARY, not the library: tower-lsp drags in tokio,
 //! and the lib must stay async-free for the Phase 4 WASM playground.
@@ -109,7 +109,7 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "mimz lsp ready (diagnostics-only v0)")
+            .log_message(MessageType::INFO, "mimz lsp ready")
             .await;
     }
 

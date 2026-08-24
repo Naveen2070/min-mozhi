@@ -1,8 +1,10 @@
 //! Lowers `sync.double_flop`/`sync.pulse` call sites into ordinary
-//! `Reg`/`On`/`Wire` items — see `docs/superpowers/specs/2026-07-20-sync-cdc-design.local.md`
-//! §6. Assumes checker-clean input (Tasks 2-3 already validated every call's
-//! shape, domain, and placement) — same contract `sync_loop_lower`/
-//! `foreach_lower` already have with their own checker passes.
+//! `Reg`/`On`/`Wire` items, the same "lower to plain AST nodes shared by
+//! checker/emit/sim" pattern `sync_loop_lower`/`foreach_lower` already use.
+//! Assumes checker-clean input (the checker's own rules already validated
+//! every call's shape, domain, and placement) — same contract
+//! `sync_loop_lower`/`foreach_lower` already have with their own checker
+//! passes.
 //!
 //! Hidden names are derived from the call site's own target name (the
 //! `<-` target's name for `double_flop`, the wire's name for `pulse`),
@@ -19,12 +21,14 @@ use super::{
 /// Rewrites every `sync.double_flop`/`sync.pulse` call site in `items` into
 /// its lowered hidden `Reg`/`On` items plus a rewritten host `On`/`Wire`
 /// item. Only scans DIRECT `items` — a call nested inside a `const if`
-/// branch, `repeat`, `foreach`, or `sync loop` is out of scope for v1 (see
-/// the spec's §8 open items / this plan's Global Constraints).
+/// branch, `repeat`, `foreach`, or `sync loop` is already rejected by the
+/// checker's placement rule (E0705, `checker::clocks`) before this ever
+/// runs, so there is nothing for a nested scan to find on checker-clean
+/// input.
 ///
 /// Called once, before any other pass sees the module — both
-/// `emit_verilog::module::flatten_items` (Task 5) and `mimz-sim`'s
-/// `elaborate_module` (Task 6) call this FIRST, then run their existing
+/// `emit_verilog::module::flatten_items` and `mimz-sim`'s
+/// `elaborate_module` call this FIRST, then run their existing
 /// `SyncLoop`/`ForEach` handling on the result unchanged (the two concerns
 /// are orthogonal: this function never touches `SyncLoop`/`ForEach` items,
 /// and vice versa).

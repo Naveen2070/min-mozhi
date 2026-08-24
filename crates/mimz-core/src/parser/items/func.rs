@@ -52,9 +52,10 @@ impl Parser {
     }
 
     /// `fnBody = {fnStmt} expr "}"` — statements, then the mandatory tail
-    /// expression, then the closing brace. Shared by the top-level `fn`
-    /// body (called just above) — kept as its own method so a future
-    /// `suzhal`/`loop` unroll (Spec 2) can reuse it for a nested block.
+    /// expression, then the closing brace. Only the top-level `fn` body
+    /// (called just above) needs a tail expression; a nested block (`if`/
+    /// `loop`/`foreach` body inside a `fn`) has no tail and uses
+    /// `fn_stmt_block` instead.
     ///
     /// `let`/`return` are prefix-keyword-only in BOTH word orders (checked
     /// first, unconditionally). Statement-level `if` and the tail

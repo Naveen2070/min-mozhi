@@ -43,9 +43,8 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
     for stmt in stmts {
         match stmt {
             TestStmt::Drive { name, value } => {
-                // Non-blocking, not `=`: found live while verifying Task 8
-                // (docs/plan/v0.2-class-closure-round3.local.md) — a
-                // blocking drive changing `rst`/an input right after
+                // Non-blocking, not `=`: found live while verifying Task 8 —
+                // a blocking drive changing `rst`/an input right after
                 // `repeat(N) @(posedge clk)` resumes races the DUT's own
                 // `always @(posedge clk)` block reading that SAME signal
                 // for the SAME edge (both are active-region processes
@@ -68,8 +67,7 @@ fn emit_test_stmts(em: &mut Emitter, stmts: &[TestStmt], indent: &str) {
                     sanitize_verilog_ident(&name.name),
                     val_str
                 ));
-                // Task 5 (BUG-64, `docs/plan/v0.2-class-closure-round6.local.md`):
-                // a `Drive` not followed by a `Tick` (a comb-only test, or a
+                // Task 5 (BUG-64): a `Drive` not followed by a `Tick` (a comb-only test, or a
                 // stimulus change between ticks in a clocked one) leaves
                 // nothing to advance simulation time — without a real delay
                 // here, the very next statement (another `Drive`, or the
@@ -308,8 +306,8 @@ pub fn emit_testbench(
             }
         }
 
-        // Task 2 (BUG-62(a), GAP-16, docs/plan/v0.2-class-closure-round6.local.md):
-        // `cur_decls` used to stay `Default::default()` — always empty —
+        // Task 2 (BUG-62(a), GAP-16): `cur_decls` used to stay
+        // `Default::default()` — always empty —
         // for the whole testbench, so every hoist call site's `infer_kind`
         // saw `None` for a plain DUT signal in a `Drive`/`expect` and
         // silently rendered it unchanged (`expect &extend(y, 8) == 0`
@@ -430,8 +428,7 @@ pub fn emit_testbench(
         }
         em.out.push('\n');
 
-        // Found verifying Task 2/3 (docs/plan/v0.2-class-closure-round6.local.md):
-        // installing a real `cur_decls` above means a `Drive`/`expect`
+        // Found verifying Task 2/3: installing a real `cur_decls` above means a `Drive`/`expect`
         // expression can genuinely hoist now (a reduction/concat/bit-
         // select operand needing a named wire), pushed into
         // `self.hoisted_decls` exactly like the module emitter does — but
@@ -493,8 +490,7 @@ pub fn emit_testbench(
         emit_test_stmts(&mut em, &test.body, "    ");
 
         em.out.push_str("    $display(\"PASS\");\n");
-        // Task 8 #2 (docs/plan/v0.2-class-closure-round3.local.md): the
-        // DUT's `__cover_N_count` registers were incremented and read by
+        // Task 8 #2: the DUT's `__cover_N_count` registers were incremented and read by
         // nothing — print each one's final hit count here, the one place
         // that actually knows the simulation is about to end (a DUT
         // module has no Verilog-2005-legal hook for that on its own; see

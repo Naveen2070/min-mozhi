@@ -1,6 +1,7 @@
 //! Shared value model + expression evaluator for the simulator.
 //!
-//! A [`Val`] is a 2-state bit-vector (≤128 bits) carrying a width and a signed
+//! A [`Val`] is a 2-state bit-vector (width `1..=1_000_000`; values over
+//! 128 bits take the `Bits::Wide` slow path) carrying a width and a signed
 //! flag, honoring the spec's width semantics (lossless `+ - *` grow, the
 //! `+% -% *%` family wraps, slices/concat/`extend`/`trunc` resize). [`eval`]
 //! interprets an [`Expr`] against a [`Resolver`] — both the combinational
@@ -27,11 +28,11 @@ use crate::sim::Diag;
 /// A bit-vector value: the low `width` bits of `bits` are meaningful.
 /// `pub` (re-exported at `mimz_sim::sim::Val`) since
 /// `EmulationHost::on_change`/`on_tick` hand this to the shell crate's
-/// peripheral implementations. NO LONGER `Copy` (Task 2,
-/// `docs/superpowers/specs/2026-07-22-sim-wide-values-design.local.md`
-/// §3) — `Bits::Wide`'s `Vec<u64>` can't be a bitwise copy. Every caller
-/// that relied on implicit-copy semantics gets a compiler error at the
-/// exact site needing an explicit `.clone()` (Task 7).
+/// peripheral implementations. Not `Copy`: `Bits::Wide`'s `Vec<u64>` can't
+/// be a bitwise copy, so adding wide-value support dropped `Val` to
+/// `Clone`-only. Every caller that relied on
+/// implicit-copy semantics gets a compiler error at the exact site
+/// needing an explicit `.clone()`, rather than a silent bug.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Val {
     /// The value's bit pattern; only the low `width` bits are meaningful.
@@ -41,16 +42,18 @@ pub struct Val {
     pub width: u32,
     /// Whether `bits` is interpreted as two's-complement `signed`.
     pub signed: bool,
-    /// Coarse whole-value taint — see the pre-existing doc comment this
-    /// field always had; unchanged by this task.
+    /// Coarse whole-value taint: `true` means the value is X-state (e.g. an
+    /// uninitialized register/wire before its driving logic has settled)
+    /// and `bits` must not be trusted. Propagates through most operators —
+    /// see the `.unknown` checks scattered through `eval`/`binary.rs`.
     pub unknown: bool,
 }
 
 impl Val {
     /// Builds a `Small`-path `Val`, masking `bits` to `width` (`width`
-    /// floors at 1). UNCHANGED behavior from before this task — every
-    /// existing caller with `width <= 128` gets the exact same `Val` it
-    /// always did.
+    /// floors at 1). Every caller with `width <= 128` gets this same
+    /// `Small`-backed shape; only values wide enough to need `Bits::Wide`
+    /// go through `new_wide` instead.
     pub fn new(bits: u128, width: u32, signed: bool) -> Val {
         Val {
             bits: Bits::Small(bits & mask(width)),
@@ -167,8 +170,8 @@ impl Val {
         }
     }
     /// Sign-aware value, sign-extended to i128 for signed comparisons.
-    /// PANICS if called on a `Wide` value wider than 128 meaningful
-    /// signed bits — every caller of this function operates on values
+    /// PANICS on ANY `Wide` value (an `unreachable!` guard fires regardless
+    /// of its width) — every caller of this function operates on values
     /// already known to be `Small` (the narrow fast path only; Task 6's
     /// wide dispatch never calls this).
     pub fn as_i128(&self) -> i128 {
@@ -302,7 +305,7 @@ pub(super) fn from_const_at_width(
 /// Single definition on purpose: `comb.rs` and `kernel.rs` each carried
 /// a byte-identical private copy of the old zero-padding version, and
 /// `value.rs` a third — three copies of one resize rule is the same
-/// drift surface [`GAP-1`](../../../../docs/audit/gaps.md) describes, and
+/// drift surface [`GAP-1`](../../../../../docs/audit/gaps.md) describes, and
 /// fixing one copy would have left the other two wrong.
 pub(super) fn resize_to_width(v: Val, w: u32, signed: bool) -> Val {
     if w <= v.width {

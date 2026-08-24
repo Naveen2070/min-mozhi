@@ -68,6 +68,8 @@ pub const TESTBENCHES: [(&str, &str); 14] = [
     ("window_tb.v", "english/window.mimz"),
 ];
 
+/// Repository root — the shell crate's manifest dir, i.e. the workspace
+/// root every corpus/example path in the bench is resolved against.
 pub fn repo() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -99,7 +101,9 @@ impl BenchReport {
 pub struct Meta {
     /// Unix epoch milliseconds (the HTML renders it as a local date).
     pub timestamp_ms: u128,
+    /// Short git rev of the built tree ("unknown" when git isn't available).
     pub git_rev: String,
+    /// Full `rustc --version` banner ("unknown" when rustc isn't callable).
     pub rustc: String,
     pub iterations: usize,
     pub example_files: usize,
@@ -127,6 +131,7 @@ impl Rate {
 pub struct Speed {
     /// One row per base example (english flavor), phase-split medians.
     pub per_example: Vec<ExampleTiming>,
+    /// Sum of the per-example loc — the numerator of `loc_per_sec`.
     pub total_loc: usize,
     /// Sum of the per-example median pipeline times.
     pub total_ms: f64,
@@ -152,7 +157,9 @@ pub struct Scaling {
 pub struct ScalingPoint {
     /// Registers in the generated module (also its hoisting-drive count).
     pub regs: usize,
+    /// Source lines of the generated module at this size.
     pub loc: usize,
+    /// Median check+emit milliseconds at this size (lex/parse untimed).
     pub emit_ms: f64,
 }
 
@@ -222,8 +229,11 @@ pub struct CorpusCoverage {
 
 #[derive(Serialize)]
 pub struct LlvmCov {
+    /// Line coverage percent from cargo-llvm-cov.
     pub line_percent: f64,
+    /// Function coverage percent from cargo-llvm-cov.
     pub function_percent: f64,
+    /// Region coverage percent from cargo-llvm-cov.
     pub region_percent: f64,
 }
 
@@ -295,6 +305,9 @@ pub fn compile_to_verilog(path: &Path) -> Result<String, String> {
     emit_verilog::emit(&proj, &asts).map_err(|d| diags_msg(path, &d))
 }
 
+/// Load one `.mimz` file plus everything it imports; any `LoadError`
+/// variant is flattened into a plain message string (the bench never
+/// pretty-prints diagnostics).
 pub(super) fn load(path: &Path) -> Result<Vec<project::LoadedFile>, String> {
     project::load_project(path).map_err(|e| match e {
         LoadError::Io(msg) => format!("{}: {msg}", path.display()),
@@ -320,12 +333,14 @@ pub fn strip_banner(v: &str) -> String {
     }
 }
 
+/// Median of a finite timing sample: sorts in place, returns the middle
+/// value (empty slice reads as 0.0).
 pub fn median(xs: &mut [f64]) -> f64 {
     xs.sort_by(|a, b| a.partial_cmp(b).expect("timings are finite"));
     if xs.is_empty() { 0.0 } else { xs[xs.len() / 2] }
 }
 
-/// Every `.mimz` under examples/, recursively, sorted (56 today).
+/// Every `.mimz` under examples/, recursively, sorted.
 pub fn all_example_files() -> Vec<PathBuf> {
     fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
         for entry in std::fs::read_dir(dir).expect("examples/ exists") {
@@ -376,6 +391,9 @@ pub fn fixtures() -> Vec<(PathBuf, String)> {
 
 // ----------------------------------------------------------------- meta
 
+/// Gather one benchmark run's metadata: wall-clock stamp, git rev, rustc
+/// banner, iteration count, and corpus sizes. Shells out to git/rustc and
+/// records "unknown" rather than failing when either is unavailable.
 pub fn collect_meta(iterations: usize) -> Meta {
     let cmd_line = |program: &str, args: &[&str]| {
         Command::new(program)

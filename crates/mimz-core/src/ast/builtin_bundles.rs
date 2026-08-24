@@ -1,10 +1,10 @@
 //! The two compiler-synthesized valid-bundle declarations backing `T?`
-//! sugar (design: `docs/superpowers/specs/2026-07-16-valid-bundle-sugar-design.local.md`).
-//! Never present in any `.mimz` source; `?`-suffixed types desugar directly
-//! to a reference to one of these two names (Task 3's parser type-suffix
-//! handling). Lives here — rather than duplicated in both `checker::symbols`
-//! and `emit_verilog` — because it's the one place both already share: the
-//! checker's `Checker::bundles` and the emitter's `Project::bundles` are
+//! sugar. Never present in any `.mimz` source; `?`-suffixed types desugar directly
+//! to a reference to one of these two names by the parser's type-suffix
+//! handling (`parser::items::valid_suffix`). Lives here — rather than
+//! duplicated in both `checker::symbols` and `emit_verilog` — because it's
+//! the one place both already share: the checker's `Checker::bundles` and
+//! the emitter's `Project::bundles` are
 //! both `HashMap<String, Vec<(usize, &'a ast::BundleDecl)>>` over the same
 //! `ast::BundleDecl`, and `ast` is `pub` from both call sites, so a single
 //! function here backs both tables without needing `checker::symbols` to be

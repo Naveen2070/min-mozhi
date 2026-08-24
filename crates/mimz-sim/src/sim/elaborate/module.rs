@@ -26,7 +26,7 @@ fn build_rw<'x>(
     }
 }
 
-/// Read-only per-module elaboration context plus the eleven mutable
+/// Read-only per-module elaboration context plus the thirteen mutable
 /// accumulators `run_worklist` fills in.
 struct Elaboration<'a> {
     reg: &'a Registry<'a>,
@@ -241,8 +241,8 @@ impl<'a> Elaboration<'a> {
     ///
     /// `span` (a declaration's own `Ident.span` at every call site — `ast::Type`
     /// itself carries no span) anchors the one error this can raise directly
-    /// (unknown enum type) and the one it bridges from `type_width` (`value.rs`,
-    /// not yet converted).
+    /// (unknown enum type) and the ones it propagates from `type_width`
+    /// (`value/mod.rs`).
     fn width_of(
         &self,
         ty: &ast::Type,

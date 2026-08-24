@@ -172,7 +172,9 @@ impl Parser {
     }
 
     /// `enumDecl = "enum" ident "{" enumVariant { "," enumVariant } [","] "}"`
-    /// `enumVariant = ident` (tag-only; payload parsing is added in T2)
+    /// `enumVariant = ident [ "(" payloadField { "," payloadField } ")" ]`
+    /// `payloadField = ident ":" type` — a variant with no parens is
+    /// tag-only; one with `()` (empty payload list) is rejected below (D1).
     pub(super) fn enum_decl(&mut self) -> Option<EnumDecl> {
         let start = self.bump().span; // enum
         let name = self.ident("an enum name")?;

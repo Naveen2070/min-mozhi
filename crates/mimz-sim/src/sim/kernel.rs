@@ -406,7 +406,9 @@ impl Sim {
 
 /// Interpret a sequential body, writing register next-values into `next`. RHS
 /// expressions read `env` (the *current* state), so non-blocking semantics hold;
-/// `next` is write-only here. Last assignment on the taken path wins.
+/// the one exception is BUG-8's bit/slice writes, which read a pending value
+/// back out of `next` so same-cycle disjoint patches chain. Last assignment on
+/// the taken path wins.
 fn run_seq(
     env: &mut CombEnv,
     body: &[SeqStmt],
@@ -650,7 +652,7 @@ fn run_seq(
                 }
             }
             // Unreachable: every `SeqStmt::ForEach` in an `on`-block body is
-            // lowered before `run_seq` ever runs — see `elaborate.rs`'s
+            // lowered before `run_seq` ever runs — see `elaborate/module.rs`'s
             // `elaborate_module`'s `ModuleItem::On` arm.
             SeqStmt::ForEach { .. } => unreachable!(
                 "ForEach is lowered before Rw::seq/assigns/run_seq ever run — see elaborate_module's ModuleItem::On arm"

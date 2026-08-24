@@ -1,6 +1,6 @@
 //! The `uart_tx` peripheral: decodes 8-N-1 serial off a bound output bit
-//! to a scrolling text log
-//! (docs/superpowers/specs/2026-07-08-hw-emulation-uart-design.local.md).
+//! to a scrolling text log, LSB-first, with bit timing derived from the
+//! sim's `speed` clause and the configured `baud`.
 
 use std::collections::VecDeque;
 

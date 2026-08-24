@@ -17,7 +17,7 @@
 //!
 //! Module layout:
 //! - `mod.rs`   — entry point, `Parser` state, token plumbing, error recovery
-//! - `items.rs` — file-level items, module bodies, sequential/test blocks
+//! - `items/`  — file-level items, module bodies, sequential/test blocks
 //! - `expr.rs`  — expressions: precedence climbing, match arms, builtins
 
 mod expr;

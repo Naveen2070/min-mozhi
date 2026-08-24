@@ -33,13 +33,12 @@ impl Flat {
 /// connected parent signals. Mirrors the Verilog emitter's instance lowering so
 /// the simulator agrees bit-for-bit.
 ///
-/// Every callee still returning a bare `String` (`const_eval`,
-/// `elaborate_module`, `Rw::expr`/`seq` — not yet converted; later Phase-1
-/// tasks own them) is wrapped here with `inst.span`, the best span available
-/// at this level — a later task that converts one of those callees directly
-/// will naturally sharpen the span/code without needing to touch this file
-/// again (see the `resolve_target` call below, which already preserves its
-/// OWN span/code from Task 1.2 rather than collapsing to `inst.span`).
+/// Every callee (`const_eval`, `elaborate_module`, `Rw::expr`/`seq`) now
+/// returns a `Box<Diag>` carrying its own span/code; this layer only prefixes
+/// `instance \`{name}\`: ` onto the message rather than collapsing to
+/// `inst.span` — the best available context at this level (see the
+/// `resolve_target` call below, which likewise preserves its OWN span/code
+/// from Task 1.2).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn flatten_instance(
     reg: &Registry,

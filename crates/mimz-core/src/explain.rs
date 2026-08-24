@@ -20,19 +20,23 @@ const EXPLANATIONS: &[(&str, &str)] = &[
     // ----- E00xx: structure & duplicate names -----
     (
         "E0001",
-        "E0001 — duplicate module name (project-wide)\n\n\
-         Two modules share one name across all the files the compiler loaded.\n\
-         Module names are the global vocabulary of a design — an instance like\n\
-         `let u = Counter()` has to resolve to exactly one definition — so they\n\
-         must be unique across the whole project, not just per file.\n\n\
-         Fix: rename one of them. Names travel with `import`, so a name that\n\
-         looks free in this file may already be taken by an imported one.",
+        "E0001 — duplicate module name (within one file)\n\n\
+         Two modules share one name inside the SAME file. Module names travel\n\
+         with `import` — an instance like `let u = Counter()` resolves against\n\
+         the names visible in this file — so they must be unique within one\n\
+         file. Reuse across DIFFERENT files is legal (spec/02 section 1.5b);\n\
+         an ambiguous bare reference is reported separately as E0110.\n\n\
+         Fix: rename one of them. A different file may reuse this name; if a\n\
+         cross-file collision makes a bare reference ambiguous, qualify it\n\
+         with the import path (`a.b.Counter(...)`).",
     ),
     (
         "E0002",
-        "E0002 — duplicate file-level enum name (project-wide)\n\n\
-         Two `enum` types share a name across the loaded files. Enums travel\n\
-         with `import` just like modules, so their names are also project-wide.\n\n\
+        "E0002 — duplicate file-level enum name (within one file)\n\n\
+         Two `enum` types share a name inside the SAME file. Enums travel with\n\
+         `import` just like modules, so their names must be unique within one\n\
+         file — reuse across different files is legal (spec/02 section 1.5b),\n\
+         and an ambiguous bare reference is reported separately as E0110.\n\n\
          Fix: rename one enum.",
     ),
     (
@@ -713,10 +717,11 @@ const EXPLANATIONS: &[(&str, &str)] = &[
     (
         "E0909",
         "E0909 — duplicate bundle declaration\n\n\
-         Two or more `bundle` declarations in the project share the same name. Bundle\n\
-         names are project-wide (like module and enum names), so every bundle must have\n\
-         a unique name.\n\n\
-         Fix: rename one of the duplicate bundles so all names are distinct.",
+         Two or more `bundle` declarations in the SAME file share the same name.\n\
+         Bundle names are unique within one file (like module and enum names) —\n\
+         a different file may reuse the name (spec/02 section 1.5b); an\n\
+         ambiguous bare reference is reported separately as E0110.\n\n\
+         Fix: rename one of the duplicate bundles so the file's names are distinct.",
     ),
     (
         "E0910",
@@ -779,8 +784,8 @@ const EXPLANATIONS: &[(&str, &str)] = &[
     (
         "E1005",
         "E1005 — reserved word used as a name\n\n\
-         You used a word the language reserves for a future feature (e.g.\n\
-         `struct`, `sync`, `fixed`, `requires`). It is not a keyword yet, but it\n\
+          You used a word the language reserves for a future feature (e.g.\n\
+          `struct`, `interface`, `fixed`, `requires`). It is not a keyword yet, but it\n\
          is not free to use as an identifier either — reserving it now means\n\
          today's code will not break when the feature lands.\n\n\
          Fix: pick a different name.",
@@ -822,8 +827,8 @@ const EXPLANATIONS: &[(&str, &str)] = &[
     (
         "E1102",
         "E1102 — bad top-level item\n\n\
-         Only `module`, `enum`, `const`, `import`, and `test` may appear at the\n\
-         top level of a file.\n\n\
+         Only `module`, `enum`, `const`, `import`, `test`, `fn`, `bundle`, and\n\
+         `extern module` may appear at the top level of a file.\n\n\
          Fix: move the construct inside a module, or correct the keyword.",
     ),
     (
@@ -881,10 +886,13 @@ const EXPLANATIONS: &[(&str, &str)] = &[
     (
         "E1110",
         "E1110 — call error\n\n\
-         A call names something that is not a builtin, or a builtin with the\n\
-         wrong number of arguments. There are no user-defined functions yet —\n\
-         only the builtins (`extend`, `trunc`, `signed`, `unsigned`).\n\n\
-         Fix: use a builtin with its correct arity, or instantiate a module.",
+         A call was rejected at parse time or during name resolution: either a\n\
+         builtin or `sync.*` primitive got the wrong number of arguments, or\n\
+         the called name is neither a declared `fn` nor a builtin (user-defined\n\
+         `fn`s ARE callable — an unknown callee usually means a typo or a\n\
+         missing `fn` declaration).\n\n\
+         Fix: match the callee's exact arity, or check the spelling of the `fn`\n\
+         you meant — a known `fn` called with the wrong argument count is E0803.",
     ),
     (
         "E1111",

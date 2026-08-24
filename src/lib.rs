@@ -3,9 +3,9 @@
 //! Phase 1 pipeline (docs/architecture.md):
 //! lexer → parser → AST → checker (nine passes) → Verilog emitter.
 //! The `mimz` binary (`main.rs`) is a thin CLI over this crate; the
-//! LSP server and future tooling (`translate`, the simulator, the
-//! npm/PyPI wrappers) consume the same API — the lib/bin split exists
-//! BECAUSE a second consumer arrived (architecture section 5's trigger).
+//! LSP server and other tooling (`translate`, the simulator, and any
+//! future npm/PyPI wrappers) consume the same API — the lib/bin split
+//! exists BECAUSE a second consumer arrived (architecture section 5's trigger).
 //!
 //! This crate is now a thin shell: the pure pipeline lives in `mimz-core`,
 //! the simulator lives in `mimz-sim`, and this crate re-exports both under

@@ -6,7 +6,7 @@
 //!
 //! Module layout:
 //! - `mod.rs`      — `Project` symbol table, `emit` entry, `Emitter` state, shared helpers
-//! - `module.rs`   — module shells, ports, instances, always-blocks
+//! - `module/`     — module shells, ports, instances, always-blocks
 //! - `expr.rs`     — expression rendering (incl. match → ternary chains)
 //! - `translit.rs` — Tamil → ASCII identifier pre-pass ([`transliterate`])
 //!
@@ -875,8 +875,7 @@ struct Emitter<'a> {
     /// Populated from flat items before emit_drives; cleared after.
     /// Lets emit_drives flatten `sigA = sigB` and `sig = { field: val }` drives.
     bundle_sigs: HashMap<String, (QualIdent, Vec<NamedArg>)>,
-    /// Counter for `__mimz_sub_N` hoisted-wire names — Stage 4, Phase
-    /// A1b (`docs/superpowers/specs/2026-07-19-emitter-self-determined-position-design.local.md`).
+    /// Counter for `__mimz_sub_N` hoisted-wire names — Stage 4, Phase A1b.
     /// Reset per module, alongside `clog2_fn_used`/`funcs_used`.
     hoist_counter: u32,
     /// Accumulated `wire [...] __mimz_sub_N; assign __mimz_sub_N = ...;`
@@ -907,8 +906,7 @@ struct Emitter<'a> {
     /// (`module()`), same timing as `bundle_sigs` above. Stays at its
     /// default `HashMap::new()` for every OTHER `Emitter` (the testbench
     /// emitter used to never gain signal `Kind`s this way — Task 2
-    /// (`docs/plan/v0.2-class-closure-round6.local.md`, BUG-62(a)) changed
-    /// that: `testbench.rs::emit_testbench` now installs the DUT module's
+    /// (BUG-62(a)) changed that: `testbench.rs::emit_testbench` now installs the DUT module's
     /// own `build_decls` result per test, replacing the always-empty
     /// `Default::default()` every `expect`/`Drive` used to see.
     ///
@@ -925,23 +923,20 @@ struct Emitter<'a> {
     /// either way.
     cur_decls: Rc<HashMap<String, crate::width_rules::Kind>>,
     /// True while rendering a user `fn`'s body (`render_fn_decl`). Found
-    /// needed alongside Task 2 (`docs/plan/v0.2-class-closure-round6.local.md`,
-    /// BUG-62(a)/BUG-63): once a `fn` body has a real `cur_decls`, a hoist
-    /// can genuinely FIRE there for the first time — but `hoist_if_needed`/
-    /// `hoist_slice_base_if_needed` only know how to hoist into a MODULE-
-    /// scope `wire`/`assign` pair, which a Verilog-2005 `function
-    /// automatic` cannot legally reference forward (confirmed against real
-    /// `iverilog`: "Unable to bind wire ... declaration after use" — the
-    /// same class of error BUG-63 found through a different door). Rather
-    /// than silently emit that invalid Verilog, both hoist functions check
-    /// this flag and diagnose instead — `mimz compile` must not exit 0
-    /// having written text `iverilog` refuses to elaborate, the same
-    /// GAP-16 invariant Task 1's `hoist_unresolved` states for the `None`
-    /// case. Reg-based in-function hoisting is real future work, not done
-    /// here.
+    /// needed alongside Task 2 (BUG-62(a)/BUG-63): once a `fn` body has a
+    /// real `cur_decls`, a hoist can genuinely FIRE there for the first
+    /// time — but a MODULE-scope `wire`/`assign` pair, what
+    /// `hoist_if_needed`/`hoist_slice_base_if_needed` normally hoist into,
+    /// is illegal inside a Verilog-2005 `function automatic` (confirmed
+    /// against real `iverilog`: "Unable to bind wire ... declaration after
+    /// use"). Task 4's real fix (BUG-63, `module/ports.rs`) has both hoist
+    /// functions check this flag and hoist into a function-local `reg`
+    /// instead, via `fn_hoist_counter`/`fn_hoisted_regs`/`fn_hoisted_stmts`
+    /// below, which `render_fn_operand` (`module/funcs.rs`) drains into a
+    /// blocking assignment right before the statement that operand belongs
+    /// to.
     in_fn_body: bool,
-    /// Task 4 real fix (BUG-63, `docs/plan/v0.2-class-closure-round6.local.md`):
-    /// counter for `__mimz_fn_sub_N` names, the `fn`-body counterpart of
+    /// Task 4 real fix (BUG-63): counter for `__mimz_fn_sub_N` names, the `fn`-body counterpart of
     /// `hoist_counter` — a separate sequence so a hoist inside a `fn` never
     /// shares numbering (or a buffer) with the enclosing module's own
     /// `hoist_counter`/`hoisted_decls`. Reset per `fn` by `render_fn_decl`.
@@ -1146,8 +1141,8 @@ impl Emitter<'_> {
     }
 
     /// Verilog identifiers are ASCII-only; Tamil-script names (legal in
-    /// Min-Mozhi) get a clean error here until a transliteration pass
-    /// exists. Returns whether the name is usable.
+    /// Min-Mozhi) get a clean error here when the `transliterate` pass
+    /// has not run first. Returns whether the name is usable.
     fn check_ascii(&mut self, id: &Ident) -> bool {
         if id.name.is_ascii() {
             true

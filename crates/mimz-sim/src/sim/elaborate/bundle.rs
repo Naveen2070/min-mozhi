@@ -37,6 +37,9 @@ pub(super) fn bundle_type_info(
 }
 
 /// Extract the expression for a named field from a bundle expression.
+/// - If `expr` is a bundle-typed `Coalesce` (`lhs ?? rhs`), builds the OR-mux
+///   form: an `if lhs.valid { … } else { … }` node per field (see the match
+///   arm below).
 /// - If `expr` is a `BundleLit`, returns the matching field's value.
 /// - If `expr` is an `Ident` (a bundle signal reference), returns `expr.field`
 ///   (dot-access, which `Rw::field` will flatten to `ident_fieldname`).

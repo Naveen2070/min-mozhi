@@ -1,10 +1,9 @@
 //! Arbitrary-width bit-vector arithmetic for values wider than 128 bits —
-//! `Val`'s "slow path"
-//! (`docs/superpowers/specs/2026-07-22-sim-wide-values-design.local.md`).
-//! Little-endian `u64` limbs; a `Vec<u64>` for width `w` always holds
-//! exactly `limb_count(w)` elements, index 0 least significant. Not a
-//! general-purpose bignum library — only the operations `value.rs`'s
-//! evaluator actually needs (no division; the language has none).
+//! `Val`'s "slow path". Little-endian `u64` limbs; a `Vec<u64>` for width
+//! `w` always holds exactly `limb_count(w)` elements, index 0 least
+//! significant. Not a general-purpose bignum library — only the
+//! operations `value.rs`'s evaluator actually needs (no division; the
+//! language has none).
 
 /// Number of 64-bit limbs needed to hold `width` bits.
 pub fn limb_count(width: u32) -> usize {

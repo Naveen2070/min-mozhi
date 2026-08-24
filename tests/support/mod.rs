@@ -244,9 +244,8 @@ pub(crate) fn display_args(outputs: &[(String, u32)]) -> String {
 /// Deterministic pseudo-random input vectors, each value masked to its input's
 /// width — the same vectors fed to our kernel and the Verilog testbench.
 ///
-/// Round-5 plan Task 4 (docs/plan/v0.2-class-closure-round5.local.md,
-/// BUG-60 docs/audit/bugs.md): the scrambled formula below reaches every
-/// generated SHAPE eventually, but a value divergence like BUG-60's — a
+/// Round-5 plan Task 4 (BUG-60, docs/audit/bugs.md): the scrambled formula
+/// below reaches every generated SHAPE eventually, but a value divergence like BUG-60's — a
 /// reduction over a zero/sign-extended operand, wrong only when the source
 /// operand happens to be all-ones (or all-zeros after a `~`) — needs a
 /// specific VALUE, and a uniformly-scrambled vector on a 6-14 bit port

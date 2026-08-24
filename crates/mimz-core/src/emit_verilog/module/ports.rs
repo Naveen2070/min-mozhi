@@ -164,8 +164,8 @@ impl Emitter<'_> {
     /// loops' own declarations already use for it.
     ///
     /// Task 6 adds the real caller (`module()`'s own `self.cur_decls`
-    /// assignment, above). Task 2 (`docs/plan/v0.2-class-closure-round6.local.md`,
-    /// BUG-62(a)) adds a second: `testbench.rs::emit_testbench`, which was
+    /// assignment, above). Task 2 (BUG-62(a)) adds a second:
+    /// `testbench.rs::emit_testbench`, which was
     /// installing `Default::default()` — an always-empty map — for every
     /// `expect`/`Drive` in every test, so the same `None`-fallback fail-open
     /// Task 1 makes loud fired on EVERY testbench expression touching a DUT
@@ -526,11 +526,12 @@ impl Emitter<'_> {
     /// self-determine for it in a self-determined position (Stage 4,
     /// Phase A1b). On a mismatch, hoists `rendered_text` into a fresh
     /// `wire`/`assign` pair (appended to `self.hoisted_decls`, inserted
-    /// at `fn_pos` alongside the existing `clog2`/user-`fn` injections
-    /// — see `fn module`'s own `self.out.insert_str(fn_pos, &inject)`
-    /// call) and returns the wire's name instead of `rendered_text`.
-    /// Returns `rendered_text` unchanged when there is no mismatch (the
-    /// common case — no new wire, no behavior change).
+    /// at `hoist_pos` — see `fn module`'s own
+    /// `self.out.insert_str(hoist_pos, &self.hoisted_decls)` call, a
+    /// separate splice point from `fn_pos`, where the `clog2`/user-`fn`
+    /// injections land) and returns the wire's name instead of
+    /// `rendered_text`. Returns `rendered_text` unchanged when there is no
+    /// mismatch (the common case — no new wire, no behavior change).
     ///
     /// Callers (`expr.rs`) must only reach this with the `Kind`
     /// `kinds::infer_kind(expr, decls)` already returned `Some` of — BUG-41
@@ -560,8 +561,7 @@ impl Emitter<'_> {
         // `hoist_width_effect_operand` and this function run on the same
         // operand — see BUG-23's double-hoist finding (docs/audit/bugs.md).
         if super::expr::is_plain_identifier(&rendered_text) {
-            // Position-matrix invariant (Task 4, `docs/plan/v0.2-
-            // correctness-remediation.local.md`): this doc comment's own
+            // Position-matrix invariant (Task 4): this doc comment's own
             // claim — a bare identifier's DECLARED `Kind` (when it names a
             // real signal; a previously hoisted `__mimz_sub_N` wire is
             // absent from `decls` and passes trivially) equals what the
@@ -620,8 +620,7 @@ impl Emitter<'_> {
         if mimz_kind == verilog_kind {
             return rendered_text;
         }
-        // Task 4 (BUG-63, `docs/plan/v0.2-class-closure-round6.local.md`):
-        // Task 2 gives a `fn` body a real `cur_decls`, which means a real
+        // Task 4 (BUG-63): Task 2 gives a `fn` body a real `cur_decls`, which means a real
         // MISMATCH — and therefore a real hoist — can now fire inside one
         // for the first time (`nand(extend(x, 8))`, a working example one
         // screen up in that plan's own repro table). A MODULE-scope
@@ -736,7 +735,7 @@ impl Emitter<'_> {
         name
     }
 
-    /// Task 1 (`docs/plan/v0.2-class-closure-round6.local.md`, GAP-16): the
+    /// Task 1 (GAP-16): the
     /// single routing point every hoist call site's `None` arm goes through
     /// instead of returning `rendered_text` unchanged. `infer_kind` (or
     /// `verilog_self_determined_kind`) returning `None` at a hoist position

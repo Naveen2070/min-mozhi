@@ -3,8 +3,8 @@ use crate::span::Span;
 use crate::{lexer, parser};
 
 /// Parse + emit one self-contained source (no imports) to Verilog text.
-/// Mirrors `emit_verilog::mod::tests::emit_src` — duplicated locally so
-/// this test stays inside `module.rs` per Task 9's scoping.
+/// Mirrors `emit_verilog::tests::emit_src` — duplicated locally so this
+/// test stays inside the `module` submodule per Task 9's scoping.
 fn emit_src(src: &str) -> String {
     let files = [parser::parse(lexer::lex(src).unwrap()).unwrap()];
     let project = Project::from_files(&files).unwrap();

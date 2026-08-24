@@ -370,9 +370,9 @@ fn two_same_named_modules_each_get_their_own_driver_check() {
     let a = parse("module Fifo {\n  out y: bit\n  y = 1\n  y = 0\n}\n"); // double-drive
     let b = parse("module Fifo {\n  out y: bit\n  y = 0\n}\n"); // clean
     let mut user = parse("module M {\n  let x = Fifo() { }\n  let z = Fifo() { }\n}\n");
-    // Wire the two Insts to different files by hand (mirrors Task 5's
-    // qualified-resolution tests — real end-to-end qualification is
-    // exercised in Task 9's fixtures).
+    // Wire the two Insts to different files by hand — a synthetic stand-in
+    // for real cross-file qualified resolution, which is exercised
+    // end-to-end by `tests/packages.rs`'s fixtures.
     if let crate::ast::TopItem::Module(m) = &mut user.items[0] {
         let mut insts = m.items.iter_mut().filter_map(|it| {
             if let crate::ast::ModuleItem::Inst(i) = it {

@@ -1,7 +1,9 @@
 //! `Val`'s (and, from BUG-13 layer 2, `ConstVal`'s) raw bit-pattern
-//! representation — split out of `mimz-sim` so the lexer/AST/checker in
-//! this crate can share it (`docs/superpowers/specs/
-//! 2026-07-25-const-literal-wide-values-design.local.md`).
+//! representation — moved down from `mimz-sim` into this crate so the
+//! lexer/AST/checker can share the same type instead of growing a
+//! second, independent bignum representation (which would repeat the
+//! "two copies of the same rule" mistake BUG-21 already forced a fix
+//! for).
 
 use crate::wide;
 
@@ -17,8 +19,9 @@ pub fn mask(w: u32) -> u128 {
 /// A value's raw bit pattern: `Small` for the fast path (width <= 128,
 /// stored as a plain `u128`), `Wide` for anything larger (little-endian
 /// `u64` limbs, `wide::limb_count` of them). Whoever constructs a `Wide`
-/// value must guarantee `width <= 128` is ALWAYS `Small` — no constructor
-/// in this module produces a `Wide` value that fits in 128 bits.
+/// value must guarantee `width > 128` — a value that fits in 128 bits is
+/// ALWAYS `Small`; no constructor in this module produces a `Wide` value
+/// that fits in 128 bits.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Bits {
     Small(u128),

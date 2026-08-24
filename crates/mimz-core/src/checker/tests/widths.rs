@@ -66,12 +66,11 @@ fn plus_into_same_width_target_teaches_wrap_in_e0401() {
 
 #[test]
 fn shift_left_into_same_width_target_teaches_growth_in_e0401() {
-    // BUG-30 (docs/audit/bugs.md), Task 6 of docs/plan/v0.2-class-closure-
-    // round3.local.md: `<<` grows just like `+`/`-` — landing on the
-    // generic "widths must match" text here, with no mention of WHY,
-    // left a learner with no explanation from either the diagnostic or
-    // the guide (the guide's own half of this gap was fixed the same
-    // task, `docs/guide/05-operators.md`).
+    // BUG-30 (docs/audit/bugs.md): `<<` grows just like `+`/`-` — landing
+    // on the generic "widths must match" text here, with no mention of
+    // WHY, left a learner with no explanation from either the diagnostic
+    // or the guide (the guide's own half of this gap was fixed alongside
+    // it, `docs/guide/05-operators.md`).
     let src = "module M {\n  in a: bits[4]\n  out y: bits[4]\n  y = a << 2\n}\n";
     let d = first_err(src, "E0401");
     let help = d.help.unwrap();

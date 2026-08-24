@@ -94,7 +94,7 @@ impl KeywordTable {
         self.by_kw.values().map(|cols| cols[col].as_str()).collect()
     }
 
-    /// Reserved for a future feature (e.g. `sync`, `struct`, `inout`) —
+    /// Reserved for a future feature (e.g. `struct`, `inout`) —
     /// not a keyword yet, but not usable as an identifier either.
     pub fn is_reserved(&self, ident: &str) -> bool {
         self.reserved.iter().any(|r| r == ident)
