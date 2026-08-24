@@ -12,210 +12,188 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ---
 
-## [0.2.0] - 2026-08-20 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
+## [0.2.0] - 2026-08-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
-> **Tag pending** - content frozen and release gates green (round 9, 8/8,
-> 2026-08-21), but no `v0.2.0` git tag exists yet. Cut it on the
-> `chore(release): prepare v0.2.0` commit when publishing.
+> **Tag pending** - content frozen after the round-9 release gate went green
+> (8/8, 2026-08-20), then amended 2026-08-24 to fold in post-gate items
+> (diagnostic `E0420`, open bug `BUG-75`, test-count sync 1318 -> 1320).
+> Cut the tag on master HEAD when publishing.
 
-The language edition is **unchanged**: keyword set v1, no breaking keyword
-change, so `mimz translate` needs no migration rule for this release. The one
-breaking change is a width-rule change (`<<`), listed under _Changed_ below.
+Keyword-set **version** stays `v1`, so this is not a new language edition -
+but thirteen reserved words were **activated**, and nine of them break
+v0.1.0 programs that used them as identifiers (see _Changed_).
 
 ### Added
 
-- `sync.double_flop(signal, src_clock, dst_clock)` / `sync.pulse(signal,
-src_clock, dst_clock)` - clock-domain-crossing (CDC) synchronizer
-  primitives: `double_flop` is a classic 2-flop synchronizer for a
-  level/control signal, `pulse` is a toggle-based synchronizer for a
-  single-cycle pulse. Both are ordinary builtin-namespace calls (no new
-  `ExprKind`) restricted to 1-bit signals (new diagnostic E0703 - a
-  bit-independent synchronizer on a multi-bit bus is a real metastability
-  hazard, not just a style warning). New diagnostics E0702 (clock-argument
-  shape), E0704 (domain rule - asymmetric between the two primitives:
-  `double_flop` accepts a domain-free or already-`src_clock`-owned signal,
-  `pulse` requires `src_clock`-owned only), E0705 (illegal placement), and
-  parser diagnostic E1116 (unknown `sync.` method name). `sync` remains
-  dual-purpose with the existing `sync loop` construct, disambiguated by
-  the token immediately after `sync`. Handshake (req/ack) protocols and
-  async FIFOs - the multi-bit-safe data-bus crossing - remain future work,
-  buildable as ordinary `.mimz` stdlib modules on top of these primitives.
-  New examples `examples/*/sync_double_flop.mimz` /
-  `examples/*/sync_pulse.mimz`; new Icarus differential tests
-  `sync_double_flop_matches_icarus` / `sync_pulse_matches_icarus`. See
-  `spec/02-syntax-and-grammar.md` section 1.2b.
-- `mimz test --emulate`: `sim` blocks inside `test` blocks bind ports to
-  virtual peripherals (`led`, `uart_tx`, `uart_rx`, `speaker`) with
-  real-time throttling. `uart_tx`/`uart_rx` decode/encode 8-N-1 serial to
-  a dashboard log and/or a local TCP socket; `speaker` plays the bound
-  bit as a tone on the host's audio output (`cpal`). Opt-in, off by
-  default, auto-degrades outside a real terminal.
-- `return` statement and statement-based `fn` bodies (`if`/`return`/`let`)
-  for guard-clause-style combinational functions (priority-selected result
-  selection, not a silicon early-exit - every branch is still fully
-  instantiated). New keyword `return`/`thirumbu`/`திரும்பு`. New diagnostic
-  E0812 (unreachable code after `return`). Fully backward compatible with
-  existing `fn` bodies.
-- Array-typed `fn` parameters (`bits[8][4]`-style fixed-size, immutable
-  arrays) and array literals (`[e1, ..., eN]`). An array is never real
-  Verilog hardware - it elaborates to N independent scalar signals,
-  matching how `repeat` already elaborates to N copies of hardware.
-  Indexing with a compile-time-constant folds directly; a runtime index
-  generates a priority-mux over the elements. New diagnostics E0411-E0415.
-- `foreach <var> in <source> { ... }` sugar over `repeat`/`loop`: a range
-  form (`foreach i in lo..hi`) and an array/mem-element form (`foreach v
-in values`, its bound taken from the source's own declared length, never
-  hand-written). Desugars to the existing `repeat`/`loop` machinery before
-  the checker/emitter/simulator ever see it - no new codegen. New
-  diagnostic E0417 (elements-form source must be array/mem-typed). New
-  keyword `foreach`; the Tanglish/Tamil spellings (`ovvondraga`/
-  ஒவ்வொன்றாக) are provisional, pending native-speaker review.
-- Bundle-typed `fn` parameters and return values are now shape-checked
-  (previously silently accepted/typed as `Unknown`): a bundle-shaped call
-  argument or return value is validated against the bundle's declared
-  fields, reusing the same `E0901`-family diagnostics as module-level
-  bundle drives. Underlying checker fix: bundle-typed values now carry a
-  real `Ty::Bundle` (nominal identity + on-demand field resolution)
-  instead of falling through to `Ty::Unknown`, replacing the old
-  `Wcx::bundle_sigs` side-table this had relied on.
-- `Enum.Variant(arg1, arg2, ...)` construction syntax - the write-side
-  counterpart to tagged-union `match`, completing that feature. Positional
-  arguments only, in the variant's declared field order; a tag-only
-  variant is constructed `Enum.Variant()`. Lowers to the same tag+payload
-  bit layout `match` already extracts, on both the Verilog emitter and the
-  simulator. No new diagnostics - reuses E0806 (arity), E0401 (width), and
-  E0103 (unknown enum/variant), generalized to cover both call sites.
-- `extern module Name(params) { doc: "...", ports }` - Verilog FFI: declares
-  the port shape of a real, hand-written Verilog module (vendor IP, a
-  hardened PLL, a protocol core) without defining its body, instantiable
-  with zero new syntax through the existing `let u = Name(...) { conns }`
-  form. Optional `= "RealName"` alias when the mimz-facing name differs
-  from the real Verilog module's name; optional `doc: "..."` note. Ports
-  are scalar-only (`bit`/`bits[N]`/`signed[N]`, plus `clock`/`reset`) - new
-  diagnostics E1301 (duplicate extern module name) and E1302 (non-scalar
-  extern port). The emitter instantiates the real module by name and never
-  emits a definition for it. The simulator, which cannot execute real
-  Verilog, taints an extern instance's outputs `unknown` in the new default
-  `warn` sim mode (a `test`/`expect` against a tainted value still fails)
-  or hard-errors immediately in `strict` mode; select the mode via
-  `mimz.toml`'s top-level `extern_sim` field. Companion `.v` files reach
-  the toolchain via `mimz.toml [compile] verilog_files` and the repeatable
-  `--extern-src` CLI flag, which union additively.
-- Structural bundle matching (feature 2.9): a bundle satisfies any
-  bundle-typed slot whose required fields it covers with exactly-matching
-  types, regardless of the two bundles' declared names - applies to `let`
-  bindings, `Drive` assignments, module-instantiation port connections, and
-  `fn` bundle-typed args/returns. Extra fields on the provided side are
-  allowed; shared fields never coerce width. New diagnostic E0910 (a
-  required field is missing entirely); E0907 now describes a structural
-  field-type mismatch instead of a purely nominal one. Also fixes a
-  pre-existing bug where a bundle-typed port connected across a module
-  instantiation emitted broken (non-flattened) Verilog.
-- `?` valid-bundle sugar and the `??` operator. `bit?`/`bits[N]?`/
-  `signed[N]?` desugar to a compiler-synthesized `{ valid: bit, data: T }`
-  bundle, legal anywhere a scalar type is legal; construction is
-  bundle-literal only (`{ valid: ..., data: ... }`), no implicit auto-wrap.
-  `??` has two forms, chosen by the right operand's shape and never
-  coercing width: unwrap (`T? ?? T -> T`) and OR-mux (`T? ?? T? -> T?`,
-  chains left-associatively). Both always lower to an ordinary two-way mux
-  in the emitter and the simulator - never a tri-state/high-Z value. New
-  diagnostics E0911 (left operand isn't a valid-bundle) and E0912 (right
-  operand doesn't match the left's `data` type exactly).
+Language surface:
+
+- Combinational functions - `fn name(p: bits[8]) -> bits[16] { ... }`,
+  lowered to Verilog `function automatic`; recursion banned (`E0805`),
+  widths checked (`E0804`).
+- Statement-based `fn` bodies - `let` / `if` / `return` inside a `fn` for
+  guard-clause style (priority-selected result, not a silicon early-exit).
+  New keyword `return`/`thirumbu`/`திரும்பு`; unreachable code after
+  `return` is `E0812`.
+- Tagged-union enums - variants carry payload fields, `match` patterns bind
+  them, OR-arm binding intersection checked (`E0806`-`E0808`).
+- `Enum.Variant(a, b)` construction - the write-side counterpart to
+  tagged-union `match`; reuses `E0806`/`E0401`/`E0103`.
+- Bundles - `bundle Name { field: type }`, parametric bundle types, bundle
+  literals `{ ... }`, and `let` destructuring; flattened to prefixed
+  scalars in emitter and simulator (`E0901`-`E0912`).
+- Structural bundle matching (2.9) - bundles match by required-field shape,
+  not declared name, across lets/drives/instantiation ports/fn signatures
+  (`E0910`; also fixes non-flattened Verilog for bundle ports across
+  instantiations).
+- Valid-bundle sugar - `bit?` / `bits[N]?` / `signed[N]?` desugar to a
+  synthesized `{ valid, data }` bundle; `??` unwraps (`T? ?? T`) or OR-muxes
+  (`T? ?? T?`), always an ordinary mux, never tri-state (`E0911`/`E0912`).
+- Array-typed `fn` parameters and array literals `[e1, ..., eN]` -
+  elaborate to N scalars; constant indices fold, runtime indices become a
+  priority mux (`E0411`-`E0417`).
+- `foreach <var> in <source>` - range form and array/mem-element form;
+  desugars to existing `repeat`/`loop` machinery before checking/emitting
+  (`E0417`). Tanglish/Tamil spellings provisional.
+- Control-flow additions:
+  - `loop` in `on` blocks and `fn` bodies - unrolled, sharing `repeat`'s
+    unroll budget.
+  - `sync loop` - clock-domain counter loop lowered onto the reg/process
+    machinery.
+  - `const if (cond) { ... }` - compile-time module-item conditional
+    (`E0811`).
+  - `default name <- expr` assignment (`E0809`/`E0810`).
+- Verilog FFI - `extern module Name(...) { ... }` declares the port shape
+  of real hand-written/vendor Verilog; scalar ports only (`E1301`/`E1302`);
+  simulator taints extern outputs unknown (`extern_sim = warn|strict` in
+  `mimz.toml`); companion `.v` files join via `[compile] verilog_files`
+  and `--extern-src`.
+- CDC primitives - `sync.double_flop(...)` / `sync.pulse(...)` for
+  clock-domain crossings, 1-bit only with a metastability guard
+  (`E0702`-`E0705`, parser `E1116`); spec section 1.2b.
+- New builtins - `clog2(n)` (`E0420`: cannot size a port - Verilog-2005
+  port lists cannot call constant functions), `encoding(e)` enum-to-bits
+  cast, `assert(cond [, "msg"])` hard runtime invariants,
+  `cover(cond [, "label"])` coverage hit counters.
+- Wide constants - compile-time values are arbitrary-width; decimal
+  literals and const-folding work past 128 bits, wide `match`
+  exhaustiveness no longer overflows.
+
+Tooling:
+
+- `mimz test --emulate` - `sim` blocks bind ports to virtual peripherals
+  (`led`, `uart_tx`, `uart_rx`, `speaker`) with real-time pacing, a
+  terminal dashboard, UART TCP sockets, and host audio (`cpal`). Opt-in;
+  auto-degrades outside a TTY.
+- New CLI commands - `init`, `doctor`, `completions`, `eject std`,
+  `check --watch`; restructured colorized help.
+- Embedded standard library - `std.*` imports with trilingual routing;
+  `mimz eject std` vendors the sources; first modules shipped (debouncer).
+- LSP upgrades - hover, go-to-definition, completion (was diagnostics-only
+  in v0.1.0).
+- Packages/namespacing - qualified references (`Module.item`), per-file
+  uniqueness, import resolution with ambiguity diagnostics
+  (`E0110`/`E0111`).
+- Parser error recovery - placeholder nodes give multi-error reporting
+  instead of fail-on-first.
 
 ### Changed
 
-- **BREAKING:** `<<` is now lossless, like `+`/`-`/`*`: `bits[W] << k`
-  (constant `k`) is `bits[W+k]`, and a runtime shift amount grows by its
-  own worst case (`2^N - 1` for a `bits[N]` amount) - the declared type
-  now bounds every value the shift could produce, matching the language's
-  "safe by default" rule for every other lossless operator. Previously
-  `<<` silently kept its left operand's width, which could drop the very
-  bits real Verilog's own `<<` produces (BUG-30/BUG-11,
-  `docs/audit/bugs.md`). `>>` is unchanged - right-shifting only ever
-  reduces magnitude, so it never needed to grow. A shift-register/
-  barrel-shifter idiom that re-shifts a value repeatedly now needs an
-  explicit `trunc` back down at each use; the E0401 diagnostic and
-  `docs/guide/05-operators.md` section Shifts both explain the growth rule at
-  the point of failure.
+- **BREAKING:** `<<` is now lossless like `+`/`-`/`*`: `bits[W] << k` is
+  `bits[W+k]`; a runtime shift amount grows by its own worst case
+  (`2^N - 1` for a `bits[N]` amount). Previously `<<` silently kept its
+  left operand's width and could drop bits real Verilog's own `<<`
+  produces (BUG-30/BUG-11). `>>` is unchanged. Re-shifting idioms need an
+  explicit `trunc`; `E0401` explains the growth rule at the point of
+  failure.
+- **BREAKING:** thirteen words became active keywords: `fn`, `sync`,
+  `default`, `extern` (previously reserved - safe), plus `bundle`, `loop`,
+  `foreach`, `return`, `assert`, `cover`, `sim`, `bind`, `speed` (not
+  previously reserved). A v0.1.0 program using any of the latter nine as
+  an identifier now fails with `E1101` and must be renamed; `mimz
+translate` has no auto-migration for this yet.
+
+### Performance
+
+- `mimz compile` register bookkeeping behind an `Rc` - ~27x faster at
+  4000 registers (GAP-12).
+- Simulator skips timeline capture unless `--trace` is requested.
+
+### Security
+
+- `[lib] std` override in `mimz.toml` is sandboxed to the workspace root
+  (SEC-7).
 
 ### Fixed
 
-Eight rounds of adversarial review of the Verilog backend (`docs/audit/`, one
-`review-*.md` per round, with every reproduction quoted verbatim). Of the 73
-filed bug entries, **69 are fixed and 4 remain open** - all four MEDIUM, all
-compile-time refusals or simulator limitations, none a silent miscompile. The
-classes that mattered:
+Eight rounds of adversarial review of the Verilog backend (`docs/audit/`,
+one `review-*.md` per round). Ledger at this release: **74 bugs filed,
+67 fixed, 5 open**, plus two special cases - BUG-10 is half-fixed (see
+Known issues) and BUG-12 was re-filed under a later number.
 
-- **The width-rule family (34 of them, BUG-28 … BUG-68).** Every instance had
-  the same shape: two implementations of one width rule - checker, emitter,
-  simulator - disagreeing, with the emitter producing Verilog whose widths
-  didn't match what the checker had accepted. Round 8 was the first round in
-  the series that added no new instance.
-- **The self-determined-position hoist (BUG-63 … BUG-72).** A concat member, a
-  reduction operand, a `$signed`/`encoding` operand and six other positions each
-  need an explicitly-widened temporary in Verilog; the emitter now hoists one
-  for all of them, including symbolic (parameter) widths.
-- **Declaration order (BUG-70).** Instance output wires were declared inside the
-  window the hoist buffer flushes into, so an emitted design could reference a
-  wire before its own declaration - accepted by `mimz check`, exit 0 from
-  `mimz compile`, rejected by every real elaborator. Instance outputs are now
-  declared in a separate pass before the flush point.
-- **Testbench const scope (BUG-71).** `--emit-testbench` didn't see the DUT's
-  own file-level `const`s, so a `const if` silently took its `else` branch -
-  which could make the emitted testbench report the **opposite verdict** to
-  `mimz test`. This was the only silent divergence left at the end of the
-  series.
+- **Width-rule family (34 instances, BUG-28 .. BUG-68)** - checker, emitter,
+  and simulator each implemented some width rules separately and
+  disagreed; round 8 was the first round to add no new instance.
+- **Self-determined-position hoist (BUG-63 .. BUG-72)** - concat members,
+  reduction operands, `$signed`/`encoding` arguments and six other
+  positions now get an explicitly-widened temporary, including symbolic
+  (parameter) widths.
+- **Declaration order (BUG-70)** - instance outputs could be referenced
+  before their wire declaration (accepted by `mimz check`, rejected by
+  every real elaborator); now declared in a separate pass.
+- **Testbench const scope (BUG-71)** - `--emit-testbench` could take the
+  wrong `const if` branch and report the opposite verdict to `mimz test`;
+  the last silent divergence in the series.
 
-Guarding the same ground going forward: a runtime declaration-order invariant
-over every declared identifier in an emitted module; full `iverilog -g2005`
-elaboration of all 226 corpus files on every CI run; 90 emitted testbench
-modules asserted PASS under real `vvp`; and a 5000-seed differential fuzz
-against Icarus (`tools/gate.sh`).
+Guarding the same ground going forward:
+
+- Runtime declaration-order invariant over every emitted identifier.
+- Full `iverilog -g2005` elaboration of all 226 corpus files on CI.
+- 90 emitted testbench modules asserted PASS under real `vvp`.
+- 5000-seed differential fuzz against Icarus (`tools/gate.sh`).
 
 ### Known issues
 
-Every open bug, plus the gaps most likely to be met in practice. `docs/audit/gaps.md`
-is the full gap ledger - eight are open; the two HIGH ones and the two most
-user-visible MEDIUM ones are listed here.
+Ledger totals: eight open gaps (`docs/audit/gaps.md`), five open bugs
+(`docs/audit/bugs.md`). The ones most likely to be met:
 
-- **GAP-1** (HIGH, architectural) - no IR; width/kind semantics are implemented
-  three times over and kept in agreement by tests rather than by construction.
-  The root cause of the width-rule family above, and the v0.3 direction. Until
-  it lands, the claim "the compiler produces Verilog that matches its own type
-  system" is **not** made.
-- **GAP-20** (HIGH, testing) - the differential fuzz generator emits `reg`
-  resets and `mem` initialisers as literals, leaving those two render sites
-  outside the generated grammar. Needs a separate Icarus-only oracle path.
-- **GAP-8** (MEDIUM, language) - surface gaps met early: no division operator,
-  no attributes, no pipeline construct.
-- **GAP-2** (MEDIUM, simulator) - `mimz-sim` is 2-state with a whole-value
-  unknown flag; it does not model per-bit X propagation. Run the emitted
-  testbench under `vvp` when that distinction matters.
+- **GAP-1** (HIGH, architectural) - no IR; width/kind semantics implemented
+  three times over. Root cause of the width-rule family, and the v0.3
+  direction. The claim "Verilog matches its own type system" is **not** made.
+- **GAP-20** (HIGH, testing) - fuzz generator leaves `reg` resets / `mem`
+  initialisers outside the generated grammar; needs an Icarus-only oracle.
+- **GAP-8** (MEDIUM, language) - no division operator, attributes, or
+  pipelines.
+- **GAP-2** (MEDIUM, simulator) - simulator is 2-state; no per-bit X
+  propagation. Use `vvp` on the emitted testbench when that matters.
+- **BUG-10** (MEDIUM, half-fixed) - bundle-typed `fn` params flatten
+  correctly, returns get a diagnostic, but the real returns-side flattening
+  is still pending; avoid bundle-typed `fn` returns until closed.
 - **BUG-32** (MEDIUM) - `mem` lowers to an `initial` block: FPGA-only, not
-  ASIC-synthesizable, and unresettable.
-- **BUG-38** (MEDIUM) - `mimz-sim`'s combinational-only kernel rejects
-  enum-typed signals, ports and wires.
+  ASIC-synthesizable, unresettable.
+- **BUG-38** (MEDIUM) - simulator rejects enum-typed signals, ports, wires.
 - **BUG-39** (MEDIUM) - a `reg`'s reset value cannot be a payload-carrying
-  `EnumConstruct` expression.
-- **BUG-74** (MEDIUM) - an `if`/`match`-wrapped `EnumConstruct` passed directly
-  to `encoding()` is refused at compile time rather than lowered. Binding it to
-  a named `wire` first is unaffected.
+  `EnumConstruct`.
+- **BUG-74** (MEDIUM) - an `if`/`match`-wrapped `EnumConstruct` passed
+  directly to `encoding()` is refused; bind it to a named `wire` first.
+- **BUG-75** (LOW) - pretty-printer adds one parenthesization recursion
+  level the parser's depth limit doesn't expect; an expression parsed at
+  the exact ceiling may fail to re-parse after `mimz fmt`.
 
 ### Test suite
 
-- **1318 passing tests** across unit (lexer, parser, checker, emitter, morph,
-  sim, translate, grammar-sync, hardware-emulation) and integration (examples,
-  golden files, Icarus differential, fuzz corpus, self-determined regression,
-  external modules, packages, docs staleness guard).
-- **Golden-file pinning** - every example's Verilog output is byte-pinned in
-  `tests/golden/` (88 `.v` goldens: 71 module + 17 testbench); any emitter
-  regression is caught immediately.
-- **`tests/fixtures/errors/`** - corpus of 120 `.mimz` files that must produce a
-  specific E-code; adding a checker code without a fixture fails CI.
-- **`grammar_sync`** - asserts that `lang/keywords.toml`, `spec/03`, and the
-  TextMate grammar are mutually consistent; no stale keyword spellings.
-- **`docs_sync`** - asserts the test count in `docs/code/10-test-map.md` matches
-  the actual suite.
+- **1320 passing tests** across unit (lexer, parser, checker, emitter,
+  morph, sim, translate, grammar-sync, hardware-emulation) and integration
+  (examples, golden files, Icarus differential, fuzz corpus,
+  self-determined regression, external modules, packages, lab lessons,
+  docs staleness guard).
+- **Golden-file pinning** - example Verilog byte-pinned in `tests/golden/`
+  (87 `.v` goldens: 70 module + 17 testbench).
+- **`tests/fixtures/errors/`** - 121 `.mimz` files that must produce a
+  specific E-code; a checker code without a fixture fails CI.
+- **`grammar_sync`** - `lang/keywords.toml`, `spec/03`, and the TextMate
+  grammar asserted mutually consistent.
+- **`docs_sync`** - the test count in `docs/code/10-test-map.md`, the
+  README badge, and `ROADMAP.md` must match the live suite.
 
 ---
 
