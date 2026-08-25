@@ -12,7 +12,7 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ---
 
-## [0.2.0] - 2026-08-24 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
+## [0.2.0] - 2026-08-29 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
 > **Tag pending** - content frozen after the round-9 release gate went green
 > (8/8, 2026-08-20), then amended 2026-08-24 to fold in post-gate items

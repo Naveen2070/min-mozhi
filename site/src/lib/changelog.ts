@@ -4,7 +4,7 @@
 // to a GitHub diff, so the changelog is the source and the diff link is the
 // fallback for people who actually want commits.
 //
-// The file is sectioned as:  ## [0.2.0] - 2026-08-24 · Language edition: …
+// The file is sectioned as:  ## [0.2.0] - 2026-08-29 · Language edition: …
 // Everything up to the next `## [` heading belongs to that version.
 import { readFileSync } from "node:fs";
 import path from "node:path";
