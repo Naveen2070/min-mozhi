@@ -19,7 +19,7 @@
 | 1.8   | Grammar Engine (Tamil word order) | ✅ Complete                              | 2026-06-16 |
 | 1.5   | Own Simulator                     | ✅ Complete                              | 2026-06-22 |
 | **→** | **v0.1.0 public release**         | ✅ Complete                              | 2026-06-24 |
-| **→** | **v0.2.0 public release**         | 🟡 Prepared (tag pending)                | 2026-08-20 |
+| **→** | **v0.2.0 public release**         | 🟡 Prepared (tag pending)                | 2026-08-29 |
 | 2     | IR + Synthesis (Yosys/nextpnr)    | 🟡 In progress (language-features track) | -          |
 | 3     | Native FPGA bitstream             | ⏳ Planned                               | -          |
 | 4     | Ecosystem, stdlib, community      | ⏳ Ongoing                               | -          |

@@ -41,7 +41,7 @@ export const releases: Release[] = [
   {
     tag: "v0.2.0",
     name: "Wingless Butterfly",
-    date: "2026-08-24",
+    date: "2026-08-29",
     assets: STANDARD_ASSETS,
   },
   {
