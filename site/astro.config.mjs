@@ -8,6 +8,7 @@ import sitemap from "@astrojs/sitemap";
 import vercel from "@astrojs/vercel";
 import tailwindcss from "@tailwindcss/vite";
 import { unified } from "@astrojs/markdown-remark";
+import pagefind from "astro-pagefind";
 
 import rehypeDocLinks from "./src/lib/rehype-doc-links.mjs";
 import rehypeCodeCopy from "./src/lib/rehype-code-copy.mjs";
@@ -34,7 +35,7 @@ export default defineConfig({
   site: "https://mimz.naveenr.in",
 
   adapter: vercel(),
-  integrations: [react(), sitemap()],
+  integrations: [react(), sitemap(), pagefind()],
 
   vite: {
     plugins: [tailwindcss()],
