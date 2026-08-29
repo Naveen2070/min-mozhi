@@ -16,8 +16,10 @@ Compiler versions follow [SemVer](https://semver.org).
 
 > **Tag pending** - content frozen after the round-9 release gate went green
 > (8/8, 2026-08-20), then amended 2026-08-24 to fold in post-gate items
-> (diagnostic `E0420`, open bug `BUG-75`, test-count sync 1318 -> 1320).
-> Cut the tag on master HEAD when publishing.
+> (diagnostic `E0420`, open bug `BUG-75`, test-count sync 1318 -> 1320), and
+> 2026-08-29 to fold in `BUG-76` (fuzzer-found emitter panic) and a musl
+> release-build fix (test-count sync 1320 -> 1321). Cut the tag on master
+> HEAD when publishing.
 
 Keyword-set **version** stays `v1`, so this is not a new language edition -
 but thirteen reserved words were **activated**, and nine of them break
@@ -126,8 +128,8 @@ translate` has no auto-migration for this yet.
 ### Fixed
 
 Eight rounds of adversarial review of the Verilog backend (`docs/audit/`,
-one `review-*.md` per round). Ledger at this release: **74 bugs filed,
-67 fixed, 5 open**, plus two special cases - BUG-10 is half-fixed (see
+one `review-*.md` per round). Ledger at this release: **75 bugs filed,
+68 fixed, 5 open**, plus two special cases - BUG-10 is half-fixed (see
 Known issues) and BUG-12 was re-filed under a later number.
 
 - **Width-rule family (34 instances, BUG-28 .. BUG-68)** - checker, emitter,
@@ -143,6 +145,11 @@ Known issues) and BUG-12 was re-filed under a later number.
 - **Testbench const scope (BUG-71)** - `--emit-testbench` could take the
   wrong `const if` branch and report the opposite verdict to `mimz test`;
   the last silent divergence in the series.
+- **Sibling same-named local enums (BUG-76, post-gate)** - two different
+  modules in one file each declaring their own `enum State { .. }` (an
+  ordinary FSM pattern) panicked the emitter; it now resolves a module's
+  own local enums before the project-wide table, matching the checker's
+  existing scoping rule.
 
 Guarding the same ground going forward:
 
@@ -181,7 +188,7 @@ Ledger totals: eight open gaps (`docs/audit/gaps.md`), five open bugs
 
 ### Test suite
 
-- **1320 passing tests** across unit (lexer, parser, checker, emitter,
+- **1321 passing tests** across unit (lexer, parser, checker, emitter,
   morph, sim, translate, grammar-sync, hardware-emulation) and integration
   (examples, golden files, Icarus differential, fuzz corpus,
   self-determined regression, external modules, packages, lab lessons,
@@ -194,6 +201,21 @@ Ledger totals: eight open gaps (`docs/audit/gaps.md`), five open bugs
   grammar asserted mutually consistent.
 - **`docs_sync`** - the test count in `docs/code/10-test-map.md`, the
   README badge, and `ROADMAP.md` must match the live suite.
+
+### CI / Infrastructure
+
+- **`release.yml` musl build fix** - the `x86_64-unknown-linux-musl`
+  release target failed: `hw-emulation` (default feature) pulls `cpal`,
+  which needs `pkg-config`/ALSA dev headers that don't cross-compile for
+  musl. That target now builds `--no-default-features --features
+lsp,bench,watch` instead. **Consequence: the released Linux (musl)
+  binary ships without `mimz test --emulate`** (dashboard + `speaker`
+  audio) - `--emulate` still parses but errors at runtime ("hardware
+  emulation is disabled in this build"). Windows (MSVC) and macOS
+  (Intel + Apple Silicon) release binaries are unaffected and keep every
+  default feature. `mimz-sim` gained a headless `NullHost` (its own
+  `EmulationHost` trait's null implementor) so the shell crate compiles
+  cleanly either way.
 
 ---
 

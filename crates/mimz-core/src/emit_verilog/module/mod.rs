@@ -77,12 +77,12 @@ pub(super) fn build_cover_ordinals(items: &[ModuleItem]) -> HashMap<usize, usize
         .collect()
 }
 
-impl Emitter<'_> {
+impl<'a> Emitter<'a> {
     /// Emit one complete Verilog module. Source order inside the module
     /// body is free; output is regrouped into the conventional Verilog
     /// order: header/params/ports → enum localparams → wire/reg
     /// declarations → instances → assigns → always-blocks.
-    pub(super) fn module(&mut self, m: &Module) {
+    pub(super) fn module(&mut self, m: &'a Module) {
         self.check_ascii(&m.name);
         self.clog2_fn_used = false;
         self.funcs_used.clear();
@@ -91,6 +91,14 @@ impl Emitter<'_> {
         self.pre_decl_hoisted_decls.clear();
         self.in_pre_decl_render = false;
         self.declared_signal_names.clear();
+        self.cur_module_enums = m
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ModuleItem::Enum(e) => Some((e.name.name.clone(), e)),
+                _ => None,
+            })
+            .collect();
 
         // Module-level consts layer onto the file consts for the duration
         // of this module; they fold to literals wherever used (widths,

@@ -76,3 +76,43 @@ pub trait EmulationHost {
     /// headless host does its cleanup and returns `Ok(false)`.
     fn finish(&mut self) -> Result<bool, String>;
 }
+
+/// A headless/null emulation host that rejects all peripherals.
+/// Useful as a fallback when the shell crate is built without the
+/// `hw-emulation` feature, or for pure programmatic execution.
+pub struct NullHost;
+
+impl EmulationHost for NullHost {
+    fn bind(
+        &mut self,
+        _port: &str,
+        _peripheral: &str,
+        _width: Width,
+        _args: &[BindArg],
+        _speed_hz: Option<u64>,
+    ) -> Result<(), String> {
+        Err("hardware emulation is disabled in this build".to_string())
+    }
+
+    fn direction_of(&self, _name: &str) -> Option<Direction> {
+        None
+    }
+
+    fn on_change(&mut self, _name: &str, _val: &Val) {}
+
+    fn on_tick(&mut self, _name: &str, _val: &Val) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn drive(&mut self, _name: &str) -> Option<u64> {
+        None
+    }
+
+    fn frame(&mut self, _cycle: u64) -> Result<bool, String> {
+        Ok(false)
+    }
+
+    fn finish(&mut self) -> Result<bool, String> {
+        Ok(false)
+    }
+}

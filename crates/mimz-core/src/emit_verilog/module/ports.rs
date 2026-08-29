@@ -1,6 +1,6 @@
 use super::*;
 
-impl Emitter<'_> {
+impl<'a> Emitter<'a> {
     /// Render an assignment target: `name`, `name[i]`, or `name[hi:lo]`.
     /// Indices fold at compile time, so a `repeat`-driven `sum[i]` lands as
     /// `sum[2]`.
@@ -74,7 +74,7 @@ impl Emitter<'_> {
                 format!("signed [({we})-1:0] ")
             }
             Type::Named(id) => {
-                if let Some(e) = self.project.resolve_enum(id) {
+                if let Some(e) = self.resolve_enum(id) {
                     let w = e
                         .inferred_total_width
                         .get()
@@ -434,6 +434,28 @@ impl Emitter<'_> {
         }
     }
 
+    /// Resolve `id` to its `EnumDecl`: the CURRENT module's own local
+    /// `enum` first, falling back to `Project::resolve_enum`'s file/
+    /// project-wide table — mirrors `Checker::lookup_enum`'s exact
+    /// module-scope-first algorithm (`checker/names/resolve.rs`), which
+    /// the checker itself already uses for this same `Type::Named` lookup.
+    ///
+    /// `Project::resolve_enum` alone is wrong here: two sibling modules in
+    /// one file each declaring their own `enum State { .. }` (an ordinary
+    /// FSM pattern, and completely unambiguous in each module's own scope)
+    /// both land in `Project::enums` under the shared key `"State"`, so
+    /// `Project::resolve_enum`'s 2+-same-file-candidates check reports a
+    /// false ambiguity and returns `None` for BOTH — which `resolved_kind`
+    /// below then misreads as "not an enum, must be a nested bundle" and
+    /// panics. Checking `self.cur_module_enums` first resolves the
+    /// reference correctly before that ambiguity table is ever consulted.
+    fn resolve_enum(&self, id: &QualIdent) -> Option<&'a EnumDecl> {
+        self.cur_module_enums
+            .get(&id.name.name)
+            .copied()
+            .or_else(|| self.project.resolve_enum(id))
+    }
+
     /// Like `resolved_kind`, but against an EXPLICIT env instead of
     /// `self.env`, and returns `None` (rather than panicking) for
     /// `Bundle`/`Array` — `resolved_kind`'s own panics assume its only
@@ -462,7 +484,7 @@ impl Emitter<'_> {
                 signed: true,
             }),
             Type::Named(id) => {
-                let en = self.project.resolve_enum(id)?;
+                let en = self.resolve_enum(id)?;
                 Some(Kind {
                     width: en.inferred_total_width.get()?,
                     signed: false,
@@ -495,7 +517,7 @@ impl Emitter<'_> {
                 signed: true,
             }),
             Type::Named(id) => {
-                if let Some(en) = self.project.resolve_enum(id) {
+                if let Some(en) = self.resolve_enum(id) {
                     Some(Kind {
                         width: en.inferred_total_width.get().expect(
                             "inferred_total_width not set — checker must run before emitter",

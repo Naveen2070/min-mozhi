@@ -196,6 +196,7 @@ pub fn emit_testbench(
         fn_hoisted_stmts: Vec::new(),
         cover_ordinals: HashMap::new(),
         declared_signal_names: std::collections::HashSet::new(),
+        cur_module_enums: HashMap::new(),
     };
 
     em.out.push_str(&format!(
@@ -329,6 +330,19 @@ pub fn emit_testbench(
         // this function's single source of truth for the DUT's item list
         // from here on; `dut.items` itself must not be read again below.
         let flat_dut_items = em.flatten_items(&dut.items);
+        // Installs the DUT's own local enums the same way `module()` does
+        // (`mod.rs::Emitter::cur_module_enums`), so a `build_decls` call
+        // below that hits a `State`-typed field resolves against THIS DUT's
+        // own `enum State`, not a same-named enum some sibling module
+        // happens to also declare.
+        em.cur_module_enums = dut
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                ModuleItem::Enum(e) => Some((e.name.name.clone(), e)),
+                _ => None,
+            })
+            .collect();
         em.cur_decls = std::rc::Rc::new(em.build_decls(&flat_dut_items));
 
         let mut dut_connections = Vec::new();

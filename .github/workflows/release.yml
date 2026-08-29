@@ -67,7 +67,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build (release, mimz only)
-        run: cargo build --release --bin mimz --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.musl }}" == "true" ]; then
+            cargo build --release --bin mimz --target ${{ matrix.target }} --no-default-features --features lsp,bench,watch
+          else
+            cargo build --release --bin mimz --target ${{ matrix.target }}
+          fi
 
       # No iverilog / differential here — correctness is already gated by `ci.yml`.
       # This only confirms the produced binary actually runs.

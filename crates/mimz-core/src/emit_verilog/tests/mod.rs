@@ -10,6 +10,7 @@ mod consts_scoping;
 mod extern_and_arrays;
 mod fn_loop;
 mod hoist_declaration_order;
+mod module_scoped_enums;
 mod structural_match;
 mod valid_bundle_sugar;
 
@@ -70,5 +71,6 @@ fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
         fn_hoisted_stmts: Vec::new(),
         cover_ordinals: HashMap::new(),
         declared_signal_names: std::collections::HashSet::new(),
+        cur_module_enums: HashMap::new(),
     }
 }

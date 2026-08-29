@@ -42,6 +42,7 @@ fn test_emitter<'a>(project: &'a Project<'a>) -> Emitter<'a> {
         fn_hoisted_stmts: Vec::new(),
         cover_ordinals: HashMap::new(),
         declared_signal_names: std::collections::HashSet::new(),
+        cur_module_enums: HashMap::new(),
     }
 }
 

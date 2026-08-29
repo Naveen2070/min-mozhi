@@ -47,9 +47,10 @@ for new features, and nine of them break v0.1.0 identifiers (see _Breaking_).
 ## Correctness
 
 Between v0.1.0 and this release the Verilog backend went through eight rounds
-of adversarial review (`docs/audit/`). Seventy-four bugs were filed;
-sixty-seven are fixed and five remain open, with BUG-10 half-fixed (its
-params side landed, the returns-side flattening did not). Thirty-four of the
+of adversarial review (`docs/audit/`), plus one post-gate fuzzer find
+(BUG-76). Seventy-five bugs were filed; sixty-eight are fixed and five
+remain open, with BUG-10 half-fixed (its params side landed, the
+returns-side flattening did not). Thirty-four of the
 defects found were one family - two implementations of a single width rule
 disagreeing - and round 8 was the first round that added none to it.
 
@@ -102,6 +103,13 @@ ones and the most user-visible MEDIUM ones are listed here.
   parenthesization recursion level the parser's depth limit doesn't expect; an
   expression parsed exactly at the ceiling may fail to re-parse after
   formatting.
+- **Linux (musl) release binary ships without `--emulate`.** `hw-emulation`
+  (dashboard + `speaker` audio) needs `cpal`, which needs ALSA dev headers
+  that don't cross-compile for musl in CI - so that one binary is built
+  `--no-default-features --features lsp,bench,watch`. `--emulate` still
+  parses but errors at runtime. Windows and macOS release binaries are
+  unaffected. Build from source with default features for the full set on
+  Linux.
 
 Of the five open bugs, four are compile-time refusals or simulator limitations;
 the remaining two items (BUG-10's pending half, BUG-75) are an emitter

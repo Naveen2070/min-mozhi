@@ -19,7 +19,7 @@ entries to the last range file and a row here.**
 | BUG-41–50 | [`bugs/bug-41-50.md`](bugs/bug-41-50.md) | 10      |
 | BUG-51–60 | [`bugs/bug-51-60.md`](bugs/bug-51-60.md) | 10      |
 | BUG-61–70 | [`bugs/bug-61-70.md`](bugs/bug-61-70.md) | 10      |
-| BUG-71–80 | [`bugs/bug-71-80.md`](bugs/bug-71-80.md) | 5       |
+| BUG-71–80 | [`bugs/bug-71-80.md`](bugs/bug-71-80.md) | 6       |
 
 ## Every bug
 
@@ -102,6 +102,7 @@ records.
 | **BUG-73** | 🟠 HIGH     | FIXED 2026-08-19                                                                      | [a bundle-typed `wire`'s per-field flattened name can collide with an existing port/wire/reg, producing a self-referential `assign` and a duplicate-declaration elaboration failure](bugs/bug-71-80.md#bug-73-high-fixed-2026-08-19--a-bundle-typed-wires-per-field-flattened-name-can-collide-with-an-existing-portwirereg-producing-a-self-referential-assign-and-a-duplicate-declaration-elaboration-failure) |
 | **BUG-74** | 🟡 MEDIUM   | OPEN                                                                                  | [an `if`/`match`-wrapped `EnumConstruct` as a self-determined-position argument reaches `hoist_unresolved`'s fallback](bugs/bug-71-80.md#bug-74-medium-open--an-ifmatch-wrapped-enumconstruct-as-a-self-determined-position-argument-reaches-hoist_unresolveds-fallback)                                                                                                                                         |
 | **BUG-75** | ⚪ LOW      | OPEN                                                                                  | [`operand()`'s unconditional Binary-parenthesization adds one recursion level the printer doesn't charge against the parser's own `MAX_DEPTH`](bugs/bug-71-80.md#bug-75-low-open--operands-unconditional-binary-parenthesization-adds-one-recursion-level-the-printer-doesnt-charge-against-the-parsers-own-max_depth-so-an-expression-parsed-right-at-the-ceiling-fails-to-reparse-after-pretty-printing)       |
+| **BUG-76** | 🟡 MEDIUM   | FIXED 2026-08-29                                                                      | [Two sibling modules each declaring their own same-named local `enum` panicked the emitter, misreporting itself as an unsupported nested bundle](bugs/bug-71-80.md#bug-76-medium-fixed-2026-08-29--two-sibling-modules-each-declaring-their-own-same-named-local-enum-panicked-the-emitter-misreporting-itself-as-an-unsupported-nested-bundle)                                                                  |
 
 ## Still open
 
