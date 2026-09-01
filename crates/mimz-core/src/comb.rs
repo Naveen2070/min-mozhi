@@ -16,7 +16,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use mimz_core::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
+use crate::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 
 // BUG-43 (docs/audit/bugs.md): this file used to carry its own
 // byte-identical copy of a zero-padding `remask_to_width`. The one rule
@@ -24,7 +24,7 @@ use mimz_core::ast::{self, Dir, Expr, FuncDecl, ModuleItem};
 // source instead of dropping its sign — three copies of one resize rule
 // was the same drift surface GAP-1 describes.
 use super::value::{self, Resolver, Val, resize_to_width};
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 /// Flatten `const if` nodes in `items`, evaluating conditions against `ints`.
 /// Items from winning branches replace the ConstIf node; losing branches drop.
@@ -107,8 +107,7 @@ pub fn eval_outputs(
 ) -> Result<Vec<Output>, Box<Diag>> {
     let file = files.first().ok_or_else(|| {
         Box::new(
-            Diag::new(mimz_core::span::Span::default(), "eval_outputs: no files")
-                .with_code("S0230"),
+            Diag::new(crate::span::Span::default(), "eval_outputs: no files").with_code("S0230"),
         )
     })?;
     let m = value::pick_module(file, module)?;
@@ -442,7 +441,7 @@ impl Env<'_> {
         if self.in_progress.iter().any(|n| n == name) {
             return Err(Box::new(
                 Diag::new(
-                    mimz_core::span::Span::default(),
+                    crate::span::Span::default(),
                     format!(
                         "combinational cycle through `{name}` — feedback must pass through a register"
                     ),
@@ -453,7 +452,7 @@ impl Env<'_> {
         let driver = self.drivers.get(name).ok_or_else(|| {
             Box::new(
                 Diag::new(
-                    mimz_core::span::Span::default(),
+                    crate::span::Span::default(),
                     format!("signal `{name}` is never driven"),
                 )
                 .with_code("S0237"),
@@ -485,7 +484,7 @@ impl Resolver for Env<'_> {
             // instead of always discarding it down to a plain message —
             // `eval`'s `Ident` arm recovers it via `diag_from_bridged`.
             self.resolve(name).map_err(|e| match e.code {
-                Some(code) => crate::sim::diag::bridge_code(code, &e.msg),
+                Some(code) => crate::diag::bridge_code(code, &e.msg),
                 None => e.msg,
             })
         } else if let Some(v) = self.ints.get(name) {
@@ -507,7 +506,7 @@ mod tests {
     use super::*;
 
     fn parse(src: &str) -> ast::File {
-        mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses")
+        crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses")
     }
 
     fn ins(pairs: &[(&str, u128)]) -> BTreeMap<String, value::Bits> {
@@ -901,12 +900,11 @@ module M {\n\
     fn eval_outputs_handles_a_wide_input() {
         let src =
             "module M(WIDTH: int = 200) {\n  in a: bits[WIDTH]\n  out b: bits[WIDTH]\n  b = a\n}\n";
-        let f =
-            mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses");
+        let f = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
         let mut inputs = std::collections::BTreeMap::new();
         inputs.insert(
             "a".to_string(),
-            super::value::Bits::Wide(crate::sim::wide::from_u128(123, 200)),
+            super::value::Bits::Wide(crate::wide::from_u128(123, 200)),
         );
         let outputs = eval_outputs(&[f], Some("M"), &inputs, &std::collections::BTreeMap::new())
             .expect("eval_outputs");
@@ -916,7 +914,7 @@ module M {\n\
             .expect("declares b");
         assert_eq!(
             b.value,
-            super::value::Bits::Wide(crate::sim::wide::from_u128(123, 200))
+            super::value::Bits::Wide(crate::wide::from_u128(123, 200))
         );
     }
 }
