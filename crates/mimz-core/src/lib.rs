@@ -26,6 +26,7 @@ pub mod bits;
 pub mod checker;
 pub mod comb;
 pub mod diag;
+pub mod elaborate;
 pub mod emit_verilog;
 pub mod explain;
 pub mod lexer;
