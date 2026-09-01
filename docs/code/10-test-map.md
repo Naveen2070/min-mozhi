@@ -22,12 +22,15 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1321 tests** as of 2026-08-29 (`cargo test --workspace`; the count is
-re-derived from source by `tests/docs_sync.rs`, so this page must track it):
+**1331 tests** as of 2026-09-01 (`cargo test --workspace`; the count is
+re-derived from source by `tests/docs_sync.rs`, so this page must track it —
++10 vs. 2026-08-29, from Phase 2 IR work in progress on `phase-2-ir`,
+`crates/mimz-core/src/ir/tests/` (`lower_basic`, `lower_binops`,
+`lower_unary_concat_slice`, `lower_mux`) - see `docs/plan/phase-2-ir-plan.local.md`):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      679 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      771 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |      172 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
