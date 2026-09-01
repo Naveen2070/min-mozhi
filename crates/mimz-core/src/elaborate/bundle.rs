@@ -44,7 +44,7 @@ pub(super) fn bundle_type_info(
 /// - If `expr` is an `Ident` (a bundle signal reference), returns `expr.field`
 ///   (dot-access, which `Rw::field` will flatten to `ident_fieldname`).
 /// - Otherwise, falls back to a dot-access node.
-pub(super) fn bundle_field_expr(expr: &Expr, field: &str, span: mimz_core::span::Span) -> Expr {
+pub(super) fn bundle_field_expr(expr: &Expr, field: &str, span: crate::span::Span) -> Expr {
     // OR-mux form: `lhs ?? rhs` where both operands (and the result) stay
     // bundle-typed. `merged.valid = lhs.valid || rhs.valid` (built as
     // `if lhs.valid { true } else { rhs.valid }`); every other field is

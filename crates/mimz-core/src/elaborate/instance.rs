@@ -1,7 +1,7 @@
 use super::module::elaborate_module;
 use super::registry::resolve_target;
 use super::*;
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 /// The flat pieces one instance contributes to its parent.
 #[derive(Default)]
