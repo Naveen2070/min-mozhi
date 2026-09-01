@@ -1,5 +1,5 @@
 use super::*;
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 /// Builds an [`Rw`] from individual field borrows (not a `&self` method) so
 /// callers can hold it alongside `&mut self.comb` in one statement.
@@ -247,7 +247,7 @@ impl<'a> Elaboration<'a> {
         &self,
         ty: &ast::Type,
         ints: &BTreeMap<String, i128>,
-        span: mimz_core::span::Span,
+        span: crate::span::Span,
     ) -> Result<Width, Box<Diag>> {
         if let ast::Type::Named(n) = ty {
             let e = self.enums.get(&n.name.name).ok_or_else(|| {
@@ -371,7 +371,7 @@ impl<'a> Elaboration<'a> {
         body_it: &'a ModuleItem,
         ci: &BTreeMap<String, i128>,
         subst: &HashMap<String, Expr>,
-        enclosing_span: mimz_core::span::Span,
+        enclosing_span: crate::span::Span,
     ) -> Result<(), Box<Diag>> {
         match body_it {
             ModuleItem::Inst(inst) => {
@@ -897,7 +897,7 @@ pub(super) fn elaborate_module(
     // references consistent below. `expanded_items` must outlive the whole
     // function since `work` holds `&ModuleItem` borrows into it, same as
     // `lowered_sync_loops`/`lowered_foreach` below.
-    let expanded_items: Vec<ModuleItem> = mimz_core::ast::expand_sync_prims(&m.items);
+    let expanded_items: Vec<ModuleItem> = crate::ast::expand_sync_prims(&m.items);
     let (lowered_sync_loops, lowered_foreach) = e.lower_items(&expanded_items);
 
     let work: Vec<&ModuleItem> = expanded_items

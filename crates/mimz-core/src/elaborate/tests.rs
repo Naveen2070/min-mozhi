@@ -1,7 +1,7 @@
 use super::*;
 
 fn parse(src: &str) -> ast::File {
-    mimz_core::parser::parse(mimz_core::lexer::lex(src).expect("lexes")).expect("parses")
+    crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses")
 }
 
 fn design(src: &str) -> Design {
@@ -51,7 +51,7 @@ fn elaborates_the_counter() {
                 bits: 8,
                 signed: false
             },
-            reset: mimz_core::checker::consteval::ConstVal::zero(),
+            reset: crate::checker::consteval::ConstVal::zero(),
             clock: "clk".into(),
             edge: Edge::Rise,
         }]
@@ -99,7 +99,7 @@ fn reg_takes_a_nonzero_folded_reset_value() {
     );
     assert_eq!(
         d.regs[0].reset,
-        mimz_core::checker::consteval::ConstVal::from_i128(5)
+        crate::checker::consteval::ConstVal::from_i128(5)
     );
     assert_eq!(d.regs[0].clock, "clk");
 }
@@ -271,7 +271,7 @@ fn elaborates_an_enum_signal_and_match() {
     );
     let st = d.regs.iter().find(|r| r.name == "st").expect("reg st");
     assert_eq!(st.width.bits, 1);
-    assert_eq!(st.reset, mimz_core::checker::consteval::ConstVal::zero());
+    assert_eq!(st.reset, crate::checker::consteval::ConstVal::zero());
     assert!(d.comb.contains_key("o"));
 }
 
@@ -449,80 +449,14 @@ fn an_i128_min_const_elaborates_without_overflow() {
 }
 
 // --- `sync loop` elaboration timing (Task 10) ---
-
-fn sim(src: &str) -> super::super::kernel::Sim {
-    super::super::kernel::Sim::new(design(src))
-}
-
-/// `start` pulsed for one cycle → `done` pulses exactly `hi - lo + 1`
-/// cycles later (counting the cycle `start` was sampled as cycle 1); a
-/// held-high `start` does not re-trigger the run mid-flight, because the
-/// lowered FSM only samples `start` from its idle branch (see
-/// `ast::sync_loop_lower::lower_sync_loop`'s `running_r` gate) — while
-/// `running_r` is set, the running branch never re-reads `start` at all.
-/// This exercises the lowered `Reg`/`On` items flowing through the real
-/// `kernel::Sim`, i.e. `kernel.rs`'s existing `tick_edge` dispatch with
-/// zero changes to that file.
-#[test]
-fn sync_loop_timing_and_no_mid_run_retrigger() {
-    let mut s = sim(
-        "module M {\n  clock clk\n  reset rst\n  sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 0 {\n    result <- result + 1\n  }\n}\n",
-    );
-    use super::super::value::Bits;
-    s.set("rst", Bits::Small(1)).unwrap();
-    s.tick("clk").unwrap();
-    s.set("rst", Bits::Small(0)).unwrap();
-    s.set("s_start", Bits::Small(1)).unwrap();
-    s.tick("clk").unwrap(); // idle -> running, cnt = lo = 0
-    s.set("s_start", Bits::Small(1)).unwrap(); // held high through the run — must not re-trigger
-    for _ in 0..3 {
-        assert_eq!(
-            s.peek("s_done").unwrap(),
-            Bits::Small(0),
-            "must not pulse done before hi - lo cycles elapse"
-        );
-        s.tick("clk").unwrap();
-    }
-    assert_eq!(
-        s.peek("s_done").unwrap(),
-        Bits::Small(0),
-        "still one cycle short of hi - lo + 1"
-    );
-    s.tick("clk").unwrap();
-    assert_eq!(
-        s.peek("s_done").unwrap(),
-        Bits::Small(1),
-        "done must pulse exactly hi - lo + 1 cycles after start was sampled"
-    );
-    assert_eq!(s.peek("s_result").unwrap(), Bits::Small(4));
-}
-
-/// Final whole-branch review, Finding 1: a `SyncLoop` nested inside a
-/// `const if` winning branch is checker-accepted (`checker::names`
-/// recurses into `ConstIf` branches when declaring names) and
-/// emitter-supported (`emit_verilog::module::flatten_items` recurses the
-/// same way) — the simulator must lower it too, instead of pushing the
-/// raw `SyncLoop` node onto the worklist where it hits the `unreachable!()`
-/// arm. Regression for the pre-fix panic (`elaborate_module`'s
-/// `lowered_sync_loops` only scanned direct `m.items` children).
-#[test]
-fn sync_loop_nested_in_const_if_elaborates_and_ticks() {
-    let mut s = sim("module M {\n  clock clk\n  reset rst\n  \
-             const if (1) {\n    \
-             sync loop s on rise(clk) (i: 0..4) -> result: bits[4] = 0 {\n      result <- result + 1\n    }\n  \
-             }\n}\n");
-    use super::super::value::Bits;
-    s.set("rst", Bits::Small(1)).unwrap();
-    s.tick("clk").unwrap();
-    s.set("rst", Bits::Small(0)).unwrap();
-    s.set("s_start", Bits::Small(1)).unwrap();
-    s.tick("clk").unwrap();
-    for _ in 0..4 {
-        s.tick("clk").unwrap();
-    }
-    assert_eq!(s.peek("s_done").unwrap(), Bits::Small(1));
-    assert_eq!(s.peek("s_result").unwrap(), Bits::Small(4));
-}
+//
+// The two kernel-driven timing tests for this section (exercising the
+// lowered FSM's `s_start`/`s_done` cycle-by-cycle behavior via a live
+// `kernel::Sim`) live in `mimz-sim/src/sim/kernel.rs`'s test module instead
+// of here: `kernel::Sim` is a `mimz-sim`-only type (elaborate/tests.rs now
+// lives in mimz-core, which cannot depend on mimz-sim), so a test that
+// needs to *tick* a design belongs with the kernel, not the elaborator.
+// This module keeps only the elaboration-only case below (no ticking).
 
 /// Same as above, but the `SyncLoop` sits in the `const if`'s losing
 /// branch — the winning (`else`) branch has no `SyncLoop` at all, so
@@ -540,62 +474,8 @@ fn sync_loop_in_const_if_losing_branch_is_not_lowered() {
 }
 
 // ---- BUG-15: bundle-field expansion at instance ports / fn call args ----
-
-#[test]
-fn bundle_typed_instance_input_port_connection_flattens_per_field() {
-    // A bundle-typed wire connected to a bundle-typed instance input port
-    // used to fail entirely: the child's flattened field names
-    // (`req_valid`/`req_data`) never matched the user-written connection's
-    // port name (`req`), so the "input is not connected" error always fired.
-    use super::super::value::Bits;
-    let mut s = super::super::kernel::Sim::new(
-        elaborate(
-            &parse(
-                "bundle Handshake(W: int = 8) {\n  valid: bit\n  data: bits[W]\n}\n\
-                 module Child {\n  in req: Handshake(W: 8)\n  out y: bits[8]\n  \
-                 y = if req.valid { req.data } else { 0 }\n}\n\
-                 module Parent {\n  in v: bit\n  in d: bits[8]\n  out y: bits[8]\n  \
-                 wire req: Handshake(W: 8) = { valid: v, data: d }\n  \
-                 let c = Child() { req: req }\n  y = c.y\n}\n",
-            ),
-            Some("Parent"),
-            &BTreeMap::new(),
-        )
-        .expect("bundle-typed instance connection elaborates"),
-    );
-    s.set("v", Bits::Small(1)).unwrap();
-    s.set("d", Bits::Small(42)).unwrap();
-    assert_eq!(s.peek("y").unwrap(), Bits::Small(42));
-    s.set("v", Bits::Small(0)).unwrap();
-    assert_eq!(s.peek("y").unwrap(), Bits::Small(0));
-}
-
-#[test]
-fn bundle_typed_fn_call_argument_expands_to_one_arg_per_field() {
-    // A bundle-typed value passed whole as a `fn` call argument used to
-    // reach the evaluator as a single unresolvable identifier — the
-    // callee's declared param has no bundle case in `eval_fn_call`'s
-    // binding loop, and the caller's own bundle-typed signal was never
-    // split into its constituent fields at the call site.
-    use super::super::value::Bits;
-    let mut s = super::super::kernel::Sim::new(
-        elaborate(
-            &parse(
-                "bundle Handshake(W: int = 8) {\n  valid: bit\n  data: bits[W]\n}\n\
-                 fn pick(req: Handshake(W: 8)) -> bits[8] {\n  \
-                 if req.valid { return req.data }\n  0\n}\n\
-                 module M {\n  in v: bit\n  in d: bits[8]\n  out y: bits[8]\n  \
-                 wire req: Handshake(W: 8) = { valid: v, data: d }\n  \
-                 y = pick(req)\n}\n",
-            ),
-            None,
-            &BTreeMap::new(),
-        )
-        .expect("bundle-typed fn call argument elaborates"),
-    );
-    s.set("v", Bits::Small(1)).unwrap();
-    s.set("d", Bits::Small(7)).unwrap();
-    assert_eq!(s.peek("y").unwrap(), Bits::Small(7));
-    s.set("v", Bits::Small(0)).unwrap();
-    assert_eq!(s.peek("y").unwrap(), Bits::Small(0));
-}
+//
+// Both regression tests for this bug drive a live `kernel::Sim` (checking
+// the actual signal values after ticking), so — same reasoning as the
+// `sync loop` timing tests above — they live in
+// `mimz-sim/src/sim/kernel.rs`'s test module, not here.
