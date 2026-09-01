@@ -5,25 +5,26 @@
 //! flag, honoring the spec's width semantics (lossless `+ - *` grow, the
 //! `+% -% *%` family wraps, slices/concat/`extend`/`trunc` resize). [`eval`]
 //! interprets an [`Expr`] against a [`Resolver`] — both the combinational
-//! evaluator ([`super::comb`]) and the event-driven kernel ([`super::kernel`])
-//! implement `Resolver`, so the expression semantics live in exactly one place.
+//! evaluator ([`super::comb`]) and `mimz-sim`'s event-driven kernel
+//! (`sim::kernel`) implement `Resolver`, so the expression semantics live in
+//! exactly one place.
 
 use std::collections::{BTreeMap, HashMap};
 
-use mimz_core::REPEAT_BUDGET;
-use mimz_core::ast::{
+use crate::REPEAT_BUDGET;
+use crate::ast::{
     self, BinOp, Builtin, Expr, ExprKind, FnParam, FnStmt, FuncDecl, Pattern, Type, UnOp,
 };
 
-pub use mimz_core::bits::{Bits, mask};
-pub use mimz_core::wide;
+pub use crate::bits::{Bits, mask};
+pub use crate::wide;
 
-pub use mimz_core::bits::bits_to_decimal_string;
+pub use crate::bits::bits_to_decimal_string;
 
 use binary::{binary_ctx, unary};
 use fn_eval::{call, eval_fn_call};
 
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 /// A bit-vector value: the low `width` bits of `bits` are meaningful.
 /// `pub` (re-exported at `mimz_sim::sim::Val`) since
@@ -38,7 +39,7 @@ pub struct Val {
     /// The value's bit pattern; only the low `width` bits are meaningful.
     /// MEANINGLESS when `unknown` is `true`.
     pub bits: Bits,
-    /// Bit width, `1..=1_000_000` (`mimz_core::width_rules::MAX_WIDTH`).
+    /// Bit width, `1..=1_000_000` (`crate::width_rules::MAX_WIDTH`).
     pub width: u32,
     /// Whether `bits` is interpreted as two's-complement `signed`.
     pub signed: bool,
@@ -67,7 +68,7 @@ impl Val {
     /// `width <= 128` implies `Small` is an invariant every OTHER
     /// constructor/consumer can rely on without re-checking. `limbs`
     /// must have exactly `wide::limb_count(width)` elements.
-    pub(super) fn new_wide(mut limbs: Vec<u64>, width: u32, signed: bool) -> Val {
+    pub fn new_wide(mut limbs: Vec<u64>, width: u32, signed: bool) -> Val {
         wide::mask_to_width(&mut limbs, width);
         if width <= 128 {
             let lo = limbs.first().copied().unwrap_or(0) as u128;
@@ -110,9 +111,9 @@ impl Val {
     /// — the lexer never produces a negative `Bits`) but not capped at
     /// 128 bits (BUG-13 layer 2) — `new_wide` auto-narrows to `Small`
     /// when the natural width still fits.
-    pub fn from_literal(value: &mimz_core::bits::Bits) -> Val {
-        let width = mimz_core::bits::natural_width(value).max(1);
-        let limbs = mimz_core::bits::to_limbs(value, width);
+    pub fn from_literal(value: &crate::bits::Bits) -> Val {
+        let width = crate::bits::natural_width(value).max(1);
+        let limbs = crate::bits::to_limbs(value, width);
         Val::new_wide(limbs, width, false)
     }
     /// A NEGATED source integer literal (`-9`), given its magnitude.
@@ -136,16 +137,16 @@ impl Val {
     /// sign-extends rather than zero-extends. Widening to the
     /// destination stays the consumer's job, exactly as for
     /// `from_literal`.
-    pub fn negated_literal(value: &mimz_core::bits::Bits) -> Val {
+    pub fn negated_literal(value: &crate::bits::Bits) -> Val {
         // Saturating at MAX_WIDTH rather than growing past it: a literal
         // already at the width ceiling has nowhere to put the sign bit,
         // and negating in place there is strictly better than panicking
         // on a width the checker would have rejected anyway.
-        let width = mimz_core::bits::natural_width(value)
+        let width = crate::bits::natural_width(value)
             .max(1)
             .saturating_add(1)
-            .min(mimz_core::width_rules::MAX_WIDTH as u32);
-        let limbs = mimz_core::bits::to_limbs(value, width);
+            .min(crate::width_rules::MAX_WIDTH as u32);
+        let limbs = crate::bits::to_limbs(value, width);
         Val::new_wide(wide::neg(&limbs, width), width, true)
     }
     /// `true` if this value is on the wide (>128-bit) slow path.
@@ -156,7 +157,7 @@ impl Val {
     /// `wide::limb_count(self.width)`-length vector on the fly. Used by
     /// every wide-path operator (Task 6) to treat both operands
     /// uniformly regardless of which one is actually wide.
-    pub(super) fn to_limbs(&self) -> Vec<u64> {
+    pub fn to_limbs(&self) -> Vec<u64> {
         match &self.bits {
             Bits::Wide(v) => v.clone(),
             Bits::Small(b) => {
@@ -212,7 +213,7 @@ impl Val {
     }
     /// The value's least significant bit — works for both `Small` and
     /// `Wide` without the caller needing to branch.
-    pub(super) fn lsb(&self) -> u128 {
+    pub fn lsb(&self) -> u128 {
         match &self.bits {
             Bits::Small(b) => b & 1,
             Bits::Wide(limbs) => wide::bit_at(limbs, 0) as u128,
@@ -223,7 +224,7 @@ impl Val {
     /// the operand's declared width. A `Wide` value too large to matter
     /// here (shifting by more than 2^128) saturates to `u128::MAX`, which
     /// every caller already treats as "shift the whole value away."
-    pub(super) fn bits_small_or_zero(&self) -> u128 {
+    pub fn bits_small_or_zero(&self) -> u128 {
         match &self.bits {
             Bits::Small(b) => *b,
             Bits::Wide(limbs) => {
@@ -240,11 +241,12 @@ impl Val {
     }
 }
 
-/// Thin re-export of `wide::from_u128` — `kernel.rs` is a sibling module
-/// and goes through `value`'s own surface rather than reaching into
-/// `wide` directly, mirroring this codebase's existing `pub(super)`
-/// visibility convention between sibling `sim::*` modules.
-pub(super) fn wide_limbs_from_u128(v: u128, width: u32) -> Vec<u64> {
+/// Thin re-export of `wide::from_u128` — `mimz-sim`'s `kernel.rs` goes
+/// through `value`'s own surface rather than reaching into `wide` directly,
+/// so it stays `pub` (not `pub(super)`) even though `kernel.rs` now reaches
+/// it across the crate boundary via `sim::value`'s re-export of
+/// `mimz_core::value`.
+pub fn wide_limbs_from_u128(v: u128, width: u32) -> Vec<u64> {
     wide::from_u128(v, width)
 }
 
@@ -260,7 +262,7 @@ pub(super) fn wide_limbs_from_u128(v: u128, width: u32) -> Vec<u64> {
 /// declared width (which may be runtime-supplied and arbitrarily large),
 /// as opposed to a small literal constant (`1`, `8`, ...) a caller already
 /// knows is narrow. Mirrors `Sim::set`'s existing `Small`-vs-`Wide` match.
-pub(super) fn from_u128_at_width(v: u128, width: u32, signed: bool) -> Val {
+pub fn from_u128_at_width(v: u128, width: u32, signed: bool) -> Val {
     if width <= 128 {
         Val::new(v, width, signed)
     } else {
@@ -273,13 +275,13 @@ pub(super) fn from_u128_at_width(v: u128, width: u32, signed: bool) -> Val {
 /// The width-aware counterpart of `from_u128_at_width` for constants that
 /// may already be wider than `u128` (BUG-13 layer 2) — `Reg.reset`/
 /// `Mem.init` are `ConstVal` now, not `i128`.
-pub(super) fn from_const_at_width(
-    cv: &mimz_core::checker::consteval::ConstVal,
+pub fn from_const_at_width(
+    cv: &crate::checker::consteval::ConstVal,
     width: u32,
     signed: bool,
 ) -> Val {
     let limbs = wide::extend(
-        &mimz_core::bits::to_limbs(&cv.bits, cv.width),
+        &crate::bits::to_limbs(&cv.bits, cv.width),
         cv.width,
         width,
         cv.signed,
@@ -307,7 +309,7 @@ pub(super) fn from_const_at_width(
 /// `value.rs` a third — three copies of one resize rule is the same
 /// drift surface [`GAP-1`](../../../../../docs/audit/gaps.md) describes, and
 /// fixing one copy would have left the other two wrong.
-pub(super) fn resize_to_width(v: Val, w: u32, signed: bool) -> Val {
+pub fn resize_to_width(v: Val, w: u32, signed: bool) -> Val {
     if w <= v.width {
         let mut limbs = v.to_limbs();
         limbs.resize(wide::limb_count(w), 0);
@@ -367,7 +369,7 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
         ExprKind::Bool(b) => Ok(Val::new(*b as u128, 1, false)),
         ExprKind::Ident(n) => r
             .signal(n)
-            .map_err(|msg| crate::sim::diag::diag_from_bridged(e.span, msg, "S0201")),
+            .map_err(|msg| crate::diag::diag_from_bridged(e.span, msg, "S0201")),
         // BUG-43 (docs/audit/bugs.md): `-<literal>` is a CONSTANT, folded
         // here, not `Neg` applied to the magnitude's own unsigned
         // `natural_width` bits — which cannot hold the result, so `-9`
@@ -429,13 +431,13 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
             let vals: Vec<Val> = parts.iter().map(|p| eval(r, p)).collect::<Result<_, _>>()?;
             // Sum in u64 so many parts cannot wrap a u32 below the guard.
             let total64: u64 = vals.iter().map(|v| v.width as u64).sum();
-            if total64 > mimz_core::width_rules::MAX_WIDTH as u64 {
+            if total64 > crate::width_rules::MAX_WIDTH as u64 {
                 return Err(Box::new(
                     Diag::new(
                         e.span,
                         format!(
                             "concatenation exceeds {} bits",
-                            mimz_core::width_rules::MAX_WIDTH
+                            crate::width_rules::MAX_WIDTH
                         ),
                     )
                     .with_code("S0203"),
@@ -472,15 +474,12 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
             let inner64: u64 = vals.iter().map(|v| v.width as u64).sum();
             let total64 = inner64
                 .checked_mul(n as u64)
-                .filter(|t| *t <= mimz_core::width_rules::MAX_WIDTH as u64)
+                .filter(|t| *t <= crate::width_rules::MAX_WIDTH as u64)
                 .ok_or_else(|| {
                     Box::new(
                         Diag::new(
                             e.span,
-                            format!(
-                                "replication exceeds {} bits",
-                                mimz_core::width_rules::MAX_WIDTH
-                            ),
+                            format!("replication exceeds {} bits", crate::width_rules::MAX_WIDTH),
                         )
                         .with_code("S0203"),
                     )
@@ -522,9 +521,8 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
                 if let Some(len) = r.array_len(name) {
                     let elems: Vec<Val> = (0..len)
                         .map(|i| {
-                            r.signal(&format!("{name}_{i}")).map_err(|msg| {
-                                crate::sim::diag::diag_from_bridged(e.span, msg, "S0201")
-                            })
+                            r.signal(&format!("{name}_{i}"))
+                                .map_err(|msg| crate::diag::diag_from_bridged(e.span, msg, "S0201"))
                         })
                         .collect::<Result<_, _>>()?;
                     // A zero-length array is rejected by the checker (E0412)
@@ -548,7 +546,7 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
                     let addr = eval(r, index)?;
                     return r
                         .mem_read(name, addr.bits_small_or_zero())
-                        .map_err(|msg| crate::sim::diag::diag_from_bridged(e.span, msg, "S0206"));
+                        .map_err(|msg| crate::diag::diag_from_bridged(e.span, msg, "S0206"));
                 }
             }
             let b = eval(r, base)?;
@@ -589,7 +587,7 @@ pub fn eval<R: Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
             // copy of this rule left. `checked_index` above already
             // guarantees `hi`/`lo` are each individually in range, so
             // only the reversed-bounds case can actually fire here.
-            let k = mimz_core::width_rules::slice_result(b.width, hi_v, lo_v).map_err(|_| {
+            let k = crate::width_rules::slice_result(b.width, hi_v, lo_v).map_err(|_| {
                 Box::new(
                     Diag::new(
                         hi.span.join(lo.span),
@@ -691,10 +689,10 @@ pub(super) fn pattern_matches(p: &Pattern, s: &Val) -> bool {
 /// The declared (width, signed) of a hardware type, evaluating any width
 /// expression in the const environment. `span` is the declaring signal/
 /// field/param's own span — `ast::Type` itself carries none.
-pub(super) fn type_width(
+pub fn type_width(
     ty: &Type,
     ints: &BTreeMap<String, i128>,
-    span: mimz_core::span::Span,
+    span: crate::span::Span,
 ) -> Result<(u32, bool), Box<Diag>> {
     match ty {
         Type::Bit => Ok((1, false)),
@@ -731,8 +729,8 @@ pub(super) fn type_width(
     }
 }
 
-pub(super) fn checked_width(n: i128, span: mimz_core::span::Span) -> Result<u32, Box<Diag>> {
-    use mimz_core::width_rules::MAX_WIDTH;
+pub(super) fn checked_width(n: i128, span: crate::span::Span) -> Result<u32, Box<Diag>> {
+    use crate::width_rules::MAX_WIDTH;
     if n < 1 {
         Err(Box::new(
             Diag::new(span, format!("width must be at least 1, got {n}")).with_code("S0216"),
@@ -753,12 +751,12 @@ pub(super) fn checked_width(n: i128, span: mimz_core::span::Span) -> Result<u32,
 /// Build the checker's `Env` (name -> `ConstVal`) from this file's own
 /// folded-`i128` `consts`/`params` map, via `ConstVal::from_i128`. Shared by
 /// `const_eval` and `const_eval_wide` below.
-fn build_env(ints: &BTreeMap<String, i128>) -> mimz_core::checker::consteval::Env {
+fn build_env(ints: &BTreeMap<String, i128>) -> crate::checker::consteval::Env {
     ints.iter()
         .map(|(k, v)| {
             (
                 k.clone(),
-                mimz_core::checker::consteval::ConstVal::from_i128(*v),
+                crate::checker::consteval::ConstVal::from_i128(*v),
             )
         })
         .collect()
@@ -777,8 +775,8 @@ fn build_env(ints: &BTreeMap<String, i128>) -> mimz_core::checker::consteval::En
 /// own sanity limits (`MAX_WIDTH`, `MAX_DEPTH`), so this narrowing is exact
 /// in every legal design (BUG-13 layer 2's arbitrary-width representation
 /// only actually matters for `const_eval_wide`, below).
-pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, Box<Diag>> {
-    mimz_core::checker::consteval::eval(e, &build_env(ints))
+pub fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128, Box<Diag>> {
+    crate::checker::consteval::eval(e, &build_env(ints))
         .map(|v| v.to_i128_saturating())
         .map_err(Box::new)
 }
@@ -788,21 +786,21 @@ pub(super) fn const_eval(e: &Expr, ints: &BTreeMap<String, i128>) -> Result<i128
 /// structural size) matters, so this returns the checker's own
 /// arbitrary-width `ConstVal` directly instead of narrowing it to `i128`
 /// (BUG-13 layer 2).
-pub(super) fn const_eval_wide(
+pub fn const_eval_wide(
     e: &Expr,
     ints: &BTreeMap<String, i128>,
-) -> Result<mimz_core::checker::consteval::ConstVal, Box<Diag>> {
-    mimz_core::checker::consteval::eval(e, &build_env(ints)).map_err(Box::new)
+) -> Result<crate::checker::consteval::ConstVal, Box<Diag>> {
+    crate::checker::consteval::eval(e, &build_env(ints)).map_err(Box::new)
 }
 
 /// A bit index or slice bound must be a non-negative integer inside the value's
 /// width. Rejects negative / out-of-range positions instead of truncating via
 /// `as u32` or a later oversized shift (`>> n`, `n >= 128`, which panics).
-pub(super) fn checked_index(
+pub fn checked_index(
     n: i128,
     width: u32,
     what: &str,
-    span: mimz_core::span::Span,
+    span: crate::span::Span,
 ) -> Result<u32, Box<Diag>> {
     if (0..width as i128).contains(&n) {
         Ok(n as u32)
@@ -822,7 +820,7 @@ pub(super) fn checked_index(
 /// bare `&str` and an absent/ambiguous module has no single declaration to
 /// point at (mirrors `elaborate_project_with_mode`'s own defensive
 /// zero-span "no files" case).
-pub(super) fn pick_module<'a>(
+pub fn pick_module<'a>(
     file: &'a ast::File,
     want: Option<&str>,
 ) -> Result<&'a ast::Module, Box<Diag>> {
@@ -842,7 +840,7 @@ pub(super) fn pick_module<'a>(
             .ok_or_else(|| {
                 Box::new(
                     Diag::new(
-                        mimz_core::span::Span::default(),
+                        crate::span::Span::default(),
                         format!("no module named `{n}` in this file"),
                     )
                     .with_code("S0218"),
@@ -851,12 +849,12 @@ pub(super) fn pick_module<'a>(
         None => match mods.as_slice() {
             [one] => Ok(one),
             [] => Err(Box::new(
-                Diag::new(mimz_core::span::Span::default(), "file defines no module")
+                Diag::new(crate::span::Span::default(), "file defines no module")
                     .with_code("S0219"),
             )),
             many => Err(Box::new(
                 Diag::new(
-                    mimz_core::span::Span::default(),
+                    crate::span::Span::default(),
                     format!(
                         "file defines {} modules — choose one with --module <name>",
                         many.len()

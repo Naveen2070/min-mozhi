@@ -1,5 +1,5 @@
 use super::*;
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 /// Promote `l`/`r` to matching-length limb vectors at `result_width`,
 /// running the SAME sign-extension `extend_bits` already applies on the
@@ -116,7 +116,7 @@ pub(super) fn binary_ctx(
     l: Val,
     r: Val,
     const_amount: Option<u128>,
-    span: mimz_core::span::Span,
+    span: crate::span::Span,
 ) -> Result<Val, Box<Diag>> {
     let unknown = l.unknown || r.unknown;
     binary_known(op, l, r, const_amount, span).map(|mut v| {
@@ -133,22 +133,22 @@ pub(super) fn binary_ctx(
 // unsigned operands `as_i128` is the plain magnitude, so this is
 // identical to a raw-bit add/mul. (The wrapping family below keeps the
 // operand width, where the raw-bit op is already correct mod 2^width.)
-fn math_rule_err(err: mimz_core::width_rules::RuleError, span: mimz_core::span::Span) -> Box<Diag> {
+fn math_rule_err(err: crate::width_rules::RuleError, span: crate::span::Span) -> Box<Diag> {
     match err {
-        mimz_core::width_rules::RuleError::KindMismatch { .. } => {
+        crate::width_rules::RuleError::KindMismatch { .. } => {
             Box::new(Diag::new(span, "cannot mix signed and unsigned operands").with_code("S0240"))
         }
         _ => unreachable!("lossless_result never returns other RuleError variants"),
     }
 }
 
-fn add(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
-    let k = mimz_core::width_rules::lossless_result(
-        mimz_core::width_rules::Kind {
+fn add(l: Val, r: Val, span: crate::span::Span) -> Result<Val, Box<Diag>> {
+    let k = crate::width_rules::lossless_result(
+        crate::width_rules::Kind {
             width: l.width,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: r.width,
             signed: r.signed,
         },
@@ -171,13 +171,13 @@ fn add(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
     }
 }
 
-fn sub(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
-    let k = mimz_core::width_rules::lossless_result(
-        mimz_core::width_rules::Kind {
+fn sub(l: Val, r: Val, span: crate::span::Span) -> Result<Val, Box<Diag>> {
+    let k = crate::width_rules::lossless_result(
+        crate::width_rules::Kind {
             width: l.width,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: r.width,
             signed: r.signed,
         },
@@ -200,13 +200,13 @@ fn sub(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
     }
 }
 
-fn mul(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
-    let k = mimz_core::width_rules::lossless_result(
-        mimz_core::width_rules::Kind {
+fn mul(l: Val, r: Val, span: crate::span::Span) -> Result<Val, Box<Diag>> {
+    let k = crate::width_rules::lossless_result(
+        crate::width_rules::Kind {
             width: l.width,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: r.width,
             signed: r.signed,
         },
@@ -245,17 +245,17 @@ fn mul(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
 // compile.
 fn add_wrap(l: Val, r: Val) -> Val {
     let wmax = l.width.max(r.width);
-    let k = mimz_core::width_rules::matched_result(
-        mimz_core::width_rules::Kind {
+    let k = crate::width_rules::matched_result(
+        crate::width_rules::Kind {
             width: wmax,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: wmax,
             signed: r.signed,
         },
     )
-    .unwrap_or(mimz_core::width_rules::Kind {
+    .unwrap_or(crate::width_rules::Kind {
         width: wmax,
         signed: l.signed || r.signed,
     });
@@ -271,17 +271,17 @@ fn add_wrap(l: Val, r: Val) -> Val {
 
 fn sub_wrap(l: Val, r: Val) -> Val {
     let wmax = l.width.max(r.width);
-    let k = mimz_core::width_rules::matched_result(
-        mimz_core::width_rules::Kind {
+    let k = crate::width_rules::matched_result(
+        crate::width_rules::Kind {
             width: wmax,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: wmax,
             signed: r.signed,
         },
     )
-    .unwrap_or(mimz_core::width_rules::Kind {
+    .unwrap_or(crate::width_rules::Kind {
         width: wmax,
         signed: l.signed || r.signed,
     });
@@ -297,17 +297,17 @@ fn sub_wrap(l: Val, r: Val) -> Val {
 
 fn mul_wrap(l: Val, r: Val) -> Val {
     let wmax = l.width.max(r.width);
-    let k = mimz_core::width_rules::matched_result(
-        mimz_core::width_rules::Kind {
+    let k = crate::width_rules::matched_result(
+        crate::width_rules::Kind {
             width: wmax,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: wmax,
             signed: r.signed,
         },
     )
-    .unwrap_or(mimz_core::width_rules::Kind {
+    .unwrap_or(crate::width_rules::Kind {
         width: wmax,
         signed: l.signed || r.signed,
     });
@@ -323,17 +323,17 @@ fn mul_wrap(l: Val, r: Val) -> Val {
 
 fn bitand(l: Val, r: Val) -> Val {
     let wmax = l.width.max(r.width);
-    let k = mimz_core::width_rules::matched_result(
-        mimz_core::width_rules::Kind {
+    let k = crate::width_rules::matched_result(
+        crate::width_rules::Kind {
             width: wmax,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: wmax,
             signed: r.signed,
         },
     )
-    .unwrap_or(mimz_core::width_rules::Kind {
+    .unwrap_or(crate::width_rules::Kind {
         width: wmax,
         signed: l.signed || r.signed,
     });
@@ -349,17 +349,17 @@ fn bitand(l: Val, r: Val) -> Val {
 
 fn bitor(l: Val, r: Val) -> Val {
     let wmax = l.width.max(r.width);
-    let k = mimz_core::width_rules::matched_result(
-        mimz_core::width_rules::Kind {
+    let k = crate::width_rules::matched_result(
+        crate::width_rules::Kind {
             width: wmax,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: wmax,
             signed: r.signed,
         },
     )
-    .unwrap_or(mimz_core::width_rules::Kind {
+    .unwrap_or(crate::width_rules::Kind {
         width: wmax,
         signed: l.signed || r.signed,
     });
@@ -375,17 +375,17 @@ fn bitor(l: Val, r: Val) -> Val {
 
 fn bitxor(l: Val, r: Val) -> Val {
     let wmax = l.width.max(r.width);
-    let k = mimz_core::width_rules::matched_result(
-        mimz_core::width_rules::Kind {
+    let k = crate::width_rules::matched_result(
+        crate::width_rules::Kind {
             width: wmax,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: wmax,
             signed: r.signed,
         },
     )
-    .unwrap_or(mimz_core::width_rules::Kind {
+    .unwrap_or(crate::width_rules::Kind {
         width: wmax,
         signed: l.signed || r.signed,
     });
@@ -414,22 +414,19 @@ fn bitxor(l: Val, r: Val) -> Val {
 // then folds each shift at that fixed width, matching Icarus exactly.
 /// Maps `width_rules::shift_result`'s `Err` to a `Diag` — shared by `shl`/
 /// `shr` since both call the same shared rule.
-fn shift_rule_err(
-    err: mimz_core::width_rules::RuleError,
-    span: mimz_core::span::Span,
-) -> Box<Diag> {
+fn shift_rule_err(err: crate::width_rules::RuleError, span: crate::span::Span) -> Box<Diag> {
     match err {
-        mimz_core::width_rules::RuleError::ShiftAmountSigned => {
+        crate::width_rules::RuleError::ShiftAmountSigned => {
             Box::new(Diag::new(span, "a shift amount cannot be `signed`").with_code("S0221"))
         }
-        mimz_core::width_rules::RuleError::ShiftGrowthTooWide { lhs, growth } => Box::new(
+        crate::width_rules::RuleError::ShiftGrowthTooWide { lhs, growth } => Box::new(
             Diag::new(
                 span,
                 format!(
                     "shifting bits[{}] wider by {growth} bits exceeds the \
                      {}-bit width limit",
                     lhs.width,
-                    mimz_core::width_rules::MAX_WIDTH
+                    crate::width_rules::MAX_WIDTH
                 ),
             )
             .with_code("S0222"),
@@ -448,14 +445,14 @@ fn shl(
     l: Val,
     r: Val,
     const_amount: Option<u128>,
-    span: mimz_core::span::Span,
+    span: crate::span::Span,
 ) -> Result<Val, Box<Diag>> {
-    let result = mimz_core::width_rules::shift_result(
-        mimz_core::width_rules::Kind {
+    let result = crate::width_rules::shift_result(
+        crate::width_rules::Kind {
             width: l.width,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: r.width,
             signed: r.signed,
         },
@@ -483,13 +480,13 @@ fn shl(
 /// `>>`: right-shifting only ever reduces a value's magnitude, so the left
 /// operand's own width already bounds the result — unchanged by BUG-30
 /// (`grows: false`), no `const_amount` needed.
-fn shr(l: Val, r: Val, span: mimz_core::span::Span) -> Result<Val, Box<Diag>> {
-    let result = mimz_core::width_rules::shift_result(
-        mimz_core::width_rules::Kind {
+fn shr(l: Val, r: Val, span: crate::span::Span) -> Result<Val, Box<Diag>> {
+    let result = crate::width_rules::shift_result(
+        crate::width_rules::Kind {
             width: l.width,
             signed: l.signed,
         },
-        mimz_core::width_rules::Kind {
+        crate::width_rules::Kind {
             width: r.width,
             signed: r.signed,
         },
@@ -554,9 +551,9 @@ pub(super) fn eval_shift_chain<R: super::Resolver>(r: &mut R, e: &Expr) -> Resul
         let const_amount = super::const_eval(rhs_expr, r.ints())
             .ok()
             .and_then(|v| u128::try_from(v).ok());
-        let k = mimz_core::width_rules::shift_result(
-            mimz_core::width_rules::Kind { width, signed },
-            mimz_core::width_rules::Kind {
+        let k = crate::width_rules::shift_result(
+            crate::width_rules::Kind { width, signed },
+            crate::width_rules::Kind {
                 width: rv.width,
                 signed: rv.signed,
             },
@@ -588,7 +585,7 @@ pub(super) fn binary_known(
     l: Val,
     r: Val,
     const_amount: Option<u128>,
-    span: mimz_core::span::Span,
+    span: crate::span::Span,
 ) -> Result<Val, Box<Diag>> {
     Ok(match op {
         BinOp::Add => add(l, r, span)?,

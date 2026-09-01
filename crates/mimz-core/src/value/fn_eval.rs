@@ -2,7 +2,7 @@ use super::binary::{cmp_lt, extend_bits};
 use super::resize_to_width;
 use super::*;
 
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 /// Evaluate a user-defined function call.
 ///

@@ -1,7 +1,7 @@
 use super::*;
-use crate::sim::value::binary::{binary_ctx, binary_known, cmp_eq, unary};
-use mimz_core::ast::Ident;
-use mimz_core::span::Span;
+use crate::ast::Ident;
+use crate::span::Span;
+use crate::value::binary::{binary_ctx, binary_known, cmp_eq, unary};
 
 /// Dummy span for unit tests exercising `binary_ctx`/`binary_known` directly
 /// (no real source expression to point at here).
@@ -129,8 +129,8 @@ fn fn_call_arity_mismatch_is_err_not_panic() {
                    veliyeedu picked: bits[8]\n  \
                    picked = pick([a, b], idx)\n\
                    }\n";
-    let tokens = mimz_core::lexer::lex(src).expect("lex");
-    let file = mimz_core::parser::parse(tokens).expect("parse");
+    let tokens = crate::lexer::lex(src).expect("lex");
+    let file = crate::parser::parse(tokens).expect("parse");
     let inputs: BTreeMap<String, Bits> = [
         ("a".to_string(), Bits::Small(1u128)),
         ("b".to_string(), Bits::Small(2u128)),
@@ -174,8 +174,8 @@ fn eval_fn_call_one(fn_src: &str, fn_name: &str, args: &[&[u128]]) -> i128 {
         "{fn_src}\nmodule M {{\n  out result: bits[8]\n  result = {fn_name}({})\n}}\n",
         call_args.join(", ")
     );
-    let tokens = mimz_core::lexer::lex(&src).expect("lex");
-    let file = mimz_core::parser::parse(tokens).expect("parse");
+    let tokens = crate::lexer::lex(&src).expect("lex");
+    let file = crate::parser::parse(tokens).expect("parse");
     let outputs = super::super::comb::eval_outputs(
         std::slice::from_ref(&file),
         Some("M"),
@@ -206,8 +206,8 @@ fn fn_call_sign_extends_narrower_signed_arg_to_wider_param() {
     // sign-extended 0xFF80.
     let src = "fn widen16(x: signed[16]) -> signed[16] {\n  x\n}\n\n\
                    module M {\n  out result: signed[16]\n  result = widen16(-128)\n}\n";
-    let tokens = mimz_core::lexer::lex(src).expect("lex");
-    let file = mimz_core::parser::parse(tokens).expect("parse");
+    let tokens = crate::lexer::lex(src).expect("lex");
+    let file = crate::parser::parse(tokens).expect("parse");
     let outputs = super::super::comb::eval_outputs(
         std::slice::from_ref(&file),
         Some("M"),
@@ -255,13 +255,13 @@ fn fn_loop_with_return_first_match_wins_on_duplicate_in_sim() {
 fn fn_loop_over_budget_errors_in_sim() {
     let src = format!(
         "fn overflow(x: bits[8]) -> bits[8] {{\n  loop i: 0..{} {{\n    if x == 0xFF {{ return x }}\n  }}\n  x\n}}\n",
-        mimz_core::REPEAT_BUDGET + 1
+        crate::REPEAT_BUDGET + 1
     );
     let full = format!(
         "{src}\nmodule M {{\n  in x: bits[8]\n  out result: bits[8]\n  result = overflow(x)\n}}\n"
     );
-    let tokens = mimz_core::lexer::lex(&full).expect("lex");
-    let file = mimz_core::parser::parse(tokens).expect("parse");
+    let tokens = crate::lexer::lex(&full).expect("lex");
+    let file = crate::parser::parse(tokens).expect("parse");
     let inputs: BTreeMap<String, Bits> = [("x".to_string(), Bits::Small(1u128))]
         .into_iter()
         .collect();
@@ -588,7 +588,7 @@ fn negated_literal_sign_extends_into_a_wider_signed_slot() {
         (17, 47),
         (32, 32),
     ] {
-        let v = Val::negated_literal(&mimz_core::bits::Bits::Small(mag));
+        let v = Val::negated_literal(&crate::bits::Bits::Small(mag));
         assert!(v.signed, "-{mag} must be signed");
         // Widening to the destination is the assignment's job; what this
         // asserts is that the value SURVIVES that widening as -mag.
@@ -608,7 +608,7 @@ fn negated_literal_sign_extends_into_a_wider_signed_slot() {
 /// constant in real RTL (an all-ones sentinel).
 #[test]
 fn negated_literal_minus_one_is_all_ones_not_one() {
-    let v = Val::negated_literal(&mimz_core::bits::Bits::Small(1));
+    let v = Val::negated_literal(&crate::bits::Bits::Small(1));
     assert!(v.signed);
     assert_eq!(v.as_i128(), -1, "-1 must evaluate to -1, not +1");
 }
@@ -621,7 +621,7 @@ fn negated_literal_handles_a_wide_magnitude() {
     // 2^130, natural width 131 -> negated at 132 bits.
     let mut limbs = vec![0u64; wide::limb_count(131)];
     limbs[2] = 1 << (130 - 128);
-    let mag = mimz_core::bits::Bits::Wide(limbs);
+    let mag = crate::bits::Bits::Wide(limbs);
     let v = Val::negated_literal(&mag);
     assert!(v.signed);
     assert_eq!(v.width, 132);

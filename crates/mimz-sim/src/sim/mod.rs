@@ -21,9 +21,8 @@
 //! drives a default stimulus for `mimz sim`, while [`harness`] runs `test`
 //! blocks (`drive`/`tick`/`expect`/`if`) for `mimz test`.
 
-pub mod value;
+pub use mimz_core::{comb, value};
 
-pub mod comb;
 pub mod diag;
 pub mod elaborate;
 pub mod harness;
