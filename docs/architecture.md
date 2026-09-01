@@ -9,7 +9,11 @@
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
 > (`mimz fmt` - keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-08-22 (doc-code audit: 76 checker error codes
+> Last updated: 2026-09-01 (Phase 2 Step 0: promoted `elaborate`/`value`/
+> `comb`/S0xxx runtime-diag catalog from `mimz-sim` to `mimz-core`, 3-crate
+> boundary redrawn along the pure/impure split — see
+> docs/plan/phase-2-ir-plan.local.md Tasks 1-2). Prior: 2026-08-22
+> (doc-code audit: 76 checker error codes
 > (E0001–E0912/E0420, E1301–E1302); 35 test suites / 1318 passing tests;
 > error fixtures 120, goldens 88 `.v` (71 module + 17 `_tb.v`) + 1 `.vcd`,
 > 200 top-level example files across 5 folders (44 english, 44 tanglish,
@@ -102,20 +106,20 @@ simulator (`crates/mimz-sim/src/sim/`, `mimz sim`/`mimz test`).
 
 The IR and native backend remain planned.
 
-| Component           | Phase   | Key design points                                                                                                                                                                                                                           |
-| ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test`, `init`, `doctor`, `completions`, `lint`, `repl`, `eject` (handlers in `src/commands/`)                                                |
-| **Keyword table**   | 1       | `lang/keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                                                        |
-| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                                           |
-| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                                          |
-| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                                            |
-| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; nine passes (symbols/extern-module ports/funcs cycle detection/funcs unreachable/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0912, E1301–E1302 (75 total) |
-| **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper                                                                               |
-| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                                             |
-| **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `crates/mimz-sim/src/sim/` (comb, kernel, diag, elaborate, harness, run, value, vcd, trace)     |
-| **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                                                                                               |
-| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                                                                                                     |
-| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                                                                                               |
+| Component           | Phase   | Key design points                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test`, `init`, `doctor`, `completions`, `lint`, `repl`, `eject` (handlers in `src/commands/`)                                                                                                                                                                                                                        |
+| **Keyword table**   | 1       | `lang/keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                                                                                                                                                                                                                                |
+| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                                                                                                                                                                                                                   |
+| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                                                                                                                                                                                                                  |
+| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                                                                                                                                                                                                                    |
+| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; nine passes (symbols/extern-module ports/funcs cycle detection/funcs unreachable/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0912, E1301–E1302 (75 total)                                                                                                                                                                         |
+| **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper; `mimz-core::diag` now owns BOTH the E-code checker catalog (`ALL_CHECKER_CODES`) and the S0xxx simulator runtime catalog (`ALL_SIM_CODES`, `bridge_code`, `diag_from_bridged`) since Phase 2 Step 0                                                  |
+| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                                                                                                                                                                                                                     |
+| **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `elaborate`/`value`/`comb`/S0xxx-diag now live in `mimz-core` (Phase 2 Step 0); `crates/mimz-sim/src/sim/` owns the kernel itself (kernel, harness, run, vcd, trace, host, wide) and consumes those from `mimz-core` via a thin re-export (`sim/mod.rs`, `sim/diag.rs`) |
+| **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                                                                                                                                                                                                                                                                       |
+| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                                                                                                                                                                                                                                                                             |
+| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                                                                                                                                                                                                                                                                       |
 
 ## 3. Code Layout (Rust)
 
@@ -134,11 +138,21 @@ playground) needed the pure pipeline + simulator without dragging in
   diagnostic rendering - no fs I/O, no NFC normalization, no import
   resolution; the shell's `project.rs` does those and re-exports these
   types via `pub use mimz_core::project::{LoadedFile, render_diags,
-render_diags_lang};`).
-- **`mimz-sim`** - the event-driven simulator (`sim/`) and the in-memory
-  command runner (`runner.rs`), depending only on `mimz-core`. Defines the
-  `EmulationHost` trait + `Direction` enum (`sim/host.rs`) so the simulator
-  can drive hardware peripherals without depending on them.
+render_diags_lang};`). Since Phase 2 Step 0 it also owns `elaborate`
+  (AST → flat `Design`), `value` (the `Val` bit-vector model), and `comb`
+  (the combinational expression evaluator) - `elaborate` was already
+  structurally pure, so promoting it (plus the `value`/`comb` it folds
+  constants through, and the S0xxx runtime-diagnostic catalog in `diag.rs`)
+  lets a future `mimz-core::ir` module consume the same `Design` type
+  without depending on the simulator crate.
+- **`mimz-sim`** - the event-driven kernel (`sim/kernel.rs`) and supporting
+  modules (`harness`, `run`, `vcd`, `trace`, `host`, `wide`) plus the
+  in-memory command runner (`runner.rs`), depending only on `mimz-core` -
+  including for its `Design` input, via `mimz-core::elaborate` (no longer
+  owning elaboration itself; `sim/mod.rs` and `sim/diag.rs` re-export
+  `elaborate`/`value`/`comb`/the S0xxx catalog for zero caller churn).
+  Defines the `EmulationHost` trait + `Direction` enum (`sim/host.rs`) so
+  the simulator can drive hardware peripherals without depending on them.
 - **`mimz`** (root `src/`, this crate) - the thin shell: filesystem I/O
   (`project.rs`, `config.rs`), the native hardware-emulation peripherals
   (`emulate/`, feature-gated behind `hw-emulation`, implementing
@@ -157,7 +171,7 @@ mimz/ (workspace root)
 │   │   └── src/
 │   │       ├── lib.rs                     # pub mod × 19 + REPEAT_BUDGET const
 │   │       ├── span.rs                    # byte-offset spans
-│   │       ├── diag.rs                    # teaching diagnostics + JSON format
+│   │       ├── diag.rs                    # teaching diagnostics + JSON format (E-code checker catalog + S0xxx sim runtime catalog)
 │   │       ├── morph.rs                   # error-language + Tamil inflection
 │   │       ├── translate.rs               # keyword reskin between flavors
 │   │       ├── pretty.rs                  # AST → source pretty-printer
@@ -170,6 +184,9 @@ mimz/ (workspace root)
 │   │       ├── bits.rs                    # Bits value: Small(u128)/Wide(Vec<u64>)
 │   │       ├── wide.rs                    # limb arithmetic past 128 bits
 │   │       ├── width_rules.rs             # shared width/overflow contracts (single source)
+│   │       ├── value/                     # bit-vector value model (4 files)
+│   │       ├── comb.rs                    # combinational evaluator
+│   │       ├── elaborate/                 # AST → flat Design (7 files)
 │   │       ├── ast/                       # the ONE shared AST
 │   │       │   ├── mod.rs                     # files, modules, decls, statements
 │   │       │   ├── expr.rs                    # expressions, patterns, operators
@@ -213,15 +230,12 @@ mimz/ (workspace root)
 │   │       ├── lib.rs                     # pub mod sim/runner; compile_string entry
 │   │       ├── runner.rs                  # in-memory command engine (playground)
 │   │       └── sim/                       # (P1.5)
-│   │           ├── mod.rs                     # module entry + re-exports
-│   │           ├── comb.rs                    # combinational evaluator
+│   │           ├── mod.rs                     # module entry; re-exports elaborate/value/comb from mimz-core
 │   │           ├── kernel.rs                  # event-driven kernel
-│   │           ├── diag.rs                    # S0xxx runtime catalog (ALL_SIM_CODES)
-│   │           ├── elaborate/                 # AST → flat Design (7 files)
+│   │           ├── diag.rs                    # shim: re-exports ALL_SIM_CODES/bridge_code/diag_from_bridged from mimz-core::diag
 │   │           ├── harness/                   # test block runner (2 files)
 │   │           ├── host.rs                    # EmulationHost trait + Direction enum
 │   │           ├── run.rs                     # default stimulus
-│   │           ├── value/                     # bit-vector value model (4 files)
 │   │           ├── wide.rs                    # arbitrary-width sim helpers
 │   │           ├── vcd.rs                     # VCD waveform writer
 │   │           └── trace.rs                   # console trace renderer

@@ -29,6 +29,7 @@ pub mod diag;
 pub mod elaborate;
 pub mod emit_verilog;
 pub mod explain;
+pub mod ir;
 pub mod lexer;
 pub mod lint;
 pub mod morph;
