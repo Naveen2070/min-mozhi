@@ -1,5 +1,5 @@
 use super::*;
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 pub(super) fn build_registry(files: &[ast::File]) -> Registry<'_> {
     let mut reg: Registry<'_> = HashMap::new();

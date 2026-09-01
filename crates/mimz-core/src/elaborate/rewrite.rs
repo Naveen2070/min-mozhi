@@ -1,6 +1,6 @@
 use super::*;
-use crate::sim::Diag;
-use mimz_core::ast::Pattern;
+use crate::ast::Pattern;
+use crate::diag::Diag;
 
 /// Rewrites expressions/statements during elaboration: enum-variant reads
 /// (`State.Red`) → their index literal, instance-port reads (`add.sum`,
@@ -258,13 +258,13 @@ impl<'d, 's> Rw<'d, 's> {
     /// mirrors their exact `tag_w`/`max_payload_w` computation. Produces a
     /// plain `ExprKind::Int` for a tag-only (zero-arg) variant, or an
     /// `ExprKind::Concat` otherwise — both already fully evaluated by
-    /// `crate::sim::value`, so no new interpreter code is needed.
+    /// `crate::value`, so no new interpreter code is needed.
     fn enum_construct(
         &self,
         enum_name: &ast::Ident,
         variant: &ast::Ident,
         args: &[Expr],
-        span: mimz_core::span::Span,
+        span: crate::span::Span,
     ) -> Result<Expr, Box<Diag>> {
         let edecl = self.enums.get(&enum_name.name).ok_or_else(|| {
             Box::new(

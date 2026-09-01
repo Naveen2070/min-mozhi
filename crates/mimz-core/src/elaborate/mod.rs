@@ -21,14 +21,14 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use mimz_core::ast::{
+use crate::ast::{
     self, AssertStmt, BinOp, CoverStmt, Dir, Edge, Expr, ExprKind, FuncDecl, ModuleItem, NamedArg,
     SeqStmt, UnOp,
 };
 
-use super::value::{const_eval, const_eval_wide, pick_module, type_width};
+use crate::value::{const_eval, const_eval_wide, pick_module, type_width};
 
-use crate::sim::Diag;
+use crate::diag::Diag;
 
 use bundle::{bundle_field_expr, bundle_type_info, flatten_bundle_params_in_func, is_bundle_ty};
 use instance::{Flat, flatten_instance};
@@ -43,7 +43,7 @@ use rewrite::Rw;
 // Max `repeat` iterations the simulator will unroll — the same crate-root
 // constant the emitter uses, so a design that compiles also elaborates (the
 // simulator is the emitter's differential oracle). See [`mimz_core::REPEAT_BUDGET`].
-use mimz_core::REPEAT_BUDGET;
+use crate::REPEAT_BUDGET;
 
 /// Max instance-nesting depth the simulator will flatten. `mimz sim`/`mimz test`
 /// run on the parsed AST WITHOUT the checker (which has its own recursion guard),
@@ -108,7 +108,7 @@ pub struct Reg {
     /// The register's folded width and signedness.
     pub width: Width,
     /// The folded compile-time reset value (masked to `width` by the kernel).
-    pub reset: mimz_core::checker::consteval::ConstVal,
+    pub reset: crate::checker::consteval::ConstVal,
     /// The clock of the `on` block that assigns this reg (empty if none does,
     /// in which case the reg simply holds its reset value forever).
     pub clock: String,
@@ -130,7 +130,7 @@ pub struct Mem {
     /// Number of addressable cells.
     pub depth: u128,
     /// The folded compile-time value every cell is seeded to at power-on.
-    pub init: mimz_core::checker::consteval::ConstVal,
+    pub init: crate::checker::consteval::ConstVal,
     /// The clock of the `on` block that writes this memory (empty if none does).
     pub clock: String,
     /// The edge of the writing `on` block (`rise`/`fall`).
@@ -258,7 +258,7 @@ pub fn elaborate_project_with_mode(
     let entry = files.first().ok_or_else(|| {
         Box::new(
             Diag::new(
-                mimz_core::span::Span { start: 0, end: 0 },
+                crate::span::Span { start: 0, end: 0 },
                 "no files to elaborate",
             )
             .with_code("S0131"),
@@ -293,14 +293,14 @@ fn conn_signal_name(e: &Expr) -> Result<String, Box<Diag>> {
     }
 }
 
-fn ident_expr(name: String, span: mimz_core::span::Span) -> Expr {
+fn ident_expr(name: String, span: crate::span::Span) -> Expr {
     Expr {
         kind: ExprKind::Ident(name),
         span,
     }
 }
 
-fn int_expr(v: i128, span: mimz_core::span::Span) -> Expr {
+fn int_expr(v: i128, span: crate::span::Span) -> Expr {
     if v >= 0 {
         return Expr {
             kind: ExprKind::Int {
@@ -337,7 +337,7 @@ fn int_expr(v: i128, span: mimz_core::span::Span) -> Expr {
 /// minimal width (`Val::from_int`), not whatever fixed-width slot it needs
 /// to fill inside a `Concat`. A no-op at eval time when `e` already
 /// evaluates to `width` bits (e.g. an ident naming a same-width signal).
-fn extend_to(e: Expr, width: u32, span: mimz_core::span::Span) -> Expr {
+fn extend_to(e: Expr, width: u32, span: crate::span::Span) -> Expr {
     Expr {
         kind: ExprKind::Call {
             func: ast::Builtin::Extend,
@@ -350,7 +350,7 @@ fn extend_to(e: Expr, width: u32, span: mimz_core::span::Span) -> Expr {
 /// `clog2` matching the Verilog emitter and the `clog2` const-builtin: the bit
 /// width of an `n`-variant enum encoding (one source of truth, so they agree).
 fn clog2(n: usize) -> u32 {
-    mimz_core::checker::consteval::clog2_bits(n as u128)
+    crate::checker::consteval::clog2_bits(n as u128)
 }
 
 /// Does this sequential body assign register `name` on any path (including
