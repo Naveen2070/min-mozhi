@@ -75,6 +75,7 @@ fn base_design(func: FuncDecl, out_expr: Expr) -> Design {
         resets: vec![],
         funcs,
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     }
