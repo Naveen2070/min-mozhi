@@ -14,6 +14,9 @@ pub(super) struct Flat {
     /// Names of driverless signals (extern-instance outputs in `warn`
     /// [`SimMode`]) — see `Design::unknown_signals`.
     pub(super) unknown: Vec<String>,
+    /// One entry per extern-module instance flattened here — see
+    /// `Design::extern_instances`.
+    pub(super) extern_instances: Vec<ExternInstance>,
 }
 
 impl Flat {
@@ -24,6 +27,7 @@ impl Flat {
         self.comb.extend(other.comb);
         self.procs.extend(other.procs);
         self.unknown.extend(other.unknown);
+        self.extern_instances.extend(other.extern_instances);
     }
 }
 
@@ -57,6 +61,26 @@ pub(super) fn flatten_instance(
     depth: u32,
     mode: SimMode,
 ) -> Result<Flat, Box<Diag>> {
+    let pfx = format!("{iname}_");
+    // Parent-context rewriter for connection expressions: folds the `repeat`
+    // loop var, resolves nested `arr[i-1].port` reads, and — BUG-15 — flattens
+    // a bundle-typed connection signal's `.field` access via `bundle_sigs`
+    // (real PARENT bundle signals here, unlike `crw` below: a connection
+    // expression lives in the PARENT's own scope, so a synthesized
+    // `bundle_field_expr` field-access on it must resolve against the
+    // PARENT's bundle-typed wires/ports, not an empty set). Built here,
+    // before the real-vs-extern branch below, since it depends only on
+    // parent-scope context — both branches' input-port connections need it.
+    let prw = Rw {
+        insts: parent_insts,
+        enums: parent_enums,
+        bundle_sigs: parent_bundle_sigs,
+        consts: parent_consts,
+        subst: parent_subst,
+        func_reg,
+        bundle_reg,
+        imports: parent_imports,
+    };
     let (cfile, cm) =
         match resolve_target(reg, extern_reg, parent_imports, &inst.module).map_err(|mut e| {
             e.msg = format!("instance `{}` {}", inst.name.name, e.msg);
@@ -64,7 +88,7 @@ pub(super) fn flatten_instance(
         })? {
             (Some(f), ast::ModuleTarget::Real(m)) => (f, m),
             (None, ast::ModuleTarget::Extern(em)) => {
-                return flatten_extern_instance(em, parent_consts, inst, iname, mode);
+                return flatten_extern_instance(em, parent_consts, &prw, inst, &pfx, mode);
             }
             (_, target) => unreachable!(
                 "resolve_target always pairs ModuleTarget::Real with Some(file) and \
@@ -118,25 +142,6 @@ pub(super) fn flatten_instance(
         e.msg = format!("instance `{}`: {}", inst.name.name, e.msg);
         e
     })?;
-    let pfx = format!("{iname}_");
-
-    // Parent-context rewriter for connection expressions: folds the `repeat`
-    // loop var, resolves nested `arr[i-1].port` reads, and — BUG-15 — flattens
-    // a bundle-typed connection signal's `.field` access via `bundle_sigs`
-    // (real PARENT bundle signals here, unlike `crw` below: a connection
-    // expression lives in the PARENT's own scope, so a synthesized
-    // `bundle_field_expr` field-access on it must resolve against the
-    // PARENT's bundle-typed wires/ports, not an empty set).
-    let prw = Rw {
-        insts: parent_insts,
-        enums: parent_enums,
-        bundle_sigs: parent_bundle_sigs,
-        consts: parent_consts,
-        subst: parent_subst,
-        func_reg,
-        bundle_reg,
-        imports: parent_imports,
-    };
 
     // The child body is already flat (no `Field`/enum nodes survive its own
     // elaboration), so a subst-only rewriter suffices: child const → literal,
@@ -350,12 +355,18 @@ pub(super) fn flatten_instance(
 /// unconstrained (`Val::unknown`) read and prints one warning per instance
 /// (this function runs exactly once per `Inst` node during elaboration, so
 /// "once per distinct instance" falls out for free — no dedup bookkeeping
-/// needed).
+/// needed). Every port — input AND output — also becomes a flat wire named
+/// `{pfx}{port}` (an input driven by its rewritten connection expression,
+/// same as a real instance's inputs; an output left driverless, same as
+/// before) plus one `Design::extern_instances` entry, so `ir::lower` (Task
+/// 11) can later turn this instance into a `BlackBox` cell purely from
+/// `Design`, no AST access needed.
 fn flatten_extern_instance(
     em: &ast::ExternModule,
     parent_consts: &BTreeMap<String, i128>,
+    prw: &Rw,
     inst: &ast::Inst,
-    iname: &str,
+    pfx: &str,
     mode: SimMode,
 ) -> Result<Flat, Box<Diag>> {
     if mode == SimMode::Strict {
@@ -409,27 +420,60 @@ fn flatten_extern_instance(
         cp.insert(p.name.name.clone(), v);
     }
 
-    let pfx = format!("{iname}_");
     let mut flat = Flat::default();
+    let mut ports: Vec<(String, Signal)> = Vec::new();
     // Extern ports are scalar-only (bit/bits[N]/signed[N]) — the checker
     // enforces this on the declaration (Task 3), so `type_width` (the same
     // width-resolution helper the real child-elaboration path uses) never
     // hits its enum/bundle/array error arms here.
     for it in &em.items {
-        if let ModuleItem::Port {
-            dir: Dir::Out,
-            name,
-            ty,
-        } = it
-        {
+        if let ModuleItem::Port { dir, name, ty } = it {
             let (bits, signed) = type_width(ty, &cp, name.span)?;
             let flat_name = format!("{pfx}{}", name.name);
-            flat.wires.push(Signal {
+            let sig = Signal {
                 name: flat_name.clone(),
                 width: Width { bits, signed },
-            });
-            flat.unknown.push(flat_name);
+            };
+            match dir {
+                // Same shape as a real instance's input (see the loop over
+                // `child.inputs` above): a parent wire driven by the
+                // (required) connection expression, rewritten into the
+                // parent's own scope. The checker (E0302) already guarantees
+                // every input is connected — this `ok_or_else` is the same
+                // defensive fallback `flatten_instance`'s own S0112 is, for
+                // `mimz sim`/`mimz test`'s checker-less path.
+                Dir::In => {
+                    let conn = inst
+                        .conns
+                        .iter()
+                        .find(|cn| cn.port.name == name.name)
+                        .ok_or_else(|| {
+                            Box::new(
+                                Diag::new(
+                                    inst.span,
+                                    format!(
+                                        "instance `{}`: input `{}` of `{}` is not connected",
+                                        inst.name.name, name.name, em.name.name
+                                    ),
+                                )
+                                .with_code("S0112"),
+                            )
+                        })?;
+                    flat.wires.push(sig.clone());
+                    flat.comb.push((flat_name, prw.expr(&conn.signal)?));
+                }
+                Dir::Out => {
+                    flat.wires.push(sig.clone());
+                    flat.unknown.push(flat_name);
+                }
+            }
+            ports.push((name.name.clone(), sig));
         }
     }
+    flat.extern_instances.push(ExternInstance {
+        module_name: em.name.name.clone(),
+        ports,
+        span: inst.span,
+    });
     Ok(flat)
 }

@@ -715,12 +715,17 @@ enum Target {
 }
 
 /// Lowers an elaborated `Design` into a `Module`.
+///
+/// `design.asserts` / `design.covers` are intentionally never read here —
+/// they're verification-only and never synthesized (design doc, "assert/
+/// cover... dropped entirely at lowering").
 pub fn lower(design: &Design) -> Module {
     let mut module = Module {
         name: design.module.clone(),
         ports: Vec::new(),
         cells: Vec::new(),
         nets: Vec::new(),
+        extern_decls: BTreeMap::new(),
     };
     let mut ctx = LowerCtx {
         design,
@@ -740,6 +745,23 @@ pub fn lower(design: &Design) -> Module {
         let q_bits = module.alloc_bits(reg.width.bits, Some(&reg.name));
         ctx.resolved.insert(reg.name.clone(), q_bits);
     }
+    // Extern-instance outputs (`design.unknown_signals`) are driverless by
+    // design — no `comb` entry, so `ctx.resolve`'s panic path would fire on
+    // them. Pre-populate their `Bits` here too, same as inputs/reg Qs above,
+    // so both the wire-resolution loop below and the `BlackBox`-cell loop
+    // (after it) — and any ordinary wire that happens to read one — see an
+    // already-allocated net instead of a missing driver.
+    for name in &design.unknown_signals {
+        let width = design
+            .wires
+            .iter()
+            .find(|w| w.name == *name)
+            .unwrap_or_else(|| panic!("unknown_signals entry `{name}` has no matching wire"))
+            .width
+            .bits;
+        let bits = module.alloc_bits(width, Some(name));
+        ctx.resolved.insert(name.clone(), bits);
+    }
     for output in &design.outputs {
         let bits = ctx.resolve(&mut module, &output.name);
         module.ports.push((output.name.clone(), bits, Dir::Out));
@@ -747,8 +769,61 @@ pub fn lower(design: &Design) -> Module {
     // Force every wire to be lowered even if no output reads it (keeps
     // dead-wire diagnostics/validation meaningful; the optimizer's future
     // dead-signal-elimination pass is the place that actually removes it).
+    // Also assign the wire's name to all of its unnamed nets (a pure
+    // arithmetic result's nets start with no name; assigning the wire's
+    // name here makes the printer output readable: `out=sum[0:9]` instead
+    // of `out={16,17,18,19,20,21,22,23,24}`).
     for wire in &design.wires {
-        ctx.resolve(&mut module, &wire.name);
+        let bits = ctx.resolve(&mut module, &wire.name);
+        for net_id in &bits.0 {
+            if module.nets[net_id.0 as usize].name.is_none() {
+                module.nets[net_id.0 as usize].name = Some(wire.name.clone());
+            }
+        }
+    }
+
+    // Extern-module instances (Task 11): one `BlackBox` cell per
+    // `design.extern_instances` entry. Every port was already resolved
+    // above — an input via its synthesized comb driver (just-run
+    // wire-resolution loop), an output via the `unknown_signals`
+    // pre-population — so this is a pure by-name pin lookup.
+    //
+    // `Cell::pins` keys are `&'static str` (every other cell kind's pin
+    // names are literals baked into this file); a `BlackBox`'s pin names
+    // are the extern module's own port names instead, known only at
+    // lowering time. `Box::leak` is the standard way to mint a `'static`
+    // str from a runtime `String` — ponytail: leaked bytes are bounded by
+    // one design's extern-instance port count, not per-run growth, and a
+    // compiler invocation is short-lived, so this never accumulates.
+    for ext in &design.extern_instances {
+        let pins: BTreeMap<&'static str, Bits> = ext
+            .ports
+            .iter()
+            .map(|(port_name, sig)| {
+                let bits = ctx.resolved.get(&sig.name).unwrap_or_else(|| {
+                    panic!(
+                        "extern instance port `{port_name}` (net `{}`) was not pre-resolved",
+                        sig.name
+                    )
+                });
+                let leaked: &'static str = Box::leak(port_name.clone().into_boxed_str());
+                (leaked, bits.clone())
+            })
+            .collect();
+        module.cells.push(Cell {
+            kind: CellKind::BlackBox {
+                module_name: ext.module_name.clone(),
+            },
+            pins,
+            span: ext.span,
+        });
+        module.extern_decls.insert(
+            ext.module_name.clone(),
+            ext.ports
+                .iter()
+                .map(|(n, s)| (n.clone(), s.width.bits))
+                .collect(),
+        );
     }
 
     // Build each reg's D input from its driving `Process` and emit the Dff

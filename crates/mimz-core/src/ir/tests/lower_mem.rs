@@ -105,7 +105,7 @@ fn seed() -> ConstVal {
 
 /// One 8-bit x 4-word memory `ram`, read combinationally into wire `rd` and
 /// written unconditionally on `rise(clk)`. `depth: 4` -> a 2-bit address.
-fn ram_design() -> Design {
+pub(super) fn ram_design() -> Design {
     let mut comb = BTreeMap::new();
     comb.insert("rd".to_string(), mem_read("ram", "addr"));
     Design {
@@ -152,6 +152,7 @@ fn ram_design() -> Design {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     }

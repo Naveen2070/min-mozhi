@@ -772,6 +772,7 @@ impl<'a> Elaboration<'a> {
         // Merge inlined-instance pieces, then assemble bit-indexed drives into one
         // whole-signal Concat (widest bit first, Verilog concat order).
         let unknown_signals: HashSet<String> = flat.unknown.iter().cloned().collect();
+        let extern_instances = flat.extern_instances;
         wires.extend(flat.wires);
         regs.extend(flat.regs);
         // Merge instance drivers, erroring on a name collision instead of silently
@@ -860,6 +861,7 @@ impl<'a> Elaboration<'a> {
             resets,
             funcs,
             unknown_signals,
+            extern_instances,
             asserts,
             covers,
         })
