@@ -48,6 +48,7 @@ fn lowers_bool_literal_to_a_const_cell() {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     };

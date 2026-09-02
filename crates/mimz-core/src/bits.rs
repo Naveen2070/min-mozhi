@@ -44,6 +44,35 @@ pub fn bits_to_decimal_string(bits: &Bits, width: u32, signed: bool) -> String {
     }
 }
 
+/// Render the raw bit pattern of `bits` as a decimal string (unsigned,
+/// width-agnostic). Used by the IR printer to display constant values.
+pub fn to_decimal_string(b: &Bits) -> String {
+    match b {
+        Bits::Small(v) => v.to_string(),
+        Bits::Wide(limbs) => {
+            // ponytail: naive divide-by-10, fine until an actual wide constant
+            // shows up in a golden file. Small enough to not need a bignum
+            // library: repeated divide-by-10 over the limb vector.
+            let mut limbs = limbs.clone();
+            let mut digits = Vec::new();
+            while limbs.iter().any(|&l| l != 0) {
+                let mut rem: u128 = 0;
+                for limb in limbs.iter_mut().rev() {
+                    let cur = (rem << 64) | *limb as u128;
+                    *limb = (cur / 10) as u64;
+                    rem = cur % 10;
+                }
+                digits.push((b'0' + rem as u8) as char);
+            }
+            if digits.is_empty() {
+                "0".to_string()
+            } else {
+                digits.iter().rev().collect()
+            }
+        }
+    }
+}
+
 /// `bits`'s limbs at `width`, promoting a `Small` value to a
 /// `wide::limb_count(width)`-length vector on the fly. `width` is
 /// external context — `Bits` alone never carries its own width (that

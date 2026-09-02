@@ -150,6 +150,24 @@ pub struct Process {
     pub body: Vec<SeqStmt>,
 }
 
+/// One `extern module` instance, recorded so `ir::lower` (Task 11) can turn
+/// it into a `BlackBox` cell without re-deriving it from the AST. `ports`
+/// lists every port the extern module declares, in declaration order: the
+/// port's own name, paired with the flattened parent-scope [`Signal`] it
+/// connects to (an input's synthesized driving wire, or an output's
+/// driverless wire — see [`Design::unknown_signals`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExternInstance {
+    /// The extern module's declared name (the Verilog module to instantiate).
+    pub module_name: String,
+    /// `(declared port name, connected flat Signal)`, in declaration order.
+    pub ports: Vec<(String, Signal)>,
+    /// The `let u = Extern() { .. }` instantiation's own source span —
+    /// spans-everywhere is a core invariant (architecture.md), and this is
+    /// what `ir::lower`'s `BlackBox` cell traces back to.
+    pub span: crate::span::Span,
+}
+
 /// A fully elaborated single module: a flat signal/process graph with all
 /// parameters and widths folded to concrete values.
 #[derive(Clone, Debug)]
@@ -187,6 +205,9 @@ pub struct Design {
     /// is no body to derive a driver from) — the kernel resolves a name in
     /// this set straight to `Val::unknown`, bypassing `comb` entirely.
     pub unknown_signals: HashSet<String>,
+    /// One entry per `extern module` instance in the design, for the IR's
+    /// `BlackBox` lowering (Task 11). See [`ExternInstance`].
+    pub extern_instances: Vec<ExternInstance>,
     /// Combinational `assert`s (module-item form) — checked every settled
     /// comb state (GAP-6). `on`-block asserts need no separate field: they
     /// live inline in each `Process.body`, exactly like every other
