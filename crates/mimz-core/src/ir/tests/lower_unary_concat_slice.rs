@@ -47,6 +47,7 @@ fn unary_design(op: UnOp) -> Design {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     }
@@ -119,6 +120,7 @@ fn lowers_concat_preserves_msb_first_source_order_as_lsb_first_bits() {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     };
@@ -174,6 +176,7 @@ fn lowers_slice_to_a_subrange() {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     };

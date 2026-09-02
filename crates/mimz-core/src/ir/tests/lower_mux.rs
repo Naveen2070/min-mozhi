@@ -31,8 +31,10 @@ fn find_port<'a>(module: &'a Module, name: &str) -> &'a Bits {
         .1
 }
 
-#[test]
-fn lowers_if_expr_to_a_mux_cell() {
+/// `wire out = if sel { a } else { b }` — the simplest design that lowers
+/// to a single `Mux` cell. Reused by Task 13's round-trip test as well as
+/// this file's own lowering test.
+pub(super) fn if_mux_design() -> Design {
     let mut comb = BTreeMap::new();
     comb.insert(
         "out".to_string(),
@@ -45,7 +47,7 @@ fn lowers_if_expr_to_a_mux_cell() {
             span: Span::default(),
         },
     );
-    let design = Design {
+    Design {
         module: "muxer".to_string(),
         consts: BTreeMap::new(),
         inputs: vec![
@@ -75,9 +77,15 @@ fn lowers_if_expr_to_a_mux_cell() {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
-    };
+    }
+}
+
+#[test]
+fn lowers_if_expr_to_a_mux_cell() {
+    let design = if_mux_design();
     let module = lower(&design);
 
     let mux_cells: Vec<&Cell> = module
@@ -140,6 +148,7 @@ fn lowers_match_with_int_arms_and_wildcard_to_chained_mux_eq() {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     };
@@ -281,6 +290,7 @@ fn lowers_match_with_int_mask_pattern_to_and_then_eq() {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     };
