@@ -1,10 +1,15 @@
 mod lower_basic;
 mod lower_binops;
+mod lower_blackbox;
 mod lower_fn_inline;
 mod lower_mem;
 mod lower_mux;
 mod lower_regs;
 mod lower_unary_concat_slice;
+mod parse_line;
+mod print_line;
+mod print_sexpr;
+mod validate;
 
 use crate::ast::{Expr, ExprKind};
 use crate::elaborate::{Design, Signal, Width};
@@ -67,6 +72,7 @@ pub(super) fn adder_design() -> Design {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     }

@@ -127,6 +127,16 @@ pub struct Module {
     pub ports: Vec<(String, Bits, Dir)>,
     pub cells: Vec<Cell>,
     pub nets: Vec<NetInfo>,
+    /// Declared port shape (name, width) for each distinct extern module a
+    /// `BlackBox` cell instantiates, keyed by `CellKind::BlackBox`'s
+    /// `module_name` — populated by `lower()` from `design.extern_instances`
+    /// (Task 11), consumed by `validate`'s black-box-port-shape check. Not
+    /// currently round-tripped by the text format (`print_line`/`parse_line`
+    /// don't emit/restore it) — a v1 scope boundary: validating a hand-parsed
+    /// IR text file's `BlackBox` cells against declared shape is not yet
+    /// possible; `validate` skips the check gracefully (no entry = no error)
+    /// rather than treating a missing entry as a violation.
+    pub extern_decls: std::collections::BTreeMap<String, Vec<(String, u32)>>,
 }
 
 impl Module {

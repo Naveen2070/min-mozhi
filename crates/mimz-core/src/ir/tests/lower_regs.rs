@@ -39,7 +39,7 @@ fn find_dff(module: &Module) -> &Cell {
 /// Base design shared by both tests: one 8-bit input "d", a 1-bit clock
 /// "clk", and a register "q" driven by an `on rise(clk)` block assigning
 /// `q <- d`. Callers customize `regs[0].reset` and `resets`.
-fn reg_design() -> Design {
+pub(super) fn reg_design() -> Design {
     Design {
         module: "regger".to_string(),
         consts: BTreeMap::new(),
@@ -80,6 +80,7 @@ fn reg_design() -> Design {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     }

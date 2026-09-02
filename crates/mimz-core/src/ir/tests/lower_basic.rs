@@ -23,6 +23,7 @@ fn empty_design(name: &str) -> Design {
         resets: vec![],
         funcs: Default::default(),
         unknown_signals: Default::default(),
+        extern_instances: vec![],
         asserts: vec![],
         covers: vec![],
     }
