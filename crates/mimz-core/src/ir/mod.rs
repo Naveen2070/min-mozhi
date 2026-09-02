@@ -89,8 +89,13 @@ pub enum CellKind {
         clock: NetId,
         edge: Edge,
     },
+    /// A memory array: `depth` words, each as wide as the `rdata`/`wdata`
+    /// pins, seeded to `init` at power-on (carried as cell metadata per the
+    /// design doc — a ROM is exactly a `Mem` whose `wen` is tied low, so the
+    /// seed value is the whole of its behaviour).
     Mem {
         depth: u128,
+        init: crate::checker::consteval::ConstVal,
     },
     BlackBox {
         module_name: String,

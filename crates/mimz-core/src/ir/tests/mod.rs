@@ -1,6 +1,9 @@
 mod lower_basic;
 mod lower_binops;
+mod lower_fn_inline;
+mod lower_mem;
 mod lower_mux;
+mod lower_regs;
 mod lower_unary_concat_slice;
 
 use crate::ast::{Expr, ExprKind};
