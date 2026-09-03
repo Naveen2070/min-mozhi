@@ -1,7 +1,7 @@
 use super::{ident, w};
-use crate::ast::{Edge, Ident, LValue, SeqStmt};
+use crate::ast::{Dir, Edge, Ident, LValue, SeqStmt};
 use crate::checker::consteval::ConstVal;
-use crate::elaborate::{Design, Process, Reg, Signal};
+use crate::elaborate::{Design, Process, Reg, Signal, elaborate};
 use crate::ir::{Cell, CellKind, Module, lower};
 use crate::span::Span;
 use std::collections::BTreeMap;
@@ -247,4 +247,58 @@ fn lowers_default_seq_stmt_to_a_const_driven_dff() {
         unreachable!()
     };
     assert_eq!(value.bits, crate::bits::Bits::Small(0));
+}
+
+/// Regression for Task 17 Finding 1: `lower()` used to panic
+/// (`no driver recorded for signal 'clk'`/`'rst'`) on every REAL
+/// `elaborate()`-built `Design` with a clock or reset, because
+/// `design.clocks`/`design.resets` names were never pre-populated into
+/// `ctx.resolved` the way `design.inputs` names are — only masked in every
+/// OTHER test in this file because `reg_design()` hand-adds `clk`/`rst` to
+/// `design.inputs` itself, something the real elaborator never does (it
+/// files clock/reset names under `design.clocks`/`design.resets` only —
+/// see `elaborate::module.rs`'s `ModuleItem::Clock`/`ModuleItem::Reset`
+/// arms). This test runs the real lex -> parse -> elaborate pipeline
+/// (no hand-built `Design`) so a regression here can't hide the same way.
+#[test]
+fn lowers_a_register_from_a_real_elaborated_design_with_clock_and_reset() {
+    let src = "module R {\n  clock clk\n  reset rst\n  out y: bits[8]\n  \
+               reg r: bits[8] = 5\n  on rise(clk) { r <- r +% 1 }\n  y = r\n}\n";
+    let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+    let design = elaborate(&file, None, &BTreeMap::new()).expect("elaborates");
+    assert_eq!(
+        design.inputs,
+        vec![],
+        "clk/rst are NOT in design.inputs — the precondition this bug needed"
+    );
+
+    let module = lower(&design); // must not panic
+
+    let (clk_name, clk_bits, clk_dir) = module
+        .ports
+        .iter()
+        .find(|(n, ..)| n == "clk")
+        .expect("clk must be a real IR port");
+    assert_eq!(clk_bits.width(), 1);
+    assert_eq!(*clk_dir, Dir::In);
+    let _ = clk_name;
+
+    let (rst_name, rst_bits, rst_dir) = module
+        .ports
+        .iter()
+        .find(|(n, ..)| n == "rst")
+        .expect("rst must be a real IR port");
+    assert_eq!(rst_bits.width(), 1);
+    assert_eq!(*rst_dir, Dir::In);
+    let _ = rst_name;
+
+    let dff = find_dff(&module);
+    let CellKind::Dff { clock, edge } = &dff.kind else {
+        unreachable!()
+    };
+    assert_eq!(*edge, Edge::Rise);
+    assert_eq!(
+        *clock, clk_bits.0[0],
+        "the Dff's clock net is clk's own port net"
+    );
 }

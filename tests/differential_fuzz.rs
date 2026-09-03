@@ -20,7 +20,12 @@ use std::path::PathBuf;
 use mimz::sim::comb;
 use mimz::sim::elaborate::elaborate_project;
 use mimz::sim::run::{SimOpts, run};
+use mimz::sim::value::Val;
 use mimz::{checker, diag, lexer, parser};
+// `ir` is not re-exported through the `mimz` shell crate's facade (src/lib.rs
+// re-exports the pipeline stages, not the Phase-2 netlist), so the IR leg
+// below reaches it through the workspace crate directly.
+use mimz_core::ir;
 
 mod support;
 
@@ -1912,5 +1917,412 @@ fn differential_fuzz_clocked_matches_icarus() {
             }
         }
         assert!(compared > 0, "seed {seed}: nothing was compared");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Task 18 / invariant 5: the IR leg — `mimz_core::ir::exec` vs. the AST kernel
+// ---------------------------------------------------------------------------
+
+/// Seed base for the IR-scoped clocked generator — deliberately disjoint from
+/// both `COMB_SEED_BASE` and `CLOCKED_SEED_BASE` so no seed space aliases.
+const IR_SEED_BASE: u64 = 0x1D5EED;
+
+/// Uniform in `0..n`, from the LCG's HIGH bits.
+///
+/// [`Rng::next_range`] takes the LOW bits instead, and for this generator's
+/// multiplier those are near-degenerate at small powers of two: the update is
+/// `x * <odd> + <odd>`, so bit 0 strictly ALTERNATES (`next_range(2)` yields
+/// 0,1,0,1…) and bit 1 follows a period-4 cycle. Found live by
+/// `ir_fuzz_generator_reaches_every_lowerable_construct`: a 4-way
+/// `next_range(4)` comparison pick produced zero `<=` across 500 programs —
+/// one arm of a four-arm choice was simply unreachable.
+///
+/// Left as a local helper rather than a fix to `Rng` on purpose: changing
+/// `next_range` would renumber every program the two Icarus generators emit,
+/// invalidating both fuzz-seed regression corpora (`comb.txt`/`clocked.txt`,
+/// GAP-11's whole point) for a bias those generators have absorbed for their
+/// entire history. Worth its own task, not a side effect of this one.
+fn pick(rng: &mut Rng, n: u64) -> usize {
+    ((rng.next_u64() >> 40) % n) as usize
+}
+
+/// One expression fragment for [`gen_ir_clocked_module`]. EVERY fragment is
+/// exactly `w` bits and unsigned, which is what makes the whole grammar closed
+/// under composition with no `extend()`/`signed()`/`unsigned()` anywhere — see
+/// [`gen_ir_clocked_module`]'s own doc comment for why that matters.
+///
+/// Records every internal node into `subs`, the same GAP-11(a)
+/// materialize-each-intermediate oracle `gen_expr_collecting` already builds
+/// for the Icarus legs: a wrong value at a sub-expression is only visible at
+/// the root when the error happens to survive to the top.
+fn gen_ir_expr(
+    rng: &mut Rng,
+    leaves: &[String],
+    w: u32,
+    depth: u32,
+    subs: &mut Vec<String>,
+) -> String {
+    if depth == 0 || pick(rng, 6) == 0 {
+        return leaves[pick(rng, leaves.len() as u64)].clone();
+    }
+    let out = match pick(rng, 6) {
+        // `& | ^` — `CellKind::{And,Or,Xor}`, width-preserving.
+        0 => {
+            let op = ["&", "|", "^"][pick(rng, 3)];
+            let a = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            let b = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            format!("({a} {op} {b})")
+        }
+        // `+% -% *%` — `CellKind::{AddWrap,SubWrap,MulWrap}`. The WRAPPING
+        // family only: `+`/`-`/`*` grow (`max+1` / `w1+w2`), which would break
+        // the one-width invariant this grammar rests on.
+        1 => {
+            let op = ["+%", "-%", "*%"][pick(rng, 3)];
+            let a = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            let b = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            format!("({a} {op} {b})")
+        }
+        // `~x` — `CellKind::Not`.
+        2 => {
+            let a = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            format!("(~{a})")
+        }
+        // `if <cmp> { a } else { b }` — `CellKind::Mux` over a comparison
+        // cell. `>`/`>=` are deliberately absent: `lower_binop` does not lower
+        // them yet (its own `unimplemented!`), and fixing that is
+        // separately-scoped work, so this generator simply never asks for one.
+        3 => {
+            let cmp = ["==", "!=", "<", "<="][pick(rng, 4)];
+            let c = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            let d = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            let a = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            let b = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            format!("(if ({c} {cmp} {d}) {{ {a} }} else {{ {b} }})")
+        }
+        // `match` — the chained-`Mux` lowering (`lower_match`), exhaustive via
+        // the wildcard regardless of the scrutinee's own width.
+        4 => {
+            let sel = &leaves[pick(rng, leaves.len() as u64)];
+            let a = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            let b = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            let c = gen_ir_expr(rng, leaves, w, depth - 1, subs);
+            format!("(match {sel} {{\n    0 => {a}\n    1 => {b}\n    _ => {c}\n  }})")
+        }
+        // `{a[h:0], b[h:0]}` — the one shape that reaches BOTH `Slice` and
+        // `Concat` while still landing on exactly `w` bits (`w` is always
+        // even, see `gen_ir_clocked_module`). Both halves are BARE leaves: the
+        // emitter cannot render a read-slice of a computed expression
+        // (BUG-20), the same restriction `gen_slice` already lives under.
+        _ => {
+            let a = &leaves[pick(rng, leaves.len() as u64)];
+            let b = &leaves[pick(rng, leaves.len() as u64)];
+            format!("{{{a}[{h}:0], {b}[{h}:0]}}", h = w / 2 - 1)
+        }
+    };
+    if subs.len() < MAX_SUB_OUTPUTS {
+        subs.push(out.clone());
+    }
+    out
+}
+
+/// Generate one random clocked `.mimz` module inside the subset the Phase-2 v1
+/// IR can actually lower — the corpus for invariant 5.
+///
+/// **Why a separate generator rather than a third leg bolted onto
+/// `gen_clocked_module`.** Measured, not assumed: wiring `ir::lower` into
+/// `differential_fuzz_clocked_matches_icarus` skipped 25 seeds out of 25.
+/// `ir::lower`'s `lower_expr` has no arm for `ExprKind::Call` at all — every
+/// builtin (`extend`, `trunc`, `signed`, `unsigned`, `abs`, `min`/`max`,
+/// `nand`/`nor`/`xnor`) hits its catch-all `unimplemented!("expression form
+/// not yet lowered by Task 5/6")`. That is fatal for the existing generator
+/// specifically, because `extend(x, N)` IS its width machinery: `widen`,
+/// `clamp`'s fallback, every non-port leaf, `force_width` and `wrap_builtin`
+/// all render one. And `extend(1, N)` is the ONLY way to give a literal a
+/// width in this language (`concat_ty`'s own E0405 hint says exactly that), so
+/// there is no builtin-free way to write a sized constant either. Implementing
+/// builtin lowering is a feature, not this test's business.
+///
+/// So this generator drops literals and width/kind conversion entirely, and
+/// buys back closure a different way: **one width for the whole module** (`w`,
+/// always even), **unsigned throughout**. Every leaf is a port or a register,
+/// every combinator preserves `w`, so no fragment ever needs widening or
+/// casting. What that reaches, and what it gives up:
+///
+/// * reached: `And`/`Or`/`Xor`/`Not`, `AddWrap`/`SubWrap`/`MulWrap`,
+///   `Eq`/`Ne`/`Lt`/`Le`, `Mux` (both `if` and `match`), `Const` (each
+///   register's reset value), `Dff` plus its reset mux, `lower`'s
+///   concat/slice **`Bits` re-pointing** (Task 6 emits no cell for either, so
+///   this exercises the re-pointing itself, not `CellKind::Concat`/`Slice` —
+///   those two arms of `eval_comb_cell` stay reachable only from
+///   hand-written IR text), and the whole `settle`/`tick` two-phase commit
+///   over 1-3 registers.
+/// * given up: `signed` anywhere (`ir::exec` is unsigned-only by construction
+///   — `exec.rs`'s v1 limitation list), `<<`/`>>` (the three-way divergence in
+///   `docs/audit/gaps.md` GAP-1's sub-gap), `>`/`>=`/`&&`/`||` (unlowered in
+///   `lower_binop`), lossless `+`/`-`/`*` (they grow), `mem` (`ir::lower`
+///   models one read port per memory and compares LOWERED nets, so even two
+///   textually identical `m[0]` reads trip it), and every builtin call.
+///
+/// Every one of those exclusions is an already-ruled, separately-tracked v1
+/// limitation, so the subset is a scope boundary rather than a workaround —
+/// and it is enforced BY CONSTRUCTION, which is why the test below needs no
+/// skip counting, no `catch_unwind` and no "known divergence" escape hatch:
+/// every generated program must lower, execute and agree, or the test fails.
+///
+/// Returns `(source, input_ports, held_input_values, outputs_meta)`.
+#[allow(clippy::type_complexity)]
+fn gen_ir_clocked_module(
+    seed: u64,
+) -> (
+    String,
+    Vec<Port>,
+    BTreeMap<String, u128>,
+    Vec<(String, u32)>,
+) {
+    let mut rng = Rng::new(seed);
+    // Even, so the `{a[h:0], b[h:0]}` concat shape always lands on `w`.
+    let w = 2 * (pick(&mut rng, 8) + 1) as u32; // 2..=16
+    let ports: Vec<Port> = (0..(pick(&mut rng, 3) + 1))
+        .map(|i| (format!("p{i}"), w, false))
+        .collect();
+    // `>> 40` for the same reason `pick` shifts — the low bits are periodic,
+    // and a held value taken from them would correlate across ports.
+    let held: BTreeMap<String, u128> = ports
+        .iter()
+        .map(|(name, ..)| {
+            (
+                name.clone(),
+                ((rng.next_u64() >> 40) & support::mask(w) as u64) as u128,
+            )
+        })
+        .collect();
+    // `(name, reset value)`. A RANDOM reset value, not a hardcoded 0: the reset
+    // constant is lowered by `lower_const` into its own `CellKind::Const`,
+    // separately from the reset-select `Mux` around it, so an all-zero corpus
+    // would exercise the mux while leaving a wrong constant invisible.
+    let regs: Vec<(String, u128)> = (0..(pick(&mut rng, 3) + 1))
+        .map(|i| {
+            (
+                format!("r{i}"),
+                ((rng.next_u64() >> 40) & support::mask(w) as u64) as u128,
+            )
+        })
+        .collect();
+    // A register's current value reads exactly like an input port.
+    let leaves: Vec<String> = ports
+        .iter()
+        .map(|(n, ..)| n.clone())
+        .chain(regs.iter().map(|(n, _)| n.clone()))
+        .collect();
+    let depth = (pick(&mut rng, 3) + 2) as u32; // 2..=4
+
+    let mut subs: Vec<String> = Vec::new();
+    let out_body = gen_ir_expr(&mut rng, &leaves, w, depth, &mut subs);
+    let mut next_states: Vec<String> = Vec::new();
+    for _ in &regs {
+        next_states.push(gen_ir_expr(&mut rng, &leaves, w, depth, &mut subs));
+    }
+    // The root and each next-state expression are already emitted inline;
+    // materializing them again would only duplicate them into an extra port.
+    subs.retain(|t| t != &out_body && !next_states.contains(t));
+
+    let mut src = String::from("module Fuzz {\n  clock clk\n  reset rst\n");
+    for (name, ..) in &ports {
+        src += &format!("  in {name}: bits[{w}]\n");
+    }
+    for (name, reset) in &regs {
+        src += &format!("  reg {name}: bits[{w}] = {reset}\n");
+    }
+    src += &format!("  out y: bits[{w}]\n");
+    for i in 0..subs.len() {
+        src += &format!("  out y{i}: bits[{w}]\n");
+    }
+    src += "  on rise(clk) {\n";
+    for ((name, _), next) in regs.iter().zip(&next_states) {
+        src += &format!("    {name} <- {next}\n");
+    }
+    src += "  }\n";
+    for (i, text) in subs.iter().enumerate() {
+        src += &format!("  y{i} = {text}\n");
+    }
+    src += &format!("  y = {out_body}\n}}\n");
+
+    let outputs_meta: Vec<(String, u32)> = std::iter::once(("y".to_string(), w))
+        .chain((0..subs.len()).map(|i| (format!("y{i}"), w)))
+        .collect();
+    (src, ports, held, outputs_meta)
+}
+
+/// **Invariant 5** (Phase-2 IR plan, Task 18): a THIRD evaluation of the same
+/// random program alongside the kernel-vs-Icarus legs above — `ir::lower` +
+/// `ir::exec` against `mimz-sim`'s AST kernel, cycle for cycle, over
+/// `MIMZ_DIFF_FUZZ_IR_N` (default `DEFAULT_FUZZ_N`) programs from
+/// [`gen_ir_clocked_module`].
+///
+/// Deliberately NOT gated on `require_iverilog()`: the kernel's own `Timeline`
+/// is the oracle here and it exists whether or not Icarus is installed, so
+/// this axis keeps its coverage on a developer machine with no Icarus — where
+/// both Icarus legs skip entirely.
+///
+/// One `Executor::tick()` equals one kernel `run` cycle *for this corpus*:
+/// `tick` advances every `Dff` regardless of its `edge` (a ruled v1
+/// limitation, `exec.rs`), and this generator only ever emits `on rise`, so
+/// the difference is unobservable here. The reset protocol mirrors `run`'s own
+/// — reset high while `cycle < RESET_CYCLES`, driven BEFORE the edge — and the
+/// compared frame is `run`'s rising-edge frame, sampled after the posedge and
+/// before the negedge.
+///
+/// No seed corpus file (unlike `comb.txt`/`clocked.txt`): nothing has failed
+/// here yet. Route this through `fuzz_seeds` the first time a seed does.
+#[test]
+fn differential_fuzz_clocked_ir_matches_kernel() {
+    const CYCLES: u64 = 8;
+    const RESET_CYCLES: u64 = 1;
+    let n: u64 = std::env::var("MIMZ_DIFF_FUZZ_IR_N")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_FUZZ_N);
+
+    let mut compared = 0usize;
+    for i in 0..n {
+        let seed = IR_SEED_BASE.wrapping_add(i);
+        let (src, ports, held, outputs_meta) = gen_ir_clocked_module(seed);
+
+        let tokens = lexer::lex(&src).unwrap_or_else(|e| {
+            panic!(
+                "seed {seed}: unlexable IR-scoped program:\n{src}\n{}",
+                diag::render(&e, &src, "generated")
+            )
+        });
+        let file = parser::parse(tokens).unwrap_or_else(|e| {
+            panic!(
+                "seed {seed}: unparsable IR-scoped program:\n{src}\n{}",
+                diag::render(&e, &src, "generated")
+            )
+        });
+        if let Err(e) = checker::check(std::slice::from_ref(&file)) {
+            panic!(
+                "seed {seed}: checker rejected its own generated IR-scoped program:\n{src}\n{}",
+                diag::render(&e, &src, "generated")
+            );
+        }
+
+        let design = elaborate_project(std::slice::from_ref(&file), Some("Fuzz"), &BTreeMap::new())
+            .unwrap_or_else(|e| {
+                panic!(
+                    "seed {seed}: our kernel failed to elaborate its own generated \
+                     IR-scoped program:\n{src}\n{}",
+                    e.msg
+                )
+            });
+        // Lowered from the SAME `Design` the kernel is about to run — the
+        // whole point of the leg. `run` takes the `Design` by value, so both
+        // the lowering and the reset-name list are taken first.
+        let reset_names = design.resets.clone();
+        let module = ir::lower(&design);
+        let errors = ir::validate::validate(&module);
+        assert!(
+            errors.is_empty(),
+            "seed {seed}: generated program's IR failed validation: {errors:?}\nsource:\n{src}"
+        );
+
+        let opts = SimOpts {
+            clock: None,
+            inputs: held
+                .iter()
+                .map(|(k, v)| (k.clone(), mimz::sim::value::Bits::Small(*v)))
+                .collect(),
+            cycles: CYCLES,
+            reset_cycles: RESET_CYCLES,
+        };
+        let tl = run(design, &opts).unwrap_or_else(|e| {
+            panic!(
+                "seed {seed}: our kernel failed to run its own generated IR-scoped \
+                 program:\n{src}\n{e}"
+            )
+        });
+
+        let mut ex = ir::exec::Executor::new(&module);
+        // Held constant for the whole run, exactly like `SimOpts.inputs`.
+        for (name, width, _) in &ports {
+            ex.set_input(name, Val::new(held[name], *width, false));
+        }
+        for f in tl.frames.iter().filter(|f| f.cycle.is_some()) {
+            let cyc = f.cycle.unwrap();
+            for r in &reset_names {
+                ex.set_input(r, Val::new((cyc < RESET_CYCLES) as u128, 1, false));
+            }
+            ex.tick();
+            for (name, width) in &outputs_meta {
+                let ir_v = ex.get_output(name);
+                let kernel_v = &f.values[name];
+                assert!(
+                    !ir_v.unknown,
+                    "seed {seed}, cycle {cyc}: IR execution left `{name}` X-state but the \
+                     kernel has {kernel_v:?}\nsource:\n{src}\nheld inputs: {held:?}"
+                );
+                assert_eq!(
+                    bits_to_limbs(&ir_v.bits, *width),
+                    bits_to_limbs(kernel_v, *width),
+                    "seed {seed}, cycle {cyc}: IR execution disagrees with the kernel for \
+                     `{name}` — IR {:?} but kernel {kernel_v:?}\nsource:\n{src}\n\
+                     held inputs: {held:?}",
+                    ir_v.bits
+                );
+                compared += 1;
+            }
+        }
+    }
+    assert!(compared > 0, "the IR leg never got to compare anything");
+}
+
+/// Guards the IR leg against the failure mode its narrowed grammar invites:
+/// quietly degenerating to bare leaves, which would still be "green" while
+/// exercising no cell kind at all. Demonstrates reach rather than asserting
+/// it — the same approach
+/// `task9_reduction_fuzz_bias_reaches_both_bare_and_extended_operands` takes
+/// for the Icarus generator. Fast and simulation-free, so it runs on every
+/// `cargo test`.
+#[test]
+fn ir_fuzz_generator_reaches_every_lowerable_construct() {
+    // One marker per INDIVIDUAL operator, never per family: a family-level
+    // check ("some bitwise op appeared") cannot see one arm of a multi-way
+    // choice going unreachable, which is exactly the failure that produced
+    // zero `<=` and motivated `pick()`. Markers are space-delimited so
+    // `" < "` cannot match inside `" <= "` (the `=` occupies the trailing
+    // space) or inside the `" <- "` of a register assignment. `":0], "` is
+    // the concat shape's own second half, width-independent.
+    let markers = [
+        (" & ", "And"),
+        (" | ", "Or"),
+        (" ^ ", "Xor"),
+        (" +% ", "AddWrap"),
+        (" -% ", "SubWrap"),
+        (" *% ", "MulWrap"),
+        ("(~", "Not"),
+        ("(if (", "Mux via if"),
+        ("(match ", "Mux via match"),
+        (":0], ", "Concat of two Slices"),
+        (" == ", "Eq"),
+        (" != ", "Ne"),
+        (" < ", "Lt"),
+        (" <= ", "Le"),
+    ];
+    let mut seen = vec![0u32; markers.len()];
+    for i in 0..500u64 {
+        let (src, ..) = gen_ir_clocked_module(IR_SEED_BASE.wrapping_add(i));
+        for (j, (m, _)) in markers.iter().enumerate() {
+            if src.contains(m) {
+                seen[j] += 1;
+            }
+        }
+    }
+    for (j, (m, what)) in markers.iter().enumerate() {
+        assert!(
+            seen[j] > 0,
+            "500 IR-scoped programs contained no `{m}` ({what}) — `gen_ir_expr`'s \
+             construct set regressed"
+        );
     }
 }

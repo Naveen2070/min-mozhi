@@ -15,7 +15,7 @@ fn int_lit(value: u128) -> Expr {
     }
 }
 
-fn unary_design(op: UnOp) -> Design {
+pub(super) fn unary_design(op: UnOp) -> Design {
     let mut comb = BTreeMap::new();
     comb.insert(
         "out".to_string(),

@@ -21,7 +21,11 @@ pub use crate::wide;
 
 pub use crate::bits::bits_to_decimal_string;
 
-use binary::{binary_ctx, unary};
+// Re-exported crate-wide (not just `use`d here) so `ir::exec` — the IR-level
+// interpreter behind Task 18's differential test — evaluates every arithmetic/
+// logical cell through the SAME two functions the AST evaluator uses, instead
+// of carrying a second copy of the width/overflow/X-propagation rules.
+pub(crate) use binary::{binary_ctx, unary};
 use fn_eval::{call, eval_fn_call};
 
 use crate::diag::Diag;

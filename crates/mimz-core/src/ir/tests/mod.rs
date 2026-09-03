@@ -1,3 +1,4 @@
+mod exec;
 mod lower_basic;
 mod lower_binops;
 mod lower_blackbox;
