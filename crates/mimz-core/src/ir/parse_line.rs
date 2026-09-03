@@ -23,6 +23,7 @@ pub fn parse(text: &str) -> Result<Module, String> {
         cells: Vec::new(),
         nets: Vec::new(),
         extern_decls: BTreeMap::new(), // text format doesn't round-trip declared extern shapes (v1 gap, see Module::extern_decls doc)
+        signals: BTreeMap::new(), // nor the source-name -> Bits table (same v1 gap, see Module::signals doc)
     };
     // Bracket-form pin values (`{17,18,19}`) embed the ORIGINAL module's
     // own NetId numbers as literal text, unlike a name-form reference —

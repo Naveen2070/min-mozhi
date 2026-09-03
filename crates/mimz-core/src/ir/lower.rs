@@ -726,6 +726,7 @@ pub fn lower(design: &Design) -> Module {
         cells: Vec::new(),
         nets: Vec::new(),
         extern_decls: BTreeMap::new(),
+        signals: BTreeMap::new(),
     };
     let mut ctx = LowerCtx {
         design,
@@ -738,6 +739,26 @@ pub fn lower(design: &Design) -> Module {
         let bits = module.alloc_bits(input.width.bits, Some(&input.name));
         ctx.resolved.insert(input.name.clone(), bits.clone());
         module.ports.push((input.name.clone(), bits, Dir::In));
+    }
+    // `clock`/`reset` declarations are NOT in `design.inputs` (the real
+    // elaborator files them under `design.clocks`/`design.resets` instead —
+    // see `elaborate::module.rs`'s `ModuleItem::Clock`/`ModuleItem::Reset`
+    // arms), but every `Dff`/`Mem` cell built below resolves its clock (and
+    // any reset mux resolves its reset) by name via `ctx.resolve`, same as
+    // any other signal — so they need a net and a `ctx.resolved` entry same
+    // as a plain input. Without this, `lower()` panics on every real
+    // elaborated `Design` with a clock or reset (Task 17 Finding 1); it only
+    // ever worked for hand-built test `Design`s that stuffed `clk`/`rst` into
+    // BOTH `design.inputs` and `design.clocks`/`design.resets` themselves.
+    // The `contains_key` guard keeps those fixtures behaving identically
+    // (no double allocation) while fixing the real (non-hand-built) case.
+    for name in design.clocks.iter().chain(&design.resets) {
+        if ctx.resolved.contains_key(name) {
+            continue;
+        }
+        let bits = module.alloc_bits(1, Some(name));
+        ctx.resolved.insert(name.clone(), bits.clone());
+        module.ports.push((name.clone(), bits, Dir::In));
     }
     // Registers must exist in `ctx.resolved` before any comb expression that
     // reads a register's current value is lowered.
@@ -989,6 +1010,15 @@ pub fn lower(design: &Design) -> Module {
             pins,
             span: crate::span::Span::default(),
         });
+    }
+
+    // `ctx.resolved` IS the source-name -> Bits table, built up by every pass
+    // above; publishing it is the only way a consumer can address a wire or a
+    // register's Q exactly (see `Module::signals`). Memories aren't in there —
+    // a memory is addressed by its read port, which `mem_read` holds.
+    module.signals = ctx.resolved.into_iter().collect();
+    for (mem, (_raddr, rdata)) in ctx.mem_read {
+        module.signals.insert(mem, rdata);
     }
 
     module
