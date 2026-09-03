@@ -136,6 +136,77 @@ clause already presumes).
 **Related.** [GAP-4](#gap-4-lowmedium---string-keyed-name-resolution-throughout-no-interning)
 should land as part of this, not separately.
 
+### Open sub-gap (2026-09-03): `ir::exec` and the AST kernel disagree on `<<`/`>>`
+
+Phase 2's IR (`crates/mimz-core/src/ir/`) is the first instalment of the
+direction above, and Task 16's `ir/exec.rs` executes it — deliberately through
+`value::binary_ctx`/`value::unary`, the AST evaluator's own operators, so the
+two sides cannot drift on any operator's semantics. Shifts are the one
+exception, and the divergence is **three-fold**:
+
+1. **Truncation at the pin.** `lower_binop` sizes a `Shl`/`Shr` cell's `out`
+   pin at `a.width()`, but `binary_ctx`'s `shl` GROWS its result per
+   `width_rules::shift_result` (BUG-30). `exec` writes only as many bits as
+   the pin has, so a left shift truncates.
+2. **`const_amount` is structurally unavailable.** `CellKind::Shl` is a bare
+   unit variant carrying no shift amount, so `exec` must pass
+   `const_amount: None` — even an untruncated case would get worst-case
+   `2^width(r) - 1` growth instead of the AST side's exact per-step growth.
+3. **Fused chains cannot be reconstructed.** `value::binary::eval_shift_chain`
+   evaluates `(p2 >> 4) << 7` as ONE unit at a single fixed width
+   (ground-truthed against Icarus, BUG-34), but `lower` emits two independent
+   cells with a materialized intermediate. Nothing inside `exec.rs` can
+   re-fuse them.
+
+(1) and (2) are fixable in the IR schema — carry the shift's own result width
+(and a folded constant amount) on the cell. (3) is not: it needs the lowering
+pass to emit a single fused shift-chain cell, which is a lowering-side design
+decision, not an executor one. Until then Task 18's differential harness must
+either exclude shift expressions or expect these mismatches. Recorded here
+because it is exactly this gap's own failure family — one width rule, two
+implementations — reappearing at the new IR boundary.
+
+### Open sub-gap (2026-09-03): `ir::lower` cannot lower a builtin call, so no sized constant survives lowering
+
+`ir::lower`'s `lower_expr` has **no arm for `ExprKind::Call`**. Only
+user-defined `fn` calls (`ExprKind::FnCall`, Task 9's inliner) are handled;
+every `Builtin` — `extend`, `trunc`, `signed`, `unsigned`, `abs`, `min`,
+`max`, `nand`, `nor`, `xnor` — falls through to the catch-all
+`unimplemented!("expression form not yet lowered by Task 5/6")` at
+`lower.rs:279`. Confirmed by reading `lower_expr` and by grepping the whole
+`ir/` tree: zero references to `Builtin`, `Extend`, `SignedCast` or
+`UnsignedCast` anywhere in it.
+
+**Why this is bigger than a missing arm.** `extend(1, N)` is the ONLY way to
+give a literal a width in this language — `concat_ty`'s own E0405 diagnostic
+says so verbatim ("every concat part needs a known width — `extend(1, N)`
+gives a literal one"). So the gap is not "ten builtins are missing", it is
+**no sized constant can survive `ir::lower` at all**, and neither can any
+width or signedness conversion.
+
+**Measured blast radius.** Task 18 wired `ir::lower` into
+`differential_fuzz_clocked_matches_icarus`'s own per-seed loop and got **25
+skips out of 25 seeds** — the entire clocked regression corpus plus every
+fresh seed. That generator's width machinery (`widen`, `clamp`'s fallback,
+every non-port leaf, `force_width`, `wrap_builtin`, `cast_to`) renders an
+`extend`/`signed`/`unsigned` at essentially every node, so the project's own
+existing random-program corpus is ~100% unlowerable. As a direct
+consequence, Task 18 could not extend the existing leg at all and had to add
+a structurally-narrowed second generator (`gen_ir_clocked_module` — one
+width per module, unsigned throughout, no literals) to get any IR coverage
+whatsoever. That narrowed generator should be **deleted**, and the leg folded
+back into the clocked Icarus loop as originally designed, once this sub-gap
+closes.
+
+**Riding along — Task 10's single-read-port memory limit is reachable
+today, not hypothetical.** `lower_expr`'s memory arm panics when one memory
+is read at two different addresses, and it compares LOWERED nets, so two
+DISTINCT read sites whose indices are textually identical (two separate
+`m[0]`s) also trip it. `gen_clocked_module` already emits `mem` via
+`gen_special_leaves`'s clocked branch, so this is hit by an existing
+generator, not just by a future one. Documented in `lower.rs`'s own comment;
+recorded here because its reachability was previously assumed hypothetical.
+
 ---
 
 ## GAP-2 (MEDIUM) - Simulator is 2-state with a whole-value unknown flag; no X/Z, no tri-state
@@ -611,7 +682,7 @@ shows what changed and why).
 
 **Status:** OPEN. Filed 2026-08-02.
 
-**What.** Two process gaps in an otherwise strong assurance story.
+**What.** Three process gaps in an otherwise strong assurance story.
 
 **10a - No coverage measurement in CI.** No `cargo llvm-cov` (or equivalent)
 step, so untested paths are invisible. With 1114 tests the _absolute_ number is
@@ -627,6 +698,31 @@ self-determined-position logic - have no fuzz target, only hand-written tests an
 the differential fuzzer (whose generator gap is
 [GAP-5](#gap-5-high-testing---no-declared-type-vs-produced-value-oracle-self-determined-positions-ungenerated)).
 
+**10c - The differential fuzzers' PRNG is biased in its low bits, so some
+choices are unreachable at any depth.** Added 2026-09-03 (Task 18).
+`tests/differential_fuzz.rs`'s `Rng::next_range(n)` is `next_u64() % n`, i.e.
+the LCG's LOW bits. The update is `x = x * 2654435761 + 0x9E3779B9` — both
+multiplier and increment odd — so bit 0 strictly ALTERNATES (`next_range(2)`
+yields 0,1,0,1,…) and bit 1 has period 4. Interleaved with a generator's other
+fixed-count calls, a small-power-of-two choice can land on a sub-cycle that
+never selects one of its arms. Found live: a 4-way `next_range(4)` comparison
+pick produced **zero `<=` across 500 generated programs** — one arm of four,
+unreachable at any depth. This is the same failure class as the round-6
+`nand` bias (`task9_reduction_fuzz_bias_reaches_both_bare_and_extended_operands`),
+and it is a coverage gap that no amount of CI depth can close, which is why it
+belongs here rather than with the (CLOSED) depth work of GAP-11.
+
+Task 18 fixed it only inside its OWN generator (a local `pick()` helper reading
+the high bits) and deliberately left `Rng` itself alone: changing `next_range`
+renumbers every program `gen_module`/`gen_clocked_module` emit and therefore
+invalidates BOTH regression corpora,
+`tests/fixtures/fuzz-seeds/{comb,clocked}.txt`. So this is a
+**deliberate-hit follow-up task, not a drive-by fix** — but it should not sit
+forever: a corpus whose value depends on the generator's own reachability is
+worth less than a correctly-random generator. Nobody has measured which
+`next_range(2)`/`next_range(4)` choices in the two older generators are
+currently degenerate.
+
 **Direction.**
 
 1. Add `cargo llvm-cov` to CI as a **reported, non-gating** number first; set a
@@ -635,6 +731,9 @@ the differential fuzzer (whose generator gap is
    generated-but-plausible ASTs, asserting the two invariants that must always
    hold: _checker-accepted input never panics the emitter_, and _emitted Verilog
    always elaborates under `iverilog -t null`_.
+3. Fix `Rng::next_range` to draw from the high bits, in one task that also
+   re-derives both fuzz-seed corpora against the renumbered seed space (and
+   re-confirms each recorded bug is still reproduced by its new seed).
 
 **See also.** [HARD-9](hardening.md) tracks 10b as a recommended hardening item.
 

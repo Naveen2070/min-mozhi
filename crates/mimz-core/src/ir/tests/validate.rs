@@ -69,6 +69,7 @@ fn rejects_mismatched_widths_on_a_bitwise_cell() {
         cells: Vec::new(),
         nets: Vec::new(),
         extern_decls: Default::default(),
+        signals: Default::default(),
     };
     let a = module.alloc_bits(8, None);
     let b = module.alloc_bits(4, None);
@@ -95,6 +96,7 @@ fn accepts_mismatched_widths_on_an_add_cell() {
         cells: Vec::new(),
         nets: Vec::new(),
         extern_decls: Default::default(),
+        signals: Default::default(),
     };
     let a = module.alloc_bits(8, None);
     let b = module.alloc_bits(4, None);
@@ -123,6 +125,7 @@ fn rejects_a_combinational_cycle() {
         cells: Vec::new(),
         nets: Vec::new(),
         extern_decls: Default::default(),
+        signals: Default::default(),
     };
     let a = module.alloc_bits(1, None);
     module.cells.push(Cell {
@@ -146,6 +149,7 @@ fn rejects_a_blackbox_port_shape_mismatch() {
         cells: Vec::new(),
         nets: Vec::new(),
         extern_decls: Default::default(),
+        signals: Default::default(),
     };
     let clk = module.alloc_bits(1, Some("clk_in"));
     module.cells.push(Cell {
@@ -183,6 +187,7 @@ fn accepts_a_blackbox_cell_with_no_declared_shape_on_record() {
         cells: Vec::new(),
         nets: Vec::new(),
         extern_decls: Default::default(),
+        signals: Default::default(),
     };
     let clk = module.alloc_bits(1, Some("clk_in"));
     module
