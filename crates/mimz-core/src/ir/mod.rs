@@ -137,6 +137,24 @@ pub struct Module {
     /// possible; `validate` skips the check gracefully (no entry = no error)
     /// rather than treating a missing entry as a violation.
     pub extern_decls: std::collections::BTreeMap<String, Vec<(String, u32)>>,
+    /// Every SOURCE-LEVEL signal name (input, output, wire, register Q,
+    /// memory read port, extern-instance port net) mapped to the exact `Bits`
+    /// it lowered to. Populated by `lower()` from its own resolution table,
+    /// which is the only place this is knowable.
+    ///
+    /// Reconstructing this from `nets` by name does NOT work, and the two
+    /// failure modes are silent: `lower()` stamps a wire's name onto only
+    /// those of its driver's nets that are still unnamed, so (a) a wire whose
+    /// value partly reuses another signal's nets (`wire w = {p, q + 1}`) has
+    /// only PART of itself named `w`, and (b) a wire whose driver is a bare
+    /// `Ident` gets no nets of its own at all. Anything needing a signal's
+    /// real `Bits` — `exec`'s `get_output`, Task 18's differential harness —
+    /// must come here, not to a name scan.
+    ///
+    /// Not round-tripped by the text format (`print_line`/`parse_line` don't
+    /// emit/restore it), the same v1 scope boundary as `extern_decls`: a
+    /// hand-parsed IR module can only be addressed by port name.
+    pub signals: BTreeMap<String, Bits>,
 }
 
 impl Module {

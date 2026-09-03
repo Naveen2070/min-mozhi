@@ -1,0 +1,6 @@
+module ExternDemo
+port in sysclk[0:1]
+port out fast_clk[0:1]
+port out pll_ok[0:1]
+
+cell $blackbox[Pll] :0 clk_out=u_clk_out[0:1] locked=u_locked[0:1]
