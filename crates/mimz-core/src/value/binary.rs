@@ -35,7 +35,7 @@ pub(super) fn extend_bits(v: Val, width: u32) -> u128 {
     }
 }
 
-pub(super) fn unary(op: UnOp, v: Val) -> Val {
+pub(crate) fn unary(op: UnOp, v: Val) -> Val {
     let was_unknown = v.unknown;
     let mut r = unary_known(op, v);
     if was_unknown {
@@ -111,7 +111,7 @@ fn unary_known(op: UnOp, v: Val) -> Val {
 /// `const_amount` is `Shl`/`Shr`'s compile-time shift amount, if the
 /// source expression had one (see [`eval`]'s `Binary` arm) — every other
 /// operator ignores it; pass `None` when there is none.
-pub(super) fn binary_ctx(
+pub(crate) fn binary_ctx(
     op: BinOp,
     l: Val,
     r: Val,

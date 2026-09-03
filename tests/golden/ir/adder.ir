@@ -1,0 +1,6 @@
+module Adder
+port in a[0:8]
+port in b[0:8]
+port out sum[0:9]
+
+cell $add :0 a=a[0:8] b=b[0:8] out={16,17,18,19,20,21,22,23,24}

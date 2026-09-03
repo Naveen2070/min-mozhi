@@ -1,0 +1,10 @@
+module ACounter
+port in clk[0:1]
+port in rst[0:1]
+port out count[0:8]
+
+cell $const[1'd1] :0 out={10}
+cell $addwrap :1 a=value[0:8] b={10} out={11,12,13,14,15,16,17,18}
+cell $const[1'd0] :2 out={19}
+cell $mux :3 a={19} b={11,12,13,14,15,16,17,18} out={20,21,22,23,24,25,26,27} sel=rst[0:1]
+cell $dff[Rise] :4 d={20,21,22,23,24,25,26,27} q=value[0:8]
