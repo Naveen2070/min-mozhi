@@ -22,15 +22,11 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1381 tests** as of 2026-09-03 (`cargo test --workspace`; the count is
+**1385 tests** as of 2026-09-04 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+60 vs. 2026-08-29, from Phase 2 IR work in progress on `phase-2-ir`,
-`crates/mimz-core/src/ir/tests/` (`lower_basic`, `lower_binops`,
-`lower_unary_concat_slice`, `lower_mux`, `lower_regs`, `lower_fn_inline`,
-`lower_mem`, `lower_blackbox`, `validate`, `exec`) - see
-`docs/plan/phase-2-ir-plan.local.md`; the per-row breakdown below has not
-been fully reconciled against this in-progress phase's row-by-row deltas —
-see this page's own disclaimer above):
++4 vs. 2026-09-03, from `tests/ir_validation.rs`'s validation-rejection
+fixture corpus, the last piece of the now-complete Phase 2 IR work; see
+`docs/plan/phase-2-ir-synthesis.md` "IR" section):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
@@ -56,6 +52,8 @@ see this page's own disclaimer above):
 | `tests/grammar.rs`                                  |       16 | workspace integration                                  |
 | `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)           |
 | `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                        |
+| `tests/ir_golden.rs`                                |        5 | workspace integration (golden IR-text snapshots)       |
+| `tests/ir_validation.rs`                            |        4 | workspace integration (IR validation-rejection corpus) |
 | `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6) |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                          |
 | `tests/morph.rs`                                    |       20 | workspace integration                                  |
@@ -67,7 +65,7 @@ see this page's own disclaimer above):
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1320** |                                                        |
+| **Total**                                           | **1385** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar
