@@ -207,6 +207,46 @@ DISTINCT read sites whose indices are textually identical (two separate
 generator, not just by a future one. Documented in `lower.rs`'s own comment;
 recorded here because its reachability was previously assumed hypothetical.
 
+### Open sub-gap (2026-09-04): `ir::validate`'s driven-set seeding is direction-blind, so an undriven `out` port can pass silently
+
+Found while building Task 19's `tests/fixtures/ir_errors/` regression
+corpus. `validate::validate`'s Check 1 (`crates/mimz-core/src/ir/validate.rs`)
+seeds the `driven` set from every module port with this loop:
+
+```rust
+for (name, bits, _dir) in &module.ports {
+    let _ = name;
+    for net in &bits.0 {
+        driven.insert(*net); // a module INPUT port is a primary driver, by definition
+    }
+}
+```
+
+The comment says an INPUT port is what's being seeded as a driver, but the
+loop never reads `_dir` at all (it's bound and immediately discarded) — an
+`out` port's nets are marked "driven" exactly the same as an `in` port's.
+Consequence: a module whose declared output port is never actually written
+by any cell's `out`/`q`/`rdata` pin — the textbook case `UndrivenNet` exists
+to catch — passes `validate()` silently instead of raising it, because the
+port-seeding loop already inserted that net into `driven` before the
+cell-driver scan ever runs.
+
+No fixture in `tests/fixtures/ir_errors/` currently exposes this as a false
+negative — `combinational_cycle.ir`'s `out x` port is genuinely driven by
+its `$not` cell's `out` pin too, so the loose seeding never gets exercised
+as a miss there or in any other Task 19 fixture. This is a real,
+so-far-unexercised gap, not a hypothetical one: an `.ir` file with a bare
+`port out y[0:N]` and zero cells driving `y` would currently validate clean.
+
+Not fixed as part of Task 19: fixing the check's semantics is scope creep
+into Task 15's already-shipped, unit-tested `validate.rs` behavior (four
+existing unit tests assert today's exact driven/undriven boundary), and no
+fixture-writing task should silently redefine a check's contract as a side
+effect. Recorded here per this gap's own pattern (one width/shape rule,
+one place its stated intent and its actual code diverge) so a future task
+that specifically revisits `validate.rs`'s driven-set logic has this
+written down rather than rediscovering it.
+
 ---
 
 ## GAP-2 (MEDIUM) - Simulator is 2-state with a whole-value unknown flag; no X/Z, no tri-state
