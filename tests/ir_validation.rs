@@ -64,3 +64,10 @@ fn combinational_cycle_fixture_is_rejected() {
         matches!(e, validate::ValidationError::CombinationalCycle { .. })
     });
 }
+
+#[test]
+fn undriven_output_port_fixture_is_rejected() {
+    assert_fixture_rejected("tests/fixtures/ir_errors/undriven_output_port.ir", |e| {
+        matches!(e, validate::ValidationError::UndrivenNet { .. })
+    });
+}
