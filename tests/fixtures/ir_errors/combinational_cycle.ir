@@ -1,0 +1,4 @@
+module bad
+port out x[0:1]
+
+cell $not :0 a=x[0:1] out=x[0:1]

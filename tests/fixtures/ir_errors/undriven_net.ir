@@ -1,0 +1,4 @@
+module bad
+port out sum[0:9]
+
+cell $add :0 a=phantom[0:8] b=phantom[0:8] out=sum[0:9]

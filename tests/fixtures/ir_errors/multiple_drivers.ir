@@ -1,0 +1,6 @@
+module bad
+port in a[0:8]
+port out sum[0:9]
+
+cell $add :0 a=a[0:8] b=a[0:8] out=sum[0:9]
+cell $add :1 a=a[0:8] b=a[0:8] out=sum[0:9]
