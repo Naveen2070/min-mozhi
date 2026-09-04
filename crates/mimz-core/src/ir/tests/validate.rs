@@ -202,3 +202,52 @@ fn accepts_a_blackbox_cell_with_no_declared_shape_on_record() {
     });
     assert_eq!(validate::validate(&module), Vec::new());
 }
+
+#[test]
+fn rejects_a_shl_cell_whose_out_is_narrower_than_the_worst_case_growth() {
+    let mut module = crate::ir::Module {
+        name: "shl_bad".to_string(),
+        ports: Vec::new(),
+        cells: Vec::new(),
+        nets: Vec::new(),
+        extern_decls: Default::default(),
+        signals: Default::default(),
+    };
+    let a = module.alloc_bits(2, None);
+    let b = module.alloc_bits(2, None);
+    let out = module.alloc_bits(2, None); // should be 5 (2 + (2^2 - 1))
+    module.cells.push(Cell {
+        kind: CellKind::Shl,
+        pins: [("a", a), ("b", b), ("out", out)].into_iter().collect(),
+        span: crate::span::Span::default(),
+    });
+    let errors = validate::validate(&module);
+    assert!(errors.iter().any(|e| matches!(
+        e,
+        validate::ValidationError::WidthMismatch { pin: "out", .. }
+    )));
+}
+
+#[test]
+fn rejects_an_output_port_never_driven_by_any_cell() {
+    let mut module = crate::ir::Module {
+        name: "undriven_out".to_string(),
+        ports: Vec::new(),
+        cells: Vec::new(),
+        nets: Vec::new(),
+        extern_decls: Default::default(),
+        signals: Default::default(),
+    };
+    let y = module.alloc_bits(4, None);
+    module
+        .ports
+        .push(("y".to_string(), y, crate::ast::Dir::Out));
+    // No cell drives `y`'s nets at all — the textbook UndrivenNet case.
+    let errors = validate::validate(&module);
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, validate::ValidationError::UndrivenNet { .. })),
+        "an out port with zero driving cells must be caught, got: {errors:?}"
+    );
+}
