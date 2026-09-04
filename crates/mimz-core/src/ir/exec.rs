@@ -18,13 +18,23 @@
 //! - **Narrow values only** in net reconstruction — `get_bits` and `set_bits`
 //!   panic if a signal exceeds 128 nets (bits); wider signals are deferred to
 //!   a future version.
-//! - **`<<`/`>>` diverge from the AST kernel, three ways:** `lower_binop`
-//!   sizes the `out` pin at `a.width()` so a growing shift truncates;
-//!   `CellKind::Shl` carries no shift amount, so `const_amount` is always
-//!   `None` here and growth is worst-case rather than exact; and a fused
-//!   chain (`(p2 >> 4) << 7`) is one unit at one width for the AST side
-//!   (`eval_shift_chain`, BUG-34) but two independent cells in the IR, which
-//!   `exec` cannot re-fuse. See `docs/audit/gaps.md` GAP-1's sub-gap.
+//! - **`<<` chains diverge from the AST kernel, one remaining way:** a
+//!   FUSED shift chain (`(p2 >> 4) << 7`) is evaluated as one unit at one
+//!   width for the AST side (`value::binary::eval_shift_chain`, BUG-34,
+//!   ground-truthed against Icarus), but `lower` emits two independent
+//!   cells with a materialized intermediate — nothing here re-fuses them.
+//!   The truncation issue this bullet used to describe is fixed:
+//!   `lower_binop` now sizes `Shl`'s `out` pin at the same worst-case-
+//!   growth width `value::binary::shl`'s own fallback uses, so a growing
+//!   left shift's true value always fits. The missing-`const_amount`
+//!   issue is made MOOT rather than fixed — `const_amount` is still
+//!   structurally unavailable to `lower_binop`, but worst-case growth can
+//!   never be narrower than the checker's exact constant growth, so the
+//!   IR pin is always wide enough (over-wide, when the amount happens to
+//!   be a small constant — never a mismatch this executor can observe,
+//!   though `ir::validate` CAN observe the resulting IR-vs-checker width
+//!   disagreement on the surrounding cell; see `docs/audit/gaps.md`
+//!   GAP-1's sub-gap).
 
 use super::{Bits, Cell, CellKind, Module, NetId};
 use crate::ast::{BinOp, UnOp};
