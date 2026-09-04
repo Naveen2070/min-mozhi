@@ -8,11 +8,18 @@
 > `--json`), LSP v0, all Icarus-validated. The **own simulator** is built and shipped
 > (`mimz sim` clocked + combinational, deterministic VCD; `mimz test`
 > tick/expect; three-layer Icarus differential). The **formatter** is shipped
-> (`mimz fmt` - keyword normalization, strict-mode mix detection). The IR is still design.
-> Last updated: 2026-09-01 (Phase 2 Step 0: promoted `elaborate`/`value`/
+> (`mimz fmt` - keyword normalization, strict-mode mix detection). The **IR**
+> is shipped (`mimz_core::ir` - typed netlist, AST→IR lowering, two text
+> formats, validation pass, executor); the optimizer and Yosys/nextpnr
+> synthesis path remain planned.
+> Last updated: 2026-09-04 (Phase 2 IR complete: `mimz_core::ir` module -
+> data model, `Design` → `Module` lowering, line-based + s-expr text
+> formats, 5-check validation pass, IR executor, golden snapshots,
+> IR-vs-kernel differential fuzz leg, validation-rejection fixture corpus;
+> see docs/plan/phase-2-ir-synthesis.md "IR" section for the shipped-item
+> breakdown). Prior: 2026-09-01 (Phase 2 Step 0: promoted `elaborate`/`value`/
 > `comb`/S0xxx runtime-diag catalog from `mimz-sim` to `mimz-core`, 3-crate
-> boundary redrawn along the pure/impure split — see
-> docs/plan/phase-2-ir-plan.local.md Tasks 1-2). Prior: 2026-08-22
+> boundary redrawn along the pure/impure split). Prior: 2026-08-22
 > (doc-code audit: 76 checker error codes
 > (E0001–E0912/E0420, E1301–E1302); 35 test suites / 1318 passing tests;
 > error fixtures 120, goldens 88 `.v` (71 module + 17 `_tb.v`) + 1 `.vcd`,
@@ -67,6 +74,8 @@
  │             (event kernel, two-phase commit,    │
  │              VCD writer, test runner)           │
  │  Phase 2    AST → IR → optimizer → Yosys/nextpnr│
+ │             (IR ✅ shipped; optimizer + synthesis│
+ │              path still planned)                │
  │  Phase 3    IR → techmap → place → route →      │
  │             iCE40 bitstream (native)            │
  └─────────────────────────────────────────────────┘
@@ -104,22 +113,23 @@ Built ✅ as of 2026-06-12 (Phase 1 complete):
 Also built (Phase 1.8 + 1.5): the thamizh-order parser profile, and the own
 simulator (`crates/mimz-sim/src/sim/`, `mimz sim`/`mimz test`).
 
-The IR and native backend remain planned.
+The IR is built (`mimz_core::ir`); the optimizer, synthesis path, and native
+backend remain planned.
 
-| Component           | Phase   | Key design points                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test`, `init`, `doctor`, `completions`, `lint`, `repl`, `eject` (handlers in `src/commands/`)                                                                                                                                                                                                                        |
-| **Keyword table**   | 1       | `lang/keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                                                                                                                                                                                                                                |
-| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                                                                                                                                                                                                                   |
-| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                                                                                                                                                                                                                  |
-| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                                                                                                                                                                                                                    |
-| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; nine passes (symbols/extern-module ports/funcs cycle detection/funcs unreachable/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0912, E1301–E1302 (75 total)                                                                                                                                                                         |
-| **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper; `mimz-core::diag` now owns BOTH the E-code checker catalog (`ALL_CHECKER_CODES`) and the S0xxx simulator runtime catalog (`ALL_SIM_CODES`, `bridge_code`, `diag_from_bridged`) since Phase 2 Step 0                                                  |
-| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                                                                                                                                                                                                                     |
-| **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `elaborate`/`value`/`comb`/S0xxx-diag now live in `mimz-core` (Phase 2 Step 0); `crates/mimz-sim/src/sim/` owns the kernel itself (kernel, harness, run, vcd, trace, host, wide) and consumes those from `mimz-core` via a thin re-export (`sim/mod.rs`, `sim/diag.rs`) |
-| **IR**              | 2       | Typed netlist (cells/nets/widths/clock domains); dumpable text format; own validation pass (defense in depth)                                                                                                                                                                                                                                                                                                       |
-| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                                                                                                                                                                                                                                                                             |
-| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                                                                                                                                                                                                                                                                       |
+| Component           | Phase   | Key design points                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CLI** (`mimz`)    | 1 / 1.5 | `clap`; subcommands: `check`, `compile`, `fmt`, `translate`, `eval`, `explain`, `lsp`, `sim`, `test`, `init`, `doctor`, `completions`, `lint`, `repl`, `eject` (handlers in `src/commands/`)                                                                                                                                                                                                                                                                                                                                           |
+| **Keyword table**   | 1       | `lang/keywords.toml` = source of truth; three columns per token, disjoint; loaded into one static map. Word changes are data changes                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Lexer**           | 1       | Exact-match keywords after NFC normalization; Unicode identifiers; newline-terminator with continuation rules; full span tracking                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Parser**          | 1 / 1.8 | Handwritten recursive descent; syntax profiles share all expression/declaration code, differ only in clause-head order; `syntax thamizh` directive selects profile                                                                                                                                                                                                                                                                                                                                                                     |
+| **AST**             | 1       | Rust enums + exhaustive match; spans everywhere; the single contract between front and back ends                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Checker**         | 1       | ✅ ALL spec/02 section 6 safety rules; nine passes (symbols/extern-module ports/funcs cycle detection/funcs unreachable/consteval/names/widths/drivers/clocks), each with its own tests; stable E-codes E0001–E0912, E1301–E1302 (75 total)                                                                                                                                                                                                                                                                                            |
+| **Diagnostics**     | 1 / 1.8 | ✅ stable codes on EVERY stage (lexer E10xx, parser E11xx, loader E12xx) + `--json` wire format; Phase 1.8 adds the per-language catalogs + morphology helper; `mimz-core::diag` now owns BOTH the E-code checker catalog (`ALL_CHECKER_CODES`) and the S0xxx simulator runtime catalog (`ALL_SIM_CODES`, `bridge_code`, `diag_from_bridged`) since Phase 2 Step 0                                                                                                                                                                     |
+| **Verilog emitter** | 1       | Dumb, readable Verilog-2005; sync active-high reset from reg reset values; no optimization here                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Simulator**       | 1.5     | ✅ Elaborate → flat graph; event-driven kernel with two-phase commit (compute `<-`, then commit); 2-state by design; deterministic VCD out; `elaborate`/`value`/`comb`/S0xxx-diag now live in `mimz-core` (Phase 2 Step 0); `crates/mimz-sim/src/sim/` owns the kernel itself (kernel, harness, run, vcd, trace, host, wide) and consumes those from `mimz-core` via a thin re-export (`sim/mod.rs`, `sim/diag.rs`)                                                                                                                    |
+| **IR**              | 2       | ✅ Typed netlist (`mimz_core::ir`): bit-addressable `NetId`/`Bits`, 30 `CellKind`s (arithmetic/logic/compare/mux/concat/slice/`Dff`/`Mem`/`BlackBox`/`Const`); `Design` → `Module` lowering (registers → `Dff`, memories → `Mem`, `fn` calls inlined, `extern module` → `BlackBox`); line-based + s-expr (dump-only) text formats; 5-check validation pass (drivers/undriven/widths/comb-cycles/black-box shape); own executor (`ir/exec.rs`) for differential testing against the AST-level simulator. Optimizer passes not yet built |
+| **Optimizer**       | 2–3     | Const fold/propagate, dead-cell elimination, mux simplification; later retiming/sharing                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Native backend**  | 3       | iCE40 only: techmap → annealing placer → pathfinder router → IceStorm-DB bitstream; validated differentially vs Yosys/nextpnr                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## 3. Code Layout (Rust)
 
@@ -213,17 +223,25 @@ mimz/ (workspace root)
 │   │       │   ├── translit.rs                # Tamil → ASCII identifier pre-pass
 │   │       │   ├── testbench.rs               # standalone Verilog testbench gen
 │   │       │   └── tests/                     # unit tests (12 files)
-│   │       └── checker/                   # nine passes, E0001–E0912/E1301–E1302
-│   │           ├── mod.rs                     # entry, Checker state, err plumbing
-│   │           ├── symbols.rs                 # project tables + duplicates
-│   │           ├── consteval.rs               # compile-time evaluation
-│   │           ├── names/                     # names, structure, E0302/E0303 (7 files)
-│   │           ├── widths/                    # width/type + exhaustiveness (11 files)
-│   │           ├── drivers.rs                 # single-driver + comb-DAG (E05xx)
-│   │           ├── clocks.rs                  # clock-domain ownership (E0701)
-│   │           ├── funcs.rs                   # fn safety (E0801–E0812)
-│   │           ├── extern_module.rs           # extern-module port-shape validation (E1301–E1302)
-│   │           └── tests/                     # unit tests, split by topic (12 files)
+│   │       ├── checker/                   # nine passes, E0001–E0912/E1301–E1302
+│   │       │   ├── mod.rs                     # entry, Checker state, err plumbing
+│   │       │   ├── symbols.rs                 # project tables + duplicates
+│   │       │   ├── consteval.rs               # compile-time evaluation
+│   │       │   ├── names/                     # names, structure, E0302/E0303 (7 files)
+│   │       │   ├── widths/                    # width/type + exhaustiveness (11 files)
+│   │       │   ├── drivers.rs                 # single-driver + comb-DAG (E05xx)
+│   │       │   ├── clocks.rs                  # clock-domain ownership (E0701)
+│   │       │   ├── funcs.rs                   # fn safety (E0801–E0812)
+│   │       │   ├── extern_module.rs           # extern-module port-shape validation (E1301–E1302)
+│   │       │   └── tests/                     # unit tests, split by topic (12 files)
+│   │       └── ir/                        # typed netlist IR (Phase 2)
+│   │           ├── mod.rs                     # Module/Cell/CellKind/NetId/Bits types; lower() entry
+│   │           ├── lower.rs                   # Design -> Module: cells, mux trees, fn inlining, blackbox
+│   │           ├── validate.rs                # 5 checks (drivers/undriven/widths/cycles/blackbox)
+│   │           ├── exec.rs                    # IR executor (Val-based) for differential testing
+│   │           ├── print_line.rs / parse_line.rs  # line-based text format (round-trips)
+│   │           ├── print_sexpr.rs             # s-expr printer (dump-only, no parser)
+│   │           └── tests/                     # unit tests, split by topic
 │   ├── mimz-sim/
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -272,8 +290,13 @@ mimz/ (workspace root)
 │   ├── wasm_parity.rs                     # WASM ↔ CLI output parity
 │   ├── packages.rs                        # qualified cross-file references (a.b.Name)
 │   ├── showcase.rs                        # showcase/ demos (web playground, docs site)
+│   ├── ir_golden.rs                       # golden IR-text snapshots (tests/golden/ir/)
+│   ├── ir_validation.rs                   # IR validation-rejection fixture corpus
 │   ├── golden/                            # pinned .v output per base example (88 .v: 71 module + 17 _tb.v, + 1 .vcd)
-│   └── fixtures/errors/                   # the broken corpus (120 .mimz files + e0110_support/ helper)
+│   │   └── ir/                                # golden IR-text dumps (5 fixtures)
+│   └── fixtures/
+│       ├── errors/                            # the broken corpus (120 .mimz files + e0110_support/ helper)
+│       └── ir_errors/                         # broken IR-text corpus (4 fixtures, one per constructible check)
 ├── benches/
 │   └── compile.rs                       # criterion per-phase micro-benchmarks (cargo bench; lexer/parser/checker/emit)
 ├── fuzz/                                # 4 libFuzzer targets (nightly only)
@@ -328,7 +351,8 @@ Future directories (created when their trigger fires, not before):
 4. **Safety rules are passes with tests.** Each spec/02 section 6 rule maps to one
    checker module and at least one rejection test.
 5. **Differential validation at every new layer.** Simulator vs Icarus (1.5),
-   IR vs AST simulation (2), native flow vs Yosys/nextpnr (3).
+   IR vs AST simulation (2, shipped: `differential_fuzz.rs`'s IR-vs-kernel
+   leg), native flow vs Yosys/nextpnr (3).
 6. **Dumb first, fast later.** Emitters/backends start naive and readable;
    optimization lives in dedicated IR passes, never hidden in emitters.
 7. **Pure core, impure shell.** The compiler stages - `lexer`, `parser`,
@@ -346,22 +370,26 @@ The architecture is staged on purpose; each piece below is _correct now_ and
 has a known moment when it must change. When a trigger fires, do the listed
 move and log it (R3). Letting a trigger pass is how architectures rot.
 
-| Current shape                                        | Trigger                                                                              | Required move                                                                                                                                                                                                                                                                                                |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| String-based Verilog emitter reading the AST         | Checker lands (work item 4)                                                          | Move all semantic errors (unknown module, port connectivity) out of the emitter into checker passes; emitter only renders                                                                                                                                                                                    |
-| Emitter has no width knowledge (`extend` is a no-op) | IR exists (Phase 2)                                                                  | Emit from typed IR, demote AST→Verilog path to a debug backend                                                                                                                                                                                                                                               |
-| ~~Diagnostics are free-text, no IDs~~                | ✅ FIRED - every stage's errors carry stable codes (2026-06-12; map in docs/code/06) | Done: codes everywhere; the P1.8 message catalogs key off them                                                                                                                                                                                                                                               |
-| ~~Single binary crate~~                              | ✅ FIRED - LSP + `--json` consumers arrived (2026-06-12)                             | Done: `lib.rs` + thin `main.rs`                                                                                                                                                                                                                                                                              |
-| ~~Single lib crate~~                                 | ✅ FIRED - WASM playground needed a dependency-optional-free build (2026-07-09/10)   | Done: 3-crate split along the pure/impure axis - `mimz-core`/`mimz-sim`/shell (section 3 above; landed 2026-07-10). The earlier 6-crate proposal (`mimz-syntax`/`mimz-check`/`mimz-backends`/…) was rejected as over-engineered - no unique deps per stage - and stays un-fired; revisit only on real demand |
-| Lexer discards comments/whitespace                   | `mimz fmt` work starts                                                               | Add a trivia-preserving lexing mode; `translate` stays token-level and is unaffected                                                                                                                                                                                                                         |
-| Tokens own `String`s, cloned freely                  | Compile time on real projects becomes noticeable (not before)                        | String interning + token indices - contained inside `lexer/`                                                                                                                                                                                                                                                 |
-| ~~Emitter semantic checks duplicated per backend~~   | ✅ FIRED - Simulator (P1.5) shipped                                                  | Done: the simulator elaborates from `project.rs` + checker output (`crates/mimz-sim/src/sim/elaborate.rs`); both backends consume the same checked AST                                                                                                                                                       |
+| Current shape                                            | Trigger                                                                              | Required move                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| String-based Verilog emitter reading the AST             | Checker lands (work item 4)                                                          | Move all semantic errors (unknown module, port connectivity) out of the emitter into checker passes; emitter only renders                                                                                                                                                                                    |
+| ~~Emitter has no width knowledge (`extend` is a no-op)~~ | ✅ FIRED - IR exists (`mimz_core::ir`, shipped 2026-09-04)                           | Not yet done: the Verilog emitter still emits from the AST directly; switching it to emit from typed IR (and demoting the AST→Verilog path to a debug backend) is follow-up work, tracked in `docs/plan/phase-2-ir-synthesis.md`'s Synthesis-path items, not part of the IR itself                           |
+| ~~Diagnostics are free-text, no IDs~~                    | ✅ FIRED - every stage's errors carry stable codes (2026-06-12; map in docs/code/06) | Done: codes everywhere; the P1.8 message catalogs key off them                                                                                                                                                                                                                                               |
+| ~~Single binary crate~~                                  | ✅ FIRED - LSP + `--json` consumers arrived (2026-06-12)                             | Done: `lib.rs` + thin `main.rs`                                                                                                                                                                                                                                                                              |
+| ~~Single lib crate~~                                     | ✅ FIRED - WASM playground needed a dependency-optional-free build (2026-07-09/10)   | Done: 3-crate split along the pure/impure axis - `mimz-core`/`mimz-sim`/shell (section 3 above; landed 2026-07-10). The earlier 6-crate proposal (`mimz-syntax`/`mimz-check`/`mimz-backends`/…) was rejected as over-engineered - no unique deps per stage - and stays un-fired; revisit only on real demand |
+| Lexer discards comments/whitespace                       | `mimz fmt` work starts                                                               | Add a trivia-preserving lexing mode; `translate` stays token-level and is unaffected                                                                                                                                                                                                                         |
+| Tokens own `String`s, cloned freely                      | Compile time on real projects becomes noticeable (not before)                        | String interning + token indices - contained inside `lexer/`                                                                                                                                                                                                                                                 |
+| ~~Emitter semantic checks duplicated per backend~~       | ✅ FIRED - Simulator (P1.5) shipped                                                  | Done: the simulator elaborates from `project.rs` + checker output (`crates/mimz-sim/src/sim/elaborate.rs`); both backends consume the same checked AST                                                                                                                                                       |
 
 ## 6. Open Questions (log a Decision when resolved)
 
 - Active-low reset option? (v0.2 supports `reset rst` synchronous and `async reset rst` asynchronous, both active-high)
 - Pipeline construct design (`pipeline(stages=N)`)
 - Hardware borrow checker / affine types / SMT formal bridge (`prove`)
+
+Resolved 2026-09-04: IR data model, lowering, text formats, and validation
+pass shipped (`mimz_core::ir`, Phase 2) - see docs/plan/phase-2-ir-synthesis.md
+"IR" section.
 
 Resolved in v0.2:
 
