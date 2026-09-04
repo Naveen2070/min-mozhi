@@ -1,0 +1,2 @@
+module bad
+port out y[0:4]

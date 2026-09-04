@@ -22,16 +22,26 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1385 tests** as of 2026-09-04 (`cargo test --workspace`; the count is
+**1404 tests** as of 2026-09-04 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+4 vs. 2026-09-03, from `tests/ir_validation.rs`'s validation-rejection
-fixture corpus, the last piece of the now-complete Phase 2 IR work; see
-`docs/plan/phase-2-ir-synthesis.md` "IR" section):
++2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` and
+`crates/mimz-core/src/ir/tests/validate.rs`, pinning `Shl`'s `out` pin at
+`width_rules::shift_result`'s worst-case growth instead of the left operand's
+own width (a growing left shift used to truncate silently) and the matching
+`validate` cross-check; see GAP-1's `Shl`/`Shr` sub-gap in
+`docs/audit/gaps.md`; a further +2 from `crates/mimz-core/src/ir/tests/validate.rs`'s
+`rejects_an_output_port_never_driven_by_any_cell` and
+`tests/ir_validation.rs`'s `undriven_output_port_fixture_is_rejected`, closing
+`validate.rs`'s direction-blind driven-set seeding — an `out` port's nets are
+no longer marked "driven" just by being a port; a final +4 from
+`crates/mimz-core/src/ir/tests/lower_builtins.rs` — the re-added
+`extend(signed(a), 16)` refusal fixture plus three `ir::exec`-executed
+`nand`/`nor`/`xnor` value checks):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      813 | in-process, `#[cfg(test)] mod tests`                   |
-| `crates/mimz-sim/src/**` (lib unit)                 |      172 | in-process                                             |
+| `crates/mimz-core/src/**` (lib unit)                |      832 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
 | `src/bin/mimz-bench/` (bin unit)                    |        6 | in-process                                             |
@@ -43,7 +53,7 @@ fixture corpus, the last piece of the now-complete Phase 2 IR work; see
 | `tests/compile_string.rs`                           |       14 | workspace integration (in-process lib)                 |
 | `tests/config.rs`                                   |        7 | workspace integration                                  |
 | `tests/differential_fuzz.rs`                        |        8 | workspace integration (generative + Icarus + IR)       |
-| `tests/docs_sync.rs`                                |        5 | workspace integration (doc staleness guard)            |
+| `tests/docs_sync.rs`                                |        6 | workspace integration (doc staleness guard)            |
 | `tests/errors.rs`                                   |        4 | workspace integration (error fixtures)                 |
 | `tests/eval.rs`                                     |       15 | workspace integration                                  |
 | `tests/examples.rs`                                 |       13 | workspace integration (golden `.v`)                    |
@@ -53,7 +63,7 @@ fixture corpus, the last piece of the now-complete Phase 2 IR work; see
 | `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)           |
 | `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                        |
 | `tests/ir_golden.rs`                                |        5 | workspace integration (golden IR-text snapshots)       |
-| `tests/ir_validation.rs`                            |        4 | workspace integration (IR validation-rejection corpus) |
+| `tests/ir_validation.rs`                            |        5 | workspace integration (IR validation-rejection corpus) |
 | `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6) |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                          |
 | `tests/morph.rs`                                    |       20 | workspace integration                                  |
@@ -65,7 +75,7 @@ fixture corpus, the last piece of the now-complete Phase 2 IR work; see
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1385** |                                                        |
+| **Total**                                           | **1404** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar
