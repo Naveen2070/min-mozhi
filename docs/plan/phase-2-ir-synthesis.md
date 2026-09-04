@@ -2,7 +2,9 @@
 
 > **Own your middle layer.**
 > Window: months 11–22 · Status: 🟡 in progress - language-features track
-> underway (see checked items below); IR/synthesis track not started
+> underway (see checked items below); IR design/lowering/format/validation
+> shipped 2026-09-04 (see "IR" section); optimizer + synthesis path (Yosys
+> flow, bitstream) not started
 
 ## Goal
 
@@ -39,10 +41,36 @@ language-feature work, now that Enum Variant Construction has shipped
 
 ### IR
 
-- [ ] Design Min-Mozhi IR: typed netlist (cells, nets, widths, clock domains preserved)
-- [ ] AST → IR lowering (enums encoded, match → mux trees, regs → FF cells)
-- [ ] IR text format (dumpable, diffable, hand-writable for tests)
-- [ ] IR validation pass (re-checks single-driver, widths - defense in depth)
+- [x] Design Min-Mozhi IR: typed netlist (cells, nets, widths, clock domains preserved) -
+      **✅ DONE 2026-09-04** (`crates/mimz-core/src/ir/mod.rs`) - bit-addressable
+      `NetId`/`Bits` (LSB-first), 30 `CellKind` variants (arithmetic/logic/compare/
+      mux/concat/slice/`Dff`/`Mem`/`BlackBox`/`Const`), `Module::signals` for
+      named-net lookup
+- [x] AST → IR lowering (enums encoded, match → mux trees, regs → FF cells) -
+      **✅ DONE 2026-09-04** (`ir/lower.rs`) - consumes the promoted
+      `elaborate::Design`; registers → `Dff`, memories → `Mem` with independent
+      `raddr`/`waddr` pins, `fn` calls inlined via continuation-splicing,
+      `extern module` instances → `BlackBox` cells; builtin function calls
+      (`extend`, etc.) remain unlowerable by design in v1 (GAP-1 sub-entry,
+      real feature work)
+- [x] IR text format (dumpable, diffable, hand-writable for tests) -
+      **✅ DONE 2026-09-04** (`ir/print_line.rs` + `ir/parse_line.rs`, line-based;
+      `ir/print_sexpr.rs`, s-expr dump-only) - golden snapshots in
+      `tests/golden/ir/`; `Module::extern_decls`/`signals` don't round-trip
+      through text (documented v1 boundary)
+- [x] IR validation pass (re-checks single-driver, widths - defense in depth) -
+      **✅ DONE 2026-09-04** (`ir/validate.rs`) - 5 checks (multiple drivers,
+      undriven nets, pin width/arity, combinational cycles, black-box port
+      shape); rejection-fixture corpus in `tests/fixtures/ir_errors/` +
+      `tests/ir_validation.rs`; one real, documented, unexercised gap left open
+      (driven-set seeding is direction-blind for output ports, GAP-1 sub-entry)
+
+  IR executor (`ir/exec.rs`) and an IR-vs-kernel differential fuzz leg
+  (`tests/differential_fuzz.rs`) also shipped alongside the above, covering
+  exit criterion #2's simulation-equivalence requirement for everything the
+  lowering pass actually reaches. See `docs/architecture.md` section 2 (IR row)
+  and the retired `phase-2-ir-design.local.md`/`phase-2-ir-plan.local.md` (19
+  tasks, folded in here) for full design rationale and task-by-task history.
 
 ### Optimizer (first passes)
 
