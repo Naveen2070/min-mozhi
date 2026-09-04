@@ -44,10 +44,14 @@ pub enum ValidationError {
 /// `Add`/`Sub`/`Mul`/`*Wrap`'s `out` mirrors `lower.rs`'s `lower_binop`
 /// growth/wrap formula exactly — the two must never drift, since this
 /// check exists specifically to catch a lowering bug that made them
-/// disagree). `Shl`/`Shr` are absent: `lower_binop` defines their `out`
-/// width as simply `a.width()`, so there's no independent formula to
-/// cross-check against — any corruption of `out` would just as trivially
-/// corrupt the "expected" value derived from `a` here, catching nothing.
+/// disagree). `Shr` is absent: `lower_binop` defines its `out` width as
+/// simply `a.width()` (right-shift never grows, `width_rules::
+/// shift_result`'s own `grows: false` rule), so there's no independent
+/// formula to cross-check against — any corruption of `out` would just as
+/// trivially corrupt the "expected" value derived from `a` here, catching
+/// nothing. `Shl` DOES have an independent formula
+/// (`width_rules::shift_result` with `grows: true`, worst-case
+/// `const_amount: None` — see `lower_binop`) and is checked below.
 fn expected_widths(
     kind: &CellKind,
     pins: &std::collections::BTreeMap<&'static str, super::Bits>,
@@ -61,6 +65,29 @@ fn expected_widths(
         CellKind::Mul => vec![("out", pins["a"].width() + pins["b"].width())],
         CellKind::AddWrap | CellKind::SubWrap | CellKind::MulWrap => {
             vec![("out", pins["a"].width().max(pins["b"].width()))]
+        }
+        CellKind::Shl => {
+            let out_width = crate::width_rules::shift_result(
+                crate::width_rules::Kind {
+                    width: pins["a"].width(),
+                    signed: false,
+                },
+                crate::width_rules::Kind {
+                    width: pins["b"].width(),
+                    signed: false,
+                },
+                None,
+                true,
+            )
+            .expect(
+                "worst-case Shl growth exceeded MAX_WIDTH — same pathological-input panic \
+                 as ir::lower's identical formula (see docs/audit/gaps.md GAP-1); this \
+                 validation pass exists to REPORT malformed IR, not crash on it, but this \
+                 specific case has no fixture exercising it today, so it hasn't needed a \
+                 non-panicking path yet",
+            )
+            .width;
+            vec![("out", out_width)]
         }
         _ => Vec::new(), // remaining binary/unary cells only constrain relationships between their OWN pins, not a fixed output-width formula — checked separately below
     }
@@ -112,10 +139,20 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
             }
         }
     }
-    for (name, bits, _dir) in &module.ports {
+    for (name, bits, dir) in &module.ports {
         let _ = name;
-        for net in &bits.0 {
-            driven.insert(*net); // a module INPUT port is a primary driver, by definition
+        // Only an INPUT port is a primary driver — an output port's nets
+        // must actually be driven by some cell's `out`/`q`/`rdata` pin,
+        // exactly like any other net. The previous version of this loop
+        // destructured `_dir` and never read it, so an `out` port's nets
+        // were marked "driven" unconditionally, letting a module with a
+        // declared but never-written output port pass validation silently
+        // (docs/audit/gaps.md GAP-1's "driven-set seeding is
+        // direction-blind" sub-gap).
+        if *dir == crate::ast::Dir::In {
+            for net in &bits.0 {
+                driven.insert(*net);
+            }
         }
     }
 

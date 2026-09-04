@@ -2031,17 +2031,26 @@ fn gen_ir_expr(
 ///
 /// **Why a separate generator rather than a third leg bolted onto
 /// `gen_clocked_module`.** Measured, not assumed: wiring `ir::lower` into
-/// `differential_fuzz_clocked_matches_icarus` skipped 25 seeds out of 25.
-/// `ir::lower`'s `lower_expr` has no arm for `ExprKind::Call` at all — every
-/// builtin (`extend`, `trunc`, `signed`, `unsigned`, `abs`, `min`/`max`,
-/// `nand`/`nor`/`xnor`) hits its catch-all `unimplemented!("expression form
-/// not yet lowered by Task 5/6")`. That is fatal for the existing generator
-/// specifically, because `extend(x, N)` IS its width machinery: `widen`,
-/// `clamp`'s fallback, every non-port leaf, `force_width` and `wrap_builtin`
-/// all render one. And `extend(1, N)` is the ONLY way to give a literal a
-/// width in this language (`concat_ty`'s own E0405 hint says exactly that), so
-/// there is no builtin-free way to write a sized constant either. Implementing
-/// builtin lowering is a feature, not this test's business.
+/// `differential_fuzz_clocked_matches_icarus` skipped 25 seeds out of 25, back
+/// when `ir::lower`'s `lower_expr` had no arm for `ExprKind::Call` at all and
+/// every builtin hit its catch-all `unimplemented!("expression form not yet
+/// lowered by Task 5/6")`. As of GAP-1 tasks 1-3 (`docs/audit/gaps.md`),
+/// `extend`/`trunc`/`signed`/`unsigned`/`encoding`/`nand`/`nor`/`xnor` lower
+/// for real, and that shared catch-all is gone: the `ExprKind::Call` match has
+/// no wildcard arm left at all. `min`/`max`/`abs` now hit their OWN
+/// `unimplemented!()` arm — explicitly refused, because they need signed
+/// interpretation `ir::Bits` has no v1 schema for — while `clog2`/
+/// `sync.double_flop`/`sync.pulse` hit `unreachable!()` arms, which means
+/// something different: they never survive to a checked `Design` at all.
+/// That was fatal for the existing generator specifically, because
+/// `extend(x, N)` IS its width machinery: `widen`, `clamp`'s fallback, every
+/// non-port leaf, `force_width` and `wrap_builtin` all render one. And
+/// `extend(1, N)` is the ONLY way to give a literal a width in this language
+/// (`concat_ty`'s own E0405 hint says exactly that), so there is no
+/// builtin-free way to write a sized constant either. Widening this generator
+/// to actually exercise the now-lowerable builtins is a separate,
+/// out-of-scope change — this comment only corrects what `ir::lower` handles
+/// today.
 ///
 /// So this generator drops literals and width/kind conversion entirely, and
 /// buys back closure a different way: **one width for the whole module** (`w`,
@@ -2062,7 +2071,11 @@ fn gen_ir_expr(
 ///   `docs/audit/gaps.md` GAP-1's sub-gap), `>`/`>=`/`&&`/`||` (unlowered in
 ///   `lower_binop`), lossless `+`/`-`/`*` (they grow), `mem` (`ir::lower`
 ///   models one read port per memory and compares LOWERED nets, so even two
-///   textually identical `m[0]` reads trip it), and every builtin call.
+///   textually identical `m[0]` reads trip it), and every builtin call — a
+///   generator design choice (no literals/width-conversion, see above), not a
+///   lowering gap: `extend`/`trunc`/`signed`/`unsigned`/`encoding`/`nand`/
+///   `nor`/`xnor` do lower today; only `min`/`max`/`abs`/`clog2`/`sync.*`
+///   still don't.
 ///
 /// Every one of those exclusions is an already-ruled, separately-tracked v1
 /// limitation, so the subset is a scope boundary rather than a workaround —
