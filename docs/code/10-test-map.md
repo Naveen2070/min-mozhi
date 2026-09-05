@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1409 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
+**1410 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` and
 `crates/mimz-core/src/ir/tests/validate.rs`, pinning `Shl`'s `out` pin at
@@ -51,7 +51,13 @@ GAP-1 residual Task 2) — `accepts_a_legitimately_sized_output_port`,
 pinning `validate`'s new sixth check (`Module::port_declared_widths` vs.
 each output port's lowered `Bits::width()`) that catches an over-wide
 output port silently reaching a `bits[N]` port declaration — see GAP-1's
-"silent, not a loud `WidthMismatch`" sub-gap in `docs/audit/gaps.md`):
+"silent, not a loud `WidthMismatch`" sub-gap in `docs/audit/gaps.md`; a
+further +1 from `tests/ir_validation.rs`'s
+`shift_growth_too_wide_fixture_is_rejected` (2026-09-05, GAP-1 residual
+Task 3) — pinning that `validate()` now REPORTS a pathologically-wide
+`Shl` growth as `ValidationError::ShiftGrowthTooWide` instead of
+panicking; see GAP-1's "checker-legal program can panic" sub-gap in
+`docs/audit/gaps.md`):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
@@ -78,7 +84,7 @@ output port silently reaching a `bits[N]` port declaration — see GAP-1's
 | `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)           |
 | `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                        |
 | `tests/ir_golden.rs`                                |        5 | workspace integration (golden IR-text snapshots)       |
-| `tests/ir_validation.rs`                            |        5 | workspace integration (IR validation-rejection corpus) |
+| `tests/ir_validation.rs`                            |        6 | workspace integration (IR validation-rejection corpus) |
 | `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6) |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                          |
 | `tests/morph.rs`                                    |       20 | workspace integration                                  |
@@ -90,7 +96,7 @@ output port silently reaching a `bits[N]` port declaration — see GAP-1's
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1409** |                                                        |
+| **Total**                                           | **1410** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar

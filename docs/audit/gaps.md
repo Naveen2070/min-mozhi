@@ -195,18 +195,25 @@ literal's OWN natural width (`natural_width(999000) = 20` bits `->`
 Judged acceptable as a PANIC (not a silent miscompile) since `ir::lower`
 has no production caller today (only tests/the fuzz differential leg
 reach it) and every other out-of-scope IR construct already panics the
-same way — but the `.expect()` message text in both `lower.rs` and
-`validate.rs` claimed the checker "guarantees" this never happens, which
-is false for the worst-case-growth formula specifically; corrected as
-part of Task 8. `validate.rs`'s copy of this same `.expect()` is a sharper
-concern than `lower.rs`'s: `validate()` exists specifically to REPORT
-malformed IR rather than crash on it, so a hand-written IR **text**
-fixture (`tests/ir_validation.rs`'s whole mechanism) declaring an
-oversized `Shl.b` pin would panic `validate()` instead of yielding a
-`ValidationError`. Not exploitable today (no external IR-text ingestion
-path exists — only repo-authored fixtures), but worth revisiting the
-moment the IR text format is exposed to anything outside this repo's own
-test suite.
+same way — but the `.expect()` message text claimed the checker
+"guarantees" this never happens, which is false for the worst-case-growth
+formula specifically; corrected as part of Task 8.
+
+**RESOLVED 2026-09-05 (residual-fix Task 3) — `validate.rs`'s copy of
+this same `.expect()` is gone.** This used to be a sharper concern than
+`lower.rs`'s: `validate()` exists specifically to REPORT malformed IR
+rather than crash on it, so a hand-written IR **text** fixture
+(`tests/ir_validation.rs`'s whole mechanism) declaring an oversized
+`Shl.b` pin panicked `validate()` instead of yielding a `ValidationError`.
+Fixed by changing `expected_widths`'s return type to
+`Result<Vec<(&'static str, u32)>, (u32, u32)>`, with the `Shl` arm
+matching `width_rules::shift_result`'s own `Ok`/`Err` instead of
+`.expect()`-ing it; the checks-2&3 loop in `validate()` now turns an
+`Err((lhs_width, amount_width))` into a new
+`ValidationError::ShiftGrowthTooWide { cell_index, lhs_width,
+amount_width }` instead of panicking (regression test:
+`tests/ir_validation.rs`'s `shift_growth_too_wide_fixture_is_rejected`,
+fixture `tests/fixtures/ir_errors/shift_growth_too_wide.ir`).
 
 **Still open — issue 3, fused shift chains:** `value::binary::
 eval_shift_chain` evaluates `(p2 >> 4) << 7` as ONE unit at a single fixed

@@ -41,6 +41,11 @@ pub enum ValidationError {
         declared: u32,
         found: u32,
     },
+    ShiftGrowthTooWide {
+        cell_index: usize,
+        lhs_width: u32,
+        amount_width: u32,
+    },
 }
 
 /// Input pin names per `CellKind` and their required relationship to
@@ -66,41 +71,37 @@ fn expected_widths(
     pins: &std::collections::BTreeMap<&'static str, super::Bits>,
     module: &Module,
     driver: &HashMap<NetId, Vec<usize>>,
-) -> Vec<(&'static str, u32)> {
+) -> Result<Vec<(&'static str, u32)>, (u32, u32)> {
     match kind {
-        CellKind::Mux => vec![("sel", 1)],
-        CellKind::Dff { .. } => vec![("q", pins["d"].width())],
+        CellKind::Mux => Ok(vec![("sel", 1)]),
+        CellKind::Dff { .. } => Ok(vec![("q", pins["d"].width())]),
         CellKind::Add | CellKind::Sub => {
-            vec![("out", pins["a"].width().max(pins["b"].width()) + 1)]
+            Ok(vec![("out", pins["a"].width().max(pins["b"].width()) + 1)])
         }
-        CellKind::Mul => vec![("out", pins["a"].width() + pins["b"].width())],
+        CellKind::Mul => Ok(vec![("out", pins["a"].width() + pins["b"].width())]),
         CellKind::AddWrap | CellKind::SubWrap | CellKind::MulWrap => {
-            vec![("out", pins["a"].width().max(pins["b"].width()))]
+            Ok(vec![("out", pins["a"].width().max(pins["b"].width()))])
         }
         CellKind::Shl => {
-            let out_width = crate::width_rules::shift_result(
+            let a_w = pins["a"].width();
+            let b_w = pins["b"].width();
+            match crate::width_rules::shift_result(
                 crate::width_rules::Kind {
-                    width: pins["a"].width(),
+                    width: a_w,
                     signed: false,
                 },
                 crate::width_rules::Kind {
-                    width: pins["b"].width(),
+                    width: b_w,
                     signed: false,
                 },
                 shl_const_amount(module, driver, &pins["b"]),
                 true,
-            )
-            .expect(
-                "Shl growth exceeded MAX_WIDTH — same pathological-input panic as \
-                 ir::lower's identical formula (see docs/audit/gaps.md GAP-1); this \
-                 validation pass exists to REPORT malformed IR, not crash on it, but this \
-                 specific case has no fixture exercising it today, so it hasn't needed a \
-                 non-panicking path yet",
-            )
-            .width;
-            vec![("out", out_width)]
+            ) {
+                Ok(k) => Ok(vec![("out", k.width)]),
+                Err(_) => Err((a_w, b_w)),
+            }
         }
-        _ => Vec::new(), // remaining binary/unary cells only constrain relationships between their OWN pins, not a fixed output-width formula — checked separately below
+        _ => Ok(Vec::new()), // remaining binary/unary cells only constrain relationships between their OWN pins, not a fixed output-width formula — checked separately below
     }
 }
 
@@ -226,14 +227,25 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
 
     // --- Checks 2 & 3: fixed-width contracts + same-width a/b pairs --
     for (i, cell) in module.cells.iter().enumerate() {
-        for (pin_name, expected_width) in expected_widths(&cell.kind, &cell.pins, module, &driver) {
-            let found = cell.pins[pin_name].width();
-            if found != expected_width {
-                errors.push(ValidationError::WidthMismatch {
+        match expected_widths(&cell.kind, &cell.pins, module, &driver) {
+            Ok(widths) => {
+                for (pin_name, expected_width) in widths {
+                    let found = cell.pins[pin_name].width();
+                    if found != expected_width {
+                        errors.push(ValidationError::WidthMismatch {
+                            cell_index: i,
+                            pin: pin_name,
+                            expected: expected_width,
+                            found,
+                        });
+                    }
+                }
+            }
+            Err((lhs_width, amount_width)) => {
+                errors.push(ValidationError::ShiftGrowthTooWide {
                     cell_index: i,
-                    pin: pin_name,
-                    expected: expected_width,
-                    found,
+                    lhs_width,
+                    amount_width,
                 });
             }
         }
