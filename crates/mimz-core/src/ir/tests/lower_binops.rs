@@ -578,3 +578,240 @@ fn a_natural_width_literal_operand_keeps_the_comparison_unsigned() {
     executor.tick();
     assert_eq!(executor.get_output("y").bits, crate::bits::Bits::Small(1));
 }
+
+/// Fix-round regression (reviewer C1): `-a < 200` for `a: signed[8]` must
+/// stay an UNSIGNED cell.
+///
+/// The first cut of `expr_is_definitely_signed` recursed through any unary
+/// op, so `-a` reported signed. But the checker GROWS negation (`Signed(n)`
+/// -> `Signed(n + 1)`, `checker/widths/ops/mod.rs`) while `lower_expr`'s
+/// `Neg` arm keeps `a.width()` — so the `a` pin is 8 bits against a checker
+/// type of `Signed(9)`, the literal `200` lowers to its own 8-bit natural
+/// width, and `lower_binop`'s equal-width guard was satisfied by two widths
+/// that mean different things. Reading `200` as two's complement then makes
+/// it `-56` and flips half the input domain. `expr_is_definitely_signed` now
+/// only recognizes shapes whose lowered width IS a declared signal's width.
+#[test]
+fn a_negated_operand_keeps_the_comparison_unsigned() {
+    use crate::ast::{BinOp, UnOp};
+    use crate::elaborate::Width;
+    use crate::ir::exec::Executor;
+
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::Lt,
+                lhs: Box::new(Expr {
+                    kind: ExprKind::Unary {
+                        op: UnOp::Neg,
+                        expr: Box::new(super::ident("a")),
+                    },
+                    span: Span::default(),
+                }),
+                rhs: Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: crate::bits::Bits::Small(200),
+                        raw: "200".to_string(),
+                    },
+                    span: Span::default(),
+                }),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "neg_cmp".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![Signal {
+            name: "a".into(),
+            width: Width {
+                bits: 8,
+                signed: true,
+            },
+        }],
+        outputs: vec![Signal {
+            name: "y".into(),
+            width: super::w(1),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let cmp = module
+        .cells
+        .iter()
+        .find(|c| matches!(c.kind, CellKind::Lt { .. }))
+        .expect("the comparison lowered to a cell");
+    assert_eq!(
+        cmp.pins["a"].width(),
+        cmp.pins["b"].width(),
+        "the premise: the equal-width guard alone does NOT catch this — \
+         `-a` lowers to 8 bits (the checker types it `Signed(9)`) and the \
+         literal `200`'s natural width is also 8"
+    );
+    assert_eq!(
+        cmp.kind,
+        CellKind::Lt { signed: false },
+        "a negated operand must not mark the comparison signed"
+    );
+
+    // Ground truth: `-a` is `Signed(9)`, so it spans -127..=128 and is ALWAYS
+    // < 200 — every input should answer 1. A signed cell answers 0 for `a=0`
+    // (it reads `200` as `-56`), which is the regression this pins.
+    //
+    // `a` in 1..=56 still answers 0 even now: that is the SEPARATE,
+    // pre-existing `Neg` width divergence above (`lower` never grows the
+    // negation), documented as its own open residual in `docs/audit/gaps.md`
+    // and deliberately not fixed here. The inputs below avoid it.
+    let mut executor = Executor::new(&module);
+    for a in [0u128, 100, 200] {
+        executor.set_input("a", crate::value::Val::new(a, 8, false));
+        executor.tick();
+        assert_eq!(
+            executor.get_output("y").bits,
+            crate::bits::Bits::Small(1),
+            "-a < 200 must be true for a={a}"
+        );
+    }
+}
+
+/// GAP-1's headline shape: `signed(a) < signed(b)` over two signals DECLARED
+/// unsigned. The cast is a free reinterpret (`lower`'s `SignedCast` arm
+/// repoints at its argument's `Bits` and allocates nothing), so the pin stays
+/// the declared 8-bit width and the equal-width guard is satisfied honestly.
+/// Also pins the negative half of `expr_is_definitely_signed`'s `SignedCast`
+/// arm: the cast only counts over a bare identifier, because that is the only
+/// argument shape whose lowered width is provably a declared signal's width.
+#[test]
+fn a_signed_cast_over_an_identifier_makes_the_comparison_signed() {
+    use crate::ast::{BinOp, Builtin};
+    use crate::ir::exec::Executor;
+
+    fn signed_cast(inner: Expr) -> Expr {
+        Expr {
+            kind: ExprKind::Call {
+                func: Builtin::SignedCast,
+                args: vec![inner],
+            },
+            span: Span::default(),
+        }
+    }
+
+    // `y = signed(a) < signed(b)`; `z = signed(a +% b) < 200` — the second's
+    // cast argument is NOT a bare identifier, so NEITHER side proves
+    // signedness and it stays unsigned. (`a +% b` keeps its 8-bit width, so
+    // the literal `200`'s own 8-bit natural width would otherwise satisfy the
+    // equal-width guard — the same shape as the `-a < 200` hazard above.)
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::Lt,
+                lhs: Box::new(signed_cast(super::ident("a"))),
+                rhs: Box::new(signed_cast(super::ident("b"))),
+            },
+            span: Span::default(),
+        },
+    );
+    comb.insert(
+        "z".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::Lt,
+                lhs: Box::new(signed_cast(Expr {
+                    kind: ExprKind::Binary {
+                        op: BinOp::AddWrap,
+                        lhs: Box::new(super::ident("a")),
+                        rhs: Box::new(super::ident("b")),
+                    },
+                    span: Span::default(),
+                })),
+                rhs: Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: crate::bits::Bits::Small(200),
+                        raw: "200".to_string(),
+                    },
+                    span: Span::default(),
+                }),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "signed_cast_cmp".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![
+            Signal {
+                name: "a".into(),
+                width: super::w(8),
+            },
+            Signal {
+                name: "b".into(),
+                width: super::w(8),
+            },
+        ],
+        outputs: vec![
+            Signal {
+                name: "y".into(),
+                width: super::w(1),
+            },
+            Signal {
+                name: "z".into(),
+                width: super::w(1),
+            },
+        ],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+
+    let kinds: Vec<bool> = module
+        .cells
+        .iter()
+        .filter_map(|c| match c.kind {
+            CellKind::Lt { signed } => Some(signed),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(kinds.len(), 2);
+    assert!(
+        kinds.contains(&true),
+        "signed(a) < signed(b) over bare identifiers must lower as SIGNED"
+    );
+    assert!(
+        kinds.contains(&false),
+        "signed(<non-identifier>) must stay unsigned — its lowered width is \
+         not provably the checker's type width"
+    );
+
+    // a = 0xFF (-1), b = 0x01 (1): -1 < 1 is true under the signed reading,
+    // 255 < 1 is false under the unsigned one.
+    let mut executor = Executor::new(&module);
+    executor.set_input("a", crate::value::Val::new(0xFF, 8, false));
+    executor.set_input("b", crate::value::Val::new(1, 8, false));
+    executor.tick();
+    assert_eq!(executor.get_output("y").bits, crate::bits::Bits::Small(1));
+}

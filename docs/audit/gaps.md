@@ -294,17 +294,41 @@ What changed, precisely:
   spelling (every pre-existing IR text still means what it did); signed is
   `$lt[signed]`, in the same bracket style as `$dff[Rise]`. An unrecognized
   bracket argument is a parse error, never a silent fall back to unsigned.
-- **Signedness detection** is `lower.rs`'s new `expr_is_definitely_signed`,
-  the mirror of `arg_is_definitely_unsigned` and shape-for-shape aligned with
-  `emit_verilog::kinds::infer_kind`/`infer_binary`, so the two back ends
-  agree on when a comparison is signed. Unrecognized shapes answer `false`
-  (unsigned), i.e. today's behaviour — never a regression.
+- **Signedness detection** is `lower.rs`'s new `expr_is_definitely_signed`.
+  It recognizes exactly two shapes: a bare `Ident` naming a module-level
+  signal declared signed, and `signed(<Ident>)` (GAP-1's headline case — a
+  free reinterpret over two UNSIGNED-declared signals). Everything else is
+  conservatively `false`, i.e. an unsigned comparison — today's behaviour, so
+  an unrecognized shape is never a regression. Deliberately NOT a general
+  `infer_kind`-style walk; see the invariant below for why.
+
+**The guard's actual invariant (corrected 2026-09-05 after review).**
+`lower_binop` marks a comparison signed only when its two operand pins came
+out the SAME width. That guard is only sound if a `true` from
+`expr_is_definitely_signed` implies **"this pin's lowered width IS the width
+the CHECKER types the expression at."** The first cut of this work stated the
+weaker claim that "a width mismatch means the narrow side is a bare literal"
+and leaned on its converse, which is false: wherever `ir::lower`'s width
+formula and the checker's disagree, a literal on the other side can match the
+LOWERED width while the checker sized it from the (different) TYPE width, and
+reinterpreting those bits as two's complement silently changes the answer.
+Two such divergences exist today, and both are why the helper is restricted
+to declared-signal shapes rather than walking the expression tree:
+
+- **`UnOp::Neg`** — see the separate residual below. `-a < 200` for
+  `a: signed[8]` was empirically wrong for 128 of 256 inputs under the first
+  cut. Pinned by `a_negated_operand_keeps_the_comparison_unsigned`.
+- **`BinOp::Mul` with a literal operand** — `lower_binop` sizes it
+  `a.width() + b.width()` from the literal's NATURAL width, while the checker
+  first adapts the literal to the sized side's type: `a * 2` for
+  `a: signed[8]` is 10 bits lowered but `Signed(16)` typed, so a 10-bit
+  literal on the other side (`a * 2 < 600`) would satisfy the guard while
+  meaning something else.
 
 **Narrowed residual — a natural-width literal operand keeps the comparison
-unsigned.** `lower_binop` marks a comparison signed only when its operands
-agree on WIDTH as well as sign. For two non-literal operands that costs
-nothing: `checker::widths::ops::matched_ty` rejects a genuinely mixed
-comparison outright (E0403 "cannot mix X and Y … convert visibly with
+unsigned.** For two non-literal operands the width guard costs nothing:
+`checker::widths::ops::matched_ty` rejects a genuinely mixed comparison
+outright (E0403 "cannot mix X and Y … convert visibly with
 `signed(x)`/`unsigned(x)`"), so they always share a type and hence a width.
 A width MISMATCH means the narrow side is a bare literal, which the checker
 types as untyped `Ty::CtInt` inheriting the sized side's type — but
@@ -312,8 +336,12 @@ types as untyped `Ty::CtInt` inheriting the sized side's type — but
 and reinterpreting those 3 bits as two's complement would read `5` as `-3`,
 flipping `1 < 5` from true to false. So `x < 5` for a signed `x` stays an
 unsigned cell: still not what `emit_verilog` renders, but unchanged rather
-than newly and differently wrong. Sizing a literal from its comparison
-context is the separate follow-up that would close this;
+than newly and differently wrong. The NEGATED-literal form (`x < -5`) is
+benign by a different mechanism — `-5` lowers to a `Neg` cell at the
+literal's own narrow width, so it too fails the width guard — but it is
+benign by accident, not by design, and the `Neg` residual below is what
+would need closing to reason about it properly. Sizing a literal from its
+comparison context is the separate follow-up that would close all of this;
 `a_natural_width_literal_operand_keeps_the_comparison_unsigned`
 (`crates/mimz-core/src/ir/tests/lower_binops.rs`) pins the boundary so that
 fix flips the assertion deliberately rather than by accident.
@@ -328,6 +356,25 @@ essentially every node" (Task 18's own measurement), and a meaningful
 fraction of those are genuinely signed or hit `min`/`max`/`abs` — folding
 the leg back in today would still skip most seeds on the newly-narrower
 but still-real residual gap above.
+
+### Sub-gap (2026-09-05, still open): `ir::lower` does not grow `UnOp::Neg`, but the checker does
+
+Pre-existing and independent of the signed-comparison work above, surfaced
+while reviewing it. `checker/widths/ops/mod.rs` types negation losslessly —
+`UnOp::Neg => match t { Ty::Signed(n) => Ty::Signed(n + 1), .. }`, gaining
+the carry bit, so `-a` for `a: signed[8]` is `Signed(9)`. `ir::lower`'s
+`UnOp::Neg` arm keeps the operand's width instead:
+`UnOp::Neg => (CellKind::Neg, a.width())`, i.e. 8 bits.
+
+Consequences: `-a` overflows in the IR for `a = -128` (`Signed(8)`'s most
+negative value, whose negation genuinely needs 9 bits), and any lowered width
+computed downstream of a negation is one bit short of the checker's. This is
+the divergence that made the signed-comparison guard unsound in review; the
+guard now sidesteps it by refusing to call a negated expression signed
+(`a_negated_operand_keeps_the_comparison_unsigned` pins that), but the
+underlying width bug is untouched and belongs in its own task — it changes
+pin widths, so it interacts with `validate`'s matched-`a`/`b` checks and with
+`emit_verilog` parity, unlike the comparison flag, which is metadata-only.
 
 ### Sub-gap (2026-09-04, RESOLVED 2026-09-04): `ir::validate`'s driven-set seeding was direction-blind
 

@@ -152,9 +152,12 @@ impl<'a> LowerCtx<'a> {
                 // Signedness of an ORDERING comparison has to come from the
                 // source `Expr`s — `Bits` carries no sign bit — so it is
                 // computed here, at the one call site that still has them,
-                // exactly like `shl_const_amount` above.
-                let cmp_signed = self.expr_is_definitely_signed(lhs, locals)
-                    || self.expr_is_definitely_signed(rhs, locals);
+                // and gated on the op the same way `shl_const_amount` is
+                // above (otherwise every node of an expression tree walks its
+                // own subtree, making lowering quadratic for no benefit).
+                let cmp_signed = matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
+                    && (self.expr_is_definitely_signed(lhs, locals)
+                        || self.expr_is_definitely_signed(rhs, locals));
                 self.lower_binop(module, *op, a, b, shl_const_amount, cmp_signed, e.span)
             }
             ExprKind::Unary { op, expr } => {
@@ -450,52 +453,84 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
-    /// Best-effort proof that `e`'s value is DEFINITELY signed — the mirror
-    /// image of `arg_is_definitely_unsigned` above, and the input to
-    /// `CellKind::{Lt,Le,Gt,Ge}`'s `signed` flag. Follows the same shape
-    /// rules `emit_verilog::kinds::infer_kind`/`infer_binary` use, so the two
-    /// back ends agree on when a comparison is signed:
+    /// Best-effort proof that `e`'s value is DEFINITELY signed AND that
+    /// `lower` sizes it at exactly the width the CHECKER types it at — the
+    /// mirror image of `arg_is_definitely_unsigned` above, and the input to
+    /// `CellKind::{Lt,Le,Gt,Ge}`'s `signed` flag.
     ///
-    /// * a bare literal is the checker's untyped `Ty::CtInt` — it INHERITS
-    ///   the other operand's type (`checker::widths::ops::matched_ty`), so it
-    ///   never decides signedness on its own and answers `false` here;
-    /// * `signed(x)` is signed, `unsigned(x)`/`encoding(x)` are not;
-    /// * a unary op keeps its operand's signedness, and an arithmetic/bitwise
-    ///   binary op is signed if EITHER operand is — while a comparison or
-    ///   logical op always yields a 1-bit unsigned result.
+    /// That second half is not decoration, it is the whole soundness
+    /// argument. `lower_binop` only trusts this answer when the two operand
+    /// pins came out the SAME width, and that guard is only meaningful if a
+    /// `true` here implies "this pin's width IS the checker's type width".
+    /// Wherever `ir::lower`'s width formula and the checker's disagree, a
+    /// literal on the other side can match the LOWERED width while the
+    /// checker sized it from the (different) TYPE width, and reinterpreting
+    /// those bits as two's complement silently changes the answer. Two such
+    /// divergences exist today:
     ///
-    /// Anything else is conservatively `false`, i.e. an unsigned comparison —
-    /// today's behaviour, so an unrecognized shape is never a regression. Two
-    /// non-literal operands cannot disagree: `matched_ty` rejects a genuinely
-    /// mixed comparison outright (E0403 "cannot mix X and Y"), so the caller
-    /// ORs the two answers rather than reconciling them.
+    /// * `UnOp::Neg` — `checker::widths::ops` grows it (`Signed(n)` ->
+    ///   `Signed(n + 1)`, gaining the carry bit) but `lower_expr`'s `Neg` arm
+    ///   keeps `a.width()`. So `-a < 200` for `a: signed[8]` has an 8-bit
+    ///   pin against a checker type of `Signed(9)`, the 8-bit literal `200`
+    ///   matches the pin width, and reading it as signed flips half the
+    ///   input domain. See `docs/audit/gaps.md`.
+    /// * `BinOp::Mul` with a literal operand — `lower_binop` sizes it
+    ///   `a.width() + b.width()` from the literal's NATURAL width, while the
+    ///   checker first adapts the literal to the sized side's type: `a * 2`
+    ///   for `a: signed[8]` is 10 bits lowered but `Signed(16)` typed.
+    ///
+    /// So this recognizes ONLY the two shapes whose lowered width is, by
+    /// construction, the declared width of a module-level signal: a bare
+    /// `Ident`, and `signed(<Ident>)` (a free reinterpret — `lower`'s
+    /// `SignedCast` arm repoints at its argument's `Bits` and allocates
+    /// nothing). Everything else is conservatively `false`, i.e. an unsigned
+    /// comparison — today's behaviour, so an unrecognized shape is never a
+    /// regression. In particular a bare literal is the checker's untyped
+    /// `Ty::CtInt`: it INHERITS the other operand's type
+    /// (`checker::widths::ops::matched_ty`) rather than deciding signedness
+    /// itself, so it answers `false` and lets the sized side decide.
+    ///
+    /// Two non-literal operands cannot disagree: `matched_ty` rejects a
+    /// genuinely mixed comparison outright (E0403 "cannot mix X and Y"), so
+    /// the caller ORs the two answers rather than reconciling them.
     fn expr_is_definitely_signed(&self, e: &Expr, locals: Option<&HashMap<String, Bits>>) -> bool {
         match &e.kind {
-            ExprKind::Int { .. } | ExprKind::Bool(_) => false,
+            ExprKind::Ident(name) => self.unshadowed_signal_signed(name, locals) == Some(true),
+            // `signed(x)` over a bare identifier. The cast is free — `lower`'s
+            // `SignedCast` arm repoints at `x`'s `Bits` and allocates nothing
+            // — so the pin keeps `x`'s DECLARED width whatever `x`'s own
+            // declared signedness was, which is the point: `signed(a) <
+            // signed(b)` over two UNSIGNED-declared signals is GAP-1's
+            // headline case. Hence `.is_some()`, not `== Some(true)`.
             ExprKind::Call {
                 func: Builtin::SignedCast,
-                ..
-            } => true,
-            ExprKind::Ident(name) if locals.is_none_or(|l| !l.contains_key(name)) => {
-                self.declared_signed(name) == Some(true)
-            }
-            ExprKind::Unary { expr: inner, .. } => self.expr_is_definitely_signed(inner, locals),
-            ExprKind::Binary { op, lhs, rhs } => {
-                !matches!(
-                    op,
-                    BinOp::Eq
-                        | BinOp::Ne
-                        | BinOp::Lt
-                        | BinOp::Le
-                        | BinOp::Gt
-                        | BinOp::Ge
-                        | BinOp::LogicAnd
-                        | BinOp::LogicOr
-                ) && (self.expr_is_definitely_signed(lhs, locals)
-                    || self.expr_is_definitely_signed(rhs, locals))
-            }
+                args,
+            } => match args.first().map(|a| &a.kind) {
+                Some(ExprKind::Ident(name)) => {
+                    self.unshadowed_signal_signed(name, locals).is_some()
+                }
+                _ => false,
+            },
             _ => false,
         }
+    }
+
+    /// The declared signedness of `name`, but ONLY when `name` really is a
+    /// module-level signal and is not shadowed by a `fn` param/`let` binding
+    /// — `lower_expr`'s own `Ident` arm resolves a shadowed name through
+    /// `locals` first, so a module-level signal of the same name would be the
+    /// wrong thing to ask about (the same guard `arg_is_definitely_unsigned`
+    /// uses). `None` therefore means "no declared width to reason about",
+    /// which is exactly what `expr_is_definitely_signed`'s callers need.
+    fn unshadowed_signal_signed(
+        &self,
+        name: &str,
+        locals: Option<&HashMap<String, Bits>>,
+    ) -> Option<bool> {
+        locals
+            .is_none_or(|l| !l.contains_key(name))
+            .then(|| self.declared_signed(name))
+            .flatten()
     }
 
     /// Walks one `fn` body's statement list, evaluating against `locals`

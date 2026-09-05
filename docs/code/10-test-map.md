@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1415 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
+**1417 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` and
 `crates/mimz-core/src/ir/tests/validate.rs`, pinning `Shl`'s `out` pin at
@@ -75,11 +75,18 @@ needed; see GAP-1's "fused shift chains" sub-gap (now RESOLVED) in
 `an_unknown_comparison_bracket_argument_is_rejected`), pinning the new
 `signed` flag on `CellKind::{Lt,Le,Gt,Ge}` — its sign-aware execution, the
 literal-width boundary it deliberately does NOT cross, and its text-format
-round trip; see GAP-1's signed-comparison sub-gap in `docs/audit/gaps.md`):
+round trip; see GAP-1's signed-comparison sub-gap in `docs/audit/gaps.md`; a
+final +2 in `crates/mimz-core/src/ir/tests/lower_binops.rs` from Task 5's
+review fix round (`a_negated_operand_keeps_the_comparison_unsigned`,
+`a_signed_cast_over_an_identifier_makes_the_comparison_signed`), pinning the
+two shapes that decide whether `expr_is_definitely_signed`'s answer is
+trustworthy — a negated operand, whose lowered width is one bit short of the
+checker's type width, and the `signed(<Ident>)` headline case, in both its
+accepting and refusing forms):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      842 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      844 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
@@ -114,7 +121,7 @@ round trip; see GAP-1's signed-comparison sub-gap in `docs/audit/gaps.md`):
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1415** |                                                        |
+| **Total**                                           | **1417** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar
