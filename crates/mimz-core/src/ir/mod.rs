@@ -155,6 +155,16 @@ pub struct Module {
     /// emit/restore it), the same v1 scope boundary as `extern_decls`: a
     /// hand-parsed IR module can only be addressed by port name.
     pub signals: BTreeMap<String, Bits>,
+    /// Each OUTPUT port's source-DECLARED width, keyed by port name —
+    /// distinct from `ports`' own `Bits::width()`, which is whatever
+    /// lowering actually produced (may legitimately differ: see GAP-1's
+    /// silent-over-wide-port residual). Populated by `lower()` from
+    /// `design.outputs`; not round-tripped by the text format (same v1
+    /// scope boundary as `extern_decls`/`signals` above) — a hand-parsed
+    /// IR module has no declared width to check against, so `validate`
+    /// skips this check when the entry is absent, same pattern as the
+    /// black-box-port-shape check.
+    pub port_declared_widths: std::collections::BTreeMap<String, u32>,
 }
 
 impl Module {

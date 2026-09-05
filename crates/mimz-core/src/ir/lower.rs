@@ -913,6 +913,7 @@ pub fn lower(design: &Design) -> Module {
         nets: Vec::new(),
         extern_decls: BTreeMap::new(),
         signals: BTreeMap::new(),
+        port_declared_widths: BTreeMap::new(),
     };
     let mut ctx = LowerCtx {
         design,
@@ -971,6 +972,9 @@ pub fn lower(design: &Design) -> Module {
     }
     for output in &design.outputs {
         let bits = ctx.resolve(&mut module, &output.name);
+        module
+            .port_declared_widths
+            .insert(output.name.clone(), output.width.bits);
         module.ports.push((output.name.clone(), bits, Dir::Out));
     }
     // Force every wire to be lowered even if no output reads it (keeps

@@ -24,6 +24,7 @@ pub fn parse(text: &str) -> Result<Module, String> {
         nets: Vec::new(),
         extern_decls: BTreeMap::new(), // text format doesn't round-trip declared extern shapes (v1 gap, see Module::extern_decls doc)
         signals: BTreeMap::new(), // nor the source-name -> Bits table (same v1 gap, see Module::signals doc)
+        port_declared_widths: BTreeMap::new(), // nor each output's declared width (same v1 gap, see Module::port_declared_widths doc)
     };
     // Bracket-form pin values (`{17,18,19}`) embed the ORIGINAL module's
     // own NetId numbers as literal text, unlike a name-form reference —

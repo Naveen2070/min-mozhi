@@ -164,20 +164,28 @@ falls back to worst-case growth, unchanged. `(a << 2) & c` now validates
 cleanly (regression test: `crates/mimz-core/src/ir/tests/lower_binops.rs`,
 `shl_with_a_compile_time_constant_amount_sizes_exactly_not_worst_case`).
 
-**One corner of the same residual is SILENT, not a loud `WidthMismatch`.**
-An over-wide `Shl` result that reaches a module OUTPUT PORT directly — or
-via `extend`'s `target <= base.width()` no-op branch, e.g.
-`out y: bits[10] = extend(a << 2, 10)` — gives `y` 11 real nets instead of
-the 10 the source declared, and nothing in `validate()` reports it. This
-is structural rather than an oversight: `ir::Module` carries no record of
-a port's originally-DECLARED width once lowering is done, only the actual
-`Bits` width the lowering produced, so `validate()` has nothing to compare
-against. It is benign today only because every consumer masks back to the
+**RESOLVED 2026-09-05 (residual-fix Task 2) — this corner is no longer
+SILENT; it is now a loud `WidthMismatch`-shaped `ValidationError`.** An
+over-wide `Shl` result that reaches a module OUTPUT PORT directly — or via
+`extend`'s `target <= base.width()` no-op branch, e.g.
+`out y: bits[10] = extend(a << 2, 10)` — used to give `y` 11 real nets
+instead of the 10 the source declared with nothing in `validate()`
+reporting it, because `ir::Module` carried no record of a port's
+originally-DECLARED width once lowering was done, only the actual `Bits`
+width the lowering produced. Fixed by giving `ir::Module` a new
+`port_declared_widths: BTreeMap<String, u32>` field, populated by
+`lower()` from `design.outputs`'s own `Signal.width.bits` (same v1 scope
+boundary as `extern_decls`/`signals`: not round-tripped by the text
+format, so a hand-parsed IR fixture has no entry and `validate()` skips
+the check gracefully rather than treating a missing entry as a
+violation — same pattern as the black-box-port-shape check). `validate()`
+gained a sixth check comparing each OUTPUT port's lowered `Bits::width()`
+against its `port_declared_widths` entry when present, reporting a new
+`ValidationError::PortWidthMismatch { port, declared, found }`. It was
+benign in practice only because every consumer masked back to the
 source-declared width externally (the differential test harness's
 `bits_to_limbs(..., declared_width)` is the example), not because the IR
-itself enforces anything. Closing it needs `ir::Module` to carry the
-declared port width alongside the lowered one — same follow-up bucket as
-the constant-shift sizing above.
+itself enforced anything — now it does.
 
 **A checker-legal program can panic in lowering.** `bits[8] << 999000`
 type-checks (the checker's exact-constant growth, `999008` bits, is under

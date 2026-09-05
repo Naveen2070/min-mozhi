@@ -2,12 +2,14 @@
 //! already enforced, catching bugs in the lowering pass itself before the
 //! IR is trusted as equivalent to the source.
 //!
-//! Five checks, kept in five clearly separated passes over `module`:
+//! Six checks, kept in six clearly separated passes over `module`:
 //! driver/undriven nets, fixed-width pin contracts (e.g. `Mux.sel`),
 //! same-width a/b pairs on bitwise/comparison/logical cells, combinational
-//! cycles, and black-box port shape against declared extern ports
-//! (`Module::extern_decls`). Every check appends independently to the
-//! same `errors` list — one check finding something never skips another.
+//! cycles, black-box port shape against declared extern ports
+//! (`Module::extern_decls`), and output port width against its source
+//! declaration (`Module::port_declared_widths`). Every check appends
+//! independently to the same `errors` list — one check finding something
+//! never skips another.
 
 use super::{CellKind, Module, NetId};
 use std::collections::{HashMap, HashSet};
@@ -33,6 +35,11 @@ pub enum ValidationError {
     BlackBoxPortMismatch {
         cell_index: usize,
         reason: String,
+    },
+    PortWidthMismatch {
+        port: String,
+        declared: u32,
+        found: u32,
     },
 }
 
@@ -289,6 +296,22 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
                     reason: format!("pin `{pin_name}` is not a declared port of `{module_name}`"),
                 });
             }
+        }
+    }
+
+    // --- Check 6: output port width matches its source declaration ----
+    for (name, bits, dir) in &module.ports {
+        if *dir != crate::ast::Dir::Out {
+            continue;
+        }
+        if let Some(&declared) = module.port_declared_widths.get(name)
+            && bits.width() != declared
+        {
+            errors.push(ValidationError::PortWidthMismatch {
+                port: name.clone(),
+                declared,
+                found: bits.width(),
+            });
         }
     }
 

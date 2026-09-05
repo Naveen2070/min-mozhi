@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1406 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
+**1409 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` and
 `crates/mimz-core/src/ir/tests/validate.rs`, pinning `Shl`'s `out` pin at
@@ -36,18 +36,26 @@ own width (a growing left shift used to truncate silently) and the matching
 no longer marked "driven" just by being a port; a further +4 from
 `crates/mimz-core/src/ir/tests/lower_builtins.rs` — the re-added
 `extend(signed(a), 16)` refusal fixture plus three `ir::exec`-executed
-`nand`/`nor`/`xnor` value checks; a final +2 from
+`nand`/`nor`/`xnor` value checks; a further +2 from
 `crates/mimz-core/src/ir/tests/lower_binops.rs` (2026-09-05, GAP-1 residual
 Task 1) —
 `shl_with_a_compile_time_constant_amount_sizes_exactly_not_worst_case` and
 `shl_result_feeding_a_matched_width_cell_validates_cleanly_when_amount_is_constant`,
 pinning `lower_binop`'s new exact sizing for a compile-time-constant shift
 amount (and `ir::validate`'s matching `shl_const_amount` cross-check) — see
-GAP-1's "narrower than originally scoped" sub-gap in `docs/audit/gaps.md`):
+GAP-1's "narrower than originally scoped" sub-gap in `docs/audit/gaps.md`; a
+final +3 from `crates/mimz-core/src/ir/tests/validate.rs` (2026-09-05,
+GAP-1 residual Task 2) — `accepts_a_legitimately_sized_output_port`,
+`rejects_an_extend_no_op_output_wider_than_its_declaration`, and
+`hand_parsed_fixture_with_no_declared_width_skips_the_port_width_check`,
+pinning `validate`'s new sixth check (`Module::port_declared_widths` vs.
+each output port's lowered `Bits::width()`) that catches an over-wide
+output port silently reaching a `bits[N]` port declaration — see GAP-1's
+"silent, not a loud `WidthMismatch`" sub-gap in `docs/audit/gaps.md`):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      834 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      837 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
@@ -82,7 +90,7 @@ GAP-1's "narrower than originally scoped" sub-gap in `docs/audit/gaps.md`):
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1406** |                                                        |
+| **Total**                                           | **1409** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar
