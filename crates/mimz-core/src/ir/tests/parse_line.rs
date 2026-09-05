@@ -62,3 +62,42 @@ fn a_huge_bracket_net_id_is_rejected_not_allocated() {
         "a huge bracket net id must be rejected, not allocated"
     );
 }
+
+/// Task 5's `signed` flag on `Lt`/`Le`/`Gt`/`Ge` MUST survive the text
+/// format — unlike the v1 scope-boundary fields (`Dff::clock`, `Mem::init`),
+/// it changes what a cell COMPUTES, so losing it would silently change
+/// behaviour. Covers all four operators in both spellings, including `Gt`/`Ge`
+/// (which `ir::lower` never produces — they only reach the IR through
+/// hand-written text like this, so this is their only round-trip coverage).
+#[test]
+fn round_trips_signed_and_unsigned_ordering_comparisons() {
+    use crate::ir::CellKind;
+
+    for op in ["lt", "le", "gt", "ge"] {
+        for (suffix, signed) in [("", false), ("[signed]", true)] {
+            let text = format!("module m\n\ncell ${op}{suffix} :0 a={{0,1}} b={{2,3}} out={{4}}\n");
+            let parsed = parse_line::parse(&text).expect("hand-written IR text should parse");
+
+            let expected = match op {
+                "lt" => CellKind::Lt { signed },
+                "le" => CellKind::Le { signed },
+                "gt" => CellKind::Gt { signed },
+                _ => CellKind::Ge { signed },
+            };
+            assert_eq!(parsed.cells[0].kind, expected, "parsing `${op}{suffix}`");
+            assert_eq!(
+                print_line::print(&parsed),
+                text,
+                "reprinting `${op}{suffix}`"
+            );
+        }
+    }
+}
+
+/// An unknown bracket argument is a parse ERROR, not a silent fallback to
+/// unsigned — a typo'd `$lt[signd]` must never quietly change the comparison.
+#[test]
+fn an_unknown_comparison_bracket_argument_is_rejected() {
+    let text = "module m\n\ncell $lt[signd] :0 a={0} b={1} out={2}\n";
+    assert!(parse_line::parse(text).is_err());
+}

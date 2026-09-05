@@ -149,7 +149,13 @@ impl<'a> LowerCtx<'a> {
                     .then(|| crate::value::const_eval(rhs, &self.design.consts).ok())
                     .flatten()
                     .and_then(|v| u128::try_from(v).ok());
-                self.lower_binop(module, *op, a, b, shl_const_amount, e.span)
+                // Signedness of an ORDERING comparison has to come from the
+                // source `Expr`s — `Bits` carries no sign bit — so it is
+                // computed here, at the one call site that still has them,
+                // exactly like `shl_const_amount` above.
+                let cmp_signed = self.expr_is_definitely_signed(lhs, locals)
+                    || self.expr_is_definitely_signed(rhs, locals);
+                self.lower_binop(module, *op, a, b, shl_const_amount, cmp_signed, e.span)
             }
             ExprKind::Unary { op, expr } => {
                 let a = self.lower_expr(module, expr, locals);
@@ -444,6 +450,54 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
+    /// Best-effort proof that `e`'s value is DEFINITELY signed — the mirror
+    /// image of `arg_is_definitely_unsigned` above, and the input to
+    /// `CellKind::{Lt,Le,Gt,Ge}`'s `signed` flag. Follows the same shape
+    /// rules `emit_verilog::kinds::infer_kind`/`infer_binary` use, so the two
+    /// back ends agree on when a comparison is signed:
+    ///
+    /// * a bare literal is the checker's untyped `Ty::CtInt` — it INHERITS
+    ///   the other operand's type (`checker::widths::ops::matched_ty`), so it
+    ///   never decides signedness on its own and answers `false` here;
+    /// * `signed(x)` is signed, `unsigned(x)`/`encoding(x)` are not;
+    /// * a unary op keeps its operand's signedness, and an arithmetic/bitwise
+    ///   binary op is signed if EITHER operand is — while a comparison or
+    ///   logical op always yields a 1-bit unsigned result.
+    ///
+    /// Anything else is conservatively `false`, i.e. an unsigned comparison —
+    /// today's behaviour, so an unrecognized shape is never a regression. Two
+    /// non-literal operands cannot disagree: `matched_ty` rejects a genuinely
+    /// mixed comparison outright (E0403 "cannot mix X and Y"), so the caller
+    /// ORs the two answers rather than reconciling them.
+    fn expr_is_definitely_signed(&self, e: &Expr, locals: Option<&HashMap<String, Bits>>) -> bool {
+        match &e.kind {
+            ExprKind::Int { .. } | ExprKind::Bool(_) => false,
+            ExprKind::Call {
+                func: Builtin::SignedCast,
+                ..
+            } => true,
+            ExprKind::Ident(name) if locals.is_none_or(|l| !l.contains_key(name)) => {
+                self.declared_signed(name) == Some(true)
+            }
+            ExprKind::Unary { expr: inner, .. } => self.expr_is_definitely_signed(inner, locals),
+            ExprKind::Binary { op, lhs, rhs } => {
+                !matches!(
+                    op,
+                    BinOp::Eq
+                        | BinOp::Ne
+                        | BinOp::Lt
+                        | BinOp::Le
+                        | BinOp::Gt
+                        | BinOp::Ge
+                        | BinOp::LogicAnd
+                        | BinOp::LogicOr
+                ) && (self.expr_is_definitely_signed(lhs, locals)
+                    || self.expr_is_definitely_signed(rhs, locals))
+            }
+            _ => false,
+        }
+    }
+
     /// Walks one `fn` body's statement list, evaluating against `locals`
     /// (params + `let`s bound so far). Mirrors
     /// `emit_verilog::module::funcs::emit_fn_stmts`'s continuation-passing
@@ -522,6 +576,11 @@ impl<'a> LowerCtx<'a> {
         out
     }
 
+    // `shl_const_amount` and `cmp_signed` are both facts read off the SOURCE
+    // `Expr`s that `Bits` cannot carry, so they have to arrive as parameters;
+    // bundling them into a struct would relocate the argument count, not
+    // reduce it.
+    #[allow(clippy::too_many_arguments)]
     fn lower_binop(
         &mut self,
         module: &mut Module,
@@ -529,9 +588,23 @@ impl<'a> LowerCtx<'a> {
         a: Bits,
         b: Bits,
         shl_const_amount: Option<u128>,
+        cmp_signed: bool,
         span: crate::span::Span,
     ) -> Bits {
         let in_width = a.width().max(b.width());
+        // An ordering comparison is lowered as SIGNED only when its operands
+        // agree on WIDTH as well as sign. Two non-literal operands always do
+        // (`checker::widths::ops::matched_ty` rejects a genuinely mixed
+        // comparison outright, E0403), so this costs nothing there. A width
+        // MISMATCH means the narrow side is a bare literal, which the checker
+        // types as untyped `Ty::CtInt` inheriting the sized side's type —
+        // but `lower_expr`'s `Int` arm sizes it at its own NATURAL width
+        // instead (`5` -> 3 bits), and reinterpreting those 3 bits as two's
+        // complement would read `5` as `-3`. Until literals are sized from
+        // their comparison context (a separate residual, see
+        // `docs/audit/gaps.md` GAP-1), those cases stay unsigned exactly as
+        // they are today rather than becoming newly, differently wrong.
+        let cmp_signed = cmp_signed && a.width() == b.width();
         let (kind, out_width) = match op {
             BinOp::Add => (CellKind::Add, in_width + 1),
             BinOp::Sub => (CellKind::Sub, in_width + 1),
@@ -583,8 +656,10 @@ impl<'a> LowerCtx<'a> {
             BinOp::BitXor => (CellKind::Xor, in_width),
             BinOp::Eq => (CellKind::Eq, 1),
             BinOp::Ne => (CellKind::Ne, 1),
-            BinOp::Lt => (CellKind::Lt, 1),
-            BinOp::Le => (CellKind::Le, 1),
+            // `Eq`/`Ne` above stay sign-agnostic on purpose; only the
+            // ORDERING comparisons read `cmp_signed`.
+            BinOp::Lt => (CellKind::Lt { signed: cmp_signed }, 1),
+            BinOp::Le => (CellKind::Le { signed: cmp_signed }, 1),
             other => unimplemented!(
                 "binop not yet lowered by Task 5 (Gt/Ge/logical and/or land \
                  alongside their AST variants once checked against ast::BinOp's \

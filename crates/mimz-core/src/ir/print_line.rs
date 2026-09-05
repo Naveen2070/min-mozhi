@@ -42,6 +42,14 @@ fn format_bits(module: &Module, bits: &Bits) -> String {
     }
 }
 
+fn cmp_op_name(base: &str, signed: bool) -> String {
+    if signed {
+        format!("{base}[signed]")
+    } else {
+        base.to_string()
+    }
+}
+
 pub(super) fn cell_op_name(kind: &CellKind) -> String {
     match kind {
         CellKind::Add => "$add".to_string(),
@@ -62,10 +70,14 @@ pub(super) fn cell_op_name(kind: &CellKind) -> String {
         CellKind::Neg => "$neg".to_string(),
         CellKind::Eq => "$eq".to_string(),
         CellKind::Ne => "$ne".to_string(),
-        CellKind::Lt => "$lt".to_string(),
-        CellKind::Le => "$le".to_string(),
-        CellKind::Gt => "$gt".to_string(),
-        CellKind::Ge => "$ge".to_string(),
+        // Ordering comparisons: unsigned is the bare form (so every IR text
+        // written before the `signed` field existed still means what it did),
+        // signed gets a `[signed]` bracket argument in the same style as
+        // `$dff[Rise]`.
+        CellKind::Lt { signed } => cmp_op_name("$lt", *signed),
+        CellKind::Le { signed } => cmp_op_name("$le", *signed),
+        CellKind::Gt { signed } => cmp_op_name("$gt", *signed),
+        CellKind::Ge { signed } => cmp_op_name("$ge", *signed),
         CellKind::LogicAnd => "$logic_and".to_string(),
         CellKind::LogicOr => "$logic_or".to_string(),
         CellKind::LogicNot => "$logic_not".to_string(),

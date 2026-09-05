@@ -257,17 +257,66 @@ pair threaded through `lower_expr`'s return type, mirroring
 scoped follow-up, not attempted here.
 
 **Making `signed(x)` lowerable widens an already-existing signed-comparison
-hole, not a new one.** Comparison and arithmetic `CellKind`s (`Lt`/`Le`/
-`Gt`/`Ge`/`Add`/`Sub`/`Mul`/etc.) carry no signedness at all — so
-`signed(a) < signed(b)` now lowers to an UNSIGNED compare in the IR, while
+hole, not a new one — RESOLVED 2026-09-05 for the ORDERING comparisons
+(GAP-1 residual Task 5).** Comparison and arithmetic `CellKind`s (`Lt`/`Le`/
+`Gt`/`Ge`/`Add`/`Sub`/`Mul`/etc.) used to carry no signedness at all — so
+`signed(a) < signed(b)` lowered to an UNSIGNED compare in the IR, while
 `emit_verilog` renders the same source as a genuinely SIGNED comparison,
-divergent for negative operand values. This predates Task 2's `signed`/
-`unsigned`/`encoding` lowering: a bare `signed[8]`-typed input already
-reaches `lower_binop` with no guard and no cast needed to trigger it —
-Task 2 just adds one more path to something already reachable. This is
-exactly the residual this plan's own Global Constraints already accept
-("no signed tracking added to `ir::Bits`/`CellKind` in this plan"), not a
-new gap introduced by lowering `signed`/`unsigned`/`encoding`.
+divergent for negative operand values (`signed(-1) < signed(1)` answered
+FALSE, `-1`'s bit pattern being the largest unsigned value). That predated
+Task 2's `signed`/`unsigned`/`encoding` lowering: a bare `signed[8]`-typed
+input already reached `lower_binop` with no guard and no cast needed.
+
+What changed, precisely:
+
+- **Schema (additive, not a new variant).** `CellKind::{Lt,Le,Gt,Ge}` gained
+  a `signed: bool` field. `ir::Bits` is UNCHANGED — it still carries no sign
+  bit; signedness is scoped to exactly these four cell kinds rather than
+  threaded through `lower_expr`'s return type (the `Kind`-style width+signed
+  pair this doc floats above, still the larger separately-scoped follow-up
+  that `min`/`max`/`abs` need).
+- **`Eq`/`Ne` deliberately untouched**, still unit variants: two's-complement
+  equality compares the same bit patterns under either interpretation.
+- **Arithmetic (`Add`/`Sub`/`Mul`/`*Wrap`/`Shl`/`Shr`) untouched** — those
+  remain unsigned in the IR, so this sub-gap is closed only for ordering
+  comparisons, not for signed arithmetic generally.
+- **`Lt`/`Le` are the ones with real new BEHAVIOUR.** They are the only
+  ordering comparisons `ir::lower` produces; `BinOp::Gt`/`Ge` still fall into
+  `lower_binop`'s `unimplemented!()` catch-all, unchanged and out of scope
+  here. `CellKind::Gt`/`Ge` took the same field for schema consistency (they
+  are reachable from hand-written IR text and already dispatched by
+  `ir::exec`), so they are **schema-consistent and sign-aware when executed,
+  but not independently lowered** — a `Gt`/`Ge` cell can only enter the IR
+  through `parse_line`, never through `lower`.
+- **Text format round-trips it**, unlike the v1 scope-boundary fields
+  (`Dff::clock`, `Mem::init`): the flag changes what a cell COMPUTES, so
+  losing it would silently change behaviour. Unsigned stays the bare `$lt`
+  spelling (every pre-existing IR text still means what it did); signed is
+  `$lt[signed]`, in the same bracket style as `$dff[Rise]`. An unrecognized
+  bracket argument is a parse error, never a silent fall back to unsigned.
+- **Signedness detection** is `lower.rs`'s new `expr_is_definitely_signed`,
+  the mirror of `arg_is_definitely_unsigned` and shape-for-shape aligned with
+  `emit_verilog::kinds::infer_kind`/`infer_binary`, so the two back ends
+  agree on when a comparison is signed. Unrecognized shapes answer `false`
+  (unsigned), i.e. today's behaviour — never a regression.
+
+**Narrowed residual — a natural-width literal operand keeps the comparison
+unsigned.** `lower_binop` marks a comparison signed only when its operands
+agree on WIDTH as well as sign. For two non-literal operands that costs
+nothing: `checker::widths::ops::matched_ty` rejects a genuinely mixed
+comparison outright (E0403 "cannot mix X and Y … convert visibly with
+`signed(x)`/`unsigned(x)`"), so they always share a type and hence a width.
+A width MISMATCH means the narrow side is a bare literal, which the checker
+types as untyped `Ty::CtInt` inheriting the sized side's type — but
+`lower_expr`'s `Int` arm sizes it at its own NATURAL width (`5` → 3 bits),
+and reinterpreting those 3 bits as two's complement would read `5` as `-3`,
+flipping `1 < 5` from true to false. So `x < 5` for a signed `x` stays an
+unsigned cell: still not what `emit_verilog` renders, but unchanged rather
+than newly and differently wrong. Sizing a literal from its comparison
+context is the separate follow-up that would close this;
+`a_natural_width_literal_operand_keeps_the_comparison_unsigned`
+(`crates/mimz-core/src/ir/tests/lower_binops.rs`) pins the boundary so that
+fix flips the assertion deliberately rather than by accident.
 
 **Fuzz corpus:** `tests/differential_fuzz.rs`'s `gen_ir_clocked_module`
 (Task 18's narrowed generator) is UNCHANGED by this round — it still never

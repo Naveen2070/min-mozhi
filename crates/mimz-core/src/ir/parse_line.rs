@@ -250,10 +250,19 @@ fn parse_cell_kind(
         "$neg" => CellKind::Neg,
         "$eq" => CellKind::Eq,
         "$ne" => CellKind::Ne,
-        "$lt" => CellKind::Lt,
-        "$le" => CellKind::Le,
-        "$gt" => CellKind::Gt,
-        "$ge" => CellKind::Ge,
+        // Ordering comparisons carry a `signed` flag. Its two spellings are a
+        // closed set, so they're literal arms rather than a `bracket_arg`
+        // branch: the bare form is unsigned (unchanged from before the field
+        // existed) and `[signed]` is signed, with anything else falling
+        // through to the unrecognized-op error below.
+        "$lt" => CellKind::Lt { signed: false },
+        "$lt[signed]" => CellKind::Lt { signed: true },
+        "$le" => CellKind::Le { signed: false },
+        "$le[signed]" => CellKind::Le { signed: true },
+        "$gt" => CellKind::Gt { signed: false },
+        "$gt[signed]" => CellKind::Gt { signed: true },
+        "$ge" => CellKind::Ge { signed: false },
+        "$ge[signed]" => CellKind::Ge { signed: true },
         "$logic_and" => CellKind::LogicAnd,
         "$logic_or" => CellKind::LogicOr,
         "$logic_not" => CellKind::LogicNot,

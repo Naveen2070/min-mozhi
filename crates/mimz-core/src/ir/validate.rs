@@ -161,10 +161,10 @@ fn requires_matched_ab(kind: &CellKind) -> bool {
             | CellKind::Xor
             | CellKind::Eq
             | CellKind::Ne
-            | CellKind::Lt
-            | CellKind::Le
-            | CellKind::Gt
-            | CellKind::Ge
+            | CellKind::Lt { .. }
+            | CellKind::Le { .. }
+            | CellKind::Gt { .. }
+            | CellKind::Ge { .. }
             | CellKind::LogicAnd
             | CellKind::LogicOr
     )

@@ -196,10 +196,10 @@ impl<'a> Executor<'a> {
             CellKind::Xor => self.binop(cell, BinOp::BitXor),
             CellKind::Eq => self.binop(cell, BinOp::Eq),
             CellKind::Ne => self.binop(cell, BinOp::Ne),
-            CellKind::Lt => self.binop(cell, BinOp::Lt),
-            CellKind::Le => self.binop(cell, BinOp::Le),
-            CellKind::Gt => self.binop(cell, BinOp::Gt),
-            CellKind::Ge => self.binop(cell, BinOp::Ge),
+            CellKind::Lt { signed } => self.binop_signed(cell, BinOp::Lt, *signed),
+            CellKind::Le { signed } => self.binop_signed(cell, BinOp::Le, *signed),
+            CellKind::Gt { signed } => self.binop_signed(cell, BinOp::Gt, *signed),
+            CellKind::Ge { signed } => self.binop_signed(cell, BinOp::Ge, *signed),
             CellKind::LogicAnd => self.binop(cell, BinOp::LogicAnd),
             CellKind::LogicOr => self.binop(cell, BinOp::LogicOr),
 
@@ -274,8 +274,21 @@ impl<'a> Executor<'a> {
     /// produced malformed IR (an internal bug), not a runtime condition, so
     /// this panics rather than propagating a diagnostic.
     fn binop(&mut self, cell: &Cell, op: BinOp) {
-        let a = self.get_bits(&cell.pins["a"]);
-        let b = self.get_bits(&cell.pins["b"]);
+        self.binop_signed(cell, op, false)
+    }
+
+    /// `binop` with the operands re-tagged as two's-complement `signed`.
+    /// `get_bits` reconstructs every pin as UNSIGNED (`ir::Bits` has no sign
+    /// bit), which is correct for every cell kind except the ordering
+    /// comparisons — for those, `value::binary::cmp_lt` picks its signed path
+    /// off `Val::signed`, so the flag `lower` recorded on the cell has to be
+    /// stamped back onto BOTH operands here. Only `CellKind::{Lt,Le,Gt,Ge}`
+    /// ever pass `true`; `get_bits` itself is untouched.
+    fn binop_signed(&mut self, cell: &Cell, op: BinOp, signed: bool) {
+        let mut a = self.get_bits(&cell.pins["a"]);
+        let mut b = self.get_bits(&cell.pins["b"]);
+        a.signed = signed;
+        b.signed = signed;
         let v = crate::value::binary_ctx(op, a, b, None, cell.span).unwrap_or_else(|e| {
             panic!(
                 "ir::exec: {op:?} cell rejected its own operands ({}) — malformed IR",

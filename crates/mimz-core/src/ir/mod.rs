@@ -70,12 +70,26 @@ pub enum CellKind {
     RedOr,
     RedXor,
     Neg,
+    // Equality is sign-agnostic (two's complement patterns compare bit-for-bit),
+    // so `Eq`/`Ne` stay unit variants. The ORDERING comparisons are not: the
+    // same bit pattern orders differently under two's complement, so each
+    // carries the signedness `lower` read off its source operands. `ir::Bits`
+    // itself still has no signed bit — signedness is scoped to exactly these
+    // four cell kinds rather than threaded through every value in the netlist.
     Eq,
     Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
+    Lt {
+        signed: bool,
+    },
+    Le {
+        signed: bool,
+    },
+    Gt {
+        signed: bool,
+    },
+    Ge {
+        signed: bool,
+    },
     LogicAnd,
     LogicOr,
     LogicNot,

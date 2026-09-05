@@ -390,3 +390,191 @@ fn shl_result_feeding_a_matched_width_cell_validates_cleanly_when_amount_is_cons
     let module = lower(&design);
     assert_eq!(crate::ir::validate::validate(&module), Vec::new());
 }
+
+/// GAP-1 residual Task 5: an ordering comparison on `signed` operands used to
+/// lower to a `CellKind::Lt`/`Le` unit variant, and `ir::exec`'s `get_bits`
+/// reconstructs every pin as UNSIGNED — so `signed(-1) < signed(1)` silently
+/// answered FALSE (`-1`'s bit pattern `0xFF` being the largest unsigned 8-bit
+/// value), disagreeing with both the AST kernel and `emit_verilog`'s
+/// genuinely-signed `$signed(...)` render. The cell now carries the
+/// signedness `lower` read off the source operands, and `exec` stamps it back
+/// onto both `Val`s. `Eq`/`Ne` are deliberately untouched — equality compares
+/// the same bit patterns either way.
+#[test]
+fn signed_ordering_comparisons_execute_with_the_right_sign() {
+    use crate::ast::BinOp;
+    use crate::elaborate::Width;
+    use crate::ir::exec::Executor;
+
+    /// `wire y = a OP b` over two 8-bit inputs of the given signedness.
+    fn cmp_design(op: BinOp, signed: bool) -> Design {
+        let width = Width { bits: 8, signed };
+        let mut comb = BTreeMap::new();
+        comb.insert(
+            "y".to_string(),
+            Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    lhs: Box::new(super::ident("a")),
+                    rhs: Box::new(super::ident("b")),
+                },
+                span: Span::default(),
+            },
+        );
+        Design {
+            module: "cmp".to_string(),
+            consts: BTreeMap::new(),
+            inputs: vec![
+                Signal {
+                    name: "a".into(),
+                    width,
+                },
+                Signal {
+                    name: "b".into(),
+                    width,
+                },
+            ],
+            outputs: vec![Signal {
+                name: "y".into(),
+                width: super::w(1),
+            }],
+            wires: vec![],
+            regs: vec![],
+            mems: vec![],
+            comb,
+            procs: vec![],
+            clocks: vec![],
+            resets: vec![],
+            funcs: Default::default(),
+            unknown_signals: Default::default(),
+            extern_instances: vec![],
+            asserts: vec![],
+            covers: vec![],
+        }
+    }
+
+    // `a = -1` (0xFF), `b = 1`. Signed: -1 < 1 and -1 <= 1, both TRUE.
+    // Unsigned: 255 < 1 and 255 <= 1, both FALSE. Same bits, opposite answers
+    // — which is exactly the bug this closes.
+    for (op, expect_kind_is_lt) in [(BinOp::Lt, true), (BinOp::Le, false)] {
+        for (signed, expected) in [(true, 1u128), (false, 0u128)] {
+            let design = cmp_design(op, signed);
+            let module = lower(&design);
+
+            let kind = &module
+                .cells
+                .iter()
+                .find(|c| matches!(c.kind, CellKind::Lt { .. } | CellKind::Le { .. }))
+                .expect("the comparison lowered to a cell")
+                .kind;
+            let expected_kind = if expect_kind_is_lt {
+                CellKind::Lt { signed }
+            } else {
+                CellKind::Le { signed }
+            };
+            assert_eq!(
+                kind, &expected_kind,
+                "the cell must record the operands' declared signedness"
+            );
+
+            let mut executor = Executor::new(&module);
+            executor.set_input("a", crate::value::Val::new(0xFF, 8, false));
+            executor.set_input("b", crate::value::Val::new(1, 8, false));
+            executor.tick();
+            assert_eq!(
+                executor.get_output("y").bits,
+                crate::bits::Bits::Small(expected),
+                "{op:?} with signed={signed} on (-1, 1)"
+            );
+        }
+    }
+}
+
+/// The CONTAINED half of Task 5: `signed_x < 5` stays an UNSIGNED cell.
+///
+/// The checker types a bare literal as untyped `Ty::CtInt`, inheriting the
+/// sized operand's type — so `5` there is conceptually `signed[8] 5`. But
+/// `lower_expr`'s `Int` arm sizes a literal at its own NATURAL width, so the
+/// `b` pin is 3 bits wide, and reinterpreting `0b101` as two's complement
+/// would read it as `-3` — turning today's merely-wrong answer into a
+/// differently-wrong one (`1 < 5` would flip from true to false). So
+/// `lower_binop` marks a comparison signed only when both operands agree on
+/// width, which is exactly the checker's guarantee for two NON-literal
+/// operands. Sizing a literal from its comparison context is a separate
+/// residual (see `docs/audit/gaps.md` GAP-1); this test pins the boundary so
+/// that fix can flip this assertion deliberately rather than by accident.
+#[test]
+fn a_natural_width_literal_operand_keeps_the_comparison_unsigned() {
+    use crate::ast::BinOp;
+    use crate::elaborate::Width;
+    use crate::ir::exec::Executor;
+
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::Lt,
+                lhs: Box::new(super::ident("a")),
+                rhs: Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: crate::bits::Bits::Small(5),
+                        raw: "5".to_string(),
+                    },
+                    span: Span::default(),
+                }),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "cmp_lit".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![Signal {
+            name: "a".into(),
+            width: Width {
+                bits: 8,
+                signed: true,
+            },
+        }],
+        outputs: vec![Signal {
+            name: "y".into(),
+            width: super::w(1),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let cmp = module
+        .cells
+        .iter()
+        .find(|c| matches!(c.kind, CellKind::Lt { .. }))
+        .expect("the comparison lowered to a cell");
+    assert_ne!(
+        cmp.pins["a"].width(),
+        cmp.pins["b"].width(),
+        "the premise: the literal is sized at its own natural width"
+    );
+    assert_eq!(
+        cmp.kind,
+        CellKind::Lt { signed: false },
+        "mismatched operand widths must not be reinterpreted as two's complement"
+    );
+
+    // `1 < 5` — the case that a naive signed re-tag would break (it would
+    // read the 3-bit `5` as `-3`), so it must still answer true.
+    let mut executor = Executor::new(&module);
+    executor.set_input("a", crate::value::Val::new(1, 8, false));
+    executor.tick();
+    assert_eq!(executor.get_output("y").bits, crate::bits::Bits::Small(1));
+}
