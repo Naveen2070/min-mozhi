@@ -189,6 +189,138 @@ fn shl_with_a_compile_time_constant_amount_sizes_exactly_not_worst_case() {
     assert_eq!(crate::ir::validate::validate(&module), Vec::new());
 }
 
+/// GAP-1 residual Task 4: does Task 1's exact-when-constant `Shl` sizing
+/// already make `ir::lower` + `ir::exec` agree with the AST kernel's fused
+/// `value::binary::eval_shift_chain` on a multi-step shift chain, as a side
+/// effect — without `ir::lower` ever fusing the chain into one width
+/// computation the way `eval_shift_chain` does? Empirically: yes. Both sides
+/// fold the SAME `width_rules::shift_result` step-by-step (the kernel folds
+/// explicitly across the whole chain; `ir::lower` folds implicitly, because
+/// each cell's `a.width()` IS the previous cell's already-exact output
+/// width), so the running width and the running unsigned value march in
+/// lockstep at every step. See `docs/audit/gaps.md`'s GAP-1 "fused shift
+/// chains" sub-gap (now RESOLVED) and `value::binary::eval_shift_chain`'s
+/// doc comment, which points back at this test.
+#[test]
+fn shift_chains_lowered_per_node_match_the_ast_kernels_fused_evaluation() {
+    use crate::ast::BinOp;
+    use crate::elaborate::{Design, Signal};
+    use crate::ir::exec::Executor;
+    use crate::ir::lower;
+    use crate::value::{Resolver, Val, eval as kernel_eval};
+    use std::collections::BTreeMap;
+
+    fn lit(n: u128) -> Expr {
+        Expr {
+            kind: ExprKind::Int {
+                value: crate::bits::Bits::Small(n),
+                raw: n.to_string(),
+            },
+            span: Span::default(),
+        }
+    }
+    fn shl(lhs: Expr, amount: u128) -> Expr {
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::Shl,
+                lhs: Box::new(lhs),
+                rhs: Box::new(lit(amount)),
+            },
+            span: Span::default(),
+        }
+    }
+    fn shr(lhs: Expr, amount: u128) -> Expr {
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::Shr,
+                lhs: Box::new(lhs),
+                rhs: Box::new(lit(amount)),
+            },
+            span: Span::default(),
+        }
+    }
+
+    struct FixedResolver {
+        p2: Val,
+    }
+    impl Resolver for FixedResolver {
+        fn signal(&mut self, name: &str) -> Result<Val, String> {
+            match name {
+                "p2" => Ok(self.p2.clone()),
+                other => Err(format!("unknown signal `{other}` in this fixture")),
+            }
+        }
+        fn ints(&self) -> &BTreeMap<String, i128> {
+            static EMPTY: std::sync::OnceLock<BTreeMap<String, i128>> = std::sync::OnceLock::new();
+            EMPTY.get_or_init(Default::default)
+        }
+    }
+
+    // `p2` is unsigned `bits[8]` in every shape below; exhaustive over its
+    // 256-value domain rather than a sampled edge table, since the whole
+    // domain is cheap to walk.
+    fn check(expr: Expr, y_width: u32) {
+        let mut comb = BTreeMap::new();
+        comb.insert("y".to_string(), expr.clone());
+        let design = Design {
+            module: "shift_chain_mod".to_string(),
+            consts: BTreeMap::new(),
+            inputs: vec![Signal {
+                name: "p2".into(),
+                width: super::w(8),
+            }],
+            outputs: vec![Signal {
+                name: "y".into(),
+                width: super::w(y_width),
+            }],
+            wires: vec![],
+            regs: vec![],
+            mems: vec![],
+            comb,
+            procs: vec![],
+            clocks: vec![],
+            resets: vec![],
+            funcs: Default::default(),
+            unknown_signals: Default::default(),
+            extern_instances: vec![],
+            asserts: vec![],
+            covers: vec![],
+        };
+        let module = lower(&design);
+        assert_eq!(crate::ir::validate::validate(&module), Vec::new());
+
+        for p2 in 0u128..=255 {
+            let mut executor = Executor::new(&module);
+            executor.set_input("p2", Val::new(p2, 8, false));
+            executor.tick();
+            let ir_out = executor.get_output("y");
+
+            let mut resolver = FixedResolver {
+                p2: Val::new(p2, 8, false),
+            };
+            let kernel_out = kernel_eval(&mut resolver, &expr)
+                .unwrap_or_else(|e| panic!("AST kernel eval failed for p2={p2}: {e:?}"));
+
+            assert_eq!(
+                ir_out, kernel_out,
+                "ir::lower + ir::exec diverged from the AST kernel at p2={p2}"
+            );
+        }
+    }
+
+    // BUG-34's exact repro shape: `(p2 >> 4) << 7`. `Shr` never grows (out
+    // stays 8 bits); `Shl` by a constant `7` sizes exactly (`8 + 7 = 15`).
+    check(shl(shr(super::ident("p2"), 4), 7), 15);
+
+    // Mirror: `(p2 << 3) >> 1`. `Shl` by constant `3` sizes exactly
+    // (`8 + 3 = 11`); the trailing `Shr` never grows (stays 11 bits).
+    check(shr(shl(super::ident("p2"), 3), 1), 11);
+
+    // Three-step chain: `((p2 << 2) >> 3) << 4`. `8 + 2 = 10`, unchanged by
+    // `>> 3` (10), then `10 + 4 = 14`.
+    check(shl(shr(shl(super::ident("p2"), 2), 3), 4), 14);
+}
+
 #[test]
 fn shl_result_feeding_a_matched_width_cell_validates_cleanly_when_amount_is_constant() {
     // GAP-1 residual repro: `(a << 2) & c` used to fail `ir::validate` with

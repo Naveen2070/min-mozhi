@@ -215,13 +215,24 @@ amount_width }` instead of panicking (regression test:
 `tests/ir_validation.rs`'s `shift_growth_too_wide_fixture_is_rejected`,
 fixture `tests/fixtures/ir_errors/shift_growth_too_wide.ir`).
 
-**Still open — issue 3, fused shift chains:** `value::binary::
-eval_shift_chain` evaluates `(p2 >> 4) << 7` as ONE unit at a single fixed
-width (ground-truthed against Icarus, BUG-34), but `lower` emits two
-independent cells with a materialized intermediate. Nothing in `exec.rs`
-re-fuses them. Fixing this needs a lowering-side redesign (detect and fuse
-a `Shl`-of-`Shr` chain at `lower_expr` time) — a separate, still-unscoped
-follow-up task.
+**RESOLVED 2026-09-05 (residual-fix Task 4) — closed by Task 1 alone, no
+lowering-side fusion needed.** `value::binary::eval_shift_chain` evaluates
+`(p2 >> 4) << 7` as ONE unit at a single fixed width, while `lower` still
+emits two independent cells with a materialized intermediate — but for an
+UNSIGNED chain that no longer produces a different NUMBER, because Task 1
+made every cell's local width formula exact (not worst-case) whenever its
+shift amount is a compile-time constant: the running width `ir::lower`
+arrives at one cell at a time is now identical, step for step, to the
+running width `eval_shift_chain` folds explicitly, so a "locally sized"
+unfused intermediate is exactly as wide as a "chain-final-width" fused one
+would be — extra zero bits above an unsigned value never change its value.
+Confirmed empirically (not just by this reasoning), per BUG-34's own
+provenance as an external-fuzz-found bug: `crates/mimz-core/src/ir/tests/
+lower_binops.rs`'s `shift_chains_lowered_per_node_match_the_ast_kernels_
+fused_evaluation` lowers BUG-34's exact repro shape, its mirror, and a
+3-step chain through `ir::lower` + `ir::exec`, exhaustively over all 256
+values of an 8-bit input, and diffs every result against `eval_shift_chain`
+directly — zero divergences.
 
 ### Sub-gap (2026-09-03, narrowed 2026-09-04): `ir::lower` could not lower any builtin call — 11 of 14 now lowered
 

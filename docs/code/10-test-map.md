@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1410 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
+**1411 tests** as of 2026-09-05 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` and
 `crates/mimz-core/src/ir/tests/validate.rs`, pinning `Shl`'s `out` pin at
@@ -57,11 +57,20 @@ further +1 from `tests/ir_validation.rs`'s
 Task 3) — pinning that `validate()` now REPORTS a pathologically-wide
 `Shl` growth as `ValidationError::ShiftGrowthTooWide` instead of
 panicking; see GAP-1's "checker-legal program can panic" sub-gap in
+`docs/audit/gaps.md`; a final +1 from
+`crates/mimz-core/src/ir/tests/lower_binops.rs`'s
+`shift_chains_lowered_per_node_match_the_ast_kernels_fused_evaluation`
+(2026-09-05, GAP-1 residual Task 4) — confirms `ir::lower` + `ir::exec`
+already agree numerically with the AST kernel's fused
+`value::binary::eval_shift_chain` on BUG-34's repro shape, its mirror, and
+a 3-step chain, exhaustively over an 8-bit domain, as a side effect of
+Task 1's exact constant-amount `Shl` sizing — no lowering-side fusion
+needed; see GAP-1's "fused shift chains" sub-gap (now RESOLVED) in
 `docs/audit/gaps.md`):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      837 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      838 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
@@ -96,7 +105,7 @@ panicking; see GAP-1's "checker-legal program can panic" sub-gap in
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1410** |                                                        |
+| **Total**                                           | **1411** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar
