@@ -50,11 +50,15 @@ pub enum ValidationError {
 /// formula to cross-check against — any corruption of `out` would just as
 /// trivially corrupt the "expected" value derived from `a` here, catching
 /// nothing. `Shl` DOES have an independent formula
-/// (`width_rules::shift_result` with `grows: true`, worst-case
-/// `const_amount: None` — see `lower_binop`) and is checked below.
+/// (`width_rules::shift_result` with `grows: true`, exact `const_amount`
+/// when `b` is driven by a compile-time constant, worst-case
+/// `const_amount: None` otherwise — see `lower_binop` and
+/// `shl_const_amount` below) and is checked below.
 fn expected_widths(
     kind: &CellKind,
     pins: &std::collections::BTreeMap<&'static str, super::Bits>,
+    module: &Module,
+    driver: &HashMap<NetId, Vec<usize>>,
 ) -> Vec<(&'static str, u32)> {
     match kind {
         CellKind::Mux => vec![("sel", 1)],
@@ -76,12 +80,12 @@ fn expected_widths(
                     width: pins["b"].width(),
                     signed: false,
                 },
-                None,
+                shl_const_amount(module, driver, &pins["b"]),
                 true,
             )
             .expect(
-                "worst-case Shl growth exceeded MAX_WIDTH — same pathological-input panic \
-                 as ir::lower's identical formula (see docs/audit/gaps.md GAP-1); this \
+                "Shl growth exceeded MAX_WIDTH — same pathological-input panic as \
+                 ir::lower's identical formula (see docs/audit/gaps.md GAP-1); this \
                  validation pass exists to REPORT malformed IR, not crash on it, but this \
                  specific case has no fixture exercising it today, so it hasn't needed a \
                  non-panicking path yet",
@@ -90,6 +94,42 @@ fn expected_widths(
             vec![("out", out_width)]
         }
         _ => Vec::new(), // remaining binary/unary cells only constrain relationships between their OWN pins, not a fixed output-width formula — checked separately below
+    }
+}
+
+/// If `b` (a `Shl` cell's shift-amount pin) is driven ENTIRELY by one
+/// `Const` cell — the shape `ir::lower` produces for a compile-time-
+/// constant shift amount — return that constant's value so this
+/// independently-computed formula sizes `out` exactly the same way
+/// `lower_binop` did, instead of drifting to worst-case sizing the moment
+/// `lower_binop` learned to do better (GAP-1's "narrower than originally
+/// scoped" residual). Anything else — a runtime `b`, a constant reached
+/// only indirectly (e.g. through a `Concat`/`Slice`), or a constant too
+/// wide for `u128` — falls back to `None` (worst-case), which is always
+/// the safe/wide side of `width_rules::shift_result`.
+fn shl_const_amount(
+    module: &Module,
+    driver: &HashMap<NetId, Vec<usize>>,
+    b: &super::Bits,
+) -> Option<u128> {
+    let &cell_idx = b.0.first().and_then(|n| driver.get(n))?.first()?;
+    let single_driver = [cell_idx];
+    if !b
+        .0
+        .iter()
+        .all(|n| driver.get(n).map(Vec::as_slice) == Some(&single_driver[..]))
+    {
+        return None;
+    }
+    let CellKind::Const { value } = &module.cells.get(cell_idx)?.kind else {
+        return None;
+    };
+    if module.cells[cell_idx].pins.get("out") != Some(b) {
+        return None;
+    }
+    match &value.bits {
+        crate::bits::Bits::Small(v) => Some(*v),
+        crate::bits::Bits::Wide(_) => None,
     }
 }
 
@@ -179,7 +219,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
 
     // --- Checks 2 & 3: fixed-width contracts + same-width a/b pairs --
     for (i, cell) in module.cells.iter().enumerate() {
-        for (pin_name, expected_width) in expected_widths(&cell.kind, &cell.pins) {
+        for (pin_name, expected_width) in expected_widths(&cell.kind, &cell.pins, module, &driver) {
             let found = cell.pins[pin_name].width();
             if found != expected_width {
                 errors.push(ValidationError::WidthMismatch {

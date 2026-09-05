@@ -24,17 +24,13 @@
 //!   ground-truthed against Icarus), but `lower` emits two independent
 //!   cells with a materialized intermediate — nothing here re-fuses them.
 //!   The truncation issue this bullet used to describe is fixed:
-//!   `lower_binop` now sizes `Shl`'s `out` pin at the same worst-case-
-//!   growth width `value::binary::shl`'s own fallback uses, so a growing
-//!   left shift's true value always fits. The missing-`const_amount`
-//!   issue is made MOOT rather than fixed — `const_amount` is still
-//!   structurally unavailable to `lower_binop`, but worst-case growth can
-//!   never be narrower than the checker's exact constant growth, so the
-//!   IR pin is always wide enough (over-wide, when the amount happens to
-//!   be a small constant — never a mismatch this executor can observe,
-//!   though `ir::validate` CAN observe the resulting IR-vs-checker width
-//!   disagreement on the surrounding cell; see `docs/audit/gaps.md`
-//!   GAP-1's sub-gap).
+//!   `lower_binop` now sizes `Shl`'s `out` pin exactly (`a.width() + k`)
+//!   whenever the shift amount is a compile-time constant, and at
+//!   worst-case growth otherwise — matching `value::binary::shl`'s own
+//!   fallback for the runtime case — so a growing left shift's true value
+//!   always fits, and the IR pin no longer disagrees with the checker's
+//!   own sizing on a constant shift amount either (see `docs/audit/
+//!   gaps.md` GAP-1's sub-gap).
 
 use super::{Bits, Cell, CellKind, Module, NetId};
 use crate::ast::{BinOp, UnOp};

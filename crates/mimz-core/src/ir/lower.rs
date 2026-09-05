@@ -145,7 +145,11 @@ impl<'a> LowerCtx<'a> {
             ExprKind::Binary { op, lhs, rhs } => {
                 let a = self.lower_expr(module, lhs, locals);
                 let b = self.lower_expr(module, rhs, locals);
-                self.lower_binop(module, *op, a, b, e.span)
+                let shl_const_amount = (*op == BinOp::Shl)
+                    .then(|| crate::value::const_eval(rhs, &self.design.consts).ok())
+                    .flatten()
+                    .and_then(|v| u128::try_from(v).ok());
+                self.lower_binop(module, *op, a, b, shl_const_amount, e.span)
             }
             ExprKind::Unary { op, expr } => {
                 let a = self.lower_expr(module, expr, locals);
@@ -524,6 +528,7 @@ impl<'a> LowerCtx<'a> {
         op: BinOp,
         a: Bits,
         b: Bits,
+        shl_const_amount: Option<u128>,
         span: crate::span::Span,
     ) -> Bits {
         let in_width = a.width().max(b.width());
@@ -535,21 +540,21 @@ impl<'a> LowerCtx<'a> {
             BinOp::SubWrap => (CellKind::SubWrap, in_width),
             BinOp::MulWrap => (CellKind::MulWrap, in_width),
             BinOp::Shl => {
-                // Worst-case growth (`const_amount: None`) — `lower_binop`
-                // only ever sees already-lowered `Bits`, never the source
-                // `Expr`, so it cannot know whether the original shift
-                // amount was a compile-time constant. Sizing `out` at the
-                // worst case exactly matches the AST evaluator's own
-                // fallback (`value::binary::shl`'s `width_rules::
-                // shift_result` call with the same `None`), so for a
-                // RUNTIME (non-constant) shift amount the two sides agree.
-                // For a compile-time-CONSTANT amount they can still
-                // disagree in absolute width — the checker sizes exactly
-                // (`a.width() + k`), this always sizes worst-case — but
-                // only ever over-wide, never in a way that truncates (see
-                // docs/audit/gaps.md GAP-1). `Shr` (below) never grows, so
-                // it needs no change (`width_rules::shift_result`'s own doc:
-                // "grows: false" keeps the left operand's width).
+                // `shl_const_amount` is threaded in from the one call site
+                // (`ExprKind::Binary`, above) which const-evals the source
+                // `rhs` `Expr` before it's lowered to `Bits` — so when the
+                // shift amount is a compile-time constant, `out` is sized
+                // exactly (`a.width() + k`), matching the checker's own
+                // `shift_ty` (`checker/widths/ops/mod.rs`) and the AST
+                // evaluator's `eval_shift_chain` (`value/binary.rs`). For a
+                // genuinely RUNTIME (non-constant) shift amount,
+                // `shl_const_amount` is `None` and this falls back to
+                // worst-case growth, exactly matching the AST evaluator's
+                // own fallback (`value::binary::shl`'s `width_rules::
+                // shift_result` call with the same `None`). `Shr` (below)
+                // never grows, so it needs no change (`width_rules::
+                // shift_result`'s own doc: "grows: false" keeps the left
+                // operand's width).
                 let out_width = crate::width_rules::shift_result(
                     crate::width_rules::Kind {
                         width: a.width(),
@@ -559,16 +564,15 @@ impl<'a> LowerCtx<'a> {
                         width: b.width(),
                         signed: false,
                     },
-                    None,
+                    shl_const_amount,
                     true,
                 )
                 .expect(
-                    "worst-case Shl growth exceeded MAX_WIDTH — the checker accepts this \
-                     program because IT uses exact constant growth for a compile-time shift \
-                     amount, but ir::lower has no access to that fact here (only already- \
-                     lowered Bits, never the source Expr) and must always use worst-case \
-                     growth; a pathological shift amount can legitimately panic here even \
-                     though the source program type-checked (see docs/audit/gaps.md GAP-1)",
+                    "Shl growth exceeded MAX_WIDTH — the checker independently sizes this \
+                     the same way (exact constant growth for a compile-time shift amount, \
+                     worst-case growth otherwise), so a checker-accepted program is not \
+                     expected to panic here; a pathological shift amount could still \
+                     legitimately do so (see docs/audit/gaps.md GAP-1)",
                 )
                 .width;
                 (CellKind::Shl, out_width)

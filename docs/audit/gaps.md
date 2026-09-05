@@ -151,23 +151,18 @@ SOURCE-declared output width (e.g. the differential test's own
 `bits_to_limbs(..., declared_width)`) masks away identically either way.
 This makes issue 1 (truncation) unconditionally fixed.
 
-**Narrower than originally scoped — worst-case sizing does NOT make the
-IR's own pin widths agree with the checker's exact per-constant sizing.**
-`(a << 2) & c` still fails `ir::validate` with a `WidthMismatch`: the
-checker computes `a.width()+2` for a compile-time-constant shift amount,
-but `ir::lower` (which has no access to "was this a literal" at
-`lower_binop`'s call site — it only sees already-lowered `Bits`) always
-uses the worst-case `a.width() + 2^natural_width(amount)-1` formula, which
-is strictly WIDER whenever the amount is a small non-trivial constant.
-This is NOT a regression — the pre-fix `a.width()`-only formula mismatched
-the checker for every shift, constant or not, and was never correct — and
-it errs safely over-wide, never under. But no fixture/golden/fuzz case
-currently exercises a `Shl` result flowing into a width-matched cell
-(`And`/`Or`/`Xor`/a comparison/etc.), so this residual is real and
-undetected by the current suite. Closing it needs `lower_binop` to learn
-whether its RHS came from a compile-time-constant literal (a signature
-change threading the original `Expr`, not just the already-lowered
-`Bits`, through to `lower_binop`) — a separate, still-unscoped follow-up.
+**RESOLVED 2026-09-05 (residual-fix Task 1) — worst-case sizing now agrees
+with the checker's exact per-constant sizing.** `ir::lower`'s `ExprKind::
+Binary` arm const-evals the source `rhs` `Expr` (`crate::value::
+const_eval` against `design.consts`) before it's lowered to `Bits`, and
+threads the result through `lower_binop`'s new `shl_const_amount: Option<
+u128>` parameter — mirroring the checker's own `shift_ty`
+(`checker/widths/ops/mod.rs`) and the AST evaluator's `eval_shift_chain`
+(`value/binary.rs`), both of which resolve the constant the same way. A
+non-constant (genuinely RUNTIME) shift amount still passes `None` and
+falls back to worst-case growth, unchanged. `(a << 2) & c` now validates
+cleanly (regression test: `crates/mimz-core/src/ir/tests/lower_binops.rs`,
+`shl_with_a_compile_time_constant_amount_sizes_exactly_not_worst_case`).
 
 **One corner of the same residual is SILENT, not a loud `WidthMismatch`.**
 An over-wide `Shl` result that reaches a module OUTPUT PORT directly — or

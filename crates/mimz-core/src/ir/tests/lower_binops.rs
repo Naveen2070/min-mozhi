@@ -128,3 +128,133 @@ fn shl_grows_the_output_to_the_worst_case_width_not_the_input_width() {
     assert_eq!(y_bits.width(), 5);
     assert_eq!(crate::ir::validate::validate(&module), Vec::new());
 }
+
+#[test]
+fn shl_with_a_compile_time_constant_amount_sizes_exactly_not_worst_case() {
+    use crate::ast::BinOp;
+    use crate::elaborate::{Design, Signal};
+    use crate::ir::lower;
+    use std::collections::BTreeMap;
+
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        crate::ast::Expr {
+            kind: crate::ast::ExprKind::Binary {
+                op: BinOp::Shl,
+                lhs: Box::new(super::ident("a")),
+                rhs: Box::new(crate::ast::Expr {
+                    kind: crate::ast::ExprKind::Int {
+                        value: crate::bits::Bits::Small(2),
+                        raw: "2".to_string(),
+                    },
+                    span: crate::span::Span::default(),
+                }),
+            },
+            span: crate::span::Span::default(),
+        },
+    );
+    // `a: bits[2] << 2` (a compile-time-constant amount) must size `y` at
+    // the CHECKER's exact `a.width() + 2 = 4` bits, not the worst-case
+    // `2 + (2^2 - 1) = 5` bits a runtime amount of the same pin width
+    // would need (see `shl_grows_the_output_to_the_worst_case_width_not_
+    // the_input_width` above, which pins that runtime case unchanged).
+    let design = Design {
+        module: "shl_const_mod".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![Signal {
+            name: "a".into(),
+            width: super::w(2),
+        }],
+        outputs: vec![Signal {
+            name: "y".into(),
+            width: super::w(4),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let (_, y_bits, _) = module.ports.iter().find(|(n, ..)| n == "y").unwrap();
+    assert_eq!(y_bits.width(), 4);
+    assert_eq!(crate::ir::validate::validate(&module), Vec::new());
+}
+
+#[test]
+fn shl_result_feeding_a_matched_width_cell_validates_cleanly_when_amount_is_constant() {
+    // GAP-1 residual repro: `(a << 2) & c` used to fail `ir::validate` with
+    // a `WidthMismatch` because `ir::lower` always sized `Shl`'s `out` at
+    // worst-case growth while the checker (and, post-fix, `ir::lower` too)
+    // size it exactly for a compile-time-constant shift amount.
+    use crate::ast::BinOp;
+    use crate::elaborate::{Design, Signal};
+    use crate::ir::lower;
+    use std::collections::BTreeMap;
+
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        crate::ast::Expr {
+            kind: crate::ast::ExprKind::Binary {
+                op: BinOp::BitAnd,
+                lhs: Box::new(crate::ast::Expr {
+                    kind: crate::ast::ExprKind::Binary {
+                        op: BinOp::Shl,
+                        lhs: Box::new(super::ident("a")),
+                        rhs: Box::new(crate::ast::Expr {
+                            kind: crate::ast::ExprKind::Int {
+                                value: crate::bits::Bits::Small(2),
+                                raw: "2".to_string(),
+                            },
+                            span: crate::span::Span::default(),
+                        }),
+                    },
+                    span: crate::span::Span::default(),
+                }),
+                rhs: Box::new(super::ident("c")),
+            },
+            span: crate::span::Span::default(),
+        },
+    );
+    let design = Design {
+        module: "shl_and_mod".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![
+            Signal {
+                name: "a".into(),
+                width: super::w(2),
+            },
+            Signal {
+                name: "c".into(),
+                width: super::w(4),
+            },
+        ],
+        outputs: vec![Signal {
+            name: "y".into(),
+            width: super::w(4),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    assert_eq!(crate::ir::validate::validate(&module), Vec::new());
+}
