@@ -2,12 +2,14 @@
 //! already enforced, catching bugs in the lowering pass itself before the
 //! IR is trusted as equivalent to the source.
 //!
-//! Five checks, kept in five clearly separated passes over `module`:
+//! Six checks, kept in six clearly separated passes over `module`:
 //! driver/undriven nets, fixed-width pin contracts (e.g. `Mux.sel`),
 //! same-width a/b pairs on bitwise/comparison/logical cells, combinational
-//! cycles, and black-box port shape against declared extern ports
-//! (`Module::extern_decls`). Every check appends independently to the
-//! same `errors` list — one check finding something never skips another.
+//! cycles, black-box port shape against declared extern ports
+//! (`Module::extern_decls`), and output port width against its source
+//! declaration (`Module::port_declared_widths`). Every check appends
+//! independently to the same `errors` list — one check finding something
+//! never skips another.
 
 use super::{CellKind, Module, NetId};
 use std::collections::{HashMap, HashSet};
@@ -34,6 +36,16 @@ pub enum ValidationError {
         cell_index: usize,
         reason: String,
     },
+    PortWidthMismatch {
+        port: String,
+        declared: u32,
+        found: u32,
+    },
+    ShiftGrowthTooWide {
+        cell_index: usize,
+        lhs_width: u32,
+        amount_width: u32,
+    },
 }
 
 /// Input pin names per `CellKind` and their required relationship to
@@ -50,46 +62,82 @@ pub enum ValidationError {
 /// formula to cross-check against — any corruption of `out` would just as
 /// trivially corrupt the "expected" value derived from `a` here, catching
 /// nothing. `Shl` DOES have an independent formula
-/// (`width_rules::shift_result` with `grows: true`, worst-case
-/// `const_amount: None` — see `lower_binop`) and is checked below.
+/// (`width_rules::shift_result` with `grows: true`, exact `const_amount`
+/// when `b` is driven by a compile-time constant, worst-case
+/// `const_amount: None` otherwise — see `lower_binop` and
+/// `shl_const_amount` below) and is checked below.
 fn expected_widths(
     kind: &CellKind,
     pins: &std::collections::BTreeMap<&'static str, super::Bits>,
-) -> Vec<(&'static str, u32)> {
+    module: &Module,
+    driver: &HashMap<NetId, Vec<usize>>,
+) -> Result<Vec<(&'static str, u32)>, (u32, u32)> {
     match kind {
-        CellKind::Mux => vec![("sel", 1)],
-        CellKind::Dff { .. } => vec![("q", pins["d"].width())],
+        CellKind::Mux => Ok(vec![("sel", 1)]),
+        CellKind::Dff { .. } => Ok(vec![("q", pins["d"].width())]),
         CellKind::Add | CellKind::Sub => {
-            vec![("out", pins["a"].width().max(pins["b"].width()) + 1)]
+            Ok(vec![("out", pins["a"].width().max(pins["b"].width()) + 1)])
         }
-        CellKind::Mul => vec![("out", pins["a"].width() + pins["b"].width())],
+        CellKind::Mul => Ok(vec![("out", pins["a"].width() + pins["b"].width())]),
         CellKind::AddWrap | CellKind::SubWrap | CellKind::MulWrap => {
-            vec![("out", pins["a"].width().max(pins["b"].width()))]
+            Ok(vec![("out", pins["a"].width().max(pins["b"].width()))])
         }
         CellKind::Shl => {
-            let out_width = crate::width_rules::shift_result(
+            let a_w = pins["a"].width();
+            let b_w = pins["b"].width();
+            match crate::width_rules::shift_result(
                 crate::width_rules::Kind {
-                    width: pins["a"].width(),
+                    width: a_w,
                     signed: false,
                 },
                 crate::width_rules::Kind {
-                    width: pins["b"].width(),
+                    width: b_w,
                     signed: false,
                 },
-                None,
+                shl_const_amount(module, driver, &pins["b"]),
                 true,
-            )
-            .expect(
-                "worst-case Shl growth exceeded MAX_WIDTH — same pathological-input panic \
-                 as ir::lower's identical formula (see docs/audit/gaps.md GAP-1); this \
-                 validation pass exists to REPORT malformed IR, not crash on it, but this \
-                 specific case has no fixture exercising it today, so it hasn't needed a \
-                 non-panicking path yet",
-            )
-            .width;
-            vec![("out", out_width)]
+            ) {
+                Ok(k) => Ok(vec![("out", k.width)]),
+                Err(_) => Err((a_w, b_w)),
+            }
         }
-        _ => Vec::new(), // remaining binary/unary cells only constrain relationships between their OWN pins, not a fixed output-width formula — checked separately below
+        _ => Ok(Vec::new()), // remaining binary/unary cells only constrain relationships between their OWN pins, not a fixed output-width formula — checked separately below
+    }
+}
+
+/// If `b` (a `Shl` cell's shift-amount pin) is driven ENTIRELY by one
+/// `Const` cell — the shape `ir::lower` produces for a compile-time-
+/// constant shift amount — return that constant's value so this
+/// independently-computed formula sizes `out` exactly the same way
+/// `lower_binop` did, instead of drifting to worst-case sizing the moment
+/// `lower_binop` learned to do better (GAP-1's "narrower than originally
+/// scoped" residual). Anything else — a runtime `b`, a constant reached
+/// only indirectly (e.g. through a `Concat`/`Slice`), or a constant too
+/// wide for `u128` — falls back to `None` (worst-case), which is always
+/// the safe/wide side of `width_rules::shift_result`.
+fn shl_const_amount(
+    module: &Module,
+    driver: &HashMap<NetId, Vec<usize>>,
+    b: &super::Bits,
+) -> Option<u128> {
+    let &cell_idx = b.0.first().and_then(|n| driver.get(n))?.first()?;
+    let single_driver = [cell_idx];
+    if !b
+        .0
+        .iter()
+        .all(|n| driver.get(n).map(Vec::as_slice) == Some(&single_driver[..]))
+    {
+        return None;
+    }
+    let CellKind::Const { value } = &module.cells.get(cell_idx)?.kind else {
+        return None;
+    };
+    if module.cells[cell_idx].pins.get("out") != Some(b) {
+        return None;
+    }
+    match &value.bits {
+        crate::bits::Bits::Small(v) => Some(*v),
+        crate::bits::Bits::Wide(_) => None,
     }
 }
 
@@ -113,10 +161,10 @@ fn requires_matched_ab(kind: &CellKind) -> bool {
             | CellKind::Xor
             | CellKind::Eq
             | CellKind::Ne
-            | CellKind::Lt
-            | CellKind::Le
-            | CellKind::Gt
-            | CellKind::Ge
+            | CellKind::Lt { .. }
+            | CellKind::Le { .. }
+            | CellKind::Gt { .. }
+            | CellKind::Ge { .. }
             | CellKind::LogicAnd
             | CellKind::LogicOr
     )
@@ -133,6 +181,17 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
             let is_output = matches!(*pin_name, "out" | "q" | "rdata");
             if is_output {
                 for net in &bits.0 {
+                    driver.entry(*net).or_default().push(i);
+                    driven.insert(*net);
+                }
+            }
+        }
+        // A `Mem`'s read ports aren't in `cell.pins` (see `CellKind::Mem`'s
+        // doc) — each port's `rdata` still needs registering as driven by
+        // this cell, same as an ordinary `out`/`q`/`rdata` pin above.
+        if let CellKind::Mem { read_ports, .. } = &cell.kind {
+            for (_, rdata) in read_ports {
+                for net in &rdata.0 {
                     driver.entry(*net).or_default().push(i);
                     driven.insert(*net);
                 }
@@ -179,14 +238,25 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
 
     // --- Checks 2 & 3: fixed-width contracts + same-width a/b pairs --
     for (i, cell) in module.cells.iter().enumerate() {
-        for (pin_name, expected_width) in expected_widths(&cell.kind, &cell.pins) {
-            let found = cell.pins[pin_name].width();
-            if found != expected_width {
-                errors.push(ValidationError::WidthMismatch {
+        match expected_widths(&cell.kind, &cell.pins, module, &driver) {
+            Ok(widths) => {
+                for (pin_name, expected_width) in widths {
+                    let found = cell.pins[pin_name].width();
+                    if found != expected_width {
+                        errors.push(ValidationError::WidthMismatch {
+                            cell_index: i,
+                            pin: pin_name,
+                            expected: expected_width,
+                            found,
+                        });
+                    }
+                }
+            }
+            Err((lhs_width, amount_width)) => {
+                errors.push(ValidationError::ShiftGrowthTooWide {
                     cell_index: i,
-                    pin: pin_name,
-                    expected: expected_width,
-                    found,
+                    lhs_width,
+                    amount_width,
                 });
             }
         }
@@ -252,13 +322,34 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
         }
     }
 
+    // --- Check 6: output port width matches its source declaration ----
+    for (name, bits, dir) in &module.ports {
+        if *dir != crate::ast::Dir::Out {
+            continue;
+        }
+        if let Some(&declared) = module.port_declared_widths.get(name)
+            && bits.width() != declared
+        {
+            errors.push(ValidationError::PortWidthMismatch {
+                port: name.clone(),
+                declared,
+                found: bits.width(),
+            });
+        }
+    }
+
     errors
 }
 
-/// DFS for a cycle among cell input->output edges, treating a `Dff`/`Mem`
-/// cell's `d`/`wdata` -> `q`/`rdata` edge as ABSENT (a register breaks
-/// the combinational path by definition) — everything else's every
-/// input pin has an edge to every output pin.
+/// DFS for a cycle among cell input->output edges, treating a `Dff`
+/// cell's `d` -> `q` edge as ABSENT (a register breaks the combinational
+/// path by definition), and a `Mem` cell's WRITE side (`waddr`/`wdata`/
+/// `wen`/`clock`) the same way — those only affect state at `tick()`. A
+/// `Mem`'s READ side is different: `exec.rs`'s own `Mem` arm reads it as a
+/// pure combinational function of `raddr` and the pre-tick array, so each
+/// read port's `raddr` -> `rdata` edge is modeled here exactly like any
+/// other cell's input -> output edge (GAP-1 residual Task 6). Everything
+/// else's every input pin has an edge to every output pin.
 ///
 /// Classic white/grey/black DFS: `on_stack` marks nodes on the CURRENT
 /// path (grey), `visited` marks nodes fully explored with no cycle found
@@ -276,8 +367,16 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
 fn find_combinational_cycle(module: &Module) -> Option<Vec<NetId>> {
     let mut edges: HashMap<NetId, Vec<NetId>> = HashMap::new();
     for cell in &module.cells {
-        if matches!(cell.kind, CellKind::Dff { .. } | CellKind::Mem { .. }) {
-            continue; // sequential cells break combinational cycles by construction
+        if let CellKind::Mem { read_ports, .. } = &cell.kind {
+            for (raddr, rdata) in read_ports {
+                for &i in &raddr.0 {
+                    edges.entry(i).or_default().extend(rdata.0.iter().copied());
+                }
+            }
+            continue; // write side handled below, same as Dff
+        }
+        if matches!(cell.kind, CellKind::Dff { .. }) {
+            continue; // a register breaks the combinational path by construction
         }
         let inputs: Vec<NetId> = cell
             .pins

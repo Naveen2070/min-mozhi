@@ -1,0 +1,6 @@
+module bad
+port in a[0:8]
+port in b[0:20]
+port out y[0:8]
+
+cell $shl :0 a=a[0:8] b=b[0:20] out=y[0:8]
