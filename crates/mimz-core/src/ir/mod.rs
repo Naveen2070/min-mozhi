@@ -70,12 +70,26 @@ pub enum CellKind {
     RedOr,
     RedXor,
     Neg,
+    // Equality is sign-agnostic (two's complement patterns compare bit-for-bit),
+    // so `Eq`/`Ne` stay unit variants. The ORDERING comparisons are not: the
+    // same bit pattern orders differently under two's complement, so each
+    // carries the signedness `lower` read off its source operands. `ir::Bits`
+    // itself still has no signed bit — signedness is scoped to exactly these
+    // four cell kinds rather than threaded through every value in the netlist.
     Eq,
     Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
+    Lt {
+        signed: bool,
+    },
+    Le {
+        signed: bool,
+    },
+    Gt {
+        signed: bool,
+    },
+    Ge {
+        signed: bool,
+    },
     LogicAnd,
     LogicOr,
     LogicNot,
@@ -93,9 +107,22 @@ pub enum CellKind {
     /// pins, seeded to `init` at power-on (carried as cell metadata per the
     /// design doc — a ROM is exactly a `Mem` whose `wen` is tied low, so the
     /// seed value is the whole of its behaviour).
+    ///
+    /// The single write port (`waddr`/`wdata`/`wen`, plus `clock` when the
+    /// memory isn't a ROM) stays an ordinary named pin set in `Cell::pins`.
+    /// Read ports do NOT — `pins`' keys are `&'static str`, so numbered
+    /// `raddr0`/`raddr1`/... names would need either a small fixed cap of
+    /// pre-interned strings or changing the key type everywhere. Instead
+    /// each DISTINCT lowered read address gets its own `(raddr, rdata)`
+    /// entry here (GAP-1 residual Task 6 — `ir::lower` used to model
+    /// exactly one read port per memory and panic on a second, different
+    /// address). Unlike `Module::port_declared_widths`, this DOES round-trip
+    /// through the text format (`print_line`/`parse_line`/`print_sexpr`) —
+    /// it changes cell behaviour, not just an extra validation cross-check.
     Mem {
         depth: u128,
         init: crate::checker::consteval::ConstVal,
+        read_ports: Vec<(Bits, Bits)>,
     },
     BlackBox {
         module_name: String,
@@ -155,6 +182,16 @@ pub struct Module {
     /// emit/restore it), the same v1 scope boundary as `extern_decls`: a
     /// hand-parsed IR module can only be addressed by port name.
     pub signals: BTreeMap<String, Bits>,
+    /// Each OUTPUT port's source-DECLARED width, keyed by port name —
+    /// distinct from `ports`' own `Bits::width()`, which is whatever
+    /// lowering actually produced (may legitimately differ: see GAP-1's
+    /// silent-over-wide-port residual). Populated by `lower()` from
+    /// `design.outputs`; not round-tripped by the text format (same v1
+    /// scope boundary as `extern_decls`/`signals` above) — a hand-parsed
+    /// IR module has no declared width to check against, so `validate`
+    /// skips this check when the entry is absent, same pattern as the
+    /// black-box-port-shape check.
+    pub port_declared_widths: std::collections::BTreeMap<String, u32>,
 }
 
 impl Module {

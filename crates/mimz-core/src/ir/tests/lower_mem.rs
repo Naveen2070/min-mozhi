@@ -25,6 +25,13 @@ fn find_mem(module: &Module) -> &Cell {
     mems[0]
 }
 
+fn read_ports(cell: &Cell) -> &[(crate::ir::Bits, crate::ir::Bits)] {
+    let CellKind::Mem { read_ports, .. } = &cell.kind else {
+        panic!("not a Mem cell")
+    };
+    read_ports
+}
+
 /// Traces a pin back to the `Const` cell driving it, asserting there is one.
 fn const_behind<'a>(module: &'a Module, pin: &crate::ir::Bits) -> &'a ConstVal {
     let cell = module
@@ -164,20 +171,27 @@ fn lowers_a_read_write_memory_to_one_mem_cell() {
     let module = lower(&design);
 
     let mem = find_mem(&module);
-    let CellKind::Mem { depth, init } = &mem.kind else {
+    let CellKind::Mem {
+        depth,
+        init,
+        read_ports,
+    } = &mem.kind
+    else {
         unreachable!()
     };
     assert_eq!(*depth, 4);
     assert_eq!(*init, seed(), "power-on seed rides on the cell");
+    assert_eq!(read_ports.len(), 1);
+    let (raddr, rdata) = &read_ports[0];
 
     // `raddr` and `waddr` are independent pins. Here both sides happen to
     // name the same signal, so both land on it — but neither is derived from
     // the other, and no reconciling mux exists.
-    assert_eq!(mem.pins["raddr"], *find_port(&module, "addr"));
+    assert_eq!(*raddr, *find_port(&module, "addr"));
     assert_eq!(mem.pins["waddr"], *find_port(&module, "addr"));
-    assert_eq!(mem.pins["raddr"].width(), 2, "clog2(4) address");
+    assert_eq!(raddr.width(), 2, "clog2(4) address");
 
-    assert_eq!(mem.pins["rdata"].width(), 8);
+    assert_eq!(rdata.width(), 8);
     assert_eq!(mem.pins["wdata"], *find_port(&module, "din"));
 
     // Unconditional write => write-enable folds to constant 1.
@@ -252,12 +266,13 @@ fn read_and_write_addresses_stay_independent() {
     let module = lower(&design);
 
     let mem = find_mem(&module);
+    let raddr = &read_ports(mem)[0].0;
     assert_eq!(
-        mem.pins["raddr"],
+        *raddr,
         *find_port(&module, "addr"),
         "the read address is the read expression's own index, untouched by `we`"
     );
-    assert_ne!(mem.pins["raddr"], mem.pins["waddr"]);
+    assert_ne!(*raddr, mem.pins["waddr"]);
 
     // `waddr` is `Mux(we, wa, 0)` — the write address gated by the `if`.
     let waddr_mux = module
@@ -273,7 +288,7 @@ fn read_and_write_addresses_stay_independent() {
         !module
             .cells
             .iter()
-            .any(|c| c.kind == CellKind::Mux && c.pins["out"] == mem.pins["raddr"]),
+            .any(|c| c.kind == CellKind::Mux && c.pins["out"] == *raddr),
         "nothing muxes the read address"
     );
 }
@@ -298,13 +313,14 @@ fn a_read_inside_the_write_process_still_reaches_the_cell() {
     let module = lower(&design);
 
     let mem = find_mem(&module);
+    let (raddr, rdata) = &read_ports(mem)[0];
     assert_eq!(
-        mem.pins["raddr"],
+        *raddr,
         *find_port(&module, "addr"),
         "the read address is not lost to a placeholder constant"
     );
     assert_eq!(
-        mem.pins["wdata"], mem.pins["rdata"],
+        mem.pins["wdata"], *rdata,
         "the word being written IS the word being read back"
     );
     assert_eq!(mem.pins["waddr"], *find_port(&module, "wa"));
@@ -381,6 +397,7 @@ fn one_read_site_survives_being_walked_once_per_target() {
         .filter(|c| matches!(c.kind, CellKind::Dff { .. }))
         .collect();
     assert_eq!(dffs.len(), 2);
+    let rdata = &read_ports(mem)[0].1;
     for dff in &dffs {
         let mux = module
             .cells
@@ -388,7 +405,7 @@ fn one_read_site_survives_being_walked_once_per_target() {
             .find(|c| c.kind == CellKind::Mux && c.pins["out"] == dff.pins["d"])
             .expect("each register's D is Mux(cond, din, hold)");
         assert_eq!(
-            mux.pins["sel"], mem.pins["rdata"],
+            mux.pins["sel"], *rdata,
             "both walks resolved to the SAME read port, not two rival ones"
         );
         assert_eq!(mux.pins["a"], *find_port(&module, "din"));
@@ -448,15 +465,15 @@ fn a_fn_call_in_a_shared_condition_is_inlined_once_per_source_site() {
         1,
         "`ram[3]`'s literal index is lowered once, not once per target walk"
     );
-    assert_eq!(find_mem(&module).pins["raddr"].width(), 2);
+    assert_eq!(read_ports(find_mem(&module))[0].0.width(), 2);
 }
 
-/// One read port only. A second read at a different address must panic
-/// rather than silently reuse the first read's address, matching how every
-/// other out-of-scope form in `lower.rs` fails.
+/// GAP-1 residual Task 6: a second read at a DIFFERENT address used to panic
+/// (one read port per memory was the v1 ceiling). It now grows a second,
+/// independent port instead — same memory, two addresses, two `rdata` nets,
+/// neither one derived from the other.
 #[test]
-#[should_panic(expected = "exactly one read port per memory")]
-fn a_second_read_at_a_different_address_panics() {
+fn a_second_read_at_a_different_address_grows_a_second_port() {
     let mut design = ram_design();
     design.inputs.push(Signal {
         name: "ra2".into(),
@@ -469,7 +486,42 @@ fn a_second_read_at_a_different_address_panics() {
     design
         .comb
         .insert("rd2".to_string(), mem_read("ram", "ra2"));
-    lower(&design);
+    let module = lower(&design);
+
+    let mem = find_mem(&module);
+    let ports = read_ports(mem);
+    assert_eq!(ports.len(), 2, "one port per distinct read address");
+    let (raddr0, rdata0) = &ports[0];
+    let (raddr1, rdata1) = &ports[1];
+    assert_eq!(*raddr0, *find_port(&module, "addr"));
+    assert_eq!(*raddr1, *find_port(&module, "ra2"));
+    assert_ne!(raddr0, raddr1);
+    assert_ne!(rdata0, rdata1, "each port publishes its own rdata net");
+    assert_eq!(*rdata0, module.signals["rd"]);
+    assert_eq!(*rdata1, module.signals["rd2"]);
+}
+
+/// Re-reading the SAME lowered address from two different source sites must
+/// still share the one existing port rather than growing a redundant
+/// second one — only a genuinely DIFFERENT address should do that.
+#[test]
+fn a_second_read_at_the_same_address_reuses_the_port() {
+    let mut design = ram_design();
+    design.wires.push(Signal {
+        name: "rd2".into(),
+        width: w(8),
+    });
+    // Same index expression (`addr`) as the fixture's existing `rd` read.
+    design
+        .comb
+        .insert("rd2".to_string(), mem_read("ram", "addr"));
+    let module = lower(&design);
+
+    let mem = find_mem(&module);
+    let ports = read_ports(mem);
+    assert_eq!(ports.len(), 1, "same address reuses the existing port");
+    assert_eq!(ports[0].1, module.signals["rd"]);
+    assert_eq!(ports[0].1, module.signals["rd2"]);
 }
 
 #[test]
@@ -486,8 +538,9 @@ fn lowers_a_clockless_memory_to_a_rom_with_wen_tied_low() {
         unreachable!()
     };
     assert_eq!(*init, seed(), "a ROM's contents are entirely its seed");
-    assert_eq!(mem.pins["raddr"], *find_port(&module, "addr"));
-    assert_eq!(mem.pins["rdata"].width(), 8);
+    let (raddr, rdata) = &read_ports(mem)[0];
+    assert_eq!(*raddr, *find_port(&module, "addr"));
+    assert_eq!(rdata.width(), 8);
     assert_eq!(
         const_behind(&module, &mem.pins["wen"]).bits,
         crate::bits::Bits::Small(0),
