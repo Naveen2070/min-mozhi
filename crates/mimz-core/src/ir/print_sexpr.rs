@@ -1,7 +1,7 @@
 //! S-expression IR dump (printer only — no parser; see design doc's
 //! "avoid maintaining two parsers for one piece of information" call).
 
-use super::{Bits, Module};
+use super::{Bits, CellKind, Module};
 use crate::ir::print_line::{cell_op_name, contiguous_same_name};
 use std::fmt::Write;
 
@@ -43,6 +43,19 @@ pub fn print(module: &Module) -> String {
         write!(out, "  (cell {}", cell_op_name(&cell.kind)).unwrap();
         for (pin_name, bits) in &cell.pins {
             write!(out, " ({pin_name} {})", format_pin(module, bits)).unwrap();
+        }
+        // Read ports live on `CellKind::Mem::read_ports`, not `cell.pins` —
+        // see `print_line`'s identical numbered-pin rendering.
+        if let CellKind::Mem { read_ports, .. } = &cell.kind {
+            for (n, (raddr, rdata)) in read_ports.iter().enumerate() {
+                write!(
+                    out,
+                    " (raddr{n} {}) (rdata{n} {})",
+                    format_pin(module, raddr),
+                    format_pin(module, rdata)
+                )
+                .unwrap();
+            }
         }
         writeln!(out, ")").unwrap();
     }

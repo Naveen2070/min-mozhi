@@ -35,18 +35,19 @@ fn mem_write_keys(mem: &str) -> (String, String, String) {
 struct LowerCtx<'a> {
     design: &'a Design,
     resolved: HashMap<String, Bits>,
-    /// Per-memory `(raddr, rdata)` nets, allocated lazily on the first
-    /// `m[addr]` read and picked up later by `lower`'s cell-emitting pass,
-    /// which is the only place the `Mem` cell itself is pushed (it needs the
-    /// read and write pin sets filled in together, and the write side isn't
-    /// knowable until the writing process is walked).
+    /// Per-memory `(raddr, rdata)` nets, one entry per DISTINCT lowered read
+    /// address, allocated lazily on each new `m[addr]` read and picked up
+    /// later by `lower`'s cell-emitting pass, which is the only place the
+    /// `Mem` cell itself is pushed (it needs the read and write pin sets
+    /// filled in together, and the write side isn't knowable until the
+    /// writing process is walked).
     ///
-    /// SINGLE READ PORT (acknowledged ceiling): one entry per memory. A
-    /// second read at the SAME lowered address reuses this port for free; a
-    /// second read at a different address panics rather than silently
-    /// reading the wrong word. Multiple read ports need a
-    /// `raddr0`/`rdata0`/... pin set the design doc doesn't define yet.
-    mem_read: HashMap<String, (Bits, Bits)>,
+    /// MULTIPLE READ PORTS (GAP-1 residual Task 6): a read at the SAME
+    /// lowered address as an existing entry reuses that port for free; a
+    /// read at a genuinely different address grows a new entry instead of
+    /// panicking (the v1 ceiling this used to hit). Read ports live on
+    /// `CellKind::Mem::read_ports`, not `Cell::pins` — see that field's doc.
+    mem_read: HashMap<String, Vec<(Bits, Bits)>>,
     /// One TOP-LEVEL expression node's lowered result, keyed by the ADDRESS
     /// of its `Expr` node.
     ///
@@ -145,7 +146,20 @@ impl<'a> LowerCtx<'a> {
             ExprKind::Binary { op, lhs, rhs } => {
                 let a = self.lower_expr(module, lhs, locals);
                 let b = self.lower_expr(module, rhs, locals);
-                self.lower_binop(module, *op, a, b, e.span)
+                let shl_const_amount = (*op == BinOp::Shl)
+                    .then(|| crate::value::const_eval(rhs, &self.design.consts).ok())
+                    .flatten()
+                    .and_then(|v| u128::try_from(v).ok());
+                // Signedness of an ORDERING comparison has to come from the
+                // source `Expr`s — `Bits` carries no sign bit — so it is
+                // computed here, at the one call site that still has them,
+                // and gated on the op the same way `shl_const_amount` is
+                // above (otherwise every node of an expression tree walks its
+                // own subtree, making lowering quadratic for no benefit).
+                let cmp_signed = matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
+                    && (self.expr_is_definitely_signed(lhs, locals)
+                        || self.expr_is_definitely_signed(rhs, locals));
+                self.lower_binop(module, *op, a, b, shl_const_amount, cmp_signed, e.span)
             }
             ExprKind::Unary { op, expr } => {
                 let a = self.lower_expr(module, expr, locals);
@@ -212,29 +226,16 @@ impl<'a> LowerCtx<'a> {
                 // a re-inlined `fn` body, where the address really can
                 // differ per call).
                 let addr = self.lower_expr(module, index, locals);
-                match self.mem_read.get(&mem).cloned() {
-                    // A DIFFERENT read site landing on the same memory. Same
-                    // address: share the one read port. Different address:
-                    // that's the single-read-port ceiling (see `mem_read`) —
-                    // panic like every other out-of-scope form in this file
-                    // rather than silently reading the wrong word.
-                    Some((prev, rdata)) => {
-                        if prev != addr {
-                            unimplemented!(
-                                "memory `{mem}` is read at two different addresses, but \
-                                 ir::lower models exactly one read port per memory (see \
-                                 LowerCtx::mem_read); span: {:?}. Note this compares LOWERED \
-                                 nets, so two DISTINCT read sites whose indices are textually \
-                                 identical also trip it — a loud false positive beats silently \
-                                 wrong hardware.",
-                                e.span
-                            );
-                        }
-                        rdata
-                    }
+                let ports = self.mem_read.entry(mem.clone()).or_default();
+                // A DIFFERENT read site landing on the same memory. Same
+                // LOWERED address: share that port. Different address: grow
+                // a new one (GAP-1 residual Task 6 — this used to panic,
+                // one read port per memory being the v1 ceiling).
+                match ports.iter().find(|(prev, _)| *prev == addr) {
+                    Some((_, rdata)) => rdata.clone(),
                     None => {
                         let rdata = module.alloc_bits(width, Some(&mem));
-                        self.mem_read.insert(mem, (addr, rdata.clone()));
+                        ports.push((addr, rdata.clone()));
                         rdata
                     }
                 }
@@ -440,6 +441,86 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
+    /// Best-effort proof that `e`'s value is DEFINITELY signed AND that
+    /// `lower` sizes it at exactly the width the CHECKER types it at — the
+    /// mirror image of `arg_is_definitely_unsigned` above, and the input to
+    /// `CellKind::{Lt,Le,Gt,Ge}`'s `signed` flag.
+    ///
+    /// That second half is not decoration, it is the whole soundness
+    /// argument. `lower_binop` only trusts this answer when the two operand
+    /// pins came out the SAME width, and that guard is only meaningful if a
+    /// `true` here implies "this pin's width IS the checker's type width".
+    /// Wherever `ir::lower`'s width formula and the checker's disagree, a
+    /// literal on the other side can match the LOWERED width while the
+    /// checker sized it from the (different) TYPE width, and reinterpreting
+    /// those bits as two's complement silently changes the answer. Two such
+    /// divergences exist today:
+    ///
+    /// * `UnOp::Neg` — `checker::widths::ops` grows it (`Signed(n)` ->
+    ///   `Signed(n + 1)`, gaining the carry bit) but `lower_expr`'s `Neg` arm
+    ///   keeps `a.width()`. So `-a < 200` for `a: signed[8]` has an 8-bit
+    ///   pin against a checker type of `Signed(9)`, the 8-bit literal `200`
+    ///   matches the pin width, and reading it as signed flips half the
+    ///   input domain. See `docs/audit/gaps.md`.
+    /// * `BinOp::Mul` with a literal operand — `lower_binop` sizes it
+    ///   `a.width() + b.width()` from the literal's NATURAL width, while the
+    ///   checker first adapts the literal to the sized side's type: `a * 2`
+    ///   for `a: signed[8]` is 10 bits lowered but `Signed(16)` typed.
+    ///
+    /// So this recognizes ONLY the two shapes whose lowered width is, by
+    /// construction, the declared width of a module-level signal: a bare
+    /// `Ident`, and `signed(<Ident>)` (a free reinterpret — `lower`'s
+    /// `SignedCast` arm repoints at its argument's `Bits` and allocates
+    /// nothing). Everything else is conservatively `false`, i.e. an unsigned
+    /// comparison — today's behaviour, so an unrecognized shape is never a
+    /// regression. In particular a bare literal is the checker's untyped
+    /// `Ty::CtInt`: it INHERITS the other operand's type
+    /// (`checker::widths::ops::matched_ty`) rather than deciding signedness
+    /// itself, so it answers `false` and lets the sized side decide.
+    ///
+    /// Two non-literal operands cannot disagree: `matched_ty` rejects a
+    /// genuinely mixed comparison outright (E0403 "cannot mix X and Y"), so
+    /// the caller ORs the two answers rather than reconciling them.
+    fn expr_is_definitely_signed(&self, e: &Expr, locals: Option<&HashMap<String, Bits>>) -> bool {
+        match &e.kind {
+            ExprKind::Ident(name) => self.unshadowed_signal_signed(name, locals) == Some(true),
+            // `signed(x)` over a bare identifier. The cast is free — `lower`'s
+            // `SignedCast` arm repoints at `x`'s `Bits` and allocates nothing
+            // — so the pin keeps `x`'s DECLARED width whatever `x`'s own
+            // declared signedness was, which is the point: `signed(a) <
+            // signed(b)` over two UNSIGNED-declared signals is GAP-1's
+            // headline case. Hence `.is_some()`, not `== Some(true)`.
+            ExprKind::Call {
+                func: Builtin::SignedCast,
+                args,
+            } => match args.first().map(|a| &a.kind) {
+                Some(ExprKind::Ident(name)) => {
+                    self.unshadowed_signal_signed(name, locals).is_some()
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// The declared signedness of `name`, but ONLY when `name` really is a
+    /// module-level signal and is not shadowed by a `fn` param/`let` binding
+    /// — `lower_expr`'s own `Ident` arm resolves a shadowed name through
+    /// `locals` first, so a module-level signal of the same name would be the
+    /// wrong thing to ask about (the same guard `arg_is_definitely_unsigned`
+    /// uses). `None` therefore means "no declared width to reason about",
+    /// which is exactly what `expr_is_definitely_signed`'s callers need.
+    fn unshadowed_signal_signed(
+        &self,
+        name: &str,
+        locals: Option<&HashMap<String, Bits>>,
+    ) -> Option<bool> {
+        locals
+            .is_none_or(|l| !l.contains_key(name))
+            .then(|| self.declared_signed(name))
+            .flatten()
+    }
+
     /// Walks one `fn` body's statement list, evaluating against `locals`
     /// (params + `let`s bound so far). Mirrors
     /// `emit_verilog::module::funcs::emit_fn_stmts`'s continuation-passing
@@ -518,15 +599,35 @@ impl<'a> LowerCtx<'a> {
         out
     }
 
+    // `shl_const_amount` and `cmp_signed` are both facts read off the SOURCE
+    // `Expr`s that `Bits` cannot carry, so they have to arrive as parameters;
+    // bundling them into a struct would relocate the argument count, not
+    // reduce it.
+    #[allow(clippy::too_many_arguments)]
     fn lower_binop(
         &mut self,
         module: &mut Module,
         op: BinOp,
         a: Bits,
         b: Bits,
+        shl_const_amount: Option<u128>,
+        cmp_signed: bool,
         span: crate::span::Span,
     ) -> Bits {
         let in_width = a.width().max(b.width());
+        // An ordering comparison is lowered as SIGNED only when its operands
+        // agree on WIDTH as well as sign. Two non-literal operands always do
+        // (`checker::widths::ops::matched_ty` rejects a genuinely mixed
+        // comparison outright, E0403), so this costs nothing there. A width
+        // MISMATCH means the narrow side is a bare literal, which the checker
+        // types as untyped `Ty::CtInt` inheriting the sized side's type —
+        // but `lower_expr`'s `Int` arm sizes it at its own NATURAL width
+        // instead (`5` -> 3 bits), and reinterpreting those 3 bits as two's
+        // complement would read `5` as `-3`. Until literals are sized from
+        // their comparison context (a separate residual, see
+        // `docs/audit/gaps.md` GAP-1), those cases stay unsigned exactly as
+        // they are today rather than becoming newly, differently wrong.
+        let cmp_signed = cmp_signed && a.width() == b.width();
         let (kind, out_width) = match op {
             BinOp::Add => (CellKind::Add, in_width + 1),
             BinOp::Sub => (CellKind::Sub, in_width + 1),
@@ -535,21 +636,21 @@ impl<'a> LowerCtx<'a> {
             BinOp::SubWrap => (CellKind::SubWrap, in_width),
             BinOp::MulWrap => (CellKind::MulWrap, in_width),
             BinOp::Shl => {
-                // Worst-case growth (`const_amount: None`) — `lower_binop`
-                // only ever sees already-lowered `Bits`, never the source
-                // `Expr`, so it cannot know whether the original shift
-                // amount was a compile-time constant. Sizing `out` at the
-                // worst case exactly matches the AST evaluator's own
-                // fallback (`value::binary::shl`'s `width_rules::
-                // shift_result` call with the same `None`), so for a
-                // RUNTIME (non-constant) shift amount the two sides agree.
-                // For a compile-time-CONSTANT amount they can still
-                // disagree in absolute width — the checker sizes exactly
-                // (`a.width() + k`), this always sizes worst-case — but
-                // only ever over-wide, never in a way that truncates (see
-                // docs/audit/gaps.md GAP-1). `Shr` (below) never grows, so
-                // it needs no change (`width_rules::shift_result`'s own doc:
-                // "grows: false" keeps the left operand's width).
+                // `shl_const_amount` is threaded in from the one call site
+                // (`ExprKind::Binary`, above) which const-evals the source
+                // `rhs` `Expr` before it's lowered to `Bits` — so when the
+                // shift amount is a compile-time constant, `out` is sized
+                // exactly (`a.width() + k`), matching the checker's own
+                // `shift_ty` (`checker/widths/ops/mod.rs`) and the AST
+                // evaluator's `eval_shift_chain` (`value/binary.rs`). For a
+                // genuinely RUNTIME (non-constant) shift amount,
+                // `shl_const_amount` is `None` and this falls back to
+                // worst-case growth, exactly matching the AST evaluator's
+                // own fallback (`value::binary::shl`'s `width_rules::
+                // shift_result` call with the same `None`). `Shr` (below)
+                // never grows, so it needs no change (`width_rules::
+                // shift_result`'s own doc: "grows: false" keeps the left
+                // operand's width).
                 let out_width = crate::width_rules::shift_result(
                     crate::width_rules::Kind {
                         width: a.width(),
@@ -559,16 +660,15 @@ impl<'a> LowerCtx<'a> {
                         width: b.width(),
                         signed: false,
                     },
-                    None,
+                    shl_const_amount,
                     true,
                 )
                 .expect(
-                    "worst-case Shl growth exceeded MAX_WIDTH — the checker accepts this \
-                     program because IT uses exact constant growth for a compile-time shift \
-                     amount, but ir::lower has no access to that fact here (only already- \
-                     lowered Bits, never the source Expr) and must always use worst-case \
-                     growth; a pathological shift amount can legitimately panic here even \
-                     though the source program type-checked (see docs/audit/gaps.md GAP-1)",
+                    "Shl growth exceeded MAX_WIDTH — the checker independently sizes this \
+                     the same way (exact constant growth for a compile-time shift amount, \
+                     worst-case growth otherwise), so a checker-accepted program is not \
+                     expected to panic here; a pathological shift amount could still \
+                     legitimately do so (see docs/audit/gaps.md GAP-1)",
                 )
                 .width;
                 (CellKind::Shl, out_width)
@@ -579,8 +679,10 @@ impl<'a> LowerCtx<'a> {
             BinOp::BitXor => (CellKind::Xor, in_width),
             BinOp::Eq => (CellKind::Eq, 1),
             BinOp::Ne => (CellKind::Ne, 1),
-            BinOp::Lt => (CellKind::Lt, 1),
-            BinOp::Le => (CellKind::Le, 1),
+            // `Eq`/`Ne` above stay sign-agnostic on purpose; only the
+            // ORDERING comparisons read `cmp_signed`.
+            BinOp::Lt => (CellKind::Lt { signed: cmp_signed }, 1),
+            BinOp::Le => (CellKind::Le { signed: cmp_signed }, 1),
             other => unimplemented!(
                 "binop not yet lowered by Task 5 (Gt/Ge/logical and/or land \
                  alongside their AST variants once checked against ast::BinOp's \
@@ -909,6 +1011,7 @@ pub fn lower(design: &Design) -> Module {
         nets: Vec::new(),
         extern_decls: BTreeMap::new(),
         signals: BTreeMap::new(),
+        port_declared_widths: BTreeMap::new(),
     };
     let mut ctx = LowerCtx {
         design,
@@ -967,6 +1070,9 @@ pub fn lower(design: &Design) -> Module {
     }
     for output in &design.outputs {
         let bits = ctx.resolve(&mut module, &output.name);
+        module
+            .port_declared_widths
+            .insert(output.name.clone(), output.width.bits);
         module.ports.push((output.name.clone(), bits, Dir::Out));
     }
     // Force every wire to be lowered even if no output reads it (keeps
@@ -1135,23 +1241,22 @@ pub fn lower(design: &Design) -> Module {
     // the kernel on the canonical register-file shape.
     for mem in &design.mems {
         let addr_width = crate::checker::consteval::clog2_bits(mem.depth);
-        let (raddr, rdata) = match ctx.mem_read.get(&mem.name).cloned() {
-            Some(pair) => pair,
+        let read_ports = match ctx.mem_read.remove(&mem.name) {
+            Some(ports) if !ports.is_empty() => ports,
             // Never read anywhere: the cell still exists (a write-only memory
-            // is legal), it just has a constant read address and a read port
-            // that goes nowhere.
-            None => {
+            // is legal), it just has one constant read address and a read
+            // port that goes nowhere.
+            _ => {
                 let raddr = ctx.lower_const(
                     &mut module,
                     &const_val(0, addr_width),
                     crate::span::Span::default(),
                 );
                 let rdata = module.alloc_bits(mem.width.bits, Some(&mem.name));
-                (raddr, rdata)
+                vec![(raddr, rdata)]
             }
         };
-        let mut pins: BTreeMap<&'static str, Bits> =
-            [("raddr", raddr), ("rdata", rdata)].into_iter().collect();
+        let mut pins: BTreeMap<&'static str, Bits> = BTreeMap::new();
 
         match writes.remove(&mem.name) {
             Some((wen, waddr, wdata, clock)) => {
@@ -1184,10 +1289,20 @@ pub fn lower(design: &Design) -> Module {
             }
         }
 
+        // `Module::signals` addresses a memory by NAME alone, with no way to
+        // pick a port — sound only when there's exactly one, so that's the
+        // only case this registers (see `Module::signals`'s own doc). A
+        // multi-port memory's individual reads simply aren't addressable by
+        // name; nothing in this codebase needs that today.
+        if let [(_, rdata)] = read_ports.as_slice() {
+            module.signals.insert(mem.name.clone(), rdata.clone());
+        }
+
         module.cells.push(Cell {
             kind: CellKind::Mem {
                 depth: mem.depth,
                 init: mem.init.clone(),
+                read_ports,
             },
             pins,
             span: crate::span::Span::default(),
@@ -1195,13 +1310,9 @@ pub fn lower(design: &Design) -> Module {
     }
 
     // `ctx.resolved` IS the source-name -> Bits table, built up by every pass
-    // above; publishing it is the only way a consumer can address a wire or a
-    // register's Q exactly (see `Module::signals`). Memories aren't in there —
-    // a memory is addressed by its read port, which `mem_read` holds.
-    module.signals = ctx.resolved.into_iter().collect();
-    for (mem, (_raddr, rdata)) in ctx.mem_read {
-        module.signals.insert(mem, rdata);
-    }
+    // above; merging it in (rather than assigning outright) preserves the
+    // per-memory entries the loop above just inserted.
+    module.signals.extend(ctx.resolved);
 
     module
 }

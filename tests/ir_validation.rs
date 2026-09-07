@@ -71,3 +71,23 @@ fn undriven_output_port_fixture_is_rejected() {
         matches!(e, validate::ValidationError::UndrivenNet { .. })
     });
 }
+
+/// Pathologically-wide `Shl` (`bits[8] << bits[20]`, `b` a bare input
+/// port — never driven by a `Const` cell, so `shl_const_amount` falls
+/// through to worst-case `None`): `2^20 - 1 = 1,048,575` added to `a`'s
+/// 8 bits overflows `width_rules::MAX_WIDTH` (1,000,000). `validate()`
+/// must REPORT this as `ShiftGrowthTooWide`, not panic — this is the
+/// regression fixture for that formerly-panicking path.
+#[test]
+fn shift_growth_too_wide_fixture_is_rejected() {
+    assert_fixture_rejected("tests/fixtures/ir_errors/shift_growth_too_wide.ir", |e| {
+        matches!(
+            e,
+            validate::ValidationError::ShiftGrowthTooWide {
+                lhs_width: 8,
+                amount_width: 20,
+                ..
+            }
+        )
+    });
+}
