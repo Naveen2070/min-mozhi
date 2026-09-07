@@ -537,6 +537,19 @@ fn collect_shift_chain(e: &Expr) -> (&Expr, Vec<(BinOp, &Expr)>) {
 /// real Verilog sizes a fused shift expression (ground-truthed against
 /// `iverilog` on BUG-34's own repro: `(p2 >> 4) << 7` for `p2:
 /// signed[16] = -9563` gives `-76544`, not the per-node result `447744`).
+///
+/// GAP-1 residual Task 4 (docs/audit/gaps.md, 2026-09-05): `ir::lower` never
+/// fuses a shift chain the way this function does — it lowers each `Shl`/
+/// `Shr` as its own independent cell — yet still agrees with this function
+/// numerically for UNSIGNED chains, because `ir::lower`'s per-cell width
+/// (exact since Task 1, when the shift amount is a compile-time constant)
+/// folds the same running width this function folds explicitly. If either
+/// side's width-folding rule ever changes, re-run
+/// `crates/mimz-core/src/ir/tests/lower_binops.rs`'s
+/// `shift_chains_lowered_per_node_match_the_ast_kernels_fused_evaluation` —
+/// it diffs `ir::lower` + `ir::exec` against this function directly,
+/// exhaustively over an 8-bit domain, for BUG-34's repro shape, its mirror,
+/// and a 3-step chain.
 pub(super) fn eval_shift_chain<R: super::Resolver>(r: &mut R, e: &Expr) -> Result<Val, Box<Diag>> {
     let (base_expr, chain) = collect_shift_chain(e);
     let base = super::eval(r, base_expr)?;
