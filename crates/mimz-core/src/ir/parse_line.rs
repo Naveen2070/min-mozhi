@@ -24,6 +24,7 @@ pub fn parse(text: &str) -> Result<Module, String> {
         nets: Vec::new(),
         extern_decls: BTreeMap::new(), // text format doesn't round-trip declared extern shapes (v1 gap, see Module::extern_decls doc)
         signals: BTreeMap::new(), // nor the source-name -> Bits table (same v1 gap, see Module::signals doc)
+        port_declared_widths: BTreeMap::new(), // nor each output's declared width (same v1 gap, see Module::port_declared_widths doc)
     };
     // Bracket-form pin values (`{17,18,19}`) embed the ORIGINAL module's
     // own NetId numbers as literal text, unlike a name-form reference —
@@ -87,7 +88,7 @@ pub fn parse(text: &str) -> Result<Module, String> {
                 let bits = resolve_bits_spec(&mut module, &mut named_bits, bits_spec)?;
                 pins.insert(leak_pin_name(pin_name), bits);
             }
-            let kind = parse_cell_kind(&mut module, op, &pins)?;
+            let kind = parse_cell_kind(&mut module, op, &mut pins)?;
             module.cells.push(Cell {
                 kind,
                 pins,
@@ -224,7 +225,7 @@ fn leak_pin_name(name: &str) -> &'static str {
 fn parse_cell_kind(
     module: &mut Module,
     op: &str,
-    pins: &BTreeMap<&'static str, Bits>,
+    pins: &mut BTreeMap<&'static str, Bits>,
 ) -> Result<CellKind, String> {
     // Mirrors print_line::cell_op_name's mapping, in reverse, in the same
     // order: plain no-arg ops first, then the bracketed-argument ops
@@ -249,10 +250,19 @@ fn parse_cell_kind(
         "$neg" => CellKind::Neg,
         "$eq" => CellKind::Eq,
         "$ne" => CellKind::Ne,
-        "$lt" => CellKind::Lt,
-        "$le" => CellKind::Le,
-        "$gt" => CellKind::Gt,
-        "$ge" => CellKind::Ge,
+        // Ordering comparisons carry a `signed` flag. Its two spellings are a
+        // closed set, so they're literal arms rather than a `bracket_arg`
+        // branch: the bare form is unsigned (unchanged from before the field
+        // existed) and `[signed]` is signed, with anything else falling
+        // through to the unrecognized-op error below.
+        "$lt" => CellKind::Lt { signed: false },
+        "$lt[signed]" => CellKind::Lt { signed: true },
+        "$le" => CellKind::Le { signed: false },
+        "$le[signed]" => CellKind::Le { signed: true },
+        "$gt" => CellKind::Gt { signed: false },
+        "$gt[signed]" => CellKind::Gt { signed: true },
+        "$ge" => CellKind::Ge { signed: false },
+        "$ge[signed]" => CellKind::Ge { signed: true },
         "$logic_and" => CellKind::LogicAnd,
         "$logic_or" => CellKind::LogicOr,
         "$logic_not" => CellKind::LogicNot,
@@ -294,22 +304,38 @@ fn parse_cell_kind(
             let depth: u128 = inner
                 .parse()
                 .map_err(|_| format!("bad mem depth in `{other}`"))?;
+            // Read ports round-trip as numbered `raddrN`/`rdataN` pin-like
+            // entries (parsed generically into `pins` alongside the write
+            // side, same as every other pin) — pulled back out here into
+            // `read_ports` rather than left in `Cell::pins`, matching
+            // `CellKind::Mem::read_ports`'s own doc on why they're not
+            // ordinary pins.
+            let mut read_ports = Vec::new();
+            let mut n = 0usize;
+            while let Some(raddr) = pins.remove(format!("raddr{n}").as_str()) {
+                let rdata = pins
+                    .remove(format!("rdata{n}").as_str())
+                    .ok_or_else(|| format!("mem cell has `raddr{n}` but no matching `rdata{n}`"))?;
+                read_ports.push((raddr, rdata));
+                n += 1;
+            }
             // `Mem::init` is likewise never printed by `print_line` (only
-            // `depth` is) — same known, pre-approved lossiness. Fabricate
-            // a zero-valued placeholder at the cell's own data width
-            // (read off the already-parsed `rdata` pin); print never
-            // reads `init` back so this can't desync the round-trip text.
-            // A `$mem[...]` line missing `rdata` entirely is itself
-            // malformed (every real `Mem` cell has one) — falls back to
-            // width 1 rather than erroring here; `validate.rs` (a later
-            // task) is the place that's meant to catch a pinless Mem cell.
-            let width = pins.get("rdata").map(|b| b.width()).unwrap_or(1);
+            // `depth` is) — same known, pre-approved lossiness. Fabricate a
+            // zero-valued placeholder at the first read port's data width;
+            // print never reads `init` back so this can't desync the
+            // round-trip text. A `$mem[...]` line with no read ports at all
+            // is legal (a write-only memory) — falls back to width 1.
+            let width = read_ports.first().map(|(_, r)| r.width()).unwrap_or(1);
             let init = crate::checker::consteval::ConstVal {
                 bits: crate::bits::Bits::Small(0),
                 width,
                 signed: false,
             };
-            CellKind::Mem { depth, init }
+            CellKind::Mem {
+                depth,
+                init,
+                read_ports,
+            }
         }
         other if other.starts_with("$blackbox[") => {
             let module_name = bracket_arg(other, "$blackbox[")?.to_string();

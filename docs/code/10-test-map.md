@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1404 tests** as of 2026-09-04 (`cargo test --workspace`; the count is
+**1418 tests** as of 2026-09-07 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` and
 `crates/mimz-core/src/ir/tests/validate.rs`, pinning `Shl`'s `out` pin at
@@ -33,14 +33,67 @@ own width (a growing left shift used to truncate silently) and the matching
 `rejects_an_output_port_never_driven_by_any_cell` and
 `tests/ir_validation.rs`'s `undriven_output_port_fixture_is_rejected`, closing
 `validate.rs`'s direction-blind driven-set seeding — an `out` port's nets are
-no longer marked "driven" just by being a port; a final +4 from
+no longer marked "driven" just by being a port; a further +4 from
 `crates/mimz-core/src/ir/tests/lower_builtins.rs` — the re-added
 `extend(signed(a), 16)` refusal fixture plus three `ir::exec`-executed
-`nand`/`nor`/`xnor` value checks):
+`nand`/`nor`/`xnor` value checks; a further +2 from
+`crates/mimz-core/src/ir/tests/lower_binops.rs` (2026-09-05, GAP-1 residual
+Task 1) —
+`shl_with_a_compile_time_constant_amount_sizes_exactly_not_worst_case` and
+`shl_result_feeding_a_matched_width_cell_validates_cleanly_when_amount_is_constant`,
+pinning `lower_binop`'s new exact sizing for a compile-time-constant shift
+amount (and `ir::validate`'s matching `shl_const_amount` cross-check) — see
+GAP-1's "narrower than originally scoped" sub-gap in `docs/audit/gaps.md`; a
+final +3 from `crates/mimz-core/src/ir/tests/validate.rs` (2026-09-05,
+GAP-1 residual Task 2) — `accepts_a_legitimately_sized_output_port`,
+`rejects_an_extend_no_op_output_wider_than_its_declaration`, and
+`hand_parsed_fixture_with_no_declared_width_skips_the_port_width_check`,
+pinning `validate`'s new sixth check (`Module::port_declared_widths` vs.
+each output port's lowered `Bits::width()`) that catches an over-wide
+output port silently reaching a `bits[N]` port declaration — see GAP-1's
+"silent, not a loud `WidthMismatch`" sub-gap in `docs/audit/gaps.md`; a
+further +1 from `tests/ir_validation.rs`'s
+`shift_growth_too_wide_fixture_is_rejected` (2026-09-05, GAP-1 residual
+Task 3) — pinning that `validate()` now REPORTS a pathologically-wide
+`Shl` growth as `ValidationError::ShiftGrowthTooWide` instead of
+panicking; see GAP-1's "checker-legal program can panic" sub-gap in
+`docs/audit/gaps.md`; a final +1 from
+`crates/mimz-core/src/ir/tests/lower_binops.rs`'s
+`shift_chains_lowered_per_node_match_the_ast_kernels_fused_evaluation`
+(2026-09-05, GAP-1 residual Task 4) — confirms `ir::lower` + `ir::exec`
+already agree numerically with the AST kernel's fused
+`value::binary::eval_shift_chain` on BUG-34's repro shape, its mirror, and
+a 3-step chain, exhaustively over an 8-bit domain, as a side effect of
+Task 1's exact constant-amount `Shl` sizing — no lowering-side fusion
+needed; see GAP-1's "fused shift chains" sub-gap (now RESOLVED) in
+`docs/audit/gaps.md`; a final +4 (2026-09-05, GAP-1 residual Task 5) — +2 in
+`crates/mimz-core/src/ir/tests/lower_binops.rs`
+(`signed_ordering_comparisons_execute_with_the_right_sign`,
+`a_natural_width_literal_operand_keeps_the_comparison_unsigned`) and +2 in
+`crates/mimz-core/src/ir/tests/parse_line.rs`
+(`round_trips_signed_and_unsigned_ordering_comparisons`,
+`an_unknown_comparison_bracket_argument_is_rejected`), pinning the new
+`signed` flag on `CellKind::{Lt,Le,Gt,Ge}` — its sign-aware execution, the
+literal-width boundary it deliberately does NOT cross, and its text-format
+round trip; see GAP-1's signed-comparison sub-gap in `docs/audit/gaps.md`; a
+final +2 in `crates/mimz-core/src/ir/tests/lower_binops.rs` from Task 5's
+review fix round (`a_negated_operand_keeps_the_comparison_unsigned`,
+`a_signed_cast_over_an_identifier_makes_the_comparison_signed`), pinning the
+two shapes that decide whether `expr_is_definitely_signed`'s answer is
+trustworthy — a negated operand, whose lowered width is one bit short of the
+checker's type width, and the `signed(<Ident>)` headline case, in both its
+accepting and refusing forms; a final net +1 (2026-09-07, GAP-1 residual
+Task 6) in `crates/mimz-core/src/ir/tests/lower_mem.rs` — replaced
+`a_second_read_at_a_different_address_panics` with two tests,
+`a_second_read_at_a_different_address_grows_a_second_port` and
+`a_second_read_at_the_same_address_reuses_the_port`, pinning that
+`ir::lower` now grows an independent `(raddr, rdata)` port per distinct
+lowered read address instead of panicking on a second one — see GAP-1's
+single-memory-read-port sub-gap (now RESOLVED) in `docs/audit/gaps.md`):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      832 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      845 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
@@ -63,7 +116,7 @@ no longer marked "driven" just by being a port; a final +4 from
 | `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)           |
 | `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                        |
 | `tests/ir_golden.rs`                                |        5 | workspace integration (golden IR-text snapshots)       |
-| `tests/ir_validation.rs`                            |        5 | workspace integration (IR validation-rejection corpus) |
+| `tests/ir_validation.rs`                            |        6 | workspace integration (IR validation-rejection corpus) |
 | `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6) |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                          |
 | `tests/morph.rs`                                    |       20 | workspace integration                                  |
@@ -75,7 +128,7 @@ no longer marked "driven" just by being a port; a final +4 from
 | `tests/test_run.rs`                                 |        9 | workspace integration                                  |
 | `tests/translate.rs`                                |       15 | workspace integration                                  |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1404** |                                                        |
+| **Total**                                           | **1418** |                                                        |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar

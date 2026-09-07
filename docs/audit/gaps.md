@@ -151,38 +151,41 @@ SOURCE-declared output width (e.g. the differential test's own
 `bits_to_limbs(..., declared_width)`) masks away identically either way.
 This makes issue 1 (truncation) unconditionally fixed.
 
-**Narrower than originally scoped — worst-case sizing does NOT make the
-IR's own pin widths agree with the checker's exact per-constant sizing.**
-`(a << 2) & c` still fails `ir::validate` with a `WidthMismatch`: the
-checker computes `a.width()+2` for a compile-time-constant shift amount,
-but `ir::lower` (which has no access to "was this a literal" at
-`lower_binop`'s call site — it only sees already-lowered `Bits`) always
-uses the worst-case `a.width() + 2^natural_width(amount)-1` formula, which
-is strictly WIDER whenever the amount is a small non-trivial constant.
-This is NOT a regression — the pre-fix `a.width()`-only formula mismatched
-the checker for every shift, constant or not, and was never correct — and
-it errs safely over-wide, never under. But no fixture/golden/fuzz case
-currently exercises a `Shl` result flowing into a width-matched cell
-(`And`/`Or`/`Xor`/a comparison/etc.), so this residual is real and
-undetected by the current suite. Closing it needs `lower_binop` to learn
-whether its RHS came from a compile-time-constant literal (a signature
-change threading the original `Expr`, not just the already-lowered
-`Bits`, through to `lower_binop`) — a separate, still-unscoped follow-up.
+**RESOLVED 2026-09-05 (residual-fix Task 1) — worst-case sizing now agrees
+with the checker's exact per-constant sizing.** `ir::lower`'s `ExprKind::
+Binary` arm const-evals the source `rhs` `Expr` (`crate::value::
+const_eval` against `design.consts`) before it's lowered to `Bits`, and
+threads the result through `lower_binop`'s new `shl_const_amount: Option<
+u128>` parameter — mirroring the checker's own `shift_ty`
+(`checker/widths/ops/mod.rs`) and the AST evaluator's `eval_shift_chain`
+(`value/binary.rs`), both of which resolve the constant the same way. A
+non-constant (genuinely RUNTIME) shift amount still passes `None` and
+falls back to worst-case growth, unchanged. `(a << 2) & c` now validates
+cleanly (regression test: `crates/mimz-core/src/ir/tests/lower_binops.rs`,
+`shl_with_a_compile_time_constant_amount_sizes_exactly_not_worst_case`).
 
-**One corner of the same residual is SILENT, not a loud `WidthMismatch`.**
-An over-wide `Shl` result that reaches a module OUTPUT PORT directly — or
-via `extend`'s `target <= base.width()` no-op branch, e.g.
-`out y: bits[10] = extend(a << 2, 10)` — gives `y` 11 real nets instead of
-the 10 the source declared, and nothing in `validate()` reports it. This
-is structural rather than an oversight: `ir::Module` carries no record of
-a port's originally-DECLARED width once lowering is done, only the actual
-`Bits` width the lowering produced, so `validate()` has nothing to compare
-against. It is benign today only because every consumer masks back to the
+**RESOLVED 2026-09-05 (residual-fix Task 2) — this corner is no longer
+SILENT; it is now a loud `WidthMismatch`-shaped `ValidationError`.** An
+over-wide `Shl` result that reaches a module OUTPUT PORT directly — or via
+`extend`'s `target <= base.width()` no-op branch, e.g.
+`out y: bits[10] = extend(a << 2, 10)` — used to give `y` 11 real nets
+instead of the 10 the source declared with nothing in `validate()`
+reporting it, because `ir::Module` carried no record of a port's
+originally-DECLARED width once lowering was done, only the actual `Bits`
+width the lowering produced. Fixed by giving `ir::Module` a new
+`port_declared_widths: BTreeMap<String, u32>` field, populated by
+`lower()` from `design.outputs`'s own `Signal.width.bits` (same v1 scope
+boundary as `extern_decls`/`signals`: not round-tripped by the text
+format, so a hand-parsed IR fixture has no entry and `validate()` skips
+the check gracefully rather than treating a missing entry as a
+violation — same pattern as the black-box-port-shape check). `validate()`
+gained a sixth check comparing each OUTPUT port's lowered `Bits::width()`
+against its `port_declared_widths` entry when present, reporting a new
+`ValidationError::PortWidthMismatch { port, declared, found }`. It was
+benign in practice only because every consumer masked back to the
 source-declared width externally (the differential test harness's
 `bits_to_limbs(..., declared_width)` is the example), not because the IR
-itself enforces anything. Closing it needs `ir::Module` to carry the
-declared port width alongside the lowered one — same follow-up bucket as
-the constant-shift sizing above.
+itself enforced anything — now it does.
 
 **A checker-legal program can panic in lowering.** `bits[8] << 999000`
 type-checks (the checker's exact-constant growth, `999008` bits, is under
@@ -192,26 +195,44 @@ literal's OWN natural width (`natural_width(999000) = 20` bits `->`
 Judged acceptable as a PANIC (not a silent miscompile) since `ir::lower`
 has no production caller today (only tests/the fuzz differential leg
 reach it) and every other out-of-scope IR construct already panics the
-same way — but the `.expect()` message text in both `lower.rs` and
-`validate.rs` claimed the checker "guarantees" this never happens, which
-is false for the worst-case-growth formula specifically; corrected as
-part of Task 8. `validate.rs`'s copy of this same `.expect()` is a sharper
-concern than `lower.rs`'s: `validate()` exists specifically to REPORT
-malformed IR rather than crash on it, so a hand-written IR **text**
-fixture (`tests/ir_validation.rs`'s whole mechanism) declaring an
-oversized `Shl.b` pin would panic `validate()` instead of yielding a
-`ValidationError`. Not exploitable today (no external IR-text ingestion
-path exists — only repo-authored fixtures), but worth revisiting the
-moment the IR text format is exposed to anything outside this repo's own
-test suite.
+same way — but the `.expect()` message text claimed the checker
+"guarantees" this never happens, which is false for the worst-case-growth
+formula specifically; corrected as part of Task 8.
 
-**Still open — issue 3, fused shift chains:** `value::binary::
-eval_shift_chain` evaluates `(p2 >> 4) << 7` as ONE unit at a single fixed
-width (ground-truthed against Icarus, BUG-34), but `lower` emits two
-independent cells with a materialized intermediate. Nothing in `exec.rs`
-re-fuses them. Fixing this needs a lowering-side redesign (detect and fuse
-a `Shl`-of-`Shr` chain at `lower_expr` time) — a separate, still-unscoped
-follow-up task.
+**RESOLVED 2026-09-05 (residual-fix Task 3) — `validate.rs`'s copy of
+this same `.expect()` is gone.** This used to be a sharper concern than
+`lower.rs`'s: `validate()` exists specifically to REPORT malformed IR
+rather than crash on it, so a hand-written IR **text** fixture
+(`tests/ir_validation.rs`'s whole mechanism) declaring an oversized
+`Shl.b` pin panicked `validate()` instead of yielding a `ValidationError`.
+Fixed by changing `expected_widths`'s return type to
+`Result<Vec<(&'static str, u32)>, (u32, u32)>`, with the `Shl` arm
+matching `width_rules::shift_result`'s own `Ok`/`Err` instead of
+`.expect()`-ing it; the checks-2&3 loop in `validate()` now turns an
+`Err((lhs_width, amount_width))` into a new
+`ValidationError::ShiftGrowthTooWide { cell_index, lhs_width,
+amount_width }` instead of panicking (regression test:
+`tests/ir_validation.rs`'s `shift_growth_too_wide_fixture_is_rejected`,
+fixture `tests/fixtures/ir_errors/shift_growth_too_wide.ir`).
+
+**RESOLVED 2026-09-05 (residual-fix Task 4) — closed by Task 1 alone, no
+lowering-side fusion needed.** `value::binary::eval_shift_chain` evaluates
+`(p2 >> 4) << 7` as ONE unit at a single fixed width, while `lower` still
+emits two independent cells with a materialized intermediate — but for an
+UNSIGNED chain that no longer produces a different NUMBER, because Task 1
+made every cell's local width formula exact (not worst-case) whenever its
+shift amount is a compile-time constant: the running width `ir::lower`
+arrives at one cell at a time is now identical, step for step, to the
+running width `eval_shift_chain` folds explicitly, so a "locally sized"
+unfused intermediate is exactly as wide as a "chain-final-width" fused one
+would be — extra zero bits above an unsigned value never change its value.
+Confirmed empirically (not just by this reasoning), per BUG-34's own
+provenance as an external-fuzz-found bug: `crates/mimz-core/src/ir/tests/
+lower_binops.rs`'s `shift_chains_lowered_per_node_match_the_ast_kernels_
+fused_evaluation` lowers BUG-34's exact repro shape, its mirror, and a
+3-step chain through `ir::lower` + `ir::exec`, exhaustively over all 256
+values of an 8-bit input, and diffs every result against `eval_shift_chain`
+directly — zero divergences.
 
 ### Sub-gap (2026-09-03, narrowed 2026-09-04): `ir::lower` could not lower any builtin call — 11 of 14 now lowered
 
@@ -236,17 +257,94 @@ pair threaded through `lower_expr`'s return type, mirroring
 scoped follow-up, not attempted here.
 
 **Making `signed(x)` lowerable widens an already-existing signed-comparison
-hole, not a new one.** Comparison and arithmetic `CellKind`s (`Lt`/`Le`/
-`Gt`/`Ge`/`Add`/`Sub`/`Mul`/etc.) carry no signedness at all — so
-`signed(a) < signed(b)` now lowers to an UNSIGNED compare in the IR, while
+hole, not a new one — RESOLVED 2026-09-05 for the ORDERING comparisons
+(GAP-1 residual Task 5).** Comparison and arithmetic `CellKind`s (`Lt`/`Le`/
+`Gt`/`Ge`/`Add`/`Sub`/`Mul`/etc.) used to carry no signedness at all — so
+`signed(a) < signed(b)` lowered to an UNSIGNED compare in the IR, while
 `emit_verilog` renders the same source as a genuinely SIGNED comparison,
-divergent for negative operand values. This predates Task 2's `signed`/
-`unsigned`/`encoding` lowering: a bare `signed[8]`-typed input already
-reaches `lower_binop` with no guard and no cast needed to trigger it —
-Task 2 just adds one more path to something already reachable. This is
-exactly the residual this plan's own Global Constraints already accept
-("no signed tracking added to `ir::Bits`/`CellKind` in this plan"), not a
-new gap introduced by lowering `signed`/`unsigned`/`encoding`.
+divergent for negative operand values (`signed(-1) < signed(1)` answered
+FALSE, `-1`'s bit pattern being the largest unsigned value). That predated
+Task 2's `signed`/`unsigned`/`encoding` lowering: a bare `signed[8]`-typed
+input already reached `lower_binop` with no guard and no cast needed.
+
+What changed, precisely:
+
+- **Schema (additive, not a new variant).** `CellKind::{Lt,Le,Gt,Ge}` gained
+  a `signed: bool` field. `ir::Bits` is UNCHANGED — it still carries no sign
+  bit; signedness is scoped to exactly these four cell kinds rather than
+  threaded through `lower_expr`'s return type (the `Kind`-style width+signed
+  pair this doc floats above, still the larger separately-scoped follow-up
+  that `min`/`max`/`abs` need).
+- **`Eq`/`Ne` deliberately untouched**, still unit variants: two's-complement
+  equality compares the same bit patterns under either interpretation.
+- **Arithmetic (`Add`/`Sub`/`Mul`/`*Wrap`/`Shl`/`Shr`) untouched** — those
+  remain unsigned in the IR, so this sub-gap is closed only for ordering
+  comparisons, not for signed arithmetic generally.
+- **`Lt`/`Le` are the ones with real new BEHAVIOUR.** They are the only
+  ordering comparisons `ir::lower` produces; `BinOp::Gt`/`Ge` still fall into
+  `lower_binop`'s `unimplemented!()` catch-all, unchanged and out of scope
+  here. `CellKind::Gt`/`Ge` took the same field for schema consistency (they
+  are reachable from hand-written IR text and already dispatched by
+  `ir::exec`), so they are **schema-consistent and sign-aware when executed,
+  but not independently lowered** — a `Gt`/`Ge` cell can only enter the IR
+  through `parse_line`, never through `lower`.
+- **Text format round-trips it**, unlike the v1 scope-boundary fields
+  (`Dff::clock`, `Mem::init`): the flag changes what a cell COMPUTES, so
+  losing it would silently change behaviour. Unsigned stays the bare `$lt`
+  spelling (every pre-existing IR text still means what it did); signed is
+  `$lt[signed]`, in the same bracket style as `$dff[Rise]`. An unrecognized
+  bracket argument is a parse error, never a silent fall back to unsigned.
+- **Signedness detection** is `lower.rs`'s new `expr_is_definitely_signed`.
+  It recognizes exactly two shapes: a bare `Ident` naming a module-level
+  signal declared signed, and `signed(<Ident>)` (GAP-1's headline case — a
+  free reinterpret over two UNSIGNED-declared signals). Everything else is
+  conservatively `false`, i.e. an unsigned comparison — today's behaviour, so
+  an unrecognized shape is never a regression. Deliberately NOT a general
+  `infer_kind`-style walk; see the invariant below for why.
+
+**The guard's actual invariant (corrected 2026-09-05 after review).**
+`lower_binop` marks a comparison signed only when its two operand pins came
+out the SAME width. That guard is only sound if a `true` from
+`expr_is_definitely_signed` implies **"this pin's lowered width IS the width
+the CHECKER types the expression at."** The first cut of this work stated the
+weaker claim that "a width mismatch means the narrow side is a bare literal"
+and leaned on its converse, which is false: wherever `ir::lower`'s width
+formula and the checker's disagree, a literal on the other side can match the
+LOWERED width while the checker sized it from the (different) TYPE width, and
+reinterpreting those bits as two's complement silently changes the answer.
+Two such divergences exist today, and both are why the helper is restricted
+to declared-signal shapes rather than walking the expression tree:
+
+- **`UnOp::Neg`** — see the separate residual below. `-a < 200` for
+  `a: signed[8]` was empirically wrong for 128 of 256 inputs under the first
+  cut. Pinned by `a_negated_operand_keeps_the_comparison_unsigned`.
+- **`BinOp::Mul` with a literal operand** — `lower_binop` sizes it
+  `a.width() + b.width()` from the literal's NATURAL width, while the checker
+  first adapts the literal to the sized side's type: `a * 2` for
+  `a: signed[8]` is 10 bits lowered but `Signed(16)` typed, so a 10-bit
+  literal on the other side (`a * 2 < 600`) would satisfy the guard while
+  meaning something else.
+
+**Narrowed residual — a natural-width literal operand keeps the comparison
+unsigned.** For two non-literal operands the width guard costs nothing:
+`checker::widths::ops::matched_ty` rejects a genuinely mixed comparison
+outright (E0403 "cannot mix X and Y … convert visibly with
+`signed(x)`/`unsigned(x)`"), so they always share a type and hence a width.
+A width MISMATCH means the narrow side is a bare literal, which the checker
+types as untyped `Ty::CtInt` inheriting the sized side's type — but
+`lower_expr`'s `Int` arm sizes it at its own NATURAL width (`5` → 3 bits),
+and reinterpreting those 3 bits as two's complement would read `5` as `-3`,
+flipping `1 < 5` from true to false. So `x < 5` for a signed `x` stays an
+unsigned cell: still not what `emit_verilog` renders, but unchanged rather
+than newly and differently wrong. The NEGATED-literal form (`x < -5`) is
+benign by a different mechanism — `-5` lowers to a `Neg` cell at the
+literal's own narrow width, so it too fails the width guard — but it is
+benign by accident, not by design, and the `Neg` residual below is what
+would need closing to reason about it properly. Sizing a literal from its
+comparison context is the separate follow-up that would close all of this;
+`a_natural_width_literal_operand_keeps_the_comparison_unsigned`
+(`crates/mimz-core/src/ir/tests/lower_binops.rs`) pins the boundary so that
+fix flips the assertion deliberately rather than by accident.
 
 **Fuzz corpus:** `tests/differential_fuzz.rs`'s `gen_ir_clocked_module`
 (Task 18's narrowed generator) is UNCHANGED by this round — it still never
@@ -259,6 +357,25 @@ fraction of those are genuinely signed or hit `min`/`max`/`abs` — folding
 the leg back in today would still skip most seeds on the newly-narrower
 but still-real residual gap above.
 
+### Sub-gap (2026-09-05, still open): `ir::lower` does not grow `UnOp::Neg`, but the checker does
+
+Pre-existing and independent of the signed-comparison work above, surfaced
+while reviewing it. `checker/widths/ops/mod.rs` types negation losslessly —
+`UnOp::Neg => match t { Ty::Signed(n) => Ty::Signed(n + 1), .. }`, gaining
+the carry bit, so `-a` for `a: signed[8]` is `Signed(9)`. `ir::lower`'s
+`UnOp::Neg` arm keeps the operand's width instead:
+`UnOp::Neg => (CellKind::Neg, a.width())`, i.e. 8 bits.
+
+Consequences: `-a` overflows in the IR for `a = -128` (`Signed(8)`'s most
+negative value, whose negation genuinely needs 9 bits), and any lowered width
+computed downstream of a negation is one bit short of the checker's. This is
+the divergence that made the signed-comparison guard unsound in review; the
+guard now sidesteps it by refusing to call a negated expression signed
+(`a_negated_operand_keeps_the_comparison_unsigned` pins that), but the
+underlying width bug is untouched and belongs in its own task — it changes
+pin widths, so it interacts with `validate`'s matched-`a`/`b` checks and with
+`emit_verilog` parity, unlike the comparison flag, which is metadata-only.
+
 ### Sub-gap (2026-09-04, RESOLVED 2026-09-04): `ir::validate`'s driven-set seeding was direction-blind
 
 Fixed as of 2026-09-04 (the 2026-09-04 GAP-1 fix round, Task 6): the
@@ -267,18 +384,66 @@ seeding `driven` only from `in`-direction ports. A new regression fixture,
 `tests/fixtures/ir_errors/undriven_output_port.ir`, pins the case this
 used to miss (a declared `out` port with zero driving cells).
 
-### Sub-gap (2026-09-04, still open): `ir::lower`'s single memory read port is reachable today, not hypothetical
+### Sub-gap (2026-09-04, RESOLVED 2026-09-07 — GAP-1 residual Task 6): `ir::lower`'s single memory read port
 
-`lower_expr`'s memory arm (`crates/mimz-core/src/ir/lower.rs`) panics when
-one memory is read at two different addresses, and it compares LOWERED
-nets, so two DISTINCT read sites whose indices are textually identical
-(two separate `m[0]`s) also trip it. `tests/differential_fuzz.rs`'s
-`gen_clocked_module` already emits `mem` via `gen_special_leaves`'s
-clocked branch, so this is hit by an existing generator, not only by a
-future one. Documented in `lower.rs`'s own comment on that arm. Predates
-the 2026-09-04 GAP-1 fix round and is untouched by it — recorded here
-because that round's own doc rewrite dropped the paragraph that used to
-record it, not because anything about the limitation itself has changed.
+`lower_expr`'s memory arm (`crates/mimz-core/src/ir/lower.rs`) used to
+panic when one memory was read at two different addresses (comparing
+LOWERED nets, so two DISTINCT read sites whose indices were textually
+identical also tripped it).
+
+**Fix — a new field, not numbered pins.** `CellKind::Mem` gains
+`read_ports: Vec<(Bits, Bits)>`, one `(raddr, rdata)` entry per DISTINCT
+lowered read address, populated by `LowerCtx::mem_read`
+(`HashMap<String, Vec<(Bits, Bits)>>` — was one bare pair per memory). A
+read at an existing port's address reuses it for free; a genuinely
+different address grows a new entry instead of panicking. Deliberately
+NOT numbered pins on `Cell::pins` (that map's keys are `&'static str`, so
+numbered names would need either a fragile pre-interned cap or changing
+the key type everywhere) — the single write port (`waddr`/`wdata`/`wen`,
+plus `clock` when present) stays an ordinary pin set, unaffected.
+
+**Every consumer updated.** `exec.rs`'s `Mem` arm loops `read_ports`,
+publishing each port's `rdata` independently off its own `raddr` against
+the same underlying storage. `validate.rs`'s driven-net check registers
+each port's `rdata` as driven by its cell (no longer visible via the
+generic `"out"|"q"|"rdata"` pin scan, since read ports aren't in `pins`).
+Text format (`print_line`/`parse_line`/`print_sexpr`) round-trips ports as
+numbered `raddrN`/`rdataN` entries — parsed generically into `pins` like
+any other pin, then pulled back out into `read_ports` by `parse_cell_kind`
+(now takes `pins` by `&mut` so it can `.remove()` them).
+
+**The comb-cycle design question, resolved.** `find_combinational_cycle`
+used to skip `Mem` entirely (treated as fully sequential, like `Dff`).
+But `exec.rs`'s own `Mem` arm reads `rdata` as a pure function of `raddr`
+and the pre-tick array — genuinely combinational, unlike `Dff`'s `d`->`q`,
+which a clock edge breaks. So each read port's `raddr`->`rdata` edge is
+now modeled as a real combinational edge; the write side
+(`waddr`/`wdata`/`wen`/`clock`) stays excluded, mirroring `Dff`'s
+treatment — those pins only affect state at `tick()`.
+
+**`Module::signals`'s per-memory entry** (keyed by memory NAME, no way to
+pick a port) is only populated when a memory has exactly one read port —
+sound for every existing use, and the only case that was ever
+unambiguous; a multi-port memory's individual reads simply aren't
+addressable by name today (nothing in this codebase needs that).
+
+New tests (`crates/mimz-core/src/ir/tests/lower_mem.rs`):
+`a_second_read_at_a_different_address_grows_a_second_port` (replaces the
+old `#[should_panic]` test — now asserts two independent ports, addresses,
+and `rdata` nets) and `a_second_read_at_the_same_address_reuses_the_port`
+(the pre-existing "same address" behavior, pinned as a regression).
+`tests/golden/ir/regfile.ir` regenerated for the new `raddrN`/`rdataN`
+text syntax (`MIMZ_UPDATE_GOLDENS=1 cargo test --test ir_golden`).
+
+Not extended: `tests/differential_fuzz.rs`'s `gen_ir_clocked_module` (the
+IR-vs-kernel differential leg) deliberately excludes `mem` by design (a
+documented generator scope boundary, not a lowering gap — see its own
+"given up" list) — wiring multi-port memory into that generator is a
+separate, out-of-scope change, not required to close this residual.
+
+Verification: `cargo test -p mimz-core ir::` (84 passed) clean; `cargo
+test --workspace` clean (1418 passed); `cargo clippy --workspace
+--all-targets -- -D warnings` clean.
 
 ---
 
