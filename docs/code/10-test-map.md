@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1428 tests** as of 2026-09-08 (`cargo test --workspace`; the count is
+**1435 tests** as of 2026-09-08 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +2 from `crates/mimz-core/src/ir/tests/lower_consts.rs` (GAP-1 residual
 Task 2, 2026-09-08) —
@@ -122,11 +122,44 @@ Task 6) in `crates/mimz-core/src/ir/tests/lower_mem.rs` — replaced
 `a_second_read_at_the_same_address_reuses_the_port`, pinning that
 `ir::lower` now grows an independent `(raddr, rdata)` port per distinct
 lowered read address instead of panicking on a second one — see GAP-1's
-single-memory-read-port sub-gap (now RESOLVED) in `docs/audit/gaps.md`):
+single-memory-read-port sub-gap (now RESOLVED) in `docs/audit/gaps.md`); a
+further +2 from `crates/mimz-core/src/ir/tests/lower_unary_concat_slice.rs`
+(GAP-1 residual Task 4, 2026-09-08) —
+`lowers_replicate_reuses_same_nets` and
+`lowers_replicate_preserves_msb_first_ordering`, pinning
+`ExprKind::Replicate`'s new lowering (pure bit-vector reassembly, same
+net-reuse/MSB-first-source-order strategy as `Concat`); see GAP-1's
+`ExprKind::Replicate` sub-gap (now RESOLVED) in `docs/audit/gaps.md`; a
+further +2 from the same file (GAP-1 residual Task 5, 2026-09-08) —
+`lowers_constant_index_to_a_single_bit_repoint` and
+`lowers_runtime_index_via_shr_and_a_zero_slice`, pinning `ExprKind::Index`'s
+new plain-vector bit-select lowering (constant index: pure re-pointing;
+runtime index: composes the existing `Shr` lowering with a fixed net-0
+slice); see GAP-1's plain-vector-index sub-gap (now RESOLVED) in
+`docs/audit/gaps.md`; a final +2 from the new
+`crates/mimz-core/src/ir/tests/lower_array_fn_params.rs` (GAP-1 residual
+Task 6, 2026-09-08) —
+`lowers_constant_index_into_array_param_to_the_flattened_elements_bits` and
+`lowers_runtime_index_into_array_param_via_eq_mux_chain`, pinning
+array-typed `fn` params' N-scalar flattening (`call_locals`/`call_arrays`
+keyed `"{param}_{i}"`, ported unchanged from `emit_verilog`/the AST value
+evaluator) AND the matching `ExprKind::Index` array-element branch (constant
+index: direct re-pointing to the flattened element; runtime index: an
+`Eq`/`Mux` chain over the flattened elements, clamping out-of-range to the
+last one) that makes those locals reachable from the fn body — see GAP-1's
+array-typed-fn-param sub-gap (now RESOLVED) in `docs/audit/gaps.md`); a
+final +1 from `crates/mimz-core/src/ir/tests/lower_binops.rs` (Task 8,
+2026-09-08) —
+`lower_coalesce_is_unreachable_for_both_source_forms`, running the real
+lex -> parse -> check -> elaborate_project -> lower pipeline over both of
+`??`'s source forms and confirming empirically that no `BinOp::Coalesce`
+node survives elaboration into a `Design` — pins `lower_binop`'s new
+`BinOp::Coalesce => unreachable!(...)` arm; see GAP-1's `BinOp::Coalesce`
+sub-gap (now RESOLVED) in `docs/audit/gaps.md`):
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      845 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      852 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
