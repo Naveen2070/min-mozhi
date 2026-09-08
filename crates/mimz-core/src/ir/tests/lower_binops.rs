@@ -1,7 +1,7 @@
 use super::adder_design;
 use crate::ast::{Expr, ExprKind};
 use crate::elaborate::{Design, Signal};
-use crate::ir::{CellKind, lower};
+use crate::ir::{CellKind, lower, validate};
 use crate::span::Span;
 use std::collections::BTreeMap;
 
@@ -490,21 +490,26 @@ fn signed_ordering_comparisons_execute_with_the_right_sign() {
     }
 }
 
-/// The CONTAINED half of Task 5: `signed_x < 5` stays an UNSIGNED cell.
+/// UPDATED by GAP-1 residual Task 3 (2026-09-08): `signed_x < 5` is now a
+/// SIGNED cell, deliberately flipping this test's old assertions per its own
+/// prior comment ("this test pins the boundary so that fix can flip this
+/// assertion deliberately rather than by accident").
 ///
 /// The checker types a bare literal as untyped `Ty::CtInt`, inheriting the
-/// sized operand's type — so `5` there is conceptually `signed[8] 5`. But
-/// `lower_expr`'s `Int` arm sizes a literal at its own NATURAL width, so the
-/// `b` pin is 3 bits wide, and reinterpreting `0b101` as two's complement
-/// would read it as `-3` — turning today's merely-wrong answer into a
-/// differently-wrong one (`1 < 5` would flip from true to false). So
-/// `lower_binop` marks a comparison signed only when both operands agree on
-/// width, which is exactly the checker's guarantee for two NON-literal
-/// operands. Sizing a literal from its comparison context is a separate
-/// residual (see `docs/audit/gaps.md` GAP-1); this test pins the boundary so
-/// that fix can flip this assertion deliberately rather than by accident.
+/// sized operand's type — so `5` there is conceptually `signed[8] 5`. Before
+/// Task 3, `lower_expr`'s `Int` arm sized a literal at its own NATURAL width
+/// regardless of context, so the `b` pin came out 3 bits against `a`'s 8, the
+/// mismatched-width guard in `lower_binop` refused to mark the comparison
+/// signed, and `x < 5` stayed an (incorrect, but at least not differently
+/// wrong) unsigned cell. Task 3 added `lower_expr_sized`, which re-lowers a
+/// literal-or-const-shaped operand at its sibling's width instead — so `5`
+/// now lowers to an 8-bit constant, the widths match, and
+/// `expr_is_definitely_signed` (which already recognized a plain signed
+/// `Ident`) can trust the guard and mark the comparison signed, exactly
+/// matching what the checker and `emit_verilog` both already meant by
+/// `signed_x < 5`.
 #[test]
-fn a_natural_width_literal_operand_keeps_the_comparison_unsigned() {
+fn a_literal_operand_is_sized_to_its_signed_siblings_width_and_the_comparison_is_signed() {
     use crate::ast::BinOp;
     use crate::elaborate::Width;
     use crate::ir::exec::Executor;
@@ -560,19 +565,20 @@ fn a_natural_width_literal_operand_keeps_the_comparison_unsigned() {
         .iter()
         .find(|c| matches!(c.kind, CellKind::Lt { .. }))
         .expect("the comparison lowered to a cell");
-    assert_ne!(
+    assert_eq!(
         cmp.pins["a"].width(),
         cmp.pins["b"].width(),
-        "the premise: the literal is sized at its own natural width"
+        "the literal must be re-sized to its signed sibling's width, not kept at its own natural width"
     );
     assert_eq!(
         cmp.kind,
-        CellKind::Lt { signed: false },
-        "mismatched operand widths must not be reinterpreted as two's complement"
+        CellKind::Lt { signed: true },
+        "matched operand widths, with `a` declared signed, must produce a signed comparison"
     );
 
-    // `1 < 5` — the case that a naive signed re-tag would break (it would
-    // read the 3-bit `5` as `-3`), so it must still answer true.
+    // `1 < 5` — `5` now lowers to an 8-bit constant (not the 3-bit natural
+    // width that would read as `-3` under a signed re-tag), so the signed
+    // comparison still correctly answers true.
     let mut executor = Executor::new(&module);
     executor.set_input("a", crate::value::Val::new(1, 8, false));
     executor.tick();
@@ -814,4 +820,601 @@ fn a_signed_cast_over_an_identifier_makes_the_comparison_signed() {
     executor.set_input("b", crate::value::Val::new(1, 8, false));
     executor.tick();
     assert_eq!(executor.get_output("y").bits, crate::bits::Bits::Small(1));
+}
+
+#[test]
+fn gt_lowers_to_a_gt_cell() {
+    use crate::ast::BinOp;
+    use crate::elaborate::Width;
+    use crate::ir::exec::Executor;
+
+    /// `wire y = a OP b` over two 8-bit inputs of the given signedness.
+    fn cmp_design(op: BinOp, signed: bool) -> Design {
+        let width = Width { bits: 8, signed };
+        let mut comb = BTreeMap::new();
+        comb.insert(
+            "y".to_string(),
+            Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    lhs: Box::new(super::ident("a")),
+                    rhs: Box::new(super::ident("b")),
+                },
+                span: Span::default(),
+            },
+        );
+        Design {
+            module: "cmp".to_string(),
+            consts: BTreeMap::new(),
+            inputs: vec![
+                Signal {
+                    name: "a".into(),
+                    width,
+                },
+                Signal {
+                    name: "b".into(),
+                    width,
+                },
+            ],
+            outputs: vec![Signal {
+                name: "y".into(),
+                width: super::w(1),
+            }],
+            wires: vec![],
+            regs: vec![],
+            mems: vec![],
+            comb,
+            procs: vec![],
+            clocks: vec![],
+            resets: vec![],
+            funcs: Default::default(),
+            unknown_signals: Default::default(),
+            extern_instances: vec![],
+            asserts: vec![],
+            covers: vec![],
+        }
+    }
+
+    // `a = -1` (0xFF), `b = 1`. Signed: -1 > 1 is FALSE. Unsigned: 255 > 1 is TRUE.
+    for (signed, expected) in [(true, 0u128), (false, 1u128)] {
+        let design = cmp_design(BinOp::Gt, signed);
+        let module = lower(&design);
+
+        let kind = &module
+            .cells
+            .iter()
+            .find(|c| matches!(c.kind, CellKind::Gt { .. }))
+            .expect("the comparison lowered to a Gt cell")
+            .kind;
+        let expected_kind = CellKind::Gt { signed };
+        assert_eq!(
+            kind, &expected_kind,
+            "the cell must record the operands' declared signedness"
+        );
+
+        let mut executor = Executor::new(&module);
+        executor.set_input("a", crate::value::Val::new(0xFF, 8, false));
+        executor.set_input("b", crate::value::Val::new(1, 8, false));
+        executor.tick();
+        assert_eq!(
+            executor.get_output("y").bits,
+            crate::bits::Bits::Small(expected),
+            "Gt with signed={signed} on (-1, 1)"
+        );
+    }
+}
+
+#[test]
+fn ge_lowers_to_a_ge_cell() {
+    use crate::ast::BinOp;
+    use crate::elaborate::Width;
+    use crate::ir::exec::Executor;
+
+    /// `wire y = a OP b` over two 8-bit inputs of the given signedness.
+    fn cmp_design(op: BinOp, signed: bool) -> Design {
+        let width = Width { bits: 8, signed };
+        let mut comb = BTreeMap::new();
+        comb.insert(
+            "y".to_string(),
+            Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    lhs: Box::new(super::ident("a")),
+                    rhs: Box::new(super::ident("b")),
+                },
+                span: Span::default(),
+            },
+        );
+        Design {
+            module: "cmp".to_string(),
+            consts: BTreeMap::new(),
+            inputs: vec![
+                Signal {
+                    name: "a".into(),
+                    width,
+                },
+                Signal {
+                    name: "b".into(),
+                    width,
+                },
+            ],
+            outputs: vec![Signal {
+                name: "y".into(),
+                width: super::w(1),
+            }],
+            wires: vec![],
+            regs: vec![],
+            mems: vec![],
+            comb,
+            procs: vec![],
+            clocks: vec![],
+            resets: vec![],
+            funcs: Default::default(),
+            unknown_signals: Default::default(),
+            extern_instances: vec![],
+            asserts: vec![],
+            covers: vec![],
+        }
+    }
+
+    // `a = -1` (0xFF), `b = 1`. Signed: -1 >= 1 is FALSE. Unsigned: 255 >= 1 is TRUE.
+    for (signed, expected) in [(true, 0u128), (false, 1u128)] {
+        let design = cmp_design(BinOp::Ge, signed);
+        let module = lower(&design);
+
+        let kind = &module
+            .cells
+            .iter()
+            .find(|c| matches!(c.kind, CellKind::Ge { .. }))
+            .expect("the comparison lowered to a Ge cell")
+            .kind;
+        let expected_kind = CellKind::Ge { signed };
+        assert_eq!(
+            kind, &expected_kind,
+            "the cell must record the operands' declared signedness"
+        );
+
+        let mut executor = Executor::new(&module);
+        executor.set_input("a", crate::value::Val::new(0xFF, 8, false));
+        executor.set_input("b", crate::value::Val::new(1, 8, false));
+        executor.tick();
+        assert_eq!(
+            executor.get_output("y").bits,
+            crate::bits::Bits::Small(expected),
+            "Ge with signed={signed} on (-1, 1)"
+        );
+    }
+}
+
+#[test]
+fn logic_and_lowers_to_a_logic_and_cell() {
+    use crate::ast::BinOp;
+
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::LogicAnd,
+                lhs: Box::new(super::ident("a")),
+                rhs: Box::new(super::ident("b")),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "logic_and_mod".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![
+            Signal {
+                name: "a".into(),
+                width: super::w(8),
+            },
+            Signal {
+                name: "b".into(),
+                width: super::w(8),
+            },
+        ],
+        outputs: vec![Signal {
+            name: "y".into(),
+            width: super::w(1),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let logic_and_cells: Vec<_> = module
+        .cells
+        .iter()
+        .filter(|c| c.kind == CellKind::LogicAnd)
+        .collect();
+    assert_eq!(logic_and_cells.len(), 1);
+    assert_eq!(logic_and_cells[0].pins["out"].width(), 1);
+}
+
+#[test]
+fn logic_or_lowers_to_a_logic_or_cell() {
+    use crate::ast::BinOp;
+
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: BinOp::LogicOr,
+                lhs: Box::new(super::ident("a")),
+                rhs: Box::new(super::ident("b")),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "logic_or_mod".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![
+            Signal {
+                name: "a".into(),
+                width: super::w(8),
+            },
+            Signal {
+                name: "b".into(),
+                width: super::w(8),
+            },
+        ],
+        outputs: vec![Signal {
+            name: "y".into(),
+            width: super::w(1),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let logic_or_cells: Vec<_> = module
+        .cells
+        .iter()
+        .filter(|c| c.kind == CellKind::LogicOr)
+        .collect();
+    assert_eq!(logic_or_cells.len(), 1);
+    assert_eq!(logic_or_cells[0].pins["out"].width(), 1);
+}
+
+/// GAP-1 residual Task 3 regression: `debug_wrapper.mimz`'s exact shape — a
+/// bare literal driving an output DIRECTLY (no binop in between), where the
+/// output's declared width is wider than the literal's own natural width.
+/// `debug_wrapper.mimz` reaches this through a `const if` branch (`dbg_out =
+/// 0` inside one arm, folded away by elaboration before a `Design` exists —
+/// see `docs/audit/gaps.md`'s new sub-gap entry), but the shape `resolve()`
+/// actually has to fix is simpler than that: a `design.comb` entry that IS,
+/// itself, a bare `ExprKind::Int`. Before this task, `resolve()` called
+/// plain `lower_expr`, sizing `0` at its own natural width (1 bit) instead
+/// of `dbg_out`'s declared 8 bits — `ir::validate::validate` reported
+/// `PortWidthMismatch { port: "dbg_out", declared: 8, found: 1 }`.
+#[test]
+fn debug_wrapper_shaped_bare_literal_in_a_wire_driver_sizes_to_the_declared_output_width() {
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "dbg_out".to_string(),
+        Expr {
+            kind: ExprKind::Int {
+                value: crate::bits::Bits::Small(0),
+                raw: "0".to_string(),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "debug_wrapper_shaped".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![],
+        outputs: vec![Signal {
+            name: "dbg_out".into(),
+            width: super::w(8),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let (_, out_bits, _) = module
+        .ports
+        .iter()
+        .find(|(name, _, _)| name == "dbg_out")
+        .expect("dbg_out port exists");
+    assert_eq!(
+        out_bits.width(),
+        8,
+        "the literal driver must be sized to the declared 8-bit port width"
+    );
+    assert_eq!(
+        validate::validate(&module),
+        Vec::new(),
+        "must no longer report PortWidthMismatch {{ port: \"dbg_out\", declared: 8, found: 1 }}"
+    );
+}
+
+/// GAP-1 residual Task 3 regression: `traffic_light.mimz`'s exact shape —
+/// `red = state == State.Red`, an enum-typed 2-bit register compared
+/// (`Eq`) against a bare enum-variant tag literal. `State`'s tag `0`
+/// (`State.Red`, elaborated to a plain `ExprKind::Int` before a `Design`
+/// exists — `Pattern::Variant` is rewritten before lowering, but a bare
+/// enum-variant REFERENCE outside a pattern position is too) naturally
+/// widths to 1 bit, narrower than `state`'s declared 2 bits. Before this
+/// task, `ir::validate::validate` reported `WidthMismatch { pin: "b",
+/// expected: 2, found: 1 }` on the `$eq` cell.
+#[test]
+fn traffic_light_shaped_enum_match_arms_size_their_tags_to_the_scrutinees_width() {
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "red".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: crate::ast::BinOp::Eq,
+                lhs: Box::new(super::ident("state")),
+                rhs: Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: crate::bits::Bits::Small(0),
+                        raw: "0".to_string(),
+                    },
+                    span: Span::default(),
+                }),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "traffic_light_shaped".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![Signal {
+            name: "state".into(),
+            width: super::w(2),
+        }],
+        outputs: vec![Signal {
+            name: "red".into(),
+            width: super::w(1),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let eq_cell = module
+        .cells
+        .iter()
+        .find(|c| c.kind == CellKind::Eq)
+        .expect("the comparison lowered to an Eq cell");
+    assert_eq!(
+        eq_cell.pins["a"].width(),
+        eq_cell.pins["b"].width(),
+        "State.Red's tag must be sized to state's 2-bit width, not its own 1-bit natural width"
+    );
+    assert_eq!(
+        validate::validate(&module),
+        Vec::new(),
+        "must no longer report WidthMismatch {{ pin: \"b\", expected: 2, found: 1 }}"
+    );
+}
+
+/// GAP-1 residual Task 3 regression: `sync_loop_search.mimz`'s exact shape —
+/// `ast::sync_loop_lower`'s desugared loop-done check, `cnt == hi - 1`,
+/// where `hi - 1` is a genuine `BinOp::Sub` AST node over two literals (kept
+/// unfolded by design, so the desugaring itself stays free of a `checker`
+/// dependency), not a bare literal. This is the OPPOSITE direction from the
+/// other two fixtures above: `lower_binop`'s ordinary lossless-Sub growth
+/// formula (`in_width + 1`) sizes `8 - 1` to 5 bits regardless of both
+/// operands being compile-time constants, WIDER than the 3-bit counter it's
+/// compared against — so "re-lower whichever side is narrower" (the first
+/// cut of this fix) picks the WRONG side here; only "re-lower whichever
+/// side is const-foldable" (`is_const_foldable`) gets this right. Before
+/// this task, `ir::validate::validate` reported `WidthMismatch { pin: "b",
+/// expected: 3, found: 5 }` on the `$eq` cell.
+#[test]
+fn sync_loop_search_shaped_compile_time_subtraction_sizes_down_to_the_narrower_counter_width() {
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "done".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: crate::ast::BinOp::Eq,
+                lhs: Box::new(super::ident("cnt")),
+                rhs: Box::new(Expr {
+                    kind: ExprKind::Binary {
+                        op: crate::ast::BinOp::Sub,
+                        lhs: Box::new(Expr {
+                            kind: ExprKind::Int {
+                                value: crate::bits::Bits::Small(8),
+                                raw: "8".to_string(),
+                            },
+                            span: Span::default(),
+                        }),
+                        rhs: Box::new(Expr {
+                            kind: ExprKind::Int {
+                                value: crate::bits::Bits::Small(1),
+                                raw: "1".to_string(),
+                            },
+                            span: Span::default(),
+                        }),
+                    },
+                    span: Span::default(),
+                }),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "sync_loop_search_shaped".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![Signal {
+            name: "cnt".into(),
+            width: super::w(3),
+        }],
+        outputs: vec![Signal {
+            name: "done".into(),
+            width: super::w(1),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let eq_cell = module
+        .cells
+        .iter()
+        .find(|c| c.kind == CellKind::Eq)
+        .expect("the comparison lowered to an Eq cell");
+    assert_eq!(
+        eq_cell.pins["a"].width(),
+        eq_cell.pins["b"].width(),
+        "`8 - 1` must be sized down to cnt's 3-bit width, not its own 5-bit lossless-Sub-growth width"
+    );
+    assert_eq!(
+        validate::validate(&module),
+        Vec::new(),
+        "must no longer report WidthMismatch {{ pin: \"b\", expected: 3, found: 5 }}"
+    );
+}
+
+/// Review fix (code review, 2026-09-08): `lower_expr_sized`'s fallback arm
+/// used to fold a compile-time-constant EXPRESSION via
+/// `crate::value::const_eval`, whose `i128`-saturating narrowing does not
+/// error past `i128`'s range — it silently returns `i128::MAX`/`MIN`
+/// (`ConstVal::to_i128_saturating`'s own doc comment). `bits[200] w = 1 <<
+/// 190;` is checker-legal (`Bits::Wide` exists exactly for a value like
+/// this, BUG-13 layer 2), so the old fallback silently lowered a WRONG
+/// constant with no error anywhere. Fixed by routing through
+/// `crate::value::const_eval_wide` instead, which returns the checker's own
+/// arbitrary-width `ConstVal` — exact regardless of magnitude.
+#[test]
+fn a_wide_compile_time_constant_expression_lowers_exactly_not_saturated_to_i128_max() {
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "big_const".to_string(),
+        Expr {
+            kind: ExprKind::Binary {
+                op: crate::ast::BinOp::Shl,
+                lhs: Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: crate::bits::Bits::Small(1),
+                        raw: "1".to_string(),
+                    },
+                    span: Span::default(),
+                }),
+                rhs: Box::new(Expr {
+                    kind: ExprKind::Int {
+                        value: crate::bits::Bits::Small(190),
+                        raw: "190".to_string(),
+                    },
+                    span: Span::default(),
+                }),
+            },
+            span: Span::default(),
+        },
+    );
+    let design = Design {
+        module: "wide_const_shaped".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![],
+        outputs: vec![Signal {
+            name: "big_const".into(),
+            width: super::w(200),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    };
+    let module = lower(&design);
+    let const_cell = module
+        .cells
+        .iter()
+        .find(|c| matches!(c.kind, CellKind::Const { .. }))
+        .expect("`1 << 190` folds to one Const cell (resolve()'s declared-width path)");
+    let CellKind::Const { value } = &const_cell.kind else {
+        unreachable!("just matched CellKind::Const above")
+    };
+    assert_eq!(
+        value.width, 200,
+        "must be sized to the declared 200-bit port width"
+    );
+    // `1 << 190` has exactly one bit set, at position 190 — its minimal
+    // (unsigned) representation is 191 bits, the direct, dependency-free
+    // check that the VALUE (not just the width) survived intact.
+    assert_eq!(
+        crate::bits::natural_width(&value.bits),
+        191,
+        "the folded value must be exactly `1 << 190` (highest set bit at 190), not a corrupted \
+         or saturated placeholder"
+    );
+    // The exact regression this pins: the old `i128`-saturating fallback
+    // would have produced this specific wrong value.
+    assert_ne!(
+        value.bits,
+        crate::bits::Bits::Small(i128::MAX as u128),
+        "must not silently saturate to i128::MAX"
+    );
+    // Independent oracle: the checker's own const evaluator (which the
+    // production code now also calls), resized the same sign-aware way
+    // `ir::exec`'s `Const`-cell evaluation resizes a folded constant.
+    let expr = &design.comb["big_const"];
+    let folded = crate::value::const_eval_wide(expr, &design.consts).expect("1 << 190 const-folds");
+    let expected = crate::value::from_const_at_width(&folded, 200, folded.signed).bits;
+    assert_eq!(
+        value.bits, expected,
+        "must match the checker's own arbitrary-width fold, resized the same way execution would"
+    );
+    assert_eq!(validate::validate(&module), Vec::new());
 }

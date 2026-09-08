@@ -3,6 +3,7 @@ mod lower_basic;
 mod lower_binops;
 mod lower_blackbox;
 mod lower_builtins;
+mod lower_consts;
 mod lower_fn_inline;
 mod lower_mem;
 mod lower_mux;
