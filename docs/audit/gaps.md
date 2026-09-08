@@ -609,7 +609,7 @@ module body, asserting the `Eq`'s rhs traces to a `Const` cell holding
 Verification: `cargo test -p mimz-core ir::` clean; `cargo clippy
 --workspace --all-targets -- -D warnings` clean.
 
-### Sub-gap (2026-09-08, OPEN — small, documentation-class fix): `lower_binop`'s catch-all can still be reached by `BinOp::Coalesce`, which is actually always-unreachable dead code
+### Sub-gap (2026-09-08, RESOLVED 2026-09-08 — Task 8): `lower_binop`'s catch-all can still be reached by `BinOp::Coalesce`, which is actually always-unreachable dead code
 
 Found while reviewing the 2026-09-08 round's Task 1 (`Gt`/`Ge`/`LogicAnd`/
 `LogicOr` production wiring): `BinOp` (`crates/mimz-core/src/ast/expr.rs:225`)
@@ -668,6 +668,275 @@ unlike Task 7 (general signed IR values, a genuine schema-level decision),
 this one is NOT flagged as deferred: it's a same-shape, low-risk fix to the
 existing `Clog2`/`SyncDoubleFlop`/`SyncPulse` precedent and belongs in this
 plan's normal completion gate.
+
+**Resolved (Task 8) — scoped to MODULE-level `??` use.** Re-verified this
+entry's own citations directly rather than trusting them: `rewrite.rs`'s
+`Binary { op: BinOp::Coalesce, .. }` arm is still exactly lines 58-91
+(unchanged); `bundle.rs`'s `bundle_field_expr` Coalesce-interception block is
+lines 47-92 (fn signature at 47, its Coalesce-handling `if let` at 63-92 —
+the prior "39-91" citation started from the doc comment and undershot the
+closing brace by one line; both now cited precisely). Then went further than
+re-reading citations: added `lower_coalesce_is_unreachable_for_both_source_forms`
+(`crates/mimz-core/src/ir/tests/lower_binops.rs`), which runs the REAL lex ->
+parse -> check -> elaborate_project -> lower pipeline over both of `??`'s
+forms AT MODULE LEVEL (the two `checker::tests::bundles` fixtures this
+entry's own probe never reached — a wire declaration + assignment for each
+form) and asserts both that `lower()` does not panic and that the elaborated
+`Design` contains no `Coalesce` node at all (`{design:?}` scan) — positive,
+empirical confirmation, not just re-reading the two files' source.
+`lower_binop` now has an explicit `BinOp::Coalesce => unreachable!(...)` arm
+(`crates/mimz-core/src/ir/lower.rs`, in the `BinOp` match) mirroring the
+`Clog2`/`SyncDoubleFlop`/`SyncPulse` precedent's justification-comment style
+— its comment and message are careful to scope the "never reaches
+`ir::lower`" guarantee to module-level use (wire/reg decl, assignment,
+instance connection, fn-call argument), NOT to a bundle-typed `fn` parameter
+referenced bare inside its own body — see the new sub-gap immediately below,
+found by this same fix round's own review and NOT covered by the guarantee
+above.
+
+This entry's own parenthetical about `lower_expr`'s separate "field access"
+catch-all wording was also re-checked (not chased further, per that
+parenthetical's own hedge): `elaborate::rewrite::Rw::field` has a genuine
+fallback arm (`rewrite.rs`, "Some other field access — keep the shape") that
+re-emits a bare `ExprKind::Field` node whenever `base` isn't a plain `Ident`
+naming an enum/instance/bundle-signal — so a "field access can't reach
+`ir::lower`" claim is NOT confirmable by a quick trace the way `Coalesce`
+was; it stays an open question for whoever next touches that arm, not
+resolved here.
+
+Verification: `cargo test -p mimz-core ir::` clean; `cargo clippy
+--workspace --all-targets -- -D warnings` clean.
+
+### Sub-gap (2026-09-08, OPEN): `??` against a bare bundle-typed `fn` parameter bypasses elaborate's Coalesce elimination entirely, and currently crashes via a separate, undocumented `Ident`-resolution panic
+
+Found by Task 8's own fix-round review, re-checking the "Resolved" claim
+above against a shape neither this entry's original investigation nor
+Task 8's test covered: a bundle-typed `fn` PARAMETER referenced BARE (not
+via `.field`) inside that fn's own body, combined with `??`:
+
+```
+bundle Handshake(W: int = 8) { valid: bit  data: bits[W] }
+fn get_or(h: Handshake(W: 8)) -> bits[8] { h ?? 0 }
+module M { in c: bit  in d: bits[8]  out o: bits[8]
+  o = get_or({ valid: c, data: d }) }
+```
+
+`checker::check` accepts this (empirically confirmed). The elaborated
+`Design`'s `funcs["get_or"].tail` is a genuine, un-eliminated
+`Binary { op: Coalesce, lhs: Ident("h"), rhs: Int(0) }` node — `elaborate`'s
+usual Coalesce-elimination path never runs on it. Root cause:
+`flatten_bundle_refs_expr` (`crates/mimz-core/src/elaborate/bundle.rs:234-260`)
+— the fn-body counterpart of `Rw::field`'s bundle handling, used ONLY for
+`design.funcs` bodies (never the general `Rw::expr`) — guards its rewrite on
+`ExprKind::Field { base: Ident, .. }` (line 235-240): it only rewrites
+`param.field` reads. Its `Binary` arm (line 256-260) just recurses into
+`lhs`/`rhs` with no Coalesce-specific desugaring, so a bare `Ident("h")`
+sitting inside `h ?? 0` is structurally untouched and passed through as-is.
+
+This does NOT currently reach Task 8's new `unreachable!()` arm — verified
+empirically (`cargo test`, ad hoc probe): lowering this exact program panics
+one step EARLIER, at `ir::lower`'s `resolve()` ("no driver recorded for
+signal `h` (checker should have caught this)"), because the bare `Ident`
+`h` was never flattened to any of `get_or`'s real (per-field) parameter
+names and so isn't found among `locals` or `design`'s signals either. That
+earlier panic is itself a separate, pre-existing, undocumented bug in
+bare-bundle-param `Ident` resolution — NOT something Task 8 introduced or is
+scoped to fix. The two bugs currently mask each other (the `Ident` panic
+fires first, so the `Coalesce` gap is invisible in practice) but are
+independent: fixing the `Ident`-resolution bug without also teaching
+`flatten_bundle_refs_expr` about `Coalesce` would very plausibly turn this
+into a live hit on Task 8's `unreachable!()` arm for a checker-legal
+program.
+
+Not fixed here — out of scope for Task 8 (which only owns `lower_binop`'s
+`Coalesce` arm and its own justification), left for whoever next touches
+`flatten_bundle_refs_expr` or fn-body bundle-parameter handling generally.
+
+### Sub-gap (2026-09-08, RESOLVED 2026-09-08 — GAP-1 residual Task 4): `ir::lower` could not lower `ExprKind::Replicate`
+
+`lower_expr`'s `ExprKind::Replicate` arm (`{N{x}}` replication, Verilog-style)
+hit the catch-all `unimplemented!()` for expression forms not yet lowered. The
+`count` parameter always const-folds (checker-enforced, same guarantee `Slice`
+bounds and `Shl` constant amounts already rely on), and the result is pure
+bit-vector reassembly: each part of `parts` lowers once (memoized via
+`expr_memo` as usual), then that entire sequence repeats `count` times, with
+no new cell allocation — exactly the "no cell, just re-point nets" strategy
+`ExprKind::Concat` already uses one match arm above.
+
+**Fix.** `lower_expr`'s new `ExprKind::Replicate` arm (`crates/mimz-core/
+src/ir/lower.rs:559-572`) const-evals the `count` expression against
+`design.consts` (reusing the same `crate::value::const_eval` call-site pattern
+and error message as `Slice`'s `hi`/`lo` bounds), then iterates `count` times
+over `parts.iter().rev()` (MSB-first ordering, identical to `Concat`'s
+reversal), extending the output net vector once per part. The implementation
+mirrors `Concat`'s exact style and ordering convention, ensuring nets are
+reused without reallocation: three references to the same signal in
+`{3{a}}` produce three `NetId` values all pointing to the same underlying net.
+
+New tests (`crates/mimz-core/src/ir/tests/lower_unary_concat_slice.rs`):
+`lowers_replicate_reuses_same_nets` (`{3{a}}` for 1-bit `a` produces a 3-bit
+`Bits` where all three net references are identical `NetId` values, not fresh
+allocations — asserts `rep_bits.0[0] == rep_bits.0[1] == rep_bits.0[2]`)
+and `lowers_replicate_preserves_msb_first_ordering` (`{2{a,b}}` for 1-bit
+signals produces 4-bit pattern `[b,a,b,a]` in LSB-first indexing, which reads
+as `[a,b,a,b]` in source MSB-first order — asserts the correct net names at
+each index).
+
+Verification: `cargo test -p mimz-core ir::` clean (96 passed); `cargo
+clippy --workspace --all-targets -- -D warnings` clean.
+
+---
+
+### Sub-gap (2026-09-08, RESOLVED 2026-09-08 — GAP-1 residual Task 5): `ir::lower` could not lower a plain-vector bit-select `v[i]`
+
+`lower_expr`'s `ExprKind::Index` arm only handled a memory-word read
+(`self.indexed_mem(base).is_some()`, `crates/mimz-core/src/ir/lower.rs:432`);
+`v[i]` on anything else (a plain `bits[N]`/`signed[N]` value, not a
+`design.mems` entry) fell through to the catch-all `unimplemented!()`.
+
+**Preflight.** Unlike `Slice`'s `hi`/`lo` (which MUST const-fold —
+`checker/widths/expr/lvalue.rs`'s `const_bound`, line 199, errors on
+anything `consteval::eval` can't resolve), a plain-vector single-bit index
+is NOT required to const-fold. `index_in_range`
+(`crates/mimz-core/src/checker/widths/expr/lvalue.rs:72-102`) only range-
+checks a `Ty::CtInt` index (line 75); a `Ty::Bit`/`Ty::Bits(_)` index — a
+genuine runtime signal — passes through unchecked at line 86. So both a
+constant index (`a[0]`, `fn_return_guard.mimz`/`uart_tx.mimz`'s real
+failures) and a runtime index (`a[i]` for a signal `i`) are checker-legal,
+and both needed lowering, not just the constant case the plan flagged as
+"near-certain."
+
+**Fix.** `lower_expr`'s new `ExprKind::Index` arm (no guard, sibling to the
+memory-read arm above it; `crates/mimz-core/src/ir/lower.rs:454-487`)
+lowers `base` once, then tries `crate::value::const_eval` on `index`:
+
+- **Constant** (`Ok`): pure re-pointing, no cell — `Bits(vec![base_bits.0[i]])`,
+  identical strategy to the existing `Slice` arm.
+- **Runtime** (`Err`): composes the existing `BinOp::Shr` lowering (via
+  `lower_binop`, unchanged) to compute `base >> index`, then takes net-index
+  0 of THAT result. `Shr`'s output width is always `a.width()` regardless of
+  the shift amount (`lower_binop`'s `BinOp::Shr` arm,
+  `crates/mimz-core/src/ir/lower.rs:937`), so bit 0 of the shift's own
+  freshly-allocated `Bits` is always net-index 0 — a constant slice despite
+  `i` itself being runtime, needing no new bit-level indexing machinery.
+
+The stale catch-all message (which used to name a bit-select on a plain
+vector as still-missing "bit-level indexing machinery") was trimmed since
+this arm now handles it.
+
+New tests (`crates/mimz-core/src/ir/tests/lower_unary_concat_slice.rs`):
+`lowers_constant_index_to_a_single_bit_repoint` (`a[0]` for 8-bit `a`
+produces a 1-bit `Bits` whose single net is exactly `a`'s bit-0 `NetId`,
+asserted directly — not just "doesn't panic" — and asserts `module.cells`
+stays empty) and `lowers_runtime_index_via_shr_and_a_zero_slice` (`a[i]`
+for a runtime 3-bit `i` produces exactly one `Shr` cell whose `out` pin
+stays 8 bits wide, and the result `Bits` points at net-index 0 of that
+`out`).
+
+Verification: `cargo test -p mimz-core ir::` clean (98 passed); `cargo
+clippy --workspace --all-targets -- -D warnings` clean.
+
+---
+
+### Sub-gap (2026-09-08, RESOLVED 2026-09-08 — GAP-1 residual Task 6): `ir::lower` could not lower an array-typed `fn` param
+
+`lower_expr`'s `ExprKind::FnCall` arm unconditionally `unimplemented!()`d the
+moment any callee param was `Type::Array { .. }` — `fn_array_search.mimz`,
+`foreach_sum.mimz`, and Tamil-pure `kootu.mimz` all hit this.
+
+**Preflight (ported, not designed).** `emit_verilog` and the AST/value
+evaluator already agree on ONE convention for this, confirmed by direct
+reading rather than assumed: an array-typed param of length N flattens to N
+scalar bindings named `"{param}_{i}"` (`i` in `0..N`), each at the array's
+element width.
+
+- Emitter: `crates/mimz-core/src/emit_verilog/module/funcs.rs:59-67` builds
+  an `arrays: ArrayScope` bookkeeping map per array-typed param/`let`;
+  `funcs.rs:135-151` declares the N `input {ew}{param}_{i};` ports;
+  `crates/mimz-core/src/emit_verilog/expr.rs:996-1007` expands a call-site
+  `ArrayLit` argument element-by-element and a bare in-scope array `Ident`
+  to its `"{n}_{i}"` scalars.
+- AST/value evaluator (what `mimz-sim` runs on): `crates/mimz-core/src/
+value/fn_eval.rs:56-104`, specifically line 100 —
+  `locals.insert(format!("{}_{i}", param.name.name), ...)` — binds each
+  array param element under the identical key, with its own comment stating
+  "the SAME `<name>_<i>` convention the emitter uses for its scalar ports".
+
+**A real, confirmed second gap, not just the `call_locals` one.** Neither
+`emit_verilog` nor the evaluator resolves `vals[i]` as a plain bit-select —
+both special-case a bare `Ident` naming an in-scope array FIRST
+(`value::mod.rs:516-548`, specifically the `array_len(name)` check at
+`524-528`, which resolves each element via `r.signal(&format!("{name}_{i}"))`
+before ever falling through to the generic bit-select code below it).
+`ir::lower`'s `ExprKind::Index` arm (Task 5, above) had no such branch and no
+array-scope concept anywhere in `LowerCtx` — confirmed by grepping
+`arrays|array_len|ArrayScope` across the whole file (zero hits) before this
+task started. So Task 6 was originally dispatched scoped to `call_locals`
+construction only; that preflight finding was reported BLOCKED (a flattened
+`"vals_0".."vals_3"` `call_locals` map is unreachable from a real `fn` body,
+since `vals[i]` would resolve `Ident("vals")` through `locals` → `design.
+consts` → `self.resolve()`, and `resolve()` panics — there is no `"vals"`
+key in this scheme, only its per-element scalars). The controller then
+explicitly expanded Task 6's scope to cover both ends together, since they
+are not separable in practice — this entry covers that expanded scope, not
+the original brief's narrower one.
+
+**Fix — two ends of the same change.**
+
+1. **`call_locals`/`call_arrays` construction**
+   (`crates/mimz-core/src/ir/lower.rs:564-623`, the `ExprKind::FnCall` arm):
+   for each param, if it's `Type::Array { .. }`, its call-site argument MUST
+   be an `ExprKind::ArrayLit` (the only shape possible — a module signal can
+   never itself be array-typed, E0416, so there is no surface syntax for
+   anything else); each element is lowered individually and bound under
+   `"{param}_{i}"`, and `call_arrays` records the element count under the
+   plain param name. A non-array param is unchanged: one `call_locals` entry
+   under its own name.
+2. **Array-scope threading + `ExprKind::Index`'s new array branch**
+   (`crates/mimz-core/src/ir/lower.rs:461-560`): `arrays: Option<&HashMap<
+String, u32>>` was added as `locals`'s sibling parameter everywhere
+   `locals` already flowed (`lower_expr`, `lower_expr_sized`,
+   `lower_fn_stmts`, `lower_match`), `Some` exactly when `locals` is (an
+   array param's scope only ever exists alongside its call's own
+   `call_locals`). `ExprKind::Index` now checks — mirroring `value::mod.rs`'s
+   own dispatch order exactly — whether `base` is a bare `Ident` naming a key
+   in `arrays` FIRST, before falling through to the untouched plain-vector
+   bit-select logic:
+   - **Constant index:** direct re-pointing to `locals["{name}_{i}"]` — no
+     cell, same "pure re-pointing" shape as `Slice`/the plain-vector constant
+     case, just at element width instead of 1 bit.
+   - **Runtime index:** an `if idx==0 {name_0} else if idx==1 {name_1} else
+... {name_{len-1}}` chain, folded from the LAST element backward
+     (mirrors `lower_match`'s own reverse fold) using this file's existing
+     `Eq` (`push_binary_cell`) and `Mux` cells — no new `CellKind`. An
+     out-of-range runtime index falls through every `Eq` to the
+     unconditional last element, matching the emitter's ternary-chain
+     default (spec/02 §1.14) and `value::mod.rs`'s own clamp-to-last
+     behaviour.
+
+New tests (`crates/mimz-core/src/ir/tests/lower_array_fn_params.rs`, new
+file), mirroring `fn_array_search.mimz`'s `pick(vals: bits[8][4], idx:
+bits[3]) -> bits[8] { vals[idx] }` shape:
+`lowers_constant_index_into_array_param_to_the_flattened_elements_bits`
+(`fn third(vals: bits[8][4]) { vals[2] }` called `third([a,b,c,d])` —
+asserts the result `Bits` equals `c`'s own port `Bits` exactly, and
+`module.cells` stays empty) and
+`lowers_runtime_index_into_array_param_via_eq_mux_chain` (`pick`'s own
+shape, called `pick([a,b,c,d], idx)` — asserts exactly 3 `Eq` + 3 `Mux`
+cells, walks the chain from the outermost `Mux` driving the output inward
+through each `Eq`'s constant selector (0, then 1, then 2) via concrete
+`NetId`/pin equality, and asserts the innermost `Mux`'s unconditional
+default (`b` pin) is `d`'s own `Bits` with no further `Eq` — pinning the
+clamp-to-last-element behaviour, not just "doesn't panic").
+
+Also updated `docs/code/10-test-map.md` and `README.md`'s test-count badge
+(1428 → 1434, `tests/docs_sync.rs`'s `test_count_matches_docs_and_badge`
+mechanically enforces this) to account for this task's +2 together with
+Task 4's and Task 5's +2 each, none of which had been folded in yet.
+
+Verification: `cargo test -p mimz-core ir::` clean (100 passed, up from 98);
+`cargo test --workspace` clean (1434 passed); `cargo clippy --workspace
+--all-targets -- -D warnings` clean.
 
 ---
 

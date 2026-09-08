@@ -1418,3 +1418,58 @@ fn a_wide_compile_time_constant_expression_lowers_exactly_not_saturated_to_i128_
     );
     assert_eq!(validate::validate(&module), Vec::new());
 }
+
+/// Task 8: pins the empirical claim behind `lower_binop`'s
+/// `BinOp::Coalesce => unreachable!(...)` arm — that `??` used at MODULE
+/// level (wire declaration + assignment, in either of its two source forms)
+/// never survives `elaborate_project` into a `Design`, so `ir::lower` never
+/// sees a `BinOp::Coalesce` node to lower for that shape. Runs the real lex
+/// -> parse -> check -> elaborate_project -> lower pipeline (no hand-built
+/// `Design`, so a regression can't hide behind a synthetic fixture) over both
+/// checker-fixture shapes from `checker::tests::bundles`
+/// (`qq_unwrap_form_types_as_the_data_field_type`,
+/// `qq_or_mux_form_types_as_still_optional`), asserting both that `lower()`
+/// does not panic (the `unreachable!()` arm is genuinely never hit) and that
+/// the elaborated `Design` itself contains no `Coalesce` anywhere (the
+/// stronger, direct check — a `{design:?}` scan covers `comb`, `procs`,
+/// `asserts`, and `covers` alike, not just the one field each fixture happens
+/// to drive). Does NOT cover a bundle-typed `fn` parameter referenced bare
+/// (not via `.field`) inside that fn's own body — see the arm's own comment
+/// and `docs/audit/gaps.md`'s "bare bundle-typed fn parameter" sub-gap for
+/// that separate, still-open gap.
+#[test]
+fn lower_coalesce_is_unreachable_for_both_source_forms() {
+    fn elaborate_src(src: &str) -> Design {
+        let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+        crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+        crate::elaborate::elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
+            .expect("elaborates")
+    }
+
+    // Unwrap form: `raw ?? 0` (scalar result) — eliminated by `Rw::expr`'s
+    // dedicated `Binary{Coalesce}` arm in `elaborate/rewrite.rs`.
+    let unwrap_src = "module M {\n  in c: bit\n  in d: bits[8]\n  out o: bits[8]\n  \
+                       wire x: bits[8]? = { valid: c, data: d }\n  \
+                       o = x ?? 0\n}\n";
+    let unwrap_design = elaborate_src(unwrap_src);
+    assert!(
+        !format!("{unwrap_design:?}").contains("Coalesce"),
+        "unwrap form `x ?? 0` must not survive elaborate_project as a Coalesce node"
+    );
+    let _ = lower(&unwrap_design); // must not panic
+
+    // OR-mux form: `x ?? y` (both sides and the result stay bundle-typed) —
+    // eliminated earlier still, at bundle-typed signal-declaration time, by
+    // `bundle_field_expr` in `elaborate/bundle.rs`.
+    let or_mux_src = "module M {\n  in c1: bit\n  in d1: bits[8]\n  \
+                       in c2: bit\n  in d2: bits[8]\n  out o: bit\n  \
+                       wire x: bits[8]? = { valid: c1, data: d1 }\n  \
+                       wire y: bits[8]? = { valid: c2, data: d2 }\n  \
+                       wire merged: bits[8]? = x ?? y\n  o = merged.valid\n}\n";
+    let or_mux_design = elaborate_src(or_mux_src);
+    assert!(
+        !format!("{or_mux_design:?}").contains("Coalesce"),
+        "OR-mux form `x ?? y` must not survive elaborate_project as a Coalesce node"
+    );
+    let _ = lower(&or_mux_design); // must not panic
+}
