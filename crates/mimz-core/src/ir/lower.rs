@@ -15,6 +15,34 @@ fn const_val(value: u128, width: u32) -> crate::checker::consteval::ConstVal {
     }
 }
 
+/// Mirrors `validate::requires_matched_ab`'s exact set of ops, keyed on
+/// `BinOp` (available here, in `lower_expr`'s `ExprKind::Binary` arm,
+/// before any `CellKind` exists) instead of `CellKind`. Deliberately
+/// DUPLICATED rather than shared: `CellKind` doesn't retain which `BinOp`
+/// produced it, so unifying the two would mean inventing a translation
+/// layer neither file has today, for an 11-arm boolean lookup that isn't a
+/// numeric formula (unlike `Shl`'s growth formula, which both files call
+/// through `width_rules::shift_result` because THAT part is genuinely
+/// shared) — see `validate.rs`'s `expected_widths` doc comment on `Shl` for
+/// the same "the two must never drift" principle, which it also accepts a
+/// duplicated formula for (Add/Sub/Mul) rather than sharing.
+fn requires_matched_ab(op: BinOp) -> bool {
+    matches!(
+        op,
+        BinOp::BitAnd
+            | BinOp::BitOr
+            | BinOp::BitXor
+            | BinOp::Eq
+            | BinOp::Ne
+            | BinOp::Lt
+            | BinOp::Le
+            | BinOp::Gt
+            | BinOp::Ge
+            | BinOp::LogicAnd
+            | BinOp::LogicOr
+    )
+}
+
 /// The three synthetic `env` keys a memory's write port occupies while
 /// `lower_seq_stmts` folds its `if`s. They live in the same key space as
 /// register names, and the `__mem_` prefix keeps them out of the way of
@@ -88,11 +116,156 @@ impl<'a> LowerCtx<'a> {
         let expr = self.design.comb.get(name).unwrap_or_else(|| {
             panic!("no driver recorded for signal `{name}` (checker should have caught this)")
         });
+        // `design.comb` only ever drives an output or a wire (never a reg —
+        // see its own doc comment), so a declared width is always found here
+        // in practice; the `None` fallback (plain `lower_expr`, today's
+        // behaviour) is just defensive, not expected to fire on any real
+        // `Design`. Threading the width through lets a bare-literal-or-const
+        // driver (`out = 0;`) size itself to the PORT's declared width
+        // instead of its own natural width — the `debug_wrapper.mimz` shape
+        // (`dbg_out = 0` inside a `const if` branch, folded away before a
+        // `Design` exists, leaving `0` as the whole `comb` entry).
+        let declared_width = self
+            .design
+            .outputs
+            .iter()
+            .chain(&self.design.wires)
+            .find(|s| s.name == name)
+            .map(|s| s.width.bits);
         // Top-level signal resolution is never inside a `fn` body, so there
         // are no call-local bindings in scope here.
-        let bits = self.lower_expr(module, expr, None);
+        let bits = match declared_width {
+            Some(w) => self.lower_expr_sized(module, expr, None, w),
+            None => self.lower_expr(module, expr, None),
+        };
         self.resolved.insert(name.to_string(), bits.clone());
         bits
+    }
+
+    /// Lowers `e` at exactly `target_width`, when `e` is a bare integer
+    /// literal, a reference to a `design.consts` entry (module parameter or
+    /// file-level `const`), or a larger compile-time-constant EXPRESSION
+    /// built only from those two shapes (e.g. `sync_loop_lower.rs`'s
+    /// desugared `hi - 1` loop bound, both `hi` and `1` literals) — all
+    /// values with no width of their own, which the checker types
+    /// contextually (`Ty::CtInt`), promoted to whatever the use-context
+    /// requires, rather than at their own natural/lowered-arithmetic width.
+    /// Anything else falls through to plain `lower_expr` unchanged: a real
+    /// signal's width is already reconciled by the checker, and re-sizing it
+    /// here would silently truncate or mis-extend a value that is NOT a
+    /// compile-time constant.
+    ///
+    /// The `Int` arm deliberately does NOT route through
+    /// `crate::value::const_eval`, unlike this file's other `const_eval`
+    /// call (`Slice`'s `hi`/`lo`, above) and unlike the fallback arm below —
+    /// `ExprKind::Int`'s own `value` field is already the exact
+    /// arbitrary-width `bits::Bits` the checker const-folded, so reusing it
+    /// directly (as the sibling `ExprKind::Int` arm in `lower_expr` does)
+    /// avoids a needless round trip for the single most common case.
+    ///
+    /// The fallback arm (anything else) tries `const_eval_wide` on the WHOLE
+    /// expression, gated to `locals.is_none()`. Deliberately
+    /// `const_eval_wide`, NOT the plain `i128`-narrowing `const_eval` this
+    /// file's other call sites use (`Slice`'s `hi`/`lo`, `shl_const_amount`,
+    /// below) — a compile-time-constant EXPRESSION (unlike a bare literal,
+    /// or a `design.consts` entry, which is always an already-`i128`
+    /// module-parameter/`const` value) can genuinely evaluate past `i128`'s
+    /// range (`bits[200] w = 1 << 190;` is checker-legal, `Bits::Wide`
+    /// exists exactly for this — BUG-13 layer 2), and `const_eval`'s
+    /// `i128`-saturating narrowing does not error on that, it silently
+    /// returns `i128::MAX`/`MIN` (`ConstVal::to_i128_saturating`'s own doc).
+    /// `const_eval_wide` returns the checker's arbitrary-width `ConstVal`
+    /// directly instead, so the fold is exact regardless of magnitude — the
+    /// resize to `target_width` below then goes through
+    /// `crate::value::from_const_at_width`, the SAME sign-aware
+    /// extend/truncate `ir::exec`'s own `Const`-cell evaluation uses, so a
+    /// negative or over-128-bit folded value widens/narrows exactly as
+    /// correctly as executing the constant would. `const_eval_wide` still
+    /// has no notion of `locals` (same as `const_eval`), so it inherits the
+    /// same `locals.is_none()` gate as before: inside an inlined `fn` body
+    /// it could otherwise silently resolve a LOCAL param/`let` name that
+    /// collides with an unrelated design-level const/param. Every real call
+    /// site today (`resolve()`'s comb driver, `ExprKind::Binary`'s siblings
+    /// reached from module-level seq/comb lowering) already passes
+    /// `locals: None`, so this costs nothing in practice; a compound
+    /// constant expression inside a `fn` body simply isn't re-sized —
+    /// today's pre-existing behaviour, not a regression.
+    fn lower_expr_sized(
+        &mut self,
+        module: &mut Module,
+        e: &Expr,
+        locals: Option<&HashMap<String, Bits>>,
+        target_width: u32,
+    ) -> Bits {
+        // `ExprKind::Int` is kept as its own arm rather than folded into the
+        // `ConstVal` path below: its `value` field is already the exact
+        // arbitrary-width `bits::Bits` the checker const-folded, so this
+        // avoids a needless round trip for the single most common case.
+        if let ExprKind::Int { value, .. } = &e.kind {
+            let cv = crate::checker::consteval::ConstVal {
+                bits: value.clone(),
+                width: target_width,
+                signed: false,
+            };
+            return self.lower_const(module, &cv, e.span);
+        }
+        // `design.consts` entries are always already-folded `i128`s (module
+        // parameters/file-level `const`s never exceed that range by
+        // construction), so the native `i128 -> u128` two's-complement cast
+        // is exact here — no wide-magnitude risk, unlike the fallback arm.
+        let folded: Option<crate::checker::consteval::ConstVal> = match &e.kind {
+            ExprKind::Ident(name) if locals.is_none_or(|l| !l.contains_key(name)) => self
+                .design
+                .consts
+                .get(name)
+                .copied()
+                .map(|v| crate::checker::consteval::ConstVal {
+                    bits: crate::bits::Bits::Small(v as u128),
+                    width: target_width,
+                    signed: v < 0,
+                }),
+            _ if locals.is_none() => crate::value::const_eval_wide(e, &self.design.consts)
+                .ok()
+                .map(|cv| {
+                    let resized = crate::value::from_const_at_width(&cv, target_width, cv.signed);
+                    crate::checker::consteval::ConstVal {
+                        bits: resized.bits,
+                        width: target_width,
+                        signed: cv.signed,
+                    }
+                }),
+            _ => None,
+        };
+        match folded {
+            Some(cv) => self.lower_const(module, &cv, e.span),
+            None => self.lower_expr(module, e, locals),
+        }
+    }
+
+    /// Whether `lower_expr_sized` would treat `e` as a compile-time
+    /// constant it can re-size (a literal, a const/param `Ident`, or a
+    /// larger constant expression), rather than falling through to plain
+    /// `lower_expr`. Used by `ExprKind::Binary`'s arm to decide WHICH side
+    /// of a width mismatch to re-lower: unlike a bare literal (always
+    /// narrower than a sized sibling, since a literal's own natural width is
+    /// its tightest representation), a constant EXPRESSION can come out
+    /// WIDER than the real signal it's compared against (`lower_binop`'s
+    /// arithmetic growth formulas apply uniformly whether or not the
+    /// operands are literals — `hi - 1` lowers to `in_width + 1` bits
+    /// regardless), so "re-lower whichever side is narrower" is the wrong
+    /// test in general; "re-lower whichever side is const-foldable" is not.
+    fn is_const_foldable(&self, e: &Expr, locals: Option<&HashMap<String, Bits>>) -> bool {
+        match &e.kind {
+            ExprKind::Int { .. } => true,
+            ExprKind::Ident(name) if locals.is_none_or(|l| !l.contains_key(name)) => {
+                self.design.consts.contains_key(name)
+            }
+            // Matches `lower_expr_sized`'s own fallback arm exactly —
+            // `const_eval_wide`, not `const_eval`, so this predicate and the
+            // resize it gates never disagree on what folds.
+            _ if locals.is_none() => crate::value::const_eval_wide(e, &self.design.consts).is_ok(),
+            _ => false,
+        }
     }
 
     /// Lowers one expression to its `Bits`. `locals` carries the current
@@ -123,7 +296,19 @@ impl<'a> LowerCtx<'a> {
                 let local = locals.and_then(|l| l.get(name)).cloned();
                 match local {
                     Some(bits) => bits,
-                    None => self.resolve(module, name),
+                    // Module parameters and file-level `const`s are neither
+                    // `locals` nor comb-driven signals — the elaborator folds
+                    // both into `design.consts` (same folded-`i128` map
+                    // `value::build_env` converts via `ConstVal::from_i128`,
+                    // reused here rather than re-deriving the two's-
+                    // complement/width convention for a negative value).
+                    None => match self.design.consts.get(name) {
+                        Some(&v) => {
+                            let cv = crate::checker::consteval::ConstVal::from_i128(v);
+                            self.lower_const(module, &cv, e.span)
+                        }
+                        None => self.resolve(module, name),
+                    },
                 }
             }
             ExprKind::Bool(b) => {
@@ -144,8 +329,34 @@ impl<'a> LowerCtx<'a> {
                 self.lower_const(module, &const_val, e.span)
             }
             ExprKind::Binary { op, lhs, rhs } => {
-                let a = self.lower_expr(module, lhs, locals);
-                let b = self.lower_expr(module, rhs, locals);
+                let mut a = self.lower_expr(module, lhs, locals);
+                let mut b = self.lower_expr(module, rhs, locals);
+                // A width mismatch here can only be a compile-time-constant
+                // expression (a bare literal, a const/param identifier, or a
+                // larger constant expression built from those — see
+                // `is_const_foldable`) on one side: the checker's untyped
+                // `Ty::CtInt`, sized by `lower_expr`'s own arms to its
+                // NATURAL/arithmetic-growth width rather than the sibling's.
+                // Every other shape is already reconciled to matching widths
+                // by the checker. Re-lower whichever side IS const-foldable
+                // at the OTHER side's width — deliberately NOT "whichever
+                // side is narrower": a bare literal is always narrower than
+                // its sized sibling, but a constant EXPRESSION can come out
+                // WIDER instead (`lower_binop`'s arithmetic growth formulas
+                // apply the same whether or not the operands are literals),
+                // so testing width alone picks the wrong side for that
+                // shape (see `is_const_foldable`'s own doc). If NEITHER side
+                // is const-foldable, both `a`/`b` come back unchanged and
+                // the mismatch reaches `lower_binop`/`validate` untouched —
+                // a genuine checker/lowering disagreement, which stays a
+                // loud validation failure rather than a silent truncation.
+                if requires_matched_ab(*op) && a.width() != b.width() {
+                    if self.is_const_foldable(lhs, locals) {
+                        a = self.lower_expr_sized(module, lhs, locals, b.width());
+                    } else if self.is_const_foldable(rhs, locals) {
+                        b = self.lower_expr_sized(module, rhs, locals, a.width());
+                    }
+                }
                 let shl_const_amount = (*op == BinOp::Shl)
                     .then(|| crate::value::const_eval(rhs, &self.design.consts).ok())
                     .flatten()
@@ -683,11 +894,11 @@ impl<'a> LowerCtx<'a> {
             // ORDERING comparisons read `cmp_signed`.
             BinOp::Lt => (CellKind::Lt { signed: cmp_signed }, 1),
             BinOp::Le => (CellKind::Le { signed: cmp_signed }, 1),
-            other => unimplemented!(
-                "binop not yet lowered by Task 5 (Gt/Ge/logical and/or land \
-                 alongside their AST variants once checked against ast::BinOp's \
-                 full list): {other:?}"
-            ),
+            BinOp::Gt => (CellKind::Gt { signed: cmp_signed }, 1),
+            BinOp::Ge => (CellKind::Ge { signed: cmp_signed }, 1),
+            BinOp::LogicAnd => (CellKind::LogicAnd, 1),
+            BinOp::LogicOr => (CellKind::LogicOr, 1),
+            other => unimplemented!("binop not yet lowered: {other:?}"),
         };
         let out = module.alloc_bits(out_width, None);
         module.cells.push(Cell {

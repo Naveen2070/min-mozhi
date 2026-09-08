@@ -341,10 +341,15 @@ benign by a different mechanism — `-5` lowers to a `Neg` cell at the
 literal's own narrow width, so it too fails the width guard — but it is
 benign by accident, not by design, and the `Neg` residual below is what
 would need closing to reason about it properly. Sizing a literal from its
-comparison context is the separate follow-up that would close all of this;
+comparison context is the separate follow-up that would close all of this —
+**RESOLVED 2026-09-08, GAP-1 residual Task 3** (see the new sub-gap
+immediately below this one for the general fix, which closes a strictly
+broader class than just ordering comparisons). The test that used to pin
+this boundary,
 `a_natural_width_literal_operand_keeps_the_comparison_unsigned`
-(`crates/mimz-core/src/ir/tests/lower_binops.rs`) pins the boundary so that
-fix flips the assertion deliberately rather than by accident.
+(`crates/mimz-core/src/ir/tests/lower_binops.rs`), was renamed
+`a_literal_operand_is_sized_to_its_signed_siblings_width_and_the_comparison_is_signed`
+and its assertions flipped, exactly as its own prior comment anticipated.
 
 **Fuzz corpus:** `tests/differential_fuzz.rs`'s `gen_ir_clocked_module`
 (Task 18's narrowed generator) is UNCHANGED by this round — it still never
@@ -356,6 +361,126 @@ essentially every node" (Task 18's own measurement), and a meaningful
 fraction of those are genuinely signed or hit `min`/`max`/`abs` — folding
 the leg back in today would still skip most seeds on the newly-narrower
 but still-real residual gap above.
+
+### Sub-gap (2026-09-08, RESOLVED 2026-09-08 — GAP-1 residual Task 3): a bare literal or const/param identifier lowered at its own natural width instead of its use-context width
+
+**What.** `ExprKind::Int`'s arm sized EVERY bare literal at
+`crate::bits::natural_width(value).max(1)` — its own minimal width — with no
+notion of the width its use-context actually requires. A module parameter or
+file-level `const` referenced as a plain identifier (resolved by GAP-1
+residual Task 2, the sub-gap immediately above) had the same problem: it
+sized to its own natural width, never the sized sibling/target the checker
+promotes it to (`matched_ty`/`concat_ty`, the same `Ty::CtInt` promotion the
+signed-comparison sub-gap above describes). This is strictly BROADER than
+that sub-gap: it also hits plain `Eq`/`Ne` (sign-agnostic, no comparison
+"signedness" involved at all) and output/wire-port assignment positions, not
+just signed ordering comparisons. This plan's investigation dumped
+`traffic_light.mimz`'s actual lowered IR to confirm it: `state == State.Red`
+lowered `state[0:2]` (2 bits) against `State.Red`'s tag `{12}` sized to 1 bit,
+tripping `ir::validate::validate`'s `WidthMismatch` on a real shipped
+example, not a hypothetical — `State.Green`'s tag hit the same bug,
+`State.Yellow`'s happened to need exactly 2 bits naturally so it didn't
+trip. `debug_wrapper.mimz`'s `PortWidthMismatch { port: "dbg_out", declared:
+8, found: 1 }` was the same root cause in a different position: `dbg_out =
+0` inside a `const if` branch, sizing `0` to 1 bit instead of the declared
+8-bit port. `sync_loop_search.mimz` turned out to be a THIRD, distinct
+manifestation, not "one more instance of the first shape" as first assumed:
+`sync_loop_lower.rs`'s desugared loop-done check (`find_first_cnt == hi - 1`,
+by design emitted as a real `BinOp::Sub` AST node — `hi - 1` is never
+pre-folded to a bare literal, so as to keep `ast` free of a `checker`
+dependency) lowers `hi - 1` through `lower_binop`'s ordinary lossless-Sub
+growth formula (`in_width + 1`) regardless of both operands being literals,
+coming out WIDER (5 bits) than the 3-bit counter it's compared against —
+the checker, by contrast, treats an all-compile-time-constant subexpression
+as untyped `Ty::CtInt` sized by context, same as a bare literal. This is the
+opposite direction from the other two cases (there, the constant side was
+NARROWER and needed widening).
+
+**Fix.** A new `lower_expr_sized` helper (`crates/mimz-core/src/ir/lower.rs`)
+re-lowers a compile-time-constant-shaped `Expr` at an explicit target width,
+falling through to plain `lower_expr` unchanged for anything else (a real
+signal's width is already reconciled by the checker, so re-sizing it would
+silently mis-widen or truncate a value that isn't constant). Three shapes
+count as "constant": a bare `ExprKind::Int` (reuses its own arbitrary-width
+`bits::Bits` directly, no precision loss); a `design.consts` `Ident` (module
+parameter/file-level `const`, guarded against a `locals`-shadowed name of the
+same spelling); and — added once `sync_loop_search.mimz`'s real shape was
+understood — anything else `crate::value::const_eval` can fold, gated to
+`locals.is_none()` (see below). A sibling `is_const_foldable` predicate
+answers the same question without committing to a width, used by
+`ExprKind::Binary`'s arm to pick WHICH side to re-lower: deliberately NOT
+"whichever side is narrower" (that heuristic is exactly the assumption that
+made `sync_loop_search.mimz` look like a repeat of the first shape when it
+isn't — a constant EXPRESSION can come out wider than its sibling, not just
+narrower), gated on a new `requires_matched_ab(op: BinOp) -> bool` free
+function that mirrors `validate.rs`'s own `CellKind`-keyed function of the
+same name (deliberately DUPLICATED, not extracted into one shared list —
+`CellKind` doesn't retain which `BinOp` produced it, so unifying the two
+would need a translation layer neither file has today for what is an 11-arm
+boolean lookup, not a numeric formula like `Shl`'s growth, which both files
+already share through `width_rules::shift_result`; see `expected_widths`'s
+own doc comment on `Shl` for the same "must never drift" principle, which it
+also accepts a duplicated formula for rather than sharing). `resolve()`
+(the wire/output driver path) now looks up the signal's declared width from
+`design.outputs`/`design.wires` itself before lowering its comb driver,
+sizing a constant driver to the PORT's declared width — the fix
+`debug_wrapper.mimz` needed, which the `ExprKind::Binary` change alone does
+not reach.
+
+**Review fix (2026-09-08): the generalized (non-literal, non-Ident)
+fallback arm originally routed through `crate::value::const_eval`, which
+narrows to `i128` via `to_i128_saturating` — and that function does NOT
+error past `i128`'s range, it silently returns `i128::MAX`/`MIN`
+(`ConstVal::to_i128_saturating`'s own doc comment).** Code review found this
+more reachable than the first cut's doc comment claimed, and the actual
+failure mode worse than "truncation" — a checker-legal program
+(`bits[200] w = 1 << 190;`, `Bits::Wide` exists exactly for a value like
+this, BUG-13 layer 2) would silently lower a WRONG constant with no error
+anywhere. Fixed by routing the fallback (and the matching `is_const_foldable`
+predicate, so the two never disagree on what folds) through
+`crate::value::const_eval_wide` instead — its own doc says it's for exactly
+this case, "the one place a compile-time value's own MAGNITUDE (not just a
+structural size) matters" — then resizing to `target_width` via
+`crate::value::from_const_at_width`, the SAME sign-aware extend/truncate
+`ir::exec`'s own `Const`-cell evaluation uses. This is the same reasoning
+already correctly applied to keep `ExprKind::Int` off plain `const_eval` in
+the same helper (see above), just not originally carried to the fallback
+arm. The `locals.is_none()` gate is unaffected and still needed —
+`const_eval_wide` has no notion of `locals` either, for the same reason
+`const_eval` doesn't (see `lower_expr_sized`'s doc comment for the full
+reasoning); every real call site today already passes `locals: None`.
+
+New test pinning this specifically:
+`a_wide_compile_time_constant_expression_lowers_exactly_not_saturated_to_i128_max`
+(`crates/mimz-core/src/ir/tests/lower_binops.rs`) — `1 << 190` driving a
+`bits[200]` output, asserting the folded `Const` cell's value has its
+highest bit at position 190 (not a corrupted/saturated placeholder), is not
+the old bug's specific wrong output (`i128::MAX` as bits), and matches an
+independently-recomputed oracle (`const_eval_wide` + `from_const_at_width`,
+the same two functions the production path now calls).
+
+If neither side of a `Binary` op is const-foldable, both sides come back
+unchanged and the mismatch reaches `lower_binop`/`validate` untouched — a
+genuine checker/lowering disagreement surfaced by `ir::validate`'s existing
+`WidthMismatch` check, not a silent truncation path.
+
+New tests (`crates/mimz-core/src/ir/tests/lower_binops.rs`):
+`debug_wrapper_shaped_bare_literal_in_a_wire_driver_sizes_to_the_declared_output_width`,
+`traffic_light_shaped_enum_match_arms_size_their_tags_to_the_scrutinees_width`,
+`sync_loop_search_shaped_compile_time_subtraction_sizes_down_to_the_narrower_counter_width`
+(pins the direction-reversal fix `is_const_foldable` needed), and
+`a_wide_compile_time_constant_expression_lowers_exactly_not_saturated_to_i128_max`
+(the review-fix regression above), each asserting `ir::validate::validate`
+returns `[]` where it used to return a specific
+`PortWidthMismatch`/`WidthMismatch` (the fourth also asserts the exact
+folded value, not just a width/validation check).
+
+Verification: `cargo test -p mimz-core ir::` clean (94 passed); `cargo test
+--workspace` clean (1428 passed); `cargo clippy --workspace --all-targets --
+-D warnings` clean; this plan's coverage probe re-run confirms
+`debug_wrapper`/`traffic_light`/`sync_loop_search`/`blinker` (all flavors:
+english/tanglish/tamil/mixed, plus tamil-pure for `sync_loop_search`) now
+validate cleanly.
 
 ### Sub-gap (2026-09-05, still open): `ir::lower` does not grow `UnOp::Neg`, but the checker does
 
@@ -444,6 +569,105 @@ separate, out-of-scope change, not required to close this residual.
 Verification: `cargo test -p mimz-core ir::` (84 passed) clean; `cargo
 test --workspace` clean (1418 passed); `cargo clippy --workspace
 --all-targets -- -D warnings` clean.
+
+### Sub-gap (2026-09-08, RESOLVED 2026-09-08 — GAP-1 residual Task 2): `ir::lower` panicked on any module parameter or file-level `const` referenced as a plain identifier
+
+**What.** `lower_expr`'s `ExprKind::Ident` arm only ever checked `locals`
+(inlined `fn`-call args) before falling to `resolve()`, which does
+`self.design.comb.get(name)` and panics
+(``no driver recorded for signal `{name}` (checker should have caught
+this)``) if the name isn't found. A module parameter
+(`module Blinker(LIMIT: int = 50000000)`) or a file-level `const` (`const
+SCALE: int = 3`) is neither a `locals` binding nor a comb-driven signal —
+the elaborator folds both into `design.consts: BTreeMap<String, i128>`
+(`crates/mimz-core/src/elaborate/module.rs`), which `ir::lower` never
+consulted at all. This plan's coverage probe hit this exact panic on 35 of
+95 real failures — the single largest cause — across `blinker.mimz`
+(`LIMIT`), `fn_with_const.mimz` (`SCALE`), `std/debouncer.mimz`
+(`STABLE`), `std/fifo.mimz` (`DEPTH`), and their Tamil-pure equivalents.
+
+**Fix.** `ExprKind::Ident`'s arm now tries `design.consts.get(name)`
+between the `locals` check and the `resolve()` fallback, folding a hit
+straight to a `Const` cell via `lower_const`. The `i128 -> ConstVal`
+conversion reuses `checker::consteval::ConstVal::from_i128` — already the
+established convention for exactly this "folded `i128` consts/params map"
+shape (`value::build_env`'s doc comment names it explicitly; the same
+constructor is used by every checker/emitter site that consumes
+`design.consts`/`design.params`) — rather than hand-rolling the
+two's-complement/width logic for a negative value a second time.
+
+New tests (`crates/mimz-core/src/ir/tests/lower_consts.rs`):
+`fn_body_references_file_level_const_as_shift_amount` (mirrors
+`fn_with_const.mimz`'s `const SCALE: int = 3; fn scaled(a) { a >> SCALE }`
+shape — asserts `lower()` no longer panics and the `Shr`'s shift-amount
+pin traces to a `Const` cell holding `3`) and
+`module_body_references_module_parameter_directly` (mirrors `blinker.mimz`'s
+`if cnt == LIMIT` shape — a module parameter referenced directly in a
+module body, asserting the `Eq`'s rhs traces to a `Const` cell holding
+`1_000_000`).
+
+Verification: `cargo test -p mimz-core ir::` clean; `cargo clippy
+--workspace --all-targets -- -D warnings` clean.
+
+### Sub-gap (2026-09-08, OPEN — small, documentation-class fix): `lower_binop`'s catch-all can still be reached by `BinOp::Coalesce`, which is actually always-unreachable dead code
+
+Found while reviewing the 2026-09-08 round's Task 1 (`Gt`/`Ge`/`LogicAnd`/
+`LogicOr` production wiring): `BinOp` (`crates/mimz-core/src/ast/expr.rs:225`)
+has 20 variants; after Task 1, `lower_binop`'s match handles 19 of them. The
+last, `BinOp::Coalesce` (the `??` operator from the valid-bundle-sugar
+feature, `bit?`/`bits[N]?` → `{ valid: bit, data: T }`, shipped 2026-07-17 —
+spec/02 section 1.12a: unwrap `T? ?? T -> T` or OR-mux `T? ?? T? -> T?`,
+decided by the right operand's shape), still falls to `lower_binop`'s
+catch-all `unimplemented!("binop not yet lowered: {other:?}")`.
+
+**First read as "no bundle/interface support in `ir::lower` at all" — traced
+further and that read is WRONG; corrected here rather than left standing.**
+Both of `??`'s forms are fully eliminated by `elaborate::rewrite` BEFORE a
+`Design` exists, same discipline as `Pattern::Variant`→`Int`/`IntMask` and
+`Clog2`/`SyncDoubleFlop`/`SyncPulse` (all three already `unreachable!()` in
+`ir::lower`, not `unimplemented!()`):
+
+- The **unwrap** form (`raw ?? 0`, scalar result) is rewritten by
+  `Rw::expr`'s dedicated `ExprKind::Binary { op: BinOp::Coalesce, .. }` arm
+  (`crates/mimz-core/src/elaborate/rewrite.rs:58-91`) into an ordinary
+  `IfExpr` (`if raw.valid { raw.data } else { 0 }`), recursed into
+  immediately — the rewritten tree contains no `Coalesce` node at all.
+- The **OR-mux** form (`x ?? y`, both sides and the result stay bundle-typed)
+  "never reaches this generic scalar-expression rewrite" (the rewrite's own
+  comment, same lines) — it's intercepted earlier, at bundle-typed
+  signal-declaration time, via `bundle_field_expr`
+  (`crates/mimz-core/src/elaborate/bundle.rs:39-91`, itself referencing a
+  prior "Task 10"), which decomposes a bundle-typed initializer into one
+  scalar expression PER FIELD before any generic expression rewrite ever
+  sees a bare `Coalesce` node.
+
+So `BinOp::Coalesce` reaching `ir::lower` is unreachable in practice, exactly
+like the three cases already marked so in the same file's `ExprKind::Call`
+match. The real, narrow fix is a one-line `unreachable!()` arm in
+`lower_binop`, mirroring that existing precedent — NOT a bundle/interface
+lowering project. (`ir::lower`'s separate, general "expression form not yet
+lowered... field access" catch-all wording is ALSO worth a second look for
+the same reason — this investigation didn't find a probe failure that
+actually hits `ExprKind::Field`, only ones hitting `Index`/`Replicate`,
+which the message's parenthetical lumps in alongside a "field access" case
+that may be similarly stale/unreachable rather than a live gap. Not chased
+further here — flagged for whoever next touches that arm.)
+
+**Not found by this round's own coverage probe** (129/224, later improved by
+Task 1) because no file in `examples/` uses `?`/`??` — the probe can only
+surface what real example programs exercise, and this was invisible to it.
+Found only by reading `ast::BinOp`'s full definition after a reviewer's
+finding named `Coalesce` as the sole remaining unhandled variant, then
+corrected again by reading `elaborate::rewrite`/`elaborate::bundle` directly
+rather than trusting the first (wrong) inference from the panic message's
+own wording.
+
+Tracked as its own small task
+(`docs/superpowers/plans/2026-09-08-ir-remaining-gaps.local.md`'s Task 9) —
+unlike Task 7 (general signed IR values, a genuine schema-level decision),
+this one is NOT flagged as deferred: it's a same-shape, low-risk fix to the
+existing `Clog2`/`SyncDoubleFlop`/`SyncPulse` precedent and belongs in this
+plan's normal completion gate.
 
 ---
 

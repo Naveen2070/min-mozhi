@@ -22,9 +22,38 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1418 tests** as of 2026-09-07 (`cargo test --workspace`; the count is
+**1428 tests** as of 2026-09-08 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` and
++2 from `crates/mimz-core/src/ir/tests/lower_consts.rs` (GAP-1 residual
+Task 2, 2026-09-08) —
+`fn_body_references_file_level_const_as_shift_amount` and
+`module_body_references_module_parameter_directly`, pinning that
+`ir::lower` resolves a module parameter/file-level `const` referenced as a
+plain identifier instead of panicking; see GAP-1's "panicked on any module
+parameter or file-level `const`" sub-gap in `docs/audit/gaps.md`; +4 from
+`crates/mimz-core/src/ir/tests/lower_binops.rs` (GAP-1 residual Task 3,
+2026-09-08) —
+`debug_wrapper_shaped_bare_literal_in_a_wire_driver_sizes_to_the_declared_output_width`,
+`traffic_light_shaped_enum_match_arms_size_their_tags_to_the_scrutinees_width`,
+`sync_loop_search_shaped_compile_time_subtraction_sizes_down_to_the_narrower_counter_width`,
+and (added in a same-day review fix)
+`a_wide_compile_time_constant_expression_lowers_exactly_not_saturated_to_i128_max`,
+pinning that a bare literal, a const/param identifier, or a larger
+compile-time-constant expression built from those now sizes to its
+use-context width instead of its own natural/arithmetic-growth width. The
+third test pins the direction-reversal case — a constant EXPRESSION can
+come out WIDER than its sibling, not just narrower, so the fix picks which
+side to re-lower by asking "is this side const-foldable", not "is this side
+narrower". The fourth pins a review finding: the constant-expression
+fallback must fold through `crate::value::const_eval_wide`, not the
+`i128`-saturating `const_eval`, or a checker-legal wide constant (`bits[200]
+w = 1 << 190;`) silently lowers to a wrong (`i128::MAX`-saturated) value with
+no error anywhere. See GAP-1's "sized at its own natural width" sub-gap in
+`docs/audit/gaps.md` (this also accounts for a pre-existing +4 gap between
+the prior "1418" figure and HEAD's actual count that predates this round
+and wasn't re-derived here — a pre-2026-09-08 doc-sync miss, not
+attributable to either of the two rounds just described); a further +2 from
+`crates/mimz-core/src/ir/tests/lower_binops.rs` and
 `crates/mimz-core/src/ir/tests/validate.rs`, pinning `Shl`'s `out` pin at
 `width_rules::shift_result`'s worst-case growth instead of the left operand's
 own width (a growing left shift used to truncate silently) and the matching
@@ -69,13 +98,17 @@ needed; see GAP-1's "fused shift chains" sub-gap (now RESOLVED) in
 `docs/audit/gaps.md`; a final +4 (2026-09-05, GAP-1 residual Task 5) — +2 in
 `crates/mimz-core/src/ir/tests/lower_binops.rs`
 (`signed_ordering_comparisons_execute_with_the_right_sign`,
-`a_natural_width_literal_operand_keeps_the_comparison_unsigned`) and +2 in
+`a_natural_width_literal_operand_keeps_the_comparison_unsigned` — renamed
+`a_literal_operand_is_sized_to_its_signed_siblings_width_and_the_comparison_is_signed`
+by GAP-1 residual Task 3, 2026-09-08, which closed the boundary this test
+used to pin) and +2 in
 `crates/mimz-core/src/ir/tests/parse_line.rs`
 (`round_trips_signed_and_unsigned_ordering_comparisons`,
 `an_unknown_comparison_bracket_argument_is_rejected`), pinning the new
 `signed` flag on `CellKind::{Lt,Le,Gt,Ge}` — its sign-aware execution, the
-literal-width boundary it deliberately does NOT cross, and its text-format
-round trip; see GAP-1's signed-comparison sub-gap in `docs/audit/gaps.md`; a
+literal-width boundary it deliberately does NOT cross (later closed, see
+above), and its text-format round trip; see GAP-1's signed-comparison
+sub-gap in `docs/audit/gaps.md`; a
 final +2 in `crates/mimz-core/src/ir/tests/lower_binops.rs` from Task 5's
 review fix round (`a_negated_operand_keeps_the_comparison_unsigned`,
 `a_signed_cast_over_an_identifier_makes_the_comparison_signed`), pinning the
